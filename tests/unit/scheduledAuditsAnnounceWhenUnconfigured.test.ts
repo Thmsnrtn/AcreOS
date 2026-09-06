@@ -32,6 +32,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import path from "node:path";
+import { stripYamlComments as withoutComments } from "../helpers/stripYamlComments";
 
 const WORKFLOW_DIR = path.resolve(process.cwd(), ".github/workflows");
 const ACTION = ".github/actions/audit-unconfigured";
@@ -53,8 +54,6 @@ const read = (rel: string) => readFileSync(path.resolve(process.cwd(), rel), "ut
  * A `#` line is a comment in YAML and, inside a `run:` block, in the shell
  * too, so one rule covers both.
  */
-const withoutComments = (src: string) =>
-  src.split("\n").filter((line) => !/^\s*#/.test(line)).join("\n");
 
 const workflows = readdirSync(WORKFLOW_DIR)
   .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))

@@ -35,27 +35,10 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const ROUTES = fs.readFileSync(path.join(ROOT, "server/routes.ts"), "utf8");
-
-/**
- * Blank out line comments so prose mentioning a route (including this fix's own
- * explanatory comment, which lists every bypassed path) is not read as a
- * registration.
- *
- * Deliberately does NOT strip block comments: a naive `/*…*\/` regex over this
- * file matches across unrelated constructs and swallows nearly all of it, which
- * would make every assertion below pass vacuously. Line stripping is sufficient
- * — no route in server/routes.ts is registered inside a block comment, and the
- * "gate exists" assertion would fail loudly if this ever over-stripped again.
- */
-function stripComments(src: string): string {
-  return src
-    .split("\n")
-    .map((l) => (l.trimStart().startsWith("//") ? "" : l))
-    .join("\n");
-}
 
 const SRC = stripComments(ROUTES);
 

@@ -114,6 +114,7 @@ import type { PaxControlsState } from "../../server/services/paxControls";
 import type { PaxEffect } from "../../server/services/paxReceipts";
 import type { CommunicationOptions } from "../../server/services/communications";
 import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf-8");
@@ -265,7 +266,7 @@ describe("zero hits: paxAutonomyLevel / unattendedSendPermitted / getOrgAutonomy
     }
     expect(scanned).toBeGreaterThan(1000);
     expect(hits, "the autonomy-level machinery must have zero readers and zero writers (schema column definition excepted until its drop migration)").toEqual([]);
-  });
+  }, REPO_SWEEP_TIMEOUT_MS);
 });
 
 // ── Behaviour: dispatch parks through the kernel ─────────────────────────────

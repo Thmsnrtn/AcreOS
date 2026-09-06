@@ -51,40 +51,9 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
-
-/**
- * Strip comments before scanning source.
- *
- * The eighth time in this program that prose has tripped a check meant for
- * code: this file's own fix left a comment reading
- * `app.use("/api/login", authAttemptLimiter)` — quoting the line it removed —
- * and the mount check matched it. Removing comments first is now the default
- * for every source scan here, not an afterthought.
- */
-function stripComments(src: string): string {
-  const out: string[] = [];
-  let inBlock = false;
-  for (const line of src.split("\n")) {
-    let s = line;
-    if (inBlock) {
-      const end = s.indexOf("*/");
-      if (end === -1) { out.push(""); continue; }
-      s = s.slice(end + 2);
-      inBlock = false;
-    }
-    const open = s.indexOf("/*");
-    if (open > -1) {
-      const close = s.indexOf("*/", open + 2);
-      if (close > -1) s = s.slice(0, open) + s.slice(close + 2);
-      else if (/^\s*\{?\s*\/\*/.test(s)) { s = s.slice(0, open); inBlock = true; }
-    }
-    out.push(s.replace(/(^|[^:])\/\/.*$/, "$1"));
-  }
-  if (inBlock) throw new Error("stripComments ran away — assertions would be meaningless.");
-  return out.join("\n");
-}
 
 function read(rel: string): string {
   return fs.readFileSync(path.join(ROOT, rel), "utf8");

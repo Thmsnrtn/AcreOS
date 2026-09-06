@@ -350,6 +350,7 @@ import {
   periodicStatementSkips,
 } from "@shared/schema/reg-z";
 import { acquiredNotes } from "@shared/schema/notes-vertical";
+import { stripComments } from "../helpers/stripComments";
 
 for (const t of [
   achMandates,
@@ -633,29 +634,6 @@ describe("computeStatementFields sums only the caller's org", () => {
 // ============================================================================
 // 4. Source-level backstop: no query in the three files resolves by id alone.
 // ============================================================================
-
-function stripComments(src: string): string {
-  const out: string[] = [];
-  let inBlock = false;
-  for (const line of src.split("\n")) {
-    let s = line;
-    if (inBlock) {
-      const end = s.indexOf("*/");
-      if (end === -1) { out.push(""); continue; }
-      s = s.slice(end + 2);
-      inBlock = false;
-    }
-    const open = s.indexOf("/*");
-    if (open > -1) {
-      const close = s.indexOf("*/", open + 2);
-      if (close > -1) s = s.slice(0, open) + s.slice(close + 2);
-      else if (/^\s*\{?\s*\/\*/.test(s)) { s = s.slice(0, open); inBlock = true; }
-    }
-    out.push(s.replace(/(^|[^:])\/\/.*$/, "$1"));
-  }
-  if (inBlock) throw new Error("stripComments ran away — assertions would be meaningless.");
-  return out.join("\n");
-}
 
 /**
  * The text of one top-level function. `\n}\n` — a closing brace in column

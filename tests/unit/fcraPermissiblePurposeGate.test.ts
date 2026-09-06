@@ -307,6 +307,7 @@ import {
 import { registerRentalRoutes } from "../../server/routes-rentals";
 import { registerLeadRoutes } from "../../server/routes-leads";
 import skipTracingRouter from "../../server/routes-skip-tracing";
+import { stripComments } from "../helpers/stripComments";
 
 function makeApp() {
   const app = express();
@@ -911,30 +912,6 @@ describe("gate service internals (real fcraAttestation.ts)", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const ROOT = path.resolve(__dirname, "../..");
-
-function stripComments(src: string): string {
-  let out = "";
-  let i = 0;
-  let mode: "code" | "line" | "block" | "single" | "double" | "template" = "code";
-  while (i < src.length) {
-    const c = src[i];
-    const n = src[i + 1];
-    if (mode === "code") {
-      if (c === "/" && n === "/") { mode = "line"; i += 2; continue; }
-      if (c === "/" && n === "*") { mode = "block"; i += 2; continue; }
-      if (c === "'") mode = "single";
-      else if (c === '"') mode = "double";
-      else if (c === "`") mode = "template";
-      out += c; i++; continue;
-    }
-    if (mode === "line") { if (c === "\n") { mode = "code"; out += c; } i++; continue; }
-    if (mode === "block") { if (c === "*" && n === "/") { mode = "code"; i += 2; continue; } i++; continue; }
-    if (c === "\\") { out += c + (n ?? ""); i += 2; continue; }
-    if ((mode === "single" && c === "'") || (mode === "double" && c === '"') || (mode === "template" && c === "`")) mode = "code";
-    out += c; i++;
-  }
-  return out;
-}
 
 function serverFilesMatching(re: RegExp): string[] {
   const hits: string[] = [];

@@ -39,6 +39,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripYamlComments as withoutComments } from "../helpers/stripYamlComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf8");
@@ -69,11 +70,6 @@ const workflows = fs
  * that line alone. A population predicate is a predicate — it reads comments
  * exactly as eagerly as the rule does.
  */
-const withoutComments = (src: string) =>
-  src
-    .split("\n")
-    .filter((line) => !/^\s*#/.test(line))
-    .join("\n");
 
 /**
  * THE POPULATION: workflows that run the repository's unified gate

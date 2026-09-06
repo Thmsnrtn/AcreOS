@@ -48,6 +48,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getDepositReturnRule } from "@shared/regulatory/depositReturnRules";
 import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -108,7 +109,7 @@ describe("there is exactly one deposit registry", () => {
         "letter and the rent-ledger surface read — widen THAT, with the citation " +
         "checked, rather than starting a rival.",
     ).toEqual([]);
-  });
+  }, REPO_SWEEP_TIMEOUT_MS);
 
   it("the detector would notice one (guard against a vacuous pass)", () => {
     // The assertion above passes trivially if the pattern is broken.

@@ -79,6 +79,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const GATE = path.join(ROOT, "scripts/lint-reachability.mjs");
@@ -309,7 +310,7 @@ describe("the mechanism, pinned because a future reader will doubt it", () => {
           `opaque-exports.`,
       ).toEqual([]);
     }
-  });
+  }, REPO_SWEEP_TIMEOUT_MS);
 });
 
 describe("module orphans are counted as files, not only as exports", () => {

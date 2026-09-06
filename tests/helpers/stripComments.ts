@@ -93,34 +93,120 @@ export function stripComments(source: string): string {
   return result;
 }
 
+/**
+ * ── AND WHY IT DOES NOT WALK THE TREE ──────────────────────────────────────
+ * The first parse-based version asked every node for its children and read the
+ * trivia off each token. That is correct and it is SLOW: measured over 1,719
+ * files, the parse costs 2.5s and `getChildren()` — which re-scans to
+ * materialise token nodes — takes the total to 5.6s, 7.7s with the script-kind
+ * retry. Eight repo-wide gates sweep every source file, twice where they append
+ * a canary, and on 2026-09-06 they crossed vitest's 30s ceiling on a loaded CI
+ * runner while passing locally. A gate that times out is a gate that is off.
+ *
+ * So the parse is kept — it is what resolves regex-versus-division, JSX and
+ * nested templates — but only to answer ONE question: where are the literals?
+ * Outside a string, template chunk, regex or JSX text, a `//` or a block-comment
+ * opener can be nothing BUT a comment; `*` cannot begin a regular expression, so
+ * there is no second reading. Collect the literal spans with `forEachChild`
+ * (which never materialises token nodes) and one linear scan finds every comment.
+ *
+ * `stripCommentsReference` below is the tree-walking version, kept and pinned
+ * against this one over a sample of the real repository. A fast path with no
+ * slow path to disagree with is a fast path nobody can check.
+ */
 function stripCommentsUncached(source: string): string {
+  const sf = parseBestEffort(source);
+
+  // Spans in which a comment opener is not an opener. Template HEAD/MIDDLE/TAIL
+  // rather than the whole TemplateExpression: a comment inside `${ … }` is a
+  // real comment, and excluding the enclosing expression would keep it.
+  const literals: Array<[number, number]> = [];
+  const collect = (node: ts.Node): void => {
+    switch (node.kind) {
+      case ts.SyntaxKind.StringLiteral:
+      case ts.SyntaxKind.NoSubstitutionTemplateLiteral:
+      case ts.SyntaxKind.TemplateHead:
+      case ts.SyntaxKind.TemplateMiddle:
+      case ts.SyntaxKind.TemplateTail:
+      case ts.SyntaxKind.RegularExpressionLiteral:
+      case ts.SyntaxKind.JsxText:
+        literals.push([node.getStart(sf), node.end]);
+        break;
+      default:
+        break;
+    }
+    ts.forEachChild(node, collect);
+  };
+  ts.forEachChild(sf, collect);
+  literals.sort((a, b) => a[0] - b[0]);
+
   const out = source.split("");
-  // The script kind decides JSX parsing, and this repo has both: parse a
-  // component as .ts and every `<Foo />` is a syntax error; parse a plain .ts
-  // as .tsx and `db.select<Row>()` or a bare `a < b` becomes a JSX element.
-  // Either way the recovery walks the tokens somewhere else and trivia lands
-  // in the wrong place. The caller passes a string, not a filename, so both
-  // are tried and the one the parser had less trouble with wins — measured by
-  // its own diagnostics rather than guessed from the content.
+  const n = source.length;
+  let li = 0;
+  let i = 0;
+  while (i < n) {
+    // Advance past literal spans that end before us, then jump over one we are in.
+    while (li < literals.length && literals[li][1] <= i) li += 1;
+    if (li < literals.length && literals[li][0] <= i) {
+      i = literals[li][1];
+      continue;
+    }
+    if (source[i] === "/" && source[i + 1] === "/") {
+      let j = i;
+      while (j < n && source[j] !== "\n") {
+        out[j] = " ";
+        j += 1;
+      }
+      i = j;
+      continue;
+    }
+    if (source[i] === "/" && source[i + 1] === "*") {
+      const end = source.indexOf("*/", i + 2);
+      const stop = end === -1 ? n : end + 2;
+      for (let j = i; j < stop; j += 1) if (source[j] !== "\n") out[j] = " ";
+      i = stop;
+      continue;
+    }
+    i += 1;
+  }
+  return out.join("");
+}
+
+/**
+ * Parse as TS or TSX — whichever the parser had less trouble with.
+ *
+ * The script kind decides JSX parsing, and this repo has both: parse a component
+ * as .ts and every `<Foo />` is a syntax error; parse a plain .ts as .tsx and
+ * `db.select<Row>()` or a bare `a < b` becomes a JSX element. Either way the
+ * recovery puts tokens — and therefore literal spans — somewhere else. The
+ * caller passes a string, not a filename, so the likelier kind is tried first
+ * (so the common file costs ONE parse) and the diagnostics, not the guess,
+ * decide.
+ */
+function parseBestEffort(source: string): ts.SourceFile {
   const parse = (kind: ts.ScriptKind, name: string) =>
     ts.createSourceFile(name, source, ts.ScriptTarget.Latest, /* setParentNodes */ true, kind);
   const errorCount = (sf: ts.SourceFile) =>
     ((sf as unknown as { parseDiagnostics?: unknown[] }).parseDiagnostics ?? []).length;
-
-  // Try the likelier kind first so the common file costs ONE parse, not two.
-  // The heuristic only picks the order; correctness is still decided by the
-  // diagnostics, so a wrong guess costs a parse and nothing else.
   const looksJsx = /<\/[A-Za-z]|\/>/.test(source);
   const first = looksJsx
     ? parse(ts.ScriptKind.TSX, "stripComments.tsx")
     : parse(ts.ScriptKind.TS, "stripComments.ts");
-  let sf = first;
-  if (errorCount(first) > 0) {
-    const second = looksJsx
-      ? parse(ts.ScriptKind.TS, "stripComments.ts")
-      : parse(ts.ScriptKind.TSX, "stripComments.tsx");
-    if (errorCount(second) < errorCount(first)) sf = second;
-  }
+  if (errorCount(first) === 0) return first;
+  const second = looksJsx
+    ? parse(ts.ScriptKind.TS, "stripComments.ts")
+    : parse(ts.ScriptKind.TSX, "stripComments.tsx");
+  return errorCount(second) < errorCount(first) ? second : first;
+}
+
+/**
+ * The tree-walking implementation, kept as the thing the fast path is checked
+ * against (`stripCommentsIsALexer.test.ts`). Correct and slow: it asks every
+ * node for its children so it can read comment trivia off each token.
+ */
+export function stripCommentsReference(source: string): string {
+  const out = source.split("");
+  const sf = parseBestEffort(source);
 
   const blank = (start: number, end: number) => {
     for (let j = start; j < end && j < source.length; j += 1) {
@@ -157,3 +243,19 @@ function stripCommentsUncached(source: string): string {
 
   return out.join("");
 }
+
+/**
+ * Per-test budget for a gate that strips EVERY source file in the repository.
+ *
+ * Parsing is the price of being right, and it is not free: ~2.7ms a file, so a
+ * single repo-wide sweep is ~5s of pure CPU locally and several times that on a
+ * two-core runner sharing itself between vitest forks. On 2026-09-06 eight such
+ * gates crossed the suite's 30s default at once — every one of them passing
+ * locally, all eight red on main, and the *thing they were gating* untouched.
+ *
+ * That default exists to catch a hung test. These are not hung; they are doing
+ * 2,600 files of measurable work, and killing them does not make the suite
+ * faster — it makes eight gates stop reporting. So the sweeps say what they
+ * need, here, once, rather than the whole suite loosening to accommodate them.
+ */
+export const REPO_SWEEP_TIMEOUT_MS = 120_000;

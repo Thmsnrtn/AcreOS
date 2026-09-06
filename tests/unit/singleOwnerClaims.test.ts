@@ -73,34 +73,9 @@ import { delinquencyIsDeterminable } from "@shared/notes/delinquency";
 // re-export with no production consumer is the same dead weight as any other
 // unreached export, and a test importing through it hid that.
 import { parseCalendarDate } from "@shared/dates/calendar";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
-
-/** Strip comments so a claim, or a symbol NAME, in prose is never a definition. */
-function stripComments(src: string): string {
-  const out: string[] = [];
-  let i = 0;
-  const n = src.length;
-  let buf = "";
-  while (i < n) {
-    const c = src[i];
-    if (c === "/" && src[i + 1] === "/") {
-      while (i < n && src[i] !== "\n") i += 1;
-      continue;
-    }
-    if (c === "/" && src[i + 1] === "*") {
-      let j = i + 2;
-      while (j + 1 < n && !(src[j] === "*" && src[j + 1] === "/")) j += 1;
-      buf += "\n".repeat(src.slice(i, j).split("\n").length - 1);
-      i = j + 2;
-      continue;
-    }
-    buf += c;
-    i += 1;
-  }
-  out.push(buf);
-  return out.join("");
-}
 
 function sourceFiles(): string[] {
   const out: string[] = [];

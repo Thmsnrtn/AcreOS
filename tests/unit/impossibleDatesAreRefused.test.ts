@@ -54,6 +54,7 @@ import { parseIsoDateUtc } from "../../server/services/notePaymentMath";
 import { delinquencyIsDeterminable } from "@shared/notes/delinquency";
 import { expenseCreateSchema } from "../../server/routes-property-expenses";
 import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -297,7 +298,7 @@ describe("every YYYY-MM-DD boundary in the repo checks validity, not shape", () 
         "`2026-02-30` matches that regex and is not a day; add " +
         "`.refine((v) => isCalendarDate(v), …)` from @shared/dates/calendar.",
     ).toEqual([]);
-  });
+  }, REPO_SWEEP_TIMEOUT_MS);
 
   it("and the sweep finds the declarations it is checking (vacuity guard)", () => {
     // If the statement-matching regex broke, "no offenders" would pass at zero.

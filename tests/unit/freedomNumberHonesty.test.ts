@@ -68,6 +68,7 @@ vi.mock("../../server/utils/logger", () => ({
 }));
 
 import dataIntelRouter from "../../server/routes-data-intelligence";
+import { stripComments } from "../helpers/stripComments";
 
 function makeApp() {
   const app = express();
@@ -256,30 +257,6 @@ describe("an empty portfolio answers honestly — no invented $200 average", () 
 // Source-level pin — the fabricated literals must not reappear. Comments are
 // stripped first so a mention in prose can't mask (or trip) the scan.
 // ═══════════════════════════════════════════════════════════════════════════
-
-function stripComments(src: string): string {
-  let out = "";
-  let i = 0;
-  let mode: "code" | "line" | "block" | "single" | "double" | "template" = "code";
-  while (i < src.length) {
-    const c = src[i];
-    const n = src[i + 1];
-    if (mode === "code") {
-      if (c === "/" && n === "/") { mode = "line"; i += 2; continue; }
-      if (c === "/" && n === "*") { mode = "block"; i += 2; continue; }
-      if (c === "'") mode = "single";
-      else if (c === '"') mode = "double";
-      else if (c === "`") mode = "template";
-      out += c; i++; continue;
-    }
-    if (mode === "line") { if (c === "\n") { mode = "code"; out += c; } i++; continue; }
-    if (mode === "block") { if (c === "*" && n === "/") { mode = "code"; i += 2; continue; } i++; continue; }
-    if (c === "\\") { out += c + (n ?? ""); i += 2; continue; }
-    if ((mode === "single" && c === "'") || (mode === "double" && c === '"') || (mode === "template" && c === "`")) mode = "code";
-    out += c; i++;
-  }
-  return out;
-}
 
 describe("source scan: the freedom-number handler carries no fabricated literals", () => {
   const handlerSlice = (): string => {

@@ -36,6 +36,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { verifyClaims, type Source } from "../server/services/truth-engine";
+import { stripCommentsPreservingLines as stripComments } from "./lib/strip-comments.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -66,9 +67,6 @@ const LANDING_FILES = [
 ];
 
 /** Strip comments so truth-notes and design notes don't read as claims. */
-function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
-}
 
 function landingSurface(): { file: string; text: string }[] {
   return LANDING_FILES.map((f) => {

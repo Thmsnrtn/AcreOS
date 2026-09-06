@@ -48,19 +48,9 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments as stripLineComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
-
-/**
- * Line-based: drop whole-line `//` comments only. See the header — a regex-paired
- * block-comment stripper ate the very lines this file exists to count.
- */
-function stripLineComments(src: string): string {
-  return src
-    .split("\n")
-    .map((l) => (/^\s*\/\//.test(l) ? "" : l))
-    .join("\n");
-}
 
 const routesSrc = stripLineComments(fs.readFileSync(path.join(ROOT, "server/routes.ts"), "utf8"));
 

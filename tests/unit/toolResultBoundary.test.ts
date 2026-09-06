@@ -64,6 +64,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -223,9 +224,20 @@ function tokenize(src: string): Tokenized {
   return { blanked, code, pairs };
 }
 
-/** Comment-blanked source only. Used by the legacy behaviour pins below. */
+/**
+ * Comment-blanked source only — from the shared implementation, not from
+ * `tokenize`.
+ *
+ * `tokenize` still exists because the structural gates below need its `code`
+ * mask and its brace `pairs`, which no comment stripper produces. But its
+ * blanking half was a second implementation of a thing this repository now has
+ * exactly one of, and a second implementation is a thing that drifts. So the
+ * comment-blanked reads go through the shared stripper, and the equivalence
+ * between the two is asserted over the real corpus rather than assumed — see
+ * "the tokenizer blanks exactly what the shared stripper does" below.
+ */
 function blankComments(src: string): string {
-  return tokenize(src).blanked;
+  return stripComments(src);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -242,6 +254,28 @@ const SCANNED_FILES = [
   "server/services/negotiationOrchestrator.ts",
   "server/routes-founder-chat.ts",
 ];
+
+describe("the tokenizer blanks exactly what the shared stripper does", () => {
+  // `tokenize` keeps its own comment scan because it must also emit a code mask
+  // and brace pairs. Two implementations of "where are the comments" is two
+  // implementations that can disagree — and a disagreement here is silent: the
+  // structural gates would read one repository while the deny-list gates read
+  // another. So pin the equivalence against the real corpus, not a fixture.
+  it("agrees with stripComments on every file this gate reads", () => {
+    const disagree: string[] = [];
+    for (const rel of SCANNED_FILES) {
+      const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
+      if (tokenize(src).blanked !== stripComments(src)) disagree.push(rel);
+    }
+    expect(SCANNED_FILES.length, "the scanned set is empty — this is vacuous").toBeGreaterThan(3);
+    expect(
+      disagree,
+      "tokenize() and stripComments() disagree about where the comments are; " +
+        "the structural gates and the deny-list gates are reading different sources",
+    ).toEqual([]);
+  });
+});
+
 
 const ROLE_TOOL_RE = /role:\s*["']tool["']/g;
 // Window after `role: "tool"` — long enough to cover tool_call_id + the

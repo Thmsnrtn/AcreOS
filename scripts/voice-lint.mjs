@@ -37,6 +37,7 @@
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve, relative } from "node:path";
+import { stripCommentsPreservingLines } from "./lib/strip-comments.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -237,21 +238,12 @@ function blankSpan(arr, start, end) {
 }
 
 function maskTsLike(source) {
-  const out = source.split("");
-  // 1) Block comments /* … */
-  {
-    const re = /\/\*[\s\S]*?\*\//g;
-    let m;
-    while ((m = re.exec(source)) !== null) blankSpan(out, m.index, m.index + m[0].length);
-  }
-  // 2) Line comments //  (only when not already inside a blanked block comment).
-  //    Run against the partially-masked text so we don't re-mask inside blocks.
-  {
-    const partial = out.join("");
-    const re = /\/\/[^\n]*/g;
-    let m;
-    while ((m = re.exec(partial)) !== null) blankSpan(out, m.index, m.index + m[0].length);
-  }
+  // 1+2) Comments, via the one shared parser-based stripper. This was two
+  //      regexes — the idiom that eats a whole file when a line comment holds
+  //      `/*`, and that cannot tell a comment from a regex literal containing
+  //      one. It blanks bodies to spaces and keeps newlines, so the length
+  //      contract every position below depends on still holds.
+  const out = stripCommentsPreservingLines(source).split("");
   // 3) import/require module specifiers.
   {
     const partial = out.join("");

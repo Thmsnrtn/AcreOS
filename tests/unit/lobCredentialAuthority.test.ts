@@ -119,6 +119,7 @@ vi.mock("../../server/services/credits", () => ({
 }));
 
 import { sendLetter, sendPostcard } from "../../server/services/mailProvider";
+import { stripComments } from "../helpers/stripComments";
 
 const TO = { name: "Lee Owner", addressLine1: "2 Dirt Rd", city: "Llano", state: "TX", zip: "78643" };
 const FROM = { name: "Test Land Co", addressLine1: "1 Main St", city: "Austin", state: "TX", zip: "78701" };
@@ -203,30 +204,6 @@ describe("mailProvider resolves Lob credentials through the single authority, va
 // ─── No second resolution order can exist ────────────────────────────────────
 
 const ROOT = path.resolve(__dirname, "../..");
-
-/** Line-based comment stripping. See integrationCredentialShape for why. */
-function stripComments(src: string): string {
-  const out: string[] = [];
-  let inBlock = false;
-  for (const line of src.split("\n")) {
-    let s = line;
-    if (inBlock) {
-      const end = s.indexOf("*/");
-      if (end === -1) { out.push(""); continue; }
-      s = s.slice(end + 2);
-      inBlock = false;
-    }
-    const open = s.indexOf("/*");
-    if (open > -1) {
-      const close = s.indexOf("*/", open + 2);
-      if (close > -1) s = s.slice(0, open) + s.slice(close + 2);
-      else if (/^\s*\{?\s*\/\*/.test(s)) { s = s.slice(0, open); inBlock = true; }
-    }
-    out.push(s.replace(/(^|[^:])\/\/.*$/, "$1"));
-  }
-  if (inBlock) throw new Error("stripComments ran away — assertions would be meaningless.");
-  return out.join("\n");
-}
 
 describe("mailProvider carries no independent Lob credential resolution (source scan)", () => {
   const src = stripComments(

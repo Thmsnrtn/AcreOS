@@ -46,6 +46,7 @@ import path from "node:path";
 import { sanitizePromptInline, USER_DATA_OPEN, USER_DATA_CLOSE } from "../../server/utils/sanitizePrompt";
 import { sanitizePrompt as middlewareSanitize } from "../../server/middleware/promptInjection";
 import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -221,7 +222,7 @@ describe("there is exactly one deny-list", () => {
       ),
     );
     expect(referrers, "a dangling reference to the deleted sanitizer remains").toEqual([]);
-  });
+  }, REPO_SWEEP_TIMEOUT_MS);
 
   it("the middleware carries no pattern array of its own", () => {
     const src = stripComments(

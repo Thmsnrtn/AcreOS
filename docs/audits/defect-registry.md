@@ -1140,6 +1140,112 @@ things in it were examined.
 
 Resolving commits: `3c95369a`, `8192e1f8`.
 
+### DEFECT-0079
+Title: Nine hand-rolled comment strippers — the gate written to stop them forbade one spelling
+Severity: P1
+Status: FIXED
+Surfaced by lenses: follow-up to DEFECT-0077, measured 2026-09-06
+Description: DEFECT-0077 replaced the two-regex comment-stripping idiom with one
+parser-based helper and installed `stripCommentsIsALexer.test.ts` to stop the
+idiom returning. That gate forbade a STRING — the block-comment regex — and was
+green while 42 test files and 7 lint scripts stripped comments with EIGHT other
+hand-rolled spellings it had never been written to see. This is the third law
+applied to a gate's own vocabulary: the population is not just which files it
+reads, it is which SPELLINGS it recognises.
+
+Measured against the canonical strip over 2,588 source files:
+
+| spelling | used by | disagrees | ends mid-token |
+|---|---|---|---|
+| line-based, no guard | 1 test | 336 | 0 |
+| line-based, structural guard | 31 tests | 293 | 0 |
+| hand-rolled lexer, no regex branch | 3 tests | 382 | **153** |
+| line comments only | 2 tests | 2,296 | 0 |
+| block+line, no string state | 1 test | 514 | 0 |
+| the unhardened `maskComments` | **5 scripts in `npm run check`** | 168 | **150** |
+| the two-regex idiom | `audit-public-claims.ts`, `voice-lint.mjs` | — | — |
+
+Two of those deserve naming. `check-browser-safe-shared.mjs` and
+`check-kernel-boundary.mjs` carried the PRE-HARDENING `maskComments` — no
+regex-literal branch, no nested-template handling — i.e. exactly the masker
+CLAUDE.md records as already paid for once, still running inside the unified
+gate. And `scripts/audit-public-claims.ts`, the OD-5 public-claim audit, still
+ran the two-regex idiom over the live landing surface.
+
+Evidence: `tests/unit/stripCommentsIsALexer.test.ts` (the widened gate),
+`tests/helpers/handRolledStripper.ts` (the three-arm detector).
+Remediation plan: Done. All 49 sites now import one of two canonical
+implementations (`tests/helpers/stripComments.ts` for tests,
+`scripts/lib/strip-comments.mjs` for lint scripts), plus one shared YAML
+stripper (`tests/helpers/stripYamlComments.ts`) for the three workflow gates —
+YAML is not TypeScript and the canonical parser cannot read it.
+
+The gate is now about the SHAPE of a comment stripper, over `tests/` + `scripts/`,
+with three independent arms and a per-arm falsification fixture:
+
+- **named** — any function whose name mentions comments and is not a predicate.
+  This arm was FIRST WRITTEN AS A VERB ALLOWLIST and its own falsification
+  caught it: `function purgeComments` left the gate green, because "purge" was
+  not on the list and the fixture had used a verb that was. A spelling gate
+  wearing a shape gate's clothes, found only because the mutation was actually
+  run.
+- **delimiter-literals** — block-delimiter index surgery under any name.
+- **delimiter-regex** — a regex matching ANY block comment (a regex matching one
+  PARTICULAR comment is not one; that distinction is what keeps the arm off the
+  dozens of honest globs and JSX-comment assertions in the repo).
+
+All three parse the AST and never visit a comment, so the fourth law's failure
+mode is structurally absent rather than defended against. Exemptions live in a
+register keyed on file + function, each asserted to still resolve.
+
+What it did NOT find: after migration, all 42 gates and all 7 scripts produce
+byte-identical output. The corrupted view was latent, not a live false green —
+worth saying plainly, because the honest result of a hunt is sometimes that the
+hole had not yet been fallen into.
+
+Resolving commits: pending
+
+---
+
+### DEFECT-0080
+Title: The parser-based stripper timed out eight repo-wide gates on main — green locally, red in CI
+Severity: P1
+Status: FIXED
+Surfaced by lenses: the main-push run enumeration, 2026-09-06
+Description: The DEFECT-0077 rewrite traded a ~0.1ms scan for a ~4.5ms parse per
+file. That is the right trade — a fast wrong answer is what it exists to stop —
+but eight gates sweep every source file in the repository, and on the push of
+`b7d4fa21` all eight crossed vitest's 30s default at once. Every one of them had
+passed locally. CI was green on the three preceding `main` SHAs, so the cause is
+not in doubt.
+
+The failure mode is the one that matters: a gate that times out is a gate that
+has stopped reporting, and it reports as a red suite rather than as a silent
+hole — but only because someone enumerated the runs. The branch workflows do not
+run `CI`; this was visible only in the full main-push enumeration CLAUDE.md
+mandates.
+
+Three fixes, none of them "raise the global timeout":
+
+1. `stripComments` no longer walks the tree. The parse is kept — it is what
+   resolves regex-versus-division, JSX and nested templates — but only to answer
+   where the LITERALS are; outside a string, template chunk, regex or JSX text a
+   comment opener can be nothing else, and `*` cannot begin a regular expression,
+   so one linear scan finds every comment. `getChildren()` was two thirds of the
+   cost. 4.5ms → 2.7ms per file.
+2. The tree-walking version is KEPT as `stripCommentsReference` and the two are
+   pinned against each other on a 250-file sample of the real repository. A fast
+   path with no slow path to disagree with is a fast path nobody can check.
+   Verified once over all 3,681 files: zero disagreements, zero length changes.
+3. Repo-wide sweeps declare their own budget (`REPO_SWEEP_TIMEOUT_MS`) instead of
+   the whole suite loosening to accommodate them, and this gate's own two sweeps
+   became one — the canary is appended first, so a single strip per file answers
+   both "did the scan run off the end" and "did it move any offset".
+
+Evidence: run 34022731609, job 101458168024 — 8 tests, `Test timed out in 30000ms`.
+Remediation plan: Done.
+Resolving commits: pending
+
 ---
 
 ## Summary Statistics
@@ -1147,9 +1253,9 @@ Resolving commits: `3c95369a`, `8192e1f8`.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 19  | 19    |
-| FIXED  | 12  | 40  | 1   | 53    |
+| FIXED  | 12  | 42  | 1   | 55    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **43** | **20** | **75** |
+| **Total** | **12** | **45** | **20** | **77** |
 
 All P0 and P1 defects resolved (fixed or justified deferral). 19 P2s remain open
 (not blocking launch).

@@ -6,6 +6,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { resolve, join } from "path";
+import { stripComments as stripJsComments } from "../helpers/stripComments";
 
 const CLIENT_SRC = resolve(__dirname, "../../client/src");
 
@@ -26,35 +27,6 @@ function findFiles(dir: string, ext: string): string[] {
   }
   walk(dir);
   return results;
-}
-
-/**
- * Strip `//` and block comments, preserving line numbers.
- *
- * Every source scan in this program that skipped this step eventually flagged a
- * comment explaining the very defect it hunts for. Line-based so the reported
- * line numbers still point at real code.
- */
-function stripJsComments(src: string): string {
-  const out: string[] = [];
-  let inBlock = false;
-  for (const line of src.split("\n")) {
-    let s = line;
-    if (inBlock) {
-      const end = s.indexOf("*/");
-      if (end === -1) { out.push(""); continue; }
-      s = s.slice(end + 2);
-      inBlock = false;
-    }
-    const open = s.indexOf("/*");
-    if (open > -1) {
-      const close = s.indexOf("*/", open + 2);
-      if (close > -1) s = s.slice(0, open) + s.slice(close + 2);
-      else { s = s.slice(0, open); inBlock = true; }
-    }
-    out.push(s.replace(/(^|[^:])\/\/.*$/, "$1"));
-  }
-  return out.join("\n");
 }
 
 describe("Accessibility Compliance", () => {

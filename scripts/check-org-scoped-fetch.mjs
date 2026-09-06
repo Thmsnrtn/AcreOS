@@ -793,6 +793,7 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
+import { stripCommentsPreservingLines as maskComments } from "./lib/strip-comments.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -970,86 +971,6 @@ function skipTemplate(source, start) {
     i += 1;
   }
   return -1;
-}
-
-function maskComments(source) {
-  const out = source.split("");
-  let inString = null;
-  let prevChar = "";
-  for (let i = 0; i < source.length; i++) {
-    const ch = source[i];
-    if (inString) {
-      if (ch === inString && prevChar !== "\\") inString = null;
-      prevChar = ch;
-      continue;
-    }
-    if (ch === "`") {
-      const end = skipTemplate(source, i);
-      if (end === -1) break; // unterminated — leave the rest untouched
-      i = end;
-      prevChar = "`";
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      inString = ch;
-      prevChar = ch;
-      continue;
-    }
-    if (ch === "/" && source[i + 1] === "/") {
-      while (i < source.length && source[i] !== "\n") {
-        out[i] = " ";
-        i++;
-      }
-      prevChar = "\n";
-      continue;
-    }
-    if (ch === "/" && source[i + 1] === "*") {
-      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
-        if (source[i] !== "\n") out[i] = " ";
-        i++;
-      }
-      if (i < source.length) {
-        out[i] = " ";
-        out[i + 1] = " ";
-        i++;
-      }
-      prevChar = " ";
-      continue;
-    }
-    // Tried AFTER the two comment branches above, deliberately: `/** doc */`
-    // on a single line closes on its own trailing slash, so a regex check
-    // placed first swallows the comment and leaves its prose as live code.
-    // That cost three org-scoped tables and 36 route handlers when it was
-    // tried the other way round.
-    // A REGEX LITERAL is neither code to scan nor a comment to blank, and its
-    // character class may hold quotes. `s.replace(/[<>&'"]/g, …)` opened a
-    // string on the apostrophe HERE, in the mask itself — after which this
-    // function's own string state was wrong for the rest of the file, so it
-    // blanked live code it mistook for comments and left comments unblanked.
-    // Everything downstream reads this output, so one regex literal could put
-    // an arbitrary amount of a route file outside the population.
-    //
-    // Measured 2026-09-04: it cost four route registrations that no extractor
-    // could then close. The regex branch below matchDelimiter has the same
-    // reason; both use the same regex-vs-division rule.
-    if (ch === "/" && regexCanStartAfter(prevChar, source, i)) {
-      let j = i + 1;
-      let inClass = false;
-      let closed = false;
-      while (j < source.length) {
-        const c = source[j];
-        if (c === "\\") { j += 2; continue; }
-        if (c === "\n") break;
-        if (inClass) { if (c === "]") inClass = false; }
-        else if (c === "[") inClass = true;
-        else if (c === "/") { closed = true; break; }
-        j += 1;
-      }
-      if (closed) { i = j; prevChar = "/"; continue; }
-    }
-    prevChar = ch;
-  }
-  return out.join("");
 }
 
 /**
@@ -1457,7 +1378,6 @@ function extractAsyncFunctions(source) {
   return functions;
 }
 
-
 /**
  * Extract every INLINE ROUTE HANDLER — the third shape, and the one that made
  * the whole route layer unreadable to this gate.
@@ -1663,7 +1583,6 @@ function extractRouteHandlers(source) {
   }
   return handlers;
 }
-
 
 /**
  * Find the brace that opens a FUNCTION BODY, skipping a return-type annotation.
@@ -1910,7 +1829,6 @@ function loneIdPredicates(methodText, orgScopedIdents) {
   }
   return hits;
 }
-
 
 /**
  * RULE 3 — "the UNIT is scoped, this QUERY is not".

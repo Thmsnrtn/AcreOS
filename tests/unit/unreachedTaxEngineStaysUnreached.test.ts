@@ -41,6 +41,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const ENGINE = "server/services/taxOptimizationEngine.ts";
@@ -81,7 +82,7 @@ describe("the fabricating tax engine stays deleted", () => {
       /taxOptimizationEngine/.test(stripComments(fs.readFileSync(path.join(ROOT, rel), "utf8"))),
     );
     expect(referrers, "a dangling reference to the deleted engine remains").toEqual([]);
-  });
+  }, REPO_SWEEP_TIMEOUT_MS);
 
   it("no state→capital-gains map with a numeric fallback exists anywhere", () => {
     // THE REIMPLEMENTATION CHECK. File absence alone is weak: the same twenty

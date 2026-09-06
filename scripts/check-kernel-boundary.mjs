@@ -75,6 +75,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve, relative } from "node:path";
+import { stripCommentsPreservingLines as maskComments } from "./lib/strip-comments.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -143,56 +144,6 @@ const LEGACY_LAND_MODULES = new Set([
 ]);
 
 const PACKS_DIR_REL = `${AUTOPILOT}/packs/`;
-
-// ----------------------------------------------------------------------------
-// Import-specifier extraction (shared shape with check-boundaries.mjs).
-// ----------------------------------------------------------------------------
-// Comment masking — replaces // and /* … */ spans with spaces (string-aware;
-// same-length output so line numbers map 1:1). Lifted verbatim from the
-// lint-zindex.mjs / lint-page-hex.mjs / check-org-scoped-fetch.mjs family. It
-// BLANKS rather than DELETES, which is the whole point: see "COMMENT HANDLING"
-// in the header for the two properties that depends on.
-function maskComments(source) {
-  const out = source.split("");
-  let inString = null;
-  let prevChar = "";
-  for (let i = 0; i < source.length; i++) {
-    const ch = source[i];
-    if (inString) {
-      if (ch === inString && prevChar !== "\\") inString = null;
-      prevChar = ch;
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === "`") {
-      inString = ch;
-      prevChar = ch;
-      continue;
-    }
-    if (ch === "/" && source[i + 1] === "/") {
-      while (i < source.length && source[i] !== "\n") {
-        out[i] = " ";
-        i++;
-      }
-      prevChar = "\n";
-      continue;
-    }
-    if (ch === "/" && source[i + 1] === "*") {
-      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
-        if (source[i] !== "\n") out[i] = " ";
-        i++;
-      }
-      if (i < source.length) {
-        out[i] = " ";
-        if (i + 1 < source.length) out[i + 1] = " ";
-        i += 1;
-      }
-      prevChar = " ";
-      continue;
-    }
-    prevChar = ch;
-  }
-  return out.join("");
-}
 
 const SPEC_RE =
   /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)["']([^"']+)["']/g;

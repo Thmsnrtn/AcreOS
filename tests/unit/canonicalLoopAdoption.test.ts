@@ -23,6 +23,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -166,71 +167,6 @@ const MUST_NOT_ADOPT = [
 
 function read(rel: string): string {
   return fs.readFileSync(path.join(ROOT, rel), "utf8");
-}
-
-/**
- * Source with comments stripped — a rule must hold in CODE, not in prose.
- *
- * LINE-BY-LINE, deliberately. The obvious one-regex implementation is wrong on
- * real source: an unbalanced block-comment OPENER inside a string or a regex
- * literal starts a comment that never closes where you expect, and everything
- * up to the next closer vanishes. Measured on
- * server/routes.ts it removed **38.8% of the file**, including the
- * `app.use("/api/admin", …)` line an assertion here was checking — so the
- * assertion failed against correct code, and a weaker assertion would have
- * PASSED against broken code.
- *
- * A state machine over lines cannot run away: a block comment must open and
- * close on lines, and a stray opener inside a string affects at most the
- * rest of that one line.
- */
-function stripComments(src: string): string {
-  const out: string[] = [];
-  let inBlock = false;
-  for (const line of src.split("\n")) {
-    let s = line;
-    if (inBlock) {
-      const end = s.indexOf("*/");
-      if (end === -1) { out.push(""); continue; }
-      s = s.slice(end + 2);
-      inBlock = false;
-    }
-    // Only treat `/*` as a comment when the line has no closing `*/` after it
-    // AND the line looks like a comment line — anything else stays.
-    const open = s.indexOf("/*");
-    if (open > -1) {
-      const close = s.indexOf("*/", open + 2);
-      if (close > -1) {
-        s = s.slice(0, open) + s.slice(close + 2);
-      } else if (/^\s*\{?\s*\/\*/.test(s)) {
-        // `{/*` too: a JSX comment is prose, and prose must not satisfy a
-        // code assertion. Without this, a `{/* No "dismiss" ... */}` comment
-        // made a test asserting the ABSENCE of "dismiss" fail on the very
-        // comment documenting why it is absent.
-        s = s.slice(0, open);
-        inBlock = true;
-      }
-    }
-    out.push(s.replace(/(^|[^:])\/\/.*$/, "$1"));
-  }
-  // The guard is STRUCTURAL, not a ratio.
-  //
-  // A ratio was tried first — "a strip that eats a third of the file is a bug"
-  // — and it fired on correct output: this repo's files are deliberately
-  // comment-heavy, and server/utils/assignedLeadGate.ts is 72% prose by design.
-  // A guard whose premise is wrong is worse than no guard, because it fails on
-  // correct input and trains the next reader to loosen it.
-  //
-  // An unclosed block at EOF is the real signal: it means an opener was taken
-  // for a comment that never ended, which is precisely the runaway this
-  // function exists to prevent. Comment density is not evidence of anything.
-  if (inBlock) {
-    throw new Error(
-      "stripComments reached EOF inside an unclosed block comment — an opener " +
-        "was mistaken for one; assertions against this output would be meaningless.",
-    );
-  }
-  return out.join("\n");
 }
 
 /**

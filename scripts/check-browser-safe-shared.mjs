@@ -78,6 +78,7 @@
 
 import { readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
+import { stripCommentsPreservingLines as maskComments } from "./lib/strip-comments.mjs";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const SHARED = join(ROOT, "shared");
@@ -89,55 +90,6 @@ function* walk(dir) {
     if (st.isDirectory()) yield* walk(p);
     else if (/\.(ts|tsx)$/.test(name) && !/\.test\./.test(name)) yield p;
   }
-}
-
-/**
- * Comment masking — replaces // and block-comment spans with spaces
- * (string-aware; SAME-LENGTH output so offsets and line numbers map 1:1).
- * Lifted verbatim from the lint-zindex.mjs / lint-page-hex.mjs /
- * check-org-scoped-fetch.mjs family. It BLANKS rather than DELETES; see
- * "COMMENT HANDLING" in the header for why that distinction is the fix.
- */
-function maskComments(source) {
-  const out = source.split("");
-  let inString = null;
-  let prevChar = "";
-  for (let i = 0; i < source.length; i++) {
-    const ch = source[i];
-    if (inString) {
-      if (ch === inString && prevChar !== "\\") inString = null;
-      prevChar = ch;
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === "`") {
-      inString = ch;
-      prevChar = ch;
-      continue;
-    }
-    if (ch === "/" && source[i + 1] === "/") {
-      while (i < source.length && source[i] !== "\n") {
-        out[i] = " ";
-        i++;
-      }
-      prevChar = "\n";
-      continue;
-    }
-    if (ch === "/" && source[i + 1] === "*") {
-      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
-        if (source[i] !== "\n") out[i] = " ";
-        i++;
-      }
-      if (i < source.length) {
-        out[i] = " ";
-        if (i + 1 < source.length) out[i + 1] = " ";
-        i += 1;
-      }
-      prevChar = " ";
-      continue;
-    }
-    prevChar = ch;
-  }
-  return out.join("");
 }
 
 const ENV_READ = /\bprocess\s*\.\s*env\b/;

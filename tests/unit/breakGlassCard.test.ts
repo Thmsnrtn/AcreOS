@@ -21,6 +21,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
+import { stripYamlComments as withoutComments } from "../helpers/stripYamlComments";
 
 const root = path.resolve(__dirname, "../..");
 const read = (rel: string) => readFileSync(path.join(root, rel), "utf-8");
@@ -57,8 +58,6 @@ function secretsUsedBy(workflowRel: string): string[] {
  * predicate that reads its own documentation is the trap this repo has already
  * paid for four times in one day.
  */
-const withoutComments = (src: string) =>
-  src.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
 
 /** Guard-gated secrets in one workflow: `-z "${X:-}"` where X is a secret. */
 function dormancyGatedSecrets(workflowRel: string): string[] {

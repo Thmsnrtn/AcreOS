@@ -56,33 +56,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { formatCents } from "@shared/finance/cents";
 import { dollarsCompact } from "../../client/src/lib/format";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const CANONICAL = "shared/finance/cents.ts";
-
-/** Comments stripped: a note describing this defect must not trip the check. */
-function stripComments(src: string): string {
-  const out: string[] = [];
-  let inBlock = false;
-  for (const line of src.split("\n")) {
-    let s = line;
-    if (inBlock) {
-      const end = s.indexOf("*/");
-      if (end === -1) { out.push(""); continue; }
-      s = s.slice(end + 2);
-      inBlock = false;
-    }
-    const open = s.indexOf("/*");
-    if (open > -1) {
-      const close = s.indexOf("*/", open + 2);
-      if (close > -1) s = s.slice(0, open) + s.slice(close + 2);
-      else if (/^\s*\{?\s*\/\*/.test(s)) { s = s.slice(0, open); inBlock = true; }
-    }
-    out.push(s.replace(/(^|[^:])\/\/.*$/, "$1"));
-  }
-  if (inBlock) throw new Error("stripComments ran away — assertions would be meaningless.");
-  return out.join("\n");
-}
 
 /** Every `.ts`/`.tsx` under the three product trees, tests excluded. */
 function sourceFiles(): string[] {

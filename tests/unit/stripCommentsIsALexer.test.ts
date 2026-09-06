@@ -45,7 +45,17 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import { stripComments } from "../helpers/stripComments";
+import ts from "typescript";
+import {
+  REPO_SWEEP_TIMEOUT_MS,
+  stripComments,
+  stripCommentsReference,
+} from "../helpers/stripComments";
+import {
+  localStripperFindings,
+  parseSource,
+  type StripperExemption,
+} from "../helpers/handRolledStripper";
 
 /** The comment must be gone, and every other character must be untouched. */
 function check(source: string, opts: { comment: string; keep: string[] }) {
@@ -172,42 +182,180 @@ describe("stripComments — the traps that made the previous version wrong", () 
 
 describe("and nothing goes back to hand-rolling it", () => {
   const ROOT = process.cwd();
-  function walkTests(dir: string, out: string[] = []): string[] {
+
+  /**
+   * THE POPULATION IS SPELLINGS, NOT JUST FILES.
+   *
+   * The first version of this gate forbade one string — the two-regex idiom —
+   * and was green while 42 test files and 7 lint scripts stripped comments with
+   * EIGHT other hand-rolled spellings. Measured 2026-09-06 against the canonical
+   * strip over 2,588 source files, each of those spellings read a different
+   * repository than the one on disk:
+   *
+   *   line-based, no guard            336 files disagree
+   *   line-based, structural guard    293 files disagree   (31 test files)
+   *   hand-rolled lexer, no regexes   382 files disagree, 153 end MID-TOKEN
+   *   line comments only            2,296 files disagree   (block comments SURVIVE)
+   *   block+line, no string state     514 files disagree
+   *   the unhardened `maskComments`   168 files disagree, 150 end MID-TOKEN
+   *                                   — shared by 5 scripts inside `npm run check`
+   *
+   * So the rule is about the SHAPE of a comment stripper, not any one way of
+   * writing one. The detector lives in `tests/helpers/handRolledStripper.ts`
+   * and has three independent arms; a gate that names its forbidden string can
+   * always be defeated by writing the string differently.
+   */
+  const REGISTER: ReadonlyArray<StripperExemption> = [
+    {
+      file: "tests/helpers/stripComments.ts",
+      fn: "stripComments",
+      why: "the canonical implementation for tests — the thing everything else must import",
+    },
+    {
+      file: "tests/helpers/stripComments.ts",
+      fn: "stripCommentsUncached",
+      why: "the uncached inner half of the canonical implementation",
+    },
+    {
+      file: "tests/helpers/stripComments.ts",
+      fn: "stripCommentsReference",
+      why: "the tree-walking implementation the fast path is pinned against. A second implementation on purpose — kept slow and obvious so the fast one has something to disagree with; \"agrees with the tree-walking reference on a real sample\" below is what makes it load-bearing rather than dead weight.",
+    },
+    {
+      file: "scripts/lib/strip-comments.mjs",
+      fn: "stripCommentsPreservingLines",
+      why: "the canonical implementation for the lint scripts, which run under plain node with no build step",
+    },
+    {
+      file: "tests/helpers/handRolledStripper.ts",
+      fn: "localStripperFindings",
+      why: "the detector below. To find delimiter surgery it must name the delimiters, so it is an offender by its own arm 2. Exempted by name rather than hidden by string concatenation, so this hole is one a reader can see.",
+    },
+    {
+      file: "tests/helpers/stripYamlComments.ts",
+      fn: "stripYamlComments",
+      why: "YAML, not TypeScript. The canonical stripper is a TS parser and cannot read a workflow file; this is the one shared copy the three workflow gates use.",
+    },
+    {
+      file: "scripts/lint-css-hover.mjs",
+      fn: "maskCssComments",
+      why: "CSS, not TypeScript. The canonical stripper is a TS parser and cannot read a stylesheet; CSS has no line comments and no regex literals, so the class of bug this gate exists for does not arise there.",
+    },
+  ];
+
+  function walkGates(dir: string, out: string[] = []): string[] {
     for (const e of readdirSync(dir)) {
-      if (["node_modules", "fixtures", "__snapshots__"].includes(e)) continue;
+      if (["node_modules", "fixtures", "__snapshots__", "dist", "build"].includes(e)) continue;
       const abs = path.join(dir, e);
-      if (statSync(abs).isDirectory()) walkTests(abs, out);
-      else if (/\.(ts|tsx)$/.test(e)) out.push(abs);
+      if (statSync(abs).isDirectory()) walkGates(abs, out);
+      else if (/\.(ts|tsx|mts|mjs)$/.test(e) && !/\.d\.m?ts$/.test(e)) out.push(abs);
     }
     return out;
   }
 
-  it("no test hand-rolls the block-comment strip", () => {
-    // 36 gates were migrated off this idiom on 2026-09-06, after measuring
-    // that it disagrees with a correct strip on 1,057 of 2,543 production
-    // files. Without this, the 37th arrives by copy-paste from the 36th.
-    //
-    // The scan strips comments before looking — with the helper under test —
-    // because this file's own header quotes the idiom, and a gate that reads
-    // its own documentation as the defect is the fourth law's shape.
-    const files = walkTests(path.join(ROOT, "tests"));
-    expect(files.length, "the test walk found nothing — this is vacuous")
-      .toBeGreaterThan(500);
+  const gateFiles = [
+    ...walkGates(path.join(ROOT, "tests")),
+    ...walkGates(path.join(ROOT, "scripts")),
+  ];
+
+  it("every register entry still names a function that exists", () => {
+    // An exemption that has outlived its subject exempts nothing and says
+    // nothing — but it reads, to the next author, like a considered decision.
+    for (const r of REGISTER) {
+      const abs = path.join(ROOT, r.file);
+      const src = readFileSync(abs, "utf8");
+      const sf = parseSource(src, abs);
+      let found = false;
+      const visit = (n: ts.Node) => {
+        if (ts.isFunctionDeclaration(n) && n.name?.getText(sf) === r.fn) found = true;
+        if (
+          ts.isVariableDeclaration(n) &&
+          n.name.getText(sf) === r.fn &&
+          n.initializer &&
+          (ts.isArrowFunction(n.initializer) || ts.isFunctionExpression(n.initializer))
+        ) {
+          found = true;
+        }
+        ts.forEachChild(n, visit);
+      };
+      ts.forEachChild(sf, visit);
+      expect(found, `${r.file} no longer defines ${r.fn} — stale exemption: ${r.why}`).toBe(true);
+    }
+  });
+
+  it("no gate hand-rolls comment stripping, in any spelling", () => {
+    expect(
+      gateFiles.length,
+      "the gate walk found almost nothing — this assertion would be vacuous",
+    ).toBeGreaterThan(900);
 
     const offenders: string[] = [];
-    for (const abs of files) {
-      const code = stripComments(readFileSync(abs, "utf8"));
-      // The block-comment regex, in the spellings this repo used.
-      if (/\.replace\(\s*\/\\\/\\\*\[\\s\\S\]/.test(code)) {
-        offenders.push(path.relative(ROOT, abs));
+    for (const abs of gateFiles) {
+      for (const f of localStripperFindings(readFileSync(abs, "utf8"), abs, REGISTER)) {
+        offenders.push(`${path.relative(ROOT, abs)}  [${f.arm}] ${f.detail}`);
       }
     }
     expect(
       offenders,
-      "these files strip comments by regex instead of importing " +
-        "tests/helpers/stripComments — which disagrees with a correct strip on " +
-        "42% of this repo's source files, in both directions",
+      "these gates strip comments themselves instead of importing the one shared " +
+        "implementation (tests/helpers/stripComments for tests, " +
+        "scripts/lib/strip-comments.mjs for lint scripts). Every hand-rolled " +
+        "spelling measured on 2026-09-06 read a different repository than the one " +
+        "on disk — see this describe block's header for the numbers.",
     ).toEqual([]);
+  });
+
+  describe("and each arm is falsifiable on its own", () => {
+    // A gate with three arms and one fixture is a gate with one arm and two
+    // decorations: an arm that silently stops matching reads exactly like a
+    // repository that is clean. One planted defect per arm, and one honest
+    // shape per arm that must NOT fire.
+    const FIXTURE = "fixture.ts";
+    const find = (src: string) => localStripperFindings(src, FIXTURE, REGISTER);
+
+    it("arm 1 catches a stripper under any name", () => {
+      expect(find(`function scrubTheComments(src: string): string { return src; }`).map((x) => x.arm))
+        .toContain("named");
+    });
+
+    it("arm 2 catches delimiter surgery under an innocent name", () => {
+      // One template literal, not an array of them: a fixture assembled from
+      // pieces would put bare delimiter literals in THIS file, and this file is
+      // inside the population the gate above reads.
+      const src =
+        `function tidy(src) { const a = src.indexOf("/*"); ` +
+        `const b = src.indexOf("*/"); return src.slice(0, a) + src.slice(b + 2); }`;
+      expect(find(src).map((x) => x.arm)).toContain("delimiter-literals");
+    });
+
+    it("arm 3 catches the two-regex idiom however it is assigned", () => {
+      expect(find(String.raw`const cleaned = raw.replace(/\/\*[\s\S]*?\*\//g, "");`).map((x) => x.arm))
+        .toContain("delimiter-regex");
+      // `.` wildcards too — a different spelling of the same matcher.
+      expect(find(String.raw`const c2 = raw.replace(/\/\*.*?\*\//gs, " ");`).map((x) => x.arm))
+        .toContain("delimiter-regex");
+    });
+
+    it("a wrapper that delegates to the canonical implementation is not an offender", () => {
+      const src = [
+        `import { stripCommentsPreservingLines } from "./lib/strip-comments.mjs";`,
+        `function maskComments(src) { return stripCommentsPreservingLines(src); }`,
+      ].join("\n");
+      expect(find(src)).toEqual([]);
+    });
+
+    it("a glob is not delimiter surgery", () => {
+      // `server/**/*.ts` contains a block-comment opener. Dozens of honest
+      // files in tests/ and scripts/ hold one; a gate that flagged them would
+      // be turned off inside a week.
+      expect(find(`const files = glob("server/**/*.ts", { cwd: "/a/*/b" });`)).toEqual([]);
+    });
+
+    it("a regex looking for one PARTICULAR comment is not a comment stripper", () => {
+      // A real one, from phase-zero-one-remediation.test.ts.
+      expect(find(String.raw`const hidden = /\{\/\*\s*Activity feed: hidden on mobile\s*\*\/\}/;`))
+        .toEqual([]);
+    });
   });
 });
 
@@ -224,35 +372,77 @@ describe("and it is right about the whole repository, not just the fixtures", ()
   }
   const files = ["server", "shared", "scripts"].flatMap((r) => walk(path.join(ROOT, r)));
 
+  /**
+   * ONE strip per file, serving both assertions.
+   *
+   * These were two sweeps, each parsing every source file — and after the
+   * stripper became a parser that was 2× the repository's cost for one
+   * measurement, which is how both of them ended up timing out on main while
+   * passing locally. Appending the canary first makes the SAME strip answer
+   * both questions: did the scan run off the end, and did it move any offset.
+   */
+  const CANARY = "\n// CANARY_SENTINEL_DO_NOT_MATCH\n";
+  const swept = (() => {
+    const ranAway: string[] = [];
+    const resized: string[] = [];
+    for (const abs of files) {
+      const withCanary = readFileSync(abs, "utf8") + CANARY;
+      const out = stripComments(withCanary);
+      if (out.includes("CANARY_SENTINEL_DO_NOT_MATCH")) ranAway.push(path.relative(ROOT, abs));
+      if (out.length !== withCanary.length) resized.push(path.relative(ROOT, abs));
+    }
+    return { ranAway, resized };
+  })();
+
+  it("the sweep is over the real repository", () => {
+    // Named separately so a walk that finds nothing fails HERE, loudly, rather
+    // than making the two assertions below pass over an empty list.
+    expect(files.length).toBeGreaterThan(1000);
+  });
+
   it("never ends mid-token on any source file", () => {
     // THE MEASUREMENT THAT FOUND THIS. Append a comment; if it survives, the
-    // scan finished inside a string, template, regex or comment, and every
-    // byte from there back to wherever that state opened was read wrong.
+    // scan finished inside a string, template, regex or comment, and every byte
+    // from there back to wherever that state opened was read wrong.
     //
     // 232 files failed this before the rewrite. The count is asserted at zero
     // rather than ratcheted: there is no such thing as an acceptable number of
     // files a comment-stripper silently corrupts.
-    expect(files.length, "the file walk found nothing — this test is vacuous")
-      .toBeGreaterThan(1000);
-
-    const CANARY = "\n// CANARY_SENTINEL_DO_NOT_MATCH\n";
-    const broken: string[] = [];
-    for (const abs of files) {
-      const src = readFileSync(abs, "utf8");
-      if (stripComments(src + CANARY).includes("CANARY_SENTINEL_DO_NOT_MATCH")) {
-        broken.push(path.relative(ROOT, abs));
-      }
-    }
-    expect(broken.slice(0, 10), `${broken.length} file(s) end the strip mid-token`).toEqual([]);
-  });
+    expect(
+      swept.ranAway.slice(0, 10),
+      `${swept.ranAway.length} file(s) end the strip mid-token`,
+    ).toEqual([]);
+  }, REPO_SWEEP_TIMEOUT_MS);
 
   it("never changes a file's length", () => {
     // Comments become SPACES so every offset still matches the original. A
     // caller measuring a distance between two anchors depends on it.
-    const changed = files.filter((abs) => {
+    expect(swept.resized.slice(0, 10)).toEqual([]);
+  }, REPO_SWEEP_TIMEOUT_MS);
+
+  /**
+   * The fast path is not the only implementation, and that is the point.
+   *
+   * `stripComments` stopped walking the tree for speed; `stripCommentsReference`
+   * still does. A fast path with no slow path to disagree with is a fast path
+   * nobody can check, so pin them against each other on real files — a bounded
+   * sample, because running the slow one over the whole repository is the cost
+   * the fast one exists to avoid.
+   */
+  it("agrees with the tree-walking reference on a real sample", () => {
+    const SAMPLE = 250;
+    const step = Math.max(1, Math.floor(files.length / SAMPLE));
+    const sample = files.filter((_, i) => i % step === 0).slice(0, SAMPLE);
+    expect(sample.length, "the sample is empty — this is vacuous").toBeGreaterThan(200);
+    const disagree: string[] = [];
+    for (const abs of sample) {
       const src = readFileSync(abs, "utf8");
-      return stripComments(src).length !== src.length;
-    });
-    expect(changed.map((f) => path.relative(ROOT, f)).slice(0, 10)).toEqual([]);
-  });
+      if (stripComments(src) !== stripCommentsReference(src)) disagree.push(path.relative(ROOT, abs));
+    }
+    expect(
+      disagree,
+      "the fast literal-span scan and the tree walk disagree about where the " +
+        "comments are; one of them is reading a different file than the one on disk",
+    ).toEqual([]);
+  }, REPO_SWEEP_TIMEOUT_MS);
 });

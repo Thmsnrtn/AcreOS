@@ -115,6 +115,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve, relative, isAbsolute } from "node:path";
+import { stripCommentsPreservingLines as maskComments } from "./lib/strip-comments.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -170,55 +171,6 @@ function walkTsx(target, out = []) {
     walkTsx(join(target, entry), out);
   }
   return out;
-}
-
-// ----------------------------------------------------------------------------
-// Comment masking — replaces // and /* … */ spans with spaces (string-aware;
-// same-length output so line numbers map 1:1). Lifted from the
-// lint-page-hex.mjs / check-org-scoped-fetch.mjs family. This is what lets a
-// doc-comment reference like `// topbar (z-30) is covered by … (z-[100])`
-// not count as an offender.
-// ----------------------------------------------------------------------------
-function maskComments(source) {
-  const out = source.split("");
-  let inString = null;
-  let prevChar = "";
-  for (let i = 0; i < source.length; i++) {
-    const ch = source[i];
-    if (inString) {
-      if (ch === inString && prevChar !== "\\") inString = null;
-      prevChar = ch;
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === "`") {
-      inString = ch;
-      prevChar = ch;
-      continue;
-    }
-    if (ch === "/" && source[i + 1] === "/") {
-      while (i < source.length && source[i] !== "\n") {
-        out[i] = " ";
-        i++;
-      }
-      prevChar = "\n";
-      continue;
-    }
-    if (ch === "/" && source[i + 1] === "*") {
-      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
-        if (source[i] !== "\n") out[i] = " ";
-        i++;
-      }
-      if (i < source.length) {
-        out[i] = " ";
-        if (i + 1 < source.length) out[i + 1] = " ";
-        i += 1;
-      }
-      prevChar = " ";
-      continue;
-    }
-    prevChar = ch;
-  }
-  return out.join("");
 }
 
 // Arbitrary Tailwind z-index: `z-[…]`, optionally prefixed by a variant

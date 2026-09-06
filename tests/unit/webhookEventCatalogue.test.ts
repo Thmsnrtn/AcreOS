@@ -39,6 +39,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 import {
   WEBHOOK_EVENT_IDS,
   WEBHOOK_EVENT_CHOICES,
@@ -61,30 +62,6 @@ function walk(dir: string, out: string[] = []): string[] {
     else if (e.name.endsWith(".ts") && !e.name.endsWith(".test.ts")) out.push(p);
   }
   return out;
-}
-
-/** Line-based comment stripping. See destructivePermissionCoverage for why. */
-function stripComments(src: string): string {
-  const out: string[] = [];
-  let inBlock = false;
-  for (const line of src.split("\n")) {
-    let s = line;
-    if (inBlock) {
-      const end = s.indexOf("*/");
-      if (end === -1) { out.push(""); continue; }
-      s = s.slice(end + 2);
-      inBlock = false;
-    }
-    const open = s.indexOf("/*");
-    if (open > -1) {
-      const close = s.indexOf("*/", open + 2);
-      if (close > -1) s = s.slice(0, open) + s.slice(close + 2);
-      else if (/^\s*\{?\s*\/\*/.test(s)) { s = s.slice(0, open); inBlock = true; }
-    }
-    out.push(s.replace(/(^|[^:])\/\/.*$/, "$1"));
-  }
-  if (inBlock) throw new Error("stripComments ran away — assertions would be meaningless.");
-  return out.join("\n");
 }
 
 /**
