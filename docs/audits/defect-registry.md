@@ -861,14 +861,74 @@ Remediation plan (all applied):
 Resolving commits: see `fix(security)` for the gate returning green,
 2026-09-05.
 
+### DEFECT-0075
+Title: `PATCH /api/buyer-blasts/recipients/:id` with an empty body was a 500 — and 27 more write paths could reach the same malformed SQL
+Severity: P2
+Status: FIXED
+Surfaced by lenses: type-aware program analysis (2026-09-06, autonomous session)
+Description: Drizzle DROPS undefined values from `.set()`, so a patch whose
+every value is undefined renders the identical statement as `.set({})`:
+`update "t" set  where …` — nothing between SET and WHERE. Postgres rejects it
+as a syntax error.
+
+On `PATCH /api/buyer-blasts/recipients/:id` that was live and client-reachable:
+both fields of the route's Zod schema are `.optional()`, so `{}` parses clean,
+and unlike its sibling routes the patch carried no unconditional `updatedAt`.
+An authenticated owner sending an empty body got a 500 whose message was about
+SQL grammar.
+
+A program-wide pass then found 27 further writes that could reach the same
+state — 25 storage-repo methods taking `Partial<Insert>` from callers this pass
+cannot see, and 2 locally-constructed patches with no guaranteed field.
+
+WHY GREP COULD NOT HAVE FOUND THIS: the obvious predicate — "the argument is
+typed all-optional" — matches essentially every Drizzle patch in the codebase,
+and over a thousand of them are perfectly safe because the object that reaches
+`.set()` carries an unconditional `updatedAt: new Date()`. The useful question
+is the runtime one: can the OBJECT that reaches `.set()` be empty of defined
+values? Answering it means resolving each argument to the object literal that
+produces it and looking for one property whose value expression cannot be
+undefined (spreads guarantee nothing; conditional `obj.x = …` guarantees
+nothing).
+
+Evidence: over 1,541 files and 1,131 update-writes — 1,098 safe by
+construction, 27 unclearable, 6 resting on an `any`, 0 unresolved. The
+rendering mechanism is pinned independently through Drizzle's own PgDialect in
+`tests/unit/emptyUpdateIsNotAStatement.test.ts`.
+
+Remediation plan (all applied):
+1. `server/utils/patch.ts` — `hasWritableValues` (for routes, which answer 400)
+   and `assertWritablePatch` (for internal paths, which throw).
+2. The live route answers 400 and issues no statement.
+3. All 27 internal writes guarded AT THE CALL —
+   `.set(assertWritablePatch(patch, "table.method"))` — so the guard cannot
+   drift from the write it protects. Throwing is not a regression: the
+   malformed statement already threw, from Postgres, several layers from the
+   caller; the guard moves the throw to the call site and names it.
+4. `scripts/check-empty-update-set.mjs`, wired into `npm run check`, holding at
+   zero, with asserted population floors and an explicit heap ceiling (its
+   sibling `check-ghost-fields.mjs` was found OOMing at Node's default on
+   2026-08-25, silently reporting fewer findings than existed).
+5. `tests/unit/emptyPatchIsNotAnUpdate.test.ts` — the route's 400, that no
+   statement is issued, the helpers' semantics (`null` is NOT empty: `set x =
+   null` is well-formed and meaningful), and the gate's wiring.
+
+Falsified against five mutations, each asserted to have landed before its
+verdict was read: strip a repo guard, strip the route's 400, add a new
+unguarded write, unwire the gate, drop its heap ceiling. All five red.
+
+Resolving commits: `17681ffa`.
+
+---
+
 ## Summary Statistics
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 19  | 19    |
-| FIXED  | 12  | 37  | 0   | 49    |
+| FIXED  | 12  | 37  | 1   | 50    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **40** | **19** | **71** |
+| **Total** | **12** | **40** | **20** | **72** |
 
 All P0 and P1 defects resolved (fixed or justified deferral). 19 P2s remain open
 (not blocking launch).
