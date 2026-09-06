@@ -2,7 +2,7 @@
 // Extracted from the god-class server/storage.ts.
 
 import { and, asc, count, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
-import { db } from "../db";
+import { db, type PrimaryDb } from "../db";
 import {
   deals, properties,
   type Deal, type InsertDeal,
@@ -60,11 +60,27 @@ export const dealRepo = {
 
   // organizationId is omitted from InsertDeal (set server-side) but the DB
   // column is NOT NULL — callers supply it, so it is required here.
-  async createDeal(this: DatabaseStorage, deal: InsertDeal & { organizationId: number }): Promise<Deal> {
-    const [newDeal] = await db.insert(deals).values(deal).returning();
+  /**
+   * @param tx  Executor for the INSERT. Defaults to the global handle; a
+   *              caller inside `withTransaction` passes its `tx` so the write
+   *              actually joins the transaction rather than opening a second
+   *              connection beside it.
+   */
+  async createDeal(
+    this: DatabaseStorage,
+    deal: InsertDeal & { organizationId: number },
+    tx: PrimaryDb = db,
+  ): Promise<Deal> {
+    const [newDeal] = await tx.insert(deals).values(deal).returning();
     // Jarvis 2.1 (audit G2): a new deal is a perception event. Fire-and-forget
     // — publishDealLifecycle never throws, so a mesh outage can't fail the create.
-    if (newDeal) publishDealLifecycle(newDeal.organizationId, null, newDeal);
+    //
+    // ONLY WHEN THIS IS THE WHOLE WRITE. Inside a transaction the row is not
+    // committed yet and the caller may still roll it back, so announcing here
+    // would publish a deal that never existed. Transactional callers announce
+    // after the transaction returns — routes-deals.ts does exactly that for
+    // emitDealCreated already.
+    if (newDeal && tx === db) publishDealLifecycle(newDeal.organizationId, null, newDeal);
     return newDeal;
   },
 

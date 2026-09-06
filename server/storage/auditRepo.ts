@@ -2,7 +2,7 @@
 // Extracted from the god-class server/storage.ts.
 
 import { and, desc, eq, sql, count, gte, lte, or } from "drizzle-orm";
-import { db } from "../db";
+import { db, type PrimaryDb } from "../db";
 import {
   auditLog, leads, deals, leadActivities,
   type AuditLogEntry, type InsertAuditLog,
@@ -16,9 +16,13 @@ export const auditRepo = {
   // Kareem §1: every insert is chained via SHA-256 (see
   // server/utils/auditLogChain.ts). The chain function still returns the
   // canonical row shape, so callers see no API change.
-  async createAuditLogEntry(this: DatabaseStorage, entry: InsertAuditLog): Promise<AuditLogEntry> {
+  async createAuditLogEntry(
+    this: DatabaseStorage,
+    entry: InsertAuditLog,
+    tx?: PrimaryDb,
+  ): Promise<AuditLogEntry> {
     const { chainAndInsertAuditLog } = await import("../utils/auditLogChain");
-    return await chainAndInsertAuditLog(entry);
+    return await chainAndInsertAuditLog(entry, tx);
   },
 
   async getAuditLogs(this: DatabaseStorage, orgId: number, filters?: {

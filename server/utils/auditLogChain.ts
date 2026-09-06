@@ -48,7 +48,7 @@
 
 import { createHash } from "crypto";
 import { and, asc, desc, eq, isNotNull } from "drizzle-orm";
-import { db } from "../db";
+import { db, type PrimaryDb } from "../db";
 import { auditLog, type AuditLogEntry, type InsertAuditLog } from "@shared/schema";
 import { logger } from "./logger";
 
@@ -92,8 +92,11 @@ export function computeRowHash(prevHash: string, row: AuditLogEntry): string {
  * Look up the most-recent chained row for `organizationId` and return its
  * row_hash. Returns GENESIS_PREV_HASH if there is no chained predecessor.
  */
-export async function getPrevHashForOrg(organizationId: number): Promise<string> {
-  const [prev] = await db
+export async function getPrevHashForOrg(
+  organizationId: number,
+  tx: PrimaryDb = db,
+): Promise<string> {
+  const [prev] = await tx
     .select({ rowHash: auditLog.rowHash })
     .from(auditLog)
     .where(and(eq(auditLog.organizationId, organizationId), isNotNull(auditLog.rowHash)))
@@ -123,22 +126,34 @@ export async function getPrevHashForOrg(organizationId: number): Promise<string>
  * no row was inserted in the middle without rebuilding the chain (which the
  * trigger blocks anyway).
  */
-export async function chainAndInsertAuditLog(entry: InsertAuditLog): Promise<AuditLogEntry> {
+/**
+ * @param tx  The executor to run all three statements on. Defaults to the
+ *              global handle; a caller inside `withTransaction` MUST pass its
+ *              `tx`, because the prev-hash READ has to see the same snapshot as
+ *              the insert. Run on two connections, two concurrent writers can
+ *              both read the same prev_hash and chain onto it, and the chain
+ *              forks silently — which is precisely what an audit chain exists
+ *              to make impossible.
+ */
+export async function chainAndInsertAuditLog(
+  entry: InsertAuditLog,
+  tx: PrimaryDb = db,
+): Promise<AuditLogEntry> {
   // 1) Insert raw row (NULL hashes).
-  const [created] = await db.insert(auditLog).values(entry).returning();
+  const [created] = await tx.insert(auditLog).values(entry).returning();
   if (!created) {
     throw new Error("audit_log insert returned no row");
   }
 
   // 2) Compute prev_hash + row_hash off the row that was just persisted.
-  const prevHash = await getPrevHashForOrg(created.organizationId);
+  const prevHash = await getPrevHashForOrg(created.organizationId, tx);
   // The row used to compute hash must include the assigned id + createdAt
   // exactly as stored; created already has both.
   const rowHash = computeRowHash(prevHash, created);
 
   // 3) Update the row in-place. The migration's trigger allows this exact
   //    NULL → non-NULL transition and blocks every other mutation.
-  const [updated] = await db
+  const [updated] = await tx
     .update(auditLog)
     .set({ prevHash, rowHash })
     .where(eq(auditLog.id, created.id))

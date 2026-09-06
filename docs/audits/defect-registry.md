@@ -597,7 +597,7 @@ Resolving commits: pending
 ### DEFECT-0056
 Title: withTransaction callbacks ignore tx parameter -- operations use global db
 Severity: P2
-Status: OPEN
+Status: FIXED (see DEFECT-0085)
 Surfaced by lenses: 54 (054-F04)
 Description: Several `withTransaction()` usages pass no `tx` argument or ignore it. `storage.updateOrganization` and `storage.createDeal` use the global `db` instance, not the transaction. The transaction wrapper does nothing useful in these cases.
 Evidence: `server/routes-billing.ts:150`, `server/routes-deals.ts:159`.
@@ -1545,18 +1545,108 @@ the exit-code discipline added in DEFECT-0080's wake, and under the previous
 `| tail` habit it would have shipped as another false "exit 0".
 Resolving commits: pending
 
+### DEFECT-0085
+Title: Five `withTransaction` callbacks that ignored the transaction — a fake atomicity claim and a five-connection self-deadlock
+Severity: P1
+Status: FIXED
+Surfaced by lenses: 51 (RACE), the verification fan-out 2026-09-06 (was DEFECT-0056)
+Description: Five callbacks passed to `withTransaction` took NO parameter, so
+every query inside ran on the global pool while the wrapper held a separate
+connection open on a `BEGIN` that governed none of them.
+
+**The deal path** (`POST /api/deals`, `routes-deals.ts`). The block's own comment
+promised the deal and its audit row were written atomically. They were not: if
+the audit write failed, the deal was already committed and stayed — the exact
+orphan the comment claims to prevent — and the caller got a 500, so they clicked
+again and got a second deal. The audit chain has a second problem in the same
+shape: `chainAndInsertAuditLog` INSERTs, then READS the previous hash, then
+UPDATEs. Run on two connections, two concurrent writers can read the same
+`prev_hash` and both chain onto it, forking the chain an audit log exists to
+make unforkable.
+
+**The pool self-deadlock** — not in the original entry, and the reason this is a
+P1. `server/db.ts` caps the pool at 5 per app process with
+`connectionTimeoutMillis: 10_000`. The wrapper holds one connection on an open
+BEGIN; the body then asks the SAME pool for another. Five concurrent "Create
+deal" clicks on one machine hold all five, and all five bodies wait for a sixth
+that cannot arrive. Each blocks the full 10s, and for those 10s the process's
+entire pool is wedged — every route, every org, not just deals. Five concurrent
+creates is an ordinary spike, not a pathological one.
+
+**The four billing sites** (`routes-billing.ts`) additionally held the
+transaction open across a synchronous outbound Stripe call, widening the hold
+window from milliseconds to hundreds of them. There the atomicity claim was not
+merely broken but impossible: a Stripe API call is not a Postgres statement and
+cannot roll back.
+
+Evidence: `server/routes-deals.ts:655` (before), `server/routes-billing.ts:256,
+354, 670, 714` (before), `server/db.ts:78-80`.
+Remediation plan: Done, and deliberately NOT uniform — the registry's blanket
+"refactor storage to accept an optional transaction client" is right for one site
+and wrong for four.
+
+- **Billing (4): the wrapper is DELETED.** Each body is one Stripe call plus one
+  `storage.updateOrganization`. A transaction around a single statement is a
+  no-op even when correctly threaded, and the external call can never join it.
+  The false comment is replaced by what actually happens: if the UPDATE fails the
+  Stripe customer is orphaned and the next attempt creates another — and the fix
+  for THAT is an idempotency key on `createCustomer`, not a transaction that
+  cannot contain it.
+- **Deals (1): the transaction is made REAL.** An optional executor is threaded
+  through `createDeal` → `createAuditLogEntry` → `chainAndInsertAuditLog`,
+  including `getPrevHashForOrg`, so the prev-hash read shares the insert's
+  snapshot. `publishDealLifecycle` is suppressed for transactional callers and
+  issued by the route after commit — announcing a deal that may still roll back
+  is the mirror-image defect.
+
+After the fix no callback that holds a transaction connection ever asks the pool
+for a second one, which is what removes the deadlock.
+
+Gated by `transactionsAreRealTransactions.test.ts`. The cheap version of this
+gate asks "does the callback declare a parameter", which is a proxy for a symbol
+and stays GREEN through the mutation that matters. So the executor is OBSERVED:
+the storage methods are stubbed and asked what they were actually handed.
+Falsified twice — restore the parameterless callback (the source arm goes red),
+and keep `(tx)` in the signature while passing the global handle anyway (the
+behavioural arm goes red, the source arm does not).
+
+**AND THE FIX ITSELF OPENED A BLIND SPOT, WHICH IS THE MORE USEFUL FINDING.**
+The executor was first threaded as `exec: PrimaryDb = db`.
+`check-org-scoped-fetch.mjs` detects writes with
+
+    /\b(?:from|(?:db|tx)\s*\.\s*update|(?:db|tx)\s*\.\s*delete)\s*\(…/
+
+— an enumeration of executor SPELLINGS. So `exec.update(auditLog)` was not
+flagged; it was NOT SEEN. The tenancy lint did not go red, it went QUIET, and
+then reported the burn-down entry for `chainAndInsertAuditLog` as "no longer
+matching anything — they were fixed or deleted (good!)" and asked for its
+deletion. Deleting it, as instructed, would have recorded a blind spot as a win.
+
+The parameter is named `tx` — a name the lint knows — and the hole is closed by
+`executorNamesTheLintKnows.test.ts`: every parameter whose TYPE NODE is
+`PrimaryDb` must be named one the lint recognises, and the recognised set is READ
+OUT OF THE LINT'S OWN REGEX rather than restated, so the two cannot drift.
+Falsified by renaming an executor to something unknown, and by NARROWING the
+lint's regex — which must shrink the allowed set and go red, proving the set is
+derived and not a second copy. Its detector inspects the type node rather than
+its text, because `withTransaction(fn: (tx: PrimaryDb) => …)` mentions the type
+without being an executor; that false positive was found and fixed the same way.
+Resolving commits: pending
+
+---
+
 ---
 
 ## Summary Statistics
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 14  | 14    |
-| FIXED  | 12  | 46  | 5   | 63    |
+| OPEN   | 0   | 0   | 13  | 13    |
+| FIXED  | 12  | 47  | 6   | 65    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **49** | **20** | **81** |
+| **Total** | **12** | **50** | **20** | **82** |
 
-All P0 and P1 defects resolved (fixed or justified deferral). 14 P2s remain open (plus DEFECT-0063, partially fixed)
+All P0 and P1 defects resolved (fixed or justified deferral). 13 P2s remain open (plus DEFECT-0063, partially fixed)
 (not blocking launch).
 
 ### Fixed Defects Summary

@@ -13,7 +13,6 @@ import { Errors } from "./utils/errors";
 import { requirePermission } from "./utils/permissions";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { customerAuditFromRequest, CustomerAuditActions } from "./utils/customerAudit";
-import { withTransaction } from "./db";
 import { z } from "zod";
 
 export function registerBillingRoutes(app: Express): void {
@@ -250,19 +249,34 @@ export function registerBillingRoutes(app: Express): void {
       
       const pack = CREDIT_PACKS[packId as keyof typeof CREDIT_PACKS];
       
-      // Ensure Stripe customer creation and org update are atomic
       let customerId = org.stripeCustomerId;
       if (!customerId) {
-        customerId = await withTransaction(async () => {
-          const user = req.user as any;
-          const customer = await stripeService.createCustomer(
-            user.email || '',
-            user.id,
-            org.name
-          );
-          await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
-          return customer.id;
-        });
+        // NOT A TRANSACTION, AND IT NEVER COULD BE.
+        //
+        // This was wrapped in withTransaction() under a comment promising the
+        // Stripe customer creation and the org update were "atomic". Three
+        // things were wrong with that. The callback took no `tx`, so the UPDATE
+        // ran on the global pool — outside the transaction the wrapper opened.
+        // A Stripe API call is not a Postgres statement and cannot roll back
+        // whatever happens next. And the wrapper held one of the pool's five
+        // connections on an open BEGIN for the duration of an outbound HTTP
+        // request, while the body reached back into the same pool for a second
+        // one: five concurrent callers wedge the whole process for
+        // connectionTimeoutMillis, and every other request on the machine —
+        // any route, any org — stalls with them.
+        //
+        // The honest version is the straight line. If the UPDATE fails the
+        // Stripe customer is orphaned and the next attempt creates another;
+        // the fix for THAT is an idempotency key on createCustomer, not a
+        // transaction that cannot include it.
+        const user = req.user as any;
+        const customer = await stripeService.createCustomer(
+          user.email || '',
+          user.id,
+          org.name
+        );
+        await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
+        customerId = customer.id;
       }
 
       const session = await stripeService.createCreditPurchaseCheckout(
@@ -351,12 +365,28 @@ export function registerBillingRoutes(app: Express): void {
       let customerId = org.stripeCustomerId;
       if (!customerId) {
         const { stripeService } = await import("./stripeService");
-        customerId = await withTransaction(async () => {
-          const user = req.user as any;
-          const customer = await stripeService.createCustomer(user.email || "", user.id, org.name);
-          await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
-          return customer.id;
-        });
+        // NOT A TRANSACTION, AND IT NEVER COULD BE.
+        //
+        // This was wrapped in withTransaction() under a comment promising the
+        // Stripe customer creation and the org update were "atomic". Three
+        // things were wrong with that. The callback took no `tx`, so the UPDATE
+        // ran on the global pool — outside the transaction the wrapper opened.
+        // A Stripe API call is not a Postgres statement and cannot roll back
+        // whatever happens next. And the wrapper held one of the pool's five
+        // connections on an open BEGIN for the duration of an outbound HTTP
+        // request, while the body reached back into the same pool for a second
+        // one: five concurrent callers wedge the whole process for
+        // connectionTimeoutMillis, and every other request on the machine —
+        // any route, any org — stalls with them.
+        //
+        // The honest version is the straight line. If the UPDATE fails the
+        // Stripe customer is orphaned and the next attempt creates another;
+        // the fix for THAT is an idempotency key on createCustomer, not a
+        // transaction that cannot include it.
+        const user = req.user as any;
+        const customer = await stripeService.createCustomer(user.email || "", user.id, org.name);
+        await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
+        customerId = customer.id;
       }
 
       const setupIntent = await stripe.setupIntents.create({
@@ -667,12 +697,28 @@ export function registerBillingRoutes(app: Express): void {
 
       let customerId = org.stripeCustomerId;
       if (!customerId) {
-        customerId = await withTransaction(async () => {
-          const user = req.user as any;
-          const customer = await stripeService.createCustomer(user.email, user.id, org.name);
-          await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
-          return customer.id;
-        });
+        // NOT A TRANSACTION, AND IT NEVER COULD BE.
+        //
+        // This was wrapped in withTransaction() under a comment promising the
+        // Stripe customer creation and the org update were "atomic". Three
+        // things were wrong with that. The callback took no `tx`, so the UPDATE
+        // ran on the global pool — outside the transaction the wrapper opened.
+        // A Stripe API call is not a Postgres statement and cannot roll back
+        // whatever happens next. And the wrapper held one of the pool's five
+        // connections on an open BEGIN for the duration of an outbound HTTP
+        // request, while the body reached back into the same pool for a second
+        // one: five concurrent callers wedge the whole process for
+        // connectionTimeoutMillis, and every other request on the machine —
+        // any route, any org — stalls with them.
+        //
+        // The honest version is the straight line. If the UPDATE fails the
+        // Stripe customer is orphaned and the next attempt creates another;
+        // the fix for THAT is an idempotency key on createCustomer, not a
+        // transaction that cannot include it.
+        const user = req.user as any;
+        const customer = await stripeService.createCustomer(user.email, user.id, org.name);
+        await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
+        customerId = customer.id;
       }
 
       const packMetadata = {
@@ -708,19 +754,34 @@ export function registerBillingRoutes(app: Express): void {
       }
       const { priceId } = parsed.data;
       
-      // Ensure Stripe customer creation and org update are atomic
       let customerId = org.stripeCustomerId;
       if (!customerId) {
-        customerId = await withTransaction(async () => {
-          const user = req.user as any;
-          const customer = await stripeService.createCustomer(
-            user.email,
-            user.id,
-            org.name
-          );
-          await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
-          return customer.id;
-        });
+        // NOT A TRANSACTION, AND IT NEVER COULD BE.
+        //
+        // This was wrapped in withTransaction() under a comment promising the
+        // Stripe customer creation and the org update were "atomic". Three
+        // things were wrong with that. The callback took no `tx`, so the UPDATE
+        // ran on the global pool — outside the transaction the wrapper opened.
+        // A Stripe API call is not a Postgres statement and cannot roll back
+        // whatever happens next. And the wrapper held one of the pool's five
+        // connections on an open BEGIN for the duration of an outbound HTTP
+        // request, while the body reached back into the same pool for a second
+        // one: five concurrent callers wedge the whole process for
+        // connectionTimeoutMillis, and every other request on the machine —
+        // any route, any org — stalls with them.
+        //
+        // The honest version is the straight line. If the UPDATE fails the
+        // Stripe customer is orphaned and the next attempt creates another;
+        // the fix for THAT is an idempotency key on createCustomer, not a
+        // transaction that cannot include it.
+        const user = req.user as any;
+        const customer = await stripeService.createCustomer(
+          user.email,
+          user.id,
+          org.name
+        );
+        await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
+        customerId = customer.id;
       }
 
       // Check if organization is eligible for 14-day free trial (first subscription only)

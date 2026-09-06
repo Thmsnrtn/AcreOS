@@ -35,6 +35,10 @@ import {
 // deal.created / deal.stage_changed. Both emitters are fire-and-forget and
 // no-op unless the status genuinely changed — see services/dealEvents.ts.
 import { emitDealCreated, emitDealStageChanged } from "./services/dealEvents";
+// The deal-created perception event. createDeal suppresses its own publish for
+// transactional callers (a deal that may still roll back must not be announced),
+// so the route issues it once the transaction has committed.
+import { publishDealLifecycle } from "./services/dealLifecycleEvents";
 // Audit Wave 1 (residential_wholesaler beta→core): the wholesaler contract and
 // assignment templates never ran because nothing emitted deal.contract_signed /
 // deal.assignment_pending. Both emitters are fire-and-forget and no-op unless the
@@ -652,9 +656,22 @@ export function registerDealRoutes(app: Express): void {
       const user = req.user as any;
       const userId = user?.id || user?.id;
 
-      const deal = await withTransaction(async () => {
+      // A REAL transaction now. This callback took no `tx`, so both writes ran
+      // on the global pool while the wrapper held a sixth connection open on a
+      // BEGIN that governed neither of them. Two consequences, both live:
+      //
+      //   * the atomicity the next line promises did not exist. If the audit
+      //     write failed, the deal was already committed and stayed — the exact
+      //     orphan this block says it prevents — and the caller got a 500, so
+      //     they clicked again and got a second deal.
+      //   * the pool is five connections. Five concurrent "Create deal" clicks
+      //     on one machine hold all five on BEGINs while every body waits for a
+      //     sixth that cannot arrive; each blocks for connectionTimeoutMillis
+      //     and the whole process's pool is wedged for that long, for every
+      //     route and every org.
+      const deal = await withTransaction(async (tx) => {
         // insertDealSchema strips organizationId; the repo write requires it.
-        const newDeal = await storage.createDeal({ ...input, organizationId: org.id });
+        const newDeal = await storage.createDeal({ ...input, organizationId: org.id }, tx);
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId,
@@ -664,9 +681,14 @@ export function registerDealRoutes(app: Express): void {
           changes: { after: input, fields: Object.keys(input) },
           ipAddress: req.ip || req.socket?.remoteAddress,
           userAgent: req.headers["user-agent"],
-        });
+        }, tx);
         return newDeal;
       });
+
+      // The deal is COMMITTED at this point, which is the only place either of
+      // these may fire. createDeal's own publishDealLifecycle is suppressed for
+      // transactional callers for the same reason, so it is issued here.
+      publishDealLifecycle(deal.organizationId, null, deal);
 
       // Wave B — deal.created workflow trigger. Fire-and-forget: an automation
       // failure must never fail the deal write that just committed.
