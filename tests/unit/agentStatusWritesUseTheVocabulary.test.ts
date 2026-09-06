@@ -50,6 +50,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { stripComments } from "../helpers/stripComments";
+import { sql } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 let currentRows: Array<Record<string, unknown>> = [];
 let returningRows: Array<Record<string, unknown>> = [];
@@ -104,7 +106,7 @@ vi.mock("../../server/websocket", () => ({
 }));
 
 const { executionEngine } = await import("../../server/services/executionEngine");
-const { LEAD_STATUSES, DEAL_STATUSES, CLOSED_DEAL_STATUSES } = await import(
+const { LEAD_STATUSES, DEAL_STATUSES, CLOSED_DEAL_STATUSES, ACTIVE_DEAL_STATUSES } = await import(
   "@shared/lifecycle/pipeline-status"
 );
 
@@ -201,6 +203,55 @@ describe("update_lead_status", () => {
     const result = await run("update_lead_status", { leadId: 7, newStatus: "contacted" });
     expect(result.success).toBe(true);
     expect(written[0].status).toBe("contacted");
+  });
+});
+
+describe("the vocabulary reaches SQL as parameters, not as text", () => {
+  /**
+   * The aggregate counts in `customerNarrative` and `kpiStreamingService` are
+   * `sum(case when …)` / `count(*) filter (where …)` expressions, so they stay
+   * in SQL. What changed is that the status lists are interpolated from the
+   * vocabulary with `sql.join` instead of being spelled — and an interpolation
+   * that rendered as TEXT rather than parameters would be both an injection
+   * shape and a silent behaviour change.
+   *
+   * Rendered through Drizzle's own PgDialect rather than assumed, for the same
+   * reason emptyUpdateIsNotAStatement renders its statement: a library upgrade
+   * that changes how `sql.join` flattens is exactly the kind of thing a test
+   * comparing two things it produced itself would agree with.
+   */
+  it("sql.join renders one bound parameter per status, in order", () => {
+    const dialect = new PgDialect();
+    const list = sql.join(
+      CLOSED_DEAL_STATUSES.map((v) => sql`${v}`),
+      sql`, `,
+    );
+    const q = dialect.sqlToQuery(sql`count(*) filter (where status in (${list}))`);
+
+    expect(q.sql).toBe(
+      `count(*) filter (where status in (${CLOSED_DEAL_STATUSES.map((_, i) => `$${i + 1}`).join(", ")}))`,
+    );
+    expect(q.params).toEqual([...CLOSED_DEAL_STATUSES]);
+    // The values must NOT appear in the statement text — that is the whole
+    // difference between a bound list and a spelled one.
+    for (const v of CLOSED_DEAL_STATUSES) {
+      expect(q.sql).not.toContain(v);
+    }
+  });
+
+  it("an empty projection would render `in ()`, so a projection may never be empty", () => {
+    // Not hypothetical: `ACTIVE_DEAL_STATUSES` is a .filter() over
+    // DEAL_STATUSES, and a change that made it empty would render `in ()` —
+    // a Postgres syntax error at runtime, from a list that type-checks fine.
+    for (const [name, values] of Object.entries({
+      CLOSED_DEAL_STATUSES,
+      ACTIVE_DEAL_STATUSES,
+    })) {
+      expect(
+        values.length,
+        `${name} is empty — every "in (…)" built from it would be malformed SQL`,
+      ).toBeGreaterThan(0);
+    }
   });
 });
 
