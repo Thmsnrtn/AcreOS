@@ -156,6 +156,21 @@ async function resolveAudience(
   const conditions = [
     eq(leads.organizationId, organizationId),
     sql`${leads.deletedAt} IS NULL`,
+    // SUPPRESSION. A seller who texts STOP has `doNotContact` and `optOutDate`
+    // set by handleInboundOptKeyword, and the consent-revocation record written
+    // alongside it names `direct_mail` among the revoked channels
+    // (smsService.ts, tcpaCompliance.ts). This door did not read either column,
+    // so the compose tab would quote, debit and queue a physical letter to
+    // someone the org's own audit trail says opted out of physical letters —
+    // and 30 minutes later the mail_flusher would hand it to Lob and it would
+    // be printed and delivered.
+    //
+    // This is deliberately the SAME rule preMailDedupe.ts already applies
+    // (`row.doNotContact === true || row.optOutDate` -> skip), so the two mail
+    // doors agree rather than inventing a third semantics. `IS NOT TRUE` rather
+    // than `= false` because the column is nullable.
+    sql`${leads.doNotContact} IS NOT TRUE`,
+    sql`${leads.optOutDate} IS NULL`,
     sql`${leads.address} IS NOT NULL`,
     sql`${leads.city} IS NOT NULL`,
     sql`${leads.state} IS NOT NULL`,

@@ -1160,18 +1160,25 @@ export default function MapsPage() {
     }
 
     // Honesty: never fabricate an authoritative parcel outline. We only ever
-    // hand the map a *real* surveyed boundary. When we don't have one, we omit
-    // the polygon entirely (the map still locates the parcel via its centroid)
-    // and flag it approximate, rather than drawing a synthetic square that
-    // reads as a surveyed lot line. `isApproximate` is carried so the map layer
-    // can style an estimated extent distinctly if/when it supports it.
+    // hand the map a *real* boundary. When we don't have one we omit the
+    // polygon entirely — the map still locates the parcel via its centroid —
+    // rather than drawing a synthetic square that reads as a lot line.
+    //
+    // The `isApproximate` flag that used to be carried here was DEAD: the map
+    // reads `approximate`, not `isApproximate`, and the misspelling meant it
+    // never reached PropertyBoundary. Removed rather than corrected, because
+    // the corrected version would be WRONG: `approximate: !realBoundary` marks
+    // a real boundary as non-approximate, i.e. draws it SOLID, which is the
+    // component's claim of county-GIS provenance — and `properties.parcel_boundary`
+    // stores no provenance at all, so there is nothing to back that claim with.
+    // With the flag absent the map's own default posture applies (dashed
+    // whenever provenance is unknown), which is the honest answer here.
     const realBoundary = (p.parcelBoundary as any) || undefined;
     return {
       id: p.id,
       apn: p.apn,
       name: `${p.county}, ${p.state}`,
       boundary: realBoundary,
-      isApproximate: !realBoundary,
       centroid: (p.parcelCentroid as any) || { lat, lng },
       status,
     };

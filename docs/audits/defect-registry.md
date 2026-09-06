@@ -685,7 +685,7 @@ Resolving commits: pending
 ### DEFECT-0064
 Title: Ownership data presented without freshness indicator -- stale county data shown as current
 Severity: P2
-Status: OPEN
+Status: FIXED (see DEFECT-0082)
 Surfaced by lenses: 126 (P1-126-01)
 Description: Parcel service caches ownership data for 30 days. `lastUpdated` is set to fetch time, not county recording date. No indication of data staleness shown to users making purchase decisions.
 Evidence: `server/services/parcel.ts:326` -- `lastUpdated: new Date().toISOString()`.
@@ -695,7 +695,7 @@ Resolving commits: pending
 ### DEFECT-0065
 Title: No do-not-mail suppression list check before direct mail sending
 Severity: P2
-Status: OPEN
+Status: FIXED (see DEFECT-0082)
 Surfaced by lenses: 127 (P1-127-01)
 Description: Direct mail services send via Lob without checking against suppression lists. If a lead has `doNotContact: true`, TCPA blocks SMS/phone but no corresponding check exists for physical mail.
 Evidence: `server/services/directMailService.ts` -- no `doNotContact` check.
@@ -705,7 +705,7 @@ Resolving commits: pending
 ### DEFECT-0066
 Title: Synthetic parcel boundaries visually indistinguishable from real data
 Severity: P2
-Status: OPEN
+Status: FIXED (see DEFECT-0082)
 Surfaced by lenses: 128 (P1-128-01)
 Description: When real parcel boundary data is unavailable, a simple rectangle is generated. It looks identical to real boundaries on the map, potentially misleading users about lot shape, setbacks, and buildable area.
 Evidence: `client/src/pages/properties.tsx:613` -- generates rectangle fallback.
@@ -1326,18 +1326,102 @@ unconditionally; disable the verify-payment check; make the verify-payment check
 refuse on absent metadata.
 Resolving commits: pending
 
+### DEFECT-0082
+Title: Three fabrications on the buying surface — an invented parcel outline, a county vintage we never had, and mail to people who opted out
+Severity: P1
+Status: FIXED
+Surfaced by lenses: the 18-defect verification fan-out, 2026-09-06
+Description: Three separate findings, one standing decision: *"Fabrication is
+never acceptable: no invented numbers, no fake activity, no placeholder data
+presented as real."* Two of them sit on the screen a land investor decides from.
+
+**(a) An invented parcel outline** (was DEFECT-0066). `properties.tsx` fell back,
+when a property had no `parcel_boundary`, to an axis-aligned square 0.003 degrees
+to a side — roughly a hundred acres — centred on the GEOCODE, and handed it to
+`<PropertyMap>` as that property's boundary. It drew in the same layer, colour
+and weight as every real boundary beside it. It is not an approximation of the
+parcel: it has no relationship to the lot's shape, frontage or buildable area,
+and it appears exactly where someone is most likely to be deciding from it —
+straight after a CSV import, before the parcel lookup has run.
+
+The registry entry's claim that it was indistinguishable from an AUTHORITATIVE
+polygon was checked and is wrong: `property-map.tsx` defaults to dashed whenever
+provenance is unknown, and `properties.tsx` passes no provenance, so nothing on
+that page renders as county-GIS. The defect is narrower and still real — a shape
+we made up, rendered identically to every shape we did not.
+
+`maps.tsx` had already settled this correctly and said so in a comment. It also
+carried a DEAD honesty flag: it passed `isApproximate`, the component reads
+`approximate`, so it never reached `PropertyBoundary`. Removed rather than
+corrected — the corrected version would mark a real boundary as
+non-approximate, i.e. SOLID, which is the component's claim of county-GIS
+provenance, and `properties.parcel_boundary` stores no provenance to back it.
+
+**(b) A county vintage we never had** (was DEFECT-0064). The Assessed Value and
+Annual Taxes chips were `classification="authoritative"` and took their
+`sourceAsOf` from `parcelData.lastUpdated`, which `server/services/parcel.ts`
+sets to `new Date()` at fetch time (six sites). So the page rendered "County
+assessor · as of Sep 6, 2026" with the authoritative dot, asserting the county's
+record was current as of today, when the assessment roll behind the number is
+typically a prior tax year and a deed recorded last week does not appear at all.
+`enrichedAt` and `updatedAt` are no better — both are when AcreOS touched the
+row. The footer's "Parcel data last updated" said the same thing in prose.
+
+The Est. Value chip was one element with THREE separate ternaries — source,
+vintage and classification each conditional on the same guard. That shape is
+what hid it, and it is now two chips: ours can say when we made it
+(`enrichedAt` is exactly the vintage of an AcreOS estimate), the county's says
+nothing it cannot support.
+
+**(c) A letter to someone who opted out** (was DEFECT-0065). A seller texts
+STOP; `handleInboundOptKeyword` sets `doNotContact` + `optOutDate` and writes a
+consent-revocation record naming `direct_mail` among the revoked channels
+(`smsService.ts:472`, `tcpaCompliance.ts:353`). `preMailDedupe.ts:105` honours
+it. `resolveAudience` in `routes-outreach-mail.ts` — the compose tab's lane,
+which quotes, debits the mail pool and writes the `mail_shipment_pieces` that
+`mail_flusher` hands to Lob half an hour later — read neither column. So the
+org's own audit trail said the seller had revoked physical mail while a second
+door in the same product printed and delivered one.
+
+The fix is deliberately the SAME rule `preMailDedupe` already applies, so the
+two mail doors agree rather than inventing a third semantics, and `IS NOT TRUE`
+rather than `= false` because the column is nullable — `= false` would silently
+empty the audience.
+
+Evidence: `client/src/pages/properties.tsx:688` (before), `:1698`/`:1968`/`:2038`
+(before), `server/routes-outreach-mail.ts:156` (before).
+Remediation plan: Done, with three gates, each falsified:
+
+- `parcelOutlinesAreNotInvented.test.ts` — population DERIVED from the files that
+  render `<PropertyMap>`, so a fourth page joins by existing. Walks the AST, so a
+  type annotation naming "Polygon" and a comparison against it are never visited.
+  Falsified on the original spelling, on an equivalent representation
+  (MultiPolygon), and on the POPULATION (renaming the page out of the derived set
+  turns it red rather than green).
+- `mailAudienceHonoursOptOut.test.ts` — renders the predicate the handler builds
+  through drizzle's own dialect and reads the SQL Postgres will run, not the
+  source text. Falsified by removing the conditions, by the nullable trap
+  (`= false`), and by the MENTION TRAP: conditions built into a dead local so the
+  file still names both columns. A source-scanning gate passes that third one.
+- `authoritativeChipsHaveARealVintage.test.ts` — asserts its own PREMISE from
+  `parcel.ts` (that `lastUpdated` really is a wall-clock stamp), so if that ever
+  becomes a real county date the gate fails and the ban gets deleted rather than
+  quietly outliving its reason. Falsified on the original clock, on an equivalent
+  clock, and on the premise.
+Resolving commits: pending
+
 ---
 
 ## Summary Statistics
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 18  | 18    |
-| FIXED  | 12  | 43  | 2   | 57    |
+| OPEN   | 0   | 0   | 15  | 15    |
+| FIXED  | 12  | 44  | 5   | 61    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **46** | **20** | **78** |
+| **Total** | **12** | **47** | **20** | **79** |
 
-All P0 and P1 defects resolved (fixed or justified deferral). 18 P2s remain open
+All P0 and P1 defects resolved (fixed or justified deferral). 15 P2s remain open
 (not blocking launch).
 
 ### Fixed Defects Summary

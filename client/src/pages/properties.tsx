@@ -680,12 +680,23 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                 properties={filteredProperties.filter(p => p.latitude && p.longitude).map(p => {
                   const lat = parseFloat(String(p.latitude));
                   const lng = parseFloat(String(p.longitude));
-                  const d = 0.003;
+                  // Never fabricate a parcel outline. This used to fall back to
+                  // an axis-aligned square 0.003 degrees to a side — roughly a
+                  // hundred acres — centred on the GEOCODE, drawn by the same
+                  // layer, in the same colour and weight, as every real
+                  // boundary on the screen. It is not an approximation of the
+                  // parcel: it has no relationship to the lot's shape,
+                  // frontage or buildable area, and it appears in exactly the
+                  // state where a buyer is most likely to be deciding from it
+                  // (straight after a CSV import, before the parcel lookup has
+                  // run). Omit the polygon instead; the map still locates the
+                  // property by its centroid. maps.tsx settled this the same
+                  // way and carries the same reasoning.
                   return {
                     id: p.id,
                     apn: p.apn,
                     name: p.address || `${p.county}, ${p.state}`,
-                    boundary: (p.parcelBoundary as any) || { type: "Polygon" as const, coordinates: [[[lng-d, lat-d],[lng+d, lat-d],[lng+d, lat+d],[lng-d, lat+d],[lng-d, lat-d]]] },
+                    boundary: (p.parcelBoundary as any) || undefined,
                     centroid: (p.parcelCentroid as any) || { lat, lng },
                     status: p.status || "default",
                   };
@@ -1681,13 +1692,34 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                   <p className="font-semibold" data-testid="verdict-market-value">
                     {formatCurrency(currentProperty.marketValue || currentProperty.assessedValue)}
                   </p>
-                  {(currentProperty.marketValue || currentProperty.assessedValue) && (
+                  {/* Two chips, not one with three ternaries.
+                      This was a single chip whose source, vintage and
+                      classification were each a separate conditional on the same
+                      guard — readable only by evaluating all three in your head,
+                      and the shape that hid the defect below.
+
+                      OUR number and the COUNTY's number are different claims and
+                      they get different chips. Ours can say when we made it —
+                      `enrichedAt` is exactly the vintage of an AcreOS estimate.
+                      The county's cannot: `parcelData.lastUpdated` is `new Date()`
+                      at the moment AcreOS called the parcel API
+                      (server/services/parcel.ts), not the county's recording or
+                      assessment date, and `enrichedAt`/`updatedAt` are likewise
+                      when WE touched the row. Beside "County assessor" with the
+                      authoritative dot, any of them asserts the county record is
+                      current as of today — when the assessment roll behind it is
+                      typically a prior tax year and a deed recorded last week does
+                      not appear at all. The chip is graceful: with no `sourceAsOf`
+                      it still names the source and keeps the dot. */}
+                  {currentProperty.marketValue ? (
                     <DataProvenanceChip
-                      source={currentProperty.marketValue ? (currentProperty.enrichedAt ? "AcreOS estimate" : "User entered") : "County assessor"}
-                      sourceAsOf={parcelData?.lastUpdated || currentProperty.enrichedAt || currentProperty.updatedAt}
-                      classification={currentProperty.marketValue ? (currentProperty.enrichedAt ? "estimate" : null) : "authoritative"}
+                      source={currentProperty.enrichedAt ? "AcreOS estimate" : "User entered"}
+                      sourceAsOf={currentProperty.enrichedAt || currentProperty.updatedAt}
+                      classification={currentProperty.enrichedAt ? "estimate" : null}
                     />
-                  )}
+                  ) : currentProperty.assessedValue ? (
+                    <DataProvenanceChip source="County assessor" classification="authoritative" />
+                  ) : null}
                 </div>
                 <div className="space-y-0.5">
                   <span className="text-muted-foreground text-xs">Price per acre</span>
@@ -1954,7 +1986,6 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                     {currentProperty.assessedValue && Number(currentProperty.assessedValue) > 0 && (
                       <DataProvenanceChip
                         source="County assessor"
-                        sourceAsOf={parcelData?.lastUpdated || currentProperty.enrichedAt}
                         classification="authoritative"
                       />
                     )}
@@ -2024,7 +2055,6 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                       <p className="font-medium">{formatCurrency(parcelData.taxAmount)}</p>
                       <DataProvenanceChip
                         source="County records"
-                        sourceAsOf={parcelData.lastUpdated}
                         classification="authoritative"
                       />
                     </div>
@@ -2209,7 +2239,10 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
 
               {parcelData?.lastUpdated && (
                 <div className="text-xs text-muted-foreground pt-2">
-                  Parcel data last updated: {formatDate(parcelData.lastUpdated)}
+                  {/* Fetch time, said as fetch time. This read "Parcel data last
+                      updated", which a reader takes as the county's vintage; it is
+                      when AcreOS called the API. Honest and useful once labelled. */}
+                  Parcel data fetched by AcreOS: {formatDate(parcelData.lastUpdated)}
                 </div>
               )}
             </div>
