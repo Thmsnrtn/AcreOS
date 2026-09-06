@@ -39,22 +39,15 @@
  * mobile-craft discipline can grow from.
  */
 import { test, expect, type Page } from "@playwright/test";
+import { CUSTOMER_AUDIT_ROUTES } from "./door-routes";
 
-const ROUTES_TO_AUDIT = [
-  "/today",
-  // The Map door's canonical route is /maps (nav-items.ts href:"/maps") —
-  // "/map" has NO route and falls through to the 404 catch-all, so this
-  // suite spent its Map-door budget measuring the not-found page (which is
-  // how it caught the 38px coverage-page CTAs, but it never once audited
-  // the real Map surface). Same wrong-premise class as J1's /map → /maps
-  // correction in customer-surface-journeys.spec.ts.
-  "/maps",
-  "/deals",
-  "/money",
-  "/ai",
-  "/inbox",
-  "/settings",
-];
+// The Map door's canonical route is /maps (nav-items.ts href:"/maps"). "/map"
+// has NO route and falls through to the 404 catch-all, so this suite once spent
+// its Map-door budget measuring the not-found page — it reported a healthy Map
+// door the whole time. The list moved to door-routes.ts so the a11y audit and
+// this one cannot drift apart, and so a rename in nav-items.ts fails a gate
+// instead of quietly redirecting an audit to a 404.
+const ROUTES_TO_AUDIT = [...CUSTOMER_AUDIT_ROUTES];
 
 const TOUCH_TARGET_MIN_PX = 44;
 const FIRST_PAINT_BUDGET_MS = 3000;

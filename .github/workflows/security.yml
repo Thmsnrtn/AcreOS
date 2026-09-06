@@ -236,35 +236,20 @@ jobs:
           sarif_file: "trivy-fs-results.sarif"
           category: trivy-filesystem
 
-  # ── 5. Accessibility regression ─────────────────────────────────────────────
+  # ── 5. Accessibility ────────────────────────────────────────────────────────
+  # MOVED 2026-09-06 to the E2E Mobile workflow, which is where an audit can
+  # actually run: it has the pgvector service, a real build and the seeded
+  # test-auth session this job never had. The job that lived here was named
+  # "Accessibility Audit" and had never audited accessibility — @axe-core was
+  # not installed and its loader swallowed the missing dependency; no
+  # storageState meant every page test early-returned on the /auth redirect;
+  # the step ended in `|| true`; this job was absent from security-gate's
+  # needs:; and with no build and no database `npm run start` could not boot.
+  # See tests/e2e-mobile/accessibility-audit.spec.ts.
+  #
   # Note: The full simulation suite (scripts/run-simulation.sh) should be run
   # manually before major releases — it requires Docker and takes longer than
-  # CI allows. This pipeline covers automated security and accessibility checks.
-  accessibility:
-    name: Accessibility Audit
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-
-      - name: Run accessibility tests
-        run: npx playwright test tests/e2e/accessibility.spec.ts --reporter=list || true
-        # Non-blocking for now — log results but don't fail the pipeline
-        # until all accessibility issues are resolved
-
-      - name: npm audit (high severity gate)
-        run: npm audit --audit-level=high || echo "::warning::npm audit found high-severity vulnerabilities"
+  # CI allows.
 
   # ── 6. Summary gate ────────────────────────────────────────────────────────
   security-gate:
