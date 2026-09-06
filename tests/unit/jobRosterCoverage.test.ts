@@ -20,11 +20,17 @@
  * and a new registration helper must join REGISTRATION_SHAPES.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync } from "fs";
 import { resolve, join } from "path";
-import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS, stripComments } from "../helpers/stripComments";
 import { JOB_ROSTER } from "../../server/jobs/jobRegistry";
+
+// THIS FILE SWEEPS THE WHOLE REPOSITORY. Stripping comments correctly means
+// parsing, ~2.7ms a file, and under the coverage run's instrumentation a
+// sweep does not fit the suite's 30s default. Killing it does not make the
+// suite faster — it makes this gate stop reporting. Declared, not inherited.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 // Jobs that exist in the roster but are registered via scheduleSelfRescheduling
 // in this same change and DO call withJobLock with these exact names — so they

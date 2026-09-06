@@ -1493,6 +1493,58 @@ install step, and by the COMMENT TRAP — `npm ci` present only in prose, which 
 naive scan accepts.
 Resolving commits: pending
 
+### DEFECT-0084
+Title: The sweep budget went to the six gates that failed, not the forty-eight that sweep
+Severity: P1
+Status: FIXED
+Surfaced by lenses: the main-push run enumeration for `33ff7915`, 2026-09-06
+Description: DEFECT-0080 fixed eight repo-wide gates that crossed vitest's 30s
+default after the stripper became a parser. The fix gave `REPO_SWEEP_TIMEOUT_MS`
+to the SIX TESTS THAT HAPPENED TO FAIL. Measured now, 48 test files sweep the
+repository with the shared stripper — the other 42 kept the default.
+
+So the next push to `main` failed the same way with a DIFFERENT four:
+`assignedLeadGateCoverage`, `credentialRedactionSingleOwner`,
+`errorIsNotEmptiness`, `formatCentsIsCanonical`. Same cause, new victims — and
+the victims move because the failing step is `npm run test:coverage`, the same
+suite under V8 instrumentation, which is slower than the plain `vitest run` that
+passed 1054/1054 in the very same job.
+
+This is the third law about a fix rather than a gate: a remedy applied to the
+members that failed is a remedy over the population of failures, not over the
+population of the defect. The first version could only ever have held until the
+next scheduling accident.
+
+The failure mode is what makes it worth a P1 rather than an annoyance. A timeout
+is not a bug report — it is the suite deciding a gate is no longer worth waiting
+for. The gate then reports nothing about the thing it guards, and reports it in
+the same shape as a gate that has nothing to report.
+
+Evidence: run 34031073238, job 101480560446 — `npm run test:coverage`, 4 failed
+| 1050 passed, all four `Test timed out in 30000ms`; the plain `npx vitest run`
+step in the same job: 1054 passed.
+Remediation plan: Done. The population is DERIVED — imports
+`../helpers/stripComments` AND walks a directory — and all 48 now carry
+`vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS })` beside a note saying why.
+
+Gated by `repoSweepsDeclareTheirBudget.test.ts`, which re-derives that set and
+requires the declaration. Falsified three ways, because this defect was itself a
+population error and the gate for it must not repeat one:
+
+1. a sweeping gate drops its declaration -> red;
+2. `REPO_SWEEP_TIMEOUT_MS` is lowered to the suite default while every
+   declaration stays in place -> red (the rule is about the VALUE, not the
+   presence of the identifier);
+3. the detector stops recognising sweeps -> red, rather than passing over an
+   empty set.
+
+Footnote on the fix's own verification: the annotation script added a SECOND
+helper import to the six files that already had one, and `npm run check` caught
+it — `NPM_RUN_CHECK_EXIT=1`, 172 > baseline 160. That is the first real use of
+the exit-code discipline added in DEFECT-0080's wake, and under the previous
+`| tail` habit it would have shipped as another false "exit 0".
+Resolving commits: pending
+
 ---
 
 ## Summary Statistics
@@ -1500,9 +1552,9 @@ Resolving commits: pending
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 14  | 14    |
-| FIXED  | 12  | 45  | 5   | 62    |
+| FIXED  | 12  | 46  | 5   | 63    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **48** | **20** | **80** |
+| **Total** | **12** | **49** | **20** | **81** |
 
 All P0 and P1 defects resolved (fixed or justified deferral). 14 P2s remain open (plus DEFECT-0063, partially fixed)
 (not blocking launch).

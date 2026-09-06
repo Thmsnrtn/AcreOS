@@ -78,7 +78,13 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf-8");
  * twice — and the promise on the other side of these assertions is the one the
  * Pax page makes to a customer about what Pause stops.
  */
-import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS, stripComments } from "../helpers/stripComments";
+
+// THIS FILE SWEEPS THE WHOLE REPOSITORY. Stripping comments correctly means
+// parsing, ~2.7ms a file, and under the coverage run's instrumentation a
+// sweep does not fit the suite's 30s default. Killing it does not make the
+// suite faster — it makes this gate stop reporting. Declared, not inherited.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 const codeOf = (rel: string) => stripComments(read(rel));
 
 /** The call shapes that count as "consulted the org's pause state". */

@@ -51,12 +51,18 @@
  * seven paths would fail the same way on the eighth.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { formatCents } from "@shared/finance/cents";
 import { dollarsCompact } from "../../client/src/lib/format";
-import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS, stripComments } from "../helpers/stripComments";
+
+// THIS FILE SWEEPS THE WHOLE REPOSITORY. Stripping comments correctly means
+// parsing, ~2.7ms a file, and under the coverage run's instrumentation a
+// sweep does not fit the suite's 30s default. Killing it does not make the
+// suite faster — it makes this gate stop reporting. Declared, not inherited.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.resolve(__dirname, "../..");
 const CANONICAL = "shared/finance/cents.ts";

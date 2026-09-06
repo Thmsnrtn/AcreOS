@@ -219,7 +219,13 @@ vi.mock("../../server/middleware/idempotency", () => ({
 
 import { registerPublicSignRoutes } from "../../server/routes-public-sign";
 import { ESIGN_DISCLOSURE_VERSION } from "@shared/schema";
-import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS, stripComments } from "../helpers/stripComments";
+
+// THIS FILE SWEEPS THE WHOLE REPOSITORY. Stripping comments correctly means
+// parsing, ~2.7ms a file, and under the coverage run's instrumentation a
+// sweep does not fit the suite's 30s default. Killing it does not make the
+// suite faster — it makes this gate stop reporting. Declared, not inherited.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 import {
   executeSignedLease,
   getLeaseSignatureStatus,

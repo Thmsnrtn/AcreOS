@@ -52,13 +52,19 @@
  * asserted so the readable population cannot quietly shrink to nothing.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { getTableColumns, is } from "drizzle-orm";
 import { PgTable } from "drizzle-orm/pg-core";
 import * as schema from "../../shared/schema";
-import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS, stripComments } from "../helpers/stripComments";
+
+// THIS FILE SWEEPS THE WHOLE REPOSITORY. Stripping comments correctly means
+// parsing, ~2.7ms a file, and under the coverage run's instrumentation a
+// sweep does not fit the suite's 30s default. Killing it does not make the
+// suite faster — it makes this gate stop reporting. Declared, not inherited.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.resolve(__dirname, "../..");
 /**
