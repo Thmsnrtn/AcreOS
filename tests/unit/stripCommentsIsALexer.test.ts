@@ -170,6 +170,47 @@ describe("stripComments — the traps that made the previous version wrong", () 
   });
 });
 
+describe("and nothing goes back to hand-rolling it", () => {
+  const ROOT = process.cwd();
+  function walkTests(dir: string, out: string[] = []): string[] {
+    for (const e of readdirSync(dir)) {
+      if (["node_modules", "fixtures", "__snapshots__"].includes(e)) continue;
+      const abs = path.join(dir, e);
+      if (statSync(abs).isDirectory()) walkTests(abs, out);
+      else if (/\.(ts|tsx)$/.test(e)) out.push(abs);
+    }
+    return out;
+  }
+
+  it("no test hand-rolls the block-comment strip", () => {
+    // 36 gates were migrated off this idiom on 2026-09-06, after measuring
+    // that it disagrees with a correct strip on 1,057 of 2,543 production
+    // files. Without this, the 37th arrives by copy-paste from the 36th.
+    //
+    // The scan strips comments before looking — with the helper under test —
+    // because this file's own header quotes the idiom, and a gate that reads
+    // its own documentation as the defect is the fourth law's shape.
+    const files = walkTests(path.join(ROOT, "tests"));
+    expect(files.length, "the test walk found nothing — this is vacuous")
+      .toBeGreaterThan(500);
+
+    const offenders: string[] = [];
+    for (const abs of files) {
+      const code = stripComments(readFileSync(abs, "utf8"));
+      // The block-comment regex, in the spellings this repo used.
+      if (/\.replace\(\s*\/\\\/\\\*\[\\s\\S\]/.test(code)) {
+        offenders.push(path.relative(ROOT, abs));
+      }
+    }
+    expect(
+      offenders,
+      "these files strip comments by regex instead of importing " +
+        "tests/helpers/stripComments — which disagrees with a correct strip on " +
+        "42% of this repo's source files, in both directions",
+    ).toEqual([]);
+  });
+});
+
 describe("and it is right about the whole repository, not just the fixtures", () => {
   const ROOT = process.cwd();
   function walk(dir: string, out: string[] = []): string[] {

@@ -29,6 +29,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (p: string) => fs.readFileSync(path.resolve(ROOT, p), "utf-8");
@@ -42,11 +43,7 @@ const SRC = read("server/routes-investor-analytics.ts");
  * as still present. That has now bitten three assertions across this build;
  * asserting against code means asserting against code.
  */
-const CODE = SRC
-  .replace(/\/\*[\s\S]*?\*\//g, "")
-  .split("\n")
-  .filter((l) => !l.trim().startsWith("//"))
-  .join("\n");
+const CODE = stripComments(SRC);
 
 /** Collapse whitespace so an assertion survives prose being re-wrapped. */
 const flat = (t: string) => t.replace(/\s+/g, " ");

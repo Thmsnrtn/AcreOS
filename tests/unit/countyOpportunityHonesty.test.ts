@@ -47,6 +47,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/stripComments";
 import {
   computeCountyOpportunityScore,
   generateCountyIntelligenceReport,
@@ -66,11 +67,7 @@ const REPO = join(__dirname, "..", "..");
  * behaviour — strip them and scan code.
  */
 function code(rel: string): string {
-  return readFileSync(join(REPO, rel), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .map((l) => l.replace(/(^|[^:])\/\/.*$/, "$1"))
-    .join("\n");
+  return stripComments(readFileSync(join(REPO, rel), "utf8"));
 }
 
 /** Nothing measured. Every caller's starting point, honestly expressed. */

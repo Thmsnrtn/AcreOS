@@ -60,6 +60,7 @@ import {
 } from "../../shared/rental/unitInventory";
 import { BUSINESS_TYPES } from "../../shared/business-types";
 import { PERSONAS } from "../../server/services/pax/personas";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (p: string) => fs.readFileSync(path.resolve(ROOT, p), "utf-8");
@@ -69,12 +70,7 @@ const read = (p: string) => fs.readFileSync(path.resolve(ROOT, p), "utf-8");
  * whole-line `//`. `(^|\s)` before the slashes keeps `https://…` intact.
  */
 function code(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, "\n")
-    .split("\n")
-    .map((line) => line.replace(/(^|\s)\/\/.*$/, ""))
-    .filter((line) => line.trim().length > 0)
-    .join("\n");
+  return stripComments(src);
 }
 
 const RENTALS_SRC = read("server/routes-rentals.ts");

@@ -45,6 +45,7 @@ import {
 } from "../../shared/rental/propertyExpense";
 import { buildBulkCreateReport } from "../../shared/rental/unitInventory";
 import { expenseCreateSchema } from "../../server/routes-property-expenses";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (p: string) => fs.readFileSync(path.resolve(ROOT, p), "utf-8");
@@ -54,12 +55,7 @@ const read = (p: string) => fs.readFileSync(path.resolve(ROOT, p), "utf-8");
  * whole-line `//`. `(^|\s)` before the slashes keeps `https://…` intact.
  */
 function code(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, "\n")
-    .split("\n")
-    .map((line) => line.replace(/(^|\s)\/\/.*$/, ""))
-    .filter((line) => line.trim().length > 0)
-    .join("\n");
+  return stripComments(src);
 }
 
 const ROUTES_SRC = read("server/routes-property-expenses.ts");

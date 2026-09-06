@@ -25,6 +25,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const SERVER = path.join(ROOT, "server");
@@ -154,15 +155,6 @@ function walk(dir: string, out: string[] = []): string[] {
     }
   }
   return out;
-}
-
-/** Strip line and block comments so prose about a send is not counted as one. */
-function stripComments(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .map((l) => (l.trimStart().startsWith("//") || l.trimStart().startsWith("*") ? "" : l))
-    .join("\n");
 }
 
 interface SendSite {

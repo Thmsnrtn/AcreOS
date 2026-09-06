@@ -31,6 +31,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { freezeDecision } from "@shared/decisions/snapshot";
 import { OUTCOME_KINDS, isTerminal } from "@shared/outcomes/outcome";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -40,11 +41,7 @@ function read(rel: string): string {
 
 /** Source with comments stripped — a rule must hold in CODE, not in prose. */
 function code(rel: string): string {
-  return read(rel)
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .map((l) => l.replace(/(^|[^:])\/\/.*$/, "$1"))
-    .join("\n");
+  return stripComments(read(rel));
 }
 
 function decision(over: Record<string, unknown> = {}) {

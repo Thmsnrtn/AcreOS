@@ -25,6 +25,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const SRC = fs.readFileSync(
   path.join(path.resolve(__dirname, "../.."), "scripts/migrate.mjs"),
@@ -40,10 +41,7 @@ const SRC = fs.readFileSync(
  * documentation is matching prose, not behaviour; the same mistake this
  * session already made twice, in the county-opportunity and deal-feed scanners.
  */
-const CODE = SRC.replace(/\/\*[\s\S]*?\*\//g, "")
-  .split("\n")
-  .map((l) => l.replace(/(^|[^:])\/\/.*$/, "$1"))
-  .join("\n");
+const CODE = stripComments(SRC);
 
 describe("the retry pass exists and is bounded", () => {
   it("vacuity guard: the runner still has its statement loop and skip bookkeeping", () => {

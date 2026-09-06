@@ -40,6 +40,7 @@ import { flipMaoEngine } from "../../server/services/economics/engines/flipMao";
 import { rentalReturnsEngine } from "../../server/services/economics/engines/rentalReturns";
 import { multifamilyNoiEngine } from "../../server/services/economics/engines/multifamilyNoi";
 import { computeMao, computeRentalReturns } from "../../server/services/flipUnderwriting";
+import { stripComments } from "../helpers/stripComments";
 import {
   TRAILING_12_WINDOW_MONTHS,
   computeNoi,
@@ -185,11 +186,7 @@ describe("an engine is code, never a model", () => {
     // required to reproduce a financial result". The guarantee is structural —
     // an absent branch, not a policy.
     const src = fs.readFileSync(path.join(ROOT, "shared/economics/scenario.ts"), "utf8");
-    const code = src
-      .replace(/\/\*\*[\s\S]*?\*\//g, "")
-      .split("\n")
-      .filter((l) => !l.trimStart().startsWith("//"))
-      .join("\n");
+    const code = stripComments(src);
     for (const forbidden of ["openai", "anthropic", "fetch(", "await import", "llm"]) {
       expect(code.toLowerCase(), `scenario.ts must not reference ${forbidden}`).not.toContain(
         forbidden,

@@ -27,16 +27,12 @@ import { describe, it, expect, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { scoreLeadIntelligence } from "../../server/services/leadIntelligenceEngine";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 
 function code(rel: string): string {
-  return fs
-    .readFileSync(path.join(ROOT, rel), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .map((l) => l.replace(/(^|[^:])\/\/.*$/, "$1"))
-    .join("\n");
+  return stripComments(fs.readFileSync(path.join(ROOT, rel), "utf8"));
 }
 
 describe("no offer is quoted that no measurement supports", () => {

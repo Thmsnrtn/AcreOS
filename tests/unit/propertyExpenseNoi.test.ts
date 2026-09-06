@@ -30,6 +30,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
+import { stripComments } from "../helpers/stripComments";
 
 import {
   summarizeMeasuredOpEx,
@@ -61,12 +62,7 @@ function row(
 
 /** Source with comments removed — the same discipline as the other route tests. */
 function code(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, "\n")
-    .split("\n")
-    .map((line) => line.replace(/(^|\s)\/\/.*$/, ""))
-    .filter((line) => line.trim().length > 0)
-    .join("\n");
+  return stripComments(src);
 }
 
 const INV_SRC = read("server/routes-investor-analytics.ts");

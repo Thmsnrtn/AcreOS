@@ -37,6 +37,7 @@ import {
   type EvidenceClaim,
 } from "@shared/evidence/claim";
 import { freezeDecision } from "@shared/decisions/snapshot";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -54,11 +55,7 @@ function read(rel: string): string {
 
 /** Source with comments stripped — a rule must hold in CODE, not in prose. */
 function code(rel: string): string {
-  return read(rel)
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .map((l) => l.replace(/(^|[^:])\/\/.*$/, "$1"))
-    .join("\n");
+  return stripComments(read(rel));
 }
 
 describe("every canonical store is organization-scoped by construction", () => {

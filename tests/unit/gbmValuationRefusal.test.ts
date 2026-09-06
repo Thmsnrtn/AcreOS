@@ -40,6 +40,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/stripComments";
 import {
   GradientBoostingRegressor,
   LAND_FEATURE_NAMES,
@@ -51,11 +52,7 @@ const SERVICE = join(__dirname, "..", "..", "server/services/acreOSValuation.ts"
 /** Source with comments stripped — a scanner that reads its own fix notes is
  *  matching prose, not code. */
 function serviceCode(): string {
-  return readFileSync(SERVICE, "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .map((l) => l.replace(/(^|[^:])\/\/.*$/, "$1"))
-    .join("\n");
+  return stripComments(readFileSync(SERVICE, "utf8"));
 }
 
 /**

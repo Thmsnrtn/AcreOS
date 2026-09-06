@@ -35,16 +35,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { noteGracePeriodDays } from "../../shared/notes/delinquency";
 import { planNoteAging, type AgingNoteRow } from "../../server/jobs/acquiredNoteAging";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 
 function source(rel: string): string {
-  return fs
-    .readFileSync(path.join(ROOT, rel), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .map((l) => l.replace(/(^|[^:])\/\/.*$/, "$1"))
-    .join("\n");
+  return stripComments(fs.readFileSync(path.join(ROOT, rel), "utf8"));
 }
 
 describe("noteGracePeriodDays — an explicit zero is a term", () => {
