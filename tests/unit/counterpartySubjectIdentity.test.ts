@@ -25,6 +25,7 @@
  * is what every case below reads.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import fs from "node:fs";
 import path from "node:path";
 import { stripCommentsPreservingLines } from "../../scripts/lib/strip-comments.mjs";
@@ -89,6 +90,11 @@ vi.mock("../../server/utils/logger", () => ({
 }));
 
 import { communicationsService } from "../../server/services/communications";
+// This gate walks the source tree; its cost scales with the repo, and under the
+// coverage run it does not fit the suite’s 30s default. A killed gate reports
+// nothing about what it guards, so the budget is declared, not inherited.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
+
 
 const BASE = { leadId: 7, organizationId: 42, channel: "email" as const, message: "Are you selling?" };
 

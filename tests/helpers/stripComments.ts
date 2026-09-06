@@ -258,4 +258,8 @@ export function stripCommentsReference(source: string): string {
  * faster — it makes eight gates stop reporting. So the sweeps say what they
  * need, here, once, rather than the whole suite loosening to accommodate them.
  */
-export const REPO_SWEEP_TIMEOUT_MS = 120_000;
+// Re-exported for the 50-odd sweeps that already import it from here. The
+// definition moved to ./sweepBudget because the budget is a property of
+// walking the tree, not of stripping comments — see that file for the
+// population error the old location caused.
+export { REPO_SWEEP_TIMEOUT_MS } from "./sweepBudget";

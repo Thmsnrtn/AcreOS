@@ -21,9 +21,15 @@
  * enumerated, per-member exact counts (vacuity both directions), the
  * agent-autonomous class frozen shrink-only.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
+// This gate walks the source tree; its cost scales with the repo, and under the
+// coverage run it does not fit the suite’s 30s default. A killed gate reports
+// nothing about what it guards, so the budget is declared, not inherited.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
+
 
 const ROOT = resolve(__dirname, "../..");
 

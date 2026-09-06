@@ -87,7 +87,8 @@
  * are full phrases listed with the sense they protect — never a bare word.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
@@ -100,6 +101,11 @@ import {
   PAX_STANDING_LINE,
 } from "@shared/pax-glossary";
 import { OFFERED_STANCES, STANCE_LABELS, UNATTENDED_PATHS } from "@shared/pax-controls";
+// This gate walks the source tree; its cost scales with the repo, and under the
+// coverage run it does not fit the suite’s 30s default. A killed gate reports
+// nothing about what it guards, so the budget is declared, not inherited.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
+
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf8");

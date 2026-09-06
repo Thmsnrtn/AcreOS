@@ -20,10 +20,16 @@
  * reaches TypeScript one hop away through scripts/lib/strip-comments.mjs.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import { stripYamlComments } from "../helpers/stripYamlComments";
+// This gate walks the source tree; its cost scales with the repo, and under the
+// coverage run it does not fit the suite’s 30s default. A killed gate reports
+// nothing about what it guards, so the budget is declared, not inherited.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
+
 
 const ROOT = process.cwd();
 const WORKFLOW_DIR = path.join(ROOT, ".github", "workflows");

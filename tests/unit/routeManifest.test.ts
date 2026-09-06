@@ -19,10 +19,16 @@
  * Purely structural: reads the filesystem + the manifest. No DB, no mounting.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import { existsSync, readdirSync, readFileSync } from "fs";
 import { resolve } from "path";
 import { ROUTE_MANIFEST, KNOWN_NON_MOUNTED } from "../../server/routeManifest";
+// This gate walks the source tree; its cost scales with the repo, and under the
+// coverage run it does not fit the suite’s 30s default. A killed gate reports
+// nothing about what it guards, so the budget is declared, not inherited.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
+
 
 const SERVER_DIR = resolve(__dirname, "../../server");
 

@@ -34,7 +34,7 @@
  * exactly the sites that did not copy it.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { parcelSnapshotVisibleTo } from "../../server/storage/gisRepo";

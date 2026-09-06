@@ -28,13 +28,19 @@
  * standing in for a decided one, on a path that decides what a person sees.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import {
   resolveRouteEnabled,
   resolveFlagEnabled,
   type FeatureFlagsResponse,
 } from "../../client/src/hooks/use-feature-flags";
 import { MOBILE_DOORS, NAV_ITEM_MAP } from "../../client/src/lib/nav-items";
+// This gate walks the source tree; its cost scales with the repo, and under the
+// coverage run it does not fit the suite’s 30s default. A killed gate reports
+// nothing about what it guards, so the budget is declared, not inherited.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
+
 
 /**
  * The five canonical doors, derived from the nav registry rather than typed
