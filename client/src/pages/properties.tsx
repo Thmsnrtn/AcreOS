@@ -21,7 +21,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertPropertySchema, type Property } from "@shared/schema";
+import { insertPropertySchema } from "@shared/forms/property";
+import type { Property } from "@shared/schema";
 import { z } from "zod";
 
 // APN validation pattern - supports common formats like 123-456-789, 123-45-678-901, 12345678
