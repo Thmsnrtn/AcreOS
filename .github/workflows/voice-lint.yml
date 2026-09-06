@@ -39,13 +39,34 @@ concurrency:
 jobs:
   voice-lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
-      # The linter is dependency-free (pure Node + fs/regex) — no npm install
-      # needed, which keeps this gate fast (<10s).
+          cache: "npm"
+
+      # THIS GATE IS NO LONGER DEPENDENCY-FREE, AND THAT WAS A TRADE.
+      #
+      # It used to run on bare Node — "pure Node + fs/regex", <10s, no install —
+      # and the regex half of that is exactly what changed. `maskTsLike` stripped
+      # comments with the two-regex idiom, which eats a whole file when a line
+      # comment contains a block-comment opener and cannot tell a comment from a
+      # regex literal holding one. On this linter that misfires in the worst
+      # direction: prose inside a comment gets scanned as customer-facing copy,
+      # or real copy gets blanked and never scanned at all.
+      #
+      # It now uses the one shared parser-based stripper (scripts/lib/strip-comments.mjs),
+      # which imports TypeScript — so node_modules has to exist. The migration
+      # landed without this step and the workflow died on ERR_MODULE_NOT_FOUND;
+      # branch pushes never run this workflow, so nothing caught it until main.
+      #
+      # A silent fallback (use the parser when present, regexes otherwise) was
+      # rejected outright: a gate that quietly changes what it can see, depending
+      # on whether a package resolved, is worse than one that is honestly slower.
+      - name: Install dependencies
+        run: npm ci
+
       - name: Run voice linter (full scope)
         run: node scripts/voice-lint.mjs --all

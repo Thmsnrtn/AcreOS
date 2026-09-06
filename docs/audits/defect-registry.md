@@ -1441,6 +1441,58 @@ Remediation plan: Done, with three gates, each falsified:
   clock, and on the premise.
 Resolving commits: pending
 
+### DEFECT-0083
+Title: The voice linter died on main — a gate migrated onto a dependency the workflow never installed
+Severity: P1
+Status: FIXED
+Surfaced by lenses: the main-push run enumeration for `33ff7915`, 2026-09-06
+Description: DEFECT-0079 migrated `scripts/voice-lint.mjs` off the two-regex
+comment idiom and onto the shared parser-based stripper. That stripper imports
+TypeScript. `voice-lint.yml` runs `node scripts/voice-lint.mjs --all` on bare
+Node with no install step, and says so in a comment: *"The linter is
+dependency-free (pure Node + fs/regex) — no npm install needed, which keeps this
+gate fast (<10s)."* The workflow died on `ERR_MODULE_NOT_FOUND: Cannot find
+package 'typescript'`.
+
+The linter therefore did not run at all on the copy it exists to police, and it
+had no way to say so beyond a red X on a workflow that only fires on `main`.
+
+Three things are worth recording.
+
+**It was invisible until `main`.** `voice-lint.yml` has `on: push: branches:
+[main]`. The three branch workflows are all green on the same tree. This is the
+population CLAUDE.md already names — *"enumerate EVERY workflow run for the SHA.
+Not the three you know about"* — and it is the second time in two days that rule
+has been the only thing standing between a broken gate and a green report.
+
+**My own measurement of the blast radius read a comment as code.** Checking which
+workflows ran a migrated script without installing, `grep -cE "npm ci|npm install"`
+returned 1 for `voice-lint.yml` — matching the comment that says *no npm install
+needed*. The fourth law, inside the investigation of a fourth-law defect.
+
+**A silent fallback was rejected.** Making the stripper use the parser when
+present and regexes otherwise would have kept the workflow dependency-free and
+fast. It would also mean a gate that quietly changes what it can see depending
+on whether a package resolved — the same shape as the DNC provider that
+collapsed to "no vendor configured" and passed every number. The workflow takes
+the install and the extra ~30s instead.
+
+Evidence: run 34031073240, `ERR_MODULE_NOT_FOUND ... imported from
+/home/runner/work/AcreOS/AcreOS/scripts/lib/strip-comments.mjs`.
+Remediation plan: Done. `voice-lint.yml` gains `npm ci` (with npm caching) and a
+timeout raised 3 → 8 minutes to cover it; the stale "dependency-free" comment is
+replaced by the trade it now makes.
+
+Gated by `workflowScriptsHaveTheirDeps.test.ts`, which follows each workflow
+step's `node scripts/<x>` through that script's imports TRANSITIVELY and requires
+an install step whenever the graph reaches a bare specifier. Following the graph
+is the point, and it is asserted: `voice-lint.mjs` imports nothing external
+itself and reaches TypeScript one hop away, so a walk that read only the entry
+file would report zero and pass over the defect. Falsified by removing the
+install step, and by the COMMENT TRAP — `npm ci` present only in prose, which a
+naive scan accepts.
+Resolving commits: pending
+
 ---
 
 ## Summary Statistics
@@ -1448,9 +1500,9 @@ Resolving commits: pending
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 14  | 14    |
-| FIXED  | 12  | 44  | 5   | 61    |
+| FIXED  | 12  | 45  | 5   | 62    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **47** | **20** | **79** |
+| **Total** | **12** | **48** | **20** | **80** |
 
 All P0 and P1 defects resolved (fixed or justified deferral). 14 P2s remain open (plus DEFECT-0063, partially fixed)
 (not blocking launch).
