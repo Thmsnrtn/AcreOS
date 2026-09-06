@@ -47,10 +47,19 @@ vi.mock("./domainAutonomy", () => ({
 }));
 
 // ── founder collab mock ──────────────────────────────────────────────────────
-const askFounderMock = vi.fn(async () => ({ askId: 1, pagerFired: true, pagerEventId: 1 }));
+// Typed with its parameter: the assertions below read
+// `askFounderMock.mock.calls[0][0]`, and a zero-arg vi.fn() makes every call
+// tuple `[]`, so indexing it is a type error on a mock the test genuinely
+// passes an argument to.
+const askFounderMock = vi.fn(async (_input: Record<string, unknown>) => ({
+  askId: 1,
+  pagerFired: true,
+  pagerEventId: 1,
+  deduped: false,
+}));
 let openAsks: Array<{ questionSummary: string }> = [];
 vi.mock("../solene/founderCollab", () => ({
-  askFounder: (...args: any[]) => askFounderMock(...(args as [])),
+  askFounder: (...args: any[]) => askFounderMock(args[0]),
   listOpenAsks: vi.fn(async () => openAsks),
 }));
 
@@ -65,14 +74,16 @@ vi.mock("./selfPatchGitOps", () => ({
   createSelfPatchGitOps: vi.fn(() => ({ restore: restoreMock })),
 }));
 
-const runGatedSelfPatchMock = vi.fn(async () => ({
+// Same shape as askFounderMock above: the assertions read
+// `.mock.calls[0][1]` and `[0][2]`, which a zero-arg vi.fn() types as `[]`.
+const runGatedSelfPatchMock = vi.fn(async (_audit?: unknown, _autoMerge?: boolean, _suffix?: string) => ({
   ran: true,
   reason: "safe-class dependency patch PR opened",
   prUrl: "https://github.com/x/y/pull/1",
   witnessedCount: 0,
 }));
 vi.mock("./selfPatch", () => ({
-  runGatedSelfPatch: (...args: any[]) => runGatedSelfPatchMock(...(args as [])),
+  runGatedSelfPatch: (...args: any[]) => runGatedSelfPatchMock(args[0], args[1], args[2]),
 }));
 
 import { runImmuneResponse, securityAutoMergeEarned, IMMUNE_ASK_MARKER } from "./immuneResponse";

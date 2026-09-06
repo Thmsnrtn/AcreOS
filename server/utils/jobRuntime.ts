@@ -39,6 +39,51 @@ export function trackInterval(fn: () => void, ms: number): ReturnType<typeof set
 // "1 success log per hour per job" sampling.
 const _jobLastSuccessLog: Record<string, number> = {};
 
+/**
+ * Re-extend a held lease while its job body runs.
+ *
+ * The scheduler's own lease-row path learned this (scheduler.ts: HEARTBEAT_MS
+ * at 3x the TTL expiry rate) when job bodies moved out of transactions. This
+ * mechanism — the one job bodies take out for THEMSELVES, across 185 call
+ * sites — did not. A body that outlives its TTL simply loses the lock, and the
+ * next machine's tick acquires it and starts the same job concurrently: two
+ * dunning runs, two nudge sends, two ETL writes.
+ *
+ * Most TTLs here are generous (60 * 60 is the commonest by far), so this was
+ * never the everyday failure — but "the job finished inside an hour every time
+ * so far" is a hope, not a lock, and the TTLs that are seconds-scale have no
+ * margin at all.
+ *
+ * acquireJobLock already re-extends rather than refusing when the caller is
+ * the current holder (its WHERE matches `lockedBy = instanceId`), so the
+ * heartbeat is the same call on a timer. It is unref'd: a heartbeat must never
+ * be the reason a process stays alive.
+ */
+function startLeaseHeartbeat(jobName: string, ttlSeconds: number): () => void {
+  // A third of the TTL, floored so a very short lease still gets several
+  // extensions and ceilinged so an all-day lease is not pinged pointlessly.
+  const periodMs = Math.min(Math.max((ttlSeconds * 1000) / 3, 5_000), 15 * 60_000);
+  const timer = setInterval(() => {
+    void storage
+      .acquireJobLock(jobName, instanceId, ttlSeconds)
+      .then((held) => {
+        if (!held) {
+          // Losing a lease mid-run is worth knowing about: it means the body
+          // overran its TTL far enough that another machine took it, and the
+          // two are now running concurrently.
+          logger.warn("[jobRuntime] lease lost while job was still running", {
+            metadata: { jobName, ttlSeconds },
+          });
+        }
+      })
+      .catch(() => {
+        /* transient db error — the next beat retries, the TTL is the backstop */
+      });
+  }, periodMs);
+  timer.unref?.();
+  return () => clearInterval(timer);
+}
+
 export async function withJobLock<T>(
   jobName: string,
   ttlSeconds: number,
@@ -58,6 +103,7 @@ export async function withJobLock<T>(
     return null;
   }
   const startedAt = new Date();
+  const stopHeartbeat = startLeaseHeartbeat(jobName, ttlSeconds);
   try {
     const result = await fn();
     const durationMs = Date.now() - startedAt.getTime();
@@ -92,6 +138,7 @@ export async function withJobLock<T>(
     }).catch(() => {});
     throw err;
   } finally {
+    stopHeartbeat();
     await storage.releaseJobLock(jobName, instanceId);
   }
 }
