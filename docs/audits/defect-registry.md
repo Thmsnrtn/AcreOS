@@ -567,11 +567,30 @@ Resolving commits: pending
 ### DEFECT-0053
 Title: Trust ledger running balance computed from last row -- no integrity guarantee
 Severity: P2
-Status: OPEN
+Status: FIXED — dead runtime retired 2026-09-06; table left inert pending a founder drop ruling
 Surfaced by lenses: 4 (DB-011)
 Description: `getTrustBalance()` returns running balance from the most recent row by `created_at`. No constraint ensures consistency. Concurrent inserts or row deletion silently corrupts the chain. This is a fiduciary trust account.
 Evidence: `server/storage.ts:7840-7847`.
-Remediation plan: Compute from `SUM(amount)`. Add immutability trigger. Wrap inserts in serializable transaction.
+Remediation plan: DONE, by RETIREMENT rather than hardening — and the entry's own
+framing was corrected in the process. Verified at HEAD: all four `/api/trust-ledger`
+routes had zero callers (no client page, no AI tool dispatcher, nothing), the four
+repo methods were reached only by those routes, and `recordLedgerEntry`,
+`recordNotePayment`, `recordDealAcquisition`, `recordDealSale` and
+`generateProfitLoss` had zero call sites of any kind. So no screen ever rendered the
+last-row balance; the real exposure was a direct API consumer being handed an
+authoritative-sounding number the server never derived, from a POST that spread
+`req.body` and let a caller set their own balance.
+
+The registry's remediation (derive the read, harden the write, add an immutability
+trigger) was NOT taken. The org's real books are `account_ledger_entries` —
+double-entry, CHECK-constrained and actually read by trialBalance, glPdfExport,
+qboExport and recognitionWorker. Hardening a dead single-entry ledger to sit beside
+the real one is work that buys nothing, and the trigger would have broken
+`orgDeletion.ts`'s GDPR Art. 17 sweep, which must be able to delete these rows.
+
+The TABLE is untouched and inert. Its drop may delete customer financial rows and is
+therefore a founder decision; see the deletion-ledger row for the row-count evidence
+required and the recommendation.
 Resolving commits: pending
 
 ### DEFECT-0054
@@ -645,7 +664,7 @@ Resolving commits: 2026-05-11 onboarding consolidation (App.tsx:494)
 ### DEFECT-0060
 Title: 1098 tax statement year boundaries ignore timezone -- compliance error
 Severity: P2
-Status: OPEN
+Status: FIXED (see DEFECT-0086)
 Surfaced by lenses: 58 (F-058-09)
 Description: Year boundaries for IRS 1098 tax documents are constructed in server timezone. A payment on Dec 31 at 10 PM Pacific (Jan 1 UTC) would be excluded from the correct tax year.
 Evidence: `server/routes-borrower.ts:663-668`.
@@ -1635,18 +1654,77 @@ Resolving commits: pending
 
 ---
 
+### DEFECT-0086
+Title: A 31 December payment filed in the wrong tax year — 1098 boundaries bucketed by the server's zone
+Severity: P1
+Status: FIXED
+Surfaced by lenses: 58 (F-058-09), verified and re-scoped by the fan-out 2026-09-06 (was DEFECT-0060)
+Description: Box 1 of a 1098 is the interest RECEIVED in a calendar year — a
+figure filed with the IRS and furnished to the borrower under 26 U.S.C. §6050H.
+"Received" is a fact about the LENDER's local day. Both producers answered it
+with the server's zone.
+
+- `server/services/form1098Batch.ts` — `toIsoDay` normalised a `timestamp` with
+  `value.toISOString().slice(0,10)`, i.e. the UTC day.
+- `server/routes-borrower.ts` — the portal's 1098 branch built its window as
+  `new Date(taxYear, 0, 1)` .. `new Date(taxYear, 11, 31, 23, 59, 59)`, i.e. the
+  server's local zone, and compared a `timestamp` against it.
+
+A borrower paying on 31 December at 16:00 Pacific is `2026-01-01T00:00Z`, so that
+interest was reported in the FOLLOWING tax year. Every US zone is behind UTC, so
+the error is one-directional: it always pushes interest forward a year, and it
+lands precisely on the tax-motivated year-end payment. Magnitude per event is one
+payment's interest — small in dollars, but the remedy for a wrong filed figure is
+a corrected filing and a corrected payee statement, not a rounding note.
+
+**The asymmetry is the part the entry missed.** `note_payments.payment_date`
+(ACQUIRED notes) is a `date` column — no time, no zone, already the recorded
+calendar day — while `payments.payment_date` (ORIGINATED notes) is a `timestamp`.
+So a lender with a mixed portfolio filed TWO different year conventions in one
+submission, which reads as nondeterminism rather than as a fixable rule.
+
+Two smaller things fell out of the same three lines. The portal's window CLOSED
+at `23:59:59` exactly, so a payment at `23:59:59.5` fell in neither year. And
+`toIsoDay`'s own header claimed "no timezone drift on year boundaries" — true of
+its string branch, false of the Date branch it also served, which is how the
+claim survived being read.
+
+Evidence: `server/services/form1098Batch.ts:387` (before),
+`server/routes-borrower.ts:1952` (before), `shared/schema/notes-vertical.ts:295`
+(`date`), `shared/schema.ts:1712` (`timestamp`).
+Remediation plan: Done. `dayInZone(value, tz)` answers the day-in-a-zone question
+once; both producers use it, so the two conventions become one. The zone is
+`organizations.timezone` — an IANA name with a column default, already the field
+the digest and the Pax scheduler run on — resolved by `resolveOrgTimeZone`, so
+nothing is invented here. Where the column is somehow empty the fallback is UTC
+rather than a guessed US zone: inventing a lender's locale on a filed tax figure
+is the same class of mistake as inventing a note's grace period (DEFECT-0078).
+
+`dayInZone` also refuses to reparse a bare `YYYY-MM-DD`. `new Date("2025-12-31")`
+is midnight UTC, which in any US zone is the 30th — the defect in miniature, and
+the one a "just normalise everything through Date" fix would have introduced.
+
+Gated by `form1098BucketsByLenderDay.test.ts`, which asserts the BOUNDARY
+BEHAVIOUR rather than the presence of a timezone argument: a year-end Pacific
+instant buckets to 2025-12-31, the same row under UTC buckets to 2026-01-01 (the
+defect, pinned so it stays legible), and the acquired and originated paths agree
+on the same calendar day. Falsified by restoring `toISOString()` bucketing (3
+tests red, including the two-conventions one) and by removing the bare-date guard
+(1 test red).
+Resolving commits: pending
+
 ---
 
 ## Summary Statistics
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 13  | 13    |
-| FIXED  | 12  | 47  | 6   | 65    |
+| OPEN   | 0   | 0   | 11  | 11    |
+| FIXED  | 12  | 48  | 8   | 68    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **50** | **20** | **82** |
+| **Total** | **12** | **51** | **20** | **83** |
 
-All P0 and P1 defects resolved (fixed or justified deferral). 13 P2s remain open (plus DEFECT-0063, partially fixed)
+All P0 and P1 defects resolved (fixed or justified deferral). 11 P2s remain open (plus DEFECT-0063, partially fixed)
 (not blocking launch).
 
 ### Fixed Defects Summary

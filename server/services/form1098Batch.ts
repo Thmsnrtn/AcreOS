@@ -379,10 +379,93 @@ export interface Form1098BatchResult {
 // ─── Date helpers ─────────────────────────────────────────────────────────
 
 /**
- * Normalize a `date`-typed column (string) or `timestamp` column (Date) to
- * an ISO calendar day. ISO day strings compare correctly with `<`/`>=`,
- * which is why the derivation works on strings rather than Date objects
- * (no timezone drift on year boundaries).
+ * The calendar day an INSTANT fell on, in `tz` — never in the server's zone.
+ *
+ * Box 1 of a 1098 is the interest RECEIVED in a calendar year, and "received"
+ * is a fact about the lender's local day. `payments.payment_date` is a
+ * `timestamp`, so a borrower paying on 31 December at 16:00 Pacific is
+ * 2025-01-01T00:00Z: `toISOString()` files that interest in the FOLLOWING tax
+ * year — on a figure filed with the IRS and furnished to the borrower under
+ * 26 U.S.C. §6050H. Every US zone is behind UTC, so the error is
+ * one-directional: it always pushes interest forward a year, and it lands
+ * precisely on the tax-motivated year-end payment.
+ *
+ * `tz` is the org's own `organizations.timezone` — an IANA name, the same field
+ * the digest and the Pax scheduler already run on — so nothing here is invented.
+ */
+export function dayInZone(
+  value: string | Date | null | undefined,
+  tz: string,
+): string | null {
+  if (!value) return null;
+
+  // AN ABSENT ZONE IS NOT UTC AND IS NOT THE SERVER'S — IT IS A BUG.
+  // `Intl.DateTimeFormat` treats `timeZone: undefined` as the SYSTEM zone, which
+  // is exactly the silent fallback this function exists to remove: a caller that
+  // forgot the zone would get the old behaviour back and no signal. Throw, so a
+  // missing zone is a loud failure at the call site instead of a quietly wrong
+  // tax year. (A test calling this with one argument type-checked as an error
+  // and PASSED at runtime for precisely this reason.)
+  if (!tz) {
+    throw new Error(
+      "dayInZone requires an IANA time zone — an absent zone silently means the " +
+        "server's, which is the defect this function replaces",
+    );
+  }
+
+  // A bare `YYYY-MM-DD` has no time and no zone — it IS the recorded day, and
+  // there is nothing here to convert. Reparsing it as an instant would be the
+  // defect in miniature: `new Date("2025-12-31")` is midnight UTC, which in any
+  // US zone is the 30th.
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const parsed = new Date(trimmed);
+    return Number.isNaN(parsed.getTime()) ? null : dayInZone(parsed, tz);
+  }
+
+  if (Number.isNaN(value.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+  const get = (t: string) => parts.find((part) => part.type === t)?.value;
+  const y = get("year");
+  const m = get("month");
+  const d = get("day");
+  return y && m && d ? `${y}-${m}-${d}` : null;
+}
+
+/**
+ * The org's IANA zone, or UTC when the column is somehow empty.
+ *
+ * `organizations.timezone` carries a column default, so the fallback is a
+ * belt-and-braces path rather than a routine one — but it is UTC and not a
+ * guessed US zone, because inventing a lender's locale on a filed tax figure is
+ * the same class of mistake as inventing a note's grace period.
+ */
+export async function resolveOrgTimeZone(orgId: number): Promise<string> {
+  const [row] = await db
+    .select({ timezone: organizations.timezone })
+    .from(organizations)
+    .where(eq(organizations.id, orgId));
+  return typeof row?.timezone === "string" && row.timezone ? row.timezone : "UTC";
+}
+
+/**
+ * Normalize a `date`-typed column to an ISO calendar day. ISO day strings
+ * compare correctly with `<`/`>=`.
+ *
+ * A `date` column carries no time and no zone — it IS the recorded calendar day
+ * — so the string branch has no timezone question to answer. THE DATE BRANCH
+ * DOES, and this function cannot answer it: it has no zone to answer it in. It
+ * used to, via `toISOString()`, and this header used to claim "no timezone drift
+ * on year boundaries" — true of the string branch, false of the other one, which
+ * is exactly how the claim survived being read. Instants now go through
+ * `dayInZone`; the Date branch remains only for values that are zone-free by
+ * construction.
  */
 export function toIsoDay(value: string | Date | null | undefined): string | null {
   if (!value) return null;
@@ -1260,8 +1343,19 @@ export interface OriginatedLedgerRow {
  * itself posted — see collectOriginatedCandidates for why that second rule
  * is what keeps an ACH return from subtracting the same interest twice.
  */
+/**
+ * @param orgTimeZone  The org's IANA zone. Originated payments are INSTANTS
+ *                     (`payments.payment_date` is a `timestamp`), so which day
+ *                     one lands on is a question about a zone — and answering it
+ *                     with the server's was the defect. The acquired ledger
+ *                     needs no equivalent: `note_payments.payment_date` is a
+ *                     `date`, already the recorded calendar day. That asymmetry
+ *                     is why one lender's batch could file two different year
+ *                     conventions in a single submission.
+ */
 export function toOriginatedLedgerEntries(
   rows: OriginatedLedgerRow[],
+  orgTimeZone: string,
 ): Map<number, Form1098LedgerEntry[]> {
   interface PostedRowFacts {
     day: string;
@@ -1269,7 +1363,7 @@ export function toOriginatedLedgerEntries(
   }
   const rowByTransactionId = new Map<string, PostedRowFacts>();
   for (const l of rows) {
-    const day = toIsoDay(l.paymentDate);
+    const day = dayInZone(l.paymentDate, orgTimeZone);
     if (!day || !l.transactionId) continue;
     rowByTransactionId.set(l.transactionId, { day, posted: l.status === "completed" });
   }
@@ -1277,7 +1371,7 @@ export function toOriginatedLedgerEntries(
   const ledgerByNote = new Map<number, Form1098LedgerEntry[]>();
   for (const l of rows) {
     if (l.status !== "completed") continue;
-    const day = toIsoDay(l.paymentDate);
+    const day = dayInZone(l.paymentDate, orgTimeZone);
     if (!day) continue;
 
     const link = parseReversalTransactionId(l.transactionId);
@@ -1398,7 +1492,12 @@ export async function collectOriginatedCandidates(
     .from(payments)
     .where(inArray(payments.noteId, noteIds));
 
-  const ledgerByNote = toOriginatedLedgerEntries(ledgerRows);
+  // The org's own zone decides which calendar day an instant fell on, and
+  // therefore which tax year a payment is filed in. `organizations.timezone`
+  // is the field the digest and the Pax scheduler already run on; it carries a
+  // column default, so this is a stated term, not one invented here.
+  const orgTimeZone = await resolveOrgTimeZone(orgId);
+  const ledgerByNote = toOriginatedLedgerEntries(ledgerRows, orgTimeZone);
 
   const borrowerIds = rows.map((r) => r.borrowerId).filter((id): id is number => id !== null);
   const borrowerById = await loadBorrowers(borrowerIds);

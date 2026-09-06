@@ -1,346 +1,402 @@
 {
   "_README": "Annotated baseline for scripts/check-no-fabrication.mjs. Every CURRENT Math.random hit in a customer-fact path is enumerated here: server (routes-*.ts, storage.ts, services/**) AND client/src/** \u2014 the rendering layer was added 2026-08-13 because this lint's own rationale names the UI (\"we are lying with a confident UI\") while scanning only the server, so a component inventing a displayed number never passed under it. category=P0-FIX-PENDING marks a real fabrication that an owning agent must replace with real data \u2014 those entries are removed as the fixes land (a fixed call site becomes a STALE entry that FAILS the lint, forcing removal). All other categories (id, jitter, sampling, shuffle, weighted-pick, backoff, algo) are legitimate non-determinism. New non-id/jitter entries require Iris-CTO sign-off. The ratchet only goes DOWN. Curated 2026-06-08 by Iris+Tess.",
-  "_lastBumpNote": "2026-08-28: removed decisionCausalityV11.ts:28 \u2014 file DELETED (competing-brains stage 2), not fixed-in-place. 2026-08-27 \u2014 LINE CORRECTIONS ONLY (the same two routes-va-engine entries), no entry added or removed, count unchanged. The buyer-reservations rename left a 6-line comment above both hits: 1961->1967, 2068->2074. THIRTEENTH and FOURTEENTH line-shift trips. Both re-read at their new lines \u2014 the same id-suffix entropy they were annotated as. PRIOR NOTE \u2014 2026-08-20 (second set today) \u2014 LINE CORRECTIONS ONLY (two entries), no entry added or removed, count unchanged at 57. The send-rail audit remediation edited emailService.ts above both hits: the counterparty From: chokepoint lost an inert conjunct and gained the rationale for why it has exactly three, and SendLane became file-local. Backoff-jitter hit 237->254, MIME-boundary hit 451->490. ELEVENTH and TWELFTH line-shift trips recorded here. Both hits re-read at their new lines and are the same legitimate uses they were annotated as \u2014 `const jitter = Math.random() * 0.3 * exponentialDelay` and ``const boundary = `=_acreos_${Date.now()}_${Math.random().toString(36).slice(2, 10)}` ``, neither a customer-visible fact. PRIOR NOTE \u2014 2026-08-20 \u2014 LINE CORRECTIONS ONLY (the same two entries, again), no entry added or removed, count unchanged at 57. The send-rail audit fix added the counterparty From: chokepoint and the isSameEmailAddress helper to emailService.ts, shifting the backoff-jitter hit 237->248 and the MIME-boundary hit 451->484. ELEVENTH and TWELFTH line-shift trips recorded here. Both hits were re-read at their new lines and are the same legitimate uses they were annotated as \u2014 exponential-backoff jitter (line 248) and a MIME multipart boundary (line 484), neither a customer-visible fact. Keying on file:line means ANY edit above a hit trips this gate; the prescribed fix is to CORRECT the number, never to drop the entry. PRIOR NOTE \u2014 2026-08-20 \u2014 LINE CORRECTIONS ONLY (two entries), no entry added or removed, count unchanged at 57. The BYO send-rail lane fix (founder decision 2026-07-17) made resolveCanSpamAddress and the From: display name lane-aware in emailService.ts, adding ~45 lines of rule + rationale above both entries: the backoff-jitter hit 190->237 and the MIME-boundary hit 388->451. NINTH and TENTH line-shift trips recorded here. Both hits were re-read at their new lines and are the same legitimate uses they were annotated as \u2014 exponential-backoff jitter and a MIME multipart boundary, neither a customer-visible fact. As the register keeps saying: keying on file:line means ANY edit above a hit trips this gate, and the prescribed fix is to CORRECT the number, never to drop the entry. PRIOR NOTE \u2014 2026-08-18 \u2014 LINE CORRECTIONS ONLY (three entries), no entry added or removed, count unchanged at 57. The URL-id tenancy sweep threaded an organizationId through writingStyle.ts's three profile-id functions and their routes-va-engine.ts call sites: routes-va-engine 1958->1961 and 2065->2068 (+3 lines from the org bindings), writingStyle 118->135 (+17 from the org parameter and the header explaining why it is required). SIXTH, SEVENTH and EIGHTH line-shift trips recorded here. All three hits were re-read at their new lines and are the same `id: `${prefix}_${Date.now()}_${Math.random()...}`` suffixes they were annotated as \u2014 entropy for uniqueness, not a fact. Worth stating plainly since the register keeps saying it: keying on file:line means ANY edit above a hit trips this gate, so the friction is structural rather than anyone's carelessness. The prescribed fix remains to CORRECT the number, never to drop the entry. PRIOR NOTE \u2014 2026-08-16 \u2014 LINE CORRECTIONS ONLY (second set today), no entry added or removed, count unchanged at 57. The tenancy fix for writingStyle.deleteStyleProfile threaded an organizationId through routes-va-engine.ts and added ~6 lines above both entries. FOURTH and FIFTH line-shift trips recorded in this register. Both hits re-read at their new lines and are the same legitimate uses they were annotated as. The register is keyed file:line and this keeps happening \u2014 that is a property of the register, not a series of accidents, and the fix is always to CORRECT the number rather than drop the entry. PRIOR NOTE \u2014 2026-08-16 \u2014 LINE CORRECTIONS ONLY, no entry added or removed, count unchanged at 57. The undeclared-lane guard added ~7 lines above both emailService.ts entries, shifting the backoff-jitter hit 182->189 and the MIME-boundary hit 380->387. This register is keyed file:line, so ANY edit that shifts a line trips it \u2014 the third such trip recorded here (writingStyle 117->118 from an added import, continuousAudit 723->702 from a redaction consolidation). The fix is always to CORRECT the number, never to drop the entry: both hits were re-read at their new lines and are the same legitimate uses they were annotated as. PRIOR NOTE \u2014 53 -> 57 on 2026-08-16: a one-time RE-SEED, not a relaxation. The gate enforced its hard-stop against ONE STRING, `Math.random`, so the rule was only as strong as a spelling \u2014 a seeded PRNG, node:crypto randomInt, getRandomValues, or faker fabricating the very same customer-visible number all shipped GREEN. FORBIDDEN_TOKEN became FORBIDDEN_TOKENS (Math.random, getRandomValues, makeSeededRng(, randomInt(, faker.) and the register absorbed the 4 pre-existing hits the widened predicate revealed. Every one of the 4 was verified BY HAND against its call site before being written down \u2014 4 of 4, not a sample \u2014 and every one is legitimate: a CSPRNG issuing a reactivation-token secret (lifecycleProgram:459), the definition of the mulberry32 PRNG itself (efficacy:47), and two Thompson-sampling selectPlay calls whose draw picks WHICH play runs and provably never reaches a display (continuousLoop:919/922 \u2014 scorePlays has exactly one non-test caller, and it returns a playId). Had any of the 4 been driving a displayed score it would have been reported as a defect instead of allowlisted; that distinction is the whole point of the annotation. The token list was MEASURED before adoption, not asserted: randomUUID( (72 hits) and randomBytes( (32) were measured and REJECTED \u2014 ids and crypto keys would have taken the register to ~161 entries and buried these four under a hundred `id` rows, which is how a gate earns a re-baseline instead of a reading. randomInt( and faker. measured 0 and cost nothing to close. Recorded in check-no-fabrication.mjs as REJECTED_CANDIDATES and re-checkable with `--measure`. The strictly-down rule resumes from 57: this is the only bump that widening the predicate buys.",
+  "_lastBumpNote": "2026-09-06: LINE CORRECTIONS ONLY (the same two routes-va-engine entries), no entry added or removed, count unchanged. The trust-ledger retirement removed 30 lines above both hits: 1967->1937, 2074->2044. FIFTEENTH and SIXTEENTH line-shift trips \u2014 both re-read at their new lines and both are still the id-suffix entropy they were annotated as. THIS KEEPS HAPPENING BECAUSE THE KEY IS A LINE NUMBER: every edit above a hit invalidates its entry, and the gate cannot tell that from a fabrication being fixed. The entries now also carry a `match` fingerprint of the hit's own text, which check-no-fabrication.mjs prefers over the line when the two disagree \u2014 so an unrelated edit above a hit stops costing a correction, while a hit that genuinely CHANGES still goes stale and still has to be re-read by a person. 2026-08-28: removed decisionCausalityV11.ts:28 \u2014 file DELETED (competing-brains stage 2), not fixed-in-place. 2026-08-27 \u2014 LINE CORRECTIONS ONLY (the same two routes-va-engine entries), no entry added or removed, count unchanged. The buyer-reservations rename left a 6-line comment above both hits: 1961->1967, 2068->2074. THIRTEENTH and FOURTEENTH line-shift trips. Both re-read at their new lines \u2014 the same id-suffix entropy they were annotated as. PRIOR NOTE \u2014 2026-08-20 (second set today) \u2014 LINE CORRECTIONS ONLY (two entries), no entry added or removed, count unchanged at 57. The send-rail audit remediation edited emailService.ts above both hits: the counterparty From: chokepoint lost an inert conjunct and gained the rationale for why it has exactly three, and SendLane became file-local. Backoff-jitter hit 237->254, MIME-boundary hit 451->490. ELEVENTH and TWELFTH line-shift trips recorded here. Both hits re-read at their new lines and are the same legitimate uses they were annotated as \u2014 `const jitter = Math.random() * 0.3 * exponentialDelay` and ``const boundary = `=_acreos_${Date.now()}_${Math.random().toString(36).slice(2, 10)}` ``, neither a customer-visible fact. PRIOR NOTE \u2014 2026-08-20 \u2014 LINE CORRECTIONS ONLY (the same two entries, again), no entry added or removed, count unchanged at 57. The send-rail audit fix added the counterparty From: chokepoint and the isSameEmailAddress helper to emailService.ts, shifting the backoff-jitter hit 237->248 and the MIME-boundary hit 451->484. ELEVENTH and TWELFTH line-shift trips recorded here. Both hits were re-read at their new lines and are the same legitimate uses they were annotated as \u2014 exponential-backoff jitter (line 248) and a MIME multipart boundary (line 484), neither a customer-visible fact. Keying on file:line means ANY edit above a hit trips this gate; the prescribed fix is to CORRECT the number, never to drop the entry. PRIOR NOTE \u2014 2026-08-20 \u2014 LINE CORRECTIONS ONLY (two entries), no entry added or removed, count unchanged at 57. The BYO send-rail lane fix (founder decision 2026-07-17) made resolveCanSpamAddress and the From: display name lane-aware in emailService.ts, adding ~45 lines of rule + rationale above both entries: the backoff-jitter hit 190->237 and the MIME-boundary hit 388->451. NINTH and TENTH line-shift trips recorded here. Both hits were re-read at their new lines and are the same legitimate uses they were annotated as \u2014 exponential-backoff jitter and a MIME multipart boundary, neither a customer-visible fact. As the register keeps saying: keying on file:line means ANY edit above a hit trips this gate, and the prescribed fix is to CORRECT the number, never to drop the entry. PRIOR NOTE \u2014 2026-08-18 \u2014 LINE CORRECTIONS ONLY (three entries), no entry added or removed, count unchanged at 57. The URL-id tenancy sweep threaded an organizationId through writingStyle.ts's three profile-id functions and their routes-va-engine.ts call sites: routes-va-engine 1958->1961 and 2065->2068 (+3 lines from the org bindings), writingStyle 118->135 (+17 from the org parameter and the header explaining why it is required). SIXTH, SEVENTH and EIGHTH line-shift trips recorded here. All three hits were re-read at their new lines and are the same `id: `${prefix}_${Date.now()}_${Math.random()...}`` suffixes they were annotated as \u2014 entropy for uniqueness, not a fact. Worth stating plainly since the register keeps saying it: keying on file:line means ANY edit above a hit trips this gate, so the friction is structural rather than anyone's carelessness. The prescribed fix remains to CORRECT the number, never to drop the entry. PRIOR NOTE \u2014 2026-08-16 \u2014 LINE CORRECTIONS ONLY (second set today), no entry added or removed, count unchanged at 57. The tenancy fix for writingStyle.deleteStyleProfile threaded an organizationId through routes-va-engine.ts and added ~6 lines above both entries. FOURTH and FIFTH line-shift trips recorded in this register. Both hits re-read at their new lines and are the same legitimate uses they were annotated as. The register is keyed file:line and this keeps happening \u2014 that is a property of the register, not a series of accidents, and the fix is always to CORRECT the number rather than drop the entry. PRIOR NOTE \u2014 2026-08-16 \u2014 LINE CORRECTIONS ONLY, no entry added or removed, count unchanged at 57. The undeclared-lane guard added ~7 lines above both emailService.ts entries, shifting the backoff-jitter hit 182->189 and the MIME-boundary hit 380->387. This register is keyed file:line, so ANY edit that shifts a line trips it \u2014 the third such trip recorded here (writingStyle 117->118 from an added import, continuousAudit 723->702 from a redaction consolidation). The fix is always to CORRECT the number, never to drop the entry: both hits were re-read at their new lines and are the same legitimate uses they were annotated as. PRIOR NOTE \u2014 53 -> 57 on 2026-08-16: a one-time RE-SEED, not a relaxation. The gate enforced its hard-stop against ONE STRING, `Math.random`, so the rule was only as strong as a spelling \u2014 a seeded PRNG, node:crypto randomInt, getRandomValues, or faker fabricating the very same customer-visible number all shipped GREEN. FORBIDDEN_TOKEN became FORBIDDEN_TOKENS (Math.random, getRandomValues, makeSeededRng(, randomInt(, faker.) and the register absorbed the 4 pre-existing hits the widened predicate revealed. Every one of the 4 was verified BY HAND against its call site before being written down \u2014 4 of 4, not a sample \u2014 and every one is legitimate: a CSPRNG issuing a reactivation-token secret (lifecycleProgram:459), the definition of the mulberry32 PRNG itself (efficacy:47), and two Thompson-sampling selectPlay calls whose draw picks WHICH play runs and provably never reaches a display (continuousLoop:919/922 \u2014 scorePlays has exactly one non-test caller, and it returns a playId). Had any of the 4 been driving a displayed score it would have been reported as a defect instead of allowlisted; that distinction is the whole point of the annotation. The token list was MEASURED before adoption, not asserted: randomUUID( (72 hits) and randomBytes( (32) were measured and REJECTED \u2014 ids and crypto keys would have taken the register to ~161 entries and buried these four under a hundred `id` rows, which is how a gate earns a re-baseline instead of a reading. randomInt( and faker. measured 0 and cost nothing to close. Recorded in check-no-fabrication.mjs as REJECTED_CANDIDATES and re-checkable with `--measure`. The strictly-down rule resumes from 57: this is the only bump that widening the predicate buys.",
   "allowlist": [
     {
       "file": "server/routes-avm.ts",
       "line": 26,
       "category": "id",
-      "note": "Idempotency/debit key suffix \u2014 entropy for uniqueness, not a fact."
+      "note": "Idempotency/debit key suffix \u2014 entropy for uniqueness, not a fact.",
+      "match": "const debitKey = `avm:generate:${org.id}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;"
     },
     {
       "file": "server/routes-team-messaging.ts",
       "line": 582,
       "category": "id",
-      "note": "batchId suffix \u2014 entropy for uniqueness."
+      "note": "batchId suffix \u2014 entropy for uniqueness.",
+      "match": "const batchId = `batch_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;"
     },
     {
       "file": "server/routes-va-engine.ts",
-      "line": 1967,
+      "line": 1937,
       "category": "id",
-      "note": "Escalation record id suffix \u2014 entropy for uniqueness."
+      "note": "Escalation record id suffix \u2014 entropy for uniqueness.",
+      "match": "id: `esc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,"
     },
     {
       "file": "server/routes-va-engine.ts",
-      "line": 2074,
+      "line": 2044,
       "category": "id",
-      "note": "Workflow record id suffix \u2014 entropy for uniqueness."
+      "note": "Workflow record id suffix \u2014 entropy for uniqueness.",
+      "match": "id: `wf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,"
     },
     {
       "file": "server/services/adaptiveStrategyV13.ts",
       "line": 41,
       "category": "algo",
-      "note": "Beta-distribution sampler (Thompson sampling) \u2014 randomness is the algorithm, not a reported fact."
+      "note": "Beta-distribution sampler (Thompson sampling) \u2014 randomness is the algorithm, not a reported fact.",
+      "match": "u1 = Math.pow(Math.random(), 1 / a);"
     },
     {
       "file": "server/services/adaptiveStrategyV13.ts",
       "line": 42,
       "category": "algo",
-      "note": "Beta-distribution sampler (Thompson sampling) \u2014 randomness is the algorithm."
+      "note": "Beta-distribution sampler (Thompson sampling) \u2014 randomness is the algorithm.",
+      "match": "u2 = Math.pow(Math.random(), 1 / b);"
     },
     {
       "file": "server/services/agentVersionControlV12.ts",
       "line": 347,
       "category": "weighted-pick",
-      "note": "Weighted random selection over agent versions \u2014 randomness is the selection mechanism."
+      "note": "Weighted random selection over agent versions \u2014 randomness is the selection mechanism.",
+      "match": "let random = Math.random() * totalWeight;"
     },
     {
       "file": "server/services/autopilot/efficacy.ts",
       "line": 47,
       "token": "makeSeededRng(",
       "category": "algo",
-      "note": "The DEFINITION of this repo's mulberry32 seeded PRNG \u2014 the injected RNG for Thompson sampling over recorded play outcomes. Produces no value at this site; it exists so the sampler is pure and unit-testable. Entered the register 2026-08-16 when makeSeededRng( joined FORBIDDEN_TOKENS: it is legitimate HERE, and the point of watching it is the call sites, not this line."
+      "note": "The DEFINITION of this repo's mulberry32 seeded PRNG \u2014 the injected RNG for Thompson sampling over recorded play outcomes. Produces no value at this site; it exists so the sampler is pure and unit-testable. Entered the register 2026-08-16 when makeSeededRng( joined FORBIDDEN_TOKENS: it is legitimate HERE, and the point of watching it is the call sites, not this line.",
+      "match": "export function makeSeededRng(seed: number): Rng {"
     },
     {
       "file": "server/services/ceoDecisionReplayV10.ts",
       "line": 49,
       "category": "id",
-      "note": "Decision id suffix \u2014 entropy for uniqueness."
+      "note": "Decision id suffix \u2014 entropy for uniqueness.",
+      "match": "originalDecisionId: `dec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,"
     },
     {
       "file": "server/services/ceoReminders.ts",
       "line": 116,
       "category": "id",
-      "note": "Reminder id suffix \u2014 entropy for uniqueness."
+      "note": "Reminder id suffix \u2014 entropy for uniqueness.",
+      "match": "id: `rem_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,"
     },
     {
       "file": "server/services/ceoReminders.ts",
       "line": 237,
       "category": "id",
-      "note": "Reminder id suffix \u2014 entropy for uniqueness."
+      "note": "Reminder id suffix \u2014 entropy for uniqueness.",
+      "match": "id: `rem_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,"
     },
     {
       "file": "server/services/cmo/voicePool.ts",
       "line": 130,
       "category": "sampling",
-      "note": "Random pick of a fresh creative voice candidate \u2014 sampling, not a reported fact."
+      "note": "Random pick of a fresh creative voice candidate \u2014 sampling, not a reported fact.",
+      "match": "return freshCandidates[Math.floor(Math.random() * freshCandidates.length)];"
     },
     {
       "file": "server/services/cmo/voicePool.ts",
       "line": 136,
       "category": "sampling",
-      "note": "Random pick from candidate pool \u2014 sampling."
+      "note": "Random pick from candidate pool \u2014 sampling.",
+      "match": "return candidatePool[Math.floor(Math.random() * candidatePool.length)];"
     },
     {
       "file": "server/services/dataPortability.ts",
       "line": 82,
       "category": "id",
-      "note": "Airlock/export id suffix \u2014 entropy for uniqueness."
+      "note": "Airlock/export id suffix \u2014 entropy for uniqueness.",
+      "match": "id: `air_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,"
     },
     {
       "file": "server/services/dueDiligencePods.ts",
       "line": 122,
       "category": "id",
-      "note": "Pod/agent id suffix \u2014 entropy for uniqueness."
+      "note": "Pod/agent id suffix \u2014 entropy for uniqueness.",
+      "match": "return `${agentType}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;"
     },
     {
       "file": "server/services/emailService.ts",
       "line": 254,
       "category": "jitter",
-      "note": "Exponential-backoff jitter \u2014 randomness avoids thundering herd, not a fact."
+      "note": "Exponential-backoff jitter \u2014 randomness avoids thundering herd, not a fact.",
+      "match": "const jitter = Math.random() * 0.3 * exponentialDelay;"
     },
     {
       "file": "server/services/emailService.ts",
       "line": 490,
       "category": "id",
-      "note": "MIME multipart boundary string \u2014 entropy for uniqueness."
+      "note": "MIME multipart boundary string \u2014 entropy for uniqueness.",
+      "match": "const boundary = `=_acreos_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;"
     },
     {
       "file": "server/services/etlOrchestrator.ts",
       "line": 494,
       "category": "id",
-      "note": "ETL run id suffix \u2014 entropy for uniqueness."
+      "note": "ETL run id suffix \u2014 entropy for uniqueness.",
+      "match": ": `etl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;"
     },
     {
       "file": "server/services/gisValidation.ts",
       "line": 22,
       "category": "id",
-      "note": "GIS validation run id suffix \u2014 entropy for uniqueness."
+      "note": "GIS validation run id suffix \u2014 entropy for uniqueness.",
+      "match": "return `gis-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;"
     },
     {
       "file": "server/services/gisValidation.ts",
       "line": 235,
       "category": "shuffle",
-      "note": "Shuffle of endpoint probe order \u2014 load distribution, not a reported fact."
+      "note": "Shuffle of endpoint probe order \u2014 load distribution, not a reported fact.",
+      "match": "const shuffled = allEndpoints.sort(() => Math.random() - 0.5);"
     },
     {
       "file": "server/services/gradientBoosting.ts",
       "line": 280,
       "category": "algo",
-      "note": "Fisher-Yates shuffle inside the GBM training loop \u2014 randomness is the algorithm."
+      "note": "Fisher-Yates shuffle inside the GBM training loop \u2014 randomness is the algorithm.",
+      "match": "const j = Math.floor(Math.random() * (i + 1));"
     },
     {
       "file": "server/services/leadAssigner.ts",
       "line": 135,
       "category": "weighted-pick",
-      "note": "Weighted round-robin lead assignment \u2014 randomness is the assignment mechanism."
+      "note": "Weighted round-robin lead assignment \u2014 randomness is the assignment mechanism.",
+      "match": "let r = Math.random() * totalWeight;"
     },
     {
       "file": "server/services/legalAutonomyEngine.ts",
       "line": 229,
       "category": "id",
-      "note": "Legal-action id suffix \u2014 entropy for uniqueness."
+      "note": "Legal-action id suffix \u2014 entropy for uniqueness.",
+      "match": "const actionId = `la_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;"
     },
     {
       "file": "server/services/legalAutonomyEngine.ts",
       "line": 288,
       "category": "id",
-      "note": "Legal-action id suffix \u2014 entropy for uniqueness."
+      "note": "Legal-action id suffix \u2014 entropy for uniqueness.",
+      "match": "const actionId = `la_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;"
     },
     {
       "file": "server/services/legalAutonomyEngine.ts",
       "line": 321,
       "category": "id",
-      "note": "Legal-action id suffix \u2014 entropy for uniqueness."
+      "note": "Legal-action id suffix \u2014 entropy for uniqueness.",
+      "match": "const actionId = `la_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;"
     },
     {
       "file": "server/services/lifecycleProgram.ts",
       "line": 459,
       "token": "getRandomValues",
       "category": "id",
-      "note": "CSPRNG fill of 24 bytes -> base64url reactivation token for a win-back email link. Only its SHA-256 hash is persisted; the plaintext goes in a URL and is never rendered as a fact. This is SECRET material \u2014 the one place unpredictability is the requirement rather than a smell. Entered the register 2026-08-16 with the getRandomValues token."
+      "note": "CSPRNG fill of 24 bytes -> base64url reactivation token for a win-back email link. Only its SHA-256 hash is persisted; the plaintext goes in a URL and is never rendered as a fact. This is SECRET material \u2014 the one place unpredictability is the requirement rather than a smell. Entered the register 2026-08-16 with the getRandomValues token.",
+      "match": "globalThis.crypto.getRandomValues(bytes);"
     },
     {
       "file": "server/services/notificationDispatcher.ts",
       "line": 204,
       "category": "id",
-      "note": "Notification id suffix \u2014 entropy for uniqueness."
+      "note": "Notification id suffix \u2014 entropy for uniqueness.",
+      "match": "id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,"
     },
     {
       "file": "server/services/parcel/resolveParcel.ts",
       "line": 277,
       "category": "sampling",
-      "note": "Probabilistic sampling gate (sampleRate) for telemetry \u2014 randomness is the sampler."
+      "note": "Probabilistic sampling gate (sampleRate) for telemetry \u2014 randomness is the sampler.",
+      "match": "if (sampleRate > 0 && Math.random() < sampleRate) {"
     },
     {
       "file": "server/services/pax/continuousAudit.ts",
       "line": 702,
       "category": "algo",
-      "note": "Fisher-Yates shuffle for audit sampling \u2014 randomness is the algorithm. Line moved 723->702 in unit 120 by the credential-redaction consolidation removing ~21 lines above it \u2014 a file:line-keyed register trips on ANY edit that shifts a line (see writingStyle.ts 117->118, unit 112)."
+      "note": "Fisher-Yates shuffle for audit sampling \u2014 randomness is the algorithm. Line moved 723->702 in unit 120 by the credential-redaction consolidation removing ~21 lines above it \u2014 a file:line-keyed register trips on ANY edit that shifts a line (see writingStyle.ts 117->118, unit 112).",
+      "match": "const j = i + Math.floor(Math.random() * (out.length - i));"
     },
     {
       "file": "server/services/paxObserver.ts",
       "line": 217,
       "category": "sampling",
-      "note": "Random prefix pick for observation variety \u2014 sampling, not a fact."
+      "note": "Random prefix pick for observation variety \u2014 sampling, not a fact.",
+      "match": "const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];"
     },
     {
       "file": "server/services/performanceEnhancements.ts",
       "line": 39,
       "category": "id",
-      "note": "Request id suffix \u2014 entropy for uniqueness."
+      "note": "Request id suffix \u2014 entropy for uniqueness.",
+      "match": "return `req_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;"
     },
     {
       "file": "server/services/portfolioOptimizer.ts",
       "line": 108,
       "category": "algo",
-      "note": "Box-Muller / Monte-Carlo sampler u1 \u2014 randomness is the optimization algorithm."
+      "note": "Box-Muller / Monte-Carlo sampler u1 \u2014 randomness is the optimization algorithm.",
+      "match": "const u1 = Math.random();"
     },
     {
       "file": "server/services/portfolioOptimizer.ts",
       "line": 109,
       "category": "algo",
-      "note": "Box-Muller / Monte-Carlo sampler u2 \u2014 randomness is the optimization algorithm."
+      "note": "Box-Muller / Monte-Carlo sampler u2 \u2014 randomness is the optimization algorithm.",
+      "match": "const u2 = Math.random();"
     },
     {
       "file": "server/services/promptRegistry.ts",
       "line": 193,
       "category": "weighted-pick",
-      "note": "Weighted random selection over prompt variants (A/B) \u2014 randomness is the selection mechanism."
+      "note": "Weighted random selection over prompt variants (A/B) \u2014 randomness is the selection mechanism.",
+      "match": "let r = Math.random() * total;"
     },
     {
       "file": "server/services/providers/fetchGeo.ts",
       "line": 157,
       "category": "jitter",
-      "note": "Randomized backoff/offset within a capped window \u2014 jitter, not a fact."
+      "note": "Randomized backoff/offset within a capped window \u2014 jitter, not a fact.",
+      "match": "return Math.floor(Math.random() * capped);"
     },
     {
       "file": "server/services/realtimeAlerts.ts",
       "line": 130,
       "category": "id",
-      "note": "Alert id suffix \u2014 entropy for uniqueness."
+      "note": "Alert id suffix \u2014 entropy for uniqueness.",
+      "match": "id: `alert_${Date.now()}_${Math.random().toString(36).slice(2)}`,"
     },
     {
       "file": "server/services/solene/continuousLoop.ts",
       "line": 935,
       "token": "makeSeededRng(",
       "category": "weighted-pick",
-      "note": "Per-tick-seeded RNG feeding selectPlay() \u2014 Thompson sampling over each growth play's REAL recorded successes/failures. What comes back is a playId (WHICH play the autopilot runs next), never a number. Verified by hand 2026-08-16: scorePlays() is the only consumer of the draw, selectPlay() is scorePlays()' only non-test caller, and it returns scored[0].playId \u2014 the `sample` and `posteriorMean` fields never leave the module, so no route or component can render the draw as a score. The number that IS displayed alongside the pick (trackRecord successes/total) comes from getPlayStats, real outcomes. Randomness is the selection mechanism, which is the same judgment already made for promptRegistry:193 and leadAssigner:135."
+      "note": "Per-tick-seeded RNG feeding selectPlay() \u2014 Thompson sampling over each growth play's REAL recorded successes/failures. What comes back is a playId (WHICH play the autopilot runs next), never a number. Verified by hand 2026-08-16: scorePlays() is the only consumer of the draw, selectPlay() is scorePlays()' only non-test caller, and it returns scored[0].playId \u2014 the `sample` and `posteriorMean` fields never leave the module, so no route or component can render the draw as a score. The number that IS displayed alongside the pick (trackRecord successes/total) comes from getPlayStats, real outcomes. Randomness is the selection mechanism, which is the same judgment already made for promptRegistry:193 and leadAssigner:135.",
+      "match": "? selectPlay(candidates, makeSeededRng(Date.now()), prior)"
     },
     {
       "file": "server/services/solene/continuousLoop.ts",
       "line": 938,
       "token": "makeSeededRng(",
       "category": "weighted-pick",
-      "note": "Same selectPlay call in the catch branch \u2014 the best-effort fallback when the exploration governor is unavailable. Same reasoning, same verification as line 919."
+      "note": "Same selectPlay call in the catch branch \u2014 the best-effort fallback when the exploration governor is unavailable. Same reasoning, same verification as line 919.",
+      "match": "pickedId = selectPlay(candidates, makeSeededRng(Date.now()), prior);"
     },
     {
       "file": "server/services/writingStyle.ts",
       "line": 135,
       "category": "id",
-      "note": "Writing-sample id suffix \u2014 entropy for uniqueness. Line moved 117->118 in unit 112 by an added import, NOT by a code change: this register is keyed by file:line, so any edit that shifts a line above an entry trips it."
+      "note": "Writing-sample id suffix \u2014 entropy for uniqueness. Line moved 117->118 in unit 112 by an added import, NOT by a code change: this register is keyed by file:line, so any edit that shifts a line above an entry trips it.",
+      "match": "id: `sample-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,"
     },
     {
       "file": "server/storage/commsRepo.ts",
       "line": 82,
       "category": "id",
-      "note": "Random CAMP- campaign code character \u2014 entropy for a human-typeable code. Extracted to commsRepo with the campaign-response/tracking methods."
+      "note": "Random CAMP- campaign code character \u2014 entropy for a human-typeable code. Extracted to commsRepo with the campaign-response/tracking methods.",
+      "match": "code += chars.charAt(Math.floor(Math.random() * chars.length));"
     },
     {
       "file": "client/src/components/error-boundary.tsx",
       "line": 26,
       "category": "id",
-      "note": "Client error-report id. Correlates a crash report with its server row; never rendered as a fact."
+      "note": "Client error-report id. Correlates a crash report with its server row; never rendered as a fact.",
+      "match": "const errorId = `err_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;"
     },
     {
       "file": "client/src/components/pax-copilot-rail.tsx",
       "line": 848,
       "category": "id",
-      "note": "React key for a streaming tool-call event. The tool's NAME and ARGS come from the stream; only the key is random. (line moved 845->848 on 2026-09-04 when the mutations above it were converted to apiRequest; same event-id expression, unchanged)"
+      "note": "React key for a streaming tool-call event. The tool's NAME and ARGS come from the stream; only the key is random. (line moved 845->848 on 2026-09-04 when the mutations above it were converted to apiRequest; same event-id expression, unchanged)",
+      "match": "const evtId = `te-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;"
     },
     {
       "file": "client/src/components/property-map.tsx",
       "line": 1947,
       "category": "jitter",
-      "note": "Camera ZOOM variation in the cinematic flythrough \u2014 a viewing angle, not a measurement. Nothing about the parcel is derived from it."
+      "note": "Camera ZOOM variation in the cinematic flythrough \u2014 a viewing angle, not a measurement. Nothing about the parcel is derived from it.",
+      "match": "zoom: 15.5 + Math.random() * 0.8,"
     },
     {
       "file": "client/src/components/property-map.tsx",
       "line": 1948,
       "category": "jitter",
-      "note": "Camera PITCH variation, same flythrough, same reasoning."
+      "note": "Camera PITCH variation, same flythrough, same reasoning.",
+      "match": "pitch: 55 + Math.random() * 15,"
     },
     {
       "file": "client/src/components/ui/sidebar.tsx",
       "line": 613,
       "category": "jitter",
-      "note": "shadcn SidebarMenuSkeleton width (50\u201390%). A LOADING PLACEHOLDER's shape, deliberately varied so the skeleton does not read as a table of equal values. It is replaced by real content and is never itself content."
+      "note": "shadcn SidebarMenuSkeleton width (50\u201390%). A LOADING PLACEHOLDER's shape, deliberately varied so the skeleton does not read as a table of equal values. It is replaced by real content and is never itself content.",
+      "match": "return `${Math.floor(Math.random() * 40) + 50}%`"
     },
     {
       "file": "client/src/components/workflow-builder.tsx",
       "line": 99,
       "category": "id",
-      "note": "Local id for a newly added workflow action, before the server assigns one."
+      "note": "Local id for a newly added workflow action, before the server assigns one.",
+      "match": "return `action_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;"
     },
     {
       "file": "client/src/hooks/use-founder-chat.ts",
       "line": 242,
       "category": "id",
-      "note": "Optimistic local id for the user's own message, replaced by the server id on ack."
+      "note": "Optimistic local id for the user's own message, replaced by the server id on ack.",
+      "match": "const userMessageId = `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;"
     },
     {
       "file": "client/src/hooks/use-offline-cache.ts",
       "line": 112,
       "category": "id",
-      "note": "Queue key for a pending offline action."
+      "note": "Queue key for a pending offline action.",
+      "match": "id: `pa_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,"
     },
     {
       "file": "client/src/hooks/use-render-sentinel.ts",
       "line": 41,
       "category": "id",
-      "note": "Blank-render report id, correlating a client trip with its server log line."
+      "note": "Blank-render report id, correlating a client trip with its server log line.",
+      "match": "const errorId = `blank_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;"
     },
     {
       "file": "client/src/hooks/useOfflineSync.ts",
       "line": 135,
       "category": "id",
-      "note": "Idempotency key FALLBACK for environments without crypto.randomUUID \u2014 the branch above prefers the CSPRNG."
+      "note": "Idempotency key FALLBACK for environments without crypto.randomUUID \u2014 the branch above prefers the CSPRNG.",
+      "match": "return \"k-\" + Math.random().toString(36).slice(2) + \"-\" + Date.now().toString(36);"
     },
     {
       "file": "client/src/hooks/useOfflineSync.ts",
       "line": 376,
       "category": "id",
-      "note": "Queue id for a mutation held offline."
+      "note": "Queue id for a mutation held offline.",
+      "match": "id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,"
     },
     {
       "file": "client/src/lib/action-executor.ts",
       "line": 493,
       "category": "id",
-      "note": "Id for a parsed inline action directive."
+      "note": "Id for a parsed inline action directive.",
+      "match": "const id = `action-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;"
     },
     {
       "file": "client/src/lib/marketing-touch.ts",
       "line": 74,
       "category": "id",
-      "note": "Attribution touch id fallback; the touch's SOURCE and TIMESTAMP are real, only the id is random."
+      "note": "Attribution touch id fallback; the touch's SOURCE and TIMESTAMP are real, only the id is random.",
+      "match": "return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;"
     },
     {
       "file": "client/src/lib/queryClient.ts",
       "line": 415,
       "category": "id",
-      "note": "Idempotency key fallback, same shape as useOfflineSync:135 \u2014 crypto.randomUUID first. (Line moved 390 -> 415 on 2026-09-04 when fetchJsonArray gained its refusal path; the allowlist keys on line NUMBER, so an edit above a legitimate entry reports it stale even though nothing was fixed. Re-pinned, not removed.)"
+      "note": "Idempotency key fallback, same shape as useOfflineSync:135 \u2014 crypto.randomUUID first. (Line moved 390 -> 415 on 2026-09-04 when fetchJsonArray gained its refusal path; the allowlist keys on line NUMBER, so an edit above a legitimate entry reports it stale even though nothing was fixed. Re-pinned, not removed.)",
+      "match": "return \"k-\" + Math.random().toString(36).slice(2) + \"-\" + Date.now().toString(36);"
     },
     {
       "file": "client/src/lib/aerial-images.ts",
       "line": 38,
       "category": "shuffle",
-      "note": "Picks one of 28 curated decorative aerial photos. NOTE FOR WHOEVER WIRES THIS: getRandomImage has ZERO call sites today. Attaching it to a specific parcel or listing would present a stock photo as THAT property's imagery \u2014 fabrication, and the reason this entry says shuffle rather than id. Decorative backgrounds only."
+      "note": "Picks one of 28 curated decorative aerial photos. NOTE FOR WHOEVER WIRES THIS: getRandomImage has ZERO call sites today. Attaching it to a specific parcel or listing would present a stock photo as THAT property's imagery \u2014 fabrication, and the reason this entry says shuffle rather than id. Decorative backgrounds only.",
+      "match": "return AERIAL_IMAGES[Math.floor(Math.random() * AERIAL_IMAGES.length)];"
     },
     {
       "file": "client/src/hooks/use-realtime.ts",
       "line": 138,
       "category": "jitter",
-      "note": "WebSocket reconnect backoff jitter (0.5x-1.5x). Without it every tab that lost the same server reconnects on the same millisecond and the herd knocks it over again. Nothing customer-visible is derived from it."
+      "note": "WebSocket reconnect backoff jitter (0.5x-1.5x). Without it every tab that lost the same server reconnects on the same millisecond and the herd knocks it over again. Nothing customer-visible is derived from it.",
+      "match": "const jittered = reconnectDelay * (0.5 + Math.random());"
     }
   ]
 }

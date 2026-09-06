@@ -131,7 +131,6 @@ import {
   type ClosingPacket, type InsertClosingPacket,
   type AutopayEnrollment, type InsertAutopayEnrollment,
   type PayoffQuote, type InsertPayoffQuote,
-  type TrustLedgerEntry, type InsertTrustLedger,
   type DelinquencyEscalation, type InsertDelinquencyEscalation,
   type PlaybookInstance, type InsertPlaybookInstance,
   type DdAssignment, type InsertDdAssignment,
@@ -982,10 +981,6 @@ export interface IStorage {
   updatePayoffQuote(organizationId: number, id: number, data: Partial<InsertPayoffQuote>): Promise<PayoffQuote | undefined>;
 
   // Trust Ledger
-  getTrustLedgerEntries(organizationId: number): Promise<TrustLedgerEntry[]>;
-  getTrustLedgerByNote(organizationId: number, noteId: number): Promise<TrustLedgerEntry[]>;
-  createTrustLedgerEntry(data: InsertTrustLedger): Promise<TrustLedgerEntry>;
-  getTrustBalance(organizationId: number): Promise<string>;
 
   // Delinquency Escalations
   getDelinquencyEscalations(organizationId: number): Promise<DelinquencyEscalation[]>;

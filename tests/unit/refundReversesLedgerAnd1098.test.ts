@@ -326,6 +326,29 @@ import { deriveRefundReversals } from "../../server/webhookHandlers";
 // this, never against the literal ":return" — see block 6.
 import { reversalTransactionId as achReturnTransactionId } from "../../server/services/achAutopay";
 
+
+/**
+ * The zone these assertions are written in. Box 1 is bucketed by the LENDER's
+ * calendar day, so a ledger test has to name a zone — the numbers below are
+ * only true relative to one. `organizations.timezone` supplies it in production.
+ */
+const LEDGER_TZ = "America/New_York";
+
+/**
+ * WHY THESE FIXTURES SAY T12:00:00Z AND NOT T00:00:00Z.
+ *
+ * They used to say midnight UTC, which reads as a neutral "on the 1st" — and is
+ * neutral only if you bucket by UTC. Midnight UTC is the PREVIOUS DAY in every
+ * US zone, so once Box 1 started bucketing by the lender's day (DEFECT-0086)
+ * every one of these payments moved back a day and January's left the tax year
+ * altogether: 420000 became 385000, exactly one month's interest.
+ *
+ * That was the fix working, not breaking. The fixture had encoded the very
+ * assumption the fix removes. Midday UTC is the same calendar day in every US
+ * zone, so these dates now mean what they look like they mean; the boundary
+ * behaviour itself is pinned deliberately in form1098BucketsByLenderDay.test.ts
+ * rather than left to be re-discovered here by accident.
+ */
 schemaTables.payments = paymentsTable;
 schemaTables.notes = notesTable;
 
@@ -391,8 +414,8 @@ function seededPaymentRows() {
       interestAmount: "350.00",
       feeAmount: "0",
       lateFeeAmount: "0",
-      paymentDate: new Date("2024-12-01T00:00:00Z"),
-      dueDate: new Date("2024-12-01T00:00:00Z"),
+      paymentDate: new Date("2024-12-01T12:00:00Z"),
+      dueDate: new Date("2024-12-01T12:00:00Z"),
       paymentMethod: "card",
       transactionId: "cs_prior_year",
       status: "completed",
@@ -408,8 +431,8 @@ function seededPaymentRows() {
       interestAmount: "350.00",
       feeAmount: "0",
       lateFeeAmount: "0",
-      paymentDate: new Date(`2025-${String(m).padStart(2, "0")}-01T00:00:00Z`),
-      dueDate: new Date(`2025-${String(m).padStart(2, "0")}-01T00:00:00Z`),
+      paymentDate: new Date(`2025-${String(m).padStart(2, "0")}-01T12:00:00Z`),
+      dueDate: new Date(`2025-${String(m).padStart(2, "0")}-01T12:00:00Z`),
       paymentMethod: "card",
       transactionId: `cs_month_${m}`,
       status: "completed",
@@ -425,8 +448,8 @@ function seededPaymentRows() {
     interestAmount: "350.00",
     feeAmount: "0",
     lateFeeAmount: "0",
-    paymentDate: new Date("2025-12-01T00:00:00Z"),
-    dueDate: new Date("2025-12-01T00:00:00Z"),
+    paymentDate: new Date("2025-12-01T12:00:00Z"),
+    dueDate: new Date("2025-12-01T12:00:00Z"),
     paymentMethod: "card",
     transactionId: SESSION_ID,
     status: "completed",
@@ -435,7 +458,7 @@ function seededPaymentRows() {
 }
 
 function ledgerFromDb(): Form1098LedgerEntry[] {
-  return toOriginatedLedgerEntries(dbState.paymentRows as any).get(NOTE_ID) ?? [];
+  return toOriginatedLedgerEntries(dbState.paymentRows as any, LEDGER_TZ).get(NOTE_ID) ?? [];
 }
 
 function box1FromDb(taxYear = TAX_YEAR): number {
@@ -457,7 +480,7 @@ function refundEvent(opts: {
       object: {
         id: "ch_borrower_1",
         payment_intent: "pi_borrower_1",
-        created: epoch("2025-12-01T00:00:00Z"),
+        created: epoch("2025-12-01T12:00:00Z"),
         amount: PAYMENT_CENTS,
         amount_refunded: opts.amountRefundedCents,
         refunds: {
@@ -603,8 +626,8 @@ describe("charge.refunded → note ledger → Form 1098 Box 1", () => {
       interestAmount: "800.00",
       feeAmount: "0",
       lateFeeAmount: "0",
-      paymentDate: new Date("2025-02-15T00:00:00Z"),
-      dueDate: new Date("2025-02-01T00:00:00Z"),
+      paymentDate: new Date("2025-02-15T12:00:00Z"),
+      dueDate: new Date("2025-02-01T12:00:00Z"),
       paymentMethod: "card",
       transactionId: "cs_unrelated_bigger",
       status: "completed",
@@ -624,7 +647,7 @@ describe("charge.refunded → note ledger → Form 1098 Box 1", () => {
     expect(Number(reversal.interestAmount)).toBe(-350);
     expect(Number(reversal.principalAmount)).toBe(-150);
     // The period it reverses is the REFUNDED payment's, not the other row's.
-    expect(new Date(reversal.dueDate).toISOString()).toBe("2025-12-01T00:00:00.000Z");
+    expect(new Date(reversal.dueDate).toISOString()).toBe("2025-12-01T12:00:00.000Z");
 
     // The unrelated payment is untouched, and its interest still reaches the form.
     const unrelated = dbState.paymentRows.find((r) => r.transactionId === "cs_unrelated_bigger");
@@ -775,7 +798,7 @@ describe("deriveRefundReversals", () => {
   it("VACUITY: a full refund reverses exactly the original, to the cent", () => {
     const [row] = deriveRefundReversals({
       original,
-      refunds: [{ id: "re_1", amountCents: PAYMENT_CENTS, createdIso: "2025-12-20T00:00:00Z" }],
+      refunds: [{ id: "re_1", amountCents: PAYMENT_CENTS, createdIso: "2025-12-20T12:00:00Z" }],
       alreadyReversedRefundIds: new Set(),
     });
     expect(row).toBeDefined();
@@ -788,9 +811,9 @@ describe("deriveRefundReversals", () => {
     const rows = deriveRefundReversals({
       original,
       refunds: [
-        { id: "a", amountCents: 166_67, createdIso: "2025-12-01T00:00:00Z" },
-        { id: "b", amountCents: 166_67, createdIso: "2025-12-02T00:00:00Z" },
-        { id: "c", amountCents: 166_66, createdIso: "2025-12-03T00:00:00Z" },
+        { id: "a", amountCents: 166_67, createdIso: "2025-12-01T12:00:00Z" },
+        { id: "b", amountCents: 166_67, createdIso: "2025-12-02T12:00:00Z" },
+        { id: "c", amountCents: 166_66, createdIso: "2025-12-03T12:00:00Z" },
       ],
       alreadyReversedRefundIds: new Set(),
     });
@@ -803,8 +826,8 @@ describe("deriveRefundReversals", () => {
     const rows = deriveRefundReversals({
       original,
       refunds: [
-        { id: "a", amountCents: 200_00, createdIso: "2025-12-01T00:00:00Z" },
-        { id: "b", amountCents: 300_00, createdIso: "2025-12-05T00:00:00Z" },
+        { id: "a", amountCents: 200_00, createdIso: "2025-12-01T12:00:00Z" },
+        { id: "b", amountCents: 300_00, createdIso: "2025-12-05T12:00:00Z" },
       ],
       alreadyReversedRefundIds: new Set(["a"]),
     });
@@ -817,7 +840,7 @@ describe("deriveRefundReversals", () => {
     expect(
       deriveRefundReversals({
         original: { ...original, amountCents: 0 },
-        refunds: [{ id: "a", amountCents: 100, createdIso: "2025-12-01T00:00:00Z" }],
+        refunds: [{ id: "a", amountCents: 100, createdIso: "2025-12-01T12:00:00Z" }],
         alreadyReversedRefundIds: new Set(),
       }),
     ).toEqual([]);
@@ -908,7 +931,7 @@ describe("ACH return (original struck, reversal appended)", () => {
   const achRows = [
     {
       noteId: NOTE_ID,
-      paymentDate: new Date("2025-06-01T00:00:00Z"),
+      paymentDate: new Date("2025-06-01T12:00:00Z"),
       principalAmount: "150.00",
       interestAmount: "350.00",
       transactionId: "pi_ach_1",
@@ -917,7 +940,7 @@ describe("ACH return (original struck, reversal appended)", () => {
   ];
 
   it("VACUITY: while the ACH payment stands, its interest is in Box 1", () => {
-    const entries = toOriginatedLedgerEntries(achRows as any).get(NOTE_ID)!;
+    const entries = toOriginatedLedgerEntries(achRows as any, LEDGER_TZ).get(NOTE_ID)!;
     expect(deriveInterestBoxes(entries, TAX_YEAR).box1Cents).toBe(350_00);
   });
 
@@ -926,14 +949,14 @@ describe("ACH return (original struck, reversal appended)", () => {
       { ...achRows[0], status: "failed" },
       {
         noteId: NOTE_ID,
-        paymentDate: new Date("2025-06-08T00:00:00Z"),
+        paymentDate: new Date("2025-06-08T12:00:00Z"),
         principalAmount: "-150.00",
         interestAmount: "-350.00",
         transactionId: achReturnTransactionId("pi_ach_1"),
         status: "completed",
       },
     ];
-    const entries = toOriginatedLedgerEntries(returned as any).get(NOTE_ID) ?? [];
+    const entries = toOriginatedLedgerEntries(returned as any, LEDGER_TZ).get(NOTE_ID) ?? [];
     // Not -350_00: the struck original never entered the sum, so subtracting
     // it again would understate Box 1 by the whole returned payment.
     expect(deriveInterestBoxes(entries, TAX_YEAR).box1Cents).toBe(0);

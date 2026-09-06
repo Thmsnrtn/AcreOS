@@ -271,7 +271,9 @@ function scanFile(absPath, tokens = FORBIDDEN_TOKENS) {
   for (let i = 0; i < lines.length; i++) {
     const found = tokensOnLine(lines[i], tokens);
     if (found.length === 0) continue;
-    hits.push({ file: rel, line: i + 1, tokens: found });
+    // `text` is the fingerprint source — see fingerprint() below for why a
+    // line number alone is not an identity.
+    hits.push({ file: rel, line: i + 1, tokens: found, text: lines[i] });
   }
   return hits;
 }
@@ -311,6 +313,32 @@ function loadAllowlist() {
     map.set(`${e.file}:${e.line}`, e);
   }
   return map;
+}
+
+/**
+ * The hit's own text, normalised — the key that survives an edit ABOVE it.
+ *
+ * A line number is a position, not an identity. Every edit above a hit
+ * invalidates its entry, and the gate cannot tell that from a fabrication
+ * actually being fixed: it reports one stale entry and one new hit, and someone
+ * has to re-read both to discover nothing changed. The two routes-va-engine
+ * entries have cost that SIXTEEN times (the allowlist's own bump note counts
+ * them), and every one of those corrections was an opportunity to wave through
+ * a real hit while restoring a line number.
+ *
+ * So an entry may also carry `match`. When the line has drifted, a hit in the
+ * SAME FILE whose normalised text equals `match` is the same hit, and the entry
+ * still covers it. Deliberately narrow:
+ *   - same file only — a fingerprint never travels between files;
+ *   - the rematch must be UNAMBIGUOUS on both sides (exactly one unconsumed
+ *     entry and exactly one unclaimed hit), or it is refused and both halves
+ *     report normally;
+ *   - if the hit's TEXT changes, the fingerprint stops matching and the entry
+ *     goes stale exactly as before. Changing the code still costs a re-read;
+ *     moving it no longer does.
+ */
+function fingerprint(text) {
+  return String(text ?? "").replace(/\s+/g, " ").trim();
 }
 
 // ----------------------------------------------------------------------------
@@ -404,15 +432,53 @@ function main() {
   const seenKeys = new Set();
   const newHits = [];
   const tokenMismatches = [];
+  const matchMismatches = [];
   const perToken = new Map(FORBIDDEN_TOKENS.map((t) => [t, 0]));
   let allowlistedCount = 0;
   let p0Count = 0;
 
+  // Pass 1 — exact line matches, which is the ordinary case.
+  const claimed = new Set();
+  const unmatchedHits = [];
   for (const hit of allHits) {
     for (const t of hit.tokens) perToken.set(t, perToken.get(t) + 1);
     const key = `${hit.file}:${hit.line}`;
-    seenKeys.add(key);
-    const entry = allowlist.get(key);
+    if (allowlist.has(key)) {
+      seenKeys.add(key);
+      claimed.add(hit);
+    } else {
+      unmatchedHits.push(hit);
+    }
+  }
+
+  // Pass 2 — fingerprint rematch for hits whose line drifted. Both sides must be
+  // unambiguous, so a file with two identical hits gets no rematch at all.
+  const drifted = [];
+  for (const hit of unmatchedHits) {
+    const fp = fingerprint(hit.text);
+    if (!fp) continue;
+    const candidates = [];
+    for (const [k, e] of allowlist) {
+      if (seenKeys.has(k)) continue;
+      if (e.file !== hit.file) continue;
+      if (typeof e.match !== "string" || fingerprint(e.match) !== fp) continue;
+      candidates.push(k);
+    }
+    if (candidates.length !== 1) continue;
+    const twins = unmatchedHits.filter((h) => h.file === hit.file && fingerprint(h.text) === fp);
+    if (twins.length !== 1) continue;
+    seenKeys.add(candidates[0]);
+    claimed.add(hit);
+    drifted.push({ from: candidates[0], to: `${hit.file}:${hit.line}` });
+  }
+
+  for (const hit of allHits) {
+    const key = `${hit.file}:${hit.line}`;
+    const entry = allowlist.get(key) ?? (claimed.has(hit)
+      ? [...allowlist.values()].find(
+          (e) => e.file === hit.file && typeof e.match === "string" &&
+                 fingerprint(e.match) === fingerprint(hit.text))
+      : undefined);
     if (entry) {
       allowlistedCount += 1;
       if (entry.category === "P0-FIX-PENDING") p0Count += 1;
@@ -422,9 +488,26 @@ function main() {
       if (typeof entry.token === "string" && !hit.tokens.includes(entry.token)) {
         tokenMismatches.push({ key, pinned: entry.token, found: hit.tokens });
       }
-    } else {
+      // Same idea one level finer. `match` is the hit's own text at the time a
+      // person read it and wrote the note. If the line still holds a forbidden
+      // token but the CODE changed, the note describes something that is gone —
+      // and an exact line match would otherwise wave it straight through,
+      // because the line number is unchanged. Whitespace is normalised, so
+      // reformatting is not a change; the expression changing is.
+      if (typeof entry.match === "string" && fingerprint(entry.match) !== fingerprint(hit.text)) {
+        matchMismatches.push({ key, annotated: fingerprint(entry.match), found: fingerprint(hit.text) });
+      }
+    } else if (!claimed.has(hit)) {
       newHits.push(hit);
     }
+  }
+
+  if (drifted.length > 0) {
+    console.log(
+      `[check-no-fabrication] ${drifted.length} entry(ies) rematched by fingerprint ` +
+        `after a line drift (the code did not change, only its position): ` +
+        drifted.map((d) => `${d.from} -> ${d.to}`).join(", "),
+    );
   }
 
   // Stale allowlist entries: documented a hit that no longer exists.
@@ -439,12 +522,34 @@ function main() {
       `${allHits.length} hit line(s) [${breakdown}]; ` +
       `allowlisted: ${allowlistedCount} (P0-FIX-PENDING: ${p0Count}); ` +
       `new: ${newHits.length}; stale allowlist: ${staleEntries.length}; ` +
-      `token mismatches: ${tokenMismatches.length}`,
+      `token mismatches: ${tokenMismatches.length}; ` +
+      `annotation mismatches: ${matchMismatches.length}`,
   );
 
-  if (newHits.length === 0 && staleEntries.length === 0 && tokenMismatches.length === 0) {
+  if (
+    newHits.length === 0 &&
+    staleEntries.length === 0 &&
+    tokenMismatches.length === 0 &&
+    matchMismatches.length === 0
+  ) {
     console.log("[check-no-fabrication] PASS");
     process.exit(0);
+  }
+
+  if (matchMismatches.length > 0) {
+    console.error("");
+    console.error(
+      `[check-no-fabrication] FAIL — ${matchMismatches.length} allowlist ` +
+        `annotation(s) describe code that has CHANGED. The line still holds a ` +
+        `forbidden token, so nothing looks new — but the note was written about ` +
+        `different code and no longer vouches for this one. Re-read the site and ` +
+        `update the entry's "match" (and its note, if the reason moved):`,
+    );
+    for (const m of matchMismatches) {
+      console.error(`  • ${m.key}`);
+      console.error(`      annotated: ${m.annotated}`);
+      console.error(`      found:     ${m.found}`);
+    }
   }
 
   if (newHits.length > 0) {

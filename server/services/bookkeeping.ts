@@ -724,233 +724,27 @@ export async function getPortfolioAnnualSummary(
   };
 }
 
-// ============================================
-// TRUST LEDGER — DOUBLE-ENTRY JOURNAL ENTRIES
-// Every financial event in the org produces one entry (+ running balance).
-// Entry types follow a chart of accounts pattern:
-//   income_*   — revenue (positive)
-//   expense_*  — costs (negative)
-//   transfer_* — internal movement (neutral)
-// ============================================
-
-export type LedgerEntryType =
-  | 'income_deal_sale'
-  | 'income_note_payment_interest'
-  | 'income_note_payment_principal'
-  | 'income_late_fee'
-  | 'income_down_payment'
-  | 'expense_acquisition'
-  | 'expense_direct_mail'
-  | 'expense_subscription'
-  | 'expense_recording_fees'
-  | 'expense_title'
-  | 'expense_back_taxes'
-  | 'expense_improvement'
-  | 'expense_marketing'
-  | 'expense_legal'
-  | 'expense_other'
-  | 'transfer_escrow_in'
-  | 'transfer_escrow_out'
-  | 'adjustment';
-
-export interface LedgerJournalEntry {
-  organizationId: number;
-  noteId?: number;
-  entryType: LedgerEntryType;
-  /** Positive = income/asset increase, Negative = expense/liability increase */
-  amount: number;
-  description: string;
-  referenceId?: string;
-  referenceType?: string;
-}
-
-/**
- * Record a financial event in the trust ledger.
- * Automatically computes running balance.
- */
-export async function recordLedgerEntry(entry: LedgerJournalEntry): Promise<void> {
-  // Get current running balance for this org
-  const [latest] = await db
-    .select({ runningBalance: trustLedger.runningBalance })
-    .from(trustLedger)
-    .where(eq(trustLedger.organizationId, entry.organizationId))
-    .orderBy(desc(trustLedger.createdAt))
-    .limit(1);
-
-  const prevBalance = parseFloat(latest?.runningBalance ?? '0');
-  const newBalance = prevBalance + entry.amount;
-
-  await db.insert(trustLedger).values({
-    organizationId: entry.organizationId,
-    noteId: entry.noteId ?? null,
-    entryType: entry.entryType,
-    amount: String(entry.amount),
-    runningBalance: String(newBalance),
-    description: entry.description,
-    referenceId: entry.referenceId ?? null,
-    referenceType: entry.referenceType ?? null,
-  });
-}
-
-/**
- * Record a note payment received. Creates two entries:
- * principal (balance reduction) + interest (income).
- */
-export async function recordNotePayment(
-  organizationId: number,
-  noteId: number,
-  principalAmount: number,
-  interestAmount: number,
-  lateFeeAmount: number,
-  paymentId: number
-): Promise<void> {
-  if (principalAmount > 0) {
-    await recordLedgerEntry({
-      organizationId,
-      noteId,
-      entryType: 'income_note_payment_principal',
-      amount: principalAmount,
-      description: `Note #${noteId} — principal payment`,
-      referenceId: String(paymentId),
-      referenceType: 'payment',
-    });
-  }
-  if (interestAmount > 0) {
-    await recordLedgerEntry({
-      organizationId,
-      noteId,
-      entryType: 'income_note_payment_interest',
-      amount: interestAmount,
-      description: `Note #${noteId} — interest income`,
-      referenceId: String(paymentId),
-      referenceType: 'payment',
-    });
-  }
-  if (lateFeeAmount > 0) {
-    await recordLedgerEntry({
-      organizationId,
-      noteId,
-      entryType: 'income_late_fee',
-      amount: lateFeeAmount,
-      description: `Note #${noteId} — late fee`,
-      referenceId: String(paymentId),
-      referenceType: 'payment',
-    });
-  }
-}
-
-/**
- * Record a deal acquisition expense.
- */
-export async function recordDealAcquisition(
-  organizationId: number,
-  dealId: number,
-  acquisitionPrice: number,
-  additionalCosts: number = 0
-): Promise<void> {
-  await recordLedgerEntry({
-    organizationId,
-    entryType: 'expense_acquisition',
-    amount: -(acquisitionPrice + additionalCosts),
-    description: `Deal #${dealId} — property acquisition`,
-    referenceId: String(dealId),
-    referenceType: 'deal',
-  });
-}
-
-/**
- * Record a deal sale / disposition.
- */
-export async function recordDealSale(
-  organizationId: number,
-  dealId: number,
-  salePrice: number
-): Promise<void> {
-  await recordLedgerEntry({
-    organizationId,
-    entryType: 'income_deal_sale',
-    amount: salePrice,
-    description: `Deal #${dealId} — property sale proceeds`,
-    referenceId: String(dealId),
-    referenceType: 'deal',
-  });
-}
-
-export interface ProfitLossStatement {
-  organizationId: number;
-  fromDate: Date;
-  toDate: Date;
-  totalIncome: number;
-  totalExpenses: number;
-  netIncome: number;
-  breakdown: Record<string, number>;
-  openingBalance: number;
-  closingBalance: number;
-}
-
-/**
- * Generate a P&L statement for a date range from trust ledger entries.
- */
-export async function generateProfitLoss(
-  organizationId: number,
-  fromDate: Date,
-  toDate: Date
-): Promise<ProfitLossStatement> {
-  const entries = await db
-    .select()
-    .from(trustLedger)
-    .where(
-      and(
-        eq(trustLedger.organizationId, organizationId),
-        gte(trustLedger.createdAt, fromDate),
-        lte(trustLedger.createdAt, toDate)
-      )
-    )
-    .orderBy(asc(trustLedger.createdAt));
-
-  // W3.3: ledger totals accumulate in integer cents (breakdownCents keys
-  // convert once at the return edge below).
-  const breakdownCents: Record<string, number> = {};
-  let totalIncomeCents = 0;
-  let totalExpensesCents = 0;
-
-  for (const entry of entries) {
-    const amountCents = centsFromDecimal(entry.amount);
-    breakdownCents[entry.entryType] = (breakdownCents[entry.entryType] || 0) + amountCents;
-    if (amountCents > 0) totalIncomeCents += amountCents;
-    else totalExpensesCents += Math.abs(amountCents);
-  }
-  const totalIncome = totalIncomeCents / 100;
-  const totalExpenses = totalExpensesCents / 100;
-  const breakdown: Record<string, number> = Object.fromEntries(
-    Object.entries(breakdownCents).map(([k, v]) => [k, v / 100]),
-  );
-
-  // Opening balance = latest entry BEFORE fromDate
-  const [openingEntry] = await db
-    .select({ runningBalance: trustLedger.runningBalance })
-    .from(trustLedger)
-    .where(
-      and(
-        eq(trustLedger.organizationId, organizationId),
-        lte(trustLedger.createdAt, fromDate)
-      )
-    )
-    .orderBy(desc(trustLedger.createdAt))
-    .limit(1);
-
-  const openingBalanceCents = centsFromDecimal(openingEntry?.runningBalance);
-  const closingBalanceCents = openingBalanceCents + totalIncomeCents - totalExpensesCents;
-
-  return {
-    organizationId,
-    fromDate,
-    toDate,
-    totalIncome,
-    totalExpenses,
-    netIncome: (totalIncomeCents - totalExpensesCents) / 100,
-    breakdown,
-    openingBalance: openingBalanceCents / 100,
-    closingBalance: closingBalanceCents / 100,
-  };
-}
+// ── TRUST-LEDGER JOURNAL — RETIRED 2026-09-06 ────────────────────────────
+//
+// This block held recordLedgerEntry, recordNotePayment, recordDealAcquisition,
+// recordDealSale and generateProfitLoss, over the single-entry `trust_ledger`
+// table. All five had ZERO callers anywhere in the repository.
+//
+// Its own header called them "DOUBLE-ENTRY JOURNAL ENTRIES". They were not:
+// recordLedgerEntry read the newest row's running_balance, added an amount and
+// wrote ONE row carrying the new total. A single-entry ledger with a
+// denormalised balance, described as double-entry — in a comment nobody ever
+// had to reconcile against the code, because nothing called the code.
+//
+// The org's real books are `account_ledger_entries`
+// (shared/schema/accounting-ops.ts): genuinely double-entry, CHECK-constrained,
+// and actually read — trialBalance, glPdfExport, qboExport and
+// recognitionWorker all run on it. Two ledgers was one too many, and the one
+// that was wrong was also the one nothing used.
+//
+// Retired rather than hardened: making unreachable machinery honest is work
+// that buys nothing, and leaving it there invited someone to wire it up
+// believing it sound. See docs/company/deletion-ledger.md.
+//
+// The TABLE is untouched and inert. Dropping it is a founder decision, because
+// it may hold customer rows.

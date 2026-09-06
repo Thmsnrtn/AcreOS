@@ -5,7 +5,11 @@
  * commission structures by volume, and generates per-agent statements.
  *
  * Storage: organizationIntegrations with provider='commission_config' for
- * tier configs (JSON blob). Commission records stored in trustLedger as
+ * tier configs (JSON blob). (The old note here said commission records were
+ * stored in trustLedger; they are not — the import was unused and the single-
+ * entry trust ledger was retired 2026-09-06. Commission records live where the
+ * functions below put them.)
+ * Historic note:
  * entryType='commission_owed' / 'commission_paid'.
  */
 
@@ -14,7 +18,6 @@ import {
   organizationIntegrations,
   teamMembers,
   deals,
-  trustLedger,
 } from "@shared/schema";
 import { and, desc, eq, gte, inArray, lte, notInArray, sql } from "drizzle-orm";
 import { startOfYear, endOfYear, format } from "date-fns";

@@ -10,6 +10,10 @@ import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 import { splitPaymentCents, computeAppliedLateFeeCents } from "./services/notePaymentMath";
+// The 1098 tax-year window. Box 1 is interest RECEIVED in a calendar year, and
+// which calendar day an instant fell on is a question about the LENDER's zone —
+// see dayInZone's header for what answering it with the server's zone cost.
+import { dayInZone, resolveOrgTimeZone } from "./services/form1098Batch";
 import { Errors, sendError } from "./utils/errors";
 import { getOrganization, type AuthenticatedRequest } from "./types/request";
 import {
@@ -1949,12 +1953,29 @@ export function registerBorrowerRoutes(app: Express): void {
       if (statementType === '1098') {
         // 1098 Interest Statement for tax year
         const taxYear = year ? Number(year) : new Date().getFullYear() - 1;
-        const yearStart = new Date(taxYear, 0, 1);
-        const yearEnd = new Date(taxYear, 11, 31, 23, 59, 59);
-        
+
+        // BUCKET BY THE LENDER'S CALENDAR DAY, NOT THE SERVER'S.
+        //
+        // This was `new Date(taxYear, 0, 1)` .. `new Date(taxYear, 11, 31,
+        // 23, 59, 59)` compared against a `timestamp`. Two defects in three
+        // lines. The boundaries were built in the SERVER's zone, so a borrower
+        // paying on 31 December at 16:00 Pacific — the tax-motivated year-end
+        // payment — had that interest reported in the following year, on a Box 1
+        // figure furnished under 26 U.S.C. §6050H. And the window CLOSED at
+        // 23:59:59 exactly, so a payment at 23:59:59.5 fell in neither year.
+        //
+        // Comparing ISO day strings against the org's own zone fixes both: the
+        // day is the lender's day, and `<=` on `YYYY-12-31` has no sub-second
+        // edge to fall through. It also makes this agree with the lender-side
+        // batch, which was already bucketing acquired notes by recorded day.
+        const orgTimeZone = await resolveOrgTimeZone(note.organizationId);
+        const firstDay = `${taxYear}-01-01`;
+        const lastDay = `${taxYear}-12-31`;
+
         const yearPayments = allPayments.filter(p => {
-          const payDate = new Date(p.paymentDate);
-          return p.status === 'completed' && payDate >= yearStart && payDate <= yearEnd;
+          if (p.status !== 'completed') return false;
+          const day = dayInZone(new Date(p.paymentDate), orgTimeZone);
+          return day !== null && day >= firstDay && day <= lastDay;
         });
         
         const yearInterest = yearPayments.reduce((sum, p) => sum + Number(p.interestAmount || 0), 0);

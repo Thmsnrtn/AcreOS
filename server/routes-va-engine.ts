@@ -1303,57 +1303,27 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     }
   });
 
-  // ============================================
-  // TRUST LEDGER (Phase 4)
-  // ============================================
-
-  api.get("/api/trust-ledger", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const entries = await storage.getTrustLedgerEntries(org.id);
-      res.json(entries);
-    } catch (error: any) {
-      logger.error("Get trust ledger entries error", error);
-      Errors.internal(res, error);
-    }
-  });
-
-  api.get("/api/trust-ledger/balance", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const balance = await storage.getTrustBalance(org.id);
-      res.json({ balance });
-    } catch (error: any) {
-      logger.error("Get trust ledger balance error", error);
-      Errors.internal(res, error);
-    }
-  });
-
-  api.get("/api/notes/:noteId/trust-ledger", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const noteId = parseInt(req.params.noteId);
-      const entries = await storage.getTrustLedgerByNote(org.id, noteId);
-      res.json(entries);
-    } catch (error: any) {
-      logger.error("Get note trust ledger entries error", error);
-      Errors.internal(res, error);
-    }
-  });
-
-  api.post("/api/trust-ledger", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const entry = await storage.createTrustLedgerEntry({
-        ...req.body,
-        organizationId: org.id,
-      });
-      res.status(201).json(entry);
-    } catch (error: any) {
-      logger.error("Create trust ledger entry error", error);
-      Errors.badRequest(res, error.message || "Failed to create trust ledger entry");
-    }
-  });
+  // ── TRUST LEDGER — RETIRED 2026-09-06 ────────────────────────────────────
+  //
+  // Four routes lived here (GET /api/trust-ledger, /balance,
+  // /api/notes/:noteId/trust-ledger, POST /api/trust-ledger) over the
+  // single-entry `trust_ledger` table. All four had ZERO callers: nothing in
+  // client/, nothing in the AI tool dispatchers, nothing anywhere.
+  //
+  // They were not merely unused, they were wrong. `getTrustBalance` returned
+  // the `running_balance` COLUMN of the newest row — a number the server never
+  // computed — and the POST spread `req.body` wholesale, so an operator could
+  // set their own trust balance to any value and `GET /api/trust-ledger` would
+  // return an entry list that did not sum to the balance the API reported. On a
+  // surface named for a fiduciary trust account.
+  //
+  // The real books are `account_ledger_entries`: double-entry, CHECK-constrained,
+  // and actually read (trialBalance, glPdfExport, qboExport, recognitionWorker).
+  // Hardening dead single-entry machinery to sit beside it would have been work
+  // that bought nothing. See docs/company/deletion-ledger.md.
+  //
+  // The TABLE is untouched and inert — dropping it is a founder-only decision
+  // because it may hold customer rows.
 
   // ============================================
   // DELINQUENCY ESCALATIONS (Phase 4)

@@ -13,21 +13,18 @@ import {
   closingPackets,
   autopayEnrollments,
   payoffQuotes,
-  trustLedger,
   delinquencyEscalations,
   type BuyerReservation,
   type EscrowChecklist,
   type ClosingPacket,
   type AutopayEnrollment,
   type PayoffQuote,
-  type TrustLedgerEntry,
   type DelinquencyEscalation,
   type InsertBuyerReservation,
   type InsertEscrowChecklist,
   type InsertClosingPacket,
   type InsertAutopayEnrollment,
   type InsertPayoffQuote,
-  type InsertTrustLedger,
   type InsertDelinquencyEscalation,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
@@ -227,33 +224,6 @@ export const closingServicingRepo = {
       .where(and(eq(payoffQuotes.id, id), eq(payoffQuotes.organizationId, organizationId)))
       .returning();
     return updated;
-  },
-
-  // Trust Ledger
-  async getTrustLedgerEntries(this: DatabaseStorage, organizationId: number): Promise<TrustLedgerEntry[]> {
-    return await db.select().from(trustLedger)
-      .where(eq(trustLedger.organizationId, organizationId))
-      .orderBy(desc(trustLedger.createdAt));
-  },
-
-  async getTrustLedgerByNote(this: DatabaseStorage, organizationId: number, noteId: number): Promise<TrustLedgerEntry[]> {
-    return await db.select().from(trustLedger)
-      .where(and(eq(trustLedger.noteId, noteId), eq(trustLedger.organizationId, organizationId)))
-      .orderBy(desc(trustLedger.createdAt));
-  },
-
-  async createTrustLedgerEntry(this: DatabaseStorage, data: InsertTrustLedger): Promise<TrustLedgerEntry> {
-    const [created] = await db.insert(trustLedger).values(data).returning();
-    return created;
-  },
-
-  async getTrustBalance(this: DatabaseStorage, organizationId: number): Promise<string> {
-    const [latest] = await db.select({ runningBalance: trustLedger.runningBalance })
-      .from(trustLedger)
-      .where(eq(trustLedger.organizationId, organizationId))
-      .orderBy(desc(trustLedger.createdAt))
-      .limit(1);
-    return latest?.runningBalance ?? "0";
   },
 
   // Delinquency Escalations
