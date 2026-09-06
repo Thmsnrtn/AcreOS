@@ -115,6 +115,7 @@ import { splitPaymentCents, computeAppliedLateFeeCents } from "./notePaymentMath
 import { addMonths } from "../utils/dateUtils";
 import { emitPaymentEvent } from "./workflow-engine";
 import { isCategorySimulated } from "../utils/simulationMode";
+import { noteGracePeriodDays } from "@shared/notes/delinquency";
 import {
   // `classifyAchReturn` is deliberately NOT imported: the two helpers below
   // already carry every decision this file makes about a return — which R-code
@@ -1187,12 +1188,29 @@ export const dbAchAutopayStore: AchAutopayStore = {
     const split = splitPaymentCents({ paymentAmountCents: amountCents, currentBalanceCents, annualRateBps });
 
     const dueDate = attempt.dueDate;
-    const lateFeeCents = computeAppliedLateFeeCents({
-      dueDate,
-      paymentDate: settledAt,
-      gracePeriodDays: note.gracePeriodDays ?? 10,
-      configuredLateFeeCents: centsFromDecimal(note.lateFee),
-    });
+    // Same correction as routes-borrower's two payment handlers, and this one
+    // runs UNATTENDED: an autopay settlement assessing a late fee under a
+    // ten-day clause the note does not contain, with nobody in the loop to
+    // notice. An applied fee is money, recorded, shown to the borrower, and
+    // not re-derivable — so an unstated term means there is no fee to apply,
+    // not a term to invent. (The aging sweep's opposite choice, ZERO, is for
+    // an internal signal that CAN be re-derived; see acquiredNoteAging.ts:291.)
+    const statedGrace = noteGracePeriodDays(note.gracePeriodDays);
+    const configuredLateFeeCents = centsFromDecimal(note.lateFee);
+    const lateFeeCents =
+      statedGrace === null
+        ? 0
+        : computeAppliedLateFeeCents({
+            dueDate,
+            paymentDate: settledAt,
+            gracePeriodDays: statedGrace,
+            configuredLateFeeCents,
+          });
+    if (statedGrace === null && configuredLateFeeCents > 0) {
+      logger.info("note_late_fee_skipped_grace_unstated", {
+        metadata: { noteId: note.id, source: "ach_autopay", configuredLateFeeCents },
+      });
+    }
 
     const outcome = await withTransaction(async (tx) => {
       const inserted = await tx

@@ -14,6 +14,7 @@ import {
 import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { addMonths } from "../utils/dateUtils";
+import { noteGracePeriodDays } from "@shared/notes/delinquency";
 
 /**
  * Thrown when a note, property or forecast id does not belong to the calling
@@ -507,13 +508,20 @@ class CashFlowForecasterService {
     let totalDaysLate = 0;
     let lateCount = 0;
 
-    for (const payment of paymentHistory) {
+    // WAS `note.gracePeriodDays || 10` at three sites. `||` fires on 0, so a
+  // note granting NO grace was forecast as if it granted ten days; and when
+  // the record states no term, ten was invented. This is an internal SIGNAL,
+  // not money and not an instrument, so it takes the aging sweep's convention
+  // — unstated measures as ZERO (acquiredNoteAging.ts:291) — rather than a
+  // third answer for the same question.
+  const graceForForecast = noteGracePeriodDays(note.gracePeriodDays) ?? 0;
+  for (const payment of paymentHistory) {
       if (payment.status === "completed") {
         const dueDate = new Date(payment.dueDate);
         const paymentDate = new Date(payment.paymentDate);
         const daysLate = Math.floor((paymentDate.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
 
-        if (daysLate <= (note.gracePeriodDays || 10)) {
+        if (daysLate <= graceForForecast) {
           onTimePayments++;
         } else {
           latePayments++;
@@ -566,6 +574,11 @@ class CashFlowForecasterService {
       return "consistent";
     }
 
+    // Same convention as the on-time count above: this is an internal signal,
+    // so an unstated grace period measures as ZERO rather than as an invented
+    // ten days, and `|| 10` no longer overrides a deliberate zero.
+    const graceForForecast = noteGracePeriodDays(note.gracePeriodDays) ?? 0;
+
     const recentPayments = paymentHistory.slice(0, Math.min(6, paymentHistory.length));
     const olderPayments = paymentHistory.slice(Math.min(6, paymentHistory.length));
 
@@ -574,7 +587,7 @@ class CashFlowForecasterService {
       const daysLate = Math.floor(
         (new Date(p.paymentDate).getTime() - new Date(p.dueDate).getTime()) / (1000 * 60 * 60 * 24)
       );
-      return daysLate > (note.gracePeriodDays || 10);
+      return daysLate > graceForForecast;
     }).length;
 
     const olderLateCount = olderPayments.filter(p => {
@@ -582,7 +595,7 @@ class CashFlowForecasterService {
       const daysLate = Math.floor(
         (new Date(p.paymentDate).getTime() - new Date(p.dueDate).getTime()) / (1000 * 60 * 60 * 24)
       );
-      return daysLate > (note.gracePeriodDays || 10);
+      return daysLate > graceForForecast;
     }).length;
 
     const recentLateRate = recentPayments.length > 0 ? recentLateCount / recentPayments.length : 0;
