@@ -212,9 +212,31 @@ export class OrgScopedDb {
 }
 
 /**
- * The one true entry point. Route handlers call
- * `forOrg(getOrganizationId(req))` and from then on every query through the
- * returned handle is tenant-pinned by construction.
+ * The construction path. `forOrg(orgId)` returns a handle whose every query is
+ * tenant-pinned by construction — a value of type `OrgScopedDb` is a
+ * proof-carrying token that an org context exists.
+ *
+ * WHAT THIS IS NOT, as of 2026-09-06, because the previous version of this
+ * comment said "the one true entry point… route handlers call
+ * `forOrg(getOrganizationId(req))`" and that had not happened:
+ *
+ *   - No route handler calls it. All THIRTEEN production call sites, across
+ *     eight files, are in `server/storage/*Repo.ts`.
+ *   - All thirteen call `findById`. `scope`, `existsById`, `listWhere`,
+ *     `updateById` and `deleteById` have ZERO production callers, so a change
+ *     to the org predicate inside any of them reaches nothing.
+ *
+ * This layer is therefore a partly-adopted convenience, NOT the mechanism that
+ * enforces tenancy. The enforcement is `scripts/check-org-scoped-fetch.mjs`,
+ * which reads every query in the repo and requires each to name the
+ * organization itself. Do not read a call through `forOrg` as the guarantee —
+ * read the lint.
+ *
+ * The adoption gap is pinned by `tests/unit/orgScopedDbAdoption.test.ts`: the
+ * unadopted list may only shrink, an adopted method may not lose its last
+ * caller, and a new helper must declare which it is. When the migration this
+ * comment used to describe actually happens, that test is what makes someone
+ * come back and rewrite this paragraph.
  */
 export function forOrg(organizationId: number): OrgScopedDb {
   return OrgScopedDb.forOrg(organizationId);
