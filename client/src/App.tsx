@@ -10,6 +10,7 @@ import { AiDisclosureGate } from "@/components/onboarding/AiDisclosureDialog";
 import { useWhiteLabel } from "@/hooks/use-white-label";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { telemetry } from "@/lib/telemetry";
+import { legacyAskSearch } from "@/lib/route-redirects";
 import { setSentryUser } from "@/lib/sentry";
 import { identifyUser, trackCanonicalEvent, trackEvent } from "@/lib/analytics";
 import { flushPendingUtm, hasSignupIntent } from "@/lib/acquisition-utm";
@@ -1406,11 +1407,17 @@ function Router() {
       {/* 2026-07-27 four-door merge — the standalone Agent-asks queue
           duplicated the Decisions door: founder-decisions.tsx embeds
           OpenAsksSection with the same /api/founder/asks answer flows. One
-          "things that need me" queue, one door. The query string is preserved
-          (wouter's Redirect drops it otherwise) so /founder/asks?id=N deep
-          links still carry the ask id. See route-redirects.ts. */}
+          "things that need me" queue, one door.
+
+          The query string is preserved (wouter's Redirect drops it otherwise),
+          but `id` is TRANSLATED to `ask`: on this legacy route `?id=` always
+          meant an ask id, while on the Decisions door `?id=` addresses the
+          decision LOG — a different table with its own key space. Forwarding it
+          verbatim (2026-07-27 → 2026-09-06) meant an old ask bookmark either
+          highlighted an unrelated decision or matched nothing at all. See
+          route-redirects.ts. */}
       <Route path="/founder/asks">
-        {() => <Redirect to={`/founder/decisions${window.location.search}`} />}
+        {() => <Redirect to={`/founder/decisions${legacyAskSearch(window.location.search)}`} />}
       </Route>
       <Route path="/founder/feed">
         {() => <FounderProtectedRoute component={FounderFeedPage} />}

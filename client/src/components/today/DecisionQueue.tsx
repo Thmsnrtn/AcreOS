@@ -654,16 +654,38 @@ export function DecisionQueue({
                               Dismiss
                             </Button>
                             {paxDraft && (
+                              // Two things were wrong here until 2026-09-06, and
+                              // together they made this button lie to the customer:
+                              //
+                              //  · It linked to `/pax?intent=…&leadId=…`. `/pax`
+                              //    is a <Redirect to="/ai">, and wouter's Redirect
+                              //    DROPS the query string — and nothing anywhere
+                              //    read `intent` in the first place. So the entity
+                              //    and the request both evaporated and Pax opened
+                              //    cold, with no idea what it had been asked for.
+                              //  · onClick resolved the item as "done" before the
+                              //    draft existed. The customer asked for a draft,
+                              //    the row vanished as completed, and nothing had
+                              //    been drafted or sent. That is a fabricated
+                              //    effect on the customer's first door.
+                              //
+                              // `?prefill=` is the mechanism that actually exists
+                              // (command-center.tsx reads it into the composer), so
+                              // the ask arrives as a real, specific instruction.
+                              // Resolution now waits for the follow-up to happen —
+                              // the row keeps its own Done/Dismiss controls.
                               <Button
                                 asChild
                                 size="sm"
                                 variant="ghost"
                                 className="h-8 px-2.5 text-xs gap-1 text-acr-brand"
-                                onClick={() => { lightImpact(); onResolve!(item.id, "done"); }}
+                                onClick={() => lightImpact()}
                                 data-testid={`decision-resolve-pax-draft-${item.id}`}
                               >
                                 <Link
-                                  href={`/pax?intent=draft_follow_up&${paxDraft.entityType}Id=${paxDraft.entityId}`}
+                                  href={`/ai?prefill=${encodeURIComponent(
+                                    `Draft the follow-up for ${item.title} (${paxDraft.entityType} #${paxDraft.entityId}).`,
+                                  )}`}
                                   aria-label={`Ask Pax to draft the follow-up for "${item.title}"`}
                                 >
                                   <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />

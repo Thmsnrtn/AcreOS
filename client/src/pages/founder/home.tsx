@@ -234,7 +234,7 @@ export default function FounderHomePage() {
                       <p className="mt-1 text-sm text-muted-foreground">{brief.decision.summary}</p>
                     </div>
                     <PrefetchLink
-                      href={`/founder/decisions?id=${brief.decision.askId}`}
+                      href={`/founder/decisions?ask=${brief.decision.askId}`}
                       className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground"
                     >
                       Review <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />

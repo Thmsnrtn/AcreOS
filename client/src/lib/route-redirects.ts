@@ -118,7 +118,7 @@ export const ROUTE_REDIRECTS: readonly RouteRedirect[] = [
     canonical: "/founder/decisions",
     sunsetOn: "2026-07-27",
     reason:
-      "Two differently-named 'things that need me' queues violated the four-door doctrine, so the standalone Agent-asks page was deleted; the Decisions door embeds OpenAsksSection and the redirect preserves the query string. CORRECTED 2026-09-01: OpenAsksSection embeds only the read-only ask LIST — the answer/supersede dialogs (answer-ask-dialog.tsx, supersede-ask-dialog.tsx) lost their only mount in the deletion and have zero importers, so asks can currently be answered only via the /api/founder/asks API. And the preserved ?id= is consumed by the decisions page's handler keyed to decision-log ids, not ask ids, so ask deep links land on the Decisions door but do not open the ask. The original record certified flows the deletion had orphaned.",
+      "Two differently-named 'things that need me' queues violated the four-door doctrine, so the standalone Agent-asks page was deleted; the Decisions door embeds OpenAsksSection and the redirect preserves the query string. CORRECTED 2026-09-01: OpenAsksSection embeds only the read-only ask LIST — the answer/supersede dialogs (answer-ask-dialog.tsx, supersede-ask-dialog.tsx) lost their only mount in the deletion and have zero importers, so asks can currently be answered only via the /api/founder/asks API. And the preserved ?id= is consumed by the decisions page's handler keyed to decision-log ids, not ask ids, so ask deep links land on the Decisions door but do not open the ask. The original record certified flows the deletion had orphaned. REPAIRED 2026-09-06: OpenAsksSection now mounts both dialogs and answers in place, asks carry their own ?ask= param, and this redirect translates the legacy ?id= (an ask id on the old route) into it. askDialogsAreMounted.test.ts holds the mounts.",
   },
   {
     legacy: "/founder/solene-chat",
@@ -132,4 +132,29 @@ export const ROUTE_REDIRECTS: readonly RouteRedirect[] = [
 /** Lookup helper: returns the canonical path for a legacy path, or null. */
 export function getCanonicalPath(legacy: string): string | null {
   return ROUTE_REDIRECTS.find((r) => r.legacy === legacy)?.canonical ?? null;
+}
+
+/**
+ * Translate the legacy `/founder/asks` query string for the Decisions door.
+ *
+ * On the deleted `/founder/asks` page `?id=` addressed an ASK. On the Decisions
+ * door `?id=` addresses a DECISION-LOG row — a different table with its own key
+ * space — and asks are addressed by `?ask=`. Forwarding the search string
+ * verbatim (as this redirect did from 2026-07-27) therefore handed an ask id to
+ * the decision-log resolver, which highlighted an unrelated row or, far more
+ * often, nothing at all: a bookmark that appeared to work and silently didn't.
+ *
+ * Exported (rather than inlined in App.tsx) so the translation is testable
+ * without mounting the router.
+ */
+export function legacyAskSearch(search: string): string {
+  const params = new URLSearchParams(search);
+  const askId = params.get("id");
+  if (askId !== null) {
+    params.delete("id");
+    // An explicit ?ask= already on the URL is the newer, correct form — keep it.
+    if (!params.has("ask")) params.set("ask", askId);
+  }
+  const out = params.toString();
+  return out ? `?${out}` : "";
 }

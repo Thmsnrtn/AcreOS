@@ -967,7 +967,7 @@ export default function FounderMoneyPage() {
 
         <div className="pt-2 text-center">
           <Link
-            href="/founder/solene-chat"
+            href="/founder/chat"
             className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             data-testid="link-ask-solene-money"
           >

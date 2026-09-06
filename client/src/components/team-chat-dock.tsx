@@ -106,7 +106,7 @@ export function TeamChatDock() {
                   className="h-8 w-8"
                   aria-label="Open the full team inbox"
                 >
-                  <Link href="/team-inbox">
+                  <Link href="/team">
                     <ExternalLink className="h-4 w-4" aria-hidden="true" />
                   </Link>
                 </Button>

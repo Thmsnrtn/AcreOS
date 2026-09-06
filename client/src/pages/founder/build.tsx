@@ -488,7 +488,7 @@ export default function FounderBuildPage() {
             </CardTitle>
             <Button asChild variant="ghost" size="sm">
               <Link
-                href="/founder/asks"
+                href="/founder/decisions"
                 aria-label="View all open asks"
                 data-testid="link-view-all-asks-build"
               >
@@ -560,7 +560,7 @@ export default function FounderBuildPage() {
               </p>
               <Button asChild className="mt-3" size="sm">
                 <Link
-                  href="/founder/solene-chat"
+                  href="/founder/chat"
                   aria-label="Ask Solene to dispatch a task"
                   data-testid="link-dispatch-via-solene"
                 >
@@ -574,7 +574,7 @@ export default function FounderBuildPage() {
 
         <div className="pt-2 text-center">
           <Link
-            href="/founder/solene-chat"
+            href="/founder/chat"
             className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             data-testid="link-ask-solene-build"
           >

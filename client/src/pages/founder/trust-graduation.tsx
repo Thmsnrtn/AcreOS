@@ -18,7 +18,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { CanonicalSurfacesBanner } from "@/components/founder/CanonicalSurfacesBanner";
 import { useToast } from "@/hooks/use-toast";
 import { ShieldCheck, ShieldAlert, Lock, Unlock, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { formatDate } from "@/lib/format";
@@ -84,7 +83,6 @@ export default function FounderTrustGraduationPage() {
   return (
     <PageShell label="Trust graduation">
       <div className="max-w-5xl mx-auto space-y-6">
-        <CanonicalSurfacesBanner variant="compact" />
         <header>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
             <ShieldCheck className="w-6 h-6 text-acr-brand" aria-hidden="true" />

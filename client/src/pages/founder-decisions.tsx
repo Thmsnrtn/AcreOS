@@ -54,6 +54,12 @@ import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 // actual do-nothing behavior). Founder-trust audit 2026-07-28: every
 // needs-you card must say what ignoring it costs — no ambient guilt.
 import { doNothingContract } from "@shared/decisions/doNothing";
+// The founder's one required door must be able to RESOLVE what it lists. These
+// two dialogs lost their only mount when the standalone /founder/asks page was
+// deleted, and nothing has mounted them since — see OpenAsksSection below.
+import { AnswerAskDialog } from "@/components/founder/asks/answer-ask-dialog";
+import { SupersedeAskDialog } from "@/components/founder/asks/supersede-ask-dialog";
+import type { FounderAsk } from "@/components/founder/asks/ask-shared";
 
 // ───────────── Types ─────────────
 
@@ -670,10 +676,31 @@ interface DefectsResponse {
 /**
  * Open questions from the agents (asks). The door's doctrine (founder-doors.ts)
  * names asks as part of Decisions — "the witnessed-send queue, asks, appeals,
- * recourse" — but asks previously lived ONLY on the /founder/asks deep page,
- * so a founder checking this door could miss a blocked agent waiting on an
- * answer. Mirrors WitnessedSendQueue: renders only when something is waiting.
- * Answering stays on the asks surface (the answer form is format-dependent).
+ * recourse". Mirrors WitnessedSendQueue: renders only when something is waiting.
+ *
+ * THE ASK LANE, WHICH COULD NOT ANSWER AN ASK.
+ *
+ * The master directive names Decisions as "the only routine place the founder is
+ * required to interact". This section listed the questions agents were waiting
+ * on and offered no way to answer one. Four things were wrong at once:
+ *
+ *  1. `AnswerAskDialog` and `SupersedeAskDialog` had ZERO importers. They lost
+ *     their only mount when the standalone /founder/asks page was deleted for
+ *     duplicating this door, and nothing picked them up. The only surviving
+ *     reference was a prose record in route-redirects.ts DESCRIBING the
+ *     orphaning — which is also why a careless grep reports them as imported.
+ *  2. The per-row "Answer" button linked to `/founder/asks?id=N`, and App.tsx
+ *     redirects `/founder/asks` back to `/founder/decisions`. The founder is
+ *     already here; the button navigated to the page it was on.
+ *  3. `?id=` carried an ASK id (home.tsx sends `brief.decision.askId`) into a
+ *     handler that matches DECISION-LOG ids. Two tables' primary keys, one
+ *     query param, so the Letter's headline CTA highlighted the wrong row or
+ *     none at all.
+ *  4. The backend was live the whole time — POST /api/founder/asks/:id/answer
+ *     and /supersede both exist. Only the UI was missing.
+ *
+ * Asks now open in a dialog here, and carry their own `?ask=` param so an ask id
+ * can never be read as a decision-log id again.
  */
 function OpenAsksSection() {
   const { data } = useQuery<{
@@ -683,6 +710,43 @@ function OpenAsksSection() {
     queryKey: ["/api/founder/asks?status=open&limit=10"],
     staleTime: 30_000,
   });
+
+  const queryClient = useQueryClient();
+
+  // The list carries a summary; the dialogs need the whole ask (body, options,
+  // answer format), so the full record is fetched when one is opened. `?ask=`
+  // is read once, on mount — a deep link from the Letter lands with the row
+  // already open.
+  const [openAskId, setOpenAskId] = useState<number | null>(() => {
+    const raw = new URLSearchParams(window.location.search).get("ask");
+    const n = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : null;
+  });
+  const [superseding, setSuperseding] = useState(false);
+  const { data: askDetail } = useQuery<{ ask: FounderAsk }>({
+    queryKey: [`/api/founder/asks/${openAskId}`],
+    enabled: openAskId != null,
+  });
+  const openAsk = askDetail?.ask ?? null;
+
+  const closeAsk = () => {
+    setOpenAskId(null);
+    setSuperseding(false);
+    // Drop ?ask= so the dismissed dialog cannot reopen on a re-mount or a
+    // shared/bookmarked URL that outlives the question.
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("ask")) {
+      url.searchParams.delete("ask");
+      window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+  };
+  const afterSubmit = () => {
+    closeAsk();
+    void queryClient.invalidateQueries({
+      queryKey: ["/api/founder/asks?status=open&limit=10"],
+    });
+  };
+
   if (!data || data.count === 0) return null;
   return (
     <Card className="border-l-4 border-l-primary" data-testid="decisions-open-asks">
@@ -706,21 +770,45 @@ function OpenAsksSection() {
                 {ask.urgency === "urgent" ? " · urgent" : ""}
               </p>
             </div>
-            <Button asChild size="sm" variant={ask.urgency === "urgent" ? "default" : "outline"} className="shrink-0">
-              <PrefetchLink href={`/founder/asks?id=${ask.id}`} aria-label={`Answer: ${ask.questionSummary}`}>
+            <div className="flex shrink-0 items-center gap-1">
+              <Button
+                size="sm"
+                variant={ask.urgency === "urgent" ? "default" : "outline"}
+                aria-label={`Answer: ${ask.questionSummary}`}
+                data-testid={`decisions-answer-ask-${ask.id}`}
+                onClick={() => {
+                  setSuperseding(false);
+                  setOpenAskId(ask.id);
+                }}
+              >
                 Answer
-              </PrefetchLink>
-            </Button>
+              </Button>
+              {/* The second real outcome: the question stopped mattering. Without
+                  it the only way to clear a stale ask is to wait for its timeout,
+                  which closes it to the safe side and leaves the agent blocked. */}
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 text-muted-foreground"
+                aria-label={`No longer relevant: ${ask.questionSummary}`}
+                data-testid={`decisions-supersede-ask-${ask.id}`}
+                onClick={() => {
+                  setSuperseding(true);
+                  setOpenAskId(ask.id);
+                }}
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </div>
           </div>
         ))}
         {data.count > 5 && (
-          <PrefetchLink
-            href="/founder/asks"
-            className="block text-xs text-primary hover:underline"
-            data-testid="decisions-open-asks-all"
-          >
-            All {data.count} open questions →
-          </PrefetchLink>
+          // Was a link to /founder/asks, which redirects to this page — it read
+          // as "there is more elsewhere" and went nowhere. State the count
+          // instead; the five most urgent are the ones shown.
+          <p className="text-xs text-muted-foreground" data-testid="decisions-open-asks-all">
+            {data.count - 5} more open {data.count - 5 === 1 ? "question" : "questions"} — answer these first.
+          </p>
         )}
         {/* Verified truth (founderCollab.ts): agents never act on an
             unanswered ask; timeouts close it to the safe side. */}
@@ -730,6 +818,21 @@ function OpenAsksSection() {
         >
           {doNothingContract("founder_ask")}
         </p>
+
+        {/* The mounts whose absence made this whole section decorative. Both are
+            null-safe on `ask`, so they render nothing until the detail query
+            lands — the row click is instant and the dialog opens when the full
+            ask arrives. */}
+        <AnswerAskDialog
+          ask={superseding ? null : openAsk}
+          onClose={closeAsk}
+          onSubmitted={afterSubmit}
+        />
+        <SupersedeAskDialog
+          ask={superseding ? openAsk : null}
+          onClose={closeAsk}
+          onSubmitted={afterSubmit}
+        />
       </CardContent>
     </Card>
   );
@@ -924,6 +1027,11 @@ export default function FounderDecisionsPage() {
 
   // ?id=N deep link — switch to the bucket holding that row, then scroll to
   // and highlight it. Read once; applied once after the log loads.
+  //
+  // `id` is a DECISION-LOG row id and nothing else. Asks are a different table
+  // with its own key space and use `?ask=` (see OpenAsksSection) — the Letter
+  // used to send an ask id here, where it either matched an unrelated decision
+  // or silently matched nothing.
   const deepLinkId = useMemo(() => {
     const raw = new URLSearchParams(window.location.search).get("id");
     const n = raw ? parseInt(raw, 10) : NaN;
