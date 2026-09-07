@@ -67,13 +67,55 @@
  * Exit codes: 0 = PASS or documented SKIP · 1 = FAIL (including vacuous scan).
  */
 
-import { readdirSync, statSync, existsSync } from "node:fs";
+import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
 import { resolve, join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// ── Budgets (unchanged from the original gate) ────────────────────────────
-const MAX_SINGLE_CHUNK_KB = 600; // No single chunk > 600 KB
-const MAX_TOTAL_JS_KB = 3000; // Total JS < 3 MB
+// ── Budgets: a GOAL that is reported, and a RATCHET that is enforced ───────
+//
+// This gate had never run. It was hardened in August against two ways of
+// measuring nothing and calling it a pass — and then its only caller was
+// scripts/verify-launch-ready.sh, which is itself invoked by no workflow and no
+// npm script. A gate reachable only from an unreachable caller is the same
+// green-over-a-live-defect shape it was written to remove, one level up.
+//
+// Wiring it revealed why it was easy to leave unwired: the goals below are
+// aspirational and the bundle is nowhere near them. Measured 2026-09-07 on a
+// real production build — 468 chunks, 10,762 KB of JS, a 2,598 KB vendor-map
+// and a 700 KB entry. Enforcing the goal would mean a permanently red gate,
+// which is how gates get deleted rather than met.
+//
+// So the goals stay as goals and are REPORTED with the distance still to go,
+// and what is ENFORCED is a ratchet on the measured numbers: they may shrink,
+// never grow. That stops the next regression today, and it does not pretend a
+// budget is met when it is not.
+//
+// ON "TOTAL JS", read it honestly: it sums EVERY chunk, and 468 of them are
+// route-split and lazily loaded. It is not what a visitor downloads. It bounds
+// how much code exists, which is worth ratcheting, but the number that governs
+// first paint is the ENTRY chunk — 1,433 KB before the ORM was lifted out of
+// the client, 700 KB now — and the number that governs the Map door is
+// vendor-map. All three are ratcheted separately so a win in one cannot mask a
+// regression in another.
+const GOAL_SINGLE_CHUNK_KB = 600; // No single chunk > 600 KB
+const GOAL_TOTAL_JS_KB = 3000; // Total JS < 3 MB
+
+// Enforced ceilings — measured 2026-09-07, lower them in the commit that earns it.
+const RATCHET_SINGLE_CHUNK_KB = 2598; // vendor-map (maplibre + mapbox-gl, runtime-switchable)
+const RATCHET_TOTAL_JS_KB = 10762;
+const RATCHET_ENTRY_CHUNK_KB = 700; // index-*.js — the one that governs first paint
+
+/**
+ * Stale-high tolerance. Chunk bytes move a little between builds (hash length,
+ * minifier version, a one-line change). A strict "must equal" would be flaky
+ * and would train people to bump the number; no tolerance at all lets a real
+ * win go unlocked. 2% is wider than observed jitter and narrower than any
+ * change worth making.
+ */
+const RATCHET_TOLERANCE = 0.02;
+
+const MAX_SINGLE_CHUNK_KB = RATCHET_SINGLE_CHUNK_KB;
+const MAX_TOTAL_JS_KB = RATCHET_TOTAL_JS_KB;
 
 /**
  * VACUITY FLOOR, not a budget. Every number below counts BAD THINGS FOUND, so
@@ -332,12 +374,81 @@ if (totalBytes > MAX_TOTAL_JS_KB * 1024) {
 // The measured population prints on EVERY outcome. "0 violations" means
 // nothing unless the reader can see how much was actually looked at.
 const largest = jsFiles.reduce((a, b) => (b.bytes > a.bytes ? b : a), jsFiles[0]);
+
+// ── The entry chunk, ratcheted on its own ─────────────────────────────────
+// A win in total JS must not be able to hide a regression in the chunk every
+// visitor downloads before anything renders.
+// The entry is the module script index.html actually loads — NOT "a file called
+// index-*.js". This build emits five of those (716 KB, 65 KB, 8.9 KB, 7.1 KB,
+// 975 B); a name-matching find picked the 975-byte one and duly reported the
+// entry had shrunk from 700 KB to 1 KB. Reading it from the HTML cannot pick
+// the wrong file, because the browser reads the same line.
+const indexHtml = join(ASSETS_DIR, "..", "index.html");
+if (!existsSync(indexHtml)) {
+  console.error(
+    "FAIL: dist/public/index.html is missing, so the entry chunk cannot be " +
+      "identified. The number that governs first paint would go unmeasured.",
+  );
+  process.exit(1);
+}
+const entrySrc = /<script[^>]*type="module"[^>]*src="([^"]+)"/.exec(
+  readFileSync(indexHtml, "utf8"),
+)?.[1];
+if (!entrySrc) {
+  console.error(
+    "FAIL: no <script type=\"module\" src=…> in dist/public/index.html. The " +
+      "entry chunk cannot be identified.",
+  );
+  process.exit(1);
+}
+const entryName = entrySrc.split("/").pop();
+const entry = jsFiles.find((f) => f.rel.split("/").pop() === entryName);
+if (!entry) {
+  console.error(
+    `FAIL: index.html loads ${entryName}, which is not among the ` +
+      `${jsFiles.length} chunks measured. The scan is reading a different tree ` +
+      "than the one that ships.",
+  );
+  process.exit(1);
+}
+const entryKB = Math.round(entry.bytes / 1024);
+if (entryKB > RATCHET_ENTRY_CHUNK_KB) {
+  violations.push(
+    `Entry chunk ${entry.rel}: ${entryKB} KB exceeds the ratchet of ` +
+      `${RATCHET_ENTRY_CHUNK_KB} KB. This is the code every visitor downloads ` +
+      "before anything renders.",
+  );
+}
+
+// ── Stale-high: a win that is not locked in is a win that gets given back ──
+const staleHigh = [];
+const checkStale = (label, measured, ratchet) => {
+  if (measured < ratchet * (1 - RATCHET_TOLERANCE)) {
+    staleHigh.push(`  ${label}: ${measured} KB, ratchet says ${ratchet} KB — lower it to ${measured}`);
+  }
+};
+checkStale("total JS", Math.round(totalBytes / 1024), RATCHET_TOTAL_JS_KB);
+checkStale("largest chunk", Math.round(largest.bytes / 1024), RATCHET_SINGLE_CHUNK_KB);
+checkStale("entry chunk", entryKB, RATCHET_ENTRY_CHUNK_KB);
+if (staleHigh.length > 0 && violations.length === 0) {
+  console.error("");
+  console.error(
+    "[check-bundle-size] FAIL — stale-high ratchet. The bundle got smaller and " +
+      "the ceiling did not follow, so the win is unprotected: the next change " +
+      "can give it back without failing anything.",
+  );
+  console.error("");
+  for (const l of staleHigh) console.error(l);
+  console.error("");
+  process.exit(1);
+}
 const population = [
   `scanned:      ${rel(ASSETS_DIR)}`,
   `js chunks measured: ${jsFiles.length}  (floor ${MIN_JS_FILES})`,
   `directories walked: ${dirsWalked}, entries seen: ${entriesSeen}, non-.js files: ${otherFiles}`,
-  `total JS:     ${totalJSKB} KB  (limit ${MAX_TOTAL_JS_KB} KB)`,
-  `largest chunk: ${largest.rel} — ${Math.round(largest.bytes / 1024)} KB  (limit ${MAX_SINGLE_CHUNK_KB} KB)`,
+  `total JS:      ${totalJSKB} KB  (ratchet ${RATCHET_TOTAL_JS_KB} KB · goal ${GOAL_TOTAL_JS_KB} KB — ${Math.max(0, totalJSKB - GOAL_TOTAL_JS_KB)} KB to go)`,
+  `entry chunk:   ${entry.rel} — ${entryKB} KB  (ratchet ${RATCHET_ENTRY_CHUNK_KB} KB · goal ${GOAL_SINGLE_CHUNK_KB} KB — ${Math.max(0, entryKB - GOAL_SINGLE_CHUNK_KB)} KB to go)`,
+  `largest chunk: ${largest.rel} — ${Math.round(largest.bytes / 1024)} KB  (ratchet ${RATCHET_SINGLE_CHUNK_KB} KB · goal ${GOAL_SINGLE_CHUNK_KB} KB)`,
 ];
 
 if (violations.length > 0) {

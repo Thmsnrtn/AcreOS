@@ -154,6 +154,14 @@ jobs:
           # token the moment the lint job goes green and this job finally runs.
           SENTRY_SOURCEMAPS: skip
 
+      # The bundle gate had been hardened in August against two ways of
+      # measuring nothing and calling it a pass — and then never ran. Its only
+      # caller was scripts/verify-launch-ready.sh, which no workflow and no npm
+      # script invokes. This job already builds, so measuring here costs a
+      # second and is the first time the ratchet has teeth.
+      - name: Bundle size ratchet
+        run: npm run test:bundle-size
+
       - name: Verify build output
         run: |
           test -d dist || (echo "Build output missing" && exit 1)
