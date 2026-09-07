@@ -2,7 +2,17 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # `claude/**` added 2026-09-07. This workflow ran on main and PRs only, and
+    # that gap has a measured cost: a repo-sweeping test timed out under the
+    # coverage step and turned main red, and the branch it came from had shown
+    # three green workflows — none of which was this one. A verification that is
+    # complete over the population it reads, and blind to the workflow that
+    # matters, is the failure this repository has paid for more than once.
+    #
+    # It also makes the bundle ratchet measurable before a fast-forward rather
+    # than after: the branch runs the same ubuntu runner, so its numbers are the
+    # numbers main will see.
+    branches: [main, "claude/**"]
   pull_request:
     branches: [main]
 
