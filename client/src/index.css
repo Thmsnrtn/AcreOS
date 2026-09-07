@@ -291,7 +291,7 @@
   --secondary:                   38 31% 83%;
   --secondary-foreground:        28 33% 9%;
   --muted:                       38 31% 83%;
-  --muted-foreground:            34 21% 34%;
+  --muted-foreground:            34 21% 32.6%;  /* 4.35:1 -> 4.62:1 on --sidebar-background (WCAG AA) */
   --accent:                      36 61% 45%;
   --accent-foreground:           41 51% 92%;
   --destructive:                 11 73% 32%;
@@ -1011,7 +1011,7 @@
   --secondary:                   69 30.2% 91.6%;
   --secondary-foreground:        109 33.3% 9.4%;
   --muted:                       69 30.2% 91.6%;
-  --muted-foreground:            87 8.2% 39.8%;
+  --muted-foreground:            87 8.2% 38.5%;  /* 4.37:1 -> 4.62:1 on --sidebar-background (WCAG AA) */
   --accent:                      37 69.3% 50.2%;
   --accent-foreground:           60 53.8% 97.5%;
   --destructive:                 14 60% 49%;

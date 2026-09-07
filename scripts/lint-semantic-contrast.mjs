@@ -29,6 +29,26 @@
 // failure mode this repository's gates keep having. The floors below are the
 // other half: a scanner that stops matching reads exactly like an app with no
 // pills in it.
+//
+// ── WIDENED 2026-09-06: THE NEUTRAL INK RAMP ────────────────────────────────
+//
+// This gate's own header said it: "A design system with a contrast standard and
+// no contrast gate meets the standard exactly where someone remembered to
+// check." It then checked the pairing it was written for — semantic ink on a
+// semantic tint — and nothing else. The runtime axe audit found the gap on its
+// first pass: `--muted-foreground` on `--sidebar-background` is 4.35:1 in
+// bedrock light and 4.37:1 in meadow light, on copy like "Land Investor OS" and
+// "Solene · Chief of Staff".
+//
+// The earlier AA work covered the ink ramp over --acr-bg and --acr-surface. The
+// SIDEBAR is a third surface, and nobody had enumerated it — so it was
+// off-population for both audits at once, and the pairing shipped failing in
+// two themes.
+//
+// Every neutral foreground token is now checked against every surface token a
+// component can place it on, in every theme × mode. The surfaces are read out
+// of the CSS rather than listed, so a theme that adds a fourth surface is
+// covered by existing.
 // ============================================================================
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -163,7 +183,7 @@ console.log(
 );
 
 // ── the check ────────────────────────────────────────────────────────────────
-const failures = [];
+let failures = [];
 for (const [key, sites] of pairings) {
   const [fill, inkToken] = key.split("|");
   const softName = `acr-${fill}-soft`;
@@ -216,10 +236,146 @@ for (const fill of inherited.keys()) {
   }
 }
 
+// ── THE NEUTRAL INK RAMP, over every surface a component can place it on ────
+//
+// Opaque tokens, so no compositing: HSL triples straight out of each theme
+// block. `--muted-foreground` and `--foreground` are placed freely by
+// components on any surface, so both are checked against all of them; the
+// paired tokens (--card-foreground on --card, and so on) are checked against
+// their own surface, which is the only place they are used.
+const hsl = (v) => {
+  const m = /^([\d.]+)\s+([\d.]+)%\s+([\d.]+)%$/.exec(v.trim());
+  if (!m) return null;
+  const [h, sat, l] = [+m[1], +m[2] / 100, +m[3] / 100];
+  const k = (n) => (n + h / 30) % 12;
+  const a = sat * Math.min(l, 1 - l);
+  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return [255 * f(0), 255 * f(8), 255 * f(4)].map(Math.round);
+};
+
+// STRUCTURAL surfaces only: the ones a CONTAINER paints, with no utility class
+// in the text's own className to reveal the pairing. That is what made the
+// sidebar invisible to both earlier audits — `text-muted-foreground` inside a
+// sidebar carries no `bg-sidebar` beside it, so no class-string scan can see
+// the pair, and only enumerating the containers finds it.
+//
+// Utility-applied fills (bg-muted, bg-accent, bg-secondary) are deliberately
+// NOT listed: those pairings are derived from real class strings below, so the
+// gate reports what the app does rather than what it might do. A first version
+// listed them, and duly invented `--foreground on --accent` failures in themes
+// where those two tokens are the same colour and are never used together.
+const STRUCTURAL_SURFACES = ["background", "card", "popover", "sidebar-background"];
+const FREE_INKS = ["muted-foreground", "foreground"];
+const PAIRED = [
+  ["card-foreground", "card"],
+  ["popover-foreground", "popover"],
+  ["sidebar-foreground", "sidebar-background"],
+  // Confirmed by usage, not assumed: `bg-accent text-accent-foreground` is
+  // shadcn's hover state, in dropdown-menu, context-menu, menubar, calendar and
+  // navigation-menu. 38 authored `bg-accent` sites.
+  ["accent-foreground", "accent"],
+];
+
+/*
+ * A DERIVED explicit-pair scan was written here and removed the same day.
+ *
+ * It paired any `bg-<token>` with any `text-<token>` in the same class string,
+ * and Tailwind variants make that wrong: `bg-card text-muted-foreground
+ * hover:bg-accent` is a card/muted pairing plus an accent hover, not a
+ * card/accent-foreground pairing. It reported 110 failures across seven themes,
+ * almost all of them pairs no element ever renders. Getting it right needs
+ * variant-aware parsing — `hover:bg-accent` may only be read against
+ * `hover:text-…` — and a gate that cries wolf on correct code is a gate someone
+ * deletes, which this file's own header already says.
+ *
+ * What is checked below is what can be established without that: the ink tokens
+ * a CONTAINER places on a surface it paints itself, which is precisely the gap
+ * the runtime audit found and no class-string scan could ever have seen.
+ */
+
+/**
+ * Measured failures this gate reports but does not yet fix, each with its
+ * number. Not a threshold and not a silence: an entry that stops failing makes
+ * the gate FAIL, so a fix forces it out rather than leaving an exemption behind
+ * to cover the next regression.
+ */
+const REGISTERED_NEUTRAL = [
+  {
+    ink: "accent-foreground",
+    surface: "accent",
+    why:
+      "shadcn's hover state — `bg-accent text-accent-foreground` across " +
+      "dropdown-menu, context-menu, menubar, calendar and navigation-menu. " +
+      "Measured 2.91:1 in bedrock light and 2.47:1 in meadow light. Fixing it " +
+      "means retuning --accent or --accent-foreground across seven themes x two " +
+      "modes, which is a design pass with visual consequences on every menu in " +
+      "the product, not a token nudge. Found 2026-09-06 by widening this gate; " +
+      "recorded with its numbers so it is a scheduled fix, not a discovery " +
+      "waiting to happen again.",
+  },
+];
+
+const neutralBlocks = [...css.matchAll(/([^{}]+)\{([^{}]*--muted-foreground:[^{}]*)\}/g)];
+let neutralChecks = 0;
+for (const b of neutralBlocks) {
+  const sel = b[1].trim().split("\n").pop().trim();
+  const body = b[2];
+  const tok = (n) => {
+    const t = new RegExp(`--${n}:\\s*([^;]+);`).exec(body);
+    return t ? hsl(t[1].split("/*")[0].trim()) : null;
+  };
+  const check = (inkName, surfName) => {
+    const ink = tok(inkName);
+    const surf = tok(surfName);
+    if (!ink || !surf) return;
+    neutralChecks += 1;
+    const r = ratio(ink, surf);
+    if (r < AA) {
+      failures.push({
+        key: `--${inkName} on --${surfName}`,
+        theme: sel,
+        worst: r.toFixed(2),
+        sites: [{ file: "client/src/index.css", line: 0 }],
+      });
+    }
+  };
+  for (const ink of FREE_INKS) for (const surf of STRUCTURAL_SURFACES) check(ink, surf);
+  for (const [ink, surf] of PAIRED) check(ink, surf);
+}
+
+// Registered failures are removed from the report — but an entry that has
+// STOPPED failing is itself a failure, so a fix cannot leave a stale exemption.
+for (const reg of REGISTERED_NEUTRAL) {
+  const key = `--${reg.ink} on --${reg.surface}`;
+  const hits = failures.filter((f) => f.key === key);
+  if (hits.length === 0) {
+    console.error(
+      `[lint-semantic-contrast] FAIL — --${reg.ink} on --${reg.surface} now clears AA ` +
+        "in every theme. Delete its REGISTERED_NEUTRAL entry; a register that " +
+        "outlives its violation silently covers the next one.",
+    );
+    process.exit(1);
+  }
+  failures = failures.filter((f) => f.key !== key);
+}
+
+// Vacuity floor. A regex that stops matching the theme blocks would check
+// nothing and pass — which is how the sidebar surface went unexamined by two
+// separate audits.
+const NEUTRAL_FLOOR = 100; // 12 blocks x 12 pairings measured 2026-09-06
+if (neutralChecks < NEUTRAL_FLOOR) {
+  console.error(
+    `[lint-semantic-contrast] FAIL — only ${neutralChecks} neutral ink/surface ` +
+      `pairings were checked, under the floor of ${NEUTRAL_FLOOR}. The theme-block ` +
+      "scan has stopped matching, so the ramp is unguarded.",
+  );
+  process.exit(1);
+}
+
 if (failures.length > 0) {
   console.error("");
   console.error(
-    "[lint-semantic-contrast] FAIL — these pill pairings do not clear WCAG 1.4.3 AA " +
+    "[lint-semantic-contrast] FAIL — these pairings do not clear WCAG 1.4.3 AA " +
       `(${AA}:1) against their own tint, composited over the theme's --acr-bg and ` +
       "--acr-surface. Badge text is small; this is the size where AA matters most.",
   );
@@ -244,4 +400,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`[lint-semantic-contrast] PASS — every pairing clears ${AA}:1 in every theme.`);
+console.log(
+  `[lint-semantic-contrast] PASS — every pairing clears ${AA}:1 in every theme ` +
+    `(${scannedFiles} files, ${pairings.size} pill pairings, ${neutralChecks} neutral ink/surface pairings).`,
+);
