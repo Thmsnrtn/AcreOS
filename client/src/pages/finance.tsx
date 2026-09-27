@@ -538,7 +538,7 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                 <EmptyState
                   icon={FileText}
                   headline="No notes serviced yet"
-                  subtitle="Originate or import a note — Pax generates the amortization schedule the moment you wire the terms, then pings on day 11 and prepares your 1099-NEC at year-end."
+                  subtitle="Originate or import a note — Pax generates the amortization schedule the moment you wire the terms, then pings on day 11 and keeps each borrower's year-end interest totals."
                   cta={{
                     label: "Create Your First Note",
                     onClick: () => setIsCreateOpen(true),
@@ -1977,7 +1977,7 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
       submitNote(data, { saveAsPending: true });
       toast({
         title: "Saved as pending",
-        description: "Add your tax identity in Settings to publish this note and enable 1099-INT issuance.",
+        description: "Add your tax identity in Settings to publish this note — year-end tax forms need it.",
       });
       return;
     }

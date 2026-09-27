@@ -84,24 +84,43 @@ describe("no offer is quoted that no measurement supports", () => {
     expect(profile.countyContext.usdaLandValuePerAcre).toBeNull();
   });
 
-  it("with BOTH inputs real, the offer is computed and quoted", async () => {
-    // The other direction: a fix that simply stopped offering would pass every
-    // assertion above. 3000 × 0.25 × 12 = 9,000.
+  // DEFECT-0124 — REWRITTEN, not deleted. This case read "with BOTH inputs
+  // real, the offer is computed and quoted" and asserted a $9,000 message
+  // from a 3000/ac USDA pasture value × 0.25 × 12 acres. A USDA county
+  // pasture value is a survey benchmark, not a sale, so it cannot set a price
+  // quoted to an owner (the DEFECT-0107 rule, now in this engine too). The
+  // other direction still holds: the owner still gets a message — it simply
+  // names no number until one exists from real sales.
+  it("a MEASURED USDA value and a real acreage still quote NO price — a benchmark is not a sale", async () => {
     const profile = await scoreLeadIntelligence(
       { ...LEAD_NO_ACREAGE, acres: "12" },
-      { pasturePerAcre: 3000 },
+      { pasturePerAcre: 3000, pastureSource: "usda_nass" },
     );
-    expect(profile.estimatedOfferPrice).toBe(9000);
-    expect(profile.recommendedMessage).toMatch(/\$9,000/);
+    expect(profile.estimatedOfferPrice).toBeNull();
+    expect(profile.estimatedFlipPrice).toBeNull();
+    expect(profile.estimatedOwnerFinanceMonthly).toBeNull();
+    expect(profile.recommendedMessage).not.toMatch(/\$[\d,]/);
+    expect(profile.recommendedMessage.length, "the owner message was dropped").toBeGreaterThan(80);
+    expect(profile.recommendedMessage).toContain("Franklin");
+    // The benchmark is still reported as context, because it was measured.
     expect(profile.countyContext.usdaLandValuePerAcre).toBe(3000);
   });
 
-  it("the offer is null when either input is missing", () => {
-    // The refusal must cover BOTH inputs — a guard on only one leaves the
-    // other free to carry a constant into the offer.
+  it("a pasture figure that was NOT measured by NASS is not reported as the USDA land value", async () => {
+    const profile = await scoreLeadIntelligence(
+      { ...LEAD_NO_ACREAGE, acres: "12" },
+      { pasturePerAcre: 1440, pastureSource: "derived_from_farm" },
+    );
+    expect(profile.countyContext.usdaLandValuePerAcre).toBeNull();
+  });
+
+  it("the engine has no path from a USDA figure to an offer amount", () => {
     expect(src).toMatch(/offerPrice: null, flipPrice: null, ownerFinanceMonthly: null/);
-    expect(src).toMatch(/acres === null/);
-    expect(src).toMatch(/!Number\.isFinite\(usdaPerAcre\)/);
+    const start = src.indexOf("function computeOfferIntelligence(");
+    const end = src.indexOf("export async function scoreLeadIntelligence(", start);
+    const body = src.slice(start, end);
+    expect(body.length, "vacuity: the offer function body was not found").toBeGreaterThan(40);
+    expect(body, "a USDA figure reaches the offer again").not.toMatch(/pasturePerAcre|nassData|usdaPerAcre/);
   });
 
   it("the outreach message has a variant that quotes no price", () => {
@@ -119,6 +138,34 @@ describe("no offer is quoted that no measurement supports", () => {
   it("the operator's next-best-action does not name a price it does not have", () => {
     expect(src).toMatch(/offerPrice === null \? null :/);
     expect(src).toMatch(/establish the number before mailing/);
+  });
+});
+
+describe("the parcel intelligence report prices no offer (DEFECT-0123)", () => {
+  const src = code("server/services/parcelIntelligenceFusion.ts");
+  const bodyOf = (fn: string, next: string) => {
+    const start = src.indexOf(`function ${fn}(`);
+    const end = src.indexOf(next, start + 1);
+    return start === -1 || end === -1 ? "" : src.slice(start, end);
+  };
+
+  it("the offer section carries no price derived from USDA or a constant", () => {
+    const body = bodyOf("buildOfferAnalysis", "function computeLandIntelligenceScore(");
+    expect(body.length, "vacuity: buildOfferAnalysis body not found").toBeGreaterThan(200);
+    // It used `pasturePerAcre || farmRealEstatePerAcre * 0.6 || 1000` as the
+    // "lowest comp" and multiplied it by 0.25 and by acreage.
+    expect(body).not.toMatch(/\|\|\s*\d{3,}/);
+    expect(body).not.toMatch(/\*\s*0?\.25\b/);
+    expect(body).not.toMatch(/input\.acres\s*\*/);
+    expect(body).toMatch(/recommendedOfferTotal:\s*null/);
+  });
+
+  it("the next steps name no per-acre letter price", () => {
+    const body = bodyOf("buildNextSteps", "function buildWarningFlags(");
+    expect(body.length, "vacuity: buildNextSteps body not found").toBeGreaterThan(200);
+    // It said "Send a blind offer letter at $<acres × 250>".
+    expect(body).not.toMatch(/acres\s*\*\s*\d/);
+    expect(body).toMatch(/offer wizard/);
   });
 });
 

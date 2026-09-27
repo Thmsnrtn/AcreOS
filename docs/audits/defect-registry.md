@@ -2651,7 +2651,7 @@ Resolving commits: (this branch, slice A + audit follow-up)
 ### DEFECT-0117
 Title: Client copy still promises 1099-INT issuance to borrowers
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: DEFECT-0101's repair scope, 2026-09-27
 Description: With generation refused (DEFECT-0101), several surfaces still
 describe 1099-INT as a form the org sends its borrowers: `client/src/pages/finance.tsx`
@@ -2665,12 +2665,13 @@ copy in `server/services/pax/personas.ts:277,299` (pinned by
 `server/services/pax/personas.test.ts:209`).
 Remediation plan: Reword to "year-end interest reporting" once the tax review
 decides which form is owed; update the persona test with the persona copy.
-Resolving commits: —
+Fixed 2026-09-27: every borrower-direction promise of 1099-INT issuance is reworded to what the product does (it keeps each borrower's year-end interest totals; the 1099-INT output is withheld pending review): `finance.tsx` (which also named the wrong form, 1099-NEC), `settings.tsx`, `settings/tax-identity.tsx` badges and toasts, `glossary.ts`, `notes.tsx`, `note-detail.tsx`, `note-tin-editor.tsx`, `note-record-payment-modal.tsx`, `notes-import-dialog.tsx`, `today-vertical-surfaces.ts`, the sidebar description, and the Pax note-investor persona (`server/services/pax/personas.ts`, pinned in `personas.test.ts`: the voice may not say "1099-INT per borrower" and must say it is withheld). Mentions of 1099-INT for interest the organization PAYS its co-investors (note splits, investor statements) are the correct direction and stay.
+Resolving commits: (this branch, round 3)
 
 ### DEFECT-0118
 Title: Tax-readiness success card expects PDFs the batch route never returns
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: DEFECT-0101's repair scope, 2026-09-27
 Description: `client/src/pages/notes-tax-readiness.tsx` renders download links
 for `recipientPdfs`, `transmittalPdfBase64` and `fireFile` from the
@@ -2682,7 +2683,8 @@ success card therefore shows a header with no downloads. Moot while
 DEFECT-0101 refuses generation; relevant the day the flag is turned on.
 Remediation plan: Decide where artifacts live (persist or stream) before the
 flag is ever enabled; align the response type with the page.
-Resolving commits: —
+Fixed 2026-09-27: `POST /api/accounting/1099-batch` now returns `recipientPdfs`, `transmittalPdfBase64` and `fireFile` from the batch it just built (`tests/unit/form1099BatchResponseCarriesArtifacts.test.ts`, RED before). Still behind the DEFECT-0101 refusal.
+Resolving commits: (this branch, round 3)
 
 ### DEFECT-0119
 Title: "Accept payment" charged one hundred times the entered amount and could not complete
@@ -2713,7 +2715,7 @@ Resolving commits: (this branch, slice A)
 ### DEFECT-0120
 Title: A dead lead SMS thread component posts to a route that does not exist
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: DEFECT-0104's caller census, 2026-09-27
 Description: `client/src/components/sms-conversation.tsx` sends with
 `POST /api/communications/sms`, which no server route registers, so every
@@ -2727,12 +2729,13 @@ Remediation plan: Retire the component (built but unwired), or, if a thread
 view is wanted behind the Inbox door, point it at `POST /api/leads/:leadId/sms`
 (which now declares reply/prospecting at the choke point) with a real GET. Not changed in the
 DEFECT-0104 slice: it sends nothing today, so it cannot bypass the gate.
-Resolving commits: —
+Fixed 2026-09-27: the component is deleted (`client/src/components/sms-conversation.tsx`, no importer) and its row removed from the date-format lint baseline. The same pass removed `sendSms`/`sendBulkSms` from `server/services/smsProvider.ts`: an ungated Twilio sender that fell back to platform credentials and had zero callers; only `getProviderInfo` remains.
+Resolving commits: (this branch, round 3)
 
 ### DEFECT-0121
 Title: The deal feed reads blind-offer fields that neither outcome has, so its offers fall back to percentages of assessed value
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: DEFECT-0107's consumer census, 2026-09-27
 Description: `server/services/dealFeedEngine.ts` calls `calculateBlindOffer`
 and then reads `offerData.comps.medianSalePerAcre`, `offerData.tiers[i].offerTotal`
@@ -2747,12 +2750,13 @@ Evidence: `server/services/dealFeedEngine.ts` (`estimatedValue`, `tierOrNull`,
 Remediation plan: Read `status === "ok"` outcomes by their real field names
 (or drop the call if the feed should not price offers), and pin the join with
 a test that fails when a field is renamed.
-Resolving commits: —
+Fixed 2026-09-27: `dealFeedEngine.ts` types the calculator result as `BlindOfferOutcome`, reads `compAnalysis.medianSalePerAcre` and `offerTiers.{aggressive,standard,competitive}` from an `ok` outcome only, and reports `sellerFinanceYield` as null (no such figure exists). `dealFeedHonesty.test.ts`'s calculator mock used the same wrong field names as the engine; it now returns the real outcome shape, and the case that asserted a 40%-of-value market offer is rewritten to the calculator's own standard tier (RED before), with a refusal case for the assessed-value fallback. In practice the feed passes no comps, so the calculator refuses and the assessed-value fallback applies — now by design rather than by accident.
+Resolving commits: (this branch, round 3)
 
 ### DEFECT-0122
 Title: A comparable sale is not required to be dated or recent
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: DEFECT-0107's repair scope, 2026-09-27
 Description: The formula is "lowest sale in the last 12–18 months ÷ 4", but
 `analyzeComps` in `server/services/blindOfferCalculator.ts` accepts undated
@@ -2762,12 +2766,13 @@ Remediation plan: Add a sale-date input to the wizard comp form and an
 auto-pulled date, then require a date inside the window before a row counts.
 Deferred out of the DEFECT-0107 slice because refusing undated comps before
 the form can collect a date would refuse every manual comp.
-Resolving commits: —
+Fixed 2026-09-27: one rule in `shared/blindOfferComps.ts` — a comp is a sale with a positive price, dated, not in the future, and inside 18 months — imported by `analyzeComps` AND by the wizard's live "lowest comp" preview, so the two cannot disagree. `GET /api/data-intel/county-comps` now returns the ATTOM `saleDate` (it survived only inside a free-text note); the wizard's manual comp form requires a sale date, shows each comp's date, and marks rows that will not count and why. Falsified in `blindOfferCalculator.test.ts` (six cases RED before, including the shared-rule adoption pin). `landExitModelDelegates.test.ts` fixtures used `soldDate`, a field nothing reads, and survived only because undated comps counted.
+Resolving commits: (this branch, round 3)
 
 ### DEFECT-0123
 Title: The parcel intelligence report prices an offer from USDA with a fabricated $1,000/acre default
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: DEFECT-0107's consumer census, 2026-09-27
 Description: `server/services/parcelIntelligenceFusion.ts` `buildOfferAnalysis`
 sets `usdaPerAcre = pasturePerAcre || farmRealEstatePerAcre * 0.6 || 1000`,
@@ -2778,12 +2783,13 @@ an invented number when USDA has nothing. Served by
 no client caller was found in `client/src`, so reachable by API only.
 Remediation plan: Delegate to `calculateBlindOffer` (one offer engine), or
 return no offer when there is no real sale; delete the `|| 1000`.
-Resolving commits: —
+Fixed 2026-09-27: `buildOfferAnalysis` returns `status: "no_comparable_sales"` with every price null and a note saying where the number comes from (the offer wizard, from real sales); the measured USDA value stays as context. The next-steps line that told the operator to mail an offer at `acres × $250` now points to the wizard. Pinned in `offerAndRankHonesty.test.ts` on comment-stripped source (the builder is private and the report reads eight external sources): no `|| <number>` fallback, no `× 0.25`, no `input.acres ×` in the offer section, and no `acres × <number>` in the next steps — RED before.
+Resolving commits: (this branch, round 3)
 
 ### DEFECT-0124
 Title: Lead intelligence quotes an owner an offer priced from the USDA pasture figure
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: independent audit of the DEFECT-0107 repair, 2026-09-27
 Description: `server/services/leadIntelligenceEngine.ts`
 `computeOfferIntelligence` treats `pasturePerAcre` as the lowest comp, takes
@@ -2795,12 +2801,13 @@ price — the DEFECT-0107 defect in a third engine. Served under
 no client caller was found, so reachable by API.
 Remediation plan: Price only from real sales through `calculateBlindOffer`,
 or produce no offer amount; never put a benchmark-derived price in a message.
-Resolving commits: —
+Fixed 2026-09-27: `computeOfferIntelligence` returns no offer: this engine has no comparable sales, and a USDA pasture value is a benchmark. The owner message uses the existing price-free wording. `countyContext.usdaLandValuePerAcre` reports only a measured NASS pasture value. The test that asserted a $9,000 quote from a 3000/ac USDA figure is REWRITTEN to the new truth (no price; the owner still gets a message naming the county) — RED before.
+Resolving commits: (this branch, round 3)
 
 ### DEFECT-0125
 Title: A 1099-INT FIRE file generated before the refusal is still downloadable
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: independent audit of the DEFECT-0101 repair, 2026-09-27
 Description: `GET /api/accounting/1099-batch/:jobId` in
 `server/routes-accounting.ts` returns the stored `resultBlob` of a completed
@@ -2809,7 +2816,45 @@ before the refusal landed (with the inverted payer/recipient) can still be
 downloaded and filed.
 Remediation plan: Put the same middleware on the download route, or refuse
 any stored 1099-INT blob created before the direction review.
-Resolving commits: —
+Fixed 2026-09-27: `GET /api/accounting/1099-batch/:jobId` carries `requireQualified1099Output()`; the route-registration pin in `bookkeeping1099.test.ts` now covers it (RED before).
+Resolving commits: (this branch, round 3)
+
+### DEFECT-0126
+Title: Due-diligence dossiers reported a parcel nobody checked as clear title, taxes current, legal access and clean
+Severity: P1
+Status: FIXED
+Surfaced by lenses: DEFECT-0107's consumer census (a flat $2,500/acre comp fallback), 2026-09-27
+Description: `server/services/dueDiligencePods.ts` runs the pods behind the
+properties page's "Generate AI dossier". When no data source answered — no
+coordinates, or a provider failing without throwing — each pod returned a CLEAN
+verdict: title `clear: true`, taxes `current: true` with $0 due, access
+`legal: true` ("Road Access"), zoning "Agricultural/Residential" with two
+allowed uses, comps at $2,500/acre (× acreage, default 5), and — because the
+concerns list simply stayed empty — no environmental concerns. With partial
+data, a missing road type was "Paved Road", a missing legal flag was legal, a
+missing maintenance field was "County Maintained", a missing zoning was
+"Residential", a parcel record with no lien fields was a clear title, and a
+tax record with no delinquency flag was current. These became the green flags
+"Clear title", "Taxes current", "Legal access confirmed", 100-point sub-scores
+and the input to a buy/pass recommendation. (Conversely, a source that
+explicitly returned empty lien lists read as NOT clear, because an empty array
+is truthy.) The file's own error branches already said "manual review
+required"; the no-data branches contradicted them.
+Remediation plan: Done. Every no-data and error branch returns an explicit
+`unverified: true` finding that is never clean, current or legal; with-data
+branches report only what the source said ("Unknown" otherwise); a title is
+clear only when the source carries lien/encumbrance fields and both are empty;
+taxes are current only when the source states a delinquency boolean;
+environmental is clean only when at least one source answered; comps with no
+source carry no price. The recommendation raises one "Not verified (no data
+source answered): …" red flag and awards no green flag for an unchecked fact;
+the executive-summary prompt and the panel badges say "Not verified". The
+`unverified` flag is added to the dossier findings type in `shared/schema.ts`
+(JSON column; no migration).
+Falsified: `tests/unit/dueDiligenceUnverifiedIsNotClean.test.ts` drives the
+real pods with the broker answering nothing, then answering without the
+relevant fields, then answering fully — 11 cases, all RED on the old pods.
+Resolving commits: (this branch, round 3)
 
 ### REFUTED AT HEAD, 2026-09-27
 
@@ -2847,12 +2892,12 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 34  | 34    |
-| FIXED  | 12  | 66  | 10  | 88    |
+| OPEN   | 0   | 0   | 26  | 26    |
+| FIXED  | 12  | 67  | 18  | 97    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **69** | **44** | **125** |
+| **Total** | **12** | **70** | **44** | **126** |
 
-Recounted from the entries themselves on 2026-09-27 (125 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-27 (126 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.
@@ -2861,7 +2906,7 @@ DEFECT-0089 through 0095 added 2026-09-06. Two further census entries were
 re-verified at HEAD and REFUTED rather than implemented against — see the
 "REFUTED AT HEAD" table above DEFECT-0089's section.
 
-DEFECT-0096 through 0125 added 2026-09-27 from the "AcreOS at full maturity"
+DEFECT-0096 through 0126 added 2026-09-27 from the "AcreOS at full maturity"
 research report, each claim re-verified at `9cb534f` before entry (one refuted,
 one downgraded — see the 2026-09-27 REFUTED table). 0096 and 0097 are FIXED in
 the same change; 0101 (1099-INT direction) is FIXED as a refusal posture pending qualified tax
@@ -2928,6 +2973,15 @@ in slice B; no P1 from this report remains OPEN.
 | DEFECT-0119 | 100× Accept-payment charge path removed | (this branch, slice A) |
 | DEFECT-0104 | SMS consent asked by declared purpose; no-lead is not permission | (this branch, slice D) |
 | DEFECT-0107 | Only sales are comps; USDA is a benchmark; no promised acceptance rate | (this branch, slice B) |
+| DEFECT-0117 | 1099-INT issuance promises reworded; persona pinned | (this branch, round 3) |
+| DEFECT-0118 | 1099 batch response carries the files the page downloads | (this branch, round 3) |
+| DEFECT-0120 | Dead SMS thread component and ungated SMS sender removed | (this branch, round 3) |
+| DEFECT-0121 | Deal feed joined to the calculator's real outcome | (this branch, round 3) |
+| DEFECT-0122 | Only dated sales from the last 18 months are comps (one shared rule) | (this branch, round 3) |
+| DEFECT-0123 | Parcel report prices no offer; flat $250/acre instruction removed | (this branch, round 3) |
+| DEFECT-0124 | Lead intelligence quotes no USDA-derived price to owners | (this branch, round 3) |
+| DEFECT-0125 | Pre-refusal 1099 FIRE file download withheld | (this branch, round 3) |
+| DEFECT-0126 | Due-diligence findings nobody checked are "Not verified", never clean | (this branch, round 3) |
 
 ### Deferred Defects (3)
 

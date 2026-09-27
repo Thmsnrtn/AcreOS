@@ -183,11 +183,23 @@ async function runFeed(s: Scenario, orgId = ORG) {
   vi.doMock("../../server/services/landCredit", () => ({
     landCredit: { calculateCreditScore: async () => ({ overall: s.landCredit }) },
   }));
+  // DEFECT-0121: the REAL outcome shape. This mock returned
+  // `{ comps: { medianSalePerAcre }, tiers: [] }` — the same wrong field
+  // names the engine read — so the suite agreed with a join that could never
+  // match the calculator. A refusal is the calculator's own no-sales answer.
   vi.doMock("../../server/services/blindOfferCalculator", () => ({
-    calculateBlindOffer: async () =>
+    calculateBlindOffer: async (input: { targetAcres: number }) =>
       s.medianSalePerAcre === null
-        ? null
-        : { comps: { medianSalePerAcre: s.medianSalePerAcre }, tiers: [] },
+        ? { status: "insufficient_data", missing: ["Comparable sales"], compAnalysis: { compCount: 0, medianSalePerAcre: null } }
+        : {
+            status: "ok",
+            compAnalysis: { compCount: 3, medianSalePerAcre: s.medianSalePerAcre, lowestSalePerAcre: s.medianSalePerAcre },
+            offerTiers: {
+              aggressive: { offerTotal: Math.round(s.medianSalePerAcre * 0.2 * input.targetAcres) },
+              standard: { offerTotal: Math.round(s.medianSalePerAcre * 0.25 * input.targetAcres) },
+              competitive: { offerTotal: Math.round(s.medianSalePerAcre * 0.33 * input.targetAcres) },
+            },
+          },
   }));
 
   // `scoreParcelRadar` and `scoreColdParcelMotivation` are same-module
@@ -292,11 +304,24 @@ describe("an unscored pillar is excluded, not seeded at a midpoint", () => {
 });
 
 describe("offer amounts require a real acreage", () => {
-  it("a parcel with acreage produces a value from median price per acre", async () => {
+  it("a parcel with acreage produces a value from median price per acre, and the CALCULATOR's tiers", async () => {
     const feed = await runFeed(ALL_SCORED);
     // 2,000/acre * 40 acres.
     expect(feed[0].financials.estimatedValue).toBe(80_000);
-    expect(feed[0].financials.suggestedOffer.market).toBe(32_000); // 40%
+    // DEFECT-0121 — REWRITTEN: this read `market toBe(32_000) // 40%`, a
+    // percentage fallback that only ran because the engine could never read
+    // the calculator's tiers. The standard tier is the calculator's: lowest
+    // comp ÷ 4 × acres = 2,000 × 0.25 × 40.
+    expect(feed[0].financials.suggestedOffer.market).toBe(20_000);
+    expect(feed[0].financials.suggestedOffer.aggressive).toBe(16_000);
+    expect(feed[0].financials.suggestedOffer.generous).toBe(26_400);
+  });
+
+  it("a calculator REFUSAL (no comparable sales) prices nothing from it — only the assessed-value fallback", async () => {
+    const feed = await runFeed({ ...ALL_SCORED, medianSalePerAcre: null });
+    expect(feed[0].financials.estimatedValue).toBe(80_000); // assessedValue
+    expect(feed[0].financials.suggestedOffer.market).toBe(32_000); // 40% of the assessed value
+    expect(feed[0].financials.sellerFinanceYield).toBeNull();
   });
 
   it("a parcel of unknown size is NOT valued as five acres", async () => {

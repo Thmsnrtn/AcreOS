@@ -270,6 +270,12 @@ router.post("/1099-batch", requireQualified1099Output(), async (req: Authenticat
       formCount: result.formCount,
       fireBytes: result.fireFileBytes,
     });
+    // DEFECT-0118 — return the artifacts the batch just built. The response
+    // used to carry counts only, while /notes/tax-readiness renders download
+    // lines from `recipientPdfs`, `transmittalPdfBase64` and `fireFile`: a
+    // "Batch generated — N forms" card with nothing to download, and the PDFs
+    // (which the job row does not store) discarded. Still behind the
+    // DEFECT-0101 refusal above.
     res.json({
       jobId: result.jobId,
       status: result.status,
@@ -278,6 +284,9 @@ router.post("/1099-batch", requireQualified1099Output(), async (req: Authenticat
       fireRecordCounts: result.fireRecordCounts,
       fireFileBytes: result.fireFileBytes,
       errors: result.errors,
+      recipientPdfs: result.recipientPdfs,
+      transmittalPdfBase64: result.transmittalPdfBase64,
+      fireFile: result.fireFile,
     });
   } catch (err) {
     if (sendTaxIdentityError(res, err)) return;
@@ -383,7 +392,10 @@ router.get("/1099-batch/job/:outboxId", async (req: AuthenticatedRequest, res: R
 });
 
 // ── GET /1099-batch/:jobId ────────────────────────────────────────────────
-router.get("/1099-batch/:jobId", async (req: AuthenticatedRequest, res: Response) => {
+// DEFECT-0125 — the stored result of a batch is the FIRE e-file itself. A
+// batch generated before the DEFECT-0101 refusal carries the inverted
+// payer/recipient, so its download is withheld by the same refusal.
+router.get("/1099-batch/:jobId", requireQualified1099Output(), async (req: AuthenticatedRequest, res: Response) => {
   if (!requireOrgOwnerOrAdmin(req, res)) return;
   try {
     const org = getOrganization(req);

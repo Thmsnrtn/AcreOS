@@ -192,7 +192,8 @@ describe("notes — deepened to production (wave V4 of ruling #11)", () => {
     //   - SCRA gate → note_loss_mit_cases.scraCheckedAt
     //   - reperforming streak (12) → acquired_notes.consecutiveOnTimePayments
     //   - per-diem payoff (APR/365) → notePaymentMath.computePayoffCents
-    //   - 1099-INT / 1096 / FIRE → form1099Batch
+    //   - 1099-INT / 1096 / FIRE → form1099Batch — WITHHELD (DEFECT-0101):
+    //     the persona names the form but must not tell anyone it is ready
     const haystack = JSON.stringify(p);
     expect(haystack).toContain("UPB");
     expect(haystack).toContain("collateral file");
@@ -207,6 +208,10 @@ describe("notes — deepened to production (wave V4 of ruling #11)", () => {
     expect(haystack).toContain("reperforming");
     expect(haystack).toContain("APR/365");
     expect(haystack).toContain("1099-INT");
+    // DEFECT-0117: the generator is refused pending tax review, so the voice
+    // may not promise a per-borrower 1099-INT or a FIRE file at year end.
+    expect(haystack).not.toMatch(/1099-INT per borrower/);
+    expect(haystack).toMatch(/withheld/);
   });
 
   it("keeps the servicer-vs-holder duty distinction (Beatrice ruling) in the voice", () => {

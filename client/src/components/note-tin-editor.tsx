@@ -57,7 +57,7 @@ export function NoteTinEditor({ noteId, currentTinType }: Props) {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "TIN saved", description: "Encrypted and stored. The next 1099-INT batch will include this note." });
+      toast({ title: "TIN saved", description: "Encrypted and stored. Year-end tax forms can include this note." });
       queryClient.invalidateQueries({ queryKey: ["/api/notes", noteId] });
       setEditing(false);
       setTin("");
@@ -86,7 +86,7 @@ export function NoteTinEditor({ noteId, currentTinType }: Props) {
     <div className="space-y-2 mt-2 p-3 rounded-md border border-primary/20 bg-primary/5">
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
-        Encrypted at rest. Required for 1099-INT generation.
+        Encrypted at rest. Required for year-end tax forms.
       </div>
       <div className="grid grid-cols-3 gap-2">
         <div className="col-span-1">

@@ -135,7 +135,7 @@ export default function TaxIdentitySettingsPage() {
     onSuccess: () => {
       toast({
         title: "Tax identity saved",
-        description: "Encrypted and stored. 1099 issuance is unblocked.",
+        description: "Encrypted and stored. Year-end tax forms can use it.",
       });
       setTaxId("");
       setFormError(null);
@@ -262,7 +262,7 @@ export default function TaxIdentitySettingsPage() {
             </CardTitle>
             {captured ? (
               <Badge variant="secondary" data-testid="badge-tax-identity-captured">
-                1099 issuance enabled
+                Captured
               </Badge>
             ) : skipped ? (
               <Badge variant="outline" data-testid="badge-tax-identity-skipped">
@@ -270,7 +270,7 @@ export default function TaxIdentitySettingsPage() {
               </Badge>
             ) : (
               <Badge variant="destructive" data-testid="badge-tax-identity-blocking">
-                Blocks 1099 issuance
+                Blocks year-end tax forms
               </Badge>
             )}
           </div>
@@ -388,7 +388,7 @@ export default function TaxIdentitySettingsPage() {
           <CardHeader>
             <CardTitle className="text-base">Tax address</CardTitle>
             <CardDescription>
-              Address that should appear on issued 1099 forms. May differ from
+              Address that should appear on year-end tax forms. May differ from
               your operational address.
             </CardDescription>
           </CardHeader>

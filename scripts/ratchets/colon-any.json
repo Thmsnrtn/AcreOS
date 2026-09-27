@@ -9,9 +9,9 @@
     "**/*.test.ts",
     "**/*.spec.ts"
   ],
-  "baselineCount": 2687,
+  "baselineCount": 2681,
   "direction": "down",
-  "lastBumpNote": "2026-09-27 DEFECT-0107: blindOfferCalculator's buildCompDataset(nassData: any, trend: any) deleted, detectMarketCondition(trend: any) and buildWarnings(nassData: any) typed \u2014 USDA benchmarks no longer enter the comp set.",
+  "lastBumpNote": "2026-09-27 round 3: six `any` parameters removed with fabricated offer/comps code \u2014 dealFeedEngine offerData (now BlindOfferOutcome), leadIntelligenceEngine computeOfferIntelligence(lead, nassData), parcelIntelligenceFusion buildOfferAnalysis(nassData, trend) (DEFECT-0121/0123/0124).",
   "minima": {
     "files": 1100
   },

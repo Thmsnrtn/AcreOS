@@ -208,6 +208,9 @@ router.get("/county-comps", async (req: Request, res: Response) => {
         acres: Number(c.acreage.toFixed(2)),
         totalPrice: Math.round(c.salePrice),
         source: "attom_recent_sales",
+        // The calculator counts only dated sales from the last 18 months
+        // (DEFECT-0122); the date used to survive only inside `notes`.
+        saleDate: c.saleDate || undefined,
         notes: c.saleDate ? `Sold ${c.saleDate}${c.address ? ` — ${c.address}` : ""}` : (c.address || undefined),
       }));
 

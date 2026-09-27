@@ -549,7 +549,7 @@ export default function NotesPage() {
         <EmptyState
           icon={FileText}
           headline="No notes serviced yet"
-          subtitle="Originate or import a note — AcreOS keeps the amortization schedule and the year-end 1099-INT totals, and Pax prepares each borrower payment reminder for your tap."
+          subtitle="Originate or import a note — AcreOS keeps the amortization schedule and each borrower's year-end interest totals, and Pax prepares each borrower payment reminder for your tap."
           cta={{
             label: "Import notes",
             onClick: () => setIsImportOpen(true),
@@ -558,7 +558,7 @@ export default function NotesPage() {
           actionIcon={Upload}
           tips={[
             "Import an existing portfolio by CSV — your column headers are matched automatically, and you review the mapping before anything is saved.",
-            "Every payment you post rolls into that year's interest totals — generate the 1099-INTs from Tax readiness when it's time.",
+            "Every payment you post rolls into that year's interest totals — Tax readiness shows the per-borrower totals when it's time.",
           ]}
           testId="notes-empty-state"
         />

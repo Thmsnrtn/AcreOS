@@ -19,6 +19,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 // Scripted USDA double — the calculator's only external input.
 const USDA = vi.hoisted(() => ({
@@ -66,10 +68,14 @@ function trendOf(source: "usda_nass" | "estimate", oneYearChangePercent: number)
   };
 }
 
+/** An ISO date `days` ago — comps count only inside the 18-month window. */
+const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+const RECENT = daysAgo(90);
+
 const SALES: CompData[] = [
-  { pricePerAcre: 1200, acres: 10, totalPrice: 12000, source: "county_records" },
-  { pricePerAcre: 1400, acres: 12, totalPrice: 16800, source: "county_records" },
-  { pricePerAcre: 1100, acres: 8, totalPrice: 8800, source: "user_entered" },
+  { pricePerAcre: 1200, acres: 10, totalPrice: 12000, saleDate: RECENT, source: "county_records" },
+  { pricePerAcre: 1400, acres: 12, totalPrice: 16800, saleDate: RECENT, source: "county_records" },
+  { pricePerAcre: 1100, acres: 8, totalPrice: 8800, saleDate: RECENT, source: "user_entered" },
 ];
 
 // ── Spec copies (pure arithmetic, no production twin to import) ────────────────
@@ -193,7 +199,7 @@ describe("Blind Offer Formula — Core Offer Tiers", () => {
 
 describe("Comp Analysis — Data Quality Classification", () => {
   function makeComp(pricePerAcre: number): CompData {
-    return { pricePerAcre, acres: 10, totalPrice: pricePerAcre * 10, source: "county_records" };
+    return { pricePerAcre, acres: 10, totalPrice: pricePerAcre * 10, saleDate: RECENT, source: "county_records" };
   }
 
   it("0 comps → insufficient quality, not validated, and NO price (null, never a placeholder)", () => {
@@ -240,9 +246,9 @@ describe("Comp Analysis — Data Quality Classification", () => {
 describe("Comp Analysis — Price Statistics", () => {
   it("lowest, median, and highest are correctly extracted", () => {
     const comps: CompData[] = [
-      { pricePerAcre: 5000, acres: 10, totalPrice: 50000, source: "test" },
-      { pricePerAcre: 3000, acres: 5, totalPrice: 15000, source: "test" },
-      { pricePerAcre: 4000, acres: 8, totalPrice: 32000, source: "test" },
+      { pricePerAcre: 5000, acres: 10, totalPrice: 50000, saleDate: RECENT, source: "test" },
+      { pricePerAcre: 3000, acres: 5, totalPrice: 15000, saleDate: RECENT, source: "test" },
+      { pricePerAcre: 4000, acres: 8, totalPrice: 32000, saleDate: RECENT, source: "test" },
     ];
     const result = analyzeComps(comps);
 
@@ -253,9 +259,9 @@ describe("Comp Analysis — Price Statistics", () => {
 
   it("average days on market is computed from comps with DOM data", () => {
     const comps: CompData[] = [
-      { pricePerAcre: 3000, acres: 10, totalPrice: 30000, source: "test", daysOnMarket: 60 },
-      { pricePerAcre: 3500, acres: 5, totalPrice: 17500, source: "test", daysOnMarket: 90 },
-      { pricePerAcre: 4000, acres: 8, totalPrice: 32000, source: "test" }, // No DOM
+      { pricePerAcre: 3000, acres: 10, totalPrice: 30000, saleDate: RECENT, source: "test", daysOnMarket: 60 },
+      { pricePerAcre: 3500, acres: 5, totalPrice: 17500, saleDate: RECENT, source: "test", daysOnMarket: 90 },
+      { pricePerAcre: 4000, acres: 8, totalPrice: 32000, saleDate: RECENT, source: "test" }, // No DOM
     ];
     const result = analyzeComps(comps);
 
@@ -264,7 +270,7 @@ describe("Comp Analysis — Price Statistics", () => {
 
   it("avgDaysOnMarket is null when no comps have DOM data", () => {
     const comps: CompData[] = [
-      { pricePerAcre: 3000, acres: 10, totalPrice: 30000, source: "test" },
+      { pricePerAcre: 3000, acres: 10, totalPrice: 30000, saleDate: RECENT, source: "test" },
     ];
     const result = analyzeComps(comps);
     expect(result.avgDaysOnMarket).toBeNull();
@@ -312,9 +318,9 @@ describe("Only sales are comps (DEFECT-0107)", () => {
 
   it("a row with no positive price per acre is not a sale", () => {
     const result = analyzeComps([
-      { pricePerAcre: 0, acres: 5, totalPrice: 0, source: "county_records" },
-      { pricePerAcre: Number.NaN, acres: 5, totalPrice: 0, source: "county_records" },
-      { pricePerAcre: 1500, acres: 5, totalPrice: 7500, source: "county_records" },
+      { pricePerAcre: 0, acres: 5, totalPrice: 0, saleDate: RECENT, source: "county_records" },
+      { pricePerAcre: Number.NaN, acres: 5, totalPrice: 0, saleDate: RECENT, source: "county_records" },
+      { pricePerAcre: 1500, acres: 5, totalPrice: 7500, saleDate: RECENT, source: "county_records" },
     ]);
     expect(result.compCount).toBe(1);
     expect(result.lowestSalePerAcre).toBe(1500);
@@ -346,6 +352,52 @@ describe("Only sales are comps (DEFECT-0107)", () => {
       expect(out.offerTiers.standard.offerTotal).toBe(Math.round(1100 * 0.25 * 10));
       expect(out.compAnalysis.compCount).toBe(3);
     }
+  });
+});
+
+describe("Only DATED, RECENT sales are comps (DEFECT-0122)", () => {
+  const sale = (pricePerAcre: number, saleDate?: string): CompData => ({
+    pricePerAcre, acres: 10, totalPrice: pricePerAcre * 10, source: "county_records", saleDate,
+  });
+
+  it("an undated sale is not counted", () => {
+    const r = analyzeComps([sale(900), sale(1500, RECENT)]);
+    expect(r.compCount).toBe(1);
+    expect(r.lowestSalePerAcre).toBe(1500);
+    expect(r.dataQualityNotes.join(" ")).toMatch(/no sale date/);
+  });
+
+  it("a sale older than 18 months is not counted — a ten-year-old sale cannot set a mailed price", () => {
+    const r = analyzeComps([sale(300, daysAgo(3650)), sale(1500, RECENT)]);
+    expect(r.compCount).toBe(1);
+    expect(r.lowestSalePerAcre).toBe(1500);
+    expect(r.dataQualityNotes.join(" ")).toMatch(/more than 18 months/);
+  });
+
+  it("a sale 17 months old still counts; 19 months does not", () => {
+    expect(analyzeComps([sale(1000, daysAgo(517))]).compCount).toBe(1);
+    expect(analyzeComps([sale(1000, daysAgo(578))]).compCount).toBe(0);
+  });
+
+  it("a future-dated sale is not counted", () => {
+    expect(analyzeComps([sale(1000, daysAgo(-30))]).compCount).toBe(0);
+  });
+
+  it("only undated or stale sales → the calculator REFUSES", async () => {
+    const out = await calculateBlindOffer({
+      state: "TX", county: "Bandera", targetAcres: 10,
+      comps: [sale(1200), sale(1100, daysAgo(2000))],
+    });
+    expect(out.status).toBe("insufficient_data");
+  });
+
+  it("the wizard's preview and the calculator import the same rule", () => {
+    // Canonical requires adoption: the operator's "lowest comp" preview and
+    // the offer must be computed by one function, or they drift.
+    const read = (p: string) => readFileSync(resolve(__dirname, "../..", p), "utf8");
+    expect(read("server/services/blindOfferCalculator.ts")).toMatch(/from "@shared\/blindOfferComps"/);
+    expect(read("client/src/pages/blind-offer-wizard.tsx")).toMatch(/from "@shared\/blindOfferComps"/);
+    expect(read("client/src/pages/blind-offer-wizard.tsx")).toMatch(/compExclusion\(c, now\)/);
   });
 });
 

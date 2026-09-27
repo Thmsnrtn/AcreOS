@@ -430,7 +430,7 @@ export function NoteRecordPaymentModal({ open, onOpenChange, note }: Props) {
                   <p>
                     This note is <strong>{note.status === "sold" ? "sold" : "paid off"}</strong>. Recording
                     a new payment will create an orphan ledger entry and corrupt the
-                    1099-INT for the year. Use NSF reversal instead if a prior payment bounced.
+                    year's interest totals. Use NSF reversal instead if a prior payment bounced.
                   </p>
                 )}
                 {preview.exceedsUnapplied && (

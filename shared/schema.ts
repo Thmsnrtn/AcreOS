@@ -10854,11 +10854,11 @@ export const dueDiligenceDossiers = pgTable("due_diligence_dossiers", {
   
   // Aggregated findings
   findings: jsonb("findings").$type<{
-    titleStatus?: { clear: boolean; issues?: string[]; liens?: string[]; encumbrances?: string[] };
-    taxStatus?: { current: boolean; amountDue?: number; yearsDelinquent?: number; specialAssessments?: string[] };
-    environmental?: { clean: boolean; concerns?: string[]; wetlands?: boolean; floodZone?: string };
-    zoning?: { current: string; allowedUses?: string[]; restrictions?: string[]; overlays?: string[] };
-    access?: { type: string; legal: boolean; easements?: string[]; roadMaintenance?: string };
+    titleStatus?: { clear: boolean; unverified?: boolean; issues?: string[]; liens?: string[]; encumbrances?: string[] };
+    taxStatus?: { current: boolean; unverified?: boolean; amountDue?: number; yearsDelinquent?: number; specialAssessments?: string[] };
+    environmental?: { clean: boolean; unverified?: boolean; concerns?: string[]; wetlands?: boolean; floodZone?: string };
+    zoning?: { current: string; unverified?: boolean; allowedUses?: string[]; restrictions?: string[]; overlays?: string[] };
+    access?: { type: string; legal: boolean; unverified?: boolean; easements?: string[]; roadMaintenance?: string };
     comps?: { medianPrice?: number; pricePerAcre?: number; salesCount?: number; trend?: string };
     owner?: { name: string; type: string; contactInfo?: string; motivationSignals?: string[] };
   }>(),

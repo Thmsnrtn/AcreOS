@@ -268,7 +268,7 @@ export function NotesImportDialog({ open, onOpenChange }: Props) {
                   <div className="text-sm font-semibold">I bought these notes</div>
                   <div className="text-xs text-muted-foreground mt-0.5">
                     Acquired from a prior holder. Captures acquisition price + date
-                    separately from face value (required for basis / 1099-INT).
+                    separately from face value (required for cost basis and year-end interest totals).
                   </div>
                 </button>
                 <button

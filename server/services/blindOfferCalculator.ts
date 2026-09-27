@@ -35,6 +35,7 @@
  */
 
 import { getCachedCountySnapshot, getCachedLandTrend } from "./usdaNassService";
+import { compExclusion, describeCompExclusion, type CompExclusion } from "@shared/blindOfferComps";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -364,7 +365,7 @@ export async function calculateBlindOffer(input: BlindOfferInput): Promise<Blind
     // No substitute is offered: a USDA county average is a benchmark, not a
     // sale, and cannot set the price on a mailed letter (DEFECT-0107).
     missing.push(
-      `Comparable sales for ${county} County, ${state.toUpperCase()} — none were found. ` +
+      `Dated comparable sales from the last 18 months for ${county} County, ${state.toUpperCase()} — none were found. ` +
         `Add sold comps from the county assessor, LandWatch or eBay sold listings in the offer wizard's comp step.`,
     );
   } else if (
@@ -521,29 +522,23 @@ function buildBenchmarks(nassData: SnapshotLike, trend: TrendLike): MarketBenchm
  * letter. There is no honest placeholder for "we don't know what land sells
  * for here"; the only honest value is absence.
  *
- * ONLY SALES COUNT (DEFECT-0107). A row whose source is a benchmark
- * (`usda_nass`, `estimate`) or whose price per acre is not a finite positive
- * number is dropped before any statistic is taken, and the drop is named in
- * `dataQualityNotes` — a client that sends a USDA average as a "comp" cannot
- * make it one.
+ * ONLY DATED, RECENT SALES COUNT (DEFECT-0107, DEFECT-0122). The rule lives
+ * in `@shared/blindOfferComps` (the wizard's preview uses it too): a benchmark
+ * (`usda_nass`, `estimate`), a row without a finite positive price per acre,
+ * an undated row, and a sale older than 18 months are all dropped before any
+ * statistic is taken, each named in `dataQualityNotes` — a client that sends
+ * a USDA average, or a ten-year-old sale, as a "comp" cannot make it one.
  */
-const BENCHMARK_SOURCES = new Set(["usda_nass", "estimate"]);
-
-export function analyzeComps(input: CompData[]): CompAnalysis {
-  const comps = input.filter(
-    (c) =>
-      !BENCHMARK_SOURCES.has(c.source) &&
-      typeof c.pricePerAcre === "number" &&
-      Number.isFinite(c.pricePerAcre) &&
-      c.pricePerAcre > 0,
+export function analyzeComps(input: CompData[], now: Date = new Date()): CompAnalysis {
+  const dropped = new Map<CompExclusion, number>();
+  const comps = input.filter((c) => {
+    const why = compExclusion(c, now);
+    if (why) dropped.set(why, (dropped.get(why) ?? 0) + 1);
+    return why === null;
+  });
+  const droppedNote = [...dropped.entries()].map(
+    ([why, n]) => `${n} row(s) excluded — ${describeCompExclusion(why)}; only dated sales from the last 18 months are comps.`,
   );
-  const dropped = input.length - comps.length;
-  const droppedNote =
-    dropped > 0
-      ? [
-          `${dropped} row(s) excluded: USDA / estimated benchmarks and rows without a positive price per acre are not sales and cannot be comps.`,
-        ]
-      : [];
   if (comps.length === 0) {
     return {
       allComps: [],

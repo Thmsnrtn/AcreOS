@@ -369,6 +369,12 @@ describe("DEFECT-0101 — every entry point is behind the refusal (source, comme
       registration: /router\.post\(\s*"\/1099-batch"\s*,\s*requireQualified1099Output\(\)/,
       generator: /generate1099Batch\(/,
     },
+    {
+      // DEFECT-0125 — the stored FIRE file of an earlier batch is served here.
+      file: "server/routes-accounting.ts",
+      registration: /router\.get\(\s*"\/1099-batch\/:jobId"\s*,\s*requireQualified1099Output\(\)/,
+      generator: /getForm1099BatchStatus\(/,
+    },
   ];
 
   for (const r of ROUTES) {

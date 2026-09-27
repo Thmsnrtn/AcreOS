@@ -45,7 +45,6 @@ const BASELINE = new Map([
   ["client/src/components/notification-banner.tsx", 1],
   ["client/src/components/pax-copilot-rail.tsx", 2],
   ["client/src/components/signature-capture.tsx", 1],
-  ["client/src/components/sms-conversation.tsx", 1],
   ["client/src/components/support-content.tsx", 1],
   ["client/src/components/team-general-channel.tsx", 1],
   ["client/src/components/template-editor.tsx", 3],

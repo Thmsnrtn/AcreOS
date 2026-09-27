@@ -87,26 +87,27 @@ export interface OpportunitySignal {
   description: string;
 }
 
+/**
+ * The report's offer section (DEFECT-0123).
+ *
+ * It used to price an offer from `pasturePerAcre || farm × 0.6 || 1000` —
+ * a USDA survey benchmark, or an invented $1,000/acre, called "the lowest
+ * comparable sale" — and derive a flip price and owner-finance terms from it.
+ * This report pulls no sales, so it carries NO offer: every price is null and
+ * the notes say where the number comes from (the offer wizard, from real
+ * sales). The measured USDA value stays as context.
+ */
 export interface BlindOfferAnalysis {
-  // The core offer formula: lowest comp ÷ 4
-  lowestComparableSale: number | null; // $/acre from county data
-  usdaLandValuePerAcre: number; // USDA NASS baseline
-  recommendedOfferPerAcre: number; // Minimum of (lowest comp ÷ 4, USDA ÷ 4)
-  recommendedOfferTotal: number; // × acres
-  targetFlipPriceTotal: number; // 2-4× offer (for cash sale)
-  targetFlipROI: number; // %
-  // Owner finance structure (optimal terms)
-  ownerFinance: {
-    downPayment: number; // = acquisition cost (recoups capital day 1)
-    loanAmount: number; // listing price - down payment
-    interestRate: number; // 9% standard
-    termMonths: number; // 84 months (7 years)
-    monthlyPayment: number;
-    totalCollected: number; // Down + all payments
-    totalROI: number; // %
-    passiveIncomeMonths: number; // Months of passive income
-  };
-  confidenceLevel: "high" | "medium" | "low"; // Based on data availability
+  status: "no_comparable_sales";
+  lowestComparableSale: null;
+  /** A MEASURED NASS county pasture value, or null. Context, never a price. */
+  usdaLandValuePerAcre: number | null;
+  recommendedOfferPerAcre: null;
+  recommendedOfferTotal: null;
+  targetFlipPriceTotal: null;
+  targetFlipROI: null;
+  ownerFinance: null;
+  confidenceLevel: "none";
   pricingNotes: string[];
 }
 
@@ -550,73 +551,40 @@ function identifyOpportunitySignals(
 
 function buildOfferAnalysis(
   input: ParcelIntelligenceInput,
-  nassData: any,
-  trend: any
+  nassData: { pasturePerAcre?: number; pastureSource?: string } | null,
+  trend: { trend?: string; oneYearChangePercent?: number } | null,
 ): BlindOfferAnalysis {
-  const usdaPerAcre = nassData?.pasturePerAcre || (nassData?.farmRealEstatePerAcre * 0.6) || 1000;
+  const measuredPasture =
+    nassData?.pastureSource === "usda_nass" &&
+    typeof nassData.pasturePerAcre === "number" &&
+    nassData.pasturePerAcre > 0
+      ? nassData.pasturePerAcre
+      : null;
 
-  // Offer formula: lowest comp ÷ 4
-  // Use USDA NASS pastureland value as the "lowest comp" baseline
-  const lowestCompPerAcre = usdaPerAcre;
-  const offerPerAcre = lowestCompPerAcre * 0.25; // 25 cents on the dollar
-  const offerTotal = offerPerAcre * input.acres;
-
-  // Cash flip at 2× (conservative) to 4× (hot market)
-  const flipMultiple = nassData?.interpretations?.impliedFlipPrice
-    ? nassData.interpretations.impliedFlipPrice / nassData.interpretations.rawLandProxyValue
-    : 2;
-  // Flip price = offer × multiple (typically 2-4x). Previous bug: was offerTotal * flipMultiple * 4 = 8x
-  const effectiveMultiple = Math.min(flipMultiple > 0 ? flipMultiple : 2, 6);
-  const flipPriceTotal = offerTotal * effectiveMultiple;
-  const flipROI = offerTotal > 0 ? ((flipPriceTotal - offerTotal) / offerTotal) * 100 : 300;
-
-  // Owner finance structure
-  const downPayment = offerTotal; // Down payment = acquisition cost (capital recovery day 1)
-  const loanAmount = flipPriceTotal - downPayment;
-  const monthlyRate = 0.09 / 12;
-  const n = 84;
-  const monthlyPayment = loanAmount > 0
-    ? loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, n)) / (Math.pow(1 + monthlyRate, n) - 1)
-    : 0;
-  const totalCollected = downPayment + (monthlyPayment * n);
-  const ownerFinanceROI = offerTotal > 0 ? ((totalCollected - offerTotal) / offerTotal) * 100 : 800;
-
-  // Confidence
-  const confidence = nassData && trend
-    ? nassData.farmRealEstatePerAcre > 0 ? "high" : "medium"
-    : "low";
-
-  const notes: string[] = [];
-  if (!nassData || nassData.farmRealEstatePerAcre === 0) {
-    notes.push("No USDA NASS data available — using regional estimates. Validate with local MLS/LandWatch comps.");
+  const notes: string[] = [
+    "No offer amount: this report pulls no comparable sales, and a USDA county average is a benchmark, not a sale. Price the offer in the offer wizard from 5-10 sold comps (county records, LandWatch, Land and Farm, eBay sold listings).",
+  ];
+  if (measuredPasture === null) {
+    notes.push("No measured USDA pasture value for this county.");
   }
   if (trend && trend.trend === "accelerating") {
-    notes.push(`Market is accelerating (${trend.oneYearChangePercent}% YoY growth). Consider offering up to 30 cents on the dollar to compete in this hot market.`);
+    notes.push(`USDA values are accelerating (${trend.oneYearChangePercent}% YoY) — recent comps matter more than usual here.`);
   }
   if (input.acres < 1) {
     notes.push("Sub-acre parcel — standard land model may not apply. Verify use case and comp pool before offering.");
   }
-  notes.push("Always pull 5-10 direct comparables from LandWatch, Land and Farm, and county records before finalizing offer.");
   notes.push("eBay sold listings in this county validate the model — look for 10+ bidders on similar parcels.");
 
   return {
-    lowestComparableSale: lowestCompPerAcre,
-    usdaLandValuePerAcre: usdaPerAcre,
-    recommendedOfferPerAcre: Math.round(offerPerAcre),
-    recommendedOfferTotal: Math.round(offerTotal),
-    targetFlipPriceTotal: Math.round(flipPriceTotal),
-    targetFlipROI: Math.round(flipROI),
-    ownerFinance: {
-      downPayment: Math.round(downPayment),
-      loanAmount: Math.round(loanAmount),
-      interestRate: 9,
-      termMonths: 84,
-      monthlyPayment: Math.round(monthlyPayment),
-      totalCollected: Math.round(totalCollected),
-      totalROI: Math.round(ownerFinanceROI),
-      passiveIncomeMonths: 84,
-    },
-    confidenceLevel: confidence,
+    status: "no_comparable_sales",
+    lowestComparableSale: null,
+    usdaLandValuePerAcre: measuredPasture,
+    recommendedOfferPerAcre: null,
+    recommendedOfferTotal: null,
+    targetFlipPriceTotal: null,
+    targetFlipROI: null,
+    ownerFinance: null,
+    confidenceLevel: "none",
     pricingNotes: notes,
   };
 }
@@ -714,7 +682,9 @@ function buildNextSteps(
   if (recommendation === "buy_aggressively" || recommendation === "buy_selectively") {
     steps.push("Pull 5-10 comparable sales from LandWatch, Land and Farm, and county assessor records to refine offer price.");
     steps.push("Check eBay sold listings for this county — look for 10+ bidders as validation the model works here.");
-    steps.push(`Send a blind offer letter at $${Math.round(input.acres * 250).toLocaleString()} or your calculated offer amount.`);
+    // DEFECT-0123: this was `input.acres * 250` — a flat $250/acre offer
+    // presented as the letter price for any parcel in any county.
+    steps.push("Price the blind offer in the offer wizard from those comps (a quarter of the lowest sale), then send the letter.");
 
     if (signals.some(s => s.type === "tax_delinquent")) {
       steps.push("Tax delinquency detected — contact before the tax sale deadline. Time-sensitive opportunity.");

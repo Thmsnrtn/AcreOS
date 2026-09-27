@@ -44,6 +44,11 @@ interface AgentAssignment {
 
 interface TitleFindings {
   clear: boolean;
+  /**
+   * True when no data source answered, so nothing was checked (DEFECT-0126).
+   * An unverified finding is never clean, current or legal.
+   */
+  unverified?: boolean;
   issues?: string[];
   liens?: string[];
   encumbrances?: string[];
@@ -51,6 +56,11 @@ interface TitleFindings {
 
 interface TaxFindings {
   current: boolean;
+  /**
+   * True when no data source answered, so nothing was checked (DEFECT-0126).
+   * An unverified finding is never clean, current or legal.
+   */
+  unverified?: boolean;
   amountDue?: number;
   yearsDelinquent?: number;
   specialAssessments?: string[];
@@ -58,6 +68,11 @@ interface TaxFindings {
 
 interface EnvironmentalFindings {
   clean: boolean;
+  /**
+   * True when no data source answered, so nothing was checked (DEFECT-0126).
+   * An unverified finding is never clean, current or legal.
+   */
+  unverified?: boolean;
   concerns?: string[];
   wetlands?: boolean;
   floodZone?: string;
@@ -65,6 +80,11 @@ interface EnvironmentalFindings {
 
 interface ZoningFindings {
   current: string;
+  /**
+   * True when no data source answered, so nothing was checked (DEFECT-0126).
+   * An unverified finding is never clean, current or legal.
+   */
+  unverified?: boolean;
   allowedUses?: string[];
   restrictions?: string[];
   overlays?: string[];
@@ -73,6 +93,11 @@ interface ZoningFindings {
 interface AccessFindings {
   type: string;
   legal: boolean;
+  /**
+   * True when no data source answered, so nothing was checked (DEFECT-0126).
+   * An unverified finding is never clean, current or legal.
+   */
+  unverified?: boolean;
   easements?: string[];
   roadMaintenance?: string;
 }
@@ -337,26 +362,35 @@ class DueDiligencePodService {
           county: property.county || undefined,
         });
 
-        if (result.success && result.data) {
+        // A parcel source that carries no lien or encumbrance fields at all
+        // (most geometry/ownership sources do not) has said nothing about
+        // title. `!undefined && !undefined` read that silence as a clear
+        // title (DEFECT-0126).
+        if (result.success && result.data && (result.data.liens !== undefined || result.data.encumbrances !== undefined)) {
+          const liens = Array.isArray(result.data.liens) ? result.data.liens : result.data.liens ? [String(result.data.liens)] : [];
+          const encumbrances = Array.isArray(result.data.encumbrances) ? result.data.encumbrances : result.data.encumbrances ? [String(result.data.encumbrances)] : [];
           return {
-            clear: !result.data.liens && !result.data.encumbrances,
+            clear: liens.length === 0 && encumbrances.length === 0,
             issues: result.data.issues || [],
-            liens: result.data.liens || [],
-            encumbrances: result.data.encumbrances || [],
+            liens,
+            encumbrances,
           };
         }
       }
 
+      // DEFECT-0126: no parcel source answered. This returned clear: true —
+      // "Clear title", a green flag and a 100 title score for a parcel nobody
+      // checked. Unverified is not clear.
       return {
-        clear: true,
-        issues: [],
-        liens: [],
-        encumbrances: [],
+        clear: false,
+        unverified: true,
+        issues: ["Title not verified — no parcel data source answered. Order a title report."],
       };
     } catch (error) {
       logger.error(`[due-diligence-pods] Title research error for property ${propertyId}`, error);
       return {
         clear: false,
+        unverified: true,
         issues: ["Unable to verify title status - manual review required"],
       };
     }
@@ -379,7 +413,9 @@ class DueDiligencePodService {
           county: property.county || undefined,
         });
 
-        if (result.success && result.data) {
+        // Current only when the source SAYS whether the parcel is delinquent;
+        // a missing flag read as "not delinquent" (DEFECT-0126).
+        if (result.success && result.data && typeof result.data.delinquent === "boolean") {
           return {
             current: !result.data.delinquent,
             amountDue: result.data.amountDue || result.data.delinquentAmount,
@@ -389,17 +425,18 @@ class DueDiligencePodService {
         }
       }
 
+      // DEFECT-0126: no tax source answered. This returned current: true
+      // with $0 due — "Taxes current" for a parcel nobody checked.
       return {
-        current: true,
-        amountDue: 0,
-        yearsDelinquent: 0,
-        specialAssessments: [],
+        current: false,
+        unverified: true,
+        specialAssessments: ["Tax status not verified — no tax data source answered. Check the county treasurer."],
       };
     } catch (error) {
       logger.error(`[due-diligence-pods] Tax research error for property ${propertyId}`, error);
       return {
         current: false,
-        yearsDelinquent: 0,
+        unverified: true,
         specialAssessments: ["Tax status verification required"],
       };
     }
@@ -415,6 +452,10 @@ class DueDiligencePodService {
       const concerns: string[] = [];
       let floodZone: string | undefined;
       let wetlands = false;
+      // DEFECT-0126: "clean" is only a finding when at least one source
+      // answered. With no coordinates, or every lookup failing, `concerns`
+      // stayed empty and the parcel was reported environmentally clean.
+      let sourcesAnswered = 0;
 
       const lat = parseNumeric(property.latitude);
       const lng = parseNumeric(property.longitude);
@@ -434,6 +475,8 @@ class DueDiligencePodService {
           }),
         ]);
 
+        sourcesAnswered = [floodResult, wetlandsResult, envResult].filter((r) => r.success).length;
+
         if (floodResult.success && floodResult.data?.zone) {
           floodZone = floodResult.data.zone;
           if (floodZone && !["X", "UNSHADED X"].includes(floodZone)) {
@@ -451,6 +494,13 @@ class DueDiligencePodService {
         }
       }
 
+      if (sourcesAnswered === 0) {
+        return {
+          clean: false,
+          unverified: true,
+          concerns: ["Environmental check not performed — no flood, wetlands or environmental source answered"],
+        };
+      }
       return {
         clean: concerns.length === 0,
         concerns,
@@ -461,6 +511,7 @@ class DueDiligencePodService {
       logger.error(`[due-diligence-pods] Environmental research error for property ${propertyId}`, error);
       return {
         clean: false,
+        unverified: true,
         concerns: ["Environmental check could not be completed"],
       };
     }
@@ -485,7 +536,7 @@ class DueDiligencePodService {
 
         if (result.success && result.data) {
           return {
-            current: result.data.zoning || result.data.zone || "Residential",
+            current: result.data.zoning || result.data.zone || "Unknown",
             allowedUses: result.data.allowedUses || [],
             restrictions: result.data.restrictions || [],
             overlays: result.data.overlays || [],
@@ -493,16 +544,19 @@ class DueDiligencePodService {
         }
       }
 
+      // DEFECT-0126: no zoning source answered. This returned
+      // "Agricultural/Residential" with two allowed uses — a zoning
+      // designation for a parcel nobody looked up.
       return {
-        current: "Agricultural/Residential",
-        allowedUses: ["Agricultural", "Single Family Residential"],
-        restrictions: [],
-        overlays: [],
+        current: "Unknown",
+        unverified: true,
+        restrictions: ["Zoning not verified — no zoning source answered. Call the county planning office."],
       };
     } catch (error) {
       logger.error(`[due-diligence-pods] Zoning research error for property ${propertyId}`, error);
       return {
         current: "Unknown",
+        unverified: true,
         restrictions: ["Zoning verification required"],
       };
     }
@@ -527,25 +581,32 @@ class DueDiligencePodService {
 
         if (result.success && result.data?.access) {
           return {
-            type: result.data.access.type || "Paved Road",
-            legal: result.data.access.legal !== false,
+            // Only what the source said. A missing road type was "Paved Road",
+            // a missing legal flag was legal, and a missing maintenance field
+            // was "County Maintained" (DEFECT-0126).
+            type: result.data.access.type || "Unknown",
+            legal: result.data.access.legal === true,
             easements: result.data.access.easements || [],
-            roadMaintenance: result.data.access.maintenance || "County Maintained",
+            roadMaintenance: result.data.access.maintenance || "Unknown",
           };
         }
       }
 
+      // DEFECT-0126: no parcel source answered. This returned legal: true —
+      // "Legal access confirmed" for a parcel that may be landlocked, the
+      // most common deal-killer in raw land.
       return {
-        type: "Road Access",
-        legal: true,
-        easements: [],
-        roadMaintenance: "Unknown",
+        type: "Unknown",
+        legal: false,
+        unverified: true,
+        easements: ["Access not verified — confirm road frontage or a recorded easement"],
       };
     } catch (error) {
       logger.error(`[due-diligence-pods] Access research error for property ${propertyId}`, error);
       return {
         type: "Unknown",
         legal: false,
+        unverified: true,
         easements: ["Access verification required"],
       };
     }
@@ -573,17 +634,25 @@ class DueDiligencePodService {
             medianPrice: result.data.medianPrice,
             pricePerAcre: result.data.avgPricePerAcre || result.data.pricePerAcre,
             salesCount: result.data.recentSalesCount || result.data.salesCount,
-            trend: result.data.trend || (result.data.priceChangePercent > 0 ? "Increasing" : "Stable"),
+            trend:
+              result.data.trend ||
+              (typeof result.data.priceChangePercent === "number"
+                ? result.data.priceChangePercent > 0
+                  ? "Increasing"
+                  : result.data.priceChangePercent < 0
+                    ? "Decreasing"
+                    : "Stable"
+                : "Unable to determine"),
           };
         }
       }
 
-      const acreage = parseNumeric(property.sizeAcres) || 5;
+      // DEFECT-0126: no market source answered. This returned $2,500/acre
+      // and a median of acreage (default 5) × 2,500 — comps for a parcel with
+      // no comps, which lifted the market score.
       return {
-        pricePerAcre: 2500,
-        medianPrice: acreage * 2500,
         salesCount: 0,
-        trend: "Stable",
+        trend: "Unable to determine",
       };
     } catch (error) {
       logger.error(`[due-diligence-pods] Comps research error for property ${propertyId}`, error);
@@ -746,6 +815,17 @@ class DueDiligencePodService {
     const redFlags: string[] = [];
     const greenFlags: string[] = [];
 
+    const unverified = [
+      findings.titleStatus?.unverified ? "title" : null,
+      findings.taxStatus?.unverified ? "taxes" : null,
+      findings.environmental?.unverified ? "environmental" : null,
+      findings.zoning?.unverified ? "zoning" : null,
+      findings.access?.unverified ? "access" : null,
+    ].filter((x): x is string => x !== null);
+    if (unverified.length > 0) {
+      redFlags.push(`Not verified (no data source answered): ${unverified.join(", ")}`);
+    }
+
     if (findings.titleStatus?.clear) {
       greenFlags.push("Clear title");
     } else if (findings.titleStatus?.liens?.length) {
@@ -766,7 +846,7 @@ class DueDiligencePodService {
 
     if (findings.access?.legal) {
       greenFlags.push("Legal access confirmed");
-    } else {
+    } else if (!findings.access?.unverified) {
       redFlags.push("Access issues");
     }
 
@@ -872,11 +952,11 @@ Investability Score: ${dossier.investabilityScore}/100
 Risk Score: ${dossier.riskScore}/100
 
 Key Findings:
-- Title: ${findings.titleStatus?.clear ? "Clear" : "Issues found"}
-- Taxes: ${findings.taxStatus?.current ? "Current" : `Delinquent (${findings.taxStatus?.yearsDelinquent || 0} years)`}
-- Environmental: ${findings.environmental?.clean ? "Clean" : findings.environmental?.concerns?.join(", ") || "Concerns"}
-- Zoning: ${findings.zoning?.current || "Unknown"}
-- Access: ${findings.access?.legal ? "Legal access" : "Access issues"}
+- Title: ${findings.titleStatus?.unverified ? "Not verified" : findings.titleStatus?.clear ? "Clear" : "Issues found"}
+- Taxes: ${findings.taxStatus?.unverified ? "Not verified" : findings.taxStatus?.current ? "Current" : `Delinquent (${findings.taxStatus?.yearsDelinquent ?? "unknown"} years)`}
+- Environmental: ${findings.environmental?.unverified ? "Not verified" : findings.environmental?.clean ? "Clean" : findings.environmental?.concerns?.join(", ") || "Concerns"}
+- Zoning: ${findings.zoning?.unverified ? "Not verified" : findings.zoning?.current || "Unknown"}
+- Access: ${findings.access?.unverified ? "Not verified" : findings.access?.legal ? "Legal access" : "Access issues"}
 - Market Trend: ${findings.comps?.trend || "Unknown"}
 - Owner Motivation: ${findings.owner?.motivationSignals?.join(", ") || "None identified"}
 

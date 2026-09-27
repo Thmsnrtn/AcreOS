@@ -131,7 +131,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   "1099-INT": {
     term: "1099-INT",
     definition:
-      "IRS form for interest income — issued to your borrowers/lenders annually.",
+      "IRS information return for interest PAID to a recipient. AcreOS withholds its 1099-INT output until a tax review settles which form applies to interest your borrowers pay you.",
   },
   borrower: {
     term: "Borrower",

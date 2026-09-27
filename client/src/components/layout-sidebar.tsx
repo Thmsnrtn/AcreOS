@@ -504,7 +504,7 @@ const NAV_MODULES: NavModule[] = [
     children: [
       { label: "Servicing book", icon: FileText, href: "/notes", description: "Acquired notes ledger" },
       { label: "Pipeline", icon: Layers, href: "/notes/pipeline", description: "Pre-book diligence — sourcing → BPO → diligence → offer → escrow" },
-      { label: "Tax readiness", icon: Receipt, href: "/notes/tax-readiness", description: "1099-INT pre-flight — eligible recipients, blockers, batch generation" },
+      { label: "Tax readiness", icon: Receipt, href: "/notes/tax-readiness", description: "Year-end interest totals and tax-form readiness (1099-INT withheld pending review)" },
     ],
   },
 

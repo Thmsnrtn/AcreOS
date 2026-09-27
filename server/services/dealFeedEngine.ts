@@ -21,6 +21,7 @@ import { subDays, startOfDay } from "date-fns";
 import { logger } from "../utils/logger";
 import { acquisitionRadar, type ParcelData } from "./acquisitionRadar";
 import type { RadarConfig } from "@shared/schema";
+import type { BlindOfferOutcome } from "./blindOfferCalculator";
 
 // NEUTRAL_RADAR_SCORE = 50 used to live here, described as keeping the feed
 // "honest rather than crashing or fabricating a high score". It did prevent a
@@ -412,7 +413,7 @@ async function buildOpportunity(
     let enrichment: any = {};
     let ownerData: any = {};
     let countyData: any = {};
-    let offerData: any = null;
+    let offerData: BlindOfferOutcome | null = null;
 
     // Parallel enrichment — allSettled so failures don't block
     const [radarResult, intentResult, lcsResult, offerResult] = await Promise.allSettled([
@@ -493,9 +494,16 @@ async function buildOpportunity(
     const parcelAcres = Number(parcel.acreage);
     const acresKnown = Number.isFinite(parcelAcres) && parcelAcres > 0;
     const assessed = Number(parcel.assessedValue);
+    // DEFECT-0121: read the calculator's REAL outcome. This read
+    // `offerData.comps.medianSalePerAcre`, `offerData.tiers[i]` and
+    // `ownerFinanceScenario.annualYield` — fields neither the report nor the
+    // refusal has — so every read was undefined and the calculator's result
+    // was discarded. A refusal (no comparable sales) carries no offer at all.
+    const offerReport = offerData && offerData.status === "ok" ? offerData : null;
+    const medianSalePerAcre = offerReport?.compAnalysis.medianSalePerAcre ?? null;
     const estimatedValue: number | null =
-      offerData?.comps?.medianSalePerAcre && acresKnown
-        ? offerData.comps.medianSalePerAcre * parcelAcres
+      medianSalePerAcre && acresKnown
+        ? medianSalePerAcre * parcelAcres
         : Number.isFinite(assessed) && assessed > 0
           ? assessed
           : null;
@@ -503,8 +511,9 @@ async function buildOpportunity(
     // Offer tiers come from the calculator when it ran. The percentage
     // fallbacks apply only to a value that exists — no value, no offer, rather
     // than 25% of nothing presented as a suggested offer.
+    const TIERS = ["aggressive", "standard", "competitive"] as const;
     const tierOrNull = (i: number, pct: number): number | null =>
-      offerData?.tiers?.[i]?.offerTotal ??
+      offerReport?.offerTiers[TIERS[i]].offerTotal ??
       (estimatedValue === null ? null : Math.round(estimatedValue * pct));
     const aggOffer = tierOrNull(0, 0.25);
     const mktOffer = tierOrNull(1, 0.40);
@@ -552,7 +561,9 @@ async function buildOpportunity(
           market: estimatedValue !== null && mktOffer !== null ? estimatedValue - mktOffer : null,
           generous: estimatedValue !== null && genOffer !== null ? estimatedValue - genOffer : null,
         },
-        sellerFinanceYield: offerData?.ownerFinanceScenario?.annualYield ?? null,
+        // The owner-finance scenario reports ROI and monthly payment, not an
+        // annual yield; `annualYield` never existed. Absent, not invented.
+        sellerFinanceYield: null,
       },
       enrichment: {
         floodZone: enrichment?.floodZone || "Unknown",

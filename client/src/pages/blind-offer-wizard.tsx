@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { parseSnapshotPrefill, type SnapshotPrefill } from "@shared/blindOfferPrefill";
 import { findStateWarning } from "@/lib/upl-gating";
+import { compExclusion, describeCompExclusion } from "@shared/blindOfferComps";
 import { StateUplBanner } from "@/components/upl-gating-banner";
 import {
   ChevronRight, ChevronLeft, MapPin, BarChart2, Calculator, FileText,
@@ -56,6 +57,8 @@ interface Comp {
   acres: number;
   totalPrice: number;
   source: string;
+  /** ISO date of the sale. Undated or older-than-18-month rows are not comps. */
+  saleDate?: string;
   notes?: string;
 }
 
@@ -335,13 +338,14 @@ interface StepCompsProps {
 }
 
 function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: StepCompsProps) {
-  const [newComp, setNewComp] = useState({ pricePerAcre: "", acres: "", source: "county_records", notes: "" });
+  const [newComp, setNewComp] = useState({ pricePerAcre: "", acres: "", saleDate: "", source: "county_records", notes: "" });
   const [autoLoadState, setAutoLoadState] = useState<"idle" | "loading" | "loaded" | "empty" | "error">("idle");
   const [autoLoadMeta, setAutoLoadMeta] = useState<{ count: number; source: string; fallback: string | null } | null>(null);
   const autoLoadAttempted = useRef(false);
   const ppaId = useId();
   const acreageId = useId();
   const sourceId = useId();
+  const saleDateId = useId();
 
   // Tom Hsiao / Lens 36 fix — auto-pull comps for this county on mount so
   // the user doesn't have to keep PropStream open just to fill Step 2.
@@ -385,15 +389,18 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: St
   function addComp() {
     const ppa = parseFloat(newComp.pricePerAcre);
     const ac = parseFloat(newComp.acres);
-    if (!ppa || !ac) return;
+    // A comp is a DATED sale — the formula reads "lowest sale in the last
+    // 12-18 months" (DEFECT-0122).
+    if (!ppa || !ac || !newComp.saleDate) return;
     setComps((prev: Comp[]) => [...prev, {
       pricePerAcre: ppa,
       acres: ac,
       totalPrice: ppa * ac,
       source: newComp.source,
+      saleDate: newComp.saleDate,
       notes: newComp.notes,
     }]);
-    setNewComp({ pricePerAcre: "", acres: "", source: "county_records", notes: "" });
+    setNewComp({ pricePerAcre: "", acres: "", saleDate: "", source: "county_records", notes: "" });
   }
 
   function removeComp(idx: number) {
@@ -401,7 +408,12 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: St
   }
 
   const sortedComps = [...comps].sort((a, b) => a.pricePerAcre - b.pricePerAcre);
-  const lowestComp = sortedComps[0]?.pricePerAcre || 0;
+  // The preview uses the SAME rule the calculator does (@shared/blindOfferComps),
+  // so the "lowest" shown here is the lowest the offer will be priced from.
+  const now = new Date();
+  const whyNot = (c: Comp) => compExclusion(c, now);
+  const countedComps = sortedComps.filter((c) => whyNot(c) === null);
+  const lowestComp = countedComps[0]?.pricePerAcre || 0;
 
   return (
     <div className="space-y-6">
@@ -489,7 +501,7 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: St
         </CardHeader>
         <CardContent>
           <form
-            className="grid grid-cols-2 md:grid-cols-4 gap-3"
+            className="grid grid-cols-2 md:grid-cols-5 gap-3"
             onSubmit={(e) => { e.preventDefault(); addComp(); }}
           >
             <div>
@@ -499,6 +511,10 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: St
             <div>
               <Label htmlFor={acreageId} className="text-xs">Acreage</Label>
               <Input id={acreageId} type="number" inputMode="decimal" className="tabular-nums" value={newComp.acres} onChange={e => setNewComp(p => ({ ...p, acres: e.target.value }))} placeholder="e.g. 5" />
+            </div>
+            <div>
+              <Label htmlFor={saleDateId} className="text-xs">Sale date</Label>
+              <Input id={saleDateId} type="date" required value={newComp.saleDate} onChange={e => setNewComp(p => ({ ...p, saleDate: e.target.value }))} />
             </div>
             <div>
               <Label htmlFor={sourceId} className="text-xs">Source</Label>
@@ -525,7 +541,12 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: St
       {comps.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-sm">{comps.length} comp{comps.length === 1 ? "" : "s"} entered</h3>
+            <h3 className="font-semibold text-sm">
+              {comps.length} comp{comps.length === 1 ? "" : "s"} entered
+              {countedComps.length !== comps.length && (
+                <span className="font-normal text-muted-foreground"> · {countedComps.length} count toward the offer</span>
+              )}
+            </h3>
             {lowestComp > 0 && (
               <p className="text-sm text-muted-foreground">Lowest: <span className="font-bold tabular-nums">{fmt(lowestComp)}/acre</span> → Target offer: <span className="font-bold tabular-nums text-acr-pos">{fmt(lowestComp * 0.25)}/acre</span></p>
             )}
@@ -533,12 +554,20 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: St
           <ul className="space-y-2 list-none p-0 m-0" aria-label="Comparable sales">
             {sortedComps.map((comp, i) => {
               const sourceLabel = comp.source.replace(/_/g, " ");
+              const excluded = whyNot(comp);
+              const isLowest = excluded === null && comp === countedComps[0];
               return (
-                <li key={i} className={`flex items-center gap-3 p-3 rounded-card border ${i === 0 ? "border-acr-pos bg-acr-pos-soft dark:border-acr-pos-soft dark:bg-acr-pos-soft/10" : "border-border"}`}>
-                  {i === 0 && <Badge className="bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink text-xs" aria-label="Lowest comp">Lowest</Badge>}
-                  <div className="flex-1 grid grid-cols-3 gap-2 text-sm">
+                <li key={i} className={`flex items-center gap-3 p-3 rounded-card border ${isLowest ? "border-acr-pos bg-acr-pos-soft dark:border-acr-pos-soft dark:bg-acr-pos-soft/10" : "border-border"} ${excluded ? "opacity-70" : ""}`}>
+                  {isLowest && <Badge className="bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink text-xs" aria-label="Lowest comp">Lowest</Badge>}
+                  {excluded && (
+                    <Badge variant="outline" className="text-xs" title={describeCompExclusion(excluded)}>
+                      Not counted: {describeCompExclusion(excluded)}
+                    </Badge>
+                  )}
+                  <div className="flex-1 grid grid-cols-4 gap-2 text-sm">
                     <span className="font-semibold tabular-nums">{fmt(comp.pricePerAcre)}/acre</span>
                     <span className="text-muted-foreground tabular-nums">{comp.acres} acres</span>
+                    <span className="text-muted-foreground tabular-nums">{comp.saleDate ? `Sold ${comp.saleDate}` : "No sale date"}</span>
                     <span className="text-muted-foreground capitalize">{sourceLabel}</span>
                   </div>
                   <button
@@ -558,7 +587,7 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: St
 
       {comps.length === 0 && (
         <div className="p-4 rounded-card border border-dashed border-muted-foreground/30 text-center text-sm text-muted-foreground">
-          No comps entered yet. The calculator also looks for sales on file, but without at least one real comparable sale it will not price an offer — USDA benchmarks are context, not sales.
+          No comps entered yet. Without at least one dated sale from the last 18 months the calculator will not price an offer — USDA benchmarks are context, not sales.
         </div>
       )}
 
@@ -1302,6 +1331,7 @@ export default function BlindOfferWizardPage() {
           acres: c.acres,
           totalPrice: c.totalPrice,
           source: c.source,
+          saleDate: c.saleDate,
           notes: c.notes,
         })),
         sellerProfile,

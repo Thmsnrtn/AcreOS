@@ -695,7 +695,7 @@ export default function NoteDetailPage() {
               <div className="text-xs text-muted-foreground">Tax ID type</div>
               <div className="text-sm font-medium mt-0.5">{note.payerTinType || "—"}</div>
               <div className="text-xs text-muted-foreground mt-0.5">
-                {note.payerTinType ? "On file" : "Add a W-9 to enable 1099-INT"}
+                {note.payerTinType ? "On file" : "Add a W-9 (needed for year-end tax forms)"}
               </div>
               <NoteTinEditor noteId={note.id} currentTinType={note.payerTinType as any} />
             </div>

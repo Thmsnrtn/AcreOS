@@ -27,10 +27,14 @@ vi.mock("../../server/utils/logger", () => ({
 const { calculateBlindOffer } = await import("../../server/services/blindOfferCalculator");
 
 /** Comps good enough that the calculator returns a real report. */
+// `saleDate`, the calculator's field — this said `soldDate`, which nothing
+// reads, and only survived because undated comps used to count (DEFECT-0122).
+// Dated relative to now so the fixture never ages out of the 18-month window.
+const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString().slice(0, 10);
 const COMPS = [
-  { pricePerAcre: 1200, acres: 10, soldDate: "2026-05-01", source: "manual" },
-  { pricePerAcre: 1400, acres: 12, soldDate: "2026-06-01", source: "manual" },
-  { pricePerAcre: 1100, acres: 8, soldDate: "2026-04-01", source: "manual" },
+  { pricePerAcre: 1200, acres: 10, saleDate: daysAgo(120), source: "manual" },
+  { pricePerAcre: 1400, acres: 12, saleDate: daysAgo(90), source: "manual" },
+  { pricePerAcre: 1100, acres: 8, saleDate: daysAgo(150), source: "manual" },
 ];
 
 async function run(over: Record<string, unknown> = {}) {

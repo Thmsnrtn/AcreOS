@@ -204,7 +204,7 @@ const REGISTRY: Array<{
     cluster: {
       id: "note-investor",
       title: "Note investor surfaces",
-      description: "Servicing book, acquisition pipeline, and 1099-INT readiness.",
+      description: "Servicing book, acquisition pipeline, and year-end interest totals.",
       priority: 60,
       links: [
         { label: "Servicing book", href: "/notes" },

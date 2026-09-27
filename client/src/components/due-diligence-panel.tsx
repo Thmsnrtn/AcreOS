@@ -639,8 +639,8 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                         <div className="flex items-center gap-2">
                           <FileSearch className="w-4 h-4" aria-hidden="true" />
                           <span>Title search</span>
-                          <Badge variant={dossier.findings.titleStatus.clear ? "default" : "destructive"} className="text-xs">
-                            {dossier.findings.titleStatus.clear ? "Clear" : "Issues found"}
+                          <Badge variant={dossier.findings.titleStatus.unverified ? "outline" : dossier.findings.titleStatus.clear ? "default" : "destructive"} className="text-xs">
+                            {dossier.findings.titleStatus.unverified ? "Not verified" : dossier.findings.titleStatus.clear ? "Clear" : "Issues found"}
                           </Badge>
                         </div>
                       </AccordionTrigger>
@@ -680,8 +680,8 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                         <div className="flex items-center gap-2">
                           <DollarSign className="w-4 h-4" aria-hidden="true" />
                           <span>Tax analysis</span>
-                          <Badge variant={dossier.findings.taxStatus.current ? "default" : "destructive"} className="text-xs">
-                            {dossier.findings.taxStatus.current ? "Current" : "Delinquent"}
+                          <Badge variant={dossier.findings.taxStatus.unverified ? "outline" : dossier.findings.taxStatus.current ? "default" : "destructive"} className="text-xs">
+                            {dossier.findings.taxStatus.unverified ? "Not verified" : dossier.findings.taxStatus.current ? "Current" : "Delinquent"}
                           </Badge>
                         </div>
                       </AccordionTrigger>
@@ -717,8 +717,8 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                         <div className="flex items-center gap-2">
                           <Leaf className="w-4 h-4" aria-hidden="true" />
                           <span>Environmental</span>
-                          <Badge variant={dossier.findings.environmental.clean ? "default" : "secondary"} className="text-xs">
-                            {dossier.findings.environmental.clean ? "Clean" : "Concerns"}
+                          <Badge variant={dossier.findings.environmental.unverified ? "outline" : dossier.findings.environmental.clean ? "default" : "secondary"} className="text-xs">
+                            {dossier.findings.environmental.unverified ? "Not verified" : dossier.findings.environmental.clean ? "Clean" : "Concerns"}
                           </Badge>
                         </div>
                       </AccordionTrigger>
@@ -790,8 +790,8 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                         <div className="flex items-center gap-2">
                           <Route className="w-4 h-4" aria-hidden="true" />
                           <span>Access</span>
-                          <Badge variant={dossier.findings.access.legal ? "default" : "destructive"} className="text-xs">
-                            {dossier.findings.access.legal ? "Legal access" : "Access issues"}
+                          <Badge variant={dossier.findings.access.unverified ? "outline" : dossier.findings.access.legal ? "default" : "destructive"} className="text-xs">
+                            {dossier.findings.access.unverified ? "Not verified" : dossier.findings.access.legal ? "Legal access" : "Access issues"}
                           </Badge>
                         </div>
                       </AccordionTrigger>

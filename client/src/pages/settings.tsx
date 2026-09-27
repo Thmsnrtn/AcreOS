@@ -914,8 +914,8 @@ export default function Settings() {
                     Tax identity
                   </CardTitle>
                   <CardDescription>
-                    Legal entity name, EIN/SSN/ITIN, and tax address used to
-                    issue 1099-INT forms. Captured during onboarding —
+                    Legal entity name, EIN/SSN/ITIN, and tax address used on
+                    year-end tax forms. Captured during onboarding —
                     editable by the owner anytime.
                   </CardDescription>
                 </CardHeader>

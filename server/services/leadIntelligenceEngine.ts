@@ -378,56 +378,31 @@ function acresOrNull(lead: { acres?: unknown; acreage?: unknown } | null | undef
 }
 
 /**
- * Returns nulls when the offer cannot be computed from real inputs.
+ * Always null: this engine has no comparable SALES to price from.
  *
- * This read `parseFloat(lead.acres || lead.acreage || "5")` and
- * `nassData?.pasturePerAcre || 1000`. For a lead with no acreage on file in a
- * county USDA has no value for, that produced 1000 × 0.25 × 5 = a $1,250
- * offer — and `offerPrice` is interpolated straight into the outreach message
- * sent to the property owner: "My offer for your X County property is $1,250."
+ * History, because each step was a fix. It first read
+ * `parseFloat(lead.acres || lead.acreage || "5")` and
+ * `nassData?.pasturePerAcre || 1000`, so a lead with no acreage in a county
+ * USDA had nothing for received "My offer for your X County property is
+ * $1,250" — a price quoted to a counterparty from two constants. Requiring
+ * both inputs removed the constants but kept the formula: a quarter of the
+ * USDA pasture value, called "the lowest comp", multiplied by acreage and
+ * interpolated into the owner message.
  *
- * A dollar figure quoted to a counterparty, derived entirely from two
- * constants. Every other fabricated default in this codebase inflated a score
- * or a report; this one made an offer. Both inputs are now required, and the
- * message hook has phrasing for the case where there is no price to quote.
+ * A USDA county pasture value is a survey BENCHMARK, not a sale — and it is
+ * often not even a measured pasture value (the snapshot backfills 60% of the
+ * farm average, or a synthetic state default). DEFECT-0107 made the blind
+ * offer calculator price only from real sales; this is the same rule in the
+ * lead engine (DEFECT-0124). The message hook already has wording for "no
+ * price yet": the number comes after a look at the parcel, in the offer
+ * wizard, from real sales.
  */
-function computeOfferIntelligence(
-  lead: any,
-  nassData: any
-): {
+function computeOfferIntelligence(): {
   offerPrice: number | null;
   flipPrice: number | null;
   ownerFinanceMonthly: number | null;
 } {
-  const acres = acresOrNull(lead);
-  const usdaPerAcre = nassData?.pasturePerAcre;
-
-  if (
-    acres === null ||
-    typeof usdaPerAcre !== "number" || !Number.isFinite(usdaPerAcre) || usdaPerAcre <= 0
-  ) {
-    return { offerPrice: null, flipPrice: null, ownerFinanceMonthly: null };
-  }
-
-  // Blind offer formula
-  const lowestCompPerAcre = usdaPerAcre;
-  const offerPerAcre = lowestCompPerAcre * 0.25;
-  const offerTotal = offerPerAcre * acres;
-  const flipPrice = offerTotal * 4; // 2× market = 4× offer
-
-  // Owner finance math
-  const loanAmount = flipPrice - offerTotal; // Down = acquisition cost
-  const r = 0.09 / 12;
-  const n = 84;
-  const monthly = loanAmount > 0
-    ? loanAmount * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)
-    : 0;
-
-  return {
-    offerPrice: offerTotal,
-    flipPrice,
-    ownerFinanceMonthly: monthly,
-  };
+  return { offerPrice: null, flipPrice: null, ownerFinanceMonthly: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -468,7 +443,13 @@ export async function scoreLeadIntelligence(
     // is fixed alongside this. This one has no consumer today; it is corrected
     // because the next consumer would inherit the lie, not because a surface
     // is showing it.)
-    usdaLandValuePerAcre: nassSnapshot?.pasturePerAcre ?? null,
+    // Only a MEASURED NASS county pasture value (DEFECT-0107/0124): a figure
+    // backfilled from the farm average or the synthetic state default is not
+    // "the USDA land value".
+    usdaLandValuePerAcre:
+      nassSnapshot?.pastureSource === "usda_nass" && nassSnapshot.pasturePerAcre > 0
+        ? nassSnapshot.pasturePerAcre
+        : null,
     landValueYoYChange: 0,
     countyOpportunityScore: 50,
     isHotMigrationCounty: false,
@@ -480,7 +461,7 @@ export async function scoreLeadIntelligence(
   const angle = selectMessageAngle(signals);
 
   // Offer intelligence
-  const offerIntel = computeOfferIntelligence(lead, nassSnapshot);
+  const offerIntel = computeOfferIntelligence();
 
   // Message personalization
   const messageHook = generateMessageHook(
