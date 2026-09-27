@@ -2,10 +2,13 @@
  * /notes/tax-readiness — 1099-INT pre-flight panel for note investors.
  *
  * Linnea: "I have to send a 1099-INT to every borrower who paid me $600+
- * in interest in the calendar year. Sixty-three notes = up to 63 forms,
- * plus the IRS copy. I search AcreOS for '1099.' Nothing in the UI."
+ * in interest in the calendar year." — that premise is the defect. Interest
+ * a borrower PAID the org is interest the org RECEIVED; Form 1099-INT reports
+ * interest PAID OUT. Until a qualified tax reviewer settles the direction
+ * (DEFECT-0101), the server refuses to generate and this page shows why —
+ * a refusal card, not a download.
  *
- * This is the UI. Server side already exists:
+ * Server side:
  *   GET  /api/bookkeeping/1099?year=YYYY  — per-note form data
  *   POST /api/accounting/1099-batch?taxYear=YYYY — batch PDF + FIRE file
  *   GET  /api/accounting/1099-batch/:jobId — poll status / fetch result
@@ -69,6 +72,13 @@ interface TaxIdentityError {
   noteId?: string;
 }
 
+/** DEFECT-0101 — the server withholds 1099-INT output until the direction is reviewed. */
+interface FilingRefusal {
+  error: "not_qualified_filing_output";
+  message: string;
+  details?: { defect?: string; flagKey?: string };
+}
+
 function fmtUsd(cents: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -88,13 +98,16 @@ export default function NotesTaxReadinessPage() {
 
   // Per-note 1099 data. The endpoint returns 422 if TINs are missing —
   // we handle that as the "blockers" path.
-  const formsQuery = useQuery<FormsResponse | TaxIdentityError>({
+  const formsQuery = useQuery<FormsResponse | TaxIdentityError | FilingRefusal>({
     queryKey: ["/api/bookkeeping/1099", taxYear],
     queryFn: async () => {
       const res = await fetch(`/api/bookkeeping/1099?year=${taxYear}`, {
         credentials: "include",
       });
       const json = await res.json();
+      if (res.status === 422 && json?.error === "not_qualified_filing_output") {
+        return json as FilingRefusal;
+      }
       if (res.status === 422) {
         return json as TaxIdentityError;
       }
@@ -115,10 +128,24 @@ export default function NotesTaxReadinessPage() {
         headers: { "x-csrf-token": decodeURIComponent(csrfToken) },
       });
       const json = await res.json();
+      if (res.status === 422 && json?.error === "not_qualified_filing_output") {
+        // Structured refusal, not a failure: the server is declining to
+        // produce a filing artifact whose direction is under review.
+        return { ...json, __refused: true } as BatchResponse & { __refused: true; message?: string };
+      }
       if (!res.ok) throw new Error(json?.message || "Batch failed");
       return json as BatchResponse;
     },
     onSuccess: (data) => {
+      if ((data as { __refused?: boolean }).__refused) {
+        setBatchResult(null);
+        toast({
+          title: "1099-INT batch withheld",
+          description: data.message ?? "Not a qualified filing output — direction under tax review.",
+          variant: "destructive",
+        });
+        return;
+      }
       setBatchResult(data);
       toast({
         title: data.status === "success" ? "Batch generated" : "Batch failed",
@@ -133,9 +160,16 @@ export default function NotesTaxReadinessPage() {
     },
   });
 
-  // Branching: forms loaded vs. tax_identity_missing vs. error
+  // Branching: refused (DEFECT-0101) vs. forms loaded vs. tax_identity_missing vs. error
+  const filingRefusal =
+    formsQuery.data && "error" in formsQuery.data && formsQuery.data.error === "not_qualified_filing_output"
+      ? (formsQuery.data as FilingRefusal)
+      : null;
   const formsData = formsQuery.data && !("error" in formsQuery.data) ? formsQuery.data : null;
-  const blockerError = formsQuery.data && "error" in formsQuery.data ? formsQuery.data : null;
+  const blockerError =
+    formsQuery.data && "error" in formsQuery.data && formsQuery.data.error === "tax_identity_missing"
+      ? (formsQuery.data as TaxIdentityError)
+      : null;
   const forms = formsData?.forms ?? [];
   const eligibleCount = forms.length;
   const totalInterest = forms.reduce((sum, f) => sum + f.box1_interestIncome, 0);
@@ -145,10 +179,10 @@ export default function NotesTaxReadinessPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">1099-INT readiness</h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-          Pre-flight check for the 1099-INT batch you'll send borrowers in January.
-          Counts only borrowers who paid you ≥ $600 in interest during the tax year
-          (the IRS reporting threshold). Notes with missing W-9 / TIN show as
-          blockers — fix those before you generate.
+          Pre-flight check for year-end interest reporting. This counts notes on which you
+          RECEIVED ≥ $600 of interest during the tax year and shows W-9 / TIN blockers.
+          It does not decide which form, if any, is owed to whom — that direction is under
+          tax review, and generation is withheld until it is settled.
         </p>
       </div>
 
@@ -196,12 +230,36 @@ export default function NotesTaxReadinessPage() {
         </Card>
       )}
 
+      {!formsQuery.isLoading && filingRefusal && (
+        <Card className="mb-6" data-testid="filing-refusal-card">
+          <div className="p-5">
+            <div className="rounded-card border border-destructive/30 bg-destructive/5 p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="w-4 h-4 text-destructive" aria-hidden="true" />
+                <p className="text-sm font-semibold text-destructive">
+                  1099-INT generation withheld — not a qualified filing output
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {filingRefusal.message}
+              </p>
+              <p className="text-xs text-muted-foreground mt-2">
+                Your payment ledger and per-note interest totals are unaffected; the annual interest
+                report under Finance still shows what each borrower paid. Nothing here needs fixing on
+                your side — the form's direction is what is under review
+                {filingRefusal.details?.defect ? ` (${filingRefusal.details.defect})` : ""}.
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {!formsQuery.isLoading && formsData && eligibleCount === 0 && (
         <Card className="mb-6"><div className="p-5">
           <EmptyState
             icon={FileText}
-            headline={`No notes hit the $600 threshold in ${taxYear}`}
-            subtitle="Either no interest was recorded for the year or every borrower fell below the IRS reporting threshold. Either way, no 1099-INT batch is required."
+            headline={`No notes received ≥ $600 of interest in ${taxYear}`}
+            subtitle="Either no interest was recorded for the year or every note fell below $600. Whether any form is owed above that line is under tax review (DEFECT-0101)."
             // TODO(cta): informational state — no direct action; the system generates 1099-INT when threshold is met
             cta={{ label: "", _noOp: true }}
           />

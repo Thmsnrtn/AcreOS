@@ -238,8 +238,8 @@ export default function TaxIdentitySettingsPage() {
           Tax identity
         </h1>
         <p className="text-muted-foreground text-sm md:text-base">
-          Required to issue 1099-INT forms to your borrowers and lenders. We
-          encrypt this at rest with AES-256-GCM.
+          Required for year-end tax-form generation (the 1099-INT direction is
+          under review — DEFECT-0101). We encrypt this at rest with AES-256-GCM.
         </p>
       </div>
 
@@ -277,7 +277,7 @@ export default function TaxIdentitySettingsPage() {
           <CardDescription className="pt-2">
             {captured
               ? `Stored EIN ends in ${data?.taxIdLast4}. To rotate, enter a new value below.`
-              : "Until you add this, AcreOS can't create any 1099-INT forms for your borrowers or lenders."}
+              : "Until you add this, AcreOS can't generate any year-end tax forms for this organization."}
           </CardDescription>
         </CardHeader>
       </Card>

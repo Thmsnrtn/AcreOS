@@ -16,6 +16,7 @@ import {
   TaxIdentityError,
 } from "./services/bookkeeping";
 import { Errors } from "./utils/errors";
+import { requireQualified1099Output } from "./services/form1099Refusal";
 
 const router = Router();
 
@@ -33,7 +34,10 @@ router.get("/annual-report", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/1099", async (req: Request, res: Response) => {
+// DEFECT-0101 — withheld until the 1099-INT direction is reviewed. The
+// middleware refuses with a structured 422 the page renders as a refusal card;
+// the founder passes, and a ladder flag can open it per org once settled.
+router.get("/1099", requireQualified1099Output(), async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const taxYear = parseInt((req.query.year as string) ?? String(new Date().getFullYear() - 1));

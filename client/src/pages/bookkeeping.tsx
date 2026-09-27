@@ -77,7 +77,7 @@ export default function BookkeepingPage() {
             Bookkeeping
           </h1>
           <p className="text-muted-foreground text-sm md:text-base">
-            <span className="tabular-nums">{taxYear}</span> tax year — interest income, P&amp;L, and 1099 reports.
+            <span className="tabular-nums">{taxYear}</span> tax year — interest income, P&amp;L, and year-end interest reports.
           </p>
         </div>
         <Button
@@ -90,7 +90,7 @@ export default function BookkeepingPage() {
             // is already loaded). Beats a toast that says "coming soon".
             if (!report) return;
             const lines = [
-              "Note ID,Borrower,Interest collected,Principal collected,1099 required",
+              "Note ID,Borrower,Interest collected,Principal collected,Interest received >= $600 (review)",
               ...report.notes.map((n) => [
                 n.noteId,
                 JSON.stringify(n.borrowerName ?? ""),
@@ -102,7 +102,7 @@ export default function BookkeepingPage() {
               `Total interest,${(report.totalInterestIncome / 100).toFixed(2)}`,
               `Total principal,${(report.totalPrincipalReceived / 100).toFixed(2)}`,
               `Total late fees,${(report.totalLateFeesCollected / 100).toFixed(2)}`,
-              `Notes requiring 1099,${report.notesWith1099Required}`,
+              `Notes with >= $600 interest received (review),${report.notesWith1099Required}`,
             ];
             const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
             const url = URL.createObjectURL(blob);
@@ -173,7 +173,7 @@ export default function BookkeepingPage() {
               <CardContent className="p-4">
                 <dt className="flex items-center gap-2 text-muted-foreground mb-1">
                   <FileText className="w-4 h-4" aria-hidden="true" />
-                  <span className="text-xs">1099s required</span>
+                  <span className="text-xs">Notes ≥ $600 interest received (review)</span>
                 </dt>
                 <dd className="text-xl font-bold tabular-nums">{report?.notesWith1099Required ?? "—"}</dd>
               </CardContent>
@@ -196,7 +196,7 @@ export default function BookkeepingPage() {
                         </p>
                       </div>
                       {n.requires1099 && (
-                        <Badge variant="secondary" className="text-xs">1099</Badge>
+                        <Badge variant="secondary" className="text-xs">≥ $600</Badge>
                       )}
                     </li>
                   ))}

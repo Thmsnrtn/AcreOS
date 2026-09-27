@@ -32,6 +32,7 @@ import {
   aggregateInvestorIncomeForYear,
 } from "./services/investorStatementBatch";
 import { TaxIdentityError } from "./services/bookkeeping";
+import { requireQualified1099Output, QUALIFIED_1099_PAYLOAD_MARK } from "./services/form1099Refusal";
 import { db } from "./db";
 import { outbox, organizations } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -219,7 +220,10 @@ router.get("/qbo-export", async (req: AuthenticatedRequest, res: Response) => {
 // the outbox table (consumed by server/worker.ts) and returns 202 + outbox
 // id; clients poll the existing /1099-batch/:jobId surface via the
 // resolved internal jobId once the worker writes it back.
-router.post("/1099-batch", async (req: AuthenticatedRequest, res: Response) => {
+// DEFECT-0101 — the batch is withheld until the 1099-INT direction is reviewed
+// (form1099Refusal.ts). The middleware runs BEFORE the role gate so a refused
+// caller learns why the form is withheld rather than a bare 403.
+router.post("/1099-batch", requireQualified1099Output(), async (req: AuthenticatedRequest, res: Response) => {
   if (!requireOrgOwnerOrAdmin(req, res)) return;
   try {
     const org = getOrganization(req);
@@ -239,6 +243,11 @@ router.post("/1099-batch", async (req: AuthenticatedRequest, res: Response) => {
           payload: stampTraceContext({
             organizationId: org.id,
             taxYear,
+            // Stamped only here, after requireQualified1099Output passed. The
+            // worker refuses any 1099 payload without it, so a row enqueued
+            // by another path — or before the refusal existed — produces
+            // no filing artifact.
+            qualifiedBy: QUALIFIED_1099_PAYLOAD_MARK,
           }),
         })
         .returning({ id: outbox.id });

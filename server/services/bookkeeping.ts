@@ -161,9 +161,20 @@ export interface AnnualInterestReport {
   totalPrincipalReceived: number;
   totalLateFeesCollected: number;
   notesWith1099Required: number;
+  /**
+   * What `requires1099` / `notesWith1099Required` actually measure. They count
+   * notes on which the org RECEIVED ≥ $600 of interest. That is not a
+   * determination that a Form 1099-INT is owed (DEFECT-0101 — the 1099-INT
+   * generator's payer/recipient direction is under tax review).
+   */
+  requires1099Note: string;
   notes: NoteInterestSummary[];
   generatedAt: string;
 }
+
+const REQUIRES_1099_NOTE =
+  "Counts notes with ≥ $600 of interest RECEIVED in the tax year. Not a filing determination — " +
+  "the 1099-INT direction is under tax review (DEFECT-0101).";
 
 export async function generateAnnualInterestReport(
   orgId: number,
@@ -262,6 +273,7 @@ export async function generateAnnualInterestReport(
     totalPrincipalReceived: totalPrincipalCents / 100,
     totalLateFeesCollected: totalLateFeeCents / 100,
     notesWith1099Required: notes_array.filter((n) => n.requires1099).length,
+    requires1099Note: REQUIRES_1099_NOTE,
     notes: notes_array,
     generatedAt: new Date().toISOString(),
   };

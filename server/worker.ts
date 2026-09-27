@@ -312,6 +312,14 @@ async function handleRecognitionRun(payload: Record<string, unknown>): Promise<R
 async function handle1099BatchGenerate(
   payload: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
+  // DEFECT-0101 — refuse, don't throw: a throw would retry a row that can
+  // never be allowed to succeed. The route stamps `qualifiedBy` only after
+  // its own refusal middleware passed.
+  const { assertQualified1099JobPayload } = await import("./services/form1099Refusal");
+  const verdict = assertQualified1099JobPayload(payload);
+  if (!verdict.ok) {
+    return { refused: true, error: verdict.error, defect: verdict.defect, message: verdict.message };
+  }
   const { generate1099Batch } = await import("./services/form1099Batch");
   const result = await generate1099Batch(
     Number(payload.organizationId),

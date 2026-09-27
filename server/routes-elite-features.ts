@@ -20,6 +20,7 @@ import { getOrganizationId } from "./types/request";
 import { requireFounder } from "./auth/clerkAuth";
 import { verifyMetaWebhookSignature } from "./middleware/metaWebhookSignature";
 import { addMonths } from "./utils/dateUtils";
+import { requireQualified1099Output } from "./services/form1099Refusal";
 
 // Services
 import * as propertyTaxService from "./services/propertyTaxService";
@@ -504,7 +505,8 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.get("/api/bookkeeping/1099-int", ...auth, async (req: Request, res: Response) => {
+  // DEFECT-0101 — same refusal as GET /api/bookkeeping/1099; see form1099Refusal.ts.
+  app.get("/api/bookkeeping/1099-int", ...auth, requireQualified1099Output(), async (req: Request, res: Response) => {
     try {
       const org = req.organization;
       const taxYear = parseInt(req.query.year as string) || new Date().getFullYear() - 1;
