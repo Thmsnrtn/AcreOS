@@ -163,7 +163,7 @@ export const runwayCrunchDetector: DomainDetector = {
           `Downside runway (revenue flat + costs +20%) is ` +
           `${downside != null ? `${downside.toFixed(1)} mo` : "n/a"}; ` +
           `base is ${base != null ? `${base.toFixed(1)} mo` : "n/a"}. ` +
-          `Cash basis: ${runway.cashBasis} (${usd(runway.cashOnHandUsd)}).`,
+          `${runway.cashLabel}: ${usd(runway.cashOnHandUsd)}. Observed bank liquidity: unknown (no bank or payout feed).`,
         citedReason:
           "Runway-to-zero is the single most-watched number after MRR; the " +
           "charter requires it modeled three ways and surfaced before it gets " +

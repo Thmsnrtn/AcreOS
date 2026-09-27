@@ -84,6 +84,17 @@ export interface RunwayResult {
   /** "ledger" when cash came from real bucket balances, "founder-declared"
    *  when the env override was larger and used instead. */
   cashBasis: "ledger" | "founder-declared";
+  /**
+   * What `cashOnHandUsd` actually is (DEFECT-0115). It is a PLANNING basis —
+   * three internal ledger reserve buckets, or the founder's declared figure —
+   * not a reconciled bank or processor balance. Surfaces print this label
+   * instead of calling the number "cash on hand".
+   */
+  cashLabel: string;
+  /** Observed bank/processor liquidity. Null until a bank or payout feed exists — unknown, not zero. */
+  observedLiquidityUsd: null;
+  /** How MRR is measured: tier list price × active org rows — billed, not collected. */
+  mrrLabel: string;
   /** True — this IS a model (unlike the P0 placeholder). */
   isModeled: true;
   scenarios: {
@@ -459,6 +470,11 @@ export async function computeRunway(): Promise<RunwayResult> {
     asOf: now.toISOString(),
     cashOnHandUsd: round2(cashOnHandUsd),
     cashBasis: useFounderCash ? "founder-declared" : "ledger",
+    cashLabel: useFounderCash
+      ? "Planning cash (founder-declared; not reconciled to a bank balance)"
+      : "Planning cash (ledger reserve buckets; not a bank balance)",
+    observedLiquidityUsd: null,
+    mrrLabel: "MRR at list price for active orgs (billed, not collected)",
     isModeled: true,
     scenarios,
     inputs: {

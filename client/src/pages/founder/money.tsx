@@ -76,6 +76,10 @@ interface RunwayScenario {
 interface MoneySummary {
   asOf: string;
   cashOnHandUsd: number;
+  /** DEFECT-0115: what the cash figure is — a planning basis, not a bank balance. */
+  cashLabel?: string;
+  observedLiquidityUsd?: number | null;
+  mrrLabel?: string;
   monthlyBurnUsd: number;
   runwayMonths: number | null;
   method?: string;
@@ -311,7 +315,7 @@ function ScenarioCard({
           {scenario
             ? `${fmtUsd(scenario.monthlyCostsUsd)}/mo costs · ${fmtUsd(
                 scenario.mrrUsd,
-              )}/mo MRR`
+              )}/mo MRR (list price)`
             : "wiring up"}
           {delta != null && delta !== 0 ? (
             <span
@@ -395,8 +399,8 @@ function RunwaySection({
             />
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            Cash {data ? fmtUsd(data.cashOnHandUsd) : "—"}
-            {data?.cashBasis ? ` (${data.cashBasis})` : ""} ·{" "}
+            {data?.cashLabel ?? "Planning cash"} {data ? fmtUsd(data.cashOnHandUsd) : "—"} ·{" "}
+            Observed bank balance: {data?.observedLiquidityUsd != null ? fmtUsd(data.observedLiquidityUsd) : "not connected"} ·{" "}
             {data?.basis ?? "three-scenario model off the financial ledger"}
           </p>
         </>

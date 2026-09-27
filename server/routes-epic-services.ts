@@ -390,21 +390,24 @@ router.post("/financial/note-amortization", async (req: Request, res: Response) 
 router.post("/financial/note-payoff", async (req: Request, res: Response) => {
   try {
     const { calculateNotePayoff } = await import("./services/financialOSService");
-    // calculateNotePayoff was migrated from a schedule-replay signature
-    // (originalPrincipal/termMonths/paymentsReceived) to a live-ledger
-    // signature (currentBalanceCents/lastPaymentDate). Accept both shapes
-    // here to keep the public /financial/note-payoff API compatible:
-    // when callers pass currentBalanceCents we use it directly; when they
-    // pass the legacy originalPrincipal we fall back to passing through
-    // the principal as the live balance (best available signal absent a
-    // ledger).
+    // DEFECT-0100: a payoff needs the LIVE balance and the date interest was
+    // last paid through. This used to fall back to `originalPrincipal` as the
+    // "live balance" (every payment made ignored — an overstated payoff) and
+    // to `firstPaymentDate` as the accrual start. Neither is a stand-in for
+    // the other; a request without them is refused.
     const body = req.body || {};
     const currentBalanceCents = typeof body.currentBalanceCents === "number"
       ? body.currentBalanceCents
-      : Math.round(Number(body.currentBalance ?? body.originalPrincipal ?? 0) * 100);
-    const lastPaymentDate = body.lastPaymentDate
-      ? new Date(body.lastPaymentDate)
-      : new Date(body.firstPaymentDate);
+      : body.currentBalance != null
+        ? Math.round(Number(body.currentBalance) * 100)
+        : null;
+    if (currentBalanceCents === null || !Number.isFinite(currentBalanceCents) || currentBalanceCents < 0) {
+      return Errors.badRequest(res, "currentBalanceCents (or currentBalance) is required — the original principal is not the payoff balance");
+    }
+    if (!body.lastPaymentDate) {
+      return Errors.badRequest(res, "lastPaymentDate is required — the date interest was last paid through");
+    }
+    const lastPaymentDate = new Date(body.lastPaymentDate);
     const result = calculateNotePayoff({
       currentBalanceCents,
       annualInterestRate: Number(body.annualInterestRate),

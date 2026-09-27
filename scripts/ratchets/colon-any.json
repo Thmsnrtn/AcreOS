@@ -9,9 +9,9 @@
     "**/*.test.ts",
     "**/*.spec.ts"
   ],
-  "baselineCount": 2681,
+  "baselineCount": 2679,
   "direction": "down",
-  "lastBumpNote": "2026-09-27 round 3: six `any` parameters removed with fabricated offer/comps code \u2014 dealFeedEngine offerData (now BlindOfferOutcome), leadIntelligenceEngine computeOfferIntelligence(lead, nassData), parcelIntelligenceFusion buildOfferAnalysis(nassData, trend) (DEFECT-0121/0123/0124).",
+  "lastBumpNote": "2026-09-27 DEFECT-0100: two `catch (error: any)` handlers removed with the zero-caller POST/PATCH /api/payoff-quotes write routes.",
   "minima": {
     "files": 1100
   },

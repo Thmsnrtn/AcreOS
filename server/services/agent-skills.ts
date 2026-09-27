@@ -1435,80 +1435,95 @@ const generateClosingPacketSkill: Skill = {
 
 const processPayoffInputSchema = z.object({
   noteId: z.number().describe("Note ID to calculate payoff for"),
-  effectiveDate: z.string().optional().describe("Effective date for payoff calculation (ISO date string)"),
-  includeEarlyPayoffDiscount: z.boolean().optional().describe("Whether to apply early payoff discount"),
+  effectiveDate: z.string().optional().describe("Payoff date (YYYY-MM-DD). Defaults to today in the lender's time zone; a past date is refused."),
 });
 
+/**
+ * DEFECT-0100: this skill computed its own payoff — interest accrued from the
+ * NEXT due date instead of the last payment, a 2–3% "early payoff discount"
+ * that no note contains (a reduction of what the borrower owes, invented by
+ * the agent), a 30-day validity the math does not support, stored in the
+ * legacy `payoff_quotes` table. It now quotes through the same function as the
+ * borrower portal: the canonical engine over the note's own payment ledger,
+ * good through the payoff date, recorded in `note_payoff_quotes`. The
+ * discount option is gone; a model asking for one is told there is none.
+ */
 const processPayoffSkill: Skill = {
   id: "processPayoff",
   name: "Process Payoff Quote",
-  description: "Calculates payoff amount and generates a payoff quote for a note",
+  description:
+    "Calculates a note's payoff amount through the canonical payoff engine and records the quote. Good through the payoff date only; applies no discount (a note carries none unless its terms say so).",
   agentTypes: ["operations"],
   inputSchema: processPayoffInputSchema,
   costEstimate: "free",
   examples: [
     'processPayoff({ noteId: 123 })',
-    'processPayoff({ noteId: 456, effectiveDate: "2026-02-01", includeEarlyPayoffDiscount: true })',
+    'processPayoff({ noteId: 456, effectiveDate: "2026-02-01" })',
   ],
   execute: async (params, context) => {
     try {
-      const { noteId, effectiveDate, includeEarlyPayoffDiscount } = processPayoffInputSchema.parse(params);
+      const raw = (params ?? {}) as Record<string, unknown>;
+      const { noteId, effectiveDate } = processPayoffInputSchema.parse(params);
 
       const note = await storage.getNote(context.organizationId, noteId);
       if (!note) {
         return { success: false, error: "Note not found" };
       }
 
-      const effective = effectiveDate ? new Date(effectiveDate) : new Date();
-      const remainingPrincipal = note.currentBalance ? parseFloat(note.currentBalance) : 0;
-      const annualRate = note.interestRate ? parseFloat(note.interestRate) : 0;
-      const dailyRate = annualRate / 100 / 365;
+      const { resolveOrgTimeZone, dayInZone } = await import("./form1098Batch");
+      const { parseIsoDateUtc, isoDateUtc } = await import("./notePaymentMath");
+      const { quoteServicedNotePayoff } = await import("./notes/servicedNotePayoff");
 
-      const baseDate = note.nextPaymentDate ? new Date(note.nextPaymentDate) : new Date(note.startDate || Date.now());
-      const daysSinceBase = Math.max(0, Math.floor((effective.getTime() - baseDate.getTime()) / (1000 * 60 * 60 * 24)));
-      const accruedInterest = remainingPrincipal * dailyRate * daysSinceBase;
-
-      let discountAmount = 0;
-      if (includeEarlyPayoffDiscount) {
-        const monthlyPayment = note.monthlyPayment ? parseFloat(note.monthlyPayment) : 0;
-        const estimatedPaymentsRemaining = monthlyPayment > 0 ? Math.ceil(remainingPrincipal / monthlyPayment) : 0;
-        if (estimatedPaymentsRemaining > 12) {
-          discountAmount = remainingPrincipal * 0.03;
-        } else if (estimatedPaymentsRemaining > 6) {
-          discountAmount = remainingPrincipal * 0.02;
-        }
+      const lenderTimeZone = await resolveOrgTimeZone(note.organizationId);
+      const todayIso = dayInZone(new Date(), lenderTimeZone) ?? isoDateUtc(new Date());
+      let payoffDate: Date;
+      try {
+        payoffDate = parseIsoDateUtc(effectiveDate ?? todayIso);
+      } catch {
+        return { success: false, error: "effectiveDate must be a valid ISO date (YYYY-MM-DD)" };
+      }
+      if (isoDateUtc(payoffDate) < todayIso) {
+        return { success: false, error: "A payoff cannot be quoted for a past date" };
       }
 
-      const payoffAmount = remainingPrincipal + accruedInterest - discountAmount;
-      const goodThroughDate = new Date(effective);
-      goodThroughDate.setDate(goodThroughDate.getDate() + 30);
+      const borrower = note.borrowerId ? await storage.getLead(note.organizationId, note.borrowerId) : undefined;
+      const payerName = borrower ? `${borrower.firstName ?? ""} ${borrower.lastName ?? ""}`.trim() || null : null;
 
-      const quote = await storage.createPayoffQuote({
-        organizationId: context.organizationId,
-        noteId,
-        principalBalance: remainingPrincipal.toFixed(2),
-        accruedInterest: accruedInterest.toFixed(2),
-        totalPayoff: payoffAmount.toFixed(2),
-        goodThroughDate,
-        status: "pending",
+      const { quote, row } = await quoteServicedNotePayoff({
+        note,
+        payoffDate,
+        lenderTimeZone,
+        channel: "operator_api",
+        payerName,
+        quotedByUserId: context.userId ?? null,
+        provenance: "agent_skill:processPayoff",
       });
 
+      const dollars = (cents: number) => Math.round(cents) / 100;
+      const discountRequested = raw.includeEarlyPayoffDiscount === true;
       return {
         success: true,
         data: {
-          quoteId: quote.id,
+          quoteId: row.id,
           noteId,
-          payoffAmount: Math.round(payoffAmount * 100) / 100,
+          payoffAmount: dollars(quote.totalPayoffCents),
           breakdown: {
-            remainingPrincipal: Math.round(remainingPrincipal * 100) / 100,
-            accruedInterest: Math.round(accruedInterest * 100) / 100,
-            daysSinceBase,
-            earlyPayoffDiscount: Math.round(discountAmount * 100) / 100,
+            principalBalance: dollars(quote.principalBalanceCents),
+            accruedInterest: dollars(quote.accruedInterestCents),
+            perDiemInterest: dollars(quote.perDiemInterestCents),
+            daysAccrued: quote.daysAccrued,
+            accrualStartDate: quote.accrualStartDate,
+            dayCountConvention: quote.dayCountConvention,
           },
-          effectiveDate: effective.toISOString(),
-          expiryDate: goodThroughDate.toISOString(),
+          goodThroughDate: quote.payoffDate,
+          lateFeesOutstanding: null,
+          lateFeesOutstandingNote:
+            "Outstanding late fees are not tracked separately from collected late fees in this ledger, so they are excluded from this total rather than estimated.",
+          ...(discountRequested
+            ? { discountNote: "No early-payoff discount was applied: the note carries no such term. Any concession is the lender's decision, made outside this quote." }
+            : {}),
         },
-        message: `Payoff quote generated: $${payoffAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        message: `Payoff quote recorded: $${dollars(quote.totalPayoffCents).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}, good through ${quote.payoffDate}`,
       };
     } catch (error: any) {
       return { success: false, error: error.message || "Payoff calculation failed" };

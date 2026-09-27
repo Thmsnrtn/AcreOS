@@ -1273,35 +1273,16 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     }
   });
 
-  api.post("/api/payoff-quotes", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const quote = await storage.createPayoffQuote({
-        ...req.body,
-        organizationId: org.id,
-      });
-      res.status(201).json(quote);
-    } catch (error: any) {
-      logger.error("Create payoff quote error", error);
-      Errors.badRequest(res, error.message || "Failed to create payoff quote");
-    }
-  });
-
-  api.patch("/api/payoff-quotes/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const id = parseInt(req.params.id);
-      const existing = await storage.getPayoffQuoteById(org.id, id);
-      if (!existing) {
-        return Errors.notFound(res, "Payoff quote");
-      }
-      const quote = await storage.updatePayoffQuote(org.id, id, omitProtectedFields(req.body));
-      res.json(quote);
-    } catch (error: any) {
-      logger.error("Update payoff quote error", error);
-      Errors.badRequest(res, error.message || "Failed to update payoff quote");
-    }
-  });
+  // ── LEGACY PAYOFF-QUOTE WRITES — RETIRED 2026-09-27 (DEFECT-0100) ─────────
+  //
+  // `POST /api/payoff-quotes` stored whatever principal, interest and total
+  // the request body carried as a "payoff quote", and `PATCH` let any of it be
+  // rewritten afterwards. Neither had a client caller; the only other writer,
+  // the operations agent's `processPayoff` skill, now quotes through
+  // `quoteServicedNotePayoff` (the canonical engine, `note_payoff_quotes`),
+  // the same function the borrower portal uses. The reads above stay so rows
+  // already in `payoff_quotes` remain visible; the table itself is NOT
+  // dropped here — deleting customer rows is a founder decision.
 
   // ── TRUST LEDGER — RETIRED 2026-09-06 ────────────────────────────────────
   //

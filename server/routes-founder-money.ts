@@ -179,6 +179,10 @@ export function registerFounderMoneyRoutes(app: Express): void {
           isModeled: true,
           cashDeclared: runway.cashBasis === "founder-declared",
           cashBasis: runway.cashBasis,
+          // DEFECT-0115: what the cash figure is, and that bank liquidity is unknown.
+          cashLabel: runway.cashLabel,
+          observedLiquidityUsd: runway.observedLiquidityUsd,
+          mrrLabel: runway.mrrLabel,
           // The full three-scenario block + transparency inputs.
           scenarios: runway.scenarios,
           inputs: runway.inputs,

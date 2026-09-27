@@ -43,6 +43,7 @@
  */
 
 import { db } from "../db";
+import { computePayoffQuote } from "./notePaymentMath";
 import { deals, notes, payments, organizations, properties } from "@shared/schema";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
 import { addDays, addMonths, format, differenceInDays } from "date-fns";
@@ -264,31 +265,19 @@ export function calculateNotePayoff(params: {
   totalPayoff: number;
   payoffDateStr: string;
 } {
+  // DEFECT-0100: delegates to the canonical engine instead of re-deriving the
+  // per-diem here. `annualInterestRate` is a fraction (0.09 = 9%).
   const { currentBalanceCents, annualInterestRate, lastPaymentDate, payoffDate } = params;
-
-  const daysSinceLastPayment = Math.max(
-    0,
-    differenceInDays(payoffDate, lastPaymentDate),
-  );
-
-  // Integer-cent per-diem accrual to avoid float drift. Compute in cents
-  // and convert to dollars at the response boundary. Daily rate is
-  // APR / 365 (matches the prior convention here and in the borrower
-  // portal's /api/borrower/payoff-quote endpoint).
-  const annualRateBps = Math.round(annualInterestRate * 10_000);
-  const accruedCents = Math.round(
-    (currentBalanceCents * annualRateBps * daysSinceLastPayment) /
-      (10_000 * 365),
-  );
-
-  const principalBalance = currentBalanceCents / 100;
-  const accruedInterest = accruedCents / 100;
-  const totalPayoff = (currentBalanceCents + accruedCents) / 100;
-
+  const quote = computePayoffQuote({
+    principalBalanceCents: currentBalanceCents,
+    annualRateBps: annualInterestRate * 10_000,
+    accrualStartDate: lastPaymentDate,
+    payoffDate,
+  });
   return {
-    principalBalance,
-    accruedInterest,
-    totalPayoff,
+    principalBalance: quote.principalBalanceCents / 100,
+    accruedInterest: quote.accruedInterestCents / 100,
+    totalPayoff: quote.totalPayoffCents / 100,
     payoffDateStr: format(payoffDate, "MMMM d, yyyy"),
   };
 }

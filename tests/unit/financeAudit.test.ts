@@ -84,6 +84,8 @@ vi.mock("../../server/services/finance/runwayModel", () => ({
     asOf: new Date().toISOString(),
     cashOnHandUsd: RUNWAY.cashOnHandUsd,
     cashBasis: RUNWAY.cashBasis,
+    cashLabel: "Planning cash (ledger reserve buckets; not a bank balance)",
+    observedLiquidityUsd: null,
     isModeled: true,
     scenarios: {
       base: { monthsToZero: RUNWAY.base },
@@ -167,6 +169,11 @@ describe("runwayCrunchDetector", () => {
     const [f] = await runwayCrunchDetector.run();
     expect(f.severity).toBe("warn");
     expect(f.detector).toBe("runway_crunch");
+    // DEFECT-0115: the figure is named for what it is — a planning basis from
+    // ledger reserve buckets — and bank liquidity is stated as unknown.
+    expect(f.detail).toMatch(/Planning cash \(ledger reserve buckets; not a bank balance\)/);
+    expect(f.detail).toMatch(/Observed bank liquidity: unknown/);
+    expect(f.detail).not.toMatch(/Cash basis: ledger/);
     expect((f.metadata as any).downsideMonthsToZero).toBe(7);
   });
 

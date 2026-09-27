@@ -67,20 +67,36 @@ function periodLabel(date: Date, granularity: "monthly" | "quarterly"): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
-// Simple Newton-Raphson IRR approximation
-function calculateIrr(cashFlows: number[]): number | null {
-  if (cashFlows.length < 2) return null;
+/**
+ * Annualised IRR over DATED cash flows (XIRR), or null (DEFECT-0108).
+ *
+ * The previous version discounted by array index — every flow one "period"
+ * after the one before, with no dates — so a sale that closed a week after
+ * its purchase and one that closed after five years produced the same
+ * "annualised" number. It also mixed interest receipts into the same undated
+ * sequence. Null when there are fewer than two flows, when the flows do not
+ * change sign (no investment/return pair), or when the solver does not
+ * converge: an IRR the data cannot support is not reported.
+ */
+function xirr(flows: Array<{ amount: number; at: Date }>): number | null {
+  if (flows.length < 2) return null;
+  if (!flows.some((f) => f.amount < 0) || !flows.some((f) => f.amount > 0)) return null;
+  const t0 = Math.min(...flows.map((f) => f.at.getTime()));
+  const years = flows.map((f) => (f.at.getTime() - t0) / (365 * 86_400_000));
   let rate = 0.1;
-  for (let iter = 0; iter < 100; iter++) {
+  for (let iter = 0; iter < 200; iter++) {
     let npv = 0;
     let dnpv = 0;
-    for (let t = 0; t < cashFlows.length; t++) {
-      npv += cashFlows[t] / Math.pow(1 + rate, t);
-      dnpv -= (t * cashFlows[t]) / Math.pow(1 + rate, t + 1);
+    for (let i = 0; i < flows.length; i++) {
+      const d = Math.pow(1 + rate, years[i]);
+      npv += flows[i].amount / d;
+      dnpv -= (years[i] * flows[i].amount) / (d * (1 + rate));
     }
-    const newRate = rate - npv / dnpv;
-    if (Math.abs(newRate - rate) < 1e-6) return newRate;
-    rate = newRate;
+    if (dnpv === 0 || !Number.isFinite(dnpv)) return null;
+    const next = rate - npv / dnpv;
+    if (!Number.isFinite(next) || next <= -0.9999) return null;
+    if (Math.abs(next - rate) < 1e-7) return next;
+    rate = next;
   }
   return null;
 }
@@ -91,11 +107,16 @@ export async function getPortfolioPnl(
   toDate: Date,
   granularity: "monthly" | "quarterly" = "quarterly"
 ): Promise<PortfolioPnlReport> {
-  // Closed deals (acquisitions)
+  // Closed deals. `deals.type` says which side of the trade each one is
+  // (DEFECT-0108): an ACQUISITION is money out at its agreed price, a
+  // DISPOSITION is money in. This used to read every closed deal as both —
+  // `offerAmount` as the purchase and `acceptedAmount` as the sale of the SAME
+  // deal — so an acquisition's agreed price was counted as sale proceeds.
   const closedDeals = await db
     .select({
-      purchasePrice: deals.offerAmount,
-      salePrice: deals.acceptedAmount,
+      type: deals.type,
+      offerAmount: deals.offerAmount,
+      acceptedAmount: deals.acceptedAmount,
       closedAt: deals.closingDate,
       status: deals.status,
     })
@@ -151,41 +172,51 @@ export async function getPortfolioPnl(
   // W3.3: all money accumulates in INTEGER CENTS; the period/report fields
   // convert to dollars exactly once after the loops. The old float `+=`
   // drifted across periods (and the IRR cash-flow series inherited it).
-  const cashFlows: number[] = [];
+  const cashFlows: Array<{ amount: number; at: Date }> = [];
   let totalAcquisitionCents = 0;
   let totalSaleCents = 0;
 
   for (const deal of closedDeals) {
-    const date = deal.closedAt ? new Date(deal.closedAt) : new Date();
+    // The date range filters on closingDate, so a row here has one; a null
+    // would be skipped rather than dated "today".
+    if (!deal.closedAt) continue;
+    const date = new Date(deal.closedAt);
     const label = periodLabel(date, granularity);
     const period = ensurePeriod(label);
+    // The agreed price is `acceptedAmount`; a closed deal without one falls
+    // back to the recorded offer (both are figures on the deal record).
+    const priceCents = centsFromDecimal(deal.acceptedAmount ?? deal.offerAmount);
+    if (priceCents <= 0) continue;
 
-    const costCents = centsFromDecimal(deal.purchasePrice);
-    const saleCents = centsFromDecimal(deal.salePrice);
-    period.acquisitionCost += costCents;
-    period.dealsAcquired++;
-    totalAcquisitionCents += costCents;
-
-    if (saleCents > 0) {
-      period.saleProceeds += saleCents;
+    if (deal.type === "acquisition") {
+      period.acquisitionCost += priceCents;
+      period.dealsAcquired++;
+      totalAcquisitionCents += priceCents;
+      cashFlows.push({ amount: -priceCents / 100, at: date });
+    } else if (deal.type === "disposition") {
+      period.saleProceeds += priceCents;
       period.dealsSold++;
-      totalSaleCents += saleCents;
+      totalSaleCents += priceCents;
+      cashFlows.push({ amount: priceCents / 100, at: date });
     }
-
-    cashFlows.push(-costCents / 100); // outflow
-    if (saleCents > 0) cashFlows.push(saleCents / 100); // inflow
   }
 
   let totalInterestCents = 0;
   for (const payment of notePayments) {
-    const date = payment.paidAt ? new Date(payment.paidAt) : new Date();
+    if (!payment.paidAt) continue;
+    const date = new Date(payment.paidAt);
     const label = periodLabel(date, granularity);
     const period = ensurePeriod(label);
 
-    const interestCents = centsFromDecimal(payment.interestPortion ?? payment.amount);
+    // Interest is the INTEREST portion. `?? payment.amount` counted a whole
+    // payment — principal included — as interest income whenever the split
+    // was missing (the column is NOT NULL, so a missing split is a data
+    // problem to surface, not to paper over).
+    if (payment.interestPortion == null) continue;
+    const interestCents = centsFromDecimal(payment.interestPortion);
     period.interestIncome += interestCents;
     totalInterestCents += interestCents;
-    cashFlows.push(interestCents / 100);
+    cashFlows.push({ amount: interestCents / 100, at: date });
   }
 
   // Compute period totals — converting the accumulated cents to dollars.
@@ -236,7 +267,7 @@ export async function getPortfolioPnl(
 
   const netProfit = totalSale + totalInterest - totalAcquisition;
   const cocReturn = totalAcquisition > 0 ? netProfit / totalAcquisition : 0;
-  const irr = cashFlows.length >= 2 ? calculateIrr(cashFlows) : null;
+  const irr = xirr(cashFlows);
 
   return {
     orgId,

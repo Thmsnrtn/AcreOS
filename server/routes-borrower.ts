@@ -22,6 +22,7 @@ import {
 // which calendar day an instant fell on is a question about the LENDER's zone —
 // see dayInZone's header for what answering it with the server's zone cost.
 import { dayInZone, resolveOrgTimeZone } from "./services/form1098Batch";
+import { quoteServicedNotePayoff } from "./services/notes/servicedNotePayoff";
 import { Errors, sendError } from "./utils/errors";
 import { getOrganization, type AuthenticatedRequest } from "./types/request";
 import {
@@ -1652,85 +1653,19 @@ export function registerBorrowerRoutes(app: Express): void {
         return Errors.badRequest(res, "payoffDate cannot be in the past");
       }
 
-      // The accrual start comes from the ledger — the most recent COMPLETED
-      // posting that carried interest — never from a schedule guess. Pending
-      // and failed rows settle nothing; refund reversals carry non-positive
-      // interest and are ignored by the engine.
-      const ledger = (await storage.getPayments(note.organizationId, note.id)).filter(
-        (p) => p.status === "completed",
-      );
-      // `payments.payment_date` is a TIMESTAMP; the engine counts whole days
-      // between calendar dates. Handing it the instant floors a 09:30 posting
-      // to one day fewer than the calendar says (measured: 11 days for
-      // Aug 3 → Aug 15). Interest is settled THROUGH the day the payment
-      // posted, and which day an instant fell on is a question about the
-      // LENDER's zone — the same rule Form 1098 Box 1 uses (dayInZone's header
-      // has what answering it with the server's zone cost).
-      const input = payoffInputsFromServicedNote({
-        note: {
-          currentBalance: note.currentBalance,
-          interestRate: note.interestRate,
-          startDate: dayInZone(note.startDate, lenderTimeZone) ?? note.startDate,
-        },
-        ledgerRows: ledger.map((p) => ({
-          paymentDate: dayInZone(p.paymentDate, lenderTimeZone) ?? p.paymentDate,
-          interestAmount: p.interestAmount,
-        })),
+      // One engine, one persistence rule for every serviced-note payoff quote
+      // (DEFECT-0100): the same function prices the AI operations skill's
+      // quotes. The ledger, accrual-start and time-zone reasoning lives there.
+      const { quote, row: quoteRow } = await quoteServicedNotePayoff({
+        note,
         payoffDate,
-        // The servicing book has no unapplied-funds column (an overpayment's
-        // residue is not persisted) and does not separate late fees ASSESSED
-        // from late fees COLLECTED (`payments.late_fee_amount` is collected).
-        // 0 here is the absence of a tracked term, not an estimate — the
-        // response says so rather than asserting nothing is owed.
-        unappliedCreditCents: 0,
-        lateFeesOutstandingCents: 0,
-        // No org-configured payoff fee exists for serviced notes.
-        payoffFeeCents: 0,
+        lenderTimeZone,
+        channel: "borrower_portal",
+        payerName: borrowerLabel,
+        // A borrower is not a user; the session is the provenance.
+        quotedByUserId: null,
+        provenance: `borrower_session:${session.id}`,
       });
-      const quote = computePayoffQuote(input);
-
-      const [quoteRow] = await db
-        .insert(notePayoffQuotes)
-        .values({
-          organizationId: note.organizationId,
-          noteSystem: "serviced_note",
-          noteRef: String(note.id),
-          noteNumber: null,
-          payerName: borrowerLabel,
-          // A borrower is not a user; the session is the provenance.
-          quotedByUserId: null,
-          channel: "borrower_portal",
-          payoffDate: quote.payoffDate,
-          // The engine accrues interest THROUGH payoffDate, so that IS the last
-          // date the quoted total is valid.
-          goodThroughDate: quote.payoffDate,
-          principalBalanceCents: quote.principalBalanceCents,
-          annualRateBpsHundredths: Math.round(quote.annualRateBps * 100),
-          accrualStartDate: quote.accrualStartDate,
-          daysAccrued: quote.daysAccrued,
-          dayCountConvention: quote.dayCountConvention,
-          perDiemInterestCents: quote.perDiemInterestCents,
-          accruedInterestCents: quote.accruedInterestCents,
-          unappliedCreditCents: quote.unappliedCreditCents,
-          lateFeesOutstandingCents: quote.lateFeesOutstandingCents,
-          payoffFeeCents: quote.payoffFeeCents,
-          totalPayoffCents: quote.totalPayoffCents,
-          engineVersion: quote.engineVersion,
-          engineInputJson: {
-            principalBalanceCents: input.principalBalanceCents,
-            annualRateBps: input.annualRateBps,
-            accrualStartDate: isoDateUtc(input.accrualStartDate),
-            payoffDate: isoDateUtc(input.payoffDate),
-            unappliedCreditCents: input.unappliedCreditCents ?? 0,
-            lateFeesOutstandingCents: input.lateFeesOutstandingCents ?? 0,
-            payoffFeeCents: input.payoffFeeCents ?? 0,
-            dayCountConvention: PAYOFF_DAY_COUNT_CONVENTION,
-            engineVersion: PAYOFF_ENGINE_VERSION,
-            ledgerRowsConsidered: ledger.length,
-          },
-          notes: `borrower_session:${session.id}`,
-        })
-        .returning();
 
       logger.info("borrower.payoffQuote recorded", {
         metadata: {

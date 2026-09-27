@@ -2223,7 +2223,7 @@ Resolving commits: —
 ### DEFECT-0100
 Title: Legacy payoff surfaces still compute off the one engine
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: research report §24, DEFECT-0097's design pass
 Description: Three payoff computations remain outside `computePayoffQuote`:
 the `payoff_quotes` CRUD reached through `server/routes-va-engine.ts` and
@@ -2235,7 +2235,8 @@ noted in `shared/schema/notes-vertical.ts` above `notePayoffQuotes`; dropping
 Evidence: paths above.
 Remediation plan: Route each onto `computePayoffQuote` + `note_payoff_quotes`
 when its surface is next touched; delete `payoff_quotes` in the same commit.
-Resolving commits: —
+Fixed 2026-09-27: one function, `quoteServicedNotePayoff` (`server/services/notes/servicedNotePayoff.ts`), computes every serviced-note payoff through `computePayoffQuote` over the note's own completed ledger and records it in `note_payoff_quotes`. The borrower portal route calls it (unchanged behaviour, its tests green), and so does the operations agent's `processPayoff` skill, which had computed its own number: interest from the NEXT due date instead of the last payment, a 2–3% "early payoff discount" no note contains, a 30-day validity, rows in the legacy table. The discount option is removed (a request for one is answered with a note, same amount). `calculateNotePayoff` delegates to the engine, and `POST /financial/note-payoff` refuses a request without a live balance and a last-paid-through date instead of treating the original principal as the balance. The zero-caller `POST`/`PATCH /api/payoff-quotes` write routes are removed; reads remain. `servicedNotePayoffIsOneRule.test.ts` (skill = engine, no discount, past date refused — all RED on the old skill). NOT done: dropping the `payoff_quotes` table — deleting customer rows is a founder hard-stop; it has no writer left.
+Resolving commits: (this branch, round 3 batch 4)
 
 ### DEFECT-0101
 Title: Form 1099-INT generator casts the org as payer of interest it RECEIVED
@@ -2489,7 +2490,7 @@ Resolving commits: (this branch, slice B)
 ### DEFECT-0108
 Title: Portfolio P&L treats every closed deal as a sale and annualises an undated sequence
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: research report §28, re-verified at `9cb534f`
 Description: `server/services/portfolioPnl.ts:95-110` selects closed deals
 without `deals.type` (acquisition vs disposition), aliases `offerAmount` as
@@ -2499,7 +2500,8 @@ discounts by array index with no dates; `:185` counts
 (sidebar-hidden, URL-reachable).
 Remediation plan: Respect deal type; dated cash flows or no IRR; unsplit
 payments shown as unclassified. Label projected vs realised.
-Resolving commits: —
+Fixed 2026-09-27: closed deals are split by `deals.type`: an acquisition's agreed price (`acceptedAmount`, else the recorded offer) is a cost, a disposition's is proceeds — the old code read every deal as both. IRR is XIRR over dated flows (null without a sign change or convergence), replacing the index-discounted series. Interest income is the interest portion only; the `?? amount` fallback that counted principal as interest is gone. `portfolioPnlHonesty.test.ts` (acquisition not proceeds, disposition not cost, one-year vs two-year doubling, interest split — RED before).
+Resolving commits: (this branch, round 3 batch 4)
 
 ### DEFECT-0109
 Title: Owner-finance projection double-counts the down payment as interest
@@ -2603,7 +2605,7 @@ Resolving commits: —
 ### DEFECT-0115
 Title: Founder runway labels reserve buckets as cash on hand and tier MRR as revenue
 Severity: P2
-Status: OPEN — labelling
+Status: FIXED
 Surfaced by lenses: research report §G, re-verified at `9cb534f`
 Description: `server/services/finance/runwayModel.ts:409-426` sums three
 internal ledger reserve buckets as `cashOnHandUsd`, substitutes
@@ -2613,7 +2615,8 @@ fine, the label is not: none of it is a reconciled account balance.
 Remediation plan: Two named views — observed liquidity (unknown until a bank /
 payout feed exists) and planning runway — and the audit verdict says
 `unknown`, not green, when the former is absent.
-Resolving commits: —
+Fixed 2026-09-27: the runway result names what its cash figure is (`cashLabel`: "Planning cash (ledger reserve buckets; not a bank balance)" or the founder-declared variant), reports `observedLiquidityUsd: null` (unknown until a bank or payout feed exists) and labels MRR as list price for active orgs (billed, not collected). The founder money page and the runway-crunch audit detail print those labels instead of "Cash … (ledger)". `financeAudit.test.ts` pins the detail wording (RED before). The arithmetic is unchanged.
+Resolving commits: (this branch, round 3 batch 4)
 
 ### DEFECT-0116
 Title: Payment-Link borrower payments are posted by a third writer with float math and no refund reversal
@@ -2910,8 +2913,8 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 17  | 17    |
-| FIXED  | 12  | 67  | 27  | 106   |
+| OPEN   | 0   | 0   | 14  | 14    |
+| FIXED  | 12  | 67  | 30  | 109   |
 | DEFERRED | 0 | 3   | 0   | 3     |
 | **Total** | **12** | **70** | **44** | **126** |
 
@@ -3009,6 +3012,9 @@ in slice B; no P1 from this report remains OPEN.
 | DEFECT-0113 | County request failure reported as failure; dead coverage not "covered" | (this branch, round 3) |
 | DEFECT-0103 | Parked reminders re-checked against the paid period; fair batches | (this branch, round 3) |
 | DEFECT-0105 | Accepted mail never failed or refunded; single-winner retry | (this branch, round 3) |
+| DEFECT-0100 | Every serviced-note payoff through one engine; invented discount removed | (this branch, round 3) |
+| DEFECT-0108 | Portfolio P&L by deal side, dated IRR, interest only | (this branch, round 3) |
+| DEFECT-0115 | Runway cash labelled as a planning basis; bank liquidity unknown | (this branch, round 3) |
 
 ### Deferred Defects (3)
 
