@@ -321,6 +321,39 @@ describe("dispatchReminder — a rung nobody tapped parks as a kernel ask; a tap
     expect(recorded.acceptedBy).toBe("email");
   });
 
+  // DEFECT-0103 — a rung parked for approval and tapped after the borrower
+  // paid used to go out with its original "your payment is late" text.
+  it("tapped, but the borrower has since paid that period → cancelled, nothing sent", async () => {
+    H.storage.getNote.mockResolvedValue({ ...ACTIVE_NOTE, nextPaymentDate: new Date("2026-09-01T00:00:00Z") });
+    const outcome = await financeAgentService.dispatchReminder(
+      { ...REMINDER, type: "late", scheduledFor: new Date("2026-08-06T00:00:00Z") }, // late rung of the 2026-08-01 period
+      { humanApproved: true },
+    );
+    expect(outcome.status).toBe(REMINDER_STATUS.cancelled);
+    expect(outcome.reason).toMatch(/has paid the period/);
+    expect(H.sendToLead).not.toHaveBeenCalled();
+  });
+
+  it("tapped, and the period is still unpaid → sent", async () => {
+    H.storage.getNote.mockResolvedValue({ ...ACTIVE_NOTE, nextPaymentDate: new Date("2026-08-01T00:00:00Z") });
+    const outcome = await financeAgentService.dispatchReminder(
+      { ...REMINDER, type: "late", scheduledFor: new Date("2026-08-06T00:00:00Z") },
+      { humanApproved: true },
+    );
+    expect(outcome.status).toBe(REMINDER_STATUS.sent);
+  });
+
+  it("an off-ladder manual row (written early) is not mistaken for an older period", async () => {
+    // "upcoming" written 10 days early: scheduledFor − offset lands 7 days
+    // before the due date, inside the 20-day margin.
+    H.storage.getNote.mockResolvedValue({ ...ACTIVE_NOTE, nextPaymentDate: new Date("2026-09-11T00:00:00Z") });
+    const outcome = await financeAgentService.dispatchReminder(
+      { ...REMINDER, type: "upcoming", scheduledFor: new Date("2026-09-01T00:00:00Z") },
+      { humanApproved: true },
+    );
+    expect(outcome.status).toBe(REMINDER_STATUS.sent);
+  });
+
   it("paused org → queued with the glossary refusal; no proposal, no rail — even when tapped", async () => {
     H.getPaxControls.mockResolvedValue(controls({ paused: true, pausedUntil: PAUSED_UNTIL, pausedBy: { userId: "u-2", name: "Maria Lopez" } }));
 

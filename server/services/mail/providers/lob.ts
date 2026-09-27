@@ -21,7 +21,7 @@ import type {
   ProviderQuote,
   ProviderSendResult,
 } from "../router";
-import { averageCostCentsPerPiece } from "../router";
+import { averageCostCentsPerPiece, PartialMailSendError } from "../router";
 import { logger } from "../../../utils/logger";
 
 // Approximate Lob 2026 retail per-piece cost in cents (HTML templates).
@@ -109,41 +109,65 @@ export const lobAdapter: MailProvider = {
     let totalCostCents = 0;
 
     for (const piece of shipment.pieces) {
-      const recipientName = `${piece.recipient.firstName ?? ""} ${piece.recipient.lastName ?? ""}`.trim() || "Resident";
-      const recipientAddress = {
-        line1: piece.recipient.address1,
-        line2: piece.recipient.address2,
-        city: piece.recipient.city,
-        state: piece.recipient.state,
-        zip: piece.recipient.zip,
-      };
+      try {
+        const recipientName = `${piece.recipient.firstName ?? ""} ${piece.recipient.lastName ?? ""}`.trim() || "Resident";
+        const recipientAddress = {
+          line1: piece.recipient.address1,
+          line2: piece.recipient.address2,
+          city: piece.recipient.city,
+          state: piece.recipient.state,
+          zip: piece.recipient.zip,
+        };
 
-      if (piece.pieceType === "letter_10" || piece.pieceType === "handwritten") {
-        const html = piece.vars?.htmlContent ?? piece.templateId ?? "";
-        const result = await directMail.sendLetter({
-          organizationId: shipment.organizationId,
-          senderIdentity,
-          recipientName,
-          recipientAddress,
-          htmlContent: html,
-          color: piece.vars?.color === "true",
-          doubleSided: piece.vars?.doubleSided === "true",
-        });
-        pieces.push({ providerPieceId: result.lobId, recipientRef: `${shipment.customerId}` });
-        totalCostCents += LOB_COSTS[piece.pieceType];
-      } else {
-        const size = piece.pieceType === "postcard_6x9" ? "6x9" : "4x6";
-        const result = await directMail.sendPostcard({
-          organizationId: shipment.organizationId,
-          senderIdentity,
-          recipientName,
-          recipientAddress,
-          frontHtml: piece.vars?.frontHtml ?? piece.templateId ?? "",
-          backHtml: piece.vars?.backHtml ?? "",
-          size: size as "4x6" | "6x9",
-        });
-        pieces.push({ providerPieceId: result.lobId, recipientRef: `${shipment.customerId}` });
-        totalCostCents += LOB_COSTS[piece.pieceType];
+        if (piece.pieceType === "letter_10" || piece.pieceType === "handwritten") {
+          const html = piece.vars?.htmlContent ?? piece.templateId ?? "";
+          let lobId: string;
+          try {
+            const result = await directMail.sendLetter({
+              organizationId: shipment.organizationId,
+              senderIdentity,
+              recipientName,
+              recipientAddress,
+              htmlContent: html,
+              color: piece.vars?.color === "true",
+              doubleSided: piece.vars?.doubleSided === "true",
+              // DEFECT-0105: the durable piece identity runs the letter
+              // through the outward-action guard, so a retry replays it.
+              idempotencyKey: piece.pieceRef,
+            });
+            lobId = result.lobId;
+          } catch (err) {
+            // Replay of a piece Lob already accepted under this key: it IS
+            // in the mail. Record it as accepted with its real id.
+            if (err instanceof directMail.LetterAlreadySentError && err.lobId) {
+              lobId = err.lobId;
+            } else {
+              throw err;
+            }
+          }
+          pieces.push({ providerPieceId: lobId, recipientRef: `${shipment.customerId}` });
+          totalCostCents += LOB_COSTS[piece.pieceType];
+        } else {
+          const size = piece.pieceType === "postcard_6x9" ? "6x9" : "4x6";
+          const result = await directMail.sendPostcard({
+            organizationId: shipment.organizationId,
+            senderIdentity,
+            recipientName,
+            recipientAddress,
+            frontHtml: piece.vars?.frontHtml ?? piece.templateId ?? "",
+            backHtml: piece.vars?.backHtml ?? "",
+            size: size as "4x6" | "6x9",
+          });
+          pieces.push({ providerPieceId: result.lobId, recipientRef: `${shipment.customerId}` });
+          totalCostCents += LOB_COSTS[piece.pieceType];
+        }
+      } catch (err) {
+        // DEFECT-0105: a failure after earlier pieces were accepted must say
+        // which ones — they are printed and must not be re-sent or refunded.
+        if (pieces.length > 0) {
+          throw new PartialMailSendError("lob", pieces, shipment.pieces.length, err instanceof Error ? err.message : String(err));
+        }
+        throw err;
       }
     }
 

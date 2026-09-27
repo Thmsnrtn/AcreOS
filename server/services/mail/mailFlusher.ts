@@ -23,7 +23,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { mailShipments, mailShipmentPieces, marketingSpend, organizations } from "@shared/schema";
-import { MailRouter, type MailShipment, type MailPiece, type MailShipmentSpeed } from "./router";
+import { MailRouter, PartialMailSendError, type MailShipment, type MailPiece, type MailShipmentSpeed } from "./router";
 import { qrRedirectUrl } from "./qrCodes";
 import { refundPoolDebit } from "../creditPool";
 import { logger } from "../../utils/logger";
@@ -109,6 +109,7 @@ export function buildRouterShipment(ship: FlushShipment, pieces: FlushPiece[]): 
         zip: p.zip,
       },
       pieceType: ship.pieceType as MailPiece["pieceType"],
+      pieceRef: `mail_piece:${p.id}`,
       vars: {
         htmlContent: copy + responseBlock,
         frontHtml: copy,
@@ -236,44 +237,15 @@ async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
     return "sent";
   }
 
+  // ── 1. The provider call. Only a failure HERE — nothing accepted — is a
+  //    whole-shipment failure with a full refund (DEFECT-0105). ──────────
+  let route: Awaited<ReturnType<MailRouter["route"]>>;
   try {
-    const route = await router.route(buildRouterShipment(ship, pieces as FlushPiece[]));
-    const sentPieces = route.result.pieces;
-    // Index-aligned writeback (lobAdapter preserves order).
-    for (let i = 0; i < pieces.length; i++) {
-      const providerPieceId = sentPieces[i]?.providerPieceId ?? null;
-      await db
-        .update(mailShipmentPieces)
-        .set({ status: "sent", providerPieceId })
-        .where(
-          and(
-            eq(mailShipmentPieces.id, pieces[i].id),
-            eq(mailShipmentPieces.organizationId, ship.organizationId),
-          ),
-        );
-    }
-    await db
-      .update(mailShipments)
-      .set({ status: "sent", sentAt: new Date(), provider: route.chosenProvider })
-      .where(and(eq(mailShipments.id, ship.id), eq(mailShipments.organizationId, ship.organizationId)));
-    await bookFreeSendAcquisitionCogs(ship);
-    logger.info(`[mailFlusher] sent shipment ${ship.id} (${pieces.length} pieces via ${route.chosenProvider})`);
-    // CP3 of Jarvis Phase 1 (Verified Act-and-Confirm) — after a REAL send,
-    // enqueue an independent READ-ONLY verification of the shipment's own
-    // record (piece accounting vs the locked quote, debit-ledger consistency,
-    // compliance posture). Fire-and-forget: a verify hiccup must never fail a
-    // shipment that already sent; verification only observes.
-    void import("../solene/verifyQueue")
-      .then(({ enqueueMailShipmentVerify }) => enqueueMailShipmentVerify(ship.id))
-      .catch((err) =>
-        logger.warn(
-          `[mailFlusher] verify enqueue failed for shipment ${ship.id} (send unaffected): ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        ),
-      );
-    return "sent";
+    route = await router.route(buildRouterShipment(ship, pieces as FlushPiece[]));
   } catch (err) {
+    if (err instanceof PartialMailSendError) {
+      return settlePartialShipment(ship, pieces, err);
+    }
     const reason = err instanceof Error ? err.message : String(err);
     await db
       .update(mailShipmentPieces)
@@ -292,6 +264,112 @@ async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
     logger.warn(`[mailFlusher] shipment ${ship.id} FAILED + refunded: ${reason}`);
     return "failed";
   }
+
+  // ── 2. Everything below runs AFTER the provider accepted every piece. A
+  //    failure here is a bookkeeping failure on mail that WAS sent: it is
+  //    logged loudly with the provider ids for reconciliation and is never
+  //    turned into "failed" + a refund, which used to reverse the charge on
+  //    printed mail. ───────────────────────────────────────────────────────
+  const sentPieces = route.result.pieces;
+  try {
+    // Index-aligned writeback (lobAdapter preserves order).
+    for (let i = 0; i < pieces.length; i++) {
+      const providerPieceId = sentPieces[i]?.providerPieceId ?? null;
+      await db
+        .update(mailShipmentPieces)
+        .set({ status: "sent", providerPieceId })
+        .where(
+          and(
+            eq(mailShipmentPieces.id, pieces[i].id),
+            eq(mailShipmentPieces.organizationId, ship.organizationId),
+          ),
+        );
+    }
+    await db
+      .update(mailShipments)
+      .set({ status: "sent", sentAt: new Date(), provider: route.chosenProvider })
+      .where(and(eq(mailShipments.id, ship.id), eq(mailShipments.organizationId, ship.organizationId)));
+  } catch (err) {
+    logger.error(
+      "[mailFlusher] provider ACCEPTED the shipment but the write-back failed — NOT refunded; reconcile by provider piece id",
+      err instanceof Error ? err : undefined,
+      {
+        metadata: {
+          shipmentId: ship.id,
+          organizationId: ship.organizationId,
+          provider: route.chosenProvider,
+          providerPieceIds: sentPieces.map((p) => p.providerPieceId),
+        },
+      },
+    );
+    return "sent";
+  }
+  await bookFreeSendAcquisitionCogs(ship);
+  logger.info(`[mailFlusher] sent shipment ${ship.id} (${pieces.length} pieces via ${route.chosenProvider})`);
+  // CP3 of Jarvis Phase 1 (Verified Act-and-Confirm) — after a REAL send,
+  // enqueue an independent READ-ONLY verification of the shipment's own
+  // record (piece accounting vs the locked quote, debit-ledger consistency,
+  // compliance posture). Fire-and-forget: a verify hiccup must never fail a
+  // shipment that already sent; verification only observes.
+  void import("../solene/verifyQueue")
+    .then(({ enqueueMailShipmentVerify }) => enqueueMailShipmentVerify(ship.id))
+    .catch((err) =>
+      logger.warn(
+        `[mailFlusher] verify enqueue failed for shipment ${ship.id} (send unaffected): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      ),
+    );
+  return "sent";
+}
+
+/**
+ * A provider accepted the first k pieces and then failed (DEFECT-0105). The k
+ * accepted pieces are printed: they are written back as `sent` with their
+ * provider ids and are neither re-sent nor refunded. The rest are `failed`,
+ * and ONLY their share of the debit is refunded. The shipment reads `sent`
+ * (mail went out) with the partial outcome stated in its reason.
+ */
+async function settlePartialShipment(
+  ship: FlushShipment,
+  pieces: Array<{ id: number }>,
+  err: PartialMailSendError,
+): Promise<"sent"> {
+  const k = Math.min(err.accepted.length, pieces.length);
+  for (let i = 0; i < pieces.length; i++) {
+    const pieceScope = and(eq(mailShipmentPieces.id, pieces[i].id), eq(mailShipmentPieces.organizationId, ship.organizationId));
+    if (i < k) {
+      await db
+        .update(mailShipmentPieces)
+        .set({ status: "sent", providerPieceId: err.accepted[i].providerPieceId })
+        .where(pieceScope);
+    } else {
+      await db.update(mailShipmentPieces).set({ status: "failed" }).where(pieceScope);
+    }
+  }
+  const unsent = pieces.length - k;
+  const reason =
+    `partially sent: ${k} of ${pieces.length} piece(s) accepted by ${err.provider}; ` +
+    `${unsent} failed and were refunded — ${err.causeMessage}`;
+  await db
+    .update(mailShipments)
+    .set({ status: "sent", sentAt: new Date(), provider: err.provider, cancellationReason: reason.slice(0, 500) })
+    .where(and(eq(mailShipments.id, ship.id), eq(mailShipments.organizationId, ship.organizationId)));
+  if (ship.debitEventKey && ship.debitedCents && ship.debitedCents > 0 && unsent > 0) {
+    const shareCents = Math.floor((ship.debitedCents * unsent) / pieces.length);
+    await refundPoolDebit({
+      organizationId: ship.organizationId,
+      originalEventId: ship.debitEventKey,
+      amountCents: shareCents,
+      reason: `mail partially sent — refunded ${unsent} of ${pieces.length} unsent piece(s)`,
+    }).catch((e) =>
+      logger.error("[mailFlusher] partial refund failed", e instanceof Error ? e : undefined, {
+        metadata: { shipmentId: ship.id },
+      }),
+    );
+  }
+  logger.warn(`[mailFlusher] shipment ${ship.id} PARTIALLY sent: ${reason}`);
+  return "sent";
 }
 
 export interface FlushSummary {

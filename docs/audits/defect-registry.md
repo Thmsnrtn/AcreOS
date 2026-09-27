@@ -2308,7 +2308,7 @@ Resolving commits: (this branch, round 3 batch 2)
 ### DEFECT-0103
 Title: A parked collection reminder is sent with stale content; one org's backlog can starve others
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: research report §22, re-verified at `9cb534f`
 Description: `server/services/financeAgent.ts:500-666` `dispatchReminder`
 re-reads the note but refuses only if it is missing or not `active` — it does
@@ -2321,7 +2321,8 @@ blocked reminders from one unconnected sender fill every 30-minute batch.
 Remediation plan: Pre-send revalidation bound to due period, balance and
 content version; `nextAttemptAt` with backoff and per-org fair selection;
 expose oldest-unattempted-due age.
-Resolving commits: —
+Fixed 2026-09-27: `dispatchReminder` recovers a ladder rung's period from its row (`scheduledFor` − the rung's offset) and cancels the notice, unsent, when the note's schedule has moved a full period past it (the borrower paid); a 20-day margin keeps a manual off-ladder row from reading as an older period. The parked-row lookup now carries `scheduledFor`. `getDispatchableReminders` selects the orgs with due rungs and gives each an equal share of the batch (oldest first within the org), so one org's blocked backlog cannot fill every sweep. Tests: `financeLadderAsksThroughKernel.test.ts` (paid period cancelled — RED before; unpaid period sent; manual row not mistaken) and `reminderBatchIsFairAcrossOrgs.test.ts` (60 old blocked rungs from one org vs 3 from another — RED before). Not added: a per-row `nextAttemptAt` backoff and an oldest-unattempted-age metric (both need a column).
+Resolving commits: (this branch, round 3 batch 3)
 
 ### DEFECT-0104
 Title: An SMS recipient matching no lead is classified transactional and skips consent; the AI phone-only tool has no consent check
@@ -2392,7 +2393,7 @@ Resolving commits: (this branch, slice D)
 ### DEFECT-0105
 Title: A mail piece accepted by the provider can be marked failed and fully refunded; a failed outward action can be retried by two workers
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: research report §14, re-verified at `9cb534f`
 Description: `server/services/mail/mailFlusher.ts:239-294` `flushOne` marks
 every piece and the shipment `failed` and refunds the full debit on ANY
@@ -2406,7 +2407,8 @@ predicate, so two retrying workers can both run `exec()`.
 Remediation plan: Durable logical piece identity across providers; accepted /
 rejected / unknown per piece; fail over only on proven non-acceptance;
 conditional single-winner claim on retry.
-Resolving commits: —
+Fixed 2026-09-27: (1) `withOutwardAction` re-claims a `failed` row only `WHERE status = 'failed'`; the losing worker gets `ActionInFlightError` and never runs exec (`outwardActionRetryIsSingleWinner.test.ts` races two workers through a barrier — exec ran twice before). (2) Adapters that fail after accepting pieces throw `PartialMailSendError` carrying the accepted prefix (Lob and PostGrid; PostGrid's per-piece ledger post can no longer turn an accepted piece into a throw); the router never fails that over. (3) `flushOne` separates the provider call from the write-back: nothing accepted → failed + full refund (unchanged); partially accepted → accepted pieces `sent` with their provider ids, the rest `failed`, and only the unsent share refunded; fully accepted but the write-back throws → logged with the provider ids for reconciliation, never refunded. (4) Each routed piece carries a durable `pieceRef` (`mail_piece:<id>`); the Lob adapter passes it as the letter's idempotency key, and a replay (`LetterAlreadySentError`) is recorded as accepted with its real id. `mailPartialSendIsSettledPerPiece.test.ts` drives the real flusher and router (three flusher cases RED on the old flusher). Still owed: postcards have no provider-side idempotency key in `directMailService.sendPostcard`.
+Resolving commits: (this branch, round 3 batch 3)
 
 ### DEFECT-0106
 Title: Subscription lifecycle is split across borrower money paths
@@ -2908,8 +2910,8 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 19  | 19    |
-| FIXED  | 12  | 67  | 25  | 104   |
+| OPEN   | 0   | 0   | 17  | 17    |
+| FIXED  | 12  | 67  | 27  | 106   |
 | DEFERRED | 0 | 3   | 0   | 3     |
 | **Total** | **12** | **70** | **44** | **126** |
 
@@ -3005,6 +3007,8 @@ in slice B; no P1 from this report remains OPEN.
 | DEFECT-0111 | Semantic AI cache scoped to task and shape; no fabricated quality score | (this branch, round 3) |
 | DEFECT-0112 | Failed risk or calibration reads tighten autopilot, never loosen it | (this branch, round 3) |
 | DEFECT-0113 | County request failure reported as failure; dead coverage not "covered" | (this branch, round 3) |
+| DEFECT-0103 | Parked reminders re-checked against the paid period; fair batches | (this branch, round 3) |
+| DEFECT-0105 | Accepted mail never failed or refunded; single-winner retry | (this branch, round 3) |
 
 ### Deferred Defects (3)
 

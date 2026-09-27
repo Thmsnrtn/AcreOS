@@ -722,7 +722,6 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   "server/services/smsService.ts::saveTwilioCredentials",
   "server/services/smsService.ts::sendSMSToLead",
   "server/services/achMandateSetup.ts::confirmAchMandateSetup",
-  "server/services/actions/outwardAction.ts::withOutwardAction",
   "server/services/agentPromotionGate.ts::addSimulationRequirement",
   "server/services/amlMonitor.ts::checkDealAmlPatterns",
   "server/services/andrei/supportResolverCalibration.ts::gradeAutoResolvedTicket",

@@ -82,14 +82,34 @@ export const paymentRemindersRepo = {
     const platformDb = unscopedForPlatformOps(
       "borrower reminder ladder: scheduled cross-org sweep of due reminder rungs",
     );
-    return await platformDb.select().from(paymentReminders)
-      .where(and(
-        inArray(paymentReminders.status, [...DISPATCHABLE_STATUSES]),
-        lte(paymentReminders.scheduledFor, now),
-        gte(paymentReminders.scheduledFor, windowStart),
-      ))
-      .orderBy(paymentReminders.scheduledFor)
-      .limit(limit);
+    const due = and(
+      inArray(paymentReminders.status, [...DISPATCHABLE_STATUSES]),
+      lte(paymentReminders.scheduledFor, now),
+      gte(paymentReminders.scheduledFor, windowStart),
+    );
+    // FAIR ACROSS ORGS (DEFECT-0103). This was one oldest-first LIMIT 50 over
+    // every org, so fifty `queued` rungs from one org whose sender is not
+    // connected — retried every sweep for fourteen days — filled every batch
+    // and no other org's borrower was ever reminded. Each org with due rungs
+    // now gets an equal share of the batch, oldest first within the org.
+    const orgs = await platformDb
+      .selectDistinct({ organizationId: paymentReminders.organizationId })
+      .from(paymentReminders)
+      .where(due);
+    if (orgs.length === 0) return [];
+    const perOrg = Math.max(1, Math.ceil(limit / orgs.length));
+    const perOrgRows = await Promise.all(
+      orgs.map(({ organizationId }) =>
+        platformDb.select().from(paymentReminders)
+          .where(and(due, eq(paymentReminders.organizationId, organizationId)))
+          .orderBy(paymentReminders.scheduledFor)
+          .limit(perOrg),
+      ),
+    );
+    return perOrgRows
+      .flat()
+      .sort((a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime())
+      .slice(0, limit);
   },
 
   /**

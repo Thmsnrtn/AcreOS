@@ -18,7 +18,7 @@ import type {
   ProviderQuote,
   ProviderSendResult,
 } from "../router";
-import { averageCostCentsPerPiece } from "../router";
+import { averageCostCentsPerPiece, PartialMailSendError } from "../router";
 import { logger } from "../../../utils/logger";
 
 const POSTGRID_BASE_URL = "https://api.postgrid.com/print-mail/v1";
@@ -182,15 +182,34 @@ export const postgridAdapter: MailProvider = {
         body.backHTML = piece.vars?.backHtml ?? "";
       }
 
-      const result = await postgridFetch(path, body);
+      let result: Awaited<ReturnType<typeof postgridFetch>>;
+      try {
+        result = await postgridFetch(path, body);
+      } catch (err) {
+        // DEFECT-0105: pieces already accepted are printed — say which.
+        if (pieces.length > 0) {
+          throw new PartialMailSendError("postgrid", pieces, shipment.pieces.length, err instanceof Error ? err.message : String(err));
+        }
+        throw err;
+      }
       const providerPieceId = result.id ?? `postgrid_${Date.now()}`;
       const cost = POSTGRID_COSTS[piece.pieceType];
 
       pieces.push({ providerPieceId, recipientRef: `${shipment.customerId}` });
       totalCostCents += cost;
 
-      // Ledger debit — PostGrid has no legacy hook, so we own the post.
-      await postPostgridCostToLedger(shipment.organizationId, providerPieceId, cost, piece.pieceType, feature);
+      // Ledger debit — PostGrid has no legacy hook, so we own the post. The
+      // piece is ACCEPTED at this point; a ledger failure is logged, never
+      // allowed to turn an accepted piece into a thrown send.
+      try {
+        await postPostgridCostToLedger(shipment.organizationId, providerPieceId, cost, piece.pieceType, feature);
+      } catch (err) {
+        logger.error(
+          "[postgridAdapter] cost ledger post failed for an accepted piece",
+          err instanceof Error ? err : undefined,
+          { metadata: { organizationId: shipment.organizationId, providerPieceId } },
+        );
+      }
     }
 
     logger.info(`[postgridAdapter] sent ${pieces.length} pieces for org ${shipment.organizationId}`);

@@ -326,8 +326,12 @@ export async function withOutwardAction<T>(
     }
 
     // verdict === "execute": a previous attempt failed before any side effect.
+    // The re-claim is CONDITIONAL on the row still being `failed` (DEFECT-0105):
+    // an UPDATE by id alone let two workers that both read `failed` both flip
+    // it to in_flight and both run exec() — two letters, two charges. Exactly
+    // one UPDATE matches; the loser refuses rather than executing.
     claimId = existing.id;
-    await db
+    const reclaimed = await db
       .update(outwardActions)
       .set({
         status: "in_flight",
@@ -336,7 +340,17 @@ export async function withOutwardAction<T>(
         claimedAt: new Date(),
         completedAt: null,
       })
-      .where(eq(outwardActions.id, claimId));
+      .where(
+        and(
+          eq(outwardActions.id, claimId),
+          eq(outwardActions.organizationId, spec.organizationId),
+          eq(outwardActions.status, "failed"),
+        ),
+      )
+      .returning({ id: outwardActions.id });
+    if (reclaimed.length === 0) {
+      throw new ActionInFlightError(spec.actionKind, spec.idempotencyKey);
+    }
   }
 
   // ── We own the claim. Execute. ──

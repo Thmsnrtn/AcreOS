@@ -41,6 +41,13 @@ export interface MailPiece {
   templateId?: string;
   vars?: Record<string, string>;
   pieceType: "postcard_4x6" | "postcard_6x9" | "letter_10" | "handwritten";
+  /**
+   * Durable identity of this piece across retries (DEFECT-0105) — e.g. the
+   * mail_shipment_pieces row id. Adapters that support provider-side
+   * idempotency send it as the per-piece key, so a retried shipment replays a
+   * piece the provider already accepted instead of printing it twice.
+   */
+  pieceRef?: string;
 }
 
 export interface MailShipment {
@@ -76,6 +83,29 @@ export interface ProviderSendResult {
   providerEventId: string;
   pieces: { providerPieceId: string; recipientRef: string }[];
   totalCostCents: number;
+}
+
+/**
+ * A provider accepted SOME pieces of a shipment and then failed (DEFECT-0105).
+ *
+ * Adapters send piece by piece. When piece k fails, pieces 0..k-1 are already
+ * printed and in the mail — and a plain throw erased that fact: the router
+ * failed the whole shipment over to the next provider (a second copy of every
+ * accepted piece) and the flusher marked every piece failed and refunded the
+ * full debit (charge-without-send reversed on mail that was sent). This error
+ * carries the accepted prefix, index-aligned with the shipment's pieces, so
+ * the caller can settle what actually happened. It is never failed over.
+ */
+export class PartialMailSendError extends Error {
+  constructor(
+    readonly provider: string,
+    readonly accepted: { providerPieceId: string; recipientRef: string }[],
+    readonly totalPieces: number,
+    readonly causeMessage: string,
+  ) {
+    super(`${provider} accepted ${accepted.length} of ${totalPieces} piece(s), then failed: ${causeMessage}`);
+    this.name = "PartialMailSendError";
+  }
 }
 
 export interface MailProvider {
@@ -231,6 +261,9 @@ export class MailRouter {
           result,
         };
       } catch (err) {
+        // Pieces already accepted are in the mail. Failing over would print
+        // them again through another provider — surface the partial result.
+        if (err instanceof PartialMailSendError) throw err;
         lastErr = err;
         logger.warn(`[MailRouter] ${candidate.provider} send failed; falling through`, {
           metadata: { error: err instanceof Error ? err.message : String(err) },

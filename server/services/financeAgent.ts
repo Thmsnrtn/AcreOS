@@ -505,6 +505,12 @@ export class FinanceAgentService {
     type: string;
     channel: string;
     content: string | null;
+    /**
+     * When the ladder scheduled this rung (period due date + rung offset).
+     * Present for ladder rows; lets the dispatcher tell a notice written for
+     * an earlier period from one that is still current (DEFECT-0103).
+     */
+    scheduledFor?: Date | string | null;
   }, options: {
     /**
      * Set ONLY by the human-initiated path (sendManualReminder — the "Send
@@ -550,6 +556,27 @@ export class FinanceAgentService {
     }
     if (note.status !== "active") {
       return finish(REMINDER_STATUS.cancelled, `Note is ${note.status} — no borrower contact sent`);
+    }
+
+    // ── Gate 0: is the notice still about an unpaid period? (DEFECT-0103) ──
+    // A rung parked `awaiting_approval` and tapped after the borrower paid
+    // used to go out with its original text — "your payment of $X due on D is
+    // late" to someone who had paid. The rung's period is recoverable from its
+    // row (scheduledFor − the rung's offset). When the note's schedule has
+    // moved a full period past it, the notice is about money no longer owed.
+    // The 20-day margin keeps a manual, off-ladder row (scheduledFor = the
+    // moment it was written) from ever reading as "a later period".
+    const rung = BORROWER_LADDER.find((r) => r.stage === reminder.type);
+    if (rung && reminder.scheduledFor && note.nextPaymentDate) {
+      const periodDue = utcMidnight(new Date(new Date(reminder.scheduledFor).getTime() - rung.offsetDays * DAY_MS));
+      const scheduleMovedDays =
+        (utcMidnight(new Date(note.nextPaymentDate)).getTime() - periodDue.getTime()) / DAY_MS;
+      if (scheduleMovedDays >= 20) {
+        return finish(
+          REMINDER_STATUS.cancelled,
+          `The borrower has paid the period this notice was written for (due ${periodDue.toISOString().slice(0, 10)}); the parked text is out of date and was not sent`,
+        );
+      }
     }
 
     // ── Gate 1: Pax controls — pause folded in (fails closed) ───────────────
@@ -874,7 +901,7 @@ export class FinanceAgentService {
     orgId: number,
     noteId: number,
     type: ReminderType,
-  ): Promise<{ id: number; borrowerId: number | null; type: string; channel: string; content: string | null } | null> {
+  ): Promise<{ id: number; borrowerId: number | null; type: string; channel: string; content: string | null; scheduledFor: Date } | null> {
     const rows = await db
       .select({
         id: paymentReminders.id,
@@ -882,6 +909,7 @@ export class FinanceAgentService {
         type: paymentReminders.type,
         channel: paymentReminders.channel,
         content: paymentReminders.content,
+        scheduledFor: paymentReminders.scheduledFor,
       })
       .from(paymentReminders)
       .where(
@@ -985,6 +1013,7 @@ export class FinanceAgentService {
             type: parked.type,
             channel: parked.channel,
             content: parked.content,
+            scheduledFor: parked.scheduledFor,
           },
           { humanApproved: true },
         );
