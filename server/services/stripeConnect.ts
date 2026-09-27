@@ -27,7 +27,6 @@
 import Stripe from "stripe";
 import { storage } from "../storage";
 import { logger } from "../utils/logger";
-import { addMonths } from "../utils/dateUtils";
 import { STRIPE_API_VERSION } from "../stripeClient";
 import {
   resolveOrgCardProcessor,
@@ -305,90 +304,6 @@ export class StripeConnectService {
     await storage.deleteOrganizationIntegration(organizationId, "stripe_connect");
   }
 
-  /**
-   * A customer-money PaymentIntent on the ORG'S OWN account.
-   *
-   * Direct charge (`stripeAccount` header), no `application_fee_amount`, no
-   * `transfer_data`. The returned `client_secret` is only confirmable by
-   * Stripe.js initialised with `stripeAccount: <connectedAccountId>`, which is
-   * why `createCustomerMoneyPaymentIntent` (below) hands the account id back to
-   * the caller instead of leaving the client to guess it.
-   */
-  async createPaymentIntent(
-    organizationId: number,
-    amount: number,
-    currency: string = "usd",
-    metadata: {
-      noteId?: number;
-      propertyId?: number;
-      paymentType: "note_payment" | "cash_sale" | "down_payment";
-      description?: string;
-    }
-  ): Promise<Stripe.PaymentIntent> {
-    const result = await this.createCustomerMoneyPaymentIntent(organizationId, amount, currency, metadata);
-    if (!result.ok) throw new CustomerMoneyRefusedError(result.reason, result.operatorMessage);
-    return result.paymentIntent;
-  }
-
-  /**
-   * Refusal-returning form. Callers that can render a reason (routes) should
-   * use this; `createPaymentIntent` is the throwing wrapper kept for existing
-   * call sites.
-   */
-  async createCustomerMoneyPaymentIntent(
-    organizationId: number,
-    amount: number,
-    currency: string = "usd",
-    metadata: {
-      noteId?: number;
-      propertyId?: number;
-      paymentType: "note_payment" | "cash_sale" | "down_payment";
-      description?: string;
-    }
-  ): Promise<
-    | { ok: true; paymentIntent: Stripe.PaymentIntent; connectedAccountId: string }
-    | { ok: false; reason: CustomerMoneyRefusal; operatorMessage: string; connectPath: string }
-  > {
-    const routing = await resolveOrgCardProcessor(organizationId);
-    if (!routing.ok) {
-      logger.warn("Customer-money payment intent refused — org has no usable card processor", {
-        metadata: { organizationId, reason: routing.reason, paymentType: metadata.paymentType },
-      });
-      return {
-        ok: false,
-        reason: routing.reason,
-        operatorMessage: routing.operatorMessage,
-        connectPath: routing.connectPath,
-      };
-    }
-
-    const paymentMetadata: Record<string, string> = {
-      organizationId: String(organizationId),
-      paymentType: metadata.paymentType,
-    };
-    if (metadata.noteId) paymentMetadata.noteId = String(metadata.noteId);
-    if (metadata.propertyId) paymentMetadata.propertyId = String(metadata.propertyId);
-
-    const stripe = getStripeClient();
-    if (!stripe) {
-      throw new Error("Stripe is not configured. Please contact support to enable payment processing.");
-    }
-
-    const { params, options } = prepareCustomerMoneyCall(
-      "connect.customer_money.payment_intent",
-      {
-        amount,
-        currency,
-        metadata: paymentMetadata,
-        description: metadata.description,
-      } satisfies Stripe.PaymentIntentCreateParams,
-      routing.processor,
-    );
-
-    const paymentIntent = await stripe.paymentIntents.create(params, options);
-    return { ok: true, paymentIntent, connectedAccountId: routing.processor.accountId };
-  }
-
   async createSetupIntent(
     organizationId: number,
     customerId: string
@@ -469,6 +384,11 @@ export class StripeConnectService {
         if (session.metadata?.type === "borrower_portal_payment") {
           const { WebhookHandlers } = await import("../webhookHandlers");
           await WebhookHandlers.processBorrowerPortalPayment(session);
+        } else if (session.metadata?.paymentType === "note_payment") {
+          // A lender-shared Payment Link (getPaymentLink) — posted by the same
+          // rule as the portal, keyed on this session (DEFECT-0116).
+          const { WebhookHandlers } = await import("../webhookHandlers");
+          await WebhookHandlers.processPaymentLinkNotePayment(session, event.account ?? null);
         }
         break;
       }
@@ -560,70 +480,29 @@ export class StripeConnectService {
     return storage.findOrganizationIntegrationByCredential("stripe_connect", "stripeConnectAccountId", accountId);
   }
 
+  /**
+   * `payment_intent.succeeded` is OBSERVED, never posted (DEFECT-0116).
+   *
+   * Until 2026-09-27 this method posted lender-shared Payment Link payments
+   * with a float split, no late fee, an installment marked paid for any
+   * amount and no workflow event — and keyed the row on `pi_…`, which the
+   * portal-keyed (`cs_…`) refund handler could never match. Stripe delivers
+   * this event and `checkout.session.completed` in no guaranteed order, so a
+   * second writer keyed differently cannot be deduped by ON CONFLICT. The
+   * session path (`processPaymentLinkNotePayment`) is now the only writer.
+   *
+   * Portal Checkout PaymentIntents carry no metadata at all
+   * (`buildBorrowerCardCheckoutParams` sets no `payment_intent_data`), so an
+   * empty organizationId here is the ordinary case, not an error.
+   */
   private async handleSuccessfulPayment(paymentIntent: Stripe.PaymentIntent): Promise<void> {
-    const organizationId = paymentIntent.metadata?.organizationId;
-    const noteId = paymentIntent.metadata?.noteId;
-    const paymentType = paymentIntent.metadata?.paymentType;
-
-    if (!organizationId) {
-      logger.error("No organizationId in payment intent metadata");
-      return;
-    }
-
-    if (paymentType === "note_payment" && noteId) {
-      const note = await storage.getNote(Number(organizationId), Number(noteId));
-      if (note) {
-        const amountPaid = paymentIntent.amount / 100;
-        const currentBalance = Number(note.currentBalance || note.originalPrincipal);
-        const monthlyRate = Number(note.interestRate) / 100 / 12;
-        const interestPortion = currentBalance * monthlyRate;
-        const principalPortion = Math.max(0, amountPaid - interestPortion);
-        const newBalance = Math.max(0, currentBalance - principalPortion);
-
-        await storage.createPayment({
-          organizationId: Number(organizationId),
-          noteId: Number(noteId),
-          amount: String(amountPaid),
-          principalAmount: String(principalPortion),
-          interestAmount: String(interestPortion),
-          paymentDate: new Date(),
-          dueDate: note.nextPaymentDate || new Date(),
-          paymentMethod: "stripe",
-          transactionId: paymentIntent.id,
-          status: "completed",
-        });
-
-        const schedule = note.amortizationSchedule || [];
-        const nextPendingPayment = schedule.find((s: any) => s.status === "pending");
-
-        let updatedSchedule = schedule;
-        if (nextPendingPayment) {
-          updatedSchedule = schedule.map((s: any) =>
-            s.paymentNumber === nextPendingPayment.paymentNumber
-              ? { ...s, status: "paid" }
-              : s
-          );
-        }
-
-        const nextPaymentDate = addMonths(new Date(note.nextPaymentDate || new Date()), 1);
-
-        let noteStatus = note.status;
-        if (newBalance <= 0) {
-          noteStatus = "paid_off";
-        } else if (noteStatus === "late" || noteStatus === "delinquent") {
-          noteStatus = "active";
-        }
-
-        await storage.updateNote(Number(noteId), {
-          currentBalance: String(newBalance),
-          amortizationSchedule: updatedSchedule,
-          nextPaymentDate: nextPaymentDate,
-          status: noteStatus,
-        }, Number(organizationId));
-      }
-    }
-
-    logger.info(`Payment succeeded: ${paymentIntent.id} for org ${organizationId}`);
+    logger.debug("Stripe Connect payment_intent.succeeded observed (posting is session-keyed)", {
+      metadata: {
+        paymentIntentId: paymentIntent.id,
+        organizationId: paymentIntent.metadata?.organizationId ?? null,
+        paymentType: paymentIntent.metadata?.paymentType ?? null,
+      },
+    });
   }
 
   private async handleFailedPayment(paymentIntent: Stripe.PaymentIntent): Promise<void> {

@@ -172,7 +172,14 @@ export type PortalCheckoutSession = Pick<
   "id" | "amount_total" | "payment_status" | "metadata"
 >;
 
-export type PortalPaymentSource = "borrower_portal" | "stripe_webhook";
+/**
+ * Which entry point posted the payment:
+ *  - `borrower_portal`  — the portal's browser return (/api/borrower/verify-payment)
+ *  - `stripe_webhook`   — the Connect `checkout.session.completed` for a portal session
+ *  - `payment_link`     — the Connect `checkout.session.completed` for a lender-shared
+ *                          Stripe Payment Link (metadata.paymentType === "note_payment")
+ */
+export type PortalPaymentSource = "borrower_portal" | "stripe_webhook" | "payment_link";
 
 export interface PostBorrowerPortalCheckoutPaymentInput {
   /** Loaded and ownership-checked by the caller (session pin or webhook metadata). */

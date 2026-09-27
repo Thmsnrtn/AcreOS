@@ -186,7 +186,7 @@ function session(overrides: Partial<PortalCheckoutSession> = {}): PortalCheckout
   } as PortalCheckoutSession;
 }
 
-async function post(source: "borrower_portal" | "stripe_webhook", s = session()) {
+async function post(source: "borrower_portal" | "stripe_webhook" | "payment_link", s = session()) {
   LAST_CONFLICT_ID.id = s.id;
   return postBorrowerPortalCheckoutPayment({ note: NOTE_ROW, stripeSession: s, source, now: NOW });
 }

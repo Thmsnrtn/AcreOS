@@ -417,60 +417,22 @@ describe("stripeConnect customer-money calls — scoped, feeless, refusing", () 
     storageState.note = { id: 42, organizationId: 7, monthlyPayment: "1200.00" };
   }
 
-  it("createCustomerMoneyPaymentIntent charges on the ORG'S account, with no fee", async () => {
-    connectedOrg();
+  // DEFECT-0116 / DEFECT-0119 (2026-09-27). The PaymentIntent surface —
+  // `createPaymentIntent`, `createCustomerMoneyPaymentIntent` and
+  // `POST /api/stripe/connect/payment-intent` — was REMOVED. Its only caller
+  // was an "Accept payment" modal that sent CENTS while the route multiplied
+  // by 100 again (a hundredfold charge on the lender's account) and had no
+  // Stripe.js confirm flow, so it could not complete a payment at all. The
+  // three tests that pinned that surface's custody properties are replaced by
+  // pins on its ABSENCE: the lender's card rail is the Stripe-hosted Payment
+  // Link, whose custody properties are pinned below.
+  it("has NO PaymentIntent-minting surface — the 100× Accept-payment path is gone", async () => {
     const { stripeConnectService } = await service();
-    // Card capability comes from accounts.retrieve via getAccountStatus.
-    accountCardReady();
-    stripeCalls.list.length = 0;
-
-    const result = await stripeConnectService.createCustomerMoneyPaymentIntent(7, 120_000, "usd", {
-      noteId: 42,
-      paymentType: "note_payment",
-    });
-
-    expect(result.ok).toBe(true);
-    const call = stripeCalls.list.find((c) => c.resource === "payment_intent");
-    expect(call, "a PaymentIntent must have been created").toBeDefined();
-    // (1) scoped to the org's own account …
-    expect(call!.options?.stripeAccount).toBe(ORG_ACCOUNT);
-    // (2) … and carrying no take of any kind.
-    expect(() => assertNoPlatformTake("payment_intent", call!.params)).not.toThrow();
-    expect(call!.params).not.toHaveProperty("application_fee_amount");
-    expect(call!.params).not.toHaveProperty("transfer_data");
-    if (result.ok) expect(result.connectedAccountId).toBe(ORG_ACCOUNT);
-  });
-
-  it("makes ZERO Stripe charge calls when the org has no connected processor", async () => {
-    storageState.integration = null; // never connected
-    storageState.org = { id: 7, name: "Cedar Ridge Land Co." };
-    storageState.note = { id: 42, organizationId: 7, monthlyPayment: "1200.00" };
-    const { stripeConnectService } = await service();
-    stripeCalls.list.length = 0;
-
-    const result = await stripeConnectService.createCustomerMoneyPaymentIntent(7, 120_000, "usd", {
-      noteId: 42,
-      paymentType: "note_payment",
-    });
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.reason).toBe("processor_not_connected");
-      expect(result.operatorMessage).toContain(CONNECT_PROCESSOR_PATH);
-    }
-    // The whole point: nothing was charged anywhere, least of all on AcreOS.
-    expect(stripeCalls.list).toEqual([]);
-  });
-
-  it("createPaymentIntent (throwing wrapper) refuses with a typed error, not a platform charge", async () => {
-    storageState.integration = null;
-    const { stripeConnectService, CustomerMoneyRefusedError } = await service();
-    stripeCalls.list.length = 0;
-
-    await expect(
-      stripeConnectService.createPaymentIntent(7, 120_000, "usd", { paymentType: "cash_sale" }),
-    ).rejects.toBeInstanceOf(CustomerMoneyRefusedError);
-    expect(stripeCalls.list).toEqual([]);
+    expect("createCustomerMoneyPaymentIntent" in stripeConnectService).toBe(false);
+    expect("createPaymentIntent" in stripeConnectService).toBe(false);
+    const fs = await import("node:fs");
+    const routes = fs.readFileSync("server/routes-billing.ts", "utf8");
+    expect(routes).not.toMatch(/api\/stripe\/connect\/payment-intent"/);
   });
 
   it("getPaymentLink returns a REAL Stripe-hosted link on the org's account (no dead /pay route, no dangling intent)", async () => {
@@ -643,14 +605,14 @@ describe("ratchet — every customer-money Stripe call is org-scoped", () => {
       found += src.match(MONEY_RESOURCES)?.length ?? 0;
     }
     // routes-borrower: 2 Checkout creates + 2 Checkout retrieves.
-    // stripeConnect: 1 PaymentIntent + 1 Price + 1 PaymentLink + 1 SetupIntent
-    //   + 1 Customer.
+    // stripeConnect: 1 Price + 1 PaymentLink + 1 SetupIntent + 1 Customer
+    //   (its PaymentIntent create was removed 2026-09-27, DEFECT-0119).
     // achMandateSetup: 1 Checkout retrieve + 1 PaymentMethod retrieve
     //   (+ its Checkout create).
     // achAutopay: 1 PaymentIntent create + 1 retrieve.
     // A drop below this means the scan stopped seeing real call sites — i.e.
     // it started passing by matching nothing.
-    expect(found).toBeGreaterThanOrEqual(14);
+    expect(found).toBeGreaterThanOrEqual(13);
   });
 
   it("refuses before charging: each borrower payment route resolves a processor first", async () => {

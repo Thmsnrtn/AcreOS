@@ -1006,65 +1006,21 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
 
-  const paymentIntentSchema = z.object({
-    amount: z.number().positive("Valid amount is required"),
-    noteId: z.number().int().optional(),
-    propertyId: z.number().int().optional(),
-    paymentType: z.enum(["note_payment", "cash_sale", "down_payment"], { message: "Valid payment type is required" }),
-    description: z.string().optional(),
-  });
-
   // ── CUSTOMER MONEY, not AcreOS revenue ────────────────────────────────
-  // The two endpoints below collect money that belongs to the ORG's own
-  // customers (a borrower's note payment, a cash sale, a down payment). Per
-  // the founder ruling of 2026-07-29 ("be the rail, not the provider") they
-  // charge on the ORG'S OWN connected account, AcreOS takes no fee, and no
-  // funds transit AcreOS's balance. An org with no connected processor is
-  // REFUSED with the reason and a route to connect one — never quietly
-  // charged onto the platform account. Everything else in this file
-  // (subscriptions, seats, credits, packs, top-ups, dunning) is
+  // The endpoint below collects money that belongs to the ORG's own customers
+  // (a borrower's note payment). Per the founder ruling of 2026-07-29 ("be the
+  // rail, not the provider") it charges on the ORG'S OWN connected account,
+  // AcreOS takes no fee, and no funds transit AcreOS's balance. An org with no
+  // connected processor is REFUSED with the reason and a route to connect one
+  // — never quietly charged onto the platform account. Everything else in
+  // this file (subscriptions, seats, credits, packs, top-ups, dunning) is
   // AcreOS-as-vendor and is deliberately unchanged.
-
-  api.post("/api/stripe/connect/payment-intent", isAuthenticated, getOrCreateOrg, requirePermission("canManageBilling"), async (req, res) => {
-    try {
-      const { stripeConnectService } = await import("./services/stripeConnect");
-      const org = req.organization;
-      const parsed = paymentIntentSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return Errors.validationFailed(res, parsed.error.issues);
-      }
-      const { amount, noteId, propertyId, paymentType, description } = parsed.data;
-
-      const result = await stripeConnectService.createCustomerMoneyPaymentIntent(
-        org.id,
-        Math.round(amount * 100),
-        "usd",
-        { noteId, propertyId, paymentType, description }
-      );
-
-      if (!result.ok) {
-        return Errors.badRequest(res, result.operatorMessage, {
-          reason: result.reason,
-          connectPath: result.connectPath,
-        });
-      }
-
-      res.json({
-        clientSecret: result.paymentIntent.client_secret,
-        paymentIntentId: result.paymentIntent.id,
-        amount: result.paymentIntent.amount,
-        // Required to confirm the intent: a direct charge's client secret is
-        // only usable by Stripe.js initialised with this account id.
-        connectedAccountId: result.connectedAccountId,
-      });
-    } catch (err: any) {
-      logger.error("Stripe payment intent error", err instanceof Error ? err : undefined);
-      if (err.message?.includes("not configured")) {
-        return Errors.serviceUnavailable(res, err.message);
-      }
-      Errors.internal(res, err);
-    }
-  });
+  //
+  // `POST /api/stripe/connect/payment-intent` was removed 2026-09-27
+  // (DEFECT-0116 / DEFECT-0119): its only caller was an "Accept payment" modal
+  // that sent CENTS while this route multiplied by 100 again — a hundredfold
+  // charge — and had no Stripe.js confirm flow, so it could not complete a
+  // payment at all. The Payment Link below is the lender's card rail.
 
   api.get("/api/stripe/connect/payment-link/:noteId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {

@@ -2239,7 +2239,7 @@ Resolving commits: —
 ### DEFECT-0101
 Title: Form 1099-INT generator casts the org as payer of interest it RECEIVED
 Severity: P1
-Status: OPEN — refuse/label posture required before any use
+Status: FIXED — refusal posture (founder decision 2026-09-27: refuse generation pending qualified tax review)
 Surfaced by lenses: research report §A/§12, re-verified at `9cb534f`
 Description: `generateAnnualInterestReport` sets `requires1099` at $600 of
 interest the organization COLLECTED from a borrower; `generate1099IntForms`
@@ -2256,15 +2256,34 @@ Evidence: `server/services/bookkeeping.ts:251` (`requires1099`),
 a.payerName`); `server/routes-accounting.ts` `POST /1099-batch`
 (owner/admin); client `client/src/pages/notes-tax-readiness.tsx` calls
 `GET /api/bookkeeping/1099` and `POST /api/accounting/1099-batch`.
-Remediation plan: Do not present the borrower-payment 1099 output as a
-qualified filing output. A qualified tax reviewer defines payer, recipient,
-instrument, thresholds and exemptions for any legitimate 1099-INT use (interest
-the org actually PAYS out) before the path is restored; until then restrict or
-refuse the export and label it on `/notes/tax-readiness`. Rewrite
-`bookkeeping1099.test.ts` to the corrected semantics — do not delete it.
-Preserve the 1098 path for its own qualification. Not in the 2026-09-27 slice:
-the fix is a refusal pending review, not code that can be proven here.
-Resolving commits: —
+Remediation plan: Done as a POSTURE, not a tax determination.
+`server/services/form1099Refusal.ts` `requireQualified1099Output()` refuses
+with one structured 422 `not_qualified_filing_output` (details name
+DEFECT-0101) on `GET /api/bookkeeping/1099`, the duplicate
+`GET /api/bookkeeping/1099-int` and `POST /api/accounting/1099-batch`; the
+founder passes; the ladder flag `tax.1099int.direction_reviewed` can open it
+per org once the direction is settled; a flag-store error is a refusal (fails
+closed). The batch route stamps `qualifiedBy` on the async outbox payload only
+after that middleware passed, and `handle1099BatchGenerate` in
+`server/worker.ts` refuses any payload without the stamp — so a row queued
+before this landed cannot produce a FIRE file after it. The annual interest
+report keeps `requires1099` and gains `requires1099Note` saying it counts
+interest RECEIVED ≥ $600 and is not a filing determination. The
+`/notes/tax-readiness` page renders the refusal in its existing `__refused`
+card shape and its copy no longer promises issuance to borrowers;
+`settings/tax-identity.tsx` and `bookkeeping.tsx` copy likewise. The generator
+itself is untouched and still reachable by the founder, which is how the review
+gets exercised against real data. `bookkeeping1099.test.ts` was extended, not
+deleted (its filename is a statute-register enforcement ref).
+Falsified (`tests/unit/bookkeeping1099.test.ts`, run with the refusal module
+absent and the routes unwired: RED): customer with flag off -> 422 with
+`details.defect`; founder -> next; flag on -> next; flag store throws -> 422;
+unstamped worker payload -> refused; comment-stripped source pins that each of
+the three route files registers the middleware on the line that reaches the
+generator (per-file vacuity: the generator reference must still be present),
+that the batch payload carries the stamp, and that the worker asserts before
+generating.
+Resolving commits: (this branch, slice C)
 
 ### DEFECT-0102
 Title: Due-date detector calls a payment overdue on its due day and ignores grace and posted payments
@@ -2504,7 +2523,7 @@ Resolving commits: —
 ### DEFECT-0116
 Title: Payment-Link borrower payments are posted by a third writer with float math and no refund reversal
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: independent completeness audit of DEFECT-0096's repair, 2026-09-27
 Description: `server/services/stripeConnect.ts` `handleSuccessfulPayment` posts
 a note payment on `payment_intent.succeeded` for Payment Links the same file
@@ -2518,11 +2537,93 @@ Payment-Link payment is never reversed on the note.
 Evidence: `server/services/stripeConnect.ts` (`handleSuccessfulPayment`, the
 Payment Link creation); `server/webhookHandlers.ts` refund handler's
 `borrower_portal_payment` match.
-Remediation plan: Route it through `postBorrowerPortalCheckoutPayment` (or a
-sibling for PaymentIntent-shaped sources) and extend the refund reversal to
-Payment-Link payments; or retire Payment Links if the portal is the only live
-rail. Decide with the founder which.
+Remediation plan: Done (founder decision 2026-09-27: unify links, retire the
+Accept-payment modal). The Connect `checkout.session.completed` dispatcher in
+`server/services/stripeConnect.ts` now also routes sessions with
+`metadata.paymentType === "note_payment"` (a lender-shared Payment Link) to
+`WebhookHandlers.processPaymentLinkNotePayment`, which verifies that
+`event.account` IS the metadata org's connected account
+(`storage.findOrganizationIntegrationByCredential`), loads the note under that
+org, and calls the one posting rule with `source: "payment_link"` — cents
+split, grace late fee, ON CONFLICT insert keyed on the SESSION, partial-
+installment rule, `payment.received`, one receipt. `handleSuccessfulPayment`
+is now log-only: two writers keyed on `pi_…` and `cs_…` cannot be deduped by
+ON CONFLICT and Stripe orders the two events arbitrarily. The refund handler's
+session filter accepts `paymentType === "note_payment"` too, so Payment-Link
+refunds reverse. STRIPE ASSUMPTION to confirm in the sandbox before merge to
+main: Payment Link `metadata` is copied onto the Checkout Session it creates
+(documented behaviour; fallback is `paymentLinks.retrieve(session.payment_link)`).
+Falsified (`tests/unit/paymentLinkPostsThroughSharedRule.test.ts`, RED on the
+pre-change dispatcher): a `note_payment` session posts one row keyed on the
+session with the cents split and emits `payment.received` with
+`source:"payment_link"`; the same session from another connected account posts
+nothing; `payment_intent.succeeded` for a `note_payment` PaymentIntent calls
+neither `storage.createPayment` nor `storage.updateNote`;
+`refundReversesLedgerAnd1098.test.ts` gains a Payment-Link refund that appends
+a reversal row.
+Resolving commits: (this branch, slice A)
+
+### DEFECT-0117
+Title: Client copy still promises 1099-INT issuance to borrowers
+Severity: P2
+Status: OPEN
+Surfaced by lenses: DEFECT-0101's repair scope, 2026-09-27
+Description: With generation refused (DEFECT-0101), several surfaces still
+describe 1099-INT as a form the org sends its borrowers: `client/src/pages/finance.tsx`
+(:541 "prepares your 1099-NEC at year-end", :2127, :2179, :2208),
+`client/src/pages/settings.tsx:916-919`, `client/src/pages/settings/tax-identity.tsx`
+badges (:265 "1099 issuance enabled", :273 "Blocks 1099 issuance"),
+`client/src/lib/glossary.ts:131-134`, `client/src/pages/notes.tsx:552,561`,
+`client/src/pages/note-detail.tsx:698`, `client/src/components/note-tin-editor.tsx`,
+`client/src/components/layout-sidebar.tsx:507`, and the note-investor persona
+copy in `server/services/pax/personas.ts:277,299` (pinned by
+`server/services/pax/personas.test.ts:209`).
+Remediation plan: Reword to "year-end interest reporting" once the tax review
+decides which form is owed; update the persona test with the persona copy.
 Resolving commits: —
+
+### DEFECT-0118
+Title: Tax-readiness success card expects PDFs the batch route never returns
+Severity: P2
+Status: OPEN
+Surfaced by lenses: DEFECT-0101's repair scope, 2026-09-27
+Description: `client/src/pages/notes-tax-readiness.tsx` renders download links
+for `recipientPdfs`, `transmittalPdfBase64` and `fireFile` from the
+`POST /api/accounting/1099-batch` response, but the route returns only
+`{jobId, status, formCount, totalInterestCents, fireRecordCounts, fireFileBytes, errors}`
+(`server/routes-accounting.ts`) and `form1099Batch.ts` persists only
+`resultBlob` (the FIRE text and a summary; the PDFs are never stored). The
+success card therefore shows a header with no downloads. Moot while
+DEFECT-0101 refuses generation; relevant the day the flag is turned on.
+Remediation plan: Decide where artifacts live (persist or stream) before the
+flag is ever enabled; align the response type with the page.
+Resolving commits: —
+
+### DEFECT-0119
+Title: "Accept payment" charged one hundred times the entered amount and could not complete
+Severity: P1
+Status: FIXED — by removal
+Surfaced by lenses: independent completeness audit of DEFECT-0096, 2026-09-27;
+scoped for DEFECT-0116
+Description: `client/src/pages/finance.tsx` `AcceptPaymentModal` sent
+`Math.round(Number(amount) * 100)` (cents) to `POST /api/stripe/connect/payment-intent`,
+and the route (`server/routes-billing.ts`) treated the value as dollars and
+multiplied by 100 again before `createCustomerMoneyPaymentIntent` — a $500
+installment became a $50,000 PaymentIntent on the lender's connected account.
+The modal then displayed the client secret and account id with no Stripe.js
+confirm flow, so the intent could rarely be completed, which is the only reason
+the hundredfold amount is not a known incident. No test covered either half.
+Evidence: (before) `finance.tsx` `handleCreatePaymentIntent`; `routes-billing.ts`
+`Math.round(amount * 100)` on an already-cents body value.
+Remediation plan: Done — the modal, its button and state, the route, its zod
+schema, and `createPaymentIntent`/`createCustomerMoneyPaymentIntent` in
+`stripeConnect.ts` are removed (founder decision 2026-09-27). The lender's
+card rail is the Stripe-hosted Payment Link, which charges `note.monthlyPayment`
+server-side. `customerMoneyRouting.test.ts` UPDATED to pin the absence of a
+PaymentIntent surface and that `getPaymentLink` still mints no PaymentIntent.
+Falsified: `"createCustomerMoneyPaymentIntent" in stripeConnectService` -> RED;
+a `payment_intent` resource created anywhere in `getPaymentLink` -> RED.
+Resolving commits: (this branch, slice A)
 
 ### REFUTED AT HEAD, 2026-09-27
 
@@ -2560,21 +2661,21 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 3   | 27  | 30    |
-| FIXED  | 12  | 59  | 8   | 79    |
+| OPEN   | 0   | 2   | 28  | 30    |
+| FIXED  | 12  | 61  | 9   | 82    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **65** | **35** | **112** |
+| **Total** | **12** | **66** | **37** | **115** |
 
 DEFECT-0089 through 0095 added 2026-09-06. Two further census entries were
 re-verified at HEAD and REFUTED rather than implemented against — see the
 "REFUTED AT HEAD" table above DEFECT-0089's section.
 
-DEFECT-0096 through 0116 added 2026-09-27 from the "AcreOS at full maturity"
+DEFECT-0096 through 0119 added 2026-09-27 from the "AcreOS at full maturity"
 research report, each claim re-verified at `9cb534f` before entry (one refuted,
 one downgraded — see the 2026-09-27 REFUTED table). 0096 and 0097 are FIXED in
-the same change; three P1s are OPEN with their posture stated: 0101 (1099-INT
-direction — refuse/label pending qualified tax review), 0104 (SMS purpose by
-CRM-row absence), 0107 (blind-offer comps).
+the same change; 0101 (1099-INT direction) is FIXED as a refusal posture pending qualified tax
+review (slice C, same day); two P1s remain OPEN with their posture stated: 0104
+(SMS purpose by CRM-row absence), 0107 (blind-offer comps).
 
 11 P2s from earlier audits remain open (plus DEFECT-0063, partially fixed)
 (not blocking launch).
@@ -2630,6 +2731,9 @@ CRM-row absence), 0107 (blind-offer comps).
 | DEFECT-0068 | Pre-commit warning-only | eb3846e |
 | DEFECT-0096 | Two borrower payment writers, one posting rule | (this branch) |
 | DEFECT-0097 | Borrower payoff quote on the engine, session-keyed, recorded | (this branch) |
+| DEFECT-0101 | 1099-INT generation refused pending direction review (founder bypass) | (this branch, slice C) |
+| DEFECT-0116 | Payment Link payments through the one posting rule; refunds reverse | (this branch, slice A) |
+| DEFECT-0119 | 100× Accept-payment charge path removed | (this branch, slice A) |
 
 ### Deferred Defects (3)
 

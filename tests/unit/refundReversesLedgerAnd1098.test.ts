@@ -279,7 +279,11 @@ vi.mock("../../server/db", () => ({
   withTransaction: async (fn: any) => fn(fakeDb),
 }));
 
-const stripeCalls = vi.hoisted(() => ({ sessionLists: [] as any[] }));
+const stripeCalls = vi.hoisted(() => ({
+  sessionLists: [] as any[],
+  /** What the lender's Checkout Session carries. Portal sessions carry `type`; Payment Link sessions carry `paymentType` (DEFECT-0116). */
+  sessionMetadata: { type: "borrower_portal_payment", organizationId: "5", noteId: "77" } as Record<string, string>,
+}));
 
 vi.mock("../../server/stripeClient", () => ({
   STRIPE_API_VERSION: "2026-02-25.clover",
@@ -293,7 +297,7 @@ vi.mock("../../server/stripeClient", () => ({
             data: [
               {
                 id: "cs_borrower_1",
-                metadata: { type: "borrower_portal_payment", organizationId: "5", noteId: "77" },
+                metadata: stripeCalls.sessionMetadata,
               },
             ],
           };
@@ -512,6 +516,7 @@ beforeEach(() => {
   };
   dbState.nextId = 900;
   stripeCalls.sessionLists.length = 0;
+  stripeCalls.sessionMetadata = { type: "borrower_portal_payment", organizationId: "5", noteId: "77" };
 });
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -559,6 +564,27 @@ describe("charge.refunded → note ledger → Form 1098 Box 1", () => {
     const form = expectForm(candidate(ledgerFromDb()));
     expect(form.box1MortgageInterestReceivedCents).toBe(OTHER_2025_INTEREST_CENTS);
     expect(form.box4RefundOfOverpaidInterestCents).toBe(0);
+  });
+
+  // DEFECT-0116 (2026-09-27). A lender-shared Payment Link session carries
+  // `paymentType: "note_payment"`, not `type: "borrower_portal_payment"`. It is
+  // posted by the same rule keyed on the same session id, so its refund must
+  // reverse the same way. Before the fix this returned "not a borrower portal
+  // payment" and the ledger kept the interest.
+  it("a refund of a PAYMENT LINK payment reverses too — the session is keyed the same way", async () => {
+    stripeCalls.sessionMetadata = { paymentType: "note_payment", organizationId: "5", noteId: "77" };
+    await fireConnectWebhook(
+      refundEvent({
+        amountRefundedCents: PAYMENT_CENTS,
+        refunds: [{ id: "re_link_full", amountCents: PAYMENT_CENTS, iso: "2025-12-20T12:00:00Z" }],
+      }),
+    );
+    const reversal = dbState.paymentRows.find(
+      (r) => r.transactionId === refundReversalTransactionId(SESSION_ID, "re_link_full"),
+    );
+    expect(reversal, "a Payment Link refund must append a reversing row").toBeDefined();
+    expect(Number(reversal.interestAmount)).toBe(-350);
+    expect(Number(dbState.note.currentBalance)).toBe(100_150);
   });
 
   it("restores the refunded principal to the note balance", async () => {

@@ -1515,6 +1515,84 @@ export class WebhookHandlers {
     }
   }
 
+  /**
+   * A borrower paid a lender-shared Stripe PAYMENT LINK (DEFECT-0116).
+   *
+   * `getPaymentLink` stamps `{organizationId, noteId, paymentType:"note_payment"}`
+   * on the link, and Stripe copies link metadata onto the Checkout Session it
+   * creates — so the session arrives here on the Connect endpoint with that
+   * metadata and `session.payment_link` set. Until 2026-09-27 this session was
+   * SKIPPED (the dispatcher only knew `type === "borrower_portal_payment"`) and
+   * the money was posted instead by `stripeConnect.handleSuccessfulPayment` on
+   * `payment_intent.succeeded`: float split, no late fee, installment marked
+   * paid for any amount, a pre-lock balance overwrite, no `payment.received`,
+   * no receipt, and — with `transactionId = pi_…` where the portal keys
+   * `cs_…` — a row the refund handler could never match.
+   *
+   * Now it is one more caller of the ONE posting rule, keyed on the session.
+   *
+   * TENANT. There is no borrower access token here to prove ownership, so the
+   * Connect account the event arrived on must BE the metadata org's connected
+   * account. Metadata is written by whoever controls the connected account
+   * that created the link; a different account naming our org id is refused.
+   */
+  static async processPaymentLinkNotePayment(
+    session: Stripe.Checkout.Session,
+    connectedAccountId: string | null,
+  ): Promise<void> {
+    const meta = session.metadata || {};
+    if (meta.paymentType !== 'note_payment') return;
+    const organizationId = Number(meta.organizationId);
+    const noteId = Number(meta.noteId);
+    if (!Number.isInteger(organizationId) || !Number.isInteger(noteId) || !connectedAccountId) {
+      logger.error(
+        `[webhook] payment-link session ${session.id} lacks organizationId/noteId metadata or a connected account — refusing`,
+      );
+      return;
+    }
+
+    const integration = await storage.findOrganizationIntegrationByCredential(
+      'stripe_connect',
+      'stripeConnectAccountId',
+      connectedAccountId,
+    );
+    if (!integration || integration.organizationId !== organizationId) {
+      logger.error(
+        `[webhook] payment-link session ${session.id} arrived on account ${connectedAccountId}, which is not organization ${organizationId}'s connected account — refusing`,
+      );
+      return;
+    }
+
+    const note = await storage.getNote(organizationId, noteId);
+    if (!note) {
+      logger.error(`[webhook] payment-link session ${session.id} names note ${noteId} which organization ${organizationId} does not have — refusing`);
+      return;
+    }
+
+    const { postBorrowerPortalCheckoutPayment } = await import('./services/borrower/portalPaymentPosting');
+    const result = await postBorrowerPortalCheckoutPayment({
+      note,
+      stripeSession: session,
+      source: 'payment_link',
+    });
+    switch (result.outcome) {
+      case 'refused':
+        logger.warn(`[webhook] payment-link payment ${session.id} not posted: ${result.reason}`, {
+          metadata: { noteId, organizationId, reason: result.reason },
+        });
+        return;
+      case 'already_recorded':
+        logger.info(`Payment already recorded for payment-link session: ${session.id}`);
+        return;
+      case 'posted':
+        logger.info(
+          `Payment-link note payment processed: Note ${noteId}, Amount: $${(result.amountCents / 100).toFixed(2)}, New Balance: $${(result.remainingBalanceCents / 100).toFixed(2)}`,
+          { metadata: { noteId, organizationId, installment: result.installment, receiptEmailed: result.receiptEmailed } },
+        );
+        return;
+    }
+  }
+
   static async processBorrowerPortalPayment(session: Stripe.Checkout.Session): Promise<void> {
     try {
       const { noteId, accessToken } = session.metadata || {};
@@ -1684,8 +1762,12 @@ export class WebhookHandlers {
       { payment_intent: paymentIntentId, limit: 10 },
       customerMoneyReadOptions({ accountId: connectedAccountId }, 'borrower.card.refund.session.lookup'),
     );
+    // Portal sessions carry `type`; lender-shared Payment Link sessions carry
+    // `paymentType` (DEFECT-0116). Both are posted by the one rule keyed on the
+    // session id, so both reverse here.
     const session = sessions.data.find(
-      (s: Stripe.Checkout.Session) => s.metadata?.type === 'borrower_portal_payment',
+      (s: Stripe.Checkout.Session) =>
+        s.metadata?.type === 'borrower_portal_payment' || s.metadata?.paymentType === 'note_payment',
     );
     if (!session) {
       // Lenders refund their OWN unrelated charges on this account all the
