@@ -1,7 +1,7 @@
 // Leads + lead-activity + soft-delete/recovery + scoring + dedup.
 // Extracted from the god-class server/storage.ts.
 
-import { and, asc, desc, eq, sql, count, ilike, inArray, lte, or, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, sql, count, ilike, inArray, like, lte, or, type SQL } from "drizzle-orm";
 import { db } from "../db";
 import {
   leads, leadActivities, activityLog,
@@ -223,6 +223,41 @@ export const leadRepo = {
     const [lead] = await db.select().from(leads)
       .where(and(eq(leads.organizationId, orgId), eq(leads.id, id)));
     return lead;
+  },
+
+  /**
+   * EVERY lead in the org whose phone ends in the same ten digits as `phone`
+   * (DEFECT-0104). Replaces three full-org `select().from(leads)` scans that
+   * each `.find()`-ed the FIRST match, so two leads sharing a number with
+   * contradictory consent resolved by row order. Uses the stored generated
+   * `phone_normalized` column (trigram-indexed, migration 0051) for the
+   * suffix match, then re-checks the exact last ten in JS because a LIKE
+   * suffix match is only as precise as the pattern.
+   *
+   * Soft-deleted leads are excluded by default — a deleted CRM row is not a
+   * consent record. Inbound STOP handling passes `includeDeleted` because a
+   * revocation must land on every row that could ever be restored.
+   */
+  async findLeadsByPhoneLast10(
+    this: DatabaseStorage,
+    orgId: number,
+    phone: string,
+    opts: { includeDeleted?: boolean } = {},
+  ): Promise<Lead[]> {
+    const last10 = phone.replace(/\D/g, "").slice(-10);
+    if (last10.length < 7) return [];
+    const conditions = [
+      eq(leads.organizationId, orgId),
+      like(leads.phoneNormalized, `%${last10}`),
+    ];
+    if (!opts.includeDeleted) conditions.push(sql`${leads.deletedAt} IS NULL`);
+    const rows = await db.select().from(leads)
+      .where(and(...conditions))
+      .limit(LIST_READ_CAP);
+    return rows.filter((l) => {
+      const digits = (l.phoneNormalized ?? l.phone?.replace(/\D/g, "") ?? "");
+      return digits.length >= 7 && digits.slice(-10) === last10;
+    });
   },
 
   // organizationId is omitted from InsertLead (set server-side) but the DB

@@ -322,16 +322,28 @@ export async function processOptKeyword(
   const action = detectOptKeyword(messageBody);
   if (!action) return { action: 'none' };
 
-  // Find the lead by phone number
-  const allLeads = await db
-    .select({ id: leads.id, phone: leads.phone })
-    .from(leads)
-    .where(eq(leads.organizationId, organizationId));
+  // EVERY lead at this number (DEFECT-0104): a STOP from a number two leads
+  // share must revoke both, and a START must not re-consent a row the
+  // sender never meant. Soft-deleted rows included — a restored lead must
+  // come back with the revocation already on it.
+  const matches = await storage.findLeadsByPhoneLast10(organizationId, phone, { includeDeleted: true });
+  if (matches.length === 0) return { action };
 
-  const cleanPhone = phone.replace(/\D/g, '').slice(-10);
-  const matched = allLeads.find(l => (l.phone || '').replace(/\D/g, '').slice(-10) === cleanPhone);
-  if (!matched) return { action };
+  for (const matched of matches) {
+    await applyOptKeywordToLead(organizationId, matched.id, action, phone, messageBody, messageSid);
+  }
+  return { action, leadId: matches[0].id };
+}
 
+async function applyOptKeywordToLead(
+  organizationId: number,
+  leadId: number,
+  action: 'opt_out' | 'opt_in',
+  phone: string,
+  messageBody: string,
+  messageSid: string,
+): Promise<void> {
+  const matched = { id: leadId };
   const now = new Date();
   if (action === 'opt_out') {
     await db
@@ -394,8 +406,6 @@ export async function processOptKeyword(
     } catch { /* best-effort */ }
     logger.info(`[TCPA] Lead ${matched.id} opted IN via "${messageBody.trim()}"`);
   }
-
-  return { action, leadId: matched.id };
 }
 
 export function checkTcpaConsentFromLead(lead: Pick<Lead, 'tcpaConsent' | 'doNotContact'>): TcpaCheckResult {

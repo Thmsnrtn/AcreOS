@@ -2195,7 +2195,23 @@ export async function executeTool(
           }
         }
 
-        const result = await sendOrgSMS(org.id, toPhone, args.message);
+        // DEFECT-0104: the purpose decides which consent question the choke
+        // point asks. A lead-addressed text is a solicitation. A bare number
+        // is a solicitation when it belongs to a lead (every lead at it must
+        // consent) and otherwise only a REPLY — refused unless that number
+        // texted this org in the last 24 hours.
+        let smsPurpose: "prospecting" | "reply" = "prospecting";
+        if (!args.lead_id) {
+          const onFile = await storage.findLeadsByPhoneLast10(org.id, toPhone);
+          smsPurpose = onFile.length > 0 ? "prospecting" : "reply";
+        }
+        const result = await sendOrgSMS({
+          organizationId: org.id,
+          to: toPhone,
+          message: args.message,
+          purpose: smsPurpose,
+          leadId: args.lead_id ?? undefined,
+        });
 
         // Record into the audit envelope so the rate limiter and the daily
         // Pax briefing reflect it (same discipline as send_email).

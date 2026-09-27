@@ -2308,12 +2308,14 @@ export function registerCampaignRoutes(app: Express): void {
             );
           } else {
             // Real send through the gated choke point (DNC + frequency + BYO).
-            const sendResult = await sendOrgSMS(
-              org.id,
-              lead!.phone!,
-              body,
-              hasMms ? campaignMediaUrls : undefined,
-            );
+            const sendResult = await sendOrgSMS({
+              organizationId: org.id,
+              to: lead!.phone!,
+              message: body,
+              mediaUrls: hasMms ? campaignMediaUrls : undefined,
+              purpose: "prospecting",
+              leadId: lead!.id,
+            });
             if (!sendResult.success) {
               // Not delivered (DNC/consent/quiet-hours block, or no connected
               // SMS identity). Count it as failed and let the SINGLE post-loop

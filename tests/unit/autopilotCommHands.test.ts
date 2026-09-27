@@ -190,6 +190,8 @@ describe("send_sms hand — TCPA consent + quiet hours", () => {
     const r = await executeHandWitnessed("send_sms", { organization_id: 1, lead_id: 9, message: "hi" }, "founder_1");
     expect(r.success).toBe(true);
     expect(sendSMSToLead).toHaveBeenCalledOnce();
+    // DEFECT-0104: the autopilot hand texts a lead unprompted — a solicitation.
+    expect(sendSMSToLead).toHaveBeenCalledWith(1, 9, "hi", "autopilot", { purpose: "prospecting" });
   });
 });
 

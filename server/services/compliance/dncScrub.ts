@@ -289,10 +289,24 @@ export async function scrubPhone(
 // ─── Gate policy ──────────────────────────────────────────────────────────────
 
 export interface DncGateInput {
-  /** True when the recipient matched a lead in the org (marketing class). */
+  /** True when the recipient matched a lead in the org. */
   leadMatched: boolean;
-  /** True when the matched lead carries express TCPA consent. */
+  /**
+   * True when the send has a basis that lawfully overrides a registry
+   * listing: the lead's express TCPA consent (prospecting), an existing
+   * note relationship with the borrower (servicing), or the recipient
+   * having texted this organization first (reply).
+   */
   hasConsent: boolean;
+  /**
+   * What a scrub ERROR means for this send. Declared by the caller's
+   * purpose (DEFECT-0104): a prospecting text with an unverifiable scrub
+   * is refused; a payment notice bound to a note, or a reply to someone
+   * who texted first, goes out (founder decision 2026-09-27 — litigator
+   * hits, STOP and quiet hours still block those). When omitted, the
+   * historical rule applies: fail closed if a lead matched, open otherwise.
+   */
+  scrubErrorPosture?: "fail_open" | "fail_closed";
 }
 
 export interface DncGateResult {
@@ -330,18 +344,22 @@ export function evaluateDncGate(
         scrubbed: true,
         reason: `recipient is DNC-listed with no express consent (${outcome.listSource ?? outcome.provider})`,
       };
-    case "error":
-      if (input.leadMatched) {
+    case "error": {
+      const failClosed = input.scrubErrorPosture
+        ? input.scrubErrorPosture === "fail_closed"
+        : input.leadMatched;
+      if (failClosed) {
         // Marketing send with an unverifiable scrub — fail closed, same
-        // posture as unverifiable consent in tcpaGateForRecipient.
+        // posture as unverifiable consent in the SMS purpose gate.
         return {
           allowed: false,
           scrubbed: true,
           reason: "DNC scrub unverifiable — refusing marketing send (fail closed)",
         };
       }
-      // Transactional traffic must flow — fail open, loudly.
+      // Servicing / reply traffic must flow — fail open, loudly.
       return { allowed: true, scrubbed: true };
+    }
     case "clean":
     default:
       return { allowed: true, scrubbed: true };

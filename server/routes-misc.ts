@@ -20,6 +20,15 @@ import {
   sealIntegrationCredentials,
 } from "./services/integrationCredentials";
 
+const smsSendSchema = z.object({
+  to: z.string().trim().min(7, "Phone number is required"),
+  message: z.string().min(1, "Message is required"),
+  /** DEFECT-0104: what the operator is sending decides the consent question. */
+  purpose: z.enum(["prospecting", "servicing", "reply"]).default("prospecting"),
+  leadId: z.number().int().positive().optional(),
+  noteId: z.number().int().positive().optional(),
+});
+
 export async function registerMiscRoutes(app: Express): Promise<void> {
   const api = app;
 
@@ -193,46 +202,23 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   api.post("/api/sms/send", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {
       const org = req.organization;
-      const { to, message } = req.body;
-
-      if (!to || !message) {
-        return Errors.badRequest(res, "Phone number and message are required");
+      const parsed = smsSendSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.issues);
       }
+      const { to, message, purpose, leadId, noteId } = parsed.data;
 
       // ── TCPA gate ────────────────────────────────────────────────────
-      // Even ad-hoc sends from a logged-in operator MUST go through the
-      // consent + quiet-hours check. The recipient's prior STOP doesn't
-      // care that the founder personally typed this. Try to match the
-      // destination phone to a known lead; if found, gate on its
-      // consent + zone. If unknown, gate on area-code quiet-hours only
-      // (no consent record to consult, but we still won't text at 2 AM).
-      const { canSendViaChannel, isWithinQuietHours, isWithinQuietHoursForLead } =
-        await import("./services/tcpaCompliance");
-      const { leads } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
-      const cleanTo = String(to).replace(/\D/g, "").slice(-10);
-      const orgLeads = await db
-        .select()
-        .from(leads)
-        .where(eq(leads.organizationId, org.id));
-      const matched = orgLeads.find(
-        (l) => (l.phone || "").replace(/\D/g, "").slice(-10) === cleanTo
-      );
-      if (matched) {
-        const consent = canSendViaChannel(matched, "sms");
-        if (!consent.allowed) {
-          return Errors.forbidden(res, `TCPA blocked: ${consent.reason}`);
-        }
-        const qh = isWithinQuietHoursForLead(matched as any, to);
-        if (qh.blocked) {
-          return Errors.forbidden(res, `TCPA quiet hours: ${qh.reason}`);
-        }
-      } else {
-        const qh = isWithinQuietHours(to);
-        if (qh.blocked) {
-          return Errors.forbidden(res, `TCPA quiet hours: ${qh.reason}`);
-        }
-      }
+      // Even ad-hoc sends from a logged-in operator go through the consent
+      // gate. It lives at the choke point (sendOrgSMS), keyed on the PURPOSE
+      // the operator declares (DEFECT-0104): a solicitation needs every lead
+      // at the number to have consented — a number with no lead record is
+      // refused, not waved through as "transactional"; a servicing text must
+      // name its note and go to that note's borrower; a reply needs an
+      // inbound from the number in the last 24 hours. This route used to run
+      // its own first-match scan of every lead in the org, and allowed an
+      // unmatched number on area-code quiet hours alone.
+      const cleanTo = to.replace(/\D/g, "").slice(-10);
 
       // Lens 3 (Pricing Coherence) — debit the pool BEFORE we call Twilio so
       // the gauge in the client doesn't show free SMS. Idempotency key is
@@ -255,7 +241,14 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
         return Errors.limitExceeded(res, poolRefusalDetails("sms_outbound", smsDebit));
       }
 
-      const result = await smsServiceModule.sendOrgSMS(org.id, to, message);
+      const result = await smsServiceModule.sendOrgSMS({
+        organizationId: org.id,
+        to,
+        message,
+        purpose,
+        leadId,
+        noteId,
+      });
 
       if (!result.success) {
         // Refund the pool draw — the message never went out.
@@ -266,6 +259,9 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
             amountCents: smsDebit.debitedCents,
             reason: `SMS send failed: ${result.error}`,
           });
+        }
+        if ((result.error ?? "").startsWith("TCPA gate:")) {
+          return Errors.forbidden(res, result.error);
         }
         return Errors.badRequest(res, String(result.error ?? "Bad request"));
       }
@@ -314,7 +310,15 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
         return Errors.forbidden(res, `TCPA quiet hours: ${qh.reason}`);
       }
 
-      const result = await smsServiceModule.sendSMSToLead(org.id, leadId, message, user.id);
+      // An answer inside an inbound thread is a reply; anything else from
+      // this box is outreach to the lead (DEFECT-0104). The choke point
+      // re-checks whichever question the purpose asks.
+      const answering =
+        !!lead.phone &&
+        (await storage.hasRecentInboundSmsFrom(org.id, lead.phone, new Date(Date.now() - 24 * 60 * 60 * 1000)));
+      const result = await smsServiceModule.sendSMSToLead(org.id, leadId, message, user.id, {
+        purpose: answering ? "reply" : "prospecting",
+      });
 
       if (!result.success) {
         return Errors.badRequest(res, String(result.error ?? "Bad request"));

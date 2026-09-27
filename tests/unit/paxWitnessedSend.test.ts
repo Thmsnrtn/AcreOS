@@ -339,7 +339,16 @@ describe("witnessed send — explicit human approval triggers the guarded send",
     expect((result.data as any)?.messageId).toBe("sms_witnessed_1");
     expect(checkSendRateLimit).toHaveBeenCalledWith(7, "sms");
     expect(checkTcpaBeforeSend).toHaveBeenCalledWith(7, 42);
-    expect(sendOrgSMS).toHaveBeenCalledWith(7, "+16175550142", smsArgs.message);
+    // DEFECT-0104: a lead-addressed text is declared a solicitation, bound to the lead.
+    expect(sendOrgSMS).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 7,
+        to: "+16175550142",
+        message: smsArgs.message,
+        purpose: "prospecting",
+        leadId: 42,
+      }),
+    );
     expect(recordAutonomousSend).toHaveBeenCalledWith(7, "sms", 42, smsArgs.message);
   });
 

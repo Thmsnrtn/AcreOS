@@ -4,13 +4,17 @@
 // Methods are merged into DatabaseStorage.prototype at construction time;
 // `this` therefore refers to the full DatabaseStorage instance.
 
-import { and, count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, gte, like } from "drizzle-orm";
 import { db } from "../db";
 import { forOrg } from "../utils/orgScopedDb";
 import {
   campaignResponses,
   campaigns,
   activityEvents,
+  conversations,
+  leads,
+  messages,
+  unattachedInboundMessages,
   type CampaignResponse,
   type InsertCampaignResponse,
   type Campaign,
@@ -20,6 +24,56 @@ import {
 import type { DatabaseStorage } from "../storage";
 
 export const commsRepo = {
+  /**
+   * Has `phone` sent this organization an SMS since `since`? (DEFECT-0104)
+   * The basis for a "reply" — a text to a number with no lead record is only
+   * defensible as an answer to something that number said first. Reads both
+   * places an inbound can land: the conversation thread of a matched lead
+   * (`messages` ⋈ `conversations` ⋈ `leads`) and the unattached-inbound
+   * triage table for numbers that matched nothing. Every table is read
+   * under this org's predicate.
+   */
+  async hasRecentInboundSmsFrom(
+    this: DatabaseStorage,
+    orgId: number,
+    phone: string,
+    since: Date,
+  ): Promise<boolean> {
+    const last10 = phone.replace(/\D/g, "").slice(-10);
+    if (last10.length < 7) return false;
+    const [unattached] = await db
+      .select({ id: unattachedInboundMessages.id })
+      .from(unattachedInboundMessages)
+      .where(
+        and(
+          eq(unattachedInboundMessages.organizationId, orgId),
+          eq(unattachedInboundMessages.channel, "sms"),
+          gte(unattachedInboundMessages.receivedAt, since),
+          like(unattachedInboundMessages.fromAddress, `%${last10}`),
+        ),
+      )
+      .limit(1);
+    if (unattached) return true;
+    const [attached] = await db
+      .select({ id: messages.id })
+      .from(messages)
+      .innerJoin(conversations, eq(messages.conversationId, conversations.id))
+      .innerJoin(leads, eq(conversations.leadId, leads.id))
+      .where(
+        and(
+          eq(messages.organizationId, orgId),
+          eq(conversations.organizationId, orgId),
+          eq(leads.organizationId, orgId),
+          eq(messages.direction, "inbound"),
+          eq(conversations.channel, "sms"),
+          gte(messages.createdAt, since),
+          like(leads.phoneNormalized, `%${last10}`),
+        ),
+      )
+      .limit(1);
+    return Boolean(attached);
+  },
+
   // Campaign Responses CRUD
   async getCampaignResponses(this: DatabaseStorage, orgId: number, campaignId?: number): Promise<CampaignResponse[]> {
     const conditions = [eq(campaignResponses.organizationId, orgId)];

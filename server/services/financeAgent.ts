@@ -637,6 +637,11 @@ export class FinanceAgentService {
       channel,
       subject: this.subjectForStage(reminder.type),
       message: body,
+      // A borrower reminder services a note — not a solicitation
+      // (DEFECT-0104). The SMS choke point verifies the destination is
+      // this note's borrower of record.
+      purpose: "servicing",
+      noteId: reminder.noteId,
     });
 
     if (result.success) {

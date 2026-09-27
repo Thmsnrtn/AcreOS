@@ -644,7 +644,13 @@ export class SequenceProcessorService {
       // the choke point; a refusal there comes back as !success with the
       // named reason and is NEVER reported as sent).
       const { sendOrgSMS } = await import("./smsService");
-      const result = await sendOrgSMS(orgId, lead.phone, content);
+      const result = await sendOrgSMS({
+        organizationId: orgId,
+        to: lead.phone,
+        message: content,
+        purpose: "prospecting",
+        leadId: lead.id,
+      });
       if (!result.success) {
         logger.warn("[sequence-processor] SMS send failed", {
           metadata: { leadId: lead.id, error: result.error },

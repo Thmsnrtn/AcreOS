@@ -24,6 +24,12 @@
  *   - Twilio webhook-replay idempotency unchanged
  */
 import { db } from "../db";
+import { storage } from "../storage";
+import {
+  frequencyGateForLead,
+  describeFrequencySkip,
+  recordContactTouch,
+} from "./compliance/contactFrequency";
 import {
   messages,
   conversations,
@@ -173,113 +179,183 @@ export class SmsService {
 export const smsService = new SmsService();
 
 /**
- * TCPA gate-by-construction (roadmap W1.5, 2026-07 audit). The consent +
- * quiet-hours checks used to live only in CALLERS (sequenceProcessor,
- * communications) — any path that reached this sender directly (manual
- * send, AI tools, the autopilot hand via sendSMSToLead) skipped them
- * entirely. The gate now lives in the sender itself:
- *   • recipient matches a LEAD in the org → full tcpaGateForSms (consent +
- *     recipient-local quiet hours). Blocked → refuse, named reason.
- *   • recipient matches no lead → allowed (customer/transactional traffic
- *     like billing notices isn't seller marketing).
- *   • consent state UNVERIFIABLE (db error) → FAIL CLOSED. A marketing SMS
- *     with unprovable consent is a TCPA violation waiting for a plaintiff;
- *     a delayed transactional SMS retries.
- *   • DNC/litigator scrub (mature-machine H0 §6.1) — layered AFTER the
- *     consent gate at this same choke point. INERT until the founder's
- *     vendor decision configures DNC_SCRUB_PROVIDER; once configured,
- *     litigator numbers block even with consent, DNC-listed numbers block
- *     without express consent, and both traffic classes (lead-matched and
- *     unmatched) get scrubbed. See services/compliance/dncScrub.ts.
- *   • CONTACT-FREQUENCY cap (2026-07-29) — layered LAST, after consent,
- *     quiet hours and DNC have all passed. The fatigue detector has always
- *     computed a per-lead `suppress` verdict that nothing honored; this is
- *     where it is honored. Frequency is only ever an ADDITIONAL refusal —
- *     it can never allow a send an earlier gate refused, because it is only
- *     reached when every earlier gate already said yes. Lead-matched
- *     (marketing) traffic only; transactional/customer SMS never reaches it.
- *     See services/compliance/contactFrequency.ts.
+ * SMS PURPOSE GATE (DEFECT-0104, founder decision 2026-09-27).
  *
- * The gate returns the matched lead id on success so the caller can record
- * the touch AFTER the carrier actually accepted the message — a refused or
- * failed send must never land in the touch ledger.
+ * The consent question this sender must answer depends on WHY the text is
+ * being sent, so the caller declares a purpose and the gate asks the
+ * question that purpose needs. The previous gate inferred the class from
+ * whether the destination matched a lead: "no lead = transactional", so a
+ * number with no CRM row skipped consent, quiet hours and the frequency cap
+ * — the exact inversion of what a missing consent record means. Every
+ * caller of this function texts a COUNTERPARTY (BYO identity is required
+ * below); system SMS never comes through here, so the unmatched branch had
+ * no legitimate user.
+ *
+ *   • prospecting — a solicitation. EVERY lead at this number must carry
+ *     express TCPA consent and be outside its quiet hours (two leads sharing
+ *     a number with contradictory consent used to resolve by row order);
+ *     no lead record → REFUSED, consent cannot be shown. DNC scrub fails
+ *     CLOSED on error. The contact-frequency cap applies, and the send is
+ *     recorded as a touch after the carrier accepts it.
+ *   • servicing — a notice bound to a NOTE. The destination must be the
+ *     borrower of record's phone on that note; STOP / do-not-contact and the
+ *     borrower's quiet hours still block; the borrower need not carry the
+ *     marketing consent flag. DNC scrub fails OPEN on error — a payment
+ *     notice is not stopped by a vendor outage. No frequency cap, no touch.
+ *   • reply — an answer to a number that texted this organization in the
+ *     last 24 hours (matched or unattached). Nothing to reply to → refused;
+ *     a lead at the number who has STOPped → refused; quiet hours apply;
+ *     DNC fails open. No frequency cap, no touch.
+ *
+ * Anything UNVERIFIABLE (storage error, missing note) → FAIL CLOSED with a
+ * named reason. Refusal strings are prefixed `TCPA gate: ` by the caller's
+ * result — sequenceProcessor treats that prefix as a deferral, not a
+ * permanent failure.
  */
-async function tcpaGateForRecipient(
-  organizationId: number,
-  to: string,
-): Promise<{ allowed: boolean; reason?: string; leadId?: number }> {
-  const last10 = to.replace(/\D/g, "").slice(-10);
-  if (last10.length < 7) return { allowed: true }; // short codes / malformed — carrier will reject
+export type SmsPurpose = "prospecting" | "servicing" | "reply";
+
+export interface SendOrgSmsInput {
+  organizationId: number;
+  to: string;
+  message: string;
+  mediaUrls?: string[];
+  /** Why this text is being sent — decides which consent question is asked. */
+  purpose: SmsPurpose;
+  /** Prospecting: the lead the caller believes it is texting. Refused if that lead is not on file at `to`. */
+  leadId?: number;
+  /** Servicing: the note this notice services. Required for that purpose. */
+  noteId?: number;
+}
+
+const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+interface PurposeGateVerdict {
+  allowed: boolean;
+  reason?: string;
+  /** The lead a successful send is attributed to (touch ledger, logs). */
+  leadId?: number;
+  /** Only prospecting sends count toward the contact-frequency cap. */
+  recordTouch: boolean;
+}
+
+function last10Of(phone: string): string {
+  return phone.replace(/\D/g, "").slice(-10);
+}
+
+async function smsPurposeGate(input: SendOrgSmsInput): Promise<PurposeGateVerdict> {
+  const { organizationId, to, purpose } = input;
+  const refuse = (reason: string, leadId?: number): PurposeGateVerdict => ({
+    allowed: false,
+    reason,
+    leadId,
+    recordTouch: false,
+  });
+  const last10 = last10Of(to);
+  if (last10.length < 7) return refuse("destination is not a dialable phone number");
   try {
-    const candidates = await db
-      .select({ id: leads.id, phone: leads.phone })
-      .from(leads)
-      .where(eq(leads.organizationId, organizationId));
-    const matched = candidates.find((l) => {
-      const leadPhone = l.phone?.replace(/\D/g, "") || "";
-      if (leadPhone.length < 7) return false;
-      return leadPhone.slice(-10) === last10;
-    });
     const { dncGateForSms } = await import("./compliance/dncScrub");
-    if (!matched) {
-      // Unmatched = transactional class. Scrub still applies when configured
-      // (litigator numbers block; scrub errors fail OPEN so billing flows).
-      const dnc = await dncGateForSms(organizationId, to, {
-        leadMatched: false,
-        hasConsent: false,
-      });
-      if (!dnc.allowed) return { allowed: false, reason: dnc.reason };
-      return { allowed: true };
+    const { tcpaGateForSms, isWithinQuietHours } = await import("./tcpaCompliance");
+    switch (purpose) {
+      case "prospecting": {
+        const matches = await storage.findLeadsByPhoneLast10(organizationId, to);
+        if (matches.length === 0) {
+          return refuse("no lead record at this number — consent cannot be shown, so a solicitation cannot be sent");
+        }
+        if (input.leadId !== undefined && !matches.some((l) => l.id === input.leadId)) {
+          return refuse(`lead ${input.leadId} is not on file at this number`, input.leadId);
+        }
+        for (const lead of matches) {
+          const consent = await tcpaGateForSms(lead.id, organizationId, to);
+          if (!consent.allowed) return refuse(consent.reason ?? "no TCPA consent on record", lead.id);
+        }
+        // Every lead at the number has express consent, so a DNC listing is
+        // lawfully overridden — the scrub's teeth here are the litigator list
+        // and the fail-closed error posture.
+        const dnc = await dncGateForSms(organizationId, to, { leadMatched: true, hasConsent: true });
+        if (!dnc.allowed) return refuse(dnc.reason ?? "DNC gate refused");
+        const leadId = input.leadId ?? matches[0].id;
+        // LAST: contact-frequency cap — only ever an ADDITIONAL refusal.
+        const frequency = await frequencyGateForLead(organizationId, leadId);
+        if (!frequency.allowed) return refuse(describeFrequencySkip(frequency), leadId);
+        return { allowed: true, leadId, recordTouch: true };
+      }
+      case "servicing": {
+        if (input.noteId === undefined) return refuse("a servicing text must name the note it services");
+        const note = await storage.getNote(organizationId, input.noteId);
+        if (!note) return refuse(`note ${input.noteId} not found in this organization`);
+        const borrower = note.borrowerId ? await storage.getLead(organizationId, note.borrowerId) : undefined;
+        if (!borrower?.phone) return refuse(`note ${input.noteId} has no borrower phone on file`);
+        if (last10Of(borrower.phone) !== last10) {
+          return refuse(`destination is not the borrower of record on note ${input.noteId}`, borrower.id);
+        }
+        if (borrower.doNotContact) {
+          return refuse("borrower has revoked contact (STOP / do-not-contact)", borrower.id);
+        }
+        const quiet = isWithinQuietHours(to, borrower.timezone ?? null);
+        if (quiet.blocked) return refuse(quiet.reason ?? "recipient quiet hours", borrower.id);
+        // The note relationship is the lawful basis for an informational
+        // text to its borrower; a scrub outage does not stop a payment notice.
+        const dnc = await dncGateForSms(organizationId, to, {
+          leadMatched: true,
+          hasConsent: true,
+          scrubErrorPosture: "fail_open",
+        });
+        if (!dnc.allowed) return refuse(dnc.reason ?? "DNC gate refused", borrower.id);
+        return { allowed: true, leadId: borrower.id, recordTouch: false };
+      }
+      case "reply": {
+        const since = new Date(Date.now() - REPLY_WINDOW_MS);
+        const inbound = await storage.hasRecentInboundSmsFrom(organizationId, to, since);
+        if (!inbound) {
+          return refuse("no inbound text from this number in the last 24 hours — a reply needs something to reply to");
+        }
+        const matches = await storage.findLeadsByPhoneLast10(organizationId, to);
+        const stopped = matches.find((l) => l.doNotContact);
+        if (stopped) return refuse("recipient has revoked contact (STOP / do-not-contact)", stopped.id);
+        const quiet = isWithinQuietHours(to, matches[0]?.timezone ?? null);
+        if (quiet.blocked) return refuse(quiet.reason ?? "recipient quiet hours", matches[0]?.id);
+        // The recipient texted first — that inbound is the basis for one answer.
+        const dnc = await dncGateForSms(organizationId, to, {
+          leadMatched: matches.length > 0,
+          hasConsent: true,
+          scrubErrorPosture: "fail_open",
+        });
+        if (!dnc.allowed) return refuse(dnc.reason ?? "DNC gate refused");
+        return { allowed: true, leadId: input.leadId ?? matches[0]?.id, recordTouch: false };
+      }
+      default: {
+        const unreachable: never = purpose;
+        return refuse(`unknown SMS purpose ${String(unreachable)}`);
+      }
     }
-    const { tcpaGateForSms } = await import("./tcpaCompliance");
-    const consentGate = await tcpaGateForSms(matched.id, organizationId, to);
-    if (!consentGate.allowed) return consentGate;
-    // Reaching here means the lead has express consent (canSms requires it),
-    // so a DNC listing is lawfully overridden — the scrub's teeth on this
-    // path are the litigator list and the fail-closed error posture.
-    const dnc = await dncGateForSms(organizationId, to, {
-      leadMatched: true,
-      hasConsent: true,
-    });
-    if (!dnc.allowed) return { allowed: false, reason: dnc.reason };
-    // LAST: contact-frequency cap. Consent + quiet hours + DNC have all
-    // passed; this refuses the send that would exceed what the fatigue
-    // detector already flags as too much.
-    const { frequencyGateForLead, describeFrequencySkip } = await import(
-      "./compliance/contactFrequency"
-    );
-    const frequency = await frequencyGateForLead(organizationId, matched.id);
-    if (!frequency.allowed) {
-      return { allowed: false, reason: describeFrequencySkip(frequency), leadId: matched.id };
-    }
-    return { allowed: true, leadId: matched.id };
   } catch (err) {
     logger.error(
-      "[SMS] TCPA gate could not verify consent — refusing send (fail closed)",
+      "[SMS] purpose gate could not verify the send — refusing (fail closed)",
       err instanceof Error ? err : undefined,
+      { metadata: { organizationId, purpose, noteId: input.noteId } },
     );
-    return { allowed: false, reason: "consent state unverifiable — refusing to send" };
+    return refuse("consent state unverifiable — refusing to send");
   }
 }
 
 /**
  * Org-scoped SMS send. The Twilio adapter handles BYOK credential
- * resolution + sim-mode short-circuit; here we gate for TCPA (see above)
+ * resolution + sim-mode short-circuit; here we gate by PURPOSE (see above)
  * and post the cost to the financial ledger after a real send succeeds.
+ *
+ * Once the carrier has returned a SID the message is out; nothing that
+ * happens after that line may turn the acknowledgement into a failure.
  */
-export async function sendOrgSMS(
-  organizationId: number,
-  to: string,
-  message: string,
-  mediaUrls?: string[],
-): Promise<SmsResult> {
-  const gate = await tcpaGateForRecipient(organizationId, to);
+export async function sendOrgSMS(input: SendOrgSmsInput): Promise<SmsResult> {
+  const { organizationId, to, message, mediaUrls, purpose } = input;
+  const gate = await smsPurposeGate(input);
   if (!gate.allowed) {
-    logger.warn(`[SMS] send to lead blocked by TCPA gate: ${gate.reason}`, {
-      metadata: { organizationId, leadId: gate.leadId },
+    logger.warn(`[SMS] ${purpose} send blocked by TCPA gate: ${gate.reason}`, {
+      metadata: { organizationId, purpose, leadId: gate.leadId, noteId: input.noteId },
     });
     return { success: false, error: `TCPA gate: ${gate.reason}` };
   }
+  let sid: string;
   try {
     const result = await commsRouter.route({
       to,
@@ -287,32 +363,39 @@ export async function sendOrgSMS(
       mediaUrls,
       organizationId,
       feature: "sms",
-      // Every sendOrgSMS caller messages a lead/recipient — this is the
-      // COUNTERPARTY path (it carries the TCPA gate above). Require the org's
-      // OWN BYO identity at send time; never fall back to AcreOS's platform
-      // Twilio account ("be the rail, not the provider"). This is the real
-      // chokepoint the campaign-level pre-loop gate only approximates.
+      // Every sendOrgSMS caller messages a counterparty — this path carries
+      // the purpose gate above. Require the org's OWN BYO identity at send
+      // time; never fall back to AcreOS's platform Twilio account ("be the
+      // rail, not the provider"). This is the real chokepoint the
+      // campaign-level pre-loop gate only approximates.
       requireByoIdentity: true,
     });
-    // Pillar 1.6 — record opex on successful real send.
-    await postSmsCostToLedger(organizationId, result.sid);
-    // Contact-frequency ledger: record the touch ONLY now, after the carrier
-    // accepted it. Refused and failed sends never reach this line, so a
-    // skipped send can never inflate a lead's touch count (nor be mistaken
-    // for a delivered one).
-    if (gate.leadId) {
-      const { recordContactTouch } = await import("./compliance/contactFrequency");
+    sid = result.sid;
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "send failed" };
+  }
+  // The carrier accepted the message. Bookkeeping below is best-effort:
+  // Pillar 1.6 opex post, and — for prospecting only — the contact-frequency
+  // touch, recorded ONLY now so a refused or failed send can never inflate a
+  // lead's touch count.
+  try {
+    await postSmsCostToLedger(organizationId, sid);
+    if (gate.recordTouch && gate.leadId) {
       await recordContactTouch({
         organizationId,
         leadId: gate.leadId,
         channel: "sms",
-        messageId: result.sid,
+        messageId: sid,
       });
     }
-    return { success: true, messageId: result.sid };
-  } catch (err: any) {
-    return { success: false, error: err?.message ?? "send failed" };
+  } catch (err) {
+    logger.error(
+      "[SMS] post-send bookkeeping failed after the carrier accepted the message — reporting the send as it happened",
+      err instanceof Error ? err : undefined,
+      { metadata: { organizationId, sid, purpose } },
+    );
   }
+  return { success: true, messageId: sid };
 }
 
 /**
@@ -331,6 +414,7 @@ export async function sendSMSToLead(
   leadId: number,
   messageContent: string,
   _userId: string,
+  opts: { purpose: SmsPurpose; noteId?: number },
 ): Promise<SmsResult & { conversationId?: number; dbMessageId?: number }> {
   const [lead] = await db
     .select()
@@ -341,7 +425,14 @@ export async function sendSMSToLead(
   if (!lead) return { success: false, error: "Lead not found" };
   if (!lead.phone) return { success: false, error: "Lead has no phone number" };
 
-  const smsResult = await sendOrgSMS(organizationId, lead.phone, messageContent);
+  const smsResult = await sendOrgSMS({
+    organizationId,
+    to: lead.phone,
+    message: messageContent,
+    purpose: opts.purpose,
+    leadId,
+    noteId: opts.noteId,
+  });
   if (!smsResult.success) return smsResult;
 
   let [existingConversation] = await db
@@ -425,13 +516,10 @@ export async function handleIncomingSMS(
   // TCPA exposure per lead per mailing.
   const normalizedBody = body.trim().toLowerCase();
   if (SMS_STOP_WORDS.has(normalizedBody)) {
-    const allLeadsInOrg = await db
-      .select()
-      .from(leads)
-      .where(eq(leads.organizationId, organizationId));
-    const matchingLeads = allLeadsInOrg.filter((l) => {
-      const p = l.phone?.replace(/\D/g, "") || "";
-      return p.length >= 7 && (p.slice(-10) === last10Digits || p.includes(last10Digits));
+    // EVERY lead at this number, soft-deleted rows included — a revocation
+    // must land on any row that could ever be restored (DEFECT-0104).
+    const matchingLeads = await storage.findLeadsByPhoneLast10(organizationId, fromPhone, {
+      includeDeleted: true,
     });
     const now = new Date();
     for (const lead of matchingLeads) {
@@ -444,7 +532,7 @@ export async function handleIncomingSMS(
           optOutReason: `SMS STOP keyword: "${body.trim()}" (MessageSid ${messageSid})`,
           updatedAt: now,
         })
-        .where(eq(leads.id, lead.id));
+        .where(and(eq(leads.id, lead.id), eq(leads.organizationId, organizationId)));
       await db
         .update(sequenceEnrollments)
         .set({ status: "cancelled", completedAt: now })

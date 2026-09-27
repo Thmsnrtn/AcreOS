@@ -2,10 +2,18 @@
  * Roadmap W1.4/W1.5 — SMS response capture + TCPA gate-by-construction.
  *
  * Coverage:
- *  - sendOrgSMS gates lead-matched recipients through tcpaGateForSms;
+ *  - sendOrgSMS gates by declared PURPOSE (DEFECT-0104):
+ *    prospecting → every lead at the number through tcpaGateForSms;
  *    blocked → refused with the named reason, nothing routed
- *  - non-lead recipients (customer/transactional) pass through
- *  - consent state unverifiable (db error) → FAIL CLOSED
+ *  - a prospecting text to a number with NO lead is REFUSED (it used to
+ *    pass as "transactional" — the inversion DEFECT-0104 names)
+ *  - two leads on one number: any refusal wins (it used to be row order)
+ *  - servicing → bound to a note's borrower phone; marketing consent not
+ *    required; STOP / doNotContact still blocks; no touch recorded
+ *  - reply → only after an inbound from that number in the last 24h
+ *  - once the carrier returned a SID, a bookkeeping failure cannot turn
+ *    the send into a reported failure
+ *  - consent state unverifiable (storage error) → FAIL CLOSED
  *  - handleIncomingSMS: matched inbound flips the lead to "responded"
  *  - unmatched inbound is PERSISTED as an unattached reply (not dropped)
  *    and reports unmatched:true
@@ -30,20 +38,63 @@ vi.mock("../../server/services/comms/router", () => ({
 vi.mock("../../server/services/comms/providers/twilio", () => ({ twilioProvider: {} }));
 vi.mock("../../server/services/comms/providers/telnyx", () => ({}));
 
-// TCPA gate — scripted verdict.
+// TCPA gate — scripted verdict (per lead when `gateByLead` names one).
 let gateVerdict: { allowed: boolean; reason?: string } = { allowed: true };
+let gateByLead: Record<number, { allowed: boolean; reason?: string }> = {};
 const gateCalls: Array<{ leadId: number }> = [];
+let quietVerdict: { blocked: boolean; reason?: string } = { blocked: false };
 vi.mock("../../server/services/tcpaCompliance", () => ({
   tcpaGateForSms: vi.fn(async (leadId: number) => {
     gateCalls.push({ leadId });
-    return gateVerdict;
+    return gateByLead[leadId] ?? gateVerdict;
   }),
+  isWithinQuietHours: vi.fn(() => ({ ...quietVerdict, zone: "America/Chicago" })),
 }));
 
 // db mock — leads select, message/unattached inserts, updates.
-interface LeadRow { id: number; phone: string | null; status?: string }
+interface LeadRow {
+  id: number;
+  phone: string | null;
+  status?: string;
+  doNotContact?: boolean;
+  tcpaConsent?: boolean;
+  timezone?: string | null;
+}
 let LEADS: LeadRow[] = [];
 let leadsSelectThrows = false;
+/** Notes the servicing purpose can bind to. */
+const NOTES = new Map<number, { id: number; borrowerId: number | null }>();
+/** Last-10 digits of numbers that texted the org inside the reply window. */
+const INBOUND_FROM = new Set<string>();
+/** Make the contact-touch write throw AFTER the carrier accepted the message. */
+let touchThrows = false;
+
+const last10 = (p: string) => p.replace(/\D/g, "").slice(-10);
+
+// Storage — the two DEFECT-0104 lookups plus note/lead reads, over the same
+// in-memory rows the db double serves.
+vi.mock("../../server/storage", () => ({
+  storage: {
+    findLeadsByPhoneLast10: vi.fn(async (_orgId: number, phone: string) => {
+      if (leadsSelectThrows) throw new Error("db down");
+      return LEADS.filter((l) => l.phone && last10(l.phone) === last10(phone));
+    }),
+    hasRecentInboundSmsFrom: vi.fn(async (_orgId: number, phone: string) => INBOUND_FROM.has(last10(phone))),
+    getNote: vi.fn(async (_orgId: number, id: number) => NOTES.get(id)),
+    getLead: vi.fn(async (_orgId: number, id: number) => LEADS.find((l) => l.id === id)),
+  },
+}));
+
+vi.mock("../../server/services/compliance/contactFrequency", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../server/services/compliance/contactFrequency")>();
+  return {
+    ...actual,
+    recordContactTouch: vi.fn(async (input: Parameters<typeof actual.recordContactTouch>[0]) => {
+      if (touchThrows) throw new Error("touch ledger unavailable");
+      return actual.recordContactTouch(input);
+    }),
+  };
+});
 const LEAD_UPDATES: any[] = [];
 const UNATTACHED: any[] = [];
 const MESSAGES: any[] = [];
@@ -122,14 +173,22 @@ vi.mock("../../server/db", () => ({
   },
 }));
 
-import { sendOrgSMS, handleIncomingSMS } from "../../server/services/smsService";
+import { sendOrgSMS, handleIncomingSMS, type SendOrgSmsInput } from "../../server/services/smsService";
+
+const prospect = (to: string, message: string, extra: Partial<SendOrgSmsInput> = {}) =>
+  sendOrgSMS({ organizationId: 1, to, message, purpose: "prospecting", ...extra });
 
 beforeEach(() => {
   ROUTED.length = 0;
   gateCalls.length = 0;
   gateVerdict = { allowed: true };
+  gateByLead = {};
+  quietVerdict = { blocked: false };
   LEADS = [];
   leadsSelectThrows = false;
+  NOTES.clear();
+  INBOUND_FROM.clear();
+  touchThrows = false;
   LEAD_UPDATES.length = 0;
   UNATTACHED.length = 0;
   MESSAGES.length = 0;
@@ -143,7 +202,7 @@ describe("sendOrgSMS — TCPA gate by construction (W1.5)", () => {
   it("routes a lead-matched send through the gate and refuses when blocked", async () => {
     LEADS = [{ id: 9, phone: "+1 (555) 123-4567" }];
     gateVerdict = { allowed: false, reason: "no TCPA consent on record" };
-    const r = await sendOrgSMS(1, "5551234567", "hey, still own that lot?");
+    const r = await prospect("5551234567", "hey, still own that lot?");
     expect(gateCalls).toEqual([{ leadId: 9 }]);
     expect(r.success).toBe(false);
     expect(r.error).toContain("no TCPA consent");
@@ -153,7 +212,7 @@ describe("sendOrgSMS — TCPA gate by construction (W1.5)", () => {
   it("sends when the gate allows", async () => {
     LEADS = [{ id: 9, phone: "5551234567" }];
     gateVerdict = { allowed: true };
-    const r = await sendOrgSMS(1, "+15551234567", "hello");
+    const r = await prospect("+15551234567", "hello");
     expect(r.success).toBe(true);
     expect(ROUTED).toHaveLength(1);
     // The touch is recorded only AFTER the carrier accepted it.
@@ -167,7 +226,7 @@ describe("sendOrgSMS — TCPA gate by construction (W1.5)", () => {
     gateVerdict = { allowed: true };
     // Default cap is 1 per rolling 24h; one recent touch already spends it.
     TOUCHES = [{ createdAt: new Date(Date.now() - 60 * 60 * 1000) }];
-    const r = await sendOrgSMS(1, "+15551234567", "hello again");
+    const r = await prospect("+15551234567", "hello again");
     expect(r.success).toBe(false);
     expect(r.error).toMatch(/contact-frequency cap/i);
     expect(ROUTED).toHaveLength(0);
@@ -180,25 +239,141 @@ describe("sendOrgSMS — TCPA gate by construction (W1.5)", () => {
     LEADS = [{ id: 9, phone: "5551234567" }];
     gateVerdict = { allowed: false, reason: "no TCPA consent on record" };
     TOUCHES = [{ createdAt: new Date(Date.now() - 60 * 60 * 1000) }];
-    const r = await sendOrgSMS(1, "+15551234567", "hello");
+    const r = await prospect("+15551234567", "hello");
     expect(r.success).toBe(false);
     expect(r.error).toContain("no TCPA consent");
     expect(r.error).not.toMatch(/frequency/i);
     expect(ROUTED).toHaveLength(0);
   });
 
-  it("a recipient matching no lead (customer/transactional) passes without the gate", async () => {
+  // DEFECT-0104 — INVERTED. This case used to read "a recipient matching no
+  // lead (customer/transactional) passes without the gate" and assert
+  // success: a missing consent record was treated as permission. Every
+  // caller of this sender texts a counterparty; system SMS never comes here.
+  it("a PROSPECTING text to a number with no lead record is REFUSED — consent cannot be shown", async () => {
     LEADS = [{ id: 9, phone: "5559999999" }];
-    const r = await sendOrgSMS(1, "5551230000", "your payment failed — update your card");
+    const r = await prospect("5551230000", "want to sell your land?");
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/^TCPA gate: no lead record/);
     expect(gateCalls).toHaveLength(0);
-    expect(r.success).toBe(true);
+    expect(ROUTED).toHaveLength(0);
+  });
+
+  it("two leads on one number: ANY refusal wins, whatever the row order", async () => {
+    LEADS = [
+      { id: 9, phone: "5551234567" },
+      { id: 10, phone: "+1 (555) 123-4567" },
+    ];
+    gateByLead = { 10: { allowed: false, reason: "no TCPA consent on record" } };
+    const r = await prospect("5551234567", "still own that lot?");
+    expect(r.success).toBe(false);
+    expect(r.error).toContain("no TCPA consent");
+    expect(gateCalls.map((c) => c.leadId)).toEqual([9, 10]);
+    expect(ROUTED).toHaveLength(0);
+  });
+
+  it("refuses a prospecting text naming a lead that is not on file at the number", async () => {
+    LEADS = [{ id: 9, phone: "5551234567" }];
+    const r = await prospect("5551234567", "hi", { leadId: 44 });
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/lead 44 is not on file/);
+    expect(ROUTED).toHaveLength(0);
   });
 
   it("FAILS CLOSED when consent state is unverifiable", async () => {
     leadsSelectThrows = true;
-    const r = await sendOrgSMS(1, "5551234567", "marketing text");
+    const r = await prospect("5551234567", "marketing text");
     expect(r.success).toBe(false);
     expect(r.error).toContain("unverifiable");
+    expect(ROUTED).toHaveLength(0);
+  });
+
+  it("once the carrier returned a SID, a bookkeeping failure still reports the send that happened", async () => {
+    LEADS = [{ id: 9, phone: "5551234567" }];
+    touchThrows = true;
+    const r = await prospect("+15551234567", "hello");
+    expect(ROUTED).toHaveLength(1);
+    expect(r).toEqual({ success: true, messageId: "SM_test_1" });
+  });
+});
+
+describe("sendOrgSMS — servicing purpose (DEFECT-0104)", () => {
+  const service = (to: string, extra: Partial<SendOrgSmsInput> = {}) =>
+    sendOrgSMS({ organizationId: 1, to, message: "Your payment is due on the 1st.", purpose: "servicing", noteId: 77, ...extra });
+
+  it("texts the note's borrower without the MARKETING consent flag, and records no touch", async () => {
+    LEADS = [{ id: 9, phone: "5551234567", tcpaConsent: false }];
+    NOTES.set(77, { id: 77, borrowerId: 9 });
+    gateVerdict = { allowed: false, reason: "no TCPA consent on record" }; // must not be consulted
+    const r = await service("+15551234567");
+    expect(r.success).toBe(true);
+    expect(gateCalls).toHaveLength(0);
+    expect(ROUTED).toHaveLength(1);
+    expect(TOUCH_WRITES).toHaveLength(0);
+  });
+
+  it("refuses a destination that is not the borrower of record on the note", async () => {
+    LEADS = [{ id: 9, phone: "5551234567" }];
+    NOTES.set(77, { id: 77, borrowerId: 9 });
+    const r = await service("+15550009999");
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/not the borrower of record/);
+    expect(ROUTED).toHaveLength(0);
+  });
+
+  it("a borrower who sent STOP (doNotContact) is still refused", async () => {
+    LEADS = [{ id: 9, phone: "5551234567", doNotContact: true }];
+    NOTES.set(77, { id: 77, borrowerId: 9 });
+    const r = await service("+15551234567");
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/revoked contact/);
+    expect(ROUTED).toHaveLength(0);
+  });
+
+  it("recipient quiet hours still block a servicing text", async () => {
+    LEADS = [{ id: 9, phone: "5551234567" }];
+    NOTES.set(77, { id: 77, borrowerId: 9 });
+    quietVerdict = { blocked: true, reason: "outside 8am-9pm recipient local time" };
+    const r = await service("+15551234567");
+    expect(r.success).toBe(false);
+    expect(r.error).toContain("outside 8am-9pm");
+    expect(ROUTED).toHaveLength(0);
+  });
+
+  it("refuses a servicing text that names no note", async () => {
+    LEADS = [{ id: 9, phone: "5551234567" }];
+    const r = await service("+15551234567", { noteId: undefined });
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/must name the note/);
+    expect(ROUTED).toHaveLength(0);
+  });
+});
+
+describe("sendOrgSMS — reply purpose (DEFECT-0104)", () => {
+  const reply = (to: string) =>
+    sendOrgSMS({ organizationId: 1, to, message: "Thanks — yes, we can talk tomorrow.", purpose: "reply" });
+
+  it("refuses a reply when the number has not texted the org in the window", async () => {
+    const r = await reply("+15551230000");
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/nothing|no inbound text/);
+    expect(ROUTED).toHaveLength(0);
+  });
+
+  it("answers a number that texted first, even with no lead record, and records no touch", async () => {
+    INBOUND_FROM.add("5551230000");
+    const r = await reply("+15551230000");
+    expect(r.success).toBe(true);
+    expect(ROUTED).toHaveLength(1);
+    expect(TOUCH_WRITES).toHaveLength(0);
+  });
+
+  it("does not answer a lead at that number who has sent STOP", async () => {
+    INBOUND_FROM.add("5551234567");
+    LEADS = [{ id: 9, phone: "5551234567", doNotContact: true }];
+    const r = await reply("+15551234567");
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/revoked contact/);
     expect(ROUTED).toHaveLength(0);
   });
 });

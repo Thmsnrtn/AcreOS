@@ -79,6 +79,37 @@ describe("evaluateDncGate — policy contract", () => {
     expect(result.allowed).toBe(true);
   });
 
+  // DEFECT-0104: the error posture is declared by the send's PURPOSE, not
+  // inferred from whether a lead matched. A servicing notice to a note's
+  // borrower is lead-matched AND must flow through a scrub outage (founder
+  // decision 2026-09-27); a solicitation must not.
+  it("fails OPEN on scrub error when the caller declares fail_open, even lead-matched (servicing)", () => {
+    const result = evaluateDncGate(outcome("error"), {
+      leadMatched: true,
+      hasConsent: true,
+      scrubErrorPosture: "fail_open",
+    });
+    expect(result.allowed).toBe(true);
+  });
+
+  it("fails CLOSED on scrub error when the caller declares fail_closed, even unmatched", () => {
+    const result = evaluateDncGate(outcome("error"), {
+      leadMatched: false,
+      hasConsent: false,
+      scrubErrorPosture: "fail_closed",
+    });
+    expect(result.allowed).toBe(false);
+  });
+
+  it("a declared fail_open posture never lets a LITIGATOR through", () => {
+    const result = evaluateDncGate(outcome("litigator"), {
+      leadMatched: true,
+      hasConsent: true,
+      scrubErrorPosture: "fail_open",
+    });
+    expect(result.allowed).toBe(false);
+  });
+
   it("allows clean numbers", () => {
     const result = evaluateDncGate(outcome("clean"), {
       leadMatched: true,

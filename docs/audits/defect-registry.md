@@ -2324,24 +2324,60 @@ Resolving commits: —
 ### DEFECT-0104
 Title: An SMS recipient matching no lead is classified transactional and skips consent; the AI phone-only tool has no consent check
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: research report §19, re-verified at `9cb534f`
-Description: `server/services/smsService.ts:211-236` loads every lead phone in
-the org per send, `.find()`s the first last-10-digit match, and when nothing
-matches treats the destination as transactional — lead consent, quiet hours
-and the frequency cap are skipped (DNC scrub still runs with `leadMatched:
-false`, and is inert without `DNC_SCRUB_PROVIDER`, `compliance/dncScrub.ts:146`).
-`server/ai/tools.ts` `send_sms` (`:2144-2208`) accepts `phone_number` without
-`lead_id` and its phone-only branch checks only area-code quiet hours and the
-daily rate limit before `sendOrgSMS`. Two leads sharing a number with
-contradictory consent resolve by row order. Accepted-but-failed after the SID
-(§19.2) is WEAKER than reported: the ledger and touch writes self-catch; only
-the dynamic import at `:304` can throw after acceptance.
-Remediation plan: Message purpose is declared by the caller and bound to an
-obligation (note, buyer) — a missing CRM row cannot authorize a solicitation;
-indexed normalised phone lookup handling every match; persist the SID before
-bookkeeping.
-Resolving commits: —
+Description: `server/services/smsService.ts` loaded every lead phone in the
+org per send, `.find()`-ed the first last-10-digit match, and when nothing
+matched treated the destination as transactional — lead consent, quiet hours
+and the frequency cap were skipped (DNC scrub still ran with `leadMatched:
+false`, and is inert without `DNC_SCRUB_PROVIDER`). `server/ai/tools.ts`
+`send_sms` accepted `phone_number` without `lead_id` and its phone-only branch
+checked only area-code quiet hours and the daily rate limit. Two leads sharing
+a number with contradictory consent resolved by row order, in the send gate
+AND in `processOptKeyword`, so a STOP could revoke one row and leave the other
+textable. `POST /api/sms/send` ran its own copy of the same first-match scan.
+Accepted-but-failed after the SID (§19.2) was weaker than reported: only the
+dynamic import could throw after acceptance.
+Remediation plan: Done (founder decision 2026-09-27: servicing texts fail
+open on a DNC scrub error; prospecting stays fail-closed). `sendOrgSMS` takes
+a params object with a declared `purpose`, so the compiler found every caller:
+- `prospecting` — every lead at the number (via the new org-scoped
+  `storage.findLeadsByPhoneLast10`, `server/storage/leadRepo.ts`, on the
+  trigram-indexed `phone_normalized` column) must pass consent and quiet
+  hours; no lead → refused; a named `leadId` not at the number → refused; DNC
+  fails closed; frequency cap applies and a touch is recorded.
+- `servicing` — must name a note; the destination must be that note's
+  borrower-of-record phone; STOP / `doNotContact` and quiet hours block; the
+  marketing consent flag is not required; DNC fails open
+  (`DncGateInput.scrubErrorPosture`, `server/services/compliance/dncScrub.ts`);
+  no frequency cap, no touch. Borrower reminders from `server/services/financeAgent.ts`
+  declare it through `communications.sendToLead({ purpose, noteId })`.
+- `reply` — only when the number texted the org in the last 24 hours
+  (`storage.hasRecentInboundSmsFrom`, `server/storage/commsRepo.ts`, reading
+  attached threads and the unattached-inbound table, every table org-scoped);
+  a STOPped lead at the number blocks; DNC fails open; no touch.
+Callers: the AI tool (lead → prospecting; bare number → prospecting if any
+lead is on file, else reply), campaigns, sequences, the autopilot hand
+(prospecting), `/api/sms/send` (zod-validated purpose, own scan deleted),
+`/api/leads/:id/sms` (reply inside a live thread, else prospecting). The SID
+is captured before bookkeeping, and a ledger/touch failure after it is logged,
+not reported as a failed send. The inbound STOP handler and `processOptKeyword`
+apply to EVERY lead at the number, soft-deleted rows included.
+Falsified (RED on the pre-change source):
+`tests/unit/smsGateAndCapture.test.ts` — the case that asserted an unmatched
+number "passes without the gate" is INVERTED to refused; two leads on one
+number with one refusal → refused; servicing to the borrower without marketing
+consent → sent, no touch; servicing to another number, to a STOPped borrower,
+in quiet hours, or naming no note → refused; reply with/without a recent
+inbound; a touch-ledger throw after the SID → still `{success:true, messageId}`.
+`tests/unit/smsOptKeywordReachesEveryLead.test.ts` — a STOP from a shared
+number writes two revocations (one before). `tests/unit/dncScrub.test.ts` —
+declared `fail_open` allows a lead-matched scrub error, declared `fail_closed`
+refuses an unmatched one, `fail_open` never passes a litigator.
+Still owed: legal review of the servicing-text DNC posture; inbound reply
+attribution in `handleIncomingSMS` still uses a loose substring match to pick
+ONE lead (attribution, not consent — recorded, not changed).
+Resolving commits: (this branch, slice D)
 
 ### DEFECT-0105
 Title: A mail piece accepted by the provider can be marked failed and fully refunded; a failed outward action can be retried by two workers
@@ -2625,6 +2661,25 @@ Falsified: `"createCustomerMoneyPaymentIntent" in stripeConnectService` -> RED;
 a `payment_intent` resource created anywhere in `getPaymentLink` -> RED.
 Resolving commits: (this branch, slice A)
 
+### DEFECT-0120
+Title: A dead lead SMS thread component posts to a route that does not exist
+Severity: P2
+Status: OPEN
+Surfaced by lenses: DEFECT-0104's caller census, 2026-09-27
+Description: `client/src/components/sms-conversation.tsx` sends with
+`POST /api/communications/sms`, which no server route registers, so every
+send from that component 404s and the toast blames the network. It reads
+`GET /api/leads/:id/sms`, which also has no GET handler (only POST). No page
+imports the component today, so no customer reaches it; the inbox page uses
+the live `POST /api/leads/:leadId/sms` route instead.
+Evidence: `client/src/components/sms-conversation.tsx`; no match for
+`communications/sms` under `server/`.
+Remediation plan: Retire the component (built but unwired), or, if a thread
+view is wanted behind the Inbox door, point it at `POST /api/leads/:leadId/sms`
+(which now declares reply/prospecting at the choke point) with a real GET. Not changed in the
+DEFECT-0104 slice: it sends nothing today, so it cannot bypass the gate.
+Resolving commits: —
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -2661,21 +2716,22 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 2   | 28  | 30    |
-| FIXED  | 12  | 61  | 9   | 82    |
+| OPEN   | 0   | 1   | 29  | 30    |
+| FIXED  | 12  | 62  | 9   | 83    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **66** | **37** | **115** |
+| **Total** | **12** | **66** | **38** | **116** |
 
 DEFECT-0089 through 0095 added 2026-09-06. Two further census entries were
 re-verified at HEAD and REFUTED rather than implemented against — see the
 "REFUTED AT HEAD" table above DEFECT-0089's section.
 
-DEFECT-0096 through 0119 added 2026-09-27 from the "AcreOS at full maturity"
+DEFECT-0096 through 0120 added 2026-09-27 from the "AcreOS at full maturity"
 research report, each claim re-verified at `9cb534f` before entry (one refuted,
 one downgraded — see the 2026-09-27 REFUTED table). 0096 and 0097 are FIXED in
 the same change; 0101 (1099-INT direction) is FIXED as a refusal posture pending qualified tax
-review (slice C, same day); two P1s remain OPEN with their posture stated: 0104
-(SMS purpose by CRM-row absence), 0107 (blind-offer comps).
+review (slice C, same day); 0116 and 0119 (Payment Link, Accept-payment) are
+FIXED in slice A and 0104 (SMS purpose) in slice D; one P1 remains OPEN with
+its posture stated: 0107 (blind-offer comps).
 
 11 P2s from earlier audits remain open (plus DEFECT-0063, partially fixed)
 (not blocking launch).
@@ -2734,6 +2790,7 @@ review (slice C, same day); two P1s remain OPEN with their posture stated: 0104
 | DEFECT-0101 | 1099-INT generation refused pending direction review (founder bypass) | (this branch, slice C) |
 | DEFECT-0116 | Payment Link payments through the one posting rule; refunds reverse | (this branch, slice A) |
 | DEFECT-0119 | 100× Accept-payment charge path removed | (this branch, slice A) |
+| DEFECT-0104 | SMS consent asked by declared purpose; no-lead is not permission | (this branch, slice D) |
 
 ### Deferred Defects (3)
 

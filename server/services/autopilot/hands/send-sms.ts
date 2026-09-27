@@ -59,7 +59,7 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
       }
     }
 
-    const result = await sendSMSToLead(organizationId, leadId, message, "autopilot");
+    const result = await sendSMSToLead(organizationId, leadId, message, "autopilot", { purpose: "prospecting" });
     if (!result.success) {
       return { success: false, output: `send_sms failed: ${result.error ?? "unknown"}`, durationMs: Date.now() - started };
     }

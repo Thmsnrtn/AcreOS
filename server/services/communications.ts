@@ -15,6 +15,18 @@ export interface CommunicationOptions {
   subject?: string;
   message: string;
   channel?: 'email' | 'sms' | 'both';
+  /**
+   * Why this message is being sent (DEFECT-0104). Default `prospecting`:
+   * outreach to a lead, which needs the lead's express consent and counts
+   * toward the contact-frequency cap. `servicing` is a notice bound to a
+   * note (`noteId` required): the borrower's STOP / do-not-contact still
+   * blocks, but the SMS marketing-consent flag does not apply — a payment
+   * notice is not a solicitation. The SMS choke point then verifies the
+   * destination IS the note's borrower. Email and the contact-frequency cap
+   * are unchanged by purpose here (both only ever refuse more).
+   */
+  purpose?: 'prospecting' | 'servicing';
+  noteId?: number;
 }
 
 export interface CommunicationResult {
@@ -197,7 +209,12 @@ export class CommunicationsService {
 
     const channelCheck = canSendViaChannel(lead, channel === 'both' ? 'email' : channel);
     
-    if (channel === 'sms') {
+    const servicing = options.purpose === 'servicing';
+    if (servicing && options.noteId === undefined) {
+      return { success: false, channel, error: 'A servicing message must name the note it services' };
+    }
+
+    if (channel === 'sms' && !servicing) {
       const smsCheck = canSendViaChannel(lead, 'sms');
       if (!smsCheck.allowed) {
         logger.info(`[Communications] SMS blocked for lead ${options.leadId}: ${smsCheck.reason}`);
@@ -300,7 +317,12 @@ export class CommunicationsService {
     }
 
     if (channel === 'sms' || channel === 'both') {
-      const smsCheck = canSendViaChannel(lead, 'sms');
+      // Servicing texts skip the MARKETING consent flag only; doNotContact
+      // was refused above, and sendOrgSMS re-checks STOP, quiet hours, DNC
+      // and that the destination is this note's borrower.
+      const smsCheck: { allowed: boolean; reason?: string } = servicing
+        ? { allowed: true }
+        : canSendViaChannel(lead, 'sms');
       if (!smsCheck.allowed) {
         logger.info(`[Communications] SMS blocked for lead ${options.leadId}: ${smsCheck.reason}`);
         smsResult = { 
@@ -316,7 +338,14 @@ export class CommunicationsService {
         // touch itself on success (which is why recordCommunication is not
         // called again here — one send must produce exactly one touch row).
         const { sendOrgSMS } = await import('./smsService');
-        const result = await sendOrgSMS(options.organizationId, lead.phone, options.message);
+        const result = await sendOrgSMS({
+          organizationId: options.organizationId,
+          to: lead.phone,
+          message: options.message,
+          purpose: servicing ? 'servicing' : 'prospecting',
+          leadId: options.leadId,
+          noteId: options.noteId,
+        });
 
         smsResult = {
           success: result.success, 
