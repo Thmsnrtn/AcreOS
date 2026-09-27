@@ -2086,6 +2086,463 @@ leaving a stale exemption to cover the next regression.
 Falsified: grow the register -> RED; remove the self-expiry check -> RED.
 Resolving commits: 83498d66
 
+### DEFECT-0096
+Title: Two live writers posted the same borrower Checkout Session differently
+Severity: P1
+Status: FIXED
+Surfaced by lenses: "AcreOS at full maturity" research report (§17), pinned at
+`a2dc971`, re-verified at `9cb534f` on 2026-09-27
+(docs/audits/research-2026-09-27-maturity-frontier.md)
+Description: A borrower's card payment on the serviced-note book was posted by
+the browser return (`POST /api/borrower/verify-payment`) AND by the Stripe
+Connect webhook (`WebhookHandlers.processBorrowerPortalPayment`), and the two
+disagreed about what the money meant. The browser path split in integer cents
+via `splitPaymentCents`, applied the grace-aware late fee, wrote with
+`INSERT … ON CONFLICT (transaction_id) DO NOTHING`, and emitted
+`payment.received`. The webhook split with a FLOAT ratio of the next schedule
+row (`.toFixed(2)`), hard-coded `lateFeeAmount: "0"`, deduped with a
+read-then-write on `storage.getPayments().some(...)` that races on redelivery,
+never emitted the workflow event, sent the only receipt email, and posted
+sessions whose `payment_status` was still `unpaid`. Which writer ran first was
+decided by network timing — Stripe documents no ordering between the landing
+page and the webhook — so the same $100 could land as $10 or $20 of interest,
+with or without a $25 fee, with or without a receipt, depending on whether the
+borrower kept the tab open. Both writers also marked the next installment
+`paid` and moved the due date one month for ANY amount, so an authorized $50
+against a $100 installment showed the borrower nothing due next month.
+Evidence: `server/routes-borrower.ts` (before: the inline body of
+verify-payment, split/late-fee/tx/schedule); `server/webhookHandlers.ts`
+`processBorrowerPortalPayment` (before: float ratio split, `lateFeeAmount:
+"0"`, `getPayments().some`, no emit); `server/services/stripeConnect.ts`
+dispatch on `checkout.session.completed` with `metadata.type ===
+"borrower_portal_payment"`. Client `client/src/pages/borrower-portal.tsx`
+always sends `monthlyPayment`, but `POST /api/borrower/payment` accepts any
+`amount`.
+Remediation plan: Done. ONE posting rule,
+`server/services/borrower/portalPaymentPosting.ts`
+`postBorrowerPortalCheckoutPayment`, called by both writers. It owns the
+refusals (`payment_status !== "paid"`, `metadata.noteId` mismatch), the exact
+decimal→cents split, the grace-aware late fee, the idempotent org-scoped
+transaction, the installment rule (an amount below `monthly_payment` leaves the
+installment `pending` and the due date put, reported as `installment:
+"partial"`), the pending-checkout slot clearing, the `payment.received` event,
+the activation event, and the one receipt — all on the winning writer only.
+The webhook and the route keep what is theirs: session/ownership and the
+connected-account `retrieve`. The legacy token writer stays behind its 410
+sunset, untouched — RESIDUAL: it keeps its own divergent posting rule and a
+future `BORROWER_PORTAL_SUNSET_DATE` would revive it; it is also what holds
+`legacyNoteModelIsTerminal`'s `splitPaymentCents` floor at 3, so deleting it
+is a deliberate, test-adjusting act, not a cleanup.
+Falsified (`tests/unit/borrowerPortalPaymentPosting.test.ts`): browser-first
+vs webhook-first ledger facts differ -> RED; $50 on $100 marks the installment
+paid -> RED; second writer inserts a row, emits, or emails -> RED; unpaid
+session writes anything -> RED. `tests/integration/stripeWebhooks.test.ts`
+updated (not deleted): the row must land through the ON CONFLICT insert, the
+duplicate is a constraint conflict rather than a stale read, and an `unpaid`
+session posts nothing.
+Resolving commits: (this branch)
+
+### DEFECT-0097
+Title: Borrower payoff quote was off-engine, keyed by a URL token, and promised 30 days it never computed
+Severity: P1
+Status: FIXED
+Surfaced by lenses: research report §24, re-verified at `9cb534f` on 2026-09-27
+Description: `GET /api/borrower/payoff-quote` authenticated with the note's
+long-lived access token plus the borrower's email in the QUERY STRING (the one
+borrower route not behind `validateBorrowerSession`; a token in a URL is a
+token in every proxy and application log on the path), computed the payoff in
+floating-point dollars with the accrual start GUESSED as `nextPaymentDate − 30
+days`, persisted nothing, and returned `daysValid: 30` / printed "This quote is
+valid for 30 days" while accruing interest only through today. At $10,000 and
+12% that is about $98.63 of interest the borrower was told they would not owe.
+`payoffInputsFromServicedNote` — written for exactly this route and proven in
+`payoffEngineUnification.test.ts`, whose header lists the route as path #3 it
+unified — had ZERO production callers. `note_payoff_quotes` already declared
+`serviced_note` and `borrower_portal` enums; nothing wrote them.
+Evidence: `server/routes-borrower.ts` payoff-quote route (before);
+`server/services/notePaymentMath.ts:507` `payoffInputsFromServicedNote`;
+`shared/schema/notes-vertical.ts` `PAYOFF_QUOTE_NOTE_SYSTEMS`,
+`PAYOFF_QUOTE_CHANNELS`; `client/src/pages/borrower-portal.tsx` built the
+`?accessToken=…&email=…` URL.
+Remediation plan: Done. The route requires the borrower session; loads the
+note by id AND the session's organization; derives inputs from the note's own
+COMPLETED payment ledger via `payoffInputsFromServicedNote` (first production
+caller), with each posting normalised to the LENDER's calendar day through
+`dayInZone`/`resolveOrgTimeZone` — `payments.payment_date` is a timestamp and
+handing the engine the instant floored Aug 3 → Aug 15 to eleven days;
+computes with `computePayoffQuote`; records one `note_payoff_quotes` row
+(`noteSystem: "serviced_note"`, `channel: "borrower_portal"`,
+`goodThroughDate = payoffDate`, verbatim `engineInputJson`); returns cents on
+the wire with the per-diem and a `pdfUrl`; renders the PDF from the RECORDED
+row under `?quoteId=`. `lateFeesOutstandingCents` is `null` with the same
+sentence the acquired book uses — not tracked, not asserted as zero. A past
+payoff date is refused rather than floored. The client sends the session
+cookie and shows "Good through {date}" plus the per-diem; the `{ bold: true }
+as any` on the old PDF went with it (as-any ratchet 1239 → 1238).
+Falsified (`tests/unit/borrowerPayoffQuoteRoute.test.ts`, run against the
+pre-change source: 5 of 7 RED): query-string credentials accepted -> RED; no
+`note_payoff_quotes` row / 13 guessed days instead of 12 ledger days -> RED;
+"30 days" or `daysValid` in JSON or PDF -> RED; `quoteId` recomputes instead of
+404 -> RED; recorded-quote read not pinned to org+note -> RED.
+Resolving commits: (this branch)
+
+### DEFECT-0098
+Title: Overpayment residue is dropped by the borrower portal writers
+Severity: P2
+Status: OPEN
+Surfaced by lenses: research report §17.2, DEFECT-0096's repair
+Description: `splitPaymentCents` returns `residueCents` when a payment exceeds
+the payoff (balance + one period's interest). Neither portal writer persisted
+it before, and the shared posting rule does not either: the servicing book has
+no unapplied-funds column, so `payments.amount` can exceed
+`principal + interest + fees` with the excess having no ledger home.
+Evidence: `server/services/notePaymentMath.ts` `SplitPaymentResult.residueCents`;
+`server/services/borrower/portalPaymentPosting.ts` (comment at the split).
+Remediation plan: An unapplied-funds row or a refund path, decided with the
+founder — money custody rules apply. Until then the residue is neither invented
+into principal nor into interest.
+Resolving commits: —
+
+### DEFECT-0099
+Title: Serviced notes cannot separate late fees assessed from late fees collected
+Severity: P2
+Status: OPEN
+Surfaced by lenses: research report §24, DEFECT-0097's repair
+Description: `payments.late_fee_amount` is fees COLLECTED. No serviced-note
+record carries fees ASSESSED and still owed, so every serviced payoff quote
+must pass `lateFeesOutstandingCents = 0` and say so (the acquired book records
+the same limitation at `server/routes-notes.ts` `payoffResponseBody`).
+Evidence: `server/routes-borrower.ts` payoff-quote route (comment at the
+engine inputs); `server/routes-notes.ts` `lateFeesOutstandingNote`.
+Remediation plan: An assessed-late-fee ledger on the serviced book, or an
+explicit decision that serviced notes never carry them. Refuse, don't estimate,
+meanwhile.
+Resolving commits: —
+
+### DEFECT-0100
+Title: Legacy payoff surfaces still compute off the one engine
+Severity: P2
+Status: OPEN
+Surfaced by lenses: research report §24, DEFECT-0097's design pass
+Description: Three payoff computations remain outside `computePayoffQuote`:
+the `payoff_quotes` CRUD reached through `server/routes-va-engine.ts` and
+`server/storage/closingServicingRepo.ts`, the "calculate payoff" skill in
+`server/services/agent-skills.ts`, and `calculateNotePayoff` in
+`server/services/financialOSService.ts`. The consolidation debt is already
+noted in `shared/schema/notes-vertical.ts` above `notePayoffQuotes`; dropping
+`payoff_quotes` is what lowers the table-count baseline.
+Evidence: paths above.
+Remediation plan: Route each onto `computePayoffQuote` + `note_payoff_quotes`
+when its surface is next touched; delete `payoff_quotes` in the same commit.
+Resolving commits: —
+
+### DEFECT-0101
+Title: Form 1099-INT generator casts the org as payer of interest it RECEIVED
+Severity: P1
+Status: OPEN — refuse/label posture required before any use
+Surfaced by lenses: research report §A/§12, re-verified at `9cb534f`
+Description: `generateAnnualInterestReport` sets `requires1099` at $600 of
+interest the organization COLLECTED from a borrower; `generate1099IntForms`
+then names the organization as payer and the borrower as recipient of that
+income, and `form1099Batch.ts` produces per-borrower PDFs, a 1096 and a FIRE
+e-file from it. Form 1099-INT reports interest PAID to a recipient; interest
+received on a note is the 1098 direction, which the separate `form1098Batch.ts`
+already handles (and whose header describes form1099Batch as covering interest
+orgs "pay out" — the code contradicts it). `tests/unit/bookkeeping1099.test.ts`
+asserts the inverted reading.
+Evidence: `server/services/bookkeeping.ts:251` (`requires1099`),
+`generate1099IntForms` payer/recipient assignment; `server/services/form1099Batch.ts`
+(`buildFormsFromAcquiredNotes` repeats the inversion: `recipientName:
+a.payerName`); `server/routes-accounting.ts` `POST /1099-batch`
+(owner/admin); client `client/src/pages/notes-tax-readiness.tsx` calls
+`GET /api/bookkeeping/1099` and `POST /api/accounting/1099-batch`.
+Remediation plan: Do not present the borrower-payment 1099 output as a
+qualified filing output. A qualified tax reviewer defines payer, recipient,
+instrument, thresholds and exemptions for any legitimate 1099-INT use (interest
+the org actually PAYS out) before the path is restored; until then restrict or
+refuse the export and label it on `/notes/tax-readiness`. Rewrite
+`bookkeeping1099.test.ts` to the corrected semantics — do not delete it.
+Preserve the 1098 path for its own qualification. Not in the 2026-09-27 slice:
+the fix is a refusal pending review, not code that can be proven here.
+Resolving commits: —
+
+### DEFECT-0102
+Title: Due-date detector calls a payment overdue on its due day and ignores grace and posted payments
+Severity: P2
+Status: OPEN
+Surfaced by lenses: research report §F, re-verified at `9cb534f`
+Description: `server/services/notePaymentDueDetector.ts:81-105` classifies
+`nextPaymentDate < now` as `overdue` and emits `payment.missed` without reading
+`gracePeriodDays` or the `payments` table; a midnight due date is overdue at
+the 11:00 UTC scan on its own day. The mesh event is published, then
+`emitPaymentMissedForFinding` calls the in-memory `workflowEngine.emit`
+unawaited (`:239-265`), so a crash between the two loses the collection task
+under the dedupe key. Registered `server/jobs/expiryDetectorJobs.ts:22-44`.
+Remediation plan: Distinguish due / unpaid-after-due / within-grace /
+actionably-delinquent from the schedule plus payment observations; make the
+workflow handoff durable or reconcilable. Tests for midnight UTC, grace
+boundary, payment posted before scan.
+Resolving commits: —
+
+### DEFECT-0103
+Title: A parked collection reminder is sent with stale content; one org's backlog can starve others
+Severity: P2
+Status: OPEN
+Surfaced by lenses: research report §22, re-verified at `9cb534f`
+Description: `server/services/financeAgent.ts:500-666` `dispatchReminder`
+re-reads the note but refuses only if it is missing or not `active` — it does
+not recheck the due period, balance or content, so a reminder parked
+`awaiting_approval` and tapped after the borrower paid sends the old amount
+(`sendManualReminder` `:914-1041`, `humanApproved: true`).
+`server/storage/paymentRemindersRepo.ts:70-93` selects `scheduled`/`queued`
+across all orgs, oldest first, LIMIT 50 (within a 14-day retry window), so 50
+blocked reminders from one unconnected sender fill every 30-minute batch.
+Remediation plan: Pre-send revalidation bound to due period, balance and
+content version; `nextAttemptAt` with backoff and per-org fair selection;
+expose oldest-unattempted-due age.
+Resolving commits: —
+
+### DEFECT-0104
+Title: An SMS recipient matching no lead is classified transactional and skips consent; the AI phone-only tool has no consent check
+Severity: P1
+Status: OPEN
+Surfaced by lenses: research report §19, re-verified at `9cb534f`
+Description: `server/services/smsService.ts:211-236` loads every lead phone in
+the org per send, `.find()`s the first last-10-digit match, and when nothing
+matches treats the destination as transactional — lead consent, quiet hours
+and the frequency cap are skipped (DNC scrub still runs with `leadMatched:
+false`, and is inert without `DNC_SCRUB_PROVIDER`, `compliance/dncScrub.ts:146`).
+`server/ai/tools.ts` `send_sms` (`:2144-2208`) accepts `phone_number` without
+`lead_id` and its phone-only branch checks only area-code quiet hours and the
+daily rate limit before `sendOrgSMS`. Two leads sharing a number with
+contradictory consent resolve by row order. Accepted-but-failed after the SID
+(§19.2) is WEAKER than reported: the ledger and touch writes self-catch; only
+the dynamic import at `:304` can throw after acceptance.
+Remediation plan: Message purpose is declared by the caller and bound to an
+obligation (note, buyer) — a missing CRM row cannot authorize a solicitation;
+indexed normalised phone lookup handling every match; persist the SID before
+bookkeeping.
+Resolving commits: —
+
+### DEFECT-0105
+Title: A mail piece accepted by the provider can be marked failed and fully refunded; a failed outward action can be retried by two workers
+Severity: P2
+Status: OPEN
+Surfaced by lenses: research report §14, re-verified at `9cb534f`
+Description: `server/services/mail/mailFlusher.ts:239-294` `flushOne` marks
+every piece and the shipment `failed` and refunds the full debit on ANY
+exception, including a per-piece write-back after the provider accepted a
+piece. `server/services/mail/providers/lob.ts:123-145` passes no per-piece
+idempotency key, so `directMailService.ts:368` skips the outward-action guard;
+`mail/router.ts:219-242` fails the whole shipment over to the next provider
+(only Lob enabled by default). `server/services/actions/outwardAction.ts:330-339`
+re-executes a `failed` row with an UPDATE by id and no `status = 'failed'`
+predicate, so two retrying workers can both run `exec()`.
+Remediation plan: Durable logical piece identity across providers; accepted /
+rejected / unknown per piece; fail over only on proven non-acceptance;
+conditional single-winner claim on retry.
+Resolving commits: —
+
+### DEFECT-0106
+Title: Subscription lifecycle is split across borrower money paths
+Severity: P2
+Status: OPEN — policy decision owed
+Surfaced by lenses: research report §29, re-verified at `9cb534f`
+Description: The monthly periodic-statement job selects only orgs with
+`subscription_status = 'active'` (`server/jobs/runScheduledJobs.ts:2264`); the ACH
+autopay cycle (`server/services/achAutopay.ts:1067-1078`) and the borrower card
+routes carry no org subscription filter; the pause gate
+(`server/middleware/subscriptionPauseGate.ts`) governs the org's own writes.
+A cancelled org's borrower can still pay and be debited while statements stop.
+Remediation plan: A live-obligations inventory at pause/cancel and one
+explicit policy per state (new debits, in-flight reconciliation, statements,
+export/handoff). The choice is the founder's; continuing borrower access may be
+the protective default, but then the associated duties continue too.
+Resolving commits: —
+
+### DEFECT-0107
+Title: Blind-offer comps include a USDA survey average and a SYNTHETIC trend point, so the zero-comp refusal is unreachable
+Severity: P1
+Status: OPEN
+Surfaced by lenses: research report §I, re-verified at `9cb534f` — and worse
+than reported
+Description: `server/services/blindOfferCalculator.ts:449-483`
+`buildCompDataset` pushes `nassData.pasturePerAcre` and the prior-year
+`LandValueTrend` value as `CompData` with source `"usda_nass"`;
+`analyzeComps` (`:503-537`) treats every entry as a sale.
+`server/services/usdaNassService.ts:402-427` synthesises five years from a
+state default at 5%/yr marked `source: "estimate"`, `buildTrendFromValues`
+drops the source, and both `computeLandValueTrend` (`:219-232`) and the
+`fetchCountyLandValues` catch (`:174-175`) fall back to it — so the trend
+ALWAYS has ≥2 years, `compCount` is never 0, and the insufficient-data refusal
+at `:334-344` fires only if the trend call throws.
+`tests/unit/offerAndRankHonesty.test.ts:170-172` mocks the trend to `null`,
+hiding this. The wizard `client/src/pages/blind-offer-wizard.tsx:67-131`
+types no `status: "insufficient_data"`. Route `POST /api/data-intel/blind-offer`;
+also called from `dealFeedEngine.ts`.
+Remediation plan: Transactions, survey averages and synthetic assumptions in
+distinct typed context; only dated qualified sales enter the sale-comp
+statistic; the wizard renders the refusal; remove the "3 in 5" acceptance copy
+until a cohort supports it. Next tier-2 slice.
+Resolving commits: —
+
+### DEFECT-0108
+Title: Portfolio P&L treats every closed deal as a sale and annualises an undated sequence
+Severity: P2
+Status: OPEN
+Surfaced by lenses: research report §28, re-verified at `9cb534f`
+Description: `server/services/portfolioPnl.ts:95-110` selects closed deals
+without `deals.type` (acquisition vs disposition), aliases `offerAmount` as
+purchase price and `acceptedAmount` as sale price; `calculateIrr` (`:71-86`)
+discounts by array index with no dates; `:185` counts
+`interestPortion ?? amount` as interest. Page `client/src/pages/portfolio-pnl.tsx`
+(sidebar-hidden, URL-reachable).
+Remediation plan: Respect deal type; dated cash flows or no IRR; unsplit
+payments shown as unclassified. Label projected vs realised.
+Resolving commits: —
+
+### DEFECT-0109
+Title: Owner-finance projection double-counts the down payment as interest
+Severity: P2
+Status: OPEN
+Surfaced by lenses: research report §3, re-verified at `9cb534f`
+Description: `server/services/financialOSService.ts:461-465` computes
+`totalInterestEarned = totalCollected - (salePrice - downPaymentReceived)`
+where `totalCollected` already includes the down payment. Route
+`POST /api/financial/deal-pnl` (`routes-epic-services.ts:352`); no client
+caller found. `tests/unit/dealPnlSingleOwner.test.ts` never asserts it.
+Remediation plan: `totalCollected - salePrice`, with a fixture ($10k / $2k
+down / $9k installments → $1k, not $3k).
+Resolving commits: —
+
+### DEFECT-0110
+Title: Step-away readiness calls a recent FAILED DR drill "ready"
+Severity: P2
+Status: OPEN
+Surfaced by lenses: research report §5, re-verified at `9cb534f`
+Description: `server/services/autopilot/stepAwayReadiness.ts:342-344` returns
+`status: "ready"` for a drill younger than 90 days even when `passed === false`,
+with detail text saying MISSED; the check is `critical: false` (`:327`) so it
+never blocks the verdict but inflates the ready count.
+Remediation plan: A recent failed drill is `attention`; test no drill / stale
+pass / recent fail / recent pass.
+Resolving commits: —
+
+### DEFECT-0111
+Title: AI router semantic cache ignores task type; quality grader failure scores 8
+Severity: P2
+Status: OPEN
+Surfaced by lenses: research report §5, re-verified at `9cb534f`
+Description: `server/services/aiRouter.ts:118-141` matches cached responses by
+org + token-set Jaccard ≥ 0.72 (`:58`) regardless of `taskType`,
+`responseFormat` or evidence; the entry (`:23-37`) carries none.
+`checkResponseQuality` (`:276-278`) returns score 8 "assuming adequate" when the
+grader fails.
+Remediation plan: Constrain or disable semantic reuse for dynamic tasks; a
+grader failure is `unknown`, not 8.
+Resolving commits: —
+
+### DEFECT-0112
+Title: Autopilot proceeds at full confidence when its calibration or risk read fails
+Severity: P2
+Status: OPEN
+Surfaced by lenses: research report §E, re-verified at `9cb534f`
+Description: `server/services/solene/continuousLoop.ts:1149-1156` keeps
+`loopConfidence = 1` when the calibration read throws;
+`server/services/autopilot/act.ts:239` swallows `assessRisk` failure to `null`
+so `risk?.tier === "high"` is false; `forecast.ts:119-132` maps unproven to 0.4
+— the fallbacks contradict each other.
+Remediation plan: A failed supplementary check holds or narrows the action
+class that required it; one durable incident.
+Resolving commits: —
+
+### DEFECT-0113
+Title: County-coverage request claims success on POST failure; an exhausted county re-pends but is never drained; a dead endpoint still reads "covered"
+Severity: P2
+Status: OPEN
+Surfaced by lenses: research report §25, re-verified at `9cb534f`
+Description: `client/src/components/maps/RequestCountyCTA.tsx:65-76` sets
+`submitted = true` in `onError`. `server/services/coverageLedger.ts:127-136`
+flips `exhausted → pending` without resetting `attempts`, and the worker
+(`:641`) selects `attempts < maxAttempts`, so the row is pending forever.
+`server/routes-county-coverage.ts:51-124` `resolveStatus` maps an old
+`resolved` queue row to `covered: true` when no endpoint is active.
+Remediation plan: A request id from the server before any acknowledgement;
+attempt generation/backoff on re-request; `resolved` re-examined when its
+endpoint goes inactive.
+Resolving commits: —
+
+### DEFECT-0114
+Title: Acquired-note aging emits its workflow event unawaited with entity id 0
+Severity: P2
+Status: OPEN
+Surfaced by lenses: research report §14.2, re-verified at `9cb534f`
+Description: `server/jobs/acquiredNoteAging.ts:469-496` updates the status,
+increments `transitioned`, then `emitAgingTransitionEvent` calls
+`emitPaymentEvent` unawaited with `entityId` hard-coded `0` (`:380`) and
+swallows errors (`:398-406`); `workflow-engine.ts:1959-1966` queues in memory.
+A crash after the status write loses the follow-up and the next sweep does not
+re-emit.
+Remediation plan: Transactional intent or reconcilable outbox; real entity id.
+Resolving commits: —
+
+### DEFECT-0115
+Title: Founder runway labels reserve buckets as cash on hand and tier MRR as revenue
+Severity: P2
+Status: OPEN — labelling
+Surfaced by lenses: research report §G, re-verified at `9cb534f`
+Description: `server/services/finance/runwayModel.ts:409-426` sums three
+internal ledger reserve buckets as `cashOnHandUsd`, substitutes
+`FOUNDER_CASH_ON_HAND_USD` when larger, and offsets burn with tier-priced MRR
+from active org rows (`:312-333`). Present as described; the arithmetic is
+fine, the label is not: none of it is a reconciled account balance.
+Remediation plan: Two named views — observed liquidity (unknown until a bank /
+payout feed exists) and planning runway — and the audit verdict says
+`unknown`, not green, when the former is absent.
+Resolving commits: —
+
+### DEFECT-0116
+Title: Payment-Link borrower payments are posted by a third writer with float math and no refund reversal
+Severity: P2
+Status: OPEN
+Surfaced by lenses: independent completeness audit of DEFECT-0096's repair, 2026-09-27
+Description: `server/services/stripeConnect.ts` `handleSuccessfulPayment` posts
+a note payment on `payment_intent.succeeded` for Payment Links the same file
+creates with `payment_intent_data.metadata.paymentType = "note_payment"`. It
+splits with float `currentBalance * monthlyRate`, applies no late fee, and
+marks the schedule row paid whatever the amount — the shape DEFECT-0096
+removed from the portal writers. It does not collide with portal Checkout
+(`buildBorrowerCardCheckoutParams` sets no `payment_intent_data`), but the
+refund handler matches only `borrower_portal_payment` sessions, so a refunded
+Payment-Link payment is never reversed on the note.
+Evidence: `server/services/stripeConnect.ts` (`handleSuccessfulPayment`, the
+Payment Link creation); `server/webhookHandlers.ts` refund handler's
+`borrower_portal_payment` match.
+Remediation plan: Route it through `postBorrowerPortalCheckoutPayment` (or a
+sibling for PaymentIntent-shaped sources) and extend the refund reversal to
+Payment-Link payments; or retire Payment Links if the portal is the only live
+rail. Decide with the founder which.
+Resolving commits: —
+
+### REFUTED AT HEAD, 2026-09-27
+
+The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
+re-verified claim by claim against `9cb534f` before any of it was acted on.
+The three commits between the two touch only CI triggers, the bundle-size gate
+and sidebar contrast tokens, so file-level claims transfer — except these.
+
+| Entry | Finding |
+|-------|---------|
+| §B "annual interest report portfolio totals are computed as zero" | **Refuted.** `server/services/bookkeeping.ts:247-249` sums `totalInterestCents / totalPrincipalCents / totalLateFeeCents` per note and `:261-263` returns them; `getPortfolioAnnualSummary` builds on the correct totals. The report's premise was stale at the commit it cited. |
+| §19.2 "a carrier-accepted SMS becomes failed after an internal write" | **Weaker than claimed.** `postSmsCostToLedger` and `recordContactTouch` both self-catch; only the dynamic import at `smsService.ts:304` can throw after the SID. Kept inside DEFECT-0104 at its true size. |
+| Report file paths | `shared/notePaymentMath.ts` → `server/services/notePaymentMath.ts`; `server/services/webhookHandlers.ts` → `server/webhookHandlers.ts`; `server/services/autopilot/financeAgent.ts` → `server/services/financeAgent.ts`; `server/services/borrowerDunningLadder.ts` → `server/jobs/borrowerDunningLadder.ts`; `server/jobs/notePaymentDueDetector.ts` → `server/services/notePaymentDueDetector.ts`; `continuousLoop.ts` lives under `server/services/solene/`. |
+
+Not verified this session and carried as UNVERIFIED (no exploration spent):
+§8.11 Map first-100 / Today 5k caps; §8.13 search fallback column names;
+§26–27 import identity and job durability; §30 action-preview cancel race;
+§31 alert acknowledge→resolved; §32 parcel-delta county key; §33 founder badge
+count; §21 unit economics; §23 acquired-note list/IRR; §18 deal-hunt route.
+
 ### REFUTED AT HEAD, 2026-09-06
 
 Two census entries were re-verified before acting and found obsolete. Recorded
@@ -2103,16 +2560,23 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 11  | 11    |
-| FIXED  | 12  | 57  | 8   | 77    |
+| OPEN   | 0   | 3   | 27  | 30    |
+| FIXED  | 12  | 59  | 8   | 79    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **60** | **20** | **92** |
+| **Total** | **12** | **65** | **35** | **112** |
 
 DEFECT-0089 through 0095 added 2026-09-06. Two further census entries were
 re-verified at HEAD and REFUTED rather than implemented against — see the
 "REFUTED AT HEAD" table above DEFECT-0089's section.
 
-All P0 and P1 defects resolved (fixed or justified deferral). 11 P2s remain open (plus DEFECT-0063, partially fixed)
+DEFECT-0096 through 0116 added 2026-09-27 from the "AcreOS at full maturity"
+research report, each claim re-verified at `9cb534f` before entry (one refuted,
+one downgraded — see the 2026-09-27 REFUTED table). 0096 and 0097 are FIXED in
+the same change; three P1s are OPEN with their posture stated: 0101 (1099-INT
+direction — refuse/label pending qualified tax review), 0104 (SMS purpose by
+CRM-row absence), 0107 (blind-offer comps).
+
+11 P2s from earlier audits remain open (plus DEFECT-0063, partially fixed)
 (not blocking launch).
 
 ### Fixed Defects Summary
@@ -2164,6 +2628,8 @@ All P0 and P1 defects resolved (fixed or justified deferral). 11 P2s remain open
 | DEFECT-0045 | File upload security dead code | 8642682 |
 | DEFECT-0047 | Campaign TOCTOU + no dedup | 69e2bae |
 | DEFECT-0068 | Pre-commit warning-only | eb3846e |
+| DEFECT-0096 | Two borrower payment writers, one posting rule | (this branch) |
+| DEFECT-0097 | Borrower payoff quote on the engine, session-keyed, recorded | (this branch) |
 
 ### Deferred Defects (3)
 

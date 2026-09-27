@@ -14,5 +14,25 @@
   {
     "ref": "pages/negotiation-copilot.tsx",
     "reason": "Deleted 2026-08-13 with the same KILL execution, along with its seven components/negotiation/* satellites and its App.tsx route. Kept as the row's evidence of the surface's size (607 lines) at the time the verdict was made."
+  },
+  {
+    "ref": "shared/notePaymentMath.ts",
+    "reason": "Never a real file. Cited in the 2026-09-27 REFUTED AT HEAD table of docs/audits/defect-registry.md as one of the paths the 'AcreOS at full maturity' research report got wrong, next to the path that is real. Kept verbatim so the correction is legible; the live pointer is the corrected path beside it."
+  },
+  {
+    "ref": "server/services/webhookHandlers.ts",
+    "reason": "Never a real file. Cited in the 2026-09-27 REFUTED AT HEAD table of docs/audits/defect-registry.md as one of the paths the 'AcreOS at full maturity' research report got wrong, next to the path that is real. Kept verbatim so the correction is legible; the live pointer is the corrected path beside it."
+  },
+  {
+    "ref": "server/services/autopilot/financeAgent.ts",
+    "reason": "Never a real file. Cited in the 2026-09-27 REFUTED AT HEAD table of docs/audits/defect-registry.md as one of the paths the 'AcreOS at full maturity' research report got wrong, next to the path that is real. Kept verbatim so the correction is legible; the live pointer is the corrected path beside it."
+  },
+  {
+    "ref": "server/services/borrowerDunningLadder.ts",
+    "reason": "Never a real file. Cited in the 2026-09-27 REFUTED AT HEAD table of docs/audits/defect-registry.md as one of the paths the 'AcreOS at full maturity' research report got wrong, next to the path that is real. Kept verbatim so the correction is legible; the live pointer is the corrected path beside it."
+  },
+  {
+    "ref": "server/jobs/notePaymentDueDetector.ts",
+    "reason": "Never a real file. Cited in the 2026-09-27 REFUTED AT HEAD table of docs/audits/defect-registry.md as one of the paths the 'AcreOS at full maturity' research report got wrong, next to the path that is real. Kept verbatim so the correction is legible; the live pointer is the corrected path beside it."
   }
 ]
