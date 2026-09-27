@@ -495,6 +495,40 @@ export async function sendSMSToLead(
   };
 }
 
+/**
+ * Persist an inbound SMS that has no lead to attach to — an unmatched reply,
+ * or a STOP from a number no lead carries (DEFECT-0104). One writer for both,
+ * so the partial-index conflict clause below exists exactly once.
+ */
+async function storeUnattachedInboundSms(input: {
+  organizationId: number;
+  fromPhone: string;
+  toPhone: string;
+  body: string;
+  messageSid: string;
+}): Promise<void> {
+  const { unattachedInboundMessages } = await import("@shared/schema/unattached-inbound");
+  await db
+    .insert(unattachedInboundMessages)
+    .values({
+      organizationId: input.organizationId,
+      channel: "sms",
+      fromAddress: input.fromPhone,
+      toAddress: input.toPhone,
+      body: input.body,
+      externalId: input.messageSid,
+    })
+    // The dedup index is PARTIAL (… WHERE external_id IS NOT NULL,
+    // migration 0190). Postgres only matches ON CONFLICT to a partial
+    // index when the statement carries the same predicate — without it
+    // this insert throws 42P10 and the hot unattached reply is DROPPED.
+    // Caught by tests/e2e-mobile/wedge-journey.spec.ts, 2026-07-07.
+    .onConflictDoNothing({
+      target: unattachedInboundMessages.externalId,
+      where: sql`external_id IS NOT NULL`,
+    });
+}
+
 export async function handleIncomingSMS(
   organizationId: number,
   fromPhone: string,
@@ -627,21 +661,7 @@ export async function handleIncomingSMS(
     // matched rows above has already landed.
     if (matchingLeads.length === 0) {
       try {
-        const { unattachedInboundMessages } = await import("@shared/schema/unattached-inbound");
-        await db
-          .insert(unattachedInboundMessages)
-          .values({
-            organizationId,
-            channel: "sms",
-            fromAddress: fromPhone,
-            toAddress: toPhone,
-            body,
-            externalId: messageSid,
-          })
-          .onConflictDoNothing({
-            target: unattachedInboundMessages.externalId,
-            where: sql`external_id IS NOT NULL`,
-          });
+        await storeUnattachedInboundSms({ organizationId, fromPhone, toPhone, body, messageSid });
       } catch (err) {
         logger.error(
           "[SMS] could not record an unmatched STOP — a later reply to this number would not see it",
@@ -719,26 +739,7 @@ export async function handleIncomingSMS(
     // returned was a hot response, lost. Persist it for Inbox triage
     // (attach-to-lead / create-lead), replay-deduped on the MessageSid.
     try {
-      const { unattachedInboundMessages } = await import("@shared/schema/unattached-inbound");
-      await db
-        .insert(unattachedInboundMessages)
-        .values({
-          organizationId,
-          channel: "sms",
-          fromAddress: fromPhone,
-          toAddress: toPhone,
-          body,
-          externalId: messageSid,
-        })
-        // The dedup index is PARTIAL (… WHERE external_id IS NOT NULL,
-        // migration 0190). Postgres only matches ON CONFLICT to a partial
-        // index when the statement carries the same predicate — without it
-        // this insert throws 42P10 and the hot unattached reply is DROPPED.
-        // Caught by tests/e2e-mobile/wedge-journey.spec.ts, 2026-07-07.
-        .onConflictDoNothing({
-          target: unattachedInboundMessages.externalId,
-          where: sql`external_id IS NOT NULL`,
-        });
+      await storeUnattachedInboundSms({ organizationId, fromPhone, toPhone, body, messageSid });
       logger.info(
         `[SMS] Inbound from ${fromPhone} matched no lead in org ${organizationId} — stored as unattached reply for triage.`,
       );
