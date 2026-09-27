@@ -71,7 +71,9 @@ if [[ "$VECTOR_OK" != "1" ]]; then
 fi
 
 echo "[build-schema] 1/4 applying $(ls "$MIGRATIONS_DIR"/*.sql | wc -l) file(s) from migrations/"
-for f in $(ls "$MIGRATIONS_DIR"/*.sql | sort); do
+# LC_ALL=C: byte order, so the apply order of same-ordinal files (two 0003s,
+# three 0081s, …) is the same on every machine and locale (DEFECT-0051).
+for f in $(ls "$MIGRATIONS_DIR"/*.sql | LC_ALL=C sort); do
   psql -q -v ON_ERROR_STOP=0 -d "$DATABASE_URL" -f "$f" >>"$LOG" 2>&1
 done
 # psql prefixes each diagnostic with `psql:<file>:<line>: `, so an anchored

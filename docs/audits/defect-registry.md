@@ -547,12 +547,27 @@ Resolving commits: pending
 ### DEFECT-0051
 Title: Migration sequence number collisions (12 duplicate ordinals)
 Severity: P2
-Status: OPEN
+Status: FIXED (round 3, 2026-09-27) — premise does not hold for production; rebuild order pinned
 Surfaced by lenses: 1 (ARCH-009), 4 (DB-006), 53 (053-F02)
 Description: 12 migration ordinals are duplicated. Drizzle journal only tracks 7 of 40+ files. Execution order is non-deterministic.
 Evidence: `migrations/` directory -- 0003, 0007-0013, 0015-0018 all duplicated.
-Remediation plan: Renumber migrations. Verify journal matches inventory.
-Resolving commits: pending
+Remediation plan: Re-verified 2026-09-27; the count is now 16 duplicated
+ordinals (0003, 0004, 0007–0013, 0015–0018, 0080, 0081 ×3, 0085). The
+consequence claimed does not hold where it matters:
+- Production never executes `migrations/*.sql`. Fly's release_command runs
+  `scripts/migrate.mjs`, an ordered statement list; filenames play no part.
+  The Drizzle journal was deleted on 2026-05-11 and nothing reads it.
+- The only consumer of the files is CI's rebuild
+  (`scripts/ci/build-schema-from-repo.sh`). It applies them in lexicographic
+  order of the FULL filename, in a phase documented as best-effort and
+  non-gating, then gates on `migrate.mjs`. The order was deterministic
+  except for one thing: `sort` was not locale-pinned. It is now
+  `LC_ALL=C sort`.
+Renumbering was NOT done. The filenames are cited across this registry, the
+deletion ledger, tests and `migrate.mjs` comments, and renaming them buys no
+production behaviour. The real hazard in this area, an unmirrored .sql file,
+was DEFECT-0061 and is now gated row by row.
+Resolving commits: this branch, round 3
 
 ### DEFECT-0052
 Title: Financial amounts stored as numeric without precision -- arbitrary precision allowed
@@ -3033,8 +3048,8 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 10  | 10    |
-| FIXED  | 12  | 67  | 34  | 113   |
+| OPEN   | 0   | 0   | 9   | 9     |
+| FIXED  | 12  | 67  | 35  | 114   |
 | DEFERRED | 0 | 3   | 0   | 3     |
 | **Total** | **12** | **70** | **44** | **126** |
 
@@ -3139,6 +3154,7 @@ in slice B; no P1 from this report remains OPEN.
 | DEFECT-0061 | Module flag seed mirrored into the release command | (this branch, round 3) |
 | DEFECT-0054 | Ad-account secrets sealed; plain-text vendor-key form retired | (this branch, round 3) |
 | DEFECT-0114 | Detector workflow hand-off staged in the outbox | (this branch, round 3) |
+| DEFECT-0051 | Rebuild order locale-pinned; production path never reads filenames | (this branch, round 3) |
 
 ### Deferred Defects (3)
 
