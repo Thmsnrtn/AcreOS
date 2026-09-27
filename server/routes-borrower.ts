@@ -1,15 +1,23 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { storage, db } from "./storage";
-import { withTransaction } from "./db";
 import { eq, and, gte, desc } from "drizzle-orm";
-import { notes, payments, type BorrowerSession, type Lead } from "@shared/schema";
+import { notes, notePayoffQuotes, type BorrowerSession, type NotePayoffQuote } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
-import { splitPaymentCents, computeAppliedLateFeeCents } from "./services/notePaymentMath";
+import {
+  splitPaymentCents,
+  computeAppliedLateFeeCents,
+  computePayoffQuote,
+  payoffInputsFromServicedNote,
+  parseIsoDateUtc,
+  isoDateUtc,
+  PAYOFF_DAY_COUNT_CONVENTION,
+  PAYOFF_ENGINE_VERSION,
+} from "./services/notePaymentMath";
 // The 1098 tax-year window. Box 1 is interest RECEIVED in a calendar year, and
 // which calendar day an instant fell on is a question about the LENDER's zone —
 // see dayInZone's header for what answering it with the server's zone cost.
@@ -23,7 +31,10 @@ import {
   COOKIE_NAME as STMT_COOKIE_NAME,
   type BorrowerGrantResolver,
 } from "./services/borrower/statementAccess";
-import { emitPaymentEvent } from "./services/workflow-engine";
+import {
+  postBorrowerPortalCheckoutPayment,
+  emitBorrowerPaymentReceived,
+} from "./services/borrower/portalPaymentPosting";
 import {
   startAchMandateSetup,
   confirmAchMandateSetup,
@@ -54,113 +65,6 @@ import {
 } from "./services/customerMoneyRouting";
 import { isCategorySimulated } from "./utils/simulationMode";
 import { noteGracePeriodDays } from "@shared/notes/delinquency";
-
-// ─────────────────────────────────────────────────────────────────────
-// Workflow payment events (Wave B — "wire the engine")
-// ─────────────────────────────────────────────────────────────────────
-// The borrower portal posts to the seller-finance `payments` ledger in two
-// places: the session-based verify-payment (the live path) and the
-// deprecated token-based one. Both are Stripe-idempotent — they post at most
-// one row per checkout session and return early when the row already exists
-// — so emitting at each posting site yields exactly ONE event per payment
-// row, never one per retry.
-//
-// Money-path discipline: the emit runs AFTER the balance-mutating write has
-// committed (after storage.createPayment / after the withTransaction block),
-// and is wrapped so a workflow fault can never fail, roll back or re-post a
-// borrower payment.
-//
-// Unlike the note/rent ledgers, `payments.id` is a serial integer, so the
-// real payment id IS the emitted entityId.
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/**
- * Whole days between the scheduled due date and the moment the payment
- * posted. Returns null when the note carries no next-payment date, so the
- * event never publishes a guessed lateness. 0 means on-time-or-early.
- */
-export function daysLateForBorrowerPayment(
-  dueDate: Date | null | undefined,
-  paymentDate: Date,
-): number | null {
-  if (!dueDate) return null;
-  const due = dueDate instanceof Date ? dueDate.getTime() : new Date(dueDate).getTime();
-  const paid = paymentDate.getTime();
-  if (Number.isNaN(due) || Number.isNaN(paid)) return null;
-  const diffDays = Math.floor((paid - due) / DAY_MS);
-  return diffDays > 0 ? diffDays : 0;
-}
-
-/** Everything the emit needs, read from rows that are already committed. */
-export interface PostedBorrowerPayment {
-  organizationId: number;
-  noteId: number;
-  paymentId: number;
-  amountCents: number;
-  principalCents: number;
-  interestCents: number;
-  lateFeeCents: number;
-  /** notes.monthly_payment in cents — null when the note has none recorded. */
-  scheduledPaymentCents: number | null;
-  dueDate: Date | null;
-  paymentDate: Date;
-  remainingBalanceCents: number;
-  paymentMethod: string;
-  /** Which portal endpoint posted it — the live session path or the legacy token path. */
-  source: string;
-}
-
-/** The `data` bag workflow conditions match on / templates interpolate. */
-export function buildBorrowerPaymentEventData(p: PostedBorrowerPayment): Record<string, any> {
-  const scheduled = p.scheduledPaymentCents;
-  return {
-    source: p.source,
-    // Identity
-    noteId: p.noteId,
-    paymentId: p.paymentId,
-    // Money
-    amountCents: p.amountCents,
-    amount: p.amountCents / 100,
-    principalCents: p.principalCents,
-    interestCents: p.interestCents,
-    lateFeeCents: p.lateFeeCents,
-    scheduledPaymentCents: scheduled,
-    // Shape
-    isFullPayment: scheduled === null ? null : p.amountCents >= scheduled,
-    isPartial: scheduled === null ? null : p.amountCents < scheduled,
-    paymentMethod: p.paymentMethod,
-    paymentDate: p.paymentDate.toISOString(),
-    dueDate: p.dueDate ? p.dueDate.toISOString() : null,
-    daysLate: daysLateForBorrowerPayment(p.dueDate, p.paymentDate),
-    // State after the payment
-    remainingBalanceCents: p.remainingBalanceCents,
-    remainingPrincipal: p.remainingBalanceCents / 100,
-    isPaidOff: p.remainingBalanceCents <= 0,
-  };
-}
-
-/**
- * Fire-and-forget workflow emit for a borrower payment that is ALREADY
- * committed. Never throws.
- */
-export function emitBorrowerPaymentReceived(p: PostedBorrowerPayment): void {
-  try {
-    emitPaymentEvent(
-      "payment.received",
-      p.organizationId,
-      p.paymentId,
-      buildBorrowerPaymentEventData(p),
-    );
-  } catch (err) {
-    // Swallowed on purpose — the borrower's money is banked and the response
-    // must not change because a workflow misbehaved.
-    logger.error(
-      "Borrower payment workflow emit failed (payment already posted)",
-      err instanceof Error ? err : undefined,
-      { organizationId: p.organizationId, noteId: p.noteId, paymentId: p.paymentId },
-    );
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────
 // Borrower ACH autopay (Wave C — "money moves")
@@ -436,6 +340,71 @@ async function validateBorrowerSession(req: Request, res: Response, next: NextFu
     logger.error("Borrower session validation error", err);
     return Errors.internal(res, err);
   }
+}
+
+/**
+ * Render a RECORDED serviced-note payoff quote as a PDF. Every figure comes
+ * from the `note_payoff_quotes` row — nothing is recomputed at render time, so
+ * the PDF cannot disagree with the JSON the borrower already saw.
+ *
+ * The total is good THROUGH the row's good-through date (the engine accrues
+ * interest through the payoff date and no further). The per-diem is printed
+ * so a later payoff can be re-quoted instead of an old total being honoured
+ * for a window nobody computed.
+ */
+async function renderBorrowerPayoffQuotePdf(
+  res: Response,
+  row: NotePayoffQuote,
+  borrowerLabel: string | null,
+): Promise<void> {
+  const PDFDocument = (await import("pdfkit")).default;
+  const doc = new PDFDocument({ margin: 50 });
+  const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="payoff-quote-${row.noteRef}-${row.id}.pdf"`);
+  doc.pipe(res);
+
+  doc.fontSize(20).text("Payoff Quote", { align: "center" });
+  doc.moveDown();
+
+  doc.fontSize(12);
+  doc.text(`Quote ID: ${row.id}`);
+  doc.text(`Note ID: ${row.noteRef}`);
+  doc.text(`Borrower: ${borrowerLabel ?? row.payerName ?? "N/A"}`);
+  doc.text(`Quote date: ${row.quotedAt.toISOString().slice(0, 10)}`);
+  doc.text(`Payoff date: ${row.payoffDate}`);
+  doc.text(`Good through: ${row.goodThroughDate}`);
+  doc.moveDown();
+
+  doc.fontSize(14).text("Payoff Amount Breakdown", { underline: true });
+  doc.moveDown(0.5);
+  doc.fontSize(12);
+  doc.text(`Remaining principal:   ${dollars(row.principalBalanceCents)}`);
+  doc.text(
+    `Accrued interest:      ${dollars(row.accruedInterestCents)} (${row.daysAccrued} days from ${row.accrualStartDate}, ${row.dayCountConvention})`,
+  );
+  if (row.unappliedCreditCents > 0) {
+    doc.text(`Unapplied credit:      -${dollars(row.unappliedCreditCents)}`);
+  }
+  doc.text(`Payoff fee:            ${dollars(row.payoffFeeCents)}`);
+  doc.moveDown(0.5);
+  doc.fontSize(16).text(`Total payoff amount:   ${dollars(row.totalPayoffCents)}`);
+  doc.moveDown();
+
+  doc.fontSize(10).fillColor("gray");
+  doc.text("Payment instructions:", { underline: true });
+  doc.text("Please contact your lender for wire transfer or payment instructions.");
+  doc.text(
+    `This amount is good through ${row.goodThroughDate}. Interest accrues at ${dollars(row.perDiemInterestCents)} per day after that date — ask your lender for an updated quote if you will pay later.`,
+  );
+  doc.text(
+    "Outstanding late fees are not tracked separately from collected late fees in this ledger, so they are excluded from this total rather than estimated.",
+  );
+  doc.moveDown();
+  doc.text(`Engine: ${row.engineVersion} · Generated: ${new Date().toISOString()}`, { align: "center" });
+
+  doc.end();
 }
 
 export function registerBorrowerRoutes(app: Express): void {
@@ -1101,198 +1070,42 @@ export function registerBorrowerRoutes(app: Express): void {
         return Errors.badRequest(res, "That payment does not belong to this loan");
       }
 
-      const paymentAmount = stripeSession.amount_total
-        ? stripeSession.amount_total / 100
-        : Number(note.monthlyPayment);
-
-      // Integer-cent split — see deprecated /api/portal/.../verify-payment
-      // writer above. The schedule-based split it replaces used .toFixed(2)
-      // and produced .01 drift on long-running notes.
-      const paymentAmountCents = Math.round(paymentAmount * 100);
-      const currentBalanceCents = Math.round(Number(note.currentBalance || 0) * 100);
-      const annualRateBps = Math.round(Number(note.interestRate || 0) * 100);
-      const split = splitPaymentCents({
-        paymentAmountCents,
-        currentBalanceCents,
-        annualRateBps,
-      });
-      const principalAmount = split.principalCents / 100;
-      const interestAmount = split.interestCents / 100;
-
-      // Late fee — see deprecated writer above for the same logic.
-      const paymentDate = new Date();
-      const dueDate = note.nextPaymentDate || new Date();
-      const configuredLateFeeCents = Math.round(Number(note.lateFee || 0) * 100);
-      // WAS a hardcoded ten-day fallback. THIS ASSESSES A FEE AGAINST A
-      // BORROWER, so an invented term is money taken under a clause the note
-      // does not contain. Ten days was invented in the borrower's favour; zero
-      // would be invented against them. Neither is a term anyone agreed to.
-      //
-      // The repo already resolved this asymmetry deliberately, and this site
-      // was outside the population that enforced it: the aging sweep measures
-      // an unstated term as ZERO because an internal signal can be re-derived
-      // (acquiredNoteAging.ts:291, and it LOGS the assumption), while a
-      // generated instrument declines to state a term at all
-      // (routes-documents.ts:23). An APPLIED FEE is the second kind, not the
-      // first — money, recorded, shown to the borrower, not re-derivable — so
-      // when the record states no grace period there is no late fee to apply.
-      const statedGrace = noteGracePeriodDays(note.gracePeriodDays);
-      const lateFeeAppliedCents =
-        statedGrace === null
-          ? 0
-          : computeAppliedLateFeeCents({
-              dueDate,
-              paymentDate,
-              gracePeriodDays: statedGrace,
-              configuredLateFeeCents,
-            });
-      if (statedGrace === null && configuredLateFeeCents > 0) {
-        logger.info("note_late_fee_skipped_grace_unstated", {
-          metadata: {
-            noteId: note.id,
-            organizationId: note.organizationId,
-            configuredLateFeeCents,
-          },
-        });
-      }
-      const lateFeeAmount = lateFeeAppliedCents / 100;
-
-      const schedule = note.amortizationSchedule || [];
-      const nextPendingPayment = schedule.find((s) => s.status === "pending");
-
-      // Idempotent payment write — replaces the prior read-then-write
-      // (storage.getPayments → .some(...).transactionId === sessionId →
-      // storage.createPayment). That pattern races on concurrent Stripe
-      // webhook redelivery: two coroutines both see "no existing row" and
-      // both insert. The payments.transactionId unique constraint catches
-      // the second one with a DB error, but only after the balance had
-      // already been mutated in one of the racing transactions.
-      //
-      // The new path uses INSERT … ON CONFLICT (transaction_id) DO NOTHING
-      // RETURNING * inside a single transaction. If the conflict fires
-      // (returned []), we know the other coroutine already posted the
-      // payment and we return 200 with the existing row — no second
-      // balance mutation, no error to the borrower.
-      const idempotentResult = await withTransaction(async (tx) => {
-        const inserted = await tx
-          .insert(payments)
-          .values({
-            organizationId: note.organizationId,
-            noteId: note.id,
-            amount: paymentAmount.toString(),
-            principalAmount: principalAmount.toString(),
-            interestAmount: interestAmount.toString(),
-            feeAmount: "0",
-            lateFeeAmount: lateFeeAmount.toString(),
-            paymentDate,
-            dueDate,
-            paymentMethod: "card",
-            transactionId: sessionId,
-            status: "completed",
-          })
-          .onConflictDoNothing({ target: payments.transactionId })
-          .returning();
-
-        if (inserted.length === 0) {
-          // Conflict — another coroutine inserted this transactionId
-          // first. Fetch and return without touching the balance.
-          const [existing] = await tx
-            .select()
-            .from(payments)
-            .where(eq(payments.transactionId, sessionId));
-          return { row: existing, created: false } as const;
-        }
-
-        const [row] = inserted;
-
-        // We won the race — update the note balance + version inside the
-        // same transaction with optimistic locking (matches the contract
-        // storage.createPayment provided).
-        const [lockedNote] = await tx
-          .select()
-          .from(notes)
-          .where(eq(notes.id, note.id))
-          .for("update");
-        if (lockedNote) {
-          const newBalanceCents = Math.max(0, Math.round(Number(lockedNote.currentBalance) * 100) - split.principalCents);
-          const updated = await tx
-            .update(notes)
-            .set({
-              currentBalance: (newBalanceCents / 100).toString(),
-              status: newBalanceCents <= 0 ? "paid_off" : "active",
-              version: (lockedNote.version ?? 1) + 1,
-              updatedAt: new Date(),
-            })
-            .where(and(eq(notes.id, note.id), eq(notes.version, lockedNote.version ?? 1)))
-            .returning();
-          if (updated.length === 0) {
-            throw new Error(`Optimistic lock conflict on note ${note.id} — concurrent update detected`);
-          }
-        }
-
-        return { row, created: true } as const;
-      });
-
-      const payment = idempotentResult.row;
-
-      if (!idempotentResult.created) {
-        // Conflict path — the row already existed. Return 200 with the
-        // existing payment so the client treats this as success (the
-        // Stripe webhook will redeliver until we 200).
-        return res.json({ success: true, payment, message: "Payment already recorded" });
-      }
-
-      const newBalance = Math.max(0, (currentBalanceCents - split.principalCents)) / 100;
-      let updatedSchedule = schedule;
-      if (nextPendingPayment) {
-        updatedSchedule = schedule.map((s) =>
-          s.paymentNumber === nextPendingPayment.paymentNumber ? { ...s, status: "paid" } : s,
-        );
-      }
-      const nextPaymentDate = addMonths(new Date(note.nextPaymentDate || new Date()), 1);
-      await storage.updateNote(
-        note.id,
-        { amortizationSchedule: updatedSchedule, nextPaymentDate },
-        note.organizationId,
-      );
-
-      // The idempotent transaction has COMMITTED and we are on the
-      // `created: true` branch (the conflict branch returned above), so this
-      // fires exactly once per payment row — never on a Stripe redelivery.
-      // Fire-and-forget: never throws.
-      emitBorrowerPaymentReceived({
-        organizationId: note.organizationId,
-        noteId: note.id,
-        paymentId: payment.id,
-        amountCents: paymentAmountCents,
-        principalCents: split.principalCents,
-        interestCents: split.interestCents,
-        lateFeeCents: lateFeeAppliedCents,
-        scheduledPaymentCents: note.monthlyPayment != null
-          ? Math.round(Number(note.monthlyPayment) * 100)
-          : null,
-        // The stored schedule date, NOT the `|| new Date()` fallback used for
-        // the late-fee math — a missing due date stays null in the event.
-        dueDate: note.nextPaymentDate ?? null,
-        paymentDate,
-        remainingBalanceCents: Math.max(0, currentBalanceCents - split.principalCents),
-        paymentMethod: "card",
+      // Everything that decides what the money MEANS — split, late fee, the
+      // idempotent ledger write, the installment rule, the workflow event and
+      // the receipt — lives in ONE posting rule shared with the Connect
+      // webhook, so which writer runs first can no longer change the answer.
+      const result = await postBorrowerPortalCheckoutPayment({
+        note,
+        stripeSession,
         source: "borrower_portal",
       });
 
-      // Phase 3 Week 14 — Activation telemetry. First borrower payment
-      // received. Idempotent FIRST-occurrence on (org, eventName).
-      try {
-        const { recordActivationEventAsync } = await import("./services/activation");
-        recordActivationEventAsync({
-          orgId: note.organizationId,
-          userId: null,
-          eventName: "first_borrower_payment_received",
-          eventValue: { paymentId: payment.id, noteId: note.id, amount: paymentAmount },
-        });
-      } catch { /* non-fatal */ }
+      if (result.outcome === "refused") {
+        // Unreachable for these two reasons after the checks above; kept so
+        // the posting rule's own refusals surface as the same borrower-facing
+        // messages if those checks ever move.
+        return Errors.badRequest(
+          res,
+          result.reason === "payment_not_completed"
+            ? "Payment not completed"
+            : "That payment does not belong to this loan",
+        );
+      }
 
-      res.json({ success: true, payment, newBalance, lateFeeApplied: lateFeeAmount });
+      if (result.outcome === "already_recorded") {
+        // The other writer (the Connect webhook, or a retried click) posted
+        // this session first. Return 200 with the existing payment so the
+        // client treats this as success.
+        return res.json({ success: true, payment: result.payment, message: "Payment already recorded" });
+      }
+
+      res.json({
+        success: true,
+        payment: result.payment,
+        newBalance: result.remainingBalanceCents / 100,
+        lateFeeApplied: result.lateFeeCents / 100,
+        installment: result.installment,
+      });
     } catch (err) {
       logger.error("Payment verification error (session)", err);
       Errors.internal(res, err);
@@ -1752,105 +1565,207 @@ export function registerBorrowerRoutes(app: Express): void {
     }
   });
   
-  // Get payoff quote for borrower portal.
-  // SECURITY (2026-07 audit): this endpoint discloses borrower name, balance,
-  // and payoff totals authenticated only by token+email in the QUERY STRING —
-  // it was the sole borrower PII surface with NO rate limiter, making the
-  // weak factor brute-forceable. Same limiter as the other portal routes.
-  api.get("/api/borrower/payoff-quote", portalPaymentRateLimiter, async (req, res) => {
+  // Payoff quote for the borrower portal — ONE engine, behind the session,
+  // and PERSISTED.
+  //
+  // Before 2026-09-27 this route authenticated with the long-lived note
+  // access token plus the borrower's email IN THE QUERY STRING (a token in a
+  // URL is a token in every proxy, CDN and application log on the path), did
+  // its own arithmetic in floating-point dollars with the accrual start
+  // GUESSED as `nextPaymentDate − 30 days`, and told the borrower the total
+  // was "valid for 30 days" while accruing interest only through today.
+  // `payoffEngineUnification.test.ts` lists this route as one of the four
+  // paths it unified; the route was never rewired, so the test proved the
+  // helper and not the surface — the "canonical function with zero
+  // production callers" shape CLAUDE.md names.
+  //
+  // Now: the borrower session cookie is the only credential; the inputs come
+  // from the note and its OWN payment ledger via `payoffInputsFromServicedNote`
+  // (its first production caller); the number comes from `computePayoffQuote`,
+  // the same engine the acquired-note book quotes with; and the quote is
+  // recorded in `note_payoff_quotes` with its verbatim inputs, so the amount
+  // the borrower saw can be recomputed and defended later. The total is good
+  // THROUGH the payoff date, exactly as the engine accrues it; the per-diem is
+  // published so a later date can be re-quoted rather than quietly honoured.
+  api.get("/api/borrower/payoff-quote", validateBorrowerSession, portalPaymentRateLimiter, async (req, res) => {
     try {
-      const { accessToken, email } = req.query;
-      
-      if (!accessToken || !email) {
-        return Errors.badRequest(res, "Access token and email are required");
-      }
-      
-      const note = await storage.getNoteByAccessToken(accessToken as string);
+      const session = requireBorrowerSession(req);
+
+      // Loaded by id AND the session's own organization snapshot — the same
+      // tenant pin `/api/borrower/session` carries (see its comment).
+      const [note] = await db
+        .select()
+        .from(notes)
+        .where(
+          session.organizationId != null
+            ? and(eq(notes.id, session.noteId), eq(notes.organizationId, session.organizationId))
+            : eq(notes.id, session.noteId),
+        )
+        .limit(1);
       if (!note) {
         return Errors.notFound(res, "loan");
       }
-      
-      // Verify borrower email
-      let borrower: Lead | undefined;
-      if (note.borrowerId) {
-        borrower = await storage.getLead(note.organizationId, note.borrowerId);
-        if (!borrower || borrower.email?.toLowerCase() !== (email as string).toLowerCase()) {
-          return Errors.forbidden(res, "We couldn't verify your access to this loan — check the email address on your payment reminder.");
+
+      const borrower = note.borrowerId
+        ? await storage.getLead(note.organizationId, note.borrowerId)
+        : undefined;
+      const borrowerLabel = borrower
+        ? `${borrower.firstName ?? ""} ${borrower.lastName ?? ""}`.trim() || null
+        : null;
+
+      // A quote already issued, as a PDF. `quoteId` has one meaning: render
+      // that recorded quote — never recompute under an old id.
+      const quoteIdParam = req.query.quoteId;
+      if (typeof quoteIdParam === "string" && quoteIdParam.length > 0) {
+        const [row] = await db
+          .select()
+          .from(notePayoffQuotes)
+          .where(
+            and(
+              eq(notePayoffQuotes.id, quoteIdParam),
+              eq(notePayoffQuotes.organizationId, note.organizationId),
+              eq(notePayoffQuotes.noteSystem, "serviced_note"),
+              eq(notePayoffQuotes.noteRef, String(note.id)),
+            ),
+          )
+          .limit(1);
+        if (!row) {
+          return Errors.notFound(res, "payoff quote");
         }
-      } else {
-        return Errors.forbidden(res, "We couldn't verify your access to this loan — check the email address on your payment reminder.");
+        return renderBorrowerPayoffQuotePdf(res, row, borrowerLabel);
       }
 
-      // Calculate payoff amount
-      const currentBalance = Number(note.currentBalance || 0);
-      const interestRate = Number(note.interestRate || 0);
-      const dailyRate = interestRate / 100 / 365;
-      
-      // Calculate accrued interest since last payment
-      const lastPaymentDate = note.nextPaymentDate 
-        ? new Date(new Date(note.nextPaymentDate).getTime() - 30 * 24 * 60 * 60 * 1000) 
-        : new Date(note.startDate);
-      const daysSinceLastPayment = Math.max(0, Math.floor((Date.now() - lastPaymentDate.getTime()) / (24 * 60 * 60 * 1000)));
-      const accruedInterest = Number((currentBalance * dailyRate * daysSinceLastPayment).toFixed(2));
-      
-      // Any applicable fees (e.g., payoff processing fee)
-      const payoffFee = 0; // Can be configured per organization
-      
-      const totalPayoff = Number((currentBalance + accruedInterest + payoffFee).toFixed(2));
-      
-      // Expiration date: 30 days from now
-      const expirationDate = new Date();
-      expirationDate.setDate(expirationDate.getDate() + 30);
-      
-      // Check if PDF format requested
+      // Payoff date: today in the LENDER's zone unless the borrower asks for
+      // a later day (a borrower in a US evening is still on their lender's
+      // "today", not UTC's tomorrow). A past date is refused rather than
+      // floored to zero days of interest.
+      const lenderTimeZone = await resolveOrgTimeZone(note.organizationId);
+      const todayIso = dayInZone(new Date(), lenderTimeZone) ?? isoDateUtc(new Date());
+      const requestedDate = typeof req.query.payoffDate === "string" ? req.query.payoffDate : todayIso;
+      let payoffDate: Date;
+      try {
+        payoffDate = parseIsoDateUtc(requestedDate);
+      } catch {
+        return Errors.badRequest(res, "payoffDate must be a valid ISO date (YYYY-MM-DD)");
+      }
+      if (isoDateUtc(payoffDate) < todayIso) {
+        return Errors.badRequest(res, "payoffDate cannot be in the past");
+      }
+
+      // The accrual start comes from the ledger — the most recent COMPLETED
+      // posting that carried interest — never from a schedule guess. Pending
+      // and failed rows settle nothing; refund reversals carry non-positive
+      // interest and are ignored by the engine.
+      const ledger = (await storage.getPayments(note.organizationId, note.id)).filter(
+        (p) => p.status === "completed",
+      );
+      // `payments.payment_date` is a TIMESTAMP; the engine counts whole days
+      // between calendar dates. Handing it the instant floors a 09:30 posting
+      // to one day fewer than the calendar says (measured: 11 days for
+      // Aug 3 → Aug 15). Interest is settled THROUGH the day the payment
+      // posted, and which day an instant fell on is a question about the
+      // LENDER's zone — the same rule Form 1098 Box 1 uses (dayInZone's header
+      // has what answering it with the server's zone cost).
+      const input = payoffInputsFromServicedNote({
+        note: {
+          currentBalance: note.currentBalance,
+          interestRate: note.interestRate,
+          startDate: dayInZone(note.startDate, lenderTimeZone) ?? note.startDate,
+        },
+        ledgerRows: ledger.map((p) => ({
+          paymentDate: dayInZone(p.paymentDate, lenderTimeZone) ?? p.paymentDate,
+          interestAmount: p.interestAmount,
+        })),
+        payoffDate,
+        // The servicing book has no unapplied-funds column (an overpayment's
+        // residue is not persisted) and does not separate late fees ASSESSED
+        // from late fees COLLECTED (`payments.late_fee_amount` is collected).
+        // 0 here is the absence of a tracked term, not an estimate — the
+        // response says so rather than asserting nothing is owed.
+        unappliedCreditCents: 0,
+        lateFeesOutstandingCents: 0,
+        // No org-configured payoff fee exists for serviced notes.
+        payoffFeeCents: 0,
+      });
+      const quote = computePayoffQuote(input);
+
+      const [quoteRow] = await db
+        .insert(notePayoffQuotes)
+        .values({
+          organizationId: note.organizationId,
+          noteSystem: "serviced_note",
+          noteRef: String(note.id),
+          noteNumber: null,
+          payerName: borrowerLabel,
+          // A borrower is not a user; the session is the provenance.
+          quotedByUserId: null,
+          channel: "borrower_portal",
+          payoffDate: quote.payoffDate,
+          // The engine accrues interest THROUGH payoffDate, so that IS the last
+          // date the quoted total is valid.
+          goodThroughDate: quote.payoffDate,
+          principalBalanceCents: quote.principalBalanceCents,
+          annualRateBpsHundredths: Math.round(quote.annualRateBps * 100),
+          accrualStartDate: quote.accrualStartDate,
+          daysAccrued: quote.daysAccrued,
+          dayCountConvention: quote.dayCountConvention,
+          perDiemInterestCents: quote.perDiemInterestCents,
+          accruedInterestCents: quote.accruedInterestCents,
+          unappliedCreditCents: quote.unappliedCreditCents,
+          lateFeesOutstandingCents: quote.lateFeesOutstandingCents,
+          payoffFeeCents: quote.payoffFeeCents,
+          totalPayoffCents: quote.totalPayoffCents,
+          engineVersion: quote.engineVersion,
+          engineInputJson: {
+            principalBalanceCents: input.principalBalanceCents,
+            annualRateBps: input.annualRateBps,
+            accrualStartDate: isoDateUtc(input.accrualStartDate),
+            payoffDate: isoDateUtc(input.payoffDate),
+            unappliedCreditCents: input.unappliedCreditCents ?? 0,
+            lateFeesOutstandingCents: input.lateFeesOutstandingCents ?? 0,
+            payoffFeeCents: input.payoffFeeCents ?? 0,
+            dayCountConvention: PAYOFF_DAY_COUNT_CONVENTION,
+            engineVersion: PAYOFF_ENGINE_VERSION,
+            ledgerRowsConsidered: ledger.length,
+          },
+          notes: `borrower_session:${session.id}`,
+        })
+        .returning();
+
+      logger.info("borrower.payoffQuote recorded", {
+        metadata: {
+          organizationId: note.organizationId,
+          noteId: note.id,
+          quoteId: quoteRow?.id,
+          totalPayoffCents: quote.totalPayoffCents,
+          payoffDate: quote.payoffDate,
+        },
+      });
+
       if (req.query.format === "pdf") {
-        const PDFDocument = (await import("pdfkit")).default;
-        const doc = new PDFDocument({ margin: 50 });
-
-        res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", `attachment; filename="payoff-quote-${note.id}.pdf"`);
-        doc.pipe(res);
-
-        doc.fontSize(20).text("Payoff Quote", { align: "center" });
-        doc.moveDown();
-
-        doc.fontSize(12);
-        const borrowerLabel = borrower ? `${borrower.firstName} ${borrower.lastName}` : "N/A";
-        doc.text(`Note ID: ${note.id}`);
-        doc.text(`Borrower: ${borrowerLabel}`);
-        doc.text(`Quote Date: ${new Date().toLocaleDateString()}`);
-        doc.text(`Good Through: ${expirationDate.toLocaleDateString()}`);
-        doc.moveDown();
-
-        doc.fontSize(14).text("Payoff Amount Breakdown", { underline: true });
-        doc.moveDown(0.5);
-        doc.fontSize(12);
-        doc.text(`Remaining Principal:   $${currentBalance.toLocaleString()}`);
-        doc.text(`Accrued Interest:      $${accruedInterest.toLocaleString()}`);
-        doc.text(`Processing Fee:        $${payoffFee.toLocaleString()}`);
-        doc.moveDown(0.5);
-        doc.fontSize(16).text(`Total Payoff Amount:   $${totalPayoff.toLocaleString()}`, { bold: true } as any);
-        doc.moveDown();
-
-        doc.fontSize(10).fillColor("gray");
-        doc.text("Payment Instructions:", { underline: true });
-        doc.text("Please contact your lender for wire transfer or payment instructions.");
-        doc.text("This quote is valid for 30 days from the quote date above.");
-        doc.moveDown();
-        doc.text(`Generated: ${new Date().toISOString()}`, { align: "center" });
-
-        doc.end();
-        return;
+        return renderBorrowerPayoffQuotePdf(res, quoteRow, borrowerLabel);
       }
 
       res.json({
-        principalBalance: currentBalance,
-        accruedInterest,
-        payoffFee,
-        totalPayoff,
-        goodThroughDate: expirationDate.toISOString(),
-        quoteDate: new Date().toISOString(),
-        daysValid: 30,
+        quoteId: quoteRow.id,
+        quoteDate: quoteRow.quotedAt,
+        payoffDate: quote.payoffDate,
+        goodThroughDate: quote.payoffDate,
+        accrualStartDate: quote.accrualStartDate,
+        daysAccrued: quote.daysAccrued,
+        dayCountConvention: quote.dayCountConvention,
+        principalBalanceCents: quote.principalBalanceCents,
+        accruedInterestCents: quote.accruedInterestCents,
+        perDiemInterestCents: quote.perDiemInterestCents,
+        unappliedCreditCents: quote.unappliedCreditCents,
+        payoffFeeCents: quote.payoffFeeCents,
+        // Not tracked, therefore not asserted as zero-owed. Refuse, don't fabricate.
+        lateFeesOutstandingCents: null as number | null,
+        lateFeesOutstandingNote:
+          "Outstanding late fees are not tracked separately from collected late fees in this ledger, so they are excluded from the payoff total rather than estimated.",
+        totalPayoffCents: quote.totalPayoffCents,
+        engineVersion: quote.engineVersion,
+        pdfUrl: `/api/borrower/payoff-quote?quoteId=${encodeURIComponent(quoteRow.id)}`,
       });
     } catch (err) {
       logger.error("Payoff quote error", err);

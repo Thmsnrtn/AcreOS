@@ -95,7 +95,11 @@ const REGISTER: Record<string, [number, SendClass]> = {
   "server/services/sequenceProcessor.ts": [1, "system-mail"],
   "server/services/solene/pagerService.ts": [1, "system-mail"],
   "server/services/workflow-engine.ts": [2, "system-mail"],
-  "server/webhookHandlers.ts": [4, "system-mail"],
+  // The borrower payment receipt moved here from webhookHandlers on
+  // 2026-09-27 (DEFECT-0096): one posting rule for both writers, one receipt
+  // on the winning writer.
+  "server/services/borrower/portalPaymentPosting.ts": [1, "counterparty-byo"],
+  "server/webhookHandlers.ts": [3, "system-mail"],
   "server/worker.ts": [1, "system-mail"],
 };
 

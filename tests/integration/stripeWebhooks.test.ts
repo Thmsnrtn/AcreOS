@@ -58,7 +58,12 @@ vi.mock("../../server/storage", () => ({
 
 // W1.8 — subscription state + audit rows now commit in one db transaction.
 // Record what the tx wrote so tests can assert on it.
-const txState = vi.hoisted(() => ({ updates: [] as any[], inserts: [] as any[] }));
+const txState = vi.hoisted(() => ({
+  updates: [] as any[],
+  inserts: [] as any[],
+  /** transaction_ids already in the payments table — ON CONFLICT DO NOTHING fires for these. */
+  existingPaymentTxnIds: new Set<string>(),
+}));
 
 vi.mock("../../server/db", () => {
   const chain: any = {};
@@ -84,17 +89,45 @@ vi.mock("../../server/db", () => {
           txState.updates.push(vals);
           const q: any = Promise.resolve([]);
           q.returning = () =>
-            Promise.resolve([{ subscriptionTier: "pro", billingInterval: "monthly" }]);
+            Promise.resolve([{ id: 1, subscriptionTier: "pro", billingInterval: "monthly" }]);
           return q;
         },
       }),
     }),
+    // The borrower posting rule (services/borrower/portalPaymentPosting.ts)
+    // writes the payments row with INSERT … ON CONFLICT (transaction_id) DO
+    // NOTHING RETURNING *, then locks the note FOR UPDATE. This stub honours
+    // both shapes; a plain awaited insert still resolves for the other
+    // handlers.
     insert: () => ({
       values: (vals: any) => {
+        // Recorded eagerly, as before, so a plain `await tx.insert().values()`
+        // lands in txState.inserts. The ON CONFLICT shape un-records it when
+        // the unique constraint would have fired.
         txState.inserts.push(vals);
-        return Promise.resolve([]);
+        const p: any = Promise.resolve([]);
+        p.returning = async () => [{ id: txState.inserts.length, ...vals }];
+        p.onConflictDoNothing = () => ({
+          returning: async () => {
+            if (vals.transactionId && txState.existingPaymentTxnIds.has(vals.transactionId)) {
+              txState.inserts.splice(txState.inserts.indexOf(vals), 1);
+              return [];
+            }
+            return [{ id: txState.inserts.length, ...vals }];
+          },
+        });
+        return p;
       },
     }),
+    select: () => {
+      const c: any = {};
+      c.from = () => c;
+      c.where = () => c;
+      c.for = () => c;
+      c.then = (ok: any, no: any) =>
+        Promise.resolve([{ id: 42, organizationId: 1, currentBalance: "10000", version: 1 }]).then(ok, no);
+      return c;
+    },
   };
   return {
     db: dbStub,
@@ -108,6 +141,16 @@ vi.mock("../../server/db", () => {
     withTransaction: async (fn: any) => fn(tx),
   };
 });
+
+vi.mock("../../server/services/emailService", () => ({
+  emailService: { sendEmail: vi.fn(async () => ({ success: true, messageId: "m_1" })) },
+}));
+vi.mock("../../server/services/workflow-engine", () => ({
+  emitPaymentEvent: vi.fn(),
+}));
+vi.mock("../../server/services/activation", () => ({
+  recordActivationEventAsync: vi.fn(),
+}));
 
 vi.mock("../../server/services/credits", () => ({
   creditService: {
@@ -219,6 +262,9 @@ describe("Stripe Webhook: checkout.session.completed — borrower portal (Task #
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    txState.inserts.length = 0;
+    txState.updates.length = 0;
+    txState.existingPaymentTxnIds.clear();
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_test";
     mockStripe = { webhooks: { constructEvent: vi.fn() }, prices: { retrieve: vi.fn() } };
     const { getUncachableStripeClient } = await import("../../server/stripeClient");
@@ -234,6 +280,7 @@ describe("Stripe Webhook: checkout.session.completed — borrower portal (Task #
       id: "cs_borrower_1",
       metadata: { type: "borrower_portal_payment", noteId: "42", accessToken: "token_abc" },
       amount_total: 50000, // $500
+      payment_status: "paid",
     };
     mockStripe.webhooks.constructEvent.mockReturnValue(makeStripeEvent("checkout.session.completed", session, "evt_borrow_1"));
 
@@ -252,7 +299,10 @@ describe("Stripe Webhook: checkout.session.completed — borrower portal (Task #
     const payload = Buffer.from("{}");
     await WebhookHandlers.processWebhook(payload, "sig");
 
-    expect(storageMock.createPayment).toHaveBeenCalled();
+    // The row is written by the shared posting rule's idempotent insert, not
+    // by storage.createPayment (which the webhook used to call directly).
+    expect(txState.inserts.some((r) => r.transactionId === "cs_borrower_1")).toBe(true);
+    expect(storageMock.createPayment).not.toHaveBeenCalled();
     expect(storageMock.updateNote).toHaveBeenCalled();
   });
 
@@ -278,6 +328,7 @@ describe("Stripe Webhook: checkout.session.completed — borrower portal (Task #
       // Signed by Stripe, but for note 43.
       metadata: { type: "borrower_portal_payment", noteId: "43", accessToken: "token_abc" },
       amount_total: 50000,
+      payment_status: "paid",
     };
     mockStripe.webhooks.constructEvent.mockReturnValue(makeStripeEvent("checkout.session.completed", session, "evt_borrow_other_note"));
 
@@ -292,6 +343,7 @@ describe("Stripe Webhook: checkout.session.completed — borrower portal (Task #
     await WebhookHandlers.processWebhook(payload, "sig");
 
     expect(storageMock.createPayment).not.toHaveBeenCalled();
+    expect(txState.inserts.filter((r) => r.transactionId === "cs_borrower_other_note")).toHaveLength(0);
   });
 
   it("rejects a borrower payment whose metadata names a different organization (Task #77b)", async () => {
@@ -304,6 +356,7 @@ describe("Stripe Webhook: checkout.session.completed — borrower portal (Task #
         accessToken: "token_abc",
       },
       amount_total: 50000,
+      payment_status: "paid",
     };
     mockStripe.webhooks.constructEvent.mockReturnValue(makeStripeEvent("checkout.session.completed", session, "evt_borrow_other_org"));
 
@@ -318,6 +371,7 @@ describe("Stripe Webhook: checkout.session.completed — borrower portal (Task #
     await WebhookHandlers.processWebhook(payload, "sig");
 
     expect(storageMock.createPayment).not.toHaveBeenCalled();
+    expect(txState.inserts.filter((r) => r.transactionId === "cs_borrower_other_org")).toHaveLength(0);
   });
 
   // ── The defect itself, as a test ──────────────────────────────────────────
@@ -335,6 +389,7 @@ describe("Stripe Webhook: checkout.session.completed — borrower portal (Task #
         accessToken: "token_abc",
       },
       amount_total: 50000,
+      payment_status: "paid",
     };
     mockStripe.webhooks.constructEvent.mockReturnValue(makeStripeEvent("checkout.session.completed", session, "evt_borrow_older"));
 
@@ -355,9 +410,9 @@ describe("Stripe Webhook: checkout.session.completed — borrower portal (Task #
     await WebhookHandlers.processWebhook(payload, "sig");
 
     expect(
-      storageMock.createPayment,
+      txState.inserts.some((r) => r.transactionId === "cs_borrower_older"),
       "a completed payment on an older session must still be recorded — the money has already moved",
-    ).toHaveBeenCalled();
+    ).toBe(true);
 
     // …and completing the older session must not wipe the pointer to the newer
     // one, which is still open.
@@ -373,6 +428,7 @@ describe("Stripe Webhook: checkout.session.completed — borrower portal (Task #
       id: "cs_borrower_dup",
       metadata: { type: "borrower_portal_payment", noteId: "99", accessToken: "token_dup" },
       amount_total: 30000,
+      payment_status: "paid",
     };
     mockStripe.webhooks.constructEvent.mockReturnValue(makeStripeEvent("checkout.session.completed", session, "evt_dup_borrower"));
 
@@ -381,14 +437,46 @@ describe("Stripe Webhook: checkout.session.completed — borrower portal (Task #
       organizationId: 1,
       pendingCheckoutSessionId: "cs_borrower_dup",
       currentBalance: "5000",
+      monthlyPayment: "300",
+      interestRate: "5",
     });
-    // Payment already recorded
-    (storageMock.getPayments as any).mockResolvedValue([{ transactionId: "cs_borrower_dup" }]);
+    // Payment already recorded — by the browser return, or an earlier delivery
+    // of this same event. The unique constraint on transaction_id is the
+    // dedupe, not a read of the payments table that a racing writer can miss.
+    txState.existingPaymentTxnIds.add("cs_borrower_dup");
 
     const payload = Buffer.from("{}");
     await WebhookHandlers.processWebhook(payload, "sig");
 
     expect(storageMock.createPayment).not.toHaveBeenCalled();
+    expect(txState.inserts.filter((r) => r.transactionId === "cs_borrower_dup")).toHaveLength(0);
+    // The loser touches nothing else: no schedule/due-date write, no receipt.
+    expect(storageMock.updateNote).not.toHaveBeenCalled();
+    const { emailService } = await import("../../server/services/emailService");
+    expect(emailService.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it("refuses a checkout.session.completed whose payment_status is still unpaid", async () => {
+    const session = {
+      id: "cs_borrower_unpaid",
+      metadata: { type: "borrower_portal_payment", noteId: "42", accessToken: "token_abc" },
+      amount_total: 50000,
+      payment_status: "unpaid",
+    };
+    mockStripe.webhooks.constructEvent.mockReturnValue(makeStripeEvent("checkout.session.completed", session, "evt_borrow_unpaid"));
+    (storageMock.getNoteByAccessToken as any).mockResolvedValue({
+      id: 42,
+      organizationId: 1,
+      currentBalance: "10000",
+      monthlyPayment: "500",
+      interestRate: "5",
+      status: "active",
+    });
+
+    await WebhookHandlers.processWebhook(Buffer.from("{}"), "sig");
+
+    expect(txState.inserts.filter((r) => r.transactionId === "cs_borrower_unpaid")).toHaveLength(0);
+    expect(storageMock.updateNote).not.toHaveBeenCalled();
   });
 });
 

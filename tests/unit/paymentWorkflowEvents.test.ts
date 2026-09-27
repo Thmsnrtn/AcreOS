@@ -57,7 +57,7 @@ import {
   daysLateForBorrowerPayment,
   emitBorrowerPaymentReceived,
   type PostedBorrowerPayment,
-} from "../../server/routes-borrower";
+} from "../../server/services/borrower/portalPaymentPosting";
 import {
   emitPaymentMissedForFinding,
   classifyPaymentsDue,

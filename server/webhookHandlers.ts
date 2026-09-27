@@ -12,7 +12,7 @@ import {
 import { eq, sql } from 'drizzle-orm';
 import Stripe from 'stripe';
 import { logger } from './utils/logger';
-import { addMonths } from './utils/dateUtils';
+import { postBorrowerPortalCheckoutPayment } from './services/borrower/portalPaymentPosting';
 import { recordSense } from './services/autopilot/perception';
 
 // ─── Refund reversal derivation (PURE) ──────────────────────────────────────
@@ -1517,8 +1517,8 @@ export class WebhookHandlers {
 
   static async processBorrowerPortalPayment(session: Stripe.Checkout.Session): Promise<void> {
     try {
-      const { noteId, accessToken, paymentAmount } = session.metadata || {};
-      
+      const { noteId, accessToken } = session.metadata || {};
+
       if (!noteId || !accessToken) {
         logger.error('Missing noteId or accessToken in session metadata');
         return;
@@ -1555,10 +1555,7 @@ export class WebhookHandlers {
       // The metadata below is OURS — buildBorrowerCardCheckoutParams wrote
       // noteId and organizationId at session-create time and Stripe signed the
       // event carrying them back. So authenticity comes from the signature and
-      // OWNERSHIP comes from the metadata. That is strictly stronger than what
-      // it replaces: nothing here ever compared `noteId` to `note.id`, so the
-      // one-slot check was also the only thing standing between a signed event
-      // for one note and a credit to another.
+      // OWNERSHIP comes from the metadata.
       if (Number(noteId) !== note.id) {
         logger.error(
           `[webhook] borrower payment metadata names note ${noteId} but the access token resolves note ${note.id} — refusing`,
@@ -1573,139 +1570,43 @@ export class WebhookHandlers {
         return;
       }
 
-      const existingPayments = await storage.getPayments(note.organizationId, note.id);
-      const alreadyRecorded = existingPayments.some(p => p.transactionId === session.id);
-      if (alreadyRecorded) {
-        logger.info(`Payment already recorded for session: ${session.id}`);
-        return;
-      }
-
-      const amount = session.amount_total ? session.amount_total / 100 : Number(paymentAmount || note.monthlyPayment);
-
-      const schedule = note.amortizationSchedule || [];
-      const nextPendingPayment = schedule.find(s => s.status === 'pending');
-
-      let principalAmount = 0;
-      let interestAmount = 0;
-
-      if (nextPendingPayment) {
-        const ratio = amount / nextPendingPayment.payment;
-        principalAmount = Number((nextPendingPayment.principal * ratio).toFixed(2));
-        interestAmount = Number((nextPendingPayment.interest * ratio).toFixed(2));
-      } else {
-        const monthlyRate = Number(note.interestRate) / 100 / 12;
-        interestAmount = Number((Number(note.currentBalance) * monthlyRate).toFixed(2));
-        principalAmount = Number((amount - interestAmount).toFixed(2));
-        if (principalAmount < 0) principalAmount = 0;
-      }
-
-      // Process payment + note update in a single transaction (see storage.createPayment)
-      // The transactional createPayment handles balance update with optimistic locking
-      await storage.createPayment({
-        organizationId: note.organizationId,
-        noteId: note.id,
-        amount: amount.toString(),
-        principalAmount: principalAmount.toString(),
-        interestAmount: interestAmount.toString(),
-        feeAmount: "0",
-        lateFeeAmount: "0",
-        paymentDate: new Date(),
-        dueDate: note.nextPaymentDate || new Date(),
-        paymentMethod: 'card',
-        transactionId: session.id,
-        status: 'completed',
+      // ONE posting rule, shared with the browser return
+      // (/api/borrower/verify-payment). Until 2026-09-27 this handler kept its
+      // own: a FLOAT ratio of the next schedule row for the split, a late fee
+      // hard-coded to "0", a read-then-write dedupe that raced on redelivery,
+      // no `payment.received` workflow event, and it posted sessions whose
+      // `payment_status` was still `unpaid`. Which writer ran first was decided
+      // by network timing, and so was the borrower's balance.
+      const result = await postBorrowerPortalCheckoutPayment({
+        note,
+        stripeSession: session,
+        source: "stripe_webhook",
       });
 
-      // Update schedule and next payment date (non-financial fields, safe outside payment tx)
-      const newBalance = Math.max(0, Number(note.currentBalance) - principalAmount);
-
-      let updatedSchedule = schedule;
-      if (nextPendingPayment) {
-        updatedSchedule = schedule.map(s =>
-          s.paymentNumber === nextPendingPayment.paymentNumber
-            ? { ...s, status: 'paid' }
-            : s
-        );
-      }
-
-      const nextPaymentDate = addMonths(new Date(note.nextPaymentDate || new Date()), 1);
-
-      await storage.updateNote(note.id, {
-        amortizationSchedule: updatedSchedule,
-        nextPaymentDate: nextPaymentDate,
-        // Clear the pending slot only if it still names THIS session. Clearing
-        // unconditionally would wipe the pointer to a newer session that is
-        // still open, which is the same one-slot confusion in the other
-        // direction.
-        ...(note.pendingCheckoutSessionId === session.id
-          ? { pendingCheckoutSessionId: null }
-          : {}),
-      }, note.organizationId);
-
-      logger.info(`Borrower portal payment processed: Note ${note.id}, Amount: $${amount}, New Balance: $${newBalance}`);
-
-      // Send payment receipt email to borrower.
-      //
-      // WHO COLLECTED IT. The charge is a direct charge on the lender's own
-      // connected processor (founder ruling 2026-07-29, "be the rail, not the
-      // provider") — AcreOS never held this money and took no cut of it. The
-      // receipt says so, and names the lender when the org has a name on file;
-      // it degrades to "your lender" rather than inventing one.
-      try {
-        const { emailService } = await import('./services/emailService');
-        const borrower = note.borrowerId ? await storage.getLead(note.organizationId, note.borrowerId) : null;
-        const borrowerEmail = borrower?.email;
-        if (borrowerEmail) {
-          const nextDue = nextPaymentDate.toLocaleDateString();
-          const lenderOrg = await storage.getOrganization(note.organizationId);
-          const collector = lenderOrg?.name?.trim() || 'your lender';
-          const custodyLine = `This payment was collected by ${collector}. AcreOS is the software your lender uses — it doesn't hold your payment or take a share of it.`;
-          const receiptResult = await emailService.sendEmail({
-            // COUNTERPARTY (founder decision 2026-07-17). The lender org owns
-            // this message — it is their borrower (storage.getLead(
-            // note.organizationId, note.borrowerId)), their charge on their own
-            // connected processor, their identity. The body already says
-            // "AcreOS is the software your lender uses", which only stays true
-            // if the mail leaves under the lender's identity rather than the
-            // platform's. No connected identity → honest refusal, no @acreos.io
-            // fallback.
-            organizationId: note.organizationId,
-            purpose: 'counterparty',
-            to: borrowerEmail,
-            subject: `Payment Receipt — $${amount.toFixed(2)}`,
-            html: `
-              <h2>Payment Receipt</h2>
-              <p>Thank you for your payment.</p>
-              <ul>
-                <li><strong>Amount Paid:</strong> $${amount.toFixed(2)}</li>
-                <li><strong>Paid To:</strong> ${collector}</li>
-                <li><strong>Payment Date:</strong> ${new Date().toLocaleDateString()}</li>
-                <li><strong>Remaining Balance:</strong> $${newBalance.toFixed(2)}</li>
-                <li><strong>Next Payment Due:</strong> ${newBalance <= 0 ? 'Paid in full!' : nextDue}</li>
-              </ul>
-              <p>${custodyLine}</p>
-              <p>If you have questions about your account, please contact your lender.</p>
-            `,
-            text: `Payment Receipt\n\nAmount Paid: $${amount.toFixed(2)}\nPaid To: ${collector}\nPayment Date: ${new Date().toLocaleDateString()}\nRemaining Balance: $${newBalance.toFixed(2)}\nNext Payment Due: ${newBalance <= 0 ? 'Paid in full!' : nextDue}\n\n${custodyLine}`,
+      switch (result.outcome) {
+        case "refused":
+          logger.warn(`[webhook] borrower payment ${session.id} not posted: ${result.reason}`, {
+            metadata: { noteId: note.id, organizationId: note.organizationId, reason: result.reason },
           });
-          // sendEmail RETURNS a refusal (it does not throw), so the catch below
-          // never sees one. Log what actually happened — the payment itself is
-          // already recorded and must not be rolled back for a mail failure.
-          if (receiptResult.success) {
-            logger.info(`[webhook] Payment receipt sent to ${borrowerEmail}`);
-          } else {
-            logger.warn('[webhook] Payment receipt NOT sent — borrower has no receipt', {
+          return;
+        case "already_recorded":
+          // The browser return won the race. Its row is the record; nothing
+          // else to do — no second balance mutation, no second receipt.
+          logger.info(`Payment already recorded for session: ${session.id}`);
+          return;
+        case "posted":
+          logger.info(
+            `Borrower portal payment processed: Note ${note.id}, Amount: $${(result.amountCents / 100).toFixed(2)}, New Balance: $${(result.remainingBalanceCents / 100).toFixed(2)}`,
+            {
               metadata: {
-                organizationId: note.organizationId,
                 noteId: note.id,
-                errorType: receiptResult.errorType,
-                error: receiptResult.error,
+                organizationId: note.organizationId,
+                installment: result.installment,
+                receiptEmailed: result.receiptEmailed,
               },
-            });
-          }
-        }
-      } catch (emailErr) {
-        logger.warn('[webhook] Could not send payment receipt email', emailErr instanceof Error ? emailErr : undefined);
+            },
+          );
+          return;
       }
     } catch (err) {
       logger.error('Error processing borrower portal payment', err instanceof Error ? err : undefined);
@@ -1728,7 +1629,8 @@ export class WebhookHandlers {
    * stripeConnect.handleWebhookEvent — whose switch had no refund branch.
    * There it hit `default:` and logged "Unhandled Stripe webhook event": the
    * `payments` row this webhook's sibling (processBorrowerPortalPayment →
-   * storage.createPayment) had written stood, the note balance stayed
+   * postBorrowerPortalCheckoutPayment; storage.createPayment at the time)
+   * had written stood, the note balance stayed
    * reduced, and Form 1098 Box 1 reported mortgage interest the borrower
    * never ended up paying — filed with the IRS under that borrower's real
    * TIN.

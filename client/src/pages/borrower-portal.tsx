@@ -94,14 +94,23 @@ type AutopayStatus = {
   statusMessage: string;
 };
 
+// The recorded quote the server issued — integer cents on the wire, good
+// THROUGH `goodThroughDate` (== the payoff date the engine accrued to). There
+// is no validity window: interest after that date is the published per-diem.
 type PayoffQuote = {
-  principalBalance: number;
-  accruedInterest: number;
-  payoffFee: number;
-  totalPayoff: number;
-  goodThroughDate: string;
+  quoteId: string;
   quoteDate: string;
-  daysValid: number;
+  payoffDate: string;
+  goodThroughDate: string;
+  accrualStartDate: string;
+  daysAccrued: number;
+  principalBalanceCents: number;
+  accruedInterestCents: number;
+  perDiemInterestCents: number;
+  payoffFeeCents: number;
+  totalPayoffCents: number;
+  lateFeesOutstandingNote: string;
+  pdfUrl: string;
 };
 
 export default function BorrowerPortal() {
@@ -115,7 +124,6 @@ export default function BorrowerPortal() {
   // borrower on a weak cell connection must never end up staring at a
   // dead form with no path forward.
   const [networkError, setNetworkError] = useState<Error | null>(null);
-  const [verifiedEmail, setVerifiedEmail] = useState("");
 
   useDocumentTitle("Borrower portal");
 
@@ -150,7 +158,6 @@ export default function BorrowerPortal() {
       const data = await res.json();
       setLoanData(data);
       setIsVerified(true);
-      setVerifiedEmail(trimmed);
     } catch (err: any) {
       setError(err.message || "We couldn't verify your access right now. Check your connection and try again.");
     } finally {
@@ -256,7 +263,7 @@ export default function BorrowerPortal() {
     return <PortalLoadingSkeleton />;
   }
 
-  return <BorrowerDashboard data={loanData} accessToken={accessToken} verifiedEmail={verifiedEmail} />;
+  return <BorrowerDashboard data={loanData} />;
 }
 
 /**
@@ -443,7 +450,7 @@ function BorrowerLandingPage() {
   );
 }
 
-function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: BorrowerLoanData; accessToken: string; verifiedEmail: string }) {
+function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
   const { note, payments, borrower } = data;
   // Never fabricated: when the org has no name on file this stays generic
   // rather than naming a lender that isn't in the record.
@@ -831,7 +838,9 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
     setShowPayoffQuote(true);
     setPayoffError(null);
     try {
-      const res = await fetch(`/api/borrower/payoff-quote?accessToken=${accessToken}&email=${encodeURIComponent(verifiedEmail)}`);
+      // Auth comes from the borrower_session cookie set during
+      // /api/borrower/verify — never the note token or email in the URL.
+      const res = await fetch('/api/borrower/payoff-quote', { credentials: 'include' });
 
       if (res.ok) {
         const data = await res.json();
@@ -1825,33 +1834,52 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                 <div className="flex justify-between py-2 border-b">
                   <dt className="text-muted-foreground">Principal balance</dt>
                   <dd className="font-mono font-medium tabular-nums">
-                    ${payoffQuote.principalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ${(payoffQuote.principalBalanceCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </dd>
                 </div>
                 <div className="flex justify-between py-2 border-b">
-                  <dt className="text-muted-foreground">Accrued interest</dt>
+                  <dt className="text-muted-foreground">
+                    Accrued interest
+                    <span className="block text-xs tabular-nums">
+                      {payoffQuote.daysAccrued} {payoffQuote.daysAccrued === 1 ? 'day' : 'days'} since {format(new Date(`${payoffQuote.accrualStartDate}T00:00:00`), 'MMM d, yyyy')}
+                    </span>
+                  </dt>
                   <dd className="font-mono font-medium tabular-nums">
-                    ${payoffQuote.accruedInterest.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ${(payoffQuote.accruedInterestCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </dd>
                 </div>
-                {payoffQuote.payoffFee > 0 && (
+                {payoffQuote.payoffFeeCents > 0 && (
                   <div className="flex justify-between py-2 border-b">
                     <dt className="text-muted-foreground">Payoff fee</dt>
                     <dd className="font-mono font-medium tabular-nums">
-                      ${payoffQuote.payoffFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ${(payoffQuote.payoffFeeCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </dd>
                   </div>
                 )}
                 <div className="flex justify-between py-3 bg-primary/10 rounded-card px-3 mt-4">
                   <dt className="font-semibold">Total payoff amount</dt>
                   <dd className="font-mono font-bold text-lg text-primary tabular-nums" data-testid="text-payoff-total">
-                    ${payoffQuote.totalPayoff.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ${(payoffQuote.totalPayoffCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </dd>
                 </div>
               </dl>
               <div className="text-sm text-muted-foreground text-center">
-                <p className="tabular-nums">Quote valid through: {format(new Date(payoffQuote.goodThroughDate), 'MMMM d, yyyy')}</p>
-                <p className="text-xs mt-1 tabular-nums">({payoffQuote.daysValid} days from quote date)</p>
+                <p className="tabular-nums" data-testid="text-payoff-good-through">
+                  Good through {format(new Date(`${payoffQuote.goodThroughDate}T00:00:00`), 'MMMM d, yyyy')}
+                </p>
+                <p className="text-xs mt-1 tabular-nums">
+                  Interest accrues at ${(payoffQuote.perDiemInterestCents / 100).toFixed(2)} per day after this date — request a new quote if you will pay later.
+                </p>
+                <p className="text-xs mt-1">{payoffQuote.lateFeesOutstandingNote}</p>
+                <a
+                  href={payoffQuote.pdfUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block mt-2 text-xs underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                  data-testid="link-payoff-pdf"
+                >
+                  Download this quote as PDF
+                </a>
               </div>
             </div>
           ) : null}
