@@ -41,6 +41,7 @@ const state = vi.hoisted(() => ({
   noteVersion: 1,
   updateNoteCalls: [] as Array<{ id: number; patch: Record<string, unknown>; orgId: number | undefined }>,
   emails: [] as Array<Record<string, unknown>>,
+  activities: [] as Array<Record<string, unknown>>,
   events: [] as Array<{ type: string; orgId: number; entityId: number; data: Record<string, any> }>,
 }));
 
@@ -51,6 +52,7 @@ function resetState() {
   state.noteVersion = 1;
   state.updateNoteCalls.length = 0;
   state.emails.length = 0;
+  state.activities.length = 0;
   state.events.length = 0;
 }
 
@@ -121,6 +123,9 @@ vi.mock("../../server/storage", () => ({
     }),
     getLead: vi.fn(async () => ({ id: 9, email: "borrower@example.com", firstName: "Bea", lastName: "Rowe" })),
     getOrganization: vi.fn(async () => ({ id: 7, name: "Acme Lender" })),
+    logActivity: vi.fn(async (entry: Record<string, unknown>) => {
+      state.activities.push(entry);
+    }),
   },
   db: {},
 }));
@@ -322,5 +327,36 @@ describe("postBorrowerPortalCheckoutPayment — one rule for both writers", () =
     });
     expect(result.outcome).toBe("posted");
     if (result.outcome === "posted") expect(result.lateFeeCents).toBe(0);
+  });
+});
+
+
+// DEFECT-0098 — money beyond the payoff is not silently dropped.
+describe("an overpayment beyond the payoff is recorded, reported and disclosed", () => {
+  beforeEach(resetState);
+
+  it("a $100 payment on a $50 balance: full amount kept, $49.75 unapplied, lender and borrower told", async () => {
+    // 6% on $50 → $0.25 interest; principal is capped at the $50 balance.
+    const note = { ...NOTE_ROW, currentBalance: "50.00" } as typeof NOTE_ROW;
+    state.noteBalance = "50.00";
+    const out = await postBorrowerPortalCheckoutPayment({ note, stripeSession: session(), source: "borrower_portal", now: NOW });
+    expect(out.outcome).toBe("posted");
+    if (out.outcome !== "posted") return;
+    expect(out.principalCents).toBe(5_000);
+    expect(out.unappliedCents).toBe(4_975);
+    // The ledger row still carries every cent the borrower sent.
+    expect(Number(out.payment.amount)).toBe(100);
+    // The lender sees it.
+    expect(state.activities).toHaveLength(1);
+    expect(String(state.activities[0].description)).toMatch(/exceeded the payoff by \$49\.75/);
+    // The borrower is told.
+    expect(String(state.emails[0].html)).toMatch(/\$49\.75 more than the remaining payoff/);
+  });
+
+  it("an ordinary installment records nothing unapplied", async () => {
+    const out = await post("borrower_portal");
+    expect(out.outcome).toBe("posted");
+    if (out.outcome === "posted") expect(out.unappliedCents).toBe(0);
+    expect(state.activities).toHaveLength(0);
   });
 });

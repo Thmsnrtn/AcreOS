@@ -1146,14 +1146,22 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                 // T2.4: make calibration LOAD-BEARING — a poorly-calibrated brain
                 // (over-confident / unproven) escalates a medium-tier action too.
                 // Tighten-only; full confidence preserves the high-only behavior.
-                let loopConfidence = 1;
+                // DEFECT-0112: start from UNPROVEN, not full confidence. A
+                // calibration read that throws used to leave this at 1 — the
+                // one value that adds no tightening — so a failed check made
+                // the loop act as loosely as a well-calibrated one.
+                let loopConfidence = 0.4;
                 try {
                   const { getCalibrationPairs } = await import("../autopilot/experienceLog");
                   const { calibrationReport, loopConfidenceFrom } = await import("../autopilot/forecast");
                   // Deeper calibration: judge THIS domain's calibration (recency-
                   // weighted), not a global blend — a reckless domain can't hide.
                   loopConfidence = loopConfidenceFrom(calibrationReport(await getCalibrationPairs({ domain: b.domain })));
-                } catch { /* calibration unavailable → full confidence (no extra tightening) */ }
+                } catch {
+                  /* calibration unavailable → treated as unproven (0.4, the
+                     same value loopConfidenceFrom gives "unproven"), which
+                     escalates medium-tier actions too — tighten-only */
+                }
                 // Frontier #8 — fold in council disagreement by MIN: a divided
                 // panel can only LOWER confidence (⇒ escalate more), never raise
                 // it. Unanimous / no panel ⇒ councilConf 1 ⇒ no change.

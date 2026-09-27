@@ -334,16 +334,10 @@ export async function buildStepAwayReadiness(): Promise<StepAwayReadiness> {
         .from(drDrills)
         .orderBy(desc(drDrills.ranAt))
         .limit(1);
-      if (!latest) {
-        checks.push({ ...base, status: "attention", detail: "No full restore drill has EVER been recorded — RTO/RPO are unproven. Backups exist and the weekly verify proves they restore into a scratch DB, but full production-cutover recovery time is unmeasured.", fix: "Run docs/runbooks/07-database-restore-from-snapshot.md end-to-end once, fill the RTO table, and record a dr_drills row." });
-      } else {
-        const ageDays = Math.floor((Date.now() - new Date(latest.ranAt).getTime()) / 86_400_000);
-        checks.push(
-          ageDays > 90
-            ? { ...base, status: "attention", detail: `Last DR drill was ~${ageDays} day(s) ago (RTO ${latest.rto}m, target ${latest.passed ? "met" : "MISSED"}) — over the 90-day cadence.`, fix: "Schedule a fresh restore drill (runbook 07)." }
-            : { ...base, status: "ready", detail: `Last DR drill ~${ageDays} day(s) ago — RTO ${latest.rto}m, target ${latest.passed ? "met" : "MISSED"}.` },
-        );
-      }
+      // DEFECT-0110: a recent drill that MISSED its RTO target is attention,
+      // not ready. The verdict lives in drDrillStatus.ts so it can be tested.
+      const { drDrillVerdict } = await import("./drDrillStatus");
+      checks.push({ ...base, ...drDrillVerdict(latest, new Date()) });
     } catch (err) {
       checks.push(attention(base, err instanceof Error ? err.message : String(err)));
     }

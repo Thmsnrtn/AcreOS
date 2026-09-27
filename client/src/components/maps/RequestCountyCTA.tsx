@@ -63,16 +63,18 @@ export function RequestCountyCTA({
       });
     },
     onError: (err) => {
-      // Defensive: the backend may not be deployed yet. Still acknowledge the
-      // intent so the surface never reads as broken; log the real cause.
+      // DEFECT-0113: a failed request is NOT a logged request. This used to
+      // flip to the "Coverage requested … We'll prioritize it" confirmation
+      // anyway, so nothing was recorded and the user was told it was. The
+      // form stays, with what they typed, and says so.
       clientLogger.warn("request-county failed", {
         endpoint: REQUEST_COUNTY_ENDPOINT,
         error: err instanceof Error ? err.message : String(err),
       });
-      setSubmitted(true);
       toast({
-        title: "Request noted",
-        description: "We've logged your county. Coverage requests help us prioritize where we go next.",
+        title: "Couldn't log your county request",
+        description: "Nothing was recorded. Your entry is still here — try again in a moment.",
+        variant: "destructive",
       });
     },
   });

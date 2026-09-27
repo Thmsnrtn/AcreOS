@@ -77,6 +77,39 @@ describe("autopilot act() — judgment routed through governance", () => {
     expect(p).toMatch(/advance owned growth/);
   });
 
+  // DEFECT-0112: `.catch(() => null)` made a failed risk read indistinguishable
+  // from a low-risk one, and the action auto-ran.
+  it("a risk read that FAILS escalates for sign-off — it does not auto-run", async () => {
+    const d = deps({
+      runGate: vi.fn(async () => gate("pass")),
+      assessRisk: vi.fn(async () => {
+        throw new Error("risk model unavailable");
+      }),
+    });
+    const out = await planAndAct(move(), ctx, d);
+    expect(out.status).toBe("escalated");
+    expect(d.enqueue).not.toHaveBeenCalled();
+    expect(d.ask).toHaveBeenCalledTimes(1);
+    if (out.status === "escalated") expect(out.verdict.reason).toMatch(/risk check itself failed/);
+  });
+
+  it("a SUCCESSFUL low-risk read still auto-runs", async () => {
+    const d = deps({
+      runGate: vi.fn(async () => gate("pass")),
+      assessRisk: vi.fn(async () => ({ tier: "low" as const, reasons: [] })),
+    });
+    const out = await planAndAct(move(), ctx, d);
+    expect(out.status).toBe("acted");
+  });
+
+  it("the continuous loop starts calibration at UNPROVEN, not full confidence", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(resolve(__dirname, "../../server/services/solene/continuousLoop.ts"), "utf8");
+    expect(src).not.toMatch(/let loopConfidence = 1;/);
+    expect(src).toMatch(/let loopConfidence = 0\.4;/);
+  });
+
   it("PASS → enqueues a governed dispatch via auto_dispatch", async () => {
     const d = deps({ runGate: vi.fn(async () => gate("pass")) });
     const out = await planAndAct(move(), ctx, d);

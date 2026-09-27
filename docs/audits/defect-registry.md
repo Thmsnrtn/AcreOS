@@ -2189,7 +2189,7 @@ Resolving commits: (this branch)
 ### DEFECT-0098
 Title: Overpayment residue is dropped by the borrower portal writers
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: research report §17.2, DEFECT-0096's repair
 Description: `splitPaymentCents` returns `residueCents` when a payment exceeds
 the payoff (balance + one period's interest). Neither portal writer persisted
@@ -2201,7 +2201,8 @@ Evidence: `server/services/notePaymentMath.ts` `SplitPaymentResult.residueCents`
 Remediation plan: An unapplied-funds row or a refund path, decided with the
 founder — money custody rules apply. Until then the residue is neither invented
 into principal nor into interest.
-Resolving commits: —
+Fixed 2026-09-27: an overpayment beyond the payoff is no longer silent. The payment row keeps every cent received; after commit the posting rule writes a lender-visible activity entry (`borrower_payment_unapplied_overpayment`, naming the excess and the session) and a structured warning, returns `unappliedCents` in its result, and the borrower's receipt says the excess was not applied and that the lender will return it or contact them. Refunding or applying it stays the lender's decision — moving customer money is not AcreOS's. `borrowerPortalPaymentPosting.test.ts`: $100 on a $50 balance → $49.75 unapplied, told to both sides (RED before).
+Resolving commits: (this branch, round 3 batch 2)
 
 ### DEFECT-0099
 Title: Serviced notes cannot separate late fees assessed from late fees collected
@@ -2288,7 +2289,7 @@ Resolving commits: (this branch, slice C)
 ### DEFECT-0102
 Title: Due-date detector calls a payment overdue on its due day and ignores grace and posted payments
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: research report §F, re-verified at `9cb534f`
 Description: `server/services/notePaymentDueDetector.ts:81-105` classifies
 `nextPaymentDate < now` as `overdue` and emits `payment.missed` without reading
@@ -2301,7 +2302,8 @@ Remediation plan: Distinguish due / unpaid-after-due / within-grace /
 actionably-delinquent from the schedule plus payment observations; make the
 workflow handoff durable or reconcilable. Tests for midnight UTC, grace
 boundary, payment posted before scan.
-Resolving commits: —
+Fixed 2026-09-27: the classifier works on calendar days (a payment due today is due-soon at the 11:00 UTC scan, not overdue) and honours the note's stated grace period (`noteGracePeriodDays`, unstated = 0 grace, the posting rule's reading); `overdue` fires only after due day + grace. The scan selects `grace_period_days`. A posted full installment advances `nextPaymentDate`, which is how posted payments reach this scan. Four boundary cases in `paymentWorkflowEvents.test.ts` (three RED before). The durable-handoff half (mesh publish then an unawaited in-memory workflow emit) is the same defect as DEFECT-0114 and is tracked there.
+Resolving commits: (this branch, round 3 batch 2)
 
 ### DEFECT-0103
 Title: A parked collection reminder is sent with stale content; one org's backlog can starve others
@@ -2500,7 +2502,7 @@ Resolving commits: —
 ### DEFECT-0109
 Title: Owner-finance projection double-counts the down payment as interest
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: research report §3, re-verified at `9cb534f`
 Description: `server/services/financialOSService.ts:461-465` computes
 `totalInterestEarned = totalCollected - (salePrice - downPaymentReceived)`
@@ -2509,12 +2511,13 @@ where `totalCollected` already includes the down payment. Route
 caller found. `tests/unit/dealPnlSingleOwner.test.ts` never asserts it.
 Remediation plan: `totalCollected - salePrice`, with a fixture ($10k / $2k
 down / $9k installments → $1k, not $3k).
-Resolving commits: —
+Fixed 2026-09-27: `totalInterestEarned = totalCollected − salePrice` (`totalCollected` already includes the down payment). `dealPnlSingleOwner.test.ts`: $10k sale, $2k down, 18 × $500 → $1,000, not $3,000 (RED before).
+Resolving commits: (this branch, round 3 batch 2)
 
 ### DEFECT-0110
 Title: Step-away readiness calls a recent FAILED DR drill "ready"
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: research report §5, re-verified at `9cb534f`
 Description: `server/services/autopilot/stepAwayReadiness.ts:342-344` returns
 `status: "ready"` for a drill younger than 90 days even when `passed === false`,
@@ -2522,12 +2525,13 @@ with detail text saying MISSED; the check is `critical: false` (`:327`) so it
 never blocks the verdict but inflates the ready count.
 Remediation plan: A recent failed drill is `attention`; test no drill / stale
 pass / recent fail / recent pass.
-Resolving commits: —
+Fixed 2026-09-27: the verdict lives in `server/services/autopilot/drDrillStatus.ts`, imported by the readiness check: a recent drill that missed its RTO target (or recorded no pass/fail) is `attention`. `drDrillVerdict.test.ts` covers no drill, stale pass, recent fail, recent unknown, recent pass, and pins that the readiness check uses the verdict (RED before).
+Resolving commits: (this branch, round 3 batch 2)
 
 ### DEFECT-0111
 Title: AI router semantic cache ignores task type; quality grader failure scores 8
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: research report §5, re-verified at `9cb534f`
 Description: `server/services/aiRouter.ts:118-141` matches cached responses by
 org + token-set Jaccard ≥ 0.72 (`:58`) regardless of `taskType`,
@@ -2536,12 +2540,13 @@ org + token-set Jaccard ≥ 0.72 (`:58`) regardless of `taskType`,
 grader fails.
 Remediation plan: Constrain or disable semantic reuse for dynamic tasks; a
 grader failure is `unknown`, not 8.
-Resolving commits: —
+Fixed 2026-09-27: semantic cache entries carry `taskType` and `responseFormat` and are reused only for the same task and shape; a failed or scoreless quality grade is `score: null` ("not checked") and logged, never 8. `aiRouterSemanticCacheTaskScope.test.ts` drives the real router: same task paraphrase still hits (vacuity), different task or format misses (RED before), grader pin.
+Resolving commits: (this branch, round 3 batch 2)
 
 ### DEFECT-0112
 Title: Autopilot proceeds at full confidence when its calibration or risk read fails
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: research report §E, re-verified at `9cb534f`
 Description: `server/services/solene/continuousLoop.ts:1149-1156` keeps
 `loopConfidence = 1` when the calibration read throws;
@@ -2550,12 +2555,13 @@ so `risk?.tier === "high"` is false; `forecast.ts:119-132` maps unproven to 0.4
 — the fallbacks contradict each other.
 Remediation plan: A failed supplementary check holds or narrows the action
 class that required it; one durable incident.
-Resolving commits: —
+Fixed 2026-09-27: a risk read that throws is treated as high risk and escalated for sign-off (`autopilot/act.ts`); the continuous loop's calibration confidence starts at 0.4 (unproven) instead of 1 when the calibration read fails (`solene/continuousLoop.ts`). `autopilotAct.test.ts`: a failing risk read escalates and does not enqueue; a successful low-risk read still acts; the loop's starting value is pinned (RED before).
+Resolving commits: (this branch, round 3 batch 2)
 
 ### DEFECT-0113
 Title: County-coverage request claims success on POST failure; an exhausted county re-pends but is never drained; a dead endpoint still reads "covered"
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: research report §25, re-verified at `9cb534f`
 Description: `client/src/components/maps/RequestCountyCTA.tsx:65-76` sets
 `submitted = true` in `onError`. `server/services/coverageLedger.ts:127-136`
@@ -2566,10 +2572,11 @@ flips `exhausted → pending` without resetting `attempts`, and the worker
 Remediation plan: A request id from the server before any acknowledgement;
 attempt generation/backoff on re-request; `resolved` re-examined when its
 endpoint goes inactive.
-Resolving commits: —
+Fixed 2026-09-27: the county request form shows a destructive toast and keeps the entry when the POST fails, instead of the "Coverage requested" confirmation (`requestCountyCtaFailure.test.tsx`, a real render, RED before); a queue row reached with no active endpoint never reports `covered` (a `resolved` row there is "no longer responding"); a repeat request reopens an exhausted row AND a resolved row whose endpoint went inactive, and resets `attempts` so the drain (`attempts < maxAttempts`) picks it up (`coverageLedgerDiscovery.test.ts` pins the conflict update and the reopen condition; the SQL semantics themselves need Postgres).
+Resolving commits: (this branch, round 3 batch 2)
 
 ### DEFECT-0114
-Title: Acquired-note aging emits its workflow event unawaited with entity id 0
+Title: Scheduled detectors hand off to workflows through an unawaited in-memory emit (acquired-note aging, note due detector)
 Severity: P2
 Status: OPEN
 Surfaced by lenses: research report §14.2, re-verified at `9cb534f`
@@ -2579,7 +2586,16 @@ increments `transitioned`, then `emitAgingTransitionEvent` calls
 swallows errors (`:398-406`); `workflow-engine.ts:1959-1966` queues in memory.
 A crash after the status write loses the follow-up and the next sweep does not
 re-emit.
-Remediation plan: Transactional intent or reconcilable outbox; real entity id.
+Also `server/services/notePaymentDueDetector.ts` `emitPaymentMissedForFinding`
+(the durability half of DEFECT-0102): the mesh event is published, then the
+in-memory `workflowEngine.emit` runs unawaited, so a crash between the two
+loses the collection workflow under a dedupe key that will not re-emit.
+The entity id 0 is a documented convention (acquired notes are uuid-keyed;
+the real id travels as `data.noteId`), not a defect on its own.
+Remediation plan: A durable, reconcilable hand-off (an outbox row written in
+the same transaction as the status change, drained into the workflow engine)
+for both detectors. A design change, not a patch; not attempted in the
+2026-09-27 pass.
 Resolving commits: —
 
 ### DEFECT-0115
@@ -2892,8 +2908,8 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 26  | 26    |
-| FIXED  | 12  | 67  | 18  | 97    |
+| OPEN   | 0   | 0   | 19  | 19    |
+| FIXED  | 12  | 67  | 25  | 104   |
 | DEFERRED | 0 | 3   | 0   | 3     |
 | **Total** | **12** | **70** | **44** | **126** |
 
@@ -2982,6 +2998,13 @@ in slice B; no P1 from this report remains OPEN.
 | DEFECT-0124 | Lead intelligence quotes no USDA-derived price to owners | (this branch, round 3) |
 | DEFECT-0125 | Pre-refusal 1099 FIRE file download withheld | (this branch, round 3) |
 | DEFECT-0126 | Due-diligence findings nobody checked are "Not verified", never clean | (this branch, round 3) |
+| DEFECT-0098 | Overpayment beyond payoff recorded, reported, disclosed | (this branch, round 3) |
+| DEFECT-0102 | Due detector: calendar days and the note's grace period | (this branch, round 3) |
+| DEFECT-0109 | Owner-finance interest no longer counts the down payment | (this branch, round 3) |
+| DEFECT-0110 | A recent failed DR drill is attention, not ready | (this branch, round 3) |
+| DEFECT-0111 | Semantic AI cache scoped to task and shape; no fabricated quality score | (this branch, round 3) |
+| DEFECT-0112 | Failed risk or calibration reads tighten autopilot, never loosen it | (this branch, round 3) |
+| DEFECT-0113 | County request failure reported as failure; dead coverage not "covered" | (this branch, round 3) |
 
 ### Deferred Defects (3)
 

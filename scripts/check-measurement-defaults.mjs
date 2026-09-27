@@ -322,7 +322,6 @@ const BASELINE = new Set([
   "server/services/agent-skills.ts::pricingOverrides?.termsPercentage ?? 40",
   "server/services/agentDebates.ts::parsed.confidence || 50",
   "server/services/agentInitiativeV9.ts::parsed.confidence || 50",
-  "server/services/aiRouter.ts::parsed.score || 8",
   "server/services/atlasMemory.ts::entry.confidence ?? 0.7",
   "server/services/autonomousDecisionExecutor.ts::item.urgencyScore ?? 50",
   "server/services/autonomyScoreV14.ts::latestSnapshot?.avgDecisionLatencyMs || 5000",

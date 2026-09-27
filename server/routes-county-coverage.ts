@@ -112,7 +112,10 @@ async function resolveStatus(
     pending: { status: "discovering", message: "We're searching for a free parcel source for this county." },
     in_progress: { status: "discovering", message: "We're searching for a free parcel source for this county." },
     failed: { status: "discovering", message: "We're still working on coverage for this county." },
-    resolved: { status: "covered", message: "Coverage is now live for this county." },
+    // Reached only when NO endpoint is active (checked above), so a
+    // `resolved` row here is coverage that went dark — not coverage
+    // (DEFECT-0113). Re-requesting re-opens discovery.
+    resolved: { status: "unavailable", message: "This county's parcel source is no longer responding. Request it again to re-open the search." },
     exhausted: { status: "unavailable", message: "No free parcel source is currently available for this county." },
   };
   const mapped = statusMap[q.status] ?? {
@@ -121,7 +124,7 @@ async function resolveStatus(
   };
 
   return {
-    covered: q.status === "resolved",
+    covered: false,
     status: mapped.status,
     queueId: q.id,
     demandCount: q.demandCount,

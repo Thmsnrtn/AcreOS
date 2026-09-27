@@ -236,7 +236,16 @@ export async function planAndAct(
       // trusted domain, a high-risk action (novel / irreversible / expensive)
       // escalates for a human tap rather than auto-running.
       if (deps.assessRisk) {
-        const risk = await deps.assessRisk(move).catch(() => null);
+        // DEFECT-0112: a risk read that FAILS is not a low-risk read. This
+        // used `.catch(() => null)`, and `null?.tier === "high"` is false, so
+        // an unassessable action auto-ran exactly as a vetted low-risk one
+        // did. An action whose risk cannot be shown goes to the founder.
+        const risk = await deps.assessRisk(move).catch((err: unknown) => ({
+          tier: "high" as const,
+          reasons: [
+            `the risk check itself failed (${err instanceof Error ? err.message : String(err)}), so I can't show it is safe to run on my own`,
+          ],
+        }));
         if (risk?.tier === "high") {
           const { askId } = await deps.ask({
             askingAgentRole: binding.agentRole,

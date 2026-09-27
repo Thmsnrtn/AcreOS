@@ -34,6 +34,12 @@ interface CacheEntry {
   orgId: number | null;
   // For semantic dedup
   queryTokens?: Set<string>;
+  // DEFECT-0111: what the entry ANSWERED. The semantic layer matched on org
+  // + word overlap alone, so a paraphrase with a different task type (a
+  // classification vs a draft) or a different response format (JSON vs prose)
+  // could be served an answer shaped for the other task.
+  taskType?: string;
+  responseFormat?: string;
 }
 
 const AI_CACHE = new Map<string, CacheEntry>();
@@ -129,6 +135,9 @@ function findSemanticCacheHit(task: AITask, orgId: number | null): CacheEntry | 
     // answered with Org A's cached (org-specific) response. Platform-level
     // entries (orgId === null) match only platform-level requests.
     if (entry.orgId !== orgId) continue;
+    // DEFECT-0111: same task, same shape — or no reuse.
+    if ((entry.taskType ?? null) !== (task.taskType ?? null)) continue;
+    if ((entry.responseFormat ?? null) !== (task.responseFormat ?? null)) continue;
     // Skip entries without token index
     if (!entry.queryTokens || entry.queryTokens.size === 0) continue;
 
@@ -231,7 +240,8 @@ function getQualityThreshold(): number {
 // true / 6 respectively — identical to the prior hard-coded behavior.
 
 interface QualityCheckResult {
-  score: number;       // 1-10
+  /** 1-10, or null when the grader failed or gave no score — "not checked", never a stand-in. */
+  score: number | null;
   reason: string;
   shouldEscalate: boolean;
 }
@@ -269,12 +279,21 @@ Respond with JSON only: {"score": <1-10>, "reason": "<one sentence>"}`;
       response_format: { type: "json_object" },
     });
 
-    const parsed = JSON.parse(check.choices[0]?.message?.content || '{"score":8,"reason":"ok"}');
-    const score = Math.max(1, Math.min(10, parsed.score || 8));
+    // DEFECT-0111: an empty or scoreless grader reply is NOT a score of 8.
+    const parsed = JSON.parse(check.choices[0]?.message?.content || "{}");
+    const raw = typeof parsed.score === "number" && Number.isFinite(parsed.score) ? parsed.score : null;
+    if (raw === null) {
+      return { score: null, reason: "quality not checked — the grader returned no score", shouldEscalate: false };
+    }
+    const score = Math.max(1, Math.min(10, raw));
     return { score, reason: parsed.reason || "", shouldEscalate: score < getQualityThreshold() };
-  } catch {
-    // On quality-check failure, assume response is good (fail open)
-    return { score: 8, reason: "quality check failed — assuming adequate", shouldEscalate: false };
+  } catch (err) {
+    // The grader failed: the response's quality is UNKNOWN. Not escalated
+    // (a re-ask costs money on no evidence), and not recorded as adequate.
+    logger.warn("[AIRouter] quality check failed — response quality not checked", {
+      metadata: { taskType: task.taskType, error: err instanceof Error ? err.message : String(err) },
+    });
+    return { score: null, reason: "quality not checked — the grader failed", shouldEscalate: false };
   }
 }
 
@@ -1583,6 +1602,8 @@ export async function routeAITask(
       cachedAt: Date.now(),
       orgId: cacheOrgId,
       queryTokens: tokenize(queryText),
+      taskType: task.taskType,
+      responseFormat: task.responseFormat,
     });
   }
 

@@ -28,6 +28,7 @@ import { logger } from "../utils/logger";
 import { recordSense } from "./autopilot/perception";
 import { eventMeshPublisher } from "./eventMeshPublisher";
 import { emitPaymentEvent } from "./workflow-engine";
+import { noteGracePeriodDays } from "@shared/notes/delinquency";
 import {
   BALLOON_WINDOW_DAYS,
   emitNoteBalloonApproaching,
@@ -53,6 +54,8 @@ export interface NotePaymentRow {
   id: number;
   organizationId: number;
   nextPaymentDate: Date | null;
+  /** The note's stated grace period; null/undefined = not stated (treated as 0, logged by callers). */
+  gracePeriodDays?: number | null;
 }
 
 export interface PaymentDueFinding {
@@ -74,9 +77,24 @@ function isoDay(d: Date): string {
 }
 
 /**
- * Pure window + classification logic. A note whose next payment is strictly
- * in the past is overdue; within the next `windowDays` (inclusive) is
- * due-soon; further out (or unknown) is no finding. Deterministic + total.
+ * Pure window + classification logic, on CALENDAR DAYS (DEFECT-0102).
+ *
+ * A payment is due on a day, not at an instant. This compared the due
+ * timestamp (midnight UTC) to the scan time (11:00 UTC), so a payment was
+ * "overdue" at the scan ON ITS OWN DUE DAY — and a `payment.missed` went to
+ * the dunning automations before the borrower's day was over, and inside the
+ * grace period the note itself grants.
+ *
+ * Now: on or before the due day, within the window → due-soon. After the due
+ * day but within the note's stated grace period → no finding (the due-soon
+ * finding already fired; nothing is missed yet). After due day + grace →
+ * overdue, with `daysUntilDue` = −(days past the due day). A note with no
+ * stated grace is measured with zero grace — the conservative reading for the
+ * lender, the same rule the posting path applies to late fees.
+ *
+ * A POSTED payment is seen through the schedule: the posting rule advances
+ * `nextPaymentDate` when an installment is paid in full, so a paid note has
+ * no past due date to find. A partial payment leaves the date in place.
  */
 export function classifyPaymentsDue(
   rows: NotePaymentRow[],
@@ -84,20 +102,28 @@ export function classifyPaymentsDue(
   windowDays: number = DUE_SOON_WINDOW_DAYS,
 ): PaymentDueFinding[] {
   const findings: PaymentDueFinding[] = [];
+  const todayMs = Date.parse(`${isoDay(now)}T00:00:00.000Z`);
   for (const row of rows) {
     if (!row.nextPaymentDate) continue; // honest: no schedule, no signal
-    const due = row.nextPaymentDate.getTime();
-    if (!Number.isFinite(due)) continue;
-    const deltaMs = due - now.getTime();
-    if (deltaMs > windowDays * DAY_MS) continue; // outside the window
-    const classification: PaymentDueClassification = deltaMs < 0 ? "overdue" : "due_soon";
+    if (!Number.isFinite(row.nextPaymentDate.getTime())) continue;
     const dueDate = isoDay(row.nextPaymentDate);
+    const dueMs = Date.parse(`${dueDate}T00:00:00.000Z`);
+    const daysUntilDue = Math.round((dueMs - todayMs) / DAY_MS);
+    if (daysUntilDue > windowDays) continue; // outside the window
+    let classification: PaymentDueClassification;
+    if (daysUntilDue >= 0) {
+      classification = "due_soon";
+    } else {
+      const grace = noteGracePeriodDays(row.gracePeriodDays) ?? 0;
+      if (-daysUntilDue <= grace) continue; // past due, inside grace: nothing is missed yet
+      classification = "overdue";
+    }
     findings.push({
       noteId: row.id,
       orgId: row.organizationId,
       dueDate,
       classification,
-      daysUntilDue: Math.floor(deltaMs / DAY_MS),
+      daysUntilDue,
       dedupeKey: `note-payment:${row.id}:${dueDate}:${classification}`,
     });
   }
@@ -179,7 +205,12 @@ export async function runNotePaymentDueScan(now: Date = new Date()): Promise<Not
     const rows = await unscopedForPlatformOps(
       "note payment-due daily sweep: a scheduled platform job that scans every organization's active notes and publishes one per-org mesh event per finding",
     )
-      .select({ id: notes.id, organizationId: notes.organizationId, nextPaymentDate: notes.nextPaymentDate })
+      .select({
+        id: notes.id,
+        organizationId: notes.organizationId,
+        nextPaymentDate: notes.nextPaymentDate,
+        gracePeriodDays: notes.gracePeriodDays,
+      })
       .from(notes)
       .where(and(eq(notes.status, "active"), isNull(notes.deletedAt), lte(notes.nextPaymentDate, horizon)));
     result.scanned = rows.length;

@@ -60,6 +60,8 @@ const store: {
   coverageReqs: CoverageReqRow[];
   nextEndpointId: number;
   nextQueueId: number;
+  /** The `set` clause of the last queue upsert's ON CONFLICT DO UPDATE. */
+  lastConflictSet?: Record<string, unknown> | null;
 } = {
   endpoints: [],
   queue: [],
@@ -74,6 +76,7 @@ function resetStore() {
   store.coverageReqs = [];
   store.nextEndpointId = 1;
   store.nextQueueId = 1;
+  store.lastConflictSet = null;
 }
 
 // Table identity sentinels — the db mock returns table-specific behaviour by
@@ -164,8 +167,9 @@ vi.mock("../../server/db", () => {
         pending = v;
         return this;
       },
-      onConflictDoUpdate(_opts: any) {
+      onConflictDoUpdate(opts: any) {
         conflict = true;
+        store.lastConflictSet = opts?.set ?? null;
         return this;
       },
       async returning(_sel?: any) {
@@ -328,6 +332,32 @@ describe("enqueueCountyForDiscovery", () => {
     expect(r.demandCount).toBe(1);
     expect(store.queue).toHaveLength(1);
     expect(store.queue[0]).toMatchObject({ state: "TX", county: "harris", status: "pending" });
+  });
+
+  // DEFECT-0113 — a re-opened row must be drainable. The worker selects
+  // `attempts < maxAttempts`, so re-pending an exhausted row without resetting
+  // its spent attempts left it pending forever. The SQL itself runs in
+  // Postgres; this pins that the conflict update WRITES the counter, and the
+  // source pin below pins which states it reopens.
+  it("a repeat request's conflict update resets the attempt counter alongside the status", async () => {
+    await enqueueCountyForDiscovery("TX", "Harris");
+    await enqueueCountyForDiscovery("TX", "Harris");
+    expect(store.lastConflictSet).toBeTruthy();
+    expect(Object.keys(store.lastConflictSet!)).toEqual(expect.arrayContaining(["status", "attempts"]));
+  });
+
+  it("the reopen condition covers an exhausted search AND a resolved row whose endpoint went inactive", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const { stripComments } = await import("../helpers/stripComments");
+    const src = stripComments(readFileSync(resolve(__dirname, "../../server/services/coverageLedger.ts"), "utf8"));
+    const at = src.indexOf("const reopenOnDemand");
+    expect(at, "vacuity: reopen condition not found").toBeGreaterThan(-1);
+    const cond = src.slice(at, src.indexOf(";", at));
+    expect(cond).toMatch(/'exhausted'/);
+    expect(cond).toMatch(/'resolved'/);
+    expect(cond).toMatch(/NOT EXISTS/);
+    expect(cond).toMatch(/isActive/);
   });
 
   it("bumps demand on a repeat miss instead of duplicating", async () => {

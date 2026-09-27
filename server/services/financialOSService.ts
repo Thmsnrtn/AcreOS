@@ -460,9 +460,13 @@ export function calculateDealPnL(input: DealPnLInput): {
     const totalMonthlyPayments = (centsFromDecimal(input.monthlyPayment) * input.termMonths) / 100;
     const totalCollected =
       (centsFromDecimal(input.downPaymentReceived) + centsFromDecimal(totalMonthlyPayments)) / 100;
+    // DEFECT-0109: interest is everything collected above the sale price.
+    // `totalCollected` already INCLUDES the down payment, so subtracting only
+    // the financed balance (salePrice − down) counted the down payment as
+    // interest: $10k sale, $2k down, $9k of installments → $3k "interest"
+    // instead of $1k.
     const totalInterestEarned =
-      (centsFromDecimal(totalCollected) -
-        (centsFromDecimal(input.salePrice) - centsFromDecimal(input.downPaymentReceived))) / 100;
+      (centsFromDecimal(totalCollected) - centsFromDecimal(input.salePrice)) / 100;
     const totalProfitProjected =
       (centsFromDecimal(totalCollected) -
         centsFromDecimal(totalAcquisitionCost) -

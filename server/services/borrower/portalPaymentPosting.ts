@@ -216,6 +216,8 @@ export type PostBorrowerPortalCheckoutPaymentResult =
       interestCents: number;
       lateFeeCents: number;
       remainingBalanceCents: number;
+      /** Money received beyond the payoff and applied to nothing (DEFECT-0098). */
+      unappliedCents: number;
       installment: InstallmentOutcome;
       /** The note's due date AFTER this payment — unchanged when `partial`. */
       nextPaymentDate: Date | null;
@@ -261,9 +263,12 @@ export async function postBorrowerPortalCheckoutPayment(
     currentBalanceCents,
     annualRateBps,
   });
-  // `split.residueCents` (an overpayment beyond the payoff) is NOT persisted
-  // here — the servicing book has no unapplied-funds column. Recorded as an
-  // open defect rather than invented into principal or interest.
+  // `split.residueCents` is money the borrower sent beyond the payoff. It is
+  // NOT invented into principal or interest, and it is not silently dropped
+  // either (DEFECT-0098): the payment row keeps the full amount, and after
+  // commit the lender gets an activity entry naming the unapplied excess, the
+  // borrower's receipt says so, and the result carries it. Returning or
+  // applying it is the lender's call — moving customer money is not ours.
 
   // ── Late fee ────────────────────────────────────────────────────────
   // THIS ASSESSES A FEE AGAINST A BORROWER. When the record states no grace
@@ -466,6 +471,37 @@ export async function postBorrowerPortalCheckoutPayment(
     source,
   });
 
+  if (split.residueCents > 0) {
+    const excess = (split.residueCents / 100).toFixed(2);
+    logger.warn("borrower_payment_unapplied_overpayment", {
+      metadata: {
+        organizationId: note.organizationId,
+        noteId: note.id,
+        paymentId: payment.id,
+        transactionId: stripeSession.id,
+        unappliedCents: split.residueCents,
+        source,
+      },
+    });
+    try {
+      await storage.logActivity({
+        organizationId: note.organizationId,
+        action: "borrower_payment_unapplied_overpayment",
+        entityType: "note",
+        entityId: note.id,
+        description:
+          `Borrower payment ${stripeSession.id} exceeded the payoff by $${excess}. ` +
+          `The excess is included in the recorded payment amount but was not applied to the note — refund it or apply it by hand.`,
+      });
+    } catch (err) {
+      logger.error(
+        "borrower_payment_unapplied_overpayment_not_logged",
+        err instanceof Error ? err : undefined,
+        { metadata: { organizationId: note.organizationId, noteId: note.id, unappliedCents: split.residueCents } },
+      );
+    }
+  }
+
   // Activation telemetry. First borrower payment received. Idempotent
   // FIRST-occurrence on (org, eventName).
   try {
@@ -486,6 +522,7 @@ export async function postBorrowerPortalCheckoutPayment(
     nextPaymentDate,
     installment,
     paymentDate,
+    unappliedCents: split.residueCents,
   });
 
   return {
@@ -496,6 +533,7 @@ export async function postBorrowerPortalCheckoutPayment(
     interestCents: split.interestCents,
     lateFeeCents,
     remainingBalanceCents,
+    unappliedCents: split.residueCents,
     installment,
     nextPaymentDate,
     receiptEmailed,
@@ -529,6 +567,7 @@ async function sendBorrowerPaymentReceipt(
     nextPaymentDate: Date | null;
     installment: InstallmentOutcome;
     paymentDate: Date;
+    unappliedCents: number;
   },
 ): Promise<boolean> {
   try {
@@ -553,6 +592,10 @@ async function sendBorrowerPaymentReceipt(
       posted.installment === "partial"
         ? "This was a partial payment. Your current installment remains open and its due date has not changed."
         : null;
+    const unappliedLine =
+      posted.unappliedCents > 0
+        ? `Your payment was $${(posted.unappliedCents / 100).toFixed(2)} more than the remaining payoff. That amount was not applied to your loan — ${collector} will return it or contact you about it.`
+        : null;
     const custodyLine = `This payment was collected by ${collector}. AcreOS is the software your lender uses — it doesn't hold your payment or take a share of it.`;
 
     const result = await emailService.sendEmail({
@@ -571,6 +614,7 @@ async function sendBorrowerPaymentReceipt(
           <li><strong>Next Payment Due:</strong> ${nextDue}</li>
         </ul>
         ${partialLine ? `<p>${partialLine}</p>` : ""}
+        ${unappliedLine ? `<p>${unappliedLine}</p>` : ""}
         <p>${custodyLine}</p>
         <p>If you have questions about your account, please contact your lender.</p>
       `,
@@ -583,6 +627,7 @@ async function sendBorrowerPaymentReceipt(
         `Remaining Balance: $${remaining}`,
         `Next Payment Due: ${nextDue}`,
         ...(partialLine ? ["", partialLine] : []),
+        ...(unappliedLine ? ["", unappliedLine] : []),
         "",
         custodyLine,
       ].join("\n"),

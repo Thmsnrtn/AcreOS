@@ -187,3 +187,21 @@ describe("there is one owner", () => {
     expect(fin.length).toBeGreaterThan(1000);
   });
 });
+
+// DEFECT-0109 — owner-finance interest is what was collected ABOVE the sale
+// price. `totalCollected` already includes the down payment; subtracting only
+// the financed balance counted the down payment as interest.
+describe("owner-finance projection counts the down payment once", () => {
+  it("$10k sale, $2k down, 18 × $500 installments → $1k interest, not $3k", () => {
+    const r = financialOsSide({
+      salePrice: 10_000,
+      isOwnerFinanced: true,
+      downPaymentReceived: 2_000,
+      monthlyPayment: 500,
+      termMonths: 18,
+    });
+    expect(r.ownerFinanceProjection).toBeDefined();
+    expect(r.ownerFinanceProjection!.totalCollected).toBe(11_000);
+    expect(r.ownerFinanceProjection!.totalInterestEarned).toBe(1_000);
+  });
+});

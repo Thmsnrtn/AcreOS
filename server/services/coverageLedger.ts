@@ -112,6 +112,7 @@ export async function enqueueCountyForDiscovery(
 
   const priorityBoost = opts.priorityBoost ?? 0;
 
+  const reopenOnDemand = sql`(${countyDiscoveryQueue.status} = 'exhausted' OR (${countyDiscoveryQueue.status} = 'resolved' AND NOT EXISTS (SELECT 1 FROM ${countyGisEndpoints} WHERE ${countyGisEndpoints.id} = ${countyDiscoveryQueue.resolvedEndpointId} AND ${countyGisEndpoints.isActive} = true)))`;
   // Upsert: one queue row per (state, county); bump demand on conflict.
   // Reset a terminal/exhausted row back to pending when fresh demand arrives.
   const inserted = await db
@@ -129,9 +130,13 @@ export async function enqueueCountyForDiscovery(
       set: {
         demandCount: sql`${countyDiscoveryQueue.demandCount} + 1`,
         priority: sql`GREATEST(${countyDiscoveryQueue.priority}, ${priorityBoost})`,
-        // Re-open exhausted/failed rows when new demand arrives so a county
-        // that briefly had no public endpoint gets re-tried later.
-        status: sql`CASE WHEN ${countyDiscoveryQueue.status} = 'exhausted' THEN 'pending' ELSE ${countyDiscoveryQueue.status} END`,
+        // Re-open a row when new demand arrives and there is nothing live to
+        // show for it: an EXHAUSTED search, or a RESOLVED row whose endpoint
+        // has since gone inactive (DEFECT-0113). The attempt counter resets
+        // with it — the worker selects `attempts < maxAttempts`, so a
+        // re-pended row that kept its spent attempts sat pending forever.
+        status: sql`CASE WHEN ${reopenOnDemand} THEN 'pending' ELSE ${countyDiscoveryQueue.status} END`,
+        attempts: sql`CASE WHEN ${reopenOnDemand} THEN 0 ELSE ${countyDiscoveryQueue.attempts} END`,
         updatedAt: new Date(),
       },
     })

@@ -527,6 +527,41 @@ describe("note payment due detector → payment.missed", () => {
     return finding;
   }
 
+  // DEFECT-0102 — calendar days, and the note's grace period.
+  it("a payment due TODAY is not overdue at the 11:00 UTC scan", () => {
+    const [f] = classifyPaymentsDue(
+      [{ id: 1, organizationId: 7, nextPaymentDate: new Date("2026-09-01T00:00:00.000Z"), gracePeriodDays: 0 }],
+      new Date("2026-09-01T11:00:00.000Z"),
+    );
+    expect(f.classification).toBe("due_soon");
+    expect(f.daysUntilDue).toBe(0);
+  });
+
+  it("past due but INSIDE the note's grace period → no finding (nothing is missed yet)", () => {
+    const out = classifyPaymentsDue(
+      [{ id: 1, organizationId: 7, nextPaymentDate: new Date("2026-09-01T00:00:00.000Z"), gracePeriodDays: 10 }],
+      new Date("2026-09-11T11:00:00.000Z"), // 10 days past, grace 10
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("one day past grace → overdue, lateness counted from the due day", () => {
+    const [f] = classifyPaymentsDue(
+      [{ id: 1, organizationId: 7, nextPaymentDate: new Date("2026-09-01T00:00:00.000Z"), gracePeriodDays: 10 }],
+      new Date("2026-09-12T11:00:00.000Z"),
+    );
+    expect(f.classification).toBe("overdue");
+    expect(f.daysUntilDue).toBe(-11);
+  });
+
+  it("no stated grace is measured as zero grace — overdue the day after", () => {
+    const [f] = classifyPaymentsDue(
+      [{ id: 1, organizationId: 7, nextPaymentDate: new Date("2026-09-01T00:00:00.000Z"), gracePeriodDays: null }],
+      new Date("2026-09-02T11:00:00.000Z"),
+    );
+    expect(f.classification).toBe("overdue");
+  });
+
   it("classifies a past-due note as overdue and emits it once", () => {
     const finding = overdueFinding();
     expect(finding.classification).toBe("overdue");
