@@ -30,7 +30,6 @@ import { createHash } from "node:crypto";
 import { Errors } from "./utils/errors";
 import { initSentry, Sentry } from "./utils/sentry";
 import { validateEnv } from "./utils/validateEnv";
-import { getClerkAuth } from "./types/request";
 
 // Validate required env vars before anything else — exits with clear error if misconfigured
 validateEnv();
@@ -283,30 +282,16 @@ app.use(validateContentType);
 app.use(requestLoggingMiddleware);
 
 // ── Rate limiting ────────────────────────────────────────────────────────────
-// Auth read endpoints (session-check, org list, oauth-status): permissive cap
-// keyed by user-id when authenticated, falling back to IP. The previous blanket
-// 20/15min-per-IP rule 429'd cellular users behind carrier-grade NAT, where
-// many phones share one egress IP and one normal browsing session burns the
-// bucket for the whole subnet — caught 2026-05-10 as the mobile sign-in hang.
-// /api/auth/user is skipped entirely: it's called on every page render to
-// validate the session cookie, clerk-express already verifies the JWT, and
-// rate-limiting a read-only session check adds no security value.
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 300,
-  standardHeaders: true,
-  legacyHeaders: false,
-  // Tier 1G: budget enforced in Redis across the whole Fly process group when
-  // REDIS_URL is set (undefined store = stock per-instance MemoryStore, which
-  // on N machines silently grants N× the budget).
-  store: createLimiterStore("auth"),
-  // IP component goes through getClientIp (CF-Connecting-IP first — req.ip is
-  // the Cloudflare edge IP behind trust-proxy=1, see utils/clientIp.ts) and
-  // ipKeyGenerator for IPv6 /56 bucketing. userId stays the primary key.
-  keyGenerator: (req) => getClerkAuth(req)?.userId || ipKeyGenerator(getClientIp(req)),
-  skip: (req) => req.originalUrl.startsWith("/api/auth/user"),
-  message: { message: "Too many requests. Please try again later." },
-});
+// EVERY limiter in this file runs BEFORE Clerk's middleware (installed inside
+// registerRoutes), so no limiter here may key on identity: `req.auth`,
+// `req.user` and `req.organization` are all still undefined at this point.
+// Until 2026-09-27 four of them did (`getClerkAuth(req)?.userId || req.ip`),
+// always fell back, and — because `req.ip` is the Cloudflare EDGE address
+// behind trust-proxy=1 — bucketed customers per edge node (DEFECT-0062).
+// The identity-keyed limiters (auth, AI, export, per-user API) now live in
+// server/middleware/identityRateLimiters.ts, mounted once directly after
+// Clerk. Limiters that stay here key on getClientIp(req) — the real client —
+// or on a submitted credential. rateLimitIdentityKeying.test.ts holds this.
 
 // Auth-attempt endpoints (OAuth init/callback, legacy login/register): keep
 // an aggressive cap to slow credential-stuffing and brute force.
@@ -350,10 +335,7 @@ const authAttemptLimiter = rateLimit({
   message: { message: "Too many sign-in attempts. Please try again later." },
 });
 
-// `/api/auth` IS live and this limiter is load-bearing: /api/auth/user,
-// /api/auth/logout, /api/auth/organizations, /api/auth/switch-organization and
-// /api/auth/signup-signals all have handlers under it.
-app.use("/api/auth", authLimiter);
+// The /api/auth limiter is mounted after Clerk — see identityRateLimiters.ts.
 // (Legacy /api/auth/google + /api/auth/microsoft rate-limiters removed with
 // the standalone social-login OAuth — Clerk owns login/OAuth now.)
 //
@@ -410,26 +392,8 @@ app.use("/api/auth", authLimiter);
 // authAttemptLimiter is also intentionally NOT mounted on /api/register
 // since there's no handler to protect.
 
-// AI / Pax / chat endpoints: 240 requests per minute, keyed by userId with
-// IP fallback. These are hot paths — /api/pax fans out ~8 calls per page
-// load when the Gabriel × Pax rail is mounted. A pure 60/min per-IP cap
-// 429'd legitimate authenticated users on cellular carrier NAT (same root
-// cause as the /api/auth limiter fixed 2026-05-10). Founder traffic also
-// bypasses the cap via the deeper aiRateLimit in middleware/aiRateLimit.ts.
-const aiLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 240,
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => getClerkAuth(req)?.userId || req.ip || "unknown",
-  skip: () => e2eTestAuthEnabled(), // never on Fly — see server/auth/testAuth.ts
-  message: { message: "AI request limit reached. Please wait a moment." },
-});
-app.use("/api/ai", aiLimiter);
-app.use("/api/pax", aiLimiter);
-app.use("/api/chat", aiLimiter);
-app.use("/api/executive", aiLimiter);
-app.use("/api/document-generation", aiLimiter);
+// AI / Pax / chat limiter: mounted after Clerk, per user — see
+// server/middleware/identityRateLimiters.ts.
 
 // Webhook endpoints: 200 requests per minute per IP
 const webhookLimiter = rateLimit({
@@ -437,6 +401,7 @@ const webhookLimiter = rateLimit({
   max: 200,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(getClientIp(req)),
   message: { message: "Webhook rate limit exceeded." },
 });
 app.use("/api/webhooks", webhookLimiter);
@@ -447,61 +412,41 @@ const importLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(getClientIp(req)),
   message: { message: "Import rate limit exceeded. Please wait before importing again." },
 });
 app.use("/api/import", importLimiter);
 app.use("/api/leads/import", importLimiter);
 app.use("/api/properties/import", importLimiter);
 
-// RS-7 (post-may1-resweep): bulk export endpoints. Asher-takeover §3:
-// "Asher's borrowers exported at 09:04 with no friction." Per-org per-day
-// hard cap at 5 exports — generous for normal use, blocks the burst
-// pattern that takeovers exhibit. Keyed by org first then user (so a
-// hijacked single user can't grind through other orgs).
-const exportLimiter = rateLimit({
-  windowMs: 24 * 60 * 60 * 1000,
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => {
-    const orgId = req.organization?.id ?? "unknown-org";
-    const userId = getClerkAuth(req)?.userId ?? req.ip ?? "unknown-user";
-    return `export:${orgId}:${userId}`;
-  },
-  message: { message: "Bulk-export rate limit exceeded. Per-org daily cap is 5. Email support@acreos.io for one-off lifts." },
-});
-app.use("/api/leads/export", exportLimiter);
-app.use("/api/properties/export", exportLimiter);
-app.use("/api/notes/export", exportLimiter);
-app.use("/api/contractors/export", exportLimiter);
-app.use("/api/tenants/export", exportLimiter);
+// RS-7 bulk-export cap: mounted after Clerk, per user — see
+// server/middleware/identityRateLimiters.ts. (It used to read req.organization
+// and the Clerk user here, before either existed.)
 
-// General authenticated API: 300 requests per minute, keyed by session ID (falls
-// back to IP for unauthenticated requests). Prevents a single user behind a
-// shared NAT/proxy from exhausting the per-IP bucket.
-//
-// /api/auth/user is skipped here for the same reason the auth limiter skips it
-// above: ProtectedRoute renders on every page transition and useAuth refetches
-// to validate the session cookie. A tight cap on it produced 429s that the SPA
-// treats as in-progress, infinite-looping on the "Loading AcreOS…" splash. The
-// Clerk-JS keepalive (/__clerk/...) is intentionally excluded too — same SPA
-// fan-out, no app data exposed.
-const apiLimiter = rateLimit({
+// Per-client-IP floor for every /api request, including the public routes
+// registered before Clerk (status, waitlist, public trust pages) that the
+// per-user budget after Clerk never sees. 1000/min per real client IP (the
+// number server/routes.ts applied as its own IP floor until this became the
+// one definition). The per-USER budget, which is what stops one person behind
+// a shared NAT from spending everyone's allowance, is in
+// identityRateLimiters.ts. /api/auth/user and /api/health* are skipped.
+const apiIpFloorLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 300,
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => getClerkAuth(req)?.userId || req.ip || 'unknown',
+  store: createLimiterStore("api-ip"),
+  keyGenerator: (req) => ipKeyGenerator(getClientIp(req)),
   skip: (req) =>
     e2eTestAuthEnabled() || // E2E suite hammers many routes as one user; never on Fly
     req.originalUrl.startsWith("/api/auth/user") ||
-    req.originalUrl.startsWith("/__clerk/"),
+    req.originalUrl.startsWith("/api/health"),
   message: { message: "Too many requests. Please slow down and try again shortly." },
 });
-app.use("/api", apiLimiter);
+app.use("/api", apiIpFloorLimiter);
 
 // T0-3 (2026-06-10): /mcp previously sat OUTSIDE every limiter family (the
-// apiLimiter only covers /api), so an attacker could grind the bearer-key
+// API limiters only cover /api), so an attacker could grind the bearer-key
 // check unmetered. Dedicated bucket keyed by a SHA-256 hash of the presented
 // credential (never the credential itself — see
 // memory/feedback_credential_value_handling.md) with IP fallback for
@@ -517,7 +462,7 @@ const mcpLimiter = rateLimit({
     if (provided) {
       return `mcpkey:${createHash("sha256").update(provided).digest("hex").slice(0, 16)}`;
     }
-    return `mcpip:${req.ip || "unknown"}`;
+    return `mcpip:${ipKeyGenerator(getClientIp(req))}`;
   },
   message: { message: "MCP rate limit exceeded. Please slow down and try again shortly." },
 });

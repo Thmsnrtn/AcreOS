@@ -74,41 +74,6 @@ export interface RateLimitConfig {
  */
 type KeyFunction = (req: Request) => string;
 
-/**
- * Key function for auth-attempt endpoints (login, register, password-reset).
- *
- * Cellular-NAT-aware: by default many auth endpoints are pure-IP keyed,
- * which is wrong on carrier-grade NAT. T-Mobile, Verizon, and most
- * cellular networks share a single egress IP across many devices on
- * the same cell — one bad actor on the network 429s every iPhone in
- * the neighborhood. Inversely, attackers can hop CGNAT cells to dilute
- * a per-IP cap.
- *
- * Preference order (most specific to least):
- *   1. submitted email/identifier from the POST body — the credential
- *      being targeted is what we want to limit, regardless of source IP
- *   2. authenticated userId if somehow present (rare on auth endpoints)
- *   3. IP as the last-resort floor (still good for unauthenticated probes
- *      against random-email lists)
- *
- * See memory/feedback_rate_limit_ip_keying.md.
- */
-export const authAttemptKeyFunction: KeyFunction = (req: Request) => {
-  const body = req.body ?? {};
-  const submittedEmail =
-    typeof body.email === "string" ? body.email.toLowerCase().trim() : "";
-  const submittedIdentifier =
-    typeof body.identifier === "string"
-      ? body.identifier.toLowerCase().trim()
-      : "";
-  if (submittedEmail) return `auth:email:${submittedEmail}`;
-  if (submittedIdentifier) return `auth:id:${submittedIdentifier}`;
-  const userId = req.user?.id;
-  if (userId) return `auth:user:${userId}`;
-  // Tier 1G: IP component via getClientIp — req.ip is the Cloudflare EDGE IP
-  // behind trust-proxy=1; see server/utils/clientIp.ts for the hop analysis.
-  return `auth:ip:${getClientIp(req)}`;
-};
 
 /**
  * Predefined rate limit configurations
@@ -323,32 +288,12 @@ export function createAuthenticatedRateLimiter(config: RateLimitConfig) {
   return createRateLimiter(config, authenticatedKeyFunction);
 }
 
-/**
- * Pre-configured rate limiter instances for common use cases
- * These are ready to use directly in routes
- */
-export const rateLimiters = {
-  default: createAuthenticatedRateLimiter(RATE_LIMIT_CONFIGS.default),
-  strict: createAuthenticatedRateLimiter(RATE_LIMIT_CONFIGS.strict),
-  // Auth: keyed by submitted email/identifier first, then userId, then IP.
-  // Pure-IP rate limiting on auth paths punishes everyone on a single CGNAT
-  // egress when one attacker probes the network — see authAttemptKeyFunction.
-  auth: createRateLimiter(RATE_LIMIT_CONFIGS.auth, authAttemptKeyFunction),
-  public: createRateLimiter(RATE_LIMIT_CONFIGS.public), // IP-based for public endpoints
-};
-
-/**
- * Named limiters for specific route groups.
- *
- * `authLimiter` deliberately uses authAttemptKeyFunction (email/identifier
- * first, IP last) so that one bad actor on a shared cellular NAT doesn't
- * 429 every other phone on the same carrier egress. See
- * memory/feedback_rate_limit_ip_keying.md.
- */
-export const authLimiter = createRateLimiter(
-  { maxRequests: 10, windowMs: 15 * 60 * 1000 },
-  authAttemptKeyFunction,
-);
+// The pre-configured `rateLimiters` set and the named `authLimiter` /
+// `importLimiter` were removed 2026-09-27 (DEFECT-0062). Their only callers
+// were global app.use mounts in routes.ts keyed on req.user, which no global
+// mount can see, so every one of them keyed on IP; the /api/auth one reached
+// no handler. The per-user limiters are in identityRateLimiters.ts, mounted
+// after Clerk. Credential-path keying lives in authPathLimits.ts.
 
 // ─── Pillar D / D2 — Per-org tier-aware rate limits ─────────────────────────
 //
@@ -440,7 +385,6 @@ export const orgTieredLimiter = createOrgTieredRateLimiter();
 // to 120/min — still well short of any provider cap and not a self-block.
 export const aiLimiter = createAuthenticatedRateLimiter({ maxRequests: 120, windowMs: 60 * 1000 });
 export const webhookLimiter = createRateLimiter({ maxRequests: 100, windowMs: 60 * 1000 });
-export const importLimiter = createAuthenticatedRateLimiter({ maxRequests: 5, windowMs: 60 * 1000 });
 
 /**
  * Helper function to get rate limit stats for a specific key

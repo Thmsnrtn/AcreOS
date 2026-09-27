@@ -123,7 +123,8 @@ import { registerSesEventRoutes } from "./routes-ses-events";
 import { registerDeliverabilityRoutes } from "./routes-deliverability";
 
 // Rate limiting middleware
-import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS, authLimiter, aiLimiter, webhookLimiter, importLimiter } from "./middleware/rateLimit";
+import { webhookLimiter } from "./middleware/rateLimit";
+import { mountIdentityRateLimiters } from "./middleware/identityRateLimiters";
 import { aiRateLimit } from "./middleware/aiRateLimit";
 import { todayGuard, paxChatGuard, compsGuard } from "./middleware/expensiveEndpointGuard";
 
@@ -141,10 +142,6 @@ import { mcpHandler } from "./mcp-server";
 // external AI agents. Bearer-API-key authed, org-scoped, read-mostly subset
 // of the App Intent registry.
 import { mcpStreamableHttpHandler } from "./mcp/streamableHttp";
-// Named aliases for backwards compatibility
-const apiRateLimit = rateLimiters.default;
-const strictRateLimit = rateLimiters.strict;
-const authRateLimit = rateLimiters.auth;
 
 // Org middleware
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -763,6 +760,10 @@ export async function registerRoutes(
     }
   });
 
+  // Per-user rate limits: here and nowhere earlier, because this is the first
+  // point at which req.auth exists (DEFECT-0062; identityRateLimiters.ts).
+  mountIdentityRateLimiters(app);
+
   // Register auth routes (/api/auth/user, /api/auth/attribution)
   registerAuthRoutes(app);
 
@@ -1055,20 +1056,18 @@ export async function registerRoutes(
   // ============================================
   // RATE LIMITING MIDDLEWARE (excludes health check)
   // ============================================
-  app.use("/api/ai", aiLimiter);
+  // The per-user limiters (auth, AI, export, general API) are mounted by
+  // mountIdentityRateLimiters() directly after Clerk, above; the per-IP floor
+  // and the import limiter are in server/index.ts. This block used to mount a
+  // second, same-named set here (aiLimiter, authLimiter, importLimiter, and a
+  // 1000/min IP floor) keyed on req.user, which no global mount can see — so
+  // they keyed on IP, and the /api/auth one reached no handler at all
+  // (DEFECT-0062).
   // Phase 3 Week 9: per-organization rate limit (60/min, 600/hr) — distinct
-  // from aiLimiter (which is per-user). See server/middleware/aiRateLimit.ts.
+  // from the per-user AI limiter. See server/middleware/aiRateLimit.ts.
   app.use("/api/ai", aiRateLimit);
-  app.use("/api/auth", authLimiter);
   app.use("/api/stripe/connect/webhook", webhookLimiter);
   app.use("/webhook", webhookLimiter);
-  app.use("/api/import", importLimiter);
-  app.use("/api", (req: Request, res: Response, next: NextFunction) => {
-    if (req.path.startsWith("/health")) {
-      return next();
-    }
-    return apiRateLimit(req, res, next);
-  });
 
   // ============================================
   // REQUEST TIMEOUT MIDDLEWARE (30s → 504 Gateway Timeout)
@@ -1460,7 +1459,7 @@ export async function registerRoutes(
   app.use('/api/realtime', isAuthenticated, getOrCreateOrg, realtimeRouter);
   // Phase 0 hardening — per-user 60s sliding cap + per-org daily USD budget
   // gate on the four expensive endpoint families (Anthropic / OpenAI fan-out).
-  // Stacks AFTER aiLimiter (per-user/min) and BEFORE the actual handlers —
+  // Stacks AFTER the per-user AI limiter (identityRateLimiters.ts) and BEFORE the actual handlers —
   // soft-degrades to a structured LimitExceeded payload on cap exceeded
   // instead of silently failing or relying solely on usageLimitGate.
   // Settings → Pax (customer autonomy clarity program, 2026-09-02): the
@@ -1471,7 +1470,7 @@ export async function registerRoutes(
   // /api/me/autonomy surface (routes-autonomy.ts) is gone; its org-pause read
   // is GET /api/pax/controls now.
   app.use('/api/pax', isAuthenticated, getOrCreateOrg, paxControlsRouter);
-  app.use('/api/pax', aiLimiter, isAuthenticated, getOrCreateOrg, paxChatGuard, paxInsightsRouter);
+  app.use('/api/pax', isAuthenticated, getOrCreateOrg, paxChatGuard, paxInsightsRouter);
   // Consolidated Today-screen payload (queue + cash + meta) — one round-trip
   // replacing the ~6 parallel fetches the Today page used to fan out.
   app.use('/api/today', isAuthenticated, getOrCreateOrg, todayGuard, todayRouter);

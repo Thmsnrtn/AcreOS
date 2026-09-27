@@ -684,12 +684,47 @@ Resolving commits: pending
 ### DEFECT-0062
 Title: Duplicate rate limiter definitions in index.ts and routes.ts
 Severity: P2
-Status: OPEN
-Surfaced by lenses: 1 (ARCH-015)
-Description: Rate limiters are defined in both `index.ts` and `routes.ts` with separate `rateLimit()` instances on overlapping paths. Separate counters effectively double the allowed rate.
-Evidence: `server/index.ts:257-280` and `server/routes.ts:591-601`.
-Remediation plan: Consolidate rate limiting to a single location.
-Resolving commits: pending
+Status: FIXED (round 3, 2026-09-27) — premise corrected; the live defect was worse
+Surfaced by lenses: 1 (ARCH-015); re-verified 2026-09-27
+Description: The premise was backwards. Two limiters stacked on one path each
+count every request, so the STRICTER one wins; separate counters do not double
+the rate. What re-verification found instead:
+- Every limiter in `server/index.ts` is mounted at module scope, before
+  `registerRoutes()` installs Clerk. Four of them keyed
+  `getClerkAuth(req)?.userId || req.ip`, so `userId` was undefined for every
+  request they ever saw and they keyed on `req.ip`. Behind Cloudflare → Fly
+  with `trust proxy = 1`, `req.ip` is the Cloudflare EDGE address
+  (`server/utils/clientIp.ts`). The general API budget (300/min), the AI
+  budget (240/min) and the `/api/auth` budget were therefore per edge node,
+  shared by every customer routed through it — the CGNAT failure their own
+  comments said was fixed on 2026-05-10.
+- The bulk-export cap ("per-org per-day, 5") also read `req.organization`
+  before getOrCreateOrg had run: 5 exports per day per edge node across all
+  orgs.
+- `server/routes.ts` mounted a second, same-named set (`aiLimiter`,
+  `authLimiter`, `importLimiter`, plus a 1000/min floor) keyed on `req.user`,
+  populated later still by per-route isAuthenticated — so they keyed on IP too.
+  Its `/api/auth` mount reached no handler: every `/api/auth` route is
+  registered earlier and answers first.
+Evidence: `server/index.ts` (pre-fix limiter block), `server/routes.ts`
+(`mountIdentityRateLimiters` call site), `server/utils/clientIp.ts`.
+Remediation plan: DONE. `server/middleware/identityRateLimiters.ts` defines
+the per-user auth, AI, export and API limiters once, keyed on the verified
+Clerk user else the real client IP (`getClientIp`), and routes.ts mounts them
+once, directly after the Clerk wrapper and before `registerAuthRoutes`.
+index.ts keeps only limiters that need no identity — a 1000/min per-client-IP
+floor that also covers the public pre-Clerk routes, webhooks, imports and MCP —
+each keyed on `getClientIp`. The routes.ts duplicates and the now-callerless
+`rateLimiters` / `authLimiter` / `importLimiter` / `authAttemptKeyFunction`
+exports are removed. Limits kept at their documented values; the export cap is
+now honestly per user (the org is not resolvable at a global mount).
+Falsified by: `tests/unit/rateLimitIdentityKeying.test.ts` — four population
+assertions red on the pre-fix sources (identity read or bare `req.ip` in an
+index.ts limiter; an unkeyed index.ts limiter; the per-user set not mounted
+after Clerk; a user-keyed limiter mounted globally in routes.ts). The
+behaviour cases go red when the key falls back to `req.ip` or ignores the
+Clerk user.
+Resolving commits: this branch, round 3
 
 ### DEFECT-0063
 Title: `(req as any)` used 73+ times across 27+ server files
@@ -2913,8 +2948,8 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 14  | 14    |
-| FIXED  | 12  | 67  | 30  | 109   |
+| OPEN   | 0   | 0   | 13  | 13    |
+| FIXED  | 12  | 67  | 31  | 110   |
 | DEFERRED | 0 | 3   | 0   | 3     |
 | **Total** | **12** | **70** | **44** | **126** |
 
@@ -3015,6 +3050,7 @@ in slice B; no P1 from this report remains OPEN.
 | DEFECT-0100 | Every serviced-note payoff through one engine; invented discount removed | (this branch, round 3) |
 | DEFECT-0108 | Portfolio P&L by deal side, dated IRR, interest only | (this branch, round 3) |
 | DEFECT-0115 | Runway cash labelled as a planning basis; bank liquidity unknown | (this branch, round 3) |
+| DEFECT-0062 | Rate limiters keyed on identity before identity existed | (this branch, round 3) |
 
 ### Deferred Defects (3)
 
