@@ -18,10 +18,13 @@
  * migrate.mjs is comment-stripped first, so a comment naming a key does not
  * count as carrying it.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = resolve(__dirname, "../..");
 const FLOOR = 91;

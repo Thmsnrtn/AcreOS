@@ -105,6 +105,13 @@ describe("verifyApiKey", () => {
     expect(await verifyApiKey("short")).toBeNull();
   });
 
+  it("refuses a legacy plaintext match on a platform VENDOR row and does not upgrade it (DEFECT-0054)", async () => {
+    // A secret pasted on the retired founder keys form, e.g. a Stripe key.
+    ROWS = [{ id: 9, provider: "stripe", apiKey: "sk_live_vendorsecret_123456", keyHash: null, keyLast4: null, isActive: true }];
+    expect(await verifyApiKey("sk_live_vendorsecret_123456")).toBeNull();
+    expect(UPDATES).toHaveLength(0);
+  });
+
   it("verifies a LEGACY plaintext row once and upgrades it in place", async () => {
     ROWS = [{ id: 7, provider: "legacy_partner", apiKey: "ak_legacyplaintext1234", keyHash: null, keyLast4: null, isActive: true }];
     const r = await verifyApiKey("ak_legacyplaintext1234");

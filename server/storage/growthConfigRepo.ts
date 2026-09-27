@@ -8,6 +8,7 @@
 // construction time; `this` refers to the full DatabaseStorage instance.
 
 import { and, count, desc, eq, ne, sql } from "drizzle-orm";
+import { openFounderAdAccount, sealAdAccountSecret } from "../services/founderAdAccountSecrets";
 import { db } from "../db";
 import {
   playbookInstances,
@@ -161,23 +162,30 @@ export const growthConfigRepo = {
   },
 
   // ─── Founder Ad Accounts ──────────────────────────────────────────────────
+  // access_token / app_secret are sealed at rest (DEFECT-0054): sealed on this
+  // one write path, opened on every read — see founderAdAccountSecrets.ts.
   async getFounderAdAccount(this: DatabaseStorage, platform: string = "meta"): Promise<FounderAdAccount | undefined> {
     const [row] = await db.select().from(founderAdAccounts)
       .where(and(eq(founderAdAccounts.platform, platform), eq(founderAdAccounts.isActive, true)));
-    return row;
+    return row ? openFounderAdAccount(row) : row;
   },
 
   async upsertFounderAdAccount(this: DatabaseStorage, data: InsertFounderAdAccount): Promise<FounderAdAccount> {
+    const sealed: InsertFounderAdAccount = {
+      ...data,
+      accessToken: sealAdAccountSecret(data.accessToken),
+      appSecret: sealAdAccountSecret(data.appSecret),
+    };
     const existing = await this.getFounderAdAccount(data.platform);
     if (existing) {
       const [updated] = await db.update(founderAdAccounts)
-        .set({ ...data, updatedAt: new Date() })
+        .set({ ...sealed, updatedAt: new Date() })
         .where(eq(founderAdAccounts.id, existing.id))
         .returning();
-      return updated;
+      return openFounderAdAccount(updated);
     }
-    const [created] = await db.insert(founderAdAccounts).values(data).returning();
-    return created;
+    const [created] = await db.insert(founderAdAccounts).values(sealed).returning();
+    return openFounderAdAccount(created);
   },
 
   // ─── Growth Campaigns ─────────────────────────────────────────────────────

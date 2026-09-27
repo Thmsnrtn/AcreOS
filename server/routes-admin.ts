@@ -1,4 +1,5 @@
 import type { Express, Request, Response, NextFunction, RequestHandler } from "express";
+import { maskAdAccountSecret } from "./services/founderAdAccountSecrets";
 import { storage, db } from "./storage";
 import { z } from "zod";
 import { eq, sql, and, desc, lt, inArray, or, count } from "drizzle-orm";
@@ -77,7 +78,6 @@ const propertyEnrichSchema = z.object({ propertyId: z.number().int().positive(),
 const coordinatesEnrichSchema = z.object({ latitude: z.coerce.number(), longitude: z.coerce.number(), categories: z.array(z.string()).optional(), state: z.string().optional(), county: z.string().optional(), apn: z.string().optional(), forceRefresh: z.boolean().optional() });
 const aiModelCreateSchema = z.object({ provider: z.string().min(1), modelId: z.string().min(1), displayName: z.string().min(1), costPerMillionInput: z.coerce.number().optional(), costPerMillionOutput: z.coerce.number().optional(), maxTokens: z.coerce.number().int().optional() });
 const aiModelUpdateSchema = aiModelCreateSchema.partial();
-const systemApiKeyUpdateSchema = z.object({ apiKey: z.string().min(1), isActive: z.boolean().optional() });
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function registerAdminRoutes(app: Express): void {
@@ -2744,7 +2744,8 @@ export function registerAdminRoutes(app: Express): void {
         isActive: systemApiKeys.isActive,
         lastValidatedAt: systemApiKeys.lastValidatedAt,
         validationStatus: systemApiKeys.validationStatus,
-        hasKey: sql<boolean>`(api_key IS NOT NULL AND api_key != '')`,
+        // A plain-text secret still at rest from the retired save form.
+        plaintextAtRest: sql<boolean>`(api_key IS NOT NULL AND api_key != '')`,
         updatedAt: systemApiKeys.updatedAt,
       }).from(systemApiKeys).orderBy(systemApiKeys.provider);
       res.json(keys);
@@ -2753,28 +2754,18 @@ export function registerAdminRoutes(app: Express): void {
     }
   });
 
-  api.put("/api/admin/system-api-keys/:provider", isAuthenticated, isFounderAdmin, async (req, res) => {
-    try {
-      const { provider } = req.params;
-      const parsedApiKey = systemApiKeyUpdateSchema.safeParse(req.body);
-      if (!parsedApiKey.success) return Errors.validationFailed(res, parsedApiKey.error.issues);
-      const { apiKey, isActive } = parsedApiKey.data;
-      const [existing] = await db.select().from(systemApiKeys).where(eq(systemApiKeys.provider, provider));
-      if (existing) {
-        const [updated] = await db.update(systemApiKeys)
-          .set({ ...(apiKey !== undefined && { apiKey }), ...(isActive !== undefined && { isActive }), updatedAt: new Date() })
-          .where(eq(systemApiKeys.provider, provider))
-          .returning({ id: systemApiKeys.id, provider: systemApiKeys.provider, displayName: systemApiKeys.displayName, isActive: systemApiKeys.isActive, validationStatus: systemApiKeys.validationStatus });
-        res.json(updated);
-      } else {
-        const [created] = await db.insert(systemApiKeys)
-          .values({ provider, displayName: provider, apiKey, isActive: isActive ?? true })
-          .returning({ id: systemApiKeys.id, provider: systemApiKeys.provider, displayName: systemApiKeys.displayName, isActive: systemApiKeys.isActive, validationStatus: systemApiKeys.validationStatus });
-        res.json(created);
-      }
-    } catch (err: any) {
-      Errors.internal(res, err);
-    }
+  // PUT /api/admin/system-api-keys/:provider — RETIRED 2026-09-27 (DEFECT-0054).
+  // It stored whatever vendor secret was pasted (OpenAI, Stripe, Twilio …) in
+  // plain text in system_api_keys.api_key. Nothing read it for an outbound
+  // call — the platform reads vendor keys from the server environment — and
+  // system_api_keys is the Data-API credential table, so each pasted secret
+  // also became a working partner bearer key. Saving a key here did nothing
+  // except create that exposure.
+  api.put("/api/admin/system-api-keys/:provider", isAuthenticated, isFounderAdmin, (_req, res) => {
+    Errors.gone(
+      res,
+      "Platform vendor keys are read from the server environment (Fly secrets). A key saved here was never used, so this form is retired.",
+    );
   });
 
   // ============================================
@@ -3271,8 +3262,9 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const account = await storage.getFounderAdAccount("meta");
       if (!account) return res.json(null);
-      // Mask the access token for display
-      res.json({ ...account, accessToken: account.accessToken ? "••••••••" + account.accessToken.slice(-4) : null });
+      // Mask both secrets for display. The app secret used to go to the
+      // browser in full (DEFECT-0054).
+      res.json({ ...account, accessToken: maskAdAccountSecret(account.accessToken), appSecret: maskAdAccountSecret(account.appSecret) });
     } catch (err: any) {
       Errors.internal(res, err);
     }
@@ -3293,7 +3285,7 @@ export function registerAdminRoutes(app: Express): void {
         appSecret: appSecret || null,
         isActive: true,
       });
-      res.json({ ...account, accessToken: "••••••••" + account.accessToken.slice(-4) });
+      res.json({ ...account, accessToken: maskAdAccountSecret(account.accessToken), appSecret: maskAdAccountSecret(account.appSecret) });
     } catch (err: any) {
       Errors.internal(res, err);
     }

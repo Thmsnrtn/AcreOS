@@ -12,6 +12,7 @@
  * archetype scores so the next generation cycle biases toward winners.
  */
 
+import { openFounderAdAccount } from "../services/founderAdAccountSecrets";
 import { db } from "../db";
 import { cmoAdRenders, cmoAdPerformance, founderAdAccounts } from "@shared/schema";
 import { eq, and, gte, sql } from "drizzle-orm";
@@ -32,7 +33,8 @@ async function loadAccount(platform: "meta" | "tiktok"): Promise<PlatformAccount
     .from(founderAdAccounts)
     .where(and(eq(founderAdAccounts.platform, platform), eq(founderAdAccounts.isActive, true)))
     .limit(1);
-  return account ?? null;
+  // Secrets are sealed at rest (DEFECT-0054).
+  return account ? openFounderAdAccount(account) : null;
 }
 
 export async function ingestPerformanceAll(): Promise<{ ingested: number }> {

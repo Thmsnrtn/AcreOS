@@ -9,9 +9,9 @@
     "**/*.test.ts",
     "**/*.spec.ts"
   ],
-  "baselineCount": 2679,
+  "baselineCount": 2678,
   "direction": "down",
-  "lastBumpNote": "2026-09-27 DEFECT-0100: two `catch (error: any)` handlers removed with the zero-caller POST/PATCH /api/payoff-quotes write routes.",
+  "lastBumpNote": "2026-09-27 DEFECT-0054: the retired PUT /api/admin/system-api-keys/:provider took its `catch (err: any)` with it.",
   "minima": {
     "files": 1100
   },

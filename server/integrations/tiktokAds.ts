@@ -20,6 +20,7 @@
 import * as fs from "fs";
 import FormData from "form-data";
 import crypto from "crypto";
+import { openFounderAdAccount } from "../services/founderAdAccountSecrets";
 import { db } from "../db";
 import { founderAdAccounts, type FounderAdAccount } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
@@ -39,7 +40,8 @@ async function loadTiktokAccount(): Promise<FounderAdAccount> {
         "Add a founder_ad_accounts row with platform='tiktok', adAccountId=<TIKTOK_ADVERTISER_ID>, accessToken=<long-lived token>.",
     );
   }
-  return account;
+  // Secrets are sealed at rest (DEFECT-0054).
+  return openFounderAdAccount(account);
 }
 
 export interface TikTokUploadInput {

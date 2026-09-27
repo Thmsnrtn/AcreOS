@@ -596,12 +596,48 @@ Resolving commits: pending
 ### DEFECT-0054
 Title: API keys and third-party credentials stored in plaintext in DB
 Severity: P2
-Status: OPEN
-Surfaced by lenses: 4 (DB-008)
+Status: FIXED (round 3, 2026-09-27) — every write path sealed or retired; rotating legacy rows at rest is owed by the founder
+Surfaced by lenses: 4 (DB-008); re-verified 2026-09-27
 Description: `system_api_keys.api_key`, `founder_ad_accounts.access_token/app_secret`, and `organization_integrations.credentials` JSONB all store sensitive credentials in plaintext. Newer tables use encryption but older ones do not.
-Evidence: `shared/schema.ts:10107-10109`, `:10971-10974`, `:195-198`.
-Remediation plan: Encrypt all credential fields at rest using AES-256-GCM. Rotate existing keys after migration.
-Resolving commits: pending
+Evidence: `shared/schema.ts` (the three tables), `server/routes-admin.ts`,
+`server/services/dataApiKeys.ts`, `server/services/founderAdAccountSecrets.ts`.
+Remediation plan: Re-verified per table on 2026-09-27.
+- `organization_integrations.credentials`: already fixed before this pass.
+  `sealIntegrationCredentials` seals every customer write, including the BYOK
+  save route that used to write `{ apiKey }` in the clear; see
+  `server/services/integrationCredentials.ts`.
+- `founder_ad_accounts`: still plain text, read by five call sites, and
+  `GET /api/founder/growth/ad-account` returned `app_secret` to the browser
+  UNMASKED (only the access token was masked). FIXED:
+  `founderAdAccountSecrets.ts` seals `access_token` and `app_secret` with the
+  canonical field encryption on the repo's one write path and opens them on
+  every read (repo, performance ingest, Meta, TikTok). Legacy plain-text rows
+  still open, and the next save seals them. Both admin responses now mask
+  both secrets.
+- `system_api_keys.api_key`: WORSE than filed. The founder "System API keys"
+  page (`/founder/keys`) offered a key field per vendor (OpenAI, Stripe,
+  Twilio …) and stored the pasted secret in plain text. Nothing read it for an
+  outbound call — the platform reads vendor keys from the environment — so
+  "rotate here" did nothing. And because this is also the Data-API credential
+  table, `verifyApiKey`'s legacy plain-text fallback accepted each pasted
+  vendor secret as a partner bearer key for `/api/data-api/*` (anonymised
+  cross-tenant aggregates). FIXED: the save route answers 410 Gone. The page
+  is read-only and lists which vendor rows still hold a plain-text secret.
+  `verifyApiKey` refuses, and never upgrades, a legacy match on any provider in
+  `shared/platformVendorKeyProviders.ts`, the one list the page also renders.
+Falsified by: `tests/unit/founderAdAccountSecretsAreSealed.test.ts` (seven
+assertions red on the pre-fix sources: the repo stores envelopes on insert and
+update, every full-row read opens, only the repo writes, both responses mask
+both secrets, and no writer puts a non-null `api_key` into `system_api_keys`;
+it also goes red when one reader drops the open call) and the vendor-row case
+in `server/services/dataApiKeys.test.ts`.
+OWED (founder, not done here — it is a deletion of stored secrets): rotate at
+the vendor any key that `/founder/keys` shows as "Plain text at rest", then
+null those `api_key` values. Re-save the ad account once so its row is sealed.
+Also noted: `client/src/components/founder-setup-wizard.tsx`, the UI for the
+real encrypted platform-config path (`/api/founder/setup/*`), is rendered
+nowhere.
+Resolving commits: this branch, round 3
 
 ### DEFECT-0055
 Title: 15+ unbounded in-memory Map caches with no coordination across instances
@@ -2972,8 +3008,8 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 12  | 12    |
-| FIXED  | 12  | 67  | 32  | 111   |
+| OPEN   | 0   | 0   | 11  | 11    |
+| FIXED  | 12  | 67  | 33  | 112   |
 | DEFERRED | 0 | 3   | 0   | 3     |
 | **Total** | **12** | **70** | **44** | **126** |
 
@@ -3076,6 +3112,7 @@ in slice B; no P1 from this report remains OPEN.
 | DEFECT-0115 | Runway cash labelled as a planning basis; bank liquidity unknown | (this branch, round 3) |
 | DEFECT-0062 | Rate limiters keyed on identity before identity existed | (this branch, round 3) |
 | DEFECT-0061 | Module flag seed mirrored into the release command | (this branch, round 3) |
+| DEFECT-0054 | Ad-account secrets sealed; plain-text vendor-key form retired | (this branch, round 3) |
 
 ### Deferred Defects (3)
 

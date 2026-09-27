@@ -19,6 +19,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import FormData from "form-data";
+import { openFounderAdAccount } from "../services/founderAdAccountSecrets";
 import { db } from "../db";
 import { founderAdAccounts, type FounderAdAccount } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
@@ -50,7 +51,8 @@ async function loadMetaAccount(): Promise<FounderAdAccount> {
         "Add one via founder_ad_accounts (platform='meta') with adAccountId, accessToken, pixelId.",
     );
   }
-  return account;
+  // Secrets are sealed at rest (DEFECT-0054).
+  return openFounderAdAccount(account);
 }
 
 export async function uploadVideoToMeta(input: MetaUploadInput): Promise<MetaUploadResult> {

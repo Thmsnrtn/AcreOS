@@ -18,6 +18,7 @@
  *     window closes itself with use.
  */
 import { createHash, randomBytes } from "node:crypto";
+import { isPlatformVendorProvider } from "@shared/platformVendorKeyProviders";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { systemApiKeys } from "@shared/schema";
@@ -59,6 +60,13 @@ export async function verifyApiKey(presented: string): Promise<VerifiedApiKey | 
       .from(systemApiKeys)
       .where(and(eq(systemApiKeys.apiKey, presented), eq(systemApiKeys.isActive, true)))
       .limit(1);
+    if (legacy && isPlatformVendorProvider(legacy.provider)) {
+      // A vendor secret pasted on the founder keys page, not a Data-API key
+      // (DEFECT-0054). It must never authenticate a partner. Not upgraded:
+      // hashing it would make it a permanent Data-API credential.
+      logger.warn(`[dataApiKeys] refused legacy plaintext match on vendor row #${legacy.id} (${legacy.provider})`);
+      return null;
+    }
     if (legacy) {
       try {
         await db
