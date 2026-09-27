@@ -1490,6 +1490,24 @@ END $mig0247$`,
   `INSERT INTO "platform_feature_flags" ("key", "label", "description", "enabled", "state", "audience", "controlled_routes")
    VALUES ('feature.pax-land-knowledge', 'Pax land-knowledge retrieval', 'Lets Pax retrieve curated, cited land-domain knowledge cards (FEMA flood zones, USDA soils/perc, seller-finance/usury mechanics, diligence traps) for explanatory turns. Distinct from parcel-fact lookups; every card carries a citation.', false, 'founder-only', '{}'::jsonb, '[]'::jsonb)
    ON CONFLICT ("key") DO NOTHING`,
+  // Migration 0183 (DEFECT-0061) — module flags featureGate() /
+  // requireLadderFlag() check but 0008 never inserted. Committed as a .sql file
+  // and never mirrored here, so the release command never ran it: the rows only
+  // exist in prod if someone applied 0183 by hand. Seeded as explicit 'off' so
+  // the module freeze is a visible, founder-toggleable row instead of a missing
+  // one. ON CONFLICT DO NOTHING — a row the founder already turned on stays on.
+  // 0183's fourth row (Voice AI) is deliberately NOT mirrored: that module was
+  // killed 2026-08-01 and the founder-authorized flag-row deletion further down
+  // this file removes it; inserting it here would only re-create it each deploy.
+  `INSERT INTO "platform_feature_flags" ("key", "label", "description", "enabled", "state", "audience", "controlled_routes")
+   VALUES ('feature_white_label', 'White Label', 'Reseller branding and custom domains', false, 'off', '{}'::jsonb, '["/white-label"]'::jsonb)
+   ON CONFLICT ("key") DO NOTHING`,
+  `INSERT INTO "platform_feature_flags" ("key", "label", "description", "enabled", "state", "audience", "controlled_routes")
+   VALUES ('feature_territories', 'Territories', 'Sales territory management and assignment', false, 'off', '{}'::jsonb, '["/territories"]'::jsonb)
+   ON CONFLICT ("key") DO NOTHING`,
+  `INSERT INTO "platform_feature_flags" ("key", "label", "description", "enabled", "state", "audience", "controlled_routes")
+   VALUES ('feature_deal_rooms', 'Deal Rooms', 'Shared diligence rooms for marketplace deals', false, 'off', '{}'::jsonb, '["/deal-rooms"]'::jsonb)
+   ON CONFLICT ("key") DO NOTHING`,
 
   // ── Phase 3 Week 7-8 (P2-11): Postgres extensions. Migration 0044. ──────
   // pgvector for Sayuri-Vatanen embeddings, pg_trgm for Anaïs fuzzy search,

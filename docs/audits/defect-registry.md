@@ -674,12 +674,36 @@ Resolving commits: pending
 ### DEFECT-0061
 Title: Feature flag keys referenced in routes have no seed data -- 4 modules permanently inaccessible
 Severity: P2
-Status: OPEN
+Status: FIXED (round 3, 2026-09-27) — the seed existed but never reached a deploy
 Surfaced by lenses: 64 (F064-03)
 Description: `featureGate()` is used with `feature_white_label`, `feature_voice_ai`, `feature_territories`, `feature_deal_rooms` but these keys are not in any migration seed. Since `featureGate` returns 404 when flag is missing, these modules are permanently inaccessible.
 Evidence: `server/routes.ts:1007, 1014, 1048, 1463`.
-Remediation plan: Add missing flag keys to seed migration or idempotent seed script.
-Resolving commits: pending
+Remediation plan: DONE. Re-verified 2026-09-27. The seed had been written —
+`migrations/0183_seed_missing_module_flags.sql` inserts the four keys as
+explicit `off` rows — but it never reached production through a deploy. Fly's
+release_command runs `scripts/migrate.mjs` only and does not apply
+`migrations/*.sql`, and 0183 was never mirrored into it. The two existing
+tripwires both passed it: `migrate-mirror-check.yml` only asks that migrate.mjs
+be touched in the same change, and `check-schema-migrate-mirror.mjs` is
+table-level, while `platform_feature_flags` already had other seed rows. So
+the rows exist in production only if someone applied 0183 by hand; that
+state was not observable from this session.
+Fix: the White Label, Territories and Deal Rooms rows are mirrored into
+`scripts/migrate.mjs` with `ON CONFLICT ("key") DO NOTHING`, so a row the
+founder already turned on stays on. The Voice AI row is deliberately NOT
+mirrored. That module was killed on 2026-08-01, and the 2026-08-13
+founder-authorized flag-row deletion in the same runner removes the row, so
+inserting it would only re-create it on each deploy.
+Falsified by: `tests/unit/migrationSeedsReachRelease.test.ts`. It is a
+row-level rule: every INSERT seed row in migrations 0091 and later must have
+its key inside an INSERT into the same table in migrate.mjs. A DELETE naming
+the key does not count, and each exemption must still be needed. It is red on
+the pre-fix runner for the three 0183 keys, and red again when a mirrored
+INSERT is rewritten as a DELETE naming the same key. Census at the same time:
+seeds before 0091 (0005, 0008 including `pricing_config`, 0070, 0090) predate
+the release command and are outside the rule. Pricing rows are founder-only
+and were not touched.
+Resolving commits: this branch, round 3
 
 ### DEFECT-0062
 Title: Duplicate rate limiter definitions in index.ts and routes.ts
@@ -2948,8 +2972,8 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 13  | 13    |
-| FIXED  | 12  | 67  | 31  | 110   |
+| OPEN   | 0   | 0   | 12  | 12    |
+| FIXED  | 12  | 67  | 32  | 111   |
 | DEFERRED | 0 | 3   | 0   | 3     |
 | **Total** | **12** | **70** | **44** | **126** |
 
@@ -3051,6 +3075,7 @@ in slice B; no P1 from this report remains OPEN.
 | DEFECT-0108 | Portfolio P&L by deal side, dated IRR, interest only | (this branch, round 3) |
 | DEFECT-0115 | Runway cash labelled as a planning basis; bank liquidity unknown | (this branch, round 3) |
 | DEFECT-0062 | Rate limiters keyed on identity before identity existed | (this branch, round 3) |
+| DEFECT-0061 | Module flag seed mirrored into the release command | (this branch, round 3) |
 
 ### Deferred Defects (3)
 
