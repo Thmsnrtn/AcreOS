@@ -49,6 +49,10 @@ vi.mock("../../server/services/tcpaCompliance", () => ({
     return gateByLead[leadId] ?? gateVerdict;
   }),
   isWithinQuietHours: vi.fn(() => ({ ...quietVerdict, zone: "America/Chicago" })),
+  detectOptKeyword: (body: string) =>
+    ["stop", "stopall", "unsubscribe", "cancel", "end", "quit"].includes(body.trim().toLowerCase())
+      ? "opt_out"
+      : null,
 }));
 
 // db mock — leads select, message/unattached inserts, updates.
@@ -64,8 +68,8 @@ let LEADS: LeadRow[] = [];
 let leadsSelectThrows = false;
 /** Notes the servicing purpose can bind to. */
 const NOTES = new Map<number, { id: number; borrowerId: number | null }>();
-/** Last-10 digits of numbers that texted the org inside the reply window. */
-const INBOUND_FROM = new Set<string>();
+/** Last-10 digits → the LATEST text that number sent inside the reply window. */
+const INBOUND_FROM = new Map<string, string>();
 /** Make the contact-touch write throw AFTER the carrier accepted the message. */
 let touchThrows = false;
 
@@ -79,7 +83,10 @@ vi.mock("../../server/storage", () => ({
       if (leadsSelectThrows) throw new Error("db down");
       return LEADS.filter((l) => l.phone && last10(l.phone) === last10(phone));
     }),
-    hasRecentInboundSmsFrom: vi.fn(async (_orgId: number, phone: string) => INBOUND_FROM.has(last10(phone))),
+    latestInboundSmsFrom: vi.fn(async (_orgId: number, phone: string) => {
+      const body = INBOUND_FROM.get(last10(phone));
+      return body === undefined ? null : { body, receivedAt: new Date() };
+    }),
     getNote: vi.fn(async (_orgId: number, id: number) => NOTES.get(id)),
     getLead: vi.fn(async (_orgId: number, id: number) => LEADS.find((l) => l.id === id)),
   },
@@ -361,15 +368,23 @@ describe("sendOrgSMS — reply purpose (DEFECT-0104)", () => {
   });
 
   it("answers a number that texted first, even with no lead record, and records no touch", async () => {
-    INBOUND_FROM.add("5551230000");
+    INBOUND_FROM.set("5551230000", "is the lot still available?");
     const r = await reply("+15551230000");
     expect(r.success).toBe(true);
     expect(ROUTED).toHaveLength(1);
     expect(TOUCH_WRITES).toHaveLength(0);
   });
 
+  it("does not answer a number whose LATEST text was STOP, even with no lead record", async () => {
+    INBOUND_FROM.set("5551230000", "STOP");
+    const r = await reply("+15551230000");
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/opt-out/);
+    expect(ROUTED).toHaveLength(0);
+  });
+
   it("does not answer a lead at that number who has sent STOP", async () => {
-    INBOUND_FROM.add("5551234567");
+    INBOUND_FROM.set("5551234567", "still interested");
     LEADS = [{ id: 9, phone: "5551234567", doNotContact: true }];
     const r = await reply("+15551234567");
     expect(r.success).toBe(false);
@@ -386,6 +401,16 @@ describe("handleIncomingSMS — response capture (W1.4)", () => {
     expect(r.success).toBe(true);
     expect(r.leadId).toBe(4);
     expect(LEAD_UPDATES.some((p) => p.status === "responded")).toBe(true);
+  });
+
+  it("a STOP from a number matching NO lead is recorded, so a later reply can see it", async () => {
+    LEADS = [{ id: 4, phone: "5559999999" }];
+    const r = await handleIncomingSMS(1, "+15551234567", "+15550001111", "STOP", "SM_stop_unmatched");
+    expect(r.success).toBe(true);
+    expect(UNATTACHED).toHaveLength(1);
+    expect(UNATTACHED[0].body).toBe("STOP");
+    expect(UNATTACHED[0].externalId).toBe("SM_stop_unmatched");
+    expect(LEAD_UPDATES).toHaveLength(0);
   });
 
   it("an UNMATCHED inbound is persisted as an unattached reply, not dropped", async () => {

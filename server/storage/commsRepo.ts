@@ -25,24 +25,25 @@ import type { DatabaseStorage } from "../storage";
 
 export const commsRepo = {
   /**
-   * Has `phone` sent this organization an SMS since `since`? (DEFECT-0104)
-   * The basis for a "reply" — a text to a number with no lead record is only
-   * defensible as an answer to something that number said first. Reads both
-   * places an inbound can land: the conversation thread of a matched lead
+   * The most recent SMS `phone` sent this organization since `since`, or
+   * null (DEFECT-0104). The basis for a "reply" — a text to a number with no
+   * lead record is only defensible as an answer to something that number
+   * said first, and not when what it said last was STOP. Reads both places an
+   * inbound can land: the conversation thread of a matched lead
    * (`messages` ⋈ `conversations` ⋈ `leads`) and the unattached-inbound
-   * triage table for numbers that matched nothing. Every table is read
-   * under this org's predicate.
+   * triage table for numbers that matched nothing (where an unmatched STOP
+   * is also recorded). Every table is read under this org's predicate.
    */
-  async hasRecentInboundSmsFrom(
+  async latestInboundSmsFrom(
     this: DatabaseStorage,
     orgId: number,
     phone: string,
     since: Date,
-  ): Promise<boolean> {
+  ): Promise<{ body: string; receivedAt: Date } | null> {
     const last10 = phone.replace(/\D/g, "").slice(-10);
-    if (last10.length < 7) return false;
+    if (last10.length < 7) return null;
     const [unattached] = await db
-      .select({ id: unattachedInboundMessages.id })
+      .select({ body: unattachedInboundMessages.body, receivedAt: unattachedInboundMessages.receivedAt })
       .from(unattachedInboundMessages)
       .where(
         and(
@@ -52,10 +53,10 @@ export const commsRepo = {
           like(unattachedInboundMessages.fromAddress, `%${last10}`),
         ),
       )
+      .orderBy(desc(unattachedInboundMessages.receivedAt))
       .limit(1);
-    if (unattached) return true;
     const [attached] = await db
-      .select({ id: messages.id })
+      .select({ body: messages.content, receivedAt: messages.createdAt })
       .from(messages)
       .innerJoin(conversations, eq(messages.conversationId, conversations.id))
       .innerJoin(leads, eq(conversations.leadId, leads.id))
@@ -70,8 +71,14 @@ export const commsRepo = {
           like(leads.phoneNormalized, `%${last10}`),
         ),
       )
+      .orderBy(desc(messages.createdAt))
       .limit(1);
-    return Boolean(attached);
+    const candidates = [
+      unattached ? { body: unattached.body, receivedAt: unattached.receivedAt } : null,
+      attached?.receivedAt ? { body: attached.body, receivedAt: attached.receivedAt } : null,
+    ].filter((c): c is { body: string; receivedAt: Date } => c !== null);
+    if (candidates.length === 0) return null;
+    return candidates.reduce((a, b) => (b.receivedAt > a.receivedAt ? b : a));
   },
 
   // Campaign Responses CRUD

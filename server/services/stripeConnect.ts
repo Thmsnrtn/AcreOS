@@ -91,6 +91,7 @@ export class CustomerMoneyRefusedError extends Error {
 export const STRIPE_CONNECT_WEBHOOK_EVENTS = [
   "account.updated",
   "checkout.session.completed",
+  "checkout.session.async_payment_succeeded",
   "charge.refunded",
   "payment_intent.succeeded",
   "payment_intent.payment_failed",
@@ -379,7 +380,15 @@ export class StripeConnectService {
       // here as a Connect event rather than on the platform endpoint. Without
       // this branch the ledger row would silently never be written — the
       // "built but unwired" defect this repo keeps repeating.
-      case "checkout.session.completed": {
+      // A delayed-settlement method (ACH debit on a Payment Link) completes
+      // the session UNPAID — the posting rule refuses it before any write —
+      // and settles later as `async_payment_succeeded` with payment_status
+      // "paid". Both route to the same rule, keyed on the same session, so
+      // whichever carries "paid" posts exactly once. Until slice A retired
+      // the PaymentIntent writer, `payment_intent.succeeded` posted these;
+      // without this label nothing would.
+      case "checkout.session.completed":
+      case "checkout.session.async_payment_succeeded": {
         const session = event.data.object as Stripe.Checkout.Session;
         if (session.metadata?.type === "borrower_portal_payment") {
           const { WebhookHandlers } = await import("../webhookHandlers");

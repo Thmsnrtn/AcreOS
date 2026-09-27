@@ -2374,9 +2374,17 @@ inbound; a touch-ledger throw after the SID → still `{success:true, messageId}
 number writes two revocations (one before). `tests/unit/dncScrub.test.ts` —
 declared `fail_open` allows a lead-matched scrub error, declared `fail_closed`
 refuses an unmatched one, `fail_open` never passes a litigator.
+Follow-up (independent audit, same day): a STOP from a number matching no
+lead was written nowhere, so a `reply` to that number inside 24 hours of an
+earlier text could still go out. The STOP is now stored as an unattached
+inbound, and the reply gate reads the number's LATEST inbound
+(`storage.latestInboundSmsFrom`) and refuses when it is an opt-out keyword
+(`smsGateAndCapture.test.ts`, RED without it).
 Still owed: legal review of the servicing-text DNC posture; inbound reply
 attribution in `handleIncomingSMS` still uses a loose substring match to pick
-ONE lead (attribution, not consent — recorded, not changed).
+ONE lead (attribution, not consent — recorded, not changed);
+`server/services/comms/smsProvider.ts` `sendSms` has no gate and would fall
+back to platform credentials — zero callers today, retire it.
 Resolving commits: (this branch, slice D)
 
 ### DEFECT-0105
@@ -2466,8 +2474,12 @@ zero "none" figure are null; a measured USDA value with no sales, and the
 estimate trend with no sales, are refused.
 Still owed: `sizeCampaign`'s 0.6 default acceptance is an unmeasured
 convention (comment says so; value unchanged); other USDA consumers
-(`marketPulseEngine.ts`, `leadIntelligenceEngine.ts`) still render trend
-figures without the new provenance; see DEFECT-0121 to 0123.
+(`marketPulseEngine.ts`) still render trend figures without the new
+provenance, and `sizeCampaign` still states an unmeasured 4% response rate;
+`POST /api/data-intel/blind-offer/commit` accepts any client `offerAmount`
+(the refusal is enforced in the client only); the map composer sends no
+comps, so it now always refuses until a comp source is wired to it. See
+DEFECT-0121 to 0124.
 Resolving commits: (this branch, slice B)
 
 ### DEFECT-0108
@@ -2626,7 +2638,15 @@ nothing; `payment_intent.succeeded` for a `note_payment` PaymentIntent calls
 neither `storage.createPayment` nor `storage.updateNote`;
 `refundReversesLedgerAnd1098.test.ts` gains a Payment-Link refund that appends
 a reversal row.
-Resolving commits: (this branch, slice A)
+Follow-up (independent audit, same day): a delayed-settlement method (ACH on
+a Payment Link) completes its session UNPAID, which the rule refuses, and
+settles as `checkout.session.async_payment_succeeded`. The retired PaymentIntent
+writer had been posting those; with it gone nothing did. That event now routes
+to the same rule and is in `STRIPE_CONNECT_WEBHOOK_EVENTS`
+(`paymentLinkPostsThroughSharedRule.test.ts` cases 6–7, RED without it).
+OPERATIONAL STEP OWED: a Connect webhook endpoint created before this change
+does not subscribe to the new event until the setup route re-registers it.
+Resolving commits: (this branch, slice A + audit follow-up)
 
 ### DEFECT-0117
 Title: Client copy still promises 1099-INT issuance to borrowers
@@ -2760,6 +2780,37 @@ Remediation plan: Delegate to `calculateBlindOffer` (one offer engine), or
 return no offer when there is no real sale; delete the `|| 1000`.
 Resolving commits: —
 
+### DEFECT-0124
+Title: Lead intelligence quotes an owner an offer priced from the USDA pasture figure
+Severity: P2
+Status: OPEN
+Surfaced by lenses: independent audit of the DEFECT-0107 repair, 2026-09-27
+Description: `server/services/leadIntelligenceEngine.ts`
+`computeOfferIntelligence` treats `pasturePerAcre` as the lowest comp, takes
+25% of it as the offer, and interpolates the dollar amount into an owner
+message ("My offer for your … County property is $X"). It ignores the new
+`pastureSource`, so a farm-derived or synthetic estimate becomes a quoted
+price — the DEFECT-0107 defect in a third engine. Served under
+`/api/data-intel/lead-intelligence/*` (`server/routes-data-intelligence.ts`);
+no client caller was found, so reachable by API.
+Remediation plan: Price only from real sales through `calculateBlindOffer`,
+or produce no offer amount; never put a benchmark-derived price in a message.
+Resolving commits: —
+
+### DEFECT-0125
+Title: A 1099-INT FIRE file generated before the refusal is still downloadable
+Severity: P2
+Status: OPEN
+Surfaced by lenses: independent audit of the DEFECT-0101 repair, 2026-09-27
+Description: `GET /api/accounting/1099-batch/:jobId` in
+`server/routes-accounting.ts` returns the stored `resultBlob` of a completed
+batch job with no `requireQualified1099Output()` guard, so a batch produced
+before the refusal landed (with the inverted payer/recipient) can still be
+downloaded and filed.
+Remediation plan: Put the same middleware on the download route, or refuse
+any stored 1099-INT blob created before the direction review.
+Resolving commits: —
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -2796,16 +2847,21 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 32  | 32    |
-| FIXED  | 12  | 63  | 9   | 84    |
+| OPEN   | 0   | 0   | 34  | 34    |
+| FIXED  | 12  | 66  | 10  | 88    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **66** | **41** | **119** |
+| **Total** | **12** | **69** | **44** | **125** |
+
+Recounted from the entries themselves on 2026-09-27 (125 `### DEFECT-` blocks
+by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
+OPEN). The table had drifted from the entries before this date — it read 3
+FIXED P1 and 1 FIXED P2 short.
 
 DEFECT-0089 through 0095 added 2026-09-06. Two further census entries were
 re-verified at HEAD and REFUTED rather than implemented against — see the
 "REFUTED AT HEAD" table above DEFECT-0089's section.
 
-DEFECT-0096 through 0123 added 2026-09-27 from the "AcreOS at full maturity"
+DEFECT-0096 through 0125 added 2026-09-27 from the "AcreOS at full maturity"
 research report, each claim re-verified at `9cb534f` before entry (one refuted,
 one downgraded — see the 2026-09-27 REFUTED table). 0096 and 0097 are FIXED in
 the same change; 0101 (1099-INT direction) is FIXED as a refusal posture pending qualified tax

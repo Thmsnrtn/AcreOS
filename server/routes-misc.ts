@@ -315,7 +315,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       // re-checks whichever question the purpose asks.
       const answering =
         !!lead.phone &&
-        (await storage.hasRecentInboundSmsFrom(org.id, lead.phone, new Date(Date.now() - 24 * 60 * 60 * 1000)));
+        (await storage.latestInboundSmsFrom(org.id, lead.phone, new Date(Date.now() - 24 * 60 * 60 * 1000))) !== null;
       const result = await smsServiceModule.sendSMSToLead(org.id, leadId, message, user.id, {
         purpose: answering ? "reply" : "prospecting",
       });

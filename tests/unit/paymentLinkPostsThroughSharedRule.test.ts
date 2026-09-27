@@ -271,4 +271,21 @@ describe("DEFECT-0116 — Payment Link payments post through the one rule, keyed
     await fire(connectEvent("checkout.session.completed", linkSession({ payment_status: "unpaid" })));
     expect(state.payments.size).toBe(0);
   });
+
+  // The PaymentIntent writer used to post delayed-settlement (ACH) link
+  // payments on `payment_intent.succeeded`. With it retired, the settlement
+  // event must reach the rule or the payment is never posted at all.
+  it("(6) an ACH session posts ONCE when it settles (async_payment_succeeded), after completing unpaid", async () => {
+    await fire(connectEvent("checkout.session.completed", linkSession({ payment_status: "unpaid" })));
+    expect(state.payments.size).toBe(0);
+    await fire(connectEvent("checkout.session.async_payment_succeeded", linkSession()));
+    expect(state.payments.size).toBe(1);
+    expect(state.payments.get("cs_link_1")).toBeDefined();
+    expect(state.events).toHaveLength(1);
+  });
+
+  it("(7) the settlement event is in the Connect subscription list, so Stripe actually sends it", async () => {
+    const { STRIPE_CONNECT_WEBHOOK_EVENTS } = await import("../../server/services/stripeConnect");
+    expect(STRIPE_CONNECT_WEBHOOK_EVENTS).toContain("checkout.session.async_payment_succeeded");
+  });
 });

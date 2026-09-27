@@ -305,9 +305,16 @@ async function smsPurposeGate(input: SendOrgSmsInput): Promise<PurposeGateVerdic
       }
       case "reply": {
         const since = new Date(Date.now() - REPLY_WINDOW_MS);
-        const inbound = await storage.hasRecentInboundSmsFrom(organizationId, to, since);
+        const inbound = await storage.latestInboundSmsFrom(organizationId, to, since);
         if (!inbound) {
           return refuse("no inbound text from this number in the last 24 hours — a reply needs something to reply to");
+        }
+        // The last thing they said was an opt-out: there is nothing to answer.
+        // A STOP from a number with no lead is recorded as an unattached
+        // inbound precisely so this check can see it.
+        const { detectOptKeyword } = await import("./tcpaCompliance");
+        if (detectOptKeyword(inbound.body) === "opt_out") {
+          return refuse("recipient's latest text was an opt-out (STOP) — no reply may be sent");
         }
         const matches = await storage.findLeadsByPhoneLast10(organizationId, to);
         const stopped = matches.find((l) => l.doNotContact);
@@ -613,6 +620,36 @@ export async function handleIncomingSMS(
     logger.info(
       `[SMS] STOP received from ${fromPhone} — opted out ${matchingLeads.length} lead(s) across all channels`,
     );
+    // A STOP from a number that matches NO lead has no row to mark
+    // doNotContact on. Record it as an unattached inbound so it is visible in
+    // triage and so the reply gate (smsPurposeGate) sees the opt-out as the
+    // number's latest text (DEFECT-0104). Best-effort: the revocation of any
+    // matched rows above has already landed.
+    if (matchingLeads.length === 0) {
+      try {
+        const { unattachedInboundMessages } = await import("@shared/schema/unattached-inbound");
+        await db
+          .insert(unattachedInboundMessages)
+          .values({
+            organizationId,
+            channel: "sms",
+            fromAddress: fromPhone,
+            toAddress: toPhone,
+            body,
+            externalId: messageSid,
+          })
+          .onConflictDoNothing({
+            target: unattachedInboundMessages.externalId,
+            where: sql`external_id IS NOT NULL`,
+          });
+      } catch (err) {
+        logger.error(
+          "[SMS] could not record an unmatched STOP — a later reply to this number would not see it",
+          err instanceof Error ? err : undefined,
+          { metadata: { organizationId, messageSid } },
+        );
+      }
+    }
     return { success: true, leadId: matchingLeads[0]?.id };
   }
   // ─────────────────────────────────────────────────────────────────────────
