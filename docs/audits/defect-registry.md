@@ -2418,28 +2418,57 @@ Resolving commits: —
 ### DEFECT-0107
 Title: Blind-offer comps include a USDA survey average and a SYNTHETIC trend point, so the zero-comp refusal is unreachable
 Severity: P1
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: research report §I, re-verified at `9cb534f` — and worse
 than reported
-Description: `server/services/blindOfferCalculator.ts:449-483`
-`buildCompDataset` pushes `nassData.pasturePerAcre` and the prior-year
-`LandValueTrend` value as `CompData` with source `"usda_nass"`;
-`analyzeComps` (`:503-537`) treats every entry as a sale.
-`server/services/usdaNassService.ts:402-427` synthesises five years from a
+Description: `server/services/blindOfferCalculator.ts` `buildCompDataset`
+pushed `nassData.pasturePerAcre` and the prior-year `LandValueTrend` value as
+`CompData` with source `"usda_nass"`, and `analyzeComps` treated every entry
+as a sale. `server/services/usdaNassService.ts` synthesises five years from a
 state default at 5%/yr marked `source: "estimate"`, `buildTrendFromValues`
-drops the source, and both `computeLandValueTrend` (`:219-232`) and the
-`fetchCountyLandValues` catch (`:174-175`) fall back to it — so the trend
-ALWAYS has ≥2 years, `compCount` is never 0, and the insufficient-data refusal
-at `:334-344` fires only if the trend call throws.
-`tests/unit/offerAndRankHonesty.test.ts:170-172` mocks the trend to `null`,
-hiding this. The wizard `client/src/pages/blind-offer-wizard.tsx:67-131`
-types no `status: "insufficient_data"`. Route `POST /api/data-intel/blind-offer`;
-also called from `dealFeedEngine.ts`.
-Remediation plan: Transactions, survey averages and synthetic assumptions in
-distinct typed context; only dated qualified sales enter the sale-comp
-statistic; the wizard renders the refusal; remove the "3 in 5" acceptance copy
-until a cohort supports it. Next tier-2 slice.
-Resolving commits: —
+dropped the source, and the trend fell back to it whenever NASS had nothing —
+so the trend ALWAYS had two or more years, `compCount` was never 0, and the
+insufficient-data refusal fired only if the trend call threw. A statewide
+average (or a guess) could therefore set the price printed on a mailed
+letter, and a $500 USDA figure undercut three real sales at $1,100+. The
+snapshot backfilled pasture from 60% of the farm average and returned 0 when
+it had neither. The synthetic trend's flat 5% read as a "sellers market"
+everywhere. Every tier promised an acceptance rate ("~3 in 5 sellers") nothing
+had measured. The wizard had no refusal type and crashed on one; the map's
+inline composer rendered "Offer modeled from USDA land values" and handed an
+undefined price to Pax. `tests/unit/offerAndRankHonesty.test.ts` mocked the
+trend to `null`, hiding all of it, and `tests/unit/landExitModelDelegates.test.ts`
+mocked a module path that does not exist.
+Remediation plan: Done (founder decision 2026-09-27: render refusal, link to
+wizard). `analyzeComps` drops any row whose source is a benchmark
+(`usda_nass`, `estimate`) or whose price per acre is not a finite positive
+number, and names the drop; `buildCompDataset` is deleted. USDA figures live
+only in `marketContext.benchmarks` with provenance (`LandValueTrend.source`,
+`CountyAgSnapshot.pastureSource`); `usdaLandValuePerAcre` is shown only for a
+measured NASS county pasture value and `usdaCagr5Year` only for an all-NASS
+series. Market condition moves only on a measured trend. The refusal's
+`missing[]` no longer offers USDA as a price substitute. Every
+`acceptanceRateForecast` is null and no reason string states a rate. The
+wizard renders the refusal (what is missing, back to comps) and its campaign
+sizing card no longer shows "~60% / 3 of 5 / ~42 letters"; the map composer
+renders "Not enough comparable sales to price an offer" with a link to the
+wizard and never hands Pax a refused offer.
+Falsified (RED on the pre-change source, 11 cases):
+`tests/unit/blindOfferCalculator.test.ts` now drives the REAL `analyzeComps`
+and `calculateBlindOffer` (its inline copy returned 1000/2000/5000 for an
+empty set): a USDA/estimate row is not counted; a non-positive price is not a
+sale; no sales + measured pasture + estimate trend → refused with no offer
+fields; with real sales the offer comes from the lowest SALE, not a lower USDA
+figure; an estimate or provenance-less trend cannot declare a hot market;
+every tier forecast is null and no "N of/in M" rate appears in the report.
+`tests/unit/offerAndRankHonesty.test.ts`: a farm-derived pasture figure and a
+zero "none" figure are null; a measured USDA value with no sales, and the
+estimate trend with no sales, are refused.
+Still owed: `sizeCampaign`'s 0.6 default acceptance is an unmeasured
+convention (comment says so; value unchanged); other USDA consumers
+(`marketPulseEngine.ts`, `leadIntelligenceEngine.ts`) still render trend
+figures without the new provenance; see DEFECT-0121 to 0123.
+Resolving commits: (this branch, slice B)
 
 ### DEFECT-0108
 Title: Portfolio P&L treats every closed deal as a sale and annualises an undated sequence
@@ -2680,6 +2709,57 @@ view is wanted behind the Inbox door, point it at `POST /api/leads/:leadId/sms`
 DEFECT-0104 slice: it sends nothing today, so it cannot bypass the gate.
 Resolving commits: —
 
+### DEFECT-0121
+Title: The deal feed reads blind-offer fields that neither outcome has, so its offers fall back to percentages of assessed value
+Severity: P2
+Status: OPEN
+Surfaced by lenses: DEFECT-0107's consumer census, 2026-09-27
+Description: `server/services/dealFeedEngine.ts` calls `calculateBlindOffer`
+and then reads `offerData.comps.medianSalePerAcre`, `offerData.tiers[i].offerTotal`
+and `offerData.ownerFinanceScenario.annualYield`. The report's fields are
+`compAnalysis.medianSalePerAcre`, `offerTiers.{aggressive,standard,competitive}`
+and no `annualYield`; the refusal has none of them. Every read is undefined,
+so the feed's three "suggested offers" are always 25% / 40% / 55% of the
+parcel's assessed value and the calculator's result is discarded.
+`tests/unit/dealFeedHonesty.test.ts` exercises the fallback, not the join.
+Evidence: `server/services/dealFeedEngine.ts` (`estimatedValue`, `tierOrNull`,
+`sellerFinanceYield`).
+Remediation plan: Read `status === "ok"` outcomes by their real field names
+(or drop the call if the feed should not price offers), and pin the join with
+a test that fails when a field is renamed.
+Resolving commits: —
+
+### DEFECT-0122
+Title: A comparable sale is not required to be dated or recent
+Severity: P2
+Status: OPEN
+Surfaced by lenses: DEFECT-0107's repair scope, 2026-09-27
+Description: The formula is "lowest sale in the last 12–18 months ÷ 4", but
+`analyzeComps` in `server/services/blindOfferCalculator.ts` accepts undated
+comps, and the wizard's comp form collects no sale date, so no caller could
+supply one today. A ten-year-old sale can set a mailed price.
+Remediation plan: Add a sale-date input to the wizard comp form and an
+auto-pulled date, then require a date inside the window before a row counts.
+Deferred out of the DEFECT-0107 slice because refusing undated comps before
+the form can collect a date would refuse every manual comp.
+Resolving commits: —
+
+### DEFECT-0123
+Title: The parcel intelligence report prices an offer from USDA with a fabricated $1,000/acre default
+Severity: P2
+Status: OPEN
+Surfaced by lenses: DEFECT-0107's consumer census, 2026-09-27
+Description: `server/services/parcelIntelligenceFusion.ts` `buildOfferAnalysis`
+sets `usdaPerAcre = pasturePerAcre || farmRealEstatePerAcre * 0.6 || 1000`,
+calls that the "lowest comparable sale", and derives an offer, flip price and
+owner-finance terms from it — the DEFECT-0107 shape in a second engine, with
+an invented number when USDA has nothing. Served by
+`POST /api/data-intel/parcel-intelligence` (`server/routes-data-intelligence.ts`);
+no client caller was found in `client/src`, so reachable by API only.
+Remediation plan: Delegate to `calculateBlindOffer` (one offer engine), or
+return no offer when there is no real sale; delete the `|| 1000`.
+Resolving commits: —
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -2716,22 +2796,22 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 1   | 29  | 30    |
-| FIXED  | 12  | 62  | 9   | 83    |
+| OPEN   | 0   | 0   | 32  | 32    |
+| FIXED  | 12  | 63  | 9   | 84    |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **66** | **38** | **116** |
+| **Total** | **12** | **66** | **41** | **119** |
 
 DEFECT-0089 through 0095 added 2026-09-06. Two further census entries were
 re-verified at HEAD and REFUTED rather than implemented against — see the
 "REFUTED AT HEAD" table above DEFECT-0089's section.
 
-DEFECT-0096 through 0120 added 2026-09-27 from the "AcreOS at full maturity"
+DEFECT-0096 through 0123 added 2026-09-27 from the "AcreOS at full maturity"
 research report, each claim re-verified at `9cb534f` before entry (one refuted,
 one downgraded — see the 2026-09-27 REFUTED table). 0096 and 0097 are FIXED in
 the same change; 0101 (1099-INT direction) is FIXED as a refusal posture pending qualified tax
 review (slice C, same day); 0116 and 0119 (Payment Link, Accept-payment) are
-FIXED in slice A and 0104 (SMS purpose) in slice D; one P1 remains OPEN with
-its posture stated: 0107 (blind-offer comps).
+FIXED in slice A, 0104 (SMS purpose) in slice D and 0107 (blind-offer comps)
+in slice B; no P1 from this report remains OPEN.
 
 11 P2s from earlier audits remain open (plus DEFECT-0063, partially fixed)
 (not blocking launch).
@@ -2791,6 +2871,7 @@ its posture stated: 0107 (blind-offer comps).
 | DEFECT-0116 | Payment Link payments through the one posting rule; refunds reverse | (this branch, slice A) |
 | DEFECT-0119 | 100× Accept-payment charge path removed | (this branch, slice A) |
 | DEFECT-0104 | SMS consent asked by declared purpose; no-lead is not permission | (this branch, slice D) |
+| DEFECT-0107 | Only sales are comps; USDA is a benchmark; no promised acceptance rate | (this branch, slice B) |
 
 ### Deferred Defects (3)
 

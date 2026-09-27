@@ -55,7 +55,16 @@ export interface LandValueTrend {
   fiveYearChangePercent: number;
   trend: "accelerating" | "steady_growth" | "flat" | "declining";
   cagr5Year: number; // compound annual growth rate, 5-year
+  /**
+   * `usda_nass` only when EVERY year came from the NASS API. `estimate` when
+   * any year came from `getEstimatedLandValues` — a state default grown at a
+   * synthetic 5% a year, which is a guess, not a measurement (DEFECT-0107).
+   */
+  source: "usda_nass" | "estimate";
 }
+
+/** Where a snapshot's pasture figure came from (DEFECT-0107). */
+export type PastureValueSource = "usda_nass" | "derived_from_farm" | "estimate" | "none";
 
 export interface CountyAgSnapshot {
   state: string;
@@ -64,6 +73,13 @@ export interface CountyAgSnapshot {
   farmRealEstatePerAcre: number;
   croplandPerAcre: number;
   pasturePerAcre: number; // most relevant for real estate investors
+  /**
+   * `usda_nass` = a NASS county pastureland series; `derived_from_farm` =
+   * 60% of the farm-real-estate figure (a rule of thumb, not a pasture
+   * value); `estimate` = derived from the synthetic state default; `none` =
+   * no figure at all (pasturePerAcre is 0).
+   */
+  pastureSource: PastureValueSource;
   cashRentCroplandPerAcre: number;
   cashRentPasturePerAcre: number;
   interpretations: {
@@ -269,6 +285,7 @@ function buildTrendFromValues(
     fiveYearChangePercent: Math.round(fiveYearChange * 10) / 10,
     trend,
     cagr5Year: Math.round(cagr5Year * 10) / 10,
+    source: values.length > 0 && values.every((v) => v.source === "usda_nass") ? "usda_nass" : "estimate",
   };
 }
 
@@ -300,7 +317,16 @@ export async function buildCountyAgSnapshot(
   const pastureData = pastureValues.status === "fulfilled" ? pastureValues.value : [];
 
   const latestFarm = farmData[0]?.valuePerAcreDollars || 0;
-  const latestPasture = pastureData[0]?.valuePerAcreDollars || (latestFarm * 0.6);
+  const measuredPasture = pastureData[0]?.valuePerAcreDollars || 0;
+  const latestPasture = measuredPasture || (latestFarm * 0.6);
+  const pastureSource: PastureValueSource =
+    measuredPasture > 0
+      ? "usda_nass"
+      : latestFarm > 0
+        ? farmData[0]?.source === "usda_nass"
+          ? "derived_from_farm"
+          : "estimate"
+        : "none";
 
   // Cash rent rates (proxy for agricultural income)
   const cashRentCropland = latestFarm * 0.035; // ~3.5% cap rate typical for cropland
@@ -332,6 +358,7 @@ export async function buildCountyAgSnapshot(
     farmRealEstatePerAcre: latestFarm,
     croplandPerAcre: latestFarm * 1.1, // Cropland typically 10% above farm RE average
     pasturePerAcre: latestPasture,
+    pastureSource,
     cashRentCroplandPerAcre: Math.round(cashRentCropland),
     cashRentPasturePerAcre: Math.round(cashRentPasture),
     interpretations: {

@@ -1,30 +1,31 @@
 /**
  * Blind Offer Calculator
  *
- * Implements the industry standard blind offer pricing methodology — the
- * #1 acquisition strategy for raw land investing.
+ * Implements the blind offer pricing rule of thumb used in raw land investing.
  *
- * The Core Formula (industry standard):
+ * The Core Formula (a land-investing convention, not a measured result):
  *   Offer = Lowest Comparable Sale (last 12-18 months) ÷ 4
  *
- * This gives a 300% margin of safety — buying at 25 cents on the dollar creates
- * enough spread to profit even if the market drops 50% after acquisition.
+ * Buying at 25 cents on the dollar leaves room for due diligence surprises,
+ * holding costs and exit costs, on both a cash flip and an owner-financed exit.
  *
  * Why "blind"?
  *   The offer is mailed WITHOUT visiting or appraising the property.
  *   The letter contains a specific purchase price calculated from county comps.
  *   This is only possible when targeting the right county with sufficient comp data.
  *
- * Why ÷ 4?
- *   - Creates a "300% margin of safety" (Warren Buffett principle applied to land)
- *   - Filters for only the most motivated sellers (3 out of 5 accept at this price)
- *   - Leaves room for due diligence surprises, holding costs, and exit costs
- *   - Ensures profitability on both cash flip AND owner-financed exit
+ * ONLY SALES ARE COMPS (DEFECT-0107, 2026-09-27). USDA NASS county values —
+ * and the synthetic state-default trend the USDA service returns when NASS
+ * has nothing — are BENCHMARKS. They used to be pushed into the comp set as
+ * `usda_nass` "comps", which made the zero-comp refusal unreachable (the
+ * estimate trend always contributed a prior year) and let a statewide
+ * average — or a guess — set the price printed on a mailed letter. They now
+ * appear only in `marketContext.benchmarks`, with their provenance.
  *
- * The "3 Out of 5" Rule:
- *   When you send blind offer letters to the right county targeting the right
- *   seller profile, approximately 3 out of 5 offers get accepted. Lower acceptance
- *   rate = wrong county, wrong price, or wrong seller criteria.
+ * NO ACCEPTANCE RATE IS PROMISED. Folklore puts acceptance at "3 out of 5"
+ * at the standard tier; nothing in AcreOS has measured it, so no tier,
+ * reason or letter states a rate. `acceptanceRateForecast` is null until an
+ * org's own sent-and-accepted history can supply one.
  *
  * Industry Best Practices:
  *   - "Don't negotiate. Find sellers who want to sell at your price."
@@ -121,7 +122,8 @@ export interface OfferTier {
   pctOfLowestComp: number;
   description: string;
   bestFor: string;
-  acceptanceRateForecast: string;
+  /** Null: no acceptance rate has been measured (DEFECT-0107). Never folklore. */
+  acceptanceRateForecast: string | null;
 }
 
 export interface OwnerFinanceScenario {
@@ -182,6 +184,24 @@ export interface CashFlipScenario {
   assumptions: LandAssumption[];
 }
 
+/**
+ * USDA figures carried with where they came from, so a surface can say
+ * "estimate" instead of rendering a guess as a measurement (DEFECT-0107).
+ * `unknown` = a cached snapshot/trend written before provenance existed.
+ */
+export interface MarketBenchmarks {
+  usdaPasture: {
+    perAcre: number | null;
+    source: "usda_nass" | "derived_from_farm" | "estimate" | "none" | "unknown";
+    year: number | null;
+  };
+  trend: {
+    cagr5Year: number | null;
+    oneYearChangePercent: number | null;
+    source: "usda_nass" | "estimate" | "unknown";
+  };
+}
+
 export interface BlindOfferReport {
   /** Discriminant. An offer report only ever exists with real comp data. */
   status: "ok";
@@ -230,12 +250,19 @@ export interface BlindOfferReport {
 
   // Market context
   marketContext: {
-    /** null when USDA has no pasture value on file for this county. */
+    /**
+     * A MEASURED USDA NASS county pastureland value, or null. Null when NASS
+     * has no pasture series for the county — a figure derived from the farm
+     * average or from the synthetic state default is not shown here.
+     */
     usdaLandValuePerAcre: number | null;
-    usdaCagr5Year: number;
+    /** Null unless every trend year came from NASS (never the synthetic estimate). */
+    usdaCagr5Year: number | null;
     marketCondition: string;
     competitionLevel: string;
     ebayValidationNote: string;
+    /** Benchmarks with provenance. Context only — never a comp, never a price. */
+    benchmarks: MarketBenchmarks;
   };
 
   // Warnings
@@ -264,7 +291,7 @@ export interface BlindOfferRefusal {
   compAnalysis: CompAnalysis;
   /** What must exist before an offer can be calculated honestly. */
   missing: string[];
-  /** Market context that WAS measured (zeros mean "USDA returned nothing"). */
+  /** Market context that WAS measured (nulls mean "not measured"). */
   marketContext: BlindOfferReport["marketContext"];
   warnings: string[];
 }
@@ -292,27 +319,29 @@ export async function calculateBlindOffer(input: BlindOfferInput): Promise<Blind
   const nassData = nassSnapshot.status === "fulfilled" ? nassSnapshot.value : null;
   const trend = nassTrend.status === "fulfilled" ? nassTrend.value : null;
 
-  // Build complete comp dataset
-  const allComps = buildCompDataset(comps, nassData, trend);
-  const compAnalysis = analyzeComps(allComps);
+  // Only SALES are comps. USDA values and the synthetic trend are benchmarks
+  // and never enter this set (DEFECT-0107) — see analyzeComps.
+  const compAnalysis = analyzeComps(comps);
 
-  // Determine market condition (auto or override)
+  // Determine market condition (auto or override). A synthetic trend cannot
+  // declare a hot market.
   const effectiveMarketCondition = marketCondition || detectMarketCondition(trend);
 
-  const marketContext = {
-    // `|| 0` is the one place here where zero is NOT the honest empty:
-    // `maps.tsx` renders this as "Offer modeled from USDA land values ($0/ac)"
-    // and `blind-offer-wizard.tsx` as a headline figure — so a county USDA has
-    // no value for showed land priced at nothing, presented as the basis for
-    // an offer. Both pages now render the absence.
-    usdaLandValuePerAcre: nassData?.pasturePerAcre ?? null,
-    usdaCagr5Year: trend?.cagr5Year || 0,
+  const benchmarks = buildBenchmarks(nassData, trend);
+  const marketContext: BlindOfferReport["marketContext"] = {
+    // Only a MEASURED NASS county pasture value. Zero, a farm-derived 60%, or
+    // the state default are not shown as "USDA land value": `maps.tsx` once
+    // rendered a missing value as "Offer modeled from USDA land values ($0/ac)".
+    usdaLandValuePerAcre:
+      benchmarks.usdaPasture.source === "usda_nass" ? benchmarks.usdaPasture.perAcre : null,
+    usdaCagr5Year: benchmarks.trend.source === "usda_nass" ? benchmarks.trend.cagr5Year : null,
     marketCondition: effectiveMarketCondition,
     competitionLevel:
       compAnalysis.compCount > 50 ? "high" : compAnalysis.compCount > 20 ? "medium" : "low",
     ebayValidationNote: compAnalysis.isCountyValidated
       ? `County validated: ${compAnalysis.compCount}+ comps confirm active market.`
       : `County has limited comp data (${compAnalysis.compCount} comps found). Validate via eBay sold listings before running campaign.`,
+    benchmarks,
   };
 
   // Warnings
@@ -332,16 +361,12 @@ export async function calculateBlindOffer(input: BlindOfferInput): Promise<Blind
   const missing: string[] = [];
 
   if (compAnalysis.compCount === 0) {
+    // No substitute is offered: a USDA county average is a benchmark, not a
+    // sale, and cannot set the price on a mailed letter (DEFECT-0107).
     missing.push(
       `Comparable sales for ${county} County, ${state.toUpperCase()} — none were found. ` +
-        `Paste comps from the county assessor / LandWatch / eBay sold listings, or connect an ATTOM key to pull them automatically.`,
+        `Add sold comps from the county assessor, LandWatch or eBay sold listings in the offer wizard's comp step.`,
     );
-    if (!nassData?.pasturePerAcre) {
-      missing.push(
-        "USDA NASS land values for this state (the free per-acre benchmark used when no direct comps exist). " +
-          "Set USDA_NASS_API_KEY, or the county has no NASS pastureland series.",
-      );
-    }
   } else if (
     lowestCompPerAcre === null ||
     medianCompPerAcre === null ||
@@ -443,43 +468,39 @@ export async function calculateBlindOffer(input: BlindOfferInput): Promise<Blind
 }
 
 // ---------------------------------------------------------------------------
-// Comp Dataset Construction
+// Benchmarks (context, never comps)
 // ---------------------------------------------------------------------------
 
-function buildCompDataset(
-  userComps: CompData[],
-  nassData: any,
-  trend: any
-): CompData[] {
-  const allComps: CompData[] = [...userComps];
+type SnapshotLike = { pasturePerAcre?: number; pastureSource?: string; year?: number } | null;
+type TrendLike = { cagr5Year?: number; oneYearChangePercent?: number; source?: string } | null;
 
-  // Inject USDA NASS data as a comp anchor
-  if (nassData?.pasturePerAcre > 0) {
-    allComps.push({
-      pricePerAcre: nassData.pasturePerAcre,
-      acres: 1, // Per-acre metric
-      totalPrice: nassData.pasturePerAcre,
-      source: "usda_nass",
-      notes: `USDA NASS ${nassData.year} Pastureland Value — ${nassData.state} statewide`,
-    });
-  }
-
-  // Add historical year for trend context
-  if (trend?.years && trend.years.length > 1) {
-    const priorYear = trend.years[trend.years.length - 2];
-    if (priorYear) {
-      allComps.push({
-        pricePerAcre: priorYear.valuePerAcre,
-        acres: 1,
-        totalPrice: priorYear.valuePerAcre,
-        source: "usda_nass",
-        saleDate: `${priorYear.year}-01-01`,
-        notes: `USDA NASS ${priorYear.year} Pastureland Value (prior year)`,
-      });
-    }
-  }
-
-  return allComps;
+function buildBenchmarks(nassData: SnapshotLike, trend: TrendLike): MarketBenchmarks {
+  const pastureSource =
+    nassData?.pastureSource === "usda_nass" ||
+    nassData?.pastureSource === "derived_from_farm" ||
+    nassData?.pastureSource === "estimate" ||
+    nassData?.pastureSource === "none"
+      ? nassData.pastureSource
+      : "unknown";
+  const perAcre =
+    nassData && typeof nassData.pasturePerAcre === "number" && nassData.pasturePerAcre > 0
+      ? nassData.pasturePerAcre
+      : null;
+  const trendSource =
+    trend?.source === "usda_nass" || trend?.source === "estimate" ? trend.source : "unknown";
+  return {
+    usdaPasture: {
+      perAcre,
+      source: perAcre === null && pastureSource !== "unknown" ? "none" : pastureSource,
+      year: typeof nassData?.year === "number" ? nassData.year : null,
+    },
+    trend: {
+      cagr5Year: typeof trend?.cagr5Year === "number" ? trend.cagr5Year : null,
+      oneYearChangePercent:
+        typeof trend?.oneYearChangePercent === "number" ? trend.oneYearChangePercent : null,
+      source: trendSource,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -499,8 +520,30 @@ function buildCompDataset(
  * `letterVariables.offerAmount`, i.e. a made-up purchase price on a mailed
  * letter. There is no honest placeholder for "we don't know what land sells
  * for here"; the only honest value is absence.
+ *
+ * ONLY SALES COUNT (DEFECT-0107). A row whose source is a benchmark
+ * (`usda_nass`, `estimate`) or whose price per acre is not a finite positive
+ * number is dropped before any statistic is taken, and the drop is named in
+ * `dataQualityNotes` — a client that sends a USDA average as a "comp" cannot
+ * make it one.
  */
-export function analyzeComps(comps: CompData[]): CompAnalysis {
+const BENCHMARK_SOURCES = new Set(["usda_nass", "estimate"]);
+
+export function analyzeComps(input: CompData[]): CompAnalysis {
+  const comps = input.filter(
+    (c) =>
+      !BENCHMARK_SOURCES.has(c.source) &&
+      typeof c.pricePerAcre === "number" &&
+      Number.isFinite(c.pricePerAcre) &&
+      c.pricePerAcre > 0,
+  );
+  const dropped = input.length - comps.length;
+  const droppedNote =
+    dropped > 0
+      ? [
+          `${dropped} row(s) excluded: USDA / estimated benchmarks and rows without a positive price per acre are not sales and cannot be comps.`,
+        ]
+      : [];
   if (comps.length === 0) {
     return {
       allComps: [],
@@ -513,6 +556,7 @@ export function analyzeComps(comps: CompData[]): CompAnalysis {
       dataQuality: "insufficient",
       dataQualityNotes: [
         "No comparable sales found — no offer can be calculated. Research comps (county assessor, LandWatch, eBay sold listings) before offering.",
+        ...droppedNote,
       ],
       isCountyValidated: false,
     };
@@ -537,7 +581,7 @@ export function analyzeComps(comps: CompData[]): CompAnalysis {
   const isCountyValidated = compCount >= 10; // Validation threshold
 
   let dataQuality: CompAnalysis["dataQuality"];
-  const notes: string[] = [];
+  const notes: string[] = [...droppedNote];
 
   if (compCount >= 10) {
     dataQuality = "excellent";
@@ -586,18 +630,18 @@ function buildOfferTiers(
       offerPerAcre: Math.round(lowestCompPerAcre * 0.20),
       offerTotal: Math.round(lowestCompPerAcre * 0.20 * acres),
       pctOfLowestComp: 20,
-      description: "20 cents on the dollar — maximum margin, minimum acceptance rate",
+      description: "20 cents on the dollar — maximum margin, expect fewer acceptances",
       bestFor: "Tax delinquent lists, inherited property, distressed sellers, markets with abundant supply",
-      acceptanceRateForecast: "~1 in 5 sellers (higher volume campaigns needed)",
+      acceptanceRateForecast: null,
     },
     standard: {
       name: "Standard (25%)",
       offerPerAcre: Math.round(lowestCompPerAcre * 0.25),
       offerTotal: Math.round(lowestCompPerAcre * 0.25 * acres),
       pctOfLowestComp: 25,
-      description: "25 cents on the dollar — the proven industry standard formula",
+      description: "25 cents on the dollar — the conventional land-investing formula",
       bestFor: "Most counties, mixed seller motivation profiles, balanced markets",
-      acceptanceRateForecast: "~3 in 5 sellers (reported rate in validated counties)",
+      acceptanceRateForecast: null,
     },
     competitive: {
       name: "Competitive Market (33%)",
@@ -606,7 +650,7 @@ function buildOfferTiers(
       pctOfLowestComp: 33,
       description: "33 cents on the dollar — for hot markets with thin seller motivation",
       bestFor: "Sellers markets, fast-appreciating counties, urban-adjacent parcels",
-      acceptanceRateForecast: "~4 in 5 sellers (higher acceptance, lower margin)",
+      acceptanceRateForecast: null,
     },
   };
 }
@@ -616,9 +660,11 @@ function buildOfferTiers(
 // ---------------------------------------------------------------------------
 
 function detectMarketCondition(
-  trend: any
+  trend: { oneYearChangePercent: number; source?: string } | null,
 ): "buyers_market" | "balanced" | "sellers_market" | "hot" {
-  if (!trend) return "balanced";
+  // A synthetic trend (the state default grown at a flat 5%) would read as a
+  // "sellers market" everywhere. Only a measured NASS series may move this.
+  if (!trend || trend.source !== "usda_nass") return "balanced";
   if (trend.oneYearChangePercent > 8) return "hot";
   if (trend.oneYearChangePercent > 3) return "sellers_market";
   if (trend.oneYearChangePercent > 0) return "balanced";
@@ -634,7 +680,7 @@ function recommendTier(
   if (marketCondition === "hot") {
     return {
       tier: "competitive",
-      reason: "Hot market detected — using 33% of lowest comp to maintain competitive acceptance rate. Even at 33 cents, your 3× markup potential preserves excellent margins.",
+      reason: "Hot market detected from measured USDA appreciation — using 33% of lowest comp so the offer stays credible to sellers who know prices are rising. Margin is thinner than at 25%.",
     };
   }
 
@@ -656,7 +702,7 @@ function recommendTier(
 
   return {
     tier: "standard",
-    reason: "Standard market conditions — using the proven formula of 25 cents on the dollar. This targets the right seller profile and delivers ~3 of 5 acceptance rate in validated counties.",
+    reason: "Standard market conditions — using the conventional formula of 25 cents on the dollar. No acceptance rate is promised: track your own sent and accepted offers to learn this county's rate.",
   };
 }
 
@@ -928,7 +974,7 @@ function getStateName(stateCode: string): string {
 function buildWarnings(
   compAnalysis: CompAnalysis,
   acres: number,
-  nassData: any,
+  _nassData: unknown,
   marketCondition: string
 ): string[] {
   const warnings: string[] = [];
@@ -964,7 +1010,7 @@ export interface CampaignSizingInput {
   county: string;
   state: string;
   targetDealsPerMonth: number;
-  expectedAcceptanceRate?: number; // Default 0.6 (3 of 5)
+  expectedAcceptanceRate?: number; // Default 0.6 — an UNMEASURED land-investing convention; pass the org's own rate when known
   averageDealSize?: number; // Average property acreage
 }
 
@@ -980,7 +1026,7 @@ export interface CampaignSizingOutput {
 }
 
 export function sizeCampaign(input: CampaignSizingInput): CampaignSizingOutput {
-  const acceptanceRate = input.expectedAcceptanceRate || 0.60; // 60% = 3 of 5
+  const acceptanceRate = input.expectedAcceptanceRate || 0.60; // unmeasured convention (DEFECT-0107 note)
   const responseRate = 0.04; // ~4% response rate on blind offer letters
   const closeRate = acceptanceRate; // Of responses, closure rate
 

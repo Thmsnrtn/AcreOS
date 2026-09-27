@@ -9,9 +9,9 @@
     "**/*.test.ts",
     "**/*.spec.ts"
   ],
-  "baselineCount": 2691,
+  "baselineCount": 2687,
   "direction": "down",
-  "lastBumpNote": "2026-09-27 DEFECT-0104: sendOrgSMS's `catch (err: any)` replaced by an `unknown` catch when the SID capture was split from post-send bookkeeping.",
+  "lastBumpNote": "2026-09-27 DEFECT-0107: blindOfferCalculator's buildCompDataset(nassData: any, trend: any) deleted, detectMarketCondition(trend: any) and buildWarnings(nassData: any) typed \u2014 USDA benchmarks no longer enter the comp set.",
   "minima": {
     "files": 1100
   },

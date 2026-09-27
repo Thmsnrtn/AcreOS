@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 
-vi.mock("../../server/services/usdaNass", () => ({
+vi.mock("../../server/services/usdaNassService", () => ({
   getCachedCountySnapshot: vi.fn(async () => null),
   getCachedLandTrend: vi.fn(async () => null),
 }));

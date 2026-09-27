@@ -164,11 +164,14 @@ describe("the blind offer's USDA basis is the field the pages actually render", 
    * `blind-offer-wizard.tsx` read THIS shape, and a source-only assertion let
    * a mutation restoring `|| 0` survive. So it is exercised.
    */
-  async function offerFor(nass: { pasturePerAcre?: number } | null) {
+  async function offerFor(
+    nass: { pasturePerAcre?: number; pastureSource?: string } | null,
+    trend: Record<string, unknown> | null = null,
+  ) {
     vi.resetModules();
     vi.doMock("../../server/services/usdaNassService", () => ({
       getCachedCountySnapshot: async () => nass,
-      getCachedLandTrend: async () => null,
+      getCachedLandTrend: async () => trend,
     }));
     const { calculateBlindOffer } = await import(
       "../../server/services/blindOfferCalculator"
@@ -184,9 +187,46 @@ describe("the blind offer's USDA basis is the field the pages actually render", 
     expect(out.marketContext.usdaLandValuePerAcre).not.toBe(0);
   });
 
-  it("a county WITH a USDA value still reports it", async () => {
-    const out = await offerFor({ pasturePerAcre: 3400 });
+  it("a county WITH a measured USDA pasture value still reports it", async () => {
+    const out = await offerFor({ pasturePerAcre: 3400, pastureSource: "usda_nass" });
     expect(out.marketContext.usdaLandValuePerAcre).toBe(3400);
+  });
+
+  // DEFECT-0107 — the snapshot backfills pasture from 60% of the farm
+  // average, or from the synthetic state default, and returned 0 when it
+  // had neither. None of those is a measured USDA land value.
+  it("a pasture figure DERIVED from the farm average is not shown as the USDA land value", async () => {
+    const out = await offerFor({ pasturePerAcre: 1440, pastureSource: "derived_from_farm" });
+    expect(out.marketContext.usdaLandValuePerAcre).toBeNull();
+    expect(out.marketContext.benchmarks.usdaPasture.source).toBe("derived_from_farm");
+  });
+
+  it("a zero pasture figure with source 'none' is null, not $0/ac", async () => {
+    const out = await offerFor({ pasturePerAcre: 0, pastureSource: "none" });
+    expect(out.marketContext.usdaLandValuePerAcre).toBeNull();
+  });
+
+  it("a measured USDA value with NO comparable sales is refused, not priced from USDA", async () => {
+    const out = await offerFor({ pasturePerAcre: 3400, pastureSource: "usda_nass" });
+    // Before: the pasture value was pushed into the comp set as a "usda_nass"
+    // comp and a letter price was computed from a statewide average.
+    expect(out.status).toBe("insufficient_data");
+    expect(out.compAnalysis.compCount).toBe(0);
+  });
+
+  it("the synthetic estimate trend with no comparable sales is refused", async () => {
+    const out = await offerFor(null, {
+      years: [
+        { year: 2024, valuePerAcre: 2286 },
+        { year: 2025, valuePerAcre: 2400 },
+      ],
+      oneYearChangePercent: 5,
+      cagr5Year: 5,
+      source: "estimate",
+    });
+    // Before: the prior estimate year became a comp, so compCount was never
+    // 0 and the refusal could only fire if the trend call threw.
+    expect(out.status).toBe("insufficient_data");
   });
 });
 

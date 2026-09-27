@@ -5,76 +5,74 @@
  * Tests the blind offer methodology:
  * - The 25% formula (lowest comp ÷ 4)
  * - Offer tier calculations (20%, 25%, 33% of lowest comp)
- * - Comp data quality classification
- * - Market condition detection
- * - Campaign sizing (how many letters to send)
- * - Owner finance scenario building
+ * - Comp data quality classification — against the REAL `analyzeComps`
+ * - Only sales are comps: USDA / estimated benchmarks never enter the set,
+ *   and the zero-comp refusal is reachable (DEFECT-0107)
+ * - Market condition — driven through the REAL calculator; a synthetic
+ *   (estimate) trend cannot move it
+ * - No acceptance rate is promised anywhere in the report
+ * - Campaign sizing arithmetic and owner finance note math (spec copies)
+ *
+ * The comp analysis used to be an INLINE COPY here, returning 1000 / 2000 /
+ * 5000 for an empty set — the fabricated branch it was meant to catch. It now
+ * imports the implementation.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// ── Types (mirroring blindOfferCalculator.ts) ──────────────────────────────────
+// Scripted USDA double — the calculator's only external input.
+const USDA = vi.hoisted(() => ({
+  snapshot: null as Record<string, unknown> | null,
+  trend: null as Record<string, unknown> | null,
+}));
+vi.mock("../../server/services/usdaNassService", () => ({
+  getCachedCountySnapshot: async () => USDA.snapshot,
+  getCachedLandTrend: async () => USDA.trend,
+}));
+vi.mock("../../server/utils/logger", () => ({
+  logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}));
 
-interface CompData {
-  pricePerAcre: number;
-  acres: number;
-  totalPrice: number;
-  daysOnMarket?: number;
-  saleDate?: string;
-  source: string;
-}
+import {
+  analyzeComps,
+  calculateBlindOffer,
+  type CompData,
+} from "../../server/services/blindOfferCalculator";
 
-interface CompAnalysis {
-  lowestSalePerAcre: number;
-  medianSalePerAcre: number;
-  highestSalePerAcre: number;
-  compCount: number;
-  dataQuality: "excellent" | "good" | "limited" | "insufficient";
-  isCountyValidated: boolean;
-  avgDaysOnMarket: number | null;
-}
+beforeEach(() => {
+  USDA.snapshot = null;
+  USDA.trend = null;
+});
 
-// ── Inline implementations for pure unit tests ─────────────────────────────────
-
-function analyzeComps(comps: CompData[]): CompAnalysis {
-  if (comps.length === 0) {
-    return {
-      lowestSalePerAcre: 1000,
-      medianSalePerAcre: 2000,
-      highestSalePerAcre: 5000,
-      compCount: 0,
-      dataQuality: "insufficient",
-      isCountyValidated: false,
-      avgDaysOnMarket: null,
-    };
-  }
-
-  const prices = comps.map((c) => c.pricePerAcre).sort((a, b) => a - b);
-  const domValues = comps.filter((c) => c.daysOnMarket !== undefined).map((c) => c.daysOnMarket!);
-  const avgDom =
-    domValues.length > 0
-      ? Math.round(domValues.reduce((a, b) => a + b, 0) / domValues.length)
-      : null;
-
-  const compCount = comps.length;
-  const isCountyValidated = compCount >= 10;
-  let dataQuality: CompAnalysis["dataQuality"];
-
-  if (compCount >= 10) dataQuality = "excellent";
-  else if (compCount >= 5) dataQuality = "good";
-  else if (compCount >= 2) dataQuality = "limited";
-  else dataQuality = "insufficient";
-
+/** The trend the USDA service builds from its synthetic state default. */
+function trendOf(source: "usda_nass" | "estimate", oneYearChangePercent: number) {
   return {
-    lowestSalePerAcre: prices[0],
-    medianSalePerAcre: prices[Math.floor(prices.length / 2)],
-    highestSalePerAcre: prices[prices.length - 1],
-    compCount,
-    dataQuality,
-    isCountyValidated,
-    avgDaysOnMarket: avgDom,
+    county: "Bandera",
+    state: "TX",
+    years: [
+      { year: 2021, valuePerAcre: 1975 },
+      { year: 2022, valuePerAcre: 2073 },
+      { year: 2023, valuePerAcre: 2177 },
+      { year: 2024, valuePerAcre: 2286 },
+      { year: 2025, valuePerAcre: 2400 },
+    ],
+    currentValuePerAcre: 2400,
+    oneYearChangePercent,
+    threeYearChangePercent: 10,
+    fiveYearChangePercent: 21.5,
+    trend: "steady_growth",
+    cagr5Year: 5,
+    source,
   };
 }
+
+const SALES: CompData[] = [
+  { pricePerAcre: 1200, acres: 10, totalPrice: 12000, source: "county_records" },
+  { pricePerAcre: 1400, acres: 12, totalPrice: 16800, source: "county_records" },
+  { pricePerAcre: 1100, acres: 8, totalPrice: 8800, source: "user_entered" },
+];
+
+// ── Spec copies (pure arithmetic, no production twin to import) ────────────────
 
 function buildOfferTiers(lowestCompPerAcre: number, acres: number) {
   return {
@@ -94,15 +92,6 @@ function buildOfferTiers(lowestCompPerAcre: number, acres: number) {
       pctOfLowestComp: 33,
     },
   };
-}
-
-function detectMarketCondition(
-  oneYearChangePercent: number
-): "buyers_market" | "balanced" | "sellers_market" | "hot" {
-  if (oneYearChangePercent > 8) return "hot";
-  if (oneYearChangePercent > 3) return "sellers_market";
-  if (oneYearChangePercent > 0) return "balanced";
-  return "buyers_market";
 }
 
 function sizeCampaign(targetDeals: number, targetAcceptanceRate: number): number {
@@ -207,11 +196,13 @@ describe("Comp Analysis — Data Quality Classification", () => {
     return { pricePerAcre, acres: 10, totalPrice: pricePerAcre * 10, source: "county_records" };
   }
 
-  it("0 comps → insufficient quality, not validated", () => {
+  it("0 comps → insufficient quality, not validated, and NO price (null, never a placeholder)", () => {
     const result = analyzeComps([]);
     expect(result.dataQuality).toBe("insufficient");
     expect(result.isCountyValidated).toBe(false);
     expect(result.compCount).toBe(0);
+    expect(result.lowestSalePerAcre).toBeNull();
+    expect(result.medianSalePerAcre).toBeNull();
   });
 
   it("1 comp → insufficient quality", () => {
@@ -280,34 +271,98 @@ describe("Comp Analysis — Price Statistics", () => {
   });
 });
 
-describe("Market Condition Detection", () => {
-  it("hot market: >8% YoY price appreciation", () => {
-    expect(detectMarketCondition(10)).toBe("hot");
-    expect(detectMarketCondition(8.1)).toBe("hot");
+describe("Market condition — only a MEASURED trend can move it (DEFECT-0107)", () => {
+  async function conditionFor(trend: Record<string, unknown> | null) {
+    USDA.trend = trend;
+    const out = await calculateBlindOffer({ state: "TX", county: "Bandera", targetAcres: 10, comps: SALES });
+    return out.marketContext.marketCondition;
+  }
+
+  it("a measured NASS trend applies the thresholds (> 8% hot, > 3% sellers, > 0% balanced, else buyers)", async () => {
+    expect(await conditionFor(trendOf("usda_nass", 10))).toBe("hot");
+    expect(await conditionFor(trendOf("usda_nass", 8))).toBe("sellers_market");
+    expect(await conditionFor(trendOf("usda_nass", 3))).toBe("balanced");
+    expect(await conditionFor(trendOf("usda_nass", 0))).toBe("buyers_market");
   });
 
-  it("sellers market: 3–8% YoY appreciation", () => {
-    expect(detectMarketCondition(5)).toBe("sellers_market");
-    expect(detectMarketCondition(3.1)).toBe("sellers_market");
+  it("the synthetic estimate trend cannot declare a hot market — it is balanced", async () => {
+    expect(await conditionFor(trendOf("estimate", 10))).toBe("balanced");
   });
 
-  it("balanced market: 0–3% YoY appreciation", () => {
-    expect(detectMarketCondition(1)).toBe("balanced");
-    expect(detectMarketCondition(0.1)).toBe("balanced");
+  it("a trend with no provenance (cached before it existed) is treated as unmeasured", async () => {
+    const { source: _drop, ...legacy } = trendOf("usda_nass", 10);
+    expect(await conditionFor(legacy)).toBe("balanced");
   });
 
-  it("buyers market: flat or declining prices (≤0%)", () => {
-    expect(detectMarketCondition(0)).toBe("buyers_market");
-    expect(detectMarketCondition(-5)).toBe("buyers_market");
-  });
-
-  it("exact threshold values", () => {
-    expect(detectMarketCondition(8)).toBe("sellers_market"); // 8 is NOT > 8, so not hot
-    expect(detectMarketCondition(3)).toBe("balanced"); // 3 is NOT > 3, so not sellers market
+  it("no trend at all → balanced", async () => {
+    expect(await conditionFor(null)).toBe("balanced");
   });
 });
 
-describe("Campaign Sizing — The 3-of-5 Rule", () => {
+describe("Only sales are comps (DEFECT-0107)", () => {
+  it("a USDA benchmark passed as a comp is not counted", () => {
+    const result = analyzeComps([
+      { pricePerAcre: 3400, acres: 1, totalPrice: 3400, source: "usda_nass" },
+      { pricePerAcre: 2400, acres: 1, totalPrice: 2400, source: "estimate" },
+    ]);
+    expect(result.compCount).toBe(0);
+    expect(result.lowestSalePerAcre).toBeNull();
+    expect(result.dataQualityNotes.join(" ")).toMatch(/2 row\(s\) excluded/);
+  });
+
+  it("a row with no positive price per acre is not a sale", () => {
+    const result = analyzeComps([
+      { pricePerAcre: 0, acres: 5, totalPrice: 0, source: "county_records" },
+      { pricePerAcre: Number.NaN, acres: 5, totalPrice: 0, source: "county_records" },
+      { pricePerAcre: 1500, acres: 5, totalPrice: 7500, source: "county_records" },
+    ]);
+    expect(result.compCount).toBe(1);
+    expect(result.lowestSalePerAcre).toBe(1500);
+  });
+
+  it("no sales + a measured USDA pasture value + an estimate trend → REFUSED, with no offer fields", async () => {
+    USDA.snapshot = { pasturePerAcre: 3400, pastureSource: "usda_nass", year: 2025 };
+    USDA.trend = trendOf("estimate", 5);
+    const out = await calculateBlindOffer({ state: "TX", county: "Bandera", targetAcres: 10 });
+    expect(out.status).toBe("insufficient_data");
+    expect(out).not.toHaveProperty("offerTiers");
+    expect(out).not.toHaveProperty("letterVariables");
+    if (out.status === "insufficient_data") {
+      // No substitute is offered: USDA is not a price.
+      expect(out.missing.join(" ")).not.toMatch(/USDA NASS land values/);
+    }
+    // The benchmark is still shown, with its provenance.
+    expect(out.marketContext.usdaLandValuePerAcre).toBe(3400);
+    expect(out.marketContext.benchmarks.trend.source).toBe("estimate");
+    expect(out.marketContext.usdaCagr5Year).toBeNull();
+  });
+
+  it("with real sales the offer is priced from the LOWEST SALE, never the USDA value", async () => {
+    USDA.snapshot = { pasturePerAcre: 500, pastureSource: "usda_nass", year: 2025 };
+    const out = await calculateBlindOffer({ state: "TX", county: "Bandera", targetAcres: 10, comps: SALES });
+    expect(out.status).toBe("ok");
+    if (out.status === "ok") {
+      expect(out.lowestCompPerAcre).toBe(1100);
+      expect(out.offerTiers.standard.offerTotal).toBe(Math.round(1100 * 0.25 * 10));
+      expect(out.compAnalysis.compCount).toBe(3);
+    }
+  });
+});
+
+describe("No acceptance rate is promised (DEFECT-0107)", () => {
+  it("every tier's acceptanceRateForecast is null, and no 'N of/in M' rate appears anywhere in the report", async () => {
+    USDA.trend = trendOf("usda_nass", 2);
+    const out = await calculateBlindOffer({ state: "TX", county: "Bandera", targetAcres: 10, comps: SALES });
+    expect(out.status).toBe("ok");
+    if (out.status !== "ok") return;
+    for (const tier of Object.values(out.offerTiers)) {
+      expect(tier.acceptanceRateForecast).toBeNull();
+    }
+    expect(JSON.stringify(out)).not.toMatch(/\b\d\s*(?:of|in|out of)\s*\d\b/);
+  });
+});
+
+describe("Campaign sizing arithmetic — the rate is an input, never a promise", () => {
   it("to close 3 deals at 60% acceptance rate: send 5 letters", () => {
     const letters = sizeCampaign(3, 0.6);
     expect(letters).toBe(5);

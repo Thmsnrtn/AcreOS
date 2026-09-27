@@ -254,6 +254,7 @@ function ScoreRing({ score, label, color }: { score: number; label: string; colo
 
 /** Subset of the wizard's OfferReport we render inline. */
 interface InlineOfferReport {
+  status: "ok";
   state: string;
   county: string;
   recommendedTier: "aggressive" | "standard" | "competitive";
@@ -261,8 +262,23 @@ interface InlineOfferReport {
   recommendationReason: string;
   compAnalysis: { compCount: number };
   letterVariables: { offerAmount: number; offerAmountWords: string };
-  marketContext: { usdaLandValuePerAcre: number | null };
   warnings: string[];
+}
+
+/**
+ * The server's refusal: no comparable sale, so no offer (DEFECT-0107). It
+ * carries no offer fields — `recommendedOfferTotal` is absent, which this
+ * composer used to format and hand to Pax as the price.
+ */
+interface InlineOfferRefusal {
+  status: "insufficient_data";
+  missing: string[];
+}
+
+type InlineOfferOutcome = InlineOfferReport | InlineOfferRefusal;
+
+function isInlineOfferReport(o: InlineOfferOutcome | undefined): o is InlineOfferReport {
+  return o?.status === "ok";
 }
 
 function InlineBlindOfferComposer({ property }: { property: Property }) {
@@ -280,13 +296,13 @@ function InlineBlindOfferComposer({ property }: { property: Property }) {
   // assertFeeSimpleOrThrow federal-trust gate runs (Indian-Country / federal
   // trust parcels are blocked server-side). Only fires once expanded.
   const {
-    data: report,
+    data: outcome,
     isLoading,
     isError,
     error,
     refetch,
     isFetching,
-  } = useQuery<InlineOfferReport>({
+  } = useQuery<InlineOfferOutcome>({
     queryKey: ["/api/data-intel/blind-offer", property.id],
     enabled: expanded,
     staleTime: 10 * 60 * 1000,
@@ -307,16 +323,19 @@ function InlineBlindOfferComposer({ property }: { property: Property }) {
     },
   });
 
-  // Honesty: comps depend on paywalled ATTOM. When the engine returns zero
-  // comps it falls back to USDA land-value benchmarks — say so plainly, never
-  // imply comp-backed precision.
-  const noComps = !!report && report.compAnalysis.compCount === 0;
+  // Only an "ok" outcome is an offer. With no comparable sale the engine
+  // REFUSES (DEFECT-0107) — it no longer models an offer from USDA land
+  // values — and the refusal is rendered, never priced.
+  const report: InlineOfferReport | null = isInlineOfferReport(outcome) ? outcome : null;
+  const refusal: InlineOfferRefusal | null =
+    outcome && !isInlineOfferReport(outcome) ? outcome : null;
 
   // P3 — the witnessed-send HANDOFF. Hands Pax the parcel context + an offer-
   // amount-bearing starter prompt. Pax composes the send_email tool call, freezes
   // it as a pending_actions row, and the user approves it via the existing
   // "Approve & send" button. This function NEVER sends anything itself.
   function handToPax() {
+    // No price, no handoff: Pax is never handed an offer the engine refused.
     if (uplBlocked || !report) return;
     const offer = usd(report.recommendedOfferTotal, { noCents: true });
     openWithContext({
@@ -326,9 +345,6 @@ function InlineBlindOfferComposer({ property }: { property: Property }) {
       starterPrompt:
         `Draft a blind-offer email to the owner of ${parcelLabel} ` +
         `(${county} County, ${state}) at ${offer} and prepare it for my approval. ` +
-        (noComps
-          ? `Note: this offer is modeled from USDA land values — no recent comps were available — so keep the language honest about that. `
-          : ``) +
         (uplWarning?.severity === "warn"
           ? `Include the assignment-disclosure paragraph required in ${state}. `
           : ``) +
@@ -387,6 +403,21 @@ function InlineBlindOfferComposer({ property }: { property: Property }) {
           <Skeleton className="h-3 w-full" announce={false} />
           <Skeleton className="h-3 w-3/4" announce={false} />
         </div>
+      ) : refusal ? (
+        <div className="space-y-1.5 text-xs" data-testid="inline-blind-offer-refusal">
+          <p className="font-semibold text-foreground flex items-start gap-1">
+            <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0 text-acr-warn" aria-hidden="true" />
+            Not enough comparable sales to price an offer
+          </p>
+          {refusal.missing[0] && <p className="text-muted-foreground leading-snug">{refusal.missing[0]}</p>}
+          <p className="text-muted-foreground leading-snug">
+            Add sales in the{" "}
+            <Link href={`/blind-offer-wizard?propertyId=${property.id}`} className="text-primary underline">
+              offer wizard
+            </Link>{" "}
+            — USDA county averages are benchmarks, not sales, and cannot set the price.
+          </p>
+        </div>
       ) : isError || !report ? (
         <QueryErrorState
           error={error instanceof Error ? error : null}
@@ -406,28 +437,9 @@ function InlineBlindOfferComposer({ property }: { property: Property }) {
               {report.recommendedTier}
             </Badge>
           </div>
-          {/* Honest precision framing. */}
-          {noComps ? (
-            <p className="text-micro text-acr-warn flex items-start gap-1">
-              <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" aria-hidden="true" />
-              {report.marketContext.usdaLandValuePerAcre === null ? (
-                <>
-                  No recent comps available and no USDA land value on file for this
-                  county — this offer is not anchored to a measured land value.
-                </>
-              ) : (
-                <>
-                  Offer modeled from USDA land values (
-                  {usd(report.marketContext.usdaLandValuePerAcre, { noCents: true })}/ac); no
-                  recent comps available.
-                </>
-              )}
-            </p>
-          ) : (
-            <p className="text-micro text-muted-foreground">
-              Anchored on {report.compAnalysis.compCount} recent comp{report.compAnalysis.compCount === 1 ? "" : "s"} + USDA land values.
-            </p>
-          )}
+          <p className="text-micro text-muted-foreground">
+            Anchored on {report.compAnalysis.compCount} comparable sale{report.compAnalysis.compCount === 1 ? "" : "s"}.
+          </p>
           <p className="text-xs text-muted-foreground leading-snug">{report.recommendationReason}</p>
 
           {/* P3 — witnessed-send handoff. Disabled in block-severity states

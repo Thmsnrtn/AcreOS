@@ -31,7 +31,9 @@ import {
 // numbers (offers, ROI, monthly payments — readability over cents). Sub-$1K
 // fall-through swapped to canonical usd(noCents) so the precision policy at
 // boundary remains usd().
-function fmt(n: number) {
+function fmt(n: number | null) {
+  // null = not measured. Render the absence, never "$0" (DEFECT-0107).
+  if (n === null) return "—";
   if (!n || isNaN(n)) return "$0";
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
@@ -65,6 +67,7 @@ interface SellerProfile {
 }
 
 interface OfferReport {
+  status: "ok";
   state: string;
   county: string;
   targetAcres: number;
@@ -79,9 +82,9 @@ interface OfferReport {
   baseOfferPerAcre: number;
   baseOfferTotal: number;
   offerTiers: {
-    aggressive: { offerTotal: number; pctOfLowestComp: number; acceptanceRateForecast: string };
-    standard: { offerTotal: number; pctOfLowestComp: number; acceptanceRateForecast: string };
-    competitive: { offerTotal: number; pctOfLowestComp: number; acceptanceRateForecast: string };
+    aggressive: { offerTotal: number; pctOfLowestComp: number; acceptanceRateForecast: string | null };
+    standard: { offerTotal: number; pctOfLowestComp: number; acceptanceRateForecast: string | null };
+    competitive: { offerTotal: number; pctOfLowestComp: number; acceptanceRateForecast: string | null };
   };
   recommendedTier: "aggressive" | "standard" | "competitive";
   recommendedOfferTotal: number;
@@ -121,14 +124,33 @@ interface OfferReport {
     closingTimeline: string;
   };
   marketContext: {
-    /** null when USDA has no value on file for the county. */
+    /** null unless NASS measured a county pasture value. */
     usdaLandValuePerAcre: number | null;
-    usdaCagr5Year: number;
+    /** null unless every trend year was measured by NASS (never the estimate). */
+    usdaCagr5Year: number | null;
     marketCondition: string;
     ebayValidationNote: string;
   };
   warnings: string[];
 }
+
+/**
+ * The server's honest refusal (`BlindOfferRefusal`): there is no offer
+ * without a real comparable sale, and this shape carries no offer fields at
+ * all (DEFECT-0107). It used to arrive here typed as an OfferReport and
+ * crash the calculate step on `offerTiers[key]`.
+ */
+interface OfferRefusal {
+  status: "insufficient_data";
+  state: string;
+  county: string;
+  targetAcres: number;
+  compAnalysis: { compCount: number; dataQualityNotes: string[] };
+  missing: string[];
+  warnings: string[];
+}
+
+type OfferOutcome = OfferReport | OfferRefusal;
 
 // ─── Step definitions ─────────────────────────────────────────────────────────
 
@@ -385,7 +407,7 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: St
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold mb-1">Step 2: Comparable sales research</h2>
-        <p className="text-sm text-muted-foreground">Enter recent sold comps for {county} County, {state}. The system also pulls USDA land-value benchmarks automatically.</p>
+        <p className="text-sm text-muted-foreground">Enter recent sold comps for {county} County, {state}. The system also pulls USDA land-value benchmarks as context — they never set the price.</p>
       </div>
 
       {/* Tom Hsiao / Lens 36 — Auto-pull status banner */}
@@ -536,7 +558,7 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: St
 
       {comps.length === 0 && (
         <div className="p-4 rounded-card border border-dashed border-muted-foreground/30 text-center text-sm text-muted-foreground">
-          No comps entered yet. You can proceed without comps — the system will use USDA land-value benchmarks.
+          No comps entered yet. The calculator also looks for sales on file, but without at least one real comparable sale it will not price an offer — USDA benchmarks are context, not sales.
         </div>
       )}
 
@@ -552,6 +574,7 @@ function StepComps({ state, county, acres, comps, setComps, onNext, onBack }: St
 
 interface StepCalculateProps {
   report: OfferReport | null;
+  refusal: OfferRefusal | null;
   isLoading: boolean;
   error: string | null;
   onRetry: () => void;
@@ -599,9 +622,56 @@ function CalculateSkeleton() {
   );
 }
 
-function StepCalculate({ report, isLoading, error, onRetry, onNext, onBack }: StepCalculateProps) {
+function StepCalculate({ report, refusal, isLoading, error, onRetry, onNext, onBack }: StepCalculateProps) {
   if (isLoading) {
     return <CalculateSkeleton />;
+  }
+
+  if (refusal) {
+    return (
+      <div className="space-y-4" data-testid="blind-offer-refusal">
+        <div>
+          <h2 className="text-xl font-bold mb-1">Step 3: Offer calculation</h2>
+          <p className="text-sm text-muted-foreground">
+            {refusal.county} County, {refusal.state}
+          </p>
+        </div>
+        <Card className="border-acr-warn">
+          <CardHeader>
+            <CardTitle className="text-base">Not enough comparable sales to price an offer</CardTitle>
+            <CardDescription>
+              An offer is a quarter of the lowest real sale. USDA county averages are benchmarks, not
+              sales, so they cannot set the price on a letter you mail.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm font-semibold">What is needed first</p>
+            <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
+              {refusal.missing.map((m, i) => (
+                <li key={i}>{m}</li>
+              ))}
+            </ul>
+            {refusal.compAnalysis.dataQualityNotes.length > 0 && (
+              <ul className="list-disc pl-5 space-y-1 text-xs text-muted-foreground">
+                {refusal.compAnalysis.dataQualityNotes.map((n, i) => (
+                  <li key={i}>{n}</li>
+                ))}
+              </ul>
+            )}
+            {refusal.warnings.length > 0 && (
+              <ul className="list-disc pl-5 space-y-1 text-xs text-acr-warn">
+                {refusal.warnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+        <Button onClick={onBack} className="min-h-11 pointer-fine:sm:min-h-9">
+          <ChevronLeft className="w-4 h-4 mr-1" aria-hidden="true" /> Add comparable sales
+        </Button>
+      </div>
+    );
   }
 
   if (!report) {
@@ -634,7 +704,7 @@ function StepCalculate({ report, isLoading, error, onRetry, onNext, onBack }: St
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold mb-1">Step 3: Offer calculation</h2>
-        <p className="text-sm text-muted-foreground">Based on {report.compAnalysis.compCount} comp{report.compAnalysis.compCount === 1 ? "" : "s"} and USDA data for {report.county} County, {report.state}.</p>
+        <p className="text-sm text-muted-foreground">Based on {report.compAnalysis.compCount} comparable sale{report.compAnalysis.compCount === 1 ? "" : "s"} in {report.county} County, {report.state}. USDA figures below are context only.</p>
       </div>
 
       {/* Warnings */}
@@ -662,8 +732,8 @@ function StepCalculate({ report, isLoading, error, onRetry, onNext, onBack }: St
               </dd>
               <p className="text-xs text-muted-foreground">
                 {report.marketContext.usdaLandValuePerAcre === null
-                  ? "No USDA value on file for this county"
-                  : "Pastureland benchmark"}
+                  ? "No measured USDA pasture value for this county"
+                  : "Pastureland benchmark, not a sale"}
               </p>
             </div>
             <div>
@@ -673,8 +743,12 @@ function StepCalculate({ report, isLoading, error, onRetry, onNext, onBack }: St
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">5-yr appreciation</dt>
-              <dd className="text-xl font-bold tabular-nums m-0">{report.marketContext.usdaCagr5Year.toFixed(1)}%/yr</dd>
-              <p className="text-xs text-muted-foreground">USDA CAGR</p>
+              <dd className="text-xl font-bold tabular-nums m-0">
+                {report.marketContext.usdaCagr5Year === null ? "—" : `${report.marketContext.usdaCagr5Year.toFixed(1)}%/yr`}
+              </dd>
+              <p className="text-xs text-muted-foreground">
+                {report.marketContext.usdaCagr5Year === null ? "No measured USDA series" : "USDA CAGR"}
+              </p>
             </div>
           </dl>
         </CardContent>
@@ -698,7 +772,9 @@ function StepCalculate({ report, isLoading, error, onRetry, onNext, onBack }: St
               <p className="font-semibold text-sm mb-3">{label}</p>
               <p className="text-2xl font-black tabular-nums mb-1">{fmt(tier.offerTotal)}</p>
               <p className="text-xs text-muted-foreground mb-2 tabular-nums">{fmt(report.compAnalysis.lowestSalePerAcre * tier.pctOfLowestComp / 100)}/ac × {report.targetAcres} acres</p>
-              <p className="text-xs text-muted-foreground">{tier.acceptanceRateForecast}</p>
+              {tier.acceptanceRateForecast !== null && (
+                <p className="text-xs text-muted-foreground">{tier.acceptanceRateForecast}</p>
+              )}
             </li>
           );
         })}
@@ -1001,7 +1077,9 @@ Private Real Estate Investor`;
         .filter((t) => t !== chosen)
         .map((t) => ({
           choice: `${t} — ${fmt(report.offerTiers[t].offerTotal)}`,
-          reason: `Not taken. ${report.offerTiers[t].acceptanceRateForecast}`,
+          reason: report.offerTiers[t].acceptanceRateForecast
+            ? `Not taken. ${report.offerTiers[t].acceptanceRateForecast}`
+            : "Not taken.",
         }));
 
       const resp = await apiRequest("POST", "/api/data-intel/blind-offer/commit", {
@@ -1124,23 +1202,11 @@ Private Real Estate Investor`;
           <CardDescription>How many letters to send for consistent deal flow?</CardDescription>
         </CardHeader>
         <CardContent>
-          <dl className="grid grid-cols-3 gap-4 text-center m-0">
-            <div className="p-3 rounded-card bg-muted/40">
-              <dt className="text-xs text-muted-foreground">Response rate</dt>
-              <dd className="text-xl font-bold tabular-nums m-0">~4%</dd>
-              <p className="text-xs text-muted-foreground">Industry average</p>
-            </div>
-            <div className="p-3 rounded-card bg-muted/40">
-              <dt className="text-xs text-muted-foreground">Close rate</dt>
-              <dd className="text-xl font-bold tabular-nums m-0">~60%</dd>
-              <p className="text-xs text-muted-foreground">3 of 5 responses</p>
-            </div>
-            <div className="p-3 rounded-card bg-muted/40">
-              <dt className="text-xs text-muted-foreground">Letters for 1 deal</dt>
-              <dd className="text-xl font-bold tabular-nums m-0">~42</dd>
-              <p className="text-xs text-muted-foreground">At 4% × 60%</p>
-            </div>
-          </dl>
+          <p className="text-sm text-muted-foreground" data-testid="blind-offer-sizing-unmeasured">
+            Response and acceptance rates vary by county, list and price, and none has been measured for
+            yours yet. Record each offer you send and each one accepted — your own rate is the only one
+            worth sizing a campaign on.
+          </p>
           <p className="text-xs text-muted-foreground mt-3 text-center">Mail consistently every month — sellers often respond to your 2nd or 3rd letter, months after the first campaign.</p>
         </CardContent>
       </Card>
@@ -1213,7 +1279,11 @@ export default function BlindOfferWizardPage() {
     isInherited: false,
     yearsOwned: 0,
   });
-  const [report, setReport] = useState<OfferReport | null>(null);
+  const [outcome, setOutcome] = useState<OfferOutcome | null>(null);
+  // Only an "ok" outcome is an offer. A refusal never reaches the exit or
+  // letter steps as a report (DEFECT-0107).
+  const report = outcome?.status === "ok" ? outcome : null;
+  const refusal = outcome?.status === "insufficient_data" ? outcome : null;
   const [isCalculating, setIsCalculating] = useState(false);
   const [calcError, setCalcError] = useState<string | null>(null);
 
@@ -1236,10 +1306,10 @@ export default function BlindOfferWizardPage() {
         })),
         sellerProfile,
       });
-      const data = await resp.json();
-      setReport(data);
+      const data = (await resp.json()) as OfferOutcome;
+      setOutcome(data);
     } catch (err) {
-      setReport(null);
+      setOutcome(null);
       setCalcError(err instanceof Error ? err.message : "Network error while calculating the offer");
       toast({
         variant: "destructive",
@@ -1262,7 +1332,7 @@ export default function BlindOfferWizardPage() {
     <PageShell label="Blind offer wizard">
       <div className="mb-6">
         <h1 className="text-2xl md:text-3xl font-bold">Blind offer wizard</h1>
-        <p className="text-muted-foreground text-sm md:text-base">Calculate your offer using a proven methodology — the trusted system behind thousands of profitable land deals.</p>
+        <p className="text-muted-foreground text-sm md:text-base">Price a blind offer from real comparable sales — a quarter of the lowest sale — then model the exit.</p>
       </div>
 
       {/* Land Snapshot → wizard prefill notice (Maren CPO #5). Honest: names
@@ -1343,6 +1413,7 @@ export default function BlindOfferWizardPage() {
         {currentStep === "calculate" && (
           <StepCalculate
             report={report}
+            refusal={refusal}
             isLoading={isCalculating}
             error={calcError}
             onRetry={calculateOffer}
