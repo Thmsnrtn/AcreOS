@@ -2677,7 +2677,7 @@ Resolving commits: (this branch, round 3 batch 2)
 ### DEFECT-0114
 Title: Scheduled detectors hand off to workflows through an unawaited in-memory emit (acquired-note aging, note due detector)
 Severity: P2
-Status: OPEN
+Status: FIXED (round 3, 2026-09-27) — both detectors hand off through the outbox
 Surfaced by lenses: research report §14.2, re-verified at `9cb534f`
 Description: `server/jobs/acquiredNoteAging.ts:469-496` updates the status,
 increments `transitioned`, then `emitAgingTransitionEvent` calls
@@ -2691,11 +2691,36 @@ in-memory `workflowEngine.emit` runs unawaited, so a crash between the two
 loses the collection workflow under a dedupe key that will not re-emit.
 The entity id 0 is a documented convention (acquired notes are uuid-keyed;
 the real id travels as `data.noteId`), not a defect on its own.
-Remediation plan: A durable, reconcilable hand-off (an outbox row written in
-the same transaction as the status change, drained into the workflow engine)
-for both detectors. A design change, not a patch; not attempted in the
-2026-09-27 pass.
-Resolving commits: —
+Remediation plan: DONE, on the outbox the repository already runs (`outbox`
+table, `server/worker.ts`, retries and a dead-letter queue) — no new
+infrastructure.
+- `server/services/workflowOutbox.ts` `stageWorkflowEvent` writes a
+  `workflow_trigger` row on the caller's executor. `emitDurablePaymentEvent`
+  in `workflow-engine.ts` is the durable sibling of `emitPaymentEvent`, named
+  so the live-trigger derivation in `workflowActionHonesty.test.ts` still
+  counts it as an emitter.
+- Aging sweep: the status update and the staged trigger now run in ONE
+  `db.transaction`. A failed stage rolls the status back, so the next sweep
+  sees the transition again.
+- Due detector: the trigger is staged BEFORE the mesh publish (the ledger that
+  makes a finding old news), keyed by the finding's dedupe key. A staging
+  failure skips the publish, so both retry next run. A publish failure after
+  staging does not stage twice.
+- Worker: `workflow_trigger` rows are drained by `drainWorkflowTrigger`, which
+  AWAITS `workflowEngine.triggerWorkflows`. An engine failure propagates to the
+  outbox retry and dead-letter path. A malformed payload is refused
+  terminally.
+Delivery is now at-least-once. A workflow that throws part-way through a drain
+can run again on the retry, where the in-memory path lost the event instead.
+Falsified by: `tests/unit/workflowHandoffIsDurable.test.ts` (the real sweep
+issues the status update and the outbox insert on one transaction handle; a
+failed insert fails that note; the drain awaits, propagates and refuses; the
+worker registers it), plus the rewritten cases in
+`tests/unit/paymentWorkflowEvents.test.ts` and
+`server/services/notePaymentDueDetector.test.ts` (stage before publish; a
+staging failure skips the publish). Eight assertions red on the pre-fix
+sources.
+Resolving commits: this branch, round 3
 
 ### DEFECT-0115
 Title: Founder runway labels reserve buckets as cash on hand and tier MRR as revenue
@@ -3008,8 +3033,8 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 11  | 11    |
-| FIXED  | 12  | 67  | 33  | 112   |
+| OPEN   | 0   | 0   | 10  | 10    |
+| FIXED  | 12  | 67  | 34  | 113   |
 | DEFERRED | 0 | 3   | 0   | 3     |
 | **Total** | **12** | **70** | **44** | **126** |
 
@@ -3113,6 +3138,7 @@ in slice B; no P1 from this report remains OPEN.
 | DEFECT-0062 | Rate limiters keyed on identity before identity existed | (this branch, round 3) |
 | DEFECT-0061 | Module flag seed mirrored into the release command | (this branch, round 3) |
 | DEFECT-0054 | Ad-account secrets sealed; plain-text vendor-key form retired | (this branch, round 3) |
+| DEFECT-0114 | Detector workflow hand-off staged in the outbox | (this branch, round 3) |
 
 ### Deferred Defects (3)
 

@@ -27,7 +27,7 @@ import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import { logger } from "../utils/logger";
 import { recordSense } from "./autopilot/perception";
 import { eventMeshPublisher } from "./eventMeshPublisher";
-import { emitPaymentEvent } from "./workflow-engine";
+import { emitDurablePaymentEvent } from "./workflow-engine";
 import { noteGracePeriodDays } from "@shared/notes/delinquency";
 import {
   BALLOON_WINDOW_DAYS,
@@ -135,19 +135,26 @@ export function classifyPaymentsDue(
  * path in the repo, so it is the emit site for the workflow engine's
  * `payment.missed` trigger (the note-servicing dunning automations).
  *
- * Exactly-once is inherited from the scan's existing dedupe ledger: we emit
- * only for an OVERDUE finding whose mesh event we just published for the
- * first time. A rerun sees the dedupeKey on the channel, skips the publish,
- * and therefore skips the emit too — one event per (note, due date) going
- * overdue, no matter how many times the job runs.
+ * One trigger per (note, due date) going overdue: the scan only reaches a
+ * finding whose mesh event has not been published yet, and the staged outbox
+ * row carries the same dedupe key, so a run that staged but failed to publish
+ * does not stage twice on the retry.
  *
- * Fire-and-forget: wrapped so a workflow fault can never fail the scan or
- * suppress the mesh signal. `entityId` is the note id (there is no payment
- * row for a payment that never arrived).
+ * Durable, not fire-and-forget (DEFECT-0114): it used to be an unawaited
+ * in-memory emit AFTER the publish, so a crash between the two lost the
+ * collection workflow under a dedupe key that would never re-emit. `entityId`
+ * is the note id (there is no payment row for a payment that never arrived).
  */
-export function emitPaymentMissedForFinding(f: PaymentDueFinding): void {
-  try {
-    emitPaymentEvent("payment.missed", f.orgId, f.noteId, {
+export async function emitPaymentMissedForFinding(f: PaymentDueFinding): Promise<{ staged: boolean }> {
+  // Durable (DEFECT-0114): an outbox row the worker drains, keyed by the
+  // finding's dedupe key so a retried run never stages a second trigger. A
+  // failure THROWS — the scan then skips the mesh publish, so the finding is
+  // still new on the next run and both are retried together.
+  return emitDurablePaymentEvent(
+    "payment.missed",
+    f.orgId,
+    f.noteId,
+    {
       source: "note_payment_due_detector",
       noteId: f.noteId,
       dueDate: f.dueDate,
@@ -157,13 +164,9 @@ export function emitPaymentMissedForFinding(f: PaymentDueFinding): void {
       daysUntilDue: f.daysUntilDue,
       classification: f.classification,
       dedupeKey: f.dedupeKey,
-    });
-  } catch (err) {
-    logger.warn(
-      `[notePaymentDueDetector] workflow emit failed for ${f.dedupeKey} (swallowed)`,
-      err instanceof Error ? err : undefined,
-    );
-  }
+    },
+    { dedupeKey: f.dedupeKey },
+  );
 }
 
 export interface NotePaymentScanResult {
@@ -267,6 +270,15 @@ export async function runNotePaymentDueScan(now: Date = new Date()): Promise<Not
   for (const f of findings) {
     if (alreadyPublished.has(f.dedupeKey)) continue;
     try {
+      // Stage the workflow hand-off BEFORE the mesh publish (DEFECT-0114). The
+      // publish is the ledger that makes this finding "old news", so anything
+      // that must happen for the finding has to be durable before it. If the
+      // staging throws, the publish is skipped and the next run retries both;
+      // if the publish fails after staging, the dedupe key stops the retry
+      // from staging a second trigger.
+      if (f.classification === "overdue") {
+        await emitPaymentMissedForFinding(f);
+      }
       await eventMeshPublisher.publish(
         NOTE_PAYMENT_CHANNEL,
         f.classification === "overdue" ? "note:payment_overdue" : "note:payment_due_soon",
@@ -285,15 +297,6 @@ export async function runNotePaymentDueScan(now: Date = new Date()): Promise<Not
         },
       );
       result.published += 1;
-
-      // The mesh event is now the ledger entry that makes this finding "old
-      // news" on every later run, so emitting here — after a SUCCESSFUL
-      // publish — gives the workflow engine exactly one `payment.missed`
-      // per note per due date. A publish failure skips the emit so the next
-      // run can retry both together.
-      if (f.classification === "overdue") {
-        emitPaymentMissedForFinding(f);
-      }
     } catch (err) {
       result.errors += 1;
       logger.warn(

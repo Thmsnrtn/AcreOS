@@ -39,9 +39,23 @@ vi.mock("./eventMeshPublisher", () => ({
   eventMeshPublisher: {
     publish: vi.fn(async (channel: string, eventType: string, payload: any, options: any) => {
       if (PUBLISH_FAILS) throw new Error("mesh down");
+      ORDER.push(`publish:${payload.dedupeKey}`);
       PUBLISHED.push({ channel, eventType, payload, options });
     }),
   },
+}));
+
+// DEFECT-0114: the overdue hand-off is staged durably, BEFORE the publish.
+const ORDER: string[] = [];
+const STAGED: Array<{ event: string; orgId: number; entityId: number; data: any; opts: any }> = [];
+let STAGE_FAILS = false;
+vi.mock("./workflow-engine", () => ({
+  emitDurablePaymentEvent: vi.fn(async (event: string, orgId: number, entityId: number, data: any, opts: any) => {
+    if (STAGE_FAILS) throw new Error("outbox write failed");
+    ORDER.push(`stage:${data.dedupeKey}`);
+    STAGED.push({ event, orgId, entityId, data, opts });
+    return { staged: true };
+  }),
 }));
 
 const SENSES: Array<{ kind: string; value: number; detail: unknown }> = [];
@@ -72,6 +86,9 @@ beforeEach(() => {
   PUBLISHED.length = 0;
   SENSES.length = 0;
   PUBLISH_FAILS = false;
+  STAGE_FAILS = false;
+  STAGED.length = 0;
+  ORDER.length = 0;
   vi.clearAllMocks();
 });
 
@@ -127,6 +144,22 @@ describe("runNotePaymentDueScan", () => {
     expect(dueSoon.channel).toBe(NOTE_PAYMENT_CHANNEL);
     expect(dueSoon.options).toMatchObject({ orgId: 10, priority: 4, publisher: "note-payment-detector" });
     expect(overdue.options).toMatchObject({ orgId: 11, priority: 3 });
+    // Only the overdue finding hands off to workflows, durably and first.
+    expect(STAGED).toHaveLength(1);
+    expect(STAGED[0]).toMatchObject({ event: "payment.missed", orgId: 11, opts: { dedupeKey: overdue.payload.dedupeKey } });
+    expect(ORDER.indexOf(`stage:${overdue.payload.dedupeKey}`)).toBeLessThan(
+      ORDER.indexOf(`publish:${overdue.payload.dedupeKey}`),
+    );
+  });
+
+  it("a staging failure skips that finding's publish, so the next run retries both (DEFECT-0114)", async () => {
+    SELECT_QUEUE.push([note(2, days(-1), 11)]);
+    SELECT_QUEUE.push([]);
+    STAGE_FAILS = true;
+    const r = await runNotePaymentDueScan(NOW);
+    expect(r.errors).toBe(1);
+    expect(r.published).toBe(0);
+    expect(PUBLISHED).toHaveLength(0);
   });
 
   it("honest dedupe: an already-published key is never re-published", async () => {

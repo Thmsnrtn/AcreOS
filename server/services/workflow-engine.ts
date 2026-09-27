@@ -11,6 +11,7 @@ import {
   WORKFLOW_ACTION_TYPES,
 } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { stageWorkflowEvent, type OutboxExecutor } from "./workflowOutbox";
 import {
   LIVE_WORKFLOW_TRIGGER_EVENTS,
   isLiveWorkflowTriggerEvent,
@@ -3045,6 +3046,27 @@ export function emitPaymentEvent(
     entityType: "payment",
     data,
   });
+}
+
+/**
+ * The DURABLE form of emitPaymentEvent, for scheduled detectors (DEFECT-0114).
+ * Stages a `workflow_trigger` outbox row — on the caller's transaction when one
+ * is passed — which the worker drains into triggerWorkflows with retries and a
+ * dead-letter queue. emitPaymentEvent above queues in process memory and is
+ * lost on a crash; a detector that has already recorded "this happened" must
+ * not hand off that way. See server/services/workflowOutbox.ts.
+ */
+export function emitDurablePaymentEvent(
+  event: "payment.received" | "payment.missed",
+  organizationId: number,
+  paymentId: number,
+  data: Record<string, any>,
+  opts: { executor?: OutboxExecutor; dedupeKey?: string } = {},
+): Promise<{ staged: boolean }> {
+  return stageWorkflowEvent(
+    { event, organizationId, entityId: paymentId, entityType: "payment", data },
+    opts,
+  );
 }
 
 // Iyari #5 — parcel delta events. entityId is the parcel_alerts row id (the

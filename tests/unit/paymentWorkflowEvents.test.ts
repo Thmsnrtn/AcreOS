@@ -18,8 +18,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ── Mocks ────────────────────────────────────────────────────────────────────
 // `emitPaymentEvent` is replaced; every other real export of the workflow
 // engine stays intact (other modules in the import graph use them).
-const { emitSpy, dbMock, callOrder } = vi.hoisted(() => ({
+const { emitSpy, durableSpy, dbMock, callOrder } = vi.hoisted(() => ({
   emitSpy: vi.fn(),
+  // The scheduled detectors hand off durably (DEFECT-0114).
+  durableSpy: vi.fn(),
   dbMock: {
     select: vi.fn(),
     insert: vi.fn(),
@@ -31,7 +33,7 @@ const { emitSpy, dbMock, callOrder } = vi.hoisted(() => ({
 
 vi.mock("../../server/services/workflow-engine", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
-  return { ...actual, emitPaymentEvent: emitSpy };
+  return { ...actual, emitPaymentEvent: emitSpy, emitDurablePaymentEvent: durableSpy };
 });
 
 vi.mock("../../server/db", async (importOriginal) => {
@@ -64,6 +66,8 @@ import {
 } from "../../server/services/notePaymentDueDetector";
 
 beforeEach(() => {
+  durableSpy.mockReset();
+  durableSpy.mockResolvedValue({ staged: true });
   emitSpy.mockReset();
   emitSpy.mockImplementation(() => {
     callOrder.push("emit");
@@ -562,14 +566,17 @@ describe("note payment due detector → payment.missed", () => {
     expect(f.classification).toBe("overdue");
   });
 
-  it("classifies a past-due note as overdue and emits it once", () => {
+  it("classifies a past-due note as overdue and stages it once, durably", async () => {
     const finding = overdueFinding();
     expect(finding.classification).toBe("overdue");
 
-    emitPaymentMissedForFinding(finding);
+    await emitPaymentMissedForFinding(finding);
 
-    expect(emitSpy).toHaveBeenCalledTimes(1);
-    const [event, orgId, entityId, data] = emitSpy.mock.calls[0];
+    // DEFECT-0114: the in-memory emit is gone from this path.
+    expect(emitSpy).not.toHaveBeenCalled();
+    expect(durableSpy).toHaveBeenCalledTimes(1);
+    const [event, orgId, entityId, data, opts] = durableSpy.mock.calls[0];
+    expect(opts).toEqual({ dedupeKey: "note-payment:42:2026-07-01:overdue" });
     expect(event).toBe("payment.missed");
     expect(orgId).toBe(7);
     expect(entityId).toBe(42); // no payment row exists — the note IS the entity
@@ -579,28 +586,28 @@ describe("note payment due detector → payment.missed", () => {
     expect(data.dedupeKey).toBe("note-payment:42:2026-07-01:overdue");
   });
 
-  it("an emit that throws does NOT break the scan", () => {
-    emitSpy.mockImplementation(() => {
-      throw new Error("workflow engine exploded");
-    });
-    expect(() => emitPaymentMissedForFinding(overdueFinding())).not.toThrow();
+  it("a staging failure PROPAGATES, so the scan skips the publish and retries both (DEFECT-0114)", async () => {
+    // It used to be swallowed after the publish, which lost the workflow under
+    // a dedupe key that never re-emitted. Now the failure reaches the scan's
+    // per-finding catch before the ledger entry is written.
+    durableSpy.mockRejectedValue(new Error("outbox write failed"));
+    await expect(emitPaymentMissedForFinding(overdueFinding())).rejects.toThrow("outbox write failed");
   });
 
-  it("the scan only emits for NEW overdue findings — the dedupe ledger gates it", () => {
+  it("the scan stages only NEW overdue findings, BEFORE the ledger publish", () => {
     const src = require("fs").readFileSync(
       require("path").join(process.cwd(), "server/services/notePaymentDueDetector.ts"),
       "utf-8",
     );
-    // The emit sits inside the publish try-block, after `published += 1`,
-    // and behind the overdue check — so an already-published finding
-    // (skipped by `alreadyPublished.has`) never reaches it.
-    const publishIdx = src.indexOf("result.published += 1;");
-    const emitIdx = src.indexOf("emitPaymentMissedForFinding(f);");
+    // Skip already-published findings, then stage the durable hand-off, then
+    // publish the mesh event that makes the finding old news. Staging after
+    // the publish is the order that lost triggers (DEFECT-0114).
     const skipIdx = src.indexOf("if (alreadyPublished.has(f.dedupeKey)) continue;");
-    expect(publishIdx).toBeGreaterThan(-1);
-    expect(emitIdx).toBeGreaterThan(publishIdx);
+    const emitIdx = src.indexOf("await emitPaymentMissedForFinding(f);");
+    const publishIdx = src.indexOf("await eventMeshPublisher.publish(");
     expect(skipIdx).toBeGreaterThan(-1);
-    expect(skipIdx).toBeLessThan(emitIdx);
+    expect(emitIdx).toBeGreaterThan(skipIdx);
+    expect(publishIdx).toBeGreaterThan(emitIdx);
     expect(src).toContain('if (f.classification === "overdue") {');
   });
 });

@@ -86,7 +86,8 @@ import {
   EARLY_INTERVENTION_TRIGGER_DAY,
   flagEarlyIntervention,
 } from "../services/respa/earlyIntervention";
-import { emitPaymentEvent } from "../services/workflow-engine";
+import { emitDurablePaymentEvent } from "../services/workflow-engine";
+import type { OutboxExecutor } from "../services/workflowOutbox";
 
 /** The lock / roster key. */
 export const ACQUIRED_NOTE_AGING_JOB_NAME = "acquired_note_aging";
@@ -365,12 +366,12 @@ const EMPTY_SUMMARY = (): AcquiredNoteAgingSummary => ({
 });
 
 /**
- * `payment.missed` for a note that aged into a worse status. Fire-and-forget:
- * a workflow fault must never fail the sweep, and it must never suppress the
- * status write (which has already committed by the time we get here).
+ * `payment.missed` for a note that aged into a worse status, staged durably on
+ * the status write's own transaction (DEFECT-0114). A staging failure rolls
+ * the status back with it, so the next sweep sees the transition again.
  *
  * `entityId` is 0 because `acquired_notes` is uuid-keyed while
- * `emitPaymentEvent`'s entityId is numeric — the same convention as
+ * the payment event's entityId is numeric — the same convention as
  * server/routes-notes.ts. The real key travels as `data.noteId`.
  *
  * Only WORSENING transitions are announced. A recovery to `performing` is not
@@ -379,13 +380,21 @@ const EMPTY_SUMMARY = (): AcquiredNoteAgingSummary => ({
  */
 const UUID_KEYED_NOTE_ENTITY_ID = 0;
 
-export function emitAgingTransitionEvent(
+export async function emitAgingTransitionEvent(
   note: AgingNoteRow,
   plan: AgingPlan,
-): void {
+  executor: OutboxExecutor,
+): Promise<void> {
   if (!plan.transition || !plan.transition.worsening) return;
-  try {
-    emitPaymentEvent("payment.missed", note.organizationId, UUID_KEYED_NOTE_ENTITY_ID, {
+  // Durable (DEFECT-0114): staged on the SAME transaction as the status write,
+  // so the new status and the collection trigger commit together or not at
+  // all. It used to be an unawaited in-memory emit after the commit, which a
+  // crash lost while the persisted status stopped the next sweep re-emitting.
+  await emitDurablePaymentEvent(
+    "payment.missed",
+    note.organizationId,
+    UUID_KEYED_NOTE_ENTITY_ID,
+    {
       source: "acquired_note_aging",
       noteId: note.id,
       noteNumber: note.noteNumber ?? null,
@@ -394,16 +403,9 @@ export function emitAgingTransitionEvent(
       delinquencyStatus: plan.delinquencyStatus,
       previousStatus: plan.transition.from,
       noteStatus: plan.transition.to,
-    });
-  } catch (err) {
-    logger.warn("[acquiredNoteAging] workflow emit failed (swallowed)", {
-      metadata: {
-        noteId: note.id,
-        organizationId: note.organizationId,
-        error: err instanceof Error ? err.message : String(err),
-      },
-    });
-  }
+    },
+    { executor },
+  );
 }
 
 /**
@@ -467,15 +469,22 @@ export async function runAcquiredNoteAgingSweep(options?: {
       }
 
       if (plan.changed) {
-        await db
-          .update(acquiredNotes)
-          .set({ ...plan.changes, updatedAt: new Date() })
-          .where(
-            and(
-              eq(acquiredNotes.id, note.id),
-              eq(acquiredNotes.organizationId, note.organizationId),
-            ),
-          );
+        // The status write and (for a worsening transition) the workflow
+        // hand-off commit together — see emitAgingTransitionEvent.
+        await db.transaction(async (tx) => {
+          await tx
+            .update(acquiredNotes)
+            .set({ ...plan.changes, updatedAt: new Date() })
+            .where(
+              and(
+                eq(acquiredNotes.id, note.id),
+                eq(acquiredNotes.organizationId, note.organizationId),
+              ),
+            );
+          if (plan.transition && !plan.skipReason) {
+            await emitAgingTransitionEvent(note, plan, tx);
+          }
+        });
         summary.updated++;
       }
 
@@ -491,9 +500,8 @@ export async function runAcquiredNoteAgingSweep(options?: {
 
       if (plan.transition) {
         summary.transitioned++;
-        // AFTER the write commits — a workflow must never observe a status
-        // this job has not yet persisted.
-        emitAgingTransitionEvent(note, plan);
+        // The workflow hand-off was staged inside the status transaction above,
+        // so the worker can only drain it once that status has committed.
         logger.info("[acquiredNoteAging] status transition", {
           metadata: {
             organizationId: note.organizationId,

@@ -92,6 +92,10 @@ const HANDLED_EVENT_TYPES = [
   "cmo.render-script",        // a scored script is ready to render to 3 MP4s
   "cmo.broadcast",            // an approved render is ready to ship to a platform
   "cmo.weekly-refresh",       // Monday morning batch
+  // DEFECT-0114 (2026-09-27): durable workflow hand-off from scheduled
+  // detectors (acquired-note aging, note due detector). Producer:
+  // services/workflowOutbox.stageWorkflowEvent.
+  "workflow_trigger",
 ] as const;
 
 type HandledEventType = (typeof HANDLED_EVENT_TYPES)[number];
@@ -114,7 +118,13 @@ const HANDLERS: Record<HandledEventType, JobHandler> = {
   "cmo.render-script": handleCmoRenderScript,
   "cmo.broadcast": handleCmoBroadcastEvent,
   "cmo.weekly-refresh": handleCmoWeeklyRefresh,
+  workflow_trigger: handleWorkflowTrigger,
 };
+
+async function handleWorkflowTrigger(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { drainWorkflowTrigger } = await import("./services/workflowOutbox");
+  return drainWorkflowTrigger(payload);
+}
 
 /**
  * Tier 2C — drain one lifecycle_email outbox row. Payload shape is fixed by
