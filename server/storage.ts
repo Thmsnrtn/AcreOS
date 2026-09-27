@@ -176,10 +176,6 @@ export interface IStorage {
   // Leads
   getLeads(orgId: number, filters?: { assignedTo?: number | null }): Promise<Lead[]>;
   getLead(orgId: number, id: number): Promise<Lead | undefined>;
-  /** Every non-deleted lead whose phone ends in the same 10 digits (DEFECT-0104). */
-  findLeadsByPhoneLast10(orgId: number, phone: string, opts?: { includeDeleted?: boolean }): Promise<Lead[]>;
-  /** Whether `phone` texted this org (attached or unattached inbound) since `since`. */
-  hasRecentInboundSmsFrom(orgId: number, phone: string, since: Date): Promise<boolean>;
   createLead(lead: InsertLead & { organizationId: number }): Promise<Lead>;
   createLeadsBatch(leadsData: (InsertLead & { organizationId: number })[]): Promise<Lead[]>;
   updateLead(id: number, updates: Partial<InsertLead>, organizationId?: number): Promise<Lead>;
