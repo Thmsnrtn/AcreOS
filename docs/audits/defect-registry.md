@@ -4459,6 +4459,60 @@ Remediation plan: DONE.
 Falsified by: `tests/unit/batchOffersPriceOnlyFromEvidence.test.ts` (four
 cases red pre-fix).
 Resolving commits: this branch, round 3
+### DEFECT-0173
+Title: Listing take-down deleted any external id with the platform's credentials; unpublish claimed channels "removed" with no provider call
+Severity: P1
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: 2026-09-28 land-investing practitioner supplement (third cycle), re-verified at HEAD
+Description:
+- `POST /api/syndication/take-down` (`server/routes-elite-features.ts`)
+  passed `platform` and any `externalListingId` from the request body to
+  `takeDownListing` (`server/services/listingSyndication.ts`). That sent a
+  DELETE using the PLATFORM's Land.com and Meta credentials. Any signed-in
+  user could therefore ask for another tenant's live listing to be deleted.
+- `takeDownListing` returned `{ success: true }` whenever `fetch` resolved,
+  so a 401, 404 or 500 read as "taken down".
+- `POST /api/listings/:id/unpublish` (`server/routes-team-messaging.ts`)
+  marked EVERY target "removed" with no provider call. That included
+  targets that had failed or were only previews. The listing page's dialog
+  promised it "pulls the listing from every active syndication target".
+Remediation plan: DONE.
+- Take-down resolves the caller's OWN listing and its saved target for the
+  platform, and uses that target's stored external id. The body's id is
+  ignored.
+- Another org's listing, or a target without an external id, is refused
+  before any provider call.
+- Only a 2xx from the provider counts as removal, and the result is written
+  back to the target (`removed` or `withdrawal_failed`).
+- Unpublish withdraws the listing locally. Each live target becomes
+  `withdrawal_requested` (it has a take-down API and an id) or
+  `manual_action_required`. A target that never went out keeps its status.
+- The dialog and target labels say what happened. Not built: a take-down
+  button per target and a provider read-back.
+Falsified by: `tests/unit/listingWithdrawalIsVerified.test.ts` (four cases
+red pre-fix).
+Resolving commits: this branch, round 3
+### DEFECT-0174
+Title: A property the org did not hold could be listed, published, syndicated and blasted to buyers
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: 2026-09-28 practitioner supplement ("refuse advertising a property not owned"), verified at HEAD
+Description: Listing create and publish (`server/routes-team-messaging.ts`),
+elite syndicate (`server/routes-elite-features.ts`) and the buyer blast
+(`server/routes-buyer-blasts.ts`) checked only that the property row
+belonged to the org. `properties.status` defaults to "prospect", so a parcel
+the org had merely looked at, offered on, or already SOLD could be
+advertised as available. The blast also mailed inactive buyer profiles from
+stale matches.
+Remediation plan: DONE.
+- `offerabilityRefusal` (`server/services/listability.ts`) permits only
+  `owned`, `listed` and `under_contract` (a wholesaler's assignable
+  contract). All four entry points refuse anything else with the reason.
+  Publish re-checks, so a sold parcel cannot publish.
+- The blast skips inactive buyer profiles.
+Falsified by: `tests/unit/listingWithdrawalIsVerified.test.ts` (the create
+case red pre-fix).
+Resolving commits: this branch, round 3
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -4496,11 +4550,11 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 1   | 11  | 12    |
-| FIXED  | 13  | 83  | 61  | 157   |
+| FIXED  | 13  | 84  | 62  | 159   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **13** | **87** | **72** | **172** |
+| **Total** | **13** | **88** | **73** | **174** |
 
-Recounted from the entries themselves on 2026-09-28 (172 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (174 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

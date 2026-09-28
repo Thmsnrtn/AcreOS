@@ -1,4 +1,6 @@
 import type { Express, Response, NextFunction } from "express";
+import { offerabilityRefusal } from "./services/listability";
+import { TAKE_DOWN_PLATFORMS } from "./services/listingSyndication";
 import { readPropertiesBySellerIds } from "./storage/wholeBookReads";
 import type { AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
@@ -974,6 +976,9 @@ export function registerTeamMessagingRoutes(app: Express): void {
       if (!property) {
         return Errors.badRequest(res, "Property not found or doesn't belong to your organization");
       }
+      // Only land the org holds can be offered (DEFECT-0174).
+      const notOfferable = offerabilityRefusal(property.status);
+      if (notOfferable) return Errors.badRequest(res, notOfferable);
       
       // Check if listing already exists for this property
       const existing = await storage.getPropertyListingByPropertyId(org.id, parsed.data.propertyId);
@@ -1148,6 +1153,10 @@ export function registerTeamMessagingRoutes(app: Express): void {
         if (!property) {
           return Errors.notFound(res, "Property for listing");
         }
+        // Publishing re-checks: a listing created while the land was held
+        // must not publish after it sold (DEFECT-0174).
+        const notOfferable = offerabilityRefusal(property.status);
+        if (notOfferable) return Errors.badRequest(res, notOfferable);
 
         const [orgRow] = await db
           .select()
@@ -1368,16 +1377,25 @@ export function registerTeamMessagingRoutes(app: Express): void {
         return Errors.notFound(res, "Listing");
       }
       
-      // Mark all syndication targets as removed
-      const syndicationTargets = listing.syndicationTargets?.map((target: any) => ({
-        ...target,
-        status: "removed",
-      })) || [];
-      
-      const updated = await storage.updatePropertyListing(id, {
-        status: "withdrawn",
-        syndicationTargets,
-      });
+      // Withdraw locally; say what each CHANNEL still needs (DEFECT-0173).
+      // This marked every target "removed" — including ones that had failed
+      // or were only previews — with no provider call, so a listing still
+      // live on a portal read as pulled everywhere. A target that was live
+      // is now `withdrawal_requested` (take it down per channel, verified by
+      // the provider) or `manual_action_required` (no API or no external id);
+      // one that never went out keeps its status.
+      const syndicationTargets =
+        listing.syndicationTargets?.map((target) => {
+          if (target.status !== "active" && target.status !== "pending") return target;
+          const apiRemovable = !!target.listingId && TAKE_DOWN_PLATFORMS.includes(target.platform);
+          return { ...target, status: apiRemovable ? "withdrawal_requested" : "manual_action_required" };
+        }) ?? [];
+
+      const updated = await storage.updatePropertyListing(
+        id,
+        { status: "withdrawn", syndicationTargets },
+        org.id,
+      );
       
       res.json(updated);
     } catch (error: any) {

@@ -18,6 +18,7 @@
  *   PATCH /api/buyer-blasts/recipients/:id — mark response
  */
 
+import { offerabilityRefusal } from "./services/listability";
 import type { Express, Response } from "express";
 import { z } from "zod";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
@@ -71,11 +72,15 @@ export function registerBuyerBlastRoutes(app: Express): void {
 
         // Confirm the property belongs to this org.
         const [prop] = await db
-          .select({ id: properties.id })
+          .select({ id: properties.id, status: properties.status })
           .from(properties)
           .where(and(eq(properties.id, propertyId), eq(properties.organizationId, orgId)))
           .limit(1);
         if (!prop) return Errors.notFound(res, "Property");
+        // A blast offers the property to buyers: it must be held, and a sold
+        // parcel must not be re-offered from stale matches (DEFECT-0174).
+        const notOfferable = offerabilityRefusal(prop.status);
+        if (notOfferable) return Errors.badRequest(res, notOfferable);
 
         // Pull matched buyers ≥ minMatchScore.
         const matches = await db
@@ -93,6 +98,8 @@ export function registerBuyerBlastRoutes(app: Express): void {
           .where(and(
             eq(buyerPropertyMatches.organizationId, orgId),
             eq(buyerPropertyMatches.propertyId, propertyId),
+            // An inactive buyer profile is not an audience (DEFECT-0174).
+            eq(buyerProfiles.isActive, true),
             sql`${buyerPropertyMatches.matchScore} >= ${minMatchScore}`,
           ))
           .orderBy(desc(buyerPropertyMatches.matchScore))

@@ -749,42 +749,46 @@ export async function updateSyndicatedListing(
   return results;
 }
 
+/**
+ * DELETE one provider listing. Success means the provider ANSWERED 2xx
+ * (DEFECT-0173): this returned `{ success: true }` whenever `fetch` resolved,
+ * so a 401, 404 or 500 read as "taken down". Callers must pass the external
+ * id of a target the caller's org owns — see POST /api/syndication/take-down.
+ */
 export async function takeDownListing(
   platform: LegacySyndicationPlatform,
   externalListingId: string,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; httpStatus?: number; error?: string }> {
+  const id = encodeURIComponent(externalListingId);
+  let url: string;
+  let init: RequestInit;
   if (platform === "land_com") {
     const apiKey = process.env.LANDCOM_API_KEY;
     if (!apiKey) return { success: false, error: "Land.com not configured" };
-
-    try {
-      await fetch(`https://api.land.com/v2/listings/${externalListingId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${apiKey}` },
-      });
-      return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message };
-    }
-  }
-
-  if (platform === "facebook_marketplace") {
+    url = `https://api.land.com/v2/listings/${id}`;
+    init = { method: "DELETE", headers: { Authorization: `Bearer ${apiKey}` } };
+  } else if (platform === "facebook_marketplace") {
     const token = process.env.META_ACCESS_TOKEN;
     const catalogId = process.env.META_CATALOG_ID;
     if (!token || !catalogId) return { success: false, error: "Meta not configured" };
-
-    try {
-      await fetch(`https://graph.facebook.com/v21.0/${catalogId}/products/${externalListingId}?access_token=${token}`, {
-        method: "DELETE",
-      });
-      return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message };
-    }
+    url = `https://graph.facebook.com/v21.0/${catalogId}/products/${id}?access_token=${token}`;
+    init = { method: "DELETE" };
+  } else {
+    return { success: false, error: `Take-down not supported for ${platform}` };
   }
-
-  return { success: false, error: `Take-down not supported for ${platform}` };
+  try {
+    const resp = await fetch(url, init);
+    if (!resp.ok) {
+      return { success: false, httpStatus: resp.status, error: `Provider answered HTTP ${resp.status}; the listing may still be live` };
+    }
+    return { success: true, httpStatus: resp.status };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }
+
+/** Channels whose listings AcreOS can delete through a provider API. */
+export const TAKE_DOWN_PLATFORMS: readonly string[] = ["land_com", "facebook_marketplace"];
 
 export async function buildNormalizedListing(
   property: any,

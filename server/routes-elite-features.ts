@@ -12,11 +12,12 @@
  * - State Document Config (get state requirements)
  */
 
+import { offerabilityRefusal } from "./services/listability";
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
-import { getOrganizationId } from "./types/request";
+import { getOrganization, getOrganizationId, type AuthenticatedRequest } from "./types/request";
 import { requireFounder } from "./auth/clerkAuth";
 import { verifyMetaWebhookSignature } from "./middleware/metaWebhookSignature";
 import { addMonths } from "./utils/dateUtils";
@@ -461,6 +462,10 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
       const [property] = await db.select().from(properties)
         .where(and(eq(properties.id, listing.propertyId), eq(properties.organizationId, org.id)));
+      if (!property) return Errors.notFound(res, "Property for listing");
+      // Only land the org holds can be syndicated (DEFECT-0174).
+      const notOfferable = offerabilityRefusal(property.status);
+      if (notOfferable) return Errors.badRequest(res, notOfferable);
 
       const [orgData] = await db.select().from(organizations).where(eq(organizations.id, org.id));
 
@@ -480,11 +485,43 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.post("/api/syndication/take-down", ...auth, async (req: Request, res: Response) => {
+  // Take one syndicated listing down (DEFECT-0173). This accepted `platform`
+  // and ANY `externalListingId` from the body and sent a DELETE with the
+  // platform's own credentials — a request that could remove another
+  // tenant's live listing — and reported success whatever the provider
+  // answered. Now the caller names ITS listing; the external id comes from
+  // that listing's saved target; the provider's answer decides the result,
+  // which is written back to the target.
+  app.post("/api/syndication/take-down", ...auth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { platform, externalListingId } = req.body;
-      const result = await listingSyndication.takeDownListing(platform, externalListingId);
-      res.json(result);
+      const org = getOrganization(req);
+      const { storage } = await import("./storage");
+      const listingId = Number(req.body?.listingId);
+      const platform = typeof req.body?.platform === "string" ? req.body.platform : "";
+      if (!Number.isInteger(listingId) || listingId <= 0 || !platform) {
+        return Errors.badRequest(res, "listingId and platform are required");
+      }
+      const listing = await storage.getPropertyListing(org.id, listingId);
+      if (!listing) return Errors.notFound(res, "Listing");
+      const targets = (listing.syndicationTargets ?? []) as Array<{ platform: string; listingId?: string; status: string; error?: string }>;
+      const target = targets.find((t) => t.platform === platform);
+      if (!target || !target.listingId) {
+        return Errors.notFound(res, "Syndicated listing on that platform");
+      }
+      if (!listingSyndication.TAKE_DOWN_PLATFORMS.includes(platform)) {
+        return Errors.badRequest(res, `${platform} has no take-down API — remove it on the platform and record that here`);
+      }
+      const result = await listingSyndication.takeDownListing(
+        platform as Parameters<typeof listingSyndication.takeDownListing>[0],
+        target.listingId,
+      );
+      const updatedTargets = targets.map((t) =>
+        t === target
+          ? { ...t, status: result.success ? "removed" : "withdrawal_failed", error: result.success ? undefined : result.error }
+          : t,
+      );
+      await storage.updatePropertyListing(listing.id, { syndicationTargets: updatedTargets }, org.id);
+      res.json({ ...result, platform, listingId: listing.id });
     } catch (err: any) {
       Errors.internal(res, err);
     }

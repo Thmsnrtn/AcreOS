@@ -228,14 +228,14 @@ export default function ListingsPage() {
     },
   });
 
-  // Optimistic unpublish — flips listing status to draft instantly so the
-  // row badge + actions reflect new state. Rolls back on server error.
+  // Optimistic unpublish — flips the listing to withdrawn (what the server
+  // writes) so the row badge + actions reflect new state. Rolls back on error.
   const unpublishMutation = useOptimisticUpdate<{ id: number }>({
     mutationFn: async ({ id }) => apiRequest("POST", `/api/listings/${id}/unpublish`),
     listKeys: [["/api/listings"]],
     getId: ({ id }) => id,
-    buildPatch: () => ({ status: "draft" }),
-    successToast: { title: "Listing unpublished" },
+    buildPatch: () => ({ status: "withdrawn" }),
+    successToast: { title: "Listing withdrawn", description: "Check each channel below — a live portal listing needs its own take-down." },
   });
 
   const form = useForm<ListingFormValues>({
@@ -819,6 +819,9 @@ export default function ListingsPage() {
                                       preview: "preview",
                                       pending: "pending",
                                       removed: "removed",
+                                      withdrawal_requested: "take-down needed",
+                                      withdrawal_failed: "take-down failed",
+                                      manual_action_required: "remove manually",
                                     };
                                     const tone =
                                       target.status === "active"
@@ -827,7 +830,10 @@ export default function ListingsPage() {
                                           ? "bg-acr-brand-soft text-acr-brand-soft-ink border-transparent"
                                           : target.status === "failed"
                                             ? "bg-acr-neg-soft text-acr-neg-soft-ink border-transparent"
-                                            : target.status === "needs_credentials"
+                                            : target.status === "needs_credentials" ||
+                                                target.status === "withdrawal_requested" ||
+                                                target.status === "withdrawal_failed" ||
+                                                target.status === "manual_action_required"
                                               ? "bg-acr-warn-soft text-acr-warn-soft-ink border-transparent"
                                               : "bg-acr-surface-2 text-acr-ink-3 border-transparent";
                                     const shown = statusLabel[target.status] ?? target.status;
@@ -1063,7 +1069,7 @@ export default function ListingsPage() {
           open={!!pendingUnpublish}
           onOpenChange={(open) => { if (!open) setPendingUnpublish(null); }}
           title={`Unpublish "${pendingUnpublish?.title}"?`}
-          description="This pulls the listing from every active syndication target. View counts and inquiries to date are preserved; you can re-publish later."
+          description="This withdraws the listing in AcreOS. It does not by itself remove copies already live on other sites: each channel below then shows whether it still needs a take-down or a manual removal. View counts and inquiries to date are preserved; you can re-publish later."
           confirmLabel="Unpublish"
           onConfirm={() => {
             if (pendingUnpublish) unpublishMutation.mutate({ id: pendingUnpublish.id });

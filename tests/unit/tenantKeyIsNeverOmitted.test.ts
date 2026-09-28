@@ -72,8 +72,12 @@ vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.resolve(__dirname, "../..");
 
-/** Total call sites that omit an optional tenant key. Strictly down-only. */
-const OMISSION_BASELINE = 111;
+/**
+ * Total call sites that omit an optional tenant key. Strictly down-only.
+ * 111 -> 110 (DEFECT-0173): listing unpublish now passes the org to
+ * updatePropertyListing.
+ */
+const OMISSION_BASELINE = 110;
 
 /**
  * Call sites whose enclosing function never names an organization, so nothing
