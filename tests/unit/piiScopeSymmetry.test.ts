@@ -28,10 +28,13 @@
  * unprotected routes sit in the same file within twenty lines of each other.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -111,7 +114,13 @@ describe("tenant PII is scoped on the way OUT, not only on the way in", () => {
     // If `results` ever stopped carrying contact data the scope would be
     // protecting nothing, and this test would be enforcing a rule with no
     // subject. Checked so the justification cannot outlive the data.
-    const schema = fs.readFileSync(path.join(ROOT, "shared/schema.ts"), "utf8");
+    // The table may live in the monolith or in a shared/schema/ module
+    // (DEFECT-0048 moved skip_traces to deal-lifecycle.ts); read both.
+    const schemaDir = path.join(ROOT, "shared/schema");
+    const schema = [
+      fs.readFileSync(path.join(ROOT, "shared/schema.ts"), "utf8"),
+      ...fs.readdirSync(schemaDir).filter((f) => f.endsWith(".ts")).map((f) => fs.readFileSync(path.join(schemaDir, f), "utf8")),
+    ].join("\n");
     const at = schema.indexOf('export const skipTraces = pgTable("skip_traces"');
     expect(at, "skip_traces table not found").toBeGreaterThan(-1);
     const table = schema.slice(at, at + 1800);

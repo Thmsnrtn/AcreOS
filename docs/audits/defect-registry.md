@@ -532,6 +532,16 @@ temporary extra table in the monolith turns it red. The first extraction under
 it moved founder_ad_accounts, growth_campaigns and ad_creative_bundles to
 `shared/schema/growth-marketing.ts` (464 → 461). The total table count is
 unchanged at 728.
+A second batch moved 100 tables in 55 self-contained sections into seven
+themed modules (`comms-email`, `deal-lifecycle`, `autonomy-ops`,
+`platform-runtime`, `parcel-data`, `crm-workspace`, `billing-platform`),
+taking the monolith from 461 to 361 tables and 17,975 to 14,267 lines.
+Only sections whose monolith references are lazy (inside
+`references(() => …)`) were moved. The barrel's `export *` is hoisted, so an
+eager read would hit the temporal dead zone.
+`tests/unit/schemaModulesLoadThroughBarrel.test.ts` loads the real barrel,
+checks every module table is exported by it, and forces every foreign key to
+resolve. An eager read added to a module turns it red.
 Resolving commits: pending (ratchet + first extraction on this branch, round 3)
 
 ### DEFECT-0049

@@ -6,11 +6,11 @@
     "shared/schema.ts"
   ],
   "exclude": [],
-  "baselineCount": 461,
+  "baselineCount": 361,
   "direction": "down",
   "minima": {
     "files": 1
   },
   "minimaNote": "VACUITY FLOOR: the glob must match exactly the one monolith file. If shared/schema.ts is ever fully split and deleted, delete this ratchet with it rather than lowering the floor.",
-  "lastBumpNote": "2026-09-28: 464 -> 461. First extraction under this ratchet: founder_ad_accounts, growth_campaigns and ad_creative_bundles moved to shared/schema/growth-marketing.ts, re-exported through the barrel."
+  "lastBumpNote": "2026-09-28: 461 -> 361. Batch extraction of 100 tables in 55 self-contained sections into seven themed modules (comms-email, deal-lifecycle, autonomy-ops, platform-runtime, parcel-data, crm-workspace, billing-platform). Only sections whose monolith references are lazy (inside references(() => ...)), with no pgEnum/relations and no inbound use from the rest of the monolith, were moved; tests/unit/schemaModulesLoadThroughBarrel.test.ts proves they load and their foreign keys resolve. Prior: 464 -> 461 (growth-marketing)."
 }
