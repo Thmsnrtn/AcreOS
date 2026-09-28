@@ -55,10 +55,15 @@ describe("DEFECT-0133 — forecaster paying-org rule", () => {
     h.wheres.length = 0;
     await calculateUnitEconomics().catch(() => undefined);
     const dialect = new PgDialect();
-    const rendered = h.wheres.map((w) => ({ table: w.table, sql: dialect.sqlToQuery(w.where as SQL).sql }));
+    const rendered = h.wheres.map((w) => {
+      const q = dialect.sqlToQuery(w.where as SQL);
+      return { table: w.table, sql: q.sql, params: q.params };
+    });
     const churn = rendered.filter((r) => r.table === "subscription_events");
     expect(churn, "churn is not read from subscription_events").toHaveLength(1);
-    expect(churn[0].sql).toMatch(/'cancel'/);
+    expect(churn[0].params).toContain("cancel");
+    // A trial that ended without paying is not churn (DEFECT-0149).
+    expect(churn[0].params).not.toContain("trial_end");
     expect(rendered.some((r) => r.table === "organizations" && /updated_at/.test(r.sql))).toBe(false);
   });
 

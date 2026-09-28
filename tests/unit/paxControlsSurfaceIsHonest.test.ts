@@ -156,8 +156,7 @@ interface AppRouteFacts {
   mounts: Map<string, boolean[]>;
 }
 
-function parseAppRoutes(): AppRouteFacts {
-  const src = read(APP);
+function parseAppRoutes(src: string = read(APP)): AppRouteFacts {
   const sf = ts.createSourceFile(APP, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 
   const guards = new Set<string>();
@@ -730,13 +729,26 @@ describe("the scanner can see (vacuity)", () => {
       expect(isFounderPath(`${door}.tsx`)).toBe(false);
     }
 
-    // A /founder- or /admin-PREFIXED path is not authority: /admin/decisions
-    // renders DecisionQueuePage through ProtectedRoute for every authenticated
-    // user, so its copy stays in the customer population.
-    expect(
-      FOUNDER_PAGES.has("client/src/pages/decision-queue.tsx"),
-      "an /admin path was mistaken for a founder guard — decision-queue is customer-facing",
-    ).toBe(false);
+    // A /founder- or /admin-PREFIXED path is not authority. The live example
+    // (/admin/decisions → DecisionQueuePage behind ProtectedRoute) was deleted
+    // 2026-09-28 (DEFECT-0148 — it derived "Pipeline is clear" from 25 rows),
+    // so the invariant is held by a planted App source instead: an unguarded
+    // /admin mount must parse as UNGUARDED, and a founder-guarded one as
+    // guarded, whatever the path says.
+    const planted = parseAppRoutes(`
+      const Plain = React.lazy(() => import("@/pages/plain-admin"));
+      const Gated = React.lazy(() => import("@/pages/gated-admin"));
+      function ProtectedRoute({ component }) { return null; }
+      function FounderProtectedRoute({ component }) { const isFounder = true; return null; }
+      export function App() {
+        return (<Switch>
+          <Route path="/admin/plain">{() => <ProtectedRoute component={Plain} />}</Route>
+          <Route path="/customer/gated">{() => <FounderProtectedRoute component={Gated} />}</Route>
+        </Switch>);
+      }
+    `);
+    expect(planted.mounts.get("Plain"), "an /admin path was mistaken for a founder guard").toEqual([false]);
+    expect(planted.mounts.get("Gated"), "the founder guard was not recognised").toEqual([true]);
   });
 
   it("every banned entry matches its own planted sample (per-member vacuity)", () => {

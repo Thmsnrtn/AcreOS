@@ -11,6 +11,7 @@
  */
 
 import { db } from "../db";
+import { SUBSCRIPTION_EVENT } from "@shared/billing/subscriptionEventVocabulary";
 import {
   organizations, supportTickets, systemAlerts, jobHealthLogs,
   payments, subscriptionEvents, apiUsageLogs, activityLog,
@@ -119,9 +120,9 @@ resolvers.forge_revenue = async () => {
       paying: sql<number>`count(*) filter (where subscription_tier not in ('free') and subscription_status = 'active')`,
     }).from(organizations),
     db.select({ count: count() }).from(subscriptionEvents)
-      .where(and(eq(subscriptionEvents.eventType, "subscription_cancelled"), gte(subscriptionEvents.createdAt, thirtyDaysAgo))),
+      .where(and(eq(subscriptionEvents.eventType, SUBSCRIPTION_EVENT.cancel), gte(subscriptionEvents.createdAt, thirtyDaysAgo))),
     db.select({ count: count() }).from(subscriptionEvents)
-      .where(and(eq(subscriptionEvents.eventType, "subscription_cancelled"), gte(subscriptionEvents.createdAt, sevenDaysAgo))),
+      .where(and(eq(subscriptionEvents.eventType, SUBSCRIPTION_EVENT.cancel), gte(subscriptionEvents.createdAt, sevenDaysAgo))),
     db.select({ count: count() }).from(churnRiskScores)
       .where(sql`${churnRiskScores.riskBand} IN ('red', 'critical')`),
     db.select({ count: count() }).from(organizations)
@@ -257,7 +258,7 @@ resolvers.oracle_analytics = async () => {
     db.select({ count: count() }).from(organizations)
       .where(sql`subscription_tier NOT IN ('free') AND subscription_status = 'active'`),
     db.select({ count: count() }).from(subscriptionEvents)
-      .where(and(eq(subscriptionEvents.eventType, "subscription_cancelled"), gte(subscriptionEvents.createdAt, sevenDaysAgo))),
+      .where(and(eq(subscriptionEvents.eventType, SUBSCRIPTION_EVENT.cancel), gte(subscriptionEvents.createdAt, sevenDaysAgo))),
   ]);
 
   const thisWeek = orgsThisWeek.status === "fulfilled" ? Number(orgsThisWeek.value[0]?.count || 0) : 0;

@@ -29,7 +29,6 @@ import {
   Zap,
   AlertTriangle,
   GitBranch,
-  ArrowRight,
   EyeOff,
   RotateCcw,
   ArrowRightCircle,
@@ -463,11 +462,6 @@ export function DecisionQueue({
               {Verbs.RESTORE} {snoozedCount}
             </Button>
           )}
-          <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
-            <Link href="/decision-queue">
-              View all <ArrowRight className="w-3 h-3" aria-hidden="true" />
-            </Link>
-          </Button>
         </div>
       </div>
 

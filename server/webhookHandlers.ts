@@ -1,6 +1,7 @@
 import { getUncachableStripeClient, getStripeSecretKey } from './stripeClient';
 import { storage, db } from './storage';
 import { withTransaction } from './db';
+import { SUBSCRIPTION_EVENT } from '@shared/billing/subscriptionEventVocabulary';
 import { creditService } from './services/credits';
 import {
   CreditPackId,
@@ -747,10 +748,12 @@ export class WebhookHandlers {
           })
           .where(eq(organizations.id, org.id));
 
-        // Log the subscription cancel event
+        // Log the subscription end. A trial that ended without paying is a
+        // trial_end, not a cancel: churn counts cancels, and counting trial
+        // exits overstated it (DEFECT-0149).
         await tx.insert(subscriptionEvents).values({
           organizationId: org.id,
-          eventType: 'cancel',
+          eventType: org.subscriptionStatus === 'trialing' ? SUBSCRIPTION_EVENT.trialEnd : SUBSCRIPTION_EVENT.cancel,
           fromTier: previousTier,
           toTier: null,
         });
@@ -986,7 +989,7 @@ export class WebhookHandlers {
         if (tierChanged) {
           await tx.insert(subscriptionEvents).values({
             organizationId: org.id,
-            eventType: 'change',
+            eventType: SUBSCRIPTION_EVENT.change,
             fromTier: previousTier,
             toTier: newTier!,
           });
@@ -1107,7 +1110,7 @@ export class WebhookHandlers {
 
       await storage.logSubscriptionEvent({
         organizationId: org.id,
-        eventType: 'pause',
+        eventType: SUBSCRIPTION_EVENT.pause,
         fromTier: org.subscriptionTier || 'free',
         toTier: null,
       });
@@ -1142,7 +1145,7 @@ export class WebhookHandlers {
 
       await storage.logSubscriptionEvent({
         organizationId: org.id,
-        eventType: 'resume',
+        eventType: SUBSCRIPTION_EVENT.resume,
         fromTier: org.subscriptionTier || 'free',
         toTier: null,
       });

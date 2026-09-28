@@ -16,6 +16,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { SUBSCRIPTION_EVENT, classifyTierChange, tierRank } from "@shared/billing/subscriptionEventVocabulary";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors, sendError } from "./utils/errors";
 import { db } from "./db";
@@ -350,7 +351,7 @@ router.get("/pulse", requireFounder, async (req: Request, res: Response) => {
         .from(subscriptionEvents)
         .where(
           and(
-            eq(subscriptionEvents.eventType, "subscription_cancelled"),
+            eq(subscriptionEvents.eventType, SUBSCRIPTION_EVENT.cancel),
             gte(subscriptionEvents.createdAt, sevenDaysAgo)
           )
         ),
@@ -608,7 +609,7 @@ router.get("/mrr", requireFounder, async (req: Request, res: Response) => {
         reader.select({ count: count() })
           .from(subscriptionEvents)
           .where(and(
-            eq(subscriptionEvents.eventType, "subscription_cancelled"),
+            eq(subscriptionEvents.eventType, SUBSCRIPTION_EVENT.cancel),
             gte(subscriptionEvents.createdAt, start),
             lt(subscriptionEvents.createdAt, end)
           )),
@@ -951,7 +952,7 @@ router.get("/churn", requireFounder, async (req: Request, res: Response) => {
       .from(subscriptionEvents)
       .where(
         and(
-          eq(subscriptionEvents.eventType, "subscription_cancelled"),
+          eq(subscriptionEvents.eventType, SUBSCRIPTION_EVENT.cancel),
           gte(subscriptionEvents.createdAt, thirtyDaysAgo)
         )
       )
@@ -964,7 +965,7 @@ router.get("/churn", requireFounder, async (req: Request, res: Response) => {
         .where(sql`subscription_tier not in ('free') and subscription_status = 'active'`),
       reader.select({ count: count() }).from(subscriptionEvents)
         .where(and(
-          eq(subscriptionEvents.eventType, "subscription_cancelled"),
+          eq(subscriptionEvents.eventType, SUBSCRIPTION_EVENT.cancel),
           gte(subscriptionEvents.createdAt, thirtyDaysAgo)
         )),
     ]);
@@ -1020,11 +1021,12 @@ router.get("/growth", requireFounder, async (req: Request, res: Response) => {
     // Pillar 8.6 — growth roll-up is pure analytics, route to replica.
     const reader = await dbForReads("founder.intelligence.growth");
 
+    // An upgrade or downgrade is a `change` event classified by tier rank —
+    // the writers never emit subscription_upgraded / _downgraded, so the
+    // counts that filtered on those names were always 0 (DEFECT-0149).
     const [
       tierDistribution,
-      upgrades30d,
-      downgrades30d,
-      freeToAnyConversions,
+      tierChanges30d,
     ] = await Promise.allSettled([
       // Current tier distribution
       reader.select({
@@ -1036,36 +1038,21 @@ router.get("/growth", requireFounder, async (req: Request, res: Response) => {
         .groupBy(organizations.subscriptionTier)
         .orderBy(desc(count())),
 
-      // Upgrades in last 30d
-      reader.select({ count: count() })
+      reader.select({ fromTier: subscriptionEvents.fromTier, toTier: subscriptionEvents.toTier })
         .from(subscriptionEvents)
         .where(and(
-          eq(subscriptionEvents.eventType, "subscription_upgraded"),
-          gte(subscriptionEvents.createdAt, thirtyDaysAgo)
-        )),
-
-      // Downgrades in last 30d
-      reader.select({ count: count() })
-        .from(subscriptionEvents)
-        .where(and(
-          eq(subscriptionEvents.eventType, "subscription_downgraded"),
-          gte(subscriptionEvents.createdAt, thirtyDaysAgo)
-        )),
-
-      // Free → any paid conversion in 30d
-      reader.select({ count: count() })
-        .from(subscriptionEvents)
-        .where(and(
-          eq(subscriptionEvents.fromTier, "free"),
+          eq(subscriptionEvents.eventType, SUBSCRIPTION_EVENT.change),
           gte(subscriptionEvents.createdAt, thirtyDaysAgo)
         )),
     ]);
 
     const tiers = tierDistribution.status === "fulfilled" ? tierDistribution.value : [];
     const totalOrgs = tiers.reduce((sum, t) => sum + Number(t.count), 0);
-    const upgradeCount = upgrades30d.status === "fulfilled" ? Number(upgrades30d.value[0]?.count || 0) : 0;
-    const downgradeCount = downgrades30d.status === "fulfilled" ? Number(downgrades30d.value[0]?.count || 0) : 0;
-    const freeConversions = freeToAnyConversions.status === "fulfilled" ? Number(freeToAnyConversions.value[0]?.count || 0) : 0;
+    const changes = tierChanges30d.status === "fulfilled" ? tierChanges30d.value : [];
+    const upgradeCount = changes.filter((c) => classifyTierChange(c.fromTier, c.toTier) === "upgrade").length;
+    const downgradeCount = changes.filter((c) => classifyTierChange(c.fromTier, c.toTier) === "downgrade").length;
+    // Free → any paid tier.
+    const freeConversions = changes.filter((c) => classifyTierChange(c.fromTier, c.toTier) === "upgrade" && tierRank(c.fromTier) === 0).length;
 
     const freeOrgs = tiers.find(t => t.tier === "free");
     const freeToPayConversionRate = freeOrgs && Number(freeOrgs.count) > 0
@@ -2935,7 +2922,7 @@ router.get("/business-intelligence", requireFounder, async (req: Request, res: R
     const cancellationsLast30 = await reader.select({ c: count() })
       .from(subscriptionEvents)
       .where(and(
-        eq(subscriptionEvents.eventType, "subscription_cancelled"),
+        eq(subscriptionEvents.eventType, SUBSCRIPTION_EVENT.cancel),
         gte(subscriptionEvents.createdAt, thirtyDaysAgo),
       ));
     const activeCount = Number(activeLast30[0]?.c ?? 1);

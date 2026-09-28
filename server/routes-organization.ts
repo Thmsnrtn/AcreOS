@@ -2484,15 +2484,18 @@ export function registerOrganizationRoutes(app: Express): void {
       // We check if there's a recent upgrade event and no NPS for it
       try {
         const { subscriptionEvents } = await import("@shared/schema");
+        const { SUBSCRIPTION_EVENT, classifyTierChange } = await import("@shared/billing/subscriptionEventVocabulary");
         const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        const [recentUpgrade] = await db.select({ id: subscriptionEvents.id })
+        // An upgrade is a `change` to a higher tier — nothing writes
+        // "plan_upgraded", so this prompt had never shown (DEFECT-0149).
+        const recentChanges = await db.select({ fromTier: subscriptionEvents.fromTier, toTier: subscriptionEvents.toTier })
           .from(subscriptionEvents)
           .where(and(
             eq(subscriptionEvents.organizationId, orgId),
-            eq(subscriptionEvents.eventType, "plan_upgraded"),
+            eq(subscriptionEvents.eventType, SUBSCRIPTION_EVENT.change),
             sql`${subscriptionEvents.createdAt} >= ${sevenDaysAgo}`,
-          ))
-          .limit(1);
+          ));
+        const recentUpgrade = recentChanges.some((c) => classifyTierChange(c.fromTier, c.toTier) === "upgrade");
 
         if (recentUpgrade) {
           const [existingUpgradeNps] = await db.select({ id: npsResponses.id })

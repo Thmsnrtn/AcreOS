@@ -5,7 +5,7 @@
   "globs": [
     "server/storage.ts"
   ],
-  "baselineCount": 1643,
+  "baselineCount": 1624,
   "direction": "down",
   "lastBumpNote": "2026-09-27 DEFECT-0100 audit follow-up: the zero-caller createPayoffQuote / updatePayoffQuote declarations left IStorage.",
   "minima": {

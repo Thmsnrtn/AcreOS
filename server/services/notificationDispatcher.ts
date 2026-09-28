@@ -528,7 +528,8 @@ export class NotificationDispatcher {
       case "agent:conflict":
         return "/board-of-directors";
       case "approval:requested":
-        return "/admin/decisions";
+        // The decision queue lives on Today (DEFECT-0148).
+        return "/today";
       case "job:failed":
         return "/job-health";
       case "revenue:milestone":

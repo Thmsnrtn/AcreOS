@@ -1,6 +1,7 @@
 import { db } from "../storage";
 import { organizations, leads, properties, notes, campaigns, usageEvents } from "@shared/schema";
 import { eq, and, gte, count, sum } from "drizzle-orm";
+import { realLead, realNote, realProperty } from "./onboarding/sampleFilters";
 // Lens 3 (Pricing Coherence): tier limits live in shared/billing so the
 // pricing page, upgrade modal, and server gate can never drift. Re-exported
 // from this module for back-compat with existing imports.
@@ -64,11 +65,15 @@ async function getOrganizationTierAndFounderStatus(organizationId: number): Prom
   };
 }
 
+// Plan limits count the CUSTOMER's records, not the sample book "Try with
+// sample data" seeds (on by default at onboarding): the free tier allows 3
+// properties and 2 notes, and the sample book alone reached both, so a new
+// free org was at its limit before adding anything (DEFECT-0147).
 async function getLeadCount(organizationId: number): Promise<number> {
   const [result] = await db
     .select({ count: count() })
     .from(leads)
-    .where(eq(leads.organizationId, organizationId));
+    .where(and(eq(leads.organizationId, organizationId), realLead()));
   return result?.count ?? 0;
 }
 
@@ -76,7 +81,7 @@ async function getPropertyCount(organizationId: number): Promise<number> {
   const [result] = await db
     .select({ count: count() })
     .from(properties)
-    .where(eq(properties.organizationId, organizationId));
+    .where(and(eq(properties.organizationId, organizationId), realProperty()));
   return result?.count ?? 0;
 }
 
@@ -84,7 +89,7 @@ async function getNoteCount(organizationId: number): Promise<number> {
   const [result] = await db
     .select({ count: count() })
     .from(notes)
-    .where(eq(notes.organizationId, organizationId));
+    .where(and(eq(notes.organizationId, organizationId), realNote()));
   return result?.count ?? 0;
 }
 

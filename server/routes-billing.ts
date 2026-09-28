@@ -3,6 +3,7 @@ import express from "express";
 import { getOrganization, getClerkAuth, type AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
 import { SUBSCRIPTION_TIERS, cancellationSurveys, refundRequests, stripeProcessedEvents } from "@shared/schema";
+import { SUBSCRIPTION_EVENT } from "@shared/billing/subscriptionEventVocabulary";
 import { eq, and, desc, gte } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -1585,7 +1586,7 @@ export function registerBillingRoutes(app: Express): void {
 
           await storage.logSubscriptionEvent({
             organizationId: org.id,
-            eventType: "cancel",
+            eventType: SUBSCRIPTION_EVENT.cancel,
             fromTier: previousTier,
             toTier: null,
           });

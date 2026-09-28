@@ -182,9 +182,8 @@ export function PageTopbar({ title: explicitTitle, crumbs }: PageTopbarProps = {
           {isDark ? <Sun className="w-4 h-4" aria-hidden="true" /> : <Moon className="w-4 h-4" aria-hidden="true" />}
         </Button>
         {/* Notifications bell — until a dedicated notifications drawer
-            ships, route the user to /decision-queue which already
-            surfaces the same alerts/decisions stream the bell would
-            preview. Beats dispatching an event no one listens for. */}
+            ships, route the user to Today, whose decision queue is the one
+            list of what needs them (DEFECT-0148). */}
         <Button
           asChild
           variant="ghost"
@@ -192,7 +191,7 @@ export function PageTopbar({ title: explicitTitle, crumbs }: PageTopbarProps = {
           aria-label="Notifications"
           className={cn("min-h-[44px] min-w-[44px] pointer-fine:md:h-9 pointer-fine:md:w-9 pointer-fine:md:min-h-9 pointer-fine:md:min-w-9")}
         >
-          <Link href="/decision-queue" data-testid="topbar-notifications">
+          <Link href="/today" data-testid="topbar-notifications">
             <Bell className="w-4 h-4" aria-hidden="true" />
           </Link>
         </Button>

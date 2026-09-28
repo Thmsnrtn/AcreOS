@@ -24,6 +24,7 @@
  */
 
 import type { Express, Response } from "express";
+import { SUBSCRIPTION_EVENT } from "@shared/billing/subscriptionEventVocabulary";
 import { db } from "./db";
 import { organizations, subscriptionEvents } from "@shared/schema";
 import { users } from "@shared/models/auth";
@@ -59,7 +60,7 @@ const ACTIVE_STATUSES = ["active", "trialing", "past_due"] as const;
  * customer.subscription.deleted + the in-app cancel path). This is the only
  * real cancellation TIMESTAMP we persist, so we key the churn window on it.
  */
-const CANCEL_EVENT_TYPE = "cancel" as const;
+// (SUBSCRIPTION_EVENT.cancel, shared/billing/subscriptionEventVocabulary.ts.)
 
 type TaxAddress = {
   city?: string;
@@ -132,7 +133,7 @@ export function registerFounderCustomersRoutes(app: Express) {
           )
           .where(
             and(
-              eq(subscriptionEvents.eventType, CANCEL_EVENT_TYPE),
+              eq(subscriptionEvents.eventType, SUBSCRIPTION_EVENT.cancel),
               gte(subscriptionEvents.createdAt, churnCutoff),
               eq(organizations.isFounder, false),
             ),

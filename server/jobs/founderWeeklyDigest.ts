@@ -22,6 +22,7 @@
  */
 
 import { db } from "../db";
+import { SUBSCRIPTION_EVENT, tierRank } from "@shared/billing/subscriptionEventVocabulary";
 import {
   organizations,
   payments,
@@ -178,20 +179,22 @@ async function collectWeeklyData(): Promise<WeeklyDigestData> {
       db.select({ c: count() })
         .from(subscriptionEvents)
         .where(and(
-          eq(subscriptionEvents.eventType, "subscription_cancelled"),
+          eq(subscriptionEvents.eventType, SUBSCRIPTION_EVENT.cancel),
           gte(subscriptionEvents.createdAt, thisWeek.start),
         )),
       db.select({ c: count() })
         .from(subscriptionEvents)
         .where(and(
-          eq(subscriptionEvents.eventType, "subscription_cancelled"),
+          eq(subscriptionEvents.eventType, SUBSCRIPTION_EVENT.cancel),
           gte(subscriptionEvents.createdAt, lastWeek.start),
           lt(subscriptionEvents.createdAt, lastWeek.end),
         )),
-      db.select({ c: count() })
+      // New paying = a `change` from free to a paid tier. The writers never
+      // emit subscription_created / _upgraded, so this read 0 (DEFECT-0149).
+      db.select({ fromTier: subscriptionEvents.fromTier, toTier: subscriptionEvents.toTier })
         .from(subscriptionEvents)
         .where(and(
-          sql`${subscriptionEvents.eventType} IN ('subscription_created', 'subscription_upgraded')`,
+          eq(subscriptionEvents.eventType, SUBSCRIPTION_EVENT.change),
           gte(subscriptionEvents.createdAt, thisWeek.start),
         )),
     ]);
@@ -202,7 +205,9 @@ async function collectWeeklyData(): Promise<WeeklyDigestData> {
     ? Number(lastWeekRevResult.value[0]?.total || 0) : 0;
   const orgData = orgStats.status === "fulfilled" ? orgStats.value[0] : { total: 0, active: 0, paying: 0, free: 0 };
   const churnedThis = subscCancelThis.status === "fulfilled" ? Number(subscCancelThis.value[0]?.c || 0) : 0;
-  const newPaidThisCount = newPaidThis.status === "fulfilled" ? Number(newPaidThis.value[0]?.c || 0) : 0;
+  const newPaidThisCount = newPaidThis.status === "fulfilled"
+    ? newPaidThis.value.filter((r) => tierRank(r.fromTier) === 0 && tierRank(r.toTier) > 0).length
+    : 0;
   const revWoW = lastWeekRevCents > 0
     ? ((thisWeekRevCents - lastWeekRevCents) / lastWeekRevCents) * 100 : 0;
 

@@ -3661,6 +3661,96 @@ Falsified by: `tests/unit/outboxDedupeIsIndexed.test.ts` pins the query, the
 migrator and the schema to the same expression. No query plan was measured
 against a live database.
 Resolving commits: this branch, round 3
+### DEFECT-0147
+Title: The sample book counted against a free org's plan limits and fired Pax nudges
+Severity: P1
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: independent audit, 2026-09-28
+Description: Onboarding seeds a sample book by default
+(`server/routes-onboarding.ts`). Plan-limit counts
+(`server/services/usageLimits.ts`) counted every lead, property and note.
+The free tier allows 3 properties and 2 notes, and the sample book alone
+reached both, so a new free org was refused its first real parcel. Pax nudges
+(`server/services/paxNudges.ts`, a live job) also had three defects:
+- "N new leads added this month", stale-lead and stuck-deal nudges fired on
+  fixtures;
+- the stale count was a LIMIT-10 page filtered afterwards;
+- the stuck-deal nudge asserted "Deals typically close in 21 days", a
+  benchmark nothing measured.
+Remediation plan: DONE. Plan limits and every leads and deals query in the
+nudge generator use the shared sample exclusions
+(`server/services/onboarding/sampleFilters.ts`). The stale count is a
+count. The invented benchmark is removed.
+Falsified by: `tests/unit/planLimitsIgnoreSampleData.test.ts` (three cases)
+and `tests/unit/paxNudgesIgnoreSampleData.test.ts` (two cases), all red
+pre-fix.
+Resolving commits: this branch, round 3
+### DEFECT-0148
+Title: The notification bell opened a decision queue that said "Pipeline is clear" from 25 rows
+Severity: P1
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report §8 verification, 2026-09-28
+Description: The bell, Today's "View all", approval notifications and two
+legacy paths all opened `pages/decision-queue`. It re-derived stalled leads,
+waiting counters and stuck deals from bare `/api/leads` and `/api/deals`
+reads: the 25 newest of each, with a failed read treated as empty. It then
+said "Pipeline is clear. No decisions needed today. All leads are current
+and deals are moving." Stalled leads are old by definition, so they were
+exactly the rows past 25.
+Remediation plan: DONE. The page is deleted. `/admin/decisions` and
+`/decision-queue` redirect to Today, whose queue is the one list
+(`client/src/App.tsx`). The bell (`client/src/components/page-topbar.tsx`)
+and approval notifications (`server/services/notificationDispatcher.ts`)
+point there. The circular "View all" is gone. The route-guard test that used
+the page as its customer-under-/admin example now holds that invariant with a
+planted App source.
+Falsified by: `tests/unit/decisionQueueIsToday.test.ts` (three cases red
+pre-fix).
+Resolving commits: this branch, round 3
+### DEFECT-0149
+Title: Founder churn, cancellation and upgrade counts read an event vocabulary nothing writes
+Severity: P1
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: independent audit of DEFECT-0144, 2026-09-28
+Description: `subscription_events` writers emit `cancel`, `change`, `pause`
+and `resume`. The readers used other names:
+- About ten founder readers filtered on `subscription_cancelled`,
+  `_upgraded`, `_downgraded` or `_created`: `routes-founder-intelligence.ts`,
+  `jobs/founderWeeklyDigest.ts`, `services/agentDataResolvers.ts`.
+- `storage.getSubscriptionStats` filtered on `upgrade`, `downgrade`,
+  `signup` and `reactivate`.
+- The upgrade NPS prompt filtered on `plan_upgraded`.
+Nothing wrote any of those. So founder churn, the weekly digest's
+cancellations and new-paying count, Atlas's cancellation data and upgrade
+counts all read 0, and the NPS prompt never showed. The webhook also wrote
+`cancel` for trials that ended unpaid, which counted them as churn.
+Remediation plan: DONE. One vocabulary,
+`shared/billing/subscriptionEventVocabulary.ts`:
+- `SUBSCRIPTION_EVENT` constants for every reader and writer;
+- `classifyTierChange` and `tierRank` (an upgrade is a `change` to a higher
+  rank);
+- `tallySubscriptionEvents` for the stats.
+
+The webhook writes `trial_end` for a trial that ended.
+Falsified by: `tests/unit/subscriptionEventVocabulary.test.ts`. Its
+population is every server file: every `event_type` literal read must be in
+the vocabulary, and every write must name a constant. Two cases were red
+pre-fix, and widening the population found two more readers.
+Resolving commits: this branch, round 3
+### DEFECT-0150
+Title: The win-back engine reads a cancellation event nothing writes, so it has never run
+Severity: P2
+Status: OPEN — founder decision (activating it starts outbound mail)
+Surfaced by lenses: independent audit of DEFECT-0144, 2026-09-28
+Description: `server/jobs/growthAutomation.ts` finds cancelled orgs by
+`subscription_cancelled`, which nothing writes, so the win-back sequence has
+never found anyone. Changing the predicate to `cancel` would start emailing
+former customers from a job that has never sent. That is an outbound
+communication change, and whether, when and from which sender is the
+founder's call. The read is registered as dormant in
+`tests/unit/subscriptionEventVocabulary.test.ts`, so it cannot be "fixed" in
+passing.
+Resolving commits: —
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -3697,12 +3787,12 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 1   | 7   | 8     |
-| FIXED  | 12  | 73  | 50  | 135   |
+| OPEN   | 0   | 1   | 8   | 9     |
+| FIXED  | 12  | 76  | 50  | 138   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **77** | **57** | **146** |
+| **Total** | **12** | **80** | **58** | **150** |
 
-Recounted from the entries themselves on 2026-09-28 (146 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (150 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

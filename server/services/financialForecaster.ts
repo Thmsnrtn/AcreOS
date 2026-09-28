@@ -12,6 +12,7 @@ import { db } from "../db";
 import { organizations, payments, subscriptionEvents, mrrSnapshots } from "@shared/schema";
 import { sql, gte, lte, count, sum, desc, eq, and } from "drizzle-orm";
 import { monthlyRevenueCentsFor } from "@shared/billing/tier-pricing";
+import { SUBSCRIPTION_EVENT } from "@shared/billing/subscriptionEventVocabulary";
 import { estimateMonthlyInfraUsd } from "./costModel";
 
 // A paying org is a priced tier AND an active subscription — the rule
@@ -280,7 +281,7 @@ export async function calculateUnitEconomics(): Promise<UnitEconomics> {
     .innerJoin(organizations, eq(organizations.id, subscriptionEvents.organizationId))
     .where(and(
       gte(subscriptionEvents.createdAt, thirtyDaysAgo),
-      sql`(${subscriptionEvents.eventType} = 'cancel' OR (${subscriptionEvents.eventType} = 'change' AND ${subscriptionEvents.toTier} = 'free'))`,
+      sql`(${subscriptionEvents.eventType} = ${SUBSCRIPTION_EVENT.cancel} OR (${subscriptionEvents.eventType} = ${SUBSCRIPTION_EVENT.change} AND ${subscriptionEvents.toTier} = 'free'))`,
       sql`NOT (${payingOrg()})`,
     ));
 

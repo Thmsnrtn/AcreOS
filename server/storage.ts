@@ -1,4 +1,5 @@
 import { db, withTransaction } from "./db";
+import { tallySubscriptionEvents } from "@shared/billing/subscriptionEventVocabulary";
 import { forOrg, unscopedForPlatformOps } from "./utils/orgScopedDb";
 import { addMonths } from "./utils/dateUtils";
 export { db };
@@ -1472,32 +1473,12 @@ export class DatabaseStorage implements IStorage {
       .from(subscriptionEvents)
       .where(gte(subscriptionEvents.createdAt, thirtyDaysAgo));
     
-    let upgrades30d = 0;
-    let downgrades30d = 0;
-    let cancellations30d = 0;
-    let reactivations30d = 0;
-    let signups30d = 0;
-    
-    for (const event of events) {
-      switch (event.eventType) {
-        case 'upgrade': upgrades30d++; break;
-        case 'downgrade': downgrades30d++; break;
-        case 'cancel': cancellations30d++; break;
-        case 'reactivate': reactivations30d++; break;
-        case 'signup': signups30d++; break;
-      }
-    }
-    
+    // Classified by the shared vocabulary (DEFECT-0149).
+    const tally = tallySubscriptionEvents(events);
+
     const [totalResult] = await db.select({ count: count() }).from(subscriptionEvents);
     
-    return {
-      upgrades30d,
-      downgrades30d,
-      cancellations30d,
-      reactivations30d,
-      signups30d,
-      totalEvents: totalResult?.count || 0,
-    };
+    return { ...tally, totalEvents: totalResult?.count || 0 };
   }
 
   async getAllOrganizationsWithDetails(): Promise<Array<{

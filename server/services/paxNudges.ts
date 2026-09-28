@@ -2,7 +2,8 @@
 // Runs as a background job every 6 hours; generates insight cards per org.
 
 import { db } from "../db";
-import { eq, and, lt, isNull, count, desc, gte, or, lte, sql } from "drizzle-orm";
+import { eq, and, lt, isNull, count, desc, gte, or, lte, sql, notInArray } from "drizzle-orm";
+import { realDeal, realLead } from "./onboarding/sampleFilters";
 import {
   organizations, leads, properties, deals, tasks,
   paxNudges,
@@ -39,22 +40,26 @@ async function generateNudgesForOrg(org: Organization): Promise<void> {
   // ── Stale leads (no activity in 14+ days) ────────────────────────────────
   try {
     const staleCutoff = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
-    const staleLeads = await db.select({ id: leads.id, firstName: leads.firstName, status: leads.status })
+    // Counted, not a LIMIT-10 page filtered afterwards (which capped the
+    // number at 10 and dropped closed rows after the cap), and never the
+    // sample book (DEFECT-0147).
+    const [{ n: staleCount }] = await db.select({ n: count() })
       .from(leads)
       .where(and(
         eq(leads.organizationId, orgId),
-        lt(leads.updatedAt as any, staleCutoff)
-      ))
-      .limit(10);
-    const activeStale = staleLeads.filter(l => !["closed", "converted", "lost"].includes(l.status ?? ""));
-    if (activeStale.length >= 3) {
+        lt(leads.updatedAt as any, staleCutoff),
+        notInArray(leads.status, ["closed", "converted", "lost"]),
+        realLead(),
+      ));
+    const staleN = Number(staleCount ?? 0);
+    if (staleN >= 3) {
       nudgesToInsert.push({
         organizationId: orgId,
-        content: `${activeStale.length} leads haven't been contacted in 14+ days. Time to follow up?`,
+        content: `${staleN} leads haven't been contacted in 14+ days. Time to follow up?`,
         category: "stale_leads",
         entityType: "lead",
         priority: 2,
-        actionPrompt: `/followup — I have ${activeStale.length} stale leads. Prioritize them and draft outreach messages.`,
+        actionPrompt: `/followup — I have ${staleN} stale leads. Prioritize them and draft outreach messages.`,
       });
     }
   } catch {}
@@ -66,15 +71,19 @@ async function generateNudgesForOrg(org: Organization): Promise<void> {
       .from(deals)
       .where(and(
         eq(deals.organizationId, orgId),
-        lt(deals.updatedAt as any, stuckCutoff)
+        lt(deals.updatedAt as any, stuckCutoff),
+        notInArray(deals.status, ["closed", "lost", "cancelled"]),
+        realDeal(),
       ))
       .limit(5);
-    const activeStuck = stuckDeals.filter(d => !["closed", "lost", "cancelled"].includes(d.status ?? ""));
+    const activeStuck = stuckDeals;
     if (activeStuck.length > 0) {
       const topDeal = activeStuck[0];
       nudgesToInsert.push({
         organizationId: orgId,
-        content: `Deal #${topDeal.id} has been in "${topDeal.status}" for 30+ days. Deals typically close in 21 days — needs attention.`,
+        // No invented benchmark ("deals typically close in 21 days" was not
+        // measured anywhere) — the fact alone is the nudge.
+        content: `Deal #${topDeal.id} has been in "${topDeal.status}" for 30+ days — needs attention.`,
         category: "stuck_deal",
         entityType: "deal",
         entityId: topDeal.id,
@@ -109,7 +118,7 @@ async function generateNudgesForOrg(org: Organization): Promise<void> {
   try {
     const allDeals = await db.select({ id: deals.id, status: deals.status, offerAmount: deals.offerAmount })
       .from(deals)
-      .where(eq(deals.organizationId, orgId));
+      .where(and(eq(deals.organizationId, orgId), realDeal()));
     const activeDeals = allDeals.filter(d => !["closed", "lost", "cancelled"].includes(d.status ?? ""));
     const totalValue = activeDeals.reduce((s, d) => s + Number(d.offerAmount ?? 0), 0);
     if (activeDeals.length > 0 && totalValue > 0) {
@@ -130,7 +139,8 @@ async function generateNudgesForOrg(org: Organization): Promise<void> {
       .from(leads)
       .where(and(
         eq(leads.organizationId, orgId),
-        gte(leads.createdAt as any, thirtyDaysAgo)
+        gte(leads.createdAt as any, thirtyDaysAgo),
+        realLead(),
       ));
     if (newLeads.length >= 5) {
       nudgesToInsert.push({

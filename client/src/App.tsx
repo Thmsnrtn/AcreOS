@@ -396,7 +396,6 @@ const FounderTrustGraduationPage = React.lazy(() => import("@/pages/founder/trus
 // (/api/founder/v13/*) is still consumed by the refit founder pages.
 const AgentDetailPage = React.lazy(() => import("@/pages/agent-detail"));
 const SafetyGatesPage = React.lazy(() => import("@/pages/safety-gates"));
-const DecisionQueuePage = React.lazy(() => import("@/pages/decision-queue"));
 // OpsDashboardPage archived 2026-06-01 — no nav entry.
 // BetaIntakePage archived 2026-06-01 — no nav entry; /admin/beta-intake redirects to /admin/beta.
 // BetaAnalyticsPage archived 2026-06-01 — no nav entry.
@@ -1487,18 +1486,17 @@ function Router() {
       <Route path="/admin/safety-gates">
         {() => <FounderProtectedRoute component={SafetyGatesPage} />}
       </Route>
+      {/* The decision queue lives on Today (DEFECT-0148). The page these two
+          paths rendered re-derived "what needs you" from bare /api/leads and
+          /api/deals reads — the 25 newest of each, a failed read as empty —
+          and told the customer "Pipeline is clear. All leads are current"
+          while stalled leads (old by definition) sat past row 25. Bookmarks,
+          the bell and approval notifications land on the real queue. */}
       <Route path="/admin/decisions">
-        {/* Cycle 7 r8 Gabriel: autonomous-decision-review is a customer-
-            facing feature per acreos-product-model.md; opening this to
-            any authenticated user so non-founders can see the
-            Decisions Inbox for their own org. */}
-        {() => <ProtectedRoute component={DecisionQueuePage} />}
+        {() => <Redirect to="/today" />}
       </Route>
-      {/* Cycle 7: legacy /decision-queue alias — /today linked there
-          but the real route is /admin/decisions. Redirect so existing
-          CTAs and bookmarks still land on the right surface. */}
       <Route path="/decision-queue">
-        {() => <Redirect to="/admin/decisions" />}
+        {() => <Redirect to="/today" />}
       </Route>
       <Route path="/admin/ops">
         {/* 2026-06-01 cut — OpsDashboardPage archived; redirect to bridge. */}
