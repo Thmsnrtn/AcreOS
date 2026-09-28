@@ -4731,6 +4731,51 @@ Remediation plan: DONE.
 Falsified by: `tests/unit/protectedTraitsNeverScore.test.ts` (the
 leadScoring case red pre-fix; five canaries).
 Resolving commits: this branch, round 3
+### DEFECT-0179
+Title: The buyer blast joined another tenant's lead by a caller-supplied id; "Deactivate buyer" never deactivated; qualification called self-reported data "verified"
+Severity: P1
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: independent audit of DEFECT-0177 (pre-existing, same family)
+Description:
+- Cross-tenant join. `buyer_profiles.leadId` is caller-supplied, and
+  `createBuyerProfile` (`server/services/buyerMatchingAI.ts`) never checked
+  that the org owns it. The buyer blast (`server/routes-buyer-blasts.ts`)
+  joined `leads` on that id alone, in both the send and the detail query.
+  A profile carrying another org's leadId therefore returned that tenant's
+  buyer name and email in a dry run, and a real send emailed them an offer
+  of this org's land. The route-widening register had triaged the join as a
+  false positive.
+- Deactivate did nothing. `POST /api/buyer-profiles/:id/deactivate`
+  (`server/routes-buyer-analytics.ts`) wrote only
+  `engagement.deactivatedAt`, on the claim that no active column existed.
+  `is_active` does exist, and the matcher and the blast filter on it. A
+  deactivated buyer kept receiving new matches and blasts.
+- Qualification overclaimed. `server/services/buyerQualificationBot.ts`
+  inspects no document, letter, ID or reference, yet it:
+  - set `proofOfFundsVerified` from a typed budget ("Proof of funds
+    verified");
+  - turned a pre-approval checkbox into status "approved" and ticked
+    `preApprovalLetter`;
+  - called an email plus a phone number "Identity verified";
+  - counted two inquiries as verified references;
+  - said "Eligible for owner financing" and "Buyer has financing ready".
+  Its background check also read the profile's lead by id alone.
+Remediation plan: DONE.
+- Both blast joins name the org for the profile and the lead.
+  `createBuyerProfile` refuses a lead the org does not own, and the route
+  answers 400.
+- Deactivate sets `isActive: false`.
+- Qualification sets no `*Verified` flag from self-reported data. Scores
+  still credit stated data, labelled "stated / self-reported / not
+  verified / no letter on file / not a credit decision". The pre-approval
+  status is "reported", and the lead read is org-scoped.
+- Still open: the stored `ownerFinanceEligible` field keeps its name.
+  Existing profiles that already carry a foreign leadId are not repaired;
+  the joins now exclude them.
+Falsified by: `tests/unit/buyerAudienceIsTheOrgsOwn.test.ts` (three cases red
+pre-fix) and `tests/unit/buyerQualificationClaimsOnlyWhatIsVerified.test.ts`
+(five cases red pre-fix). Both doubles render the real predicates.
+Resolving commits: this branch, round 3
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -4768,11 +4813,11 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 1   | 11  | 12    |
-| FIXED  | 13  | 86  | 64  | 163   |
+| FIXED  | 13  | 87  | 64  | 164   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **13** | **90** | **75** | **178** |
+| **Total** | **13** | **91** | **75** | **179** |
 
-Recounted from the entries themselves on 2026-09-28 (178 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (179 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

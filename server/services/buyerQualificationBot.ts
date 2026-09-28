@@ -166,23 +166,28 @@ export class BuyerQualificationBotService {
     const notes: string[] = [];
     let score = 50;
 
-    const proofOfFundsVerified = !!(financialInfo?.budget && financialInfo.budget > 0);
-    if (proofOfFundsVerified) {
-      notes.push(`Budget indicated: $${financialInfo?.budget?.toLocaleString()}`);
+    // Nothing here inspects a bank statement, letter or ID (DEFECT-0179):
+    // what the buyer typed is scored as STATED and never called verified.
+    const proofOfFundsVerified = false;
+    const budgetStated = !!(financialInfo?.budget && financialInfo.budget > 0);
+    if (budgetStated) {
+      notes.push(`Budget stated: $${financialInfo?.budget?.toLocaleString()} (self-reported; no proof of funds on file)`);
       score += 15;
     } else {
-      notes.push("No proof of funds on file");
+      notes.push("No budget stated and no proof of funds on file");
       score -= 10;
     }
 
     let preApprovalStatus = "not_provided";
     if (financialInfo?.preApproved) {
-      preApprovalStatus = "approved";
-      notes.push(`Pre-approved for $${financialInfo.preApprovalAmount?.toLocaleString() || "amount not specified"}`);
+      preApprovalStatus = "reported";
+      notes.push(
+        `Reports a pre-approval for $${financialInfo.preApprovalAmount?.toLocaleString() || "an unstated amount"} (no letter on file)`,
+      );
       score += 20;
     } else if (financialInfo?.financingType === "cash") {
       preApprovalStatus = "cash_buyer";
-      notes.push("Cash buyer - no pre-approval needed");
+      notes.push("States a cash purchase (self-reported; no proof of funds on file)");
       score += 25;
     }
 
@@ -224,7 +229,7 @@ export class BuyerQualificationBotService {
     if (financialInfo?.financingType === "owner_finance" || 
         financialInfo?.downPaymentCapacity && financialInfo.downPaymentCapacity >= 0.1) {
       ownerFinanceEligible = true;
-      notes.push("Eligible for owner financing");
+      notes.push("Stated down-payment capacity fits an owner-finance illustration — not a credit decision");
     }
 
     score = Math.max(0, Math.min(100, score));
@@ -304,21 +309,22 @@ export class BuyerQualificationBotService {
       lastContactDate?: string;
     } | null;
 
-    let identityVerified = false;
+    // Contact details on file are not an identity check, and inquiries are
+    // not references (DEFECT-0179). The lead is read inside the org: a
+    // profile's leadId is caller-supplied.
+    const identityVerified = false;
     if (profile.leadId) {
       const [lead] = await db.select().from(leads)
-        .where(eq(leads.id, profile.leadId));
+        .where(and(eq(leads.id, profile.leadId), eq(leads.organizationId, profile.organizationId)));
       if (lead && lead.email && lead.phone) {
-        identityVerified = true;
-        notes.push("Identity verified via contact information");
+        notes.push("Email and phone on file (identity not verified)");
         score += 15;
       }
     }
 
-    let referencesVerified = false;
+    const referencesVerified = false;
     if (engagement?.inquiriesMade && engagement.inquiriesMade >= 2) {
-      referencesVerified = true;
-      notes.push("Multiple positive interactions recorded");
+      notes.push(`${engagement.inquiriesMade} inquiries recorded (not references)`);
       score += 10;
     }
 
@@ -404,13 +410,13 @@ export class BuyerQualificationBotService {
 
     const cashAvailable = financialInfo?.budget || null;
     if (cashAvailable) {
-      notes.push(`Cash available: $${cashAvailable.toLocaleString()}`);
+      notes.push(`Stated budget: $${cashAvailable.toLocaleString()} (not verified)`);
       readinessScore += 15;
     }
 
     let preApprovalStatus = "not_provided";
     if (financialInfo?.preApproved) {
-      preApprovalStatus = "approved";
+      preApprovalStatus = "reported";
       readinessScore += 20;
     } else if (financialInfo?.financingType === "cash") {
       preApprovalStatus = "cash_buyer";
@@ -496,8 +502,12 @@ export class BuyerQualificationBotService {
       recommendations.push("Request proof of funds documentation");
     }
 
-    if (financialCheck.preApprovalStatus === "approved" || financialCheck.preApprovalStatus === "cash_buyer") {
-      strengths.push(financialCheck.preApprovalStatus === "cash_buyer" ? "Cash buyer" : "Pre-approved for financing");
+    if (financialCheck.preApprovalStatus === "reported" || financialCheck.preApprovalStatus === "cash_buyer") {
+      strengths.push(
+        financialCheck.preApprovalStatus === "cash_buyer"
+          ? "States a cash purchase (not verified)"
+          : "Reports a pre-approval (no letter on file)",
+      );
     } else {
       recommendations.push("Obtain pre-approval letter or verify cash position");
     }
@@ -505,7 +515,7 @@ export class BuyerQualificationBotService {
     if (backgroundCheck.identityVerified) {
       strengths.push("Identity verified");
     } else {
-      concerns.push("Identity not fully verified");
+      concerns.push("Identity not verified");
       recommendations.push("Complete identity verification");
     }
 
@@ -521,7 +531,7 @@ export class BuyerQualificationBotService {
     }
 
     if (financialCheck.ownerFinanceEligible) {
-      strengths.push("Eligible for owner financing");
+      strengths.push("Stated capacity fits an owner-finance illustration — not a credit decision");
     }
 
     let riskLevel: RiskLevel = "medium";
@@ -870,7 +880,7 @@ Generate an overall recommendation.`,
     }
 
     if (financialInfo?.preApproved || financialInfo?.financingType === "cash") {
-      factors.push("Buyer has financing ready");
+      factors.push("Buyer reports financing ready (not verified)");
       probability += 15;
     }
 

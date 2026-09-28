@@ -97,11 +97,14 @@ interface BuyerPoolAnalysis {
   aiInsights?: string;
 }
 
-/** A property the org does not hold cannot be matched to buyers (DEFECT-0177). */
-class NotOfferableError extends Error {
+/**
+ * A refused buyer-matching request: land the org does not hold (DEFECT-0177)
+ * or a lead that is not the org's own (DEFECT-0179). Routes answer 400.
+ */
+class BuyerMatchRefusal extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "NotOfferableError";
+    this.name = "BuyerMatchRefusal";
   }
 }
 
@@ -112,6 +115,16 @@ export class BuyerMatchingAIService {
     params: CreateBuyerProfileParams
   ): Promise<BuyerProfile> {
     const { leadId, profileType, preferences, financialInfo, intent } = params;
+    // The lead must be this org's own (DEFECT-0179): a foreign leadId named
+    // and emailed another tenant's contact through every join downstream.
+    if (leadId != null) {
+      const [own] = await db
+        .select({ id: leads.id })
+        .from(leads)
+        .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)))
+        .limit(1);
+      if (!own) throw new BuyerMatchRefusal("That lead is not in this organization.");
+    }
 
     const profile: InsertBuyerProfile = {
       organizationId,
@@ -326,7 +339,7 @@ export class BuyerMatchingAIService {
     // (tpl_buyer_match_found). Sold, prospect or offer-stage land is not
     // offerable (DEFECT-0177), so it is refused before anything is written.
     const notOfferable = offerabilityRefusal(property.status);
-    if (notOfferable) throw new NotOfferableError(notOfferable);
+    if (notOfferable) throw new BuyerMatchRefusal(notOfferable);
 
     const activeBuyers = await db.select().from(buyerProfiles)
       .where(and(

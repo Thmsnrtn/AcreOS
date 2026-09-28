@@ -187,9 +187,10 @@ export function registerBuyerAnalyticsRoutes(app: Express): void {
         const id = parseInt(req.params.id, 10);
         if (Number.isNaN(id)) return Errors.badRequest(res, "Invalid buyer id");
 
-        // We don't add a separate "active" column — just stash the
-        // deactivation signal in engagement so reads see it. UIs that
-        // already read engagement get this for free.
+        // Deactivate sets `is_active` (DEFECT-0179). This used to stash only
+        // `engagement.deactivatedAt` on the claim that no active column
+        // existed — but it does, and the matcher and the blast filter on it,
+        // so a "deactivated" buyer kept receiving matches and offers.
         const [existing] = await db
           .select({ engagement: buyerProfiles.engagement })
           .from(buyerProfiles)
@@ -204,7 +205,7 @@ export function registerBuyerAnalyticsRoutes(app: Express): void {
 
         const [row] = await db
           .update(buyerProfiles)
-          .set({ engagement: newEngagement, updatedAt: new Date() })
+          .set({ engagement: newEngagement, isActive: false, updatedAt: new Date() })
           .where(and(eq(buyerProfiles.id, id), eq(buyerProfiles.organizationId, orgId)))
           .returning();
         return res.json({ buyer: row });

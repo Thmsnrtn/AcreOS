@@ -134,7 +134,7 @@ describe("only held land is matched", () => {
   it.each(["sold", "prospect", "offer_sent"])("a %s property is refused before any write or email", async (status) => {
     h.property = property({ status });
     h.buyers = [buyer()];
-    await expect(svc.matchPropertyToBuyers(7, 3)).rejects.toMatchObject({ name: "NotOfferableError" });
+    await expect(svc.matchPropertyToBuyers(7, 3)).rejects.toMatchObject({ name: "BuyerMatchRefusal" });
     expect(h.inserts).toHaveLength(0);
     expect(h.updates).toHaveLength(0);
     expect(h.emitted).not.toHaveBeenCalled();

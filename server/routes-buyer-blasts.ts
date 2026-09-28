@@ -93,8 +93,10 @@ export function registerBuyerBlastRoutes(app: Express): void {
             financialInfo: buyerProfiles.financialInfo,
           })
           .from(buyerPropertyMatches)
-          .innerJoin(buyerProfiles, eq(buyerProfiles.id, buyerPropertyMatches.buyerProfileId))
-          .innerJoin(leads, eq(leads.id, buyerProfiles.leadId))
+          .innerJoin(buyerProfiles, and(eq(buyerProfiles.id, buyerPropertyMatches.buyerProfileId), eq(buyerProfiles.organizationId, orgId)))
+          // A profile's leadId is caller-supplied: join only the org's own
+          // lead, or another tenant's buyer is named and emailed (DEFECT-0179).
+          .innerJoin(leads, and(eq(leads.id, buyerProfiles.leadId), eq(leads.organizationId, orgId)))
           .where(and(
             eq(buyerPropertyMatches.organizationId, orgId),
             eq(buyerPropertyMatches.propertyId, propertyId),
@@ -356,8 +358,8 @@ export function registerBuyerBlastRoutes(app: Express): void {
             buyerLastName: leads.lastName,
           })
           .from(buyerBlastRecipients)
-          .innerJoin(buyerProfiles, eq(buyerProfiles.id, buyerBlastRecipients.buyerProfileId))
-          .innerJoin(leads, eq(leads.id, buyerProfiles.leadId))
+          .innerJoin(buyerProfiles, and(eq(buyerProfiles.id, buyerBlastRecipients.buyerProfileId), eq(buyerProfiles.organizationId, orgId)))
+          .innerJoin(leads, and(eq(leads.id, buyerProfiles.leadId), eq(leads.organizationId, orgId)))
           .where(eq(buyerBlastRecipients.blastId, blast.id))
           .orderBy(asc(buyerBlastRecipients.sentAt));
 
