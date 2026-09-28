@@ -171,10 +171,13 @@ export const growthConfigRepo = {
   },
 
   async upsertFounderAdAccount(this: DatabaseStorage, data: InsertFounderAdAccount): Promise<FounderAdAccount> {
+    // An omitted appSecret leaves the stored one alone: the founder form never
+    // sends it, and writing `null` on every save wiped it (audit 2026-09-27).
+    const { appSecret, ...rest } = data;
     const sealed: InsertFounderAdAccount = {
-      ...data,
+      ...rest,
       accessToken: sealAdAccountSecret(data.accessToken),
-      appSecret: sealAdAccountSecret(data.appSecret),
+      ...(appSecret !== undefined ? { appSecret: sealAdAccountSecret(appSecret) } : {}),
     };
     const existing = await this.getFounderAdAccount(data.platform);
     if (existing) {

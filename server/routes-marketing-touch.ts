@@ -33,6 +33,7 @@ import { marketingTouch, type InsertMarketingTouch } from "@shared/schema";
 import { createRateLimiter } from "./middleware/rateLimit";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { getClientIp } from "./utils/clientIp";
 
 const router = Router();
 
@@ -93,7 +94,7 @@ const touchLimiter = createRateLimiter(
   (req: Request) => {
     const anon = (req.body as { anonymousId?: unknown })?.anonymousId;
     if (typeof anon === "string" && anon.length >= 8) return `mtouch:${anon}`;
-    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    const ip = getClientIp(req);
     return `mtouch:ip:${ip}`;
   },
 );

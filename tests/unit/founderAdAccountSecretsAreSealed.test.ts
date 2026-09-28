@@ -106,6 +106,18 @@ describe("DEFECT-0054 behaviour — ad-account secrets are sealed at rest", () =
     expect(updated[0].appSecret).toBeNull();
   });
 
+  it("a save that omits appSecret leaves the stored one alone (the form never sends it)", async () => {
+    const self = { getFounderAdAccount: async () => ({ id: 1 }) };
+    await growthConfigRepo.upsertFounderAdAccount.call(self as never, {
+      platform: "meta",
+      adAccountId: "act_1",
+      accessToken: "EAAB-rotated-4321",
+      isActive: true,
+    } as never);
+    expect(updated).toHaveLength(1);
+    expect("appSecret" in updated[0]).toBe(false);
+  });
+
   it("masking never shows more than the last four characters", () => {
     expect(maskAdAccountSecret("app-secret-5555")).toBe("••••••••5555");
     expect(maskAdAccountSecret(null)).toBeNull();

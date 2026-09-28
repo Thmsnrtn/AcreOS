@@ -41,6 +41,7 @@ import type { LookupCategory } from "./services/data-source-broker";
 import { resolveParcel } from "./services/parcel/resolveParcel";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { getClientIp } from "./utils/clientIp";
 
 const router = Router();
 
@@ -168,7 +169,7 @@ function parcelCheckKey(req: Request): string {
   const lat = req.query.lat as string | undefined;
   const lng = req.query.lng as string | undefined;
   if (lat && lng) return `parcelcheck:geo:${Number(lat).toFixed(2)}:${Number(lng).toFixed(2)}`;
-  const ip = req.ip || req.socket.remoteAddress || "unknown";
+  const ip = getClientIp(req);
   return `parcelcheck:ip:${ip}`;
 }
 
@@ -184,7 +185,7 @@ const sessionLimiter = createRateLimiter(
 // isolates). Pure-IP is acceptable HERE only as a secondary backstop.
 const ipCeiling = createRateLimiter(
   { maxRequests: 120, windowMs: 10 * 60 * 1000 },
-  (req: Request) => `parcelcheck:ipceil:${req.ip || req.socket.remoteAddress || "unknown"}`,
+  (req: Request) => `parcelcheck:ipceil:${getClientIp(req)}`,
 );
 
 /**

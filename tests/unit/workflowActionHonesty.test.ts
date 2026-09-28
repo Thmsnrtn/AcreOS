@@ -578,7 +578,8 @@ describe("LIVE_WORKFLOW_TRIGGER_EVENTS is the truth about what fires", () => {
     // A derived ratchet that derives nothing is a green light for anything.
     const helpers = emitHelperEventUnions(ENGINE_SOURCE);
     expect(helpers.size).toBeGreaterThanOrEqual(5);
-    expect(helpers.get("emitParcelEvent")).toContain("parcel.owner_changed");
+    // emitDurableParcelEvent replaced the in-memory emitParcelEvent (DEFECT-0114).
+    expect(helpers.get("emitDurableParcelEvent")).toContain("parcel.owner_changed");
     expect(derived.length).toBeGreaterThan(0);
   });
 
@@ -616,7 +617,7 @@ describe("LIVE_WORKFLOW_TRIGGER_EVENTS is the truth about what fires", () => {
 
   it("the parcel lane's emitter is still the parcelDeltaDetector", () => {
     const detector = read("server/services/parcelDeltaDetector.ts");
-    expect(detector).toContain("emitParcelEvent(");
+    expect(detector).toContain("emitDurableParcelEvent(");
     expect(sites.get("parcel.owner_changed")).toContain(
       path.join("server", "services", "parcelDeltaDetector.ts"),
     );

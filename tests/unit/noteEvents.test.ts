@@ -22,7 +22,8 @@ const { emitNoteEvent, dbSelect, limitResults } = vi.hoisted(() => {
   return { emitNoteEvent: vi.fn(), dbSelect: () => chain, limitResults };
 });
 
-vi.mock("../../server/services/workflow-engine", () => ({ emitNoteEvent }));
+// The balloon hand-off is durable now (DEFECT-0114); the spy keeps its name.
+vi.mock("../../server/services/workflow-engine", () => ({ emitDurableNoteEvent: emitNoteEvent }));
 vi.mock("../../server/db", () => ({ db: { select: dbSelect } }));
 vi.mock("../../server/utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -172,7 +173,9 @@ describe("emitNoteBalloonApproaching", () => {
     expect(emitNoteEvent.mock.calls[1][3].daysToBalloon).toBe(0);
   });
 
-  it("is fire-and-forget: a db/emit fault never throws out of the emitter", async () => {
+  it("a staging fault PROPAGATES so the scan skips the publish and retries (DEFECT-0114)", async () => {
+    // It used to be fire-and-forget after the publish, which lost the event
+    // under a ledger entry that never re-emitted.
     emitNoteEvent.mockImplementation(() => {
       throw new Error("workflow engine exploded");
     });
@@ -180,15 +183,14 @@ describe("emitNoteBalloonApproaching", () => {
       [{ firstName: "Maria", lastName: "Delgado", email: "maria@example.com" }],
       [{ name: "Smith Land LLC" }],
     );
-    expect(() => emitNoteBalloonApproaching(activeNote, now)).not.toThrow();
-    await flush(); // the swallowed rejection resolves without an unhandled throw
+    await expect(emitNoteBalloonApproaching(activeNote, now)).rejects.toThrow("workflow engine exploded");
   });
 });
 
 // ── The notePaymentDueDetector balloon fold-in: exactly-once by source order ──
-// Same discipline paymentWorkflowEvents pins for payment.missed: the emit sits
-// inside the publish try-block, AFTER `result.balloonPublished += 1`, and BEHIND
-// the `alreadyBallooned.has(dedupeKey)` skip — so an already-emitted (note,
+// Same discipline paymentWorkflowEvents pins for payment.missed: the durable
+// stage sits inside the publish try-block, BEFORE the publish (DEFECT-0114),
+// and BEHIND the `alreadyBallooned.has(dedupeKey)` skip — so an already-emitted (note,
 // maturityDate) is filtered out before the emit is ever reached, and a daily
 // rerun re-reads the mesh ledger and re-skips it. No migration; it rides the
 // EXISTING daily scan (no new job / no new scheduler line).
@@ -198,16 +200,15 @@ describe("balloon fold-in dedupe (notePaymentDueDetector — exactly one emit pe
     "utf-8",
   );
 
-  it("emits once per NEW finding, after a successful publish, behind the ledger skip", () => {
+  it("stages once per NEW finding, BEFORE the ledger publish, behind the ledger skip (DEFECT-0114)", () => {
+    // It used to emit in memory AFTER the publish; a crash in between lost the
+    // workflow while the published ledger stopped any re-emit.
     const skipIdx = src.indexOf("if (alreadyBallooned.has(dedupeKey)) continue;");
+    const emitIdx = src.indexOf("await emitNoteBalloonApproaching(r, now, dedupeKey);");
     const publishedIdx = src.indexOf("result.balloonPublished += 1;");
-    const emitIdx = src.indexOf("emitNoteBalloonApproaching(r, now);");
     expect(skipIdx).toBeGreaterThan(-1);
-    expect(publishedIdx).toBeGreaterThan(-1);
-    expect(emitIdx).toBeGreaterThan(-1);
-    // ledger skip precedes the publish+emit, and the emit follows the publish.
-    expect(skipIdx).toBeLessThan(publishedIdx);
-    expect(emitIdx).toBeGreaterThan(publishedIdx);
+    expect(emitIdx).toBeGreaterThan(skipIdx);
+    expect(publishedIdx).toBeGreaterThan(emitIdx);
   });
 
   it("dedupes per (noteId, maturityDate) on the note:balloons channel — no migration", () => {

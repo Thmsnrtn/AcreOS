@@ -29,6 +29,7 @@ import { Errors } from "./utils/errors";
 // Bulk export is an exfiltration boundary, not a convenience.
 import { requirePermission } from "./utils/permissions";
 import rateLimit from "express-rate-limit";
+import { getClientIp, clientIpOrNull } from "./utils/clientIp";
 
 // Phase 4 Week 15-16 (Magdalena §1): the synchronous /api/import/:entityType
 // handler still rejects CSVs above this limit so legacy clients see a clear
@@ -61,7 +62,7 @@ const bulkExportLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req: any) => {
     const orgId = req.organization?.id ?? "unknown-org";
-    const userId = req.user?.id ?? req.ip ?? "unknown-user";
+    const userId = req.user?.id ?? getClientIp(req);
     return `bulk-export:${orgId}:${userId}`;
   },
   message: { message: "Bulk-export rate limit exceeded. Per-org daily cap is 5. Email support@acreos.io for one-off lifts." },
@@ -186,7 +187,7 @@ export function registerImportExportRoutes(app: Express): void {
           },
           fields: ["import"],
         },
-        ipAddress: req.ip || req.socket?.remoteAddress,
+        ipAddress: clientIpOrNull(req),
         userAgent: req.headers["user-agent"],
       }).catch(() => {}); // non-blocking
 
@@ -368,7 +369,7 @@ export function registerImportExportRoutes(app: Express): void {
           },
           fields: ["import"],
         },
-        ipAddress: req.ip || req.socket?.remoteAddress,
+        ipAddress: clientIpOrNull(req),
         userAgent: req.headers["user-agent"],
       });
 
@@ -618,7 +619,7 @@ export function registerImportExportRoutes(app: Express): void {
           after: { tcpaConsent },
           fields: ["tcpaConsent"]
         },
-        ipAddress: req.ip || req.socket?.remoteAddress,
+        ipAddress: clientIpOrNull(req),
         userAgent: req.headers["user-agent"],
       });
       
@@ -672,7 +673,7 @@ export function registerImportExportRoutes(app: Express): void {
           after: { retentionPolicies: newPolicies },
           fields: ["retentionPolicies"]
         },
-        ipAddress: req.ip || req.socket?.remoteAddress,
+        ipAddress: clientIpOrNull(req),
         userAgent: req.headers["user-agent"],
       });
       
@@ -725,7 +726,7 @@ export function registerImportExportRoutes(app: Express): void {
           beforeDate: beforeDate,
           purgedCount
         },
-        ipAddress: req.ip || req.socket?.remoteAddress,
+        ipAddress: clientIpOrNull(req),
         userAgent: req.headers["user-agent"],
       });
       

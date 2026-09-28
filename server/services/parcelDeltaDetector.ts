@@ -37,7 +37,7 @@ import {
   type InsertParcelAlert,
 } from "@shared/schema";
 import { logger } from "../utils/logger";
-import { emitParcelEvent } from "./workflow-engine";
+import { emitDurableParcelEvent } from "./workflow-engine";
 
 // ----------------------------------------------------------------------------
 // Tracked fields + classification
@@ -513,38 +513,43 @@ export async function persistDelta(delta: DetectedDelta): Promise<boolean> {
     ...(delta.observedAt ? { observedAt: delta.observedAt } : {}),
   };
 
-  const inserted = await db
-    .insert(parcelAlerts)
-    .values(row)
-    .onConflictDoNothing({
-      target: [parcelAlerts.organizationId, parcelAlerts.dedupeKey],
-    })
-    .returning({ id: parcelAlerts.id });
+  // The alert row is this detector's dedupe ledger, so the workflow hand-off
+  // is staged on the SAME transaction (DEFECT-0114): both commit or neither.
+  return db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(parcelAlerts)
+      .values(row)
+      .onConflictDoNothing({
+        target: [parcelAlerts.organizationId, parcelAlerts.dedupeKey],
+      })
+      .returning({ id: parcelAlerts.id });
 
-  if (inserted.length === 0) {
-    // Already alerted on this exact transition — idempotent no-op.
-    return false;
-  }
+    if (inserted.length === 0) {
+      // Already alerted on this exact transition — idempotent no-op.
+      return false;
+    }
 
-  const alertId = inserted[0].id;
-  emitParcelEvent(
-    workflowEventForAlertType(delta.alertType),
-    delta.organizationId,
-    alertId,
-    {
-      apn: delta.apn,
-      state: delta.state,
-      county: delta.county,
-      field: delta.field,
-      alertType: delta.alertType,
-      currentValue: delta.currentValue,
-      leadId: delta.leadId,
-      propertyId: delta.propertyId,
-    },
-    { previousValue: delta.previousValue },
-  );
+    const alertId = inserted[0].id;
+    await emitDurableParcelEvent(
+      workflowEventForAlertType(delta.alertType),
+      delta.organizationId,
+      alertId,
+      {
+        apn: delta.apn,
+        state: delta.state,
+        county: delta.county,
+        field: delta.field,
+        alertType: delta.alertType,
+        currentValue: delta.currentValue,
+        leadId: delta.leadId,
+        propertyId: delta.propertyId,
+      },
+      { previousValue: delta.previousValue },
+      { executor: tx },
+    );
 
-  return true;
+    return true;
+  });
 }
 
 /**

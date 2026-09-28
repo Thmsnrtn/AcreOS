@@ -404,6 +404,10 @@ export async function runNotePaymentDueScan(now: Date = new Date()): Promise<Not
       const dedupeKey = balloonKey(r);
       if (alreadyBallooned.has(dedupeKey)) continue;
       try {
+        // Stage the workflow hand-off BEFORE the ledger publish (DEFECT-0114),
+        // keyed by the balloon dedupe key; a staging failure skips the publish
+        // so both retry next run.
+        await emitNoteBalloonApproaching(r, now, dedupeKey);
         await eventMeshPublisher.publish(
           NOTE_BALLOON_CHANNEL,
           "note:balloon_approaching",
@@ -419,12 +423,6 @@ export async function runNotePaymentDueScan(now: Date = new Date()): Promise<Not
           },
         );
         result.balloonPublished += 1;
-
-        // The mesh event just published is the ledger entry that makes this note
-        // "old news" next run, so emitting HERE — after a SUCCESSFUL publish —
-        // gives the engine exactly one note.balloon_approaching per (note,
-        // maturityDate), however many times the job runs.
-        emitNoteBalloonApproaching(r, now);
       } catch (err) {
         result.errors += 1;
         logger.warn(

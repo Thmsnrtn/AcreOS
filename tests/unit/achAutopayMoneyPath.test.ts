@@ -314,10 +314,18 @@ function makeDeps(store: FakeStore, processor: FakeProcessor, simulated = false)
   emitted: Array<{ paymentId: number }>;
 } {
   const emitted: Array<{ paymentId: number }> = [];
+  // Mirrors the real hand-off: an outbox row keyed by payment id, so a second
+  // stage of the same payment is a no-op ("emit:dup") (DEFECT-0114).
+  const staged = new Set<number>();
   return {
     store,
     processor,
     emitPaymentReceived: (event) => {
+      if (staged.has(event.paymentId)) {
+        store.events.push("emit:dup");
+        return;
+      }
+      staged.add(event.paymentId);
       store.events.push("emit");
       emitted.push({ paymentId: event.paymentId });
     },
@@ -586,6 +594,8 @@ describe("ACH autopay — IDEMPOTENCY: exactly one debit per (note, period)", ()
     expect(store.events.filter((e) => e === "postSettlement:created")).toHaveLength(1);
     expect(store.events.filter((e) => e === "postSettlement:duplicate")).toHaveLength(1);
     expect(store.events.filter((e) => e === "emit")).toHaveLength(1);
+    // The second pass re-stages; the payment-id key makes it a no-op.
+    expect(store.events.filter((e) => e === "emit:dup")).toHaveLength(1);
   });
 
   it("never exceeds the NACHA presentment limit for a period", () => {
@@ -612,7 +622,11 @@ describe("ACH autopay — payment.received is emitted only AFTER the commit", ()
     store.mandates.push(makeMandate());
   });
 
-  it("emits strictly after postSettlement resolves and after the attempt is linked", async () => {
+  it("hands off strictly after postSettlement commits and BEFORE the attempt is linked (DEFECT-0114)", async () => {
+    // It used to emit after the link, in memory. A crash between the link and
+    // the drain lost payment.received, because a linked attempt is never
+    // revisited. Staging before the link keeps the attempt in flight until
+    // the hand-off is durable.
     const deps = makeDeps(store, processor);
     await submitDebitForNote(deps, makeNote(), NOW);
     store.events.length = 0;
@@ -621,12 +635,15 @@ describe("ACH autopay — payment.received is emitted only AFTER the commit", ()
 
     expect(store.events).toEqual([
       "postSettlement:created",
-      "markAttemptSettled",
       "emit",
+      "markAttemptSettled",
     ]);
   });
 
-  it("does NOT emit on the duplicate branch (nothing was created)", async () => {
+  it("the duplicate branch still hands off, idempotently — crash recovery (DEFECT-0114)", async () => {
+    // created=false is exactly what a pass sees after a crash between the
+    // commit and the hand-off. It used to emit nothing here, which made that
+    // crash lose the event; now it re-stages, and the key makes a repeat a no-op.
     const deps = makeDeps(store, processor);
     await submitDebitForNote(deps, makeNote(), NOW);
     // Pre-poison the ledger so postSettlement reports created: false.
@@ -635,8 +652,17 @@ describe("ACH autopay — payment.received is emitted only AFTER the commit", ()
 
     await applyProcessorState(deps, store.attempts[0], { state: "succeeded", chargeId: "ch_1" }, NOW);
 
-    expect(store.events).toEqual(["postSettlement:duplicate", "markAttemptSettled"]);
-    expect(store.events).not.toContain("emit");
+    expect(store.events).toEqual(["postSettlement:duplicate", "emit", "markAttemptSettled"]);
+  });
+
+  it("a failed hand-off leaves the attempt unlinked (retried next pass) and the money posted", async () => {
+    const deps = makeDeps(store, processor);
+    deps.emitPaymentReceived = () => Promise.reject(new Error("outbox write failed"));
+    await expect(
+      applyProcessorState(deps, (await submitDebitForNote(makeDeps(store, processor), makeNote(), NOW), store.attempts[0]), { state: "succeeded", chargeId: "ch_1" }, NOW),
+    ).rejects.toThrow("outbox write failed");
+    expect(store.events).toContain("postSettlement:created");
+    expect(store.events).not.toContain("markAttemptSettled");
   });
 
   it("does NOT emit while the debit is still in flight", async () => {

@@ -24,7 +24,6 @@ import {
   type InsertEscrowChecklist,
   type InsertClosingPacket,
   type InsertAutopayEnrollment,
-  type InsertPayoffQuote,
   type InsertDelinquencyEscalation,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
@@ -213,18 +212,11 @@ export const closingServicingRepo = {
       .orderBy(desc(payoffQuotes.createdAt));
   },
 
-  async createPayoffQuote(this: DatabaseStorage, data: InsertPayoffQuote): Promise<PayoffQuote> {
-    const [created] = await db.insert(payoffQuotes).values(data).returning();
-    return created;
-  },
-
-  async updatePayoffQuote(this: DatabaseStorage, organizationId: number, id: number, data: Partial<InsertPayoffQuote>): Promise<PayoffQuote | undefined> {
-    const [updated] = await db.update(payoffQuotes)
-      .set(assertWritablePatch(data, "payoff_quotes.updatePayoffQuote"))
-      .where(and(eq(payoffQuotes.id, id), eq(payoffQuotes.organizationId, organizationId)))
-      .returning();
-    return updated;
-  },
+  // createPayoffQuote / updatePayoffQuote removed 2026-09-27 (DEFECT-0100):
+  // their only callers were the retired POST/PATCH /api/payoff-quotes routes.
+  // Serviced-note payoffs are written by quoteServicedNotePayoff into
+  // note_payoff_quotes. The legacy table stays readable; dropping it is a
+  // founder data decision.
 
   // Delinquency Escalations
   async getDelinquencyEscalations(this: DatabaseStorage, organizationId: number): Promise<DelinquencyEscalation[]> {

@@ -81,9 +81,10 @@
  *     note balance under the same optimistic lock. A return BEFORE settlement
  *     posts nothing — there is nothing to reverse, and inventing a reversal
  *     for a payment that never posted would be its own fabrication.
- *   - `payment.received` is emitted via the existing `emitPaymentEvent`
- *     helper AFTER the posting transaction commits, and only on the branch
- *     that actually created the row (Wave B's pattern).
+ *   - `payment.received` is handed off durably (an outbox row, idempotent per
+ *     payment id) AFTER the posting transaction commits and BEFORE the attempt
+ *     is linked, so a crash in between is recovered by the next pass
+ *     (DEFECT-0114).
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * WHAT IS DELIBERATELY NOT REAL
@@ -113,7 +114,7 @@ import { centsFromDecimal } from "@shared/finance/cents";
 import { logger } from "../utils/logger";
 import { splitPaymentCents, computeAppliedLateFeeCents } from "./notePaymentMath";
 import { addMonths } from "../utils/dateUtils";
-import { emitPaymentEvent } from "./workflow-engine";
+import { emitDurablePaymentEvent } from "./workflow-engine";
 import { isCategorySimulated } from "../utils/simulationMode";
 import { noteGracePeriodDays } from "@shared/notes/delinquency";
 import {
@@ -548,7 +549,7 @@ export type PaymentReceivedEmitter = (event: {
   dueDate: Date | null;
   paymentDate: Date;
   remainingBalanceCents: number;
-}) => void;
+}) => void | Promise<void>;
 
 export interface AchAutopayDeps {
   store: AchAutopayStore;
@@ -915,27 +916,32 @@ export async function applyProcessorState(
       settledAt: now,
     });
 
-    // COMMITTED. Link the attempt to its ledger row, then emit.
+    // COMMITTED. Hand the payment off to workflows BEFORE linking the attempt
+    // (DEFECT-0114). The hand-off is a durable outbox row keyed by the payment
+    // id, so it is idempotent: it runs on EVERY pass that reaches a posted
+    // settlement, not only the one that created the row. It used to be an
+    // in-memory emit after the link, on the created branch only — a crash
+    // between the commit and the drain lost `payment.received` for good, since
+    // the linked attempt was never revisited and a re-pass saw created=false.
+    // Now a crash anywhere in this window leaves the attempt in flight, the
+    // next reconciliation re-stages (a no-op if it had landed) and links it. A
+    // hand-off failure throws out of this attempt; the posted money stays.
+    await deps.emitPaymentReceived({
+      organizationId: note.organizationId,
+      noteId: note.id,
+      paymentId: posted.paymentId,
+      amountCents: posted.amountCents,
+      principalCents: posted.principalCents,
+      interestCents: posted.interestCents,
+      lateFeeCents: posted.lateFeeCents,
+      scheduledPaymentCents: centsFromDecimal(note.monthlyPayment) || null,
+      dueDate: posted.dueDate,
+      paymentDate: posted.paymentDate,
+      remainingBalanceCents: posted.remainingBalanceCents,
+    });
     await deps.store.markAttemptSettled(attempt.id, posted.paymentId, now);
 
     if (posted.created) {
-      // AFTER COMMIT, and only on the branch that actually created the row —
-      // so a second reconciliation pass over the same settlement emits
-      // nothing. Fire-and-forget: a workflow fault must never unwind banked
-      // money.
-      deps.emitPaymentReceived({
-        organizationId: note.organizationId,
-        noteId: note.id,
-        paymentId: posted.paymentId,
-        amountCents: posted.amountCents,
-        principalCents: posted.principalCents,
-        interestCents: posted.interestCents,
-        lateFeeCents: posted.lateFeeCents,
-        scheduledPaymentCents: centsFromDecimal(note.monthlyPayment) || null,
-        dueDate: posted.dueDate,
-        paymentDate: posted.paymentDate,
-        remainingBalanceCents: posted.remainingBalanceCents,
-      });
       logger.info("[achAutopay] ACH debit settled and posted", {
         noteId: note.id,
         attemptId: attempt.id,
@@ -1515,17 +1521,22 @@ function extractStripeCode(err: unknown): string | null {
 }
 
 /**
- * The live `payment.received` emitter. Uses the existing `emitPaymentEvent`
- * helper (Wave B) with the same data shape the card path publishes, so a
- * workflow condition written against a portal card payment matches an ACH
- * autopay payment unchanged. Never throws.
+ * The live `payment.received` hand-off. Same data shape the card path
+ * publishes, so a workflow condition written against a portal card payment
+ * matches an ACH autopay payment unchanged. Durable (`emitDurablePaymentEvent`)
+ * and idempotent per payment id; a failure throws so the attempt is retried.
  */
-export const liveEmitPaymentReceived: PaymentReceivedEmitter = (p) => {
-  try {
-    const daysLate = p.dueDate
-      ? Math.max(0, Math.floor((p.paymentDate.getTime() - p.dueDate.getTime()) / DAY_MS))
-      : null;
-    emitPaymentEvent("payment.received", p.organizationId, p.paymentId, {
+export const liveEmitPaymentReceived: PaymentReceivedEmitter = async (p) => {
+  const daysLate = p.dueDate
+    ? Math.max(0, Math.floor((p.paymentDate.getTime() - p.dueDate.getTime()) / DAY_MS))
+    : null;
+  // Durable and idempotent per payment (DEFECT-0114). Failures propagate: the
+  // attempt stays in flight and the next reconciliation pass retries.
+  await emitDurablePaymentEvent(
+    "payment.received",
+    p.organizationId,
+    p.paymentId,
+    {
       source: "ach_autopay",
       noteId: p.noteId,
       paymentId: p.paymentId,
@@ -1544,14 +1555,9 @@ export const liveEmitPaymentReceived: PaymentReceivedEmitter = (p) => {
       remainingBalanceCents: p.remainingBalanceCents,
       remainingPrincipal: p.remainingBalanceCents / 100,
       isPaidOff: p.remainingBalanceCents <= 0,
-    });
-  } catch (err) {
-    logger.error(
-      "[achAutopay] payment.received emit failed (payment already posted)",
-      err instanceof Error ? err : undefined,
-      { organizationId: p.organizationId, noteId: p.noteId, paymentId: p.paymentId },
-    );
-  }
+    },
+    { dedupeKey: `ach:payment.received:${p.paymentId}` },
+  );
 };
 
 /** The production dependency bundle. */

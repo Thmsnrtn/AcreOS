@@ -36,7 +36,8 @@
 // that relationship.
 // ---------------------------------------------------------------------------
 
-import { emitCertEvent } from "./workflow-engine";
+import { emitCertEvent, emitDurableCertEvent } from "./workflow-engine";
+import type { OutboxExecutor } from "./workflowOutbox";
 import {
   getStateRules,
   type StateTaxLienRules,
@@ -140,57 +141,47 @@ export function emitCertRedeemed(
 }
 
 /**
- * Emit cert.redemption_period_60d when the redemption window is 60 days out.
- * The caller (the nightly redemption-clock job) is responsible for the 60-day
- * gating + dedupe; this just carries the real payload. Fire-and-forget.
+ * Stage cert.redemption_period_60d when the redemption window is 60 days out.
+ * The caller (the nightly redemption-clock job) gates on the 60-day window and
+ * writes the system_alerts marker that dedupes it; this carries the payload.
+ * Durable and NOT swallowed (DEFECT-0114): staged on the caller's transaction,
+ * so a failure rolls the marker back and the next nightly run retries.
  */
-export function emitCertRedemptionApproaching(c: CertEventRow): void {
-  try {
-    const rules = getStateRules(c.state);
-    emitCertEvent(
-      "cert.redemption_period_60d",
-      c.organizationId,
-      c.propertyId ?? 0,
-      {
-        certificateId: c.id,
-        propertyAddress: propertyLabel(c),
-        redemptionEndsDate: c.redemptionDeadline,
-        stateForeclosureNoticeMonths: rules?.preForeclosureNoticeMonths ?? null,
-      },
-    );
-  } catch (err) {
-    logger.warn(
-      `[certificateEvents] emit cert.redemption_period_60d failed for cert ${c.id}`,
-      { metadata: { error: err instanceof Error ? err.message : String(err) } },
-    );
-  }
+export async function emitCertRedemptionApproaching(c: CertEventRow, executor?: OutboxExecutor): Promise<void> {
+  const rules = getStateRules(c.state);
+  await emitDurableCertEvent(
+    "cert.redemption_period_60d",
+    c.organizationId,
+    c.propertyId ?? 0,
+    {
+      certificateId: c.id,
+      propertyAddress: propertyLabel(c),
+      redemptionEndsDate: c.redemptionDeadline,
+      stateForeclosureNoticeMonths: rules?.preForeclosureNoticeMonths ?? null,
+    },
+    { executor },
+  );
 }
 
 /**
- * Emit cert.foreclosure_eligible when the redemption window has lapsed. The
- * caller gates on the lapsed deadline + dedupe; this carries the real payload.
- * Fire-and-forget.
+ * Stage cert.foreclosure_eligible once the redemption window has lapsed. Same
+ * contract as emitCertRedemptionApproaching: the caller owns gating and the
+ * marker, this is durable and propagates failure (DEFECT-0114).
  */
-export function emitCertForeclosureEligible(c: CertEventRow): void {
-  try {
-    const rules = getStateRules(c.state);
-    emitCertEvent(
-      "cert.foreclosure_eligible",
-      c.organizationId,
-      c.propertyId ?? 0,
-      {
-        certificateId: c.id,
-        propertyAddress: propertyLabel(c),
-        redemptionEndsDate: c.redemptionDeadline,
-        state: c.state,
-        stateForeclosureNoticeMonths: rules?.preForeclosureNoticeMonths ?? null,
-        stateStatutoryReference: rules?.statutoryReference ?? null,
-      },
-    );
-  } catch (err) {
-    logger.warn(
-      `[certificateEvents] emit cert.foreclosure_eligible failed for cert ${c.id}`,
-      { metadata: { error: err instanceof Error ? err.message : String(err) } },
-    );
-  }
+export async function emitCertForeclosureEligible(c: CertEventRow, executor?: OutboxExecutor): Promise<void> {
+  const rules = getStateRules(c.state);
+  await emitDurableCertEvent(
+    "cert.foreclosure_eligible",
+    c.organizationId,
+    c.propertyId ?? 0,
+    {
+      certificateId: c.id,
+      propertyAddress: propertyLabel(c),
+      redemptionEndsDate: c.redemptionDeadline,
+      state: c.state,
+      stateForeclosureNoticeMonths: rules?.preForeclosureNoticeMonths ?? null,
+      stateStatutoryReference: rules?.statutoryReference ?? null,
+    },
+    { executor },
+  );
 }

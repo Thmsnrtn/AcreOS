@@ -47,3 +47,14 @@ export function getClientIp(req: Request): string {
   }
   return req.ip || req.socket?.remoteAddress || "unknown";
 }
+
+/**
+ * The real client IP for a STORED field (consent evidence, audit rows): null
+ * when nothing is known, rather than the "unknown" sentinel a rate-limit key
+ * wants. Never `req.ip` alone — behind Cloudflare that is the edge address
+ * (DEFECT-0062).
+ */
+export function clientIpOrNull(req: Request): string | null {
+  const ip = getClientIp(req);
+  return ip === "unknown" ? null : ip;
+}

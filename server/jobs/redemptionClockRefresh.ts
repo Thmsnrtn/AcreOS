@@ -218,25 +218,29 @@ export async function runRedemptionClockRefresh(): Promise<RefreshResult> {
           .limit(1);
         if (!existing60) {
           const days60 = Math.ceil(msUntil / 86_400_000);
-          await db.insert(systemAlerts).values({
-            type: "cert_redemption_60d",
-            alertType: "cert_redemption_60d",
-            organizationId: row.organizationId,
-            severity: "warning",
-            title: `Redemption window closes within 60 days (${days60} day(s))`,
-            message: marker60,
-            relatedEntityType: "tax_certificate",
-            metadata: {
-              certificateId: row.id,
-              state: row.state,
-              redemptionDeadline: recomputed,
-              daysRemaining: days60,
-              summary: `Redemption window closes in ${days60} day(s) — decide posture: extend (if allowed), accept redemption-in-progress, or prepare the foreclosure filing.`,
-            },
+          // Marker and workflow hand-off commit together (DEFECT-0114).
+          await db.transaction(async (tx) => {
+            await tx.insert(systemAlerts).values({
+              type: "cert_redemption_60d",
+              alertType: "cert_redemption_60d",
+              organizationId: row.organizationId,
+              severity: "warning",
+              title: `Redemption window closes within 60 days (${days60} day(s))`,
+              message: marker60,
+              relatedEntityType: "tax_certificate",
+              metadata: {
+                certificateId: row.id,
+                state: row.state,
+                redemptionDeadline: recomputed,
+                daysRemaining: days60,
+                summary: `Redemption window closes in ${days60} day(s) — decide posture: extend (if allowed), accept redemption-in-progress, or prepare the foreclosure filing.`,
+              },
+            });
+            await emitCertRedemptionApproaching(
+              jobRowToCertEventRow(row, saleIso, recomputed),
+              tx,
+            );
           });
-          emitCertRedemptionApproaching(
-            jobRowToCertEventRow(row, saleIso, recomputed),
-          );
           result.alertsEmitted += 1;
         }
       }
@@ -257,25 +261,29 @@ export async function runRedemptionClockRefresh(): Promise<RefreshResult> {
           .limit(1);
         if (!existingFc) {
           const daysOver = Math.ceil(-msUntil / 86_400_000);
-          await db.insert(systemAlerts).values({
-            type: "cert_foreclosure_eligible",
-            alertType: "cert_foreclosure_eligible",
-            organizationId: row.organizationId,
-            severity: "critical",
-            title: `Redemption window lapsed — foreclosure-eligible`,
-            message: markerFc,
-            relatedEntityType: "tax_certificate",
-            metadata: {
-              certificateId: row.id,
-              state: row.state,
-              redemptionDeadline: recomputed,
-              daysSinceDeadline: daysOver,
-              summary: `Redemption window closed ${daysOver} day(s) ago with no redemption — file foreclosure, sell the certificate, or write it off.`,
-            },
+          // Marker and workflow hand-off commit together (DEFECT-0114).
+          await db.transaction(async (tx) => {
+            await tx.insert(systemAlerts).values({
+              type: "cert_foreclosure_eligible",
+              alertType: "cert_foreclosure_eligible",
+              organizationId: row.organizationId,
+              severity: "critical",
+              title: `Redemption window lapsed — foreclosure-eligible`,
+              message: markerFc,
+              relatedEntityType: "tax_certificate",
+              metadata: {
+                certificateId: row.id,
+                state: row.state,
+                redemptionDeadline: recomputed,
+                daysSinceDeadline: daysOver,
+                summary: `Redemption window closed ${daysOver} day(s) ago with no redemption — file foreclosure, sell the certificate, or write it off.`,
+              },
+            });
+            await emitCertForeclosureEligible(
+              jobRowToCertEventRow(row, saleIso, recomputed),
+              tx,
+            );
           });
-          emitCertForeclosureEligible(
-            jobRowToCertEventRow(row, saleIso, recomputed),
-          );
           result.alertsEmitted += 1;
         }
       }

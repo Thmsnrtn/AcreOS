@@ -649,6 +649,12 @@ in `server/services/dataApiKeys.test.ts`.
 OWED (founder, not done here — it is a deletion of stored secrets): rotate at
 the vendor any key that `/founder/keys` shows as "Plain text at rest", then
 null those `api_key` values. Re-save the ad account once so its row is sealed.
+AUDIT FOLLOW-UP: the vendor refusal is keyed on the vendor list, but the
+retired form accepted any provider slug, so `/founder/keys` now also lists
+every OTHER row still holding a plain-text value. Separately, the ad-account
+save wrote `appSecret: null` whenever the form omitted it, and the form always
+does, so every save wiped the stored secret. An omitted secret is now left
+alone. That defect predates this pass.
 Also noted: `client/src/components/founder-setup-wizard.tsx`, the UI for the
 real encrypted platform-config path (`/api/founder/setup/*`), is rendered
 nowhere.
@@ -795,7 +801,10 @@ the rate. What re-verification found instead:
   `authLimiter`, `importLimiter`, plus a 1000/min floor) keyed on `req.user`,
   populated later still by per-route isAuthenticated — so they keyed on IP too.
   Its `/api/auth` mount reached no handler: every `/api/auth` route is
-  registered earlier and answers first.
+  registered earlier and answers first. (Correction from the independent
+  audit: the other routes.ts mounts keyed on the REAL client IP through
+  `getClientIp`, so they were working per-client caps — /api/ai and /api/pax
+  held at 120/min — not edge buckets.)
 Evidence: `server/index.ts` (pre-fix limiter block), `server/routes.ts`
 (`mountIdentityRateLimiters` call site), `server/utils/clientIp.ts`.
 Remediation plan: DONE. `server/middleware/identityRateLimiters.ts` defines
@@ -806,8 +815,20 @@ index.ts keeps only limiters that need no identity — a 1000/min per-client-IP
 floor that also covers the public pre-Clerk routes, webhooks, imports and MCP —
 each keyed on `getClientIp`. The routes.ts duplicates and the now-callerless
 `rateLimiters` / `authLimiter` / `importLimiter` / `authAttemptKeyFunction`
-exports are removed. Limits kept at their documented values; the export cap is
-now honestly per user (the org is not resolvable at a global mount).
+exports are removed. The AI caps are tiered to preserve the effective per-person
+limits from before the move: 120/min per user on /api/ai and /api/pax, 240/min
+on /api/chat, /api/executive and /api/document-generation. The export cap is
+honestly per user now (the org is not resolvable at a global mount).
+AUDIT FOLLOW-UP (same day, independent completeness audit): the first ratchet
+read only index.ts and names imported from rateLimit.ts, and missed seven more
+files whose limiter keys used `req.ip`: `aiRateLimit.ts` (globally mounted on
+/api/ai, so every customer on an edge node shared 60/min), the public parcel
+check, feedback, the error boundary, marketing touch, the borrower portal and
+bulk export. All now key on `getClientIp`, and `aiRateLimit` keys on the Clerk
+user where org and user are not yet set. Stored evidence fields in those files
+(consent and audit `ipAddress`) use `clientIpOrNull`; the feedback route had
+trusted the client-written first X-Forwarded-For hop. The ratchet is now a
+file-level rule over every server file that defines a limiter, with a floor.
 Falsified by: `tests/unit/rateLimitIdentityKeying.test.ts` — four population
 assertions red on the pre-fix sources (identity read or bare `req.ip` in an
 index.ts limiter; an unkeyed index.ts limiter; the per-user set not mounted
@@ -2742,6 +2763,18 @@ infrastructure.
   terminally.
 Delivery is now at-least-once. A workflow that throws part-way through a drain
 can run again on the retry, where the in-memory path lost the event instead.
+AUDIT FOLLOW-UP (same day, independent completeness audit): four more
+scheduled emitters had the same shape and are now durable too. ACH autopay
+settlement stages `payment.received` keyed by payment id BEFORE linking the
+attempt, on every pass, so a crash leaves the attempt in flight and the next
+pass recovers. Parcel alerts stage on the alert insert's transaction. The
+certificate redemption clock stages on its system_alerts marker's transaction.
+The note balloon lane stages before its mesh publish. The in-memory
+`emitParcelEvent` and `emitNoteEvent` had no callers left and were replaced by
+their durable forms. The gate now enumerates both populations: the scheduled
+hand-offs, and EVERY file calling an in-memory emit helper. That second set is
+derived from the engine's exports and compared both ways with a classified
+register, so a new in-memory call site fails until someone classifies it.
 Falsified by: `tests/unit/workflowHandoffIsDurable.test.ts` (the real sweep
 issues the status update and the outbox insert on one transaction handle; a
 failed insert fails that note; the drain awaits, propagates and refuses; the
@@ -3085,8 +3118,10 @@ review (slice C, same day); 0116 and 0119 (Payment Link, Accept-payment) are
 FIXED in slice A, 0104 (SMS purpose) in slice D and 0107 (blind-offer comps)
 in slice B; no P1 from this report remains OPEN.
 
-11 P2s from earlier audits remain open (plus DEFECT-0063, partially fixed)
-(not blocking launch).
+As of round 3 (2026-09-27/28) eight P2 entries are OPEN, counting DEFECT-0063
+(partially fixed): 0048, 0049, 0050, 0052, 0055 and 0063 are structural, and
+0099 and 0106 wait on a product or founder decision. None blocks launch. The
+table above is the count of record; it is recounted from the entries.
 
 ### Fixed Defects Summary
 

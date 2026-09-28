@@ -66,6 +66,7 @@ import {
 } from "./services/customerMoneyRouting";
 import { isCategorySimulated } from "./utils/simulationMode";
 import { noteGracePeriodDays } from "@shared/notes/delinquency";
+import { getClientIp, clientIpOrNull } from "./utils/clientIp";
 
 // ─────────────────────────────────────────────────────────────────────
 // Borrower ACH autopay (Wave C — "money moves")
@@ -191,7 +192,7 @@ export function autopayStatusMessage(input: {
 function borrowerPortalKey(req: Request): string {
   const token = req.params?.accessToken || (req.body as { accessToken?: unknown } | undefined)?.accessToken;
   if (token && typeof token === "string" && token.length > 8) return `tok:${token}`;
-  return req.ip || req.socket?.remoteAddress || "unknown";
+  return getClientIp(req);
 }
 
 // Express request carrying the borrower-portal session attached by
@@ -252,7 +253,7 @@ function sunsetMiddleware(sunsetDateStr: string = BORROWER_PORTAL_SUNSET_DATE) {
       logger.warn("Sunset endpoint accessed after sunset date", {
         path: req.originalUrl,
         sunsetDate: sunsetDate.toISOString(),
-        ip: req.ip || req.socket.remoteAddress,
+        ip: clientIpOrNull(req),
       });
       return sendError(
         res,
@@ -454,7 +455,7 @@ export function registerBorrowerRoutes(app: Express): void {
         organizationId: note.organizationId,
         sessionToken,
         email: email.toLowerCase(),
-        ipAddress: req.ip || req.socket.remoteAddress || null,
+        ipAddress: clientIpOrNull(req),
         userAgent: req.headers['user-agent'] || null,
         expiresAt,
       });
@@ -530,7 +531,7 @@ export function registerBorrowerRoutes(app: Express): void {
         return Errors.badRequest(res, "accessToken and email are required");
       }
 
-      const ip = req.ip || req.socket.remoteAddress || "unknown";
+      const ip = getClientIp(req);
 
       const resolver: BorrowerGrantResolver = {
         async resolve({ accessToken, email }) {
@@ -750,7 +751,7 @@ export function registerBorrowerRoutes(app: Express): void {
   api.post("/api/portal/:accessToken/payment", sunsetMiddleware(), deprecatedPaymentRateLimiter, async (req, res) => {
     // Log deprecation warning
     logger.warn("Deprecated endpoint accessed: /api/portal/:accessToken/payment", {
-      ip: req.ip || req.socket.remoteAddress,
+      ip: clientIpOrNull(req),
       userAgent: req.headers["user-agent"],
       accessToken: req.params.accessToken ? "[REDACTED]" : undefined,
     });
@@ -1326,7 +1327,7 @@ export function registerBorrowerRoutes(app: Express): void {
           note: setupNote,
           sessionEmail: session.email,
           lenderName,
-          ipAddress: req.ip || req.socket.remoteAddress || null,
+          ipAddress: clientIpOrNull(req),
           userAgent: req.headers["user-agent"] || null,
           baseUrl: `${req.protocol}://${req.get("host")}`,
           authorizationAccepted: true,
@@ -1718,7 +1719,7 @@ export function registerBorrowerRoutes(app: Express): void {
       //   (b) signed borrower_stmt_session cookie set by the new
       //       /api/borrower/auth/exchange endpoint (for email-link
       //       landing pages that don't go through full /verify first)
-      const ip = req.ip || req.socket.remoteAddress || "unknown";
+      const ip = getClientIp(req);
       // Repeated headers arrive as string[] — accept only a single string.
       const headerToken = req.headers["x-borrower-session"];
       const dbSessionToken: string =

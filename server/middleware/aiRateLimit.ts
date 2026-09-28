@@ -33,6 +33,8 @@
 
 import type { Request, Response, NextFunction } from "express";
 import { createRateLimiter } from "./rateLimit";
+import { getClientIp } from "../utils/clientIp";
+import { getClerkAuth } from "../types/request";
 
 // Key extractor — one of:
 //   org:<id>   — when req.organizationId is set (post-auth on routes that
@@ -44,8 +46,14 @@ function orgKey(req: Request): string {
   if (orgId) return `org:${orgId}`;
   const user = req.user;
   if (user?.id) return `user:${user.id}`;
-  const ip = req.ip || req.socket.remoteAddress || "unknown";
-  return `ip:${ip}`;
+  // At the global `app.use("/api/ai", …)` mount neither of the above is set
+  // yet (getOrCreateOrg and user hydration run per route), so this is the
+  // branch that actually keys: the verified Clerk user, else the REAL client
+  // IP. It used to fall straight to `req.ip` — the Cloudflare edge address —
+  // bucketing every customer on an edge node together (DEFECT-0062).
+  const clerkUserId = getClerkAuth(req)?.userId;
+  if (clerkUserId) return `clerk:${clerkUserId}`;
+  return `ip:${getClientIp(req)}`;
 }
 
 // Two stacked limiters — minute window AND hour window. A request passes

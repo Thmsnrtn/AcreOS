@@ -20,6 +20,7 @@ import { createRateLimiter } from "./middleware/rateLimit";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { getClientIp, clientIpOrNull } from "./utils/clientIp";
 
 // The FULL set the schema declares (shared/schema.ts feedbackSubmissions
 // comment). Until 2026-08-27 this enum held only the last three — but the
@@ -52,7 +53,7 @@ const updateSchema = z.object({
 // IP-based (no auth) so we use createRateLimiter directly.
 const feedbackSubmitLimiter = createRateLimiter(
   { maxRequests: 5, windowMs: 60 * 60 * 1000 },
-  (req: Request) => `feedback:${req.ip || req.socket.remoteAddress || "unknown"}`,
+  (req: Request) => `feedback:${getClientIp(req)}`,
 );
 
 export function registerFeedbackRoutes(app: Express): void {
@@ -76,11 +77,9 @@ export function registerFeedbackRoutes(app: Express): void {
         const userEmail = authedUser?.email ?? null;
         const pageUrl = (req.headers.referer as string | undefined)?.slice(0, 500) ?? null;
 
-        const ipAddress =
-          (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
-          req.ip ||
-          req.socket.remoteAddress ||
-          null;
+        // Not the first X-Forwarded-For hop: the client writes that one
+        // (DEFECT-0062, see utils/clientIp.ts).
+        const ipAddress = clientIpOrNull(req);
         const userAgent =
           (req.headers["user-agent"] as string | undefined)?.slice(0, 500) ??
           null;

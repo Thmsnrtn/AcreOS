@@ -8,8 +8,12 @@
 // fire-and-forget (a throwing engine never fails the certificate write).
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { emitCertEvent } = vi.hoisted(() => ({ emitCertEvent: vi.fn() }));
-vi.mock("../../server/services/workflow-engine", () => ({ emitCertEvent }));
+const { emitCertEvent, emitDurableCertEvent } = vi.hoisted(() => ({
+  emitCertEvent: vi.fn(),
+  // The two SCHEDULED cert events hand off durably (DEFECT-0114).
+  emitDurableCertEvent: vi.fn(async () => ({ staged: true })),
+}));
+vi.mock("../../server/services/workflow-engine", () => ({ emitCertEvent, emitDurableCertEvent }));
 vi.mock("../../server/utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
@@ -40,7 +44,10 @@ const cert: CertEventRow = {
   redeemedAmountCents: null,
 };
 
-afterEach(() => emitCertEvent.mockReset());
+afterEach(() => {
+  emitCertEvent.mockReset();
+  emitDurableCertEvent.mockClear();
+});
 
 describe("emitCertAcquired", () => {
   it("fires cert.acquired on create, keyed by propertyId, with only real fields", () => {
@@ -120,10 +127,10 @@ describe("emitCertRedeemed", () => {
 });
 
 describe("emitCertRedemptionApproaching / emitCertForeclosureEligible", () => {
-  it("cert.redemption_period_60d carries only its real fields", () => {
-    emitCertRedemptionApproaching({ ...cert });
-    expect(emitCertEvent).toHaveBeenCalledTimes(1);
-    const [event, orgId, entityId, data] = emitCertEvent.mock.calls[0];
+  it("cert.redemption_period_60d carries only its real fields", async () => {
+    await emitCertRedemptionApproaching({ ...cert });
+    expect(emitDurableCertEvent).toHaveBeenCalledTimes(1);
+    const [event, orgId, entityId, data] = emitDurableCertEvent.mock.calls[0] as unknown as [string, number, number, Record<string, unknown>];
     expect(event).toBe("cert.redemption_period_60d");
     expect(orgId).toBe(7);
     expect(entityId).toBe(42);
@@ -139,9 +146,9 @@ describe("emitCertRedemptionApproaching / emitCertForeclosureEligible", () => {
     ]);
   });
 
-  it("cert.foreclosure_eligible carries only its real fields", () => {
-    emitCertForeclosureEligible({ ...cert });
-    const [event, , , data] = emitCertEvent.mock.calls[0];
+  it("cert.foreclosure_eligible carries only its real fields", async () => {
+    await emitCertForeclosureEligible({ ...cert });
+    const [event, , , data] = emitDurableCertEvent.mock.calls[0] as unknown as [string, number, number, Record<string, unknown>];
     expect(event).toBe("cert.foreclosure_eligible");
     expect(data.certificateId).toBe("cert_1");
     expect(data.propertyAddress).toBe("APN 504210-12-3456 (Broward, FL)");
@@ -161,18 +168,19 @@ describe("emitCertRedemptionApproaching / emitCertForeclosureEligible", () => {
 });
 
 describe("no fabrication / fire-and-forget", () => {
-  it("no emitter payload ever carries a delinquentOwnerEmail (fabricated recipient) key", () => {
+  it("no emitter payload ever carries a delinquentOwnerEmail (fabricated recipient) key", async () => {
     emitCertAcquired({ ...cert });
     emitCertRedeemed("active", { ...cert, status: "redeemed", redeemedAmountCents: 500_000 });
-    emitCertRedemptionApproaching({ ...cert });
-    emitCertForeclosureEligible({ ...cert });
-    expect(emitCertEvent.mock.calls.length).toBe(4);
-    for (const call of emitCertEvent.mock.calls) {
-      expect(Object.keys(call[3])).not.toContain("delinquentOwnerEmail");
+    await emitCertRedemptionApproaching({ ...cert });
+    await emitCertForeclosureEligible({ ...cert });
+    const calls = [...emitCertEvent.mock.calls, ...emitDurableCertEvent.mock.calls] as unknown as unknown[][];
+    expect(calls.length).toBe(4);
+    for (const call of calls) {
+      expect(Object.keys(call[3] as object)).not.toContain("delinquentOwnerEmail");
     }
   });
 
-  it("is fire-and-forget: a throwing emitCertEvent never propagates out of any emitter", () => {
+  it("request-path emitters stay fire-and-forget: a throwing emitCertEvent never propagates", () => {
     emitCertEvent.mockImplementation(() => {
       throw new Error("engine boom");
     });
@@ -180,7 +188,12 @@ describe("no fabrication / fire-and-forget", () => {
     expect(() =>
       emitCertRedeemed("active", { ...cert, status: "redeemed", redeemedAmountCents: 1000 }),
     ).not.toThrow();
-    expect(() => emitCertRedemptionApproaching({ ...cert })).not.toThrow();
-    expect(() => emitCertForeclosureEligible({ ...cert })).not.toThrow();
+  });
+
+  it("the SCHEDULED emitters propagate a staging failure so the job rolls back its marker (DEFECT-0114)", async () => {
+    emitDurableCertEvent.mockRejectedValueOnce(new Error("outbox write failed"));
+    await expect(emitCertRedemptionApproaching({ ...cert })).rejects.toThrow("outbox write failed");
+    emitDurableCertEvent.mockRejectedValueOnce(new Error("outbox write failed"));
+    await expect(emitCertForeclosureEligible({ ...cert })).rejects.toThrow("outbox write failed");
   });
 });

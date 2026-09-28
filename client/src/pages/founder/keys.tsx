@@ -41,7 +41,14 @@ export default function FounderKeysPage() {
     ...p,
     plaintextAtRest: byProvider.get(p.provider)?.plaintextAtRest ?? false,
   }));
-  const exposedCount = vendorRows.filter((r) => r.plaintextAtRest).length;
+  // Any OTHER row still holding a plain-text value is shown too: the retired
+  // form accepted any provider slug, not only the vendor list (audit 2026-09-27).
+  const vendorSlugs = new Set<string>(PLATFORM_VENDOR_KEY_PROVIDERS.map((p) => p.provider));
+  const otherRows = rows
+    .filter((r) => r.plaintextAtRest && !vendorSlugs.has(r.provider))
+    .map((r) => ({ provider: r.provider, displayName: r.displayName, description: "Other stored key", plaintextAtRest: true }));
+  const shownRows = [...vendorRows, ...otherRows];
+  const exposedCount = shownRows.filter((r) => r.plaintextAtRest).length;
 
   return (
     <PageShell label="System API keys">
@@ -92,11 +99,11 @@ export default function FounderKeysPage() {
               <div className="flex items-start gap-2 text-sm text-acr-warn" data-testid="text-plaintext-keys-warning">
                 <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
                 <span>
-                  {exposedCount === 1 ? "1 vendor secret is" : `${exposedCount} vendor secrets are`} still stored in plain text. Rotate {exposedCount === 1 ? "it" : "them"} at the vendor.
+                  {exposedCount === 1 ? "1 stored key is" : `${exposedCount} stored keys are`} still in plain text. Rotate {exposedCount === 1 ? "it" : "them"} at the vendor.
                 </span>
               </div>
             )}
-            {vendorRows.map((row) => (
+            {shownRows.map((row) => (
               <div key={row.provider} className="flex items-center gap-3 p-3 border rounded-card" data-testid={`row-system-key-${row.provider}`}>
                 <div className="flex-1 min-w-0">
                   <span className="font-medium text-sm">{row.displayName}</span>

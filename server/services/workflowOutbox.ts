@@ -33,6 +33,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { outbox, WORKFLOW_TRIGGER_EVENTS } from "@shared/schema";
 import { db } from "../db";
 import { logger } from "../utils/logger";
+import { stampTraceContext } from "../utils/queueTraceContext";
 import type { WorkflowEventData } from "./workflow-engine";
 
 const WORKFLOW_TRIGGER_OUTBOX_EVENT = "workflow_trigger";
@@ -60,7 +61,9 @@ export async function stageWorkflowEvent(
   }
   await exec.insert(outbox).values({
     eventType: WORKFLOW_TRIGGER_OUTBOX_EVENT,
-    payload: { ...event, ...(opts.dedupeKey ? { dedupeKey: opts.dedupeKey } : {}) },
+    // Trace context rides the payload like every other outbox producer's, so
+    // the worker's drain continues the producer's distributed trace.
+    payload: stampTraceContext({ ...event, ...(opts.dedupeKey ? { dedupeKey: opts.dedupeKey } : {}) }),
   });
   return { staged: true };
 }
@@ -78,7 +81,7 @@ export async function drainWorkflowTrigger(
   payload: Record<string, unknown>,
   engine?: Pick<(typeof import("./workflow-engine"))["workflowEngine"], "triggerWorkflows">,
 ): Promise<Record<string, unknown>> {
-  const { event, organizationId, entityId, entityType, data } = payload;
+  const { event, organizationId, entityId, entityType, data, previousData } = payload;
   const known = (WORKFLOW_TRIGGER_EVENTS as readonly string[]).includes(String(event));
   if (
     !known ||
@@ -102,6 +105,9 @@ export async function drainWorkflowTrigger(
     entityId,
     entityType: entityType as WorkflowEventData["entityType"],
     data: data as Record<string, unknown>,
+    ...(previousData && typeof previousData === "object"
+      ? { previousData: previousData as Record<string, unknown> }
+      : {}),
   });
   return { runs: runs.length };
 }

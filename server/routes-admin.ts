@@ -3282,7 +3282,8 @@ export function registerAdminRoutes(app: Express): void {
         accessToken,
         pixelId: pixelId || null,
         appId: appId || null,
-        appSecret: appSecret || null,
+        // Omitted → keep the stored secret (the form never sends it).
+        ...(typeof appSecret === "string" && appSecret.length > 0 ? { appSecret } : {}),
         isActive: true,
       });
       res.json({ ...account, accessToken: maskAdAccountSecret(account.accessToken), appSecret: maskAdAccountSecret(account.appSecret) });

@@ -3072,21 +3072,22 @@ export function emitDurablePaymentEvent(
 // Iyari #5 — parcel delta events. entityId is the parcel_alerts row id (the
 // system-of-record for the detected change). data carries apn/state/county/field
 // + before/after values so workflow conditions can match on them.
-export function emitParcelEvent(
+export function emitDurableParcelEvent(
   event: "parcel.owner_changed" | "parcel.tax_status_changed",
   organizationId: number,
   alertId: number,
   data: Record<string, any>,
-  previousData?: Record<string, any>
-): void {
-  workflowEngine.emit({
-    event,
-    organizationId,
-    entityId: alertId,
-    entityType: "parcel",
-    data,
-    previousData,
-  });
+  previousData: Record<string, any> | undefined,
+  opts: { executor?: OutboxExecutor } = {},
+): Promise<{ staged: boolean }> {
+  // Durable (DEFECT-0114): the parcel delta detector is a scheduled job whose
+  // parcel_alerts row is its dedupe ledger. It stages this on the SAME
+  // transaction as that insert; the in-memory emitParcelEvent it replaced was
+  // lost on a crash while the alert row stopped any re-emit.
+  return stageWorkflowEvent(
+    { event, organizationId, entityId: alertId, entityType: "parcel", data, previousData },
+    opts,
+  );
 }
 
 // emitRehabEvent — the fix-and-flip rehab lifecycle emitter (audit Wave 1,
@@ -3125,7 +3126,7 @@ export function emitRehabEvent(
 // (workflowActionHonesty test pins that relationship). The event union MUST stay
 // on one physical line — the honesty ratchet's derivation regex stops at the
 // first newline after `event:`.
-export function emitCertEvent(event: "cert.acquired" | "cert.redemption_period_60d" | "cert.foreclosure_eligible" | "cert.redeemed", organizationId: number, entityId: number, data: Record<string, any>): void {
+export function emitCertEvent(event: "cert.acquired" | "cert.redeemed", organizationId: number, entityId: number, data: Record<string, any>): void {
   workflowEngine.emit({
     event,
     organizationId,
@@ -3133,6 +3134,21 @@ export function emitCertEvent(event: "cert.acquired" | "cert.redemption_period_6
     entityType: "cert",
     data,
   });
+}
+
+/**
+ * Durable sibling of emitCertEvent for the two SCHEDULED certificate events
+ * (DEFECT-0114). The nightly redemption-clock job writes a system_alerts marker
+ * as its dedupe ledger; this stages the hand-off on that insert's transaction.
+ */
+export function emitDurableCertEvent(
+  event: "cert.redemption_period_60d" | "cert.foreclosure_eligible",
+  organizationId: number,
+  entityId: number,
+  data: Record<string, any>,
+  opts: { executor?: OutboxExecutor } = {},
+): Promise<{ staged: boolean }> {
+  return stageWorkflowEvent({ event, organizationId, entityId, entityType: "cert", data }, opts);
 }
 
 // emitSubdivisionEvent — the subdivider lifecycle emitter (audit Wave 1,
@@ -3247,14 +3263,18 @@ export function emitRentalEvent(event: "rent.received" | "maintenance.request_re
 // pins the call-site ↔ list relationship). The event union MUST stay on one
 // physical line — the honesty ratchet's derivation regex stops at the first
 // newline after `event:`.
-export function emitNoteEvent(event: "note.balloon_approaching", organizationId: number, entityId: number, data: Record<string, any>): void {
-  workflowEngine.emit({
-    event,
-    organizationId,
-    entityId,
-    entityType: "note",
-    data,
-  });
+export function emitDurableNoteEvent(
+  event: "note.balloon_approaching",
+  organizationId: number,
+  entityId: number,
+  data: Record<string, any>,
+  opts: { executor?: OutboxExecutor; dedupeKey?: string } = {},
+): Promise<{ staged: boolean }> {
+  // Durable (DEFECT-0114): the balloon lane of the scheduled due detector
+  // stages this BEFORE its mesh publish, keyed by the balloon dedupe key. The
+  // in-memory emitNoteEvent it replaced ran after the publish and was lost on
+  // a crash while the published ledger stopped any re-emit.
+  return stageWorkflowEvent({ event, organizationId, entityId, entityType: "note", data }, opts);
 }
 
 // emitStrEvent — the short-term-rental lifecycle emitter (STR Wave A). Mirrors

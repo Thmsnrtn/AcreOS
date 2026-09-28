@@ -19,6 +19,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { stripComments } from "../helpers/stripComments";
+import { readdirSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 
 const h = vi.hoisted(() => ({
   rows: [] as unknown[],
@@ -85,6 +88,8 @@ import { outbox } from "@shared/schema";
 import { acquiredNotes } from "@shared/schema/notes-vertical";
 import { runAcquiredNoteAgingSweep, type AgingNoteRow } from "../../server/jobs/acquiredNoteAging";
 import { drainWorkflowTrigger, stageWorkflowEvent } from "../../server/services/workflowOutbox";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ENGINE = { triggerWorkflows: (...a: unknown[]) => h.trigger(...a) } as never;
 const ASOF = new Date(Date.UTC(2026, 6, 30));
@@ -200,5 +205,93 @@ describe("DEFECT-0114 — staging and draining", () => {
     expect(types).toContain('"workflow_trigger"');
     expect(worker).toMatch(/workflow_trigger:\s*handleWorkflowTrigger/);
     expect(worker).toMatch(/drainWorkflowTrigger\(payload\)/);
+  });
+});
+
+/**
+ * The population (independent audit, 2026-09-27): the first version of this
+ * fix covered two detectors and had no list, so four more scheduled emitters of
+ * the same shape — ACH autopay settlement, parcel alerts, the certificate
+ * redemption clock, the note balloon lane — were invisible to it.
+ *
+ * Two enumerations now:
+ *   1. SCHEDULED_HANDOFFS — every scheduled hand-off, each required to use a
+ *      durable helper (per-member: the file must still name it).
+ *   2. IN_MEMORY_EMITTERS — EVERY file that calls an in-memory emit*Event
+ *      helper, derived from the engine's exports and compared both ways with
+ *      this register. Each is a request path (the request's own response is
+ *      the failure signal). A new in-memory call site anywhere fails until
+ *      someone decides which kind it is.
+ */
+const SCHEDULED_HANDOFFS: Array<{ file: string; durable: string }> = [
+  { file: "server/jobs/acquiredNoteAging.ts", durable: "emitDurablePaymentEvent" },
+  { file: "server/services/notePaymentDueDetector.ts", durable: "emitDurablePaymentEvent" },
+  { file: "server/services/achAutopay.ts", durable: "emitDurablePaymentEvent" },
+  { file: "server/services/parcelDeltaDetector.ts", durable: "emitDurableParcelEvent" },
+  { file: "server/services/certificateEvents.ts", durable: "emitDurableCertEvent" },
+  { file: "server/services/noteEvents.ts", durable: "emitDurableNoteEvent" },
+];
+
+const IN_MEMORY_EMITTERS: Record<string, string> = {
+  "server/routes-notes.ts": "request: note payment posted by an operator",
+  "server/routes-rent-ledger.ts": "request: rent payment posted by an operator",
+  "server/services/borrower/portalPaymentPosting.ts": "request/webhook: a borrower payment",
+  "server/services/buyerEvents.ts": "request: buyer CRUD",
+  "server/services/certificateEvents.ts": "request: cert.acquired / cert.redeemed only (the scheduled two are durable)",
+  "server/services/dealEvents.ts": "request: deal CRUD",
+  "server/services/leadEvents.ts": "request: lead CRUD",
+  "server/services/propertyEvents.ts": "request: property CRUD",
+  "server/services/rehabEvents.ts": "request: rehab CRUD",
+  "server/services/rentalEvents.ts": "request: rental CRUD",
+  "server/services/strEvents.ts": "request: STR CRUD",
+  "server/services/subdivisionEvents.ts": "request: subdivision CRUD",
+  "server/services/wholesaleEvents.ts": "request: wholesale CRUD",
+};
+
+function tsFiles(dir: string, out: string[] = []): string[] {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) {
+      if (name !== "node_modules") tsFiles(p, out);
+    } else if (p.endsWith(".ts") && !p.endsWith(".test.ts") && !p.endsWith(".d.ts")) out.push(p);
+  }
+  return out;
+}
+
+describe("DEFECT-0114 population — every workflow emitter is classified", () => {
+  const ROOT = resolve(__dirname, "../..");
+  const engine = stripComments(readFileSync(resolve(ROOT, "server/services/workflow-engine.ts"), "utf8"));
+  const helpers = [...engine.matchAll(/export function (emit\w*Event)\s*\(\s*event:/g)].map((m) => m[1]);
+  const inMemory = helpers.filter((h) => !h.startsWith("emitDurable"));
+  const sources = tsFiles(resolve(ROOT, "server"))
+    .filter((p) => !p.endsWith(join("services", "workflow-engine.ts")))
+    .map((p) => ({ file: relative(ROOT, p), src: stripComments(readFileSync(p, "utf8")) }));
+
+  it("derives the helper sets (vacuity floor)", () => {
+    expect(inMemory.length).toBeGreaterThanOrEqual(8);
+    expect(helpers).toEqual(expect.arrayContaining(["emitDurablePaymentEvent", "emitDurableParcelEvent", "emitDurableCertEvent", "emitDurableNoteEvent"]));
+  });
+
+  it("every scheduled hand-off uses its durable helper", () => {
+    for (const h of SCHEDULED_HANDOFFS) {
+      const s = sources.find((x) => x.file === h.file);
+      expect(s, `${h.file} is gone — update SCHEDULED_HANDOFFS`).toBeDefined();
+      expect(s!.src, `${h.file} must call ${h.durable}`).toContain(`${h.durable}(`);
+    }
+  });
+
+  it("the in-memory call sites are exactly the classified register (both directions)", () => {
+    const actual = sources
+      .filter((s) => inMemory.some((h) => new RegExp(`\\b${h}\\(`).test(s.src)))
+      .map((s) => s.file)
+      .sort();
+    expect(actual).toEqual(Object.keys(IN_MEMORY_EMITTERS).sort());
+  });
+
+  it("no scheduled job file calls an in-memory emitter", () => {
+    const jobs = sources.filter((s) => s.file.startsWith("server/jobs/"));
+    expect(jobs.length).toBeGreaterThan(20);
+    const offenders = jobs.filter((s) => inMemory.some((h) => new RegExp(`\\b${h}\\(`).test(s.src))).map((s) => s.file);
+    expect(offenders).toEqual([]);
   });
 });

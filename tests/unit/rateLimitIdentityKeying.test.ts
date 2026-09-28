@@ -19,13 +19,18 @@
  *      mounts the per-user set exactly once, after Clerk and before the first
  *      /api/auth route.
  */
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
+import { readdirSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import express from "express";
 import request from "supertest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { stripComments } from "../helpers/stripComments";
 import { mountIdentityRateLimiters, identityRateLimitKey } from "../../server/middleware/identityRateLimiters";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = resolve(__dirname, "../..");
 const read = (p: string) => stripComments(readFileSync(resolve(ROOT, p), "utf8"));
@@ -150,5 +155,47 @@ describe("DEFECT-0062 population — routes.ts mounts the per-user set once, aft
       new RegExp(`app\\.use\\([^;]*\\b${name}\\b`).test(routes),
     );
     expect(globallyMounted).toEqual([]);
+  });
+});
+
+/**
+ * The population the first version of this file missed (independent audit,
+ * 2026-09-27): limiter KEY FUNCTIONS live in many files, not just index.ts and
+ * rateLimit.ts. aiRateLimit.ts, the public parcel check, feedback, the error
+ * boundary, marketing touch, the borrower portal and bulk export all keyed on
+ * `req.ip` — the Cloudflare edge. The rule is now per FILE over every server
+ * file that defines a limiter: no bare `req.ip` at all (comment-stripped).
+ * Stored evidence fields in those files use clientIpOrNull for the same reason.
+ */
+function serverFiles(dir: string, out: string[] = []): string[] {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) {
+      if (name !== "node_modules") serverFiles(p, out);
+    } else if (p.endsWith(".ts") && !p.endsWith(".test.ts") && !p.endsWith(".d.ts")) out.push(p);
+  }
+  return out;
+}
+
+describe("DEFECT-0062 population — every file that defines a limiter keys on the real client", () => {
+  const limiterFiles = serverFiles(resolve(ROOT, "server"))
+    .map((p) => ({ file: relative(ROOT, p), src: stripComments(readFileSync(p, "utf8")) }))
+    .filter((f) => /\b(createRateLimiter|createAuthenticatedRateLimiter|rateLimit)\(|keyGenerator\s*:|:\s*KeyFunction\b/.test(f.src));
+
+  it("finds the limiter-defining files (vacuity floor)", () => {
+    const files = limiterFiles.map((f) => f.file);
+    expect(files.length).toBeGreaterThanOrEqual(15);
+    for (const known of [
+      "server/index.ts",
+      "server/middleware/aiRateLimit.ts",
+      "server/middleware/identityRateLimiters.ts",
+      "server/routes-public-parcel-check.ts",
+      "server/routes-borrower.ts",
+    ]) expect(files).toContain(known);
+  });
+
+  it("none of them reads bare req.ip (the Cloudflare edge address)", () => {
+    const offenders = limiterFiles.filter((f) => /\breq\.ip\b/.test(f.src)).map((f) => f.file);
+    expect(offenders).toEqual([]);
   });
 });

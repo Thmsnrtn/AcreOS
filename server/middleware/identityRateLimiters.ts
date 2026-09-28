@@ -55,8 +55,14 @@ export function identityRateLimitKey(req: Request): string {
   return `ip:${ipKeyGenerator(getClientIp(req))}`;
 }
 
-/** Paths whose handlers call a model. */
-const AI_PATHS = ["/api/ai", "/api/pax", "/api/chat", "/api/executive", "/api/document-generation"];
+/**
+ * Paths whose handlers call a model, in two tiers that preserve the effective
+ * per-person caps from before the move (independent audit, 2026-09-27):
+ * /api/ai and /api/pax were held to 120/min per client by a second limiter in
+ * routes.ts; the other three only ever had the 240/min one.
+ */
+const AI_PATHS_120 = ["/api/ai", "/api/pax"];
+const AI_PATHS_240 = ["/api/chat", "/api/executive", "/api/document-generation"];
 
 /** Bulk export paths (RS-7, the Asher-takeover export burst). */
 const EXPORT_PATHS = [
@@ -84,20 +90,24 @@ export function mountIdentityRateLimiters(app: Express): void {
   });
   app.use("/api/auth", authLimiter);
 
-  // AI / Pax / chat: 240 requests per minute per user. /api/pax fans out ~8
-  // calls per page load. Per-org traffic shaping (aiRateLimit) and the
-  // per-org USD budget (paxChatGuard / routeAITask) sit behind this.
-  const aiLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 240,
-    standardHeaders: true,
-    legacyHeaders: false,
-    store: createLimiterStore("ai-user"),
-    keyGenerator: identityRateLimitKey,
-    skip: () => e2eTestAuthEnabled(), // never on Fly — see server/auth/testAuth.ts
-    message: { message: "AI request limit reached. Please wait a moment." },
-  });
-  for (const path of AI_PATHS) app.use(path, aiLimiter);
+  // AI / Pax / chat, per user. /api/pax fans out ~8 calls per page load.
+  // Per-org traffic shaping (aiRateLimit) and the per-org USD budget
+  // (paxChatGuard / routeAITask) sit behind this.
+  const aiLimiter = (max: number, prefix: string) =>
+    rateLimit({
+      windowMs: 60 * 1000,
+      max,
+      standardHeaders: true,
+      legacyHeaders: false,
+      store: createLimiterStore(prefix),
+      keyGenerator: identityRateLimitKey,
+      skip: () => e2eTestAuthEnabled(), // never on Fly — see server/auth/testAuth.ts
+      message: { message: "AI request limit reached. Please wait a moment." },
+    });
+  const ai120 = aiLimiter(120, "ai-user-120");
+  const ai240 = aiLimiter(240, "ai-user-240");
+  for (const path of AI_PATHS_120) app.use(path, ai120);
+  for (const path of AI_PATHS_240) app.use(path, ai240);
 
   // Bulk export: 5 per day per user. The org is NOT known at a global mount
   // (getOrCreateOrg runs per route), so this is honestly per-user, which is

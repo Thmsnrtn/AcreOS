@@ -20,7 +20,7 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("../../server/db", () => ({ db: {} }));
 vi.mock("../../server/storage", () => ({ db: {}, storage: {} }));
 vi.mock("../../server/services/workflow-engine", () => ({
-  emitParcelEvent: vi.fn(),
+  emitDurableParcelEvent: vi.fn(),
 }));
 
 import {

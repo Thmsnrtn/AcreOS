@@ -130,7 +130,7 @@ import {
   type EscrowChecklist, type InsertEscrowChecklist,
   type ClosingPacket, type InsertClosingPacket,
   type AutopayEnrollment, type InsertAutopayEnrollment,
-  type PayoffQuote, type InsertPayoffQuote,
+  type PayoffQuote,
   type DelinquencyEscalation, type InsertDelinquencyEscalation,
   type PlaybookInstance, type InsertPlaybookInstance,
   type DdAssignment, type InsertDdAssignment,
@@ -977,8 +977,6 @@ export interface IStorage {
   getPayoffQuotes(organizationId: number): Promise<PayoffQuote[]>;
   getPayoffQuoteById(organizationId: number, id: number): Promise<PayoffQuote | undefined>;
   getPayoffQuotesByNote(organizationId: number, noteId: number): Promise<PayoffQuote[]>;
-  createPayoffQuote(data: InsertPayoffQuote): Promise<PayoffQuote>;
-  updatePayoffQuote(organizationId: number, id: number, data: Partial<InsertPayoffQuote>): Promise<PayoffQuote | undefined>;
 
   // Trust Ledger
 

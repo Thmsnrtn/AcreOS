@@ -14,8 +14,9 @@
 // the mesh ledger.
 //
 // Sibling of rentalEvents.ts / certificateEvents.ts; same rules:
-//   1. FIRE-AND-FORGET. A workflow failure must never fail the detector scan.
-//      emitNoteBalloonApproaching swallows its own errors and never throws.
+//   1. DURABLE (DEFECT-0114). The hand-off is an outbox row staged BEFORE
+//      the mesh publish; a staging failure propagates to the scan's
+//      per-finding catch, skips that publish, and is retried next run.
 //   2. NO FABRICATION. The payload carries ONLY columns the note row genuinely
 //      holds plus the borrower resolved from a real join (notes.borrowerId →
 //      leads). CRITICALLY, the money field is the note's current
@@ -49,7 +50,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { leads, organizations } from "@shared/schema";
-import { emitNoteEvent } from "./workflow-engine";
+import { emitDurableNoteEvent } from "./workflow-engine";
 import { logger } from "../utils/logger";
 
 /** The balloon window: a note whose maturity is within the next 90 days (and
@@ -175,30 +176,32 @@ function buildBalloonPayload(
 }
 
 /**
- * Emit note.balloon_approaching for a note ~90 days from maturity. Self-guarding
+ * Stage note.balloon_approaching for a note ~90 days from maturity. Self-guarding
  * (see balloonDaysToMaturity — a note outside the window / non-active / with no
- * positive balance is an honest no-op) and fire-and-forget: resolves the
- * borrower + org off the scan path and never throws back into the detector.
+ * positive balance is an honest no-op). Durable and NOT swallowed
+ * (DEFECT-0114): the detector awaits this BEFORE publishing the mesh ledger
+ * entry, keyed by the balloon dedupe key, so a failure skips the publish and
+ * the next run retries both. It used to resolve and emit in memory after the
+ * publish, which a crash lost for good.
  */
-export function emitNoteBalloonApproaching(row: NoteBalloonRow, now: Date = new Date()): void {
+export async function emitNoteBalloonApproaching(
+  row: NoteBalloonRow,
+  now: Date = new Date(),
+  dedupeKey?: string,
+): Promise<void> {
   const daysToBalloon = balloonDaysToMaturity(row, now);
   if (daysToBalloon === null) return; // not in the balloon window — no signal
-  void (async () => {
-    const [borrower, orgName] = await Promise.all([
-      row.borrowerId != null
-        ? resolveBorrower(row.organizationId, row.borrowerId)
-        : Promise.resolve(null),
-      resolveOrgName(row.organizationId),
-    ]);
-    emitNoteEvent(
-      "note.balloon_approaching",
-      row.organizationId,
-      row.propertyId ?? row.id,
-      buildBalloonPayload(row, daysToBalloon, borrower, orgName),
-    );
-  })().catch((err) => {
-    logger.warn(`[noteEvents] emit note.balloon_approaching failed for note ${row.id}`, {
-      metadata: { error: err instanceof Error ? err.message : String(err) },
-    });
-  });
+  const [borrower, orgName] = await Promise.all([
+    row.borrowerId != null
+      ? resolveBorrower(row.organizationId, row.borrowerId)
+      : Promise.resolve(null),
+    resolveOrgName(row.organizationId),
+  ]);
+  await emitDurableNoteEvent(
+    "note.balloon_approaching",
+    row.organizationId,
+    row.propertyId ?? row.id,
+    buildBalloonPayload(row, daysToBalloon, borrower, orgName),
+    dedupeKey ? { dedupeKey } : {},
+  );
 }

@@ -33,6 +33,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { createRateLimiter } from "./middleware/rateLimit";
+import { getClientIp } from "./utils/clientIp";
 
 const MAX_ERROR_NAME_LEN = 200;
 const MAX_ROUTE_PATH_LEN = 500;
@@ -47,7 +48,7 @@ const tripLimiter = createRateLimiter(
   (req: Request) => {
     const userId =
       (req as { user?: { id?: string } }).user?.id ?? "anon";
-    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    const ip = getClientIp(req);
     const routePath = String(
       (req.body as { routePath?: string } | undefined)?.routePath ?? "/",
     ).slice(0, MAX_ROUTE_PATH_LEN);
