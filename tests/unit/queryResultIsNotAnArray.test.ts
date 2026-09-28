@@ -55,9 +55,10 @@ describe("the driver really does return a QueryResult", () => {
   });
 
   it("the house convention reads .rows", () => {
-    // routes-platform-features has always done this correctly; it is the
-    // independent third source that settles what the shape is.
-    expect(code("server/routes-platform-features.ts")).toMatch(/\.rows\?\.\[0\]/);
+    // An independent third source that settles what the shape is. (It was
+    // routes-platform-features' benchmark route until that route was deleted
+    // for DEFECT-0156; routes-subdivisions reads db.execute the same way.)
+    expect(code("server/routes-subdivisions.ts")).toMatch(/\.rows\?\.\[0\]/);
   });
 });
 

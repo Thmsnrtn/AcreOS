@@ -4,6 +4,7 @@
  */
 
 import { db } from "../db";
+import { publishedMarketMetric } from "./marketNetworkContributor";
 import {
   priceRecommendations,
   properties,
@@ -554,6 +555,7 @@ export class PriceOptimizerService {
   async incorporateMarketTrends(price: number, county: string, state: string): Promise<number> {
     const recentMetrics = await db.select().from(marketMetrics)
       .where(and(
+        publishedMarketMetric(),
         eq(marketMetrics.county, county),
         eq(marketMetrics.state, state)
       ))
@@ -871,6 +873,7 @@ export class PriceOptimizerService {
   private async getMarketVolatility(county: string, state: string): Promise<number> {
     const recentMetrics = await db.select().from(marketMetrics)
       .where(and(
+        publishedMarketMetric(),
         eq(marketMetrics.county, county),
         eq(marketMetrics.state, state)
       ))
@@ -899,6 +902,7 @@ export class PriceOptimizerService {
   private async assessCompetition(county: string, state: string): Promise<string> {
     const recentMetrics = await db.select().from(marketMetrics)
       .where(and(
+        publishedMarketMetric(),
         eq(marketMetrics.county, county),
         eq(marketMetrics.state, state)
       ))
@@ -928,6 +932,7 @@ export class PriceOptimizerService {
   private async getMarketTiming(county: string, state: string): Promise<string> {
     const recentMetrics = await db.select().from(marketMetrics)
       .where(and(
+        publishedMarketMetric(),
         eq(marketMetrics.county, county),
         eq(marketMetrics.state, state)
       ))

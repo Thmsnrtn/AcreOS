@@ -15,13 +15,37 @@
 
 import { db } from "../db";
 import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
-import { eq, and, isNull, count, sql } from "drizzle-orm";
+import { eq, and, isNull, count, sql, type SQL } from "drizzle-orm";
+import { createHash } from "crypto";
 import { marketMetrics, agentMemory, properties, deals, organizations } from "@shared/schema";
 import { logger } from "../utils/logger";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const MIN_COHORT_SIZE = 5; // Minimum contributions before county data is served
+/**
+ * And the contributions must come from at least this many DISTINCT orgs
+ * (DEFECT-0155). Counting deals alone let one operator's five deals be the
+ * whole cohort, so the "network" median was that operator's pricing.
+ */
+const MIN_DISTINCT_ORGS = 3;
+
+/**
+ * Raw network contributions (one row per closed deal, organizationId NULL,
+ * periodType "transaction") are INPUT to getNetworkCompsForCounty's
+ * aggregate, never a market metric in their own right. Every other reader of
+ * market_metrics took "the latest row for the county" — which, after a
+ * contribution, was one other operator's just-closed deal's $/acre, and
+ * analyzeMarket re-published it as a "monthly" metric (DEFECT-0155). Every
+ * market_metrics reader outside this module applies this predicate.
+ */
+export const publishedMarketMetric = (): SQL =>
+  sql`NOT (${marketMetrics.organizationId} IS NULL AND ${marketMetrics.periodType} = 'transaction')`;
+
+/** A non-reversible-without-the-org-id tag, stored only to COUNT distinct contributors. */
+function contributorTag(orgId: number): string {
+  return createHash("sha256").update(`acreos-market-network:${orgId}`).digest("hex").slice(0, 16);
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -143,6 +167,7 @@ export async function contributeClosedDealToNetwork(
 
     // 2. Build anonymized entry — no APN, no lead names, no org ID
     const entry = {
+      contributor: contributorTag(orgId),
       acreageBucket: bucketAcreage(acres),
       pricePerAcre,          // Rounded to nearest $500
       zoningCategory: zoning ?? "unknown",
@@ -188,6 +213,7 @@ export async function contributeClosedDealToNetwork(
           },
         ],
         economicData: {
+          contributor: entry.contributor,
           acreageBucket: entry.acreageBucket,
           zoningCategory: entry.zoningCategory,
           saleQuarter: entry.saleQuarter,
@@ -214,6 +240,7 @@ export async function contributeClosedDealToNetwork(
               },
             ],
             economicData: {
+              contributor: staged.contributor ?? null,
               acreageBucket: staged.acreageBucket,
               zoningCategory: staged.zoningCategory,
               saleQuarter: staged.saleQuarter,
@@ -257,8 +284,6 @@ export async function getNetworkCompsForCounty(
   state: string
 ): Promise<{
   avgPricePerAcre: number;
-  minPricePerAcre: number;
-  maxPricePerAcre: number;
   medianPricePerAcre: number;
   dataPoints: number;
   note: string;
@@ -267,6 +292,7 @@ export async function getNetworkCompsForCounty(
     const rows = await db
       .select({
         ppa: marketMetrics.averagePricePerAcre,
+        contributor: sql<string | null>`${marketMetrics.economicData}->>'contributor'`,
       })
       .from(marketMetrics)
       .where(
@@ -278,8 +304,11 @@ export async function getNetworkCompsForCounty(
         )
       );
 
-    if (rows.length < MIN_COHORT_SIZE) {
-      // Not enough data to serve — privacy threshold not met
+    // Privacy floor: enough deals AND enough distinct operators. Rows written
+    // before contributor tags existed count toward neither the tag set nor a
+    // guess — the floor fails closed until real tags accumulate.
+    const distinctOrgs = new Set(rows.map((r) => r.contributor).filter((c): c is string => !!c)).size;
+    if (rows.length < MIN_COHORT_SIZE || distinctOrgs < MIN_DISTINCT_ORGS) {
       return null;
     }
 
@@ -296,10 +325,9 @@ export async function getNetworkCompsForCounty(
         ? (prices[prices.length / 2 - 1] + prices[prices.length / 2]) / 2
         : prices[Math.floor(prices.length / 2)];
 
+    // No min / max: each is one operator's single deal.
     return {
       avgPricePerAcre: Math.round(avg),
-      minPricePerAcre: prices[0],
-      maxPricePerAcre: prices[prices.length - 1],
       medianPricePerAcre: Math.round(median),
       dataPoints: prices.length,
       note: `Based on ${prices.length} AcreOS network transactions`,
@@ -319,8 +347,6 @@ export async function getCountyNetworkIntelligence(
   state: string
 ): Promise<{
   medianPricePerAcre: number;
-  minPricePerAcre: number;
-  maxPricePerAcre: number;
   transactionCount: number;
   dataAvailable: boolean;
   summary: string;
@@ -329,8 +355,6 @@ export async function getCountyNetworkIntelligence(
   if (!comps) return null;
   return {
     medianPricePerAcre: comps.medianPricePerAcre,
-    minPricePerAcre: comps.minPricePerAcre,
-    maxPricePerAcre: comps.maxPricePerAcre,
     transactionCount: comps.dataPoints,
     dataAvailable: comps.dataPoints >= MIN_COHORT_SIZE,
     summary: comps.note,

@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { publishedMarketMetric } from "./marketNetworkContributor";
 import {
   portfolioAlerts,
   properties,
@@ -196,6 +197,7 @@ class PortfolioSentinelService {
       .from(marketMetrics)
       .where(
         and(
+          publishedMarketMetric(),
           eq(marketMetrics.county, property.county),
           eq(marketMetrics.state, property.state)
         )
@@ -257,6 +259,7 @@ class PortfolioSentinelService {
       .from(marketMetrics)
       .where(
         and(
+          publishedMarketMetric(),
           eq(marketMetrics.county, property.county),
           eq(marketMetrics.state, property.state),
           gte(marketMetrics.metricDate, thirtyDaysAgo)

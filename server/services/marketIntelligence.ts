@@ -18,7 +18,7 @@ import {
 } from "@shared/schema";
 import { eq, and, gte, lte, desc, asc, sql } from "drizzle-orm";
 import { DataSourceBroker } from "./data-source-broker";
-import { getCountyNetworkIntelligence } from "./marketNetworkContributor";
+import { getCountyNetworkIntelligence, publishedMarketMetric } from "./marketNetworkContributor";
 import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
 
@@ -75,12 +75,19 @@ export interface MarketAnalysisResult {
   // Cross-org network intelligence (only populated when cohort ≥ 5 deals)
   networkIntelligence?: {
     medianPricePerAcre: number;
-    minPricePerAcre: number;
-    maxPricePerAcre: number;
     transactionCount: number;
     dataAvailable: boolean;
     summary: string; // Human-readable sentence for Pax context injection
   } | null;
+}
+
+/**
+ * The count is TRANSACTIONS (not operators), over all time (the aggregate has
+ * no date window), and there is no min–max: each end was one operator's deal
+ * (DEFECT-0155).
+ */
+function networkSummary(n: { transactionCount: number; medianPricePerAcre: number }, county: string): string {
+  return `${n.transactionCount} closed transactions on the AcreOS network in ${county} County (median $${n.medianPricePerAcre.toLocaleString()}/acre).`;
 }
 
 export interface MarketHealthResult {
@@ -443,7 +450,7 @@ class MarketIntelligenceService {
         ? {
             ...networkData,
             summary: networkData.dataAvailable
-              ? `${networkData.transactionCount} AcreOS operators closed deals in ${county} County over the last 90 days at $${networkData.minPricePerAcre.toLocaleString()}–$${networkData.maxPricePerAcre.toLocaleString()}/acre (median $${networkData.medianPricePerAcre.toLocaleString()}/acre).`
+              ? networkSummary(networkData, county)
               : `Platform data for ${county} County is accumulating (${networkData.transactionCount} deal${networkData.transactionCount === 1 ? "" : "s"} so far — ${5 - networkData.transactionCount} more needed to unlock aggregate pricing).`,
           }
         : null,
@@ -460,6 +467,7 @@ class MarketIntelligenceService {
     const [latestMetric] = await db.select()
       .from(marketMetrics)
       .where(and(
+        publishedMarketMetric(),
         eq(marketMetrics.county, county),
         eq(marketMetrics.state, state)
       ))
@@ -492,7 +500,7 @@ class MarketIntelligenceService {
     const networkData = await getCountyNetworkIntelligence(county, state).catch(() => null);
     if (networkData?.dataAvailable) {
       alerts.push(
-        `${networkData.transactionCount} AcreOS operators closed deals in ${county} County over the last 90 days at $${networkData.minPricePerAcre.toLocaleString()}–$${networkData.maxPricePerAcre.toLocaleString()}/acre (median $${networkData.medianPricePerAcre.toLocaleString()}/acre).`
+        networkSummary(networkData, county)
       );
     }
 
@@ -779,6 +787,7 @@ class MarketIntelligenceService {
     return db.select()
       .from(marketMetrics)
       .where(and(
+        publishedMarketMetric(),
         eq(marketMetrics.county, county),
         eq(marketMetrics.state, state),
         gte(marketMetrics.metricDate, startDate)
@@ -1129,6 +1138,7 @@ class MarketIntelligenceService {
     const [actualMetric] = await db.select()
       .from(marketMetrics)
       .where(and(
+        publishedMarketMetric(),
         eq(marketMetrics.county, prediction.county),
         eq(marketMetrics.state, prediction.state),
         gte(marketMetrics.metricDate, prediction.targetDate)

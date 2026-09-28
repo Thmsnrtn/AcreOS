@@ -3751,6 +3751,194 @@ founder's call. The read is registered as dormant in
 `tests/unit/subscriptionEventVocabulary.test.ts`, so it cannot be "fixed" in
 passing.
 Resolving commits: —
+### DEFECT-0151
+Title: ⌘K search failed on punctuation and accents, and its fallback queried columns that do not exist
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report §8.13, verified 2026-09-28
+Description: `server/services/fullTextSearch.ts` had three defects.
+- The tsquery builder stripped each word to ASCII and kept empty remainders.
+  "Smith - Lot 4" became `Smith:* & :* & Lot:* & 4:*`, a syntax error, and
+  "Muñoz" was split in two.
+- Every such search fell to the ILIKE fallback. It selected `"firstName"`
+  and `"organizationId"`, which do not exist (the columns are snake_case),
+  and threw into a silent catch that returned nothing.
+- Neither path excluded soft-deleted rows.
+Remediation plan: DONE.
+- Words keep letters and digits in any script, and empty words are dropped.
+- The fallback uses the real columns and propagates failure, logged.
+- Both paths filter `deleted_at IS NULL`.
+- `tests/unit/rawSqlColumnsExist.test.ts` gained a quoted-identifier arm.
+  `BARE` required snake_case, so quoted camelCase columns were outside the
+  gate. Widening the population admitted one unresolvable dead template;
+  MAX_UNRESOLVED went from 69 to 70, justified in place.
+Falsified by: `tests/unit/searchQueryAndFallback.test.ts` (four cases red
+pre-fix), and the gate's new arm (red on the old fallback).
+Resolving commits: this branch, round 3
+### DEFECT-0152
+Title: Today's "N payments posted — $X" was computed from an unordered LIMIT 200
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report §8.11 verification, 2026-09-28
+Description: The Today receipts read up to 200 payments, sends and task
+runs with no ORDER BY (`server/routes-today.ts`). Past 200 in the window, the
+count, the dollar total and the "latest" time were computed over an arbitrary
+subset.
+Remediation plan: DONE. The route aggregates in SQL: count, sum and max per
+source, sends grouped by channel. `deriveReceipts` takes those totals.
+Falsified by: two DEFECT-0152 cases in `tests/unit/todayReceipts.test.ts`,
+red pre-fix.
+Resolving commits: this branch, round 3
+### DEFECT-0153
+Title: The tax-delinquent import kept no parcel identity and deduped nothing
+Severity: P1
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: independent audit of DEFECT-0140, 2026-09-28
+Description: `POST /api/leads/import/tax-delinquent`
+(`server/routes-leads.ts`) wrote the parcel id and county only into notes
+and tags, with an empty state for rows lacking one. Re-importing a county
+list duplicated every row, and these leads were invisible to parcel dedupe
+and to the parcel-change detector. The shared dedupe also had three
+normalization gaps:
+- it did not strip "County";
+- it did not collapse whitespace;
+- its database pre-filter matched APNs exactly, so "abc-1" was never fetched
+  for an incoming "ABC-1".
+Remediation plan: DONE.
+- The APN and county are written onto the lead, and parcels already present
+  are skipped and counted.
+- `server/services/leads/parcelDedupe.ts` keys on the canonical
+  `normalizeParcelRef`/`parcelKey`.
+- All three import paths pre-filter on the normalized APN.
+Falsified by: two cases in `tests/unit/leadEventEmission.test.ts`, red
+pre-fix.
+Resolving commits: this branch, round 3
+### DEFECT-0154
+Title: A customer's support chat could read other organizations' support resolutions
+Severity: P0
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: cross-org privacy trace, 2026-09-28
+Description: The `apply_self_healing_fix` support tool (settings_write, no
+approval tap) called `getKnownFixPatterns`
+(`server/services/paxLearning.ts`). It read every tenant's
+`support_resolution_history` and every cross-org learning, with no org
+filter and no k-anonymity. It returned the matched row's
+`autoFixAction || resolutionApproach` to the model and the customer: free
+text written from another org's ticket. A one-letter pattern matched the top
+row, so varying it walked the list. Any org could also plant rows, which
+reached other orgs' model context, and keyword matches let a tenant run
+platform-wide operations (the whole job queue, a health check).
+Remediation plan: DONE.
+- Patterns come only from the caller's own resolution history, or from
+  cross-org learnings with at least 3 contributing orgs, via their canonical
+  `autoFixAction`.
+- What returns is an action category (`clear_cache` / `retry_jobs` /
+  `resync` / `manual`), never stored text.
+- Patterns under 3 characters match nothing.
+- Platform-wide actions need `allowPlatformActions`, which chat never sets.
+- Shared counters move by row id, not an unescaped LIKE.
+
+`sophiePrivacyGuard` (consent, anonymisation, k) still has no callers;
+wiring consent into the learning writers is a founder data-policy decision
+and is not done here.
+Falsified by: `tests/unit/selfHealingFixIsTenantScoped.test.ts` (all five
+cases red pre-fix).
+Resolving commits: this branch, round 3
+### DEFECT-0155
+Title: The market network served a single operator's just-closed deal as the county's price per acre
+Severity: P1
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: cross-org privacy trace, 2026-09-28
+Description: `contributeClosedDealToNetwork`
+(`server/services/marketNetworkContributor.ts`) wrote each closed deal as
+its own `market_metrics` row: org NULL, periodType `transaction`, median set
+to that deal's $/acre. Every other reader took the county's latest row:
+- `marketIntelligence`
+- `priceOptimizer`
+- `dispositionOptimizer`
+- `portfolioSentinel`
+
+So a customer's market health showed another operator's deal, and
+`analyzeMarket` re-published it as a "monthly" metric. The cohort floor
+counted deals, not operators, so one operator's 5 deals could be the whole
+cohort. Min and max were single deals, and the copy claimed "N AcreOS
+operators … over the last 90 days", which was not true.
+Remediation plan: DONE.
+- Every reader applies `publishedMarketMetric()`, which excludes raw
+  contribution rows.
+- Contributions carry a hashed contributor tag. Serving needs at least 5
+  deals from at least 3 distinct tagged operators; untagged legacy rows fail
+  closed.
+- Min and max are gone.
+- The copy states transactions, with no date window.
+
+"Monthly" rows that earlier re-publications derived from single deals remain
+in the table. Removing them is a data deletion, a founder decision.
+Falsified by: `tests/unit/marketNetworkIsKAnonymous.test.ts` (behaviour, plus
+a population gate over every `market_metrics` reader; five cases red
+pre-fix).
+Resolving commits: this branch, round 3
+### DEFECT-0156
+Title: An unfloored cross-org deal benchmark let a caller solve for another operator's profit per deal
+Severity: P2
+Status: FIXED BY DELETION (round 3, 2026-09-28)
+Surfaced by lenses: cross-org privacy trace, 2026-09-28
+Description: `GET /api/platform/benchmarks`
+(`server/routes-platform-features.ts`) averaged every org's closed deals,
+the caller's own included. Its only gate was "25 organizations exist", and
+every signup is one. No client called it.
+Remediation plan: DONE. Deleted, and the absence is pinned.
+Falsified by: `tests/unit/platformBenchmarksStayDeleted.test.ts`.
+Resolving commits: this branch, round 3
+### DEFECT-0157
+Title: Syndication showed "No properties found." to everyone
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report §8 verification, 2026-09-28
+Description: `client/src/pages/syndication.tsx` read `.properties` from a
+`{ data, total }` envelope, so no one could select a property to syndicate.
+It also cached that envelope under the shared `["/api/properties"]` key,
+which the Map then rendered as zero pins.
+Remediation plan: DONE. It uses its own key and reads `data`. A failed read
+shows an error, and a partial list says so.
+Falsified by: `tests/unit/mapCountsTheWholeBook.test.ts` (red pre-fix).
+Resolving commits: this branch, round 3
+### DEFECT-0158
+Title: The Map summarised the first page as the whole book
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report §8.11, verified 2026-09-28
+Description: `client/src/pages/maps.tsx` loaded 100 properties and 100 deals
+under shared cache keys, and summed several figures from that page as if it
+were the whole book:
+- the pin badge;
+- the Active and Closed-$ pills;
+- the owned acres.
+
+`PersonaMapStrip` counted "owner targets" from the default 25-row lead
+page.
+Remediation plan: DONE.
+- The Map has its own keys.
+- The deal pills come from `/api/deals/aggregates`.
+- The badge says "newest N of M" when the pins are a page.
+- Owned acres is hidden when the list is partial.
+- The strips count leads from the server's `total`. A failed or pending
+  count is not treated as zero.
+Falsified by: `tests/unit/mapCountsTheWholeBook.test.ts` (red pre-fix).
+Resolving commits: this branch, round 3
+### DEFECT-0159
+Title: The data-coop and credit-benchmark privacy floors count parcels, not operators
+Severity: P2
+Status: OPEN
+Surfaced by lenses: cross-org privacy trace, 2026-09-28
+Description: The county rollup uses `HAVING COUNT(DISTINCT apn) >= 5`
+(`server/services/dataCoop/countyRollupJob.ts`), and credit benchmarking sets its cohort
+by parcels (`server/services/creditBenchmarking.ts`). One operator with 5
+parcels in a county can be the whole cohort behind the accepted $/acre
+percentiles served by the market-heat routes. The fix mirrors DEFECT-0155: a
+distinct-contributor floor. Neither has an opt-in, which is the same
+data-policy decision noted on DEFECT-0154.
+Resolving commits: —
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -3787,12 +3975,12 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 1   | 8   | 9     |
-| FIXED  | 12  | 76  | 50  | 138   |
+| OPEN   | 0   | 1   | 9   | 10    |
+| FIXED  | 13  | 78  | 55  | 146   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **80** | **58** | **150** |
+| **Total** | **13** | **82** | **64** | **159** |
 
-Recounted from the entries themselves on 2026-09-28 (150 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (159 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

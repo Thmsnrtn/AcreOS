@@ -81,7 +81,12 @@ const ROOTS = ["server", "scripts", "tests"].map((d) => path.join(ROOT, d));
 
 /** Baselines, measured 2026-09-05. Down-only for ghosts; floors for population. */
 const MAX_GHOSTS = 0;
-const MAX_UNRESOLVED = 69;
+// 69 → 70 (2026-09-28, DEFECT-0151): the quoted-identifier arm widened the
+// population, admitting sophiePrivacyGuard.meetsKAnonymity's
+// `COUNT(DISTINCT "orgHash") FROM sophie_cross_org_learnings` — a table the
+// schema does not model. It has no callers and fails closed (catch → false);
+// it is not newly unread code, it is newly READ code this gate cannot resolve.
+const MAX_UNRESOLVED = 70;
 const MIN_TEMPLATES = 800;
 const MIN_WITH_COLUMNS = 150;
 
@@ -186,7 +191,19 @@ function scan() {
           if (/^[a-z][a-z0-9_]*$/.test(col)) inserted.push([table, col] as const);
         }
       }
-      if (!bare.length && !qualified.length && !inserted.length) continue;
+      // QUOTED camelCase identifiers. `BARE` requires snake_case, so
+      // `WHERE "organizationId" = …` and `"firstName" ILIKE …` — the ORM's
+      // property names, not the columns — were outside this gate entirely. The
+      // ⌘K search fallback queried exactly those and threw on every call
+      // (DEFECT-0151). SQL string literals are blanked first (a JSON key in
+      // '{"simulationMode": true}' is data), and an alias the template defines
+      // (`AS "firstName"`) is a name it may reuse, not a column.
+      const noStrings = lit.replace(/'(?:[^']|'')*'/g, "''");
+      const definedAliases = new Set([...noStrings.matchAll(/\bAS\s+"([A-Za-z_][A-Za-z0-9_]*)"/gi)].map((a) => a[1]));
+      const quoted = [...noStrings.matchAll(/(?<!\bAS\s{0,4})"([a-z][a-z0-9]*[A-Z][A-Za-z0-9]*)"/g)]
+        .map((q) => q[1])
+        .filter((n) => !definedAliases.has(n));
+      if (!bare.length && !qualified.length && !inserted.length && !quoted.length) continue;
       withColumns++;
 
       // Tables named by the template itself, with their aliases.
@@ -223,6 +240,9 @@ function scan() {
 
       const rel = path.relative(ROOT, f);
       const excerpt = lit.split("\n").join(" ").replace(/\s+/g, " ").trim().slice(0, 70);
+      for (const n of quoted) {
+        if (!union.has(n)) ghosts.push({ file: rel, column: `"${n}"`, where: excerpt });
+      }
       for (const n of bare) {
         if (!union.has(n)) ghosts.push({ file: rel, column: n, where: excerpt });
       }

@@ -141,7 +141,9 @@ describe("the core-data doors distinguish empty from failed", () => {
   const props = fs.readFileSync(path.join(ROOT, "client/src/hooks/use-properties.ts"), "utf8");
 
   it("the map's parcel read throws instead of emptying the map", () => {
-    const at = maps.indexOf('queryKey: ["/api/properties"]');
+    // The Map's parcel read has its own key since DEFECT-0158 (the shared
+    // ["/api/properties"] key held other pages' shapes).
+    const at = maps.indexOf('queryKey: ["maps", "properties"]');
     expect(at, "the map's properties query is gone").toBeGreaterThan(-1);
     const body = maps.slice(at, maps.indexOf("});", at));
     expect(body, "the map swallows a failed parcel read into [] again").not.toContain(

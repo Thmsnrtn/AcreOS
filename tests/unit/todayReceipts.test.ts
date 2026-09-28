@@ -16,6 +16,9 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { stripComments } from "../helpers/stripComments";
 import {
   deriveReceipts,
   clampReceiptsSince,
@@ -102,6 +105,32 @@ describe("deriveReceipts — real events only, no padding", () => {
       payments: [{ id: 3, amount: "10", processedAt: "2026-06-10T10:00:00.000Z" }],
     });
     expect(receipts.map((r) => r.id)).toEqual(["payments-posted", "sends-email", "sends-sms"]);
+  });
+});
+
+describe("DEFECT-0152 — receipts come from exact aggregates, not a capped page", () => {
+  it("totals replace the row lists: 350 payments, the full dollar sum, the true latest time", () => {
+    const receipts = deriveReceipts({
+      sends: [],
+      payments: [],
+      totals: {
+        sendsByChannel: [{ channel: "email", count: 412, latestAt: "2026-06-10T08:00:00.000Z" }],
+        payments: { count: 350, total: 91234.5, latestAt: "2026-06-10T09:00:00.000Z" },
+        taskRuns: { count: 0, latestAt: null },
+      },
+    });
+    expect(receipts.find((r) => r.id === "payments-posted")!.label).toBe("350 payments posted — $91,235");
+    expect(receipts.find((r) => r.id === "sends-email")!.label).toBe("Pax sent 412 follow-up emails");
+    expect(receipts.find((r) => r.id === "task-runs")).toBeUndefined();
+  });
+
+  it("the route aggregates in SQL and never counts a LIMITed page", () => {
+    const src = stripComments(readFileSync(resolve(__dirname, "../../server/routes-today.ts"), "utf8"));
+    const at = src.indexOf("const receiptsSince");
+    const block = src.slice(at, src.indexOf("receipts = deriveReceipts(", at) + 400);
+    expect(block).toMatch(/totals:\s*\{/);
+    expect(block).toMatch(/sum\(\$\{paymentsTable\.amount\}\)/);
+    expect(block).not.toMatch(/\.limit\(/);
   });
 });
 

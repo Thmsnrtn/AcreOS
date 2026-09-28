@@ -233,6 +233,17 @@ interface ReceiptsInput {
   payments: Array<{ id: number; amount: string | number | null; processedAt: Date | string | null }>;
   /** Successful pax_scheduled_task_runs rows (the "jobs" receipt source). */
   taskRuns?: Array<{ id: number; runAt: Date | string | null }>;
+  /**
+   * Exact counts, sums and latest timestamps from SQL aggregates. When
+   * present they REPLACE what the row lists would give: the route used to
+   * pass LIMIT-200 row lists with no ORDER BY, so "N payments posted — $X"
+   * was a count and a dollar total over an arbitrary subset (DEFECT-0152).
+   */
+  totals?: {
+    sendsByChannel: Array<{ channel: string; count: number; latestAt: Date | string | null }>;
+    payments: { count: number; total: number; latestAt: Date | string | null };
+    taskRuns: { count: number; latestAt: Date | string | null };
+  };
 }
 
 function latestIso(stamps: Array<Date | string | null>): string | null {
@@ -254,21 +265,29 @@ export function deriveReceipts(input: ReceiptsInput): ReceiptItem[] {
   const receipts: ReceiptItem[] = [];
 
   // Witnessed sends, grouped by channel — each group traces to pax_sends rows.
-  const byChannel = new Map<string, Array<Date | string | null>>();
-  for (const s of input.sends) {
-    const channel = s.channel || "other";
-    const arr = byChannel.get(channel) ?? [];
-    arr.push(s.sentAt);
-    byChannel.set(channel, arr);
+  const byChannel = new Map<string, { count: number; stamps: Array<Date | string | null> }>();
+  if (input.totals) {
+    for (const g of input.totals.sendsByChannel) {
+      byChannel.set(g.channel || "other", { count: Number(g.count) || 0, stamps: [g.latestAt] });
+    }
+  } else {
+    for (const s of input.sends) {
+      const channel = s.channel || "other";
+      const g = byChannel.get(channel) ?? { count: 0, stamps: [] };
+      g.count++;
+      g.stamps.push(s.sentAt);
+      byChannel.set(channel, g);
+    }
   }
-  for (const [channel, stamps] of byChannel) {
+  for (const [channel, g] of byChannel) {
+    if (g.count <= 0) continue;
     const nouns = SEND_CHANNEL_NOUNS[channel] ?? ["send", "sends"];
-    const count = stamps.length;
+    const count = g.count;
     receipts.push({
       id: `sends-${channel}`,
       label: `Pax sent ${count} ${count === 1 ? nouns[0] : nouns[1]}`,
       count,
-      latestAt: latestIso(stamps),
+      latestAt: latestIso(g.stamps),
       // The Pax door is /ai (/pax is a legacy redirect — skip the hop).
       href: "/ai",
     });
@@ -276,29 +295,39 @@ export function deriveReceipts(input: ReceiptsInput): ReceiptItem[] {
 
   // Scheduled jobs that ran — traces to pax_scheduled_task_runs rows with
   // status "success". Failed runs are NOT receipts (nothing got done).
-  if (input.taskRuns && input.taskRuns.length > 0) {
-    const count = input.taskRuns.length;
+  const runs = input.totals
+    ? { count: Number(input.totals.taskRuns.count) || 0, stamps: [input.totals.taskRuns.latestAt] }
+    : { count: input.taskRuns?.length ?? 0, stamps: (input.taskRuns ?? []).map((r) => r.runAt) };
+  if (runs.count > 0) {
+    const count = runs.count;
     receipts.push({
       id: "task-runs",
       label: `Pax ran ${count} scheduled ${count === 1 ? "task" : "tasks"}`,
       count,
-      latestAt: latestIso(input.taskRuns.map((r) => r.runAt)),
+      latestAt: latestIso(runs.stamps),
       href: "/ai",
     });
   }
 
   // Completed payments — traces to payments rows with status "completed".
-  if (input.payments.length > 0) {
-    const total = input.payments.reduce(
-      (sum, p) => sum + (parseFloat(String(p.amount ?? "0") || "0") || 0),
-      0,
-    );
-    const count = input.payments.length;
+  const paid = input.totals
+    ? {
+        count: Number(input.totals.payments.count) || 0,
+        total: Number(input.totals.payments.total) || 0,
+        stamps: [input.totals.payments.latestAt],
+      }
+    : {
+        count: input.payments.length,
+        total: input.payments.reduce((sum, p) => sum + (parseFloat(String(p.amount ?? "0") || "0") || 0), 0),
+        stamps: input.payments.map((p) => p.processedAt),
+      };
+  if (paid.count > 0) {
+    const { count, total } = paid;
     receipts.push({
       id: "payments-posted",
       label: `${count} ${count === 1 ? "payment" : "payments"} posted — $${Math.round(total).toLocaleString("en-US")}`,
       count,
-      latestAt: latestIso(input.payments.map((p) => p.processedAt)),
+      latestAt: latestIso(paid.stamps),
       href: "/money",
     });
   }
@@ -1282,39 +1311,47 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
     const receiptsSince = clampReceiptsSince(Number.isFinite(sinceMs) ? sinceMs : undefined, now);
     let receipts: ReceiptItem[] = [];
     try {
-      const [sendRows, paymentRows, taskRunRows] = await Promise.all([
+      // Aggregated in SQL: exact counts, the exact dollar total and the true
+      // latest timestamp over the whole window (DEFECT-0152).
+      const [sendGroups, [paymentAgg], [runAgg]] = await Promise.all([
         db
-          .select({ id: paxSends.id, channel: paxSends.channel, sentAt: paxSends.sentAt })
+          .select({ channel: paxSends.channel, count: sql<number>`count(*)::int`, latestAt: sql<Date | null>`max(${paxSends.sentAt})` })
           .from(paxSends)
           .where(and(
             eq(paxSends.organizationId, orgId),
             gte(paxSends.sentAt, receiptsSince),
           ))
-          .limit(200),
+          .groupBy(paxSends.channel),
         db
           .select({
-            id: paymentsTable.id,
-            amount: paymentsTable.amount,
-            processedAt: paymentsTable.processedAt,
+            count: sql<number>`count(*)::int`,
+            total: sql<string>`coalesce(sum(${paymentsTable.amount}), 0)`,
+            latestAt: sql<Date | null>`max(${paymentsTable.processedAt})`,
           })
           .from(paymentsTable)
           .where(and(
             eq(paymentsTable.organizationId, orgId),
             eq(paymentsTable.status, "completed"),
             gte(paymentsTable.processedAt, receiptsSince),
-          ))
-          .limit(200),
+          )),
         db
-          .select({ id: paxScheduledTaskRuns.id, runAt: paxScheduledTaskRuns.runAt })
+          .select({ count: sql<number>`count(*)::int`, latestAt: sql<Date | null>`max(${paxScheduledTaskRuns.runAt})` })
           .from(paxScheduledTaskRuns)
           .where(and(
             eq(paxScheduledTaskRuns.organizationId, orgId),
             eq(paxScheduledTaskRuns.status, "success"),
             gte(paxScheduledTaskRuns.runAt, receiptsSince),
-          ))
-          .limit(200),
+          )),
       ]);
-      receipts = deriveReceipts({ sends: sendRows, payments: paymentRows, taskRuns: taskRunRows });
+      receipts = deriveReceipts({
+        sends: [],
+        payments: [],
+        totals: {
+          sendsByChannel: sendGroups.map((g) => ({ channel: g.channel, count: Number(g.count), latestAt: g.latestAt })),
+          payments: { count: Number(paymentAgg?.count ?? 0), total: Number(paymentAgg?.total ?? 0), latestAt: paymentAgg?.latestAt ?? null },
+          taskRuns: { count: Number(runAgg?.count ?? 0), latestAt: runAgg?.latestAt ?? null },
+        },
+      });
     } catch (e) {
       // Non-fatal: no receipts is an honest state; never break Today for it.
       logger.warn("Today: receipts derivation failed", {

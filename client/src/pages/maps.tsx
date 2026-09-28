@@ -1098,26 +1098,35 @@ export default function MapsPage() {
   const minAcresId = useId();
   const maxAcresId = useId();
 
+  // The Map loads the newest 100 of each, under ITS OWN keys (DEFECT-0158).
+  // ["/api/properties"] / ["/api/deals"] are shared by pages that cache 25
+  // rows or the raw { data, total } envelope, which the Map then rendered as
+  // 25 pins or none. `total` is kept so the header can say the pins are a
+  // page, and the deal pills come from the server's aggregates, not the page.
   const {
-    data: propertiesRaw = [],
+    data: propertiesPage,
     isLoading,
     isError: propsError,
     error: propsErr,
     refetch: refetchProps,
-  } = useQuery<Property[]>({
-    queryKey: ["/api/properties"],
+  } = useQuery<{ rows: Property[]; total: number }>({
+    queryKey: ["maps", "properties"],
     queryFn: async () => {
       const res = await okOrThrow(
         await fetch("/api/properties?page=1&pageSize=100", { credentials: "include" }),
       );
-      return listFrom<Property>(await res.json());
+      const json = await res.json();
+      const rows = listFrom<Property>(json);
+      return { rows, total: typeof json?.total === "number" ? json.total : rows.length };
     },
     retry: false,
   });
-  const properties = Array.isArray(propertiesRaw) ? propertiesRaw : [];
+  const properties = propertiesPage?.rows ?? [];
+  const propertiesTotal = propertiesPage?.total ?? properties.length;
+  const propertiesPartial = propertiesTotal > properties.length;
 
   const { data: dealsRaw = [] } = useQuery<DealWithProperty[]>({
-    queryKey: ["/api/deals"],
+    queryKey: ["maps", "deals"],
     queryFn: async () => {
       const res = await okOrThrow(
         await fetch("/api/deals?page=1&pageSize=100", { credentials: "include" }),
@@ -1127,6 +1136,20 @@ export default function MapsPage() {
     retry: false,
   });
   const deals = Array.isArray(dealsRaw) ? dealsRaw : [];
+
+  // Whole-book deal figures for the header pills — the same server
+  // aggregation the Deals door uses.
+  const { data: dealAggregates } = useQuery<{
+    totals: { closedValue: number };
+    stages: { status: string; count: number }[];
+  }>({
+    queryKey: ["/api/deals/aggregates"],
+    queryFn: async () => {
+      const res = await okOrThrow(await fetch("/api/deals/aggregates", { credentials: "include" }));
+      return res.json();
+    },
+    retry: false,
+  });
 
   const dealByPropertyId = useMemo(() => {
     const map: Record<number, DealWithProperty> = {};
@@ -1202,13 +1225,14 @@ export default function MapsPage() {
 
   const propertiesWithCoords = properties.filter((p) => p.latitude && p.longitude).length;
 
+  // null until the aggregates arrive (or if they fail) — never a page's sum.
   const dealStats = useMemo(() => {
-    const active = deals.filter((d) => !["closed", "dead", "cancelled"].includes(d.status));
-    const closed = deals.filter((d) => d.status === "closed");
-    const totalVolume = closed.reduce((s, d) => s + Number(d.acceptedAmount || 0), 0);
-    const pendingValue = active.reduce((s, d) => s + Number(d.acceptedAmount || 0), 0);
-    return { active: active.length, closed: closed.length, totalVolume, pendingValue };
-  }, [deals]);
+    if (!dealAggregates) return null;
+    const active = dealAggregates.stages
+      .filter((st) => !["closed", "dead", "cancelled"].includes(st.status))
+      .reduce((n, st) => n + st.count, 0);
+    return { active, totalVolume: dealAggregates.totals.closedValue };
+  }, [dealAggregates]);
 
   // Portfolio summary stats
   const portfolioStats = useMemo(() => {
@@ -1236,10 +1260,20 @@ export default function MapsPage() {
             <h1 className="text-section-h2 truncate">
               {mapMode === "deals" ? "Portfolio map" : "Property intelligence map"}
             </h1>
-            <Badge variant="secondary" className="text-micro shrink-0 tabular-nums" aria-label={`${filteredProperties.length} of ${propertiesWithCoords} property pins shown`}>
+            <Badge
+              variant="secondary"
+              className="text-micro shrink-0 tabular-nums"
+              aria-label={
+                propertiesPartial
+                  ? `${filteredProperties.length} of ${propertiesWithCoords} pins shown, from your ${properties.length} most recent of ${propertiesTotal} properties`
+                  : `${filteredProperties.length} of ${propertiesWithCoords} property pins shown`
+              }
+              data-testid="badge-map-pins"
+            >
               {filteredProperties.length}/{propertiesWithCoords}
+              {propertiesPartial ? ` · newest ${properties.length} of ${propertiesTotal}` : ""}
             </Badge>
-            {mapMode === "deals" && (
+            {mapMode === "deals" && dealStats && (
               <>
                 <PortfolioStatPill
                   label="Active"
@@ -1253,7 +1287,9 @@ export default function MapsPage() {
                 />
               </>
             )}
-            {mapMode === "properties" && portfolioStats.ownedCount > 0 && (
+            {/* Owned acres is summed from the loaded page, so it is shown only
+                when that page IS the whole book. */}
+            {mapMode === "properties" && !propertiesPartial && portfolioStats.ownedCount > 0 && (
               <PortfolioStatPill
                 label="Owned"
                 value={`${portfolioStats.totalAcres.toFixed(0)} ac`}

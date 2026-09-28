@@ -23,6 +23,24 @@ import {
   Layers,
 } from "lucide-react";
 import type { Note, Lead, Property } from "@shared/schema";
+import { okOrThrow } from "@/lib/fetch-honesty";
+
+/**
+ * The org's lead count, from the server's `total` — the strips used to count
+ * the default 25-row page, so "N owner targets" topped out at 25 for any
+ * real book (DEFECT-0158). null while loading or if the read failed.
+ */
+function useLeadTotal(): number | null {
+  const { data } = useQuery<number>({
+    queryKey: ["maps", "lead-total"],
+    queryFn: async () => {
+      const res = await okOrThrow(await fetch("/api/leads?page=1&pageSize=1", { credentials: "include" }));
+      const json = await res.json();
+      return Number(json?.total ?? 0);
+    },
+  });
+  return data ?? null;
+}
 
 interface Props {
   /**
@@ -165,27 +183,19 @@ function ParcelToolsStrip({
   properties: Property[];
   hasAnyProperties: boolean;
 }) {
-  const { data: leads = [] } = useQuery<Lead[]>({
-    queryKey: ["/api/leads"],
-    // /api/leads returns a paginated envelope ({ data: Lead[] }) — the default
-    // queryFn hands back raw JSON, which crashed every strip calling
-    // leads.filter(...) ("t.filter is not a function" -> ErrorBoundary on
-    // /maps, caught by the customer-surface journey monitor 2026-06-10).
-    queryFn: () => fetchJsonArray<Lead>("/api/leads"),
-  });
+  const leadTotal = useLeadTotal();
 
   const mapped = useMemo(
     () => properties.filter((p) => p.latitude && p.longitude).length,
     [properties],
   );
-  // Owner-targets = seller leads we could door-knock / mail. Untyped leads
-  // default to seller (the land-sourcing motion), matching CurbCaptureStrip.
-  const ownerTargets = useMemo(
-    () => leads.filter((l) => l.type === "seller" || !l.type).length,
-    [leads],
-  );
+  // Every lead, counted by the server. (This counted seller leads in one
+  // 25-row page; the list has no type filter, so the honest whole-book number
+  // is all leads, labelled as such.)
+  const ownerTargets = leadTotal ?? 0;
 
-  if (!hasAnyProperties && ownerTargets === 0) {
+  // A failed or pending count is not "no leads" — the empty state waits for a real 0.
+  if (!hasAnyProperties && leadTotal === 0) {
     return (
       <div className="px-4 md:px-6 py-3 border-b bg-acr-brand-soft/30">
         <EmptyState
@@ -238,7 +248,7 @@ function ParcelToolsStrip({
           <>
             {" · "}
             <span className="tabular-nums text-foreground font-medium">{ownerTargets}</span>{" "}
-            owner target{ownerTargets === 1 ? "" : "s"}
+            lead{ownerTargets === 1 ? "" : "s"}
           </>
         )}
       </span>
@@ -590,18 +600,11 @@ function CurbCaptureStrip({
   leadLabel: string;
   hasAnyProperties: boolean;
 }) {
-  const { data: leads = [] } = useQuery<Lead[]>({
-    queryKey: ["/api/leads"],
-    // /api/leads returns a paginated envelope ({ data: Lead[] }) — the default
-    // queryFn hands back raw JSON, which crashed every strip calling
-    // leads.filter(...) ("t.filter is not a function" -> ErrorBoundary on
-    // /maps, caught by the customer-surface journey monitor 2026-06-10).
-    queryFn: () => fetchJsonArray<Lead>("/api/leads"),
-  });
+  // Counted by the server, not from a 25-row page (DEFECT-0158).
+  const leadTotal = useLeadTotal();
+  const motivated = { length: leadTotal ?? 0 };
 
-  const motivated = leads.filter((l) => l.type === "seller" || !l.type);
-
-  if (!hasAnyProperties && motivated.length === 0) {
+  if (!hasAnyProperties && leadTotal === 0) {
     return (
       <div className="px-4 md:px-6 py-3 border-b bg-acr-brand-soft/30">
         <EmptyState
@@ -644,7 +647,7 @@ function CurbCaptureStrip({
     >
       <span className="text-sm text-muted-foreground">
         <span className="tabular-nums">{motivated.length}</span>{" "}
-        {leadLabel.toLowerCase()}{motivated.length === 1 ? "" : "s"} pinned
+        {leadLabel.toLowerCase()}{motivated.length === 1 ? "" : "s"}
       </span>
     </StripShell>
   );

@@ -35,7 +35,7 @@ import { createLeadContract } from "@shared/contracts";
 import { emitLeadCreated, emitLeadUpdated, safeEmitLeadEvent } from "./services/leadEvents";
 import { validateResponse } from "./utils/contractResponse";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
-import { createParcelDedupeIndex } from "./services/leads/parcelDedupe";
+import { apnMatchForm, createParcelDedupeIndex } from "./services/leads/parcelDedupe";
 
 // Partial update schema for PUT endpoints
 const updateLeadSchema = insertLeadSchema.partial();
@@ -1481,7 +1481,9 @@ export function registerLeadRoutes(app: Express): void {
             .where(
               and(
                 eq(leads.organizationId, org.id),
-                inArray(leads.apn, incomingApns),
+                // Matched in the same form the index compares in: an existing
+                // "abc-1" is the same parcel as an incoming "ABC-1".
+                inArray(sql`upper(regexp_replace(trim(${leads.apn}), '\\s+', ' ', 'g'))`, incomingApns.map(apnMatchForm)),
               ),
             );
           for (const r of existing) {
@@ -1628,13 +1630,43 @@ export function registerLeadRoutes(app: Express): void {
         }
       }
 
-      const results = { successCount: 0, errorCount: 0, errors: [] as any[] };
+      const results = { successCount: 0, errorCount: 0, duplicatesSkipped: 0, errors: [] as any[] };
+
+      // Parcel identity (DEFECT-0153). This path wrote the parcel id and the
+      // county only into notes and tags, and deduped nothing: re-importing a
+      // county list duplicated every row, and these leads were invisible to
+      // every parcel-keyed dedupe and to the parcel-change detector. The APN
+      // and county now land on the lead, and a parcel already present — in
+      // the org or earlier in this file — is skipped.
+      const incomingApns = Array.from(new Set(
+        mappedData.map((r: { parcel_id?: unknown }) => String(r?.parcel_id ?? "").trim()).filter((a: string) => a.length > 0),
+      ));
+      const existingParcels = createParcelDedupeIndex();
+      if (incomingApns.length > 0) {
+        const existing = await db
+          .select({ apn: leads.apn, state: leads.state, county: leads.county })
+          .from(leads)
+          .where(and(
+            eq(leads.organizationId, org.id),
+            inArray(sql`upper(regexp_replace(trim(${leads.apn}), '\\s+', ' ', 'g'))`, incomingApns.map(apnMatchForm)),
+          ));
+        for (const r of existing) if ((r.apn ?? "").trim()) existingParcels.add(r.state, r.county, r.apn ?? "");
+      }
+      const seenParcels = createParcelDedupeIndex();
 
       // Build all lead data upfront, collecting any parse errors per row
       const validLeads: { index: number; data: any }[] = [];
       for (let i = 0; i < mappedData.length; i++) {
         try {
           const row = mappedData[i];
+          const apn = String(row.parcel_id ?? "").trim();
+          if (apn) {
+            if (existingParcels.has(row.state, row.county, apn) || seenParcels.has(row.state, row.county, apn)) {
+              results.duplicatesSkipped++;
+              continue;
+            }
+            seenParcels.add(row.state, row.county, apn);
+          }
 
           // Parse name into first and last name
           let firstName = "Unknown";
@@ -1656,6 +1688,8 @@ export function registerLeadRoutes(app: Express): void {
               city: "",
               state: row.state || "",
               zip: "",
+              apn: apn || null,
+              county: typeof row.county === "string" && row.county.trim() ? row.county.trim() : null,
               source: "tax_delinquent",
               status: "new" as const,
               notes: [

@@ -267,37 +267,13 @@ export function registerPlatformFeatureRoutes(app: Express): void {
     }
   });
 
-  // Platform benchmarks
-  app.get("/api/platform/benchmarks", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      // Check org count threshold
-      const orgCount = await db.execute(sql`SELECT COUNT(*) as count FROM organizations`);
-      const count = parseInt((orgCount.rows?.[0] as any)?.count || "0");
-
-      if (count < 25) {
-        return res.json({ available: false });
-      }
-
-      // Compute anonymized benchmarks
-      const dealStats = await db.execute(sql`
-        SELECT
-          AVG(CAST(accepted_amount AS DECIMAL) - CAST(offer_amount AS DECIMAL)) as avg_profit,
-          AVG(EXTRACT(DAY FROM (closing_date::timestamp - offer_date::timestamp))) as avg_days
-        FROM deals
-        WHERE status = 'closed' AND accepted_amount IS NOT NULL AND offer_amount IS NOT NULL
-      `);
-
-      const row = dealStats.rows?.[0] as any;
-
-      res.json({
-        available: true,
-        avgProfitPerDeal: Math.round(parseFloat(row?.avg_profit || "0")),
-        avgDaysToClose: Math.round(parseFloat(row?.avg_days || "0")),
-      });
-    } catch (error) {
-      Errors.internal(res, error);
-    }
-  });
+  // GET /api/platform/benchmarks was deleted 2026-09-28 (DEFECT-0156). No
+  // client called it, and it averaged every org's closed deals — the
+  // caller's own included — behind nothing but "25 organizations exist": with
+  // one other operator closing deals, a caller could subtract its own and
+  // solve for that operator's profit per deal and days to close. A benchmark
+  // needs a floor of distinct contributing operators; build it on the market
+  // network's k (marketNetworkContributor.ts), not on the org count.
 
   // ─── Behavioral Retention ────────────────────────────────────────
 

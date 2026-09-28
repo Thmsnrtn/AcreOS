@@ -535,6 +535,32 @@ describe("lead.created fires exactly once on every creation path", () => {
     expect(result.successCount).toBe(0);
   });
 
+  it("DEFECT-0153: the tax-delinquent import writes the parcel and skips one already present", async () => {
+    seedLead({ apn: "R-100", state: "TX", county: "Travis" });
+    const res = await request(app)
+      .post("/api/leads/import/tax-delinquent")
+      .send({
+        mappedData: [
+          { owner_name: "Old Parcel", parcel_id: "r-100", state: "TX", county: "Travis County" },
+          { owner_name: "New Parcel", parcel_id: "R-200", state: "TX", county: "Travis" },
+          { owner_name: "Same File Twice", parcel_id: "R-200", state: "TX", county: "Travis" },
+        ],
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.successCount).toBe(1);
+    expect(res.body.duplicatesSkipped).toBe(2);
+    expect(created()).toHaveLength(1);
+    expect(created()[0].data).toMatchObject({ apn: "R-200", county: "Travis" });
+  });
+
+  it("DEFECT-0140: the same county written two ways is one parcel", async () => {
+    seedLead({ apn: "777", state: "TX", county: "Travis County" });
+    const res = await request(app)
+      .post("/api/leads/csv-import")
+      .send({ rows: [{ firstName: "A", lastName: "B", apn: " 777 ", state: "tx", county: "travis" }] });
+    expect(res.body.skippedExisting).toBe(1);
+  });
+
   it("Pax create_lead tool", async () => {
     const out: any = await executeTool(
       "create_lead",

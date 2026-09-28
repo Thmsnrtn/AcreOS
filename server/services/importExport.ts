@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { insertLeadSchema, insertPropertySchema, insertDealSchema, acquiredNotes, leads } from "@shared/schema";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { storage } from "../storage";
 import { db } from "../db";
-import { createParcelDedupeIndex } from "./leads/parcelDedupe";
+import { apnMatchForm, createParcelDedupeIndex } from "./leads/parcelDedupe";
 // Wave B "Wire the engine" — CSV/bulk imports are a lead-creation path, so
 // they must fire lead.created just like the single-create route does.
 import { emitLeadCreated, emitLeadCreatedDurably } from "./leadEvents";
@@ -442,7 +442,7 @@ export async function importLeads(
     const existing = await db
       .select({ apn: leads.apn, state: leads.state, county: leads.county })
       .from(leads)
-      .where(and(eq(leads.organizationId, organizationId), inArray(leads.apn, incomingApns.slice(i, i + 1000))));
+      .where(and(eq(leads.organizationId, organizationId), inArray(sql`upper(regexp_replace(trim(${leads.apn}), '\\s+', ' ', 'g'))`, incomingApns.slice(i, i + 1000).map(apnMatchForm))));
     for (const r of existing) {
       if ((r.apn ?? "").trim()) existingParcels.add(r.state, r.county, r.apn ?? "");
     }

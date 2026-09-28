@@ -9,6 +9,22 @@ import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
 
+/** k-anonymity: a cross-org pattern is usable only once this many orgs contributed. */
+const CROSS_ORG_MIN_ORGS = 3;
+
+/**
+ * The only fixes self-healing can run. A stored action is mapped to one of
+ * these, and the category — never the stored text — is what a caller sees.
+ */
+type SelfHealCategory = "clear_cache" | "retry_jobs" | "resync" | "manual";
+function selfHealCategory(action: string | null | undefined): SelfHealCategory {
+  const a = (action ?? "").toLowerCase();
+  if (a.includes("cache") || a.includes("clear")) return "clear_cache";
+  if (a.includes("retry") || a.includes("job")) return "retry_jobs";
+  if (a.includes("sync") || a.includes("refresh")) return "resync";
+  return "manual";
+}
+
 const MAX_RETRY_ATTEMPTS = 3;
 const BASE_BACKOFF_MS = 1000;
 // Cap exponential backoff so a runaway failedCount can't overflow int32
@@ -574,41 +590,64 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
     };
   },
   
-  async getKnownFixPatterns(): Promise<Array<{
+  /**
+   * Fix patterns a given org may use (DEFECT-0154).
+   *
+   * This read ALL of pax_cross_org_learnings and ALL tenants'
+   * support_resolution_history with no org filter and no k, and returned
+   * `autoFixAction || resolutionApproach` — free text written from another
+   * org's ticket — to a customer's support chat through
+   * apply_self_healing_fix. Now:
+   *   - the caller's OWN successful resolutions, and
+   *   - cross-org patterns only when at least CROSS_ORG_MIN_ORGS distinct orgs
+   *     contributed (the k-anonymity floor sophiePrivacyGuard declared and
+   *     nothing enforced), and only via their canonical autoFixAction;
+   * and what is returned is an action CATEGORY, never the source text.
+   */
+  async getKnownFixPatterns(orgId: number): Promise<Array<{
     issuePattern: string;
-    fixAction: string;
+    fixAction: SelfHealCategory;
     successRate: number;
     avgEffort: number;
     isAutoFixable: boolean;
+    crossOrgId: number | null;
   }>> {
     const crossOrgPatterns = await db.select()
       .from(paxCrossOrgLearnings)
-      .where(gte(paxCrossOrgLearnings.successRate, "70"))
+      .where(and(
+        gte(paxCrossOrgLearnings.successRate, "70"),
+        gte(paxCrossOrgLearnings.contributingOrgs, CROSS_ORG_MIN_ORGS),
+      ))
       .orderBy(desc(paxCrossOrgLearnings.successRate))
       .limit(100);
-    
+
     const patterns: Array<{
       issuePattern: string;
-      fixAction: string;
+      fixAction: SelfHealCategory;
       successRate: number;
       avgEffort: number;
       isAutoFixable: boolean;
+      crossOrgId: number | null;
     }> = crossOrgPatterns.map(p => ({
       issuePattern: p.issuePattern,
-      fixAction: p.autoFixAction || p.resolutionApproach,
+      fixAction: selfHealCategory(p.autoFixAction),
       successRate: parseFloat(p.successRate || "0") / 100,
       avgEffort: 0,
-      isAutoFixable: p.isAutoFixable || false
+      isAutoFixable: p.isAutoFixable || false,
+      crossOrgId: p.id,
     }));
-    
+
     const resolutions = await db.select()
       .from(supportResolutionHistory)
-      .where(eq(supportResolutionHistory.wasSuccessful, true))
+      .where(and(
+        eq(supportResolutionHistory.organizationId, orgId),
+        eq(supportResolutionHistory.wasSuccessful, true),
+      ))
       .orderBy(desc(supportResolutionHistory.createdAt))
       .limit(200);
-    
+
     const resolutionPatterns = new Map<string, { attempts: number; successes: number; totalEffort: number; fixAction: string }>();
-    
+
     for (const res of resolutions) {
       const key = res.issuePattern || res.issueType;
       const existing = resolutionPatterns.get(key) || { attempts: 0, successes: 0, totalEffort: 0, fixAction: res.resolutionApproach || "" };
@@ -617,23 +656,24 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
       if (res.customerEffortScore) existing.totalEffort += res.customerEffortScore;
       resolutionPatterns.set(key, existing);
     }
-    
+
     for (const [pattern, data] of resolutionPatterns.entries()) {
       const successRate = data.successes / data.attempts;
       if (successRate >= 0.7 && !patterns.some(p => p.issuePattern === pattern)) {
         patterns.push({
           issuePattern: pattern,
-          fixAction: data.fixAction,
+          fixAction: selfHealCategory(data.fixAction),
           successRate,
           avgEffort: data.totalEffort / data.attempts || 0,
-          isAutoFixable: false
+          isAutoFixable: false,
+          crossOrgId: null,
         });
       }
     }
-    
+
     return patterns;
   },
-  
+
   async applySelfHealingFix(
     orgId: number, 
     issuePattern: string,
@@ -641,6 +681,12 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
       observationId?: number;
       ticketId?: number;
       maxRetries?: number;
+      /**
+       * Allow fixes whose effect is platform-wide (re-running the whole job
+       * queue, a platform health check). Off for anything a customer's chat
+       * triggers — one tenant must not drive platform operations.
+       */
+      allowPlatformActions?: boolean;
     }
   ): Promise<{
     applied: boolean;
@@ -679,10 +725,12 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
       };
     }
     
-    const knownFixes = await this.getKnownFixPatterns();
-    const matchingFix = knownFixes.find(f => 
-      issuePattern.toLowerCase().includes(f.issuePattern.toLowerCase()) ||
-      f.issuePattern.toLowerCase().includes(issuePattern.toLowerCase())
+    // A near-empty pattern matched every stored pattern and walked the list.
+    const needle = issuePattern.trim().toLowerCase();
+    const knownFixes = needle.length >= 3 ? await this.getKnownFixPatterns(orgId) : [];
+    const matchingFix = knownFixes.find(f =>
+      needle.includes(f.issuePattern.toLowerCase()) ||
+      f.issuePattern.toLowerCase().includes(needle)
     );
     
     if (!matchingFix) {
@@ -712,25 +760,26 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
       await new Promise(resolve => setTimeout(resolve, backoffDelay));
     }
     
-    const fixAction = matchingFix.fixAction.toLowerCase();
+    const fixAction = matchingFix.fixAction;
     let result = "";
     let success = false;
     let errorMessage = "";
-    
+    const platformAllowed = options?.allowPlatformActions === true;
+
     try {
-      if (fixAction.includes("cache") || fixAction.includes("clear")) {
+      if (fixAction === "clear_cache") {
         const { invalidateContextCache } = await import("./aiContextAggregator");
         invalidateContextCache(orgId);
         result = "Cache cleared successfully";
         success = true;
         logger.info(`[pax-self-heal] Cleared cache for org ${orgId} (attempt ${currentAttemptNumber})`);
-      } else if (fixAction.includes("retry") || fixAction.includes("job")) {
+      } else if (fixAction === "retry_jobs" && platformAllowed) {
         const { jobQueueService } = await import("./jobQueue");
         const jobResult = await jobQueueService.processJobs();
         result = `Failed jobs retried: ${jobResult.processed} processed, ${jobResult.failed} failed`;
         success = jobResult.failed === 0;
         logger.info(`[pax-self-heal] Retried jobs for org ${orgId}: ${JSON.stringify(jobResult)}`);
-      } else if (fixAction.includes("sync") || fixAction.includes("refresh")) {
+      } else if (fixAction === "resync" && platformAllowed) {
         const { healthCheckService } = await import("./healthCheck");
         await healthCheckService.checkAll();
         result = "Data resynced via health check";
@@ -784,24 +833,26 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
         logger.error("[pax-learning] Error saving self-heal memory", undefined, { metadata: { detail: memErr } });
       }
       
+      // The shared pattern's counters move only for the row that matched,
+      // by id — an unescaped LIKE let one org's attempts rewrite others'.
       try {
-        await db.update(paxCrossOrgLearnings)
+        if (matchingFix.crossOrgId !== null) await db.update(paxCrossOrgLearnings)
           .set({
             successCount: sql`${paxCrossOrgLearnings.successCount} + 1`,
             updatedAt: new Date()
           })
-          .where(like(paxCrossOrgLearnings.issuePattern, `%${matchingFix.issuePattern.substring(0, 50)}%`));
+          .where(eq(paxCrossOrgLearnings.id, matchingFix.crossOrgId));
       } catch (updateErr) {
         logger.error("[pax-learning] Error updating cross-org success count", undefined, { metadata: { detail: updateErr } });
       }
     } else {
       try {
-        await db.update(paxCrossOrgLearnings)
+        if (matchingFix.crossOrgId !== null) await db.update(paxCrossOrgLearnings)
           .set({
             failureCount: sql`${paxCrossOrgLearnings.failureCount} + 1`,
             updatedAt: new Date()
           })
-          .where(like(paxCrossOrgLearnings.issuePattern, `%${matchingFix.issuePattern.substring(0, 50)}%`));
+          .where(eq(paxCrossOrgLearnings.id, matchingFix.crossOrgId));
       } catch (updateErr) {
         logger.error("[pax-learning] Error updating cross-org failure count", undefined, { metadata: { detail: updateErr } });
       }

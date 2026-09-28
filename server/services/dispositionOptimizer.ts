@@ -4,6 +4,7 @@
  */
 
 import { db } from "../db";
+import { publishedMarketMetric } from "./marketNetworkContributor";
 import {
   dispositionRecommendations,
   properties,
@@ -741,6 +742,7 @@ export class DispositionOptimizerService {
   private async getMarketCondition(county: string, state: string): Promise<string> {
     const recentMetrics = await db.select().from(marketMetrics)
       .where(and(
+        publishedMarketMetric(),
         eq(marketMetrics.county, county),
         eq(marketMetrics.state, state)
       ))
@@ -757,6 +759,7 @@ export class DispositionOptimizerService {
   private async getAverageDaysOnMarket(county: string, state: string): Promise<number> {
     const recentMetrics = await db.select().from(marketMetrics)
       .where(and(
+        publishedMarketMetric(),
         eq(marketMetrics.county, county),
         eq(marketMetrics.state, state)
       ))

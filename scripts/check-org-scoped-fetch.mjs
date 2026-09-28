@@ -133,7 +133,6 @@ const BASELINE_OFFENDERS = new Set([
   "server/services/dunning.ts::getSummary",
   "server/services/etlHandlers.ts::upsert",
   "server/services/paxLearning.ts::getAllLearnings",
-  "server/services/paxLearning.ts::getKnownFixPatterns",
   "server/storage.ts::getSubscriptionStats",
   "server/storage/platformOpsRepo.ts::getApiUsageStats",
   "server/storage/supportOpsRepo.ts::acknowledgeAlert",

@@ -24,6 +24,7 @@
  */
 
 import { db } from "../db";
+import { logger } from "../utils/logger";
 import { sql } from "drizzle-orm";
 import { leads, properties, deals } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -72,20 +73,18 @@ export const fullTextSearch = {
 
     const q = query.trim();
 
-    // Build tsquery — AND of all words, prefix-matching the last word
-    // e.g. "john sm" → "john & sm:*"
-    const words = q.split(/\s+/).filter(Boolean);
-    const tsQuery =
-      words
-        .slice(0, -1)
-        .map((w) => w.replace(/[^a-zA-Z0-9]/g, "") + ":*")
-        .join(" & ") +
-      (words.length > 0
-        ? (words.length > 1 ? " & " : "") +
-          words[words.length - 1].replace(/[^a-zA-Z0-9]/g, "") + ":*"
-        : "");
-
-    if (!tsQuery || tsQuery === ":*") return [];
+    // Build tsquery — AND of every word as a prefix, e.g. "john sm" →
+    // "john:* & sm:*". Each word keeps its letters and digits in ANY script
+    // and a word left empty is DROPPED: stripping to ASCII turned "Smith -
+    // Lot 4" into "Smith:* & :* & Lot:* & 4:*" and "Muñoz" into "Mu:* & oz"
+    // — a tsquery syntax error, so every such search fell to the fallback,
+    // which then failed too (DEFECT-0151).
+    const words = q
+      .split(/\s+/)
+      .map((w) => w.replace(/[^\p{L}\p{N}]/gu, ""))
+      .filter((w) => w.length > 0);
+    if (words.length === 0) return [];
+    const tsQuery = words.map((w) => `${w}:*`).join(" & ");
 
     const results: SearchResult[] = [];
     const phoneShape = isPhoneShaped(q);
@@ -118,6 +117,7 @@ export const fullTextSearch = {
         FROM leads
         WHERE
           organization_id = ${orgId}
+          AND deleted_at IS NULL
           AND (
             to_tsvector('simple', unaccent(
               coalesce(first_name,'') || ' ' ||
@@ -164,6 +164,7 @@ export const fullTextSearch = {
         FROM properties
         WHERE
           organization_id = ${orgId}
+          AND deleted_at IS NULL
           AND to_tsvector('simple', unaccent(
             coalesce(address,'') || ' ' ||
             coalesce(apn,'') || ' ' ||
@@ -209,6 +210,7 @@ export const fullTextSearch = {
         LEFT JOIN properties p ON p.id = d.property_id
         WHERE
           d.organization_id = ${orgId}
+          AND d.deleted_at IS NULL
           AND to_tsvector('simple', unaccent(
             coalesce(d.notes,'') || ' ' ||
             coalesce(d.title_company,'') || ' ' ||
@@ -231,6 +233,10 @@ export const fullTextSearch = {
       }
     } catch (err: any) {
       // GIN indexes exist (migration 0010); fall back to ILIKE on unexpected error
+      logger.warn("[fullTextSearch] tsvector search failed; using ILIKE fallback", {
+        organizationId: orgId,
+        error: err instanceof Error ? err.message : String(err),
+      });
       return fullTextSearch.fallbackSearch(orgId, q, limit);
     }
 
@@ -250,51 +256,55 @@ export const fullTextSearch = {
     const pattern = `%${query}%`;
     const results: SearchResult[] = [];
 
-    try {
-      const leadRows = await db.execute<any>(sql`
-        SELECT id, "firstName", "lastName", email, phone, address
-        FROM leads
-        WHERE "organizationId" = ${orgId}
-          AND (
-            "firstName" ILIKE ${pattern} OR
-            "lastName" ILIKE ${pattern} OR
-            email ILIKE ${pattern} OR
-            phone ILIKE ${pattern} OR
-            address ILIKE ${pattern}
-          )
-        LIMIT ${Math.ceil(limit / 2)}
-      `);
+    // The columns are snake_case. This queried "firstName" / "organizationId"
+    // — columns that do not exist — so every fallback threw into a silent
+    // catch and returned nothing (DEFECT-0151). A failure now propagates:
+    // "search failed" is not "no results".
+    const leadRows = await db.execute<any>(sql`
+      SELECT id, first_name AS "firstName", last_name AS "lastName", email, phone, address
+      FROM leads
+      WHERE organization_id = ${orgId}
+        AND deleted_at IS NULL
+        AND (
+          first_name ILIKE ${pattern} OR
+          last_name ILIKE ${pattern} OR
+          email ILIKE ${pattern} OR
+          phone ILIKE ${pattern} OR
+          address ILIKE ${pattern}
+        )
+      LIMIT ${Math.ceil(limit / 2)}
+    `);
 
-      for (const row of (leadRows as any)?.rows ?? []) {
-        results.push({
-          type: "lead",
-          id: row.id,
-          title: [row.firstName, row.lastName].filter(Boolean).join(" ") || "Unknown",
-          subtitle: row.email || row.phone || "",
-          rank: 0.5,
-          url: `/leads?id=${row.id}`,
-        });
-      }
+    for (const row of (leadRows as any)?.rows ?? []) {
+      results.push({
+        type: "lead",
+        id: row.id,
+        title: [row.firstName, row.lastName].filter(Boolean).join(" ") || "Unknown",
+        subtitle: row.email || row.phone || "",
+        rank: 0.5,
+        url: `/leads?id=${row.id}`,
+      });
+    }
 
-      const propRows = await db.execute<any>(sql`
-        SELECT id, address, apn, city, state
-        FROM properties
-        WHERE "organizationId" = ${orgId}
-          AND (address ILIKE ${pattern} OR apn ILIKE ${pattern} OR city ILIKE ${pattern})
-        LIMIT ${Math.ceil(limit / 3)}
-      `);
+    const propRows = await db.execute<any>(sql`
+      SELECT id, address, apn, city, state
+      FROM properties
+      WHERE organization_id = ${orgId}
+        AND deleted_at IS NULL
+        AND (address ILIKE ${pattern} OR apn ILIKE ${pattern} OR city ILIKE ${pattern})
+      LIMIT ${Math.ceil(limit / 3)}
+    `);
 
-      for (const row of (propRows as any)?.rows ?? []) {
-        results.push({
-          type: "property",
-          id: row.id,
-          title: row.address || `APN: ${row.apn}`,
-          subtitle: [row.city, row.state].filter(Boolean).join(", "),
-          rank: 0.4,
-          url: `/properties?id=${row.id}`,
-        });
-      }
-    } catch {}
+    for (const row of (propRows as any)?.rows ?? []) {
+      results.push({
+        type: "property",
+        id: row.id,
+        title: row.address || `APN: ${row.apn}`,
+        subtitle: [row.city, row.state].filter(Boolean).join(", "),
+        rank: 0.4,
+        url: `/properties?id=${row.id}`,
+      });
+    }
 
     return results.slice(0, limit);
   },

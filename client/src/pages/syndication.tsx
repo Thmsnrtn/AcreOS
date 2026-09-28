@@ -20,6 +20,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { apiRequest } from "@/lib/queryClient";
+import { okOrThrow } from "@/lib/fetch-honesty";
 
 interface Platform {
   id: string;
@@ -66,9 +67,17 @@ export default function SyndicationPage() {
     queryFn: () => fetch("/api/syndication/platforms").then(r => r.json()),
   });
 
-  const { data: propertiesData } = useQuery<{ properties: Property[] }>({
-    queryKey: ["/api/properties"],
-    queryFn: () => fetch("/api/properties").then(r => r.json()),
+  // /api/properties answers { data, total, … }. This read `.properties` —
+  // which does not exist — so every customer saw "No properties found." and
+  // could syndicate nothing; it also wrote that envelope into the SHARED
+  // ["/api/properties"] cache that the Map reads as an array (DEFECT-0157).
+  // Own key, the real shape, and a failed read is an error, not an empty list.
+  const { data: propertiesData, isError: propertiesError } = useQuery<{ data: Property[]; total: number }>({
+    queryKey: ["syndication", "properties"],
+    queryFn: async () => {
+      const r = await okOrThrow(await fetch("/api/properties?pageSize=100", { credentials: "include" }));
+      return r.json();
+    },
   });
 
   async function syndicateProperty() {
@@ -99,7 +108,9 @@ export default function SyndicationPage() {
   }
 
   const platforms = platformData?.platforms || [];
-  const properties = (propertiesData?.properties || []).filter(p => {
+  const loadedProperties = propertiesData?.data ?? [];
+  const totalProperties = propertiesData?.total ?? loadedProperties.length;
+  const properties = loadedProperties.filter(p => {
     if (!propertySearch) return true;
     const q = propertySearch.toLowerCase();
     return (p.address || "").toLowerCase().includes(q) ||
@@ -135,7 +146,16 @@ export default function SyndicationPage() {
                 spellCheck={false}
               />
               <div className="max-h-80 overflow-y-auto">
-                {properties.length === 0 ? (
+                {totalProperties > loadedProperties.length && (
+                  <p className="text-xs text-muted-foreground mb-2" data-testid="text-syndication-partial">
+                    Showing your {loadedProperties.length} most recent of {totalProperties} properties — search filters these.
+                  </p>
+                )}
+                {propertiesError ? (
+                  <p className="text-sm text-destructive text-center py-4" role="alert">
+                    Couldn't load your properties. Refresh to try again.
+                  </p>
+                ) : properties.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">No properties found.</p>
                 ) : (
                   <ul className="space-y-2" aria-label="Properties">
