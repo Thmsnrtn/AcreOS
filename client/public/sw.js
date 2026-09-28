@@ -63,6 +63,18 @@ const OFFLINE_QUEUEABLE_ROUTES = [
   '/api/field-scout/quick-add', // DriveMode quick-save (rural/dead-zone)
 ];
 
+// A MULTIPART body is never queued (DEFECT-0164). The queue stores the body
+// as request.text(), which decodes binary as UTF-8 and destroys it — so a
+// DriveMode photo (POST /api/leads/:id/photos, under the /api/leads prefix)
+// was mangled on the way in, answered 202 "Saved offline", and DriveMode
+// toasted "Saved to the lead." over bytes that could never replay. An upload
+// that cannot be queued fails honestly to its caller instead.
+function isOfflineQueueable(method, pathname, contentType) {
+  if (!['POST', 'PUT', 'PATCH'].includes(method)) return false;
+  if ((contentType || '').toLowerCase().startsWith('multipart/')) return false;
+  return OFFLINE_QUEUEABLE_ROUTES.some((r) => pathname.startsWith(r));
+}
+
 // ---------------------------------------------------------------------------
 // IndexedDB helpers for offline queue
 // ---------------------------------------------------------------------------
@@ -262,10 +274,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   // Intercept offline-queueable mutations (POST/PUT/PATCH)
-  if (
-    ['POST', 'PUT', 'PATCH'].includes(request.method) &&
-    OFFLINE_QUEUEABLE_ROUTES.some((r) => url.pathname.startsWith(r))
-  ) {
+  if (isOfflineQueueable(request.method, url.pathname, request.headers.get('content-type'))) {
     event.respondWith(
       request.clone().text().then(async (body) => {
         try {

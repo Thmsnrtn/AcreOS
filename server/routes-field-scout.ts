@@ -7,6 +7,7 @@ import { Errors } from "./utils/errors";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 // Phase 8 Mo 12 — Yara §1: EXIF strip + SHA-256 hash + resize variants.
 import { processUploadedImage } from "./services/imagePipeline";
+import { persistPhotoBytes, photoStorageAvailable, PHOTO_STORAGE_UNAVAILABLE_MESSAGE } from "./services/photoStorage";
 
 const fieldScoutRouter = Router();
 
@@ -147,18 +148,17 @@ fieldScoutRouter.post('/voice/transcribe', voiceUpload.single('audio'), async (r
           confidence: 0.95, // Whisper doesn't return confidence per-transcript; use high default
         });
       } catch (whisperErr: any) {
-        logger.error('[field-scout] Whisper transcription failed, returning stub', undefined, { metadata: { detail: whisperErr.message } });
+        logger.error('[field-scout] Whisper transcription failed', undefined, { metadata: { detail: whisperErr.message } });
       }
     }
 
-    // Stub response when no API key or Whisper fails
-    res.json({
-      text: '',
-      duration: 0,
-      confidence: 0,
-      pending: true,
-      message: 'Transcription is pending — no OpenAI API key configured or service unavailable.',
-    });
+    // No transcript (no key, or Whisper failed). This answered 200 "pending"
+    // — but nothing kept the audio or queued a retry, so it would never
+    // arrive (DEFECT-0164). Say what happened instead.
+    return Errors.serviceUnavailable(
+      res,
+      "Transcription isn't available right now, and the recording was not kept. Keep it on your device and try again later.",
+    );
   } catch (err: any) {
     logger.error('[field-scout] transcribe error', err);
     return Errors.internal(res, err);
@@ -190,6 +190,15 @@ fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), vali
     const files: Express.Multer.File[] = Array.isArray(req.files) ? req.files : [];
     if (files.length === 0) {
       return Errors.badRequest(res, 'No photo files provided. Upload as multipart field "photos".');
+    }
+
+    // Refuse BEFORE writing a row (DEFECT-0164). With no blob store the
+    // processed variants were dropped, the row pointed at /uploads/... that
+    // nothing serves, and DriveMode said "Saved to the lead." — and the hash
+    // dedup below would then have blocked re-uploading the same image once
+    // storage existed.
+    if (!photoStorageAvailable()) {
+      return Errors.serviceUnavailable(res, PHOTO_STORAGE_UNAVAILABLE_MESSAGE);
     }
 
     // Parse optional metadata from body (JSON array matching files by index).
@@ -252,6 +261,12 @@ fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), vali
 
       const parsedVisitId = meta.visitId != null ? parseInt(String(meta.visitId)) : NaN;
 
+      // The bytes are written BEFORE the row that points at them
+      // (DEFECT-0164). This throws until a photo storage driver exists, so
+      // the refusal above can never be bypassed into a row for a URL that
+      // nothing serves.
+      await persistPhotoBytes(`field-scout/${imageHash || filename}`, processed?.stripped ?? file.buffer);
+
       const photoRecord = await storage.createFieldScoutPhoto({
         organizationId: org.id,
         visitId: Number.isFinite(parsedVisitId) ? parsedVisitId : 0,
@@ -294,6 +309,13 @@ fieldScoutRouter.post('/field-scout/visits', async (req: Request, res: Response)
 
     if (!leadId || latitude == null || longitude == null) {
       return Errors.badRequest(res, 'leadId, latitude, and longitude are required');
+    }
+
+    // Photo POINTERS are only as real as the upload that produced them, and
+    // with no photo storage there is none (DEFECT-0164) — a pointer here
+    // would record a photo that does not exist. Refuse before writing.
+    if (Array.isArray(photos) && photos.length > 0 && !photoStorageAvailable()) {
+      return Errors.serviceUnavailable(res, PHOTO_STORAGE_UNAVAILABLE_MESSAGE);
     }
 
     const visit = await storage.createFieldScoutVisit({

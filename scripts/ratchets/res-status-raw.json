@@ -9,11 +9,11 @@
     "**/*.test.ts",
     "**/*.spec.ts"
   ],
-  "baselineCount": 357,
+  "baselineCount": 356,
   "direction": "down",
-  "lastBumpNote": "2026-09-28 DEFECT-0050 second pass: 366 -> 357. Nine 4xx single-key bodies whose value is an error-message expression (err.message, message) now go through sendError. 5xx expression bodies were deliberately left: echoing err.message on a 5xx can leak internals, and those belong in Errors.internal per site.",
+  "lastBumpNote": "357 -> 356 on 2026-09-28 (DEFECT-0166): the deal-room NDA route's `res.status(201).json(...)` went with the fabricated signed-document row it announced; the route now returns an unsigned draft with res.json. PRIOR NOTE — 2026-09-28 DEFECT-0050 second pass: 366 -> 357. Nine 4xx single-key bodies whose value is an error-message expression (err.message, message) now go through sendError. 5xx expression bodies were deliberately left: echoing err.message on a 5xx can leak internals, and those belong in Errors.internal per site.",
   "minima": {
     "files": 1100
   },
-  "minimaNote": "VACUITY FLOOR on the SCAN POPULATION, not a ratchet. baselineCount above counts BAD THINGS FOUND, so a scan that stops seeing files finds zero and reports it as progress: a zero baseline PASSes on an empty file set, and a nonzero one prints a stale-high \"lock it in\" for a number that was never true. MEASURED 2026-08-16: this config matched 1370 file(s) (server/**/*.ts minus tests). Floor set to 1100, comfortably below that, so a broken glob or walk trips it while ordinary deletion does not. Checked BEFORE the baseline comparison by scripts/ratchet.mjs; a MISSING floor fails as loudly as a breached one. If a real deletion wave shrinks this population, lower the floor in the same commit and name the wave here \u2014 never raise it to silence something, never delete the key. Re-measure with `node scripts/ratchet.mjs --measure`."
+  "minimaNote": "VACUITY FLOOR on the SCAN POPULATION, not a ratchet. baselineCount above counts BAD THINGS FOUND, so a scan that stops seeing files finds zero and reports it as progress: a zero baseline PASSes on an empty file set, and a nonzero one prints a stale-high \"lock it in\" for a number that was never true. MEASURED 2026-08-16: this config matched 1370 file(s) (server/**/*.ts minus tests). Floor set to 1100, comfortably below that, so a broken glob or walk trips it while ordinary deletion does not. Checked BEFORE the baseline comparison by scripts/ratchet.mjs; a MISSING floor fails as loudly as a breached one. If a real deletion wave shrinks this population, lower the floor in the same commit and name the wave here — never raise it to silence something, never delete the key. Re-measure with `node scripts/ratchet.mjs --measure`."
 }

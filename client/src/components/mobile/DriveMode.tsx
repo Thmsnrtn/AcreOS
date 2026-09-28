@@ -184,7 +184,12 @@ export function DriveMode() {
         body: form,
         credentials: "include",
       });
-      if (!res.ok) throw new Error(`Upload failed (${res.status})`);
+      if (!res.ok) {
+        // The server's message says WHY — e.g. photo storage isn't connected
+        // yet and nothing was saved (DEFECT-0164).
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message ?? `Upload failed (${res.status})`);
+      }
       toast({ title: "Photo attached", description: "Saved to the lead." });
     } catch (err: any) {
       toast({

@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBrandName } from "@/hooks/use-white-label";
+import { useToast } from "@/hooks/use-toast";
 import { usePaxRail } from "@/contexts/pax-rail-context";
 import { ToolCallStream, type ToolEvent, parseToolResultSummary } from "@/components/tool-call-stream";
 import { PaxArtifact, type PaxArtifactData } from "@/components/pax-artifact";
@@ -456,6 +457,7 @@ export function PaxCopilotRail() {
 
   // Voice mic
   const [micState, setMicState] = useState<"idle" | "recording" | "transcribing">("idle");
+  const { toast } = useToast();
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
@@ -1091,11 +1093,19 @@ export function PaxCopilotRail() {
             credentials: "include",
             body: form,
           });
-          if (res.ok) {
-            const { transcript } = await res.json();
-            if (transcript) setInputValue((prev) => prev + (prev ? " " : "") + transcript);
-          }
-        } catch {}
+          if (!res.ok) throw new Error(`Transcription failed (${res.status})`);
+          const { transcript } = await res.json();
+          if (transcript) setInputValue((prev) => prev + (prev ? " " : "") + transcript);
+          else toast({ title: "Didn't catch that", description: "No speech was recognised — try again." });
+        } catch {
+          // A failed transcription used to end silently (DEFECT-0164 audit):
+          // the recording was gone and the input stayed empty with no word.
+          toast({
+            title: "Couldn't transcribe that",
+            description: "The recording wasn't kept — please try again or type it.",
+            variant: "destructive",
+          });
+        }
         setMicState("idle");
       };
       mediaRecorderRef.current = recorder;
@@ -1103,6 +1113,7 @@ export function PaxCopilotRail() {
       setMicState("recording");
     } catch {
       setMicState("idle");
+      toast({ title: "Microphone unavailable", description: "Allow microphone access to use voice input.", variant: "destructive" });
     }
   };
 

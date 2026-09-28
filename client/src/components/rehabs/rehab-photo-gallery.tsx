@@ -33,6 +33,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { formatDate } from "@/lib/format";
@@ -72,6 +74,9 @@ interface PhotoRow {
 interface PhotosResponse {
   rehabId: string;
   total: number;
+  /** False while no blob store exists: uploads are refused, and the rows
+   *  below are records whose image files were never kept (DEFECT-0164). */
+  storageAvailable?: boolean;
   groups: Record<string, PhotoRow[]>;
 }
 
@@ -150,6 +155,19 @@ function GalleryBody({ rehabId }: { rehabId: string }) {
       toast({ title: "Upload failed", description: err.message, variant: "destructive" }),
   });
 
+  if (photos.isError) {
+    return (
+      <QueryErrorState
+        error={photos.error}
+        onRetry={() => photos.refetch()}
+        isRetrying={photos.isRefetching}
+        title="Couldn't load photos"
+        compact
+        testId="rehab-photos-error"
+      />
+    );
+  }
+
   if (photos.isLoading) {
     return (
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
@@ -162,9 +180,21 @@ function GalleryBody({ rehabId }: { rehabId: string }) {
 
   const groups = photos.data?.groups ?? {};
   const total = photos.data?.total ?? 0;
+  const storageOff = photos.data?.storageAvailable === false;
 
   return (
     <div className="space-y-4">
+      {storageOff && (
+        <Alert data-testid="rehab-photos-storage-off">
+          <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+          <AlertDescription>
+            Photo storage isn't connected yet, so uploads are paused rather than
+            accepted and lost. Keep your photos on your device for now.
+            {total > 0 &&
+              ` The ${total} photo record${total === 1 ? "" : "s"} below ${total === 1 ? "was" : "were"} saved earlier without ${total === 1 ? "its" : "their"} image file${total === 1 ? "" : "s"} — the images were not kept.`}
+          </AlertDescription>
+        </Alert>
+      )}
       {/* Upload bar */}
       <div className="flex flex-wrap items-end gap-2 pb-3 border-b border-border">
         <div className="w-40">
@@ -197,7 +227,7 @@ function GalleryBody({ rehabId }: { rehabId: string }) {
           size="sm"
           variant="outline"
           onClick={() => fileRef.current?.click()}
-          disabled={upload.isPending}
+          disabled={upload.isPending || storageOff}
         >
           <Upload className="w-4 h-4 mr-1" aria-hidden="true" />
           {upload.isPending ? "Uploading…" : "Upload photos"}
@@ -211,12 +241,21 @@ function GalleryBody({ rehabId }: { rehabId: string }) {
         <EmptyState
           icon={Camera}
           headline="No photos yet"
-          subtitle="Upload before/after shots, defect callouts, lender-draw photos, and tax basis evidence. Photos group by tag automatically."
-          cta={{
-            label: "Upload photos",
-            onClick: () => fileRef.current?.click(),
-            "data-testid": "rehab-photos-upload",
-          }}
+          subtitle={
+            storageOff
+              ? "Photo uploads are paused until storage is connected."
+              : "Upload before/after shots, defect callouts, lender-draw photos, and tax basis evidence. Photos group by tag automatically."
+          }
+          cta={
+            storageOff
+              ? // TODO(cta): no action exists until photo storage is connected (DEFECT-0164)
+                { label: "", _noOp: true }
+              : {
+                  label: "Upload photos",
+                  onClick: () => fileRef.current?.click(),
+                  "data-testid": "rehab-photos-upload",
+                }
+          }
           actionIcon={Upload}
           testId="rehab-photos-empty"
         />
@@ -237,7 +276,7 @@ function GalleryBody({ rehabId }: { rehabId: string }) {
               </h3>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                 {rows.map((p) => (
-                  <PhotoTile key={p.id} photo={p} />
+                  <PhotoTile key={p.id} photo={p} fileKept={!storageOff} />
                 ))}
               </div>
             </section>
@@ -248,18 +287,19 @@ function GalleryBody({ rehabId }: { rehabId: string }) {
   );
 }
 
-function PhotoTile({ photo }: { photo: PhotoRow }) {
-  // Until the blob driver lands, we can't render the actual image — show
-  // a placeholder tile with caption + capture time. The s3_key is shown
-  // for diagnostics so operators understand a photo IS attached.
+function PhotoTile({ photo, fileKept }: { photo: PhotoRow; fileKept: boolean }) {
+  // Until the blob driver lands there is no image to render. The tile used
+  // to show the key "so operators understand a photo IS attached" — it was
+  // not: the bytes were dropped (DEFECT-0164). Say so.
   return (
     <div className="border border-border rounded-md p-2 text-xs bg-muted/30">
       <div className="aspect-square bg-muted/60 rounded mb-2 flex items-center justify-center text-muted-foreground">
         <Camera className="w-6 h-6" aria-hidden="true" />
       </div>
       <div className="font-medium truncate" title={photo.caption ?? photo.s3Key}>
-        {photo.caption ?? photo.s3Key.split("/").pop()}
+        {photo.caption ?? (fileKept ? photo.s3Key.split("/").pop() : "Photo record")}
       </div>
+      {!fileKept && <div className="text-muted-foreground">Image not kept</div>}
       <div className="text-muted-foreground flex items-center gap-1 mt-1">
         {photo.capturedAt && (
           <span>{formatDate(photo.capturedAt)}</span>

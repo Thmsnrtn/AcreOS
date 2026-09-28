@@ -31,6 +31,9 @@ export function registerMicroFeatureRoutes(app: Express): void {
 
       // OCR via documentIntelligence
       let extractedText = "";
+      // True only once the image is actually stored (DEFECT-0164 audit): the
+      // response said imageAttached: true even when the store threw.
+      let imageAttached = false;
       try {
         const { documentIntelligenceService } = await import("./services/documentIntelligence");
         const dataUrl = image.startsWith("data:") ? image : `data:image/jpeg;base64,${image}`;
@@ -43,6 +46,7 @@ export function registerMicroFeatureRoutes(app: Express): void {
           documentName: "Quick Capture — Field Photo",
           fileUrl: dataUrl,
         });
+        imageAttached = true;
         // The doc was just created above with fileUrl: dataUrl, and extractText
         // now reads the URL off the row — so this passes the org instead of
         // re-supplying a value the service already has.
@@ -58,7 +62,7 @@ export function registerMicroFeatureRoutes(app: Express): void {
         return res.json({
           lead: null,
           extracted,
-          imageAttached: true,
+          imageAttached,
           message: "No readable contact info found",
         });
       }
@@ -83,7 +87,7 @@ export function registerMicroFeatureRoutes(app: Express): void {
       res.json({
         lead: { id: lead.id, firstName: lead.firstName, phone: lead.phone },
         extracted,
-        imageAttached: true,
+        imageAttached,
       });
     } catch (error) {
       Errors.internal(res, error);

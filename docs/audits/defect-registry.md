@@ -4104,6 +4104,104 @@ Falsified by: `tests/unit/controlsDoorFailureIsNotZero.test.ts` and
 `server/services/autopilot/stepAwayReadiness.test.ts` (eight cases red
 pre-fix).
 Resolving commits: this branch, round 3
+### DEFECT-0164
+Title: Photo uploads answered "uploaded" / "Saved to the lead" over bytes they had dropped
+Severity: P1
+Status: FIXED (round 3, 2026-09-28) — as a refusal; storage itself waits on DEFECT-0046
+Surfaced by lenses: upload-route population audit, 2026-09-28
+Description: There is no blob store (DEFECT-0046, deferred on the founder's
+storage decision). Two customer upload routes behaved as if there were:
+- `POST /api/rehabs/:rehabId/photos` (`server/routes-rehab-photos.ts`) called
+  a `persistToBlob` that only logged. It wrote a row keyed
+  `rehabs/<id>/<photo>.<ext>` and answered 201. The gallery said "N photo(s)
+  uploaded" and listed the record as evidence. Those are before/after,
+  defect, lender-draw and tax-basis photos, and none of the images existed.
+- `POST /api/leads/:id/photos` (`server/routes-field-scout.ts`, used by
+  DriveMode) wrote a row pointing at `/uploads/field-scout/...`, which nothing
+  serves, and dropped the processed image. DriveMode said "Saved to the
+  lead." The hash dedup then made the same image un-uploadable once storage
+  existed, and DriveMode's GPS fields were ignored.
+- `POST /api/voice/transcribe`, when it had no transcriber, answered 200
+  "pending" over audio that nothing kept and that no job would retry.
+Remediation plan: DONE.
+- `photoStorageAvailable()` (`server/services/photoStorage.ts`) is false
+  until a driver exists. Both photo routes check it and answer 503 BEFORE
+  writing a row, saying nothing was saved.
+- `persistToBlob` throws instead of logging.
+- The voice fallback answers 503 and says the recording was not kept.
+- The rehab gallery pauses uploads and says why. It marks existing records
+  "Image not kept" and shows an error state for a failed load (it had
+  rendered "No photos yet").
+- DriveMode shows the server's reason.
+- Not changed: the existing rows are left in place, because deleting customer
+  data is a founder decision. The documents-ZIP import's /tmp storage is
+  DEFECT-0143.
+Audit follow-up, same day:
+- The service worker queued DriveMode's multipart photo under the
+  `/api/leads` prefix using `request.text()`. That mangles the JPEG. It then
+  answered 202 "Saved offline", which DriveMode showed as "Saved to the
+  lead." `isOfflineQueueable` (`client/public/sw.js`) now never queues a
+  multipart body.
+- The switch was a bare `false`, and flipping it would have brought the
+  defect back. Both routes now write through `persistPhotoBytes`, which
+  throws until a driver exists and runs before the row is recorded. For
+  rehab photos it runs inside the row's transaction.
+- `POST /api/field-scout/visits` accepted photo pointers with no upload
+  behind them. It now refuses them.
+- The live voice input in the Pax copilot rail ended silently on a failed
+  transcription. It now says the recording was not kept.
+- Quick capture answered `imageAttached: true` even when storing the image
+  threw.
+- The upload sites are enumerated in the test with a verdict each. A new
+  upload route that is not in the register fails the gate.
+- Both new population gates listed files with `git ls-files 'server/**/*.ts'`,
+  which skips every top-level `server/*.ts` (1,223 of 1,516 files). They now
+  use `'server/*.ts'` and assert a floor.
+Falsified by: `tests/unit/uploadsWithoutStorageAreRefused.test.ts` (four cases
+red pre-fix) and `tests/unit/noAttestationWithoutTheThing.test.ts`.
+Resolving commits: this branch, round 3
+### DEFECT-0165
+Title: A daily job wrote invented vision "detections" for every customer property
+Severity: P1
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: DEFECT-0164 audit, 2026-09-28
+Description: `runVisionReimagingPass`
+(`server/services/propertyVisionReimaging.ts`, scheduled daily from
+`server/jobs/propertyVisionReimaging.ts`) had no vision model behind it.
+- `analyzeImage` returned seeded pseudo-random "structure", "vegetation" and
+  "dirt_road" detections, plus a vegetation-cover percentage.
+- The pass stored them as `property_vision_snapshots` analysis for each
+  due property.
+- Each snapshot carried an image key for an image nothing had fetched.
+
+Nothing reads the table today, and the fixed seed kept change alerts quiet.
+It was still invented findings about customers' land, written every day.
+Remediation plan: DONE.
+- `visionAnalyzerConfigured()` is false. The pass checks it first and writes
+  nothing.
+- `analyzeImage` refuses instead of inventing.
+- The test that pinned "a deterministic, well-formed analysis" was rewritten
+  to the new truth rather than deleted.
+- Existing snapshot rows are left in place: deleting customer data is a
+  founder decision.
+Falsified by: `tests/unit/propertyVisionReimaging.test.ts` (the pass test
+reached the database pre-fix).
+Resolving commits: this branch, round 3
+### DEFECT-0166
+Title: The deal-room NDA attested a signature nobody gave
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: DEFECT-0164 audit, 2026-09-28
+Description: `POST /api/deal-rooms/:id/nda` (`server/routes-deal-rooms.ts`)
+printed "Signed: <now>" and a random "Verification Code" for whatever party
+name the caller supplied. It also stored a deal-room document with an empty
+`fileUrl`, so its download signed an empty URL. The e-sign ruling is that
+AcreOS never attests that a counterparty signed. The route is behind the
+frozen `feature_deal_rooms` ladder flag, so it is not reachable today.
+Remediation plan: DONE. It returns an UNSIGNED DRAFT with no signature line
+and no code, and it records no document.
+Falsified by: `tests/unit/noAttestationWithoutTheThing.test.ts`.
+Resolving commits: this branch, round 3
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -4141,11 +4239,11 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 1   | 9   | 10    |
-| FIXED  | 13  | 78  | 59  | 150   |
+| FIXED  | 13  | 80  | 60  | 153   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **13** | **82** | **68** | **163** |
+| **Total** | **13** | **84** | **69** | **166** |
 
-Recounted from the entries themselves on 2026-09-28 (163 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (166 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

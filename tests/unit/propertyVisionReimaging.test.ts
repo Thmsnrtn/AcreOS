@@ -13,6 +13,7 @@ import {
   computeChangeScore,
   fetchAerialImagery,
   analyzeImage,
+  runVisionReimagingPass,
   type VisionAnalysis,
 } from "../../server/services/propertyVisionReimaging";
 
@@ -77,16 +78,20 @@ describe("propertyVisionReimaging.fetchAerialImagery", () => {
   });
 });
 
+// DEFECT-0165: this pinned the STUB — "a deterministic, well-formed
+// analysis" was seeded pseudo-random detections written for real properties.
+// The invariant kept: analysis output must be well-formed. The new truth:
+// with no vision model there is no analysis at all, and the pass writes
+// nothing rather than an invented one.
 describe("propertyVisionReimaging.analyzeImage", () => {
-  it("produces a deterministic, well-formed analysis result", async () => {
-    const r = await analyzeImage("https://mock/x.jpg", {
-      id: 7,
-      sizeAcres: "5.5",
-      terrain: "flat",
-    });
-    expect(r.detectedFeatures.length).toBeGreaterThan(0);
-    expect(r.vegetationCoveragePct).toBeGreaterThanOrEqual(0);
-    expect(r.vegetationCoveragePct).toBeLessThanOrEqual(100);
-    expect(typeof r.structureCount).toBe("number");
+  it("refuses to invent detections when no vision model is configured", async () => {
+    await expect(
+      analyzeImage("https://mock/x.jpg", { id: 7, sizeAcres: "5.5", terrain: "flat" }),
+    ).rejects.toThrow(/No vision analyzer/);
+  });
+
+  it("the daily pass writes no snapshot without an analyzer", async () => {
+    const r = await runVisionReimagingPass();
+    expect(r).toEqual({ propertiesScanned: 0, snapshotsCreated: 0, alertsRaised: 0, errors: 0 });
   });
 });

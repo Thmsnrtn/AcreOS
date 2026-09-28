@@ -103,29 +103,24 @@ export interface VisionAnalysis {
   rawModelResponse?: Record<string, unknown>;
 }
 
-export async function analyzeImage(
-  imageUrl: string,
-  property: Pick<Property, "id" | "sizeAcres" | "terrain">,
-): Promise<VisionAnalysis> {
-  // Real implementation would call OpenAI Vision / Anthropic Vision /
-  // a self-hosted detector. Mocked here with property-shape-influenced
-  // synthetic features so downstream change detection has signal.
-  const seed = (property.id * 9301 + 49297) % 233280;
-  const rand = (n: number) => ((seed + n * 1103515245) % 100) / 100;
+/**
+ * No vision model is wired (DEFECT-0165). This returned seeded pseudo-random
+ * "structure", "vegetation" and "dirt_road" detections for real customer
+ * properties — stored daily as `property_vision_snapshots` analysis, with an
+ * image key for an image nothing had fetched. Invented findings about a
+ * customer's land are fabrication, so it REFUSES until a real detector
+ * exists; `runVisionReimagingPass` checks `visionAnalyzerConfigured()` first
+ * and writes nothing.
+ */
+function visionAnalyzerConfigured(): boolean {
+  return false;
+}
 
-  return {
-    detectedFeatures: [
-      { label: "vegetation", confidence: 0.92 },
-      { label: "dirt_road", confidence: 0.71 },
-      ...(rand(1) > 0.7
-        ? [{ label: "structure", confidence: 0.83 }]
-        : []),
-    ],
-    structureCount: rand(2) > 0.6 ? 1 : 0,
-    vegetationCoveragePct: 40 + Math.floor(rand(3) * 40),
-    notableChanges: [],
-    rawModelResponse: { _mock: true, imageUrl },
-  };
+export async function analyzeImage(
+  _imageUrl: string,
+  _property: Pick<Property, "id" | "sizeAcres" | "terrain">,
+): Promise<VisionAnalysis> {
+  throw new Error("No vision analyzer is configured — refusing to invent detections (DEFECT-0165)");
 }
 
 // ---------------------------------------------------------------------------
@@ -358,6 +353,13 @@ export async function runVisionReimagingPass(): Promise<ReimagingRunSummary> {
     alertsRaised: 0,
     errors: 0,
   };
+
+  // Nothing to analyse with: write nothing (DEFECT-0165). An empty pass is
+  // the truth; a snapshot per property would be an invented one.
+  if (!visionAnalyzerConfigured()) {
+    logger.info("[vision-reimaging] skipped — no vision analyzer configured");
+    return summary;
+  }
 
   const due = await findPropertiesDueForReimaging();
   summary.propertiesScanned = due.length;

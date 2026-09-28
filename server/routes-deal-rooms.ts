@@ -593,33 +593,17 @@ between ${disclosingParty} ("Disclosing Party") and ${partyName ?? userDisplayNa
 Disclosing Party: ${disclosingParty}
 Receiving Party: ${partyName ?? userDisplayName(user)}
 Title: ${partyTitle ?? ''}
-Signed: ${new Date().toISOString()}
-Verification Code: ${crypto.randomBytes(8).toString('hex').toUpperCase()}
+
+UNSIGNED DRAFT — to be executed through the parties' signing provider.
     `.trim();
 
-    // Store the NDA as a document in the deal room
-    const [ndaDoc] = await db
-      .insert(dealRoomDocuments)
-      .values({
-        dealRoomId,
-        uploadedBy: String(user.id),
-        fileName: `NDA-DealRoom-${dealRoomId}-${Date.now()}.txt`,
-        fileUrl: '', // Would be populated by document service
-        fileSize: ndaContent.length,
-        mimeType: 'text/plain',
-        version: 1,
-        previousVersionId: null,
-        accessControl: { allowedUserIds: [] },
-      })
-      .returning();
-
-    broadcastToDealRoom(req, dealRoomId, {
-      type: 'nda_generated',
-      document: ndaDoc,
-      generatedFor: partyName ?? userDisplayName(user),
-    });
-
-    res.status(201).json({ document: ndaDoc, ndaContent });
+    // A DRAFT, returned — not a signed record (DEFECT-0166). This printed
+    // "Signed: <now>" and a random "Verification Code" for whatever party
+    // name the caller supplied, attesting a signature nobody gave (the e-sign
+    // ruling: AcreOS never attests that a counterparty signed), and stored a
+    // deal-room document row with an empty fileUrl — a file that did not
+    // exist, whose download link signed an empty URL.
+    res.json({ document: null, ndaContent, status: "unsigned_draft" });
   } catch (error: any) {
     Errors.badRequest(res, error.message ?? "Bad request");
   }

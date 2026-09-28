@@ -97,9 +97,13 @@ describe("DEFECT-0135 — every acknowledger goes through it", () => {
   // ne(acknowledged)` — a writer no list named.
   it("every systemAlerts writer that acknowledges moves only a NEW alert", () => {
     const { execSync } = require("node:child_process") as typeof import("node:child_process");
-    const files = execSync("git ls-files 'server/**/*.ts'", { cwd: resolve(__dirname, "../.."), encoding: "utf8" })
+    // 'server/*.ts', not 'server/**/*.ts': the latter needs a directory
+    // between, so it silently skipped every top-level server/routes-*.ts.
+    const files = execSync("git ls-files 'server/*.ts'", { cwd: resolve(__dirname, "../.."), encoding: "utf8" })
       .split("\n")
       .filter((f) => f && !f.includes(".test."));
+    expect(files).toContain("server/routes-admin.ts");
+    expect(files.length).toBeGreaterThan(1000);
     let writers = 0;
     let acknowledgers = 0;
     for (const f of files) {

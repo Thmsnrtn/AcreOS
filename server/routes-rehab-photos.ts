@@ -40,6 +40,7 @@ import {
 } from "./middleware/fileUploadSecurity";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { persistPhotoBytes, photoStorageAvailable, PHOTO_STORAGE_UNAVAILABLE_MESSAGE } from "./services/photoStorage";
 
 const photoUpload = createUploadMiddleware({ maxSizeMB: 10, allowedTypes: ["image"] });
 const validatePhotos = validateFileMiddleware(["image"]);
@@ -55,18 +56,6 @@ function extensionFromMime(mime: string | undefined): string {
   }
 }
 
-/**
- * TODO(blob-storage): when the shared S3/R2 driver lands (Wave 10 per
- * docs/cost/blob-storage-migration.md), replace this stub with
- * driver.write(key, buffer). For now the key is computed deterministically
- * so the DB row already points at the future canonical location.
- */
-async function persistToBlob(_buffer: Buffer, key: string): Promise<void> {
-  logger.info("[FF-7] rehab photo blob persist (stub)", {
-    metadata: { key, bytes: _buffer.length },
-  });
-  // No-op until the driver is wired. The DB row points at the eventual key.
-}
 
 function isValidTag(t: unknown): t is RehabPhotoTag {
   return typeof t === "string" && (REHAB_PHOTO_TAGS as readonly string[]).includes(t);
@@ -99,6 +88,12 @@ export function registerRehabPhotoRoutes(app: Express): void {
           .from(rehabs)
           .where(and(eq(rehabs.id, rehabId), eq(rehabs.organizationId, orgId)));
         if (!rehab) return Errors.notFound(res, "Rehab");
+
+        // Refuse BEFORE writing a row (DEFECT-0164): with no blob store the
+        // bytes were dropped and the response said "uploaded".
+        if (!photoStorageAvailable()) {
+          return Errors.serviceUnavailable(res, PHOTO_STORAGE_UNAVAILABLE_MESSAGE);
+        }
 
         // multer's `.array()` yields an array, but the Request type unions it
         // with the field-map form { field: File[] } — narrow explicitly so a
@@ -151,35 +146,38 @@ export function registerRehabPhotoRoutes(app: Express): void {
 
           const ext = extensionFromMime(file.mimetype);
           // Insert first to get the photo UUID, then derive the blob key.
-          // We do the DB write before the blob write so a blob write that
-          // fails leaves a row we can retry against — and a failed DB write
-          // never leaks a blob we can't reach.
-          const [row] = await db.insert(rehabPhotos).values({
-            organizationId: orgId,
-            rehabId,
-            lineItemId: lineItemId ?? null,
-            s3Key: "pending",  // placeholder, updated below
-            caption,
-            tag,
-            capturedBy: userId,
-            lat: lat != null ? String(lat) : null,
-            lng: lng != null ? String(lng) : null,
-            metadata: {
-              originalName: file.originalname,
-              mime: file.mimetype,
-              bytes: file.size,
-            },
-          }).returning();
+          // One transaction per photo (DEFECT-0164): the bytes are written
+          // between the insert and the key update, so a failed write rolls
+          // the row back instead of leaving a record with no file behind it.
+          const stored = await db.transaction(async (tx) => {
+            const [row] = await tx.insert(rehabPhotos).values({
+              organizationId: orgId,
+              rehabId,
+              lineItemId: lineItemId ?? null,
+              s3Key: "pending",  // placeholder, updated below
+              caption,
+              tag,
+              capturedBy: userId,
+              lat: lat != null ? String(lat) : null,
+              lng: lng != null ? String(lng) : null,
+              metadata: {
+                originalName: file.originalname,
+                mime: file.mimetype,
+                bytes: file.size,
+              },
+            }).returning();
 
-          const key = `rehabs/${rehabId}/${row.id}.${ext}`;
-          await persistToBlob(file.buffer, key);
+            const key = `rehabs/${rehabId}/${row.id}.${ext}`;
+            await persistPhotoBytes(key, file.buffer);
 
-          const [updated] = await db.update(rehabPhotos)
-            .set({ s3Key: key })
-            .where(eq(rehabPhotos.id, row.id))
-            .returning();
+            const [updated] = await tx.update(rehabPhotos)
+              .set({ s3Key: key })
+              .where(eq(rehabPhotos.id, row.id))
+              .returning();
+            return updated ?? row;
+          });
 
-          inserted.push(updated ?? row);
+          inserted.push(stored);
         }
 
         logger.info("[FF-7] rehab photos uploaded", {
@@ -227,6 +225,9 @@ export function registerRehabPhotoRoutes(app: Express): void {
         return res.json({
           rehabId,
           total: rows.length,
+          // False while there is no blob store: the rows below are records
+          // whose image files were never kept (DEFECT-0164).
+          storageAvailable: photoStorageAvailable(),
           groups,
         });
       } catch (err) {
