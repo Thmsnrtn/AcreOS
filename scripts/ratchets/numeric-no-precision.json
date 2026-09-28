@@ -1,0 +1,11 @@
+{
+  "name": "numeric-no-precision",
+  "description": "DEFECT-0052: money and rate columns declared as bare numeric(\"col\") carry no precision or scale, so the database accepts any magnitude and any number of decimals, and Number() conversions downstream silently lose precision. Adding precision to the 353 existing columns is an ALTER COLUMN TYPE that rounds or rejects stored customer financial values, which is a founder decision (customer data). This ratchet does the part that needs no data change: it freezes the count of bare numeric( declarations across the schema and drives it DOWN, so every NEW numeric column states { precision, scale } (money: { precision: 14, scale: 2 }).",
+  "pattern": "\\bnumeric\\(\\s*\"[^\"]+\"\\s*\\)",
+  "globs": ["shared/schema.ts", "shared/schema/**/*.ts"],
+  "exclude": [],
+  "baselineCount": 353,
+  "direction": "down",
+  "minima": { "files": 60 },
+  "minimaNote": "VACUITY FLOOR on the scan population (the monolith plus its modules; 85 files at 2026-09-28). A broken glob that matches nothing must fail, not pass at zero."
+}

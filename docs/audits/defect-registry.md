@@ -616,12 +616,24 @@ Resolving commits: this branch, round 3
 ### DEFECT-0052
 Title: Financial amounts stored as numeric without precision -- arbitrary precision allowed
 Severity: P2
-Status: OPEN
+Status: OPEN — growth stopped; changing existing columns is a founder data decision
 Surfaced by lenses: 4 (DB-005)
 Description: ~40 financial columns use bare `numeric()` without precision/scale. No DB-level guard against storing absurd values. `Number()` conversions lose precision for large values.
 Evidence: `shared/schema.ts:24` (creditBalance), `:777` (originalPrincipal), `:778` (currentBalance), etc.
 Remediation plan: Add `{ precision: 14, scale: 2 }` to all financial columns.
-Resolving commits: pending
+Re-measured 2026-09-28: 353 bare `numeric("…")` declarations across the
+schema (about 190 with money-shaped names), against 59 that state precision.
+Converting the existing ones is an `ALTER COLUMN TYPE` that rounds values with
+more than two decimals and rejects any over twelve integer digits. That
+rewrites stored customer financial data, which is a founder hard stop, so it
+was not done. What needs no data change was:
+`scripts/ratchets/numeric-no-precision.json` freezes the bare count at 353
+and drives it down, so every NEW numeric column states its precision. One
+temporary bare column turns it red.
+OWED (founder): approve a per-table precision migration, preceded by a
+read-only query of max scale and magnitude per column to show what rounding
+it would do.
+Resolving commits: pending (growth ratchet on this branch, round 3)
 
 ### DEFECT-0053
 Title: Trust ledger running balance computed from last row -- no integrity guarantee
