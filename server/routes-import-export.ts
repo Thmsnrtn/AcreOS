@@ -813,7 +813,8 @@ export function registerImportExportRoutes(app: Express): void {
     includeAttachments: z.boolean().optional(),
   });
 
-  api.post("/api/export/everything", isAuthenticated, getOrCreateOrg, bulkExportLimiter, async (req, res) => {
+  // canExportData like every other export route (DEFECT-0170 audit).
+  api.post("/api/export/everything", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), bulkExportLimiter, async (req, res) => {
     try {
       const org = req.organization!;
       const user = req.user;

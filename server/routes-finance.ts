@@ -100,7 +100,11 @@ export function registerFinanceRoutes(app: Express): void {
   
   api.get("/api/notes", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const notes = await readAllNotes(org.id);
+    // The notes LIST stays the capped, newest-first UI read (DEFECT-0170
+    // audit): the whole book, oldest first, with every amortization
+    // schedule, is the wrong payload for a table. Book-wide figures come
+    // from the finance summary endpoints, which read the whole book.
+    const notes = await storage.getNotes(org.id);
     res.json(notes);
   });
   
@@ -1015,8 +1019,10 @@ export function registerFinanceRoutes(app: Express): void {
           avgPerClose: closed.length > 0 ? Math.round((closedSum / closed.length) * 100) / 100 : 0,
           closedCount: closed.length,
         };
-      } catch {
-        // storage.getDeals not available or threw — leave defaults.
+      } catch (err) {
+        // A whole-book refusal (413) is not "no fees" (DEFECT-0170 audit):
+        // re-throw it rather than return zeros that look real.
+        if ((err as { statusCode?: number } | null)?.statusCode === 413) throw err;
       }
 
       // Flipper / subdivider / landlord: project P&L summary. Compute net
@@ -1056,8 +1062,8 @@ export function registerFinanceRoutes(app: Express): void {
           grossMarginPct: Math.round(grossMarginPct * 10) / 10,
           top,
         };
-      } catch {
-        // ignore
+      } catch (err) {
+        if ((err as { statusCode?: number } | null)?.statusCode === 413) throw err;
       }
 
       res.json({
@@ -1183,7 +1189,9 @@ export function registerFinanceRoutes(app: Express): void {
       const totalInterestEarned = completedPayments.reduce((sum, p) => sum + Number(p.interestAmount || 0), 0);
 
       const firstPaymentDate = completedPayments.length > 0
-        ? new Date(Math.min(...completedPayments.map(p => new Date(p.paymentDate).getTime())))
+        // A loop, not Math.min(...spread): the spread overflows the call
+        // stack near 130k payments now that the whole book is read.
+        ? new Date(completedPayments.reduce((min, p) => Math.min(min, new Date(p.paymentDate).getTime()), Infinity))
         : null;
 
       let annualYield = 0;
@@ -1269,7 +1277,10 @@ export function registerFinanceRoutes(app: Express): void {
     try {
       const org = req.organization;
       const noteId = req.query.noteId ? Number(req.query.noteId) : undefined;
-      const result = await storage.getPayments(org.id, noteId);
+      // The org-wide ledger (FinanceBook) reads EVERY payment (DEFECT-0170
+      // audit): getPayments(orgId) stops silently at 5000 while the ledger's
+      // notes were whole, so its running balance mixed two populations.
+      const result = noteId ? await storage.getPayments(org.id, noteId) : await readAllPayments(org.id);
       res.json(result);
     } catch (err: any) {
       Errors.internal(res, err);

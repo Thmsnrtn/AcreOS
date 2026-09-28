@@ -69,14 +69,21 @@ describe("DEFECT-0170 — wholeBookReads", () => {
 
 describe("DEFECT-0170 — exports and book-wide figures do not use the capped lists", () => {
   const ROOT = resolve(__dirname, "../..");
-  const CAPPED = /storage\.get(?:Leads|Deals|Properties|Notes)\(|storage\.getPayments\(\s*org(?:anization)?\.?[iI]d\s*\)/g;
+  // Every capped shape: the four getters, getPayments in ANY arity (the
+  // audit found `getPayments(org.id, noteId)` serving the whole-org ledger
+  // unseen), and a bare `.limit(N)` of four digits or more on a list read.
+  const CAPPED = /storage\.get(?:Leads|Deals|Properties|Notes)\(|storage\.getPayments\(|\.limit\(\s*\d{4,}\s*\)/g;
   // file → capped reads that REMAIN, each with its reason.
   const REGISTER: Record<string, { allowed: number; why: string }> = {
     "server/services/importExport.ts": { allowed: 0, why: "every export path" },
     "server/services/migrationJobs.ts": { allowed: 0, why: "the data-portability export job" },
-    "server/routes-finance.ts": { allowed: 0, why: "portfolio, delinquency, projections, notes list" },
-    "server/routes-platform-features.ts": { allowed: 1, why: "personal-bests reads the most recent close only" },
-    "server/routes-today.ts": { allowed: 1, why: "leads stay capped on Today pending SQL aggregates (DEFECT-0171)" },
+    "server/routes-finance.ts": {
+      allowed: 2,
+      why: "the notes UI list stays capped newest-first; getPayments(org, noteId) is per-note (the org-wide ledger reads whole)",
+    },
+    "server/routes-platform-features.ts": { allowed: 1, why: "personal-bests reads recent closes only" },
+    "server/routes-today.ts": { allowed: 2, why: "leads and properties stay capped on Today (no money figure; DEFECT-0171)" },
+    "server/services/dataPortability.ts": { allowed: 0, why: "Settings → Download your data" },
   };
   for (const [file, { allowed, why }] of Object.entries(REGISTER)) {
     it(`${file}: ${allowed} capped read(s) — ${why}`, () => {

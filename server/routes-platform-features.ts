@@ -7,7 +7,8 @@
  * - Ecosystem (Google Calendar, Drive, webhooks)
  */
 
-import { readAllDeals, readAllNotes, readAllProperties } from "./storage/wholeBookReads";
+import { requirePermission } from "./utils/permissions";
+import { readAllDeals, readAllNotes, readAllPayments, readAllProperties } from "./storage/wholeBookReads";
 import type { Express } from "express";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -82,26 +83,43 @@ export function registerPlatformFeatureRoutes(app: Express): void {
         return res.json([]);
       }
 
-      // Generate 7 months of waterfall data (6 trailing + current)
-      const months: any[] = [];
+      // 7 months (6 trailing + current) from what ACTUALLY happened
+      // (DEFECT-0170 audit). "collected" was grossDue × a collection rate
+      // guessed from today's delinquency, and "lateFees" was a flat 5% of the
+      // shortfall — the same invented figures in every month. Now: collected
+      // and late fees are the month's completed payments; gross due is the
+      // monthly payment of each note in force that month (not pending, begun
+      // by the month's end, not matured before it began). Servicing costs are
+      // not recorded anywhere, so they stay 0 rather than being guessed.
+      const payments = await readAllPayments(org.id);
+      const months: Array<{ month: string; grossDue: number; collected: number; lateFees: number; servicingCosts: number; netCashFlow: number }> = [];
       const now = new Date();
 
       for (let i = 6; i >= 0; i--) {
-        const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const monthLabel = date.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
-        const grossDue = notes.reduce((s, n: any) => s + parseFloat(n.monthlyPayment || "0"), 0);
-
-        // Simulated collection rate based on delinquency
-        const currentNotes = notes.filter((n: any) => n.delinquencyStatus === "current" || !n.delinquencyStatus);
-        const collectionRate = notes.length > 0 ? currentNotes.length / notes.length : 1;
+        const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
+        const monthLabel = monthStart.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+        const inForce = notes.filter((n) => {
+          if (n.status === "pending") return false;
+          const start = n.startDate ? new Date(n.startDate) : null;
+          const maturity = n.maturityDate ? new Date(n.maturityDate) : null;
+          return (!start || start <= monthEnd) && (!maturity || maturity >= monthStart);
+        });
+        const grossDue = inForce.reduce((sum, n) => sum + Number(n.monthlyPayment || 0), 0);
+        const paid = payments.filter((p) => {
+          const d = p.paymentDate ? new Date(p.paymentDate) : null;
+          return p.status === "completed" && d !== null && d >= monthStart && d <= monthEnd;
+        });
+        const collected = paid.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+        const lateFees = paid.reduce((sum, p) => sum + Number(p.lateFeeAmount || 0), 0);
 
         months.push({
           month: monthLabel,
           grossDue: Math.round(grossDue),
-          collected: Math.round(grossDue * collectionRate),
-          lateFees: Math.round(grossDue * (1 - collectionRate) * 0.05),
+          collected: Math.round(collected),
+          lateFees: Math.round(lateFees),
           servicingCosts: 0,
-          netCashFlow: Math.round(grossDue * collectionRate),
+          netCashFlow: Math.round(collected),
         });
       }
 
@@ -568,7 +586,8 @@ export function registerPlatformFeatureRoutes(app: Express): void {
 
   // ─── Data Portability ──────────────────────────────────────────────
 
-  app.post("/api/export/full", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // canExportData like every other export route (DEFECT-0170 audit).
+  app.post("/api/export/full", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
     try {
       const org = req.organization;
       const exportId = `export_${org.id}_${Date.now()}`;
@@ -600,7 +619,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
     } catch (error) { Errors.internal(res, error); }
   });
 
-  app.get("/api/data/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.get("/api/data/export", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
     try {
       const org = req.organization;
       const { generateFullExport } = await import("./services/dataPortability");

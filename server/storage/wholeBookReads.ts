@@ -16,21 +16,27 @@ import { db } from "../db";
 import { deals, leads, notes, payments, properties } from "@shared/schema";
 import { ADMINISTRATIVE_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 
-const PAGE = 1000;
+/** The page size readAllPages expects: a shorter page means the end. */
+export const WHOLE_BOOK_PAGE = 1000;
+const PAGE = WHOLE_BOOK_PAGE;
 /** Far above any real book; a larger one is refused, never cut short. */
 const EXPORT_ROW_CEILING = 250_000;
 
 class ExportTooLargeError extends Error {
+  /** 413: surfaced as-is by the error handler instead of a generic 500. */
+  readonly statusCode = 413;
   constructor(kind: string) {
     super(`This ${kind} export exceeds ${EXPORT_ROW_CEILING.toLocaleString()} rows — contact support for a bulk export; nothing was truncated.`);
     this.name = "ExportTooLargeError";
   }
 }
 
-type Kind = "leads" | "properties" | "deals" | "notes" | "payments";
-
-async function readAll<T extends { id: number }>(
-  kind: Kind,
+/**
+ * Page any id-keyed read to the end, refusing past the ceiling. Exported
+ * for exports that read tables beyond the five below (data portability).
+ */
+export async function readAllPages<T extends { id: number }>(
+  kind: string,
   page: (afterId: number) => Promise<T[]>,
 ): Promise<T[]> {
   const out: T[] = [];
@@ -45,7 +51,7 @@ async function readAll<T extends { id: number }>(
 }
 
 export function readAllLeads(orgId: number) {
-  return readAll("leads", (afterId) =>
+  return readAllPages("leads", (afterId) =>
     db.select().from(leads)
       .where(and(eq(leads.organizationId, orgId), sql`${leads.deletedAt} IS NULL`, gt(leads.id, afterId)) as SQL)
       .orderBy(asc(leads.id))
@@ -54,7 +60,7 @@ export function readAllLeads(orgId: number) {
 }
 
 export function readAllProperties(orgId: number) {
-  return readAll("properties", (afterId) =>
+  return readAllPages("properties", (afterId) =>
     db.select().from(properties)
       .where(and(eq(properties.organizationId, orgId), sql`${properties.status} != 'deleted'`, gt(properties.id, afterId)) as SQL)
       .orderBy(asc(properties.id))
@@ -63,7 +69,7 @@ export function readAllProperties(orgId: number) {
 }
 
 export function readAllDeals(orgId: number) {
-  return readAll("deals", (afterId) =>
+  return readAllPages("deals", (afterId) =>
     db.select().from(deals)
       .where(
         and(
@@ -78,7 +84,7 @@ export function readAllDeals(orgId: number) {
 }
 
 export function readAllNotes(orgId: number) {
-  return readAll("notes", (afterId) =>
+  return readAllPages("notes", (afterId) =>
     db.select().from(notes)
       .where(and(eq(notes.organizationId, orgId), gt(notes.id, afterId)) as SQL)
       .orderBy(asc(notes.id))
@@ -92,7 +98,7 @@ export function readAllNotes(orgId: number) {
  * 12-month cash-flow chart were cut short with no signal.
  */
 export function readAllPayments(orgId: number) {
-  return readAll("payments", (afterId) =>
+  return readAllPages("payments", (afterId) =>
     db.select().from(payments)
       .where(and(eq(payments.organizationId, orgId), gt(payments.id, afterId)) as SQL)
       .orderBy(asc(payments.id))

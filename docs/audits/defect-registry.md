@@ -4362,6 +4362,29 @@ Remediation plan: DONE.
 - The borrower match is one indexed, org-scoped query.
 - A per-file register pins the number of capped reads left in each of
   these files.
+Audit follow-up, same day (an independent audit of `000d6f6`):
+- "Every export path" was false. Settings → "Download your data"
+  (`server/services/dataPortability.ts`) read `.limit(10000)` (campaigns
+  1000) with no order, and reported the truncated sum as `totalRecords`. It
+  now reads every table whole.
+- It and `POST /api/export/everything` lacked `canExportData`; they now
+  require it.
+- The org-wide Finance ledger (`GET /api/payments` with no note) read the
+  capped payments while its notes were whole. It now reads every payment.
+- The register missed both. Its pattern now covers `getPayments` in any
+  arity and any 4+ digit `.limit()`, and it reads `dataPortability.ts`.
+- Projections used `Math.min(...spread)`, which overflows the stack near
+  130k payments. It is now a loop.
+- The notes list endpoint went back to the capped, newest-first UI read.
+- Today's properties went back to the capped list, since they feed no money
+  figure. The two open offers are now explicitly the newest, and an older
+  property is fetched by id.
+- A refusal past the ceiling is a 413 with its message, not a generic 500.
+  Two finance catches that turned it into zeros now re-throw it.
+- The cash-flow waterfall still showed invented figures: a collection rate
+  guessed from today's delinquency and a flat 5% late fee, the same in every
+  month. It now reports each month's completed payments and late fees.
+- The unused `server/services/export.ts` (capped, no importers) was deleted.
 Falsified by: `tests/unit/wholeBookReadsAreWhole.test.ts` (register red
 pre-fix; the reader returns 7,250 of 7,250 and refuses past the ceiling).
 Resolving commits: this branch, round 3
@@ -4373,8 +4396,7 @@ Surfaced by lenses: DEFECT-0170 trace, 2026-09-28
 Description: About 45 more production callers of the capped getters compute
 a total or claim from the newest 5000 rows, or act only on those rows.
 - Today's lead-derived figures (`server/routes-today.ts`): stalled leads,
-  the needs-attention badge, the morning brief's stale-lead count and its
-  "since your first deal" line. Today keeps leads on the capped list; a
+  the needs-attention badge, and the morning brief's stale-lead count. Today keeps leads on the capped list; a
   whole lead book per Today request is the wrong fix, and these need SQL
   aggregates.
 - Pax and MCP count tools (`server/ai/tools.ts`, `server/mcp/index.ts`):

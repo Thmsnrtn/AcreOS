@@ -1,6 +1,6 @@
 {
   "name": "colon-any",
-  "description": "The `: any` type ANNOTATION is the uncounted sibling of the ratcheted `as any` cast (audit F-06-1). `: any` on a tenant key (organizationId), a money value, an auth field, or external input erases the type checker exactly as `as any` does \u2014 the leads.organizationId-widening class the as-any ratchet exists to stop, walking straight past it because that ratchet only matches the `as any` cast form. This freezes the annotation count over server/ and drives it DOWN. Remediate the tenant-key/money/auth subset first; lower baselineCount as annotations are typed away. New `: any` now fails CI.",
+  "description": "The `: any` type ANNOTATION is the uncounted sibling of the ratcheted `as any` cast (audit F-06-1). `: any` on a tenant key (organizationId), a money value, an auth field, or external input erases the type checker exactly as `as any` does — the leads.organizationId-widening class the as-any ratchet exists to stop, walking straight past it because that ratchet only matches the `as any` cast form. This freezes the annotation count over server/ and drives it DOWN. Remediate the tenant-key/money/auth subset first; lower baselineCount as annotations are typed away. New `: any` now fails CI.",
   "pattern": ":\\s*any\\b",
   "globs": [
     "server/**/*.ts"
@@ -9,11 +9,11 @@
     "**/*.test.ts",
     "**/*.spec.ts"
   ],
-  "baselineCount": 2676,
+  "baselineCount": 2672,
   "direction": "down",
-  "lastBumpNote": "2026-09-27 DEFECT-0054: the retired PUT /api/admin/system-api-keys/:provider took its `catch (err: any)` with it.",
+  "lastBumpNote": "2676 -> 2672 on 2026-09-28 (DEFECT-0170 audit follow-up): the unused server/services/export.ts (capped exporters, no importers) was deleted, and the cash-flow waterfall's `(s, n: any)` reducers went with its invented figures. PRIOR NOTE — 2026-09-27 DEFECT-0054: the retired PUT /api/admin/system-api-keys/:provider took its `catch (err: any)` with it.",
   "minima": {
     "files": 1100
   },
-  "minimaNote": "VACUITY FLOOR on the SCAN POPULATION, not a ratchet. baselineCount above counts BAD THINGS FOUND, so a scan that stops seeing files finds zero and reports it as progress: a zero baseline PASSes on an empty file set, and a nonzero one prints a stale-high \"lock it in\" for a number that was never true. MEASURED 2026-08-16: this config matched 1370 file(s) (server/**/*.ts minus tests). Floor set to 1100, comfortably below that, so a broken glob or walk trips it while ordinary deletion does not. Checked BEFORE the baseline comparison by scripts/ratchet.mjs; a MISSING floor fails as loudly as a breached one. If a real deletion wave shrinks this population, lower the floor in the same commit and name the wave here \u2014 never raise it to silence something, never delete the key. Re-measure with `node scripts/ratchet.mjs --measure`."
+  "minimaNote": "VACUITY FLOOR on the SCAN POPULATION, not a ratchet. baselineCount above counts BAD THINGS FOUND, so a scan that stops seeing files finds zero and reports it as progress: a zero baseline PASSes on an empty file set, and a nonzero one prints a stale-high \"lock it in\" for a number that was never true. MEASURED 2026-08-16: this config matched 1370 file(s) (server/**/*.ts minus tests). Floor set to 1100, comfortably below that, so a broken glob or walk trips it while ordinary deletion does not. Checked BEFORE the baseline comparison by scripts/ratchet.mjs; a MISSING floor fails as loudly as a breached one. If a real deletion wave shrinks this population, lower the floor in the same commit and name the wave here — never raise it to silence something, never delete the key. Re-measure with `node scripts/ratchet.mjs --measure`."
 }

@@ -5,7 +5,8 @@
 
 import { db } from "../db";
 import { leads, deals, properties, notes, campaigns } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { and, asc, eq, gt } from "drizzle-orm";
+import { readAllPages, WHOLE_BOOK_PAGE } from "../storage/wholeBookReads";
 import { logger } from "../utils/logger";
 
 // ── Full Data Export ────────────────────────────────────────────────
@@ -28,12 +29,25 @@ export interface DataExport {
 }
 
 export async function generateFullExport(orgId: number): Promise<DataExport> {
+  // Every row (DEFECT-0170 audit). This is Settings → "Download your data",
+  // and it read `.limit(10000)` (campaigns 1000) with NO order — past the
+  // limit an ARBITRARY subset — then reported the truncated sum as
+  // `totalRecords`. It keeps every row the org owns, soft-deleted included,
+  // as it always did; it pages by id and refuses past the ceiling.
+  const page = <T extends { id: number }>(
+    kind: string,
+    read: (afterId: number) => Promise<T[]>,
+  ) => readAllPages(kind, read);
   const [orgLeads, orgDeals, orgProperties, orgNotes, orgCampaigns] = await Promise.all([
-    db.select().from(leads).where(eq(leads.organizationId, orgId)).limit(10000),
-    db.select().from(deals).where(eq(deals.organizationId, orgId)).limit(10000),
-    db.select().from(properties).where(eq(properties.organizationId, orgId)).limit(10000),
-    db.select().from(notes).where(eq(notes.organizationId, orgId)).limit(10000),
-    db.select().from(campaigns).where(eq(campaigns.organizationId, orgId)).limit(1000),
+    page("leads", (a) => db.select().from(leads).where(and(eq(leads.organizationId, orgId), gt(leads.id, a))).orderBy(asc(leads.id)).limit(WHOLE_BOOK_PAGE)),
+    page("deals", (a) => db.select().from(deals).where(and(eq(deals.organizationId, orgId), gt(deals.id, a))).orderBy(asc(deals.id)).limit(WHOLE_BOOK_PAGE)),
+    page("properties", (a) =>
+      db.select().from(properties).where(and(eq(properties.organizationId, orgId), gt(properties.id, a))).orderBy(asc(properties.id)).limit(WHOLE_BOOK_PAGE),
+    ),
+    page("notes", (a) => db.select().from(notes).where(and(eq(notes.organizationId, orgId), gt(notes.id, a))).orderBy(asc(notes.id)).limit(WHOLE_BOOK_PAGE)),
+    page("campaigns", (a) =>
+      db.select().from(campaigns).where(and(eq(campaigns.organizationId, orgId), gt(campaigns.id, a))).orderBy(asc(campaigns.id)).limit(WHOLE_BOOK_PAGE),
+    ),
   ]);
 
   const totalRecords = orgLeads.length + orgDeals.length + orgProperties.length + orgNotes.length + orgCampaigns.length;

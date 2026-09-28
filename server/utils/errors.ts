@@ -313,6 +313,13 @@ export const Errors = {
       );
       return;
     }
+    // A whole-book read that refused past its ceiling (DEFECT-0170) says so:
+    // "nothing was truncated, contact support" — not a generic 500. Same
+    // shape-detection as above, so utils does not import storage.
+    if (error instanceof Error && error.name === "ExportTooLargeError") {
+      sendError(res, 413, "EXPORT_TOO_LARGE", error.message);
+      return;
+    }
     // In production we never leak the raw error to the client — it goes
     // to the logger so SRE can correlate via the request ID we surface
     // alongside the message. In dev we keep the underlying message so

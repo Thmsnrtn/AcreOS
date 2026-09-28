@@ -28,7 +28,7 @@
  * parity and the client renders <TodayActivityFeed /> as before.
  */
 
-import { readAllDeals, readAllNotes, readAllProperties } from "./storage/wholeBookReads";
+import { readAllDeals, readAllNotes } from "./storage/wholeBookReads";
 import { Router, type Response } from "express";
 import { and, desc, eq, gt, gte, inArray, notInArray, sql } from "drizzle-orm";
 import { paxObservations, leads as leadsTable, deals as dealsTable, properties as propertiesTable, payments as paymentsTable, todayQueueState, paxSends, paxScheduledTaskRuns } from "@shared/schema";
@@ -806,11 +806,18 @@ async function gatherAiQueue(
     });
   }
 
+  // Newest first, explicitly: the whole-book deal read is id-ascending, and
+  // `.slice(0, 2)` on it pinned the two OLDEST open offers (DEFECT-0170 audit).
   const pendingDeals = allDeals
     .filter((d) => d.status === "offer_sent" || d.status === "negotiating")
+    .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())
     .slice(0, 2);
   for (const deal of pendingDeals) {
-    const property = allProperties.find((p) => p.id === deal.propertyId);
+    // Properties stay on the capped list here; an older one is fetched by id
+    // rather than shown as "Property #N".
+    const property =
+      allProperties.find((p) => p.id === deal.propertyId) ??
+      (deal.propertyId ? await storage.getProperty(orgId, deal.propertyId) : undefined);
     const propertyName = property?.address || `Property #${deal.propertyId}`;
     const daysSinceOffer = deal.offerDate
       ? Math.floor((now.getTime() - new Date(deal.offerDate).getTime()) / DAY_MS)
@@ -1138,10 +1145,11 @@ async function buildActiveQueue(orgId: number, now: Date): Promise<BuiltQueue> {
     storage.getLeads(orgId),
     // Money figures (the cash strip, late notes, open-deal value) read the
     // WHOLE book (DEFECT-0170): the capped lists drop the OLDEST rows first —
-    // exactly the late notes and stuck deals. Leads stay on the capped list
-    // (a whole lead book per Today request is the wrong fix; see the entry).
+    // exactly the late notes and stuck deals. Leads and properties stay on the
+    // capped lists: neither feeds a money figure here, and a whole book per
+    // Today request is the wrong fix for them (DEFECT-0171).
     readAllDeals(orgId),
-    readAllProperties(orgId),
+    storage.getProperties(orgId),
     readAllNotes(orgId),
   ]);
 
