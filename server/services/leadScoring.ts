@@ -288,11 +288,8 @@ export class LeadScoringService {
     return { value: isDifferentState ? ">100 miles (different state)" : "local", score, weight: 150, explanation: isDifferentState ? "Owner in different state from property — strong absentee signal (+150)" : "Owner is local", rawData: { ownerState, propState } };
   }
 
-  private async calcOwnerAgeSignal(lead: Lead, enrichment: EnrichmentData): Promise<ScoreFactorResult> {
-    const ownerAge = enrichment.parcelData?.ownerAge || enrichment.ownerData?.age || 0;
-    const score = ownerAge > 75 ? 75 : ownerAge > 65 ? 40 : 0;
-    return { value: ownerAge, score, weight: 75, explanation: ownerAge > 75 ? "Owner age >75 — estate/probate probability elevated (+75)" : ownerAge > 65 ? "Owner age >65 — approaching estate territory (+40)" : "Owner age unknown or below threshold", rawData: { ownerAge } };
-  }
+  // calcOwnerAgeSignal deleted 2026-09-28 (DEFECT-0178): zero callers, and
+  // owner age is not a lead-score factor. See protectedTraitsNeverScore.test.ts.
 
   private async calcBLMAdjacency(enrichment: EnrichmentData): Promise<ScoreFactorResult> {
     const adjacent = enrichment.parcelData?.blmAdjacent || enrichment.parcelData?.publicLandAdjacent || false;

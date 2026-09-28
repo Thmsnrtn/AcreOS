@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { offerabilityRefusal } from "./listability";
 import {
   buyerProfiles,
   buyerPropertyMatches,
@@ -13,7 +14,7 @@ import {
   type Property,
   type Lead,
 } from "@shared/schema";
-import { eq, and, desc, inArray, isNull, or } from "drizzle-orm";
+import { eq, and, desc, inArray, isNull } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 // Audit Wave 1 (residential_wholesaler beta→core): tpl_buyer_match_found never
@@ -94,6 +95,14 @@ interface BuyerPoolAnalysis {
   averageUrgency: number;
   timelineDistribution: Record<string, number>;
   aiInsights?: string;
+}
+
+/** A property the org does not hold cannot be matched to buyers (DEFECT-0177). */
+class NotOfferableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NotOfferableError";
+  }
 }
 
 export class BuyerMatchingAIService {
@@ -213,29 +222,25 @@ export class BuyerMatchingAIService {
       throw new Error(`Buyer profile ${buyerProfileId} not found`);
     }
 
-    const availableProperties = await db.select().from(properties)
-      .where(and(
-        eq(properties.organizationId, organizationId),
-        or(
-          eq(properties.status, "owned"),
-          eq(properties.status, "listed")
-        )
-      ));
+    // The one offerability rule (DEFECT-0177): the same statuses a listing,
+    // a syndication and a blast accept — not a second inline list.
+    const availableProperties = (
+      await db.select().from(properties).where(eq(properties.organizationId, organizationId))
+    ).filter((p) => !offerabilityRefusal(p.status));
 
     const matchResults: PropertyMatchResult[] = [];
 
+    // Score every candidate: an existing match that no longer fits is
+    // re-scored, not left at its old score (DEFECT-0177).
     for (const property of availableProperties) {
       const { score, factors, reasons, concerns } = this.calculateMatchScore(buyerProfile, property);
-      
-      if (score >= 40) {
-        matchResults.push({
-          propertyId: property.id,
-          matchScore: score,
-          matchFactors: factors,
-          matchReasons: reasons,
-          potentialConcerns: concerns,
-        });
-      }
+      matchResults.push({
+        propertyId: property.id,
+        matchScore: score,
+        matchFactors: factors,
+        matchReasons: reasons,
+        potentialConcerns: concerns,
+      });
     }
 
     matchResults.sort((a, b) => b.matchScore - a.matchScore);
@@ -246,16 +251,17 @@ export class BuyerMatchingAIService {
     const propertiesById = new Map(availableProperties.map((p) => [p.id, p]));
 
     const createdMatches: BuyerPropertyMatch[] = [];
+    const existingRows = await db.select().from(buyerPropertyMatches)
+      .where(and(
+        eq(buyerPropertyMatches.organizationId, organizationId),
+        eq(buyerPropertyMatches.buyerProfileId, buyerProfileId)
+      ));
+    const existingByProperty = new Map(existingRows.map((r) => [r.propertyId, r]));
 
     for (const result of matchResults) {
-      const existingMatch = await db.select().from(buyerPropertyMatches)
-        .where(and(
-          eq(buyerPropertyMatches.buyerProfileId, buyerProfileId),
-          eq(buyerPropertyMatches.propertyId, result.propertyId)
-        ))
-        .limit(1);
+      const existing = existingByProperty.get(result.propertyId);
 
-      if (existingMatch.length > 0) {
+      if (existing) {
         const [updated] = await db.update(buyerPropertyMatches)
           .set({
             matchScore: result.matchScore,
@@ -264,10 +270,10 @@ export class BuyerMatchingAIService {
             potentialConcerns: result.potentialConcerns,
             updatedAt: new Date(),
           })
-          .where(eq(buyerPropertyMatches.id, existingMatch[0].id))
+          .where(and(eq(buyerPropertyMatches.id, existing.id), eq(buyerPropertyMatches.organizationId, organizationId)))
           .returning();
-        createdMatches.push(updated);
-      } else {
+        if (result.matchScore >= 40) createdMatches.push(updated);
+      } else if (result.matchScore >= 40) {
         const match: InsertBuyerPropertyMatch = {
           organizationId,
           buyerProfileId,
@@ -297,7 +303,7 @@ export class BuyerMatchingAIService {
     await this.logEvent(organizationId, "buyer_matched_to_properties", {
       buyerProfileId,
       matchCount: createdMatches.length,
-      topMatchScore: matchResults[0]?.matchScore ?? 0,
+      topMatchScore: createdMatches[0]?.matchScore ?? 0,
     }, "buyer_profile", buyerProfileId);
 
     return createdMatches;
@@ -316,6 +322,11 @@ export class BuyerMatchingAIService {
     if (!property) {
       throw new Error(`Property ${propertyId} not found`);
     }
+    // A match offers the property to a buyer, and a fresh match emails them
+    // (tpl_buyer_match_found). Sold, prospect or offer-stage land is not
+    // offerable (DEFECT-0177), so it is refused before anything is written.
+    const notOfferable = offerabilityRefusal(property.status);
+    if (notOfferable) throw new NotOfferableError(notOfferable);
 
     const activeBuyers = await db.select().from(buyerProfiles)
       .where(and(
@@ -331,18 +342,19 @@ export class BuyerMatchingAIService {
       potentialConcerns: string[];
     }> = [];
 
+    // Every active buyer is scored, not only the ones that clear 40: an
+    // existing match row whose buyer no longer fits must be RE-scored, or its
+    // old high score keeps it in the blast audience (DEFECT-0177). Only a
+    // NEW match needs the threshold.
     for (const buyer of activeBuyers) {
       const { score, factors, reasons, concerns } = this.calculateMatchScore(buyer, property);
-      
-      if (score >= 40) {
-        matchResults.push({
-          buyerProfileId: buyer.id,
-          matchScore: score,
-          matchFactors: factors,
-          matchReasons: reasons,
-          potentialConcerns: concerns,
-        });
-      }
+      matchResults.push({
+        buyerProfileId: buyer.id,
+        matchScore: score,
+        matchFactors: factors,
+        matchReasons: reasons,
+        potentialConcerns: concerns,
+      });
     }
 
     matchResults.sort((a, b) => b.matchScore - a.matchScore);
@@ -352,16 +364,17 @@ export class BuyerMatchingAIService {
     const buyersById = new Map(activeBuyers.map((b) => [b.id, b]));
 
     const createdMatches: BuyerPropertyMatch[] = [];
+    const existingRows = await db.select().from(buyerPropertyMatches)
+      .where(and(
+        eq(buyerPropertyMatches.organizationId, organizationId),
+        eq(buyerPropertyMatches.propertyId, propertyId)
+      ));
+    const existingByBuyer = new Map(existingRows.map((r) => [r.buyerProfileId, r]));
 
     for (const result of matchResults) {
-      const existingMatch = await db.select().from(buyerPropertyMatches)
-        .where(and(
-          eq(buyerPropertyMatches.buyerProfileId, result.buyerProfileId),
-          eq(buyerPropertyMatches.propertyId, propertyId)
-        ))
-        .limit(1);
+      const existing = existingByBuyer.get(result.buyerProfileId);
 
-      if (existingMatch.length > 0) {
+      if (existing) {
         const [updated] = await db.update(buyerPropertyMatches)
           .set({
             matchScore: result.matchScore,
@@ -370,10 +383,10 @@ export class BuyerMatchingAIService {
             potentialConcerns: result.potentialConcerns,
             updatedAt: new Date(),
           })
-          .where(eq(buyerPropertyMatches.id, existingMatch[0].id))
+          .where(and(eq(buyerPropertyMatches.id, existing.id), eq(buyerPropertyMatches.organizationId, organizationId)))
           .returning();
-        createdMatches.push(updated);
-      } else {
+        if (result.matchScore >= 40) createdMatches.push(updated);
+      } else if (result.matchScore >= 40) {
         const match: InsertBuyerPropertyMatch = {
           organizationId,
           buyerProfileId: result.buyerProfileId,
@@ -404,7 +417,7 @@ export class BuyerMatchingAIService {
     await this.logEvent(organizationId, "property_matched_to_buyers", {
       propertyId,
       matchCount: createdMatches.length,
-      topMatchScore: matchResults[0]?.matchScore ?? 0,
+      topMatchScore: createdMatches[0]?.matchScore ?? 0,
     }, "property", propertyId);
 
     return createdMatches;
@@ -497,15 +510,18 @@ export class BuyerMatchingAIService {
     }
 
     const budgetUtilization = propertyPrice / maxBudget;
+    // The budget is what the buyer told us; the price may be an estimate
+    // when there is no list price (DEFECT-0177: say which).
+    const priceWord = property.listPrice ? "Asking price" : "Estimated value (no asking price set)";
     if (budgetUtilization >= 0.7 && budgetUtilization <= 0.95) {
-      reasons.push("Property price fits well within budget");
+      reasons.push(`${priceWord} fits the buyer's stated budget`);
       return 100;
     } else if (budgetUtilization < 0.5) {
-      reasons.push("Property is well under budget");
+      reasons.push(`${priceWord} is well under the buyer's stated budget`);
       return 85;
     }
-    
-    reasons.push("Property price is within budget range");
+
+    reasons.push(`${priceWord} is within the buyer's stated budget`);
     return 90;
   }
 
@@ -611,7 +627,7 @@ export class BuyerMatchingAIService {
         z => propertyZoning.includes(z.toLowerCase())
       );
       if (zoningMatch) {
-        reasons.push(`Zoning (${property.zoning}) matches buyer preferences`);
+        reasons.push(`Zoning label "${property.zoning}" matches a stated preference — legal use not verified`);
         return 100;
       }
     }
@@ -628,7 +644,7 @@ export class BuyerMatchingAIService {
       for (const use of preferredUses) {
         const matchingZones = zoningToUseMap[use.toLowerCase()] ?? [];
         if (matchingZones.some(z => propertyZoning.includes(z))) {
-          reasons.push(`Property zoning supports ${use} use`);
+          reasons.push(`Zoning label "${property.zoning}" is usually associated with ${use} use — legal use not verified`);
           return 90;
         }
       }
@@ -719,7 +735,7 @@ export class BuyerMatchingAIService {
 
     if (financingType === "cash") {
       if (financialInfo.budget && propertyPrice <= financialInfo.budget) {
-        reasons.push("Buyer has cash to purchase");
+        reasons.push("Buyer's stated cash budget covers the price (self-reported, not verified)");
         return 100;
       }
       concerns.push("Property may exceed cash available");
@@ -735,17 +751,19 @@ export class BuyerMatchingAIService {
           financialInfo.downPaymentCapacity >= typicalDownPayment &&
           financialInfo.monthlyPaymentCapacity >= typicalMonthlyPayment
         ) {
-          reasons.push("Buyer qualifies for owner financing");
+          reasons.push(
+            "Buyer's stated capacity covers an illustrative 10% down / 60-month payment — not a credit decision or approved terms",
+          );
           return 95;
         }
-        concerns.push("Buyer may need flexible owner financing terms");
+        concerns.push("Buyer's stated capacity is below an illustrative 10% down / 60-month payment");
         return 70;
       }
     }
 
     if (financialInfo.preApproved && financialInfo.preApprovalAmount) {
       if (propertyPrice <= financialInfo.preApprovalAmount) {
-        reasons.push("Buyer pre-approved for this price range");
+        reasons.push("Buyer reports a pre-approval covering this price (not verified)");
         return 100;
       }
       concerns.push("Property exceeds pre-approval amount");

@@ -4639,6 +4639,98 @@ pre-fix). The gate test's db double answers only when the predicate
 really demands an org-scoped confirmation dated after issue. Deleting
 either the `isNotNull` clause or the issue-date clause turns it red.
 Resolving commits: this branch, round 3
+### DEFECT-0177
+Title: Buyer matching offered land the org did not hold, stated conclusions its data cannot support, and kept stale scores in the blast audience
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: 2026-09-28 practitioner supplement (buyer matching), verified at HEAD
+Description: `matchPropertyToBuyers` (`server/services/buyerMatchingAI.ts`,
+route `POST /api/ai/buyer-matching/match` in `server/routes-ai-operations.ts`)
+had no status check.
+- A SOLD or prospect parcel was matched. Every fresh match fired
+  `buyer.match_created`, whose installed template emails the buyer "we
+  found a property matching your criteria".
+- Reasons stated conclusions the data cannot support:
+  - "Buyer qualifies for owner financing" came from a 10% / 60-month rule
+    of thumb applied to capacity the buyer reported themselves.
+  - "Buyer has cash to purchase" and "pre-approved" came from the buyer's
+    own form.
+  - "Zoning supports RV use" came from a substring match on a zoning label.
+- Only matches scoring 40 or more were written. An EXISTING match whose
+  buyer no longer fit therefore kept its old high score, and the buyer
+  blast selects its audience by stored score.
+- `matchBuyerToProperties` kept a second inline status list.
+Remediation plan: DONE.
+- Both matchers use `offerabilityRefusal`. The property-side matcher
+  refuses before writing or emailing anything, and the route answers 400.
+- Every candidate is scored, and an existing match is re-scored in either
+  direction. Only a NEW match needs 40 or more, and only a new match emits.
+  Existing matches are read in one org-scoped query.
+- The reasons say what they rest on:
+  - "stated budget";
+  - "Estimated value (no asking price set)";
+  - "self-reported, not verified";
+  - "illustrative 10% down / 60-month payment — not a credit decision or
+    approved terms";
+  - "Zoning label … legal use not verified".
+- Every match-row read and write in both matchers names the org.
+  `presentMatchToBuyer` and `recordBuyerResponse` still update by id only.
+  They have no callers and stay on the lint baseline.
+- `matchBuyerToProperties` has no production caller, and it does not check
+  the buyer's `isActive`. Re-scoring covers active buyers and offerable
+  land only. The blast's own filters close the rest.
+- Still open:
+  - essential-versus-soft buyer requirements as supported, contradicted or
+    unknown;
+  - feeding the buyer's stated primary use into the scorer;
+  - the founder AI console lists this tool at a path that does not exist
+    (`/api/ai/buyers/match`).
+Falsified by: `tests/unit/buyerMatchSaysWhatItKnows.test.ts` (nine cases
+red pre-fix; independently re-measured). Its db double ignores
+predicates, so `lint:org-fetch` is the tenancy gate for these queries.
+Removing either org predicate turns that lint red.
+Resolving commits: this branch, round 3
+### DEFECT-0178
+Title: A dormant owner-age lead-score signal; no gate against protected traits in decision code
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: 2026-09-28 practitioner supplement (a 2020 buyer-screening transcript treating disability and Social Security income as signs of an undesirable buyer)
+Description: The supplement asks that disability, Social Security or
+public-assistance income, and age never be encoded in buyer qualification,
+terms eligibility, lead scores or agent prompts. `server/services/leadScoring.ts`
+still carried `calcOwnerAgeSignal`: "Owner age >75 — estate/probate
+probability elevated (+75)". It was unwired, one call away from live, and
+nothing would have stopped it being wired.
+Remediation plan: DONE.
+- The signal is deleted.
+- `tests/unit/protectedTraitsNeverScore.test.ts` enumerates the decision
+  population: lead scoring, qualification and decay, buyer matching and
+  qualification, seller intent, prospect intelligence, land credit and deal
+  underwriting. It forbids age thresholds, disability, SSI/SSDI, Social
+  Security, public assistance and welfare as inputs.
+- String literals (prompts) are read. Comments are stripped, so the record
+  of a removal does not trip the gate.
+- There is a vacuity floor per file. Canaries prove that each of the five
+  written shapes goes red.
+- Not yet covered, found by an independent audit:
+  - The population is a hand list, not a glob. It omits seller
+    motivation and psychology, lead intelligence, disposition, the
+    offer services and the VA / executive qualification prompts. None of
+    these uses a forbidden token today.
+  - The pattern misses field names without a comparison (`.age`,
+    `birthYear`, `dateOfBirth`) and camelCase `ssiIncome` / `isDisabled`.
+- Not decided here, recorded for the founder: seller-side life-event
+  signals ("recent divorce" in `server/services/prospectIntelligence.ts`,
+  keywords in `server/services/sellerIntentPredictor.ts`). Marital status is
+  a protected basis under ECOA and some state housing laws. Its use for
+  SELLER prospecting needs legal review, not a unilateral change. The same
+  goes for the "health" (medical bills, hospital) and "retirement" intent
+  keywords. Each adds +20 and surfaces as "move fast — send offer today"
+  (`server/services/sellerPsychologyStrategy.ts`), and each is a proxy for
+  disability or age.
+Falsified by: `tests/unit/protectedTraitsNeverScore.test.ts` (the
+leadScoring case red pre-fix; five canaries).
+Resolving commits: this branch, round 3
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -4676,11 +4768,11 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 1   | 11  | 12    |
-| FIXED  | 13  | 86  | 62  | 161   |
+| FIXED  | 13  | 86  | 64  | 163   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **13** | **90** | **73** | **176** |
+| **Total** | **13** | **90** | **75** | **178** |
 
-Recounted from the entries themselves on 2026-09-28 (176 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (178 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

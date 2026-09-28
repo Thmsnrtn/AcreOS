@@ -656,6 +656,8 @@ export function registerAIOperationsRoutes(app: Express): void {
       
       res.json(matches);
     } catch (error: any) {
+      // Land the org does not hold is refused, not a server error (DEFECT-0177).
+      if (error?.name === "NotOfferableError") return Errors.badRequest(res, error.message);
       logger.error("Find buyer matches error", error);
       Errors.internal(res, error);
     }
