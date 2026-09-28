@@ -1685,8 +1685,10 @@ export async function executeTool(
         if (args.offerAmount !== undefined) dealUpdates.offerAmount = String(args.offerAmount);
         if (args.notes) dealUpdates.notes = args.notes;
 
-        const dealsForOrg = await storage.getDeals(org.id);
-        const dealBeforeUpdate = dealsForOrg.find((d) => d.id === args.deal_id);
+        // The real pre-image, by id (DEFECT-0171): `find` over the 5000-row
+        // capped list missed older deals, so the receipt's "before" values
+        // were undefined and the stage-change event was dropped.
+        const dealBeforeUpdate = await storage.getDeal(org.id, args.deal_id);
         const dealBefore: Record<string, any> = {};
         const dealAfter: Record<string, any> = {};
         for (const key of Object.keys(dealUpdates)) {
@@ -2778,8 +2780,10 @@ export async function executeTool(
 
         // Build context about the lead and their property
         let propertyContext = "";
-        const allProperties = await storage.getProperties(org.id);
-        const sellerProperty = allProperties.find(p => p.sellerId === lead.id);
+        // The lead's own property, by seller (DEFECT-0171) — not searched for
+        // in the newest 5000 properties.
+        const { readPropertiesBySellerIds } = await import("../storage/wholeBookReads");
+        const [sellerProperty] = await readPropertiesBySellerIds(org.id, [lead.id]);
         if (sellerProperty) {
           propertyContext = `Property: ${sellerProperty.sizeAcres} acres in ${sellerProperty.county} County, ${sellerProperty.state}${sellerProperty.apn ? ` (APN: ${sellerProperty.apn})` : ""}.`;
         }

@@ -11,7 +11,7 @@
  * the SAME predicates as the capped getters, and REFUSES past a hard
  * ceiling rather than truncating.
  */
-import { and, asc, eq, gt, notInArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, notInArray, sql, type SQL } from "drizzle-orm";
 import { db } from "../db";
 import { deals, leads, notes, payments, properties } from "@shared/schema";
 import { ADMINISTRATIVE_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
@@ -104,4 +104,34 @@ export function readAllPayments(orgId: number) {
       .orderBy(asc(payments.id))
       .limit(PAGE),
   );
+}
+
+/**
+ * Every (non-deleted) property whose seller is one of these leads — the
+ * lead→property relation, read whole rather than found in the newest 5000
+ * properties (DEFECT-0171).
+ */
+export async function readPropertiesBySellerIds(orgId: number, sellerIds: number[]) {
+  const ids = [...new Set(sellerIds)];
+  if (ids.length === 0) return [];
+  const out = [];
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    out.push(
+      ...(await readAllPages("properties", (afterId) =>
+        db.select().from(properties)
+          .where(
+            and(
+              eq(properties.organizationId, orgId),
+              sql`${properties.status} != 'deleted'`,
+              inArray(properties.sellerId, chunk),
+              gt(properties.id, afterId),
+            ) as SQL,
+          )
+          .orderBy(asc(properties.id))
+          .limit(PAGE),
+      )),
+    );
+  }
+  return out;
 }

@@ -4419,8 +4419,46 @@ a total or claim from the newest 5000 rows, or act only on those rows.
 - Progress: Pax's `get_cashflow_summary` and `get_pipeline_summary` now
   count the whole book in SQL (`server/storage/bookAggregates.ts`), pinned
   by `tests/unit/paxBookCountsAreWhole.test.ts`.
+- Progress: these by-id and by-seller lookups no longer search the capped
+  lists:
+  - the Pax tools `update_deal` (its pre-image) and `draft_outreach_message`
+    (the seller's property);
+  - `GET /api/leads/:id/properties`;
+  - the offer-letter batch (`getLeadsByIds` plus properties by seller);
+  - the agent skills `enrichLead` property lookup and `analyzeNote`.
+
+  They use `readPropertiesBySellerIds` (`server/storage/wholeBookReads.ts`)
+  or `getLead` / `getDeal` / `getNote`.
 - The full ranked list is in the trace recorded with DEFECT-0170.
 Resolving commits: —
+### DEFECT-0172
+Title: The batch-offer agent skill priced offers from an invented $10,000 and offered every lead in the org
+Severity: P1
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: DEFECT-0171 lookup sweep, 2026-09-28
+Description: `generateBatchOffers` (`server/services/agent-skills.ts`,
+registered for the deals and operations agents) had two defects.
+- It started every lead at `estimatedValue = 10000`. It kept that value
+  whenever the lead had no linked property, the property had no coordinates,
+  or comps failed or returned no estimate. It then stored a priced offer on
+  it: `estimatedMarketValue: "10000"`, a $2,500 cash offer and a terms
+  schedule. That is an invented price headed for a seller's offer letter.
+- When the batch named a source marketing list, it took EVERY lead in the
+  org and ignored the list's `filters`.
+
+It also read the capped lead list, and reloaded the whole capped property
+list once per lead.
+Remediation plan: DONE.
+- An offer is priced from a comparable-sales estimate or not generated. Each
+  skip says why ("no linked property" or "no comparable-sales estimate").
+- List membership follows the list's filters: state, county, acreage, price,
+  zoning and tax-delinquent, checked against the lead and its property.
+- A set filter that the records cannot answer (owner type, years owned)
+  excludes the lead rather than passing it.
+- Leads and their properties are read whole, once.
+Falsified by: `tests/unit/batchOffersPriceOnlyFromEvidence.test.ts` (four
+cases red pre-fix).
+Resolving commits: this branch, round 3
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -4458,11 +4496,11 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 1   | 11  | 12    |
-| FIXED  | 13  | 82  | 61  | 156   |
+| FIXED  | 13  | 83  | 61  | 157   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **13** | **86** | **72** | **171** |
+| **Total** | **13** | **87** | **72** | **172** |
 
-Recounted from the entries themselves on 2026-09-28 (171 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (172 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

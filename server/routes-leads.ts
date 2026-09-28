@@ -1,4 +1,5 @@
 import type { Express, Response } from "express";
+import { readPropertiesBySellerIds } from "./storage/wholeBookReads";
 import { getOrganization, getUserId, type AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
 import { z } from "zod";
@@ -1081,8 +1082,9 @@ export function registerLeadRoutes(app: Express): void {
         return Errors.notFound(res, "Lead");
       }
 
-      const allProperties = await storage.getProperties(org.id);
-      const linkedProperties = allProperties.filter(p => p.sellerId === leadId);
+      // Every property this lead sells, read whole (DEFECT-0171): filtering
+      // the newest 5000 properties returned [] for an older seller.
+      const linkedProperties = await readPropertiesBySellerIds(org.id, [leadId]);
 
       res.json(linkedProperties);
     } catch (error: any) {

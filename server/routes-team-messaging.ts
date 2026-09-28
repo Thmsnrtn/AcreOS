@@ -1,4 +1,5 @@
 import type { Express, Response, NextFunction } from "express";
+import { readPropertiesBySellerIds } from "./storage/wholeBookReads";
 import type { AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
 import { z } from "zod";
@@ -567,16 +568,19 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const { leadIds, offerPercent, expirationDays, templateId, deliveryMethod } = parsed.data;
       
       // Get leads with properties to calculate offers
-      const allLeads = await storage.getLeads(org.id);
-      const selectedLeads = allLeads.filter(lead => leadIds.includes(lead.id));
+      // By id (DEFECT-0171): filtering the newest 5000 leads silently dropped
+      // older selected leads, or failed the batch as "No valid leads".
+      const selectedLeads = await storage.getLeadsByIds(org.id, leadIds);
       
       if (selectedLeads.length === 0) {
         return Errors.badRequest(res, "No valid leads found for batch");
       }
       
       // Get properties for the leads
-      const allProperties = await storage.getProperties(org.id);
-      const propertyMap = new Map(allProperties.map(p => [p.sellerId, p]));
+      // Each selected lead's property, by seller, read whole (DEFECT-0171):
+      // a property outside the newest 5000 left its lead "unpriceable".
+      const sellerProperties = await readPropertiesBySellerIds(org.id, selectedLeads.map((l) => l.id));
+      const propertyMap = new Map(sellerProperties.map(p => [p.sellerId, p]));
       
       // Generate batch ID
       const batchId = `batch_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;

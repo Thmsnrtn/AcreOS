@@ -510,9 +510,10 @@ const enrichLeadSkill: Skill = {
       const enrichmentResults: Record<string, any> = {};
       
       // Get properties for this org and filter by seller/buyer ID
-      const allProperties = await storage.getProperties(context.organizationId);
-      const properties = allProperties.filter(p => p.sellerId === leadId || p.buyerId === leadId);
-      const property = properties[0];
+      // By seller, read whole (DEFECT-0171) — not searched for in the newest
+      // 5000 properties.
+      const { readPropertiesBySellerIds } = await import("../storage/wholeBookReads");
+      const [property] = await readPropertiesBySellerIds(context.organizationId, [leadId]);
 
       if (!property) {
         return {
@@ -593,6 +594,50 @@ const enrichLeadSkill: Skill = {
 // VA REPLACEMENT SKILLS - Dirt Rich 2 Methodology
 // ============================================
 
+type ListFilters = {
+  states?: string[];
+  counties?: string[];
+  acreageMin?: number;
+  acreageMax?: number;
+  priceMin?: number;
+  priceMax?: number;
+  zoning?: string[];
+  ownerType?: string[];
+  yearsOwned?: number;
+  taxDelinquent?: boolean;
+} | null;
+
+/**
+ * Is this lead a member of a marketing list defined by `filters`? Every set
+ * filter must be SUPPORTED by the lead's or its property's record; an
+ * unknown field fails the filter (DEFECT-0172). Filters no record carries
+ * (owner type, years owned) therefore exclude — a list using them cannot be
+ * resolved from AcreOS's records, and saying so beats mailing everyone.
+ */
+function leadMatchesListFilters(
+  lead: { state: string | null; county: string | null; taxDelinquent: boolean | null },
+  property: { state: string; county: string; sizeAcres: string; zoning: string | null; marketValue: string | null } | undefined,
+  filters: ListFilters,
+): boolean {
+  if (!filters) return true;
+  const norm = (v: string | null | undefined) => (v ?? "").trim().toLowerCase().replace(/\s+county$/, "");
+  const inList = (v: string | null | undefined, list: string[]) => !!v && list.some((x) => norm(x) === norm(v));
+  const state = property?.state ?? lead.state;
+  const county = property?.county ?? lead.county;
+  if (filters.states?.length && !inList(state, filters.states)) return false;
+  if (filters.counties?.length && !inList(county, filters.counties)) return false;
+  const acres = property ? Number(property.sizeAcres) : NaN;
+  if (filters.acreageMin != null && !(acres >= filters.acreageMin)) return false;
+  if (filters.acreageMax != null && !(acres <= filters.acreageMax)) return false;
+  const price = property?.marketValue != null ? Number(property.marketValue) : NaN;
+  if (filters.priceMin != null && !(price >= filters.priceMin)) return false;
+  if (filters.priceMax != null && !(price <= filters.priceMax)) return false;
+  if (filters.zoning?.length && !inList(property?.zoning, filters.zoning)) return false;
+  if (filters.taxDelinquent != null && lead.taxDelinquent !== filters.taxDelinquent) return false;
+  if (filters.ownerType?.length || filters.yearsOwned != null) return false;
+  return true;
+}
+
 const generateBatchOffersInputSchema = z.object({
   batchId: z.number().describe("Offer batch ID to generate offers for"),
   pricingOverrides: z.object({
@@ -631,9 +676,23 @@ const generateBatchOffersSkill: Skill = {
         ? await storage.getMarketingListById(context.organizationId, batch.sourceListId)
         : null;
 
-      const allLeads = await storage.getLeads(context.organizationId);
-      const batchLeads = marketingList 
-        ? allLeads.filter(l => !processedLeadIds.has(l.id))
+      // The list's MEMBERS, not every lead in the org (DEFECT-0172): this took
+      // all leads whenever a source list existed, ignoring its filters. A
+      // list is defined by `filters`; a lead is a member only when its record
+      // (and its property's) SUPPORTS every filter set — a filter the record
+      // cannot answer excludes it rather than letting it through. Read whole,
+      // not the newest 5000.
+      const { readAllLeads, readPropertiesBySellerIds } = await import("../storage/wholeBookReads");
+      const unprocessed = marketingList
+        ? (await readAllLeads(context.organizationId)).filter((l) => !processedLeadIds.has(l.id))
+        : [];
+      const sellerProperties = await readPropertiesBySellerIds(
+        context.organizationId,
+        unprocessed.map((l) => l.id),
+      );
+      const propertyBySeller = new Map(sellerProperties.map((p) => [p.sellerId, p]));
+      const batchLeads = marketingList
+        ? unprocessed.filter((l) => leadMatchesListFilters(l, propertyBySeller.get(l.id), marketingList.filters ?? null))
         : [];
 
       const pricing = {
@@ -652,10 +711,14 @@ const generateBatchOffersSkill: Skill = {
 
       for (const lead of batchLeads.slice(0, 50)) {
         try {
-          const properties = await storage.getProperties(context.organizationId);
-          const property = properties.find(p => p.sellerId === lead.id);
-          
-          let estimatedValue = 10000;
+          const property = propertyBySeller.get(lead.id);
+
+          // No invented price (DEFECT-0172). This started every lead at a
+          // $10,000 "market value" and kept it whenever the lead had no
+          // property, no coordinates or no comps — then stored a priced offer
+          // on it. An offer is priced from a comparable-sales estimate or not
+          // generated at all; the skip says why.
+          let estimatedValue: number | null = null;
           
           if (property?.latitude && property?.longitude) {
             const lat = parseFloat(property.latitude);
@@ -668,8 +731,16 @@ const generateBatchOffersSkill: Skill = {
                 estimatedValue = compsResult.marketAnalysis.estimatedValue;
               }
             } catch {
-              // Use default if comps fail
+              // Comps failed — no estimate; skipped below, not defaulted.
             }
+          }
+
+          if (!estimatedValue || !Number.isFinite(estimatedValue) || estimatedValue <= 0) {
+            results.skipped++;
+            results.errors.push(
+              `Lead ${lead.id}: not priced — ${property ? "no comparable-sales estimate for its property" : "no linked property"}`,
+            );
+            continue;
           }
 
           const cashOffer = Math.round(estimatedValue * (pricing.cashPercentage / 100));
@@ -2436,8 +2507,8 @@ const analyzeNoteSkill: Skill = {
     try {
       const { noteId } = analyzeNoteInputSchema.parse(params);
 
-      const notes = await storage.getNotes(context.organizationId);
-      const note = notes.find(n => n.id === noteId);
+      // By id (DEFECT-0171): an older note read "Note not found".
+      const note = await storage.getNote(context.organizationId, noteId);
       if (!note) {
         return { success: false, error: "Note not found" };
       }
