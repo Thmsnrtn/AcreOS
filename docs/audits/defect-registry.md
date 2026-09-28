@@ -3328,6 +3328,32 @@ Remediation plan: DONE.
 Falsified by: `tests/unit/noteYieldIrrIsDated.test.ts` (all four cases red
 pre-fix).
 Resolving commits: this branch, round 3
+### DEFECT-0133
+Title: Unit economics counted recomputes as unprofitable days, gave non-paying orgs MRR, and claimed Stripe fees were netted
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report §21, verified at HEAD 2026-09-28
+Description: In `server/services/unitEconomics.ts`:
+- The consecutive-unprofitable streak read the latest snapshot by
+  `computedAt`. Snapshots upsert on (org, computedDate), so after the day's
+  first run that row was today's own, and every recompute added a "day".
+- MRR was the tier's list price whatever the subscription status, so a
+  trialing, past-due or cancelled org on a paid tier showed revenue.
+- The breakdown said `stripe_fee` was "excluded by design", and the header
+  said it was "netted at the revenue level". Nothing netted it: MRR is gross,
+  so every margin was overstated by the processing fee.
+Remediation plan: DONE.
+- The streak extends only from YESTERDAY's row (`computedDate < today`). A gap
+  restarts it at 1.
+- MRR is zero unless the org is paying.
+- The notes and header state that revenue is gross of Stripe fees and that the
+  margin is overstated by them.
+
+Deducting `stripe_fee` from revenue is the follow-up; it changes the stored
+columns.
+Falsified by: `tests/unit/unitEconomicsStreakIsDays.test.ts` (four cases red
+pre-fix; two anchors green before and after).
+Resolving commits: this branch, round 3
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -3365,11 +3391,11 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 7   | 7     |
-| FIXED  | 12  | 70  | 40  | 122   |
+| FIXED  | 12  | 70  | 41  | 123   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **73** | **47** | **132** |
+| **Total** | **12** | **73** | **48** | **133** |
 
-Recounted from the entries themselves on 2026-09-28 (132 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (133 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

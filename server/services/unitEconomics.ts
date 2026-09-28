@@ -31,9 +31,10 @@
  *   the pre-2B parallel-table reads: BYOK orgs post nothing to the ledger
  *   (the customer pays the provider directly), so their variable COGS is
  *   correctly $0 now; and $0-cost events (cached AI calls, mock sends)
- *   no longer inflate counts. category 'stripe_fee' is deliberately
- *   EXCLUDED — payment processing is netted at the revenue level, matching
- *   the pre-2B definition of these six COGS columns.
+ *   no longer inflate counts. category 'stripe_fee' is EXCLUDED from these
+ *   six COGS columns, and it is NOT netted anywhere else: mrrUsd is list
+ *   price, gross of processing fees. The margin is overstated by the fee,
+ *   and the snapshot's breakdown notes say so (DEFECT-0133).
  *
  * Fixed-cost share:
  *   Sum of FIXED_COST_INPUTS_USD_MONTHLY (Fly + Postgres + Clerk + Sentry) is
@@ -53,7 +54,7 @@
  * the same booking-date semantics so a reconciliation pass can compare them.
  */
 
-import { sql, eq, gte, and, desc, inArray } from "drizzle-orm";
+import { sql, eq, gte, lt, and, desc, inArray } from "drizzle-orm";
 import { db } from "../db";
 import {
   organizations,
@@ -78,8 +79,8 @@ const DEFAULT_WINDOW_DAYS = 30;
 
 /**
  * financial_ledger categories that constitute variable COGS, and which of
- * the six output columns each one feeds. 'stripe_fee' is deliberately absent
- * (netted at revenue level, not a per-feature COGS column — see header).
+ * the six output columns each one feeds. 'stripe_fee' is absent (not a
+ * per-feature COGS column, and not netted from revenue either — see header).
  */
 const LEDGER_COST_CATEGORIES = [
   "ai_tokens",
@@ -260,14 +261,29 @@ export async function ledgerCostsFor(orgId: number, since: Date): Promise<Ledger
 
 // ─── Last snapshot lookup (for consecutive-unprofitable streak) ─────────────
 
-async function previousSnapshot(orgId: number): Promise<CustomerUnitEconomicsRow | null> {
+// The streak is DAYS. Snapshots upsert on (org, computedDate), so the day
+// before today is the only row that can extend it: reading the latest row by
+// computedAt counted today's own earlier run, so every recompute added a
+// "day" (DEFECT-0133). A gap in the days restarts the count at 1.
+async function previousDaySnapshot(orgId: number, today: string): Promise<CustomerUnitEconomicsRow | null> {
   const rows = await db
     .select()
     .from(customerUnitEconomics)
-    .where(eq(customerUnitEconomics.organizationId, orgId))
-    .orderBy(desc(customerUnitEconomics.computedAt))
+    .where(and(eq(customerUnitEconomics.organizationId, orgId), lt(customerUnitEconomics.computedDate, today)))
+    .orderBy(desc(customerUnitEconomics.computedDate))
     .limit(1);
   return rows[0] ?? null;
+}
+
+function unprofitableStreak(
+  marginUsd: number,
+  prev: Pick<CustomerUnitEconomicsRow, "computedDate" | "consecutiveUnprofitableDays"> | null,
+  today: string,
+): number {
+  if (marginUsd >= 0) return 0;
+  const yesterday = new Date(Date.parse(`${today}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+  const prevDate = prev ? String(prev.computedDate).slice(0, 10) : null;
+  return prevDate === yesterday ? (prev!.consecutiveUnprofitableDays ?? 0) + 1 : 1;
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────
@@ -295,9 +311,11 @@ export async function computeUnitEconomicsForOrg(
   const isPaying = tier !== null && org.subscriptionStatus === "active";
   const fixedCostShareUsd = isPaying ? round6(totalFixedMonthlyUsd() / activeCustomers) : 0;
 
-  // MRR (normalised to monthly USD).
+  // MRR (normalised to monthly USD). Only a paying org has any: a trialing,
+  // past-due or cancelled org on a paid tier brings in nothing this month,
+  // and its list price was being counted as revenue (DEFECT-0133).
   const billingInterval = (org.billingInterval === "yearly" ? "yearly" : "monthly") as "monthly" | "yearly";
-  const mrrUsd = round6(monthlyRevenueCentsFor(org.subscriptionTier, billingInterval) / 100);
+  const mrrUsd = isPaying ? round6(monthlyRevenueCentsFor(org.subscriptionTier, billingInterval) / 100) : 0;
 
   const totalCogsUsd = round6(
     costs.aiCostUsd +
@@ -310,10 +328,9 @@ export async function computeUnitEconomicsForOrg(
   const profitMarginUsd = round6(mrrUsd - totalCogsUsd);
   const profitMarginPct = mrrUsd > 0 ? Math.round((profitMarginUsd / mrrUsd) * 10000) / 100 : 0;
 
-  const prev = await previousSnapshot(orgId);
-  const prevStreak = prev?.consecutiveUnprofitableDays ?? 0;
-  const consecutiveUnprofitableDays =
-    profitMarginUsd < 0 ? prevStreak + 1 : 0;
+  const today = new Date().toISOString().slice(0, 10);
+  const prev = await previousDaySnapshot(orgId, today);
+  const consecutiveUnprofitableDays = unprofitableStreak(profitMarginUsd, prev, today);
 
   return {
     organizationId: orgId,
@@ -339,7 +356,8 @@ export async function computeUnitEconomicsForOrg(
     breakdown: {
       aiByFeature: costs.aiByFeature,
       notes: [
-        "costs sourced from financial_ledger (Tier 2B one money spine); BYOK spend and stripe_fee excluded by design",
+        "costs sourced from financial_ledger (Tier 2B one money spine); BYOK spend is not ours and is excluded",
+        "revenue is list-price MRR, GROSS of Stripe processing fees; stripe_fee is not deducted anywhere in this margin, so the margin is overstated by the fee",
       ],
       fixedCostInputs: {
         flyMonthlyUsd: FIXED_COST_INPUTS_USD_MONTHLY.fly,
