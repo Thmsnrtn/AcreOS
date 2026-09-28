@@ -38,6 +38,8 @@
  * quotes no escrow, and moves no funds.
  */
 
+import { PropertyCombobox } from "@/components/property-combobox";
+import { useProperty } from "@/hooks/use-properties";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -425,10 +427,9 @@ export default function FlipAnalyzerPage() {
     monthlyExpensesCents: number | null;
   } | null>(null);
 
-  const propertiesQuery = useQuery<Property[]>({
-    queryKey: ["/api/properties"],
-    queryFn: () => fetchJsonArray<Property>("/api/properties"),
-  });
+  // The subject property, by id (DEFECT-0168). This read the bare list —
+  // the newest 25 — so an older house could be neither picked nor found.
+  const selectedPropertyQuery = useProperty(propertyId);
 
   const defaultsQuery = useQuery<DefaultsResponse>({
     queryKey: ["/api/flip-analyzer/defaults"],
@@ -595,7 +596,6 @@ export default function FlipAnalyzerPage() {
     },
   });
 
-  const properties = propertiesQuery.data ?? [];
   const arvCents = dollarsToCents(arvField);
   const rehabCents = dollarsToCents(rehabField) ?? 0;
   const priceCents = dollarsToCents(priceField);
@@ -649,7 +649,7 @@ export default function FlipAnalyzerPage() {
     setMaoRequest(null);
   };
 
-  const selectedProperty = properties.find((p) => p.id === propertyId) ?? null;
+  const selectedProperty = selectedPropertyQuery.data ?? null;
 
   return (
     <PageShell label="Flip analyzer">
@@ -683,50 +683,26 @@ export default function FlipAnalyzerPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {propertiesQuery.isLoading ? (
-              <Skeleton className="h-10 w-full" />
-            ) : propertiesQuery.isError ? (
-              <QueryErrorState
-                error={propertiesQuery.error as Error}
-                onRetry={() => propertiesQuery.refetch()}
-                compact
-                testId="flip-properties-error"
+            <div className="space-y-2">
+              <Label htmlFor="flip-subject">Property</Label>
+              <PropertyCombobox
+                id="flip-subject"
+                value={propertyId}
+                onChange={(id) => {
+                  setPropertyId(id);
+                  setCompsRequestedFor(null);
+                  setMaoRequest(null);
+                }}
+                onClear={() => {
+                  setPropertyId(null);
+                  setCompsRequestedFor(null);
+                  setMaoRequest(null);
+                }}
+                placeholder="No property — manual entry"
+                aria-label="Property"
+                data-testid="select-flip-subject"
               />
-            ) : properties.length === 0 ? (
-              <EmptyState
-                icon={Home}
-                headline="No properties yet"
-                subtitle="Add a property and the analyzer can read its saved ARV, rehab budget and price. Until then, type the numbers below by hand."
-                cta={{ label: "Open inventory", href: "/properties" }}
-                actionIcon={null}
-              />
-            ) : (
-              <div className="space-y-2">
-                <Label htmlFor="flip-subject">Property</Label>
-                <Select
-                  value={propertyId === null ? "none" : String(propertyId)}
-                  onValueChange={(v) => {
-                    const next = v === "none" ? null : Number(v);
-                    setPropertyId(next);
-                    setCompsRequestedFor(null);
-                    setMaoRequest(null);
-                  }}
-                >
-                  <SelectTrigger id="flip-subject" data-testid="select-flip-subject">
-                    <SelectValue placeholder="Choose a property" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No property — manual entry</SelectItem>
-                    {properties.map((p) => (
-                      <SelectItem key={p.id} value={String(p.id)}>
-                        {p.address || p.apn || `Property #${p.id}`}
-                        {p.state ? ` · ${p.state}` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            </div>
 
             {propertyId !== null && subjectQuery.isLoading ? (
               <div className="space-y-2" aria-busy="true">

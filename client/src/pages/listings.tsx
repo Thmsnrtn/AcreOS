@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { usePropertiesByIds } from "@/hooks/use-properties";
+import { PropertyCombobox } from "@/components/property-combobox";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -131,10 +133,10 @@ export default function ListingsPage() {
   // crashed .find / .map downstream and threw the page to the error
   // boundary (the "click and crash" / "logged out" UX symptom). Use the
   // fetchJsonArray normalizer to unwrap + default to []. (2026-05-26)
-  const { data: properties = [] } = useQuery<Property[]>({
-    queryKey: ["/api/properties"],
-    queryFn: () => fetchJsonArray<Property>("/api/properties?pageSize=100"),
-  });
+  // Each listing's property, by the listings' own ids (DEFECT-0168). This
+  // read the newest 100 properties, so a listing on an older one rendered
+  // with no property, and the new-listing picker could not offer it.
+  const { data: propertiesById } = usePropertiesByIds((listings ?? []).map((l) => l.propertyId));
 
   const createMutation = useMutation({
     mutationFn: async (data: ListingFormValues) => {
@@ -288,7 +290,7 @@ export default function ListingsPage() {
   };
 
   const getProperty = (propertyId: number) => {
-    return properties?.find((p) => p.id === propertyId);
+    return propertiesById?.get(propertyId);
   };
 
   const getPrimaryPhoto = (listing: PropertyListing) => {
@@ -326,26 +328,15 @@ export default function ListingsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Property</FormLabel>
-                        <Select
-                          onValueChange={(value) => field.onChange(parseInt(value))}
-                          value={field.value?.toString()}
-                        >
-                          <FormControl>
-                            <SelectTrigger data-testid="select-property">
-                              <SelectValue placeholder="Select a property" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {properties?.map((property) => (
-                              <SelectItem
-                                key={property.id}
-                                value={property.id.toString()}
-                              >
-                                {property.apn || property.address} - {property.county}, {property.state}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <FormControl>
+                          <PropertyCombobox
+                            value={field.value ?? null}
+                            onChange={(id) => field.onChange(id)}
+                            placeholder="Select a property"
+                            aria-label="Property"
+                            data-testid="select-property"
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}

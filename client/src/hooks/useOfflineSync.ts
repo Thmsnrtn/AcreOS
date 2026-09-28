@@ -229,9 +229,12 @@ export function useOfflineSync(): UseOfflineSyncResult {
       // primer was pulling ~1MB of JSON on every mount and stalling
       // cold loads on slow cellular. The cached page-1 slice is the
       // useful "see your recent stuff while offline" data anyway.
-      { key: 'leads', url: '/api/leads?limit=200' },
-      { key: 'properties', url: '/api/properties?limit=200' },
-      { key: 'deals', url: '/api/deals?limit=100' },
+      // `limit` is not a param these routes read (DEFECT-0168): each call
+      // got the default 25 rows while this comment claimed 200. They page
+      // with `pageSize`, capped at 100 by the server.
+      { key: 'leads', url: '/api/leads?page=1&pageSize=100' },
+      { key: 'properties', url: '/api/properties?page=1&pageSize=100' },
+      { key: 'deals', url: '/api/deals?page=1&pageSize=100' },
     ];
 
     const results: Partial<CachedData> = {};

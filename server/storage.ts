@@ -222,7 +222,7 @@ export interface IStorage {
   bulkUpdateProperties(orgId: number, ids: number[], updates: Partial<InsertProperty>): Promise<number>;
   
   // Paginated Properties
-  getPropertiesPaginated(orgId: number, options: PaginationOptions): Promise<PaginatedResult<Property>>;
+  getPropertiesPaginated(orgId: number, options: PaginationOptions, filters?: { q?: string; ids?: number[]; sellerIds?: number[]; excludeStatus?: string }): Promise<PaginatedResult<Property>>;
 
   // Deals
   getDeals(orgId: number): Promise<Deal[]>;

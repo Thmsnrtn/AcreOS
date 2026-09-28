@@ -16,6 +16,7 @@
  * on save by SD-7's summarizeGeojson().
  */
 
+import { useProperty } from "@/hooks/use-properties";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import mapboxgl from "mapbox-gl";
@@ -96,17 +97,13 @@ export function SubdivisionPlanEditor({ planId, defaultCenter }: Props) {
   });
 
   // Fetch parent parcel address — needed to look up zoning setbacks.
-  const parcelQuery = useQuery<{ properties: ParcelSummary[] }>({
-    queryKey: ["/api/properties", planQuery.data?.plan.parentParcelId],
-    enabled: !!planQuery.data?.plan.parentParcelId,
-    queryFn: async () => {
-      const res = await fetch(`/api/properties?id=${planQuery.data!.plan.parentParcelId}`, { credentials: "include" });
-      if (!res.ok) throw new Error(`Failed (${res.status})`);
-      return res.json();
-    },
-  });
+  // By id (DEFECT-0168). This asked for `/api/properties?id=N` — a param
+  // the list route ignores — and read `.properties` off a `{ data }`
+  // envelope, so the parent parcel was never found and the zoning setback
+  // lookup never ran.
+  const parcelQuery = useProperty(planQuery.data?.plan.parentParcelId ?? null);
 
-  const parentParcel = parcelQuery.data?.properties?.[0];
+  const parentParcel: ParcelSummary | null | undefined = parcelQuery.data;
   const fullAddress = parentParcel
     ? [parentParcel.address, parentParcel.city, parentParcel.state, parentParcel.zip].filter(Boolean).join(", ")
     : null;

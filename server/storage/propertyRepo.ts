@@ -1,7 +1,7 @@
 // Properties.
 // Extracted from the god-class server/storage.ts.
 
-import { and, desc, asc, eq, sql, count, inArray } from "drizzle-orm";
+import { and, desc, asc, eq, sql, count, inArray, ilike, ne, or } from "drizzle-orm";
 import { db } from "../db";
 import {
   properties, deals,
@@ -12,6 +12,14 @@ import {
 import { assertNotUnderLegalHold } from "../services/legalHold";
 import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../storage";
 import { LIST_READ_CAP, capListRead } from "./listCap";
+
+/** Search / lookup filters for the paginated property list (DEFECT-0168). */
+interface PropertyListFilters {
+  q?: string;
+  ids?: number[];
+  sellerIds?: number[];
+  excludeStatus?: string;
+}
 
 export const propertyRepo = {
   async getProperties(this: DatabaseStorage, orgId: number): Promise<Property[]> {
@@ -24,9 +32,36 @@ export const propertyRepo = {
     return capListRead(rows, LIST_READ_CAP, "getProperties", orgId);
   },
 
-  async getPropertiesPaginated(this: DatabaseStorage, orgId: number, options: PaginationOptions): Promise<PaginatedResult<Property>> {
-    const whereClause = and(eq(properties.organizationId, orgId), sql`${properties.status} != 'deleted'`);
-    const [{ count: total }] = await db.select({ count: count() }).from(properties).where(whereClause);
+  async getPropertiesPaginated(
+    this: DatabaseStorage,
+    orgId: number,
+    options: PaginationOptions,
+    filters?: PropertyListFilters,
+  ): Promise<PaginatedResult<Property>> {
+    const q = filters?.q?.trim();
+    const like = q ? `%${q.replace(/[%_\\]/g, (m) => `\\${m}`)}%` : null;
+    const whereClause = and(
+      eq(properties.organizationId, orgId),
+      sql`${properties.status} != 'deleted'`,
+      like
+        ? or(
+            ilike(properties.apn, like),
+            ilike(properties.county, like),
+            ilike(properties.state, like),
+            ilike(properties.address, like),
+            ilike(properties.city, like),
+            ilike(properties.zip, like),
+          )
+        : undefined,
+      filters?.ids ? (filters.ids.length > 0 ? inArray(properties.id, filters.ids) : sql`false`) : undefined,
+      filters?.sellerIds
+        ? filters.sellerIds.length > 0
+          ? inArray(properties.sellerId, filters.sellerIds)
+          : sql`false`
+        : undefined,
+      filters?.excludeStatus ? ne(properties.status, filters.excludeStatus) : undefined,
+    );
+    const [{ count: total }] = await db.select({ count: count() }).from(properties).where(and(eq(properties.organizationId, orgId), whereClause));
     const totalNum = Number(total);
     const totalPages = Math.max(1, Math.ceil(totalNum / options.pageSize));
     const offset = (options.page - 1) * options.pageSize;
@@ -35,7 +70,7 @@ export const propertyRepo = {
     const orderFn = options.sortOrder === "asc" ? asc : desc;
 
     const data = await db.select().from(properties)
-      .where(whereClause)
+      .where(and(eq(properties.organizationId, orgId), whereClause))
       .orderBy(orderFn(sortColumn))
       .limit(options.pageSize)
       .offset(offset);

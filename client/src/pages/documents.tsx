@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PropertyCombobox } from "@/components/property-combobox";
 import { useSearch } from "wouter";
 import DOMPurify from "isomorphic-dompurify";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -181,12 +182,6 @@ export default function DocumentsPage() {
   });
   const deals = toArray<Deal>(rawDeals);
 
-  const { data: rawProperties, isError: propertiesError } = useQuery<Property[]>({
-    queryKey: ["/api/properties"],
-    queryFn: () => strictFetch("/api/properties?page=1&pageSize=100"),
-    retry: false,
-  });
-  const properties = toArray<Property>(rawProperties);
 
   const packages = toArray<DocumentPackage>(overview?.packages);
   const packagesLoading = overviewLoading;
@@ -208,9 +203,6 @@ export default function DocumentsPage() {
   useEffect(() => {
     if (dealsError) toast({ title: "Couldn't load deals", description: "Linking to a deal is unavailable right now.", variant: "destructive" });
   }, [dealsError, toast]);
-  useEffect(() => {
-    if (propertiesError) toast({ title: "Couldn't load properties", description: "Linking to a property is unavailable right now.", variant: "destructive" });
-  }, [propertiesError, toast]);
 
   const { data: versions, isLoading: versionsLoading, refetch: refetchVersions } = useQuery<DocumentVersion[]>({
     queryKey: versionHistoryTarget
@@ -1118,20 +1110,16 @@ export default function DocumentsPage() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Link to property (optional)</FormLabel>
-                          <Select onValueChange={(v) => field.onChange(v ? parseInt(v) : undefined)} value={field.value?.toString() ?? ""}>
-                            <FormControl>
-                              <SelectTrigger data-testid="select-property">
-                                <SelectValue placeholder={propertiesError ? "Properties unavailable" : properties.length === 0 ? "No properties yet" : "Select property"} />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {properties.map(prop => (
-                                <SelectItem key={prop.id} value={prop.id.toString()}>
-                                  {prop.address || prop.apn || `Property #${prop.id}`}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          {/* Server-searched (DEFECT-0168): the newest 100 only, before. */}
+                          <FormControl>
+                            <PropertyCombobox
+                              value={field.value ?? null}
+                              onChange={(id) => field.onChange(id)}
+                              onClear={() => field.onChange(undefined)}
+                              aria-label="Link to property"
+                              data-testid="select-property"
+                            />
+                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -1369,22 +1357,15 @@ export default function DocumentsPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="select-package-property">Link to property (optional)</Label>
-                  <Select
-                    value={packagePropertyId?.toString() || "none"}
-                    onValueChange={(v) => setPackagePropertyId(v && v !== "none" ? parseInt(v) : undefined)}
-                  >
-                    <SelectTrigger id="select-package-property" data-testid="select-package-property">
-                      <SelectValue placeholder={propertiesError ? "Properties unavailable" : properties.length === 0 ? "No properties yet" : "Select property"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No property</SelectItem>
-                      {properties.map(prop => (
-                        <SelectItem key={prop.id} value={prop.id.toString()}>
-                          {prop.address || prop.apn || `Property #${prop.id}`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <PropertyCombobox
+                    id="select-package-property"
+                    value={packagePropertyId ?? null}
+                    onChange={(id) => setPackagePropertyId(id)}
+                    onClear={() => setPackagePropertyId(undefined)}
+                    placeholder="No property"
+                    aria-label="Link to property (optional)"
+                    data-testid="select-package-property"
+                  />
                 </div>
               </div>
 

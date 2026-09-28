@@ -2,7 +2,8 @@ import { PageShell } from "@/components/page-shell";
 import { useNotes, useCreateNote, useDeleteNote } from "@/hooks/use-notes";
 import { usePayments, useRecordPayment } from "@/hooks/use-payments";
 import { useLeads } from "@/hooks/use-leads";
-import { useProperties } from "@/hooks/use-properties";
+import { usePropertiesByIds } from "@/hooks/use-properties";
+import { PropertyCombobox } from "@/components/property-combobox";
 import { useState, useEffect } from "react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Label } from "@/components/ui/label";
@@ -160,7 +161,10 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
   void propertyPluralLabel; // reserved for future per-persona vocabulary swaps in this page
   const { data: notes, isLoading, error: notesError, refetch: refetchNotes } = useNotes();
   const { data: leads } = useLeads();
-  const { data: properties } = useProperties();
+  // Each note's property, fetched by the notes' own ids (DEFECT-0168). This
+  // joined against the newest-100 property page, so a note on an older
+  // parcel listed as "Property #N" and its detail said "No property linked."
+  const { data: propertiesById } = usePropertiesByIds((notes || []).map((n) => n.propertyId));
   // /finance?action=new opens the new-note dialog — wires the global FAB /
   // new-item-menu's "New Note" entry to a real action.
   const financeSearch = useSearch();
@@ -241,7 +245,7 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
   const enrichedNotes: NoteWithDetails[] = (notes || []).map(note => ({
     ...note,
     borrower: leads?.find((l: any) => l.id === note.borrowerId),
-    property: properties?.find((p: any) => p.id === note.propertyId),
+    property: note.propertyId != null ? propertiesById?.get(note.propertyId) : undefined,
   }));
 
   const activeNotes = enrichedNotes.filter(n => n.status === 'active');
@@ -1686,6 +1690,8 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                     <dd className="ml-2 inline capitalize">{note.property.status}</dd>
                   </div>
                 </dl>
+              ) : note.propertyId ? (
+                <p className="text-muted-foreground">Property #{note.propertyId} — details couldn't be loaded.</p>
               ) : (
                 <p className="text-muted-foreground">No property linked.</p>
               )}
@@ -1892,7 +1898,6 @@ function RecordPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
 function NoteForm({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateNote();
   const { data: leads } = useLeads();
-  const { data: properties } = useProperties();
   const { toast } = useToast();
 
   // Tax-identity lazy prompt (2026-05-11). The IRS requires a legal entity
@@ -1917,7 +1922,6 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
   // /settings → Tax Identity. The pendingFormData / taxPromptOpen
   // state vars are no longer needed.
 
-  const availableProperties = properties?.filter((p: any) => p.status !== 'sold') || [];
   // Show buyers first, but fall back to all leads if no buyer-type leads exist
   const buyerLeads = leads?.filter((l: any) => l.type === 'buyer') || [];
   const buyers = buyerLeads.length > 0 ? buyerLeads : (leads || []);
@@ -2028,24 +2032,19 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
                 <FormLabel>
                   Property <span className="text-destructive" aria-label="required">*</span>
                 </FormLabel>
-                <Select onValueChange={(val) => field.onChange(parseInt(val))}>
-                  <FormControl>
-                    <SelectTrigger data-testid="select-property">
-                      <SelectValue placeholder={availableProperties.length === 0 ? "No unsold properties yet" : "Select property"} />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {availableProperties.length === 0 ? (
-                      <SelectItem value="none" disabled>No properties available</SelectItem>
-                    ) : (
-                      availableProperties.map((prop: any) => (
-                        <SelectItem key={prop.id} value={prop.id.toString()}>
-                          {prop.county}, {prop.state} ({prop.sizeAcres} ac)
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                <FormControl>
+                  {/* Unsold land, searched on the server (DEFECT-0168). This
+                      filtered the newest-100 page in the browser, so older
+                      land could not be chosen and "No unsold properties yet"
+                      was said whenever that page happened to be all sold. */}
+                  <PropertyCombobox
+                    value={field.value ?? null}
+                    onChange={(id) => field.onChange(id)}
+                    excludeStatus="sold"
+                    aria-label="Property"
+                    data-testid="select-property"
+                  />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}

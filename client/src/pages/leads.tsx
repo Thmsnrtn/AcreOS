@@ -8,7 +8,7 @@ import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useLeads, useLeadsPaginated, useCreateLead, useUpdateLead, useDeleteLead, useRescoreLead } from "@/hooks/use-leads";
 import { useScrollRestoration } from "@/hooks/use-scroll-restoration";
-import { useProperties } from "@/hooks/use-properties";
+import { PropertyCombobox } from "@/components/property-combobox";
 import { useTeamMembers, useUserPermissions, getRoleBadgeStyle, getRoleLabel } from "@/hooks/use-organization";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useQuery } from "@tanstack/react-query";
@@ -687,8 +687,6 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
   useDocumentTitle(`${leadsLabel} — AcreOS`);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const { data: propertiesRaw } = useProperties();
-  const properties = Array.isArray(propertiesRaw) ? propertiesRaw : [];
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
@@ -2016,18 +2014,15 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
           >
             <div className="space-y-2">
               <Label htmlFor={offerPropertyId} className="text-sm font-medium">Select property</Label>
-              <Select value={selectedPropertyId} onValueChange={setSelectedPropertyId}>
-                <SelectTrigger id={offerPropertyId} data-testid="select-property-offer">
-                  <SelectValue placeholder="Choose a property…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {properties?.map((prop) => (
-                    <SelectItem key={prop.id} value={String(prop.id)}>
-                      {prop.county}, {prop.state} - {prop.apn}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* Server-searched (DEFECT-0168): the newest 100 only, before. */}
+              <PropertyCombobox
+                id={offerPropertyId}
+                value={selectedPropertyId ? Number(selectedPropertyId) : null}
+                onChange={(id) => setSelectedPropertyId(String(id))}
+                placeholder="Choose a property…"
+                aria-label="Select property"
+                data-testid="select-property-offer"
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor={offerAmountId} className="text-sm font-medium">{offerLabel} amount (optional)</Label>

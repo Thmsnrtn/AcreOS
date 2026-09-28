@@ -762,34 +762,49 @@ interface PropertyLite { id: number; status?: string | null; latitude?: unknown;
 
 /** Sourcing widget (land_investor) — the job is finding parcels + owners. */
 function LandSourcingWidgets() {
+  // The server's TOTALS, not the length of a page (DEFECT-0168). This read
+  // page 1 of 100 properties and the default 25-lead page and reported their
+  // lengths as "N total in pipeline" and "Owner targets". Counts the list
+  // route cannot give (mapped, in acquisition, sellers) are computed over the
+  // loaded rows and SAY so when those rows are not the whole book.
   const {
-    data: properties = [],
+    data: propertyPage,
     isLoading: pLoading,
     isError: pError,
     error: pErr,
     refetch: pRefetch,
-  } = useQuery<PropertyLite[]>({
-    queryKey: ["/api/properties"],
+  } = useQuery<{ rows: PropertyLite[]; total: number }>({
+    queryKey: ["/api/properties", "land-widget"],
     queryFn: async () => {
       const res = await okOrThrow(
         await fetch("/api/properties?page=1&pageSize=100", { credentials: "include" }),
       );
-      return listFrom<PropertyLite>(await res.json());
+      const body = await res.json();
+      const rows = listFrom<PropertyLite>(body);
+      return { rows, total: typeof body?.total === "number" ? body.total : rows.length };
     },
   });
   const {
-    data: leads = [],
+    data: leadPage,
     isLoading: lLoading,
     isError: lError,
     error: lErr,
     refetch: lRefetch,
-  } = useQuery<LeadLite[]>({
-    queryKey: ["/api/leads"],
+  } = useQuery<{ rows: LeadLite[]; total: number }>({
+    queryKey: ["/api/leads", "land-widget"],
     queryFn: async () => {
-      const res = await okOrThrow(await fetch("/api/leads", { credentials: "include" }));
-      return listFrom<LeadLite>(await res.json());
+      const res = await okOrThrow(await fetch("/api/leads?page=1&pageSize=100", { credentials: "include" }));
+      const body = await res.json();
+      const rows = listFrom<LeadLite>(body);
+      return { rows, total: typeof body?.total === "number" ? body.total : rows.length };
     },
   });
+  const properties = propertyPage?.rows ?? [];
+  const leads = leadPage?.rows ?? [];
+  const propertyTotal = propertyPage?.total ?? 0;
+  const leadTotal = leadPage?.total ?? 0;
+  const propertiesPartial = propertyTotal > properties.length;
+  const leadsPartial = leadTotal > leads.length;
 
   if (pLoading || lLoading) {
     return (
@@ -826,7 +841,9 @@ function LandSourcingWidgets() {
   ).length;
   const ownerTargets = leads.filter((l) => l.type === "seller" || !l.type).length;
 
-  if (properties.length === 0 && ownerTargets === 0) {
+  // Empty only when there are no parcels and no seller leads — counted over
+  // the WHOLE lead book (a partial page cannot prove "none").
+  if (propertyTotal === 0 && ownerTargets === 0 && !leadsPartial) {
     return (
       <EmptyState
         icon={Search}
@@ -846,9 +863,27 @@ function LandSourcingWidgets() {
       animate="visible"
       className="grid grid-cols-1 md:grid-cols-3 gap-4"
     >
-      <PersonaStat icon={Search} iconClass="text-primary" label="Parcels mapped" value={String(mapped)} sub={`${properties.length} total in pipeline`} />
-      <PersonaStat icon={Filter} iconClass="text-acr-warn" label="In acquisition" value={String(prospects)} sub="prospect → under contract" />
-      <PersonaStat icon={Users} iconClass="text-acr-accent" label="Owner targets" value={String(ownerTargets)} sub="sellers to mail or door-knock" />
+      <PersonaStat
+        icon={Search}
+        iconClass="text-primary"
+        label="Parcels mapped"
+        value={String(mapped)}
+        sub={propertiesPartial ? `of the newest ${properties.length} · ${propertyTotal} total` : `${propertyTotal} total in pipeline`}
+      />
+      <PersonaStat
+        icon={Filter}
+        iconClass="text-acr-warn"
+        label="In acquisition"
+        value={String(prospects)}
+        sub={propertiesPartial ? `among the newest ${properties.length} parcels` : "prospect → under contract"}
+      />
+      <PersonaStat
+        icon={Users}
+        iconClass="text-acr-accent"
+        label="Owner targets"
+        value={String(ownerTargets)}
+        sub={leadsPartial ? `among the newest ${leads.length} of ${leadTotal} leads` : "sellers to mail or door-knock"}
+      />
     </motion.div>
   );
 }

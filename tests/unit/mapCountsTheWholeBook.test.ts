@@ -43,7 +43,9 @@ describe("DEFECT-0157 — Syndication", () => {
   it("reads the envelope's `data`, under its own key, and a failed read is an error", () => {
     expect(syn).not.toMatch(/propertiesData\?\.properties/);
     expect(syn).toMatch(/propertiesData\?\.data/);
-    expect(syn).toMatch(/queryKey:\s*\["syndication", "properties"\]/);
+    // Its own key (DEFECT-0157); the search term joined it when the search
+    // moved to the server (DEFECT-0168).
+    expect(syn).toMatch(/queryKey:\s*\["syndication", "properties"(, searchTerm)?\]/);
     expect(syn).toMatch(/okOrThrow\(/);
   });
 });

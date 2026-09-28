@@ -47,6 +47,7 @@
  * type or from label text.
  */
 
+import { PropertyCombobox } from "@/components/property-combobox";
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -218,10 +219,6 @@ export function UnitsPanel() {
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<UnitRow | null>(null);
 
-  const propsQuery = useQuery<PropertySummary[]>({
-    queryKey: ["/api/properties", "units-panel"],
-    queryFn: () => fetchJsonArray<PropertySummary>("/api/properties?pageSize=200"),
-  });
 
   const propertyIdNum = Number.parseInt(propertyId, 10);
   const hasProperty = Number.isFinite(propertyIdNum) && propertyIdNum > 0;
@@ -291,20 +288,16 @@ export function UnitsPanel() {
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
             <div>
               <Label htmlFor="units-property" className="text-xs">Property</Label>
-              {propsQuery.isLoading ? (
-                <Skeleton className="h-9 mt-1" />
-              ) : (
-                <Select value={propertyId} onValueChange={setPropertyId}>
-                  <SelectTrigger id="units-property" className="h-9 mt-1" aria-label="Choose a property">
-                    <SelectValue placeholder="Choose a property…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(propsQuery.data ?? []).map((p) => (
-                      <SelectItem key={p.id} value={String(p.id)}>{propertyName(p)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+              {/* Server-searched (DEFECT-0168): this asked for pageSize=200, which
+                  the list route rejects (max 100), so the picker was always empty. */}
+              <PropertyCombobox
+                id="units-property"
+                className="h-9 mt-1"
+                value={propertyId ? Number(propertyId) : null}
+                onChange={(id) => setPropertyId(String(id))}
+                placeholder="Choose a property…"
+                aria-label="Choose a property"
+              />
             </div>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" disabled={!hasProperty} onClick={() => setCreateOpen(true)} data-testid="button-add-unit">

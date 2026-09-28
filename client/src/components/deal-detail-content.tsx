@@ -104,8 +104,16 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
   // allow-no-invalidation: generated script lands in component-local state (setNegotiationScript)
   const negotiationMutation = useMutation({
     mutationFn: async () => {
+      // No invented price (DEFECT-0168): a deal with neither figure fell
+      // back to a flat 50000 and the script negotiated against it.
+      // The route needs both figures; say so in the customer's words rather
+      // than surfacing its 400.
+      const askingPrice = deal.property?.assessedValue || deal.offerAmount;
+      if (!deal.offerAmount || !askingPrice) {
+        throw new Error("Add an offer amount to this deal first");
+      }
       const response = await apiRequest("POST", "/api/ai/negotiation/script", {
-        askingPrice: deal.property?.assessedValue || deal.offerAmount || 50000,
+        askingPrice,
         offerAmount: deal.offerAmount || undefined,
         sellerMessages: [],
         sellerMotivation: "motivated",

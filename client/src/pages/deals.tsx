@@ -9,7 +9,8 @@ import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useDeals, useDealsPaginated, useDealAggregates, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, useAdvanceDealStage, type BulkStageUpdateResult } from "@/hooks/use-deals";
 import { useScrollRestoration } from "@/hooks/use-scroll-restoration";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useProperties } from "@/hooks/use-properties";
+import { usePropertiesByIds } from "@/hooks/use-properties";
+import { PropertyCombobox } from "@/components/property-combobox";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { InlineError } from "@/components/inline-error";
 import { QueryErrorState } from "@/components/query-error-state";
@@ -142,14 +143,15 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
 
   const rawDeals = dealsResponse?.data;
   const serverDealTotal = dealsResponse?.total ?? 0;
-  const { data: propertiesRaw } = useProperties();
-  const properties = Array.isArray(propertiesRaw) ? propertiesRaw : [];
   // r5 James / cycle 7: the /api/deals endpoint returns deals without
   // an embedded property relation, so DealCard falls back to
   // "Property #3" instead of "Yavapai, AZ". Hydrate deals with their
-  // matching property client-side using the already-fetched
-  // properties list. When the property isn't found we leave deal.property
-  // undefined so the existing fallback still runs.
+  // matching property client-side. DEFECT-0168: the properties are fetched
+  // BY THE PAGE'S OWN IDS — this joined against useProperties(), the newest
+  // 100, so a deal on an older property showed "Property #N" and the bulk
+  // CSV export wrote blank county/state for it.
+  const { data: propertiesById } = usePropertiesByIds((rawDeals ?? []).map((d: any) => Number(d.propertyId)));
+  const properties = propertiesById ? [...propertiesById.values()] : [];
   // Keys coerced via Number() (preserves the r8 Tasha / c9 fix): ids can
   // drift between string and number across API shapes; a raw-keyed Map
   // would silently miss. This Map is now the ONLY property join — the
@@ -1414,7 +1416,6 @@ interface PricingRecommendation {
 
 function DealForm({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateDeal();
-  const { data: properties, isLoading: propertiesLoading } = useProperties();
   // Persona-correct word for the priced artefact (Offer / Bid / Note terms).
   const offerLabel = useTerm("entity.offer");
 
@@ -1471,30 +1472,19 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
                 <FormLabel>
                   Property <span className="text-destructive" aria-hidden="true">*</span>
                 </FormLabel>
-                <Select
-                  onValueChange={(val) => field.onChange(parseInt(val, 10))}
-                  value={field.value ? field.value.toString() : undefined}
-                  disabled={propertiesLoading}
-                >
-                  <FormControl>
-                    <SelectTrigger className="min-h-[44px]" data-testid="select-deal-property" aria-label="Property">
-                      <SelectValue placeholder={propertiesLoading ? "Loading properties…" : "Select property"} />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {properties && properties.length > 0 ? (
-                      properties.map((prop: any) => (
-                        <SelectItem key={prop.id} value={prop.id.toString()}>
-                          {prop.county}, {prop.state} ({prop.sizeAcres} ac)
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <div className="px-2 py-3 text-sm text-muted-foreground text-center">
-                        {propertiesLoading ? "Loading properties…" : "Add a parcel first — Pax pulls comps inside 90 seconds."}
-                      </div>
-                    )}
-                  </SelectContent>
-                </Select>
+                <FormControl>
+                  {/* Server-searched (DEFECT-0168): this listed the newest 100
+                      properties, so an older one could not be chosen, and it
+                      said "Add a parcel first" whenever that page was empty —
+                      including when the read had failed. */}
+                  <PropertyCombobox
+                    value={field.value ?? null}
+                    onChange={(id) => field.onChange(id)}
+                    className="min-h-[44px]"
+                    aria-label="Property"
+                    data-testid="select-deal-property"
+                  />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}

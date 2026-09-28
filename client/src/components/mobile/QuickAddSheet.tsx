@@ -30,6 +30,7 @@
  * rather than fabricate a thin record.
  */
 
+import { PropertyCombobox } from "@/components/property-combobox";
 import { useState, useRef, useEffect } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -513,11 +514,14 @@ function MaintenanceForm({ onDone }: { onDone: () => void }) {
     refetch: refetchProps,
     isRefetching: propsRefetching,
   } = useQuery({
-    queryKey: ["/api/properties?pageSize=100"],
+    // One row is enough: the picker below searches the server (DEFECT-0168);
+    // this read only answers "does the org have any property" via `total`.
+    // The key IS the URL (getQueryFn joins it) — keep it a real path.
+    queryKey: ["/api/properties?page=1&pageSize=1"],
     queryFn: contractQueryFn(listPropertiesContract),
     staleTime: 60_000,
   });
-  const properties = (propertiesEnvelope?.data ?? []) as unknown as Property[];
+  const propertyTotal = propertiesEnvelope?.total ?? 0;
 
   const [propertyId, setPropertyId] = useState<string>("");
   const [title, setTitle] = useState("");
@@ -568,7 +572,7 @@ function MaintenanceForm({ onDone }: { onDone: () => void }) {
 
   // No properties — can't open a ticket against nothing. Same pattern
   // as the payment form: clear pointer at where to start.
-  if (!propsLoading && properties.length === 0) {
+  if (!propsLoading && propertyTotal === 0) {
     return (
       <div className="text-center py-8 px-2">
         <p className="text-sm font-medium">No properties yet</p>
@@ -607,20 +611,13 @@ function MaintenanceForm({ onDone }: { onDone: () => void }) {
     >
       <div>
         <Label htmlFor="m-property">Property</Label>
-        <Select value={propertyId} onValueChange={setPropertyId}>
-          <SelectTrigger id="m-property">
-            <SelectValue placeholder="Pick a property…" />
-          </SelectTrigger>
-          <SelectContent>
-            {properties.map((p) => (
-              <SelectItem key={p.id} value={String(p.id)}>
-                {p.address ?? p.apn ?? `Property #${p.id}`}
-                {p.city ? ` — ${p.city}` : ""}
-                {p.state ? `, ${p.state}` : ""}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <PropertyCombobox
+          id="m-property"
+          value={propertyId ? Number(propertyId) : null}
+          onChange={(id) => setPropertyId(String(id))}
+          placeholder="Pick a property…"
+          aria-label="Property"
+        />
       </div>
       <div>
         <Label htmlFor="m-title">Issue</Label>

@@ -29,6 +29,7 @@
  * rentable units on record. There is NO market/suggested nightly rate anywhere.
  */
 
+import { PropertyCombobox } from "@/components/property-combobox";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
@@ -143,10 +144,6 @@ export function BookingsPanel() {
   const [windowStart, setWindowStart] = useState<string>(isoDaysAgo(30));
   const [windowEnd, setWindowEnd] = useState<string>(todayIso());
 
-  const propsQuery = useQuery<PropertySummary[]>({
-    queryKey: ["/api/properties", "bookings-panel"],
-    queryFn: () => fetchJsonArray<PropertySummary>("/api/properties?pageSize=200"),
-  });
 
   const propertyIdNum = Number.parseInt(propertyId, 10);
   const hasProperty = Number.isFinite(propertyIdNum) && propertyIdNum > 0;
@@ -196,20 +193,16 @@ export function BookingsPanel() {
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end">
             <div>
               <Label htmlFor="bookings-property" className="text-xs">Property</Label>
-              {propsQuery.isLoading ? (
-                <Skeleton className="h-9 mt-1" />
-              ) : (
-                <Select value={propertyId} onValueChange={setPropertyId}>
-                  <SelectTrigger id="bookings-property" className="h-9 mt-1" aria-label="Choose a property">
-                    <SelectValue placeholder="Choose a property…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(propsQuery.data ?? []).map((p) => (
-                      <SelectItem key={p.id} value={String(p.id)}>{propertyName(p)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+              {/* Server-searched (DEFECT-0168): this asked for pageSize=200, which
+                  the list route rejects (max 100), so the picker was always empty. */}
+              <PropertyCombobox
+                id="bookings-property"
+                className="h-9 mt-1"
+                value={propertyId ? Number(propertyId) : null}
+                onChange={(id) => setPropertyId(String(id))}
+                placeholder="Choose a property…"
+                aria-label="Choose a property"
+              />
             </div>
             <div>
               <Label htmlFor="bookings-window-start" className="text-xs">Window start</Label>

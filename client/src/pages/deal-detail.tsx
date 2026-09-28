@@ -16,7 +16,7 @@ import { EmptyState } from "@/components/empty-state";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DealDetailContent } from "@/components/deal-detail-content";
 import { useDeal, useDeleteDeal } from "@/hooks/use-deals";
-import { useProperties } from "@/hooks/use-properties";
+import { useProperty } from "@/hooks/use-properties";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useTerm } from "@/hooks/use-persona";
 import { useToast } from "@/hooks/use-toast";
@@ -33,7 +33,11 @@ export default function DealDetailPage() {
   useDocumentTitle(id ? `${dealLabel} #${id}` : dealLabel);
 
   const { data: deal, isLoading, error, refetch } = useDeal(id ?? 0);
-  const { data: propertiesRaw } = useProperties();
+  // The deal's own property, by id (DEFECT-0168). This was `find` over the
+  // newest-100 page, so an older property came back missing: the header said
+  // "Deal #N", the property card vanished, and the calculator and the
+  // negotiation script ran on no property at all.
+  const { data: dealProperty } = useProperty(deal?.propertyId ?? null);
   const { mutate: deleteDeal, isPending: isDeleting } = useDeleteDeal();
   const { toast } = useToast();
   const [showDelete, setShowDelete] = useState(false);
@@ -41,10 +45,7 @@ export default function DealDetailPage() {
   // Match the deals-list pattern of hydrating each deal with the
   // matching property row so DealDetailContent can render
   // "Yavapai, AZ" instead of "Deal #3".
-  const properties = Array.isArray(propertiesRaw) ? propertiesRaw : [];
-  const property = deal?.propertyId
-    ? properties.find((p: any) => p.id === deal.propertyId)
-    : undefined;
+  const property = dealProperty ?? undefined;
   const dealWithProperty: DealWithProperty | undefined = deal
     ? { ...(deal as Deal), property: (deal as any).property ?? (property as any) }
     : undefined;

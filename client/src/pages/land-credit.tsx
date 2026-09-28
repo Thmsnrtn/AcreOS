@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { useToast } from '@/hooks/use-toast';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { RequiredDisclaimer } from '@/components/required-disclaimer';
-import { useProperties } from '@/hooks/use-properties';
+import { PropertyCombobox } from '@/components/property-combobox';
 import {
   RadarChart,
   PolarGrid,
@@ -193,8 +193,6 @@ export default function LandCreditPage() {
   useDocumentTitle("Land Credit Score");
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: propertiesData } = useProperties();
-  const properties = (propertiesData as any)?.properties ?? [];
 
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
   const [investorStrategy, setInvestorStrategy] = useState<InvestorStrategy>('cash_flow');
@@ -342,18 +340,16 @@ export default function LandCreditPage() {
           <div className="flex flex-wrap items-end gap-3">
             <div>
               <Label htmlFor={propertyId} className="text-xs">Property</Label>
-              <Select value={selectedPropertyId} onValueChange={setSelectedPropertyId}>
-                <SelectTrigger id={propertyId} className="w-80">
-                  <SelectValue placeholder="Select a property to score…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {properties.map((p: any) => (
-                    <SelectItem key={p.id} value={p.id.toString()}>
-                      {p.address || `Parcel ${p.apn || p.id}`} — {p.county}, {p.state}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* Searched on the server (DEFECT-0168). This read `.properties`
+                  off a hook that returns an array, so it was always empty. */}
+              <PropertyCombobox
+                id={propertyId}
+                className="w-80"
+                value={selectedPropertyId ? Number(selectedPropertyId) : null}
+                onChange={(id) => setSelectedPropertyId(String(id))}
+                placeholder="Select a property to score…"
+                aria-label="Property to score"
+              />
             </div>
             <div>
               <Label htmlFor={strategyId} className="text-xs">Investor strategy</Label>

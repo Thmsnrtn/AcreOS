@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import { PropertyCombobox } from "@/components/property-combobox";
 import { z } from 'zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDocumentTitle } from '@/hooks/use-document-title';
@@ -551,16 +552,6 @@ export default function MarketplacePage() {
   });
   const myBids: any[] = myBidsData?.bids ?? [];
 
-  // ── Properties for selector ──
-  const { data: propertiesData } = useQuery({
-    queryKey: ['properties'],
-    queryFn: async () => {
-      const res = await fetch('/api/properties', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch properties');
-      return res.json();
-    },
-  });
-  const properties = (propertiesData as any)?.properties ?? propertiesData ?? [];
 
   // ── Create mutation ──
   const createMutation = useMutation({
@@ -1162,18 +1153,15 @@ export default function MarketplacePage() {
             {/* Property select */}
             <div className="space-y-1.5">
               <Label htmlFor="create-property">Property</Label>
-              <Select value={createPropertyId} onValueChange={setCreatePropertyId}>
-                <SelectTrigger id="create-property">
-                  <SelectValue placeholder="Select a property" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Array.isArray(properties) ? properties : []).map((p: any) => (
-                    <SelectItem key={p.id} value={p.id.toString()}>
-                      {p.address || `APN ${p.apn}`} — {p.county}, {p.state}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* Server-searched (DEFECT-0168). This read `.properties` off a
+                  `{ data }` envelope — never an array — so it was always empty. */}
+              <PropertyCombobox
+                id="create-property"
+                value={createPropertyId ? Number(createPropertyId) : null}
+                onChange={(id) => setCreatePropertyId(String(id))}
+                placeholder="Select a property"
+                aria-label="Property"
+              />
             </div>
 
             {/* Asking price */}

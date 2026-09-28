@@ -1,5 +1,5 @@
-import { useState, useId } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useId, useEffect } from "react";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -72,12 +72,22 @@ export default function SyndicationPage() {
   // could syndicate nothing; it also wrote that envelope into the SHARED
   // ["/api/properties"] cache that the Map reads as an array (DEFECT-0157).
   // Own key, the real shape, and a failed read is an error, not an empty list.
+  // The search runs on the SERVER (DEFECT-0168): it filtered the newest 100
+  // in the browser, so an older property could not be found to syndicate.
+  const [searchTerm, setSearchTerm] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setSearchTerm(propertySearch.trim()), 250);
+    return () => clearTimeout(t);
+  }, [propertySearch]);
   const { data: propertiesData, isError: propertiesError } = useQuery<{ data: Property[]; total: number }>({
-    queryKey: ["syndication", "properties"],
+    queryKey: ["syndication", "properties", searchTerm],
     queryFn: async () => {
-      const r = await okOrThrow(await fetch("/api/properties?pageSize=100", { credentials: "include" }));
+      const qs = new URLSearchParams({ pageSize: "100" });
+      if (searchTerm) qs.set("q", searchTerm);
+      const r = await okOrThrow(await fetch(`/api/properties?${qs}`, { credentials: "include" }));
       return r.json();
     },
+    placeholderData: keepPreviousData,
   });
 
   async function syndicateProperty() {
@@ -110,13 +120,7 @@ export default function SyndicationPage() {
   const platforms = platformData?.platforms || [];
   const loadedProperties = propertiesData?.data ?? [];
   const totalProperties = propertiesData?.total ?? loadedProperties.length;
-  const properties = loadedProperties.filter(p => {
-    if (!propertySearch) return true;
-    const q = propertySearch.toLowerCase();
-    return (p.address || "").toLowerCase().includes(q) ||
-      (p.county || "").toLowerCase().includes(q) ||
-      (p.state || "").toLowerCase().includes(q);
-  });
+  const properties = loadedProperties;
 
   const selectedProperty = properties.find(p => p.id === selectedPropertyId);
 
@@ -148,7 +152,7 @@ export default function SyndicationPage() {
               <div className="max-h-80 overflow-y-auto">
                 {totalProperties > loadedProperties.length && (
                   <p className="text-xs text-muted-foreground mb-2" data-testid="text-syndication-partial">
-                    Showing your {loadedProperties.length} most recent of {totalProperties} properties — search filters these.
+                    Showing {loadedProperties.length} of {totalProperties} {searchTerm ? "matches" : "properties"} — type to narrow.
                   </p>
                 )}
                 {propertiesError ? (

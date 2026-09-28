@@ -374,7 +374,10 @@ describe("Accessibility Compliance", () => {
     // Components that legitimately receive the Slot's props: real form controls
     // and trigger elements that render one.
     const CONTROLS =
-      /^(Input|Textarea|Select|SelectTrigger|Checkbox|Switch|RadioGroup|RadioGroupItem|Slider|Button|Command|Popover|PopoverTrigger|Toggle|ToggleGroup|Calendar|SearchableSelect|MultiSelect|DatePicker|PhoneInput|CurrencyInput)$/;
+      /^(Input|Textarea|Select|SelectTrigger|Checkbox|Switch|RadioGroup|RadioGroupItem|Slider|Button|Command|Popover|PopoverTrigger|Toggle|ToggleGroup|Calendar|SearchableSelect|MultiSelect|DatePicker|PhoneInput|CurrencyInput|PropertyCombobox)$/;
+    // PropertyCombobox (DEFECT-0168) forwards id, aria-describedby and
+    // aria-invalid to its trigger button — pinned in
+    // propertyReadsAreNotTheFirstHundred.test.ts.
 
     for (const file of findFiles(CLIENT_SRC, ".tsx")) {
       if (/\.test\.tsx$/.test(file)) continue;

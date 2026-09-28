@@ -1,4 +1,5 @@
 import { useState, useMemo, useId } from "react";
+import { usePropertiesByIds, usePropertiesBySellerIds } from "@/hooks/use-properties";
 import DOMPurify from "isomorphic-dompurify";
 import { PageShell } from "@/components/page-shell";
 import { RequiredDisclaimer } from "@/components/required-disclaimer";
@@ -727,10 +728,6 @@ export default function OffersPage() {
     queryFn: () => fetchJsonArray<Lead>('/api/leads'),
   });
 
-  const { data: properties } = useQuery<Property[]>({
-    queryKey: ['/api/properties'],
-    queryFn: () => fetchJsonArray<Property>('/api/properties'),
-  });
 
   // Accepted deals feed the contract chain (Contracts tab). Fetched only when
   // that tab is open — the offer queue doesn't need it.
@@ -750,6 +747,17 @@ export default function OffersPage() {
     },
     enabled: activeTab === 'contracts',
   });
+
+  // Properties are resolved BY ID (DEFECT-0168). This read the bare list —
+  // the newest 25 — so an offer or contract on any older property showed
+  // "Property #N" or nothing, and the campaign preview valued every lead
+  // whose property was not among those 25 at $0.
+  const { data: propertiesById } = usePropertiesByIds([
+    ...(offerLetters ?? []).map((o) => o.propertyId),
+    ...(dealsQuery.data ?? []).map((d) => d.propertyId),
+  ]);
+  const properties = propertiesById ? [...propertiesById.values()] : undefined;
+  const { data: propertiesBySeller } = usePropertiesBySellerIds((leads ?? []).map((l) => l.id));
 
   // Mutations
   const createBatchMutation = useMutation({
@@ -893,10 +901,7 @@ export default function OffersPage() {
     });
   }, [leads, leadFilter]);
   
-  const propertyMap = useMemo(() => {
-    if (!properties) return new Map();
-    return new Map(properties.map(p => [p.sellerId, p]));
-  }, [properties]);
+  const propertyMap = useMemo(() => propertiesBySeller ?? new Map<number, Property>(), [propertiesBySeller]);
   
   const previewCalculation = useMemo(() => {
     if (selectedLeadIds.length === 0) return { count: 0, totalValue: 0, avgOffer: 0 };

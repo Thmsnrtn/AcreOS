@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { okOrThrow, listFrom } from "@/lib/fetch-honesty";
+import { okOrThrow, listFrom, nullOn404 } from "@/lib/fetch-honesty";
 import { api, buildUrl, type InsertProperty } from "@shared/routes";
 import type { Property } from "@shared/schema";
 import { z } from "zod";
@@ -61,6 +61,81 @@ export function useProperties() {
     },
     staleTime: STALE_TIMES.short,
     gcTime: CACHE_TIMES.medium,
+  });
+}
+
+/**
+ * One property by id (DEFECT-0168). Lookups used to `find` the id in
+ * useProperties()'s newest-100 page, so a deal or note on an older property
+ * rendered "Property #N" / "No property linked" and fed downstream math a
+ * missing property. A 404 is a real answer (null); anything else throws.
+ */
+export function useProperty(id: number | null | undefined) {
+  return useQuery<Property | null>({
+    queryKey: [api.properties.list.path, "by-id", id],
+    enabled: typeof id === "number" && id > 0,
+    queryFn: async () => {
+      return nullOn404<Property>(
+        await fetch(buildUrl(api.properties.get.path, { id: id as number }), { credentials: "include" }),
+      );
+    },
+    staleTime: STALE_TIMES.short,
+  });
+}
+
+/**
+ * The named properties, fetched by id (in requests of up to 100). For
+ * lists that resolve each row's property — deals, notes — without assuming
+ * it is among the newest hundred.
+ */
+export function usePropertiesByIds(ids: Array<number | null | undefined>) {
+  return usePropertiesKeyedBy("ids", ids);
+}
+
+/** Properties whose seller is one of these leads, keyed by sellerId. */
+export function usePropertiesBySellerIds(leadIds: Array<number | null | undefined>) {
+  return usePropertiesKeyedBy("sellerIds", leadIds);
+}
+
+function usePropertiesKeyedBy(param: "ids" | "sellerIds", ids: Array<number | null | undefined>) {
+  const wanted = [...new Set(ids.filter((v): v is number => typeof v === "number" && v > 0))].sort((a, b) => a - b);
+  return useQuery<Map<number, Property>>({
+    queryKey: [api.properties.list.path, `by-${param}`, wanted.join(",")],
+    enabled: wanted.length > 0,
+    // In chunks of the route's 100-id ceiling — never "the lowest 100 ids".
+    queryFn: async () => {
+      const chunks: number[][] = [];
+      for (let i = 0; i < wanted.length; i += 100) chunks.push(wanted.slice(i, i + 100));
+      const pages = await Promise.all(
+        chunks.map(async (chunk) => {
+          const res = await okOrThrow(
+            await fetch(`${api.properties.list.path}?pageSize=100&${param}=${chunk.join(",")}`, { credentials: "include" }),
+          );
+          return listFrom<Property>(await res.json());
+        }),
+      );
+      const key = (p: Property) => (param === "ids" ? p.id : (p.sellerId as number));
+      return new Map(pages.flat().map((p) => [key(p), p]));
+    },
+    staleTime: STALE_TIMES.short,
+  });
+}
+
+/** Server-side property search for pickers (DEFECT-0168). */
+export function usePropertySearch(q: string, opts: { excludeStatus?: string; enabled?: boolean } = {}) {
+  const term = q.trim();
+  const params = new URLSearchParams({ page: "1", pageSize: "25" });
+  if (term) params.set("q", term);
+  if (opts.excludeStatus) params.set("excludeStatus", opts.excludeStatus);
+  return useQuery<PaginatedPropertiesResponse>({
+    queryKey: [api.properties.list.path, "search", term, opts.excludeStatus ?? ""],
+    enabled: opts.enabled ?? true,
+    queryFn: async () => {
+      const res = await okOrThrow(await fetch(`${api.properties.list.path}?${params}`, { credentials: "include" }));
+      return res.json();
+    },
+    placeholderData: keepPreviousData,
+    staleTime: STALE_TIMES.short,
   });
 }
 

@@ -81,12 +81,33 @@ const MAX_CSV_IMPORT_ROWS = 500;
 const upload = createUploadMiddleware({ maxSizeMB: 5, allowedTypes: ["text"] });
 const validateCSV = validateFileMiddleware(["text"]);
 
+// A comma-separated list of up to 100 positive int4 ids (DEFECT-0168).
+const idList = z
+  .string()
+  .max(1200)
+  .regex(/^\d+(,\d+)*$/)
+  .transform((v) => [...new Set(v.split(",").map(Number))])
+  .refine((v) => v.length <= 100, "at most 100 ids")
+  .refine((v) => v.every((n) => n > 0 && n <= 2147483647), "ids out of range");
+
 // Zod schema for pagination query params
 const paginationQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
   sortBy: z.string().default("createdAt"),
   sortOrder: z.enum(["asc", "desc"]).default("desc"),
+  // Server-side search and lookup (DEFECT-0168). Every property picker read
+  // page 1 of 100 and filtered it in the browser, so the 101st-newest
+  // property could not be chosen, and every "find the deal's property" read
+  // came back missing. `q` searches APN / county / state / address / city /
+  // zip; `ids` fetches up to 100 named properties; `excludeStatus` drops one
+  // status (a seller-finance note picks from unsold land).
+  q: z.string().max(100).optional(),
+  ids: idList.optional(),
+  // The properties whose seller is one of these leads (offers' campaign
+  // preview values each selected lead by its property).
+  sellerIds: idList.optional(),
+  excludeStatus: z.string().max(40).optional(),
 });
 
 export function registerPropertyRoutes(app: Express): void {
@@ -138,9 +159,13 @@ export function registerPropertyRoutes(app: Express): void {
     if (!pagination.success) {
       return Errors.badRequest(res, "Invalid pagination parameters", pagination.error.issues);
     }
-    const { page, pageSize, sortBy, sortOrder } = pagination.data;
+    const { page, pageSize, sortBy, sortOrder, q, ids, sellerIds, excludeStatus } = pagination.data;
 
-    const result = await storage.getPropertiesPaginated(org.id, { page, pageSize, sortBy, sortOrder });
+    const result = await storage.getPropertiesPaginated(
+      org.id,
+      { page, pageSize, sortBy, sortOrder },
+      { q, ids, sellerIds, excludeStatus },
+    );
 
     // T3-3E Phase 3 — contract response validation. dev/test throws on drift,
     // prod warns + sends unchanged. Same envelope shape as before.

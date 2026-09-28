@@ -9,9 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { useProperties } from '@/hooks/use-properties';
+import { PropertyCombobox } from '@/components/property-combobox';
 import {
   BarChart,
   Bar,
@@ -375,8 +374,6 @@ export default function AVMPage() {
   useDocumentTitle('Valuation model (AVM)');
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: propertiesData } = useProperties();
-  const properties = (propertiesData as any)?.properties ?? [];
 
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
   const propertySelectId = useId();
@@ -566,18 +563,16 @@ export default function AVMPage() {
       <div className="flex flex-col sm:flex-row sm:items-end gap-3">
         <div className="flex-1 sm:flex-initial">
           <Label htmlFor={propertySelectId} className="text-xs mb-1 block">Property to value</Label>
-          <Select value={selectedPropertyId} onValueChange={setSelectedPropertyId}>
-            <SelectTrigger id={propertySelectId} className="w-full sm:w-80">
-              <SelectValue placeholder="Select a property to value…" />
-            </SelectTrigger>
-            <SelectContent>
-              {properties.map((p: any) => (
-                <SelectItem key={p.id} value={p.id.toString()}>
-                  {p.address || `Parcel ${p.apn || p.id}`} — {p.county}, {p.state}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Searched on the server (DEFECT-0168). This read `.properties` off
+              a hook that returns an array, so the picker was always empty. */}
+          <PropertyCombobox
+            id={propertySelectId}
+            className="sm:w-80"
+            value={selectedPropertyId ? Number(selectedPropertyId) : null}
+            onChange={(id) => setSelectedPropertyId(String(id))}
+            placeholder="Select a property to value…"
+            aria-label="Property to value"
+          />
         </div>
         <Button
           disabled={!selectedPropertyId || valuationMutation.isPending}

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useProperties } from "@/hooks/use-properties";
+import { PropertyCombobox } from "@/components/property-combobox";
 import { useLeads } from "@/hooks/use-leads";
 import type { Property, Lead, Note } from "@shared/schema";
 import {
@@ -169,7 +169,6 @@ export function DocumentGenerator({
   );
   const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
-  const { data: properties } = useProperties();
   const { data: leads } = useLeads();
 
   const downloadPdf = async (endpoint: string, data: any, filename: string) => {
@@ -314,7 +313,6 @@ export function DocumentGenerator({
             {selectedType === "warranty-deed" && (
               <WarrantyDeedForm
                 property={property}
-                properties={properties}
                 onGenerate={downloadPdf}
                 isGenerating={isGenerating}
               />
@@ -322,7 +320,6 @@ export function DocumentGenerator({
             {selectedType === "settlement-statement" && (
               <SettlementStatementForm
                 property={property}
-                properties={properties}
                 onGenerate={downloadPdf}
                 isGenerating={isGenerating}
               />
@@ -331,7 +328,6 @@ export function DocumentGenerator({
               <OfferLetterForm
                 property={property}
                 lead={lead}
-                properties={properties}
                 leads={leads}
                 onGenerate={downloadPdf}
                 isGenerating={isGenerating}
@@ -340,7 +336,6 @@ export function DocumentGenerator({
             {selectedType === "property-flyer" && (
               <PropertyFlyerForm
                 property={property}
-                properties={properties}
                 onGenerate={downloadPdf}
                 isGenerating={isGenerating}
               />
@@ -469,12 +464,10 @@ function PromissoryNoteForm({
 
 function WarrantyDeedForm({
   property,
-  properties,
   onGenerate,
   isGenerating,
 }: {
   property?: Property;
-  properties?: Property[];
   onGenerate: (endpoint: string, data: any, filename: string) => Promise<void>;
   isGenerating: boolean;
 }) {
@@ -502,23 +495,15 @@ function WarrantyDeedForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Property</FormLabel>
-              <Select
-                value={field.value ? String(field.value) : ""}
-                onValueChange={(val) => field.onChange(Number(val))}
-              >
-                <FormControl>
-                  <SelectTrigger data-testid="select-warranty-deed-property">
-                    <SelectValue placeholder="Select a property" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {properties?.map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>
-                      {p.county}, {p.state} - {p.apn}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FormControl>
+                <PropertyCombobox
+                  value={field.value || null}
+                  onChange={(id) => field.onChange(id)}
+                  placeholder="Select a property"
+                  aria-label="Property"
+                  data-testid="select-warranty-deed-property"
+                />
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}
@@ -539,12 +524,10 @@ function WarrantyDeedForm({
 
 function SettlementStatementForm({
   property,
-  properties,
   onGenerate,
   isGenerating,
 }: {
   property?: Property;
-  properties?: Property[];
   onGenerate: (endpoint: string, data: any, filename: string) => Promise<void>;
   isGenerating: boolean;
 }) {
@@ -581,23 +564,15 @@ function SettlementStatementForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Property</FormLabel>
-              <Select
-                value={field.value ? String(field.value) : ""}
-                onValueChange={(val) => field.onChange(Number(val))}
-              >
-                <FormControl>
-                  <SelectTrigger data-testid="select-settlement-property">
-                    <SelectValue placeholder="Select a property" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {properties?.map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>
-                      {p.county}, {p.state} - {p.apn}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FormControl>
+                <PropertyCombobox
+                  value={field.value || null}
+                  onChange={(id) => field.onChange(id)}
+                  placeholder="Select a property"
+                  aria-label="Property"
+                  data-testid="select-settlement-property"
+                />
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}
@@ -795,14 +770,12 @@ function SettlementStatementForm({
 function OfferLetterForm({
   property,
   lead,
-  properties,
   leads,
   onGenerate,
   isGenerating,
 }: {
   property?: Property;
   lead?: Lead;
-  properties?: Property[];
   leads?: Lead[];
   onGenerate: (endpoint: string, data: any, filename: string) => Promise<void>;
   isGenerating: boolean;
@@ -836,23 +809,15 @@ function OfferLetterForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Property</FormLabel>
-              <Select
-                value={field.value ? String(field.value) : ""}
-                onValueChange={(val) => field.onChange(Number(val))}
-              >
-                <FormControl>
-                  <SelectTrigger data-testid="select-offer-property">
-                    <SelectValue placeholder="Select a property" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {properties?.map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>
-                      {p.county}, {p.state} - {p.apn}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FormControl>
+                <PropertyCombobox
+                  value={field.value || null}
+                  onChange={(id) => field.onChange(id)}
+                  placeholder="Select a property"
+                  aria-label="Property"
+                  data-testid="select-offer-property"
+                />
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}
@@ -977,12 +942,10 @@ function OfferLetterForm({
 
 function PropertyFlyerForm({
   property,
-  properties,
   onGenerate,
   isGenerating,
 }: {
   property?: Property;
-  properties?: Property[];
   onGenerate: (endpoint: string, data: any, filename: string) => Promise<void>;
   isGenerating: boolean;
 }) {
@@ -1016,23 +979,15 @@ function PropertyFlyerForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Property</FormLabel>
-              <Select
-                value={field.value ? String(field.value) : ""}
-                onValueChange={(val) => field.onChange(Number(val))}
-              >
-                <FormControl>
-                  <SelectTrigger data-testid="select-flyer-property">
-                    <SelectValue placeholder="Select a property" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {properties?.map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>
-                      {p.county}, {p.state} - {p.apn}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FormControl>
+                <PropertyCombobox
+                  value={field.value || null}
+                  onChange={(id) => field.onChange(id)}
+                  placeholder="Select a property"
+                  aria-label="Property"
+                  data-testid="select-flyer-property"
+                />
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}

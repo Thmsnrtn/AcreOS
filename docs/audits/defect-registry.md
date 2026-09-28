@@ -4231,6 +4231,102 @@ Remediation plan: DONE.
 Falsified by: `tests/unit/decisionLogNeedsYouIsEveryPending.test.ts` (four
 cases red pre-fix).
 Resolving commits: this branch, round 3
+### DEFECT-0168
+Title: Property pickers and lookups read "the newest hundred" — and several read nothing at all
+Severity: P1
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report item "useProperties capped at 100 in deal pickers", verified 2026-09-28
+Description: `useProperties()` (`client/src/hooks/use-properties.ts`) is page
+1 of 100 of `GET /api/properties`, and the route had no search.
+
+Pickers built on it could not offer the 101st-newest property:
+- create deal and new seller-finance note;
+- the leads offer letter;
+- the document generator's four forms;
+- documents, listings and QuickAdd.
+
+The new-note picker said "No unsold properties yet" whenever that page
+happened to be all sold.
+
+Lookups built on it came back missing:
+- A deal on an older property lost its header and property card. Its
+  negotiation script ran against an invented 50,000 asking price, and its
+  calculator's sale price became 0.
+- The deals CSV export wrote blank county and state.
+- A note said "No property linked."
+
+Worse neighbours:
+- The AVM and land-credit pickers read `.properties` off an array, so they
+  were always empty.
+- Four rental panels (expenses, bookings, T12, units) asked for
+  `pageSize=200`, which the route rejects. Their property pickers were
+  always empty, so a rental operator could not choose a property there at
+  all.
+- The subdivision editor asked for `?id=N` (ignored) and read `.properties`
+  off the envelope. It never found its parent parcel, so its zoning setback
+  lookup never ran.
+- QuickAdd's key said `pageSize=100` but it fetched 25.
+- The offline cache passed `limit=`, which is ignored, so it stored 25 rows.
+- The land dashboard widget reported page lengths as "N total in pipeline"
+  and as owner-target counts.
+Remediation plan: DONE.
+- `GET /api/properties` takes `q` (APN / county / state / address / city /
+  zip, org-scoped and LIKE-escaped), `ids` (up to 100, strictly parsed) and
+  `excludeStatus`.
+- One server-searched `PropertyCombobox`
+  (`client/src/components/property-combobox.tsx`) replaces every picker. It
+  resolves the selected value by id and treats a failed search as a failure.
+- Lookups use `useProperty(id)` or `usePropertiesByIds`.
+- The negotiation script refuses without a real price.
+- The widget shows server totals and labels the counts it computes from a
+  page.
+- Syndication searches on the server.
+- A register in the test holds every remaining whole-list read, with a
+  reason. A read of more than 100 rows, or one using an ignored param, fails
+  the gate.
+Audit follow-up, same day (an independent audit of this change):
+- My first QuickAdd key, `["/api/properties", "quick-add-any"]`, became the
+  URL `/api/properties/quick-add-any` through the default query function.
+  That is a 404, so QuickAdd could log no maintenance ticket. The key is a
+  real path again.
+- The gate's population missed three live pickers and lookups:
+  - flip-analyzer, `fetchJsonArray<Property>("/api/properties")`: the bare
+    path (25 rows), with a generic between the name and the paren;
+  - offers: bare-path lookups. The campaign preview valued each lead whose
+    property was not among those 25 at $0;
+  - marketplace: `.properties` read off the envelope, so it was always
+    empty.
+
+  All three are converted. Offers resolve properties by id and, for the
+  campaign preview, by `sellerIds` (a new route filter). The gate now
+  matches every read shape, with a planted canary per shape.
+- The combobox is modal, so it scrolls inside dialogs. It forwards the
+  validation `aria-*` props. A selected value that is loading, missing or
+  deleted is named, not shown as the placeholder.
+- `usePropertiesByIds` fetches in chunks instead of dropping ids past 100.
+- Ids beyond int4 are a 400, not a 500.
+- The negotiation guard requires an offer amount, which the route needs.
+- Not in this entry: pickers and lookups on LEADS read the first page the
+  same way (DEFECT-0169).
+Falsified by: `tests/unit/propertyReadsAreNotTheFirstHundred.test.ts` (six
+cases red pre-fix).
+Resolving commits: this branch, round 3
+### DEFECT-0169
+Title: Lead pickers and lookups read the first page of leads
+Severity: P2
+Status: OPEN
+Surfaced by lenses: DEFECT-0168 audit, 2026-09-28
+Description: The offers page (`client/src/pages/offers.tsx`) reads
+`fetchJsonArray('/api/leads')`, which is the first page of 25 rows. It
+treats that page as the whole lead book, both for the list an operator picks
+campaign leads from and for the leads it values. This is DEFECT-0168's shape
+on the lead side. `useLeads` itself walks the cursor up to 10,000 leads, so
+finance's borrower lookup is not affected.
+
+The leads route already takes `q`. The fix mirrors DEFECT-0168: a
+server-searched lead picker, by-id lookups, and a population register over
+every lead read shape.
+Resolving commits: —
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -4267,12 +4363,12 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 1   | 9   | 10    |
-| FIXED  | 13  | 80  | 61  | 154   |
+| OPEN   | 0   | 1   | 10  | 11    |
+| FIXED  | 13  | 81  | 61  | 155   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **13** | **84** | **70** | **167** |
+| **Total** | **13** | **85** | **71** | **169** |
 
-Recounted from the entries themselves on 2026-09-28 (167 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (169 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.
