@@ -88,6 +88,8 @@ interface DecisionRow {
 interface DecisionLogResponse {
   windowDays: number;
   generatedAt: string;
+  /** The windowed history hit its row limit; counts cover the newest rows. */
+  truncated?: boolean;
   summary: {
     total: number;
     needsYou: number;
@@ -1011,7 +1013,14 @@ export default function FounderDecisionsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
 
-  const { data, isLoading } = useQuery<DecisionLogResponse>({
+  const {
+    data,
+    isLoading,
+    isError: logFailed,
+    error: logError,
+    refetch: refetchLog,
+    isRefetching: logRefetching,
+  } = useQuery<DecisionLogResponse>({
     queryKey: ["/api/founder/intelligence/decision-log", windowDays],
     queryFn: async () => {
       const res = await fetch(`/api/founder/intelligence/decision-log?days=${windowDays}&limit=300`, {
@@ -1155,6 +1164,23 @@ export default function FounderDecisionsPage() {
       {/* Open agent questions — same renders-only-when-waiting contract. */}
       <OpenAsksSection />
 
+      {/* A failed read is not an empty queue (DEFECT-0167): the list below
+          rendered the "needs you" bucket's empty text on a failed request. */}
+      {logFailed && (
+        <QueryErrorState
+          error={logError}
+          onRetry={() => refetchLog()}
+          isRetrying={logRefetching}
+          title="Couldn't load your decisions"
+          testId="decision-log-error"
+        />
+      )}
+      {data?.truncated && (
+        <p className="text-xs text-muted-foreground" data-testid="decision-log-truncated">
+          Showing the newest decisions in this window — the history counts cover those, not the whole period.
+        </p>
+      )}
+
       {/* Summary strip */}
       {isLoading ? (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -1237,6 +1263,8 @@ export default function FounderDecisionsPage() {
         <CardContent className="space-y-2">
           {isLoading ? (
             Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24" />)
+          ) : logFailed ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">Couldn't load this list.</p>
           ) : activeRows.length === 0 ? (
             <p className="text-sm text-muted-foreground py-6 text-center">
               {BUCKET_META[activeBucket].emptyText}

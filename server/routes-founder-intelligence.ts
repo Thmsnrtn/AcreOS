@@ -1570,33 +1570,40 @@ router.post("/decisions-inbox/purge", requireFounder, async (req: Request, res: 
 
 router.get("/decision-log", requireFounder, async (req: Request, res: Response) => {
   try {
-    const days = Math.min(Math.max(parseInt((req.query.days as string) ?? "30", 10), 1), 90);
-    const limit = Math.min(Math.max(parseInt((req.query.limit as string) ?? "200", 10), 10), 500);
+    const days = Math.min(Math.max(parseInt(String(req.query.days ?? "30"), 10) || 30, 1), 90);
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? "200"), 10) || 200, 10), 500);
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    const rows = await db
-      .select()
-      .from(decisionsInboxItems)
-      .where(sql`${decisionsInboxItems.createdAt} >= ${since}`)
-      .orderBy(desc(decisionsInboxItems.createdAt))
-      .limit(limit);
+    // "Needs you" is EVERY pending decision, whatever its age (DEFECT-0167).
+    // It was the pending rows among the newest `limit` rows of the window,
+    // so a decision older than 30 days — or pushed out by 300 resolved ones
+    // — left the founder's queue silently while it still waited. The
+    // windowed history is read separately, without the pending rows.
+    const [{ countPendingDecisions }, pendingRows, rows] = await Promise.all([
+      import("./services/autopilot/needsYou"),
+      db
+        .select()
+        .from(decisionsInboxItems)
+        .where(eq(decisionsInboxItems.status, "pending"))
+        .orderBy(desc(decisionsInboxItems.createdAt))
+        .limit(50),
+      db
+        .select()
+        .from(decisionsInboxItems)
+        .where(and(sql`${decisionsInboxItems.createdAt} >= ${since}`, ne(decisionsInboxItems.status, "pending")))
+        .orderBy(desc(decisionsInboxItems.createdAt))
+        .limit(limit),
+    ]);
+    const pendingTotal = await countPendingDecisions();
 
     // Bucket + summarize for the founder UI.
-    const needsYou: typeof rows = [];
+    const needsYou: typeof rows = [...pendingRows];
     const autoHandled: typeof rows = [];
     const guardrailStopped: typeof rows = [];
     const youReviewed: typeof rows = [];
     const deferred: typeof rows = [];
     for (const r of rows) {
       const resolvedByExecutor = r.resolvedBy === "autonomous_executor" || r.resolvedBy === "hard_guardrail";
-      if (r.status === "pending") {
-        // Pending rows with critical risk or urgency >= 80 bubble up as "needs you"
-        if (r.riskLevel === "critical" || (r.urgencyScore ?? 0) >= 80) {
-          needsYou.push(r);
-        } else {
-          // Low-urgency pending still goes to needsYou so nothing gets silently lost.
-          needsYou.push(r);
-        }
-      } else if (r.status === "deferred") {
+      if (r.status === "deferred") {
         deferred.push(r);
       } else if (r.status === "rejected" && r.resolvedBy === "hard_guardrail") {
         guardrailStopped.push(r);
@@ -1628,9 +1635,12 @@ router.get("/decision-log", requireFounder, async (req: Request, res: Response) 
     res.json({
       windowDays: days,
       generatedAt: new Date().toISOString(),
+      // The windowed history hit its row limit: bucket counts below are of
+      // the newest `limit` rows, not the whole window.
+      truncated: rows.length >= limit,
       summary: {
-        total: rows.length,
-        needsYou: needsYou.length,
+        total: rows.length + pendingTotal,
+        needsYou: pendingTotal,
         autoHandled: autoHandled.length,
         guardrailStopped: guardrailStopped.length,
         youReviewed: youReviewed.length,

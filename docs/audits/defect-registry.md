@@ -4202,6 +4202,35 @@ Remediation plan: DONE. It returns an UNSIGNED DRAFT with no signature line
 and no code, and it records no document.
 Falsified by: `tests/unit/noAttestationWithoutTheThing.test.ts`.
 Resolving commits: this branch, round 3
+### DEFECT-0167
+Title: The Decisions door dropped pending decisions older than its window, and showed a failed read as an empty queue
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: needs-you audit follow-up (DEFECT-0163), 2026-09-28
+Description: `GET /api/founder/intelligence/decision-log`
+(`server/routes-founder-intelligence.ts`) sorted the rows into buckets. It
+read only the newest `limit` rows created in the last `days`; the page asked
+for 30 days and 300 rows. So "Needs you" held only the pending rows among
+them:
+- A decision still waiting after 30 days left the founder's queue.
+- So did one pushed out by 300 newer resolved rows.
+- The "needs you" count was the length of that partial list. That made it a
+  third definition, beside the Letter's and the badge's.
+- A non-numeric `days` reached SQL as NaN.
+- The page (`client/src/pages/founder-decisions.tsx`) rendered a failed read
+  as the bucket's empty text.
+Remediation plan: DONE.
+- "Needs you" reads every pending decision, whatever its age: the newest 50
+  as cards.
+- Its count is `countPendingDecisions`, the same source the needs-you union
+  uses.
+- The windowed history excludes pending rows and says when it hit its row
+  limit.
+- A non-numeric window falls back to the default.
+- The page shows an error state.
+Falsified by: `tests/unit/decisionLogNeedsYouIsEveryPending.test.ts` (four
+cases red pre-fix).
+Resolving commits: this branch, round 3
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -4239,11 +4268,11 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 1   | 9   | 10    |
-| FIXED  | 13  | 80  | 60  | 153   |
+| FIXED  | 13  | 80  | 61  | 154   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **13** | **84** | **69** | **166** |
+| **Total** | **13** | **84** | **70** | **167** |
 
-Recounted from the entries themselves on 2026-09-28 (166 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (167 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.
