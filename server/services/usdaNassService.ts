@@ -27,6 +27,7 @@
 
 import { db } from "../db";
 import { logger } from "../utils/logger";
+import { BoundedMap } from "../utils/boundedMap";
 
 const NASS_BASE = "https://quickstats.nass.usda.gov/api/api_GET/";
 const NASS_KEY = process.env.USDA_NASS_API_KEY || "";
@@ -457,7 +458,7 @@ function getEstimatedLandValues(state: string, county: string): CountyLandValue[
 // Cache wrapper for expensive lookups
 // ---------------------------------------------------------------------------
 
-const memCache = new Map<string, { data: any; expiresAt: number }>();
+const memCache = new BoundedMap<string, { data: any; expiresAt: number }>(5_000);
 
 export async function getCachedCountySnapshot(
   state: string,

@@ -663,7 +663,7 @@ Resolving commits: this branch, round 3
 ### DEFECT-0055
 Title: 15+ unbounded in-memory Map caches with no coordination across instances
 Severity: P2
-Status: OPEN
+Status: FIXED (round 3, 2026-09-28) — client-keyed maps bounded, the rest registered, metrics capped
 Surfaced by lenses: 52 (C1-C4, H1-H11), 56 (056-F02)
 Description: Module-level Maps act as caches/registries with no eviction policy, no size cap, and no cross-instance coordination. Append-only arrays in SCP subsystems, metrics histogram with unbounded key cardinality, and duplicate WebSocket from useKpiStream. Estimated 135-440 MB leak over 30 days.
 Evidence: 30+ module-level Maps/Sets/arrays across server services.
@@ -679,7 +679,26 @@ Falsified by `tests/unit/metricsRouteLabelsAreBounded.test.ts`, which is red on
 the pre-fix code. The duplicate KPI WebSocket named above is not live:
 `useKpiStream` has no caller. The module-level cache Maps are not addressed
 here, which is why the entry stays OPEN.
-Resolving commits: pending (metrics slice on this branch, round 3)
+Maps, 2026-09-28: 25 module-level Maps in server/ were written and never
+deleted, cleared or size-checked. Seven were keyed by client-controlled
+values, and they now use `server/utils/boundedMap.ts` (a Map that evicts its
+oldest key past a cap):
+- the public due-diligence preview limits (per IP/email, 10k);
+- the comps cache (per coordinate, 2k);
+- the expensive-endpoint per-user limiter objects (5k; their counts live in
+  the shared store);
+- the SNS certificate cache (100);
+- the USDA snapshot cache (5k);
+- GIS validation jobs (500);
+- shared agent insights (1k).
+The other 18 are bounded by construction: org ids, job names, static
+registries and trimmed histories. Each is registered with its reason in
+`tests/unit/moduleMapsAreBounded.test.ts`, which compares the register both
+ways with every grow-only module Map in server/, so a new one fails until
+someone says why it cannot grow. The module ARRAYS were re-measured too: the
+only append-only ones are a static origin list and the founder's reminders,
+which persist to system_meta.
+Resolving commits: this branch, round 3
 
 ### DEFECT-0056
 Title: withTransaction callbacks ignore tx parameter -- operations use global db
@@ -3081,6 +3100,29 @@ real pods with the broker answering nothing, then answering without the
 relevant fields, then answering fully — 11 cases, all RED on the old pods.
 Resolving commits: (this branch, round 3)
 
+
+### DEFECT-0127
+Title: Academy certification routes act on any user's id, cannot parse real user ids, and keep certificates in memory
+Severity: P2
+Status: OPEN — cross-user access closed; the rest must be fixed before feature_academy is enabled
+Surfaced by lenses: DEFECT-0055 map census, 2026-09-28
+Description: `server/routes-certification.ts` is mounted at `/api/certification`
+behind `requireLadderFlag("feature_academy")` and has no client caller. Three
+defects:
+(1) Every `:userId` route acted on the id in the PATH, so any signed-in user
+could read, or award, another user's certificates and stats. FIXED
+2026-09-28: each route now refuses a path user that is not the session user.
+(2) User ids are strings, but the routes `parseInt` them and `/my` calls
+`Number(user.id)`, so every real user becomes NaN and nothing works.
+(3) `server/services/certification.ts` keeps certificates and achievements in
+module Maps, so every award is lost on restart. Anything presented as a
+certificate would be unverifiable.
+Evidence: `server/routes-certification.ts`, `server/services/certification.ts`.
+Remediation plan: keep the flag off. Before enabling it, key the service by the
+string user id and persist certificates to a table with a real issuance record.
+Falsified by (part 1): `tests/unit/moduleMapsAreBounded.test.ts` — another
+user's id in the path returns 403, red on the pre-fix routes.
+Resolving commits: part 1 on this branch, round 3
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -3118,11 +3160,11 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 7   | 7     |
-| FIXED  | 12  | 67  | 37  | 116   |
+| FIXED  | 12  | 67  | 38  | 117   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **70** | **44** | **126** |
+| **Total** | **12** | **70** | **45** | **127** |
 
-Recounted from the entries themselves on 2026-09-27 (126 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (127 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.
@@ -3139,8 +3181,9 @@ review (slice C, same day); 0116 and 0119 (Payment Link, Accept-payment) are
 FIXED in slice A, 0104 (SMS purpose) in slice D and 0107 (blind-offer comps)
 in slice B; no P1 from this report remains OPEN.
 
-As of round 3 (2026-09-27/28) seven P2 entries are OPEN: 0048, 0049, 0050,
-0052 and 0055 are structural, and
+As of round 3 (2026-09-27/28) seven P2 entries are OPEN: 0048, 0049, 0050
+and 0052 are structural, 0127 keeps the academy flag off until it is fixed,
+and
 0099 and 0106 wait on a product or founder decision. None blocks launch. The
 table above is the count of record; it is recounted from the entries.
 
@@ -3228,6 +3271,7 @@ table above is the count of record; it is recounted from the entries.
 | DEFECT-0051 | Rebuild order locale-pinned; production path never reads filenames | (this branch, round 3) |
 | DEFECT-0057 | Last hex-coloured chart components migrated and gated | (this branch, round 3) |
 | DEFECT-0063 | `req.user as any` casts removed; ratchet widened to hold zero | (this branch, round 3) |
+| DEFECT-0055 | Client-keyed module maps bounded; grow-only maps registered; metrics labels capped | (this branch, round 3) |
 
 ### Deferred Defects (3)
 

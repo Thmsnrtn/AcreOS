@@ -12,6 +12,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, gte, sql, count, avg } from "drizzle-orm";
 import crypto from "crypto";
+import { BoundedMap } from "../utils/boundedMap";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,7 +44,7 @@ interface SharedInsight {
 
 // ─── In-Memory State ──────────────────────────────────────────────────────────
 
-const sharedInsights: Map<string, SharedInsight> = new Map();
+const sharedInsights: Map<string, SharedInsight> = new BoundedMap<string, SharedInsight>(1_000);
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 

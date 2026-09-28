@@ -25,6 +25,7 @@ import {
 } from "./services/dueDiligencePods";
 import { Errors } from "./utils/errors";
 import { getOrganizationId } from "./types/request";
+import { BoundedMap } from "./utils/boundedMap";
 
 const router = Router();
 
@@ -247,7 +248,7 @@ router.get("/:propertyId/dd-report", isAuthenticated, getOrCreateOrg, async (req
 // PUBLIC DD PREVIEW (lead magnet) — no auth, rate limited
 // =====================
 
-const previewRateLimits = new Map<string, { count: number; date: string }>();
+const previewRateLimits = new BoundedMap<string, { count: number; date: string }>(10_000);
 
 router.post("/public/dd-preview", async (req: Request, res: Response) => {
   try {

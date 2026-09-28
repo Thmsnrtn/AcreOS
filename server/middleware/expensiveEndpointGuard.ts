@@ -43,6 +43,7 @@ import { createRateLimiter } from "./rateLimit";
 import { sumTodayUsd } from "../services/aiQuotaService";
 import { Errors } from "../utils/errors";
 import { logger } from "../utils/logger";
+import { BoundedMap } from "../utils/boundedMap";
 
 /**
  * Per-tier default USD/day budget. Read once on first call; can be
@@ -116,7 +117,7 @@ function resolveDailyBudgetUsd(req: AuthenticatedRequest): number {
 // don't allocate fresh closures per request. Keyed by user-id (authenticated
 // route, so user is always present).
 
-const perUserLimiters = new Map<string, ReturnType<typeof createRateLimiter>>();
+const perUserLimiters = new BoundedMap<string, ReturnType<typeof createRateLimiter>>(5_000);
 
 function getPerUserLimiter(label: string, perMinute: number) {
   const key = `${label}:${perMinute}`;

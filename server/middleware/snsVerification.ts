@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import https from "https";
 import { logger } from "../utils/logger";
+import { BoundedMap } from "../utils/boundedMap";
 
 /**
  * Shared AWS SNS message verification core.
@@ -116,7 +117,7 @@ export function buildSnsCanonicalString(msg: SnsMessage): string {
   throw new Error(`Unknown SNS message type: ${msg.Type}`);
 }
 
-const certCache = new Map<string, string>();
+const certCache = new BoundedMap<string, string>(100);
 
 async function fetchSigningCert(certUrl: string): Promise<string> {
   const cached = certCache.get(certUrl);

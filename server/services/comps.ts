@@ -6,6 +6,7 @@
 import { storage } from '../storage';
 import { readIntegrationCredentials } from './integrationCredentials';
 import { logger } from "../utils/logger";
+import { BoundedMap } from "../utils/boundedMap";
 
 async function logRegridApiUsage(
   orgId: number | undefined,
@@ -169,7 +170,7 @@ interface RegridCredentials {
   source: 'organization' | 'platform';
 }
 
-const compsCache = new Map<string, { data: CompsSearchResult; timestamp: number }>();
+const compsCache = new BoundedMap<string, { data: CompsSearchResult; timestamp: number }>(2_000);
 const CACHE_TTL = 1000 * 60 * 60;
 
 async function getRegridCredentials(orgId?: number): Promise<RegridCredentials | null> {

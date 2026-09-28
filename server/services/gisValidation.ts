@@ -2,6 +2,7 @@ import { db } from "../db";
 import { countyGisEndpoints } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { BoundedMap } from "../utils/boundedMap";
 
 interface ValidationJob {
   id: string;
@@ -16,7 +17,7 @@ interface ValidationJob {
   error?: string;
 }
 
-const validationJobs = new Map<string, ValidationJob>();
+const validationJobs = new BoundedMap<string, ValidationJob>(500);
 
 function generateJobId(): string {
   return `gis-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
