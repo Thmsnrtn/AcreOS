@@ -25,7 +25,7 @@ import {
 import { logger } from "./utils/logger";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 // Bulk export is an exfiltration boundary, not a convenience.
 import { requirePermission } from "./utils/permissions";
 import rateLimit from "express-rate-limit";
@@ -118,9 +118,7 @@ export function registerImportExportRoutes(app: Express): void {
       const data = parseCSV(csvString);
 
       if (data.length > MAX_CSV_IMPORT_ROWS) {
-        return res.status(400).json({ 
-          message: `CSV file exceeds maximum of ${MAX_CSV_IMPORT_ROWS} rows. Please split into smaller files.` 
-        });
+        return sendError(res, 400, "BAD_REQUEST", `CSV file exceeds maximum of ${MAX_CSV_IMPORT_ROWS} rows. Please split into smaller files.`);
       }
 
       const preview = previewImport(data, entityType);
@@ -144,9 +142,7 @@ export function registerImportExportRoutes(app: Express): void {
       const data = parseCSV(csvString);
 
       if (data.length > MAX_CSV_IMPORT_ROWS) {
-        return res.status(400).json({
-          message: `CSV file exceeds maximum of ${MAX_CSV_IMPORT_ROWS} rows. Please split into smaller files.`,
-        });
+        return sendError(res, 400, "BAD_REQUEST", `CSV file exceeds maximum of ${MAX_CSV_IMPORT_ROWS} rows. Please split into smaller files.`);
       }
 
       // Optional user-provided field map (JSON-encoded in request body)
@@ -310,9 +306,7 @@ export function registerImportExportRoutes(app: Express): void {
       const data = parseCSV(csvString);
 
       if (data.length > MAX_IMPORT_ROWS) {
-        return res.status(400).json({
-          message: `CSV file exceeds maximum of ${MAX_IMPORT_ROWS.toLocaleString()} rows. Got ${data.length.toLocaleString()}. Please split into smaller files.`,
-        });
+        return sendError(res, 400, "BAD_REQUEST", `CSV file exceeds maximum of ${MAX_IMPORT_ROWS.toLocaleString()} rows. Got ${data.length.toLocaleString()}. Please split into smaller files.`);
       }
 
       // Large-file path: queue a job (Magdalena §1).
@@ -886,7 +880,7 @@ export function registerImportExportRoutes(app: Express): void {
             .json({ message: `Job is ${job.status}; download is only available when completed` });
         }
         const buf = await readExportArchive(id, org.id);
-        if (!buf) return res.status(410).json({ message: "Archive expired or unavailable" });
+        if (!buf) return sendError(res, 410, "GONE", "Archive expired or unavailable");
         const date = new Date().toISOString().split("T")[0];
         res.setHeader("Content-Type", "application/zip");
         res.setHeader(

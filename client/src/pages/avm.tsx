@@ -416,7 +416,7 @@ export default function AVMPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Valuation failed');
+        throw new Error(err.message || err.error || 'Valuation failed');
       }
       return res.json();
     },

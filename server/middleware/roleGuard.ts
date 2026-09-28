@@ -30,6 +30,7 @@ import type { Request, Response, NextFunction } from "express";
 import { db } from "../db";
 import { teamMembers } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { sendError } from "../utils/errors";
 
 export type OrgRole = "owner" | "admin" | "member" | "viewer" | "va";
 
@@ -75,7 +76,7 @@ export function requireRole(allowedRoles: OrgRole[] | OrgRole, ...rest: OrgRole[
       const org = req.organization;
 
       if (!user || !org) {
-        return res.status(401).json({ message: "Authentication required" });
+        return sendError(res, 401, "UNAUTHORIZED", "Authentication required");
       }
 
       const userId = String(user?.id || user.id);
@@ -105,9 +106,7 @@ export function requireRole(allowedRoles: OrgRole[] | OrgRole, ...rest: OrgRole[
       const userRole = normalizeRole(member.role);
 
       if (!allowed.includes(userRole)) {
-        return res.status(403).json({
-          message: `Access denied. Required role: ${allowed.join(" or ")}`,
-        });
+        return sendError(res, 403, "FORBIDDEN", `Access denied. Required role: ${allowed.join(" or ")}`);
       }
 
       // Attach role to request for downstream use

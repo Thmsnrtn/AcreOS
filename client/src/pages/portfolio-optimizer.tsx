@@ -302,7 +302,7 @@ export default function PortfolioOptimizerPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Simulation failed');
+        throw new Error(err.message || err.error || 'Simulation failed');
       }
       return res.json();
     },
@@ -325,7 +325,7 @@ export default function PortfolioOptimizerPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Analysis failed');
+        throw new Error(err.message || err.error || 'Analysis failed');
       }
       return res.json();
     },

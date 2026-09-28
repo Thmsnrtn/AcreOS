@@ -23,7 +23,7 @@ import {
   dueDiligencePodService,
   DueDiligenceNotInOrgError,
 } from "./services/dueDiligencePods";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { getOrganizationId } from "./types/request";
 import { BoundedMap } from "./utils/boundedMap";
 
@@ -262,7 +262,7 @@ router.post("/public/dd-preview", async (req: Request, res: Response) => {
     const ipEntry = previewRateLimits.get(ipKey);
 
     if (ipEntry && ipEntry.date === today && ipEntry.count >= 3) {
-      return res.status(429).json({ error: "Preview limit reached. Sign up for unlimited reports." });
+      return sendError(res, 429, "TOO_MANY_REQUESTS", "Preview limit reached. Sign up for unlimited reports.");
     }
 
     if (!ipEntry || ipEntry.date !== today) {
@@ -275,7 +275,7 @@ router.post("/public/dd-preview", async (req: Request, res: Response) => {
       const emailKey = `email:${email}`;
       const emailEntry = previewRateLimits.get(emailKey);
       if (emailEntry && emailEntry.date === today && emailEntry.count >= 10) {
-        return res.status(429).json({ error: "Email preview limit reached." });
+        return sendError(res, 429, "TOO_MANY_REQUESTS", "Email preview limit reached.");
       }
       if (!emailEntry || emailEntry.date !== today) {
         previewRateLimits.set(emailKey, { count: 1, date: today });

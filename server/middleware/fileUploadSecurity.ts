@@ -23,6 +23,7 @@ import multer from "multer";
 import path from "path";
 import crypto from "crypto";
 import net from "node:net";
+import { sendError } from "../utils/errors";
 
 // ─── MIME type signatures (magic bytes) ──────────────────────────────────────
 
@@ -130,7 +131,7 @@ export function validateFileMiddleware(
 
     for (const file of files) {
       if (!file.buffer || file.buffer.length === 0) {
-        return res.status(400).json({ message: "Empty file rejected" });
+        return sendError(res, 400, "BAD_REQUEST", "Empty file rejected");
       }
 
       const detected = detectMimeFromBuffer(file.buffer);
@@ -146,9 +147,7 @@ export function validateFileMiddleware(
         allowedCategories.includes(detected.category as AllowedCategory);
 
       if (!allowed) {
-        return res.status(400).json({
-          message: `File type not allowed: ${detected.mime}. Allowed: ${allowedCategories.join(", ")}`,
-        });
+        return sendError(res, 400, "BAD_REQUEST", `File type not allowed: ${detected.mime}. Allowed: ${allowedCategories.join(", ")}`);
       }
 
       // Attach validated MIME to file object

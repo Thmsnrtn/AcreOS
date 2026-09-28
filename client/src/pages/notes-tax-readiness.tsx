@@ -112,7 +112,7 @@ export default function NotesTaxReadinessPage() {
         return json as TaxIdentityError;
       }
       if (!res.ok) {
-        throw new Error(json?.error || `Failed to load (${res.status})`);
+        throw new Error(json?.message || json?.error || `Failed to load (${res.status})`);
       }
       return json as FormsResponse;
     },

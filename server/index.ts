@@ -27,7 +27,7 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createLimiterStore } from "./middleware/limiterRedisStore";
 import { getClientIp } from "./utils/clientIp";
 import { createHash } from "node:crypto";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { initSentry, Sentry } from "./utils/sentry";
 import { validateEnv } from "./utils/validateEnv";
 
@@ -225,7 +225,7 @@ app.post(
     const signature = req.headers['stripe-signature'];
 
     if (!signature) {
-      return res.status(400).json({ error: 'Missing stripe-signature' });
+      return sendError(res, 400, "BAD_REQUEST", 'Missing stripe-signature');
     }
 
     try {
@@ -233,7 +233,7 @@ app.post(
 
       if (!Buffer.isBuffer(req.body)) {
         log('STRIPE WEBHOOK ERROR: req.body is not a Buffer', 'stripe');
-        return res.status(500).json({ error: 'Webhook processing error' });
+        return sendError(res, 500, "INTERNAL_ERROR", 'Webhook processing error');
       }
 
       await WebhookHandlers.processWebhook(req.body as Buffer, sig);
@@ -255,7 +255,7 @@ app.post(
       ).catch((notifyErr) => {
         logger.error("[StripeWebhook] notifyOnCall failed", notifyErr);
       });
-      res.status(400).json({ error: 'Webhook processing error' });
+      sendError(res, 400, "BAD_REQUEST", 'Webhook processing error');
     }
   }
 );

@@ -108,7 +108,7 @@ describe("the server refuses a .map even if one is present", () => {
     const at = statics.indexOf(".map(\\.gz|\\.br)?(\\?|$)");
     const block = statics.slice(at, at + 300);
     expect(block).toMatch(/\b(?:res\.sendStatus|res\.status)\(404\)/);
-    expect(block).not.toMatch(/status\(403\)/);
+    expect(block).not.toMatch(/status\(403\)|sendError\(res,\s*403\b|Errors\.forbidden\(/);
   });
 
   it("the guard's own regex matches what it must and nothing it must not", () => {

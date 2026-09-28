@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { logger } from "../utils/logger";
+import { sendError } from "../utils/errors";
 import {
   type SnsMessage,
   verifySnsMessage,
@@ -117,7 +118,7 @@ export function verifyInboundEmailSignature(
         const msg = req.body as SnsMessage;
         if (!msg || typeof msg !== "object") {
           logger.warn("[InboundEmailSig] SNS body not parsed");
-          return res.status(401).json({ error: "Invalid SNS payload" });
+          return sendError(res, 401, "UNAUTHORIZED", "Invalid SNS payload");
         }
 
         const result = await verifySnsMessage(msg);
@@ -125,7 +126,7 @@ export function verifyInboundEmailSignature(
           logger.warn("[InboundEmailSig] SNS signature invalid", {
             metadata: { reason: result.reason, messageId: msg.MessageId },
           });
-          return res.status(401).json({ error: "Invalid SNS signature" });
+          return sendError(res, 401, "UNAUTHORIZED", "Invalid SNS signature");
         }
 
         // Replay protection
@@ -146,7 +147,7 @@ export function verifyInboundEmailSignature(
                 "[InboundEmailSig] failed to confirm SNS subscription",
                 err instanceof Error ? err : new Error(String(err)),
               );
-              return res.status(500).json({ error: "Subscription confirmation failed" });
+              return sendError(res, 500, "INTERNAL_ERROR", "Subscription confirmation failed");
             }
           }
           return res.status(200).json({ confirmed: true });
@@ -163,7 +164,7 @@ export function verifyInboundEmailSignature(
           inner = JSON.parse(String(msg.Message ?? "{}"));
         } catch {
           logger.warn("[InboundEmailSig] SNS Notification Message is not JSON");
-          return res.status(400).json({ error: "SNS Message body is not JSON" });
+          return sendError(res, 400, "BAD_REQUEST", "SNS Message body is not JSON");
         }
         req.body = inner;
         return next();
@@ -175,19 +176,19 @@ export function verifyInboundEmailSignature(
         logger.error(
           "[InboundEmailSig] INBOUND_EMAIL_WEBHOOK_SECRET not set — rejecting (fail-closed)",
         );
-        return res.status(401).json({ error: "Inbound email signature verification unavailable" });
+        return sendError(res, 401, "UNAUTHORIZED", "Inbound email signature verification unavailable");
       }
 
       const timestamp = req.headers["x-acreos-timestamp"] as string | undefined;
       const signature = req.headers["x-acreos-signature"] as string | undefined;
       if (!timestamp || !signature) {
-        return res.status(401).json({ error: "Missing inbound email signature" });
+        return sendError(res, 401, "UNAUTHORIZED", "Missing inbound email signature");
       }
 
       const rawBody = (req as unknown as { rawBody?: Buffer }).rawBody;
       if (!rawBody || !Buffer.isBuffer(rawBody)) {
         logger.error("[InboundEmailSig] req.rawBody missing — body parser misconfigured");
-        return res.status(500).json({ error: "Server misconfigured" });
+        return sendError(res, 500, "INTERNAL_ERROR", "Server misconfigured");
       }
 
       const result = verifyHmac(rawBody, timestamp, signature, secret);
@@ -195,7 +196,7 @@ export function verifyInboundEmailSignature(
         logger.warn("[InboundEmailSig] HMAC verification failed", {
           metadata: { reason: result.reason },
         });
-        return res.status(401).json({ error: "Invalid inbound email signature" });
+        return sendError(res, 401, "UNAUTHORIZED", "Invalid inbound email signature");
       }
 
       // Replay protection — prefer body.messageId, then x-acreos-message-id header
@@ -218,7 +219,7 @@ export function verifyInboundEmailSignature(
         "[InboundEmailSig] unexpected error",
         err instanceof Error ? err : new Error(String(err)),
       );
-      res.status(500).json({ error: "Signature verification error" });
+      sendError(res, 500, "INTERNAL_ERROR", "Signature verification error");
     }
   })();
 }

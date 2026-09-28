@@ -27,6 +27,7 @@ import {
 } from "@shared/schema";
 import { and, desc, eq, gte, sql, count } from "drizzle-orm";
 import { isAuthenticated, requireFounder } from "./auth/clerkAuth";
+import { sendError } from "./utils/errors";
 
 export function registerFounderInspectorRoutes(app: Express) {
   // Per-agent deep dive
@@ -160,12 +161,12 @@ export function registerFounderInspectorRoutes(app: Express) {
     requireFounder,
     async (req: Request, res: Response) => {
       const id = parseInt(req.params.id, 10);
-      if (!Number.isFinite(id)) return res.status(400).json({ error: "invalid id" });
+      if (!Number.isFinite(id)) return sendError(res, 400, "BAD_REQUEST", "invalid id");
 
       const item = await db.query.decisionsInboxItems.findFirst({
         where: eq(decisionsInboxItems.id, id),
       });
-      if (!item) return res.status(404).json({ error: "decision not found" });
+      if (!item) return sendError(res, 404, "NOT_FOUND", "decision not found");
 
       const traces = await db
         .select()

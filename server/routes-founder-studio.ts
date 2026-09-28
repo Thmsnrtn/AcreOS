@@ -21,6 +21,7 @@ import { platformSettings, founderAudit } from "@shared/schema";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { isAuthenticated, requireFounder } from "./auth/clerkAuth";
 import { getSettingRow, setSetting, resetSetting, SettingsValidationError } from "./services/settings";
+import { sendError } from "./utils/errors";
 
 export function registerFounderStudioRoutes(app: Express) {
   // GET /api/founder/studio/dials — full catalog at global scope, grouped by category.
@@ -62,7 +63,7 @@ export function registerFounderStudioRoutes(app: Express) {
       const key = req.params.key;
       const globalRow = await getSettingRow(key, { scope: "global", scopeRef: null });
       if (!globalRow) {
-        return res.status(404).json({ error: `unknown key '${key}'` });
+        return sendError(res, 404, "NOT_FOUND", `unknown key '${key}'`);
       }
       const allRows = await db
         .select()
@@ -88,8 +89,8 @@ export function registerFounderStudioRoutes(app: Express) {
         scopeRef?: string | null;
         note?: string;
       };
-      if (!body.key) return res.status(400).json({ error: "key required" });
-      if (body.value === undefined) return res.status(400).json({ error: "value required" });
+      if (!body.key) return sendError(res, 400, "BAD_REQUEST", "key required");
+      if (body.value === undefined) return sendError(res, 400, "BAD_REQUEST", "value required");
 
       const founderEmail = req.user?.email as string | undefined;
       try {
@@ -124,7 +125,7 @@ export function registerFounderStudioRoutes(app: Express) {
         scope?: "global" | "org" | "agent" | "skill";
         scopeRef?: string | null;
       };
-      if (!body.key) return res.status(400).json({ error: "key required" });
+      if (!body.key) return sendError(res, 400, "BAD_REQUEST", "key required");
 
       const founderEmail = req.user?.email as string | undefined;
       try {

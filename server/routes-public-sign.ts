@@ -20,7 +20,7 @@ import {
 } from "@shared/schema";
 import { verifySigningToken } from "./services/signingTokens";
 import { storage } from "./storage";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { idempotencyMiddleware } from "./middleware/idempotency";
 import { loadSigningProgress, statusPatchFor } from "./services/esign/signingProgress";
@@ -45,7 +45,7 @@ export function registerPublicSignRoutes(app: Express): void {
         return Errors.badRequest(res, "Missing doc, signer, or token");
       }
       if (!verifySigningToken(docId, String(signerId), String(token))) {
-        return res.status(403).json({ error: "Invalid or expired signing link" });
+        return sendError(res, 403, "FORBIDDEN", "Invalid or expired signing link");
       }
       // All five disclosures must be true — the legal minimum.
       if (
@@ -86,7 +86,7 @@ export function registerPublicSignRoutes(app: Express): void {
       const signers = (doc.signers || []) as Array<{ id: string; email?: string }>;
       const signer = signers.find((s) => s.id === String(signerId));
       if (!signer) {
-        return res.status(403).json({ error: "Invalid or expired signing link" });
+        return sendError(res, 403, "FORBIDDEN", "Invalid or expired signing link");
       }
 
       const [row] = await db
@@ -139,7 +139,7 @@ export function registerPublicSignRoutes(app: Express): void {
       }
 
       if (!verifySigningToken(docId, signerId, token)) {
-        return res.status(403).json({ error: "Invalid or expired signing link" });
+        return sendError(res, 403, "FORBIDDEN", "Invalid or expired signing link");
       }
 
       const [doc] = await db
@@ -158,7 +158,7 @@ export function registerPublicSignRoutes(app: Express): void {
         order?: number;
       }>;
       const signer = signers.find((s) => s.id === signerId);
-      if (!signer) return res.status(403).json({ error: "Invalid or expired signing link" });
+      if (!signer) return sendError(res, 403, "FORBIDDEN", "Invalid or expired signing link");
 
       const [org] = await db
         .select({ name: organizations.name })
@@ -167,7 +167,7 @@ export function registerPublicSignRoutes(app: Express): void {
         .limit(1);
 
       if (doc.expiresAt && new Date(doc.expiresAt) < new Date()) {
-        return res.status(410).json({ error: "This signing link has expired" });
+        return sendError(res, 410, "GONE", "This signing link has expired");
       }
 
       // Progress from the signatures table, not the roster — the roster no
@@ -215,7 +215,7 @@ export function registerPublicSignRoutes(app: Express): void {
       }
 
       if (!verifySigningToken(docId, String(signerId), String(token))) {
-        return res.status(403).json({ error: "Invalid or expired signing link" });
+        return sendError(res, 403, "FORBIDDEN", "Invalid or expired signing link");
       }
 
       const [doc] = await db
@@ -226,7 +226,7 @@ export function registerPublicSignRoutes(app: Express): void {
       if (!doc) return Errors.notFound(res, "Document");
 
       if (doc.expiresAt && new Date(doc.expiresAt) < new Date()) {
-        return res.status(410).json({ error: "This signing link has expired" });
+        return sendError(res, 410, "GONE", "This signing link has expired");
       }
 
       const signers = (doc.signers || []) as Array<{
@@ -239,7 +239,7 @@ export function registerPublicSignRoutes(app: Express): void {
         order?: number;
       }>;
       const signerIdx = signers.findIndex((x) => x.id === String(signerId));
-      if (signerIdx < 0) return res.status(403).json({ error: "Invalid or expired signing link" });
+      if (signerIdx < 0) return sendError(res, 403, "FORBIDDEN", "Invalid or expired signing link");
 
       const signer = signers[signerIdx];
 
@@ -251,7 +251,7 @@ export function registerPublicSignRoutes(app: Express): void {
       // marker this path itself wrote; it now reads the evidence.
       const priorProgress = await loadSigningProgress(doc.organizationId, doc.id, signers);
       if (priorProgress.hasSigned(String(signerId))) {
-        return res.status(409).json({ error: "This document has already been signed" });
+        return sendError(res, 409, "CONFLICT", "This document has already been signed");
       }
 
       // E-SIGN Act §101(c) server-side gate (Workstream A): before we will
@@ -341,7 +341,7 @@ export function registerPublicSignRoutes(app: Express): void {
         return Errors.badRequest(res, "Missing doc, signer, or token");
       }
       if (!verifySigningToken(docId, signerId, token)) {
-        return res.status(403).json({ error: "Invalid or expired signing link" });
+        return sendError(res, 403, "FORBIDDEN", "Invalid or expired signing link");
       }
 
       // Look up the signer's email so we can match the audit row.
@@ -353,7 +353,7 @@ export function registerPublicSignRoutes(app: Express): void {
       if (!doc) return Errors.notFound(res, "Document");
       const signers = (doc.signers || []) as Array<{ id: string; email?: string }>;
       const signer = signers.find((s) => s.id === signerId);
-      if (!signer) return res.status(403).json({ error: "Invalid or expired signing link" });
+      if (!signer) return sendError(res, 403, "FORBIDDEN", "Invalid or expired signing link");
 
       // Match by signer email + document id at the current disclosure
       // version. We deliberately scope by document id so that consent on

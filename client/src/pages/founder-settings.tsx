@@ -123,7 +123,7 @@ export default function FounderSettingsPage() {
                               const res = await apiRequest("POST", `/api/founder/intelligence/settings/${row.key}`, { value: val });
                               if (!res.ok) {
                                 const err = await res.json();
-                                throw new Error(err.error ?? "save failed");
+                                throw new Error(err.message ?? err.error ?? "save failed");
                               }
                               qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/settings"] });
                               toast({ title: "Saved", description: `${row.key} updated.` });

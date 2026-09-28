@@ -105,7 +105,8 @@ describe("verifyInboundEmailSignature — HMAC fallback", () => {
     expect(next).not.toHaveBeenCalled();
     expect(status).toHaveBeenCalledWith(401);
     expect(json).toHaveBeenCalledWith(
-      expect.objectContaining({ error: expect.stringMatching(/signature/i) }),
+      // Standard error shape (DEFECT-0050): the human text is in `message`.
+      expect.objectContaining({ message: expect.stringMatching(/signature/i), statusCode: 401 }),
     );
   });
 

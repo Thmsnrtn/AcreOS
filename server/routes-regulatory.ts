@@ -11,6 +11,7 @@
 import { Router } from "express";
 import { isAuthenticated } from "./auth";
 import { regulatoryIntelligenceService } from "./services/regulatoryIntelligence";
+import { sendError } from "./utils/errors";
 
 const router = Router();
 
@@ -22,7 +23,7 @@ router.get("/states", isAuthenticated, (_req, res) => {
 // Full profile for a specific state
 router.get("/states/:code", isAuthenticated, (req, res) => {
   const profile = regulatoryIntelligenceService.getStateProfile(req.params.code);
-  if (!profile) return res.status(404).json({ message: "State not found in regulatory database" });
+  if (!profile) return sendError(res, 404, "NOT_FOUND", "State not found in regulatory database");
   res.json(profile);
 });
 
@@ -35,14 +36,14 @@ router.get("/alerts", isAuthenticated, (req, res) => {
 // Due diligence checklist by state
 router.get("/checklist/:state", isAuthenticated, (req, res) => {
   const checklist = regulatoryIntelligenceService.getDueDiligenceChecklist(req.params.state);
-  if (!checklist) return res.status(404).json({ message: "State not found in regulatory database" });
+  if (!checklist) return sendError(res, 404, "NOT_FOUND", "State not found in regulatory database");
   res.json(checklist);
 });
 
 // Risk assessment for a deal
 router.post("/assess", isAuthenticated, (req, res) => {
   const { state, sellerFinanced, acreage, nearWater, coastal } = req.body;
-  if (!state) return res.status(400).json({ message: "state is required" });
+  if (!state) return sendError(res, 400, "BAD_REQUEST", "state is required");
   const result = regulatoryIntelligenceService.assessDealRisk(state, {
     sellerFinanced,
     acreage,

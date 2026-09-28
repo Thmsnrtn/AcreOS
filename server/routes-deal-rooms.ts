@@ -30,7 +30,7 @@ import { eq, desc, and, asc, isNotNull } from 'drizzle-orm';
 import crypto from 'crypto';
 import { asyncHandler } from './middleware/asyncHandler';
 import { validateUrl, SSRFBlockedError } from './middleware/fileUploadSecurity';
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 
 const router = Router();
@@ -246,7 +246,7 @@ router.post('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res
 
     // Enforce file size limit (10MB)
     if (fileSize && Number(fileSize) > 10 * 1024 * 1024) {
-      return res.status(400).json({ error: 'File size exceeds 10MB limit' });
+      return sendError(res, 400, "BAD_REQUEST", 'File size exceeds 10MB limit');
     }
 
     // Determine next version for this fileName
@@ -352,7 +352,7 @@ router.post('/:id/participants', asyncHandler(async (req: AuthenticatedRequest, 
     // Check not already in the room
     const alreadyIn = currentParticipants.some((p: any) => p.email === email);
     if (alreadyIn) {
-      return res.status(409).json({ error: 'Participant already in deal room' });
+      return sendError(res, 409, "CONFLICT", 'Participant already in deal room');
     }
 
     const newParticipant = {

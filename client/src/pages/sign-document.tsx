@@ -108,7 +108,7 @@ export default function SignDocumentPage() {
         );
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
-          throw new Error(body.error || "This signing link is invalid or has expired.");
+          throw new Error(body.message || body.error || "This signing link is invalid or has expired.");
         }
         const json = (await res.json()) as PublicDoc;
         if (cancelled) return;
@@ -241,7 +241,7 @@ export default function SignDocumentPage() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || "Could not submit your signature. Please try again.");
+        throw new Error(body.message || body.error || "Could not submit your signature. Please try again.");
       }
       const body = await res.json();
       setSigned(true);

@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import type { TeamMember, Organization } from "@shared/schema";
+import { sendError } from "./errors";
 
 // Phase 3 Week 14 (Liana §1+§3, Reyna §1): standardized to 4 pragmatic roles
 // + `va`. Legacy values (`acquisitions`, `marketing`, `finance`) are remapped
@@ -313,12 +314,12 @@ export function requirePermission(permission: keyof RolePermissions) {
     const org = req.organization as Organization;
 
     if (!user || !org) {
-      return res.status(401).json({ message: "Unauthorized" });
+      return sendError(res, 401, "UNAUTHORIZED", "Unauthorized");
     }
 
     const context = await getUserPermissionContext(user, org);
     if (!context) {
-      return res.status(403).json({ message: "You are not a member of this organization" });
+      return sendError(res, 403, "FORBIDDEN", "You are not a member of this organization");
     }
 
     req.permissionContext = context;
@@ -342,12 +343,12 @@ export function requireAdminOrAbove() {
     const org = req.organization as Organization;
 
     if (!user || !org) {
-      return res.status(401).json({ message: "Unauthorized" });
+      return sendError(res, 401, "UNAUTHORIZED", "Unauthorized");
     }
 
     const context = await getUserPermissionContext(user, org);
     if (!context) {
-      return res.status(403).json({ message: "You are not a member of this organization" });
+      return sendError(res, 403, "FORBIDDEN", "You are not a member of this organization");
     }
 
     req.permissionContext = context;
@@ -369,12 +370,12 @@ export function requireOwner() {
     const org = req.organization as Organization;
 
     if (!user || !org) {
-      return res.status(401).json({ message: "Unauthorized" });
+      return sendError(res, 401, "UNAUTHORIZED", "Unauthorized");
     }
 
     const context = await getUserPermissionContext(user, org);
     if (!context) {
-      return res.status(403).json({ message: "You are not a member of this organization" });
+      return sendError(res, 403, "FORBIDDEN", "You are not a member of this organization");
     }
 
     req.permissionContext = context;

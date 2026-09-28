@@ -7,7 +7,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { runPortfolioHealthJob, getActiveAlerts, dismissAlert } from "./services/portfolioHealth";
@@ -43,7 +43,7 @@ router.delete("/alerts/:id", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const alertId = parseInt(req.params.id);
-    if (isNaN(alertId)) return res.status(400).json({ error: "Invalid alert id" });
+    if (isNaN(alertId)) return sendError(res, 400, "BAD_REQUEST", "Invalid alert id");
 
     await dismissAlert(org.id, alertId);
     res.json({ success: true });

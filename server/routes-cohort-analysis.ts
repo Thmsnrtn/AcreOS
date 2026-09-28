@@ -6,7 +6,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { buildCohortReport, type CohortSegment } from "./services/cohortAnalysis";
 
 const router = Router();
@@ -27,19 +27,17 @@ router.get("/", async (req: Request, res: Response) => {
     const segmentBy = (req.query.segmentBy as CohortSegment) ?? "source";
 
     if (!VALID_SEGMENTS.includes(segmentBy)) {
-      return res.status(400).json({
-        error: `Invalid segment. Must be one of: ${VALID_SEGMENTS.join(", ")}`,
-      });
+      return sendError(res, 400, "BAD_REQUEST", `Invalid segment. Must be one of: ${VALID_SEGMENTS.join(", ")}`);
     }
 
     const fromDate = req.query.from ? new Date(req.query.from as string) : undefined;
     const toDate = req.query.to ? new Date(req.query.to as string) : undefined;
 
     if (fromDate && isNaN(fromDate.getTime())) {
-      return res.status(400).json({ error: "Invalid from date" });
+      return sendError(res, 400, "BAD_REQUEST", "Invalid from date");
     }
     if (toDate && isNaN(toDate.getTime())) {
-      return res.status(400).json({ error: "Invalid to date" });
+      return sendError(res, 400, "BAD_REQUEST", "Invalid to date");
     }
 
     const report = await buildCohortReport(org.id, segmentBy, fromDate, toDate);

@@ -7,7 +7,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { titleSearchService } from "./services/titleSearchService";
 
 const router = Router();
@@ -20,7 +20,7 @@ router.post("/search", async (req: Request, res: Response) => {
     // The service searches by APN (+ optional state). Accept apn or parcelId.
     const apnValue = apn || parcelId;
     if (!apnValue) {
-      return res.status(400).json({ error: "apn or parcelId required" });
+      return sendError(res, 400, "BAD_REQUEST", "apn or parcelId required");
     }
 
     const result = await titleSearchService.search(String(apnValue), state ? String(state) : undefined);
@@ -35,7 +35,7 @@ router.post("/search", async (req: Request, res: Response) => {
 // Results are returned synchronously from /search; saved-report retrieval
 // needs a persistence layer before this can return real data.
 router.get("/report/:id", async (_req: Request, res: Response) => {
-  res.status(404).json({ error: "Report not found" });
+  sendError(res, 404, "NOT_FOUND", "Report not found");
 });
 
 // GET /api/title-search/history

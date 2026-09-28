@@ -158,7 +158,7 @@ function ListingDetailDialog({
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Failed to place bid');
+        throw new Error(err.message || err.error || 'Failed to place bid');
       }
       return res.json();
     },
@@ -347,7 +347,7 @@ function ListingBidsRow({ listing, orgId }: { listing: any; orgId?: number }) {
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Failed to accept bid');
+        throw new Error(err.message || err.error || 'Failed to accept bid');
       }
       return res.json();
     },
@@ -573,7 +573,7 @@ export default function MarketplacePage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Failed to create listing');
+        throw new Error(err.message || err.error || 'Failed to create listing');
       }
       return res.json();
     },

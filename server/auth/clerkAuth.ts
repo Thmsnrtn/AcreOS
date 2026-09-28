@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { isFounderEmail, isFounderIdentity } from "../services/founder";
 import { logger } from "../utils/logger";
 import { e2eTestAuthEnabled, resolveTestUserId } from "./testAuth";
+import { sendError } from "../utils/errors";
 
 export { clerkMiddleware };
 
@@ -341,13 +342,13 @@ export const isAuthenticated: RequestHandler = (req: any, res, next) => {
  */
 export const requireFounder: RequestHandler = (req: any, res, next) => {
   if (!req.user) {
-    return res.status(404).json({ message: "Not found" });
+    return sendError(res, 404, "NOT_FOUND", "Not found");
   }
 
   const user = req.user;
   const userId = req.auth?.userId ?? user.clerkUserId ?? null;
   if (!isFounderIdentity({ email: user.email, userId })) {
-    return res.status(404).json({ message: "Not found" });
+    return sendError(res, 404, "NOT_FOUND", "Not found");
   }
 
   req.isFounder = true;

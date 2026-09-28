@@ -19,7 +19,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { db } from "./db";
 import { sql, desc, eq, and, gte, lte } from "drizzle-orm";
 import {
@@ -98,7 +98,7 @@ function getTodaysQuote(): { quote: string; author: string } {
 router.get("/snapshot", async (req: Request, res: Response) => {
   try {
     const org = req.organization || req.organization;
-    if (!org) return res.status(401).json({ error: "Organization required" });
+    if (!org) return sendError(res, 401, "UNAUTHORIZED", "Organization required");
 
     const orgId = org.id;
     const today = new Date();

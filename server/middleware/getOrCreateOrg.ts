@@ -8,7 +8,7 @@ import type { Organization } from "@shared/schema";
 import crypto from "crypto";
 import { isFounderEmail } from "../services/founder";
 import { logger } from "../utils/logger";
-import { Errors } from "../utils/errors";
+import { Errors, sendError } from "../utils/errors";
 import { signupLimiter } from "./authPathLimits";
 import { computeReqIpBucket, recordSignalsNotEmitted } from "./botSignals";
 import { subscriptionPauseGate } from "./subscriptionPauseGate";
@@ -60,7 +60,7 @@ export const ACTIVE_ORG_COOKIE_OPTS: CookieOptions = {
  */
 export async function getOrCreateOrg(req: Request, res: Response, next: NextFunction) {
   if (!req.user) {
-    return res.status(401).json({ message: "Unauthorized" });
+    return sendError(res, 401, "UNAUTHORIZED", "Unauthorized");
   }
 
   const user = req.user;
@@ -69,7 +69,7 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
 
   if (!userId) {
     logger.warn("No user ID found in session", { source: "getOrCreateOrg" });
-    return res.status(401).json({ message: "Invalid user session" });
+    return sendError(res, 401, "UNAUTHORIZED", "Invalid user session");
   }
 
   const isFounder = isFounderEmail(userEmail);

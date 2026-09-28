@@ -194,12 +194,13 @@ describe("the 404-not-403 convention is what requireFounder implements", () => {
     const at = auth.indexOf("export const requireFounder");
     expect(at, "requireFounder is gone").toBeGreaterThan(-1);
     const body = auth.slice(at, auth.indexOf("\n};", at));
-    expect(body).toContain("status(404)");
+    // 404 either raw or through the standard error helper (DEFECT-0050).
+    expect(body).toMatch(/status\(404\)|sendError\(res,\s*404\b/);
     expect(
       body,
       "requireFounder answers 403, which tells a non-founder that the endpoint " +
         "exists and is a founder surface",
-    ).not.toContain("status(403)");
+    ).not.toMatch(/status\(403\)|sendError\(res,\s*403\b|Errors\.forbidden\(/);
   });
 
   it("it resolves identity through the canonical helper, not an env read", () => {

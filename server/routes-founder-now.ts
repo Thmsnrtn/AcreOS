@@ -15,7 +15,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { db } from "./db";
 import {
   decisionsInboxItems,
@@ -46,7 +46,7 @@ async function getOrgIdForFounder(req: Request): Promise<number | null> {
 router.get("/", async (req: Request, res: Response) => {
   try {
     const orgId = await getOrgIdForFounder(req);
-    if (!orgId) return res.status(401).json({ error: "No organization context" });
+    if (!orgId) return sendError(res, 401, "UNAUTHORIZED", "No organization context");
 
     // Read the cap from the org row (default 5).
     const [org] = await db

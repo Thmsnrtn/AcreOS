@@ -7,7 +7,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { getPortfolioPnl } from "./services/portfolioPnl";
@@ -41,7 +41,7 @@ router.get("/:year", isAuthenticated, getOrCreateOrg, async (req: Request, res: 
     const org = req.organization;
     const year = parseInt(req.params.year);
     if (isNaN(year) || year < 2000 || year > 2100) {
-      return res.status(400).json({ error: "Invalid year" });
+      return sendError(res, 400, "BAD_REQUEST", "Invalid year");
     }
     const report = await getPortfolioPnl(org.id, new Date(year, 0, 1), new Date(year, 11, 31, 23, 59, 59));
     res.json({ report });

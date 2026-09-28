@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { logger } from '../utils/logger';
+import { sendError } from "../utils/errors";
 
 /**
  * Middleware to verify Twilio webhook request signatures.
@@ -24,7 +25,7 @@ export function verifyTwilioSignature(req: Request, res: Response, next: NextFun
     // misconfigured. Local development that actually needs to test inbound
     // webhooks must export TWILIO_AUTH_TOKEN (use a sandbox token if needed).
     logger.error('[TwilioSignature] TWILIO_AUTH_TOKEN is not set — rejecting webhook (fail-closed)');
-    return res.status(401).json({ error: 'Twilio signature verification unavailable' });
+    return sendError(res, 401, "UNAUTHORIZED", 'Twilio signature verification unavailable');
   }
 
   const twilioSignature = req.headers['x-twilio-signature'] as string;
@@ -32,7 +33,7 @@ export function verifyTwilioSignature(req: Request, res: Response, next: NextFun
     logger.warn('[TwilioSignature] Request missing X-Twilio-Signature header', {
       metadata: { detail: { path: req.originalUrl } },
     });
-    return res.status(401).json({ error: 'Missing Twilio signature' });
+    return sendError(res, 401, "UNAUTHORIZED", 'Missing Twilio signature');
   }
 
   // Build the canonical URL that Twilio signed against.
@@ -64,14 +65,14 @@ export function verifyTwilioSignature(req: Request, res: Response, next: NextFun
       logger.warn('[TwilioSignature] Invalid signature', {
         metadata: { detail: { path: req.originalUrl } },
       });
-      return res.status(401).json({ error: 'Invalid Twilio signature' });
+      return sendError(res, 401, "UNAUTHORIZED", 'Invalid Twilio signature');
     }
   } catch {
     // timingSafeEqual throws if buffer lengths differ — treat as invalid
     logger.warn('[TwilioSignature] Signature length mismatch', {
       metadata: { detail: { path: req.originalUrl } },
     });
-    return res.status(403).json({ error: 'Invalid Twilio signature' });
+    return sendError(res, 403, "FORBIDDEN", 'Invalid Twilio signature');
   }
 
   next();

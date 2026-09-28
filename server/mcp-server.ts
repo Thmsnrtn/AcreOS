@@ -16,6 +16,7 @@ import { db } from './db';
 import { storage } from './storage';
 import { organizationIntegrations, organizations } from '../shared/schema';
 import { eq, and } from 'drizzle-orm';
+import { sendError } from "./utils/errors";
 
 // ─── Rate Limiter ─────────────────────────────────────────────────────────────
 
@@ -190,14 +191,14 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
   const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
 
   if (!bearerToken) {
-    res.status(401).json({ error: 'Missing Bearer token in Authorization header' });
+    sendError(res, 401, "UNAUTHORIZED", 'Missing Bearer token in Authorization header');
     return;
   }
 
   // 2. Resolve org from API key
   const orgId = await resolveOrgFromApiKey(bearerToken);
   if (!orgId) {
-    res.status(401).json({ error: 'Invalid API key' });
+    sendError(res, 401, "UNAUTHORIZED", 'Invalid API key');
     return;
   }
 
@@ -219,13 +220,13 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
   const { tool, params = {}, orgId: bodyOrgId } = req.body ?? {};
 
   if (!tool || typeof tool !== 'string') {
-    res.status(400).json({ error: 'tool (string) is required in request body' });
+    sendError(res, 400, "BAD_REQUEST", 'tool (string) is required in request body');
     return;
   }
 
   // orgId in body must match the key's org if provided
   if (bodyOrgId !== undefined && Number(bodyOrgId) !== orgId) {
-    res.status(403).json({ error: 'orgId in body does not match API key organization' });
+    sendError(res, 403, "FORBIDDEN", 'orgId in body does not match API key organization');
     return;
   }
 

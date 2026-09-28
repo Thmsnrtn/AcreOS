@@ -241,7 +241,7 @@ export default function LandCreditPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Scoring failed');
+        throw new Error(err.message || err.error || 'Scoring failed');
       }
       return res.json();
     },

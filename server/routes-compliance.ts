@@ -5,7 +5,7 @@ import { db } from './db';
 import { auditEvents, deals } from '@shared/schema';
 import { and, eq, desc } from 'drizzle-orm';
 import { logger } from './utils/logger';
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 
 const router = Router();
 
@@ -188,7 +188,7 @@ router.post('/usury-check', async (req: Request, res: Response) => {
   try {
     const { checkUsury } = await import('./services/usury');
     const { state, rate } = req.body;
-    if (!state || rate === undefined) return res.status(400).json({ error: 'state and rate required' });
+    if (!state || rate === undefined) return sendError(res, 400, "BAD_REQUEST", 'state and rate required');
     const clearance = checkUsury(state, Number(rate));
     res.json(clearance);
   } catch (e: any) {
@@ -222,10 +222,10 @@ router.get('/usury-audit', async (req: Request, res: Response) => {
 router.get('/evidence-pack/:dealId', async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    if (!org) return res.status(401).json({ error: 'No organization context' });
+    if (!org) return sendError(res, 401, "UNAUTHORIZED", 'No organization context');
     const dealId = parseInt(req.params.dealId, 10);
     if (!Number.isFinite(dealId)) {
-      return res.status(400).json({ error: 'Invalid dealId' });
+      return sendError(res, 400, "BAD_REQUEST", 'Invalid dealId');
     }
 
     // Confirm the deal exists in this org.
@@ -235,7 +235,7 @@ router.get('/evidence-pack/:dealId', async (req: Request, res: Response) => {
       .where(and(eq(deals.id, dealId), eq(deals.organizationId, org.id)))
       .limit(1);
     if (!deal) {
-      return res.status(404).json({ error: 'Deal not found' });
+      return sendError(res, 404, "NOT_FOUND", 'Deal not found');
     }
 
     // Audit events scoped to the deal itself OR the underlying property

@@ -37,7 +37,7 @@ import { isAuthenticated, requireFounder } from "./auth/clerkAuth";
 import { logger } from "./utils/logger";
 import { stampTraceContext } from "./utils/queueTraceContext";
 import { getStorage } from "./services/cmo/storage";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 
 export function registerCmoRoutes(app: Express) {
   // ─── Dashboard ──────────────────────────────────────────────────────────
@@ -190,7 +190,7 @@ export function registerCmoRoutes(app: Express) {
       return Errors.notFound(res, "CMO ad-review bundle");
     }
     if (item.status !== "pending") {
-      return res.status(409).json({ error: `item is ${item.status}, not pending` });
+      return sendError(res, 409, "CONFLICT", `item is ${item.status}, not pending`);
     }
 
     const ctx = item.contextBundle as { renders?: Array<{ id: string }>; bundleId?: string } | null;

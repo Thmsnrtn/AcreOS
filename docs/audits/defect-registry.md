@@ -537,12 +537,31 @@ Resolving commits: pending (interval tracking fixed, but architecture unchanged)
 ### DEFECT-0050
 Title: Inconsistent error response format -- raw res.status().json() vs Errors.* helpers
 Severity: P2
-Status: OPEN
+Status: PARTIALLY FIXED (round 3, 2026-09-28) — global handler and every single-key human-text error converted; coded bodies remain
 Surfaced by lenses: 1 (ARCH-016), 3 (BE-07), 3 (BE-20)
 Description: ~487 usages of `Errors.*` helpers vs ~922 raw `res.status().json()`. Two different response shapes returned to clients. Global error handler returns `{ message }` only, not the standard shape.
 Evidence: Multiple route files mix patterns.
 Remediation plan: Migrate all raw responses to `Errors.*` helpers. Update global error handler.
-Resolving commits: pending
+Re-verified 2026-09-28:
+- The global handler is already fixed: `server/middleware/terminalErrorHandler.ts`
+  emits the standard shape with a request id, pinned by
+  `terminalErrorHandlerContract.test.ts`.
+- The raw count was 490, and 243 of those were SUCCESS responses
+  (201/204/200/202), which are not this defect.
+- The user-visible cost was real. The client shows `parsed.message ?? text`,
+  so every raw `{ error: "some text" }` body reached users as a JSON string.
+- 124 single-key error responses in 44 files now go through `sendError` with
+  the same status and text: `{ message: "text" }`, or `{ error: "text" }` where
+  the value is human text. Eight client readers that took `.error` first now
+  read `message ?? error`: signing, marketplace, AVM, land credit, portfolio
+  optimizer, founder settings and tax readiness. Otherwise they would have
+  shown the code.
+- Two source-scan tests now also forbid a 403 written through the helper, so
+  the conversion cannot become a way around them.
+- `res-status-raw` lowered 490 → 366.
+Remaining: raw bodies whose `error` is a machine code (clients branch on some,
+e.g. `limit_exceeded`) and multi-field bodies. Each needs per-site review.
+Resolving commits: this branch, round 3 (partial)
 
 ### DEFECT-0051
 Title: Migration sequence number collisions (12 duplicate ordinals)

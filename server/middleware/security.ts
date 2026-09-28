@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import type { Request, Response, NextFunction } from "express";
 import { e2eTestAuthEnabled } from "../auth/testAuth";
+import { sendError } from "../utils/errors";
 
 // ─── F-A05-1: Per-request CSP nonce ─────────────────────────────────────────
 // In production, generate a unique nonce per response and embed it in the CSP.
@@ -236,7 +237,7 @@ export function validateContentType(req: Request, res: Response, next: NextFunct
     if (contentType && !contentType.includes("application/json") &&
         !contentType.includes("application/x-www-form-urlencoded") &&
         !contentType.includes("multipart/form-data")) {
-      return res.status(415).json({ message: "Unsupported Media Type" });
+      return sendError(res, 415, "UNSUPPORTED_MEDIA_TYPE", "Unsupported Media Type");
     }
   }
 
@@ -258,7 +259,7 @@ export function sanitizeQueryParams(req: Request, res: Response, next: NextFunct
         /on\w+\s*=/i.test(value) || // event handlers like onerror=, onclick=
         /[\r\n]/.test(value) // CRLF injection
       ) {
-        return res.status(400).json({ message: "Invalid query parameter" });
+        return sendError(res, 400, "BAD_REQUEST", "Invalid query parameter");
       }
     }
   }

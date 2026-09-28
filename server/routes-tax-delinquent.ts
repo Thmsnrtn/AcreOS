@@ -8,7 +8,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { taxDelinquentPipeline } from "./services/taxDelinquentPipeline";
 
 const router = Router();
@@ -53,10 +53,10 @@ router.get("/:id", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    if (isNaN(id)) return sendError(res, 400, "BAD_REQUEST", "Invalid ID");
 
     const lead = await taxDelinquentPipeline.getLead(org.id, id);
-    if (!lead) return res.status(404).json({ error: "Lead not found" });
+    if (!lead) return sendError(res, 404, "NOT_FOUND", "Lead not found");
     res.json({ lead });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -67,7 +67,7 @@ router.post("/:id/contact", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
     const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    if (isNaN(id)) return sendError(res, 400, "BAD_REQUEST", "Invalid ID");
 
     const result = await taxDelinquentPipeline.addToOutreach(id, org.id);
     res.json(result);
