@@ -556,16 +556,41 @@ async function executeAlertAcknowledgement(
 ): Promise<{ success: boolean; detail: string }> {
   if (!item.sourceAlertId) return { success: false, detail: "No alert ID" };
 
+  // ACKNOWLEDGE, not resolve (DEFECT-0135). This wrote status "resolved" —
+  // closing an alert whose cause nobody had fixed — and put the AI's
+  // reasoning in `resolutionNotes`, a column system_alerts does not have
+  // (an `as any` hid it, so the reasoning was never stored). It also
+  // reported success when no row matched. Now: only a NEW alert moves, to
+  // acknowledged; the reasoning lands in metadata; zero rows is not success.
   try {
-    await db.update(systemAlerts)
+    const note = {
+      autoAcknowledgedBy: "autonomous_decision_executor",
+      reasoning: decision.reasoning,
+      executionNotes: decision.executionNotes ?? null,
+      at: new Date().toISOString(),
+    };
+    const updated = await db.update(systemAlerts)
       .set({
-        status: "resolved",
-        resolvedAt: new Date(),
-        resolutionNotes: `Auto-acknowledged by Autonomous Decision Executor.\n\nAI Analysis: ${decision.reasoning}\n\n${decision.executionNotes || ""}`,
-      } as any)
-      .where(eq(systemAlerts.id, item.sourceAlertId));
+        status: "acknowledged",
+        acknowledgedAt: new Date(),
+        metadata: sql`coalesce(${systemAlerts.metadata}, '{}'::jsonb) || ${JSON.stringify({ autoAcknowledgement: note })}::jsonb`,
+      })
+      .where(and(eq(systemAlerts.id, item.sourceAlertId), eq(systemAlerts.status, "new")))
+      .returning({ id: systemAlerts.id });
 
-    return { success: true, detail: `Alert #${item.sourceAlertId} acknowledged and closed` };
+    if (updated.length === 0) {
+      const [current] = await db.select({ status: systemAlerts.status })
+        .from(systemAlerts)
+        .where(eq(systemAlerts.id, item.sourceAlertId))
+        .limit(1);
+      return {
+        success: false,
+        detail: current
+          ? `Alert #${item.sourceAlertId} is already ${current.status} — nothing changed`
+          : `Alert #${item.sourceAlertId} not found — nothing changed`,
+      };
+    }
+    return { success: true, detail: `Alert #${item.sourceAlertId} acknowledged (still open until its cause is resolved)` };
   } catch (err: any) {
     return { success: false, detail: err.message };
   }

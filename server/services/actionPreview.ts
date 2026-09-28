@@ -90,11 +90,22 @@ export async function beginActionPreview(
     }
   }
 
+  // CLAIM, not read (DEFECT-0134). Reading 'pending' and then executing left
+  // a gap in which the founder's cancel succeeded — the UI said "cancelled
+  // before it committed" — and the action ran anyway. The executor now moves
+  // the row pending → executing in one statement; a cancel after that finds
+  // no pending row and is refused, and a cancel before it wins the claim.
   const shouldProceed = async (): Promise<boolean> => {
-    const status = await getPreviewStatus(previewId);
-    return status === "pending";
+    const claimed = await db
+      .update(actionPreviews)
+      .set({ status: "executing" })
+      .where(and(eq(actionPreviews.id, previewId), eq(actionPreviews.status, "pending")))
+      .returning({ id: actionPreviews.id });
+    return claimed.length > 0;
   };
 
+  // Only the claimed (executing) row takes a result, so a cancelled row
+  // stays cancelled and is never overwritten as "failed" or "committed".
   const recordResult = async (
     status: "committed" | "failed",
     executionResult?: string,
@@ -106,7 +117,7 @@ export async function beginActionPreview(
         committedAt: status === "committed" ? new Date() : null,
         executionResult: executionResult?.slice(0, 500) ?? null,
       })
-      .where(eq(actionPreviews.id, previewId));
+      .where(and(eq(actionPreviews.id, previewId), eq(actionPreviews.status, "executing")));
   };
 
   return { previewId, commitAt, shouldProceed, recordResult };
@@ -146,8 +157,9 @@ export async function listRecentPreviews(hoursBack: number = 48, limit: number =
     .limit(limit);
 }
 
-export async function cancelPreview(id: number, cancelledBy: string, reason?: string) {
-  await db
+/** True only when a still-pending preview was cancelled by this call. */
+export async function cancelPreview(id: number, cancelledBy: string, reason?: string): Promise<boolean> {
+  const cancelled = await db
     .update(actionPreviews)
     .set({
       status: "cancelled",
@@ -155,7 +167,9 @@ export async function cancelPreview(id: number, cancelledBy: string, reason?: st
       cancelledBy,
       cancelReason: reason?.slice(0, 500) ?? null,
     })
-    .where(and(eq(actionPreviews.id, id), eq(actionPreviews.status, "pending")));
+    .where(and(eq(actionPreviews.id, id), eq(actionPreviews.status, "pending")))
+    .returning({ id: actionPreviews.id });
+  return cancelled.length > 0;
 }
 
 /**

@@ -44,7 +44,7 @@ interface PreviewRow {
   cancelledAt: string | null;
   cancelledBy: string | null;
   cancelReason: string | null;
-  status: "pending" | "committed" | "cancelled" | "failed";
+  status: "pending" | "executing" | "committed" | "cancelled" | "failed";
   executionResult: string | null;
 }
 
@@ -71,7 +71,7 @@ export default function FounderPreviewPage() {
     onError: (e: Error) =>
       toast({
         title: "Couldn't cancel action",
-        description: `${e.message}. The action may have already committed by the time you clicked — check the Recent list.`,
+        description: e.message,
         variant: "destructive",
       }),
   });
@@ -256,7 +256,9 @@ function RecentPreviewRow({ row }: { row: PreviewRow }) {
         ? { icon: X, color: "text-muted-foreground", label: "cancelled" }
         : row.status === "failed"
           ? { icon: AlertCircle, color: "text-acr-neg dark:text-acr-neg", label: "failed" }
-          : { icon: Clock, color: "text-acr-warn dark:text-acr-warn", label: "pending" };
+          : row.status === "executing"
+            ? { icon: Clock, color: "text-acr-warn dark:text-acr-warn", label: "executing" }
+            : { icon: Clock, color: "text-acr-warn dark:text-acr-warn", label: "pending" };
   return (
     <div className="flex items-center gap-3 py-2 px-3 rounded hover:bg-muted/40">
       <statusMeta.icon

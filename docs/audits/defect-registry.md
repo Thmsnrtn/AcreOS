@@ -3354,6 +3354,54 @@ columns.
 Falsified by: `tests/unit/unitEconomicsStreakIsDays.test.ts` (four cases red
 pre-fix; two anchors green before and after).
 Resolving commits: this branch, round 3
+### DEFECT-0134
+Title: A founder's preview cancel could report success while the action ran anyway
+Severity: P1
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report §30, verified at HEAD 2026-09-28
+Description: The autonomous executor read the preview's status ('pending')
+and then executed (`server/services/actionPreview.ts`,
+`server/services/autonomousDecisionExecutor.ts`). A cancel landing in between
+set 'cancelled'. The route answered `{ ok: true }` whether or not a row
+changed, the UI said "cancelled before it committed", and the action ran.
+`recordResult` then overwrote 'cancelled' with 'committed'.
+Remediation plan: DONE.
+- The executor claims the row in one statement (pending → executing,
+  UPDATE … RETURNING).
+- `cancelPreview` returns whether it changed a pending row, and the route
+  (`server/routes-founder-intelligence.ts`) answers 409 PREVIEW_NOT_PENDING
+  when it did not.
+- `recordResult` writes only onto the executing row, so a cancelled row stays
+  cancelled.
+- The preview page shows `executing`.
+
+Rows stranded in `executing` by a crash are left visible rather than swept to
+a guessed outcome.
+Falsified by: `tests/unit/actionPreviewCancelIsAtomic.test.ts` (all three
+cases red pre-fix).
+Resolving commits: this branch, round 3
+### DEFECT-0135
+Title: The executor's alert "acknowledge" closed the alert, stored nothing, and succeeded on zero rows
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report §31, verified at HEAD 2026-09-28
+Description: `executeAlertAcknowledgement`
+(`server/services/autonomousDecisionExecutor.ts`) had three defects:
+- It set status `resolved`, closing an alert whose cause nobody had fixed.
+- It wrote the model's reasoning to `resolutionNotes`, a column
+  `system_alerts` does not have. An `as any` hid that, so the reasoning was
+  never stored.
+- It returned success without checking that a row matched.
+Remediation plan: DONE.
+- Only a `new` alert moves, and only to `acknowledged` with `acknowledgedAt`.
+- The reasoning is merged into `metadata`.
+- `.returning()` decides success. Zero rows reports "already <status>" or
+  "not found".
+- The cast is gone, so an unknown column now fails the type check.
+Falsified by: `tests/unit/alertAcknowledgeIsNotResolve.test.ts` (a
+comment-stripped read of the unit — the executor is driven by a model
+decision; three cases red pre-fix).
+Resolving commits: this branch, round 3
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -3391,11 +3439,11 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 7   | 7     |
-| FIXED  | 12  | 70  | 41  | 123   |
+| FIXED  | 12  | 71  | 42  | 125   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **73** | **48** | **133** |
+| **Total** | **12** | **74** | **49** | **135** |
 
-Recounted from the entries themselves on 2026-09-28 (133 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (135 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

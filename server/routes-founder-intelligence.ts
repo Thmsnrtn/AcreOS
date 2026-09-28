@@ -17,7 +17,7 @@
 
 import { Router, type Request, type Response } from "express";
 import type { AuthenticatedRequest } from "./types/request";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { db } from "./db";
 import { dbForReads } from "./db-replica";
 import {
@@ -2256,7 +2256,12 @@ router.post("/action-previews/:id/cancel", requireFounder, async (req: any, res:
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid id");
     const { cancelPreview } = await import("./services/actionPreview");
     const userId = req.permissionContext?.userId ?? "founder";
-    await cancelPreview(id, userId, req.body?.reason);
+    // A cancel that changed nothing must not read as a cancel: the action is
+    // already executing or finished (DEFECT-0134).
+    const cancelled = await cancelPreview(id, userId, req.body?.reason);
+    if (!cancelled) {
+      return sendError(res, 409, "PREVIEW_NOT_PENDING", "This action is no longer pending — it is already executing or finished, so it was not cancelled.");
+    }
     res.json({ ok: true });
   } catch (err: any) {
     Errors.internal(res, err);

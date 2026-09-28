@@ -10440,7 +10440,7 @@ export const actionPreviews = pgTable("action_previews", {
   cancelledAt: timestamp("cancelled_at"),
   cancelledBy: text("cancelled_by"),
   cancelReason: text("cancel_reason"),
-  status: text("status").notNull().default("pending"), // pending | committed | cancelled | failed
+  status: text("status").notNull().default("pending"), // pending | executing | committed | cancelled | failed
   executionResult: text("execution_result"),
 }, (table) => [
   index("action_previews_status_idx").on(table.status),
