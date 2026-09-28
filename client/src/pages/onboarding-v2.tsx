@@ -87,6 +87,7 @@ import {
 } from "@/lib/motion-tokens";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { clientLogger } from "@/lib/clientLogger";
+import { okOrThrow } from "@/lib/fetch-honesty";
 import type { Persona } from "@shared/models/auth";
 import { derivePersona, type BusinessType, type NoteRole } from "@shared/models/persona-mapping";
 import {
@@ -301,7 +302,42 @@ export default function OnboardingV2() {
   const [dataPath, setDataPath] = useState<"sample" | "csv" | null>(null);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvPreview, setCsvPreview] = useState<string[][]>([]);
-  const [csvImportDone, setCsvImportDone] = useState(false);
+  // What the lead-file import actually did (DEFECT-0130). The server answers a
+  // small file synchronously with counts and a large one with 202 + a job id;
+  // this page used to read neither shape and announce "Import complete · 0"
+  // and "Leads imported successfully" either way.
+  type CsvImportOutcome =
+    | { kind: "done"; imported: number; skipped: number; failed: number }
+    | { kind: "queued"; jobId: number; totalRows: number }
+    | { kind: "failed"; message: string };
+  const [csvImport, setCsvImport] = useState<CsvImportOutcome | null>(null);
+  const csvImportDone = csvImport !== null;
+  const queuedJobId = csvImport?.kind === "queued" ? csvImport.jobId : null;
+  useQuery({
+    queryKey: ["/api/import/jobs", queuedJobId],
+    enabled: queuedJobId !== null,
+    refetchInterval: 3000,
+    queryFn: async () => {
+      // A failed read is not a finished job: throw, and the next interval retries.
+      const res = await okOrThrow(await fetch(`/api/import/jobs/${queuedJobId}`, { credentials: "include" }));
+      const job = await res.json();
+      if (job?.status === "completed") {
+        setCsvImport({
+          kind: "done",
+          imported: Number(job.successCount) || 0,
+          skipped: Number(job.duplicatesSkipped) || 0,
+          failed: Number(job.errorCount) || 0,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+        if ((Number(job.successCount) || 0) > 0) {
+          completeStepMutation.mutate({ stepId: 1, data: { dataImported: true, csvImported: true } });
+        }
+      } else if (job?.status === "failed" || job?.status === "cancelled") {
+        setCsvImport({ kind: "failed", message: job.errorMessage || "The import did not finish." });
+      }
+      return job;
+    },
+  });
   const [sampleDataLoaded, setSampleDataLoaded] = useState(false);
 
   // ── AI-disclosure gate ────────────────────────────────────────────────────
@@ -446,19 +482,33 @@ export default function OnboardingV2() {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Import failed");
-      return res.json();
+      return { status: res.status, body: await res.json() };
     },
-    onSuccess: (result) => {
-      const count = result.imported ?? result.count ?? 0;
-      setCsvImportDone(true);
+    onSuccess: ({ status, body }: { status: number; body: any }) => {
+      if (status === 202 && body?.jobId) {
+        setCsvImport({ kind: "queued", jobId: Number(body.jobId), totalRows: Number(body.totalRows) || 0 });
+        completeStepMutation.mutate({ stepId: 1, data: { csvImported: true } });
+        toast({
+          title: "Import started",
+          description: `${Number(body.totalRows) || 0} rows are importing in the background. You can keep going.`,
+        });
+        return;
+      }
+      const imported = Number(body?.successCount) || 0;
+      const skipped = Number(body?.duplicatesSkipped) || 0;
+      const failed = Number(body?.errorCount) || 0;
+      setCsvImport({ kind: "done", imported, skipped, failed });
       queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
-      completeStepMutation.mutate({
-        stepId: 1,
-        data: { dataImported: true, csvImported: true },
-      });
+      if (imported > 0) {
+        completeStepMutation.mutate({ stepId: 1, data: { dataImported: true, csvImported: true } });
+      }
       toast({
-        title: "Import complete",
-        description: `${count} leads imported from your file.`,
+        title: imported > 0 ? "Import complete" : "No new leads imported",
+        description:
+          `${imported} imported` +
+          (skipped ? ` · ${skipped} already in AcreOS` : "") +
+          (failed ? ` · ${failed} rows couldn't be read` : "") +
+          ".",
       });
     },
     onError: () => {
@@ -1124,7 +1174,16 @@ export default function OnboardingV2() {
                         aria-live="polite"
                       >
                         <CheckCircle className="w-4 h-4 text-acr-pos" aria-hidden="true" />
-                        Leads imported successfully.
+                        {csvImport?.kind === "queued"
+                          ? `Importing ${csvImport.totalRows} rows in the background — you can keep going.`
+                          : csvImport?.kind === "failed"
+                            ? `The import didn't finish: ${csvImport.message}`
+                            : csvImport?.kind === "done"
+                              ? `${csvImport.imported} leads imported` +
+                                (csvImport.skipped ? `, ${csvImport.skipped} already in AcreOS` : "") +
+                                (csvImport.failed ? `, ${csvImport.failed} rows couldn't be read` : "") +
+                                "."
+                              : null}
                       </div>
                     )}
                   </motion.div>
@@ -1243,8 +1302,10 @@ export default function OnboardingV2() {
               >
                 {sampleDataLoaded
                   ? "Sample data is loaded and Today is live. "
-                  : csvImportDone
+                  : csvImport?.kind === "done" && csvImport.imported > 0
                     ? "Your leads are imported and Today is live. "
+                    : csvImport?.kind === "queued"
+                      ? "Your leads are importing in the background and will appear on Today as they land. "
                     : "Pax is ready — data can wait on the checklist whenever you need it. You'll approve before anything goes out. "}
                 {vertical.finish.blurb}
               </motion.p>

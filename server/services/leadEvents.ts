@@ -28,7 +28,7 @@
 // pins that relationship.
 // ---------------------------------------------------------------------------
 
-import { emitLeadEvent } from "./workflow-engine";
+import { emitLeadEvent, emitDurableLeadEvent } from "./workflow-engine";
 import { logger } from "../utils/logger";
 
 export type LeadWorkflowEvent =
@@ -132,6 +132,33 @@ export function safeEmitLeadEvent(
       metadata: { leadId },
       error: err instanceof Error ? err : String(err),
     });
+  }
+}
+
+/**
+ * `lead.created` for a lead persisted by the SCHEDULED import worker, staged
+ * in the outbox (DEFECT-0130). The worker has no request whose response is the
+ * failure signal, so an in-memory emit lost on a restart is silent. Keyed by
+ * lead id so a retried chunk never stages twice. A staging failure is logged
+ * and counted by the caller; the lead itself is already saved.
+ */
+export async function emitLeadCreatedDurably(
+  organizationId: number | null | undefined,
+  lead: Record<string, any> | null | undefined,
+): Promise<boolean> {
+  if (!lead || typeof organizationId !== "number" || typeof lead.id !== "number") return false;
+  try {
+    await emitDurableLeadEvent("lead.created", organizationId, lead.id, { ...lead }, {
+      dedupeKey: `lead.created:${lead.id}`,
+    });
+    return true;
+  } catch (err) {
+    logger.error("Durable lead.created staging failed", {
+      organizationId,
+      metadata: { leadId: lead.id },
+      error: err instanceof Error ? err : String(err),
+    });
+    return false;
   }
 }
 

@@ -2568,6 +2568,10 @@ END $mig0247$`,
    )`,
   'CREATE INDEX IF NOT EXISTS "import_jobs_org_status_idx" ON "import_jobs" ("organization_id", "status", "created_at")',
   'CREATE INDEX IF NOT EXISTS "import_jobs_status_created_idx" ON "import_jobs" ("status", "created_at")',
+  // Migration 0252 (DEFECT-0130): the import upload lives in the row, not in
+  // one machine's /tmp; heartbeat_at lets a dead run be failed honestly.
+  'ALTER TABLE "import_jobs" ADD COLUMN IF NOT EXISTS "payload_bytes" bytea',
+  'ALTER TABLE "import_jobs" ADD COLUMN IF NOT EXISTS "heartbeat_at" timestamp',
 
   // export_jobs — 0069
   `CREATE TABLE IF NOT EXISTS "export_jobs" (

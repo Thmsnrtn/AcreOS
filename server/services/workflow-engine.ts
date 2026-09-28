@@ -2982,6 +2982,21 @@ type WorkflowExecutionContext = {
 
 export const workflowEngine = new WorkflowEngine();
 
+/**
+ * Durable sibling of emitLeadEvent for `lead.created` raised by the scheduled
+ * import worker (DEFECT-0130): an outbox row the worker drains, not an entry
+ * in this process's memory.
+ */
+export function emitDurableLeadEvent(
+  event: "lead.created",
+  organizationId: number,
+  leadId: number,
+  data: Record<string, any>,
+  opts: { executor?: OutboxExecutor; dedupeKey?: string } = {},
+): Promise<{ staged: boolean }> {
+  return stageWorkflowEvent({ event, organizationId, entityId: leadId, entityType: "lead", data }, opts);
+}
+
 export function emitLeadEvent(
   event: "lead.created" | "lead.updated" | "lead.status_changed",
   organizationId: number,

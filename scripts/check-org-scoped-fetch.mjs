@@ -754,7 +754,6 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   "server/services/leadQualification.ts::checkForHotLeads",
   "server/services/leadScoreDecay.ts::applyScoreRecovery",
   "server/services/mail/mailFlusher.ts::bookFreeSendAcquisitionCogs",
-  "server/services/migrationJobs.ts::createImportJob",
   "server/services/migrationJobs.ts::markImportComplete",
   "server/services/migrationJobs.ts::runExportJob",
   "server/services/offerBatchService.ts::createOfferBatch",

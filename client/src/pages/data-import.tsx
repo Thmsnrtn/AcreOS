@@ -122,11 +122,31 @@ export default function DataImportPage() {
         const err = await res.json().catch(() => ({ message: "Upload failed" }));
         throw new Error(err.message || `HTTP ${res.status}`);
       }
-      return res.json();
+      return { status: res.status, body: await res.json().catch(() => ({})) };
     },
-    onSuccess: () => {
-      toast({ title: "Import queued", description: "Tracking progress below." });
+    // A small file is imported synchronously (200 + counts, no job); a large
+    // one is queued (202 + jobId). This used to say "Import queued — tracking
+    // progress below" for both, pointing at a job that did not exist
+    // (DEFECT-0130).
+    onSuccess: ({ status, body }: { status: number; body: Record<string, unknown> }) => {
+      if (status === 202) {
+        toast({ title: "Import queued", description: "Tracking progress below." });
+      } else if (typeof body?.successCount === "number") {
+        const skipped = Number(body.duplicatesSkipped) || 0;
+        const failed = Number(body.errorCount) || 0;
+        toast({
+          title: body.successCount > 0 ? "Import complete" : "No new records imported",
+          description:
+            `${body.successCount} imported` +
+            (skipped ? ` · ${skipped} already in AcreOS` : "") +
+            (failed ? ` · ${failed} rows couldn't be read` : "") +
+            ".",
+        });
+      } else {
+        toast({ title: "Import complete" });
+      }
       void queryClient.invalidateQueries({ queryKey: ["import-jobs"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
     },
     onError: (err: Error) => {
       toast({ title: "Import failed", description: err.message, variant: "destructive" });

@@ -230,6 +230,7 @@ const SCHEDULED_HANDOFFS: Array<{ file: string; durable: string }> = [
   { file: "server/services/parcelDeltaDetector.ts", durable: "emitDurableParcelEvent" },
   { file: "server/services/certificateEvents.ts", durable: "emitDurableCertEvent" },
   { file: "server/services/noteEvents.ts", durable: "emitDurableNoteEvent" },
+  { file: "server/services/leadEvents.ts", durable: "emitDurableLeadEvent" },
 ];
 
 const IN_MEMORY_EMITTERS: Record<string, string> = {
@@ -239,7 +240,7 @@ const IN_MEMORY_EMITTERS: Record<string, string> = {
   "server/services/buyerEvents.ts": "request: buyer CRUD",
   "server/services/certificateEvents.ts": "request: cert.acquired / cert.redeemed only (the scheduled two are durable)",
   "server/services/dealEvents.ts": "request: deal CRUD",
-  "server/services/leadEvents.ts": "request: lead CRUD",
+  "server/services/leadEvents.ts": "request: lead CRUD; the scheduled import worker uses emitLeadCreatedDurably (DEFECT-0130)",
   "server/services/propertyEvents.ts": "request: property CRUD",
   "server/services/rehabEvents.ts": "request: rehab CRUD",
   "server/services/rentalEvents.ts": "request: rental CRUD",
@@ -286,6 +287,14 @@ describe("DEFECT-0114 population — every workflow emitter is classified", () =
       .map((s) => s.file)
       .sort();
     expect(actual).toEqual(Object.keys(IN_MEMORY_EMITTERS).sort());
+  });
+
+  it("the scheduled import worker stages lead.created durably (DEFECT-0130)", () => {
+    const worker = sources.find((s) => s.file === "server/services/migrationJobs.ts")!.src;
+    const leadsCall = worker.slice(worker.indexOf("importLeads(chunk"), worker.indexOf("importLeads(chunk") + 200);
+    expect(leadsCall).toMatch(/durableEvents:\s*true/);
+    const importer = sources.find((s) => s.file === "server/services/importExport.ts")!.src;
+    expect(importer).toMatch(/options\.durableEvents\)\s*await emitLeadCreatedDurably/);
   });
 
   it("no scheduled job file calls an in-memory emitter", () => {

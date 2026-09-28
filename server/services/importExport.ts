@@ -4,7 +4,7 @@ import { storage } from "../storage";
 import { db } from "../db";
 // Wave B "Wire the engine" — CSV/bulk imports are a lead-creation path, so
 // they must fire lead.created just like the single-create route does.
-import { emitLeadCreated } from "./leadEvents";
+import { emitLeadCreated, emitLeadCreatedDurably } from "./leadEvents";
 // 2026-07-29 Wave B completeness audit: the lead importer fired
 // `lead.created`, but the property and deal importers in this same file
 // created rows silently — so a workflow on `property.created` / `deal.created`
@@ -311,6 +311,12 @@ function validateRow(
 export interface ImportLeadsOptions {
   /** Optional user-supplied header → field map (overrides default LEAD_COLUMN_MAP). */
   fieldMap?: Record<string, string> | null;
+  /**
+   * Stage `lead.created` in the outbox instead of the in-memory queue. The
+   * scheduled import worker sets this: it has no request to fail, so an
+   * in-memory event lost on a restart would vanish silently (DEFECT-0130).
+   */
+  durableEvents?: boolean;
 }
 
 export async function importLeads(
@@ -448,14 +454,18 @@ export async function importLeads(
       // If import-scale fan-out ever becomes a problem, the fix belongs in
       // the engine (a batch event or per-org coalescing), not here — do NOT
       // silently drop per-lead events, that would make the trigger lie again.
-      for (const lead of created) emitLeadCreated(organizationId, lead);
+      for (const lead of created) {
+        if (options.durableEvents) await emitLeadCreatedDurably(organizationId, lead);
+        else emitLeadCreated(organizationId, lead);
+      }
     } catch {
       // If batch fails, fall back to individual inserts for this chunk
       for (const item of chunk) {
         try {
           const single = await storage.createLead({ ...item.data, ...item.extras, organizationId });
           result.successCount++;
-          emitLeadCreated(organizationId, single);
+          if (options.durableEvents) await emitLeadCreatedDurably(organizationId, single);
+          else emitLeadCreated(organizationId, single);
         } catch (error) {
           result.errorCount++;
           result.errors.push({

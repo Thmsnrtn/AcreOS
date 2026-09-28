@@ -3249,6 +3249,41 @@ Not done: the badge still does not count decisions-inbox items. One
 server-side needs-you endpoint shared by the Letter and the badge is the
 follow-up.
 Resolving commits: this branch, round 3
+### DEFECT-0130
+Title: An import job depended on the machine that took the upload, and a dead worker left it "running" forever
+Severity: P1
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report §26–27, verified at HEAD 2026-09-28
+Description: `createImportJob` (`server/services/migrationJobs.ts`) wrote the
+uploaded CSV to the local /tmp of the app machine that received it and stored
+that path. The migration-jobs tick also runs on the separate worker machine
+(`server/worker.ts`), so a job could be claimed where the file did not exist.
+The customer was told the job was queued, and it then failed. A job whose
+worker died mid-run stayed `running` with no heartbeat and no sweep. Imported
+leads emitted `lead.created` through the in-memory emitter, so a worker restart
+lost the workflow hand-off. Onboarding read `result.imported ?? result.count`,
+a shape neither the 200 nor the 202 response has, and said "Leads imported
+successfully." for a queued job.
+Remediation plan: DONE.
+- The upload bytes live on the row (`import_jobs.payload_bytes`, migration
+  `migrations/0252_import_job_payload_in_db.sql`, mirrored in
+  `scripts/migrate.mjs`). The worker reads them from there; a legacy file path
+  is still honoured. The bytes are cleared on completion and on failure.
+- `heartbeat_at` is set on claim and on every progress update. Each tick first
+  fails running jobs quiet for 15 minutes, with the rows they reached.
+- The job API projects every column except the bytes.
+- The worker's import passes `durableEvents: true`, so each lead stages
+  `lead.created` through the outbox (`emitLeadCreatedDurably`,
+  `emitDurableLeadEvent`).
+- Onboarding and the data-import page branch on 202 (queued, then polled) and
+  200 (real counts), and mark the step imported only when rows were imported.
+Falsified by: `tests/unit/importJobsSurviveMachines.test.ts` (the four server
+cases were red on the pre-fix migrationJobs/importExport) and the lead lane in
+`tests/unit/workflowHandoffIsDurable.test.ts`.
+Not done: the synchronous (small-file) import path still emits `lead.created`
+in memory. It runs inside the request, so the loss window is a process crash
+during the request.
+Resolving commits: this branch, round 3
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -3286,11 +3321,11 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 7   | 7     |
-| FIXED  | 12  | 69  | 38  | 119   |
+| FIXED  | 12  | 70  | 38  | 120   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **72** | **45** | **129** |
+| **Total** | **12** | **73** | **45** | **130** |
 
-Recounted from the entries themselves on 2026-09-28 (129 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (130 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

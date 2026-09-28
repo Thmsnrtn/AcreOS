@@ -29,7 +29,7 @@ import os from "node:os";
 import fs from "node:fs/promises";
 import zlib from "node:zlib";
 import { promisify } from "node:util";
-import { eq, and, asc, sql } from "drizzle-orm";
+import { eq, and, asc, sql, getTableColumns } from "drizzle-orm";
 
 import { db } from "../db";
 import { storage } from "../storage";
@@ -251,19 +251,14 @@ export async function createImportJob(input: {
       errorCount: 0,
       duplicatesSkipped: 0,
       errors: [],
+      // The file travels with the job row, so whichever machine claims the
+      // job can read it (DEFECT-0130). It was a path under this machine's /tmp.
+      payloadBytes: input.payload,
+      payloadRef: "db:import_jobs.payload_bytes",
     })
     .returning();
 
-  // Stash payload to disk now that we have an ID. (S3 in production; tmpdir
-  // here keeps the worker self-contained for dev.)
-  const payloadPath = path.join(STORAGE_DIR, `import-${job.id}.bin`);
-  await fs.writeFile(payloadPath, input.payload);
-  await db
-    .update(importJobs)
-    .set({ payloadRef: payloadPath })
-    .where(eq(importJobs.id, job.id));
-
-  return { ...job, payloadRef: payloadPath };
+  return job;
 }
 
 export async function createExportJob(input: {
@@ -285,9 +280,13 @@ export async function createExportJob(input: {
   return job;
 }
 
-export async function getImportJob(orgId: number, jobId: number): Promise<ImportJob | null> {
+/** An import job as the API sees it: never the uploaded bytes. */
+export type ImportJobSummary = Omit<ImportJob, "payloadBytes">;
+const { payloadBytes: _payloadBytes, ...IMPORT_JOB_SUMMARY_COLUMNS } = getTableColumns(importJobs);
+
+export async function getImportJob(orgId: number, jobId: number): Promise<ImportJobSummary | null> {
   const [job] = await db
-    .select()
+    .select(IMPORT_JOB_SUMMARY_COLUMNS)
     .from(importJobs)
     .where(and(eq(importJobs.id, jobId), eq(importJobs.organizationId, orgId)))
     .limit(1);
@@ -303,9 +302,9 @@ export async function getExportJob(orgId: number, jobId: number): Promise<Export
   return job ?? null;
 }
 
-export async function listImportJobs(orgId: number, limit = 25): Promise<ImportJob[]> {
+export async function listImportJobs(orgId: number, limit = 25): Promise<ImportJobSummary[]> {
   return db
-    .select()
+    .select(IMPORT_JOB_SUMMARY_COLUMNS)
     .from(importJobs)
     .where(eq(importJobs.organizationId, orgId))
     .orderBy(sql`${importJobs.createdAt} DESC`)
@@ -328,7 +327,33 @@ export async function listExportJobs(orgId: number, limit = 25): Promise<ExportJ
  * Returns the count of jobs processed (0 or 1) so the scheduler can report
  * `recordsProcessed`.
  */
+/**
+ * A `running` import whose worker stopped reporting progress (a crash, deploy
+ * or restart mid-run) used to stay "Running" forever with its rows partly
+ * inserted. It is failed here with the rows it reached; rows already imported
+ * stay, and a re-upload skips them as duplicates (DEFECT-0130).
+ */
+const STALE_IMPORT_MINUTES = 15;
+async function failStaleImportJobs(): Promise<number> {
+  const result = await db.execute(sql`
+    UPDATE import_jobs
+       SET status = 'failed',
+           completed_at = now(),
+           payload_bytes = NULL,
+           error_message = 'Import stopped before finishing: the process running it restarted after '
+             || processed_count || ' of ' || total_rows
+             || ' rows. Rows already imported are kept; upload the file again to import the rest (duplicates are skipped).'
+     WHERE status = 'running'
+       AND COALESCE(heartbeat_at, started_at) < now() - (${STALE_IMPORT_MINUTES} * interval '1 minute')
+     RETURNING id
+  `);
+  return ((result as { rows?: unknown[] }).rows ?? []).length;
+}
+
 export async function runMigrationJobsTick(): Promise<number> {
+  await failStaleImportJobs().catch((err) =>
+    logger.warn("[migrationJobs] stale-import sweep failed", { error: String(err) }),
+  );
   const importJob = await claimNextImportJob();
   if (importJob) {
     await runImportJob(importJob);
@@ -346,7 +371,7 @@ async function claimNextImportJob(): Promise<ImportJob | null> {
   // Atomic claim: SET status=running WHERE status=queued, returning row.
   const result = await db.execute(sql`
     UPDATE import_jobs
-       SET status = 'running', started_at = now()
+       SET status = 'running', started_at = now(), heartbeat_at = now()
      WHERE id = (
        SELECT id FROM import_jobs
         WHERE status = 'queued'
@@ -388,6 +413,8 @@ function mapImportJobRow(row: any): ImportJob {
     status: row.status,
     filename: row.filename,
     payloadRef: row.payload_ref,
+    payloadBytes: row.payload_bytes ?? null,
+    heartbeatAt: row.heartbeat_at ?? null,
     fieldMap: row.field_map,
     totalRows: row.total_rows,
     processedCount: row.processed_count,
@@ -428,8 +455,16 @@ function mapExportJobRow(row: any): ExportJob {
 
 async function runImportJob(job: ImportJob): Promise<void> {
   try {
-    if (!job.payloadRef) throw new Error("Import job missing payload reference");
-    const payload = await fs.readFile(job.payloadRef);
+    // The upload lives in the row (DEFECT-0130). Legacy rows queued before
+    // migration 0252 still name a local file.
+    let payload: Buffer;
+    if (job.payloadBytes) {
+      payload = Buffer.from(job.payloadBytes);
+    } else if (job.payloadRef && !job.payloadRef.startsWith("db:")) {
+      payload = await fs.readFile(job.payloadRef);
+    } else {
+      throw new Error("Import job has no uploaded file to read");
+    }
 
     if (job.kind === "documents") {
       const result = await processDocumentImport(job, payload);
@@ -466,6 +501,7 @@ async function runImportJob(job: ImportJob): Promise<void> {
         .update(importJobs)
         .set({
           processedCount: offset + chunk.length,
+          heartbeatAt: new Date(),
           successCount: success,
           errorCount,
           duplicatesSkipped: dupes,
@@ -489,6 +525,7 @@ async function runImportJob(job: ImportJob): Promise<void> {
         status: "failed",
         errorMessage: err instanceof Error ? err.message : String(err),
         completedAt: new Date(),
+        payloadBytes: null,
       })
       .where(eq(importJobs.id, job.id));
   }
@@ -506,6 +543,8 @@ async function runImportChunk(
   if (job.kind === "leads") {
     const r = await importLeads(chunk, job.organizationId, {
       fieldMap: job.fieldMap,
+      // This runs in the scheduled worker: lead.created must be durable.
+      durableEvents: true,
     });
     return {
       successCount: r.successCount,
@@ -782,6 +821,7 @@ async function markImportComplete(
       errors: result.errors,
       result: result as any,
       completedAt: new Date(),
+      payloadBytes: null,
     })
     .where(eq(importJobs.id, job.id));
 

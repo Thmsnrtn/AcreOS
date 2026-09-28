@@ -6,22 +6,7 @@
 // Extracted from shared/schema.ts.
 // ============================================================================
 
-import {
-  pgTable,
-  text,
-  serial,
-  integer,
-  boolean,
-  timestamp,
-  numeric,
-  varchar,
-  jsonb,
-  index,
-  uniqueIndex,
-  date,
-  check,
-  primaryKey,
-} from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, numeric, varchar, jsonb, index, uniqueIndex, date, check, primaryKey, customType } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -53,6 +38,19 @@ export const importJobs = pgTable("import_jobs", {
   status: text("status").notNull().default("queued"),
   filename: text("filename"),
   payloadRef: text("payload_ref"),
+  // The uploaded file itself (migration 0252). It used to be written to the
+  // /tmp of whichever app machine received the upload, while the job could be
+  // claimed by the separate worker machine, which did not have the file — so
+  // the import failed after the customer was told it was queued. The database
+  // is the one store every machine shares (there is no object storage,
+  // DEFECT-0046). Cleared when the job finishes. Never selected for API reads.
+  payloadBytes: customType<{ data: Buffer; driverData: Buffer }>({
+    dataType() { return "bytea"; },
+  })("payload_bytes"),
+  // Last progress write by the worker running this job (migration 0252). A
+  // `running` job whose heartbeat goes stale is failed by the tick with the
+  // rows it reached, instead of showing "Running" forever.
+  heartbeatAt: timestamp("heartbeat_at"),
   fieldMap: jsonb("field_map").$type<Record<string, string>>(),
   totalRows: integer("total_rows").notNull().default(0),
   processedCount: integer("processed_count").notNull().default(0),
