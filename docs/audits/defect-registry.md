@@ -4394,6 +4394,9 @@ a total or claim from the newest 5000 rows, or act only on those rows.
 - The weekly digest and "month in review" emails.
 - Most can read an existing aggregate (`getDashboardStats`, `getLeadCount`,
   `getActiveNotesValue`, `getPipelineValue`) or a by-id lookup.
+- Progress: Pax's `get_cashflow_summary` and `get_pipeline_summary` now
+  count the whole book in SQL (`server/storage/bookAggregates.ts`), pinned
+  by `tests/unit/paxBookCountsAreWhole.test.ts`.
 - The full ranked list is in the trace recorded with DEFECT-0170.
 Resolving commits: —
 ### REFUTED AT HEAD, 2026-09-27

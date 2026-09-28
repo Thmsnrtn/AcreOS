@@ -1525,12 +1525,14 @@ export async function executeTool(
       }
       
       case "get_cashflow_summary": {
-        const notes = await storage.getNotes(org.id);
-        const activeNotes = notes.filter(n => n.status === "active");
-        const monthlyCashflow = activeNotes.reduce((sum, n) => sum + Number(n.monthlyPayment || 0), 0);
-        const totalBalance = activeNotes.reduce((sum, n) => sum + Number(n.currentBalance || 0), 0);
+        // SQL over the whole book (DEFECT-0171): this summed the 5000-row
+        // capped list and told the customer it was their whole portfolio.
+        const { activeNoteTotals } = await import("../storage/bookAggregates");
+        const t = await activeNoteTotals(org.id);
+        const monthlyCashflow = t.monthlyCashflow;
+        const totalBalance = t.totalOutstandingBalance;
         const cashflowData = {
-          activeNotesCount: activeNotes.length,
+          activeNotesCount: t.activeNotesCount,
           totalOutstandingBalance: Math.round(totalBalance * 100) / 100,
           monthlyCashflow: Math.round(monthlyCashflow * 100) / 100,
           annualCashflow: Math.round(monthlyCashflow * 12 * 100) / 100
@@ -1559,16 +1561,10 @@ export async function executeTool(
       }
       
       case "get_pipeline_summary": {
-        const leads = await storage.getLeads(org.id);
-        const summary = leads.reduce((acc, lead) => {
-          acc[lead.status] = (acc[lead.status] || 0) + 1;
-          return acc;
-        }, {} as Record<string, number>);
-        const byType = leads.reduce((acc, lead) => {
-          acc[lead.type] = (acc[lead.type] || 0) + 1;
-          return acc;
-        }, {} as Record<string, number>);
-        return { success: true, data: { totalLeads: leads.length, byStatus: summary, byType } };
+        // Counted in SQL over every lead (DEFECT-0171): `totalLeads` was the
+        // length of the 5000-row capped list.
+        const { leadCountsByStatusAndType } = await import("../storage/bookAggregates");
+        return { success: true, data: await leadCountsByStatusAndType(org.id) };
       }
 
       // System Context
