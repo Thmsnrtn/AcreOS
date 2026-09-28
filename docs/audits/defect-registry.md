@@ -3189,6 +3189,66 @@ string user id and persist certificates to a table with a real issuance record.
 Falsified by (part 1): `tests/unit/moduleMapsAreBounded.test.ts` — another
 user's id in the path returns 403, red on the pre-fix routes.
 Resolving commits: part 1 on this branch, round 3
+### DEFECT-0128
+Title: A parcel alert could attach another county's or state's owner/tax change to a customer's parcel
+Severity: P1
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report §32.1, verified at HEAD 2026-09-28
+Description: `server/services/parcelDeltaDetector.ts` keyed the tracked parcel
+set, the observation match and the lead/property link on APN + state only.
+APNs are assigned per county, so the same APN names different parcels in
+different counties, and in different states.
+- A county-less lead borrowed the county of the first same-APN property.
+- The observation query had no state or county predicate.
+- A change that linked to nothing was still pushed, as an unlinked alert.
+The alert persisted as a `parcel_alert`, rendered on Today
+(`client/src/pages/today.tsx`), and emitted `parcel.owner_changed` /
+`parcel.tax_status_changed` to workflows.
+Evidence: `server/services/parcelDeltaDetector.ts`, job registered in
+`server/jobs/runScheduledJobs.ts` every 6 hours.
+Remediation plan: DONE.
+- Parcel identity is `parcelIdentityKey(apn, state, county)` everywhere.
+- A county-less lead borrows a county only when the org's properties name
+  exactly one county for that APN and state; otherwise it is not tracked.
+- The query gains a state predicate, and rows are filtered to tracked
+  identities.
+- A change linked to no tracked parcel is dropped, not alerted.
+Falsified by: `tests/unit/parcelIdentityIsCountyScoped.test.ts`. It drives the
+real `detectDeltasForOrg`. Pre-fix it produced the Harris County and Oklahoma
+changes for a Travis County property, and linked Harris to the Travis
+property.
+Not done: the per-org history scan is still unbounded (§32.4); a top-2-per-
+parcel SQL window is the follow-up.
+Resolving commits: this branch, round 3
+
+### DEFECT-0129
+Title: The founder Letter said "Nothing needs you today." when it could not check, and the mobile badge undercounted
+Severity: P1
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report §33, verified at HEAD 2026-09-28
+Description: The Letter's needs-you count is the union of open asks, the
+Decisions queue (the morning pulse) and frozen sends
+(`server/services/autopilot/narrate.ts`). A failed read of any of them
+collapsed to zero, so the Letter printed the all-clear, and could render as
+a quiet day, while it had not checked. Separately, `GET /api/founder/asks`
+returned `count` after slicing to `limit`, and the mobile Decisions badge
+(`client/src/components/mobile/FounderMobileBottomNav.tsx`) asked with
+limit=1. So any backlog showed as "1", and a failed read showed no badge at
+all.
+Remediation plan: DONE.
+- The loader records unread sources. The all-clear requires all three READ
+  and empty; otherwise the Letter names what it could not check. An unread
+  source is never a quiet day.
+- The asks route returns `total` beside the page `count`.
+- The badge reads `total` and shows "?" (with an accessible label) when
+  either read fails.
+Falsified by: `tests/unit/letterAllClearRequiresAllSources.test.ts` (four
+cases red pre-fix) and `tests/unit/founderAskTotalIsReal.test.ts` (red
+pre-fix: limit=1 reported 1 of 200).
+Not done: the badge still does not count decisions-inbox items. One
+server-side needs-you endpoint shared by the Letter and the badge is the
+follow-up.
+Resolving commits: this branch, round 3
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -3226,11 +3286,11 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 7   | 7     |
-| FIXED  | 12  | 67  | 38  | 117   |
+| FIXED  | 12  | 69  | 38  | 119   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **70** | **45** | **127** |
+| **Total** | **12** | **72** | **45** | **129** |
 
-Recounted from the entries themselves on 2026-09-28 (127 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (129 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

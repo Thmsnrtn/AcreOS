@@ -38,7 +38,7 @@ import {
 } from "./services/solene/founderCollab";
 import { db } from "./db";
 import { soleneFounderAsks, FOUNDER_ASK_STATUSES, type SoleneFounderAskStatus } from "@shared/schema/solene-founder-collab";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 
 const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 100;
@@ -74,18 +74,33 @@ export function registerFounderCollabRoutes(app: Express): void {
 
         // The default surface — open asks — is sorted by urgency tier via
         // listOpenAsks. Other statuses are sorted newest-first.
-        const rows = status === "open"
-          ? (await listOpenAsks()).slice(0, limit)
-          : await db
-              .select()
-              .from(soleneFounderAsks)
-              .where(eq(soleneFounderAsks.status, status))
-              .orderBy(desc(soleneFounderAsks.askedAt))
-              .limit(limit);
+        // `count` is the size of this page; `total` is every ask in the
+        // status. The mobile badge read `count` with limit=1, so 200 open asks
+        // showed as "1" (DEFECT-0129).
+        let rows;
+        let total: number;
+        if (status === "open") {
+          const all = await listOpenAsks();
+          rows = all.slice(0, limit);
+          total = all.length;
+        } else {
+          rows = await db
+            .select()
+            .from(soleneFounderAsks)
+            .where(eq(soleneFounderAsks.status, status))
+            .orderBy(desc(soleneFounderAsks.askedAt))
+            .limit(limit);
+          const [{ n }] = await db
+            .select({ n: sql<number>`count(*)::int` })
+            .from(soleneFounderAsks)
+            .where(eq(soleneFounderAsks.status, status));
+          total = Number(n);
+        }
 
         return res.json({
           asks: rows,
           count: rows.length,
+          total,
         });
       } catch (err) {
         logger.error("[founder-collab] list-asks failed", {

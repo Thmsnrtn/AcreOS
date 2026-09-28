@@ -99,17 +99,23 @@ export function FounderMobileBottomNav() {
   // Open agent questions + pending witnessed actions, shown as a count badge
   // on the Decisions slot. Fails silent to 0 (a nav bar must never error);
   // polls gently so a new ask surfaces within ~90s without hammering.
-  const { data: needsYouCount = 0 } = useQuery<number>({
+  // `total`, not `count`: count is the page size, so limit=1 capped every
+  // backlog at "1". A failed read is NOT zero — the badge shows "?" so the
+  // bar never implies nothing is waiting when it could not check
+  // (DEFECT-0129). `null` = at least one source unread.
+  const { data: needsYouCount = 0 } = useQuery<number | null>({
     queryKey: ["founder-nav-needs-you"],
     queryFn: async () => {
       const [asksRes, pendingRes] = await Promise.all([
         fetch("/api/founder/asks?status=open&limit=1", { credentials: "include" }),
         fetch("/api/founder/autopilot/pending-actions", { credentials: "include" }),
-      ]);
-      let count = 0;
-      if (asksRes.ok) count += Number((await asksRes.json())?.count) || 0;
-      if (pendingRes.ok) count += ((await pendingRes.json())?.actions?.length ?? 0);
-      return count;
+      ]).catch(() => [null, null] as const);
+      if (!asksRes?.ok || !pendingRes?.ok) return null;
+      const asks = await asksRes.json().catch(() => null);
+      const pending = await pendingRes.json().catch(() => null);
+      const askTotal = Number(asks?.total ?? asks?.count);
+      if (!Number.isFinite(askTotal) || !Array.isArray(pending?.actions)) return null;
+      return askTotal + pending.actions.length;
     },
     enabled: isMobile && newFounderUI && location.startsWith("/founder"),
     staleTime: 60_000,
@@ -165,7 +171,9 @@ export function FounderMobileBottomNav() {
                 href={item.href}
                 aria-current={isActive ? "page" : undefined}
                 aria-label={
-                  item.id === "decisions" && needsYouCount > 0
+                  item.id === "decisions" && needsYouCount === null
+                    ? "Decisions — couldn't check what's waiting"
+                    : item.id === "decisions" && (needsYouCount ?? 0) > 0
                     ? `Decisions — ${needsYouCount} waiting on you`
                     : undefined
                 }
@@ -201,13 +209,13 @@ export function FounderMobileBottomNav() {
                     />
                   )}
                   <ItemIcon className={cn("relative w-6 h-6", isActive && "text-primary")} aria-hidden="true" />
-                  {item.id === "decisions" && needsYouCount > 0 && (
+                  {item.id === "decisions" && (needsYouCount === null || needsYouCount > 0) && (
                     <span
                       className="absolute -top-0.5 right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold tabular-nums text-primary-foreground"
                       aria-hidden="true"
                       data-testid="founder-nav-decisions-badge"
                     >
-                      {needsYouCount > 9 ? "9+" : needsYouCount}
+                      {needsYouCount === null ? "?" : needsYouCount > 9 ? "9+" : needsYouCount}
                     </span>
                   )}
                 </div>

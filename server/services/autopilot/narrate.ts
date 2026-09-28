@@ -62,6 +62,12 @@ export interface FounderBriefInputs {
      * the Decisions door showed "Waiting on you to send (N)"). */
     pendingNow: number;
   } | null;
+  /**
+   * Which of the three needs-you sources could NOT be read (DEFECT-0129).
+   * "Nothing needs you" is a claim about all three; a failed read is not an
+   * empty one. Absent/empty = every source was read.
+   */
+  unreadSources?: string[];
   /** The brain's single highest-value planned focus (observational in P0). */
   plannedFocus: RankedMove | null;
   /**
@@ -327,9 +333,12 @@ export function isQuietDay(q: {
   misses: ReadonlyArray<unknown>;
   modelChangeNotice: string | null;
   envelopeStatus: "green" | "amber" | "red" | "unknown";
+  /** Needs-you sources that could not be read; any makes the day not quiet. */
+  unreadSourceCount?: number;
 }): boolean {
   return (
     q.needsYouCount === 0 &&
+    (q.unreadSourceCount ?? 0) === 0 &&
     q.misses.length === 0 &&
     q.modelChangeNotice === null &&
     q.envelopeStatus === "green"
@@ -368,6 +377,13 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
   const sendsCount = Math.max(0, inp.frozenSends?.pendingNow ?? 0);
   const needsYouCount = asksCount + queueCount + sendsCount;
   const isFounderNeeded = needsYouCount > 0;
+  // "Nothing needs you" requires all three sources READ and empty. A failed
+  // read used to collapse to zero and print the all-clear (DEFECT-0129).
+  const unread = (inp.unreadSources ?? []).filter(Boolean);
+  const allClearLine =
+    unread.length === 0
+      ? "Nothing needs you today."
+      : `I couldn't check ${unread.join(" or ")} just now, so I can't tell you nothing needs you — look at Decisions before you step away.`;
 
   const neededPieces: string[] = [];
   if (asksCount > 0) neededPieces.push(`${countNoun(asksCount, "question", "questions")} below`);
@@ -375,7 +391,7 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
   if (sendsCount > 0) neededPieces.push(`${countNoun(sendsCount, "send frozen", "sends frozen")} until you approve`);
 
   const neededLine = !isFounderNeeded
-    ? "Nothing needs you today."
+    ? allClearLine
     : neededPieces.length > 1
       ? `${needsYouCount} things need your call — ${neededPieces.join(", plus ")}.`
       : asksCount === 1
@@ -443,7 +459,7 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
 
   // The closing line mirrors the needed-line so the paragraph lands on the
   // one thing that matters.
-  parts.push(isFounderNeeded ? capFirst(neededLine) : "Nothing needs you today.");
+  parts.push(isFounderNeeded ? capFirst(neededLine) : allClearLine);
 
   // Frozen-send visibility (stage-4 turn 5, OD-9): rendered only when the
   // counters were actually read AND the lane saw traffic — a quiet lane says
@@ -485,6 +501,7 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
     misses,
     modelChangeNotice,
     envelopeStatus: inp.pulse.envelopeStatus,
+    unreadSourceCount: unread.length,
   });
 
   return {
@@ -563,6 +580,8 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
 
   // Pulse — the canonical senses.
   const { getLatestMorningPulse, composeMorningPulse } = await import("../solene/continuousLoop");
+  // Sources of the needs-you claim that could not be read (DEFECT-0129).
+  const unreadSources: string[] = [];
   let pulse = await getLatestMorningPulse().catch(() => null);
   if (!pulse) {
     pulse = await composeMorningPulse().catch(() => null);
@@ -579,6 +598,7 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
     dispatchesFlaggedLast24h: pulse?.dispatchesFlaggedLast24h ?? 0,
     decisionsWaitingCount: pulse?.decisionsWaitingCount ?? 0,
   };
+  if (!pulse) unreadSources.push("the Decisions queue");
 
   // Open asks — the decisions that need a human.
   let openAsks: FounderDecisionCard[] = [];
@@ -593,6 +613,7 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
     }));
   } catch {
     openAsks = [];
+    unreadSources.push("your open questions");
   }
 
   // The brain's plan — observational.
@@ -904,9 +925,11 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
     };
   } catch {
     frozenSends = null;
+    unreadSources.push("frozen sends");
   }
 
   return buildFounderBrief({
+    unreadSources,
     partOfDay,
     founderName,
     pulse: safePulse,
