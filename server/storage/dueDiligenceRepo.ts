@@ -215,9 +215,7 @@ export const dueDiligenceRepo = {
       throw new Error("Template not found");
     }
 
-    await db.delete(dealChecklists).where(eq(dealChecklists.dealId, dealId));
-
-    const items: DealChecklistItem[] = template.items.map(item => ({
+    const templateItems: DealChecklistItem[] = template.items.map(item => ({
       id: item.id,
       title: item.title,
       description: item.description,
@@ -225,18 +223,24 @@ export const dueDiligenceRepo = {
       documentRequired: item.documentRequired,
     }));
 
-    const checklist = await this.createDealChecklist({
-      dealId,
-      templateId,
-      items,
-    });
-    return checklist;
+    // MERGE, never wipe (DEFECT-0176). This deleted the deal's checklist row
+    // outright — the closing checklist (which shares the row) and every
+    // completed item with it. Kept: the closing generator's items and any
+    // item with progress; added: template items not already present.
+    const existing = await this.getDealChecklist(dealId);
+    if (!existing) {
+      return await this.createDealChecklist({ dealId, templateId, items: templateItems });
+    }
+    const kept = existing.items.filter((i) => i.phase || i.checkedAt || i.completed);
+    const keptIds = new Set(kept.map((i) => i.id));
+    const items = [...kept, ...templateItems.filter((i) => !keptIds.has(i.id))];
+    return await this.updateDealChecklist(existing.id, { templateId, items });
   },
 
   async updateDealChecklistItem(this: DatabaseStorage, 
     dealId: number, 
     itemId: string, 
-    updates: { checked?: boolean; documentUrl?: string; checkedBy?: string }
+    updates: { checked?: boolean; documentUrl?: string; checkedBy?: string; verification?: DealChecklistItem["verification"] }
   ) {
     const checklist = await this.getDealChecklist(dealId);
     if (!checklist) {
@@ -251,19 +255,28 @@ export const dueDiligenceRepo = {
             updatedItem.checkedAt = new Date().toISOString();
             updatedItem.checkedBy = updates.checkedBy;
           } else {
+            // Untick clears BOTH vocabularies and the evidence (DEFECT-0176
+            // audit): the closing route's `completed` otherwise kept the item
+            // "done" for the stage gate after the deal page unticked it.
             updatedItem.checkedAt = undefined;
             updatedItem.checkedBy = undefined;
+            updatedItem.completed = false;
+            updatedItem.completedAt = undefined;
+            updatedItem.verification = undefined;
           }
         }
         if (updates.documentUrl !== undefined) {
           updatedItem.documentUrl = updates.documentUrl;
+        }
+        if (updates.verification) {
+          updatedItem.verification = updates.verification;
         }
         return updatedItem;
       }
       return item;
     });
 
-    const allComplete = updatedItems.every(item => item.checkedAt);
+    const allComplete = updatedItems.every(item => item.checkedAt || item.completed);
     const completedAt = allComplete ? new Date() : null;
 
     return await this.updateDealChecklist(checklist.id, {
@@ -278,8 +291,10 @@ export const dueDiligenceRepo = {
       return { canAdvance: true, incompleteItems: [] };
     }
 
-    const incompleteItems = checklist.items.filter(item => 
-      item.required && !item.checkedAt
+    // Either vocabulary counts as done (DEFECT-0176): the closing
+    // checklist marks `completed`, the deal page marks `checkedAt`.
+    const incompleteItems = checklist.items.filter(item =>
+      item.required && !item.checkedAt && !item.completed
     );
 
     return {

@@ -195,6 +195,22 @@ export type DealChecklistItem = {
   checkedAt?: string;
   checkedBy?: string;
   documentUrl?: string;
+  // The closing generator writes its items into the SAME row with its own
+  // vocabulary (DEFECT-0176) — declared here so every reader sees them:
+  // `completed` is its done-flag, and "fraud_gate" marks the wire interlock.
+  category?: string;
+  critical?: boolean;
+  phase?: string;
+  completed?: boolean;
+  completedAt?: string;
+  /** The wire-fraud step's attestation: who confirmed which number, how, when. */
+  verification?: {
+    phoneNumber: string;
+    numberSource: string;
+    spokeWith: string;
+    confirmedBy: string | null;
+    confirmedAt: string;
+  };
 };
 
 // Checklist templates table

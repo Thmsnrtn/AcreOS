@@ -961,11 +961,30 @@ export function registerTeamMessagingRoutes(app: Express): void {
     }
   });
 
+  // Fields only publish / unpublish / take-down / the counters write — never
+  // a request body (DEFECT-0173 audit).
+  const LISTING_SYSTEM_FIELDS = {
+    syndicationTargets: true,
+    publishedAt: true,
+    soldAt: true,
+    viewCount: true,
+    inquiryCount: true,
+  } as const;
+
   // POST /api/listings - Create new listing
   api.post("/api/listings", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const parsed = insertPropertyListingSchema.omit({ organizationId: true }).safeParse(req.body);
+      // Content only (DEFECT-0173 audit): a listing is born a draft. This
+      // accepted `syndicationTargets` — a saved external `listingId` is what
+      // take-down aims a platform-credentialed DELETE at — plus `status`
+      // ("active" without publishing) and the counters. The client sends
+      // `status: "draft"`, which is the only status it may name.
+      const parsed = insertPropertyListingSchema
+        .omit({ ...LISTING_SYSTEM_FIELDS, organizationId: true })
+        .extend({ status: z.literal("draft").optional() })
+        .strict()
+        .safeParse(req.body);
       
       if (!parsed.success) {
         return Errors.badRequest(res, "Invalid listing data", parsed.error.issues);
@@ -1013,12 +1032,23 @@ export function registerTeamMessagingRoutes(app: Express): void {
         return Errors.notFound(res, "Listing");
       }
       
-      const parsed = insertPropertyListingSchema.partial().safeParse(req.body);
+      // Content only (DEFECT-0173 audit). This accepted the whole insert
+      // schema: a client could write `syndicationTargets` — including the
+      // external `listingId` the take-down route trusts, so two requests
+      // aimed a platform-credentialed DELETE at another tenant's listing —
+      // and `status` (active without publishing), `propertyId` (repoint at a
+      // sold parcel) and `organizationId` (move the listing to another org).
+      // Those change only through publish / unpublish / take-down.
+      const parsed = insertPropertyListingSchema
+        .omit({ ...LISTING_SYSTEM_FIELDS, organizationId: true, status: true, propertyId: true })
+        .partial()
+        .strict()
+        .safeParse(req.body);
       if (!parsed.success) {
         return Errors.badRequest(res, "Invalid update data", parsed.error.issues);
       }
-      
-      const updated = await storage.updatePropertyListing(id, parsed.data);
+
+      const updated = await storage.updatePropertyListing(id, parsed.data, org.id);
       res.json(updated);
     } catch (error: any) {
       logger.error("Update listing error", error);

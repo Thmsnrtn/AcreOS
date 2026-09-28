@@ -377,13 +377,13 @@ export default function CashFlowPage() {
                   <CardTitle className="acr-section-h2 text-section-h2">24-month income projection</CardTitle>
                   <CardDescription>
                     Expected monthly income across all active notes and owned properties.
-                    Shaded band shows uncertainty range. Balloon payments are highlighted.
+                    Scheduled note payments (weighted by payment history) and rent from active leases. The shaded band is an illustrative ±25% sensitivity, not a calibrated forecast range. Triangles mark months a note matures.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div
                     role="img"
-                    aria-label={`24-month income projection across ${portfolioTimelineData.timeline.length} months. Balloon-payment months are highlighted; band represents ±25% uncertainty.`}
+                    aria-label={`24-month income projection across ${portfolioTimelineData.timeline.length} months. Note maturity months are marked; the band is an illustrative ±25% sensitivity, not a calibrated range.`}
                   >
                   <ResponsiveContainer width="100%" height={300}>
                     <AreaChart data={portfolioTimelineData.timeline} accessibilityLayer>
@@ -393,11 +393,11 @@ export default function CashFlowPage() {
                         formatter={((v: any, name: string) => [
                           formatDollar(v),
                           name === 'incomeLow' ? 'Low estimate' :
-                          name === 'incomeHigh' ? 'High estimate' : 'Expected income',
+                          name === 'incomeHigh' ? 'Illustrative +25%' : 'Weighted scheduled income',
                         ]) as any}
                         labelFormatter={((label: string) => {
                           const row = portfolioTimelineData.timeline.find((r: any) => r.month === label);
-                          return row?.isBalloon ? `${label} — balloon payment due` : label;
+                          return row?.isBalloon ? `${label} — a note matures (any remaining balance is not modelled here)` : label;
                         }) as any}
                       />
                       {/* Flat 5%-opacity band between low + high — no gradient. */}
@@ -450,7 +450,7 @@ export default function CashFlowPage() {
                             <g
                               key={key}
                               role="img"
-                              aria-label={`Balloon payment month ${payload.month}`}
+                              aria-label={`Note maturity month ${payload.month}`}
                             >
                               <polygon
                                 points={`${ax - 4},290 ${ax + 4},290 ${ax},283`}
@@ -465,7 +465,7 @@ export default function CashFlowPage() {
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
                     <span aria-hidden="true">▲</span>
-                    <span className="ml-1">Triangles below the axis mark balloon-payment months. Band represents ±25% uncertainty.</span>
+                    <span className="ml-1">Triangles below the axis mark note maturity months. The band is an illustrative ±25% sensitivity.</span>
                   </p>
                 </CardContent>
               </Card>

@@ -43,8 +43,19 @@ export function useApplyChecklistTemplate(dealId: number) {
 
 export function useUpdateChecklistItem(dealId: number) {
   return useMutation({
-    mutationFn: async ({ itemId, checked, documentUrl }: { itemId: string; checked?: boolean; documentUrl?: string }) => {
-      const res = await apiRequest("PATCH", `/api/deals/${dealId}/checklist/items/${itemId}`, { checked, documentUrl });
+    mutationFn: async ({
+      itemId,
+      checked,
+      documentUrl,
+      verification,
+    }: {
+      itemId: string;
+      checked?: boolean;
+      documentUrl?: string;
+      /** The wire-fraud step's evidence (DEFECT-0176). */
+      verification?: { phoneNumber: string; numberSource: string; spokeWith: string };
+    }) => {
+      const res = await apiRequest("PATCH", `/api/deals/${dealId}/checklist/items/${itemId}`, { checked, documentUrl, verification });
       return res.json();
     },
     onSuccess: () => {

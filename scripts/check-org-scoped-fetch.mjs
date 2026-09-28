@@ -195,7 +195,6 @@ const BASELINE_OFFENDERS = new Set([
   "server/storage/gisRepo.ts::upsertParcelSnapshot",
   "server/storage/campaignRepo.ts::getCampaignOptimizations",
   "server/storage/campaignRepo.ts::markOptimizationImplemented",
-  "server/storage/dealRepo.ts::_autoGenerateClosingChecklist",
   // getLeadActivities removed 2026-08-21: the SELECT now binds
   // `lead_activities.organization_id` to a REQUIRED leading org argument
   // alongside the lead id. It used to take `(leadId, limit)` with no org in

@@ -258,6 +258,9 @@ export async function issueWireInstructions(
       wireInstructionsHmac: hmacSignature,
       wireConfirmationPhone: instructions.confirmationPhone,
       wireInstructionsIssuedAt: new Date(),
+      // New instructions void any earlier confirmation: the wire step must be
+      // verified against THESE (DEFECT-0176 audit).
+      wireConfirmedAt: null,
       status: "wire_instructions_issued",
       updatedAt: new Date(),
     })

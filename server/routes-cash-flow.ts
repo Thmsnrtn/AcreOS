@@ -22,7 +22,9 @@ function refuse(res: Response, err: unknown): void {
     Errors.notFound(res, "Note");
     return;
   }
-  refuse(res, err);
+  // Was `refuse(res, err)` — infinite recursion on any other error, a stack
+  // overflow that surfaced as a generic 500 (DEFECT-0175 audit).
+  Errors.internal(res, err);
 }
 
 

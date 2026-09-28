@@ -20,6 +20,7 @@
  * channel's lastSyncError carries the first real failure message.
  */
 
+import { offerabilityRefusal } from "./listability";
 import { db } from "../db";
 import {
   propertyListings,
@@ -269,11 +270,18 @@ export async function syncChannels(
   for (const listing of activeListings) {
     const property = propById.get(listing.propertyId);
     if (!property) continue;
+    // Only held land is pushed (DEFECT-0174 audit): a listing published while
+    // the parcel was owned stays "active" after a sale, and sync-all then
+    // offered sold land on every other channel.
+    if (offerabilityRefusal(property.status)) continue;
 
-    // Only push to channels where this listing isn't already live.
+    // Only push to channels where this listing isn't already live — and
+    // never back onto a channel it was withdrawn or taken down from (a
+    // verified take-down was undone by the next sync).
+    const WITHDRAWN = new Set(["active", "removed", "withdrawal_requested", "withdrawal_failed", "manual_action_required"]);
     const needed = syncable.filter((id) => {
       const t = (listing.syndicationTargets ?? []).find((x) => x.platform === id);
-      return !t || t.status !== "active";
+      return !t || !WITHDRAWN.has(t.status);
     });
     if (needed.length === 0) continue;
 

@@ -133,12 +133,65 @@ describe("DEFECT-0173 — the routes", () => {
   });
 });
 
+describe("DEFECT-0173 audit — the listing PUT edits content, never channel state", () => {
+  const appWithPut = async () => {
+    const app = express();
+    app.use(express.json());
+    const { registerTeamMessagingRoutes } = await import("../../server/routes-team-messaging");
+    registerTeamMessagingRoutes(app);
+    return app;
+  };
+  it.each([
+    ["syndicationTargets", { syndicationTargets: [{ platform: "land_com", status: "active", listingId: "someone-elses" }] }],
+    ["status", { status: "active" }],
+    ["propertyId", { propertyId: 9 }],
+    ["organizationId", { organizationId: 8 }],
+  ])("a body carrying %s is refused and writes nothing", async (_k, body) => {
+    h.listing = { id: 5, syndicationTargets: [target("land_com", "active", "ext-1")] };
+    const res = await request(await appWithPut()).put("/api/listings/5").send(body);
+    expect(res.status).toBe(400);
+    expect(h.updates).toHaveLength(0);
+  });
+  it("a content edit still goes through, and only the content is written", async () => {
+    h.listing = { id: 5, syndicationTargets: [] };
+    const res = await request(await appWithPut()).put("/api/listings/5").send({ title: "Ten acres" });
+    expect(res.status).toBe(200);
+    expect(h.updates).toEqual([{ title: "Ten acres" }]);
+  });
+});
+
 describe("DEFECT-0174 — only held land is offerable", () => {
   it.each(["owned", "listed", "under_contract"])("%s may be offered", (s) => {
     expect(offerabilityRefusal(s)).toBeNull();
   });
   it.each(["prospect", "offer_sent", "due_diligence", "sold", "deleted", null])("%s is refused", (s) => {
     expect(offerabilityRefusal(s)).toMatch(/can't be offered|not held/);
+  });
+
+  it.each([
+    ["syndicationTargets", { syndicationTargets: [{ platform: "land_com", status: "active", listingId: "someone-elses" }] }],
+    ["an active status", { status: "active" }],
+    ["publishedAt", { publishedAt: "2026-09-01T00:00:00Z" }],
+  ])("listing create refuses a body carrying %s (DEFECT-0173 audit)", async (_k, extra) => {
+    h.property = { id: 3, status: "owned" };
+    const app = express();
+    app.use(express.json());
+    const { registerTeamMessagingRoutes } = await import("../../server/routes-team-messaging");
+    registerTeamMessagingRoutes(app);
+    const res = await request(app).post("/api/listings").send({ propertyId: 3, title: "Five acres", askingPrice: "20000", ...extra });
+    expect(res.status).toBe(400);
+  });
+  it("listing create accepts the client's draft body", async () => {
+    h.property = { id: 3, status: "owned" };
+    const app = express();
+    app.use(express.json());
+    const { registerTeamMessagingRoutes } = await import("../../server/routes-team-messaging");
+    registerTeamMessagingRoutes(app);
+    const res = await request(app)
+      .post("/api/listings")
+      .send({ propertyId: 3, title: "Five acres", askingPrice: "20000", status: "draft", photos: null, description: null });
+    expect(res.status).toBe(201);
+    expect(res.body.syndicationTargets).toBeUndefined();
   });
 
   it("listing create refuses a prospect parcel", async () => {

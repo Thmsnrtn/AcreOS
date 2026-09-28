@@ -76,8 +76,9 @@ const ROOT = path.resolve(__dirname, "../..");
  * Total call sites that omit an optional tenant key. Strictly down-only.
  * 111 -> 110 (DEFECT-0173): listing unpublish now passes the org to
  * updatePropertyListing.
+ * 110 -> 109 (DEFECT-0173 audit): the listing PUT passes the org too.
  */
-const OMISSION_BASELINE = 110;
+const OMISSION_BASELINE = 109;
 
 /**
  * Call sites whose enclosing function never names an organization, so nothing

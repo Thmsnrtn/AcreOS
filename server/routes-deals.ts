@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { fraudGateRefusal, sealWireAttestation, stampWireConfirmation, withdrawWireConfirmation } from "./services/closingEvidence";
 import { storage } from "./storage";
 import { z } from "zod";
 import { DEAL_STATUS_TRANSITIONS as SHARED_DEAL_TRANSITIONS } from "@shared/lifecycle/pipeline-status";
@@ -2393,7 +2394,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     if (!checklist) {
       return res.json(null);
     }
-    const completed = checklist.items.filter(item => item.checkedAt).length;
+    const completed = checklist.items.filter(item => item.checkedAt || item.completed).length;
     res.json({
       ...checklist,
       completionStatus: {
@@ -2431,13 +2432,28 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       if (!deal) return Errors.notFound(res, "Deal");
       const user = req.user;
       const userId = user?.id || user?.id;
-      const { checked, documentUrl } = req.body;
+      const { checked, documentUrl, verification } = req.body;
+
+      // The deal page's toggle writes the same row as the closing checklist;
+      // the wire interlock needs its evidence here too (DEFECT-0176).
+      let sealed: ReturnType<typeof sealWireAttestation> = null;
+      const current = checked !== undefined ? await storage.getDealChecklist(dealId) : undefined;
+      const item = current?.items.find((i) => i.id === req.params.itemId);
+      const isWire = item?.category === "fraud_gate";
+      if (checked) {
+        const refusal = item ? await fraudGateRefusal(org.id, dealId, item, verification) : null;
+        if (refusal) return Errors.badRequest(res, refusal);
+        if (isWire) sealed = sealWireAttestation(verification, userId ?? null);
+      }
 
       const checklist = await storage.updateDealChecklistItem(
         dealId,
         req.params.itemId,
-        { checked, documentUrl, checkedBy: userId }
+        { checked, documentUrl, checkedBy: userId, verification: sealed ?? undefined }
       );
+      // Title orders change only after the checklist write landed.
+      if (sealed) await stampWireConfirmation(org.id, dealId);
+      else if (checked === false && isWire) await withdrawWireConfirmation(org.id, dealId);
       res.json(checklist);
     } catch (err: any) {
       Errors.badRequest(res, err.message || "Failed to update checklist item");

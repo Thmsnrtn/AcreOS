@@ -4,6 +4,7 @@ import {
   notes,
   payments,
   properties,
+  rentalLeases,
   agentEvents,
   type InsertCashFlowForecast,
   type CashFlowForecast,
@@ -273,7 +274,10 @@ class CashFlowForecasterService {
 
       let probability = baseProbability;
       if (paymentHealth.paymentPattern === "declining") {
-        probability = Math.max(0.3, baseProbability - i * 0.02);
+        // A worsening pattern may only LOWER the weight (DEFECT-0175). The
+        // old `Math.max(0.3, …)` floor RAISED it to 0.3 whenever the base was
+        // already below 0.3 — a worse borrower forecast as more collectible.
+        probability = Math.min(baseProbability, Math.max(0, baseProbability - i * 0.02));
       } else if (paymentHealth.paymentPattern === "improving") {
         probability = Math.min(0.98, baseProbability + i * 0.01);
       } else if (paymentHealth.paymentPattern === "erratic") {
@@ -307,36 +311,44 @@ class CashFlowForecasterService {
     const projections: IncomeProjection[] = [];
     const today = new Date();
 
-    if (property.status === "listed" && property.listPrice) {
-      const listPrice = parseFloat(property.listPrice);
-      const estimatedSaleMonth = 3;
-      const saleDate = addMonths(new Date(today), estimatedSaleMonth);
-      
-      projections.push({
-        month: saleDate.toISOString().slice(0, 7),
-        expectedAmount: listPrice,
-        probability: 0.4,
-        source: "sale_proceeds",
-        notes: "Estimated sale based on listing price",
-      });
-    }
-
-    if (property.status === "owned") {
-      const marketValue = property.marketValue ? parseFloat(property.marketValue) : null;
-      if (marketValue) {
-        const estimatedMonthlyRent = marketValue * 0.008;
-        
-        for (let i = 0; i < months; i++) {
-          const rentDate = addMonths(new Date(today), i);
-          
-          projections.push({
-            month: rentDate.toISOString().slice(0, 7),
-            expectedAmount: estimatedMonthlyRent,
-            probability: 0.7,
-            source: "rent",
-            notes: "Potential rental income estimate",
-          });
-        }
+    // Income from a property is what a CONTRACT says (DEFECT-0175). This
+    // projected every owned parcel with a market value as rented at 0.8% of
+    // value a month (weighted 0.7) — no lease, tenant or permitted use — and
+    // every listed parcel as sold at list price in month 3 (p=0.4, outside
+    // the requested window too). A $20,000 vacant parcel "earned" $112 a
+    // month. Now: scheduled rent from the property's ACTIVE leases, within
+    // each lease's dates and the requested window; nothing otherwise. A sale
+    // or a hypothetical lease is a scenario, not scheduled income.
+    const leases = await db
+      .select({
+        id: rentalLeases.id,
+        startDate: rentalLeases.startDate,
+        endDate: rentalLeases.endDate,
+        monthlyRentCents: rentalLeases.monthlyRentCents,
+      })
+      .from(rentalLeases)
+      .where(
+        and(
+          eq(rentalLeases.organizationId, organizationId),
+          eq(rentalLeases.propertyId, property.id),
+          eq(rentalLeases.status, "active"),
+        ),
+      );
+    for (let i = 0; i < months; i++) {
+      const monthStart = new Date(today.getFullYear(), today.getMonth() + i, 1);
+      const monthEnd = new Date(today.getFullYear(), today.getMonth() + i + 1, 0);
+      const month = monthStart.toISOString().slice(0, 7);
+      for (const lease of leases) {
+        const start = new Date(lease.startDate);
+        const end = lease.endDate ? new Date(lease.endDate) : null;
+        if (start > monthEnd || (end && end < monthStart)) continue;
+        projections.push({
+          month,
+          expectedAmount: lease.monthlyRentCents / 100,
+          probability: 1,
+          source: "rent",
+          notes: `Scheduled rent, lease ${lease.id}${end ? "" : " (month-to-month)"}`,
+        });
       }
     }
 
@@ -1140,8 +1152,10 @@ Return valid JSON array with objects containing: type (string), message (string)
       const key = d.toISOString().slice(0, 7);
       const row = byMonth[key];
       const income = row ? Math.round(row.income) : 0;
-      // ±30% uncertainty band widened for low-probability months
-      const uncertainty = row && row.count > 0 ? 0.25 : 0.4;
+      // An ILLUSTRATIVE ±25% sensitivity band (DEFECT-0175): a fixed width,
+      // not a calibrated interval — the page says so. (The old comment said
+      // ±30% "widened for low-probability months"; neither was true.)
+      const uncertainty = 0.25;
       result.push({
         month: key,
         income,

@@ -8,6 +8,7 @@
  * Extracted from client/src/pages/deals.tsx as part of P1-28 (URL routes
  * for deal-detail).
  */
+import { WireVerificationDialog } from "@/components/wire-verification-dialog";
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -100,6 +101,7 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
   const [negotiationScript, setNegotiationScript] = useState<string | null>(null);
   const [isNegotiationOpen, setIsNegotiationOpen] = useState(false);
   const [pendingTemplateId, setPendingTemplateId] = useState<number | null>(null);
+  const [pendingWireItemId, setPendingWireItemId] = useState<string | null>(null);
 
   // allow-no-invalidation: generated script lands in component-local state (setNegotiationScript)
   const negotiationMutation = useMutation({
@@ -878,10 +880,12 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                               role="checkbox"
                               aria-checked={!!item.checkedAt}
                               aria-label={`${item.checkedAt ? 'Mark incomplete' : 'Mark complete'}: ${item.title}`}
-                              onClick={() => updateChecklistItem({
-                                itemId: item.id,
-                                checked: !item.checkedAt
-                              })}
+                              onClick={() =>
+                                // The wire-fraud step is ticked with its evidence, not on a click (DEFECT-0176).
+                                item.category === "fraud_gate" && !item.checkedAt
+                                  ? setPendingWireItemId(item.id)
+                                  : updateChecklistItem({ itemId: item.id, checked: !item.checkedAt })
+                              }
                               disabled={isUpdatingItem}
                               className="shrink-0 inline-flex items-center justify-center min-h-[44px] min-w-[44px] -m-2 touch-manipulation rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                               data-testid={`checkbox-item-${item.id}`}
@@ -959,9 +963,9 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                   <ConfirmDialog
                     open={pendingTemplateId !== null}
                     onOpenChange={(open) => { if (!open) setPendingTemplateId(null); }}
-                    title="Replace checklist?"
-                    description="This replaces the current checklist with the selected template. Completed items won't carry over."
-                    confirmLabel="Replace checklist"
+                    title="Apply this template?"
+                    description="Adds the selected template's items to this deal's checklist. Completed items and closing steps are kept; unfinished items from the previous template are replaced."
+                    confirmLabel="Apply template"
                     cancelLabel="Cancel"
                     isLoading={isApplyingTemplate}
                     variant="destructive"
@@ -970,6 +974,23 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
                         applyTemplate(pendingTemplateId);
                         setPendingTemplateId(null);
                       }
+                    }}
+                  />
+                  <WireVerificationDialog
+                    key={pendingWireItemId ?? "closed"}
+                    open={pendingWireItemId !== null}
+                    onOpenChange={(open) => { if (!open) setPendingWireItemId(null); }}
+                    isSubmitting={isUpdatingItem}
+                    onConfirm={(verification) => {
+                      if (pendingWireItemId === null) return;
+                      updateChecklistItem(
+                        { itemId: pendingWireItemId, checked: true, verification },
+                        {
+                          onSuccess: () => setPendingWireItemId(null),
+                          onError: (err) =>
+                            toast({ title: "Not recorded", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
+                        },
+                      );
                     }}
                   />
                 </>

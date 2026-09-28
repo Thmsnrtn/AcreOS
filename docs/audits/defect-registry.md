@@ -4489,8 +4489,17 @@ Remediation plan: DONE.
   `manual_action_required`. A target that never went out keeps its status.
 - The dialog and target labels say what happened. Not built: a take-down
   button per target and a provider read-back.
+- Audit residue, closed in the same round: `PUT /api/listings/:id` accepted
+  the whole insert schema. A client could write `syndicationTargets`,
+  including the external `listingId` that take-down trusts, so two requests
+  still aimed a platform-credentialed DELETE at another tenant's listing.
+  It could also write `status`, `propertyId` or `organizationId`. A second
+  audit pass found `POST /api/listings` (create) accepted the same fields.
+  Both are now content-only (`.strict()`). A listing is created as a draft,
+  and targets, publish time and counters change only through publish,
+  unpublish, take-down and the counters' own writers.
 Falsified by: `tests/unit/listingWithdrawalIsVerified.test.ts` (four cases
-red pre-fix).
+red pre-fix, the four PUT cases red pre-fix, and three create cases).
 Resolving commits: this branch, round 3
 ### DEFECT-0174
 Title: A property the org did not hold could be listed, published, syndicated and blasted to buyers
@@ -4510,8 +4519,125 @@ Remediation plan: DONE.
   contract). All four entry points refuse anything else with the reason.
   Publish re-checks, so a sold parcel cannot publish.
 - The blast skips inactive buyer profiles.
+- Audit residue, closed in the same round: channel sync-all
+  (`syncChannels`, `server/services/syndicationChannels.ts`) pushed every
+  "active" listing, including one whose parcel had since SOLD. It also
+  treated a `removed` or `withdrawal_requested` target as "not live here",
+  so the next sync re-posted a listing that had just been taken down. Sync
+  now applies `offerabilityRefusal` and never re-posts onto a withdrawn
+  channel. A `failed` target is still retried.
+- Still open:
+  - When a parcel sells, its listing is not withdrawn. It stays "active" and
+    stays live wherever it already reached.
+  - The elite `POST /api/listings/:id/syndicate` pushes to any requested
+    platform, ignoring a withdrawn listing or target. It never saves the
+    external id, so that posting can't be taken down. Its only client
+    (`client/src/pages/syndication.tsx`) passes a property id where the
+    route expects a listing id.
+  - Re-publishing a platform overwrites a `withdrawal_requested` or
+    `withdrawal_failed` target and its external id.
 Falsified by: `tests/unit/listingWithdrawalIsVerified.test.ts` (the create
-case red pre-fix).
+case red pre-fix); `tests/unit/syncNeverRepublishesWithdrawn.test.ts` (five
+cases red pre-fix).
+Resolving commits: this branch, round 3
+### DEFECT-0175
+Title: The cash-flow forecast invented rent on vacant land, sold listings in month 3, and raised a failing payer's collection weight
+Severity: P1
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: 2026-09-28 practitioner supplement (fourth cycle), re-verified at HEAD
+Description: `server/services/cashFlowForecaster.ts`, behind
+`/api/cash-flow/*` and the Finance cash-flow page
+(`client/src/pages/cash-flow.tsx`):
+- `projectPropertyIncome` treated every owned parcel with a market value as
+  rented at 0.8% of value a month, weighted 0.7, with no lease, tenant or
+  permitted use. A $20,000 vacant parcel "earned" $112 a month. That fed the
+  portfolio timeline, the summary's income by source, and forecasts.
+- It sold every listed parcel at list price in month 3 (p=0.4), even
+  outside the requested window.
+- A "declining" payer's weight was `Math.max(0.3, base - i*0.02)`, which
+  RAISED the weight whenever the base was already below 0.3.
+- A fixed ±25% band was presented as an "uncertainty range". Its comment
+  claimed ±30% widening that did not exist.
+- A maturity month was labelled "balloon payment due" although no balloon
+  amount is modelled.
+- `refuse()` in `server/routes-cash-flow.ts` called itself on any unexpected
+  error: a stack overflow served as a 500.
+Remediation plan: DONE.
+- Property income is scheduled rent from the property's ACTIVE leases
+  (`rentalLeases`), within each lease's dates and the window, and nothing
+  otherwise. A sale or a hypothetical lease is a scenario, not scheduled
+  income.
+- A worsening payer's weight can only fall.
+- The page calls the band an illustrative ±25% sensitivity, not a
+  calibrated range, and marks note maturity months as such.
+- `refuse()` falls through to `Errors.internal`.
+- Not changed: the default-probability heuristics remain uncalibrated
+  weights; the supplement's scenario/observed-cash views are not built.
+Falsified by: `tests/unit/forecastIsContractNotAssumption.test.ts` (four
+cases red pre-fix).
+Resolving commits: this branch, round 3
+### DEFECT-0176
+Title: The closing checklist's wire-fraud interlock could be ticked without evidence; templates wiped it; generation used guessed facts
+Severity: P1
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: 2026-09-28 practitioner supplement (fifth cycle), re-verified at HEAD
+Description: The closing generator's wire item is `critical`,
+`documentRequired` and "fraud_gate" ("DO NOT WIRE until this is checked").
+- The closing PATCH (`server/routes-closing.ts`) completed it on one click.
+  So did the deal page's checklist toggle (`server/routes-deals.ts`), which
+  writes the SAME `deal_checklists` row.
+- The recorded two-channel confirmation (`title_orders.wire_confirmed_at`)
+  had no reader.
+- The stage gate (`server/storage/dueDiligenceRepo.ts`) read only
+  `checkedAt`, so it ignored the closing checklist's `completed`.
+- Applying a template DELETED the row, with the closing checklist and every
+  completed item in it.
+- The status-transition hook (`server/storage/dealRepo.ts`) generated the
+  checklist from the PRIOR property, un-scoped, with a "TX" fallback and a
+  closing date 30 days out, and swallowed generator errors. The generator
+  then returned that checklist unchanged forever.
+Remediation plan: DONE.
+- `fraudGateRefusal` (`server/services/closingEvidence.ts`) refuses
+  completion of a fraud-gate item unless there is evidence. Either the
+  deal's title order records a wire confirmation, or the request carries a
+  complete attestation: the number called, where it was looked up
+  independently, and who confirmed. Both routes run it.
+- The audit found the first version left the item impossible to complete:
+  `recordWireConfirmation` had no caller, so nothing could ever satisfy the
+  gate. `recordWireAttestation` is now that writer. It stamps every title
+  order on the deal and stores the attestation on the item, with who
+  recorded it and when.
+- The deal page opens a dialog for the wire item
+  (`client/src/components/wire-verification-dialog.tsx`) instead of ticking
+  it on a click.
+- Second audit pass. Changes made:
+  - A confirmation counts only if it is dated after the instructions were
+    issued.
+  - Re-issued instructions clear it (`server/services/wireInstructions.ts`).
+  - Unticking the wire step withdraws it, so a re-tick needs new evidence.
+  - Title orders are stamped only after the checklist write lands.
+  - Unticking clears both vocabularies and the stored evidence. Every
+    progress reader counts `checkedAt || completed`.
+  - The manual generator no longer falls back to "TX".
+- Still open: a deal whose checklist started from a template never gets the
+  closing items, and so never gets the wire item. Both
+  `_autoGenerateClosingChecklist` and the generator return early when a row
+  exists, and the manual route still answers "created".
+- The stage gate counts either vocabulary.
+- A template MERGES: the closing items and any item with progress are kept.
+- The hook uses the deal's current property (org-scoped), its org and its
+  real closing date. Without a state or date it defers and logs, and it no
+  longer swallows errors.
+- The shared item type declares the closing fields.
+- Not changed: an existing checklist is still not reconciled when deal
+  facts change, and `isSellerFinanced` is still false on auto-generation.
+- The template dialog copy no longer says completed items are lost.
+Falsified by: `tests/unit/closingInterlockNeedsEvidence.test.ts` (four cases
+red pre-fix, plus the attestation success path);
+`tests/unit/dealChecklistToggleHonoursWireGate.test.ts` (two cases red
+pre-fix). The gate test's db double answers only when the predicate
+really demands an org-scoped confirmation dated after issue. Deleting
+either the `isNotNull` clause or the issue-date clause turns it red.
 Resolving commits: this branch, round 3
 ### REFUTED AT HEAD, 2026-09-27
 
@@ -4550,11 +4676,11 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 1   | 11  | 12    |
-| FIXED  | 13  | 84  | 62  | 159   |
+| FIXED  | 13  | 86  | 62  | 161   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **13** | **88** | **73** | **174** |
+| **Total** | **13** | **90** | **73** | **176** |
 
-Recounted from the entries themselves on 2026-09-28 (174 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (176 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

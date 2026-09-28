@@ -2,6 +2,7 @@
  * Closing workflow routes — checklist, document package, attorney sharing.
  */
 
+import { fraudGateRefusal, sealWireAttestation, stampWireConfirmation, withdrawWireConfirmation } from "./services/closingEvidence";
 import type { Express } from "express";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -24,7 +25,10 @@ export function registerClosingRoutes(app: Express): void {
       if (!deal) return Errors.notFound(res, "Deal");
 
       const property = deal.propertyId ? await storage.getProperty(org.id, deal.propertyId) : null;
-      const state = property?.state || req.body.state || "TX";
+      // No "TX" fallback (DEFECT-0176 audit): a checklist built for the wrong
+      // state lists the wrong recording and disclosure steps.
+      const state = property?.state || req.body.state;
+      if (!state) return Errors.badRequest(res, "Property state required to generate the closing checklist");
       const closingDate = deal.closingDate || req.body.closingDate;
 
       if (!closingDate) {
@@ -76,7 +80,7 @@ export function registerClosingRoutes(app: Express): void {
       const org = req.organization;
       const dealId = Number(req.params.id);
       const itemId = req.params.itemId;
-      const { completed, note } = req.body;
+      const { completed, note, verification } = req.body;
 
       const deal = await storage.getDeal(org.id, dealId);
       if (!deal) return Errors.notFound(res, "Deal");
@@ -91,15 +95,35 @@ export function registerClosingRoutes(app: Express): void {
       const item = items.find((i: any) => i.id === itemId);
       if (!item) return Errors.notFound(res, "Checklist item");
 
-      item.completed = !!completed;
-      if (completed) item.completedAt = new Date().toISOString();
+      // The wire interlock needs its evidence (DEFECT-0176).
+      const isWire = item.category === "fraud_gate";
+      let sealed: ReturnType<typeof sealWireAttestation> = null;
+      if (completed) {
+        const refusal = await fraudGateRefusal(org.id, dealId, item, verification);
+        if (refusal) return Errors.badRequest(res, refusal);
+        if (isWire) sealed = sealWireAttestation(verification, req.user?.id ?? null);
+        if (sealed) item.verification = sealed;
+        item.completed = true;
+        item.completedAt = new Date().toISOString();
+      } else {
+        // Untick clears BOTH vocabularies and the evidence, so neither the
+        // stage gate nor a later reader treats the item as still done.
+        item.completed = false;
+        delete item.completedAt;
+        delete item.checkedAt;
+        delete item.checkedBy;
+        delete item.verification;
+      }
       if (note !== undefined) item.note = note;
 
       await db.update(dealChecklists)
         .set({ items: items as any })
         .where(eq(dealChecklists.dealId, dealId));
+      // Title orders change only after the checklist write landed.
+      if (sealed) await stampWireConfirmation(org.id, dealId);
+      else if (!completed && isWire) await withdrawWireConfirmation(org.id, dealId);
 
-      const completedCount = items.filter((i: any) => i.completed).length;
+      const completedCount = items.filter((i: any) => i.completed || i.checkedAt).length;
       res.json({ items, completed: completedCount, total: items.length });
     } catch (error) {
       Errors.internal(res, error);
@@ -269,10 +293,10 @@ export function registerClosingRoutes(app: Express): void {
         compliance: {},
         checklist: {
           total: items.length,
-          completed: items.filter((i: any) => i.completed).length,
+          completed: items.filter((i: any) => i.completed || i.checkedAt).length,
           items: items.map((i: any) => ({
             title: i.title,
-            completed: !!i.completed,
+            completed: !!(i.completed || i.checkedAt),
             dueDate: i.dueDate,
           })),
         },

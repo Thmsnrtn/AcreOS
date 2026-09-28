@@ -125,7 +125,10 @@ export const dealRepo = {
 
       const triggerStatuses = new Set(["accepted", "under_contract", "in_escrow"]);
       if (triggerStatuses.has(updated.status ?? "")) {
-        void this._autoGenerateClosingChecklist(updated.id, before?.propertyId ?? null).catch((err) => {
+        // The deal's CURRENT property, org and closing date (DEFECT-0176):
+        // this passed the pre-update property, so a deal corrected to a new
+        // parcel generated the old parcel's state rules.
+        void this._autoGenerateClosingChecklist(updated.id, updated.propertyId ?? null, updated.organizationId, updated.closingDate ?? null).catch((err) => {
           // Never let a hook failure break the primary update.
           logger.warn(`[storage.updateDeal] auto-checklist skipped: ${err?.message}`);
         });
@@ -142,24 +145,35 @@ export const dealRepo = {
    * Underscore prefix preserves the pre-extraction "private" intent —
    * mixin methods cannot be physically marked `private`, but treat as such.
    */
-  async _autoGenerateClosingChecklist(this: DatabaseStorage, dealId: number, propertyId: number | null): Promise<void> {
+  async _autoGenerateClosingChecklist(
+    this: DatabaseStorage,
+    dealId: number,
+    propertyId: number | null,
+    organizationId: number,
+    closingDate: Date | null,
+  ): Promise<void> {
     const existing = await this.getDealChecklist(dealId);
     if (existing) return;
-    // Pull property state for state-specific checklist (stateDocumentConfig).
-    let state = "TX";
+    // No guessed facts (DEFECT-0176): this fell back to "TX" and a closing
+    // date 30 days out, and the generator then returned that checklist
+    // forever — due dates computed from a date nobody agreed and one state's
+    // rules for another state's parcel. Without a real state and closing
+    // date it now waits; POST /api/deals/:id/closing-checklist generates it
+    // once those facts exist.
+    let state: string | null = null;
     if (propertyId) {
-      try {
-        const [prop] = await db.select({ state: properties.state })
-          .from(properties)
-          .where(eq(properties.id, propertyId))
-          .limit(1);
-        if (prop?.state && prop.state.length === 2) state = prop.state.toUpperCase();
-      } catch {}
+      const [prop] = await db.select({ state: properties.state })
+        .from(properties)
+        .where(and(eq(properties.id, propertyId), eq(properties.organizationId, organizationId)))
+        .limit(1);
+      if (prop?.state && prop.state.length === 2) state = prop.state.toUpperCase();
     }
-    const closingDate = new Date();
-    closingDate.setDate(closingDate.getDate() + 30);
+    if (!state || !closingDate) {
+      logger.info(`[storage.updateDeal] closing checklist deferred for deal ${dealId}: ${!state ? "no property state" : "no closing date"} yet`);
+      return;
+    }
     const { generateClosingChecklist } = await import("../services/closingChecklistGenerator");
-    await generateClosingChecklist(dealId, state, closingDate, false).catch(() => {});
+    await generateClosingChecklist(dealId, state, closingDate, false);
   },
 
   async bulkDeleteDeals(this: DatabaseStorage, orgId: number, ids: number[]): Promise<number> {
