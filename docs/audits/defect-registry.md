@@ -527,12 +527,25 @@ Resolving commits: pending
 ### DEFECT-0049
 Title: 44 setInterval background jobs in web server process
 Severity: P2
-Status: OPEN
+Status: OPEN — architecture present; one production setting unverified
 Surfaced by lenses: 1 (ARCH-004), 5 (SRE-02), 62 (full inventory)
 Description: All background jobs run as `setInterval` timers in the main process. They compete for the 20-connection DB pool and cannot be scaled independently. BullMQ is a dependency but jobs are not migrated to it.
 Evidence: `server/index.ts` -- 44 tracked intervals. 15 additional untracked.
 Remediation plan: Extract to dedicated worker process or migrate to BullMQ.
-Resolving commits: pending (interval tracking fixed, but architecture unchanged)
+Re-verified 2026-09-28. The premise is out of date. `fly.toml` defines a
+separate `worker` process (`node dist/worker.cjs`), which boots the same job
+catalogue (`server/jobs/runScheduledJobs.ts`). The app process skips it when
+`DISABLE_BACKGROUND_JOBS=1` (`server/index.ts`). Every scheduled job runs
+under `withJobLock`, a database lease, about 156 call sites in the catalogue,
+so running on both processes does not double-execute work. What is NOT
+visible from the repository is whether `DISABLE_BACKGROUND_JOBS=1` is set on
+the app machines (it is not in `fly.toml [env]`, so it would be a Fly secret)
+and whether a worker machine is running. The default was deliberately NOT
+flipped: if no worker machine exists, flipping it would stop every scheduled
+job, including dunning and ACH reconciliation.
+OWED (ops, one check): `fly secrets list` shows DISABLE_BACKGROUND_JOBS on app,
+and `fly status` shows a worker machine. If both hold, close this entry.
+Resolving commits: pending (interval tracking fixed; worker process exists)
 
 ### DEFECT-0050
 Title: Inconsistent error response format -- raw res.status().json() vs Errors.* helpers
@@ -558,7 +571,9 @@ Re-verified 2026-09-28:
   shown the code.
 - Two source-scan tests now also forbid a 403 written through the helper, so
   the conversion cannot become a way around them.
-- `res-status-raw` lowered 490 → 366.
+- `res-status-raw` lowered 490 → 366, then → 357 in a second pass over nine 4xx
+  bodies whose value is an error-message expression. 5xx expression bodies were
+  left, since echoing `err.message` there can leak internals.
 Remaining: raw bodies whose `error` is a machine code (clients branch on some,
 e.g. `limit_exceeded`) and multi-field bodies. Each needs per-site review.
 Resolving commits: this branch, round 3 (partial)

@@ -42,7 +42,7 @@ router.post("/check", (req: Request, res: Response) => {
 
     res.json(result);
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    sendError(res, 400, "BAD_REQUEST", err.message);
   }
 });
 

@@ -9,9 +9,9 @@
     "**/*.test.ts",
     "**/*.spec.ts"
   ],
-  "baselineCount": 366,
+  "baselineCount": 357,
   "direction": "down",
-  "lastBumpNote": "2026-09-28 DEFECT-0050: 490 -> 366. Every single-key error response of the form res.status(4xx|5xx).json({ message: \"text\" }) or ({ error: \"human text\" }) now goes through sendError, so the client (which reads `message`) shows the text instead of a raw JSON string. `{ error: <machine code> }` bodies were deliberately left for per-site review; 243 of the remaining 366 are success responses (201/204/200/202).",
+  "lastBumpNote": "2026-09-28 DEFECT-0050 second pass: 366 -> 357. Nine 4xx single-key bodies whose value is an error-message expression (err.message, message) now go through sendError. 5xx expression bodies were deliberately left: echoing err.message on a 5xx can leak internals, and those belong in Errors.internal per site.",
   "minima": {
     "files": 1100
   },

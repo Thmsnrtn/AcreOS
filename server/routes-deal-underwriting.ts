@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { DealUnderwritingService } from "./services/dealUnderwriting";
 
 const router = Router();
@@ -12,7 +12,7 @@ router.post("/analyze", async (req, res) => {
     const results = await svc.analyzeScenarios(org.id, req.body);
     res.json({ results });
   } catch (e: any) {
-    res.status(400).json({ error: e.message });
+    sendError(res, 400, "BAD_REQUEST", e.message);
   }
 });
 

@@ -72,7 +72,7 @@ router.post("/:id/contact", async (req: Request, res: Response) => {
     const result = await taxDelinquentPipeline.addToOutreach(id, org.id);
     res.json(result);
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    sendError(res, 400, "BAD_REQUEST", err.message);
   }
 });
 

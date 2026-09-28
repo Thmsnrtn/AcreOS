@@ -109,7 +109,7 @@ export function registerFounderStudioRoutes(app: Express) {
         if (err instanceof SettingsValidationError) {
           return res.status(422).json({ error: "VALIDATION_FAILED", message });
         }
-        res.status(400).json({ error: message });
+        sendError(res, 400, "BAD_REQUEST", message);
       }
     },
   );
@@ -136,7 +136,7 @@ export function registerFounderStudioRoutes(app: Express) {
         res.json({ ok: true });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        res.status(400).json({ error: message });
+        sendError(res, 400, "BAD_REQUEST", message);
       }
     },
   );
