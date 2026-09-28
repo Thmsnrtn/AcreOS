@@ -196,16 +196,20 @@ export async function buildStepAwayReadiness(): Promise<StepAwayReadiness> {
   {
     const base = { key: "decisions_clear", title: "Decision queue is clear", critical: false, href: "/founder/decisions" };
     try {
-      const { listPendingHands } = await import("./pendingHands");
-      const { listOpenAsks } = await import("../solene/founderCollab");
-      const pending = (await listPendingHands()).length;
-      const asks = (await listOpenAsks()).length;
-      const total = pending + asks;
-      checks.push(
-        total === 0
-          ? { ...base, status: "ready", detail: "No frozen actions and no open asks." }
-          : { ...base, status: "action_needed", detail: `${pending} frozen action(s) + ${asks} open ask(s) are waiting on you.`, fix: "Clear them in Decisions before you leave — or they'll wait (safely frozen) until you're back." },
-      );
+      // The same union the Letter and the badge count (DEFECT-0145): asks,
+      // the Decisions queue and frozen sends. This counted asks + frozen
+      // actions only, and a failed frozen-action read was 0 — "ready".
+      const { loadNeedsYouCounts } = await import("./needsYou");
+      const n = await loadNeedsYouCounts();
+      if (n.total === null) {
+        checks.push(attention(base, `Couldn't check ${n.unreadSources.join(", ")}.`));
+      } else {
+        checks.push(
+          n.total === 0
+            ? { ...base, status: "ready", detail: "No frozen actions, no queued decisions and no open asks." }
+            : { ...base, status: "action_needed", detail: `${n.frozenSends} frozen action(s), ${n.decisions} queued decision(s) and ${n.asks} open ask(s) are waiting on you.`, fix: "Clear them in Decisions before you leave — or they'll wait (safely frozen) until you're back." },
+        );
+      }
     } catch (err) {
       checks.push(attention(base, err instanceof Error ? err.message : String(err)));
     }

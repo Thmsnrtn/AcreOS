@@ -11,6 +11,7 @@
  * scary decisions, the system isn't ready.
  */
 
+import { QueryErrorState } from "@/components/query-error-state";
 import { useEffect, useMemo, useState } from "react";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -584,7 +585,7 @@ function WitnessedSendQueue() {
   const { toast } = useToast();
   const [inFlight, setInFlight] = useState<number | null>(null);
 
-  const { data, isLoading } = useQuery<{ actions: PendingAction[] }>({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery<{ actions: PendingAction[] }>({
     queryKey: ["/api/founder/autopilot/pending-actions"],
     queryFn: async () => {
       const res = await fetch("/api/founder/autopilot/pending-actions", { credentials: "include" });
@@ -614,6 +615,22 @@ function WitnessedSendQueue() {
     },
     onSettled: () => setInFlight(null),
   });
+
+  // A failed read is not an empty queue (DEFECT-0163): the list read now
+  // throws instead of answering [], and this card must say so rather than
+  // disappear exactly as it does when nothing is frozen.
+  if (isError) {
+    return (
+      <QueryErrorState
+        error={error}
+        onRetry={() => refetch()}
+        isRetrying={isFetching}
+        title="Couldn't load the actions waiting on you"
+        compact
+        testId="witnessed-queue-error"
+      />
+    );
+  }
 
   const actions = data?.actions ?? [];
 

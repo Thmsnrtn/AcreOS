@@ -162,18 +162,16 @@ export async function rejectPendingHand(id: number): Promise<{ outcome: "rejecte
 }
 
 /** Open frozen actions for the founder's /decisions queue (newest first). */
+// Throws on a failed read (DEFECT-0163): returning [] made "nothing is
+// frozen" the answer to "could not look", on the Controls door, the step-away
+// check and the board report alike.
 export async function listPendingHands(limit = 50): Promise<AutopilotPendingAction[]> {
-  try {
-    return await db
-      .select()
-      .from(autopilotPendingActions)
-      .where(and(eq(autopilotPendingActions.status, "pending"), sql`${autopilotPendingActions.expiresAt} > now()`))
-      .orderBy(desc(autopilotPendingActions.createdAt))
-      .limit(limit);
-  } catch (err) {
-    logger.warn("[autopilot/pendingHands] list failed", err instanceof Error ? err : undefined);
-    return [];
-  }
+  return db
+    .select()
+    .from(autopilotPendingActions)
+    .where(and(eq(autopilotPendingActions.status, "pending"), sql`${autopilotPendingActions.expiresAt} > now()`))
+    .orderBy(desc(autopilotPendingActions.createdAt))
+    .limit(limit);
 }
 
 /**
@@ -208,7 +206,10 @@ export async function pendingHandCounters(windowHours = 168): Promise<{
     const viaGrant = (r.approvedBy ?? "").includes("via witness-grant #");
     if (r.status === "approved" || r.status === "executed") {
       if (viaGrant) auto++; else tapped++;
-    } else if (r.status === "expired" || (r.status === "pending" && r.expiresAt && r.expiresAt.getTime() <= now)) {
+    } else if (r.status === "expired" || (r.status === "pending" && (!r.expiresAt || r.expiresAt.getTime() <= now))) {
+      // A pending row with no expiry is expired: approvePendingHand refuses
+      // it and listPendingHands does not show it, so counting it "pending
+      // now" put a number on the Controls door no list could explain.
       expired++;
     } else if (r.status === "pending") {
       pendingNow++;

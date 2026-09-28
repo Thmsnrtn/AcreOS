@@ -86,7 +86,6 @@ function liveStateWithData(): FounderLiveState {
       uptimePct: 99.4,
       dispatchesCompletedLast24h: 7,
       dispatchesFlaggedLast24h: 1,
-      decisionsWaitingCount: 2,
       prodVersion: "abc1234",
     },
     envelope: {
@@ -101,6 +100,7 @@ function liveStateWithData(): FounderLiveState {
     ],
     openAsks: [{ askId: 9, summary: "Approve the July mail batch", urgency: "normal" }],
     runwayWeeks: 26,
+    needsYou: { asks: 1, decisions: 3, frozenSends: 0, total: 4, unreadSources: [] },
   };
 }
 
@@ -112,6 +112,7 @@ function liveStateAllUnknown(): FounderLiveState {
     trustLedger: null,
     openAsks: null,
     runwayWeeks: null,
+    needsYou: null,
   };
 }
 
@@ -189,6 +190,20 @@ describe("live-state block (pure renderer)", () => {
     expect(out).toContain("growth=draft (4/10 clean cycles)");
     expect(out).toContain("Approve the July mail batch");
     expect(out).toContain("Dispatches flagged last 24h: 1");
+    expect(out).toContain("Needs you now (live): 4 — 1 open question(s), 3 queued decision(s), 0 frozen send(s)");
+  });
+
+  // DEFECT-0163: the chat quoted the pulse's day-old "Decisions waiting",
+  // which was 0 whenever the pulse's own read had failed.
+  it("the needs-you line is live, and an unread source is never a total", () => {
+    const partial = {
+      ...liveStateWithData(),
+      needsYou: { asks: 1, decisions: null, frozenSends: 0, total: null, unreadSources: ["the Decisions queue"] },
+    };
+    const out = renderLiveStateBlock(partial);
+    expect(out).not.toMatch(/Decisions waiting:/);
+    expect(out).toContain("Needs you now: could not check the Decisions queue");
+    expect(out).not.toMatch(/Needs you now \(live\)/);
   });
 
   it("HONEST NULLS: absent data is stated absent, never defaulted", () => {
@@ -199,6 +214,7 @@ describe("live-state block (pure renderer)", () => {
     expect(out).toContain("Trust ledger: unknown (no data yet");
     expect(out).toContain("Open founder asks: unknown (no data yet");
     expect(out).toContain("Runway: no figure");
+    expect(out).toContain("Needs you now: unknown (no data yet");
     // No fabricated numbers anywhere.
     expect(out).not.toContain("$0.00");
     expect(out).not.toMatch(/MRR: \$\d/);

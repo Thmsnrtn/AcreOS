@@ -8,6 +8,8 @@ import { Paperclip, Trash2, Loader2, BookOpen, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
+import { okOrThrow } from "@/lib/fetch-honesty";
+import { Verbs } from "@/lib/labels";
 import { useToast } from "@/hooks/use-toast";
 
 interface KnowledgeFile {
@@ -52,11 +54,11 @@ export function PaxKnowledgePanel({ open, onClose }: PaxKnowledgePanelProps) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: files = [], isLoading } = useQuery<KnowledgeFile[]>({
+  // A failed read is not "no files" (DEFECT-0160).
+  const { data: files = [], isLoading, isError, refetch } = useQuery<KnowledgeFile[]>({
     queryKey: ["/api/ai/knowledge"],
     queryFn: async () => {
-      const r = await fetch("/api/ai/knowledge", { credentials: "include" });
-      if (!r.ok) return [];
+      const r = await okOrThrow(await fetch("/api/ai/knowledge", { credentials: "include" }));
       return r.json();
     },
     enabled: open,
@@ -197,7 +199,13 @@ export function PaxKnowledgePanel({ open, onClose }: PaxKnowledgePanelProps) {
               ))}
             </div>
           )}
-          {!isLoading && files.length === 0 && (
+          {!isLoading && isError && (
+            <div className="text-xs text-center py-8 space-y-2" role="alert">
+              <p className="text-destructive">Couldn't load your knowledge files.</p>
+              <Button size="sm" variant="outline" onClick={() => refetch()}>{Verbs.RETRY}</Button>
+            </div>
+          )}
+          {!isLoading && !isError && files.length === 0 && (
             <p className="text-xs text-muted-foreground text-center py-8">
               No knowledge files yet. Upload your first file above.
             </p>

@@ -54,3 +54,45 @@ export function createParcelDedupeIndex(): ParcelDedupeIndex {
     },
   };
 }
+
+/**
+ * Two leads are DIFFERENT parcels when both carry an APN and the dedupe rule
+ * does not match them. One owner holding several parcels shares a name,
+ * phone and email across leads that are not duplicates — merging deletes a
+ * parcel (DEFECT-0161).
+ */
+export function areDistinctParcels(a: ParcelFields, b: ParcelFields): boolean {
+  return identitiesAreDistinct(parcelIdentityOf(a), parcelIdentityOf(b));
+}
+
+type ParcelFields = { apn?: string | null; state?: string | null; county?: string | null };
+
+/**
+ * A lead's parcel identity, computed ONCE so a scan over many leads compares
+ * strings rather than re-normalising per pair. Null when the lead carries no
+ * APN (its parcel is unknown, so it is never "distinct" from anything).
+ * `full` is the canonical key; null when the county is unknown, in which case
+ * the match falls back to state + APN — the same rule as the import index.
+ */
+export interface ParcelIdentity {
+  full: string | null;
+  stateApn: string;
+}
+
+export function parcelIdentityOf(lead: ParcelFields): ParcelIdentity | null {
+  if (!norm(lead.apn)) return null;
+  const apn = lead.apn ?? "";
+  let full: string | null = null;
+  if (norm(lead.county)) {
+    const r = normalizeParcelRef({ state: lead.state ?? "", county: lead.county ?? "", apn });
+    full = r.ok ? parcelKey(r.ref).toUpperCase() : null;
+  }
+  return { full, stateApn: `${norm(lead.state)}|${norm(apn)}` };
+}
+
+/** Both carry a parcel and the parcels differ. */
+export function identitiesAreDistinct(a: ParcelIdentity | null, b: ParcelIdentity | null): boolean {
+  if (!a || !b) return false;
+  const same = a.full && b.full ? a.full === b.full : a.stateApn === b.stateApn;
+  return !same;
+}

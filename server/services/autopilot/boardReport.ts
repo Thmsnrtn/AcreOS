@@ -29,6 +29,12 @@ export interface BoardReportInput {
   marketing?: string | null;
   /** Actions frozen in the /decisions queue awaiting the founder's tap. */
   pendingCount: number;
+  /**
+   * The needs-you union (asks + Decisions queue + frozen sends) from the one
+   * shared loader. When present it decides "What needs you"; a null total is
+   * "couldn't check", never "nothing right now" (DEFECT-0163).
+   */
+  needsYou?: { total: number | null; asks: number | null; decisions: number | null; frozenSends: number | null; unreadSources: string[] };
   /** Founder-attention calibration over the window. */
   attention: AttentionLoad;
 }
@@ -53,7 +59,18 @@ export function composeBoardReport(input: BoardReportInput): string {
 
   // What needs you.
   lines.push("## What needs you");
-  if (input.pendingCount > 0) {
+  if (input.needsYou) {
+    const n = input.needsYou;
+    if (n.total === null) {
+      lines.push(`- Couldn't check ${n.unreadSources.join(", ")} — look in /founder/decisions before assuming nothing is waiting.`);
+    } else if (n.total > 0) {
+      if (n.frozenSends) lines.push(`- ${n.frozenSends} action(s) drafted and awaiting your tap in /decisions.`);
+      if (n.decisions) lines.push(`- ${n.decisions} decision(s) queued for you.`);
+      if (n.asks) lines.push(`- ${n.asks} open question(s) from the agents.`);
+    } else {
+      lines.push("- Nothing right now. The company is running itself.");
+    }
+  } else if (input.pendingCount > 0) {
     lines.push(`- ${input.pendingCount} action(s) drafted and awaiting your tap in /decisions.`);
   } else {
     lines.push("- Nothing right now. The company is running itself.");
@@ -112,22 +129,12 @@ export async function buildBoardReport(): Promise<{ markdown: string; generatedA
     /* omit */
   }
 
-  // Pending witnessed-send actions awaiting the founder's tap.
-  try {
-    const { listPendingHands } = await import("./pendingHands");
-    pendingCount = (await listPendingHands()).length;
-  } catch {
-    /* 0 */
-  }
-
-  // Attention calibration (asks + decisions over the recent window).
-  try {
-    const { listOpenAsks } = await import("../solene/founderCollab");
-    openAsks = (await listOpenAsks()).length;
-  } catch {
-    /* 0 */
-  }
-  openDecisions = pendingCount;
+  // What needs the founder — the one shared union (DEFECT-0163).
+  const { loadNeedsYouCounts } = await import("./needsYou");
+  const needsYou = await loadNeedsYouCounts();
+  pendingCount = needsYou.frozenSends ?? 0;
+  openAsks = needsYou.asks ?? 0;
+  openDecisions = (needsYou.frozenSends ?? 0) + (needsYou.decisions ?? 0);
 
   const { attentionLoad } = await import("./boardReserve");
   const attention = attentionLoad(openAsks, openDecisions);
@@ -138,6 +145,7 @@ export async function buildBoardReport(): Promise<{ markdown: string; generatedA
     decisionQuality,
     immune,
     pendingCount,
+    needsYou,
     attention,
   });
   // Caller stamps the time (Date.now is unavailable in some contexts here).

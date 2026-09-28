@@ -23,6 +23,10 @@ let loopSeverity: "healthy" | "degraded" | "stalled" = "healthy";
 let capStatus = { monthToDateUsd: 12, capUsd: 50, redThresholdUsd: 45, exceeded: false, readFailed: false };
 let pendingCount = 0;
 let askCount = 0;
+// Decisions-inbox items — the third needs-you source the check once ignored.
+let decisionCount = 0;
+// Sources the needs-you loader could not read (DEFECT-0163).
+let needsYouUnread: string[] = [];
 let grants: Array<{ expiresAt: Date; maxActions: number; usedCount: number }> = [];
 let deadLetterRows: Array<{ id: number }> = [];
 // DR restore-drill rows (audit F-13-2 check). A fully-armed world has run one.
@@ -67,6 +71,16 @@ vi.mock("./loopStall", () => ({
 vi.mock("../solene/capitalTracker", () => ({ getEnsembleCapStatus: async () => capStatus }));
 vi.mock("./pendingHands", () => ({ listPendingHands: async () => Array.from({ length: pendingCount }, (_, i) => ({ id: i })) }));
 vi.mock("../solene/founderCollab", () => ({ listOpenAsks: async () => Array.from({ length: askCount }, (_, i) => ({ id: i })) }));
+vi.mock("./needsYou", () => ({
+  loadNeedsYouCounts: async () => {
+    const unread = new Set(needsYouUnread);
+    const asks = unread.has("your open questions") ? null : askCount;
+    const decisions = unread.has("the Decisions queue") ? null : decisionCount;
+    const frozenSends = unread.has("frozen sends") ? null : pendingCount;
+    const total = asks === null || decisions === null || frozenSends === null ? null : asks + decisions + frozenSends;
+    return { asks, decisions, frozenSends, total, unreadSources: [...needsYouUnread] };
+  },
+}));
 vi.mock("./witnessGrantStore", () => ({ liveGrantsFor: async () => grants }));
 vi.mock("../../db", () => ({
   db: {
@@ -96,6 +110,8 @@ beforeEach(() => {
   capStatus = { monthToDateUsd: 12, capUsd: 50, redThresholdUsd: 45, exceeded: false, readFailed: false };
   pendingCount = 0;
   askCount = 0;
+  decisionCount = 0;
+  needsYouUnread = [];
   grants = [{ expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000), maxActions: 20, usedCount: 3 }];
   deadLetterRows = [];
   // A recent, passing DR drill → the F-13-2 check is green in the armed world.
@@ -220,8 +236,27 @@ describe("buildStepAwayReadiness", () => {
     expect(r.verdict).toBe("ready");
     expect(r.headline).toContain("optional");
     expect(r.checks.find((c) => c.key === "delegation")!.status).toBe("action_needed");
-    expect(r.checks.find((c) => c.key === "decisions_clear")!.detail).toContain("2 frozen action(s) + 1 open ask(s)");
+    expect(r.checks.find((c) => c.key === "decisions_clear")!.detail).toContain("2 frozen action(s), 0 queued decision(s) and 1 open ask(s)");
     expect(r.checks.find((c) => c.key === "dead_letters")!.status).toBe("action_needed");
     expect(r.checks.find((c) => c.key === "immune")!.status).toBe("action_needed");
+  });
+
+  // DEFECT-0163: the check summed frozen actions + asks only, so a Decisions
+  // queue with items in it read "clear" — a third definition of "needs you".
+  it("items in the Decisions queue mean the queue is NOT clear", async () => {
+    decisionCount = 3;
+    const r = await buildStepAwayReadiness();
+    const c = r.checks.find((x) => x.key === "decisions_clear")!;
+    expect(c.status).toBe("action_needed");
+    expect(c.detail).toContain("3 queued decision(s)");
+  });
+
+  // DEFECT-0163: a failed frozen-action read was [] → 0 → "ready".
+  it("a queue that could not be read is attention, never ready", async () => {
+    needsYouUnread = ["frozen sends"];
+    const r = await buildStepAwayReadiness();
+    const c = r.checks.find((x) => x.key === "decisions_clear")!;
+    expect(c.status).toBe("attention");
+    expect(c.detail).toContain("frozen sends");
   });
 });

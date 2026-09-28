@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
+import { okOrThrow } from "@/lib/fetch-honesty";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
@@ -498,11 +499,11 @@ export function PaxCopilotRail() {
   });
 
   // Recent conversations (for switcher)
-  const { data: recentConversations } = useQuery<RecentConversation[]>({
+  // A failed read is not "no conversations yet" (DEFECT-0160).
+  const { data: recentConversations, isError: recentConversationsFailed } = useQuery<RecentConversation[]>({
     queryKey: ["/api/ai/conversations"],
     queryFn: async () => {
-      const r = await fetch("/api/ai/conversations", { credentials: "include" });
-      if (!r.ok) return [];
+      const r = await okOrThrow(await fetch("/api/ai/conversations", { credentials: "include" }));
       return r.json();
     },
     enabled: isOpen,
@@ -1351,7 +1352,9 @@ export function PaxCopilotRail() {
                       : (recentConversations ?? []).slice(0, 5);
                     return filtered.length === 0 ? (
                       <p className="text-xs text-muted-foreground px-3 py-2">
-                        {convSearch.trim() ? "No matches" : "No conversations yet"}
+                        {recentConversationsFailed
+                          ? "Couldn't load your conversations."
+                          : convSearch.trim() ? "No matches" : "No conversations yet"}
                       </p>
                     ) : (
                       filtered.map((conv) => (

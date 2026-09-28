@@ -1584,7 +1584,11 @@ export function getExpectedColumns(entityType: "leads" | "properties" | "deals")
       "address",
       "city",
       "state",
+      "county",
       "zip",
+      // The parcel identity a lead import dedupes on (DEFECT-0140) — listed
+      // so the import UI tells users these columns exist.
+      "apn",
       "type",
       "status",
       "source",

@@ -23,6 +23,7 @@ import { leads, type Lead } from "@shared/schema";
 import { and, eq, notInArray, sql } from "drizzle-orm";
 
 import { ADMINISTRATIVE_LEAD_STATUSES, TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
+import { identitiesAreDistinct, parcelIdentityOf, type ParcelIdentity } from "./leads/parcelDedupe";
 export interface LeadCluster {
   /** What matched (phone / email / name_address). */
   matchType: "phone" | "email" | "name_address";
@@ -103,7 +104,42 @@ export async function findDuplicateClusters(
   const clusters: LeadCluster[] = [];
   const seenIds = new Set<string>();
 
-  function pushIfNew(matchType: LeadCluster["matchType"], matchValue: string, leadList: Lead[]) {
+  // One owner, several parcels: leads that are DIFFERENT parcels share a
+  // phone / email / name by design and are not duplicates (DEFECT-0161).
+  // Identity is computed once per lead, not once per pair.
+  const identity = new Map<number, ParcelIdentity | null>();
+  const identityOf = (l: Lead) => {
+    if (!identity.has(l.id)) identity.set(l.id, parcelIdentityOf(l));
+    return identity.get(l.id)!;
+  };
+
+  // Split a bucket so no offered cluster holds two distinct parcels — the
+  // dedupe page merges every member into one primary, and the merge refuses
+  // distinct parcels. Parcel-less leads join the one parcel when there is
+  // exactly one; with several, which parcel they duplicate is unknowable, so
+  // they are offered only among themselves.
+  function splitByParcel(leadList: Lead[]): Lead[][] {
+    const groups: Lead[][] = [];
+    const parcelless: Lead[] = [];
+    for (const lead of leadList) {
+      const id = identityOf(lead);
+      if (!id) {
+        parcelless.push(lead);
+        continue;
+      }
+      const home = groups.find((g) => !identitiesAreDistinct(identityOf(g[0]), id));
+      if (home) home.push(lead);
+      else groups.push([lead]);
+    }
+    if (groups.length <= 1) return [[...(groups[0] ?? []), ...parcelless]];
+    return [...groups, parcelless];
+  }
+
+  function pushIfNew(matchType: LeadCluster["matchType"], matchValue: string, bucket: Lead[]) {
+    for (const leadList of splitByParcel(bucket)) pushOne(matchType, matchValue, leadList);
+  }
+
+  function pushOne(matchType: LeadCluster["matchType"], matchValue: string, leadList: Lead[]) {
     if (leadList.length < 2) return;
     // Dedupe clusters that reference the same set of leads via different
     // keys (e.g., same pair with matching phone AND email). Stable key

@@ -139,6 +139,8 @@ import { useWebSocketChannel } from "@/hooks/use-websocket-channel";
 import { usePaxNeedsYouCount } from "@/hooks/usePaxNeedsYou";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { okOrThrow } from "@/lib/fetch-honesty";
+import { Verbs } from "@/lib/labels";
 import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
@@ -200,12 +202,13 @@ function PaxNotificationBadge() {
     staleTime: 60 * 1000,
   });
 
-  const { data: observationsData, refetch: refetchObservations } = useQuery<{ observations: PaxObservation[] }>({
+  const { data: observationsData, refetch: refetchObservations, isError: observationsFailed } = useQuery<{ observations: PaxObservation[] }>({
     queryKey: ["/api/pax/observations"],
+    // A failed read throws (DEFECT-0160): an empty list rendered "Pax is
+    // watching for insights" — all quiet — over a request that failed.
     queryFn: async () => {
       const res = await fetch("/api/pax/observations?limit=10", { credentials: "include" });
-      if (!res.ok) return { observations: [] };
-      return res.json();
+      return (await okOrThrow(res)).json();
     },
     enabled: false, // Only fetch when popover opens
     staleTime: 30 * 1000,
@@ -295,7 +298,14 @@ function PaxNotificationBadge() {
         </div>
 
         <div className="max-h-80 overflow-y-auto">
-          {observations.length === 0 ? (
+          {observationsFailed ? (
+            <div className="flex flex-col items-center justify-center py-8 px-4 text-center" role="alert">
+              <p className="text-sm text-muted-foreground">Couldn't load Pax's notes.</p>
+              <Button variant="outline" size="sm" className="mt-2" onClick={() => refetchObservations()}>
+                {Verbs.RETRY}
+              </Button>
+            </div>
+          ) : observations.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
               <Sparkles className="w-8 h-8 text-muted-foreground/40 mb-2" />
               <p className="text-sm text-muted-foreground">Pax is watching for insights.</p>

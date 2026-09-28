@@ -268,13 +268,6 @@ export class AlertingService {
     return query;
   }
 
-  async acknowledgeAlert(id: number): Promise<void> {
-    await db
-      .update(systemAlerts)
-      .set({ status: 'acknowledged', acknowledgedAt: new Date() })
-      .where(eq(systemAlerts.id, id));
-  }
-
   async resolveAlert(id: number): Promise<void> {
     await db
       .update(systemAlerts)

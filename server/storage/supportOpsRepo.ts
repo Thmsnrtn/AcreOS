@@ -283,13 +283,8 @@ export const supportOpsRepo = {
     return updated;
   },
 
-  async acknowledgeAlert(this: DatabaseStorage, id: number) {
-    const [updated] = await db.update(systemAlerts)
-      .set({ status: "acknowledged", acknowledgedAt: new Date() })
-      .where(eq(systemAlerts.id, id))
-      .returning();
-    return updated;
-  },
+  // acknowledgeAlert was removed (DEFECT-0135): it reopened resolved alerts.
+  // Acknowledge through server/services/alertAcknowledge.ts.
 
   async resolveAlert(this: DatabaseStorage, id: number) {
     const [updated] = await db.update(systemAlerts)
@@ -302,10 +297,9 @@ export const supportOpsRepo = {
   async acknowledgeAllAlerts(this: DatabaseStorage) {
     const result = await db.update(systemAlerts)
       .set({ status: "acknowledged", acknowledgedAt: new Date() })
-      .where(and(
-        ne(systemAlerts.status, "resolved"),
-        ne(systemAlerts.status, "acknowledged")
-      ))
+      // Only a NEW alert is acknowledged (DEFECT-0135): "not resolved and
+      // not acknowledged" also matched dismissed alerts and reopened them.
+      .where(eq(systemAlerts.status, "new"))
       .returning();
     return result.length;
   },

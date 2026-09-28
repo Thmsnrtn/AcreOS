@@ -61,8 +61,10 @@ export interface AutoWitnessSweepResult {
 }
 
 /**
- * One sweep over the frozen queue. Never throws; every skip carries its
- * reason so the Control door can show WHY the machine did not act.
+ * One sweep over the frozen queue. Every skip carries its reason so the
+ * Control door can show WHY the machine did not act. A failed read of the
+ * queue THROWS (DEFECT-0163) — the job lock logs it as a failed run rather
+ * than a sweep that found nothing.
  */
 export async function runAutoWitnessSweep(
   opts: { granteeId?: string; now?: number } = {},

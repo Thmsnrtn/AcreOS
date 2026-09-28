@@ -3434,6 +3434,18 @@ reported success for ids that matched nothing. Both executors now call
 tested behaviourally. `decisionsInbox.createFromAlert`, the only writer of
 `sourceAlertId`, has no callers, so the executor's critical_alert lane is
 dormant. Recorded, not wired.
+Residue, same round: the founder admin route `PUT /api/admin/alerts/:id/acknowledge`
+(`server/routes-admin.ts`) went through a third writer, `storage.acknowledgeAlert`.
+It had no status predicate, so it reopened resolved alerts, and it answered 200
+with an empty body for an unknown id. The route now calls `acknowledgeSystemAlert`
+and answers 404 or 400. The two unpredicated writers (`supportOpsRepo` and
+`AlertingService`) were removed, and `ACKNOWLEDGERS` in the test names the route.
+The audit of that change found a fourth: `acknowledgeAllAlerts` filtered on
+"not resolved and not acknowledged", so it reopened dismissed alerts. It now
+moves only `new` alerts. The test no longer trusts a list of callers: it reads
+every `update(systemAlerts)` in `server/` and requires the NEW predicate
+wherever "acknowledged" is written. It is red with the old repo method in
+place.
 Resolving commits: this branch, round 3
 ### DEFECT-0136
 Title: A dormant onboarding route returned fabricated offers and profits
@@ -3939,6 +3951,159 @@ percentiles served by the market-heat routes. The fix mirrors DEFECT-0155: a
 distinct-contributor floor. Neither has an opt-in, which is the same
 data-policy decision noted on DEFECT-0154.
 Resolving commits: —
+### DEFECT-0160
+Title: Client panels rendered a failed fetch as an empty list, and the ratchet could not see the idiom
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: completeness audit of the fetch-honesty sweep, 2026-09-28
+Description: The `empty-on-failure` ratchet
+(`scripts/ratchets/empty-on-failure.json`) matched only `catch { return [] }`
+shapes. It did not see the two idioms that do the same thing on a response:
+`if (!res.ok) return []` and `res.ok ? res.json() : []`. So a failed request
+read as "nothing here" in:
+- the Pax knowledge panel;
+- Pax project panels (projects and files);
+- the copilot rail's recent conversations;
+- the command palette's server search;
+- the safety-gates deal list.
+Remediation plan: DONE.
+- The ratchet pattern now matches both response idioms. It measured 17;
+  the five surfaces above were converted to `okOrThrow` with real error
+  states, and the baseline is 10. The remaining ten are listed in the
+  ratchet's `lastBumpNote`.
+- The palette says the server search failed instead of "no results".
+- `useNotificationPreferences` (no callers) was deleted.
+Falsified by: `npm run lint:ratchets` (the widened pattern reads 17 against the
+pre-conversion tree).
+Audit follow-up, same day: the object arm was pinned to the key `results`, so
+`{ asks: [] }`, `{ events: [] }`, `{ comments: [] }` and `{ count: 0 }` were
+still unread. An independent audit found 14 more sites, one of them in a file
+this entry had claimed as converted. The arm now takes any key whose value is
+`[]`, `0` or `null`; it measured 24. Converted in the same change:
+- the founder Build page's four reads. Its in-flight error branch could never
+  fire, and the asks card said "Agents have everything they need right now";
+- the Team page's two reads;
+- the Money page's two reads. Every envelope card claimed "Envelope tracking
+  ships with Lena's Phase 1";
+- the comment thread's count read, and its "No comments yet" on a failed load;
+- the founder half of the ⌘K search, which now says so even beside local
+  matches;
+- the sidebar's Pax notes popover.
+
+The baseline is 13, and the keep list is in the ratchet's note. The
+safety-gates deal picker no longer says "No active deals" on a failed read.
+Resolving commits: this branch, round 3
+### DEFECT-0161
+Title: Dedupe treated one owner's several parcels as duplicates, and merging deleted a parcel
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: import-identity audit follow-up (DEFECT-0153), 2026-09-28
+Description: A land seller with five parcels is five leads with one phone,
+one email and one mailing address. `findDuplicateClusters`
+(`server/services/leadDedupeScanner.ts`) clustered them by phone, email or
+name + address and offered them for merge. `mergeLeads`
+(`server/storage/leadRepo.ts`) then deleted the duplicate, and its merged
+fields did not include `apn` or `county`, so the parcel went with it.
+Remediation plan: DONE.
+- `areDistinctParcels` (`server/services/leads/parcelDedupe.ts`) compares the
+  canonical parcel keys. It is true only when both leads carry a parcel and
+  the parcels differ.
+- The scanner skips a cluster whose members are all distinct parcels.
+- `mergeLeads` refuses to merge two distinct parcels, and the merge route
+  answers 400 with the reason.
+- A merge now carries `apn` and `county` across, and the lead import template
+  lists both columns.
+Falsified by: `tests/unit/ownerWithManyParcelsIsNotADuplicate.test.ts` (two
+cases red pre-fix).
+Audit follow-up, same day:
+- Merging `apn` and `county` field by field could build a parcel that matched
+  neither lead. A primary with a county but no APN took the duplicate's APN
+  under its own county. The parcel now moves as one unit: APN, county,
+  property address, acreage, estimated value and the tax-delinquent flag.
+- A duplicate with no APN can no longer fill in a primary's parcel
+  attributes.
+- A bucket that mixed one parcel's duplicates with a different parcel was
+  offered whole, and the page's merge-all then failed on it. Buckets are now
+  split by parcel.
+- Parcel identity is computed once per lead (`parcelIdentityOf`), not once
+  per pair.
+- The merge is tested by behaviour, not by a source scan.
+- Known limit: a state written out in full ("Texas" vs "TX") cannot be
+  normalised, so the same APN reads as two parcels. The error runs toward
+  refusing the merge. No state normaliser exists to fix it with.
+Resolving commits: this branch, round 3
+### DEFECT-0162
+Title: The activity feed filtered after paging, so its tabs showed nothing and "Load more" never appeared
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: failure-as-empty sweep, 2026-09-28
+Description: `GET /api/activity` (`server/routes-crm-extras.ts`) read the
+latest `limit + offset` events of any type and filtered them afterwards. The
+Payments and Communications tabs therefore searched only the newest 50
+events and said "No activity recorded yet" when hundreds existed. `hasMore`
+compared the filtered list to `offset + limit`, so it was never true, and
+`total` was the length of that slice. The page treated a failed request as
+no activity.
+Remediation plan: DONE.
+- The type and entity filters run in SQL, paged with `limit + 1` / `offset`.
+- `total` is a real count over the same predicate.
+- `client/src/pages/activity.tsx` uses `okOrThrow`.
+- The unused `getRecentActivityEvents` repo method was removed.
+- Audit follow-up: "Load more" keyed a single query on the offset, so it
+  replaced the first page with the second. This was hidden while `hasMore`
+  could never be true. It is now one infinite query that appends.
+- A negative limit or offset (a Postgres error) is clamped, and a repeated
+  `?eventTypes=` (an array) is accepted.
+Falsified by: `tests/unit/activityFeedPagesInSql.test.ts` (three cases red
+pre-fix).
+Resolving commits: this branch, round 3
+### DEFECT-0163
+Title: The Controls door, the board report and the step-away check read a failed queue read as "nothing waiting"
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: needs-you audit follow-up (DEFECT-0145), 2026-09-28
+Description: `listPendingHands`
+(`server/services/autopilot/pendingHands.ts`) caught its own query failure
+and returned an empty list. Each founder reader turned that into a verdict:
+- The Controls door (`/api/founder/autopilot/live`, rendered by
+  `client/src/pages/founder/autopilot-control.tsx`) printed "0 awaiting your
+  tap". Its decision and ask counts came from the once-a-day pulse, not live.
+- The board report (`server/services/autopilot/boardReport.ts`) printed
+  "Nothing right now. The company is running itself." It also ignored the
+  Decisions queue.
+- The step-away check "Decision queue is clear"
+  (`server/services/autopilot/stepAwayReadiness.ts`) counted frozen actions
+  and asks only. That is a third definition of "needs you", and it said
+  "ready" on a failed read.
+Remediation plan: DONE.
+- `listPendingHands` throws on a failed read.
+- All three readers take `loadNeedsYouCounts`
+  (`server/services/autopilot/needsYou.ts`), the union the Letter and the
+  badge use.
+- An unread source is named ("Couldn't check frozen sends"), never counted
+  as zero. The Controls door shows it as unread; the step-away check reports
+  attention.
+- Audit follow-up: the Controls card the founder actually SEES ("N waiting on
+  you" / "Nothing waiting") read `/api/founder/autopilot/control`. That was a
+  count of open asks only, and 0 on a failed read. It now reads the same union
+  and names any source it could not read.
+- The Decisions door's witnessed-send queue showed an error as nothing: it
+  rendered nothing on a failed read, exactly as for an empty queue. It now
+  shows an error state.
+- `pendingHandCounters` counted a pending row with no expiry as waiting. The
+  list and the approval both treat that row as expired.
+- The Solene chat context quoted the morning pulse's "Decisions waiting". That
+  figure was up to a day old, and 0 whenever the pulse's read had failed. The
+  chat now has a live needs-you line
+  (`server/services/solene/chat/liveState.ts`).
+- Recorded, not changed: the board report's attention calibration still
+  counts an unread source as 0, and the Letter keeps the pulse's stale queue
+  figure when its live read fails. Both of those surfaces already say the
+  source was unread and withhold the all-clear.
+Falsified by: `tests/unit/controlsDoorFailureIsNotZero.test.ts` and
+`server/services/autopilot/stepAwayReadiness.test.ts` (eight cases red
+pre-fix).
+Resolving commits: this branch, round 3
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -3976,11 +4141,11 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 1   | 9   | 10    |
-| FIXED  | 13  | 78  | 55  | 146   |
+| FIXED  | 13  | 78  | 59  | 150   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **13** | **82** | **64** | **159** |
+| **Total** | **13** | **82** | **68** | **163** |
 
-Recounted from the entries themselves on 2026-09-28 (159 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (163 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

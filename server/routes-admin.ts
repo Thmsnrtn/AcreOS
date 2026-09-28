@@ -906,11 +906,20 @@ export function registerAdminRoutes(app: Express): void {
     }
   });
 
-  api.put("/api/admin/alerts/:id/acknowledge", isAuthenticated, isFounderAdmin, async (req, res) => {
+  api.put("/api/admin/alerts/:id/acknowledge", isAuthenticated, isFounderAdmin, async (req: AuthenticatedRequest, res) => {
     try {
       const alertId = Number(req.params.id);
-      const updated = await storage.acknowledgeAlert(alertId);
-      res.json(updated);
+      if (!Number.isInteger(alertId) || alertId <= 0) return Errors.badRequest(res, "Invalid alert id");
+      // The one acknowledgement rule (DEFECT-0135): only a NEW alert moves.
+      // The repo method set "acknowledged" with no status predicate — a
+      // resolved or dismissed alert was reopened — and answered 200 with an
+      // empty body for an id that matched nothing.
+      const { acknowledgeSystemAlert } = await import("./services/alertAcknowledge");
+      const outcome = await acknowledgeSystemAlert(alertId, `founder:${getUserId(req)}`);
+      if (!outcome.success) {
+        return outcome.reason === "not_found" ? Errors.notFound(res, "Alert") : Errors.badRequest(res, outcome.detail);
+      }
+      res.json(outcome);
     } catch (err: any) {
       logger.error("Acknowledge alert error", err);
       Errors.internal(res, err);

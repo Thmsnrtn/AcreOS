@@ -13,6 +13,7 @@
  * a flattering default. The renderer is pure and exported for tests.
  */
 
+import type { NeedsYouCounts } from "../../autopilot/needsYou";
 import { logger } from "../../../utils/logger";
 
 // ============================================================================
@@ -28,7 +29,6 @@ export interface LiveStatePulse {
   uptimePct: number | null;
   dispatchesCompletedLast24h: number;
   dispatchesFlaggedLast24h: number;
-  decisionsWaitingCount: number;
   prodVersion: string | null;
 }
 
@@ -66,6 +66,13 @@ export interface FounderLiveState {
   openAsks: LiveStateOpenAsk[] | null;
   /** Weeks of runway at current burn; null = not burning or unknown, never invented. */
   runwayWeeks: number | null;
+  /**
+   * What needs the founder, read LIVE from the one union the Letter, the
+   * badge and the Controls door use (DEFECT-0163). The chat quoted the
+   * morning pulse's "decisions waiting" — up to a day old, and 0 whenever
+   * the pulse's own read had failed.
+   */
+  needsYou: NeedsYouCounts | null;
 }
 
 // ============================================================================
@@ -91,7 +98,6 @@ export async function gatherLiveState(): Promise<FounderLiveState> {
         uptimePct: p.uptimePct,
         dispatchesCompletedLast24h: p.dispatchesCompletedLast24h,
         dispatchesFlaggedLast24h: p.dispatchesFlaggedLast24h,
-        decisionsWaitingCount: p.decisionsWaitingCount,
         prodVersion: p.prodVersion && p.prodVersion !== "unknown" ? p.prodVersion : null,
       };
     }
@@ -169,7 +175,17 @@ export async function gatherLiveState(): Promise<FounderLiveState> {
     });
   }
 
-  return { asOf, pulse, envelope, trustLedger, openAsks, runwayWeeks };
+  let needsYou: NeedsYouCounts | null = null;
+  try {
+    const { loadNeedsYouCounts } = await import("../../autopilot/needsYou");
+    needsYou = await loadNeedsYouCounts();
+  } catch (err) {
+    logger.warn("[soleneChat] liveState.needs_you_failed", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  return { asOf, pulse, envelope, trustLedger, openAsks, runwayWeeks, needsYou };
 }
 
 // ============================================================================
@@ -209,7 +225,6 @@ export function renderLiveStateBlock(state: FounderLiveState): string {
     );
     lines.push(`- Dispatches completed last 24h: ${p.dispatchesCompletedLast24h}`);
     lines.push(`- Dispatches flagged last 24h: ${p.dispatchesFlaggedLast24h}`);
-    lines.push(`- Decisions waiting: ${p.decisionsWaitingCount}`);
     lines.push(
       p.prodVersion == null
         ? `- Deployed version: ${UNKNOWN}`
@@ -220,6 +235,19 @@ export function renderLiveStateBlock(state: FounderLiveState): string {
     lines.push(`- MRR: ${UNKNOWN}`);
     lines.push(`- Spend last 7 days: ${UNKNOWN}`);
     lines.push(`- Dispatches / flags last 24h: ${UNKNOWN}`);
+  }
+
+  const n = state.needsYou;
+  if (!n) {
+    lines.push(`- Needs you now: ${UNKNOWN}`);
+  } else if (n.total === null) {
+    lines.push(
+      `- Needs you now: could not check ${n.unreadSources.join(", ")} — say so; do not report a total`,
+    );
+  } else {
+    lines.push(
+      `- Needs you now (live): ${n.total} — ${n.asks} open question(s), ${n.decisions} queued decision(s), ${n.frozenSends} frozen send(s)`,
+    );
   }
 
   if (state.envelope) {

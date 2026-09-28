@@ -49,6 +49,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { usePersonaMode } from "@/hooks/use-persona-mode";
 import { telemetry } from "@/lib/telemetry";
 import { queryClient, apiRequest, prefetchRoute, fetchJsonArray } from "@/lib/queryClient";
+import { okOrThrow } from "@/lib/fetch-honesty";
 import { useToast } from "@/hooks/use-toast";
 import { useProviderStatus } from "@/hooks/use-provider-status";
 import {
@@ -377,7 +378,9 @@ export function CommandPalette() {
   // `items` a single object and `for…of` over it THREW, crashing the palette on
   // exactly the searches that found something. Zero hits short-circuited, which
   // is why it looked fine in a thin dev database.
-  const { data: serverSearchData } = useQuery<{
+  // A failed search is not "no results" (DEFECT-0160): it throws, and the
+  // palette says the search could not run while still showing local matches.
+  const { data: serverSearchData, isError: serverSearchFailed } = useQuery<{
     results: ServerSearchResult[];
     query: string;
     total: number;
@@ -390,7 +393,7 @@ export function CommandPalette() {
         `/api/search?q=${encodeURIComponent(search.trim())}`,
         { credentials: "include" },
       );
-      if (!res.ok) return { results: [], query: search, total: 0 };
+      await okOrThrow(res);
       return res.json();
     },
   });
@@ -416,7 +419,7 @@ export function CommandPalette() {
       | { key: "proposals"; label: string; items: FounderProposalHit[] }
     >;
   };
-  const { data: founderSearchData } = useQuery<FounderSearchResponse>({
+  const { data: founderSearchData, isError: founderSearchFailed } = useQuery<FounderSearchResponse>({
     queryKey: ["/api/founder/intelligence/search", search],
     enabled: open && isFounder && search.trim().length >= 2,
     staleTime: 5_000,
@@ -425,8 +428,7 @@ export function CommandPalette() {
         `/api/founder/intelligence/search?q=${encodeURIComponent(search.trim())}`,
         { credentials: "include" },
       );
-      if (!r.ok) return { groups: [] };
-      return r.json();
+      return (await okOrThrow(r)).json();
     },
   });
 
@@ -1054,7 +1056,16 @@ export function CommandPalette() {
 
                 {!showAIMode && !selectedLeadId && !selectedDealId && (
                   <>
-                    <CommandEmpty>No results found. Start with "?" to ask AI.</CommandEmpty>
+                    <CommandEmpty>
+                      {serverSearchFailed || founderSearchFailed
+                        ? "Search couldn't run just now — only recently loaded items are shown. Try again in a moment."
+                        : 'No results found. Start with "?" to ask AI.'}
+                    </CommandEmpty>
+                    {(serverSearchFailed || founderSearchFailed) && searchResults.length > 0 && (
+                      <p className="px-3 py-1.5 text-xs text-muted-foreground" role="status" data-testid="palette-search-partial">
+                        Search couldn't run just now — only recently loaded items are shown.
+                      </p>
+                    )}
 
                     {/* Search Results (leads, properties, deals).
                         Prefer server-side fuzzy/hybrid results when the

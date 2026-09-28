@@ -1234,7 +1234,15 @@ export async function registerRoutes(
       }
       const { primaryId, duplicateId } = parsed.data;
 
-      const merged = await storage.mergeLeads(org.id, primaryId, duplicateId);
+      let merged;
+      try {
+        merged = await storage.mergeLeads(org.id, primaryId, duplicateId);
+      } catch (mergeErr) {
+        if (mergeErr instanceof Error && mergeErr.name === "LeadsAreDistinctParcelsError") {
+          return Errors.badRequest(res, mergeErr.message);
+        }
+        throw mergeErr;
+      }
       
       res.json({
         success: true,

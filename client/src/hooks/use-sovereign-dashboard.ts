@@ -236,14 +236,3 @@ export function useEventMeshSubscriptions() {
   });
 }
 
-export function useNotificationPreferences() {
-  return useQuery({
-    queryKey: ["/api/notifications/preferences"],
-    queryFn: async () => {
-      const res = await fetch("/api/notifications/preferences", { credentials: "include" });
-      if (!res.ok) return null;
-      return res.json();
-    },
-    staleTime: 120_000,
-  });
-}

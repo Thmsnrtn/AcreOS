@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
+import { okOrThrow } from "@/lib/fetch-honesty";
 import {
   Mail, MessageSquare, Phone, FileText, DollarSign,
   GitBranch, Plus, Sparkles,
@@ -150,7 +151,6 @@ export default function ActivityPage({
     if (initialFilter && FILTER_TABS.some((t) => t.id === initialFilter)) return initialFilter;
     return new URLSearchParams(search).get("actor") === PAX_FILTER_ID ? PAX_FILTER_ID : "all";
   });
-  const [offset, setOffset] = useState(0);
   const isPax = activeFilter === PAX_FILTER_ID;
 
   const filterConfig = FILTER_TABS.find(t => t.id === activeFilter)!;
@@ -158,13 +158,26 @@ export default function ActivityPage({
     ? `&eventTypes=${filterConfig.eventTypes.join(",")}`
     : "";
 
-  const { data, isLoading, isError, error, isFetching, refetch } = useQuery<ActivityResponse>({
-    queryKey: ["/api/activity", activeFilter, offset],
-    queryFn: () =>
-      fetch(`/api/activity?limit=${PAGE_SIZE}&offset=${offset}${eventTypesParam}`)
-        .then(r => r.json()),
+  // Pages APPEND (DEFECT-0162). Keying one query on the offset made "Load
+  // more" replace the first page with the second — latent while the server's
+  // hasMore could never be true.
+  const feed = useInfiniteQuery({
+    queryKey: ["/api/activity", activeFilter],
+    // A failed read throws, so the page's error branch renders instead of
+    // "No activity recorded yet" (DEFECT-0162).
+    queryFn: async ({ pageParam }): Promise<ActivityResponse> => {
+      const r = await okOrThrow(
+        await fetch(`/api/activity?limit=${PAGE_SIZE}&offset=${pageParam}${eventTypesParam}`, { credentials: "include" }),
+      );
+      return r.json();
+    },
+    initialPageParam: 0,
+    getNextPageParam: (last: ActivityResponse, all: ActivityResponse[]) =>
+      last.hasMore ? all.length * PAGE_SIZE : undefined,
     enabled: !isPax,
   });
+  const { isLoading, isError, error, isFetching, refetch } = feed;
+  const feedEvents = feed.data?.pages.flatMap((p) => p.events) ?? [];
 
   const receipts = useInfiniteQuery({
     queryKey: ["/api/pax/receipts"],
@@ -176,10 +189,9 @@ export default function ActivityPage({
 
   function handleFilterChange(id: string) {
     setActiveFilter(id);
-    setOffset(0);
   }
 
-  const groups = groupByDay(data?.events ?? [], (e) => e.eventDate);
+  const groups = groupByDay(feedEvents, (e) => e.eventDate);
   const receiptRows = receipts.data?.pages.flatMap((p) => p.items) ?? [];
   const receiptGroups = groupByDay(receiptRows, (r) => r.at);
 
@@ -332,15 +344,16 @@ export default function ActivityPage({
           </section>
         ))}
 
-        {!isPax && data?.hasMore && (
+        {!isPax && feed.hasNextPage && (
           <div className="flex justify-center pt-2 pb-4">
             <Button
               variant="outline"
-              onClick={() => setOffset(o => o + PAGE_SIZE)}
+              onClick={() => feed.fetchNextPage()}
+              disabled={feed.isFetchingNextPage}
               className="min-h-11"
               aria-label="Load more activity events"
             >
-              Load more
+              {feed.isFetchingNextPage ? "Loading…" : "Load more"}
             </Button>
           </div>
         )}

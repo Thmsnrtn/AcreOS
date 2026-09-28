@@ -199,12 +199,6 @@ export const commsRepo = {
     return await query;
   },
 
-  async getRecentActivityEvents(this: DatabaseStorage, orgId: number, limit: number = 50): Promise<ActivityEvent[]> {
-    return await db.select().from(activityEvents)
-      .where(eq(activityEvents.organizationId, orgId))
-      .orderBy(desc(activityEvents.eventDate))
-      .limit(limit);
-  },
 };
 
 export type CommsRepo = typeof commsRepo;

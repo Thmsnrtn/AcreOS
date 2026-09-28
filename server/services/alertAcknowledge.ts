@@ -18,7 +18,7 @@ export async function acknowledgeSystemAlert(
   alertId: number,
   by: string,
   note?: Record<string, unknown>,
-): Promise<{ success: boolean; detail: string }> {
+): Promise<{ success: boolean; detail: string; reason?: "not_found" | "already_handled" }> {
   const stamp = { acknowledgedBy: by, at: new Date().toISOString(), ...(note ?? {}) };
   // System alerts are platform-level (organization_id is nullable and the
   // actors are platform agents), addressed by alert id.
@@ -41,6 +41,7 @@ export async function acknowledgeSystemAlert(
     .limit(1);
   return {
     success: false,
+    reason: current ? "already_handled" : "not_found",
     detail: current
       ? `Alert #${alertId} is already ${current.status} — nothing changed`
       : `Alert #${alertId} not found — nothing changed`,

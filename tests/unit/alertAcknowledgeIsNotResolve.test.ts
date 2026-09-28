@@ -13,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS, stripComments } from "../helpers/stripComments";
 
 type Cond = { op: "eq"; col: { name: string }; val: unknown } | { op: "and"; c: Cond[] };
 const h = vi.hoisted(() => ({ rows: new Map<number, Record<string, unknown>>() }));
@@ -83,11 +83,47 @@ describe("DEFECT-0135 — acknowledgeSystemAlert", () => {
   });
 });
 
-describe("DEFECT-0135 — every automated acknowledger goes through it", () => {
+describe("DEFECT-0135 — every acknowledger goes through it", () => {
   const ACKNOWLEDGERS: Array<{ file: string; from: string; to: string }> = [
     { file: "server/services/autonomousDecisionExecutor.ts", from: "async function executeAlertAcknowledgement(", to: "async function executeFeatureRequestApproval(" },
     { file: "server/services/agentActionExecutors.ts", from: '"acknowledge_incident"', to: "Oracle Analytics Executors" },
+    // The founder's manual acknowledge (independent audit, 2026-09-28).
+    { file: "server/routes-admin.ts", from: '"/api/admin/alerts/:id/acknowledge"', to: '"/api/admin/alerts/:id/resolve"' },
   ];
+  // POPULATION: every `update(systemAlerts)` in server/ that writes
+  // "acknowledged" must carry the only-a-NEW-alert predicate. The three
+  // named units above were the population until `acknowledgeAllAlerts` was
+  // found reopening dismissed alerts through `ne(resolved) AND
+  // ne(acknowledged)` — a writer no list named.
+  it("every systemAlerts writer that acknowledges moves only a NEW alert", () => {
+    const { execSync } = require("node:child_process") as typeof import("node:child_process");
+    const files = execSync("git ls-files 'server/**/*.ts'", { cwd: resolve(__dirname, "../.."), encoding: "utf8" })
+      .split("\n")
+      .filter((f) => f && !f.includes(".test."));
+    let writers = 0;
+    let acknowledgers = 0;
+    for (const f of files) {
+      const src = stripComments(readFileSync(resolve(__dirname, "../..", f), "utf8"));
+      let at = src.indexOf("update(systemAlerts)");
+      while (at !== -1) {
+        writers++;
+        const end = src.indexOf(";", at);
+        const chain = src.slice(at, end === -1 ? undefined : end);
+        if (/status:\s*["']acknowledged["']/.test(chain)) {
+          acknowledgers++;
+          expect(chain, `${f}: acknowledges without eq(systemAlerts.status, "new")`).toMatch(
+            /eq\(systemAlerts\.status,\s*["']new["']\)/,
+          );
+        }
+        at = src.indexOf("update(systemAlerts)", at + 1);
+      }
+    }
+    // Vacuity floors: the scan found the writers, and at least the shared
+    // helper and acknowledge-all among them.
+    expect(writers).toBeGreaterThanOrEqual(8);
+    expect(acknowledgers).toBeGreaterThanOrEqual(2);
+  }, REPO_SWEEP_TIMEOUT_MS);
+
   for (const a of ACKNOWLEDGERS) {
     it(`${a.file} delegates and writes no alert status itself`, () => {
       const raw = readFileSync(resolve(__dirname, "../..", a.file), "utf8");

@@ -39,7 +39,8 @@ interface LedgerEntry { domain: string; level: string; cleanCycleCount: number; 
 interface ControlData {
   settings: { dispatchEnabled: boolean; publishEnabled: boolean; cognitionEnabled?: boolean; selfPatchEnabled?: boolean; growthBudgetOverrideUsd: number | null; source: { dispatch: "db" | "env"; publish: "db" | "env" } };
   ledger: LedgerEntry[];
-  openAsks: number;
+  /** The needs-you union; total null = a source could not be read. */
+  needsYou: { total: number | null; unreadSources: string[] };
   calibration: { grade: string; n: number } | null;
   conversions?: { totalSignups: number; byPlay: Array<{ playId: string; signups: number }> };
   budget?: { baseCapUsd: number; overrideUsd: number | null; effectiveCapUsd: number; ceilingUsd: number } | null;
@@ -49,12 +50,13 @@ interface LiveData {
   lastTickAt: string | null;
   oneLine: string | null;
   envelopeStatus: string | null;
-  decisionsWaitingCount: number;
+  decisionsWaitingCount: number | null;
   dispatchesCompletedLast24h: number;
   dispatchesFlaggedLast24h: number;
   supportThresholdLine: string | null;
   supportThresholdPct: number | null;
-  pendingCount: number;
+  /** null when the frozen-send queue could not be read. */
+  pendingCount: number | null;
 }
 
 const CONTROL_KEY = ["/api/founder/autopilot/control"];
@@ -367,7 +369,7 @@ export default function FounderAutopilotControlPage() {
                       {live.data.dispatchesFlaggedLast24h > 0 && (
                         <span className="text-acr-warn">{live.data.dispatchesFlaggedLast24h} need review</span>
                       )}
-                      <span>{live.data.pendingCount} awaiting your tap</span>
+                      <span>{live.data.pendingCount === null ? "Couldn't check what's awaiting your tap" : `${live.data.pendingCount} awaiting your tap`}</span>
                       {live.data.envelopeStatus && <span>budget: {BUDGET_WORD[live.data.envelopeStatus] ?? live.data.envelopeStatus}</span>}
                     </div>
                     {live.data.supportThresholdLine && (
@@ -534,9 +536,15 @@ export default function FounderAutopilotControlPage() {
             {/* Pending decisions + calibration */}
             <motion.section variants={staggerItem} className="grid gap-4 sm:grid-cols-2">
               <Link href="/founder/decisions" className="group flex items-center gap-3 rounded-card border border-border bg-card p-4 transition-colors hover:bg-muted/50 min-h-[44px]" data-testid="control-pending">
-                <AlertCircle className={`h-5 w-5 shrink-0 ${data.openAsks > 0 ? "text-acr-warn" : "text-muted-foreground"}`} aria-hidden="true" />
+                <AlertCircle className={`h-5 w-5 shrink-0 ${data.needsYou.total !== 0 ? "text-acr-warn" : "text-muted-foreground"}`} aria-hidden="true" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-foreground">{data.openAsks > 0 ? `${data.openAsks} waiting on you` : "Nothing waiting"}</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    {data.needsYou.total === null
+                      ? `Couldn't check ${data.needsYou.unreadSources.join(", ")}`
+                      : data.needsYou.total > 0
+                        ? `${data.needsYou.total} waiting on you`
+                        : "Nothing waiting"}
+                  </p>
                   <p className="text-xs text-muted-foreground">Open decisions — review in Decisions.</p>
                 </div>
                 <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground group-hover:translate-x-0.5 transition-transform" aria-hidden="true" />

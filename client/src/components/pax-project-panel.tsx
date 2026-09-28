@@ -8,6 +8,7 @@ import { Paperclip, Trash2, Loader2, FolderOpen, Plus, CheckCircle2, X } from "l
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
+import { okOrThrow } from "@/lib/fetch-honesty";
 import { useToast } from "@/hooks/use-toast";
 import { Verbs } from "@/lib/labels";
 
@@ -65,21 +66,20 @@ export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProjec
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: projects = [], isLoading } = useQuery<PaxProject[]>({
+  // A failed read is not "no projects" (DEFECT-0160).
+  const { data: projects = [], isLoading, isError, refetch } = useQuery<PaxProject[]>({
     queryKey: ["/api/ai/projects"],
     queryFn: async () => {
-      const r = await fetch("/api/ai/projects", { credentials: "include" });
-      if (!r.ok) return [];
+      const r = await okOrThrow(await fetch("/api/ai/projects", { credentials: "include" }));
       return r.json();
     },
     enabled: open,
   });
 
-  const { data: projectFiles = [] } = useQuery<PaxProjectFile[]>({
+  const { data: projectFiles = [], isError: projectFilesError } = useQuery<PaxProjectFile[]>({
     queryKey: ["/api/ai/projects", selectedProject, "files"],
     queryFn: async () => {
-      const r = await fetch(`/api/ai/projects/${selectedProject}/files`, { credentials: "include" });
-      if (!r.ok) return [];
+      const r = await okOrThrow(await fetch(`/api/ai/projects/${selectedProject}/files`, { credentials: "include" }));
       return r.json();
     },
     enabled: open && selectedProject != null,
@@ -218,7 +218,13 @@ export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProjec
               </div>
             )}
 
-            {!isLoading && projects.length === 0 && (
+            {!isLoading && isError && (
+              <div className="text-xs text-center py-4 space-y-2" role="alert">
+                <p className="text-destructive">Couldn't load your projects.</p>
+                <Button size="sm" variant="outline" onClick={() => refetch()}>{Verbs.RETRY}</Button>
+              </div>
+            )}
+            {!isLoading && !isError && projects.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-4">No projects yet. Create one above.</p>
             )}
 
@@ -313,6 +319,9 @@ export function PaxProjectPanel({ open, onClose, activeProjectId, onSelectProjec
               />
 
               {/* Project files list */}
+              {projectFilesError && (
+                <p className="text-xs text-destructive" role="alert">Couldn't load this project's files.</p>
+              )}
               {projectFiles.length > 0 && (
                 <div className="space-y-1">
                   <p className="text-caption font-medium text-muted-foreground uppercase tracking-wide">Files</p>

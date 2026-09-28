@@ -1,5 +1,6 @@
 import { useState, useId } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { okOrThrow } from "@/lib/fetch-honesty";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -197,10 +198,12 @@ export default function SafetyGatesPage() {
     refetch: refetchDeals,
     isRefetching: dealsRefetching,
   } = useQuery<Deal[]>({
-    queryKey: ["/api/deals"],
+    // Own key (the shared ["/api/deals"] holds other pages' shapes) and a
+    // failed read throws, so the page's existing error branch can render
+    // instead of "no deals" (DEFECT-0160).
+    queryKey: ["safety-gates", "deals"],
     queryFn: async () => {
-      const r = await fetch("/api/deals", { credentials: "include" });
-      if (!r.ok) return [];
+      const r = await okOrThrow(await fetch("/api/deals?pageSize=100", { credentials: "include" }));
       const j = await r.json();
       return Array.isArray(j) ? j : Array.isArray(j?.data) ? j.data : [];
     },
@@ -264,7 +267,7 @@ export default function SafetyGatesPage() {
                 </SelectItem>
               ))}
               {activeDeals.length === 0 && !dealsLoading && (
-                <SelectItem value="_none" disabled>No active deals</SelectItem>
+                <SelectItem value="_none" disabled>{dealsError ? "Couldn't load deals" : "No active deals"}</SelectItem>
               )}
             </SelectContent>
           </Select>

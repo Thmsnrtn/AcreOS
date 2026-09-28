@@ -216,13 +216,11 @@ export function registerAutopilotRoutes(app: Express): void {
             }
           }),
         );
-        let openAsks = 0;
-        try {
-          const { listOpenAsks } = await import("./services/solene/founderCollab");
-          openAsks = (await listOpenAsks()).length;
-        } catch {
-          openAsks = 0;
-        }
+        // "Waiting on you" is the needs-you union, read live (DEFECT-0163).
+        // This counted open asks only and read a failure as 0 — "Nothing
+        // waiting" beside a Decisions queue it never looked at.
+        const { loadNeedsYouCounts } = await import("./services/autopilot/needsYou");
+        const needsYou = await loadNeedsYouCounts();
         let calibration: { grade: string; n: number } | null = null;
         try {
           const { getCalibrationPairs } = await import("./services/autopilot/experienceLog");
@@ -260,7 +258,7 @@ export function registerAutopilotRoutes(app: Express): void {
         } catch {
           budget = null;
         }
-        return res.json({ settings, ledger, openAsks, calibration, conversions, budget });
+        return res.json({ settings, ledger, needsYou, calibration, conversions, budget });
       } catch (err) {
         return Errors.internal(res, err);
       }
@@ -583,13 +581,11 @@ export function registerAutopilotRoutes(app: Express): void {
           /* omit */
         }
 
-        let pendingCount = 0;
-        try {
-          const { listPendingHands } = await import("./services/autopilot/pendingHands");
-          pendingCount = (await listPendingHands()).length;
-        } catch {
-          /* 0 */
-        }
+        // Live and from the one needs-you source (DEFECT-0163). pendingCount
+        // was a failure-swallowing list length that read 0 on an error, and
+        // the queue/ask counts were the once-a-day pulse's. null = unread.
+        const { loadNeedsYouCounts } = await import("./services/autopilot/needsYou");
+        const needsYou = await loadNeedsYouCounts();
 
         return res.json({
           loop,
@@ -599,14 +595,14 @@ export function registerAutopilotRoutes(app: Express): void {
           trials: pulse?.trials ?? null,
           uptimePct: pulse?.uptimePct ?? null,
           envelopeStatus: pulse?.envelopeStatus ?? null,
-          decisionsWaitingCount: pulse?.decisionsWaitingCount ?? 0,
-          asksOpenCount: pulse?.asksOpenCount ?? 0,
+          decisionsWaitingCount: needsYou.decisions,
+          asksOpenCount: needsYou.asks,
           autonomyHorizonDays: pulse?.autonomyHorizonDays ?? null,
           dispatchesCompletedLast24h: pulse?.dispatchesCompletedLast24h ?? 0,
           dispatchesFlaggedLast24h: pulse?.dispatchesFlaggedLast24h ?? 0,
           supportThresholdLine,
           supportThresholdPct,
-          pendingCount,
+          pendingCount: needsYou.frozenSends,
         });
       } catch (err) {
         return Errors.internal(res, err);

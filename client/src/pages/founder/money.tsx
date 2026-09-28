@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
-import { nullOn404 } from "@/lib/fetch-honesty";
+import { nullOn404, okOrThrow } from "@/lib/fetch-honesty";
 import {
   Card,
   CardContent,
@@ -700,18 +700,16 @@ function EnvelopeCard({
 }
 
 function EnvelopesSection() {
-  const { data, isLoading } = useQuery<{ envelopes: EnvelopeRow[] }>({
+  // A failed read throws (DEFECT-0160). It answered no envelopes, and every
+  // card then said "Envelope tracking ships with Lena's Phase 1" — a claim
+  // about the product, made out of a failed request.
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery<{ envelopes: EnvelopeRow[] }>({
     queryKey: ["/api/founder/money/envelopes"],
     queryFn: async () => {
       const res = await fetch("/api/founder/money/envelopes", {
         credentials: "include",
       });
-      if (!res.ok) return { envelopes: [] };
-      try {
-        return await res.json();
-      } catch {
-        return { envelopes: [] };
-      }
+      return (await okOrThrow(res)).json();
     },
     staleTime: 5 * 60_000,
     retry: false,
@@ -725,6 +723,16 @@ function EnvelopesSection() {
       <h2 className="text-sm font-semibold text-foreground mb-3">
         Capital envelopes
       </h2>
+      {isError ? (
+        <QueryErrorState
+          error={error}
+          onRetry={() => refetch()}
+          isRetrying={isRefetching}
+          title="Couldn't load the capital envelopes"
+          compact
+          testId="money-envelopes-error"
+        />
+      ) : (
       <motion.div
         variants={staggerContainer}
         initial="hidden"
@@ -739,6 +747,7 @@ function EnvelopesSection() {
           />
         ))}
       </motion.div>
+      )}
     </section>
   );
 }
@@ -746,18 +755,13 @@ function EnvelopesSection() {
 // ─── Recent capital events ───────────────────────────────────────────────
 
 function RecentEventsSection() {
-  const { data, isLoading } = useQuery<{ events: CapitalEvent[] }>({
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery<{ events: CapitalEvent[] }>({
     queryKey: ["/api/founder/money/events", "recent"],
     queryFn: async () => {
       const res = await fetch("/api/founder/money/events?limit=5", {
         credentials: "include",
       });
-      if (!res.ok) return { events: [] };
-      try {
-        return await res.json();
-      } catch {
-        return { events: [] };
-      }
+      return (await okOrThrow(res)).json();
     },
     staleTime: 60_000,
     retry: false,
@@ -783,6 +787,15 @@ function RecentEventsSection() {
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
           </div>
+        ) : isError ? (
+          <QueryErrorState
+            error={error}
+            onRetry={() => refetch()}
+            isRetrying={isRefetching}
+            title="Couldn't load recent capital events"
+            compact
+            testId="money-events-error"
+          />
         ) : events.length === 0 ? (
           <EmptyState
             icon={DollarSign}

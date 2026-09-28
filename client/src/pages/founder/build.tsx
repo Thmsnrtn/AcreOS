@@ -45,6 +45,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
+import { okOrThrow } from "@/lib/fetch-honesty";
 import { Button } from "@/components/ui/button";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { PrefetchLink as Link } from "@/components/prefetch-link";
@@ -253,8 +254,7 @@ export default function FounderBuildPage() {
       const res = await fetch("/api/founder/dispatches?status=queued&limit=20", {
         credentials: "include",
       });
-      if (!res.ok) return { dispatches: [] };
-      return res.json();
+      return (await okOrThrow(res)).json();
     },
     staleTime: 30_000,
   });
@@ -266,8 +266,7 @@ export default function FounderBuildPage() {
         "/api/founder/dispatches?status=in_progress&limit=20",
         { credentials: "include" },
       );
-      if (!res.ok) return { dispatches: [] };
-      return res.json();
+      return (await okOrThrow(res)).json();
     },
     staleTime: 30_000,
   });
@@ -278,8 +277,7 @@ export default function FounderBuildPage() {
       const res = await fetch("/api/founder/asks?status=open&limit=20", {
         credentials: "include",
       });
-      if (!res.ok) return { asks: [] };
-      return res.json();
+      return (await okOrThrow(res)).json();
     },
     staleTime: 30_000,
   });
@@ -290,17 +288,7 @@ export default function FounderBuildPage() {
       const res = await fetch("/api/founder/team-system-audit/recent", {
         credentials: "include",
       });
-      if (!res.ok)
-        return {
-          runs: [],
-          summary: {
-            totalRuns: 0,
-            driftSignalCount: 0,
-            totalFindings: 0,
-            byDimension: {},
-          },
-        };
-      return res.json();
+      return (await okOrThrow(res)).json();
     },
     staleTime: 5 * 60_000,
     retry: false,
@@ -310,6 +298,11 @@ export default function FounderBuildPage() {
   const inProgress = inProgressQuery.data?.dispatches ?? [];
   const openAsks = asksQuery.data?.asks ?? [];
   const auditTotal = auditQuery.data?.summary.totalFindings ?? 0;
+  // A failed read renders "—", never 0 (DEFECT-0160): every query above
+  // answered an empty list on a failed request, so each tile read "0" and
+  // the asks card said "Agents have everything they need right now."
+  const tileValue = (q: { isLoading: boolean; isError: boolean }, n: number) =>
+    q.isLoading ? "…" : q.isError ? "—" : n;
 
   // Top 5 in-flight, prioritising in-progress over queued so Tom sees what's
   // actually running.
@@ -356,26 +349,26 @@ export default function FounderBuildPage() {
           <CountTile
             label="In flight"
             value={
-              inFlightLoading ? "…" : inProgress.length + queued.length
+              inFlightLoading ? "…" : inFlightError ? "—" : inProgress.length + queued.length
             }
             icon={Workflow}
             testId="build-count-in-flight"
           />
           <CountTile
             label="Queued"
-            value={queuedQuery.isLoading ? "…" : queued.length}
+            value={tileValue(queuedQuery, queued.length)}
             icon={Hourglass}
             testId="build-count-queued"
           />
           <CountTile
             label="Open asks"
-            value={asksQuery.isLoading ? "…" : openAsks.length}
+            value={tileValue(asksQuery, openAsks.length)}
             icon={MessageCircleQuestion}
             testId="build-count-open-asks"
           />
           <CountTile
             label="Audit findings"
-            value={auditQuery.isLoading ? "…" : auditTotal}
+            value={tileValue(auditQuery, auditTotal)}
             icon={ShieldAlert}
             testId="build-count-audit-findings"
           />
@@ -504,6 +497,15 @@ export default function FounderBuildPage() {
                 <Skeleton className="h-12 w-full" />
                 <Skeleton className="h-12 w-full" />
               </div>
+            ) : asksQuery.isError ? (
+              <QueryErrorState
+                error={asksQuery.error}
+                onRetry={() => asksQuery.refetch()}
+                isRetrying={asksQuery.isRefetching}
+                title="Couldn't load open asks"
+                compact
+                testId="build-asks-error"
+              />
             ) : topAsks.length === 0 ? (
               <EmptyState
                 icon={MessageCircleQuestion}

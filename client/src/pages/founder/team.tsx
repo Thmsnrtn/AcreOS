@@ -38,6 +38,7 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { PrefetchLink as Link } from "@/components/prefetch-link";
 import { staggerContainer, staggerItem } from "@/lib/animations";
+import { okOrThrow } from "@/lib/fetch-honesty";
 import {
   CANONICAL_AGENT_CODENAMES,
   type CanonicalAgentCodename,
@@ -137,8 +138,9 @@ function AgentCard({
   openAskCount,
 }: {
   meta: AgentMeta;
-  completedCount: number;
-  openAskCount: number;
+  /** null = the read failed; rendered "—", never 0. */
+  completedCount: number | null;
+  openAskCount: number | null;
 }) {
   const dormant = meta.phase !== "active";
   return (
@@ -146,7 +148,7 @@ function AgentCard({
       <Link
         href={`/founder/dispatches?agent=${meta.codename}`}
         className="block rounded-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        aria-label={`View ${meta.displayName}'s dispatch history (${completedCount} completed in last 7 days)`}
+        aria-label={`View ${meta.displayName}'s dispatch history (${completedCount ?? "unknown"} completed in last 7 days)`}
         data-testid={`team-card-link-${meta.codename}`}
       >
       <Card
@@ -178,17 +180,17 @@ function AgentCard({
             <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
               <span
                 className="inline-flex items-center gap-1"
-                aria-label={`${completedCount} dispatches completed in last 7 days`}
+                aria-label={`${completedCount ?? "Unknown"} dispatches completed in last 7 days`}
               >
                 <GitCommit className="h-3 w-3" aria-hidden="true" />
-                {completedCount} / 7d
+                {completedCount ?? "—"} / 7d
               </span>
               <span
                 className="inline-flex items-center gap-1"
-                aria-label={`${openAskCount} open asks`}
+                aria-label={`${openAskCount ?? "Unknown"} open asks`}
               >
                 <MessageCircleQuestion className="h-3 w-3" aria-hidden="true" />
-                {openAskCount} asks
+                {openAskCount ?? "—"} asks
               </span>
             </div>
           </div>
@@ -226,8 +228,7 @@ export default function FounderTeamPage() {
         "/api/founder/dispatches?status=completed&limit=100",
         { credentials: "include" },
       );
-      if (!res.ok) return { dispatches: [] };
-      return res.json();
+      return (await okOrThrow(res)).json();
     },
     staleTime: 60_000,
   });
@@ -238,14 +239,15 @@ export default function FounderTeamPage() {
       const res = await fetch("/api/founder/asks?status=open&limit=100", {
         credentials: "include",
       });
-      if (!res.ok) return { asks: [] };
-      return res.json();
+      return (await okOrThrow(res)).json();
     },
     staleTime: 60_000,
   });
 
   const isLoading = dispatchesQuery.isLoading || asksQuery.isLoading;
-  const isError = dispatchesQuery.isError && asksQuery.isError;
+  // Either read failing is worth saying (DEFECT-0160): both answered an empty
+  // list on a failed request, so the cards read "0 / 7d" and "0 asks".
+  const isError = dispatchesQuery.isError || asksQuery.isError;
   const dispatches = dispatchesQuery.data?.dispatches ?? [];
   const asks = asksQuery.data?.asks ?? [];
 
@@ -299,8 +301,8 @@ export default function FounderTeamPage() {
                 <AgentCard
                   key={m.codename}
                   meta={m}
-                  completedCount={countCompletedLast7d(dispatches, m.codename)}
-                  openAskCount={countOpenAsks(asks, m.codename)}
+                  completedCount={dispatchesQuery.isError ? null : countCompletedLast7d(dispatches, m.codename)}
+                  openAskCount={asksQuery.isError ? null : countOpenAsks(asks, m.codename)}
                 />
               ))}
             </motion.div>

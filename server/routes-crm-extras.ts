@@ -2,8 +2,8 @@ import type { Express, Response } from "express";
 import { getOrganization, type AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
 import { z } from "zod";
-import { insertTaskSchema, notificationPreferences } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { insertTaskSchema, notificationPreferences, activityEvents } from "@shared/schema";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
@@ -108,31 +108,43 @@ export function registerCRMExtrasRoutes(app: Express): void {
   
   api.get("/api/activity", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
-      const offset = parseInt(req.query.offset as string) || 0;
-      const eventTypes = req.query.eventTypes 
-        ? (req.query.eventTypes as string).split(",") 
-        : undefined;
-      const entityType = req.query.entityType as string | undefined;
+      // Bounded both ways: a negative LIMIT/OFFSET is a Postgres error, and a
+      // repeated ?eventTypes= arrives as an array.
+      const limit = Math.max(1, Math.min(parseInt(String(req.query.limit)) || 50, 100));
+      const offset = Math.max(0, parseInt(String(req.query.offset)) || 0);
+      const eventTypes = ([] as unknown[])
+        .concat(req.query.eventTypes ?? [])
+        .flatMap((t) => (typeof t === "string" ? t.split(",") : []))
+        .map((t) => t.trim())
+        .filter(Boolean);
+      const entityType = typeof req.query.entityType === "string" ? req.query.entityType : undefined;
       
       const orgId = req.organization!.id;
-      
-      let events = await storage.getRecentActivityEvents(orgId, limit + offset);
-      
-      if (eventTypes && eventTypes.length > 0) {
-        events = events.filter(e => eventTypes.includes(e.eventType));
-      }
-      
-      if (entityType) {
-        events = events.filter(e => e.entityType === entityType);
-      }
-      
-      const paginatedEvents = events.slice(offset, offset + limit);
-      
+
+      // Filtered and paged IN SQL (DEFECT-0162). This read limit+offset rows
+      // of ANY type and filtered afterwards, so the Payments / Communications
+      // tabs searched only the latest 50 events and said "No activity recorded
+      // yet" while hundreds existed — and `hasMore` compared the fetched rows
+      // with offset+limit, so it could never be true and "Load more" never
+      // appeared.
+      const filters = and(
+        eventTypes && eventTypes.length > 0 ? inArray(activityEvents.eventType, eventTypes) : undefined,
+        entityType ? eq(activityEvents.entityType, entityType) : undefined,
+      );
+      const [page, [{ total }]] = await Promise.all([
+        db.select().from(activityEvents)
+          .where(and(eq(activityEvents.organizationId, orgId), filters))
+          .orderBy(desc(activityEvents.eventDate))
+          .limit(limit + 1)
+          .offset(offset),
+        db.select({ total: sql<number>`count(*)::int` }).from(activityEvents)
+          .where(and(eq(activityEvents.organizationId, orgId), filters)),
+      ]);
+
       res.json({
-        events: paginatedEvents,
-        hasMore: events.length > offset + limit,
-        total: events.length,
+        events: page.slice(0, limit),
+        hasMore: page.length > limit,
+        total: Number(total),
       });
     } catch (error: any) {
       logger.error("Activity feed error", error);

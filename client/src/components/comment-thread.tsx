@@ -10,6 +10,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { MessageCircle, Send, Trash2, Loader2, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { fadeInUp } from "@/lib/animations";
+import { okOrThrow } from "@/lib/fetch-honesty";
+import { Verbs } from "@/lib/labels";
 
 interface Comment {
   id: number;
@@ -115,8 +117,7 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
     queryKey: [...queryKey, "count"],
     queryFn: async () => {
       const res = await fetch(`/api/comments/${entityType}/${entityId}?limit=1`, { credentials: "include" });
-      if (!res.ok) return { comments: [], hasMore: false };
-      return res.json();
+      return (await okOrThrow(res)).json();
     },
     staleTime: 30 * 1000,
   });
@@ -127,6 +128,8 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
     fetchNextPage,
     hasNextPage,
     isLoading,
+    isError,
+    refetch,
   } = useInfiniteQuery<CommentsPage>({
     queryKey,
     queryFn: async ({ pageParam }) => {
@@ -249,6 +252,18 @@ export function CommentThread({ entityType, entityId, currentUserId }: CommentTh
             ))}
             <span className="sr-only">Loading…</span>
           </div>
+        ) : isError ? (
+          // A failed read is not an empty thread (DEFECT-0160).
+          <p className="text-xs text-muted-foreground text-center py-2 m-0" role="alert">
+            Couldn't load comments.{" "}
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+            >
+              {Verbs.RETRY}
+            </button>
+          </p>
         ) : allComments.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-2 m-0">No comments yet. Start the conversation.</p>
         ) : (

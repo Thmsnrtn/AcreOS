@@ -12,6 +12,14 @@ import { assertNotUnderLegalHold, filterOutHeldIds } from "../services/legalHold
 import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../storage";
 import { LIST_READ_CAP, capListRead } from "./listCap";
 
+/** Refused merge: the two leads are different parcels (DEFECT-0161). */
+class LeadsAreDistinctParcelsError extends Error {
+  constructor() {
+    super("These leads are different parcels (different APN/county), not duplicates — merging would delete one.");
+    this.name = "LeadsAreDistinctParcelsError";
+  }
+}
+
 export const leadRepo = {
   // Leads
   async getLeads(this: DatabaseStorage, orgId: number, filters?: { assignedTo?: number | null }): Promise<Lead[]> {
@@ -457,6 +465,12 @@ export const leadRepo = {
     if (!primary || !duplicate) {
       throw new Error("Lead not found");
     }
+    // Two different parcels are not duplicates, however alike their owner
+    // details: the merge deletes one (DEFECT-0161).
+    const { areDistinctParcels } = await import("../services/leads/parcelDedupe");
+    if (areDistinctParcels(primary, duplicate)) {
+      throw new LeadsAreDistinctParcelsError();
+    }
 
     const mergedData: Partial<InsertLead> = {};
     const fieldsToMerge: (keyof InsertLead)[] = [
@@ -468,6 +482,28 @@ export const leadRepo = {
       const duplicateVal = duplicate[field as keyof Lead];
       if (!primaryVal && duplicateVal) {
         (mergedData as any)[field] = duplicateVal;
+      }
+    }
+
+    // The parcel moves as ONE unit (DEFECT-0161). Field by field, a primary
+    // with a county but no APN took the duplicate's APN under its own county —
+    // a parcel matching neither lead — and the parcel's attributes were
+    // dropped with the deleted row. When only the duplicate has a parcel, the
+    // whole parcel comes across; when both have it (the same parcel, or the
+    // merge was refused above), only the primary's gaps are filled.
+    const parcelAttrs = ["propertyAddress", "acreage", "estimatedValue", "taxDelinquent"] as const;
+    const blank = (v: unknown) => v === null || v === undefined || v === "";
+    if (blank(primary.apn) && !blank(duplicate.apn)) {
+      for (const field of ["apn", "county", ...parcelAttrs] as const) {
+        (mergedData as Record<string, unknown>)[field] = duplicate[field];
+      }
+    } else if (blank(primary.apn) === blank(duplicate.apn)) {
+      // Same parcel, or neither names one. A duplicate with no APN has no
+      // parcel to vouch for its attributes, so it cannot fill the primary's.
+      for (const field of ["county", ...parcelAttrs] as const) {
+        if (blank(primary[field]) && !blank(duplicate[field])) {
+          (mergedData as Record<string, unknown>)[field] = duplicate[field];
+        }
       }
     }
 
