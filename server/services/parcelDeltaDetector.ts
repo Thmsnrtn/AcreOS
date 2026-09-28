@@ -253,6 +253,36 @@ interface PipelineParcel {
 }
 
 /**
+ * A parcel's identity is APN + STATE + COUNTY (DEFECT-0128). APNs are assigned
+ * per county, so the same APN string names different parcels in different
+ * counties of one state, and in different states. Keying on apn|state alone
+ * attached another county's owner or tax change to a customer's parcel.
+ */
+function parcelIdentityKey(apn: string, state: string | null, county: string | null): string {
+  return `${apn}|${(state || "").toUpperCase()}|${(county || "").trim().toLowerCase()}`;
+}
+
+/**
+ * Collapse pipeline rows to one entry per parcel identity. A row with no
+ * county cannot be identified and is dropped. Keeps the richest link.
+ */
+function trackedParcelsByIdentity(parcels: PipelineParcel[]): Map<string, PipelineParcel> {
+  const byKey = new Map<string, PipelineParcel>();
+  for (const p of parcels) {
+    if (!p.apn || !p.state || !p.county || !p.county.trim()) continue;
+    const key = parcelIdentityKey(p.apn, p.state, p.county);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, { ...p });
+    } else {
+      if (existing.propertyId === null && p.propertyId !== null) existing.propertyId = p.propertyId;
+      if (existing.leadId === null && p.leadId !== null) existing.leadId = p.leadId;
+    }
+  }
+  return byKey;
+}
+
+/**
  * The set of parcels we watch for an org: every (apn, state, county) that
  * appears as a property, plus leads that carry an apn. Properties always have
  * apn + state + county; leads carry apn + state (county may be null) so we only
@@ -297,15 +327,24 @@ export async function getPipelineParcels(
       ),
     );
 
-  const countyByApnState = new Map<string, string>();
+  // A lead carries no county. It may borrow one from the org's own properties
+  // only when those name exactly ONE county for its apn+state; otherwise the
+  // lead's parcel is ambiguous and is not tracked (an empty county is dropped
+  // by trackedParcelsByIdentity) rather than guessed (DEFECT-0128).
+  const countiesByApnState = new Map<string, Set<string>>();
   for (const p of out) {
-    countyByApnState.set(`${p.apn}|${p.state}`, p.county);
+    if (!p.county) continue;
+    const k = `${p.apn}|${p.state}`;
+    const set = countiesByApnState.get(k) ?? new Set<string>();
+    set.add(p.county);
+    countiesByApnState.set(k, set);
   }
 
   for (const l of leadRows) {
     if (!l.apn) continue;
     const state = (l.state || "").toUpperCase();
-    const county = countyByApnState.get(`${l.apn}|${state}`) ?? "";
+    const candidates = countiesByApnState.get(`${l.apn}|${state}`);
+    const county = candidates && candidates.size === 1 ? [...candidates][0] : "";
     out.push({
       apn: l.apn,
       state,
@@ -334,29 +373,12 @@ export async function loadObservationPairs(
 ): Promise<FieldObservationPair[]> {
   if (parcels.length === 0) return [];
 
-  // De-dup the parcel set on (apn, state) — multiple pipeline rows can point at
-  // the same parcel. Keep the richest county/lead/property association.
-  const byKey = new Map<string, PipelineParcel>();
-  for (const p of parcels) {
-    if (!p.apn || !p.state) continue;
-    const key = `${p.apn}|${p.state}`;
-    const existing = byKey.get(key);
-    if (!existing) {
-      byKey.set(key, p);
-    } else {
-      // Prefer an entry that has a county, then one with a propertyId.
-      if (!existing.county && p.county) existing.county = p.county;
-      if (existing.propertyId === null && p.propertyId !== null) {
-        existing.propertyId = p.propertyId;
-      }
-      if (existing.leadId === null && p.leadId !== null) {
-        existing.leadId = p.leadId;
-      }
-    }
-  }
+  // One entry per parcel identity (apn, state, county) — DEFECT-0128.
+  const byKey = trackedParcelsByIdentity(parcels);
 
   const apns = Array.from(new Set(Array.from(byKey.values()).map((p) => p.apn)));
   if (apns.length === 0) return [];
+  const states = Array.from(new Set(Array.from(byKey.values()).map((p) => p.state.toUpperCase())));
 
   // Pull all tracked-field observations for these APNs (this org or global),
   // newest first. The (apn, field, observed_at) index serves this. We then
@@ -377,6 +399,7 @@ export async function loadObservationPairs(
     .where(
       and(
         inArray(parcelObservations.apn, apns),
+        inArray(parcelObservations.state, states),
         inArray(parcelObservations.field, TRACKED_FIELDS as unknown as string[]),
         sql`(${parcelObservations.organizationId} = ${organizationId} OR ${parcelObservations.organizationId} IS NULL)`,
       ),
@@ -386,6 +409,9 @@ export async function loadObservationPairs(
   // Group newest-first; keep the first two per (apn, state, county, field).
   const grouped = new Map<string, typeof rows>();
   for (const r of rows) {
+    // Only observations of a TRACKED parcel identity: same APN in another
+    // county or state is a different parcel (DEFECT-0128).
+    if (!byKey.has(parcelIdentityKey(r.apn, r.state, r.county))) continue;
     const key = `${r.apn}|${(r.state || "").toUpperCase()}|${(r.county || "").toLowerCase()}|${r.field}`;
     const arr = grouped.get(key);
     if (!arr) {
@@ -435,33 +461,25 @@ export async function detectDeltasForOrg(
   const parcels = await getPipelineParcels(organizationId);
   const pairs = await loadObservationPairs(organizationId, parcels);
 
-  // Build an apn+state -> pipeline association so detected deltas can link back
-  // to the lead/property that put the parcel on the radar.
-  const assoc = new Map<string, PipelineParcel>();
-  for (const p of parcels) {
-    if (!p.apn || !p.state) continue;
-    const key = `${p.apn}|${p.state.toUpperCase()}`;
-    const existing = assoc.get(key);
-    if (!existing) {
-      assoc.set(key, { ...p });
-    } else {
-      if (!existing.county && p.county) existing.county = p.county;
-      if (existing.propertyId === null && p.propertyId !== null) existing.propertyId = p.propertyId;
-      if (existing.leadId === null && p.leadId !== null) existing.leadId = p.leadId;
-    }
-  }
+  // Link each change back to the lead/property that put the parcel on the
+  // radar, by full parcel identity (DEFECT-0128).
+  const assoc = trackedParcelsByIdentity(parcels);
 
   const deltas: DetectedDelta[] = [];
   for (const pair of pairs) {
     const result = evaluateFieldDelta(pair, opts);
     if (!result.changed || !result.alertType) continue;
 
-    const link = assoc.get(`${pair.apn}|${pair.state.toUpperCase()}`);
+    const link = assoc.get(parcelIdentityKey(pair.apn, pair.state, pair.county));
+    // A change to a parcel this org does not track is not this org's alert.
+    // It used to be pushed unlinked, so a same-APN change in another state
+    // reached the customer's Today feed (DEFECT-0128).
+    if (!link) continue;
     deltas.push({
       organizationId,
       apn: pair.apn,
       state: pair.state,
-      county: pair.county || link?.county || "",
+      county: pair.county || link.county,
       field: pair.field as TrackedField,
       alertType: result.alertType,
       previousValue: pair.previous?.value ?? null,
@@ -469,8 +487,8 @@ export async function detectDeltasForOrg(
       source: pair.current.source ?? null,
       confidence: pair.current.confidence ?? null,
       observedAt: pair.current.observedAt ?? null,
-      leadId: link?.leadId ?? null,
-      propertyId: link?.propertyId ?? null,
+      leadId: link.leadId,
+      propertyId: link.propertyId,
       dedupeKey: dedupeKeyFor(pair),
     });
   }
