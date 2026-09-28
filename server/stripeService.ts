@@ -10,14 +10,18 @@ function idempotencyKey(operation: string, ...seeds: (string | number | undefine
 }
 
 export class StripeService {
-  async createCustomer(email: string, userId: string, name?: string) {
+  async createCustomer(email: string | null, userId: string, name?: string) {
+    // users.email is nullable. A null email is omitted rather than sent as the
+    // string "null" (surfaced 2026-09-28 when the `req.user as any` casts that
+    // hid the nullability came off — DEFECT-0063).
+    const customerEmail = email ?? undefined;
     const stripe = await getUncachableStripeClient();
     return await stripeCircuitBreaker.call(() =>
       stripe.customers.create(
         // `app: 'acreos'` namespaces the customer in the shared account (see
         // docs/stripe-shared-account.md); `userId` is our own back-reference.
-        { email, name, metadata: { app: 'acreos', userId } },
-        { idempotencyKey: idempotencyKey('create_customer', userId, email) }
+        { email: customerEmail, name, metadata: { app: 'acreos', userId } },
+        { idempotencyKey: idempotencyKey('create_customer', userId, customerEmail) }
       )
     );
   }

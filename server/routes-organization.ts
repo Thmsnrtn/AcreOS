@@ -474,7 +474,7 @@ export function registerOrganizationRoutes(app: Express): void {
     const updated = await storage.updateOrganization(org.id, updates);
 
     try {
-      const user = req.user as any;
+      const user = req.user;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId: (user?.id || user?.id)?.toString() || null,
@@ -1184,7 +1184,7 @@ export function registerOrganizationRoutes(app: Express): void {
     const updated = await storage.updateTeamMember(memberId, updates);
 
     try {
-      const user = req.user as any;
+      const user = req.user;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId: (user?.id || user?.id)?.toString() || null,
@@ -1269,7 +1269,7 @@ export function registerOrganizationRoutes(app: Express): void {
       } as Partial<InsertTeamMember>);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -1338,7 +1338,7 @@ export function registerOrganizationRoutes(app: Express): void {
         );
       }
 
-      const adder = req.user as any;
+      const adder = req.user;
       const adderUserId = String(adder?.id || adder?.id || "");
 
       const row = await storage.addOrgCoOwner({
@@ -1607,7 +1607,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const updated = await storage.updateOrganization(org.id, { settings: merged } as any);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,

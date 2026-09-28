@@ -526,7 +526,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.post("/api/document-templates/:id/versions", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -585,7 +585,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.post("/api/generated-documents/:id/versions", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -1432,7 +1432,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.post("/api/document-packages", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const { name, description, dealId, propertyId, documents } = req.body;
       
       if (!name) {
@@ -1596,7 +1596,7 @@ export function registerDocSystemRoutes(app: Express): void {
   api.post("/api/document-packages/:id/generate-all", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {

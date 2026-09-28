@@ -86,7 +86,7 @@ const transferOwnershipSchema = z.object({
  * when this returns false.
  */
 export function requireFounderForRecovery(req: AuthenticatedRequest, res: Response): boolean {
-  const user = req.user as any;
+  const user = req.user;
   const userId = getClerkAuth(req)?.userId ?? user?.clerkUserId ?? null;
   const email = user?.email ?? null;
 
@@ -109,7 +109,7 @@ async function writeAuditEvent(
   }
 ): Promise<void> {
   try {
-    const user = req.user as any;
+    const user = req.user;
     const userId = getClerkAuth(req)?.userId ?? user?.clerkUserId ?? null;
     const email = user?.email ?? null;
     const ip =

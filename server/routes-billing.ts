@@ -269,7 +269,7 @@ export function registerBillingRoutes(app: Express): void {
         // Stripe customer is orphaned and the next attempt creates another;
         // the fix for THAT is an idempotency key on createCustomer, not a
         // transaction that cannot include it.
-        const user = req.user as any;
+        const user = req.user;
         const customer = await stripeService.createCustomer(
           user.email || '',
           user.id,
@@ -383,7 +383,7 @@ export function registerBillingRoutes(app: Express): void {
         // Stripe customer is orphaned and the next attempt creates another;
         // the fix for THAT is an idempotency key on createCustomer, not a
         // transaction that cannot include it.
-        const user = req.user as any;
+        const user = req.user;
         const customer = await stripeService.createCustomer(user.email || "", user.id, org.name);
         await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
         customerId = customer.id;
@@ -464,7 +464,7 @@ export function registerBillingRoutes(app: Express): void {
       );
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -715,7 +715,7 @@ export function registerBillingRoutes(app: Express): void {
         // Stripe customer is orphaned and the next attempt creates another;
         // the fix for THAT is an idempotency key on createCustomer, not a
         // transaction that cannot include it.
-        const user = req.user as any;
+        const user = req.user;
         const customer = await stripeService.createCustomer(user.email, user.id, org.name);
         await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
         customerId = customer.id;
@@ -774,7 +774,7 @@ export function registerBillingRoutes(app: Express): void {
         // Stripe customer is orphaned and the next attempt creates another;
         // the fix for THAT is an idempotency key on createCustomer, not a
         // transaction that cannot include it.
-        const user = req.user as any;
+        const user = req.user;
         const customer = await stripeService.createCustomer(
           user.email,
           user.id,
@@ -881,7 +881,7 @@ export function registerBillingRoutes(app: Express): void {
     try {
       const { stripeConnectService } = await import("./services/stripeConnect");
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
 
       const parsed = connectLinkSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -982,7 +982,7 @@ export function registerBillingRoutes(app: Express): void {
       await stripeConnectService.disconnectAccount(org.id);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,

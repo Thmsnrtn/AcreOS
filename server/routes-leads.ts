@@ -445,7 +445,7 @@ export function registerLeadRoutes(app: Express): void {
       // match on what was actually stored.
       emitLeadCreated(org.id, lead);
 
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -687,7 +687,7 @@ export function registerLeadRoutes(app: Express): void {
       // on every save-without-changes).
       emitLeadUpdated(org.id, existingLead, lead, Object.keys(validated));
 
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -754,7 +754,7 @@ export function registerLeadRoutes(app: Express): void {
     if (assertAssignedLeadWritable(req as AuthenticatedRequest, res, existingLead as { assignedTo?: unknown })) return;
 
     // Soft delete: set deletedAt instead of hard deleting
-    const user = req.user as any;
+    const user = req.user;
     const userId = user?.id || user?.id;
     await db.update(leads).set({
       deletedAt: new Date(),
@@ -841,7 +841,7 @@ export function registerLeadRoutes(app: Express): void {
       // it did not do. Same choice routes-bulk.ts already made.
       if (refuseBulkLeadWrite(req as AuthenticatedRequest, res, "Bulk lead deletes")) return;
 
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id;
 
       // Contract and audit shape ported 2026-08-27 from the routes.ts twin of
@@ -937,7 +937,7 @@ export function registerLeadRoutes(app: Express): void {
         }
       }
 
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,

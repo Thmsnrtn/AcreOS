@@ -1184,7 +1184,7 @@ export async function registerRoutes(
       const lead = await storage.updateLead(leadId, { lastContactedAt: now }, org.id);
       
       // Log the action
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -1281,7 +1281,7 @@ export async function registerRoutes(
       });
       
       // Audit log
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -1337,7 +1337,7 @@ export async function registerRoutes(
         return Errors.badRequest(res, "ids must be a non-empty array");
       }
       
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       
       const restoredCount = await storage.restoreLeads(org.id, ids);
@@ -1370,7 +1370,7 @@ export async function registerRoutes(
         return Errors.badRequest(res, "ids must be a non-empty array");
       }
       
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       
       const deletedCount = await storage.permanentlyDeleteLeads(org.id, ids);
@@ -1723,7 +1723,7 @@ export async function registerRoutes(
       }));
       
       // Create audit log entry
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -1786,7 +1786,7 @@ export async function registerRoutes(
       }
       
       // Create audit log entry for the undo
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,

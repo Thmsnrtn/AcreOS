@@ -9,9 +9,9 @@
     "**/*.test.ts",
     "**/*.spec.ts"
   ],
-  "baselineCount": 1237,
+  "baselineCount": 1099,
   "direction": "down",
-  "lastBumpNote": "2026-09-27 DEFECT-0104: routes-misc /api/sms/send deleted its own full-org lead scan and its `matched as any` quiet-hours cast; the purpose gate in sendOrgSMS asks the consent question instead.",
+  "lastBumpNote": "2026-09-28 DEFECT-0063: 1237 -> 1099. All 135 `req.user as any` casts removed (Express's Request is globally typed `user: User` in server/types/express.d.ts, and every cast read id, email or clerkUserId, which User declares; the typechecker is the proof), plus `req as any` x2 in routes-solene-audit.ts and `res.req as any` in utils/apiError.ts (correlationId is declared on Request by middleware/correlationId.ts).",
   "minima": {
     "files": 1100
   },

@@ -344,7 +344,7 @@ export const requireFounder: RequestHandler = (req: any, res, next) => {
     return res.status(404).json({ message: "Not found" });
   }
 
-  const user = req.user as any;
+  const user = req.user;
   const userId = req.auth?.userId ?? user.clerkUserId ?? null;
   if (!isFounderIdentity({ email: user.email, userId })) {
     return res.status(404).json({ message: "Not found" });

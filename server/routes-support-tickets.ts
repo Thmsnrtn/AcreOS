@@ -23,7 +23,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   api.post("/api/support/tickets", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization!;
-      const user = req.user as any;
+      const user = req.user;
       
       const { subject, description, category, priority, pageContext, errorContext } = req.body;
       
@@ -69,7 +69,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   api.get("/api/support/tickets", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization!;
-      const user = req.user as any;
+      const user = req.user;
       const { status } = req.query;
       
       const { getSupportTickets } = await import("./ai/supportAgent");
@@ -132,7 +132,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   api.post("/api/support/tickets/:id/messages", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization!;
-      const user = req.user as any;
+      const user = req.user;
       const ticketId = parseInt(req.params.id);
       const { message } = req.body;
       
@@ -331,7 +331,7 @@ export function registerSupportTicketRoutes(app: Express): void {
     try {
       const ticketId = parseInt(req.params.id);
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const { resolution, rating, feedback, addToKnowledgeBase, publishable } = req.body;
       // Accept either name; publishable wins when both present.
       const shouldCreateDraft = publishable === true || addToKnowledgeBase === true;
@@ -1177,7 +1177,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
   api.post("/api/support/report-bug", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization!;
-      const user = req.user as any;
+      const user = req.user;
       
       const {
         title,

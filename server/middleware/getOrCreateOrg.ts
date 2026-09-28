@@ -63,7 +63,7 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
     return res.status(401).json({ message: "Unauthorized" });
   }
 
-  const user = req.user as any;
+  const user = req.user;
   const userId = user.id;
   const userEmail = user.email;
 

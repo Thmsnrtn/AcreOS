@@ -52,8 +52,8 @@ function envelopeAuth(req: AuthenticatedRequest, res: Response, next: NextFuncti
   if (secretEquals(req.headers["x-pulse-secret"], secret)) {
     return next();
   }
-  return isAuthenticated(req as any, res, () =>
-    requireFounder(req as any, res, next),
+  return isAuthenticated(req, res, () =>
+    requireFounder(req, res, next),
   );
 }
 

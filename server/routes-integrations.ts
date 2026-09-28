@@ -114,7 +114,7 @@ export function registerIntegrationRoutes(app: Express): void {
       await storage.updateIntegrationValidation(org.id, provider, null, null);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -249,7 +249,7 @@ export function registerIntegrationRoutes(app: Express): void {
       await storage.deleteOrganizationIntegration(org.id, provider);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -311,7 +311,7 @@ export function registerIntegrationRoutes(app: Express): void {
   api.post("/api/email/test", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const { to } = req.body;
       
       const recipientEmail = to || user.email || user?.email;
@@ -444,7 +444,7 @@ export function registerIntegrationRoutes(app: Express): void {
       });
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -565,7 +565,7 @@ export function registerIntegrationRoutes(app: Express): void {
       });
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -625,7 +625,7 @@ export function registerIntegrationRoutes(app: Express): void {
       await storage.deleteVerifiedEmailDomain(domainId);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -779,7 +779,7 @@ export function registerIntegrationRoutes(app: Express): void {
       });
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -826,7 +826,7 @@ export function registerIntegrationRoutes(app: Express): void {
       });
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -888,7 +888,7 @@ export function registerIntegrationRoutes(app: Express): void {
       await storage.deleteProvisionedPhoneNumber(phoneId);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -1348,7 +1348,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const definition = await storage.createCustomFieldDefinition(parsed);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -1384,7 +1384,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const updated = await storage.updateCustomFieldDefinition(id, omitProtectedFields(req.body));
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -1417,7 +1417,7 @@ export function registerIntegrationRoutes(app: Express): void {
       await storage.deleteCustomFieldDefinition(id);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -1566,7 +1566,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const updated = await storage.updateSavedView(id, omitProtectedFields(req.body));
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -1599,7 +1599,7 @@ export function registerIntegrationRoutes(app: Express): void {
       await storage.deleteSavedView(id);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,
@@ -1632,7 +1632,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const updated = await storage.setDefaultView(org.id, existing.entityType, id);
 
       try {
-        const user = req.user as any;
+        const user = req.user;
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId: (user?.id || user?.id)?.toString() || null,

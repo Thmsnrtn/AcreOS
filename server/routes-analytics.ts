@@ -223,7 +223,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   api.get("/api/workspaces", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       const presets = await storage.getWorkspacePresets(org.id, userId);
       res.json(presets);
@@ -236,7 +236,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   api.post("/api/workspaces", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       
       const preset = await storage.createWorkspacePreset({
@@ -277,7 +277,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   api.get("/api/tasks/my", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user.id;
       
       const tasks = await storage.getMyTasks(org.id, userId);
@@ -329,7 +329,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   api.get("/api/notifications", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user.id;
       const unreadOnly = req.query.unreadOnly === 'true';
       
@@ -345,7 +345,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   api.get("/api/notifications/count", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user.id;
       
       const count = await storage.getUnreadNotificationCount(org.id, userId);
@@ -380,7 +380,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   api.put("/api/notifications/read-all", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user.id;
       
       await storage.markAllNotificationsRead(org.id, userId);

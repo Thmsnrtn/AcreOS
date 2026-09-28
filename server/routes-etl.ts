@@ -24,7 +24,7 @@ import { runJob, replayDlqRecord } from "./services/etlOrchestrator";
 import { getClerkAuth, type AuthenticatedRequest } from "./types/request";
 
 function requireFounder(req: AuthenticatedRequest, res: any): boolean {
-  const user = req.user as any;
+  const user = req.user;
   const userId = getClerkAuth(req)?.userId ?? user?.clerkUserId ?? null;
   const email = user?.email ?? null;
   if (!isFounderIdentity({ email, userId })) {

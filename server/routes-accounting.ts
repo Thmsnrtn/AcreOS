@@ -41,7 +41,7 @@ const router = Router();
 
 /** Founder-only middleware shim — keeps the gate consistent across routes. */
 function requireFounder(req: AuthenticatedRequest, res: Response): boolean {
-  const user = req.user as any;
+  const user = req.user;
   const userId = getClerkAuth(req)?.userId ?? user?.clerkUserId ?? user?.id ?? null;
   const email = user?.email ?? null;
   if (!isFounderIdentity({ email, userId })) {

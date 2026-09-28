@@ -1,7 +1,7 @@
 {
   "name": "req-as-any",
   "description": "(req as any) defeats the AuthenticatedRequest augmentation (server/types/request.ts). Use AuthenticatedRequest + getOrganization/getUserId/getOrganizationId helpers instead.",
-  "pattern": "\\(req as any\\)",
+  "pattern": "\\breq(?:\\.user|\\.organization)?\\s+as\\s+any\\b",
   "globs": [
     "server/**/*.ts"
   ],
@@ -14,5 +14,6 @@
   "minima": {
     "files": 1100
   },
-  "minimaNote": "VACUITY FLOOR on the SCAN POPULATION, not a ratchet. baselineCount above counts BAD THINGS FOUND, so a scan that stops seeing files finds zero and reports it as progress: a zero baseline PASSes on an empty file set, and a nonzero one prints a stale-high \"lock it in\" for a number that was never true. MEASURED 2026-08-16: this config matched 1370 file(s) (server/**/*.ts minus tests). Floor set to 1100, comfortably below that, so a broken glob or walk trips it while ordinary deletion does not. Checked BEFORE the baseline comparison by scripts/ratchet.mjs; a MISSING floor fails as loudly as a breached one. If a real deletion wave shrinks this population, lower the floor in the same commit and name the wave here — never raise it to silence something, never delete the key. Re-measure with `node scripts/ratchet.mjs --measure`."
+  "minimaNote": "VACUITY FLOOR on the SCAN POPULATION, not a ratchet. baselineCount above counts BAD THINGS FOUND, so a scan that stops seeing files finds zero and reports it as progress: a zero baseline PASSes on an empty file set, and a nonzero one prints a stale-high \"lock it in\" for a number that was never true. MEASURED 2026-08-16: this config matched 1370 file(s) (server/**/*.ts minus tests). Floor set to 1100, comfortably below that, so a broken glob or walk trips it while ordinary deletion does not. Checked BEFORE the baseline comparison by scripts/ratchet.mjs; a MISSING floor fails as loudly as a breached one. If a real deletion wave shrinks this population, lower the floor in the same commit and name the wave here \u2014 never raise it to silence something, never delete the key. Re-measure with `node scripts/ratchet.mjs --measure`.",
+  "lastBumpNote": "2026-09-28 DEFECT-0063: pattern widened from `\\(req as any\\)` to also hold `req.user as any` and `req.organization as any` at zero, after the last 135 `req.user as any` casts were removed. Baseline stays 0."
 }

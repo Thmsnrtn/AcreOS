@@ -26,7 +26,7 @@ export function registerAuthRoutes(app: Express): void {
   // after sign-in, trapping the user on the auth page.
   app.get("/api/auth/user", isAuthenticated, (req: any, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-    const user = req.user as any;
+    const user = req.user;
     const userId = req.auth?.userId ?? user?.clerkUserId ?? null;
     const isFounder = isFounderIdentity({ email: user?.email, userId });
     // Phase 3 Week 11: emit auth.login on the first hit-after-sign-in for
@@ -116,7 +116,7 @@ export function registerAuthRoutes(app: Express): void {
    */
   app.get("/api/auth/organizations", isAuthenticated, async (req: any, res) => {
     try {
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id as string | undefined;
       if (!userId) return Errors.unauthorized(res);
 
@@ -179,7 +179,7 @@ export function registerAuthRoutes(app: Express): void {
    */
   app.post("/api/auth/switch-organization", isAuthenticated, async (req: any, res) => {
     try {
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id as string | undefined;
       if (!userId) return Errors.unauthorized(res);
 

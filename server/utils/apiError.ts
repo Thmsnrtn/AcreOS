@@ -19,7 +19,7 @@ export function apiError(
     message,
     retryable: opts?.retryable ?? (status >= 500),
     ...(opts?.details !== undefined && { details: opts.details }),
-    requestId: (res.req as any)?.correlationId,
+    requestId: res.req?.correlationId,
   };
   res.status(status).json(body);
 }

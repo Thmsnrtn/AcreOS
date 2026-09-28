@@ -668,7 +668,18 @@ Surfaced by lenses: 52 (C1-C4, H1-H11), 56 (056-F02)
 Description: Module-level Maps act as caches/registries with no eviction policy, no size cap, and no cross-instance coordination. Append-only arrays in SCP subsystems, metrics histogram with unbounded key cardinality, and duplicate WebSocket from useKpiStream. Estimated 135-440 MB leak over 30 days.
 Evidence: 30+ module-level Maps/Sets/arrays across server services.
 Remediation plan: Add ring-buffer caps to arrays. Normalize metrics keys. Add max-size caps to all cache Maps. Eliminate duplicate WebSocket.
-Resolving commits: pending
+Progress 2026-09-28 (round 3), metrics slice only. The HTTP metrics route
+label fell back to `baseUrl + req.path` whenever no route layer matched: a
+404, or a 401/403/429 from global middleware. `req.path` is raw client input,
+so a scanner hitting random paths minted one prom-client series per URL in
+every web process. `server/metrics.ts` now falls back to the mount prefix,
+with the distinct fallback set hard-capped at 200 because
+`/api/export/:entityType` is a parameterised mount, else "unmatched".
+Falsified by `tests/unit/metricsRouteLabelsAreBounded.test.ts`, which is red on
+the pre-fix code. The duplicate KPI WebSocket named above is not live:
+`useKpiStream` has no caller. The module-level cache Maps are not addressed
+here, which is why the entry stays OPEN.
+Resolving commits: pending (metrics slice on this branch, round 3)
 
 ### DEFECT-0056
 Title: withTransaction callbacks ignore tx parameter -- operations use global db
@@ -840,7 +851,7 @@ Resolving commits: this branch, round 3
 ### DEFECT-0063
 Title: `(req as any)` used 73+ times across 27+ server files
 Severity: P2
-Status: PARTIALLY FIXED — headline is STALE, the `req.user as any` half is live
+Status: FIXED (round 3, 2026-09-28) — both halves at zero and held by the req-as-any ratchet
 Surfaced by lenses: 1 (ARCH-012), 3 (BE-05), 7 (SEC-011); corrected by the
 verification fan-out 2026-09-06
 Description: The headline was true when written and is now dead. Measured at
@@ -876,7 +887,17 @@ headline to zero and the registry row never noticed. A defect list that is not
 re-measured against the gates that fix things drifts into fiction in the safe
 direction — it over-reports, and every over-report costs the next reader the
 time to disprove it.
-Resolving commits: the `(req as any)` half predates this registry correction
+DONE 2026-09-28: the 135 `req.user as any` casts are gone. Express's `Request`
+is globally typed `user: User` (`server/types/express.d.ts`), and every cast
+read `id`, `email` or `clerkUserId`, all of which `User` declares, so the casts
+bought nothing and hid nothing. `npm run check` is the proof. The last three
+request casts went too: `req as any` twice in `server/routes-solene-audit.ts`
+and `res.req as any` in `server/utils/apiError.ts`, since `correlationId` is
+declared on `Request`. `scripts/ratchets/req-as-any.json` now matches
+`req`, `req.user` and `req.organization` `as any` and holds all three at zero.
+It counted 138 on the pre-sweep tree. `as-any` is lowered 1237 → 1099.
+Resolving commits: the `(req as any)` half predates this registry correction;
+the `req.user as any` half is this branch, round 3
 
 ### DEFECT-0064
 Title: Ownership data presented without freshness indicator -- stale county data shown as current
@@ -3096,8 +3117,8 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 8   | 8     |
-| FIXED  | 12  | 67  | 36  | 115   |
+| OPEN   | 0   | 0   | 7   | 7     |
+| FIXED  | 12  | 67  | 37  | 116   |
 | DEFERRED | 0 | 3   | 0   | 3     |
 | **Total** | **12** | **70** | **44** | **126** |
 
@@ -3118,8 +3139,8 @@ review (slice C, same day); 0116 and 0119 (Payment Link, Accept-payment) are
 FIXED in slice A, 0104 (SMS purpose) in slice D and 0107 (blind-offer comps)
 in slice B; no P1 from this report remains OPEN.
 
-As of round 3 (2026-09-27/28) eight P2 entries are OPEN, counting DEFECT-0063
-(partially fixed): 0048, 0049, 0050, 0052, 0055 and 0063 are structural, and
+As of round 3 (2026-09-27/28) seven P2 entries are OPEN: 0048, 0049, 0050,
+0052 and 0055 are structural, and
 0099 and 0106 wait on a product or founder decision. None blocks launch. The
 table above is the count of record; it is recounted from the entries.
 
@@ -3206,6 +3227,7 @@ table above is the count of record; it is recounted from the entries.
 | DEFECT-0114 | Detector workflow hand-off staged in the outbox | (this branch, round 3) |
 | DEFECT-0051 | Rebuild order locale-pinned; production path never reads filenames | (this branch, round 3) |
 | DEFECT-0057 | Last hex-coloured chart components migrated and gated | (this branch, round 3) |
+| DEFECT-0063 | `req.user as any` casts removed; ratchet widened to hold zero | (this branch, round 3) |
 
 ### Deferred Defects (3)
 

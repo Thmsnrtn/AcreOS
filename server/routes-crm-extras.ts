@@ -410,7 +410,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
         return Errors.notFound(res, "Task");
       }
       
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       
       await storage.deleteTask(id);

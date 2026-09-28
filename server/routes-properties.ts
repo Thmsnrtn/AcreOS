@@ -317,7 +317,7 @@ export function registerPropertyRoutes(app: Express): void {
       const input = insertPropertySchema.parse({ ...sanitizedBody, organizationId: org.id });
       const property = await storage.createProperty({ ...input, organizationId: org.id });
 
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -405,7 +405,7 @@ export function registerPropertyRoutes(app: Express): void {
       // emits nothing.
       emitPropertyStatusChanged(org.id, existingProperty, property);
 
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -516,7 +516,7 @@ export function registerPropertyRoutes(app: Express): void {
         org.id,
       );
 
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -568,7 +568,7 @@ export function registerPropertyRoutes(app: Express): void {
 
       await storage.deleteProperty(propertyId, org.id);
       
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -599,7 +599,7 @@ export function registerPropertyRoutes(app: Express): void {
 
       const deletedCount = await storage.bulkDeleteProperties(org.id, ids);
       
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -651,7 +651,7 @@ export function registerPropertyRoutes(app: Express): void {
         emitPropertyStatusChanged(org.id, before, { ...before, status: bulkStatus });
       }
 
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
@@ -1201,7 +1201,7 @@ export function registerPropertyRoutes(app: Express): void {
       const { detectLandStatusFromCoords } = await import("./services/landStatusLAR");
       const result = detectLandStatusFromCoords(lat, lng);
 
-      const user = req.user as any;
+      const user = req.user;
       const userId = user?.id || user?.id;
       await storage.createAuditLogEntry({
         organizationId: org.id,
