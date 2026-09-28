@@ -517,12 +517,22 @@ Resolving commits: 69e2bae
 ### DEFECT-0048
 Title: Monolithic schema.ts (14,883 lines, 429 tables) -- unmaintainable
 Severity: P2
-Status: OPEN
+Status: OPEN — split under way and now ratcheted
 Surfaced by lenses: 1 (ARCH-003), 4 (DB-006)
 Description: Entire database schema in a single file. Beyond maintainability, this causes a 477 KB client bundle chunk and slow IDE performance.
 Evidence: `shared/schema.ts` -- 14,883 lines.
 Remediation plan: Split into domain-aligned modules with barrel re-export.
-Resolving commits: pending
+Re-measured 2026-09-28. The split is under way: 84 modules under
+`shared/schema/` hold 260 tables, re-exported through the barrel. But the
+monolith had kept GROWING, to 17,975 lines and 464 tables, because nothing
+stopped a new table landing in it. `scripts/ratchets/schema-monolith-tables.json`
+now freezes the count of `pgTable(` definitions in `shared/schema.ts` and drives
+it down. New tables must go in a module, while column edits are unaffected. A
+temporary extra table in the monolith turns it red. The first extraction under
+it moved founder_ad_accounts, growth_campaigns and ad_creative_bundles to
+`shared/schema/growth-marketing.ts` (464 → 461). The total table count is
+unchanged at 728.
+Resolving commits: pending (ratchet + first extraction on this branch, round 3)
 
 ### DEFECT-0049
 Title: 44 setInterval background jobs in web server process

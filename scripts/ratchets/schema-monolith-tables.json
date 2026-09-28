@@ -1,0 +1,16 @@
+{
+  "name": "schema-monolith-tables",
+  "description": "DEFECT-0048: shared/schema.ts is the 18k-line schema monolith. The split into shared/schema/*.ts is under way (84 modules, 260 tables at 2026-09-28) but the monolith itself had grown to 464 tables, because nothing stopped a new table landing there. This freezes the count of pgTable( definitions in shared/schema.ts and drives it DOWN: new tables go in a domain module under shared/schema/ (re-exported through the barrel, so no import changes), and every extraction lowers the baseline. Column edits to tables still in the monolith are unaffected.",
+  "pattern": "\\bpgTable\\(",
+  "globs": [
+    "shared/schema.ts"
+  ],
+  "exclude": [],
+  "baselineCount": 461,
+  "direction": "down",
+  "minima": {
+    "files": 1
+  },
+  "minimaNote": "VACUITY FLOOR: the glob must match exactly the one monolith file. If shared/schema.ts is ever fully split and deleted, delete this ratchet with it rather than lowering the floor.",
+  "lastBumpNote": "2026-09-28: 464 -> 461. First extraction under this ratchet: founder_ad_accounts, growth_campaigns and ad_creative_bundles moved to shared/schema/growth-marketing.ts, re-exported through the barrel."
+}
