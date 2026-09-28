@@ -533,7 +533,7 @@ Description: All background jobs run as `setInterval` timers in the main process
 Evidence: `server/index.ts` -- 44 tracked intervals. 15 additional untracked.
 Remediation plan: Extract to dedicated worker process or migrate to BullMQ.
 Re-verified 2026-09-28. The premise is out of date. `fly.toml` defines a
-separate `worker` process (`node dist/worker.cjs`), which boots the same job
+separate `worker` process (built from `server/worker.ts`), which boots the same job
 catalogue (`server/jobs/runScheduledJobs.ts`). The app process skips it when
 `DISABLE_BACKGROUND_JOBS=1` (`server/index.ts`). Every scheduled job runs
 under `withJobLock`, a database lease, about 156 call sites in the catalogue,
