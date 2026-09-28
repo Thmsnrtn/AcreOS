@@ -223,27 +223,38 @@ function safeLabel(value: string | undefined | null): string {
  * Resolve the lowest-cardinality route key we can. Express populates
  * `req.route?.path` only after the matching layer runs, so we evaluate it
  * inside the `finish` listener. When unavailable (404s, static, middleware
- * early returns), fall back to "unmatched" — never the raw req.path,
- * which would let any URL invent a new label value.
+ * early returns), fall back to the mount prefix (capped) or "unmatched" —
+ * never the raw req.path, which would let any URL invent a new label value.
  */
 function routeKey(req: Request): string {
   const matched = req.route?.path;
   if (typeof matched === "string" && matched.length > 0) {
     return safeLabel(matched);
   }
-  // baseUrl + path catches Express routers (e.g. mounted "/api/metrics")
-  // where req.route is on the child router. Still bounded by the route
-  // table on disk, not user input.
-  const composed = (req.baseUrl || "") + (req.path || "");
-  if (composed && composed.length < 80 && !composed.includes(" ")) {
-    // Strip numeric IDs and UUIDs so /api/leads/123 → /api/leads/:id
-    const normalised = composed
-      .replace(/\/\d+(?=\/|$)/g, "/:id")
-      .replace(/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=\/|$)/gi, "/:uuid");
-    return safeLabel(normalised);
+  // No matched route layer: a 404, or a response sent by middleware before
+  // any route ran (a 401/403/429 from a global app.use). `req.path` here is
+  // RAW CLIENT INPUT — the old fallback labelled `baseUrl + path` with only
+  // numeric ids and UUIDs normalised, so a scanner requesting random paths
+  // minted one label value per URL, growing prom-client's series map without
+  // bound (DEFECT-0055). `baseUrl` IS bounded: it is the matched mount prefix
+  // of an app.use/router, i.e. the mount table on disk — except that a
+  // parameterised mount (`/api/export/:entityType`) substitutes the real
+  // value, so the fallback set is ALSO hard-capped: past FALLBACK_LABEL_CAP
+  // distinct values, everything else is "unmatched".
+  const base = req.baseUrl;
+  if (base && base.length < 80) {
+    const label = safeLabel(`${base}/*`);
+    if (fallbackLabels.has(label)) return label;
+    if (fallbackLabels.size < FALLBACK_LABEL_CAP) {
+      fallbackLabels.add(label);
+      return label;
+    }
   }
   return "unmatched";
 }
+
+const FALLBACK_LABEL_CAP = 200;
+const fallbackLabels = new Set<string>();
 
 /**
  * Compress an HTTP status code into a single label value so we don't
@@ -379,6 +390,7 @@ export async function metricsHandler(req: Request, res: Response): Promise<void>
  */
 export function __resetMetricsForTesting(): void {
   registry.resetMetrics();
+  fallbackLabels.clear();
 }
 
 // Re-export the prom-client types so callers don't need to import them
