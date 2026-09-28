@@ -38,6 +38,7 @@ import {
 } from "recharts";
 
 import { chartColor, chartPalette } from "@/lib/chartPalette";
+import { CHART_MUTED } from "@/lib/chart-colors";
 // CVD-safe Wong palette (WCAG 2.2 SC 1.4.11). Pair with strokeDash/shape for grayscale.
 const COLORS = chartPalette;
 
@@ -183,7 +184,7 @@ function ProjectedMRRCard({ revenueOverTime, loading }: ProjectedMRRCardProps) {
                   <XAxis dataKey="label" fontSize={10} tick={false} />
                   <YAxis tickFormatter={(v) => formatCurrency(v)} fontSize={10} width={55} />
                   <Tooltip formatter={((value: number) => formatCurrency(value)) as any} />
-                  <ReferenceLine x={forecast.chartData[forecast.chartData.length - 4]?.label} stroke={chartColor(0)} strokeDasharray="4 2" label={{ value: "now", fontSize: 10, fill: "#888" }} />
+                  <ReferenceLine x={forecast.chartData[forecast.chartData.length - 4]?.label} stroke={chartColor(0)} strokeDasharray="4 2" label={{ value: "now", fontSize: 10, fill: CHART_MUTED }} />
                   <Line type="monotone" dataKey="revenue" stroke={chartColor(1)} strokeWidth={2} dot={false} name="Actual" />
                   <Line type="monotone" dataKey="projected" stroke={chartColor(2)} strokeWidth={2} strokeDasharray="5 3" dot={false} name="Projected" />
                 </LineChart>

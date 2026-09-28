@@ -171,12 +171,12 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
           <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="mrrGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                <stop offset="5%" stopColor={chartColor(1)} stopOpacity={0.25} />
+                <stop offset="95%" stopColor={chartColor(1)} stopOpacity={0} />
               </linearGradient>
               <linearGradient id="fcastGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#a855f7" stopOpacity={0.18} />
-                <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
+                <stop offset="5%" stopColor={chartColor(2)} stopOpacity={0.18} />
+                <stop offset="95%" stopColor={chartColor(2)} stopOpacity={0} />
               </linearGradient>
             </defs>
             <XAxis
@@ -200,7 +200,7 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
                 stroke={chartColor(0)}
                 strokeDasharray="4 3"
                 strokeWidth={1.5}
-                label={{ value: `Goal ${dollarsCompact(goalCents)}`, position: "insideTopRight", fontSize: 10, fill: "#f59e0b" }}
+                label={{ value: `Goal ${dollarsCompact(goalCents)}`, position: "insideTopRight", fontSize: 10, fill: chartColor(0) }}
               />
             )}
             <Area
@@ -233,12 +233,12 @@ export function MRRTrajectory({ goalCents }: MRRTrajectoryProps) {
             <span className="text-micro text-muted-foreground">Actual</span>
           </li>
           <li className="flex items-center gap-1.5">
-            <span aria-hidden="true" className="h-2 w-4 rounded-sm bg-acr-brand opacity-60" style={{ backgroundImage: "repeating-linear-gradient(90deg, #a855f7 0, #a855f7 4px, transparent 4px, transparent 8px)" }} />
+            <span aria-hidden="true" className="h-2 w-4 rounded-sm bg-acr-brand opacity-60" style={{ backgroundImage: `repeating-linear-gradient(90deg, ${chartColor(2)} 0, ${chartColor(2)} 4px, transparent 4px, transparent 8px)` }} />
             <span className="text-micro text-muted-foreground">Forecast</span>
           </li>
           {goalCents && goalCents > 0 && (
             <li className="flex items-center gap-1.5">
-              <span aria-hidden="true" className="h-0.5 w-4 bg-acr-warn" style={{ borderTop: "2px dashed #f59e0b" }} />
+              <span aria-hidden="true" className="h-0.5 w-4 bg-acr-warn" style={{ borderTop: `2px dashed ${chartColor(0)}` }} />
               <span className="text-micro text-muted-foreground">Goal</span>
             </li>
           )}

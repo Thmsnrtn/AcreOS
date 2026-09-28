@@ -677,12 +677,27 @@ Resolving commits: pending
 ### DEFECT-0057
 Title: Hardcoded hex colors in 84 chart files -- dark mode and color-blind issues
 Severity: P2
-Status: OPEN
+Status: FIXED (round 3, 2026-09-27) — last hex-coloured chart components migrated; components now gated
 Surfaced by lenses: 76 (DV-01), 8 (A11Y-09)
 Description: Recharts components use hardcoded hex colors instead of CSS variables. Charts invisible in dark mode. No pattern differentiation for color-blind users. A `ChartContainer` wrapper with theme support exists but is underused.
 Evidence: 188 hardcoded hex values across 30+ chart files.
-Remediation plan: Migrate to `ChartContainer` with `ChartConfig` using CSS custom properties.
-Resolving commits: pending
+Remediation plan: Re-verified 2026-09-27. Most of the migration had already
+happened: `client/src/lib/chart-colors.ts` (theme tokens) and
+`client/src/lib/chartPalette.ts` (Wong CVD-safe palette) exist, and
+`lint:page-hex` holds `client/src/pages/**`. The chart COMPONENTS were outside
+that population, and 33 hex literals remained in five of them: the MRR
+trajectory, whose gradients did not match its own series strokes;
+attribution; pipeline velocity; the founder finance steering charts; and the
+analytics forecast label. All five now read the palette modules. The eight
+cost-mix categories use the eight-entry CVD-safe palette, so no two collide.
+Falsified by: `tests/unit/chartComponentsUseTokens.test.ts`. Its population is
+every component importing recharts or the shadcn chart wrapper, 14 at HEAD,
+with a floor. It has a stale-checked allowance for the two selector literals
+in `ui/chart.tsx` that match Recharts' own defaults. It is red with 33
+offenders on the pre-fix files.
+Not done: pattern or shape encoding for colour-blind users beyond the CVD-safe
+palette. `ChartPatternDefs` exists; adopting it per chart is design work.
+Resolving commits: this branch, round 3
 
 ### DEFECT-0058
 Title: Borrower portal payment creates checkout sessions without atomic claim -- double-click drops payment
@@ -3048,8 +3063,8 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 9   | 9     |
-| FIXED  | 12  | 67  | 35  | 114   |
+| OPEN   | 0   | 0   | 8   | 8     |
+| FIXED  | 12  | 67  | 36  | 115   |
 | DEFERRED | 0 | 3   | 0   | 3     |
 | **Total** | **12** | **70** | **44** | **126** |
 
@@ -3155,6 +3170,7 @@ in slice B; no P1 from this report remains OPEN.
 | DEFECT-0054 | Ad-account secrets sealed; plain-text vendor-key form retired | (this branch, round 3) |
 | DEFECT-0114 | Detector workflow hand-off staged in the outbox | (this branch, round 3) |
 | DEFECT-0051 | Rebuild order locale-pinned; production path never reads filenames | (this branch, round 3) |
+| DEFECT-0057 | Last hex-coloured chart components migrated and gated | (this branch, round 3) |
 
 ### Deferred Defects (3)
 

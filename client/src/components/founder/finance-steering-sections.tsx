@@ -66,6 +66,8 @@ import {
   type RecoveryTransferArgs,
 } from "@/hooks/use-finance";
 import { formatDate } from "@/lib/format";
+import { chartColor } from "@/lib/chartPalette";
+import { CHART_MUTED, CHART_PRIMARY } from "@/lib/chart-colors";
 import { Verbs } from "@/lib/labels";
 
 const BUCKET_ORDER = [
@@ -84,23 +86,25 @@ const BUCKET_LABELS: Record<(typeof BUCKET_ORDER)[number], string> = {
   opex_available: "Opex",
 };
 
+// Palette-module colours, not hex literals (DEFECT-0057). Eight cost
+// categories use the eight-entry CVD-safe palette so no two collide.
 const BUCKET_COLORS: Record<(typeof BUCKET_ORDER)[number], string> = {
-  tax_reserve: "#5b8def",
-  refund_reserve: "#f59e0b",
-  profit_reserve: "#10b981",
-  owner_draw: "#a855f7",
-  opex_available: "#64748b",
+  tax_reserve: chartColor(0),
+  refund_reserve: chartColor(1),
+  profit_reserve: chartColor(2),
+  owner_draw: chartColor(3),
+  opex_available: CHART_MUTED,
 };
 
 const COST_MIX_COLORS: Record<CostMixCategory, string> = {
-  postcard: "#3b82f6",
-  sms: "#10b981",
-  email: "#a855f7",
-  ai_tokens: "#f59e0b",
-  skip_trace: "#ec4899",
-  stripe_fee: "#64748b",
-  voice: "#06b6d4",
-  listings: "#8b5cf6",
+  postcard: chartColor(0),
+  sms: chartColor(2),
+  email: chartColor(3),
+  ai_tokens: chartColor(1),
+  skip_trace: chartColor(5),
+  stripe_fee: CHART_MUTED,
+  voice: chartColor(4),
+  listings: chartColor(6),
 };
 
 function formatUsd(cents: number, opts?: { compact?: boolean }): string {
@@ -269,7 +273,7 @@ function MrrMarginSection() {
                       <Line
                         type="monotone"
                         dataKey="mrr"
-                        stroke="#5b8def"
+                        stroke={CHART_PRIMARY}
                         strokeWidth={2}
                         dot={false}
                       />
@@ -414,7 +418,7 @@ function CostMixSection() {
                         {pieData.map((d) => (
                           <Cell
                             key={d.name}
-                            fill={COST_MIX_COLORS[d.name as CostMixCategory] ?? "#888"}
+                            fill={COST_MIX_COLORS[d.name as CostMixCategory] ?? CHART_MUTED}
                           />
                         ))}
                       </Pie>
@@ -446,7 +450,7 @@ function CostMixSection() {
                       <span
                         className="w-2 h-2 rounded-full"
                         style={{
-                          background: COST_MIX_COLORS[d.name as CostMixCategory] ?? "#888",
+                          background: COST_MIX_COLORS[d.name as CostMixCategory] ?? CHART_MUTED,
                         }}
                         aria-hidden="true"
                       />

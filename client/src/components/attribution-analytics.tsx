@@ -27,6 +27,7 @@ import {
   Legend,
 } from "recharts";
 import { chartColor } from "@/lib/chartPalette";
+import { CHART_MUTED } from "@/lib/chart-colors";
 import { TrendingUp, DollarSign, Target, Mail } from "lucide-react";
 
 interface AttributionRow {
@@ -58,12 +59,13 @@ interface AttributionReport {
   };
 }
 
+// Theme-independent CVD-safe palette (DEFECT-0057): no hex literals here.
 const CHANNEL_COLORS: Record<string, string> = {
-  email: "#60a5fa",
-  sms: "#f59e0b",
-  mail: "#22c55e",
-  direct: "#a78bfa",
-  unknown: "#94a3b8",
+  email: chartColor(0),
+  sms: chartColor(1),
+  mail: chartColor(2),
+  direct: chartColor(3),
+  unknown: CHART_MUTED,
 };
 
 const DATE_RANGES = [

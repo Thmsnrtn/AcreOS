@@ -23,6 +23,7 @@ import {
   Cell,
 } from "recharts";
 import { Clock, TrendingUp, AlertCircle } from "lucide-react";
+import { CHART_NEG, CHART_POS, CHART_WARN } from "@/lib/chart-colors";
 
 const PIPELINE_STAGES = [
   "new",
@@ -187,7 +188,7 @@ export function PipelineVelocity() {
                   {chartData.map((entry, i) => (
                     <Cell
                       key={i}
-                      fill={entry.stalled > 0 ? "#ef4444" : entry.avgDays > 10 ? "#f59e0b" : "#22c55e"}
+                      fill={entry.stalled > 0 ? CHART_NEG : entry.avgDays > 10 ? CHART_WARN : CHART_POS}
                     />
                   ))}
                 </Bar>
