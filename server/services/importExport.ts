@@ -1,4 +1,11 @@
 import { z } from "zod";
+// Exports read the WHOLE book, never the 5000-row capped list (DEFECT-0170).
+import {
+  readAllDeals,
+  readAllLeads,
+  readAllNotes,
+  readAllProperties,
+} from "../storage/wholeBookReads";
 import { insertLeadSchema, insertPropertySchema, insertDealSchema, acquiredNotes, leads } from "@shared/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { storage } from "../storage";
@@ -675,7 +682,7 @@ export async function exportLeadsToCSV(
   organizationId: number,
   filters?: ExportFilters
 ): Promise<string> {
-  let leads = await storage.getLeads(organizationId);
+  let leads = await readAllLeads(organizationId);
 
   if (filters) {
     if (filters.status) {
@@ -745,7 +752,7 @@ export async function exportPropertiesToCSV(
   organizationId: number,
   filters?: ExportFilters
 ): Promise<string> {
-  let properties = await storage.getProperties(organizationId);
+  let properties = await readAllProperties(organizationId);
 
   if (filters) {
     if (filters.status) {
@@ -830,7 +837,7 @@ export async function exportDealsToCSV(
   organizationId: number,
   filters?: ExportFilters
 ): Promise<string> {
-  let deals = await storage.getDeals(organizationId);
+  let deals = await readAllDeals(organizationId);
 
   if (filters) {
     if (filters.status) {
@@ -894,7 +901,7 @@ export async function exportNotesToCSV(
   organizationId: number,
   filters?: ExportFilters
 ): Promise<string> {
-  let notes = await storage.getNotes(organizationId);
+  let notes = await readAllNotes(organizationId);
 
   if (filters) {
     if (filters.status) {
@@ -971,7 +978,7 @@ export async function getLeadsData(
   organizationId: number,
   filters?: ExportFilters
 ): Promise<any[]> {
-  let leads = await storage.getLeads(organizationId);
+  let leads = await readAllLeads(organizationId);
 
   if (filters) {
     if (filters.status) {
@@ -997,7 +1004,7 @@ export async function getPropertiesData(
   organizationId: number,
   filters?: ExportFilters
 ): Promise<any[]> {
-  let properties = await storage.getProperties(organizationId);
+  let properties = await readAllProperties(organizationId);
 
   if (filters) {
     if (filters.status) {
@@ -1020,7 +1027,7 @@ export async function getDealsData(
   organizationId: number,
   filters?: ExportFilters
 ): Promise<any[]> {
-  let deals = await storage.getDeals(organizationId);
+  let deals = await readAllDeals(organizationId);
 
   if (filters) {
     if (filters.status) {
@@ -1046,7 +1053,7 @@ export async function getNotesData(
   organizationId: number,
   filters?: ExportFilters
 ): Promise<any[]> {
-  let notes = await storage.getNotes(organizationId);
+  let notes = await readAllNotes(organizationId);
 
   if (filters) {
     if (filters.status) {
@@ -1343,10 +1350,20 @@ export async function importNotesFromCSV(
       const borrowerEmail = row.borrowerEmail?.trim() || null;
 
       if (borrowerEmail) {
-        const existingLeads = await storage.getLeads(organizationId);
-        const match = existingLeads.find(
-          (l) => l.email?.toLowerCase() === borrowerEmail.toLowerCase()
-        );
+        // One indexed lookup across the WHOLE book (DEFECT-0170). This loaded
+        // the newest 5000 leads per row and matched in memory, so a borrower
+        // whose lead was older became a DUPLICATE lead.
+        const [match] = await db
+          .select({ id: leads.id })
+          .from(leads)
+          .where(
+            and(
+              eq(leads.organizationId, organizationId),
+              sql`${leads.deletedAt} IS NULL`,
+              sql`lower(${leads.email}) = ${borrowerEmail.toLowerCase()}`,
+            ),
+          )
+          .limit(1);
         if (match) {
           borrowerId = match.id;
         }

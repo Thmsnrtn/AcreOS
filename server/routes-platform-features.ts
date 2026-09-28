@@ -7,6 +7,7 @@
  * - Ecosystem (Google Calendar, Drive, webhooks)
  */
 
+import { readAllDeals, readAllNotes, readAllProperties } from "./storage/wholeBookReads";
 import type { Express } from "express";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -27,9 +28,10 @@ export function registerPlatformFeatureRoutes(app: Express): void {
       const org = req.organization;
       const { generatePortfolioPdf } = await import("./services/reportPdfService");
 
-      const notes = await storage.getNotes(org.id);
-      const deals = await storage.getDeals(org.id);
-      const properties = await storage.getProperties(org.id);
+      // The downloadable portfolio report covers the WHOLE book (DEFECT-0170).
+      const notes = await readAllNotes(org.id);
+      const deals = await readAllDeals(org.id);
+      const properties = await readAllProperties(org.id);
 
       // Build summary data
       const totalNotes = notes.length;
@@ -74,7 +76,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   app.get("/api/finance/cash-flow-waterfall", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const notes = await storage.getNotes(org.id);
+      const notes = await readAllNotes(org.id);
 
       if (notes.length === 0) {
         return res.json([]);

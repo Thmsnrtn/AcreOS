@@ -4327,6 +4327,75 @@ The leads route already takes `q`. The fix mirrors DEFECT-0168: a
 server-searched lead picker, by-id lookups, and a population register over
 every lead read shape.
 Resolving commits: —
+### DEFECT-0170
+Title: Exports and book-wide money figures silently dropped an org's oldest rows past 5000
+Severity: P1
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report item "LIST_READ_CAP 5000 on Today and Finance", traced 2026-09-28
+Description: `getLeads`, `getProperties`, `getDeals` and `getNotes` cap at
+5000 rows, newest first (`server/storage/listCap.ts`). `getPayments(orgId)`
+stops SILENTLY at 5000. Once an org passes 5000 rows, its OLDEST records drop
+out:
+- Every export path (`server/services/importExport.ts`) omitted those
+  records: `/api/export` CSV and JSON, `/api/leads/export`,
+  `/api/notes/export` and the backup zip.
+- The data-portability job (`server/services/migrationJobs.ts`) did the
+  same, and its counts reported the truncated numbers as totals.
+- Date and status filters ran after the cap, so a filtered export of old
+  rows came back empty.
+- Finance figures dropped the old notes, which are exactly the notes most
+  likely to be late (`server/routes-finance.ts`). Affected: portfolio value,
+  delinquency rate and 30/60/90+ aging, lifetime collections and
+  projections.
+- So did the portfolio PDF, the cash-flow waterfall and Today's cash strip,
+  late-note count and open-deal value.
+- The note CSV import matched borrowers by email in memory against the
+  newest 5000 leads, once per row. It created a DUPLICATE borrower lead for
+  any older one.
+Remediation plan: DONE.
+- `server/storage/wholeBookReads.ts` reads the whole book (leads,
+  properties, deals, notes, payments) in keyset pages with the same
+  predicates as the capped getters.
+- Past a 250,000-row ceiling it refuses rather than truncating.
+- The exports, finance endpoints, portfolio PDF, waterfall and Today's
+  money reads use it.
+- The borrower match is one indexed, org-scoped query.
+- A per-file register pins the number of capped reads left in each of
+  these files.
+Falsified by: `tests/unit/wholeBookReadsAreWhole.test.ts` (register red
+pre-fix; the reader returns 7,250 of 7,250 and refuses past the ceiling).
+Resolving commits: this branch, round 3
+### DEFECT-0171
+Title: The remaining capped whole-org reads give wrong counts and skip old rows past 5000
+Severity: P2
+Status: OPEN
+Surfaced by lenses: DEFECT-0170 trace, 2026-09-28
+Description: About 45 more production callers of the capped getters compute
+a total or claim from the newest 5000 rows, or act only on those rows.
+- Today's lead-derived figures (`server/routes-today.ts`): stalled leads,
+  the needs-attention badge, the morning brief's stale-lead count and its
+  "since your first deal" line. Today keeps leads on the capped list; a
+  whole lead book per Today request is the wrong fix, and these need SQL
+  aggregates.
+- Pax and MCP count tools (`server/ai/tools.ts`, `server/mcp/index.ts`):
+  - `get_cashflow_summary`, `get_pipeline_summary`, `get_stale_leads` and
+    `get_system_context`;
+  - `get_portfolio_summary`;
+  - the filtered `get_*` searches.
+- Alerts and jobs: lead-aging alerts (`server/services/alerting.ts`) and the
+  delinquency sweep (`server/services/core-agents.ts`).
+- Skip-trace batch and stats (`server/routes-skip-tracing.ts`). The batch
+  can say "every lead already has a finished skip trace" when it does not.
+- The direct-mail estimate and credit check
+  (`server/routes-campaigns.ts`).
+- TCPA stats (`server/routes-import-export.ts`): the total is capped while
+  its parts are not.
+- The offer-letter batch lookup (`server/routes-team-messaging.ts`).
+- The weekly digest and "month in review" emails.
+- Most can read an existing aggregate (`getDashboardStats`, `getLeadCount`,
+  `getActiveNotesValue`, `getPipelineValue`) or a by-id lookup.
+- The full ranked list is in the trace recorded with DEFECT-0170.
+Resolving commits: —
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -4363,12 +4432,12 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 1   | 10  | 11    |
-| FIXED  | 13  | 81  | 61  | 155   |
+| OPEN   | 0   | 1   | 11  | 12    |
+| FIXED  | 13  | 82  | 61  | 156   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **13** | **85** | **71** | **169** |
+| **Total** | **13** | **86** | **72** | **171** |
 
-Recounted from the entries themselves on 2026-09-28 (169 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (171 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

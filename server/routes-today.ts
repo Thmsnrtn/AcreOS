@@ -28,6 +28,7 @@
  * parity and the client renders <TodayActivityFeed /> as before.
  */
 
+import { readAllDeals, readAllNotes, readAllProperties } from "./storage/wholeBookReads";
 import { Router, type Response } from "express";
 import { and, desc, eq, gt, gte, inArray, notInArray, sql } from "drizzle-orm";
 import { paxObservations, leads as leadsTable, deals as dealsTable, properties as propertiesTable, payments as paymentsTable, todayQueueState, paxSends, paxScheduledTaskRuns } from "@shared/schema";
@@ -1135,9 +1136,13 @@ async function buildActiveQueue(orgId: number, now: Date): Promise<BuiltQueue> {
     gatherPaxNoticed(orgId, now),
     gatherPaxSuggests(orgId, now),
     storage.getLeads(orgId),
-    storage.getDeals(orgId),
-    storage.getProperties(orgId),
-    storage.getNotes(orgId),
+    // Money figures (the cash strip, late notes, open-deal value) read the
+    // WHOLE book (DEFECT-0170): the capped lists drop the OLDEST rows first —
+    // exactly the late notes and stuck deals. Leads stay on the capped list
+    // (a whole lead book per Today request is the wrong fix; see the entry).
+    readAllDeals(orgId),
+    readAllProperties(orgId),
+    readAllNotes(orgId),
   ]);
 
   // Today's tasks → ai-queue rows (mirrors today.tsx todayActions block).

@@ -1,4 +1,7 @@
 import type { Express } from "express";
+// Book-wide figures read the WHOLE book, not the 5000-row capped lists
+// (DEFECT-0170): old notes are the ones most likely to be late.
+import { readAllDeals, readAllNotes, readAllPayments, readAllProperties } from "./storage/wholeBookReads";
 import { storage, db, calculateMonthlyPayment } from "./storage";
 import { z } from "zod";
 import { insertNoteSchema, insertPaymentSchema, paymentReminders, notes as notesTable } from "@shared/schema";
@@ -97,7 +100,7 @@ export function registerFinanceRoutes(app: Express): void {
   
   api.get("/api/notes", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const notes = await storage.getNotes(org.id);
+    const notes = await readAllNotes(org.id);
     res.json(notes);
   });
   
@@ -920,8 +923,8 @@ export function registerFinanceRoutes(app: Express): void {
   api.get("/api/finance/portfolio-summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const allNotes = await storage.getNotes(org.id);
-      const allPayments = await storage.getPayments(org.id);
+      const allNotes = await readAllNotes(org.id);
+      const allPayments = await readAllPayments(org.id);
 
       const activeNotes = allNotes.filter(n => n.status === 'active');
       const paidOffNotes = allNotes.filter(n => n.status === 'paid_off');
@@ -998,7 +1001,7 @@ export function registerFinanceRoutes(app: Express): void {
       // on closed deals = realized fee; pending = active deals).
       let assignmentFees = { mtdCollected: 0, pendingCount: 0, pendingValue: 0, avgPerClose: 0, closedCount: 0 };
       try {
-        const deals = await storage.getDeals(org.id);
+        const deals = await readAllDeals(org.id);
         const closed = deals.filter(d => d.status === 'closed' && d.acceptedAmount);
         const closedMtd = closed.filter(d => d.updatedAt && new Date(d.updatedAt) >= monthStart);
         const active = deals.filter(d => !['closed', 'cancelled', 'dead'].includes(d.status));
@@ -1021,7 +1024,7 @@ export function registerFinanceRoutes(app: Express): void {
       // the three with the largest realized/projected net.
       let projects = { netMtd: 0, grossMarginPct: 0, top: [] as Array<{ id: number; label: string; net: number; status: string }> };
       try {
-        const properties = await storage.getProperties(org.id);
+        const properties = await readAllProperties(org.id);
         const projectRows = properties
           .filter((p: any) => p.purchasePrice || p.listPrice)
           .map((p: any) => {
@@ -1084,7 +1087,7 @@ export function registerFinanceRoutes(app: Express): void {
   api.get("/api/finance/delinquency", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const allNotes = await storage.getNotes(org.id);
+      const allNotes = await readAllNotes(org.id);
       const activeNotes = allNotes.filter(n => n.status === 'active');
 
       const now = new Date();
@@ -1122,7 +1125,7 @@ export function registerFinanceRoutes(app: Express): void {
 
       const atRiskAmount = delinquentNotes.reduce((sum, n) => sum + Number(n.currentBalance || 0), 0);
 
-      const allPayments = await storage.getPayments(org.id);
+      const allPayments = await readAllPayments(org.id);
       const completedPayments = allPayments.filter(p => p.status === 'completed');
       const totalPrincipalCollected = completedPayments.reduce((sum, p) => sum + Number(p.principalAmount || 0), 0);
       const totalInterestCollected = completedPayments.reduce((sum, p) => sum + Number(p.interestAmount || 0), 0);
@@ -1169,8 +1172,8 @@ export function registerFinanceRoutes(app: Express): void {
   api.get("/api/finance/projections", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const allNotes = await storage.getNotes(org.id);
-      const allPayments = await storage.getPayments(org.id);
+      const allNotes = await readAllNotes(org.id);
+      const allPayments = await readAllPayments(org.id);
 
       const activeNotes = allNotes.filter(n => n.status === 'active');
       const completedPayments = allPayments.filter(p => p.status === 'completed');
