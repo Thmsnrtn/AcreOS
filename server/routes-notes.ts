@@ -867,7 +867,11 @@ interface ComputeYieldsInput {
   paymentAmountCents: number;
   termMonths: number;
   acquisitionDate: string; // ISO
-  payments: Array<{ paymentDate: string; principalCents: number; interestCents: number }>;
+  // `unappliedCents` is cash received and held (a partial payment), signed as
+  // the ledger stores it, so an apply or an NSF reversal nets correctly.
+  payments: Array<{ paymentDate: string; principalCents: number; interestCents: number; unappliedCents?: number }>;
+  /** The day the IRR is measured to. Defaults to now. */
+  asOf?: Date;
 }
 
 interface ComputeYieldsResult {
@@ -895,6 +899,7 @@ export function computeYields(input: ComputeYieldsInput): ComputeYieldsResult {
     acquisitionDate,
     payments,
   } = input;
+  const asOf = input.asOf ?? new Date();
 
   // ── Current yield ───────────────────────────────────────────────────────
   // running coupon on basis: (annual interest payment / acquisition price)
@@ -914,10 +919,12 @@ export function computeYields(input: ComputeYieldsInput): ComputeYieldsResult {
   const ytmAtAcquisition = ytmMonthly === null ? null : Math.pow(1 + ytmMonthly, 12) - 1;
 
   // ── IRR-to-date ─────────────────────────────────────────────────────────
-  // Actual cash flows from the payment ledger, plus a terminal "if it pays
-  // off today" cash flow equal to the current balance. Periods are months
-  // from acquisition. We bucket by month-from-acquisition so a borrower's
-  // partial-then-make-whole behavior nets correctly within a month.
+  // Actual cash flows from the payment ledger, plus a terminal "if it paid
+  // off at its balance today" cash flow. Periods are months from acquisition,
+  // bucketed so a partial-then-make-whole month nets correctly. Month 0 (the
+  // acquisition month) nets against the price, and the terminal value sits at
+  // TODAY's month — not the month after the last payment, which made a note
+  // that stopped paying keep the yield it had when it stopped (DEFECT-0132).
   const acqDate = new Date(acquisitionDate);
   const monthsFromAcquisition = (iso: string): number => {
     const d = new Date(iso);
@@ -928,16 +935,16 @@ export function computeYields(input: ComputeYieldsInput): ComputeYieldsResult {
   let maxMonth = 0;
   for (const p of payments) {
     const m = Math.max(0, monthsFromAcquisition(p.paymentDate));
-    const cash = p.principalCents + p.interestCents;
+    const cash = p.principalCents + p.interestCents + (p.unappliedCents ?? 0);
     monthlyCashIn.set(m, (monthlyCashIn.get(m) ?? 0) + cash);
     if (m > maxMonth) maxMonth = m;
   }
-  const irrFlowsMonthly: number[] = [-acquisitionPriceCents];
-  for (let m = 1; m <= Math.max(1, maxMonth); m++) {
+  const asOfMonth = Math.max(1, maxMonth, monthsFromAcquisition(asOf.toISOString()));
+  const irrFlowsMonthly: number[] = [-acquisitionPriceCents + (monthlyCashIn.get(0) ?? 0)];
+  for (let m = 1; m <= asOfMonth; m++) {
     irrFlowsMonthly.push(monthlyCashIn.get(m) ?? 0);
   }
-  // Add today's "if-paid-off" terminal value at the next-month bucket.
-  irrFlowsMonthly.push(currentBalanceCents);
+  irrFlowsMonthly[asOfMonth] += currentBalanceCents;
   const irrMonthly = calcIRR(irrFlowsMonthly, 0.005);
   const irrToDate = irrMonthly === null ? null : Math.pow(1 + irrMonthly, 12) - 1;
 
@@ -950,9 +957,10 @@ export function computeYields(input: ComputeYieldsInput): ComputeYieldsResult {
   // CPA flow. When we add a per-org servicing-cost field, swap the
   // hardcoded value for the org's setting.
   const SERVICING_BPS_DEFAULT = 25; // 0.25% — small-balance secondary market typical
+  // No floor: a note that is losing money shows a negative yield.
   const effectiveNetYield = irrToDate === null
     ? null
-    : Math.max(0, irrToDate - SERVICING_BPS_DEFAULT / 10_000);
+    : irrToDate - SERVICING_BPS_DEFAULT / 10_000;
   const effectiveNetServicingAssumption = irrToDate === null
     ? null
     : { annualBps: SERVICING_BPS_DEFAULT, note: "industry-typical default; will read from org setting once configurable" };
@@ -1272,6 +1280,12 @@ export function registerNoteRoutes(app: Express): void {
           .orderBy(desc(acquiredNotes.acquisitionDate))
           .limit(limit)
           .offset(offset);
+        // `count` is this page; `total` is the book under this filter. A page
+        // that stops at `limit` must not read as the whole book (DEFECT-0131).
+        const [{ total }] = await db
+          .select({ total: sql<number>`count(*)::int` })
+          .from(acquiredNotes)
+          .where(whereClause);
 
         // Never leak the encrypted TIN over the wire — strip on the way out.
         // `nextPaymentDate` / `paidThroughDate` / `daysDelinquent` /
@@ -1294,6 +1308,7 @@ export function registerNoteRoutes(app: Express): void {
           limit,
           offset,
           count: safe.length,
+          total: Number(total),
         });
       } catch (err) {
         logger.error("notes.list failed", err instanceof Error ? err : undefined);
@@ -2140,6 +2155,7 @@ export function registerNoteRoutes(app: Express): void {
             paymentDate: p.paymentDate as unknown as string,
             principalCents: p.principalCents,
             interestCents: p.interestCents,
+            unappliedCents: p.unappliedCents,
             // Escrow + late fee don't reduce the asset, so they're excluded
             // from the IRR cash-flow stream from Linnea's perspective.
           })),

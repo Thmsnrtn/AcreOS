@@ -133,7 +133,11 @@ interface NotesListResponse {
   limit: number;
   offset: number;
   count: number;
+  /** Notes in the book under this filter — `count` is only this page. */
+  total: number;
 }
+
+const NOTES_PAGE_SIZE = 100;
 
 /**
  * Status filter. `late` and `default` are now genuinely maintained on the row
@@ -436,15 +440,20 @@ export default function NotesPage() {
   // through to land-investor.
   const persona = personaForInvestorType((organization as any)?.investorType);
 
+  // The book is paged. A page that stops at NOTES_PAGE_SIZE is shown as a page
+  // of `total`, never as the whole book (DEFECT-0131).
+  const [page, setPage] = useState(0);
+  useEffect(() => setPage(0), [statusFilter]);
   const queryParams = new URLSearchParams();
-  queryParams.set("limit", "100");
+  queryParams.set("limit", String(NOTES_PAGE_SIZE));
+  queryParams.set("offset", String(page * NOTES_PAGE_SIZE));
   if (statusFilter !== "all") queryParams.set("status", statusFilter);
 
   // Keyed under the "/api/notes" prefix so the existing
   // invalidateQueries({ queryKey: ["/api/notes"] }) calls in the import
   // dialog and the record-payment modal still refresh this list.
   const { data, isLoading, isError, error, refetch } = useQuery<NotesListResponse>({
-    queryKey: ["/api/notes", "acquired", statusFilter],
+    queryKey: ["/api/notes", "acquired", statusFilter, page],
     queryFn: async () => {
       const res = await fetch(`/api/notes/acquired?${queryParams.toString()}`, {
         credentials: "include",
@@ -457,6 +466,9 @@ export default function NotesPage() {
   });
 
   const notes = data?.notes ?? [];
+  const total = data?.total ?? 0;
+  const firstShown = page * NOTES_PAGE_SIZE + 1;
+  const lastShown = page * NOTES_PAGE_SIZE + notes.length;
 
   return (
     <PageShell isLoading={false} label="Acquired notes">
@@ -544,6 +556,22 @@ export default function NotesPage() {
           onRetry={() => refetch()}
           description="We couldn't load your acquired notes."
           testId="notes-retry-button"
+        />
+      ) : notes.length === 0 && total > 0 ? (
+        <EmptyState
+          icon={FileText}
+          headline="No notes on this page"
+          subtitle={`Your book holds ${total} note${total === 1 ? "" : "s"} under this filter.`}
+          cta={{ label: "Back to the first page", onClick: () => setPage(0), "data-testid": "notes-first-page" }}
+          testId="notes-page-empty"
+        />
+      ) : notes.length === 0 && statusFilter !== "all" ? (
+        <EmptyState
+          icon={Filter}
+          headline={`No ${(STATUS_FILTER_OPTIONS.find((o) => o.value === statusFilter)?.label ?? statusFilter).toLowerCase()} notes`}
+          subtitle="Nothing in your book has this status right now."
+          cta={{ label: "Show all notes", onClick: () => setStatusFilter("all"), "data-testid": "notes-clear-filter" }}
+          testId="notes-filter-empty"
         />
       ) : notes.length === 0 ? (
         <EmptyState
@@ -693,6 +721,36 @@ export default function NotesPage() {
               </tbody>
             </table>
           </div>
+          {total > NOTES_PAGE_SIZE && (
+            <div
+              className="flex items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm"
+              data-testid="notes-pager"
+            >
+              <span className="text-muted-foreground tabular-nums" data-testid="notes-pager-range">
+                Showing {firstShown}–{lastShown} of {total}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page === 0}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  data-testid="notes-pager-prev"
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={lastShown >= total}
+                  onClick={() => setPage((p) => p + 1)}
+                  data-testid="notes-pager-next"
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
     </PageShell>

@@ -3284,6 +3284,50 @@ Not done: the synchronous (small-file) import path still emits `lead.created`
 in memory. It runs inside the request, so the loss window is a process crash
 during the request.
 Resolving commits: this branch, round 3
+### DEFECT-0131
+Title: The acquired-notes list showed the first 100 notes as the whole book
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report §23, verified at HEAD 2026-09-28
+Description: `client/src/pages/notes.tsx` asked `GET /api/notes/acquired` for
+limit=100 with no offset and had no paging control. The route
+(`server/routes-notes.ts`) returned `count: rows.length`, the size of the page,
+and no total. A book of 250 notes rendered as 100, with nothing to say the rest
+existed. A status filter with no matches rendered "No notes serviced yet" to an
+operator with a full book.
+Remediation plan: DONE. The route returns `total` from a count over the same
+org-scoped filter. The page pages by 100, shows "Showing A–B of N" with
+Previous/Next, and has distinct empty states for a filtered miss and for an
+out-of-range page.
+Falsified by: `tests/unit/acquiredNotesListIsPaged.test.ts` (all three cases
+red pre-fix).
+Resolving commits: this branch, round 3
+### DEFECT-0132
+Title: A note's IRR-to-date kept the yield it had when payments stopped, dropped first-month cash, and floored losses at zero
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report §23, verified at HEAD 2026-09-28
+Description: `computeYields` (`server/routes-notes.ts`) had four defects:
+- It built the IRR stream from month 1, so a payment in the acquisition month
+  never entered it.
+- It put the "if paid off today" balance in the month after the LAST payment,
+  not today. A note that stopped paying two years ago still showed its
+  old yield.
+- It ignored `unappliedCents`, so partial payments counted as no cash.
+- It floored the effective net yield at zero, so a loss rendered as 0.00%.
+
+The panel's hints also misdescribed the numbers
+(`client/src/components/note-yield-panel.tsx`).
+Remediation plan: DONE.
+- Month-0 cash nets against the price.
+- The terminal value sits at the as-of month.
+- Unapplied cash counts, signed as the ledger stores it.
+- There is no floor.
+- The hints say what each number is. The IRR is marked "as if paid off at
+  par today — not a market value".
+Falsified by: `tests/unit/noteYieldIrrIsDated.test.ts` (all four cases red
+pre-fix).
+Resolving commits: this branch, round 3
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -3321,11 +3365,11 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 7   | 7     |
-| FIXED  | 12  | 70  | 38  | 120   |
+| FIXED  | 12  | 70  | 40  | 122   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **73** | **45** | **130** |
+| **Total** | **12** | **73** | **47** | **132** |
 
-Recounted from the entries themselves on 2026-09-28 (130 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (132 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

@@ -70,7 +70,7 @@ export function NoteYieldPanel({ noteId }: { noteId: string }) {
               <YieldCell
                 label="Current yield"
                 value={fmtPct(data.currentYield)}
-                hint="Annual coupon / current basis"
+                hint="Annual interest on the current balance ÷ your purchase price"
                 testid="yield-current"
               />
               <YieldCell
@@ -82,7 +82,7 @@ export function NoteYieldPanel({ noteId }: { noteId: string }) {
               <YieldCell
                 label="IRR to date"
                 value={fmtPct(data.irrToDate)}
-                hint="IRR of actual payments received + today's payoff"
+                hint="IRR of payments received, plus the balance as if paid off at par today — not a market value"
                 testid="yield-irr"
               />
               <YieldCell
