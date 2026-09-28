@@ -8,17 +8,24 @@
  * parcel". This drives the real detectDeltasForOrg against a scripted db.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
-const h = vi.hoisted(() => ({ queue: [] as unknown[][] }));
+const h = vi.hoisted(() => ({ queue: [] as unknown[][], awaited: 0 }));
 
+// A query consumes its scripted rows when it is AWAITED, not when select() is
+// called: the observation read builds a windowed subquery (.as()) that is
+// never awaited on its own.
 vi.mock("../../server/db", () => {
   const chain = () => {
-    const next = h.queue.shift() ?? [];
-    const p = Promise.resolve(next);
     const c: Record<string, unknown> = {};
     for (const k of ["from", "where", "orderBy", "limit"]) c[k] = () => c;
-    c.then = p.then.bind(p);
-    c.catch = p.catch.bind(p);
+    c.as = () => new Proxy({}, { get: (_t, prop) => ({ name: String(prop) }) });
+    c.then = (f: (v: unknown) => unknown, r?: (e: unknown) => unknown) => {
+      h.awaited++;
+      return Promise.resolve(h.queue.shift() ?? []).then(f, r);
+    };
     return c;
   };
   return { db: { select: () => chain() } };
@@ -40,6 +47,7 @@ function change(state: string, county: string) {
 
 beforeEach(() => {
   h.queue.length = 0;
+  h.awaited = 0;
 });
 
 describe("DEFECT-0128 — deltas are matched on full parcel identity", () => {
@@ -72,5 +80,23 @@ describe("DEFECT-0128 — deltas are matched on full parcel identity", () => {
     h.queue.push([...change("TX", "Travis")]);
     const deltas = await detectDeltasForOrg(7);
     expect(deltas.map((d) => d.propertyId)).toEqual([11]);
+  });
+});
+
+describe("DEFECT-0141 — the observation read is bounded", () => {
+  it("a large pipeline is read in APN chunks, not one unbounded IN list", async () => {
+    const props = Array.from({ length: 1200 }, (_, i) => ({ apn: `A-${i}`, state: "TX", county: "Travis", id: i + 1 }));
+    h.queue.push(props); // properties
+    h.queue.push([]); // leads
+    await detectDeltasForOrg(7);
+    // properties + leads + ceil(1200 / 500) observation chunks
+    expect(h.awaited).toBe(2 + 3);
+  });
+
+  it("keeps only the latest two observations per parcel field, in SQL", () => {
+    const src = stripComments(readFileSync(resolve(__dirname, "../../server/services/parcelDeltaDetector.ts"), "utf8"));
+    const body = src.slice(src.indexOf("export async function loadObservationPairs"), src.indexOf("export async function detectDeltasForOrg"));
+    expect(body).toMatch(/row_number\(\) over \(partition by/);
+    expect(body).toMatch(/\$\{ranked\.rn\} <= 2/);
   });
 });

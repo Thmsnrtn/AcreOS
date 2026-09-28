@@ -203,18 +203,16 @@ router.get("/checklist-status", async (req: Request, res: Response) => {
     const { db } = await import("./storage");
     const { leads, campaigns, deals, payments, properties, activationEvents, mailShipments, byokCredentials } = await import("@shared/schema");
     const { eq, sql, and, inArray, isNull } = await import("drizzle-orm");
-    const { SAMPLE_LEAD_SOURCE, SAMPLE_APN_PREFIX } = await import("./services/onboarding/sampleSeeder");
     // "Items complete by the user actually doing the work" — so the sample
     // book seeded by "Try with sample data" is not the work (DEFECT-0137).
-    // Sample leads carry source sample_data (the older enhancements seeder
-    // used "sample"); sample deals hang off SAMPLE- properties.
-    const realLead = sql`coalesce(${leads.source}, '') NOT IN (${SAMPLE_LEAD_SOURCE}, 'sample')`;
-    const notSampleProperty = sql`coalesce(${properties.apn}, '') NOT LIKE ${SAMPLE_APN_PREFIX + "%"}`;
-    const dealNotOnSampleProperty = sql`NOT EXISTS (SELECT 1 FROM ${properties} WHERE ${properties.id} = ${deals.propertyId} AND ${properties.apn} LIKE ${SAMPLE_APN_PREFIX + "%"})`;
+    const { realLead, realProperty, realDeal } = await import("./services/onboarding/sampleFilters");
+    const realLeadP = realLead();
+    const notSampleProperty = realProperty();
+    const dealNotOnSampleProperty = realDeal();
 
     const [leadResult, importResult, campaignResult, dealResult, notePaymentResult, propertyLookupResult, connectedServiceResult] = await Promise.all([
       // hasLead: org has >= 1 lead
-      db.select({ count: sql<number>`count(*)` }).from(leads).where(and(eq(leads.organizationId, orgId), realLead)).then(r => r[0]?.count > 0),
+      db.select({ count: sql<number>`count(*)` }).from(leads).where(and(eq(leads.organizationId, orgId), realLeadP)).then(r => r[0]?.count > 0),
       // hasImport: any lead with source = 'csv_import' or 'import'
       db.select({ count: sql<number>`count(*)` }).from(leads).where(
         sql`${leads.organizationId} = ${orgId} AND (${leads.source} = 'csv_import' OR ${leads.source} = 'import')`

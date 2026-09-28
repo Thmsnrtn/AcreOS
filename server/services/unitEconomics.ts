@@ -436,6 +436,10 @@ export async function persistSnapshot(result: UnitEconomicsResult): Promise<void
  */
 export async function maybeEmitUnprofitableAlert(result: UnitEconomicsResult): Promise<boolean> {
   if (result.consecutiveUnprofitableDays < UNPROFITABLE_ALERT_DAYS) return false;
+  // Only a paying customer can be an unprofitable CUSTOMER. A trialing or
+  // lapsed org has no MRR by definition (DEFECT-0133), so any cost reads as a
+  // loss; "review pricing" for someone who pays nothing is noise.
+  if (!(result.mrrUsd > 0)) return false;
 
   // Dedupe — skip if an open alert already exists for this org.
   const existing = await db
@@ -561,6 +565,7 @@ export interface UnitEconomicsApiResponse {
     organizationId: number;
     organizationName: string;
     subscriptionTier: string;
+    subscriptionStatus: string | null;
     mrrUsd: number;
     aiCostUsd: number;
     directMailCostUsd: number;
@@ -600,7 +605,8 @@ export async function readUnitEconomicsRollup(): Promise<UnitEconomicsApiRespons
       cue.profit_margin_pct,
       cue.consecutive_unprofitable_days,
       o.name AS organization_name,
-      o.subscription_tier
+      o.subscription_tier,
+      o.subscription_status
     FROM customer_unit_economics cue
     JOIN organizations o ON o.id = cue.organization_id
     ORDER BY cue.organization_id, cue.computed_at DESC
@@ -610,6 +616,7 @@ export async function readUnitEconomicsRollup(): Promise<UnitEconomicsApiRespons
     organizationId: r.organization_id as number,
     organizationName: (r.organization_name ?? "Unknown") as string,
     subscriptionTier: (r.subscription_tier ?? "free") as string,
+    subscriptionStatus: (r.subscription_status ?? null) as string | null,
     mrrUsd: toNumber(r.mrr_usd),
     aiCostUsd: toNumber(r.ai_cost_usd),
     directMailCostUsd: toNumber(r.direct_mail_cost_usd),
@@ -634,8 +641,10 @@ export async function readUnitEconomicsRollup(): Promise<UnitEconomicsApiRespons
   const grossMarginUsd = round6(totalMrrUsd - totalCogsUsd);
   const grossMarginPct =
     totalMrrUsd > 0 ? Math.round((grossMarginUsd / totalMrrUsd) * 10000) / 100 : 0;
+  // Paying = a priced tier AND an active subscription — the same rule the
+  // per-org MRR uses (DEFECT-0133).
   const payingCustomerCount = rows.filter(
-    (r) => tierForSubscriptionTier(r.subscriptionTier) !== null,
+    (r) => tierForSubscriptionTier(r.subscriptionTier) !== null && r.subscriptionStatus === "active",
   ).length;
 
   // 90-day trend — sum across orgs per computed_date.

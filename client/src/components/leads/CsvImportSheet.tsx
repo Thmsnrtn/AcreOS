@@ -62,6 +62,7 @@ const TARGET_FIELDS = [
   { id: "address", label: "Address" },
   { id: "city", label: "City" },
   { id: "state", label: "State" },
+  { id: "county", label: "County" },
   { id: "zip", label: "ZIP" },
   { id: "phone", label: "Phone" },
   { id: "email", label: "Email" },
@@ -80,6 +81,7 @@ function suggestField(header: string): TargetFieldId {
   const h = header.toLowerCase().replace(/[^a-z0-9 ]/g, " ");
   // Order: longest-specific first.
   if (/\b(apn|parcel|pin)\b/.test(h)) return "apn";
+  if (/\bcounty\b/.test(h)) return "county";
   if (/owner.*name|name.*owner/.test(h)) return "ownerName";
   if (/\bfirst\b/.test(h) && /\bname\b/.test(h)) return "firstName";
   if (/\blast\b/.test(h) && /\bname\b/.test(h)) return "lastName";
@@ -207,10 +209,13 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
         if (val) out[target] = val;
       }
       // APN within-file dedupe count (preview only — server reconfirms).
+      // A parcel is APN + state + county, so the same APN in two counties is
+      // two parcels, not a duplicate.
       const apn = (out.apn ?? "").trim();
       if (apn) {
-        if (apnSeen.has(apn)) apnDupesInFile++;
-        else apnSeen.add(apn);
+        const key = [out.state, out.county, apn].map((v) => (v ?? "").trim().toUpperCase()).join("|");
+        if (apnSeen.has(key)) apnDupesInFile++;
+        else apnSeen.add(key);
       }
       mappedRows.push(out);
     }

@@ -945,7 +945,13 @@ export function computeYields(input: ComputeYieldsInput): ComputeYieldsResult {
     irrFlowsMonthly.push(monthlyCashIn.get(m) ?? 0);
   }
   irrFlowsMonthly[asOfMonth] += currentBalanceCents;
-  const irrMonthly = calcIRR(irrFlowsMonthly, 0.005);
+  // Less than one period held is not a rate: bought this month (or dated in
+  // the future), the stream is [-price, balance] one month apart and a small
+  // discount annualises to a triple-digit "IRR to date" — a number invented
+  // by the period arithmetic, not earned. Refuse it (DEFECT-0132 audit).
+  const heldDays = (asOf.getTime() - acqDate.getTime()) / 86_400_000;
+  const heldOnePeriod = heldDays >= 28 && monthsFromAcquisition(asOf.toISOString()) >= 1;
+  const irrMonthly = heldOnePeriod ? calcIRR(irrFlowsMonthly, 0.005) : null;
   const irrToDate = irrMonthly === null ? null : Math.pow(1 + irrMonthly, 12) - 1;
 
   // ── Effective net yield ─────────────────────────────────────────────────

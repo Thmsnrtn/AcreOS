@@ -302,8 +302,17 @@ const RULE_3_CHAIN_FLOOR = 300;
  *     read never widens what the caller could already reach — but it is a
  *     property of the CALLER, which is exactly why it is hatched loudly here
  *     and not left to omission.
+ *
+ *   alertAcknowledge.acknowledgeSystemAlert (2026-09-28, DEFECT-0135)   moves a
+ *     system_alerts row new → acknowledged by alert id. The actors are platform
+ *     agents (the decision executor, Atlas's acknowledge_incident), system
+ *     alerts are platform-level (organization_id nullable), and the write is
+ *     predicated on status = 'new'. This REPLACES two unhatched by-id writes of
+ *     the same row — one allowlisted in BASELINE_OFFENDERS (now removed), one in
+ *     agentActionExecutors — so the population of cross-org by-id writes to
+ *     system_alerts shrank by one while becoming loud.
  */
-const HATCH_EXEMPTION_CEILING = 6;
+const HATCH_EXEMPTION_CEILING = 7;
 
 /**
  * BOTH of Drizzle's query spellings reach rule 3.

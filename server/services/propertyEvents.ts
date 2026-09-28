@@ -29,7 +29,7 @@
 // pins that relationship.
 // ---------------------------------------------------------------------------
 
-import { emitPropertyEvent } from "./workflow-engine";
+import { emitDurablePropertyEvent, emitPropertyEvent } from "./workflow-engine";
 import { logger } from "../utils/logger";
 
 /**
@@ -99,6 +99,31 @@ function swallow(event: string, propertyId: number, organizationId: number, err:
 }
 
 /** `property.created` — called by every real property-creation path. */
+/**
+ * property.created staged in the durable outbox — for the worker's import
+ * jobs, where an in-memory emit dies with a restart (DEFECT-0130 audit).
+ * Returns false (and logs) if staging failed; never throws.
+ */
+export async function emitPropertyCreatedDurably(
+  organizationId: number,
+  property: PropertyEventRow | null | undefined,
+): Promise<boolean> {
+  if (!property) return false;
+  try {
+    await emitDurablePropertyEvent("property.created", organizationId, property.id, buildPropertyEventData(property), {
+      dedupeKey: `property.created:${property.id}`,
+    });
+    return true;
+  } catch (err) {
+    logger.error("Durable property.created staging failed", {
+      organizationId,
+      metadata: { propertyId: property.id },
+      error: err instanceof Error ? err : String(err),
+    });
+    return false;
+  }
+}
+
 export function emitPropertyCreated(
   organizationId: number,
   property: PropertyEventRow | null | undefined,

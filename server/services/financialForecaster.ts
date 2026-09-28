@@ -14,6 +14,14 @@ import { sql, gte, lte, count, sum, desc, eq, and } from "drizzle-orm";
 import { monthlyRevenueCentsFor } from "@shared/billing/tier-pricing";
 import { estimateMonthlyInfraUsd } from "./costModel";
 
+// A paying org is a priced tier AND an active subscription — the rule
+// unitEconomics uses per org (DEFECT-0133). The tier alone counted trialing,
+// past-due and cancelled orgs as revenue and as paying customers. For past
+// months this is current state projected backwards, as the MRR history
+// comment below already says; mrr_snapshots is the real history.
+const payingOrg = () =>
+  sql`${organizations.subscriptionTier} IS NOT NULL AND ${organizations.subscriptionTier} != 'free' AND ${organizations.subscriptionTier} != '' AND ${organizations.subscriptionStatus} = 'active'`;
+
 export interface MRRProjection {
   currentMRR: number;
   growthRatePct: number;          // monthly growth rate
@@ -74,7 +82,7 @@ export async function projectMRR(): Promise<MRRProjection> {
       .from(organizations)
       .where(and(
         lte(organizations.createdAt, monthEnd),
-        sql`${organizations.subscriptionTier} IS NOT NULL AND ${organizations.subscriptionTier} != 'free' AND ${organizations.subscriptionTier} != ''`,
+        payingOrg(),
       ));
 
     const estimatedMRR = Math.round(
@@ -191,7 +199,7 @@ export async function calculateRunway(): Promise<RunwayResult> {
   // guess that roughly doubled the real idle floor (2026-07-07 cost audit).
   const [payingCount] = await db.select({ c: count() })
     .from(organizations)
-    .where(sql`${organizations.subscriptionTier} IS NOT NULL AND ${organizations.subscriptionTier} != 'free' AND ${organizations.subscriptionTier} != ''`);
+    .where(payingOrg());
   const customers = Number(payingCount?.c || 0);
 
   const monthlyBurn = monthlyAISpend + estimateMonthlyInfraUsd(customers);
@@ -247,7 +255,7 @@ export async function calculateUnitEconomics(): Promise<UnitEconomics> {
   // Total active paying customers
   const [orgCount] = await db.select({ c: count() })
     .from(organizations)
-    .where(sql`${organizations.subscriptionTier} IS NOT NULL AND ${organizations.subscriptionTier} != 'free' AND ${organizations.subscriptionTier} != ''`);
+    .where(payingOrg());
 
   const totalCustomers = Number(orgCount?.c || 0);
 

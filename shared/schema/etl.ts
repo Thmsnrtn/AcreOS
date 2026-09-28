@@ -102,6 +102,14 @@ export const exportJobs = pgTable("export_jobs", {
     includeAttachments?: boolean;
   }>().notNull().default({}),
   archivePath: text("archive_path"),
+  // The built archive itself (migration 0253). It was written to the /tmp of
+  // whichever machine ran the job, and the download read it from the /tmp of
+  // whichever machine served the request, so a worker-built export answered
+  // 410 "expired or unavailable". Cleared at expiry. Never selected for API
+  // reads (DEFECT-0142).
+  archiveBytes: customType<{ data: Buffer; driverData: Buffer }>({
+    dataType() { return "bytea"; },
+  })("archive_bytes"),
   archiveSizeBytes: integer("archive_size_bytes"),
   entityCounts: jsonb("entity_counts").$type<Record<string, number>>(),
   errorMessage: text("error_message"),

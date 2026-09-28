@@ -2592,6 +2592,8 @@ END $mig0247$`,
    )`,
   'CREATE INDEX IF NOT EXISTS "export_jobs_org_status_idx" ON "export_jobs" ("organization_id", "status", "created_at")',
   'CREATE INDEX IF NOT EXISTS "export_jobs_status_created_idx" ON "export_jobs" ("status", "created_at")',
+  // 0253 — DEFECT-0142: the built export archive lives in the row.
+  'ALTER TABLE "export_jobs" ADD COLUMN IF NOT EXISTS "archive_bytes" bytea',
 
   // etl_jobs — 0070 (must precede etl_runs)
   `CREATE TABLE IF NOT EXISTS "etl_jobs" (

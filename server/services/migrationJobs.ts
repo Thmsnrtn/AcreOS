@@ -220,8 +220,6 @@ export async function createImportJob(input: {
   payload: Buffer;
   fieldMap?: Record<string, string>;
 }): Promise<ImportJob> {
-  await ensureStorageDir();
-
   // Pre-scan CSV for total rows and reject too-large uploads early.
   let totalRows = 0;
   if (input.kind !== "documents") {
@@ -266,7 +264,6 @@ export async function createExportJob(input: {
   userId: string;
   params: ExportJob["params"];
 }): Promise<ExportJob> {
-  await ensureStorageDir();
   const [job] = await db
     .insert(exportJobs)
     .values({
@@ -293,9 +290,12 @@ export async function getImportJob(orgId: number, jobId: number): Promise<Import
   return job ?? null;
 }
 
-export async function getExportJob(orgId: number, jobId: number): Promise<ExportJob | null> {
+export type ExportJobSummary = Omit<ExportJob, "archiveBytes">;
+const { archiveBytes: _archiveBytes, ...EXPORT_JOB_SUMMARY_COLUMNS } = getTableColumns(exportJobs);
+
+export async function getExportJob(orgId: number, jobId: number): Promise<ExportJobSummary | null> {
   const [job] = await db
-    .select()
+    .select(EXPORT_JOB_SUMMARY_COLUMNS)
     .from(exportJobs)
     .where(and(eq(exportJobs.id, jobId), eq(exportJobs.organizationId, orgId)))
     .limit(1);
@@ -311,9 +311,9 @@ export async function listImportJobs(orgId: number, limit = 25): Promise<ImportJ
     .limit(limit);
 }
 
-export async function listExportJobs(orgId: number, limit = 25): Promise<ExportJob[]> {
+export async function listExportJobs(orgId: number, limit = 25): Promise<ExportJobSummary[]> {
   return db
-    .select()
+    .select(EXPORT_JOB_SUMMARY_COLUMNS)
     .from(exportJobs)
     .where(eq(exportJobs.organizationId, orgId))
     .orderBy(sql`${exportJobs.createdAt} DESC`)
@@ -331,7 +331,8 @@ export async function listExportJobs(orgId: number, limit = 25): Promise<ExportJ
  * A `running` import whose worker stopped reporting progress (a crash, deploy
  * or restart mid-run) used to stay "Running" forever with its rows partly
  * inserted. It is failed here with the rows it reached; rows already imported
- * stay, and a re-upload skips them as duplicates (DEFECT-0130).
+ * stay. Only the lead importer dedupes a re-upload (by parcel, DEFECT-0140),
+ * so the message says so per kind rather than promising it for all.
  */
 const STALE_IMPORT_MINUTES = 15;
 async function failStaleImportJobs(): Promise<number> {
@@ -342,7 +343,11 @@ async function failStaleImportJobs(): Promise<number> {
            payload_bytes = NULL,
            error_message = 'Import stopped before finishing: the process running it restarted after '
              || processed_count || ' of ' || total_rows
-             || ' rows. Rows already imported are kept; upload the file again to import the rest (duplicates are skipped).'
+             || ' rows. Rows already imported are kept. '
+             || CASE WHEN kind = 'leads'
+                  THEN 'Upload the file again to import the rest; leads already imported are skipped as duplicates.'
+                  ELSE 'Uploading the whole file again may import the rows that already made it a second time, so delete those rows before uploading again.'
+                END
      WHERE status = 'running'
        AND COALESCE(heartbeat_at, started_at) < now() - (${STALE_IMPORT_MINUTES} * interval '1 minute')
      RETURNING id
@@ -350,9 +355,33 @@ async function failStaleImportJobs(): Promise<number> {
   return ((result as { rows?: unknown[] }).rows ?? []).length;
 }
 
+/**
+ * Exports have no progress writes, so a `running` export older than an hour
+ * lost its worker; fail it rather than show "Running" forever. And an
+ * archive past its expiry is dropped from the row (DEFECT-0142) — the
+ * download already refuses it.
+ */
+const STALE_EXPORT_MINUTES = 60;
+async function sweepExportJobs(): Promise<void> {
+  await db.execute(sql`
+    UPDATE export_jobs
+       SET status = 'failed', completed_at = now(),
+           error_message = 'Export stopped before finishing: the process running it restarted. Request the export again.'
+     WHERE status = 'running'
+       AND started_at < now() - (${STALE_EXPORT_MINUTES} * interval '1 minute')
+  `);
+  await db.execute(sql`
+    UPDATE export_jobs SET archive_bytes = NULL
+     WHERE archive_bytes IS NOT NULL AND expires_at < now()
+  `);
+}
+
 export async function runMigrationJobsTick(): Promise<number> {
   await failStaleImportJobs().catch((err) =>
     logger.warn("[migrationJobs] stale-import sweep failed", { error: String(err) }),
+  );
+  await sweepExportJobs().catch((err) =>
+    logger.warn("[migrationJobs] export sweep failed", { error: String(err) }),
   );
   const importJob = await claimNextImportJob();
   if (importJob) {
@@ -441,6 +470,7 @@ function mapExportJobRow(row: any): ExportJob {
     status: row.status,
     params: row.params ?? {},
     archivePath: row.archive_path,
+    archiveBytes: row.archive_bytes ?? null,
     archiveSizeBytes: row.archive_size_bytes,
     entityCounts: row.entity_counts,
     errorMessage: row.error_message,
@@ -497,17 +527,13 @@ async function runImportJob(job: ImportJob): Promise<void> {
           errorSamples.push({ row: offset + e.row, error: e.error });
         }
       }
-      await db
-        .update(importJobs)
-        .set({
-          processedCount: offset + chunk.length,
-          heartbeatAt: new Date(),
-          successCount: success,
-          errorCount,
-          duplicatesSkipped: dupes,
-          errors: errorSamples,
-        })
-        .where(eq(importJobs.id, job.id));
+      await writeImportProgress(job.id, job.organizationId, {
+        processedCount: offset + chunk.length,
+        successCount: success,
+        errorCount,
+        duplicatesSkipped: dupes,
+        errors: errorSamples,
+      });
     }
 
     await markImportComplete(job, {
@@ -527,8 +553,31 @@ async function runImportJob(job: ImportJob): Promise<void> {
         completedAt: new Date(),
         payloadBytes: null,
       })
-      .where(eq(importJobs.id, job.id));
+      .where(and(eq(importJobs.id, job.id), eq(importJobs.status, "running")));
   }
+}
+
+class ImportNoLongerRunningError extends Error {}
+
+/**
+ * Progress + heartbeat, only while the job is still ours (DEFECT-0130 audit).
+ * Every progress write refreshes heartbeat_at, so a long document or
+ * communications import is not swept as dead. If the row is no longer
+ * 'running' — the stale sweep failed it, or it was cancelled — the worker
+ * stops instead of writing on, and a swept job can never later flip to
+ * completed after the customer was told to upload it again.
+ */
+async function writeImportProgress(
+  jobId: number,
+  organizationId: number,
+  patch: Partial<Pick<ImportJob, "processedCount" | "successCount" | "errorCount" | "duplicatesSkipped" | "errors" | "totalRows">>,
+): Promise<void> {
+  const still = await db
+    .update(importJobs)
+    .set({ ...patch, heartbeatAt: new Date() })
+    .where(and(eq(importJobs.id, jobId), eq(importJobs.organizationId, organizationId), eq(importJobs.status, "running")))
+    .returning({ id: importJobs.id });
+  if (still.length === 0) throw new ImportNoLongerRunningError(`import job ${jobId} is no longer running`);
 }
 
 async function runImportChunk(
@@ -554,7 +603,7 @@ async function runImportChunk(
     };
   }
   if (job.kind === "properties") {
-    const r = await importProperties(chunk, job.organizationId);
+    const r = await importProperties(chunk, job.organizationId, { durableEvents: true });
     return {
       successCount: r.successCount,
       errorCount: r.errorCount,
@@ -563,7 +612,7 @@ async function runImportChunk(
     };
   }
   if (job.kind === "deals") {
-    const r = await importDeals(chunk, job.organizationId);
+    const r = await importDeals(chunk, job.organizationId, { durableEvents: true });
     return {
       successCount: r.successCount,
       errorCount: r.errorCount,
@@ -677,15 +726,12 @@ async function processCommunicationsImport(
       }
     }
 
-    await db
-      .update(importJobs)
-      .set({
-        processedCount: Math.min(i + chunk.length, rows.length),
-        successCount: success,
-        errorCount,
-        errors: errorSamples,
-      })
-      .where(eq(importJobs.id, job.id));
+    await writeImportProgress(job.id, job.organizationId, {
+      processedCount: Math.min(i + chunk.length, rows.length),
+      successCount: success,
+      errorCount,
+      errors: errorSamples,
+    });
   }
 
   return {
@@ -712,6 +758,9 @@ async function processDocumentImport(
     throw new Error("Documents import expects a ZIP file");
   }
   const entries = readZipArchive(payload);
+  // The directory was only ever created by createImportJob — on the machine
+  // that took the upload, not necessarily this one.
+  await ensureStorageDir();
 
   let success = 0;
   let errorCount = 0;
@@ -778,16 +827,13 @@ async function processDocumentImport(
       }
     }
 
-    await db
-      .update(importJobs)
-      .set({
-        totalRows: entries.length,
-        processedCount: i + 1,
-        successCount: success,
-        errorCount,
-        errors: errorSamples,
-      })
-      .where(eq(importJobs.id, job.id));
+    await writeImportProgress(job.id, job.organizationId, {
+      totalRows: entries.length,
+      processedCount: i + 1,
+      successCount: success,
+      errorCount,
+      errors: errorSamples,
+    });
   }
 
   return {
@@ -809,7 +855,7 @@ async function markImportComplete(
     errors: Array<{ row: number; error: string }>;
   }
 ): Promise<void> {
-  await db
+  const completed = await db
     .update(importJobs)
     .set({
       status: "completed",
@@ -823,7 +869,12 @@ async function markImportComplete(
       completedAt: new Date(),
       payloadBytes: null,
     })
-    .where(eq(importJobs.id, job.id));
+    .where(and(eq(importJobs.id, job.id), eq(importJobs.status, "running")))
+    .returning({ id: importJobs.id });
+  if (completed.length === 0) {
+    logger.warn("[migrationJobs] import finished after it stopped being 'running'; outcome not overwritten", { jobId: job.id });
+    return;
+  }
 
   // CP2 of Jarvis Phase 1 (Verified Act-and-Confirm) — the IMPORTS workflow
   // is the first verify-gated seam. Fire-and-forget: verification is a
@@ -1003,9 +1054,9 @@ async function runExportJob(job: ExportJob): Promise<void> {
     });
 
     const zipBuf = await buildZipArchive(archiveEntries);
-    await ensureStorageDir();
-    const archivePath = path.join(STORAGE_DIR, `export-${job.id}.zip`);
-    await fs.writeFile(archivePath, zipBuf);
+    // In the row, not this machine's /tmp (DEFECT-0142): the download is
+    // served by whichever machine takes the request.
+    const archivePath = "db:export_jobs.archive_bytes";
 
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
@@ -1014,12 +1065,13 @@ async function runExportJob(job: ExportJob): Promise<void> {
       .set({
         status: "completed",
         archivePath,
+        archiveBytes: zipBuf,
         archiveSizeBytes: zipBuf.length,
         entityCounts: counts,
         completedAt: new Date(),
         expiresAt,
       })
-      .where(eq(exportJobs.id, job.id));
+      .where(and(eq(exportJobs.id, job.id), eq(exportJobs.status, "running")));
   } catch (err) {
     logger.error("[migrationJobs] Export job failed", { jobId: job.id, error: err });
     await db
@@ -1114,8 +1166,16 @@ function csvEscape(v: string): string {
 }
 
 export async function readExportArchive(jobId: number, orgId: number): Promise<Buffer | null> {
-  const job = await getExportJob(orgId, jobId);
-  if (!job || !job.archivePath) return null;
+  const [job] = await db
+    .select({ archiveBytes: exportJobs.archiveBytes, archivePath: exportJobs.archivePath, expiresAt: exportJobs.expiresAt })
+    .from(exportJobs)
+    .where(and(eq(exportJobs.id, jobId), eq(exportJobs.organizationId, orgId)))
+    .limit(1);
+  if (!job) return null;
+  if (job.expiresAt && job.expiresAt.getTime() < Date.now()) return null;
+  if (job.archiveBytes) return Buffer.from(job.archiveBytes);
+  // Legacy rows built before migration 0253 name a local file.
+  if (!job.archivePath || job.archivePath.startsWith("db:")) return null;
   try {
     return await fs.readFile(job.archivePath);
   } catch {

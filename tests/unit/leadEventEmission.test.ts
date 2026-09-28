@@ -109,7 +109,7 @@ const H = vi.hoisted(() => {
       }
       return n;
     }),
-    findDuplicateLeads: vi.fn(async () => []),
+    findDuplicateLeads: vi.fn(async (..._args: any[]): Promise<any[]> => []),
     getTeamMemberByEmail: vi.fn(async () => null),
     createAuditLogEntry: vi.fn(async () => ({ id: 1 })),
     updateLeadScore: vi.fn(async () => ({})),
@@ -477,6 +477,62 @@ describe("lead.created fires exactly once on every creation path", () => {
     expect(created()).toHaveLength(2);
     expect(created().every((e) => e.organizationId === ORG_ID)).toBe(true);
     expect(created().every((e) => typeof e.leadId === "number")).toBe(true);
+  });
+
+  // DEFECT-0140 — a parcel is APN + state + COUNTY, in both import paths.
+  it("POST /api/leads/csv-import — the same APN in another COUNTY of the same state is a new parcel", async () => {
+    seedLead({ apn: "12345", state: "TX", county: "Travis" });
+    const res = await request(app)
+      .post("/api/leads/csv-import")
+      .send({
+        rows: [
+          { firstName: "Same", lastName: "County", apn: "12345", state: "TX", county: "travis" },
+          { firstName: "Other", lastName: "County", apn: "12345", state: "TX", county: "Harris" },
+        ],
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.skippedExisting).toBe(1);
+    expect(res.body.imported, "the Harris parcel was rejected as a duplicate of the Travis one").toBe(1);
+    expect(created()[0].data.county).toBe("Harris");
+  });
+
+  it("POST /api/leads/csv-import — a county-less side still falls back to state + APN", async () => {
+    // The other direction, so the fix cannot be "stop deduping when unsure".
+    seedLead({ apn: "555", state: "TX", county: null });
+    const res = await request(app)
+      .post("/api/leads/csv-import")
+      .send({ rows: [{ firstName: "Has", lastName: "County", apn: "555", state: "TX", county: "Travis" }] });
+    expect(res.body.skippedExisting).toBe(1);
+    expect(res.body.imported).toBe(0);
+  });
+
+  it("importLeads() — one owner with three parcels is three leads, not one", async () => {
+    // The contact match (name OR email OR phone) skipped every parcel after
+    // the first for the same owner — the normal shape of a county list.
+    H.storageMock.findDuplicateLeads.mockImplementation(async (_org: number, c: any) =>
+      H.state.LEADS.filter((l) => l.firstName === c.firstName && l.lastName === c.lastName),
+    );
+    seedLead({ firstName: "Ann", lastName: "Owner", apn: "1", state: "TX", county: "Travis" });
+    const result = await importLeads(
+      [
+        { "First Name": "Ann", "Last Name": "Owner", APN: "2", State: "TX", County: "Travis" },
+        { "First Name": "Ann", "Last Name": "Owner", APN: "1", State: "TX", County: "Harris" },
+        { "First Name": "Ann", "Last Name": "Owner", APN: "1", State: "TX", County: "Travis" },
+      ],
+      ORG_ID,
+    );
+    H.storageMock.findDuplicateLeads.mockImplementation(async () => []);
+    expect(result.successCount).toBe(2);
+    expect(result.duplicatesSkipped).toBe(1);
+    expect(created().map((e) => `${e.data.apn}/${e.data.county}`).sort()).toEqual(["1/Harris", "2/Travis"]);
+  });
+
+  it("importLeads() — a row with no APN keeps the contact match", async () => {
+    H.storageMock.findDuplicateLeads.mockImplementation(async () => [{ id: 1 }]);
+    const result = await importLeads([{ "First Name": "Cal", "Last Name": "Contact", Email: "c@example.com" }], ORG_ID);
+    H.storageMock.findDuplicateLeads.mockImplementation(async () => []);
+    expect(result.duplicatesSkipped).toBe(1);
+    expect(result.successCount).toBe(0);
   });
 
   it("Pax create_lead tool", async () => {

@@ -292,15 +292,11 @@ registerExecutor("atlas_cto", "acknowledge_incident", async (ctx) => {
   const { alertId } = ctx.input;
   if (!alertId) return { success: false, detail: "No alert ID provided" };
 
-  await db.update(systemAlerts)
-    .set({ status: "acknowledged", acknowledgedAt: new Date() })
-    .where(eq(systemAlerts.id, alertId));
-
-  return {
-    success: true,
-    detail: `Alert #${alertId} acknowledged by Atlas`,
-    metrics: { alertId },
-  };
+  // Through the one acknowledgement rule (DEFECT-0135): only a new alert
+  // moves, and a missing or already-handled alert is not reported as done.
+  const { acknowledgeSystemAlert } = await import("./alertAcknowledge");
+  const outcome = await acknowledgeSystemAlert(Number(alertId), "atlas_cto");
+  return { ...outcome, metrics: { alertId } };
 });
 
 // ─── Oracle Analytics Executors (v4) ──────────────────────────────────────

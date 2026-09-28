@@ -1,7 +1,9 @@
 import { z } from "zod";
-import { insertLeadSchema, insertPropertySchema, insertDealSchema, acquiredNotes } from "@shared/schema";
+import { insertLeadSchema, insertPropertySchema, insertDealSchema, acquiredNotes, leads } from "@shared/schema";
+import { and, eq, inArray } from "drizzle-orm";
 import { storage } from "../storage";
 import { db } from "../db";
+import { createParcelDedupeIndex } from "./leads/parcelDedupe";
 // Wave B "Wire the engine" — CSV/bulk imports are a lead-creation path, so
 // they must fire lead.created just like the single-create route does.
 import { emitLeadCreated, emitLeadCreatedDurably } from "./leadEvents";
@@ -10,8 +12,8 @@ import { emitLeadCreated, emitLeadCreatedDurably } from "./leadEvents";
 // created rows silently — so a workflow on `property.created` / `deal.created`
 // ran for a single-record create and not for a CSV import of a thousand.
 // Same rule, same file, same event contract.
-import { emitPropertyCreated } from "./propertyEvents";
-import { emitDealCreated } from "./dealEvents";
+import { emitPropertyCreated, emitPropertyCreatedDurably } from "./propertyEvents";
+import { emitDealCreated, emitDealCreatedDurably } from "./dealEvents";
 
 export interface ImportResult {
   totalRows: number;
@@ -113,6 +115,12 @@ const LEAD_COLUMN_MAP: Record<string, string> = {
   city: "city",
   state: "state",
   zip: "zip",
+  county: "county",
+  apn: "apn",
+  APN: "apn",
+  "parcel number": "apn",
+  parcel_number: "apn",
+  parcelNumber: "apn",
   status: "status",
   source: "source",
   notes: "notes",
@@ -364,6 +372,8 @@ export async function importLeads(
         city: row.city || null,
         state: row.state || null,
         zip: row.zip || null,
+        county: row.county || null,
+        apn: row.apn || null,
         status: row.status || "new",
         source: row.source || "import",
         notes: row.notes || null,
@@ -418,11 +428,37 @@ export async function importLeads(
     }
   }
 
-  // Phase 2: Duplicate detection — still per-row since criteria varies,
-  // but we batch the non-duplicate inserts afterward
+  // Phase 2: Duplicate detection. A row WITH an APN is a parcel, and its
+  // identity is the parcel (APN + state + county — services/leads/
+  // parcelDedupe.ts). It is not deduped on the owner's name, email or phone:
+  // one owner holding three parcels on a county list is three leads, and the
+  // contact match skipped two of them (DEFECT-0140). A row with no APN is a
+  // contact, and keeps the contact match.
+  const incomingApns = Array.from(
+    new Set(validatedRows.map((r) => String(r.data.apn ?? "").trim()).filter((a) => a.length > 0)),
+  );
+  const existingParcels = createParcelDedupeIndex();
+  for (let i = 0; i < incomingApns.length; i += 1000) {
+    const existing = await db
+      .select({ apn: leads.apn, state: leads.state, county: leads.county })
+      .from(leads)
+      .where(and(eq(leads.organizationId, organizationId), inArray(leads.apn, incomingApns.slice(i, i + 1000))));
+    for (const r of existing) {
+      if ((r.apn ?? "").trim()) existingParcels.add(r.state, r.county, r.apn ?? "");
+    }
+  }
+  const seenParcels = createParcelDedupeIndex();
+
   const nonDuplicateRows: typeof validatedRows = [];
   for (const row of validatedRows) {
-    if (Object.keys(row.dupCriteria).length > 0) {
+    const apn = String(row.data.apn ?? "").trim();
+    if (apn) {
+      if (existingParcels.has(row.data.state, row.data.county, apn) || seenParcels.has(row.data.state, row.data.county, apn)) {
+        result.duplicatesSkipped++;
+        continue;
+      }
+      seenParcels.add(row.data.state, row.data.county, apn);
+    } else if (Object.keys(row.dupCriteria).length > 0) {
       const duplicates = await storage.findDuplicateLeads(organizationId, row.dupCriteria);
       if (duplicates.length > 0) {
         result.duplicatesSkipped++;
@@ -483,7 +519,8 @@ export async function importLeads(
 
 export async function importProperties(
   csvData: Array<Record<string, string>>,
-  organizationId: number
+  organizationId: number,
+  options: { durableEvents?: boolean } = {},
 ): Promise<ImportResult> {
   const result: ImportResult = {
     totalRows: csvData.length,
@@ -538,7 +575,8 @@ export async function importProperties(
       result.successCount++;
       // Same per-entity contract (and the same volume note) as the lead
       // importer above.
-      emitPropertyCreated(organizationId, createdProperty);
+      if (options.durableEvents) await emitPropertyCreatedDurably(organizationId, createdProperty);
+      else emitPropertyCreated(organizationId, createdProperty);
     } catch (error) {
       result.errorCount++;
       result.errors.push({
@@ -554,7 +592,8 @@ export async function importProperties(
 
 export async function importDeals(
   csvData: Array<Record<string, string>>,
-  organizationId: number
+  organizationId: number,
+  options: { durableEvents?: boolean } = {},
 ): Promise<ImportResult> {
   const result: ImportResult = {
     totalRows: csvData.length,
@@ -594,7 +633,8 @@ export async function importDeals(
       });
 
       result.successCount++;
-      emitDealCreated(organizationId, createdDeal);
+      if (options.durableEvents) await emitDealCreatedDurably(organizationId, createdDeal);
+      else emitDealCreated(organizationId, createdDeal);
     } catch (error) {
       result.errorCount++;
       result.errors.push({

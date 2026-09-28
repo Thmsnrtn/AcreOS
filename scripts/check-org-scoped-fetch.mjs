@@ -521,7 +521,6 @@ const BASELINE_FUNCTION_OFFENDERS = new Set([
   //   read across every org without routing through
   //   unscopedForPlatformOps(reason), which is what this gate requires so the
   //   intent is STATED rather than inferred from a filename.
-  "server/services/autonomousDecisionExecutor.ts::executeAlertAcknowledgement",
   "server/services/autonomousDecisionExecutor.ts::executeFeatureRequestApproval",
   "server/services/autonomyFinalMile.ts::generateDailyAutonomousSummary",
   "server/services/autopilot/rootCause.ts::runIncidentTriage",
@@ -595,7 +594,6 @@ const BASELINE_FUNCTION_OFFENDERS = new Set([
   "server/services/gdprService.ts::exportUserData",
   "server/services/ledgerDeadLetter.ts::runLedgerDeadLetterSweep",
   "server/services/marketNetworkContributor.ts::getStagingEntries",
-  "server/services/migrationJobs.ts::runImportJob",
   "server/services/mlSnapshots.ts::pairOutcome",
   "server/services/multiWeekPlanner.ts::readWindowMetrics",
   "server/services/orgEmailIdentity.ts::verifyIdentity",
@@ -712,8 +710,6 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   "server/services/disclosureTimingDispatcher.ts::runDisclosureTimingDispatch",
   "server/services/inboundEmailService.ts::processInboundEmail",
   "server/services/leadScoreDecay.ts::decayOrganizationLeads",
-  "server/services/migrationJobs.ts::processCommunicationsImport",
-  "server/services/migrationJobs.ts::processDocumentImport",
   "server/services/onboardingAutonomy.ts::sweepAndFireDueSteps",
   "server/services/propertyTaxService.ts::recordTaxPaymentFromEscrow",
   "server/services/recognitionWorker.ts::runRecognitionTick",
@@ -754,7 +750,6 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   "server/services/leadQualification.ts::checkForHotLeads",
   "server/services/leadScoreDecay.ts::applyScoreRecovery",
   "server/services/mail/mailFlusher.ts::bookFreeSendAcquisitionCogs",
-  "server/services/migrationJobs.ts::markImportComplete",
   "server/services/migrationJobs.ts::runExportJob",
   "server/services/offerBatchService.ts::createOfferBatch",
   "server/services/onboardingAutonomy.ts::handleActivationVerdict",

@@ -3283,6 +3283,19 @@ cases were red on the pre-fix migrationJobs/importExport) and the lead lane in
 Not done: the synchronous (small-file) import path still emits `lead.created`
 in memory. It runs inside the request, so the loss window is a process crash
 during the request.
+Audit follow-up (independent audit, 2026-09-28), fixed:
+- Every progress write, including documents and communications, refreshes
+  `heartbeat_at` through `writeImportProgress`. A write that finds the job no
+  longer `running` stops the worker. Completion and failure writes carry a
+  `status = 'running'` predicate, so a swept job can never flip back to
+  completed.
+- The stale-sweep message only promises duplicate-skipping for leads.
+- Worker imports of properties and deals stage `property.created` and
+  `deal.created` durably too (`emitDurablePropertyEvent`,
+  `emitDurableDealEvent`). The handoff gate now enumerates every importer call
+  the worker makes.
+
+Exports: DEFECT-0142. Imported documents: DEFECT-0143.
 Resolving commits: this branch, round 3
 ### DEFECT-0131
 Title: The acquired-notes list showed the first 100 notes as the whole book
@@ -3327,6 +3340,8 @@ Remediation plan: DONE.
   par today — not a market value".
 Falsified by: `tests/unit/noteYieldIrrIsDated.test.ts` (all four cases red
 pre-fix).
+Audit follow-up: less than one period held (acquired this month, or dated in
+the future) returns null rather than an annualised one-month return.
 Resolving commits: this branch, round 3
 ### DEFECT-0133
 Title: Unit economics counted recomputes as unprofitable days, gave non-paying orgs MRR, and claimed Stripe fees were netted
@@ -3353,6 +3368,13 @@ Deducting `stripe_fee` from revenue is the follow-up; it changes the stored
 columns.
 Falsified by: `tests/unit/unitEconomicsStreakIsDays.test.ts` (four cases red
 pre-fix; two anchors green before and after).
+Audit follow-up: `maybeEmitUnprofitableAlert` files only for an org with MRR.
+Otherwise every trialing org with costs would have become a "review pricing"
+founder alert. The rollup's `payingCustomerCount` requires an active
+subscription. `server/services/financialForecaster.ts` (MRR history, burn,
+unit economics) uses the same paying rule
+(`tests/unit/forecasterCountsPayingOrgsOnly.test.ts`). Its churn proxy is
+DEFECT-0144.
 Resolving commits: this branch, round 3
 ### DEFECT-0134
 Title: A founder's preview cancel could report success while the action ran anyway
@@ -3379,6 +3401,8 @@ Rows stranded in `executing` by a crash are left visible rather than swept to
 a guessed outcome.
 Falsified by: `tests/unit/actionPreviewCancelIsAtomic.test.ts` (all three
 cases red pre-fix).
+Audit note: a row whose executor crashed after the claim stays `executing`.
+It is visible as such, and is not swept to a guessed outcome.
 Resolving commits: this branch, round 3
 ### DEFECT-0135
 Title: The executor's alert "acknowledge" closed the alert, stored nothing, and succeeded on zero rows
@@ -3401,6 +3425,15 @@ Remediation plan: DONE.
 Falsified by: `tests/unit/alertAcknowledgeIsNotResolve.test.ts` (a
 comment-stripped read of the unit — the executor is driven by a model
 decision; three cases red pre-fix).
+Audit follow-up: the path that actually fires is the Atlas
+`acknowledge_incident` executor (`server/services/agentActionExecutors.ts`,
+from sentinel reactions and founder approvals). It set "acknowledged" with
+no status predicate, so it reopened resolved and dismissed alerts, and it
+reported success for ids that matched nothing. Both executors now call
+`acknowledgeSystemAlert` (`server/services/alertAcknowledge.ts`), which is
+tested behaviourally. `decisionsInbox.createFromAlert`, the only writer of
+`sourceAlertId`, has no callers, so the executor's critical_alert lane is
+dormant. Recorded, not wired.
 Resolving commits: this branch, round 3
 ### DEFECT-0136
 Title: A dormant onboarding route returned fabricated offers and profits
@@ -3440,6 +3473,14 @@ Remediation plan: DONE, using the seeder's own markers
 Falsified by: `tests/unit/checklistIgnoresSampleData.test.ts` (drives the real
 handler and renders each WHERE with the Postgres dialect; three cases red
 pre-fix).
+Audit follow-up: `detectMilestones` (`server/services/churnEngine.ts`)
+counted the sample book too, closed deals included. It emailed "Congrats on
+your first closed deal" about fixtures and stored the milestone for good. The
+exclusions now live in one place, `server/services/onboarding/sampleFilters.ts`,
+used by the checklist and the milestones
+(`tests/unit/milestonesIgnoreSampleData.test.ts`, red pre-fix). The dead
+`/api/getting-started/checklist` (`server/routes-micro-features.ts`, no client
+caller) still counts sample rows.
 Resolving commits: this branch, round 3
 ### DEFECT-0138
 Title: The parcel-intelligence store served a report computed for a different asking price
@@ -3472,6 +3513,102 @@ Remediation plan: DONE. `/notes` is removed from both maps; `/money` keeps
 its entry.
 Falsified by: not separately tested (a wasted request, no wrong output).
 Resolving commits: this branch, round 3
+### DEFECT-0140
+Title: Lead imports merged different parcels: same APN in two counties, and one owner's several parcels
+Severity: P1
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report §26–27, verified at HEAD 2026-09-28
+Description: Two import paths deduped leads on something other than the
+parcel.
+- `POST /api/leads/csv-import` (`server/routes-leads.ts`) keyed on state + APN
+  and never collected a county, so the same APN in two counties of one state
+  was one lead. The second was reported as "already exists". Its own comment
+  recorded the gap.
+- `importLeads` (`server/services/importExport.ts`) dropped the APN and county
+  columns entirely. It deduped every row on name OR email OR phone, so an
+  owner holding three parcels on a county list, the normal shape of such a
+  list, imported as one lead and two "duplicates".
+Remediation plan: DONE.
+- One rule, `server/services/leads/parcelDedupe.ts`, used by both paths: a
+  parcel is APN + state + county. When either side has no county, the match
+  falls back to state + APN rather than guessing.
+- The CSV importer maps and writes County
+  (`client/src/components/leads/CsvImportSheet.tsx`), and its preview counts
+  in-file duplicates by the same key.
+- `importLeads` maps APN and County onto the lead. A row with an APN is
+  deduped as a parcel. A row without one keeps the contact match.
+Falsified by: four cases in `tests/unit/leadEventEmission.test.ts`. The
+county case and the three-parcel owner case were red pre-fix. The county-less
+fallback and the contact-match anchors are green on both sides, so the fix
+cannot be "stop deduping".
+Resolving commits: this branch, round 3
+### DEFECT-0141
+Title: The parcel-delta detector read every observation ever recorded for the pipeline on each run
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report §32, verified at HEAD 2026-09-28
+Description: `loadObservationPairs` (`server/services/parcelDeltaDetector.ts`)
+needs the latest two observations per (parcel, field). It selected ALL
+observations for every tracked APN, in one unbounded IN list, and windowed
+them in JS. The read grew with observation history and pipeline size on
+every daily run, for every org.
+Remediation plan: DONE. The window is computed in SQL (`row_number() over
+(partition by apn, state, county, field order by observed_at desc, id desc)`,
+`rn <= 2`), and the APN list is read in chunks of 500. The rendered query was
+checked against the Postgres dialect.
+Falsified by: `tests/unit/parcelIdentityIsCountyScoped.test.ts` (chunking
+case and window pin red pre-fix; the DEFECT-0128 identity cases unchanged
+and green).
+Resolving commits: this branch, round 3
+### DEFECT-0142
+Title: A worker-built data export could not be downloaded
+Severity: P1
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: independent audit of DEFECT-0130, 2026-09-28
+Description: `runExportJob` (`server/services/migrationJobs.ts`) wrote the
+zip to the /tmp of whichever machine ran the job, and stored that path.
+`readExportArchive` read it from the /tmp of whichever machine served the
+download. Migration jobs tick on both the app and the worker, so a
+worker-built export answered 410 "Archive expired or unavailable". Expiry was
+never enforced on read, and a dead export stayed `running`.
+Remediation plan: DONE.
+- The archive lives in `export_jobs.archive_bytes` (migration
+  `migrations/0253_export_archive_in_db.sql`, mirrored in
+  `scripts/migrate.mjs`).
+- The download reads the row and refuses an archive past `expires_at`.
+  Legacy file paths are still honoured.
+- The job API never selects the bytes.
+- Each tick fails a `running` export older than an hour and drops expired
+  archive bytes.
+Falsified by: three DEFECT-0142 cases in
+`tests/unit/importJobsSurviveMachines.test.ts` (all red pre-fix).
+Resolving commits: this branch, round 3
+### DEFECT-0143
+Title: Imported documents are written to one machine's /tmp and are lost
+Severity: P1
+Status: OPEN (needs a storage decision — DEFECT-0046)
+Surfaced by lenses: independent audit of DEFECT-0130, 2026-09-28
+Description: A documents import (`server/services/migrationJobs.ts`) writes
+each file to the worker's /tmp and records that path in `activity_log`
+metadata. /tmp does not survive a restart or deploy, and is not shared
+between machines. The export's attachment re-pack skips any file it cannot
+find, silently, so `counts.attachments` under-reports. The storage directory
+is now created where the files are written. The durable fix is a shared file
+store: object storage, or bytes in the database. That is the deferred
+DEFECT-0046 decision, so it is recorded here rather than guessed at.
+Resolving commits: —
+### DEFECT-0144
+Title: The founder forecast's churn rate counts every free org touched in 30 days as churned
+Severity: P2
+Status: OPEN
+Surfaced by lenses: DEFECT-0133 audit follow-up, 2026-09-28
+Description: `calculateUnitEconomics` (`server/services/financialForecaster.ts`)
+counts as "churned" any org with a free or null tier and an `updated_at`
+within 30 days. A free org that was never paying, or was just edited, counts
+as churn. That churn rate sets the customer lifetime and the LTV shown on the
+founder forecast. The fix is to count only orgs whose subscription ended in
+the window, from the subscription event history.
+Resolving commits: —
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -3508,12 +3645,12 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 7   | 7     |
-| FIXED  | 12  | 71  | 46  | 129   |
+| OPEN   | 0   | 1   | 8   | 9     |
+| FIXED  | 12  | 73  | 47  | 132   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **74** | **53** | **139** |
+| **Total** | **12** | **77** | **55** | **144** |
 
-Recounted from the entries themselves on 2026-09-28 (139 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (144 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

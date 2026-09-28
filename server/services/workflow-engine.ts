@@ -2997,6 +2997,28 @@ export function emitDurableLeadEvent(
   return stageWorkflowEvent({ event, organizationId, entityId: leadId, entityType: "lead", data }, opts);
 }
 
+/** Durable property.created, for imports run by the worker (DEFECT-0130 audit). */
+export function emitDurablePropertyEvent(
+  event: "property.created",
+  organizationId: number,
+  propertyId: number,
+  data: Record<string, any>,
+  opts: { executor?: OutboxExecutor; dedupeKey?: string } = {},
+): Promise<{ staged: boolean }> {
+  return stageWorkflowEvent({ event, organizationId, entityId: propertyId, entityType: "property", data }, opts);
+}
+
+/** Durable deal.created, for imports run by the worker (DEFECT-0130 audit). */
+export function emitDurableDealEvent(
+  event: "deal.created",
+  organizationId: number,
+  dealId: number,
+  data: Record<string, any>,
+  opts: { executor?: OutboxExecutor; dedupeKey?: string } = {},
+): Promise<{ staged: boolean }> {
+  return stageWorkflowEvent({ event, organizationId, entityId: dealId, entityType: "deal", data }, opts);
+}
+
 export function emitLeadEvent(
   event: "lead.created" | "lead.updated" | "lead.status_changed",
   organizationId: number,

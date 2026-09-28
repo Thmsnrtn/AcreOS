@@ -52,6 +52,7 @@ import {
   revenueProtectionInterventions,
 } from "@shared/schema";
 import { eq, and, desc, isNull, sql, lte } from "drizzle-orm";
+import { acknowledgeSystemAlert } from "./alertAcknowledge";
 import { routeAITask, routeCriticalTask, TaskComplexity } from "./aiRouter";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -556,41 +557,14 @@ async function executeAlertAcknowledgement(
 ): Promise<{ success: boolean; detail: string }> {
   if (!item.sourceAlertId) return { success: false, detail: "No alert ID" };
 
-  // ACKNOWLEDGE, not resolve (DEFECT-0135). This wrote status "resolved" —
-  // closing an alert whose cause nobody had fixed — and put the AI's
-  // reasoning in `resolutionNotes`, a column system_alerts does not have
-  // (an `as any` hid it, so the reasoning was never stored). It also
-  // reported success when no row matched. Now: only a NEW alert moves, to
-  // acknowledged; the reasoning lands in metadata; zero rows is not success.
+  // Through the one acknowledgement rule (DEFECT-0135, server/services/
+  // alertAcknowledge.ts): acknowledge, never resolve; only a new alert moves;
+  // zero rows is not success. The model's reasoning is kept on the alert.
   try {
-    const note = {
-      autoAcknowledgedBy: "autonomous_decision_executor",
+    return await acknowledgeSystemAlert(item.sourceAlertId, "autonomous_decision_executor", {
       reasoning: decision.reasoning,
       executionNotes: decision.executionNotes ?? null,
-      at: new Date().toISOString(),
-    };
-    const updated = await db.update(systemAlerts)
-      .set({
-        status: "acknowledged",
-        acknowledgedAt: new Date(),
-        metadata: sql`coalesce(${systemAlerts.metadata}, '{}'::jsonb) || ${JSON.stringify({ autoAcknowledgement: note })}::jsonb`,
-      })
-      .where(and(eq(systemAlerts.id, item.sourceAlertId), eq(systemAlerts.status, "new")))
-      .returning({ id: systemAlerts.id });
-
-    if (updated.length === 0) {
-      const [current] = await db.select({ status: systemAlerts.status })
-        .from(systemAlerts)
-        .where(eq(systemAlerts.id, item.sourceAlertId))
-        .limit(1);
-      return {
-        success: false,
-        detail: current
-          ? `Alert #${item.sourceAlertId} is already ${current.status} — nothing changed`
-          : `Alert #${item.sourceAlertId} not found — nothing changed`,
-      };
-    }
-    return { success: true, detail: `Alert #${item.sourceAlertId} acknowledged (still open until its cause is resolved)` };
+    });
   } catch (err: any) {
     return { success: false, detail: err.message };
   }

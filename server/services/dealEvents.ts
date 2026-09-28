@@ -33,7 +33,7 @@
 // pins that relationship.
 // ---------------------------------------------------------------------------
 
-import { emitDealEvent } from "./workflow-engine";
+import { emitDealEvent, emitDurableDealEvent } from "./workflow-engine";
 import { logger } from "../utils/logger";
 
 /**
@@ -93,6 +93,31 @@ function swallow(event: string, dealId: number, organizationId: number, err: unk
 }
 
 /** `deal.created` — called by every real deal-creation path. */
+/**
+ * deal.created staged in the durable outbox — for the worker's import jobs,
+ * where an in-memory emit dies with a restart (DEFECT-0130 audit). Returns
+ * false (and logs) if staging failed; never throws.
+ */
+export async function emitDealCreatedDurably(
+  organizationId: number,
+  deal: DealEventRow | null | undefined,
+): Promise<boolean> {
+  if (!deal) return false;
+  try {
+    await emitDurableDealEvent("deal.created", organizationId, deal.id, buildDealEventData(deal), {
+      dedupeKey: `deal.created:${deal.id}`,
+    });
+    return true;
+  } catch (err) {
+    logger.error("Durable deal.created staging failed", {
+      organizationId,
+      metadata: { dealId: deal.id },
+      error: err instanceof Error ? err : String(err),
+    });
+    return false;
+  }
+}
+
 export function emitDealCreated(
   organizationId: number,
   deal: DealEventRow | null | undefined,

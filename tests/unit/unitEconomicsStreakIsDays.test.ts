@@ -48,13 +48,16 @@ vi.mock("../../server/db", () => {
   };
 });
 
-vi.mock("../../server/storage", () => ({ storage: {} }));
+const alerts = vi.hoisted(() => ({ created: [] as unknown[] }));
+vi.mock("../../server/storage", () => ({
+  storage: { createSystemAlert: async (a: unknown) => { alerts.created.push(a); return a; } },
+}));
 vi.mock("../../server/utils/logger", () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
 import { organizations, financialLedger, customerUnitEconomics } from "@shared/schema";
-import { computeUnitEconomicsForOrg } from "../../server/services/unitEconomics";
+import { computeUnitEconomicsForOrg, maybeEmitUnprofitableAlert } from "../../server/services/unitEconomics";
 
 const ORG_ID = 42;
 const today = new Date().toISOString().slice(0, 10);
@@ -115,5 +118,25 @@ describe("DEFECT-0133 — revenue is a paying org's only, and gross of Stripe fe
     const notes = (r.breakdown.notes ?? []).join(" ");
     expect(notes).not.toMatch(/netted|excluded by design/);
     expect(notes).toMatch(/gross of Stripe processing fees/i);
+  });
+});
+
+describe("DEFECT-0133 (audit) — only a paying customer is an unprofitable customer", () => {
+  it("a trialing org with costs files no 'review pricing' alert", async () => {
+    world({ status: "trialing", prev: { computedDate: daysAgo(1), consecutiveUnprofitableDays: 60 }, costCents: 10_000 });
+    const r = await computeUnitEconomicsForOrg(ORG_ID, { activeCustomerCount: 1 });
+    expect(r.mrrUsd).toBe(0);
+    expect(r.consecutiveUnprofitableDays).toBeGreaterThan(30);
+    alerts.created.length = 0;
+    await expect(maybeEmitUnprofitableAlert(r)).resolves.toBe(false);
+    expect(alerts.created).toHaveLength(0);
+  });
+
+  it("a paying org in the same state still files one (anchor)", async () => {
+    world({ status: "active", prev: { computedDate: daysAgo(1), consecutiveUnprofitableDays: 60 }, costCents: 10_000_000 });
+    const r = await computeUnitEconomicsForOrg(ORG_ID, { activeCustomerCount: 1 });
+    alerts.created.length = 0;
+    await expect(maybeEmitUnprofitableAlert(r)).resolves.toBe(true);
+    expect(alerts.created).toHaveLength(1);
   });
 });

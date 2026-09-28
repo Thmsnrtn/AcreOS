@@ -27,7 +27,7 @@ describe("DEFECT-0132 — IRR to date", () => {
       ...base,
       currentBalanceCents: 900_000,
       payments: [{ paymentDate: "2024-01-20", principalCents: 100_000, interestCents: 0 }],
-      asOf: new Date("2024-02-10T00:00:00Z"),
+      asOf: new Date("2024-02-20T00:00:00Z"),
     });
     // Paid 1,000 back and holds 9,000: break-even, not a loss.
     expect(y.irrToDate).not.toBeNull();
@@ -70,5 +70,25 @@ describe("DEFECT-0132 — IRR to date", () => {
     expect(y.irrToDate!).toBeLessThan(0);
     expect(y.effectiveNetYield!).toBeLessThan(0);
     expect(y.effectiveNetYield!).toBeCloseTo(y.irrToDate! - 0.0025, 10);
+  });
+
+  it("less than one period held is not a rate", () => {
+    // Bought this month at a discount: [-90k, 100k] one "month" apart would
+    // annualise to roughly 254%.
+    const y = computeYields({
+      ...base,
+      acquisitionPriceCents: 9_000_000,
+      currentBalanceCents: 10_000_000,
+      payments: [],
+      acquisitionDate: "2026-09-02",
+      asOf: new Date("2026-09-28T00:00:00Z"),
+    });
+    expect(y.irrToDate).toBeNull();
+    expect(y.effectiveNetYield).toBeNull();
+  });
+
+  it("an acquisition dated in the future is not a rate either", () => {
+    const y = computeYields({ ...base, payments: [], acquisitionDate: "2027-01-01", asOf: new Date("2026-09-28T00:00:00Z") });
+    expect(y.irrToDate).toBeNull();
   });
 });

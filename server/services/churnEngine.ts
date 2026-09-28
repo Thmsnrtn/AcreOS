@@ -27,7 +27,8 @@ import {
   activityLog,
   systemAlerts,
 } from "@shared/schema";
-import { eq, count, sql, and, isNull, gt } from "drizzle-orm";
+import { eq, count, sql, and, isNull, gt, type SQL } from "drizzle-orm";
+import { realDeal, realLead, realNote, realProperty } from "./onboarding/sampleFilters";
 import { logActivity } from "./systemActivityLogger";
 import { sendRegisteredEmail } from "./emailRegistry";
 import { isFounderEmail } from "./founder";
@@ -52,13 +53,14 @@ type MilestoneKey = (typeof MILESTONES)[keyof typeof MILESTONES];
 
 async function countRecords(
   table: any,
-  orgId: number
+  orgId: number,
+  realOnly?: SQL,
 ): Promise<number> {
   try {
     const [row] = await db
       .select({ n: count() })
       .from(table)
-      .where(eq(table.organizationId, orgId));
+      .where(realOnly ? and(eq(table.organizationId, orgId), realOnly) : eq(table.organizationId, orgId));
     return Number(row?.n ?? 0);
   } catch {
     return 0;
@@ -162,17 +164,20 @@ export async function detectMilestones(
       const [row] = await db
         .select({ n: count() })
         .from(deals)
-        .where(and(eq(deals.organizationId, orgId), eq(deals.status, "closed")));
+        .where(and(eq(deals.organizationId, orgId), eq(deals.status, "closed"), realDeal()));
       return Number(row?.n ?? 0);
     } catch {
       return 0;
     }
   })();
 
+  // The sample book is not a milestone: "Try with sample data" seeds leads,
+  // notes and CLOSED deals, and this sends a congratulations email and stores
+  // the milestone for good (DEFECT-0137).
   const [lc, nc, pc, campaignCount] = await Promise.all([
-    countRecords(leads, orgId),
-    countRecords(notes, orgId),
-    countRecords(properties, orgId),
+    countRecords(leads, orgId, realLead()),
+    countRecords(notes, orgId, realNote()),
+    countRecords(properties, orgId, realProperty()),
     countRecords(campaigns, orgId),
   ]);
 

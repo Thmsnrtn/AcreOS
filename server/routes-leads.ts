@@ -35,6 +35,7 @@ import { createLeadContract } from "@shared/contracts";
 import { emitLeadCreated, emitLeadUpdated, safeEmitLeadEvent } from "./services/leadEvents";
 import { validateResponse } from "./utils/contractResponse";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
+import { createParcelDedupeIndex } from "./services/leads/parcelDedupe";
 
 // Partial update schema for PUT endpoints
 const updateLeadSchema = insertLeadSchema.partial();
@@ -1419,6 +1420,7 @@ export function registerLeadRoutes(app: Express): void {
     address: z.string().optional(),
     city: z.string().optional(),
     state: z.string().optional(),
+    county: z.string().optional(),
     zip: z.string().optional(),
     phone: z.string().optional(),
     email: z.string().optional(),
@@ -1469,20 +1471,12 @@ export function registerLeadRoutes(app: Express): void {
         //    is still what narrows the query — that is a pre-filter, not the
         //    identity.
         //
-        //    THIS IS STILL NOT A PARCEL IDENTITY, and saying so is the point:
-        //    this import path does not collect a county at all (it is absent
-        //    from `csvImportRowSchema` and never written, though `leads.county`
-        //    exists), so two counties in ONE state still collide. Adding county
-        //    to the import schema and mapping is what would let this use
-        //    `parcelKey` from shared/parcel/parcelRef.ts, the way
-        //    taxSaleCsvImport.ts now does. Recorded rather than implied away.
-        const leadDedupKey = (state: string | null | undefined, apn: string): string =>
-          `${(state ?? "").trim().toUpperCase()}|${apn.trim().toUpperCase()}`;
-
-        let existingApns = new Set<string>();
+        //    AND NOW ON COUNTY (DEFECT-0140): the importer maps and writes a
+        //    county, and the rule lives in services/leads/parcelDedupe.ts.
+        const existingApns = createParcelDedupeIndex();
         if (incomingApns.length > 0) {
           const existing = await db
-            .select({ apn: leads.apn, state: leads.state })
+            .select({ apn: leads.apn, state: leads.state, county: leads.county })
             .from(leads)
             .where(
               and(
@@ -1490,15 +1484,13 @@ export function registerLeadRoutes(app: Express): void {
                 inArray(leads.apn, incomingApns),
               ),
             );
-          existingApns = new Set(
-            existing
-              .filter((r) => (r.apn ?? "").trim().length > 0)
-              .map((r) => leadDedupKey(r.state, r.apn ?? "")),
-          );
+          for (const r of existing) {
+            if ((r.apn ?? "").trim().length > 0) existingApns.add(r.state, r.county, r.apn ?? "");
+          }
         }
 
         // 3) Within-file APN dedupe — keep first occurrence.
-        const seenApnInFile = new Set<string>();
+        const seenApnInFile = createParcelDedupeIndex();
 
         const errors: Array<{ row: number; message: string }> = [];
         let imported = 0;
@@ -1533,16 +1525,15 @@ export function registerLeadRoutes(app: Express): void {
             // Both sides of both comparisons go through the same key builder,
             // so a case or spacing difference cannot make one row two — and,
             // more importantly, the same APN in two STATES is no longer one.
-            const dedupKey = leadDedupKey(row.state, apn);
-            if (existingApns.has(dedupKey)) {
+            if (existingApns.has(row.state, row.county, apn)) {
               skippedExisting++;
               continue;
             }
-            if (seenApnInFile.has(dedupKey)) {
+            if (seenApnInFile.has(row.state, row.county, apn)) {
               skippedDuplicateInFile++;
               continue;
             }
-            seenApnInFile.add(dedupKey);
+            seenApnInFile.add(row.state, row.county, apn);
           }
 
           try {
@@ -1559,6 +1550,7 @@ export function registerLeadRoutes(app: Express): void {
               address: row.address?.trim() || null,
               city: row.city?.trim() || null,
               state: row.state?.trim() || null,
+              county: row.county?.trim() || null,
               zip: row.zip?.trim() || null,
               apn: apn || null,
               source: "csv_import",

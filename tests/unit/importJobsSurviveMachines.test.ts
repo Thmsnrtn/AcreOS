@@ -20,10 +20,15 @@ const h = vi.hoisted(() => ({
   selectProjection: undefined as unknown,
   importLeads: vi.fn(async (..._args: unknown[]) => ({ totalRows: 1, successCount: 1, errorCount: 0, duplicatesSkipped: 0, errors: [] })),
   readFile: vi.fn(async () => Buffer.from("")),
+  sets: [] as Array<Record<string, unknown>>,
+  noLongerRunning: false,
+  exportClaim: null as Record<string, unknown> | null,
+  selectRows: [] as unknown[][],
+  writeFile: vi.fn(async () => undefined),
 }));
 
 vi.mock("node:fs/promises", () => ({
-  default: { mkdir: vi.fn(async () => undefined), writeFile: vi.fn(async () => undefined), readFile: h.readFile },
+  default: { mkdir: vi.fn(async () => undefined), writeFile: h.writeFile, readFile: h.readFile },
 }));
 
 vi.mock("../../server/db", () => {
@@ -33,9 +38,8 @@ vi.mock("../../server/db", () => {
   };
   const chain = () => {
     const c: Record<string, unknown> = {};
-    for (const k of ["from", "where", "orderBy", "limit"]) c[k] = () => c;
-    const p = Promise.resolve([]);
-    c.then = p.then.bind(p);
+    for (const k of ["from", "where", "orderBy", "limit", "innerJoin", "leftJoin", "groupBy"]) c[k] = () => c;
+    c.then = (f: (v: unknown) => unknown, r?: (e: unknown) => unknown) => Promise.resolve(h.selectRows.shift() ?? []).then(f, r);
     return c;
   };
   return {
@@ -46,7 +50,15 @@ vi.mock("../../server/db", () => {
           return { returning: async () => [{ id: 5, ...v }] };
         },
       }),
-      update: () => ({ set: () => ({ where: async () => undefined }) }),
+      update: () => ({
+        set: (patch: Record<string, unknown>) => ({
+          where: () => {
+            h.sets.push(patch);
+            const p = Promise.resolve(undefined);
+            return { returning: async () => (h.noLongerRunning ? [] : [{ id: 5 }]), then: p.then.bind(p) };
+          },
+        }),
+      }),
       select: (projection?: unknown) => {
         h.selectProjection = projection;
         return chain();
@@ -54,6 +66,7 @@ vi.mock("../../server/db", () => {
       execute: async (q: unknown) => {
         const text = sqlText(q);
         h.executed.push(text);
+        if (text.includes("UPDATE export_jobs") && text.includes("SET status = 'running'")) return { rows: h.exportClaim ? [h.exportClaim] : [] };
         if (text.includes("SET status = 'running'")) return { rows: h.claimRow ? [h.claimRow] : [] };
         return { rows: [] };
       },
@@ -68,12 +81,17 @@ vi.mock("../../server/services/importExport", async (orig) => ({
 }));
 vi.mock("../../server/services/solene/verifyQueue", () => ({ enqueueImportVerify: vi.fn(), buildImportVerifyCriteria: vi.fn() }));
 
-import { createImportJob, runMigrationJobsTick, getImportJob } from "../../server/services/migrationJobs";
+import { createImportJob, runMigrationJobsTick, getImportJob, getExportJob, readExportArchive } from "../../server/services/migrationJobs";
 
 beforeEach(() => {
   h.inserted.length = 0;
   h.executed.length = 0;
   h.claimRow = null;
+  h.sets.length = 0;
+  h.noLongerRunning = false;
+  h.exportClaim = null;
+  h.selectRows.length = 0;
+  h.writeFile.mockClear();
   h.importLeads.mockClear();
   h.readFile.mockClear();
 });
@@ -108,6 +126,48 @@ describe("DEFECT-0130 — import jobs survive a different machine claiming them"
     expect(sweep).toMatch(/status = 'running'/);
     expect(sweep).toMatch(/heartbeat_at/);
     expect(h.executed.indexOf(sweep!)).toBeLessThan(h.executed.findIndex((t) => t.includes("SET status = 'running'")));
+  });
+
+  it("a job swept while still working stops, and never flips to completed", async () => {
+    h.claimRow = {
+      id: 5, organization_id: 7, user_id: "u1", kind: "leads", status: "running",
+      payload_ref: "db:import_jobs.payload_bytes", payload_bytes: CSV, field_map: null,
+      total_rows: 1, processed_count: 0, success_count: 0, error_count: 0, duplicates_skipped: 0, errors: [],
+    };
+    h.noLongerRunning = true; // the stale sweep failed it between chunks
+    await runMigrationJobsTick();
+    expect(h.sets.some((p) => p.status === "completed")).toBe(false);
+    expect(h.sets.some((p) => "heartbeatAt" in p)).toBe(true);
+  });
+
+  it("DEFECT-0142: a built export archive is stored on the row, not in this machine's /tmp", async () => {
+    h.exportClaim = {
+      id: 9, organization_id: 7, user_id: "u1", kind: "everything", status: "running",
+      params: { entityTypes: ["audit-log"], includeAttachments: false }, archive_path: null, archive_bytes: null,
+    };
+    await runMigrationJobsTick();
+    const done = h.sets.find((p) => p.status === "completed");
+    expect(done, `export did not complete: ${JSON.stringify(h.sets.map((p) => p.errorMessage ?? p.status))}`).toBeDefined();
+    expect(Buffer.isBuffer(done!.archiveBytes)).toBe(true);
+    expect(String(done!.archivePath)).toMatch(/^db:/);
+    expect(h.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("DEFECT-0142: the download reads the row's bytes, and refuses an expired archive", async () => {
+    const zip = Buffer.from("PK-zip");
+    h.selectRows.push([{ archiveBytes: zip, archivePath: "db:export_jobs.archive_bytes", expiresAt: new Date(Date.now() + 60_000) }]);
+    expect(await readExportArchive(9, 7)).toEqual(zip);
+    h.selectRows.push([{ archiveBytes: zip, archivePath: "db:export_jobs.archive_bytes", expiresAt: new Date(Date.now() - 60_000) }]);
+    expect(await readExportArchive(9, 7)).toBeNull();
+    expect(h.readFile).not.toHaveBeenCalled();
+  });
+
+  it("DEFECT-0142: the export API read never selects the archive bytes", async () => {
+    await getExportJob(7, 9);
+    const projection = h.selectProjection as Record<string, unknown> | undefined;
+    expect(projection).toBeDefined();
+    expect(Object.keys(projection!)).not.toContain("archiveBytes");
+    expect(Object.keys(projection!)).toContain("status");
   });
 
   it("the API read never selects the uploaded bytes", async () => {

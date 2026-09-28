@@ -231,6 +231,8 @@ const SCHEDULED_HANDOFFS: Array<{ file: string; durable: string }> = [
   { file: "server/services/certificateEvents.ts", durable: "emitDurableCertEvent" },
   { file: "server/services/noteEvents.ts", durable: "emitDurableNoteEvent" },
   { file: "server/services/leadEvents.ts", durable: "emitDurableLeadEvent" },
+  { file: "server/services/propertyEvents.ts", durable: "emitDurablePropertyEvent" },
+  { file: "server/services/dealEvents.ts", durable: "emitDurableDealEvent" },
 ];
 
 const IN_MEMORY_EMITTERS: Record<string, string> = {
@@ -239,9 +241,9 @@ const IN_MEMORY_EMITTERS: Record<string, string> = {
   "server/services/borrower/portalPaymentPosting.ts": "request/webhook: a borrower payment",
   "server/services/buyerEvents.ts": "request: buyer CRUD",
   "server/services/certificateEvents.ts": "request: cert.acquired / cert.redeemed only (the scheduled two are durable)",
-  "server/services/dealEvents.ts": "request: deal CRUD",
+  "server/services/dealEvents.ts": "request: deal CRUD; the scheduled import worker uses emitDealCreatedDurably",
   "server/services/leadEvents.ts": "request: lead CRUD; the scheduled import worker uses emitLeadCreatedDurably (DEFECT-0130)",
-  "server/services/propertyEvents.ts": "request: property CRUD",
+  "server/services/propertyEvents.ts": "request: property CRUD; the scheduled import worker uses emitPropertyCreatedDurably",
   "server/services/rehabEvents.ts": "request: rehab CRUD",
   "server/services/rentalEvents.ts": "request: rental CRUD",
   "server/services/strEvents.ts": "request: STR CRUD",
@@ -289,12 +291,17 @@ describe("DEFECT-0114 population — every workflow emitter is classified", () =
     expect(actual).toEqual(Object.keys(IN_MEMORY_EMITTERS).sort());
   });
 
-  it("the scheduled import worker stages lead.created durably (DEFECT-0130)", () => {
+  it("the scheduled import worker stages every created event durably (DEFECT-0130)", () => {
+    // Population: EVERY importer call the worker makes, not just leads — the
+    // property and deal imports were the audit's blind spot.
     const worker = sources.find((s) => s.file === "server/services/migrationJobs.ts")!.src;
-    const leadsCall = worker.slice(worker.indexOf("importLeads(chunk"), worker.indexOf("importLeads(chunk") + 200);
-    expect(leadsCall).toMatch(/durableEvents:\s*true/);
+    const calls = [...worker.matchAll(/\bimport(Leads|Properties|Deals)\(([^)]*)\)/g)];
+    expect(calls.map((c) => c[1]).sort()).toEqual(["Deals", "Leads", "Properties"]);
+    for (const c of calls) expect(c[2], `import${c[1]} in the worker`).toMatch(/durableEvents:\s*true/);
     const importer = sources.find((s) => s.file === "server/services/importExport.ts")!.src;
     expect(importer).toMatch(/options\.durableEvents\)\s*await emitLeadCreatedDurably/);
+    expect(importer).toMatch(/options\.durableEvents\)\s*await emitPropertyCreatedDurably/);
+    expect(importer).toMatch(/options\.durableEvents\)\s*await emitDealCreatedDurably/);
   });
 
   it("no scheduled job file calls an in-memory emitter", () => {

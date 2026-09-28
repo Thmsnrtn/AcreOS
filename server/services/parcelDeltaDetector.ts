@@ -380,31 +380,51 @@ export async function loadObservationPairs(
   if (apns.length === 0) return [];
   const states = Array.from(new Set(Array.from(byKey.values()).map((p) => p.state.toUpperCase())));
 
-  // Pull all tracked-field observations for these APNs (this org or global),
-  // newest first. The (apn, field, observed_at) index serves this. We then
-  // window the latest two per (apn, state, county, field) in JS — the parcel
-  // set is the customer's pipeline, which is small.
-  const rows = await db
-    .select({
-      apn: parcelObservations.apn,
-      state: parcelObservations.state,
-      county: parcelObservations.county,
-      field: parcelObservations.field,
-      value: parcelObservations.value,
-      source: parcelObservations.source,
-      confidence: parcelObservations.confidence,
-      observedAt: parcelObservations.observedAt,
-    })
-    .from(parcelObservations)
-    .where(
-      and(
-        inArray(parcelObservations.apn, apns),
-        inArray(parcelObservations.state, states),
-        inArray(parcelObservations.field, TRACKED_FIELDS as unknown as string[]),
-        sql`(${parcelObservations.organizationId} = ${organizationId} OR ${parcelObservations.organizationId} IS NULL)`,
-      ),
-    )
-    .orderBy(desc(parcelObservations.observedAt), desc(parcelObservations.id));
+  // The latest TWO observations per (apn, state, county, field), windowed IN
+  // SQL. This used to pull every observation ever recorded for the tracked
+  // APNs and window in JS, so a parcel observed daily for years read its whole
+  // history each run, and a large pipeline sent one unbounded IN list
+  // (DEFECT-0141). The APN list is chunked; row_number() keeps two per group,
+  // and rn ascending keeps "current before previous" for the grouping below.
+  const APN_CHUNK = 500;
+  type ObservationRow = {
+    apn: string; state: string | null; county: string | null; field: string; value: unknown;
+    source: string; confidence: number | null; observedAt: Date | null;
+  };
+  const rows: ObservationRow[] = [];
+  for (let i = 0; i < apns.length; i += APN_CHUNK) {
+    const ranked = db
+      .select({
+        apn: parcelObservations.apn,
+        state: parcelObservations.state,
+        county: parcelObservations.county,
+        field: parcelObservations.field,
+        value: parcelObservations.value,
+        source: parcelObservations.source,
+        confidence: parcelObservations.confidence,
+        observedAt: parcelObservations.observedAt,
+        rn: sql<number>`row_number() over (partition by ${parcelObservations.apn}, upper(coalesce(${parcelObservations.state}, '')), lower(coalesce(${parcelObservations.county}, '')), ${parcelObservations.field} order by ${parcelObservations.observedAt} desc, ${parcelObservations.id} desc)`.as("rn"),
+      })
+      .from(parcelObservations)
+      .where(
+        and(
+          inArray(parcelObservations.apn, apns.slice(i, i + APN_CHUNK)),
+          inArray(parcelObservations.state, states),
+          inArray(parcelObservations.field, TRACKED_FIELDS as unknown as string[]),
+          sql`(${parcelObservations.organizationId} = ${organizationId} OR ${parcelObservations.organizationId} IS NULL)`,
+        ),
+      )
+      .as("ranked");
+    const chunk = await db
+      .select({
+        apn: ranked.apn, state: ranked.state, county: ranked.county, field: ranked.field, value: ranked.value,
+        source: ranked.source, confidence: ranked.confidence, observedAt: ranked.observedAt,
+      })
+      .from(ranked)
+      .where(sql`${ranked.rn} <= 2`)
+      .orderBy(ranked.rn);
+    rows.push(...(chunk as ObservationRow[]));
+  }
 
   // Group newest-first; keep the first two per (apn, state, county, field).
   const grouped = new Map<string, typeof rows>();
