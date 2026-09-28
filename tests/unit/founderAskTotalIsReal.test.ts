@@ -38,7 +38,11 @@ describe("DEFECT-0129 — open-ask total", () => {
 
   it("the mobile badge reads total and never renders a failed read as zero", () => {
     const src = readFileSync(resolve(__dirname, "../../client/src/components/mobile/FounderMobileBottomNav.tsx"), "utf8");
-    expect(src).toMatch(/asks\?\.total/);
+    // The badge reads the Letter's own union through /api/founder/needs-you
+    // (DEFECT-0145), and a partial read (total null) is still "?" not 0.
+    expect(src).toMatch(/\/api\/founder\/needs-you/);
+    expect(src).toMatch(/body\?\.total/);
+    expect(src).not.toMatch(/\/api\/founder\/asks\?status=open&limit=1/);
     expect(src).toMatch(/needsYouCount === null \? "\?"/);
   });
 });

@@ -50,8 +50,9 @@ export interface RunwayResult {
 export interface UnitEconomics {
   avgRevenuePerCustomer: number;  // ARPU
   totalCustomers: number;
-  customerLifetimeMonths: number; // estimated
-  estimatedLTV: number;
+  /** Null when no churn was observed: a lifetime cannot be estimated from zero exits. */
+  customerLifetimeMonths: number | null;
+  estimatedLTV: number | null;
   monthlyChurnRate: number;
   summary: string;
 }
@@ -265,31 +266,44 @@ export async function calculateUnitEconomics(): Promise<UnitEconomics> {
     ? Math.round(projection.currentMRR / totalCustomers)
     : 0;
 
-  // Estimate churn rate from org data
+  // Churn = paying orgs whose subscription ENDED in the last 30 days, from
+  // the subscription event history the billing webhook writes (a 'cancel', or
+  // a 'change' down to free), counting each org once and only if it has not
+  // since come back. This was "any free-tier org whose row was touched in 30
+  // days" — a free org that never paid, or was merely edited, read as churn,
+  // and the rate set the lifetime and LTV below (DEFECT-0144). The rate is
+  // over the customers the month started with: those still paying plus
+  // those who left.
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const [churned] = await db.select({ c: count() })
-    .from(organizations)
+  const [churned] = await db.select({ c: sql<number>`count(distinct ${subscriptionEvents.organizationId})` })
+    .from(subscriptionEvents)
+    .innerJoin(organizations, eq(organizations.id, subscriptionEvents.organizationId))
     .where(and(
-      sql`${organizations.subscriptionTier} = 'free' OR ${organizations.subscriptionTier} IS NULL`,
-      gte(organizations.updatedAt, thirtyDaysAgo),
+      gte(subscriptionEvents.createdAt, thirtyDaysAgo),
+      sql`(${subscriptionEvents.eventType} = 'cancel' OR (${subscriptionEvents.eventType} = 'change' AND ${subscriptionEvents.toTier} = 'free'))`,
+      sql`NOT (${payingOrg()})`,
     ));
 
   const churnedCount = Number(churned?.c || 0);
-  const monthlyChurnRate = totalCustomers > 0
-    ? Math.round((churnedCount / totalCustomers) * 1000) / 10
+  const customersAtStart = totalCustomers + churnedCount;
+  const monthlyChurnRate = customersAtStart > 0
+    ? Math.round((churnedCount / customersAtStart) * 1000) / 10
     : 0;
 
   // LTV = ARPU / monthly churn rate
+  // No observed churn is not a 24-month lifetime — that default was a number
+  // presented as an estimate (DEFECT-0144). With zero exits there is nothing
+  // to estimate from.
   const customerLifetimeMonths = monthlyChurnRate > 0
     ? Math.round(100 / monthlyChurnRate)
-    : 24; // Default 24 months if no churn
-  const estimatedLTV = avgRevenuePerCustomer * customerLifetimeMonths;
+    : null;
+  const estimatedLTV = customerLifetimeMonths === null ? null : avgRevenuePerCustomer * customerLifetimeMonths;
 
   let summary: string;
   if (totalCustomers === 0) {
     summary = "No paying customers yet.";
   } else {
-    summary = `${totalCustomers} customer${totalCustomers > 1 ? "s" : ""} paying ~$${avgRevenuePerCustomer}/mo. Estimated LTV: $${estimatedLTV.toLocaleString()}. Monthly churn: ${monthlyChurnRate}%.`;
+    summary = `${totalCustomers} customer${totalCustomers > 1 ? "s" : ""} paying ~$${avgRevenuePerCustomer}/mo. ${estimatedLTV === null ? "LTV: not estimable yet (no cancellations in the last 30 days)" : `Estimated LTV: $${estimatedLTV.toLocaleString()}`}. Monthly churn: ${monthlyChurnRate}%.`;
   }
 
   return {

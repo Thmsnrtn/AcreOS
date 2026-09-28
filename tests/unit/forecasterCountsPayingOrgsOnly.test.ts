@@ -50,4 +50,22 @@ describe("DEFECT-0133 — forecaster paying-org rule", () => {
     }
     expect(paying, "the paying-org count query was not read (vacuity)").toBeGreaterThanOrEqual(1);
   });
+
+  it("DEFECT-0144: churn is read from subscription endings, not from touched free orgs", async () => {
+    h.wheres.length = 0;
+    await calculateUnitEconomics().catch(() => undefined);
+    const dialect = new PgDialect();
+    const rendered = h.wheres.map((w) => ({ table: w.table, sql: dialect.sqlToQuery(w.where as SQL).sql }));
+    const churn = rendered.filter((r) => r.table === "subscription_events");
+    expect(churn, "churn is not read from subscription_events").toHaveLength(1);
+    expect(churn[0].sql).toMatch(/'cancel'/);
+    expect(rendered.some((r) => r.table === "organizations" && /updated_at/.test(r.sql))).toBe(false);
+  });
+
+  it("DEFECT-0144: no observed churn is not a 24-month lifetime", async () => {
+    const u = await calculateUnitEconomics();
+    expect(u.monthlyChurnRate).toBe(0);
+    expect(u.customerLifetimeMonths).toBeNull();
+    expect(u.estimatedLTV).toBeNull();
+  });
 });

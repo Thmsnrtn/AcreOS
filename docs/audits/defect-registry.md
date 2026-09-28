@@ -3478,9 +3478,9 @@ counted the sample book too, closed deals included. It emailed "Congrats on
 your first closed deal" about fixtures and stored the milestone for good. The
 exclusions now live in one place, `server/services/onboarding/sampleFilters.ts`,
 used by the checklist and the milestones
-(`tests/unit/milestonesIgnoreSampleData.test.ts`, red pre-fix). The dead
-`/api/getting-started/checklist` (`server/routes-micro-features.ts`, no client
-caller) still counts sample rows.
+(`tests/unit/milestonesIgnoreSampleData.test.ts`, red pre-fix). The dead second checklist
+(`/api/getting-started/checklist`, three items hardcoded `done: false`) is
+now deleted, and its absence is pinned.
 Resolving commits: this branch, round 3
 ### DEFECT-0138
 Title: The parcel-intelligence store served a report computed for a different asking price
@@ -3600,7 +3600,7 @@ Resolving commits: —
 ### DEFECT-0144
 Title: The founder forecast's churn rate counts every free org touched in 30 days as churned
 Severity: P2
-Status: OPEN
+Status: FIXED (round 3, 2026-09-28)
 Surfaced by lenses: DEFECT-0133 audit follow-up, 2026-09-28
 Description: `calculateUnitEconomics` (`server/services/financialForecaster.ts`)
 counts as "churned" any org with a free or null tier and an `updated_at`
@@ -3608,7 +3608,59 @@ within 30 days. A free org that was never paying, or was just edited, counts
 as churn. That churn rate sets the customer lifetime and the LTV shown on the
 founder forecast. The fix is to count only orgs whose subscription ended in
 the window, from the subscription event history.
-Resolving commits: —
+Remediation plan: DONE. Churn is the number of distinct orgs with a
+subscription `cancel`, or a `change` down to free, in the last 30 days that
+are not paying now. It is read from `subscription_events`, which the billing
+webhook writes. The rate is over the customers the month started with. With
+zero observed churn, lifetime and LTV are null and the summary says "not
+estimable yet". The old code assumed a 24-month lifetime, a number presented
+as an estimate.
+Falsified by: `tests/unit/forecasterCountsPayingOrgsOnly.test.ts` (two
+DEFECT-0144 cases red pre-fix).
+Resolving commits: this branch, round 3
+### DEFECT-0145
+Title: The founder's Decisions badge and the Letter counted "needs you" differently, and a failed queue read was zero
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: DEFECT-0129 follow-up and independent audit, 2026-09-28
+Description: The Letter's needs-you union is open asks + the Decisions queue
++ frozen sends. It took the queue count from the once-a-day morning pulse,
+whose loader (`server/services/solene/continuousLoop.ts`) turned a failed
+read into 0, and the all-clear trusted that zero. The mobile badge
+(`client/src/components/mobile/FounderMobileBottomNav.tsx`) summed a
+different pair, asks + the pending-hands list, and left the Decisions queue
+out. It could show nothing while the Letter listed a dozen items.
+Remediation plan: DONE.
+- One live loader, `loadNeedsYouCounts`
+  (`server/services/autopilot/needsYou.ts`), reads each store. A failed
+  source is named, and makes the total unknown rather than smaller.
+- The Letter reads the queue from `countPendingDecisions`, live. The pulse
+  uses the same count for its history.
+- The badge reads `GET /api/founder/needs-you` (`server/routes-autopilot.ts`)
+  and shows "?" for an unknown total.
+Falsified by: `tests/unit/needsYouIsOneCount.test.ts` (loader behaviour, and
+the Letter wiring pin, red pre-fix). `founderAskTotalIsReal.test.ts` and
+`letterNeedsYouUnion.test.ts` were rewritten to the new source, keeping their
+invariants.
+Resolving commits: this branch, round 3
+### DEFECT-0146
+Title: Every durable workflow emit scanned the whole outbox for its dedupe key
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: independent audit of DEFECT-0130, 2026-09-28
+Description: `stageWorkflowEvent` (`server/services/workflowOutbox.ts`) checks
+`payload->>'dedupeKey'` before staging. Only `event_type` was indexed, so each
+emit scanned every workflow row in the outbox, once per imported row once
+worker imports became durable. That is up to 50k sequential jsonb scans,
+against a 30s statement timeout.
+Remediation plan: DONE. An expression index on `(payload->>'dedupeKey')`
+(`migrations/0254_outbox_dedupe_key_idx.sql`, mirrored in
+`scripts/migrate.mjs`, declared in `shared/schema/accounting-ops.ts`) matches
+the query's expression exactly.
+Falsified by: `tests/unit/outboxDedupeIsIndexed.test.ts` pins the query, the
+migrator and the schema to the same expression. No query plan was measured
+against a live database.
+Resolving commits: this branch, round 3
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -3645,12 +3697,12 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 1   | 8   | 9     |
-| FIXED  | 12  | 73  | 47  | 132   |
+| OPEN   | 0   | 1   | 7   | 8     |
+| FIXED  | 12  | 73  | 50  | 135   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **77** | **55** | **144** |
+| **Total** | **12** | **77** | **57** | **146** |
 
-Recounted from the entries themselves on 2026-09-28 (144 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (146 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

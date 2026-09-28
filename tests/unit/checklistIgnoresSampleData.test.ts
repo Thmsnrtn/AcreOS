@@ -13,6 +13,9 @@ import express from "express";
 import request from "supertest";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { getTableName, type SQL } from "drizzle-orm";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const h = vi.hoisted(() => ({ wheres: [] as Array<{ table: string; where: unknown }> }));
 
@@ -79,5 +82,13 @@ describe("DEFECT-0137 — sample data does not complete the checklist", () => {
     const prop = wheres.filter((w) => w.table === "properties").map((w) => render(w.where));
     expect(prop).toHaveLength(1);
     expect(prop[0].params).toContain("SAMPLE-%");
+  });
+});
+
+describe("DEFECT-0137 — there is one checklist", () => {
+  it("the second /api/getting-started/checklist (sample-counting, never completable) stays deleted", () => {
+    const src = stripComments(readFileSync(resolve(__dirname, "../../server/routes-micro-features.ts"), "utf8"));
+    expect(src).not.toMatch(/getting-started\/checklist/);
+    expect(src).toMatch(/app\.(get|post)\(/); // the file is still read
   });
 });

@@ -598,7 +598,16 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
     dispatchesFlaggedLast24h: pulse?.dispatchesFlaggedLast24h ?? 0,
     decisionsWaitingCount: pulse?.decisionsWaitingCount ?? 0,
   };
-  if (!pulse) unreadSources.push("the Decisions queue");
+  // The Decisions queue is read LIVE, not from the pulse snapshot: the pulse
+  // is composed once a day, and its loader turned a failed read into 0 — a
+  // number the all-clear then trusted (DEFECT-0145). The badge reads the same
+  // count (autopilot/needsYou).
+  try {
+    const { countPendingDecisions } = await import("./needsYou");
+    safePulse.decisionsWaitingCount = await countPendingDecisions();
+  } catch {
+    unreadSources.push("the Decisions queue");
+  }
 
   // Open asks — the decisions that need a human.
   let openAsks: FounderDecisionCard[] = [];

@@ -109,10 +109,17 @@ describe("the union's two stores are actually two stores (double-count lock, 202
 
   it("decisionsWaitingCount is fed from the decisions-inbox store", () => {
     expect(loopSrc).toMatch(/decisionsWaitingCount:\s*inboxPendingCount/);
-    // and the loader really reads the inbox table's pending rows
-    expect(loopSrc).toMatch(/decisionsInboxItems/);
+    // and the loader really reads the inbox table's pending rows — through the
+    // one shared count (autopilot/needsYou, DEFECT-0145), which the Letter and
+    // the badge also read live.
     expect(loopSrc).toMatch(/safeLoadDecisionsInboxPending/);
-    expect(loopSrc).toMatch(/eq\(decisionsInboxItems\.status,\s*"pending"\)/);
+    expect(loopSrc).toMatch(/countPendingDecisions\(\)/);
+    const needsYouSrc = fs.readFileSync(path.join(ROOT, "server/services/autopilot/needsYou.ts"), "utf8");
+    expect(needsYouSrc).toMatch(/\.from\(decisionsInboxItems\)/);
+    expect(needsYouSrc).toMatch(/eq\(decisionsInboxItems\.status,\s*"pending"\)/);
+    // and it is NOT the ask store (the double-count lock)
+    const decisionsFn = needsYouSrc.slice(needsYouSrc.indexOf("export async function countPendingDecisions"), needsYouSrc.indexOf("async function countOpenAsks"));
+    expect(decisionsFn).not.toMatch(/soleneFounderAsks/);
   });
 
   it("asksOpenCount still carries the ask store — the fix moved one wire, not both", () => {

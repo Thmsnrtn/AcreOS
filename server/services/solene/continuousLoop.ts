@@ -1483,19 +1483,12 @@ async function safeLoadCapital(): Promise<{
  */
 async function safeLoadDecisionsInboxPending(): Promise<number> {
   try {
-    const { decisionsInboxItems } = await import("@shared/schema");
-    const { eq, sql } = await import("drizzle-orm");
-    const { unscopedForPlatformOps } = await import("../../utils/orgScopedDb");
     // Deliberately cross-org: the decisions inbox is the FOUNDER's single
-    // queue across the whole platform (rows carry org ids only as
-    // provenance), and this count feeds the founder Letter's headline.
-    const [row] = await unscopedForPlatformOps(
-      "founder-plane pulse: platform-wide pending decisions-inbox count for the Letter's needs-you union",
-    )
-      .select({ n: sql<number>`count(*)::int` })
-      .from(decisionsInboxItems)
-      .where(eq(decisionsInboxItems.status, "pending"));
-    return row?.n ?? 0;
+    // queue across the whole platform. The count lives in autopilot/needsYou
+    // (DEFECT-0145); the Letter and the badge read it LIVE, so this snapshot
+    // value is history, and its failure-as-0 no longer reaches the all-clear.
+    const { countPendingDecisions } = await import("../autopilot/needsYou");
+    return await countPendingDecisions();
   } catch (err) {
     logger.warn(
       "[continuousLoop] safeLoadDecisionsInboxPending failed",

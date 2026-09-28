@@ -852,6 +852,23 @@ export function registerAutopilotRoutes(app: Express): void {
     },
   );
 
+  // "Does anything need me?" — the Letter's needs-you union, live, for the
+  // mobile Decisions badge. One source for both surfaces (DEFECT-0145); a
+  // source that could not be read makes `total` null and is named.
+  app.get(
+    "/api/founder/needs-you",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { loadNeedsYouCounts } = await import("./services/autopilot/needsYou");
+        return res.json(await loadNeedsYouCounts());
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── Execution seam (Elite Vision H1) — the founder's witnessed-send queue ──
   // GET the frozen autopilot actions awaiting approval; approve/reject each.
   app.get(

@@ -1564,6 +1564,8 @@ END $mig0247$`,
    )`,
   'CREATE INDEX IF NOT EXISTS "outbox_status_created_idx" ON "outbox" ("status", "created_at")',
   'CREATE INDEX IF NOT EXISTS "outbox_event_type_idx" ON "outbox" ("event_type")',
+  // 0254 — DEFECT-0146: the durable-emit dedupe lookup.
+  `CREATE INDEX IF NOT EXISTS "outbox_dedupe_key_idx" ON "outbox" ((payload->>'dedupeKey'))`,
   `CREATE TABLE IF NOT EXISTS "outbox_dlq" (
      "id" serial PRIMARY KEY,
      "original_outbox_id" integer,

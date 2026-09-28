@@ -96,26 +96,20 @@ export function FounderMobileBottomNav() {
   const longPressFiredRef = useRef(false);
 
   // "Does anything need me?" — the one question the founder asks this bar.
-  // Open agent questions + pending witnessed actions, shown as a count badge
-  // on the Decisions slot. Fails silent to 0 (a nav bar must never error);
-  // polls gently so a new ask surfaces within ~90s without hammering.
-  // `total`, not `count`: count is the page size, so limit=1 capped every
-  // backlog at "1". A failed read is NOT zero — the badge shows "?" so the
-  // bar never implies nothing is waiting when it could not check
-  // (DEFECT-0129). `null` = at least one source unread.
+  // The SAME union the Letter counts (open asks + the Decisions queue +
+  // frozen sends), from the one server source both read (DEFECT-0145); it
+  // used to sum a different pair and left the Decisions queue out. Polls
+  // gently so a new item surfaces within ~90s. A failed or partial read is
+  // NOT zero — the badge shows "?" so the bar never implies nothing is
+  // waiting when it could not check (DEFECT-0129). `null` = a source unread.
   const { data: needsYouCount = 0 } = useQuery<number | null>({
     queryKey: ["founder-nav-needs-you"],
     queryFn: async () => {
-      const [asksRes, pendingRes] = await Promise.all([
-        fetch("/api/founder/asks?status=open&limit=1", { credentials: "include" }),
-        fetch("/api/founder/autopilot/pending-actions", { credentials: "include" }),
-      ]).catch(() => [null, null] as const);
-      if (!asksRes?.ok || !pendingRes?.ok) return null;
-      const asks = await asksRes.json().catch(() => null);
-      const pending = await pendingRes.json().catch(() => null);
-      const askTotal = Number(asks?.total ?? asks?.count);
-      if (!Number.isFinite(askTotal) || !Array.isArray(pending?.actions)) return null;
-      return askTotal + pending.actions.length;
+      const res = await fetch("/api/founder/needs-you", { credentials: "include" }).catch(() => null);
+      if (!res?.ok) return null;
+      const body = await res.json().catch(() => null);
+      const total = body?.total;
+      return typeof total === "number" && Number.isFinite(total) ? total : null;
     },
     enabled: isMobile && newFounderUI && location.startsWith("/founder"),
     staleTime: 60_000,

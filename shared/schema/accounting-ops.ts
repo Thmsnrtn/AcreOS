@@ -293,6 +293,10 @@ export const outbox = pgTable("outbox", {
 }, (table) => [
   index("outbox_status_created_idx").on(table.status, table.createdAt),
   index("outbox_event_type_idx").on(table.eventType),
+  // stageWorkflowEvent's dedupe lookup (payload->>'dedupeKey'); without it
+  // every durable emit scanned the whole outbox, once per row of a large
+  // import (migration 0254, DEFECT-0146).
+  index("outbox_dedupe_key_idx").on(sql`(${table.payload}->>'dedupeKey')`),
 ]);
 
 export const insertOutboxSchema = createInsertSchema(outbox).omit({

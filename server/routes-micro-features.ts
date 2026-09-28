@@ -453,29 +453,11 @@ export function registerMicroFeatureRoutes(app: Express): void {
     }
   });
 
-  // ─── STR-022: /api/getting-started/checklist ───────────────────────
-  // Dashboard renders a 0/5 checklist; returning a real server-side copy
-  // lets us personalize + update without client redeploys.
-  app.get("/api/getting-started/checklist", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const props = await storage.getProperties(org.id);
-      const leads = await storage.getLeads(org.id);
-      const hasProperty = props.length > 0;
-      const hasLead = leads.length > 0;
-      const items = [
-        { id: "add_first_lead", title: "Add your first lead", done: hasLead, href: "/leads" },
-        { id: "add_first_property", title: "Add your first property", done: hasProperty, href: "/properties" },
-        { id: "run_comps", title: "Run comparable-sales analysis on a property", done: false, href: "/properties" },
-        { id: "import_csv", title: "Import a CSV of leads or properties", done: false, href: "/import" },
-        { id: "launch_campaign", title: "Launch your first mail or email campaign", done: false, href: "/campaigns" },
-      ];
-      const completed = items.filter((i) => i.done).length;
-      res.json({ items, completed, total: items.length });
-    } catch (error) {
-      Errors.internal(res, error);
-    }
-  });
+  // /api/getting-started/checklist (STR-022) was deleted 2026-09-28
+  // (DEFECT-0137 follow-up). It had no client caller, counted the seeded
+  // sample book as the customer's own leads and properties, and hardcoded
+  // three of its five items to done:false — a checklist that could never be
+  // completed. The canonical one is GET /api/onboarding/checklist-status.
 
 }
 
