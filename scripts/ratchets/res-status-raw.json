@@ -9,9 +9,9 @@
     "**/*.test.ts",
     "**/*.spec.ts"
   ],
-  "baselineCount": 491,
+  "baselineCount": 490,
   "direction": "down",
-  "lastBumpNote": "2026-09-27 DEFECT-0100: the raw `res.status(201)` of the removed POST /api/payoff-quotes route.",
+  "lastBumpNote": "2026-09-28: server/middleware/rateLimiting.ts deleted (zero importers) and took its raw res.status(429) with it.",
   "minima": {
     "files": 1100
   },

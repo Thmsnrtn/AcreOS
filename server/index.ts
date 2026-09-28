@@ -293,47 +293,10 @@ app.use(requestLoggingMiddleware);
 // Clerk. Limiters that stay here key on getClientIp(req) — the real client —
 // or on a submitted credential. rateLimitIdentityKeying.test.ts holds this.
 
-// Auth-attempt endpoints (OAuth init/callback, legacy login/register): keep
-// an aggressive cap to slow credential-stuffing and brute force.
-//
-// IMPORTANT: Do NOT key purely by IP. Carrier-grade NAT (T-Mobile, Verizon,
-// most cellular networks) shares a single egress IP across many devices on
-// the same cell. A pure-IP cap would 429 entire neighborhoods after one
-// attacker on the same CGNAT block trips it — and inversely, an attacker
-// can hop CGNAT cells to dilute the per-IP rate. The correct key is:
-//
-//   submitted-email (during login/register)   ← protects the targeted account
-//   sub (oauth state cookie)                  ← protects the resumed flow
-//   ip                                        ← last-resort floor
-//
-// We never want to key by req.user.id here because by definition these
-// endpoints fire BEFORE we have an authenticated session. The submitted
-// email in the POST body is the identity-of-record for credential stuffing
-// purposes. See memory/feedback_rate_limit_ip_keying.md.
-const authAttemptLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  // Tier 1G: shared Redis budget across machines when REDIS_URL is set.
-  store: createLimiterStore("auth-attempt"),
-  keyGenerator: (req) => {
-    const body = req.body ?? {};
-    const submittedEmail =
-      typeof body.email === "string" ? body.email.toLowerCase().trim() : "";
-    const submittedIdentifier =
-      typeof body.identifier === "string" ? body.identifier.toLowerCase().trim() : "";
-    // Prefer submitted email / identifier — the credential being targeted is
-    // what we actually want to rate-limit. Fall back to IP for OAuth
-    // endpoints where the request body is empty (state callback). The IP
-    // component uses getClientIp (CF-Connecting-IP first — req.ip is the CF
-    // edge IP behind trust-proxy=1, see utils/clientIp.ts).
-    if (submittedEmail) return `email:${submittedEmail}`;
-    if (submittedIdentifier) return `id:${submittedIdentifier}`;
-    return `ip:${ipKeyGenerator(getClientIp(req))}`;
-  },
-  message: { message: "Too many sign-in attempts. Please try again later." },
-});
+// authAttemptLimiter was defined here and never mounted after its last mount
+// (/api/login, which has no handler) was removed on 2026-08-13; removed
+// 2026-09-28. Credential-attempt keying for a future first-party path lives in
+// server/middleware/authPathLimits.ts.
 
 // The /api/auth limiter is mounted after Clerk — see identityRateLimiters.ts.
 // (Legacy /api/auth/google + /api/auth/microsoft rate-limiters removed with
@@ -345,7 +308,7 @@ const authAttemptLimiter = rateLimit({
 // to limit here — the mount read as protection over nothing.
 
 // ── Phase 0 traffic-readiness — dual-lane CGNAT-safe limiters ───────────────
-// On top of the broad authLimiter/authAttemptLimiter above (which protect the
+// On top of the broad per-user /api/auth limiter (which protects the
 // SPA from the obvious flood patterns), we mount tighter dual-lane limits on
 // the exact endpoints that initiate a credential attempt or a sensitive
 // account-state change. Each lane (email + /24 IP-bucket) is sized per the

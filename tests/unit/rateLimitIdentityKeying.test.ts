@@ -112,8 +112,9 @@ describe("DEFECT-0062 population — index.ts runs before Clerk, so it may not r
   });
 
   it("finds every limiter config in index.ts (vacuity floor)", () => {
-    // authAttempt, webhook, import, per-IP API floor, MCP.
-    expect(rateLimitConfigs(index).length).toBeGreaterThanOrEqual(5);
+    // webhook, import, per-IP API floor, MCP (the never-mounted authAttempt
+    // limiter was removed 2026-09-28).
+    expect(rateLimitConfigs(index).length).toBeGreaterThanOrEqual(4);
   });
 
   it("no index.ts limiter reads identity or keys on the edge address", () => {

@@ -131,15 +131,23 @@ aws secretsmanager get-secret-value --secret-id acreos/prod/database
 ```
 
 ## Rate Limiting Configuration
-Configured in `/server/middleware/rateLimiting.ts`:
+Corrected 2026-09-28. This section used to cite `server/middleware/rateLimiting.ts`,
+whose feature-area limiters were never imported by anything; the file is deleted.
+What actually runs:
 
-| Endpoint Group | Limit | Window |
-|---|---|---|
-| Voice calls | 10 requests | 1 minute |
-| AVM valuation | 50 requests | 1 minute |
-| Marketplace | 100 requests | 1 minute |
-| AI routes | 30 requests | 1 minute |
-| General API | 200 requests | 1 minute |
+| Layer | Where | Key | Limit |
+|---|---|---|---|
+| Per-client-IP floor, every `/api` request (runs before Clerk) | `server/index.ts` | real client IP (`getClientIp`) | 1000 / min |
+| Per user, general API | `server/middleware/identityRateLimiters.ts` (mounted after Clerk) | Clerk user, else client IP | 300 / min |
+| Per user, `/api/ai` and `/api/pax` | same | same | 120 / min |
+| Per user, `/api/chat`, `/api/executive`, `/api/document-generation` | same | same | 240 / min |
+| Per user, `/api/auth` (skips `/api/auth/user`) | same | same | 300 / 15 min |
+| Per user, bulk export | same | same | 5 / day |
+| AI traffic shaping | `server/middleware/aiRateLimit.ts` | org, else user, else client IP | 60 / min, 600 / hour |
+| Webhooks, imports, MCP | `server/index.ts` | client IP / hashed credential | see file |
+
+No limiter may key on bare `req.ip` (the Cloudflare edge) or on identity before
+Clerk has run: `tests/unit/rateLimitIdentityKeying.test.ts` (DEFECT-0062).
 | Auth endpoints | 5 requests | 15 minutes |
 
 ## OWASP Top 10 Mitigation Status

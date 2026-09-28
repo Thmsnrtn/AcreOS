@@ -80,7 +80,7 @@
 
 ### Mitigated
 - Threat modeling has been performed at the feature level for voice calls, AI data pipelines, and marketplace transactions.
-- Rate limiting is in place for all major feature areas (see `server/middleware/rateLimiting.ts` and `server/index.ts`).
+- Rate limiting: a per-client-IP floor in `server/index.ts` and per-user limiters in `server/middleware/identityRateLimiters.ts` (see docs/security.md; corrected 2026-09-28 — the feature-area limiters this line cited were never wired and are deleted).
 - Idempotency keys are enforced on financial/payment mutations via `server/middleware/idempotency.ts` to prevent double-charges.
 
 ### Findings / Gaps
@@ -218,8 +218,9 @@
 |---------|----------|----------|
 | RBAC / role guard | `server/middleware/roleGuard.ts` | All API routes |
 | CSRF protection | `server/middleware/csrf.ts` | All `/api` POST/PUT/PATCH/DELETE |
-| Rate limiting (IP) | `server/index.ts` | Auth, AI, webhook, import routes |
-| Rate limiting (org) | `server/middleware/rateLimiting.ts` | Feature-area routes |
+| Rate limiting (IP floor) | `server/index.ts` | All `/api`, webhooks, imports, MCP |
+| Rate limiting (per user) | `server/middleware/identityRateLimiters.ts` | Auth, AI, export, general API |
+| Rate limiting (per org, AI) | `server/middleware/aiRateLimit.ts` | `/api/ai` |
 | Security headers | `server/middleware/security.ts` | All responses |
 | Session auth | Express session + PostgreSQL store | All `/api` routes |
 | Stripe webhook sig | `server/webhookHandlers.ts` | `/api/stripe/webhook` |
