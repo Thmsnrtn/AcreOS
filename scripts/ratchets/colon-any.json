@@ -9,7 +9,7 @@
     "**/*.test.ts",
     "**/*.spec.ts"
   ],
-  "baselineCount": 2678,
+  "baselineCount": 2676,
   "direction": "down",
   "lastBumpNote": "2026-09-27 DEFECT-0054: the retired PUT /api/admin/system-api-keys/:provider took its `catch (err: any)` with it.",
   "minima": {

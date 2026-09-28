@@ -99,6 +99,47 @@ export function parcelKeyFor(id: ParcelIdentity): string {
 }
 
 // ---------------------------------------------------------------------------
+// Scenario key (DEFECT-0138)
+// ---------------------------------------------------------------------------
+
+/**
+ * The report is a function of the parcel AND of what the caller told it —
+ * asking price, assessed value, owner, tax status, years owned. The store is
+ * keyed on the parcel alone, so a re-open with a different asking price was
+ * served the report (and recommendation) computed for the old one. The
+ * scenario is hashed into the stored report and a hit must match it.
+ */
+export function scenarioKeyFor(inputs: Record<string, unknown>): string {
+  const norm = (v: unknown) => (v === undefined || v === null || v === "" ? null : String(v).trim());
+  const canonical = Object.keys(inputs).sort().map((k) => [k, norm(inputs[k])]);
+  return createHash("sha1").update(JSON.stringify(canonical)).digest("hex");
+}
+
+const SCENARIO_FIELD = "_scenarioKey";
+
+/** Attach the scenario key to a report before it is stored. */
+export function withScenarioKey<T extends object>(report: T, scenarioKey: string): T {
+  return { ...report, [SCENARIO_FIELD]: scenarioKey };
+}
+
+/**
+ * The stored report to serve, or null to recompute: it must be fresh AND
+ * computed for this exact scenario. The scenario key is stripped on the way
+ * out. A row stored before scenario keys existed never matches.
+ */
+export function servableStoredReport(
+  row: Pick<LandIntelligenceReportRow, "staleAfter" | "report"> | null,
+  scenarioKey: string,
+  now: Date = new Date(),
+): Record<string, unknown> | null {
+  if (!row || !isReportFresh(row, now)) return null;
+  const report = row.report as Record<string, unknown> | null;
+  if (!report || report[SCENARIO_FIELD] !== scenarioKey) return null;
+  const { [SCENARIO_FIELD]: _key, ...rest } = report;
+  return rest;
+}
+
+// ---------------------------------------------------------------------------
 // Staleness helpers
 // ---------------------------------------------------------------------------
 

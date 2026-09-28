@@ -68,8 +68,10 @@ function inferKeys(href: string): string[] {
     case "/outreach":
       return ["/api/campaigns"];
     case "/money":
-    case "/notes":
       return ["/api/notes"];
+    // "/notes" is the ACQUIRED book (/api/notes/acquired, paged, its own
+    // query key); warming the seller-finance /api/notes for it fetched a
+    // book the page never reads.
     case "/portfolio":
       return ["/api/portfolio"];
     case "/cash-flow":

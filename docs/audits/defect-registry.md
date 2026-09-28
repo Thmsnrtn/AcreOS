@@ -3402,6 +3402,76 @@ Falsified by: `tests/unit/alertAcknowledgeIsNotResolve.test.ts` (a
 comment-stripped read of the unit — the executor is driven by a model
 decision; three cases red pre-fix).
 Resolving commits: this branch, round 3
+### DEFECT-0136
+Title: A dormant onboarding route returned fabricated offers and profits
+Severity: P2
+Status: FIXED BY DELETION (round 3, 2026-09-28)
+Surfaced by lenses: research report §18, verified at HEAD 2026-09-28
+Description: `GET /api/onboarding/instant-deal-hunt`
+(`server/routes-onboarding.ts`) had no client caller. Every opportunity it
+returned was built from defaults presented as facts:
+- 5 acres and a $5,000 assessed value when the lead had none;
+- 8 years owned;
+- current value = assessed × 1.5;
+- last sale = assessed × 0.3;
+- resale = assessed × 0.8;
+- a "potential profit" computed from those.
+Remediation plan: DONE. The route is deleted. The tenancy test case that
+pinned its org predicate (`tests/unit/tenantKeyIsNeverOmitted.test.ts`) is
+rewritten to pin its absence, so reintroducing the path fails and gets
+re-reviewed for both tenancy and fabrication.
+Falsified by: the rewritten case (red with the route present).
+Resolving commits: this branch, round 3
+### DEFECT-0137
+Title: "Try with sample data" completed the getting-started checklist
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report §26, verified at HEAD 2026-09-28
+Description: `GET /api/onboarding/checklist-status`
+(`server/routes-onboarding.ts`) says items complete "by the user actually
+doing the work". It counted every lead, deal and enriched property in the
+org, including the seeded sample book. One click ticked "add a lead" and
+"open a deal" for a customer who had done neither.
+Remediation plan: DONE, using the seeder's own markers
+(`server/services/onboarding/sampleSeeder.ts`):
+- the lead signal excludes source `sample_data` (and the older `sample`);
+- the deal signal excludes deals on `SAMPLE-` properties;
+- the parcel-lookup signal excludes `SAMPLE-` properties.
+Falsified by: `tests/unit/checklistIgnoresSampleData.test.ts` (drives the real
+handler and renders each WHERE with the Postgres dialect; three cases red
+pre-fix).
+Resolving commits: this branch, round 3
+### DEFECT-0138
+Title: The parcel-intelligence store served a report computed for a different asking price
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report §8, verified at HEAD 2026-09-28
+Description: `POST /api/data-intel/parcel-intelligence`
+(`server/routes-data-intelligence.ts`) keyed its report store on the parcel
+alone. The report's score and recommendation depend on the asking price,
+assessed value, owner and tax inputs. Re-opening a parcel with a new asking
+price returned the recommendation computed for the old one.
+Remediation plan: DONE. The scenario inputs are hashed with `scenarioKeyFor`
+and stored inside the report (`withScenarioKey`). A hit must match through
+`servableStoredReport`, which also strips the key before the response. All
+three live in `server/services/data-cache/land-intelligence-store.ts`. Rows
+stored before this change never match and recompute once.
+Falsified by: `tests/unit/parcelIntelligenceCacheKeysScenario.test.ts` (the
+different-price case red pre-fix).
+Resolving commits: this branch, round 3
+### DEFECT-0139
+Title: Hovering "Servicing book" prefetched the seller-finance book
+Severity: P2
+Status: FIXED (round 3, 2026-09-28)
+Surfaced by lenses: research report §23, verified at HEAD 2026-09-28
+Description: `/notes` renders the acquired book (`/api/notes/acquired`), but
+both prefetch maps (`client/src/components/prefetch-link.tsx`,
+`client/src/components/layout-sidebar.tsx`) warmed `/api/notes`, the
+seller-finance book. That was a request the page never reads.
+Remediation plan: DONE. `/notes` is removed from both maps; `/money` keeps
+its entry.
+Falsified by: not separately tested (a wasted request, no wrong output).
+Resolving commits: this branch, round 3
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -3439,11 +3509,11 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 7   | 7     |
-| FIXED  | 12  | 71  | 42  | 125   |
+| FIXED  | 12  | 71  | 46  | 129   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **12** | **74** | **49** | **135** |
+| **Total** | **12** | **74** | **53** | **139** |
 
-Recounted from the entries themselves on 2026-09-28 (135 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (139 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

@@ -272,7 +272,6 @@ const BASELINE = new Set([
   "server/routes-campaigns.ts::second.responseRate * 1.10",
   "server/routes-data-intelligence.ts::acres * 1.5",
   "server/routes-deals.ts::populationGrowth: 0",
-  "server/routes-onboarding.ts::assessedValue * 1.5",
   "server/services/acreOSValuation.ts::estimatedValue * 1.5",
   "server/services/blindOfferCalculator.ts::acres * 1.1",
   "server/services/blindOfferCalculator.ts::cashFlip.roi * 1.5",

@@ -468,7 +468,7 @@ router.post("/parcel-intelligence", async (req: Request, res: Response) => {
     // instead of a cold ~8-API recompute. Wraps the fusion COMPUTATION
     // (store-read/store-write) WITHOUT changing the fusion math.
     const {
-      parcelKeyFor, readStoredReport, writeStoredReport, isReportFresh,
+      parcelKeyFor, readStoredReport, writeStoredReport, scenarioKeyFor, servableStoredReport, withScenarioKey,
     } = await import("./services/data-cache/land-intelligence-store");
     const {
       latitude, longitude, acres, state, county, address, apn,
@@ -495,13 +495,18 @@ router.post("/parcel-intelligence", async (req: Request, res: Response) => {
       acres: parsedAcres,
     };
     const parcelKey = parcelKeyFor(identity);
+    // Every input the fusion reads beyond the parcel identity (DEFECT-0138).
+    const scenarioKey = scenarioKeyFor({
+      address, askingPrice, assessedValue, ownerName, ownerState,
+      taxDelinquent: !!taxDelinquent, taxDelinquentAmount, yearsOwned,
+    });
 
-    // 1) Store-read: serve a fresh stored report immediately (<100ms).
+    // 1) Store-read: serve a fresh stored report for THIS scenario (<100ms).
     if (!forceRefresh) {
-      const stored = await readStoredReport(parcelKey, organizationId);
-      if (stored && isReportFresh(stored)) {
+      const stored = servableStoredReport(await readStoredReport(parcelKey, organizationId), scenarioKey);
+      if (stored) {
         res.setHeader("X-LIS-Cache", "hit");
-        return res.json(stored.report);
+        return res.json(stored);
       }
     }
 
@@ -524,7 +529,7 @@ router.post("/parcel-intelligence", async (req: Request, res: Response) => {
     });
 
     // 3) Store-write (best-effort, never blocks the response on failure).
-    void writeStoredReport({ parcelKey, organizationId, identity, report });
+    void writeStoredReport({ parcelKey, organizationId, identity, report: withScenarioKey(report, scenarioKey) });
 
     res.setHeader("X-LIS-Cache", "miss");
     res.json(report);

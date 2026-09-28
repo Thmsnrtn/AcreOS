@@ -60,6 +60,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+import { stripComments } from "../helpers/stripComments";
 import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
@@ -231,12 +232,16 @@ describe("the debt register shrinks", () => {
 describe("the routes that were live", () => {
   const source = (r: string) => fs.readFileSync(path.join(ROOT, r), "utf8");
 
-  it("instant-deal-hunt scopes its lead pull to the caller's organization", () => {
-    const src = source("server/routes-onboarding.ts");
-    const at = src.indexOf('router.get("/instant-deal-hunt"');
-    expect(at).toBeGreaterThan(-1);
-    const body = src.slice(at, at + 3000);
-    expect(body).toContain("eq(leads.organizationId, organizationId)");
+  it("instant-deal-hunt stays deleted (DEFECT-0136: it fabricated offers and profits)", () => {
+    // It was the first of the six cross-tenant reads above, and was fixed by
+    // an org predicate. It was then DELETED: no client called it, and every
+    // figure it returned came from defaults presented as facts. The invariant
+    // this case guarded (no cross-tenant lead pull) now holds by absence, so
+    // pin the absence — a route reintroduced under this path fails here and
+    // must be re-reviewed for both tenancy and fabrication.
+    const src = stripComments(source("server/routes-onboarding.ts"));
+    expect(src).not.toMatch(/["'`]\/instant-deal-hunt["'`]/);
+    expect(src).toMatch(/router\.(get|post)\(/); // the file is still read
   });
 
   it("custom-field values cannot be read without a tenant key", () => {

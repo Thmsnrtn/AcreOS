@@ -844,7 +844,8 @@ const routePrefetchMap: Record<string, string> = {
   "/properties": "/api/properties",
   "/deals": "/api/deals",
   "/finance": "/api/notes",
-  "/notes": "/api/notes",
+  // "/notes" is the acquired book, paged under its own key — no warm-up
+  // here (prefetching /api/notes fetched the seller-finance book instead).
   "/payments": "/api/payments",
   "/tasks": "/api/tasks",
   "/campaigns": "/api/campaigns",

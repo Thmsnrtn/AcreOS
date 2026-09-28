@@ -203,10 +203,18 @@ router.get("/checklist-status", async (req: Request, res: Response) => {
     const { db } = await import("./storage");
     const { leads, campaigns, deals, payments, properties, activationEvents, mailShipments, byokCredentials } = await import("@shared/schema");
     const { eq, sql, and, inArray, isNull } = await import("drizzle-orm");
+    const { SAMPLE_LEAD_SOURCE, SAMPLE_APN_PREFIX } = await import("./services/onboarding/sampleSeeder");
+    // "Items complete by the user actually doing the work" — so the sample
+    // book seeded by "Try with sample data" is not the work (DEFECT-0137).
+    // Sample leads carry source sample_data (the older enhancements seeder
+    // used "sample"); sample deals hang off SAMPLE- properties.
+    const realLead = sql`coalesce(${leads.source}, '') NOT IN (${SAMPLE_LEAD_SOURCE}, 'sample')`;
+    const notSampleProperty = sql`coalesce(${properties.apn}, '') NOT LIKE ${SAMPLE_APN_PREFIX + "%"}`;
+    const dealNotOnSampleProperty = sql`NOT EXISTS (SELECT 1 FROM ${properties} WHERE ${properties.id} = ${deals.propertyId} AND ${properties.apn} LIKE ${SAMPLE_APN_PREFIX + "%"})`;
 
     const [leadResult, importResult, campaignResult, dealResult, notePaymentResult, propertyLookupResult, connectedServiceResult] = await Promise.all([
       // hasLead: org has >= 1 lead
-      db.select({ count: sql<number>`count(*)` }).from(leads).where(eq(leads.organizationId, orgId)).then(r => r[0]?.count > 0),
+      db.select({ count: sql<number>`count(*)` }).from(leads).where(and(eq(leads.organizationId, orgId), realLead)).then(r => r[0]?.count > 0),
       // hasImport: any lead with source = 'csv_import' or 'import'
       db.select({ count: sql<number>`count(*)` }).from(leads).where(
         sql`${leads.organizationId} = ${orgId} AND (${leads.source} = 'csv_import' OR ${leads.source} = 'import')`
@@ -223,7 +231,7 @@ router.get("/checklist-status", async (req: Request, res: Response) => {
         ).then(r => r[0]?.count > 0),
       ]).then(([byCampaign, byShipment]) => byCampaign || byShipment),
       // hasDeal: org has >= 1 deal
-      db.select({ count: sql<number>`count(*)` }).from(deals).where(eq(deals.organizationId, orgId)).then(r => r[0]?.count > 0),
+      db.select({ count: sql<number>`count(*)` }).from(deals).where(and(eq(deals.organizationId, orgId), dealNotOnSampleProperty)).then(r => r[0]?.count > 0),
       // hasNotePayment: org has >= 1 payment recorded
       db.select({ count: sql<number>`count(*)` }).from(payments)
         .where(eq(payments.organizationId, orgId))
@@ -234,7 +242,7 @@ router.get("/checklist-status", async (req: Request, res: Response) => {
       // actually ran, OR an activation event recorded the first enrichment/parcel.
       Promise.all([
         db.select({ count: sql<number>`count(*)` }).from(properties).where(
-          sql`${properties.organizationId} = ${orgId} AND ${properties.enrichmentStatus} = 'completed'`
+          and(sql`${properties.organizationId} = ${orgId} AND ${properties.enrichmentStatus} = 'completed'`, notSampleProperty)
         ).then(r => r[0]?.count > 0),
         db.select({ count: sql<number>`count(*)` }).from(activationEvents).where(
           and(
@@ -265,91 +273,13 @@ router.get("/checklist-status", async (req: Request, res: Response) => {
   }
 });
 
-// ============================================================================
-// EPIC 9: Instant Deal Hunt — the onboarding "aha moment"
-// Shows real motivated seller opportunities in user's target county in < 2 min
-// ============================================================================
-router.get("/instant-deal-hunt", async (req: Request, res: Response) => {
-  try {
-    const { county, state } = req.query;
-    if (!county || !state) {
-      return Errors.badRequest(res, "county and state are required");
-    }
-
-    const { computeSellerMotivationScore } = await import("./services/sellerMotivationEngine");
-    const { db } = await import("./db");
-    const { leads } = await import("@shared/schema");
-    const { eq, and, or, isNull, desc } = await import("drizzle-orm");
-
-    // Pull real leads for this state + county. county-scoping uses leads.county
-    // when present (populated from parcel data / tax-delinquent imports);
-    // leads without a county still match on state so the surface degrades
-    // gracefully during the backfill window.
-    // TENANT SCOPE (2026-09-04): this query filtered on state + county ALONE
-    // and returned whole lead rows — every column, including owner names,
-    // mailing addresses and phone numbers — from EVERY organization that had a
-    // lead in that county. The route is behind isAuthenticated + getOrCreateOrg,
-    // so any signed-in customer could read a competitor's pipeline by naming
-    // their county. The org predicate is not optional here and never was.
-    const organizationId = getOrganizationId(req as AuthenticatedRequest);
-    const countyLeads = await db
-      .select()
-      .from(leads)
-      .where(
-        and(
-          eq(leads.organizationId, organizationId),
-          eq(leads.state, String(state)),
-          or(isNull(leads.county), eq(leads.county, String(county))),
-        ),
-      )
-      .orderBy(desc(leads.score))
-      .limit(10);
-
-    if (countyLeads.length > 0) {
-      const opportunities = countyLeads.slice(0, 5).map((lead: any) => {
-        const assessedValue = parseFloat(lead.assessedValue || "5000");
-        const result = computeSellerMotivationScore({
-          isTaxDelinquent: lead.taxDelinquent ?? false,
-          isOutOfState: lead.ownerState ? lead.ownerState !== String(state) : false,
-          ownershipYears: lead.ownershipYears || 8,
-          assessedValue,
-          estimatedCurrentValue: assessedValue * 1.5,
-          lastSalePrice: assessedValue * 0.3,
-          countyCompetitionLevel: "low",
-        });
-        const offerPrice = Math.round(assessedValue * (result.recommendedOfferPercent / 100));
-        const resaleValue = Math.round(assessedValue * 0.8);
-        return {
-          county: String(county), state: String(state),
-          ownerName: lead.ownerName || "Unknown Owner",
-          acreage: parseFloat(lead.acreage || "5"),
-          assessedValue,
-          motivationScore: result.score, motivationGrade: result.grade,
-          topSignal: result.topSignals[0] || "Delinquent property",
-          estimatedOfferPrice: offerPrice, estimatedResaleValue: resaleValue,
-          potentialProfit: resaleValue - offerPrice,
-        };
-      });
-      return res.json({ opportunities, totalScanned: countyLeads.length, source: "live_database" });
-    }
-
-    // No leads in this county yet — say so honestly. The previous fallback
-    // synthesized three invented "opportunities" ("Multi-Heir Estate",
-    // "Out-of-State LLC", …) with specific motivation scores and profit
-    // figures derived from county medians, unlabeled — a fabricated-data
-    // violation waiting to be wired to a screen. An empty list with a clear
-    // reason is the only honest answer here.
-    res.json({
-      opportunities: [],
-      totalScanned: 0,
-      source: "none",
-      message: `No scanned leads in ${String(county)} County, ${String(state)} yet — import or scan leads to see real opportunities.`,
-    });
-  } catch (err: any) {
-    logger.error("[OnboardingDealHunt]", err);
-    Errors.internal(res, err);
-  }
-});
+// EPIC 9 "Instant Deal Hunt" (GET /instant-deal-hunt) was deleted 2026-09-28
+// (DEFECT-0136). No client ever called it, and every opportunity it returned
+// was built from defaults presented as facts: 5 acres and a $5,000 assessed
+// value when the lead had none, 8 years owned, current value = assessed × 1.5,
+// last sale = assessed × 0.3, resale = assessed × 0.8, and a "potential
+// profit" from those. Refuse-not-fabricate: a surface that needs this answer
+// uses the offer engine, which refuses without real comps.
 
 // Track onboarding-v2 step ENTRY (paired with the existing /progress endpoint
 // which records step completion). Together, entered + completed events let
