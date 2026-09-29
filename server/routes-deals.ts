@@ -1990,6 +1990,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
             lookup = await lookupParcelByCoordinates(
               Number(property.latitude),
               Number(property.longitude),
+              { organizationId: org.id },
             );
           }
           if (lookup?.found && lookup.parcel?.data?.taxAmount) {

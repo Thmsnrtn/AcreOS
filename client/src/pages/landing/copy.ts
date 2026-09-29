@@ -55,6 +55,8 @@
  *     correction (it scans no real surface, so it stays green either
  *     way).
  *   - "10 minutes" for first list retained — setup time, not processing.
+ *     WITHDRAWN 2026-09-29 (readiness plan item 0.7): nothing pulls a
+ *     county list; the claim returns only when the list builder ships.
  */
 
 export const LANDING_COPY = {
@@ -91,10 +93,10 @@ export const LANDING_COPY = {
     // vs "Run it on your county" — read as the same button twice; now the
     // primary is the start action and the secondary is unmistakably the demo.)
     cta2: "Watch it run on a real parcel — no signup",
-    // "first county list" (not "first list") — the 10-minute target is
-    // the county-GIS first-list job, a land-toolkit mechanic; naming
-    // the county keeps the claim scoped to what the target covers.
-    ctaSub: "Pax pulls your first county list inside 10 minutes. Deepest in land: every parcel gets a Land Credit Score — a 300–850 read on the parcel itself.",
+    // The "first county list inside 10 minutes" promise is out (readiness
+    // plan 2026-09-29 item 0.7): no job pulls a county list — lists arrive by
+    // CSV import until the Regrid-backed list builder ships (ruling #2).
+    ctaSub: "Bring your county list as a CSV and AcreOS maps it in. Deepest in land: every parcel gets a Land Credit Score — a 300–850 read on the parcel itself.",
     // Reshape identity (home-base-reshape.md): the platform is the home base
     // you connect your own tools to. Truthful today — the BYOK vault + the
     // connectors hub (client/src/pages/settings/byok.tsx) let an org connect

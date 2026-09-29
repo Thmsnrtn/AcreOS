@@ -70,7 +70,7 @@ fieldScoutRouter.get('/properties/parcel-lookup', async (req: Request, res: Resp
     // the client renders "No parcel found at this location" and the scout
     // enters details manually.
     const { lookupParcelByCoordinates } = await import('./services/parcel');
-    const result = await lookupParcelByCoordinates(latitude, longitude);
+    const result = await lookupParcelByCoordinates(latitude, longitude, { organizationId: req.organization?.id });
 
     if (!result.found || !result.parcel) {
       return res.json({

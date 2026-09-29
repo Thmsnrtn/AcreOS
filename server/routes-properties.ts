@@ -1002,7 +1002,7 @@ export function registerPropertyRoutes(app: Express): void {
         const org = req.organization;
         result = await lookupParcelByAPN(apn, path, org?.id);
       } else if (lat != null && lng != null) {
-        result = await lookupParcelByCoordinates(lat, lng);
+        result = await lookupParcelByCoordinates(lat, lng, { organizationId: req.organization?.id });
       } else {
         return Errors.badRequest(res, "Provide either an apn or lat/lng coordinates");
       }

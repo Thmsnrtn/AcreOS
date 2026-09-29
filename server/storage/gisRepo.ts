@@ -6,7 +6,7 @@
 // DatabaseStorage.prototype at construction time; `this` refers to the full
 // DatabaseStorage instance.
 
-import { and, asc, desc, eq, gte, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { db } from "../db";
 import {
   countyGisEndpoints,
@@ -25,6 +25,7 @@ import {
 } from "@shared/schema";
 import { normalizeParcelRef } from "@shared/parcel/parcelRef";
 import { logger } from "../utils/logger";
+import { mayCacheAndRedistribute } from "../services/providers/data-licenses";
 import type { DatabaseStorage } from "../storage";
 import { assertWritablePatch } from "../utils/patch";
 
@@ -374,7 +375,8 @@ export const gisRepo = {
           sql`UPPER(${parcelSnapshots.apn}) = ${ref.ref.apn}`,
           eq(parcelSnapshots.state, ref.ref.state),
           countyMatches(ref.ref.county),
-          gte(parcelSnapshots.fetchedAt, cutoffDate)
+          gte(parcelSnapshots.fetchedAt, cutoffDate),
+          sharedParcelSnapshotRow(),
         )
       )
       .orderBy(desc(parcelSnapshots.fetchedAt))
@@ -476,6 +478,26 @@ export type GisRepo = typeof gisRepo;
 export function parcelSnapshotVisibleTo(organizationId: number): SQL {
   return or(
     eq(parcelSnapshots.organizationId, organizationId),
-    isNull(parcelSnapshots.organizationId),
+    and(isNull(parcelSnapshots.organizationId), sharedParcelSnapshotRow()),
   ) as SQL;
+}
+
+/**
+ * Sources whose rows may sit in the GLOBAL snapshot cache (organization_id
+ * NULL), which every org reads: public county records always; Regrid and
+ * RapidAPI only once data-licenses.ts says their contract allows re-serving
+ * them. Both used to be written there, so one org's lookup — on its own BYOK
+ * key, or the platform's licensed key — was served free to every other org
+ * (founder ruling 2026-09-29 #2 audit).
+ */
+export function sharedSnapshotSources(): string[] {
+  const out = ["county_gis"];
+  if (mayCacheAndRedistribute("Regrid")) out.push("regrid");
+  if (mayCacheAndRedistribute("RapidAPI Property Lines")) out.push("rapidapi");
+  return out;
+}
+
+/** A global row is only readable when its source may be shared (legacy rows too). */
+function sharedParcelSnapshotRow(): SQL {
+  return inArray(parcelSnapshots.source, sharedSnapshotSources());
 }

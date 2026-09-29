@@ -760,7 +760,7 @@ export const properties = pgTable("properties", {
   }>(),
   parcelData: jsonb("parcel_data").$type<{
     regridId?: string;
-    owner?: string;
+    owner?: string | null;
     ownerAddress?: string;
     taxAmount?: string;
     lastUpdated?: string;

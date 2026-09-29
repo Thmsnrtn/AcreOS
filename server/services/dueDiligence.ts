@@ -13,7 +13,7 @@ import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
-import { parcelSnapshotVisibleTo } from "../storage/gisRepo";
+import { parcelSnapshotVisibleTo, sharedSnapshotSources } from "../storage/gisRepo";
 // Cache freshness: 30 days
 const CACHE_FRESHNESS_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -356,6 +356,8 @@ async function saveParcelSnapshot(
   if (!parcelResult.found || !parcelResult.parcel) {
     return null;
   }
+  // A global row every org reads — only for a source whose licence allows it.
+  if (!sharedSnapshotSources().includes(source)) return null;
 
   // Same one owner as the lookup above. The write previously normalised state
   // but not county and not APN case, so the row it stored could not be found by

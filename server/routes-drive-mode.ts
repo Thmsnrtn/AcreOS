@@ -44,13 +44,14 @@ import { emitLeadCreated } from "./services/leadEvents";
 async function reverseGeocodeViaRegrid(
   lat: number,
   lng: number,
+  organizationId: number,
 ): Promise<
   { address: string | null; city: string | null; state: string | null }
   | null
 > {
   try {
     const { lookupParcelByCoordinates } = await import("./services/parcel");
-    const result = await lookupParcelByCoordinates(lat, lng);
+    const result = await lookupParcelByCoordinates(lat, lng, { organizationId });
     if (!result.found || !result.parcel) return null;
     const p = result.parcel;
     return {
@@ -96,7 +97,7 @@ export function registerDriveModeRoutes(app: Express): void {
         // Reverse-geocode best-effort. If Regrid is missing or returns no
         // parcel, we fall back to a "GPS Capture: <lat>, <lng>" label so the
         // row still lands and the investor can enrich on desktop.
-        const geo = await reverseGeocodeViaRegrid(latNum, lngNum);
+        const geo = await reverseGeocodeViaRegrid(latNum, lngNum, orgId);
         const fallbackLabel = `GPS Capture: ${latNum.toFixed(5)}, ${lngNum.toFixed(5)}`;
 
         // Lead row anchored by the GPS point. firstName + lastName are NOT

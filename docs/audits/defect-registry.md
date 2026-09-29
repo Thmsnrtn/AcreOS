@@ -2539,9 +2539,21 @@ rule (`shouldAssessLateFee`) — daily by `serviced_late_fee_assessment`
 (13:00 UTC, worker-only, skips orgs whose borrower servicing has ended) and
 again at every posting and payoff quote. A payment COLLECTS toward fees only
 what EXCEEDS the scheduled installment (`feeFromExcessCents`); the fee never
-makes an installment short. Owed = assessed − collected, floored at 0 —
-legacy rows that recorded a "collected" fee nothing assessed can only lower
-what is owed, never raise it. Payoff quotes (JSON, PDF "Late fees owed",
+makes an installment short. Owed = assessed − collected, floored at 0, where
+"collected" counts only a fee CARVED OUT of its payment (parts sum to the
+amount): the legacy rows that wrote a fee on top of a payment whose whole
+amount went to principal and interest are not counted, so a fee no money paid
+cannot cancel one now owed (independent audit of batch F, finding 2 — the
+first version counted them). The borrower portal's Pay button charges the
+installment plus what is owed, so the statement's amount due is payable
+(audit finding 1); autopay debits only the authorised installment. Nothing
+is assessed once the lender's servicing has ended, including by a payoff
+quote (finding 5); the sweep also reads 'late' and 'delinquent' notes
+(finding 4); an autopay debit initiated within grace and still settling is
+not a miss; a payoff good through a later date includes the fee grace will
+pass on by then; `scripts/migrate.mjs` no longer drops the ledger's unique
+index on every deploy (it is dropped only while still the old 2-column
+form). Payoff quotes (JSON, PDF "Late fees owed",
 borrower portal, agent skill) and periodic statements (amount due,
 §1026.41(d)(2) fees line, a "Late fee charged" transaction per assessment in
 the cycle) carry what is owed. `computeAppliedLateFeeCents` (the day-count
@@ -2549,14 +2561,18 @@ the cycle) carry what is owed. `computeAppliedLateFeeCents` (the day-count
 unchanged (a separate ledger, DEFECT-0097's note stands there).
 Falsified: `tests/unit/servicedLateFeeLedger.test.ts` (assessment boundary,
 idempotency, owed = assessed − collected with org/loan_type/status
-predicates, excess-only collection); `borrowerPortalPaymentPosting.test.ts`
+predicates, excess-only collection, legacy fee-on-top rows not counted,
+refunded fee owed again, servicing-ended refusal, ACH in flight, the sweep's
+status set and servicing skip, the payoff projection — 9 red before the audit
+fix); `borrowerPayoffQuoteRoute.test.ts` (6a) projected fee, (9) the portal
+session carries what is owed and the Pay button charges it; `borrowerPortalPaymentPosting.test.ts`
 (1)/(1b)/(1c) — an installment-sized late payment now records `0` collected
 and ONE assessment (RED before: "25" collected); `borrowerPayoffQuoteRoute.test.ts`
 (6) — the owed fee is in the total and on the PDF (RED before: 0 and "not
 tracked"); `tenancyResolveById2.test.ts` — another org's assessment on the
 same loan id never reaches the statement (mutation: dropping the org
 predicate goes red); `paymentLinkPostsThroughSharedRule.test.ts` (1).
-Resolving commits: batch F (this commit)
+Resolving commits: 586cbad (batch F); the batch-F audit fix
 
 ### DEFECT-0100
 Title: Legacy payoff surfaces still compute off the one engine
@@ -5274,6 +5290,142 @@ Falsified by: `tests/unit/orgScopedWritesRatchet.test.ts`. Appending one
 unscoped `db.delete(deals)` to a server file turns it red, and fixing 14
 writes without lowering the baseline turned it red.
 Resolving commits: this branch, round 3
+### DEFECT-0185
+Title: Late fees: later missed installments, manual postings and concurrency
+Severity: P2
+Status: OPEN
+Surfaced by lenses: independent audit of batch F (DEFECT-0099), 2026-09-29
+Description: Residue the audit found that the batch-F fix deliberately did
+not close, each because closing it risks recording a fee no rule supports:
+- Only the installment at `notes.next_payment_date` is evaluated. A borrower
+  three installments behind carries one assessed fee; installments 2 and 3
+  are assessed only when each becomes current. Walking forward would assess
+  a fee for every month since a STALE date on notes whose payments are
+  recorded by hand, because the lender's manual "Record payment"
+  (`noteRepo.createPayment`) never advances `next_payment_date`.
+- Owed is read outside the posting transaction, so two concurrent, different
+  payments on one note can each collect the same fee (the floor at 0 hides
+  the over-collection).
+- A lump-sum catch-up pays fees then principal and advances the due date one
+  month, so the later installments it funded are still evaluated as unpaid.
+Evidence: `server/services/notes/servicedLateFees.ts`;
+`server/storage/noteRepo.ts` `createPayment`;
+`server/services/borrower/portalPaymentPosting.ts`.
+Remediation plan: Advance `next_payment_date` on manual postings (an
+installment-coverage rule shared with the portal writers), then evaluate
+every installment through today; read owed inside the posting transaction.
+Resolving commits: —
+
+### DEFECT-0186
+Title: A customer's own Regrid key was dropped; AcreOS's licensed key billed instead
+Severity: P1
+Status: FIXED
+Surfaced by lenses: founder ruling 2026-09-29 #2 (parcel data, layered) — exploration of the parcel plane
+Description: The provider registry resolved an org's BYOK Regrid key and
+handed it to the Regrid provider, which accepted it as `apiKeyOverride` and
+never passed it on: `lookupParcelByAPN` / `lookupParcelByCoordinates` read
+only `process.env.REGRID_API_KEY`. So a customer who connected their own
+Regrid account was served on AcreOS's licensed key, while the registry —
+believing BYOK served — debited no credit. The parcel routes that call the
+parcel service directly never used an org's key at all.
+Evidence: `server/services/providers/regrid-provider.ts`;
+`server/services/parcel.ts`.
+Remediation: The parcel service takes `{ organizationId, regridApiKey }`
+and resolves the key in order: the key the caller already resolved, the
+org's own (vault, then legacy), the platform licence. The provider passes
+its key; every coordinate caller passes its org.
+Falsified: `tests/unit/parcelLayering.test.ts` "an org's own Regrid key is
+the key that calls Regrid" — both the parcel service and the registry
+provider put the org's key in the Authorization header (RED before: the
+platform key).
+Resolving commits: batch G
+
+### DEFECT-0187
+Title: Licensed parcel answers went into the cache every org reads
+Severity: P1
+Status: FIXED
+Surfaced by lenses: founder ruling 2026-09-29 #2 — exploration of the parcel plane
+Description: `parcel_snapshots` rows with `organization_id` NULL are a
+GLOBAL cache that every org reads. `cacheParcelResult` and the due-diligence
+writer stored Regrid answers there (and RapidAPI BYOK answers, labelled
+"county_gis"), so one org's lookup — on its own key, or on AcreOS's licensed
+key — was served free to every other org, against Regrid's registered
+posture (`redistributable: "no"`, `data-licenses.ts`).
+Evidence: `server/services/parcel.ts` `cacheParcelResult`;
+`server/services/dueDiligence.ts` `saveParcelSnapshot`;
+`server/storage/gisRepo.ts`.
+Remediation: `sharedSnapshotSources()` (gisRepo) derives which sources may
+sit in the global cache from the licence register: county records always;
+Regrid and RapidAPI only once their posture allows re-serving. Both writers
+skip any other source; both global readers (`getParcelSnapshot`,
+`parcelSnapshotVisibleTo`) admit a global row only with a shareable source,
+which also hides the rows already written and the Regrid bulk-ETL rows.
+When the Regrid contract is signed, setting its posture in
+`data-licenses.ts` to what the contract allows turns all of it on at once.
+Falsified: `parcelLayering.test.ts` (a Regrid answer writes no snapshot, a
+county answer does); `parcelSnapshotVisibility.test.ts` (the predicate
+carries `source` and admits `county_gis` only).
+Resolving commits: batch G
+
+### DEFECT-0188
+Title: Open-data answered parcel_data with Regrid's data, labelled "County GIS" at $0
+Severity: P2
+Status: FIXED
+Surfaced by lenses: founder ruling 2026-09-29 #2 — exploration of the parcel plane
+Description: The free open-data provider served `parcel_data` by calling
+`lookupParcelByCoordinates`, which after the free statewide query calls
+Regrid on the platform key. The answer came back labelled "County GIS", cost
+$0, public-domain licence — including on the anonymous public parcel check.
+A miss returned null instead of throwing, which ended the registry walk
+before the Regrid provider could run.
+Evidence: `server/services/providers/open-data-provider.ts`.
+Remediation: open-data no longer lists `parcel_data`; the free statewide
+layer is the county-gis provider, Regrid is the Regrid provider.
+Falsified: `parcelLayering.test.ts` "open-data does not answer parcel_data".
+Resolving commits: batch G
+
+### DEFECT-0189
+Title: Parcel lookups wrote "Unknown" as the owner; CSV imports invented names
+Severity: P2
+Status: FIXED
+Surfaced by lenses: founder ruling 2026-09-29 #2 (the honest CSV import path)
+Description: Six parcel-lookup paths returned `owner: "Unknown"` when a
+source named no owner; due diligence stored it as the current owner and
+the entity portfolio grouped every such parcel under an owner called
+"Unknown". The two county-list importers split owner names by different
+rules and both invented: the CSV import made a one-word owner both first
+and last name ("ACME ACME"); the tax-delinquent import took the last word
+as the surname ("SMITH FAMILY" / "TRUST").
+Evidence: `server/services/parcel.ts`; `server/routes-leads.ts`;
+`server/services/taxDelinquentPipeline.ts`.
+Remediation: `ownerOrNull` — a missing owner (or a source's literal
+"Unknown") is null. `shared/parcel/ownerName.ts` `splitOwnerName` is the one
+rule both importers use: an entity or a single word has no first name;
+"LAST, FIRST" is read in that order; otherwise the first-space split.
+Falsified: `parcelLayering.test.ts` ("no placeholder owner"; "owner names
+from a county list invent nothing").
+Resolving commits: batch G
+
+### DEFECT-0190
+Title: The landing page promised a county list in 10 minutes and data in all 50 states
+Severity: P2
+Status: FIXED
+Surfaced by lenses: readiness plan 2026-09-29 item 0.7; ruling #2
+Description: The hero and a Features card said "Pax pulls your first county
+list inside 10 minutes" — no job pulls a county list. The FAQ said the data
+came from "licensed parcel datasets in all 50 states" — free parcel services
+cover about ten states plus the counties that publish one, and no nationwide
+licence is held.
+Evidence: `client/src/pages/landing/copy.ts`;
+`client/src/pages/landing/Features.tsx`; `client/src/pages/landing/FAQ.tsx`;
+`scripts/audit-public-claims.ts`.
+Remediation: The copy now says what is true (CSV import; free county and
+state services where they exist; licensed providers when the plan or the
+org's own key includes them; coverage varies). The claim register lists the
+replacement. The Regrid-backed list builder (readiness plan 1.2) is what
+earns a list-pulling claim back.
+Resolving commits: batch G
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -5310,10 +5462,10 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 7   | 7     |
-| FIXED  | 14  | 91  | 70  | 175   |
+| OPEN   | 0   | 0   | 8   | 8     |
+| FIXED  | 14  | 93  | 73  | 180   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **93** | **77** | **184** |
+| **Total** | **14** | **95** | **81** | **190** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as

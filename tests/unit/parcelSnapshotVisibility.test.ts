@@ -84,6 +84,16 @@ describe("the predicate admits the org's own rows and the shared cache", () => {
     expect(p.sql.toLowerCase(), "the global/shared cache is excluded").toContain("is null");
   });
 
+  it("…but only the shared rows whose licence lets every org see them", () => {
+    // Founder ruling 2026-09-29 #2 audit: Regrid and RapidAPI answers were
+    // written into this global cache, so one org's paid (or BYOK) lookup was
+    // served free to every other org. A global row now also has to carry a
+    // shareable source; while Regrid's licence says "no", that is county only.
+    expect(p.columns).toContain("source");
+    expect(p.params).toContain("county_gis");
+    expect(p.params).not.toContain("regrid");
+  });
+
   it("the shape reader is not vacuous", () => {
     // Guard first: if `shape()` returned nothing, both assertions above would
     // fail loudly rather than pass — but the `sql` check could pass on an empty

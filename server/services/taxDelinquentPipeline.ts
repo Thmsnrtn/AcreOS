@@ -22,6 +22,7 @@ import { db } from "../db";
 import { leads } from "@shared/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { normalizeParcelRef, parcelKey } from "@shared/parcel/parcelRef";
+import { splitOwnerName } from "@shared/parcel/ownerName";
 
 // ─── Tax-delinquent payload convention ──────────────────────────────────────
 // The leads table has no apn/county/taxDelinquent/delinquentAmount/metadata/
@@ -345,10 +346,9 @@ export async function processTaxDelinquentImport(
     // Mark as imported to avoid double-importing on retry
     existingTupleSet.add(recKey);
 
-    // Parse owner name into first/last
-    const nameParts = rec.ownerName.split(/\s+/);
-    const lastName = nameParts[nameParts.length - 1] || rec.ownerName;
-    const firstName = nameParts.slice(0, -1).join(" ") || "";
+    // The one shared owner-name rule (it used to take the LAST word as the
+    // surname, so "SMITH FAMILY TRUST" became first "SMITH FAMILY", last "TRUST").
+    const { firstName, lastName } = splitOwnerName(rec.ownerName);
 
     // leads has no createdBy/apn/propertyAddress/county/zipCode/taxDelinquent/
     // delinquentAmount/metadata columns. Map to the real columns (address, zip)

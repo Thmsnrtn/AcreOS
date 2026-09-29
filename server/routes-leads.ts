@@ -37,6 +37,7 @@ import { emitLeadCreated, emitLeadUpdated, safeEmitLeadEvent } from "./services/
 import { validateResponse } from "./utils/contractResponse";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 import { apnMatchForm, createParcelDedupeIndex } from "./services/leads/parcelDedupe";
+import { splitOwnerName } from "@shared/parcel/ownerName";
 
 // Partial update schema for PUT endpoints
 const updateLeadSchema = insertLeadSchema.partial();
@@ -1506,21 +1507,22 @@ export function registerLeadRoutes(app: Express): void {
           const row = rows[i];
           const apn = (row.apn ?? "").trim();
 
-          // First/last name fallback: when CSV only has an "Owner Name"
-          // column (common on county lists), split on the first space.
+          // When the CSV only has an "Owner Name" column (common on county
+          // lists), the one shared rule splits it — an entity or a single word
+          // has no first name, rather than one invented from its own words.
           let firstName = row.firstName?.trim() ?? "";
           let lastName = row.lastName?.trim() ?? "";
-          if ((!firstName || !lastName) && row.ownerName) {
-            const parts = row.ownerName.trim().split(/\s+/);
-            firstName = firstName || parts[0] || "";
-            lastName = lastName || parts.slice(1).join(" ") || parts[0] || "";
+          if ((!firstName || !lastName) && row.ownerName?.trim()) {
+            const split = splitOwnerName(row.ownerName);
+            if (!firstName && !lastName) ({ firstName, lastName } = split);
+            else if (!lastName) lastName = split.lastName;
           }
 
-          if (!firstName || !lastName) {
+          if (!lastName) {
             skippedInvalid++;
             errors.push({
               row: i + 1,
-              message: "Missing required firstName/lastName (and no usable ownerName).",
+              message: "Missing an owner name: needs lastName or ownerName.",
             });
             continue;
           }

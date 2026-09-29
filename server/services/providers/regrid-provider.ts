@@ -75,8 +75,9 @@ export const regridProvider: DataProvider = {
     const start = Date.now();
     // R1d BYO-data-keys: the registry resolves the customer's Regrid key from
     // the canonical BYOK vault and passes it here; prefer it over the platform
-    // key. (Regrid's own getApiKey retains a legacy organizationIntegrations
-    // fallback used by isConfigured; the registry override is the live path.)
+    // key. It is handed to the parcel service, which calls Regrid with it — it
+    // used to stop here, so the parcel service called Regrid on the PLATFORM
+    // key while the registry, believing BYOK served, debited no credit.
     const apiKey = ctx?.apiKeyOverride ?? await getApiKey();
 
     if (!apiKey) {
@@ -85,7 +86,7 @@ export const regridProvider: DataProvider = {
 
     let data: unknown;
     let confidence = 75;
-    // lookupParcelByCoordinates/ByAPN run their own free tiers (statewide/
+    // lookupParcelByCoordinates/ByAPN fall back to free tiers (statewide/
     // county GIS, cache) before Regrid. When the answer came from a free
     // source, report zero cost — never bill a free hit as a Regrid call.
     let answeredByFreeSource = false;
@@ -95,7 +96,7 @@ export const regridProvider: DataProvider = {
       case "parcel_data": {
         if (input.type === "coordinates") {
           const { lookupParcelByCoordinates } = await import("../parcel");
-          const result = await lookupParcelByCoordinates(input.latitude, input.longitude);
+          const result = await lookupParcelByCoordinates(input.latitude, input.longitude, { regridApiKey: apiKey });
           data = result.parcel ?? null;
           confidence = result.found ? 85 : 20;
           answeredByFreeSource = result.found && result.source !== "regrid";
@@ -104,7 +105,7 @@ export const regridProvider: DataProvider = {
           // lookupParcelByAPN takes a combined "state/county" path, not
           // separate state/county arguments.
           const stateCountyPath = [input.state, input.county].filter(Boolean).join("/");
-          const result = await lookupParcelByAPN(input.apn, stateCountyPath);
+          const result = await lookupParcelByAPN(input.apn, stateCountyPath, undefined, { regridApiKey: apiKey });
           data = result.parcel ?? null;
           confidence = result.found ? 90 : 20;
           answeredByFreeSource = result.found && result.source !== "regrid";
@@ -135,7 +136,7 @@ export const regridProvider: DataProvider = {
       case "valuation": {
         if (input.type === "coordinates") {
           const { lookupParcelByCoordinates } = await import("../parcel");
-          const result = await lookupParcelByCoordinates(input.latitude, input.longitude);
+          const result = await lookupParcelByCoordinates(input.latitude, input.longitude, { regridApiKey: apiKey });
           data = result.parcel?.data ?? null;
           confidence = result.found ? 80 : 20;
           answeredByFreeSource = result.found && result.source !== "regrid";

@@ -95,10 +95,11 @@ const CLAIMS: { claim: string; anchor: string }[] = [
       "One platform that finds the deals, sends the mail, drafts the replies, closes the deal, and services the note after.",
   },
   {
-    // hero.ctaSub / Features "Pulled lists" card — founder-retained
-    // setup-time target (truth-note 2026-05-31), NOT a processing SLA.
-    claim: "Pax pulls your first county list inside 10 minutes.",
-    anchor: "first county list inside 10 minutes",
+    // hero.ctaSub — replaced the withdrawn "first county list inside 10
+    // minutes" (readiness plan 2026-09-29 item 0.7); CSV import is real
+    // (POST /api/leads/csv-import).
+    claim: "Bring your county list as a CSV and AcreOS maps it in.",
+    anchor: "Bring your county list as a CSV",
   },
   {
     // hero.ctaSub — the Land Credit Score scale, real in landCredit.ts.
@@ -329,15 +330,14 @@ function buildSources(): Source[] {
       `,
     },
     {
-      name: "Founder-retained landing targets (truth-note record)",
-      ref: "client/src/pages/landing/copy.ts truth-engine notes (2026-05-31, corrected 2026-09-01)",
+      name: "CSV list import",
+      ref: "server/routes-leads.ts POST /api/leads/csv-import",
       content: `
-        Pax pulls your first county list inside 10 minutes — retained
-        2026-05-31 as a SETUP-TIME target (time from signup to first county
-        list pulled), explicitly not a processing SLA. The 90-second and
-        Monday-6am processing claims were removed 2026-09-01 because no
-        mechanism enforced them; the 10 minutes figure is the one retained
-        number, recorded in the copy.ts truth-note with its basis.
+        Bring your county list as a CSV and AcreOS maps it in — column
+        headers are auto-mapped, rows dedupe on state, county and APN, and
+        rows with no usable owner name are refused per row. The earlier
+        "first county list inside 10 minutes" target was withdrawn
+        2026-09-29 (readiness plan item 0.7): no job pulls a county list.
       `,
     },
     {

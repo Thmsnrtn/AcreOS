@@ -22,8 +22,15 @@ import type { LookupCategory } from "../data-source-broker";
  * Broker-backed categories: each registry DataCategory in this map is fulfilled
  * by delegating to `dataSourceBroker.lookup(<brokerCategory>, …)`. The broker
  * keeps its ~30 federal/open endpoint integrations; the REGISTRY owns the one
- * cache + circuit breaker + provenance/license contract. (`parcel_data` is
- * handled specially below via the parcel service, NOT through this map.)
+ * cache + circuit breaker + provenance/license contract.
+ *
+ * `parcel_data` is NOT served here (founder ruling 2026-09-29 #2 audit). It
+ * used to be, through lookupParcelByCoordinates — which after the free
+ * statewide query calls Regrid on the platform key — so a paid, proprietary
+ * Regrid answer came back from this provider labelled "County GIS" at $0, and
+ * a miss returned null instead of throwing, which ended the registry walk
+ * before the real providers ran. The free statewide layer is the county-gis
+ * provider; Regrid is the regrid provider.
  *
  * The registry DataCategory names were deliberately chosen to equal the broker
  * LookupCategory names for these sub-kinds, so this is mostly the identity map;
@@ -61,10 +68,7 @@ const BROKER_CATEGORY: Partial<Record<DataCategory, LookupCategory>> = {
   broadband: "broadband",
 };
 
-const SUPPORTED_CATEGORIES: DataCategory[] = [
-  "parcel_data",
-  ...(Object.keys(BROKER_CATEGORY) as DataCategory[]),
-];
+const SUPPORTED_CATEGORIES: DataCategory[] = Object.keys(BROKER_CATEGORY) as DataCategory[];
 
 /**
  * Authoritative source name per category. Federal open-data parcel/federal
@@ -75,7 +79,6 @@ const SUPPORTED_CATEGORIES: DataCategory[] = [
 const SOURCE_BY_CATEGORY: Partial<Record<DataCategory, string>> = {
   environmental: "FEMA NFHL",
   demographics: "US Census ACS",
-  parcel_data: "County GIS",
   flood_zone: "FEMA NFHL",
   wetlands: "USFWS NWI",
   soil: "USDA SSURGO",
@@ -133,51 +136,39 @@ export const openDataProvider: DataProvider = {
     let data: unknown;
     let confidence = 60; // Open data has moderate confidence
 
-    if (category === "parcel_data") {
-      const { lookupParcelByCoordinates } = await import("../parcel");
-      if (input.type === "coordinates") {
-        const result = await lookupParcelByCoordinates(input.latitude, input.longitude);
-        data = result.parcel ?? null;
-        confidence = result.found ? 80 : 20;
-      } else {
-        data = null;
-        confidence = 0;
-      }
+    const brokerCategory = BROKER_CATEGORY[category];
+    if (!brokerCategory) {
+      throw new Error(`open-data does not support category: ${category}`);
+    }
+
+    // Delegate to the broker, which owns the ~30 federal/open endpoint
+    // integrations. The broker becomes the fetch IMPLEMENTATION; the
+    // registry (our caller) owns the one cache + circuit breaker.
+    const { dataSourceBroker } = await import("../data-source-broker");
+    const lat = input.type === "coordinates" ? input.latitude : 0;
+    const lng = input.type === "coordinates" ? input.longitude : 0;
+    const state = input.type === "coordinates" || input.type === "address" ? input.state : undefined;
+    const county = input.type === "coordinates" ? input.county : undefined;
+
+    const result = await dataSourceBroker.lookup(brokerCategory, {
+      latitude: lat,
+      longitude: lng,
+      state,
+      county,
+      // Hard-cap to free tier: the registry escalates to paid providers
+      // explicitly via its tier ladder, never implicitly through the broker.
+      maxTier: "free",
+    });
+
+    data = result.data;
+    // Preserve the historical confidence values for the two original
+    // delegated categories; use a uniform success/miss split for the rest.
+    if (category === "environmental") {
+      confidence = result.success ? 70 : 30;
+    } else if (category === "demographics") {
+      confidence = result.success ? 75 : 30;
     } else {
-      const brokerCategory = BROKER_CATEGORY[category];
-      if (!brokerCategory) {
-        throw new Error(`open-data does not support category: ${category}`);
-      }
-
-      // Delegate to the broker, which owns the ~30 federal/open endpoint
-      // integrations. The broker becomes the fetch IMPLEMENTATION; the
-      // registry (our caller) owns the one cache + circuit breaker.
-      const { dataSourceBroker } = await import("../data-source-broker");
-      const lat = input.type === "coordinates" ? input.latitude : 0;
-      const lng = input.type === "coordinates" ? input.longitude : 0;
-      const state = input.type === "coordinates" || input.type === "address" ? input.state : undefined;
-      const county = input.type === "coordinates" ? input.county : undefined;
-
-      const result = await dataSourceBroker.lookup(brokerCategory, {
-        latitude: lat,
-        longitude: lng,
-        state,
-        county,
-        // Hard-cap to free tier: the registry escalates to paid providers
-        // explicitly via its tier ladder, never implicitly through the broker.
-        maxTier: "free",
-      });
-
-      data = result.data;
-      // Preserve the historical confidence values for the two original
-      // delegated categories; use a uniform success/miss split for the rest.
-      if (category === "environmental") {
-        confidence = result.success ? 70 : 30;
-      } else if (category === "demographics") {
-        confidence = result.success ? 75 : 30;
-      } else {
-        confidence = result.success ? 70 : 30;
-      }
+      confidence = result.success ? 70 : 30;
     }
 
     return {

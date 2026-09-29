@@ -26,7 +26,10 @@ const ITEMS = [
   },
   {
     q: "Where does the data come from?",
-    a: "County assessors, recorder offices, and licensed parcel datasets in all 50 states. We disclose the source on every Pax analysis.",
+    // Was "…licensed parcel datasets in all 50 states": free parcel services
+    // cover about ten states plus the counties that publish one, and no
+    // nationwide licence is held yet (ruling 2026-09-29 #2).
+    a: "Free county and state parcel services where a county publishes one, federal datasets (FEMA, USDA, USGS, Census), and licensed providers when your plan or your own key includes them. Coverage varies by county. We disclose the source on every Pax analysis.",
   },
   {
     q: "Can the AI assistant be turned off?",

@@ -1,7 +1,7 @@
 /**
- * Parcel Boundary Service - Tiered Lookup System
- * Priority: Cache (instant) -> County GIS (free) -> RapidAPI (cheap) -> Regrid API (paid fallback)
- * 
+ * Parcel Boundary Service - layered lookup.
+ * Order: PARCEL_LAYER_ORDER below (founder ruling 2026-09-29 #2).
+ *
  * Cache freshness: 30 days
  */
 
@@ -21,6 +21,54 @@ import { recordProviderParcelFacts, coerceSaleDate } from "./data-cache/observat
 import * as providerIntel from "./providerIntelligence";
 import { fetchGeo } from "./providers/fetchGeo";
 import { readIntegrationCredentials } from "./integrationCredentials";
+import { sharedSnapshotSources } from "../storage/gisRepo";
+
+/**
+ * Founder ruling 2026-09-29 #2 — parcel data from every source, layered:
+ * Regrid is the primary parcel and owner layer once licensed (the org's own
+ * key, or the platform licence), and free county data sits behind it. A layer
+ * with no key is skipped, so until the licence exists nothing changes.
+ * The shared snapshot cache sits in front of all of them, but only ever holds
+ * rows its licence lets every org see (sharedSnapshotSources).
+ */
+const PARCEL_LAYER_ORDER = ["cache", "regrid", "county_gis", "rapidapi"] as const;
+
+export interface ParcelLookupOptions {
+  /** The org asking — its own (BYOK) Regrid key is used before the platform's. */
+  organizationId?: number;
+  /** A key already resolved by the caller (the provider registry's BYOK override). */
+  regridApiKey?: string | null;
+}
+
+/** A source's owner field, or null. "Unknown" was written here, and read downstream as a name. */
+function ownerOrNull(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  const t = String(v).trim();
+  return t && t.toLowerCase() !== "unknown" ? t : null;
+}
+
+const REGRID_NOT_CONFIGURED = "Regrid API key not configured. Please add REGRID_API_KEY to secrets.";
+
+async function resolveRegridKey(opts?: ParcelLookupOptions): Promise<string | null> {
+  if (opts?.regridApiKey) return opts.regridApiKey;
+  if (opts?.organizationId) {
+    try {
+      const { resolveProviderCredential } = await import("./providers/resolveProviderCredential");
+      const own = await resolveProviderCredential(opts.organizationId, {
+        channel: "regrid",
+        legacyProvider: "regrid",
+        legacyField: "apiKey",
+      });
+      if (own) return own;
+    } catch (error) {
+      logger.warn("[Parcel] could not read the org's Regrid key; using the platform key", {
+        metadata: { organizationId: opts.organizationId, error: error instanceof Error ? error.message : String(error) },
+      });
+    }
+  }
+  return process.env.REGRID_API_KEY || null;
+}
+
 
 interface RegridParcel {
   type: "Feature";
@@ -83,7 +131,8 @@ export interface ParcelLookupResult {
     };
     data: {
       regridId: string;
-      owner: string;
+      /** null when the source names no owner — never a placeholder. */
+      owner: string | null;
       ownerAddress: string;
       taxAmount: string;
       lastUpdated: string;
@@ -354,7 +403,7 @@ function arcgisFeatureToParcel(
   const apnField = endpoint.apnField || "APN";
   const data = {
     regridId: "",
-    owner: String(attrs[mappings.owner || endpoint.ownerField || "OWNER"] || "Unknown"),
+    owner: ownerOrNull(attrs[mappings.owner || endpoint.ownerField || "OWNER"]),
     ownerAddress: String(attrs[mappings.address || "SITUS"] || ""),
     taxAmount: String(attrs[mappings.taxAmount || "TAXAMT"] || ""),
     lastUpdated: new Date().toISOString(),
@@ -614,7 +663,7 @@ function snapshotToResult(snapshot: {
       centroid: snapshot.centroid || { lat: 0, lng: 0 },
       data: {
         regridId: snapshot.sourceId || "",
-        owner: snapshot.owner || "Unknown",
+        owner: ownerOrNull(snapshot.owner),
         ownerAddress: snapshot.ownerAddress || "",
         taxAmount: snapshot.taxAmount || "",
         lastUpdated: snapshot.fetchedAt?.toISOString() || new Date().toISOString(),
@@ -636,6 +685,7 @@ function snapshotToResult(snapshot: {
  */
 async function cacheParcelResult(result: ParcelLookupResult, state: string, county: string, organizationId?: number): Promise<void> {
   if (!result.found || !result.parcel) return;
+  const snapshotSource = result.source === "regrid" || result.source === "rapidapi" ? result.source : "county_gis";
 
   // Iyari — the acorn: append every fact this lookup resolved as an immutable
   // observation BEFORE we overwrite the snapshot cache. Fire-and-forget; never
@@ -663,6 +713,10 @@ async function cacheParcelResult(result: ParcelLookupResult, state: string, coun
     });
   }
 
+  // The snapshot is a GLOBAL cache: a row every org may read. Write one only
+  // when the source's licence allows re-serving it to everyone.
+  if (!sharedSnapshotSources().includes(snapshotSource)) return;
+
   try {
     const saleDate = coerceSaleDate(result.parcel.data.lastSaleDate);
     const toNumericStr = (v: number | string | undefined): string | null => {
@@ -674,7 +728,7 @@ async function cacheParcelResult(result: ParcelLookupResult, state: string, coun
       apn: result.parcel.apn,
       state: state.toUpperCase(),
       county: county,
-      source: result.source === "regrid" ? "regrid" : "county_gis",
+      source: snapshotSource,
       sourceId: result.parcel.data.regridId || null,
       boundary: result.parcel.boundary,
       centroid: result.parcel.centroid,
@@ -698,82 +752,83 @@ async function cacheParcelResult(result: ParcelLookupResult, state: string, coun
 }
 
 /**
- * Tiered parcel lookup: Cache (instant) -> County GIS (free) -> RapidAPI (cheap BYOK) -> Regrid (paid)
+ * Layered parcel lookup, in PARCEL_LAYER_ORDER. A layer that finds the parcel
+ * answers; one that misses, errors or has no key hands on to the next.
  */
 export async function lookupParcelByAPN(
   apn: string,
   stateCountyPath?: string,
-  organizationId?: number
+  organizationId?: number,
+  opts: ParcelLookupOptions = {},
 ): Promise<ParcelLookupResult> {
   let state = "";
   let county = "";
-  
+
   if (stateCountyPath) {
     const parts = stateCountyPath.replace(/^\/us\//i, "").split("/");
     if (parts.length >= 1) state = parts[0].toUpperCase();
     if (parts.length >= 2) county = parts[1].replace(/-/g, " ");
   }
-  
-  // Step 1: Check cache first (if we have state/county)
-  if (state && county) {
-    try {
-      const cachedSnapshot = await storage.getParcelSnapshot(apn, state, county, CACHE_FRESHNESS_DAYS);
-      if (cachedSnapshot) {
-        logger.info("[Parcel] Found in cache", { metadata: { ageDays: Math.round((Date.now() - (cachedSnapshot.fetchedAt?.getTime() || 0)) / (1000 * 60 * 60 * 24)) } });
-        // Tier 2A cache telemetry: this early return used to make snapshot
-        // hits invisible. avoidedCostCents stays 0 — the skipped tier chain
-        // starts with FREE county GIS, so no provider cost is provably
-        // avoided here (never invent a saving). Fire-and-forget.
-        void providerIntel.recordLookup({
-          providerName: "parcel_snapshot_cache",
-          category: "parcel_boundary",
-          inputType: "apn",
-          success: true,
-          cached: true,
-          cacheLane: "parcel_snapshots",
-          avoidedCostCents: 0,
-          costCents: 0,
-          organizationId,
-          state,
-          county,
-        });
-        return snapshotToResult(cachedSnapshot);
+  const orgId = opts.organizationId ?? organizationId;
+  let lastMiss: ParcelLookupResult | null = null;
+
+  for (const layer of PARCEL_LAYER_ORDER) {
+    if (layer === "cache") {
+      if (!state || !county) continue;
+      try {
+        const cachedSnapshot = await storage.getParcelSnapshot(apn, state, county, CACHE_FRESHNESS_DAYS);
+        if (cachedSnapshot) {
+          logger.info("[Parcel] Found in cache", { metadata: { ageDays: Math.round((Date.now() - (cachedSnapshot.fetchedAt?.getTime() || 0)) / (1000 * 60 * 60 * 24)) } });
+          // Tier 2A cache telemetry. avoidedCostCents stays 0 — no provider
+          // cost is provably avoided here (never invent a saving).
+          void providerIntel.recordLookup({
+            providerName: "parcel_snapshot_cache",
+            category: "parcel_boundary",
+            inputType: "apn",
+            success: true,
+            cached: true,
+            cacheLane: "parcel_snapshots",
+            avoidedCostCents: 0,
+            costCents: 0,
+            organizationId: orgId,
+            state,
+            county,
+          });
+          return snapshotToResult(cachedSnapshot);
+        }
+      } catch (error) {
+        logger.error("[ParcelCache] Cache lookup error", error);
       }
-    } catch (error) {
-      logger.error("[ParcelCache] Cache lookup error", error);
+    } else if (layer === "regrid") {
+      const token = await resolveRegridKey({ ...opts, organizationId: orgId });
+      if (!token) continue;
+      const regridResult = await lookupFromRegrid(apn, stateCountyPath, token);
+      if (regridResult.found) {
+        logger.info("[Parcel] Found via Regrid");
+        if (state && county) await cacheParcelResult(regridResult, state, county, orgId);
+        return regridResult;
+      }
+      lastMiss = regridResult;
+    } else if (layer === "county_gis") {
+      if (!state || !county) continue;
+      const countyResult = await lookupFromCountyGIS(apn, state, county);
+      if (countyResult?.found) {
+        logger.info("[Parcel] Found via County GIS (FREE)");
+        await cacheParcelResult(countyResult, state, county, orgId);
+        return countyResult;
+      }
+    } else if (layer === "rapidapi") {
+      if (!orgId) continue;
+      const rapidApiResult = await lookupFromRapidAPI(apn, state, county, orgId);
+      if (rapidApiResult?.found) {
+        logger.info("[Parcel] Found via RapidAPI Property Lines (BYOK)");
+        await cacheParcelResult(rapidApiResult, state, county, orgId);
+        return rapidApiResult;
+      }
     }
   }
-  
-  // Step 2: Try County GIS (free)
-  if (state && county) {
-    const countyResult = await lookupFromCountyGIS(apn, state, county);
-    if (countyResult?.found) {
-      logger.info("[Parcel] Found via County GIS (FREE)");
-      await cacheParcelResult(countyResult, state, county, organizationId);
-      return countyResult;
-    }
-  }
-  
-  // Step 3: Try RapidAPI Property Lines (cheaper than Regrid) - requires org key (BYOK)
-  if (organizationId) {
-    const rapidApiResult = await lookupFromRapidAPI(apn, state, county, organizationId);
-    if (rapidApiResult?.found) {
-      logger.info("[Parcel] Found via RapidAPI Property Lines (CHEAP BYOK)");
-      await cacheParcelResult(rapidApiResult, state, county, organizationId);
-      return rapidApiResult;
-    }
-  }
-  
-  // Step 4: Fall back to Regrid (paid, most expensive)
-  logger.info("[Parcel] Falling back to Regrid API");
-  const regridResult = await lookupFromRegrid(apn, stateCountyPath);
-  
-  // Cache Regrid results too
-  if (regridResult.found && state && county) {
-    await cacheParcelResult(regridResult, state, county, organizationId);
-  }
-  
-  return regridResult;
+
+  return lastMiss ?? { found: false, error: (await resolveRegridKey({ ...opts, organizationId: orgId })) ? `Parcel not found for APN: ${apn}` : REGRID_NOT_CONFIGURED };
 }
 
 /**
@@ -870,7 +925,7 @@ async function lookupFromRapidAPI(
             centroid,
             data: {
               regridId: props.id || "",
-              owner: props.owner || "Unknown",
+              owner: ownerOrNull(props.owner),
               ownerAddress: props.owner_address || "",
               taxAmount: props.tax_amount || "",
               lastUpdated: new Date().toISOString(),
@@ -901,7 +956,7 @@ async function lookupFromRapidAPI(
           centroid,
           data: {
             regridId: data.id || "",
-            owner: data.owner || "Unknown",
+            owner: ownerOrNull(data.owner),
             ownerAddress: data.owner_address || "",
             taxAmount: data.tax_amount || "",
             lastUpdated: new Date().toISOString(),
@@ -931,16 +986,9 @@ async function lookupFromRapidAPI(
  */
 async function lookupFromRegrid(
   apn: string,
-  stateCountyPath?: string
+  stateCountyPath: string | undefined,
+  token: string,
 ): Promise<ParcelLookupResult> {
-  const token = process.env.REGRID_API_KEY;
-  
-  if (!token) {
-    return {
-      found: false,
-      error: "Regrid API key not configured. Please add REGRID_API_KEY to secrets.",
-    };
-  }
   
   try {
     // ONE answer for "what counts as punctuation in an APN" —
@@ -1031,7 +1079,7 @@ async function lookupFromRegrid(
         centroid,
         data: {
           regridId: props.ll_uuid || props.ll_stable_id || "",
-          owner: props.owner || "Unknown",
+          owner: ownerOrNull(props.owner),
           ownerAddress: formatOwnerAddress(props as any),
           taxAmount: props.taxamt || "",
           lastUpdated: new Date().toISOString(),
@@ -1056,30 +1104,37 @@ async function lookupFromRegrid(
 }
 
 /**
- * Lookup parcel by coordinates
+ * Lookup parcel by coordinates, in PARCEL_LAYER_ORDER (no APN, so no cache
+ * and no RapidAPI layer): Regrid when licensed, then the free statewide GIS.
  */
 export async function lookupParcelByCoordinates(
   lat: number,
-  lng: number
+  lng: number,
+  opts: ParcelLookupOptions = {},
 ): Promise<ParcelLookupResult> {
-  // Step 1: FREE statewide GIS point-intersection (Open-Data Phase 3) —
-  // in seeded free-parcel states this answers before any paid provider.
-  const statewideResult = await lookupFromCountyGISByPoint(lat, lng);
-  if (statewideResult?.found) {
-    logger.info("[Parcel] Found via statewide GIS point query (FREE)");
-    return statewideResult;
+  let lastMiss: ParcelLookupResult | null = null;
+  let regridConfigured = false;
+  for (const layer of PARCEL_LAYER_ORDER) {
+    if (layer === "regrid") {
+      const token = await resolveRegridKey(opts);
+      if (!token) continue;
+      regridConfigured = true;
+      const r = await lookupFromRegridByPoint(lat, lng, token);
+      if (r.found) return r;
+      lastMiss = r;
+    } else if (layer === "county_gis") {
+      // FREE statewide GIS point-intersection (Open-Data Phase 3).
+      const statewideResult = await lookupFromCountyGISByPoint(lat, lng);
+      if (statewideResult?.found) {
+        logger.info("[Parcel] Found via statewide GIS point query (FREE)");
+        return statewideResult;
+      }
+    }
   }
+  return lastMiss ?? { found: false, error: regridConfigured ? "No parcel found at coordinates" : REGRID_NOT_CONFIGURED };
+}
 
-  // Step 2: Regrid (paid fallback)
-  const token = process.env.REGRID_API_KEY;
-
-  if (!token) {
-    return {
-      found: false,
-      error: "Regrid API key not configured. Please add REGRID_API_KEY to secrets.",
-    };
-  }
-
+async function lookupFromRegridByPoint(lat: number, lng: number, token: string): Promise<ParcelLookupResult> {
   try {
     // Tier 1E credential hygiene: key in the Authorization header, not the URL.
     const url = `https://app.regrid.com/api/v2/parcels/point?lat=${lat}&lon=${lng}&return_geometry=true`;
@@ -1115,7 +1170,7 @@ export async function lookupParcelByCoordinates(
         centroid,
         data: {
           regridId: props.ll_uuid || props.ll_stable_id || "",
-          owner: props.owner || "Unknown",
+          owner: ownerOrNull(props.owner),
           ownerAddress: formatOwnerAddress(props),
           taxAmount: props.taxamt || "",
           lastUpdated: new Date().toISOString(),

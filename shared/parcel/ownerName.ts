@@ -1,0 +1,44 @@
+/**
+ * One rule for turning a county list's single "owner name" field into the
+ * lead's first/last name (founder ruling 2026-09-29 #2 — the honest CSV
+ * import path).
+ *
+ * The two importers disagreed and both invented names. The CSV import split
+ * on the first space and, for a one-word owner, used that word as BOTH names
+ * ("ACME" became "ACME ACME"); the tax-delinquent import took the last word as
+ * the surname, so "SMITH FAMILY TRUST" became first name "SMITH FAMILY", last
+ * name "TRUST". A letter then opened "Dear SMITH FAMILY".
+ *
+ * An entity (trust, LLC, estate, church, county…) or a single word has no
+ * first name: it becomes the whole last name, first name empty. "LAST, FIRST"
+ * is read in that order. Anything else keeps the first-space split — the
+ * order of a bare "JOHN SMITH" / "SMITH JOHN" cannot be known from the text,
+ * and guessing would be another invention.
+ */
+
+const ENTITY_WORDS = new Set([
+  "LLC", "L.L.C.", "INC", "INC.", "CORP", "CORP.", "CORPORATION", "CO", "CO.", "COMPANY",
+  "LP", "L.P.", "LLP", "LTD", "LTD.", "TRUST", "TRUSTEE", "TRUSTEES", "TR", "ESTATE", "EST",
+  "HOLDINGS", "PARTNERS", "PARTNERSHIP", "ASSOCIATION", "ASSN", "FOUNDATION", "BANK",
+  "CHURCH", "MINISTRIES", "COUNTY", "CITY", "STATE", "TOWNSHIP", "DISTRICT", "AUTHORITY",
+  "HEIRS", "PROPERTIES", "INVESTMENTS", "VENTURES", "GROUP", "ENTERPRISES", "FARMS", "RANCH",
+]);
+
+/** True when an owner name reads as an organisation or trust, not a person. */
+function isEntityOwnerName(raw: string): boolean {
+  const words = raw.toUpperCase().replace(/[,&]/g, " ").split(/\s+/).filter(Boolean);
+  return words.some((w) => ENTITY_WORDS.has(w)) || /\bET\s+AL\b/i.test(raw);
+}
+
+export function splitOwnerName(raw: string): { firstName: string; lastName: string } {
+  const name = raw.trim().replace(/\s+/g, " ");
+  if (!name) return { firstName: "", lastName: "" };
+  if (isEntityOwnerName(name)) return { firstName: "", lastName: name };
+  const comma = name.split(",");
+  if (comma.length === 2 && comma[0].trim() && comma[1].trim()) {
+    return { firstName: comma[1].trim(), lastName: comma[0].trim() };
+  }
+  const parts = name.split(" ");
+  if (parts.length === 1) return { firstName: "", lastName: parts[0] };
+  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+}
