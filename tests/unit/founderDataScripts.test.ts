@@ -178,8 +178,14 @@ describe("#9d — photo and vision rows that point at nothing", () => {
     rehab_photos: [{ id: "p1", s3_key: "rehabs/r1/p1.jpg" }, { id: "p2", s3_key: "pending" }],
     field_scout_photos: [{ id: 3, url: "/uploads/field-scout/abc" }],
     property_vision_snapshots: [],
+    system_alerts: [{ id: 40, type: "vision_change_detected" }],
   };
+  // Recorded at the moment each DELETE runs: was that table's export already on disk?
+  let exportedBeforeDelete: Record<string, boolean> = {};
+  let outDirForAnswer = "";
   const answer = (sql: string) => {
+    const del = sql.match(/^DELETE FROM (\w+) /);
+    if (del) exportedBeforeDelete[del[1]] = existsSync(join(outDirForAnswer, `${del[1]}-orphans.json`));
     const t = ORPHAN_TARGETS.find((x) => sql.startsWith(`SELECT * FROM ${x.table} `));
     return t ? rows[t.table] : [];
   };
@@ -190,31 +196,37 @@ describe("#9d — photo and vision rows that point at nothing", () => {
     expect(where.field_scout_photos).toBe(`url NOT LIKE 's3://%'`);
     // Not `TRUE`: a real vision model configured later keeps its snapshots.
     expect(where.property_vision_snapshots).toMatch(/^captured_at < '2026-09-29'$/);
+    expect(where.system_alerts).toBe(`type = 'vision_change_detected' AND created_at < '2026-09-29'`);
   });
 
   it("a dry run counts and changes nothing", async () => {
     const r = recorder(answer);
     const out = await deleteOrphanPhotoAndVisionRows(r.client, { apply: false, outDir: "unused" });
-    expect(out.counts).toEqual({ rehab_photos: 2, field_scout_photos: 1, property_vision_snapshots: 0 });
+    expect(out.counts).toEqual({ rehab_photos: 2, field_scout_photos: 1, property_vision_snapshots: 0, system_alerts: 1 });
     expect(out.applied).toBe(false);
     expect(r.writes()).toEqual([]);
   });
 
   it("--apply exports each table, then deletes exactly the exported ids and only while they still match", async () => {
     const outDir = mkdtempSync(join(tmpdir(), "orphans-"));
+    outDirForAnswer = outDir;
+    exportedBeforeDelete = {};
     const r = recorder(answer);
     const out = await deleteOrphanPhotoAndVisionRows(r.client, { apply: true, outDir });
-    expect(out.exports).toHaveLength(2); // the empty table exports and deletes nothing
+    expect(out.exports).toHaveLength(3); // the empty table exports and deletes nothing
+    // Each table's rows were on disk BEFORE its delete ran.
+    expect(exportedBeforeDelete).toEqual({ rehab_photos: true, field_scout_photos: true, system_alerts: true });
     for (const f of out.exports) expect(existsSync(f)).toBe(true);
     expect(JSON.parse(readFileSync(out.exports[0], "utf8"))).toEqual(rows.rehab_photos);
     const deletes = r.writes();
     expect(deletes.map((d) => d.sql)).toEqual([
       `DELETE FROM rehab_photos WHERE id = ANY($1) AND (s3_key NOT LIKE 's3://%')`,
       `DELETE FROM field_scout_photos WHERE id = ANY($1) AND (url NOT LIKE 's3://%')`,
+      `DELETE FROM system_alerts WHERE id = ANY($1) AND (type = 'vision_change_detected' AND created_at < '2026-09-29')`,
     ]);
     expect(deletes[0].params).toEqual([["p1", "p2"]]);
     const seq = r.calls.map((c) => c.sql.split(/\s+/)[0]);
-    expect(seq.slice(3)).toEqual(["BEGIN", "DELETE", "COMMIT", "BEGIN", "DELETE", "COMMIT"]);
+    expect(seq.slice(4)).toEqual(["BEGIN", "DELETE", "COMMIT", "BEGIN", "DELETE", "COMMIT", "BEGIN", "DELETE", "COMMIT"]);
   });
 });
 

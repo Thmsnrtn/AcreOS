@@ -522,7 +522,29 @@ the org-prefix check on reads, or the prefix on writes, goes red) and
 against a pre-storage row, or recording the bare key, goes red).
 Founder action owed: provision the bucket (private, block public access) and
 an IAM key scoped to it, then set the three secrets on Fly.
-Resolving commits: this branch, batch C (2026-09-29)
+Independent audit, same day. It confirmed two defects and raised four
+concerns; all six are fixed:
+- `POST /api/field-scout/visits` was guarded only by "storage unavailable".
+  With storage configured it would have recorded photo rows straight from
+  the request body, for bytes it never saw. That would reopen DEFECT-0164.
+  A client-chosen `s3://` url plus `imageHash` could also make a later real
+  upload of that image dedupe to an empty row. Photo pointers are now
+  refused whatever the storage state.
+- When the image pipeline could not hash an image, the object key fell back
+  to the client filename. Every iOS capture is `image.jpg`, so different
+  photos overwrote each other. The key is now always a content hash.
+- Reads now apply the same `..`/`.`/empty-segment rule as writes, so
+  `org/7/../8/x` is refused.
+- A store failure partway through a batch answers 503 `partial_upload`,
+  naming what was saved, where it answered a bare 500 over files it had
+  kept.
+- The export's legacy `/tmp` read is confined to the old import directory.
+- The orphan script also removes the `vision_change_detected` alerts the
+  fabricated snapshots raised.
+Falsified by: `tests/unit/uploadsWithStorageAreKept.test.ts` (five cases red
+against the first commit), `tests/unit/documentStore.test.ts` and
+`tests/unit/importJobsSurviveMachines.test.ts` (one case each).
+Resolving commits: this branch, batch C (2026-09-29) and its audit follow-up
 
 ### DEFECT-0047
 Title: Campaign email/SMS send has TOCTOU on credit check and no per-recipient dedup

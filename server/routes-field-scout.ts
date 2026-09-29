@@ -3,12 +3,13 @@ import { storage, db } from './storage';
 import { fieldScoutVisits, fieldScoutPhotos, leads, properties } from '@shared/schema';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { logger } from "./utils/logger";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 // Phase 8 Mo 12 — Yara §1: EXIF strip + SHA-256 hash + resize variants.
 import { processUploadedImage } from "./services/imagePipeline";
 import { persistPhotoBytes, photoStorageAvailable, PHOTO_STORAGE_UNAVAILABLE_MESSAGE } from "./services/photoStorage";
 import { signedOrgObjectUrl } from "./services/documentStore";
+import { createHash } from "node:crypto";
 
 const fieldScoutRouter = Router();
 
@@ -257,21 +258,40 @@ fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), vali
       }
 
       // The stripped original is stored; resized variants are not stored
-      // separately yet, so the client uses the original.
-      const filename = (file.originalname || `photo_${Date.now()}_${i}`).replace(/[^a-zA-Z0-9._-]/g, "_");
+      // separately yet, so the client uses the original. The object key is
+      // the content hash — never the client filename, which every iOS
+      // camera capture shares ("image.jpg"), so two different photos would
+      // overwrite each other and every earlier row would show the newest.
+      // When the pipeline could not hash (and strip) the image, the raw
+      // bytes are hashed here; they keep their EXIF, in the org's private
+      // namespace, beside a row that records the same coordinates.
+      const bytes = processed?.stripped ?? file.buffer;
+      const objectKey = imageHash ?? createHash("sha256").update(bytes).digest("hex");
 
       const parsedVisitId = meta.visitId != null ? parseInt(String(meta.visitId)) : NaN;
 
       // The bytes are written BEFORE the row that points at them
-      // (DEFECT-0164). This throws until a photo storage driver exists, so
+      // (DEFECT-0164). The write throws when storage isn't configured, so
       // the refusal above can never be bypassed into a row for a URL that
       // nothing serves.
-      const ref = await persistPhotoBytes(
-        org.id,
-        `field-scout/${imageHash || filename}`,
-        processed?.stripped ?? file.buffer,
-        file.mimetype ?? undefined,
-      );
+      let ref: string;
+      try {
+        ref = await persistPhotoBytes(org.id, `field-scout/${objectKey}`, bytes, file.mimetype ?? undefined);
+      } catch (err) {
+        if (results.length === 0) throw err;
+        // Earlier photos in this batch ARE saved. Say exactly which, so a
+        // retry re-sends only the rest instead of duplicating the kept ones.
+        logger.error("[field-scout] photo store failed mid-batch", err as Error, {
+          metadata: { saved: results.length, of: files.length },
+        });
+        return sendError(
+          res,
+          503,
+          "partial_upload",
+          `${results.length} of ${files.length} photos were saved. ${file.originalname || "The next photo"} and any after it were not — upload those again.`,
+          { photos: results, deduped: dedupedHashes, savedCount: results.length },
+        );
+      }
 
       // The row records the store reference (founder ruling #1). The resized
       // variants are not stored separately, so their URLs are null rather
@@ -320,11 +340,19 @@ fieldScoutRouter.post('/field-scout/visits', async (req: Request, res: Response)
       return Errors.badRequest(res, 'leadId, latitude, and longitude are required');
     }
 
-    // Photo POINTERS are only as real as the upload that produced them, and
-    // with no photo storage there is none (DEFECT-0164) — a pointer here
-    // would record a photo that does not exist. Refuse before writing.
-    if (Array.isArray(photos) && photos.length > 0 && !photoStorageAvailable()) {
-      return Errors.serviceUnavailable(res, PHOTO_STORAGE_UNAVAILABLE_MESSAGE);
+    // Photo POINTERS in the body are refused whatever the storage state
+    // (DEFECT-0164, audit of the S3 store 2026-09-29). This route never saw
+    // the bytes, so a pointer here would record a photo that may not exist —
+    // and a client-chosen s3:// url plus imageHash would make a later REAL
+    // upload of that image dedupe to a row with nothing behind it. Photos
+    // arrive only through POST /leads/:id/photos, which stores the bytes
+    // first and records the reference itself.
+    if (Array.isArray(photos) && photos.length > 0) {
+      return Errors.badRequest(
+        res,
+        "Photos are uploaded with the photo upload, not attached here. Log the visit without them, then upload the photos to the lead.",
+        { reason: "photo_pointers_not_accepted" },
+      );
     }
 
     const visit = await storage.createFieldScoutVisit({
@@ -336,30 +364,6 @@ fieldScoutRouter.post('/field-scout/visits', async (req: Request, res: Response)
       longitude: longitude != null ? Number(longitude) : null,
       notes: notes || null,
     });
-
-    // If photos metadata was included, link them to the visit. Image
-    // payloads (with EXIF strip + hash + variants) are uploaded via
-    // POST /leads/:id/photos — this path only records pointer metadata
-    // for previously uploaded photos.
-    if (Array.isArray(photos) && photos.length > 0) {
-      for (const photo of photos) {
-        await storage.createFieldScoutPhoto({
-          organizationId: org.id,
-          visitId: visit.id,
-          leadId: parseInt(leadId),
-          url: photo.url || photo.filename || 'unknown',
-          caption: photo.caption ?? null,
-          latitude: photo.latitude != null ? Number(photo.latitude) : null,
-          longitude: photo.longitude != null ? Number(photo.longitude) : null,
-          imageHash: photo.imageHash ?? null,
-          thumbnailUrl: photo.thumbnailUrl ?? null,
-          cardUrl: photo.cardUrl ?? null,
-          fullUrl: photo.fullUrl ?? null,
-          bytes: photo.sizeBytes ?? null,
-          mime: photo.mimeType ?? null,
-        });
-      }
-    }
 
     res.status(201).json(visit);
   } catch (err: any) {

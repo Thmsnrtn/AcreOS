@@ -51,6 +51,11 @@ function keyForOrg(organizationId: number, ref: string): string {
   if (!ref.startsWith(prefix)) throw new Error("not a reference into this document store");
   const key = ref.slice(prefix.length);
   if (!key.startsWith(`org/${organizationId}/`)) throw new Error("reference does not belong to this organization");
+  // The same segment rule as writes: `org/7/../8/x` passes the prefix test
+  // textually but names another org's object to anything that normalises it.
+  if (key.split("/").some((seg) => seg === ".." || seg === "." || seg === "")) {
+    throw new Error("reference does not belong to this organization");
+  }
   return key;
 }
 

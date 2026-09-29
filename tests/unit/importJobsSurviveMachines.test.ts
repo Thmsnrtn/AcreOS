@@ -15,6 +15,8 @@
  * namespace, or the file is refused — never to the worker's /tmp.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const h = vi.hoisted(() => ({
   inserted: [] as Array<Record<string, unknown>>,
@@ -22,7 +24,7 @@ const h = vi.hoisted(() => ({
   claimRow: null as Record<string, unknown> | null,
   selectProjection: undefined as unknown,
   importLeads: vi.fn(async (..._args: unknown[]) => ({ totalRows: 1, successCount: 1, errorCount: 0, duplicatesSkipped: 0, errors: [] })),
-  readFile: vi.fn(async () => Buffer.from("")),
+  readFile: vi.fn(async (_path?: unknown) => Buffer.from("")),
   sets: [] as Array<Record<string, unknown>>,
   noLongerRunning: false,
   exportClaim: null as Record<string, unknown> | null,
@@ -249,6 +251,22 @@ describe("DEFECT-0143 — imported documents are kept in the document store, or 
     expect(h.sets.find((p) => p.status === "completed")).toMatchObject({ successCount: 1, errorCount: 0 });
   });
 
+  it("a legacy row naming a path OUTSIDE the old import directory is never read — it counts as missing", async () => {
+    h.exportClaim = {
+      id: 9, organization_id: 7, user_id: "u1", kind: "everything", status: "running",
+      params: { entityTypes: [], includeAttachments: true }, archive_path: null, archive_bytes: null,
+    };
+    h.readFile.mockResolvedValue(Buffer.from("secret"));
+    h.selectRows.push([
+      { entityType: "lead", entityId: 12, metadata: { filename: "x", path: "/etc/passwd" } },
+      { entityType: "lead", entityId: 13, metadata: { filename: "y", path: join(tmpdir(), "acreos-migration-jobs", "..", "..", "etc", "shadow") } },
+    ]);
+    await runMigrationJobsTick();
+    expect(h.readFile).not.toHaveBeenCalled();
+    const done = h.sets.find((p) => p.status === "completed");
+    expect(done!.entityCounts).toMatchObject({ attachments: 0, attachmentsMissing: 2 });
+  });
+
   it("the export re-packs stored documents from the org's namespace and COUNTS the ones it could not include", async () => {
     h.exportClaim = {
       id: 9, organization_id: 7, user_id: "u1", kind: "everything", status: "running",
@@ -257,10 +275,13 @@ describe("DEFECT-0143 — imported documents are kept in the document store, or 
     h.readFile.mockRejectedValue(new Error("ENOENT")); // the legacy /tmp file is gone
     h.selectRows.push([
       { entityType: "lead", entityId: 11, metadata: { filename: "a.pdf", ref: "s3://acre-docs/org/7/imports/5/0-a.pdf" } },
-      { entityType: "lead", entityId: 12, metadata: { filename: "b.pdf", path: "/tmp/acreos-migration-jobs/doc-4-0-b.pdf" } },
+      { entityType: "lead", entityId: 12, metadata: { filename: "b.pdf", path: join(tmpdir(), "acreos-migration-jobs", "doc-4-0-b.pdf") } },
     ]);
     await runMigrationJobsTick();
     expect(h.getOrgObject).toHaveBeenCalledWith(7, "s3://acre-docs/org/7/imports/5/0-a.pdf");
+    // The legacy read is attempted only inside the old import directory.
+    expect(h.readFile).toHaveBeenCalledTimes(1);
+    expect(String(h.readFile.mock.calls[0][0])).toMatch(/acreos-migration-jobs[\\/]doc-4-0-b\.pdf$/);
     const done = h.sets.find((p) => p.status === "completed");
     expect(done, `export did not complete: ${JSON.stringify(h.sets.map((p) => p.errorMessage ?? p.status))}`).toBeDefined();
     expect(done!.entityCounts).toMatchObject({ attachments: 1, attachmentsMissing: 1 });

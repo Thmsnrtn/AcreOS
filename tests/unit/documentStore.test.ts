@@ -118,6 +118,9 @@ describe("tenancy is in the key", () => {
     const other = "s3://acre-docs/org/8/rehabs/r1/p1.jpg";
     await expect(signedOrgObjectUrl(7, other)).rejects.toThrow(/does not belong/);
     await expect(getOrgObject(7, other)).rejects.toThrow(/does not belong/);
+    // Traversal inside the org's own prefix names another org's object.
+    await expect(signedOrgObjectUrl(7, "s3://acre-docs/org/7/../8/x.jpg")).rejects.toThrow(/does not belong/);
+    await expect(getOrgObject(7, "s3://acre-docs/org/7/a//x.jpg")).rejects.toThrow(/does not belong/);
     // A prefix that merely STARTS with the org id is not the org's prefix.
     await expect(signedOrgObjectUrl(7, "s3://acre-docs/org/70/x.jpg")).rejects.toThrow(/does not belong/);
     // Another bucket, or a legacy /uploads path, is not a reference into this store.

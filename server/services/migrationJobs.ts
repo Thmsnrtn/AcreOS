@@ -26,6 +26,7 @@
 
 import { documentStoreConfigured, getOrgObject, putOrgObject } from "./documentStore";
 import path from "node:path";
+import os from "node:os";
 import fs from "node:fs/promises";
 import zlib from "node:zlib";
 import { promisify } from "node:util";
@@ -64,6 +65,17 @@ const deflateRaw = promisify(zlib.deflateRaw);
 export const MAX_IMPORT_ROWS = 50_000;
 export const IMPORT_CHUNK_SIZE = 500;
 
+
+/** Where the pre-S3 importer wrote documents (DEFECT-0143). Read-only now. */
+const LEGACY_IMPORT_DIR = path.join(os.tmpdir(), "acreos-migration-jobs");
+
+async function readLegacyImportFile(p: string): Promise<Buffer> {
+  const resolved = path.resolve(p);
+  if (!resolved.startsWith(LEGACY_IMPORT_DIR + path.sep)) {
+    throw new Error("legacy attachment path outside the import directory");
+  }
+  return fs.readFile(resolved);
+}
 
 /**
  * Keep an imported document's bytes (DEFECT-0143, founder ruling 2026-09-29
@@ -1028,8 +1040,10 @@ async function runExportJob(job: ExportJob): Promise<void> {
         if (!meta?.ref && !meta?.path) continue;
         try {
           // Stored documents come back from the org's own namespace; legacy
-          // /tmp paths are read if still present (they usually are not).
-          const data = meta.ref ? await getOrgObject(orgId, meta.ref) : await fs.readFile(meta.path!);
+          // /tmp paths are read if still present (they usually are not) —
+          // and only from the directory the old importer wrote to, never an
+          // arbitrary path a row happens to name.
+          const data = meta.ref ? await getOrgObject(orgId, meta.ref) : await readLegacyImportFile(meta.path!);
           const safeName = (meta.filename ?? "file").replace(/[^A-Za-z0-9._-]/g, "_");
           archiveEntries.push({
             name: `attachments/${row.entityType}/${row.entityId}/${safeName}`,

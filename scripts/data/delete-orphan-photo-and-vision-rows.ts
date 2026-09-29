@@ -14,7 +14,8 @@
  *  - every `property_vision_snapshots` row captured before the refusal shipped:
  *    no vision model has ever been configured (`visionAnalyzerConfigured()` is
  *    false), so every such row is the seeded pseudo-random output DEFECT-0165
- *    removed.
+ *    removed — and the `system_alerts` "significant change" rows those
+ *    snapshots raised.
  *
  * Rows that hold a real `s3://` reference are never touched. Everything
  * deleted is exported to JSON first, in one transaction per table.
@@ -32,6 +33,9 @@ export const ORPHAN_TARGETS = [
   // every row from then is fabricated, and a real model configured later must
   // never have its snapshots swept up by a re-run of this script.
   { table: "property_vision_snapshots", where: `captured_at < '2026-09-29'` },
+  // The "significant change" alerts those fabricated snapshots raised, in the
+  // same era (audit of this script, 2026-09-29).
+  { table: "system_alerts", where: `type = 'vision_change_detected' AND created_at < '2026-09-29'` },
 ] as const;
 
 export async function deleteOrphanPhotoAndVisionRows(

@@ -38,7 +38,7 @@ import {
   createUploadMiddleware,
   validateFileMiddleware,
 } from "./middleware/fileUploadSecurity";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { persistPhotoBytes, photoStorageAvailable, PHOTO_STORAGE_UNAVAILABLE_MESSAGE } from "./services/photoStorage";
 import { signedOrgObjectUrl } from "./services/documentStore";
@@ -150,35 +150,53 @@ export function registerRehabPhotoRoutes(app: Express): void {
           // One transaction per photo (DEFECT-0164): the bytes are written
           // between the insert and the key update, so a failed write rolls
           // the row back instead of leaving a record with no file behind it.
-          const stored = await db.transaction(async (tx) => {
-            const [row] = await tx.insert(rehabPhotos).values({
-              organizationId: orgId,
-              rehabId,
-              lineItemId: lineItemId ?? null,
-              s3Key: "pending",  // placeholder, updated below
-              caption,
-              tag,
-              capturedBy: userId,
-              lat: lat != null ? String(lat) : null,
-              lng: lng != null ? String(lng) : null,
-              metadata: {
-                originalName: file.originalname,
-                mime: file.mimetype,
-                bytes: file.size,
-              },
-            }).returning();
+          let stored: typeof rehabPhotos.$inferSelect;
+          try {
+            stored = await db.transaction(async (tx) => {
+              const [row] = await tx.insert(rehabPhotos).values({
+                organizationId: orgId,
+                rehabId,
+                lineItemId: lineItemId ?? null,
+                s3Key: "pending",  // placeholder, updated below
+                caption,
+                tag,
+                capturedBy: userId,
+                lat: lat != null ? String(lat) : null,
+                lng: lng != null ? String(lng) : null,
+                metadata: {
+                  originalName: file.originalname,
+                  mime: file.mimetype,
+                  bytes: file.size,
+                },
+              }).returning();
 
-            const key = `rehabs/${rehabId}/${row.id}.${ext}`;
-            // The stored reference (s3://…/org/<orgId>/rehabs/…), not the
-            // bare key: the read route signs it for this org only.
-            const ref = await persistPhotoBytes(orgId, key, file.buffer, file.mimetype);
+              const key = `rehabs/${rehabId}/${row.id}.${ext}`;
+              // The stored reference (s3://…/org/<orgId>/rehabs/…), not the
+              // bare key: the read route signs it for this org only.
+              const ref = await persistPhotoBytes(orgId, key, file.buffer, file.mimetype);
 
-            const [updated] = await tx.update(rehabPhotos)
-              .set({ s3Key: ref })
-              .where(eq(rehabPhotos.id, row.id))
-              .returning();
-            return updated ?? row;
-          });
+              const [updated] = await tx.update(rehabPhotos)
+                .set({ s3Key: ref })
+                .where(eq(rehabPhotos.id, row.id))
+                .returning();
+              return updated ?? row;
+            });
+          } catch (err) {
+            if (inserted.length === 0) throw err;
+            // Earlier photos in this batch ARE saved (each in its own
+            // transaction). Say exactly which, so a retry re-sends only the
+            // rest instead of duplicating the kept ones.
+            logger.error("[FF-7] rehab photo store failed mid-batch", err as Error, {
+              orgId, metadata: { rehabId, saved: inserted.length, of: files.length },
+            });
+            return sendError(
+              res,
+              503,
+              "partial_upload",
+              `${inserted.length} of ${files.length} photos were saved. ${file.originalname || "The next photo"} and any after it were not — upload those again.`,
+              { photos: inserted, savedCount: inserted.length },
+            );
+          }
 
           inserted.push(stored);
         }
