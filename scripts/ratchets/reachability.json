@@ -13,7 +13,7 @@
     "opaqueExports": 19,
     "moduleOrphans": 34,
     "unreachedExportsShared": 54,
-    "internalOnlyExportsShared": 427,
+    "internalOnlyExportsShared": 426,
     "moduleOrphansShared": 1,
     "opaqueExportsShared": 15
   },
@@ -139,11 +139,6 @@
       "kind": "table-reader",
       "id": "trust_ledger",
       "reason": "AWAITING A FOUNDER-AUTHORISED DROP. The trust-ledger retirement (2026-09-06, DEFECT-0053) removed the last reader and the last writer of trust_ledger: four routes in routes-va-engine.ts with zero callers, the four closingServicingRepo methods only those routes reached, and the five caller-less bookkeeping journal functions. The runtime was not merely unused but wrong \u2014 getTrustBalance returned a stored running_balance the server never computed, the POST spread req.body so a caller could set their own balance, and the block's header called a single-entry ledger 'double-entry'. The org's real books are account_ledger_entries: double-entry, CHECK-constrained, and actually read. The DROP is NOT taken here \u2014 the table may hold customer financial rows, and deleting customer data is a founder-only hard stop (CLAUDE.md DO-NOT-DO list). REVOCATION: the founder authorises the drop, the migration lands, and both trust_ledger entries plus the schema export go with it."
-    },
-    {
-      "kind": "table-writer",
-      "id": "payoff_quotes",
-      "reason": "AWAITING A FOUNDER-AUTHORISED DROP (same category as trust_ledger). DEFECT-0100, 2026-09-27: serviced-note payoffs have one rule, quoteServicedNotePayoff, which computes on the engine and persists into note_payoff_quotes. The legacy payoff_quotes writers were the zero-caller POST/PATCH /api/payoff-quotes routes (retired) and the two closingServicingRepo methods only they reached (removed after the independent audit found them dead). Its GET readers stay so existing rows remain visible. The DROP is NOT taken here: the table may hold customer quote rows, and deleting customer data is a founder-only hard stop (CLAUDE.md DO-NOT-DO list). REVOCATION: the founder authorises the drop, the migration lands, and this entry, the readers and the schema export go with it."
     },
     {
       "kind": "export",

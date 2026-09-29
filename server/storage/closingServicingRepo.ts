@@ -12,13 +12,11 @@ import {
   escrowChecklists,
   closingPackets,
   autopayEnrollments,
-  payoffQuotes,
   delinquencyEscalations,
   type BuyerReservation,
   type EscrowChecklist,
   type ClosingPacket,
   type AutopayEnrollment,
-  type PayoffQuote,
   type DelinquencyEscalation,
   type InsertBuyerReservation,
   type InsertEscrowChecklist,
@@ -193,25 +191,8 @@ export const closingServicingRepo = {
     return true;
   },
 
-  // Payoff Quotes
-  async getPayoffQuotes(this: DatabaseStorage, organizationId: number): Promise<PayoffQuote[]> {
-    return await db.select().from(payoffQuotes)
-      .where(eq(payoffQuotes.organizationId, organizationId))
-      .orderBy(desc(payoffQuotes.createdAt));
-  },
-
-  async getPayoffQuoteById(this: DatabaseStorage, organizationId: number, id: number): Promise<PayoffQuote | undefined> {
-    const [quote] = await db.select().from(payoffQuotes)
-      .where(and(eq(payoffQuotes.id, id), eq(payoffQuotes.organizationId, organizationId)));
-    return quote;
-  },
-
-  async getPayoffQuotesByNote(this: DatabaseStorage, organizationId: number, noteId: number): Promise<PayoffQuote[]> {
-    return await db.select().from(payoffQuotes)
-      .where(and(eq(payoffQuotes.noteId, noteId), eq(payoffQuotes.organizationId, organizationId)))
-      .orderBy(desc(payoffQuotes.createdAt));
-  },
-
+  // getPayoffQuotes / getPayoffQuoteById / getPayoffQuotesByNote removed
+  // 2026-09-29 (founder ruling #9a): the legacy table is retired.
   // createPayoffQuote / updatePayoffQuote removed 2026-09-27 (DEFECT-0100):
   // their only callers were the retired POST/PATCH /api/payoff-quotes routes.
   // Serviced-note payoffs are written by quoteServicedNotePayoff into

@@ -1232,46 +1232,14 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   });
 
   // ============================================
-  // PAYOFF QUOTES (Phase 4)
+  // PAYOFF QUOTES — legacy reads RETIRED 2026-09-29 (founder ruling #9a)
   // ============================================
-
-  api.get("/api/payoff-quotes", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const quotes = await storage.getPayoffQuotes(org.id);
-      res.json(quotes);
-    } catch (error: any) {
-      logger.error("Get payoff quotes error", error);
-      Errors.internal(res, error);
-    }
-  });
-
-  api.get("/api/payoff-quotes/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const id = parseInt(req.params.id);
-      const quote = await storage.getPayoffQuoteById(org.id, id);
-      if (!quote) {
-        return Errors.notFound(res, "Payoff quote");
-      }
-      res.json(quote);
-    } catch (error: any) {
-      logger.error("Get payoff quote error", error);
-      Errors.internal(res, error);
-    }
-  });
-
-  api.get("/api/notes/:noteId/payoff-quotes", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const noteId = parseInt(req.params.noteId);
-      const quotes = await storage.getPayoffQuotesByNote(org.id, noteId);
-      res.json(quotes);
-    } catch (error: any) {
-      logger.error("Get note payoff quotes error", error);
-      Errors.internal(res, error);
-    }
-  });
+  // GET /api/payoff-quotes, /api/payoff-quotes/:id and
+  // /api/notes/:noteId/payoff-quotes read the legacy `payoff_quotes` table,
+  // which has had no writer since DEFECT-0100 and no client caller. Every
+  // payoff quote is `note_payoff_quotes`, served by the notes routes
+  // (`/api/notes/:id/payoff/quotes`). The table's rows are exported and the
+  // table dropped by scripts/data/export-and-drop-payoff-quotes.ts.
 
   // ── LEGACY PAYOFF-QUOTE WRITES — RETIRED 2026-09-27 (DEFECT-0100) ─────────
   //

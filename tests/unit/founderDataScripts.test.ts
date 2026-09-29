@@ -8,7 +8,7 @@
  * applied run writes only the authorised rows, secrets are never read back,
  * and every deletion is exported first.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { mkdtempSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +16,12 @@ import type { Queryable } from "../../scripts/data/_client";
 import { numericPrecisionReport } from "../../scripts/data/numeric-precision-report";
 import { nullPlaintextVendorKeys } from "../../scripts/data/null-plaintext-vendor-keys";
 import { deletePollutedMarketRows, findPollutedMonthlyRows, type MarketRow } from "../../scripts/data/delete-polluted-market-rows";
+import { exportAndDropPayoffQuotes } from "../../scripts/data/export-and-drop-payoff-quotes";
+import { readdirSync } from "node:fs";
+import { stripComments, REPO_SWEEP_TIMEOUT_MS } from "../helpers/stripComments";
+
+// It reads every server/shared/client file (the "nothing reads the table" check).
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 function recorder(answer: (sql: string, params?: unknown[]) => unknown[]) {
   const calls: Array<{ sql: string; params?: unknown[] }> = [];
@@ -123,5 +129,58 @@ describe("#9c — polluted market rows", () => {
     expect(seq.slice(1)).toEqual(["BEGIN", "DELETE", "COMMIT"]);
     expect(wet.writes()[0].params).toEqual([[2]]);
     expect(wet.writes()[0].sql).toMatch(/period_type = 'monthly'/);
+  });
+});
+
+describe("#9a — legacy payoff_quotes", () => {
+  const table = [{ id: 1, total_payoff: "1000" }, { id: 2, total_payoff: "2000" }];
+  const answer = (sql: string) =>
+    /to_regclass/.test(sql) ? [{ reg: "payoff_quotes" }] : /count\(\*\)/.test(sql) ? [{ n: "2" }] : /^SELECT \*/.test(sql.trim()) ? table : [];
+
+  it("a dry run counts and changes nothing", async () => {
+    const r = recorder(answer);
+    const out = await exportAndDropPayoffQuotes(r.client, { apply: false, outDir: mkdtempSync(join(tmpdir(), "pq-")) });
+    expect(out).toMatchObject({ exists: true, rows: 2, dropped: false });
+    expect(r.writes()).toEqual([]);
+  });
+
+  it("--apply exports every row, re-counts inside the transaction, then drops", async () => {
+    const r = recorder(answer);
+    const out = await exportAndDropPayoffQuotes(r.client, { apply: true, outDir: mkdtempSync(join(tmpdir(), "pq-")) });
+    expect(JSON.parse(readFileSync(out.exportPath!, "utf8"))).toEqual(table);
+    const seq = r.calls.map((c) => c.sql.trim().replace(/\s+/g, " "));
+    expect(seq.slice(-4)).toEqual(["BEGIN", "SELECT count(*) AS n FROM payoff_quotes", "DROP TABLE payoff_quotes", "COMMIT"]);
+  });
+
+  it("a row that appeared after the export aborts the drop", async () => {
+    const r = recorder((sql) => (/count\(\*\)/.test(sql) ? [{ n: "3" }] : answer(sql)));
+    await expect(
+      exportAndDropPayoffQuotes(r.client, { apply: true, outDir: mkdtempSync(join(tmpdir(), "pq-")) }),
+    ).rejects.toThrow(/changed since the export/);
+    expect(r.calls.map((c) => c.sql.trim()).includes("DROP TABLE payoff_quotes")).toBe(false);
+    expect(r.calls.at(-1)?.sql).toBe("ROLLBACK");
+  });
+
+  it("nothing in the app reads or declares the table any more", () => {
+    const hits = ["server", "shared", "client/src"].flatMap((dir) =>
+      (readdirSync(dir, { recursive: true }) as string[])
+        .filter((f) => /\.(ts|tsx)$/.test(f) && !/\.test\./.test(f))
+        .filter((f) => /\bpayoffQuotes\b|pgTable\("payoff_quotes"|\/api\/payoff-quotes/.test(stripComments(readFileSync(join(dir, f), "utf8"))))
+        .map((f) => join(dir, f)),
+    );
+    expect(hits).toEqual([]);
+  });
+});
+
+describe("every founder data script is a dry run unless --apply", () => {
+  const scripts = readdirSync("scripts/data").filter((f) => f.endsWith(".ts") && !f.startsWith("_"));
+  it("the population is the scripts that exist", () => {
+    expect(scripts.length).toBeGreaterThanOrEqual(4);
+  });
+  it.each(scripts)("%s gates every write on the apply flag or is read-only", (f) => {
+    const code = stripComments(readFileSync(join("scripts/data", f), "utf8"));
+    const writes = /\b(UPDATE|DELETE|DROP|ALTER|INSERT)\b/.test(code);
+    if (writes) expect(code).toMatch(/\bapply\b/);
+    else expect(code).toMatch(/READ ONLY/);
   });
 });

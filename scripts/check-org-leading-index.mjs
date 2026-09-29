@@ -182,7 +182,6 @@ const BASELINE_OFFENDERS = new Set([
   "parcel_snapshots",
   "payment_reminders",
   "payments",
-  "payoff_quotes",
   "playbook_instances",
   "portfolio_alerts",
   "price_recommendations",

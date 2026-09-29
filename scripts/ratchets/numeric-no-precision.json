@@ -4,7 +4,7 @@
   "pattern": "\\bnumeric\\(\\s*\"[^\"]+\"\\s*\\)",
   "globs": ["shared/schema.ts", "shared/schema/**/*.ts"],
   "exclude": [],
-  "baselineCount": 353,
+  "baselineCount": 349,
   "direction": "down",
   "minima": { "files": 60 },
   "minimaNote": "VACUITY FLOOR on the scan population (the monolith plus its modules; 85 files at 2026-09-28). A broken glob that matches nothing must fail, not pass at zero."

@@ -732,25 +732,10 @@ export const insertAutopayEnrollmentSchema = createInsertSchema(autopayEnrollmen
 export type InsertAutopayEnrollment = z.infer<typeof insertAutopayEnrollmentSchema>;
 export type AutopayEnrollment = typeof autopayEnrollments.$inferSelect;
 
-// Payoff Quotes - Calculate and track payoff amounts
-export const payoffQuotes = pgTable("payoff_quotes", {
-  id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
-  noteId: integer("note_id").references(() => notes.id).notNull(),
-  requestedBy: text("requested_by"),
-  principalBalance: numeric("principal_balance").notNull(),
-  accruedInterest: numeric("accrued_interest").notNull(),
-  fees: numeric("fees").default("0"),
-  totalPayoff: numeric("total_payoff").notNull(),
-  goodThroughDate: timestamp("good_through_date").notNull(),
-  status: text("status").notNull().default("pending"),
-  paidAt: timestamp("paid_at"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const insertPayoffQuoteSchema = createInsertSchema(payoffQuotes).omit({ id: true, createdAt: true });
-export type InsertPayoffQuote = z.infer<typeof insertPayoffQuoteSchema>;
-export type PayoffQuote = typeof payoffQuotes.$inferSelect;
+// Legacy `payoff_quotes` RETIRED 2026-09-29 (founder ruling #9a). It had no
+// writer since DEFECT-0100 and no client reader; every payoff quote lives in
+// `note_payoff_quotes` (shared/schema/notes-vertical.ts). The table's rows are
+// exported and the table dropped by scripts/data/export-and-drop-payoff-quotes.ts.
 
 // Trust Ledger - Accounting entries for trust accounts
 export const trustLedger = pgTable("trust_ledger", {
