@@ -284,6 +284,16 @@ What engineering will **not** do before G1:
 
 ## 7. 🔑 Founder decisions this plan needs, in order
 
+*Decided 2026-09-29. The rulings are in
+`docs/company/founder-decisions-2026-09-29.md`: S3 storage; parcel data
+layered with Regrid primary once licensed; a 90-day borrower wind-down;
+health and retirement signals removed, divorce held; worker-only jobs; an
+assessed-fee ledger; win-back dormant until G1; memo pricing at GA if the
+margins hold; all four legacy deletions, run by script; a precision report
+first; data co-op opt-in with a 5-operator floor. What remains below are
+actions, not choices: secrets, legal formation, the tax reviewer, the Regrid
+purchase, and counsel on divorce and servicing-text DNC scope.*
+
 1. Provision the Phase-0 secrets (table 0.1). This is one sitting.
 2. Document storage backend (0143/0046).
 3. DNC vendor go-live, and the legal read on servicing-text scope.

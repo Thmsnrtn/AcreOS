@@ -83,13 +83,15 @@ const URGENCY_KEYWORDS = [
   "this week", "as soon as possible", "right away"
 ];
 
+// No health or age-proxy life events (founder ruling 2026-09-29 #4): a
+// seller's illness is a disability proxy and "retiring/downsizing" an age
+// proxy — neither may raise a motivation score or a "move fast" prompt.
+// "divorce" is held pending counsel's read on seller-side marital status.
 const LIFE_EVENT_KEYWORDS: Record<string, string[]> = {
   divorce: ["divorce", "divorcing", "separated", "ex-wife", "ex-husband", "split"],
   inheritance: ["inherited", "inheritance", "estate", "deceased", "passed away", "probate"],
-  retirement: ["retiring", "retirement", "downsizing", "moving to florida"],
   relocation: ["relocating", "moving out of state", "job transfer", "new job"],
   financial_distress: ["foreclosure", "behind on taxes", "can't afford", "debt", "bankruptcy"],
-  health: ["health issues", "medical bills", "hospital", "can't maintain"],
 };
 
 const QUESTION_TYPE_KEYWORDS: Record<string, string[]> = {

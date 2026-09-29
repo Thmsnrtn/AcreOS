@@ -157,8 +157,6 @@ export function selectNegotiationStrategy(profile: MotivationProfile): StrategyS
     if (!avoid.includes("urgency")) {
       secondary = "urgency";
     }
-  } else if (profile.lifeEvent === "retirement") {
-    talkingPoints.push("Frame the sale as funding their next chapter");
   }
 
   // Intent score adjustments

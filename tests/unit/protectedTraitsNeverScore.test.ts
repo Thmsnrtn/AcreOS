@@ -134,3 +134,35 @@ describe("the population", () => {
     expect(stripComments(readFileSync(f, "utf8")).trim().length).toBeGreaterThan(200);
   });
 });
+
+/**
+ * Founder ruling 2026-09-29 (#4, docs/company/founder-decisions-2026-09-29.md):
+ * seller-motivation scoring may not use HEALTH (a disability proxy: "medical
+ * bills", "hospital", "can't maintain") or RETIREMENT (an age proxy:
+ * "retiring", "downsizing"). "Divorce" is held pending counsel and is NOT
+ * forbidden here. The population is every module that scores or coaches on
+ * seller motivation.
+ */
+const SELLER_SCORING = [
+  "server/services/sellerIntentPredictor.ts",
+  "server/services/sellerPsychologyStrategy.ts",
+  "server/services/sellerMotivationEngine.ts",
+  "server/services/prospectIntelligence.ts",
+  "server/services/leadScoring.ts",
+  "server/services/leadIntelligenceEngine.ts",
+];
+const SELLER_PROXY = /\bhealth\s*:|medical bills|hospital|can't maintain|\bretir(?:ing|ement)\b|downsizing/i;
+
+describe("seller motivation never reads health or retirement (ruling #4)", () => {
+  it("the proxy pattern sees each shape (canaries)", () => {
+    expect(SELLER_PROXY.test('  health: ["medical bills"],')).toBe(true);
+    expect(SELLER_PROXY.test('retirement: ["retiring", "downsizing"],')).toBe(true);
+    expect(SELLER_PROXY.test('} else if (profile.lifeEvent === "retirement") {')).toBe(true);
+    expect(SELLER_PROXY.test('divorce: ["divorce", "separated"],')).toBe(false);
+  });
+  it.each(SELLER_SCORING)("%s carries no health or retirement signal", (f) => {
+    const code = stripComments(readFileSync(f, "utf8"));
+    expect(code.trim().length).toBeGreaterThan(200);
+    expect(code.split("\n").filter((l) => SELLER_PROXY.test(l))).toEqual([]);
+  });
+});

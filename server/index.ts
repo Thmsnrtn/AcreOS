@@ -1,4 +1,5 @@
 // Initialize OpenTelemetry BEFORE any other imports (T74)
+import { appProcessRunsScheduledJobs } from "./jobs/jobPlacement";
 import { initTracing } from "./tracing";
 // initTracing() is called at startup below — see startupInit()
 
@@ -672,8 +673,11 @@ app.use("/mcp", mcpLimiter);
       // when run on the customer-facing app machines. The actual catalogue lives in
       // server/jobs/runScheduledJobs.ts and is also booted from server/worker.ts so
       // production keeps these jobs alive even with DISABLE_BACKGROUND_JOBS=1 on app.
-      if (process.env.DISABLE_BACKGROUND_JOBS === "1") {
-        log("Background jobs DISABLED on app process (DISABLE_BACKGROUND_JOBS=1) — running on worker", "startup");
+      // Worker-only in production (founder ruling 2026-09-29 #5): see
+      // server/jobs/jobPlacement.ts for the rule and its override.
+      const jobPlacement = appProcessRunsScheduledJobs();
+      if (!jobPlacement.run) {
+        log(`Background jobs not started on app process (${jobPlacement.reason})`, "startup");
       } else {
         void (async () => {
           try {

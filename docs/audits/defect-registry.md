@@ -547,7 +547,7 @@ Resolving commits: pending (ratchet + first extraction on this branch, round 3)
 ### DEFECT-0049
 Title: 44 setInterval background jobs in web server process
 Severity: P2
-Status: OPEN — architecture present; one production setting unverified
+Status: FIXED (2026-09-29, founder ruling #5: worker only)
 Surfaced by lenses: 1 (ARCH-004), 5 (SRE-02), 62 (full inventory)
 Description: All background jobs run as `setInterval` timers in the main process. They compete for the 20-connection DB pool and cannot be scaled independently. BullMQ is a dependency but jobs are not migrated to it.
 Evidence: `server/index.ts` -- 44 tracked intervals. 15 additional untracked.
@@ -563,9 +563,16 @@ the app machines (it is not in `fly.toml [env]`, so it would be a Fly secret)
 and whether a worker machine is running. The default was deliberately NOT
 flipped: if no worker machine exists, flipping it would stop every scheduled
 job, including dunning and ACH reconciliation.
-OWED (ops, one check): `fly secrets list` shows DISABLE_BACKGROUND_JOBS on app,
-and `fly status` shows a worker machine. If both hold, close this entry.
-Resolving commits: pending (interval tracking fixed; worker process exists)
+Decided 2026-09-29 (founder ruling #5, `docs/company/founder-decisions-2026-09-29.md`):
+worker only. `appProcessRunsScheduledJobs` (`server/jobs/jobPlacement.ts`)
+stands the app process down whenever Fly reports it is the `app` process group
+(`FLY_PROCESS_GROUP`), so the ruling does not depend on a secret anyone
+remembered to set. The worker still boots the scheduler. A single-process run
+with no Fly group keeps it, and `APP_RUN_BACKGROUND_JOBS=1` is the explicit
+override back. Pinned by `tests/unit/jobsRunOnWorkerOnly.test.ts`.
+OWED (ops, one check after the next deploy): `fly status` shows a running
+`worker` machine. The deadman meta-check pages if the scheduler goes quiet.
+Resolving commits: this branch, 2026-09-29
 
 ### DEFECT-0050
 Title: Inconsistent error response format -- raw res.status().json() vs Errors.* helpers
@@ -643,6 +650,11 @@ temporary bare column turns it red.
 OWED (founder): approve a per-table precision migration, preceded by a
 read-only query of max scale and magnitude per column to show what rounding
 it would do.
+Ruling 2026-09-29 #10: report first. `scripts/data/numeric-precision-report.ts`
+is that query. It runs in one READ ONLY transaction and lists, per bare
+numeric column, the rows that numeric(14,2) would ROUND and would REJECT.
+🔑 The founder runs it against production and approves the per-table
+migration from its output.
 Resolving commits: pending (growth ratchet on this branch, round 3)
 
 ### DEFECT-0053
@@ -3885,7 +3897,13 @@ Remediation plan: DONE.
 - The copy states transactions, with no date window.
 
 "Monthly" rows that earlier re-publications derived from single deals remain
-in the table. Removing them is a data deletion, a founder decision.
+in the table. They are themselves "published", so `analyzeMarket` keeps
+copying the single deal forward.
+Ruling 2026-09-29 #9c: delete them.
+`scripts/data/delete-polluted-market-rows.ts` finds them as a per-county
+fixed point, following the chain of copies. Raw contributions are kept. The
+script exports the rows before deleting them in one transaction, and is a
+dry run unless given `--apply`. 🔑 The founder runs it against production.
 Falsified by: `tests/unit/marketNetworkIsKAnonymous.test.ts` (behaviour, plus
 a population gate over every `market_metrics` reader; five cases red
 pre-fix).
@@ -4715,15 +4733,14 @@ Remediation plan: DONE.
     `birthYear`, `dateOfBirth`, `isDisabled`, `ssiIncome`), reversed
     comparisons, and case-sensitive SNAP/TANF.
   - Thirteen canaries cover these shapes.
-- Not decided here, recorded for the founder: seller-side life-event
-  signals ("recent divorce" in `server/services/prospectIntelligence.ts`,
-  keywords in `server/services/sellerIntentPredictor.ts`). Marital status is
-  a protected basis under ECOA and some state housing laws. Its use for
-  SELLER prospecting needs legal review, not a unilateral change. The same
-  goes for the "health" (medical bills, hospital) and "retirement" intent
-  keywords. Each adds +20 and surfaces as "move fast — send offer today"
-  (`server/services/sellerPsychologyStrategy.ts`), and each is a proxy for
-  disability or age.
+- Ruled 2026-09-29 (#4): the "health" (medical bills, hospital, can't
+  maintain) and "retirement" (retiring, downsizing) seller-intent signals
+  are REMOVED from `server/services/sellerIntentPredictor.ts`, along with the
+  retirement talking point in `server/services/sellerPsychologyStrategy.ts`.
+  They were disability and age proxies that added +20 and surfaced as
+  "move fast — send offer today". A pinned test forbids them across the
+  seller-scoring modules. "Divorce" is held pending counsel's read on
+  seller-side marital-status use (ECOA and some state housing laws).
 Falsified by: `tests/unit/protectedTraitsNeverScore.test.ts` (the
 leadScoring case red pre-fix; five canaries).
 Resolving commits: this branch, round 3
