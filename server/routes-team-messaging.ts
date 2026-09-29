@@ -272,7 +272,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
           lastMessageAt: new Date(),
           updatedAt: new Date(),
         })
-        .where(eq(teamConversations.id, conversationId));
+        .where(and(eq(teamConversations.id, conversationId), eq(teamConversations.organizationId, org.id)));
 
       // Broadcast via WebSocket so recipients get the message in real-time
       wsServer.broadcastToOrg(org.id, "message.new", {
@@ -469,7 +469,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
             lastSeenAt: new Date(),
             deviceInfo: deviceInfo || existing.deviceInfo,
           })
-          .where(eq(teamMemberPresence.id, existing.id))
+          .where(and(eq(teamMemberPresence.id, existing.id), eq(teamMemberPresence.organizationId, org.id)))
           .returning();
       } else {
         // Insert new
@@ -1618,7 +1618,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const [updated] = await db
         .update(teamConversations)
         .set({ participantIds: participants, updatedAt: new Date() })
-        .where(eq(teamConversations.id, channelId))
+        .where(and(eq(teamConversations.id, channelId), eq(teamConversations.organizationId, org.id)))
         .returning();
 
       res.json(updated);

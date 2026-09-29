@@ -290,7 +290,7 @@ export function registerSupportTicketRoutes(app: Express): void {
           customerFeedback: feedback,
           updatedAt: new Date()
         })
-        .where(eq(supportTickets.id, ticketId));
+        .where(and(eq(supportTickets.id, ticketId), eq(supportTickets.organizationId, org.id)));
 
       // Andrei — calibration loop. A low CSAT (≤2★ of 5) on a Pax auto-resolved
       // ticket labels that auto-resolve a miss: outcome → 'csat_negative' (a
@@ -369,7 +369,7 @@ export function registerSupportTicketRoutes(app: Express): void {
           customerFeedback: feedback,
           updatedAt: new Date()
         })
-        .where(eq(supportTickets.id, ticketId));
+        .where(and(eq(supportTickets.id, ticketId), eq(supportTickets.organizationId, org.id)));
       
       let learningResult = null;
       let knowledgeBaseArticle = null;

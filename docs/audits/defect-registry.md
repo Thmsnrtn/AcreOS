@@ -4940,6 +4940,48 @@ Falsified by: `tests/unit/soldLandIsWithdrawn.test.ts` (the two
 DEFECT-0183 cases red pre-fix); `tests/unit/planLimitsIgnoreSampleData.test.ts`
 (the deleted-property case red pre-fix).
 Resolving commits: this branch, round 3
+### DEFECT-0184
+Title: The tenancy gate never read UPDATE or DELETE statements
+Severity: P1
+Status: FIXED (round 3, 2026-09-29) — the gate; the frozen debt burns down under the ratchet
+Surfaced by lenses: root cause of DEFECT-0183 (why a green tenancy lint sat over a cross-tenant hard delete)
+Description: `lint:org-fetch` rule 3 ("a scoped unit's query must name the
+org", `scripts/check-org-scoped-fetch.mjs`) slices query chains from
+`.from(table)`, which means SELECT chains only. `db.update(t)` and
+`db.delete(t)` have no `.from(`, so every write sat outside the population
+the gate reads. Measured 2026-09-29: 603 UPDATE/DELETE statements on
+org-scoped tables across server/, 390 with no organization token in the
+statement text.
+- After resolving predicate variables (the `...conditions` and
+  `.where(clause)` shapes the lint already resolves), 292 remained.
+- Excluding the tenant row itself (`organizations`) left 265.
+- Many are the "verified parent" shape: ownership is read under an org
+  predicate, then the write is by id alone. That is safe until a refactor
+  drops the read, which is exactly the DEFECT-0183 shape.
+Remediation plan: DONE for the gate.
+- `tests/unit/orgScopedWritesRatchet.test.ts` reads every non-test server
+  file, with floors on files, org tables and statements. Comments are
+  stripped by the real scanner, and canaries cover each shape: plain,
+  transaction, multi-line, predicate list with and without the org, and a
+  whole clause in a variable.
+- It freezes the unscoped count per file × kind × table in
+  `tests/unit/orgScopedWrites.baseline.json`. A new unscoped write fails,
+  and a fixed one must lower its entry in the same commit.
+- A first tranche adds the org predicate to 14 request-driven route
+  writes: comments, lead delete/restore, team conversations and presence,
+  mail-shipment cancel, offer approvals, Slack integration, agent tasks and
+  support tickets. The baseline is now 250 across 144 keys.
+- Deliberately left, with reasons:
+  - deal rooms are cross-org by participant design;
+  - the founder-only admin routers are platform operations;
+  - webhook and invitation-accept paths have no org yet.
+- Remaining: burn the 250 down. Postgres RLS on the highest-value tables
+  would make the whole class fail in the database, whatever the statement
+  looks like (`docs/company/public-readiness-plan-2026-09-29.md`).
+Falsified by: `tests/unit/orgScopedWritesRatchet.test.ts`. Appending one
+unscoped `db.delete(deals)` to a server file turns it red, and fixing 14
+writes without lowering the baseline turned it red.
+Resolving commits: this branch, round 3
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -4977,11 +5019,11 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 1   | 11  | 12    |
-| FIXED  | 14  | 88  | 66  | 168   |
+| FIXED  | 14  | 89  | 66  | 169   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **14** | **92** | **77** | **183** |
+| **Total** | **14** | **93** | **77** | **184** |
 
-Recounted from the entries themselves on 2026-09-28 (183 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

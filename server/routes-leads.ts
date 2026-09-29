@@ -761,7 +761,7 @@ export function registerLeadRoutes(app: Express): void {
     await db.update(leads).set({
       deletedAt: new Date(),
       deletedBy: userId || null,
-    }).where(eq(leads.id, leadId));
+    }).where(and(eq(leads.id, leadId), eq(leads.organizationId, org.id)));
 
     await storage.createAuditLogEntry({
       organizationId: org.id,
@@ -798,7 +798,7 @@ export function registerLeadRoutes(app: Express): void {
     const [restored] = await db.update(leads).set({
       deletedAt: null,
       deletedBy: null,
-    }).where(eq(leads.id, leadId)).returning();
+    }).where(and(eq(leads.id, leadId), eq(leads.organizationId, org.id))).returning();
 
     // Wave B — restoring a soft-deleted lead really does change its state,
     // so automations should see it. Restoring an ALREADY-active lead changed

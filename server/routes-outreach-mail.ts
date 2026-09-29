@@ -652,7 +652,7 @@ export function registerOutreachMailRoutes(app: Express): void {
             cancelledAt: new Date(),
             cancellationReason: typeof req.body?.reason === "string" ? req.body.reason : "user_cancelled",
           })
-          .where(eq(mailShipments.id, idParam))
+          .where(and(eq(mailShipments.id, idParam), eq(mailShipments.organizationId, orgId)))
           .returning();
 
         // Refund the pool draw posted at queue time. Prefer the EXACT debit

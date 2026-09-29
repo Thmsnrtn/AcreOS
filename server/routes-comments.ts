@@ -200,7 +200,7 @@ router.delete("/:id", isAuthenticated, getOrCreateOrg, async (req: Authenticated
       return Errors.forbidden(res, "can only delete your own comments");
     }
 
-    await db.delete(entityComments).where(eq(entityComments.id, commentId));
+    await db.delete(entityComments).where(and(eq(entityComments.id, commentId), eq(entityComments.organizationId, org.id)));
 
     res.json({ success: true });
   } catch (err) {

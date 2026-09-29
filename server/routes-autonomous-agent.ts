@@ -239,7 +239,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
       await db
         .update(agentTasks)
         .set({ status: "processing", startedAt: new Date(), requiresReview: false })
-        .where(eq(agentTasks.id, taskId));
+        .where(and(eq(agentTasks.id, taskId), eq(agentTasks.organizationId, org.id)));
 
       const startTime = Date.now();
 
@@ -269,7 +269,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
           reviewedBy: Number.isNaN(parseInt(String(user.id), 10)) ? null : parseInt(String(user.id), 10),
           reviewedAt: new Date(),
         })
-        .where(eq(agentTasks.id, taskId));
+        .where(and(eq(agentTasks.id, taskId), eq(agentTasks.organizationId, org.id)));
 
       res.json({ result, executionTimeMs });
     } catch (err: any) {

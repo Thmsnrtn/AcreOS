@@ -405,7 +405,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
               isActive: data.isActive,
               updatedAt: new Date(),
             })
-            .where(eq(orgIntegrationsSlack.id, existing.id))
+            .where(and(eq(orgIntegrationsSlack.id, existing.id), eq(orgIntegrationsSlack.organizationId, org.id)))
             .returning();
         } else {
           [row] = await db
@@ -544,7 +544,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
             reviewerNotes: parsed.data.notes ?? null,
             decidedAt: new Date(),
           })
-          .where(eq(offerApprovals.id, id))
+          .where(and(eq(offerApprovals.id, id), eq(offerApprovals.organizationId, org.id)))
           .returning();
 
         // Sync linked offer status: approved → "approved", declined → "draft".
@@ -552,12 +552,12 @@ export function registerTeamReadinessRoutes(app: Express): void {
           await db
             .update(offers)
             .set({ status: "approved", updatedAt: new Date() })
-            .where(eq(offers.id, existing.offerId));
+            .where(and(eq(offers.id, existing.offerId), eq(offers.organizationId, org.id)));
         } else {
           await db
             .update(offers)
             .set({ status: "draft", updatedAt: new Date() })
-            .where(eq(offers.id, existing.offerId));
+            .where(and(eq(offers.id, existing.offerId), eq(offers.organizationId, org.id)));
         }
 
         // Audit-log every approval/decline (Phase 5 §5 Part E #18).
