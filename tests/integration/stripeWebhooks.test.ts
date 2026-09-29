@@ -683,6 +683,8 @@ describe("Stripe Webhook: customer.subscription.deleted (Tasks #86-87)", () => {
         subscriptionTier: "free",
         subscriptionStatus: "cancelled",
         dunningStage: "cancelled",
+        // Starts the 90-day borrower wind-down (ruling 2026-09-29 #3).
+        subscriptionEndedAt: expect.any(Date),
       })
     );
   });
@@ -787,6 +789,39 @@ describe("Stripe Webhook: customer.subscription.updated (Tasks #88-90)", () => {
     expect(txState.updates).toContainEqual(
       expect.objectContaining({ subscriptionStatus: "past_due" })
     );
+    // A billing problem is not an end: the wind-down clock is not started.
+    expect(txState.updates.some((u: Record<string, unknown>) => "subscriptionEndedAt" in u)).toBe(false);
+  });
+
+  it("a subscription that ENDS through an update starts the borrower wind-down clock (ruling #3)", async () => {
+    txState.updates.length = 0;
+    (storageMock.getOrganizationByStripeCustomerId as any).mockResolvedValue({ ...MOCK_ORG, subscriptionStatus: "active" });
+    mockStripe.prices.retrieve.mockResolvedValue({ product: { metadata: {} } });
+    const sub = {
+      id: "sub_upd_3",
+      customer: "cus_upd_3",
+      status: "canceled",
+      items: { data: [{ price: { id: "price_unknown" } }] },
+    };
+    mockStripe.webhooks.constructEvent.mockReturnValue(makeStripeEvent("customer.subscription.updated", sub, "evt_upd_3"));
+
+    await WebhookHandlers.processWebhook(Buffer.from("{}"), "sig");
+
+    expect(txState.updates).toContainEqual(
+      expect.objectContaining({ subscriptionStatus: "cancelled", subscriptionEndedAt: expect.any(Date) }),
+    );
+  });
+
+  it("a repeat 'canceled' update for an already-ended subscription does not restart the clock", async () => {
+    txState.updates.length = 0;
+    (storageMock.getOrganizationByStripeCustomerId as any).mockResolvedValue({ ...MOCK_ORG, subscriptionStatus: "cancelled" });
+    mockStripe.prices.retrieve.mockResolvedValue({ product: { metadata: {} } });
+    const sub = { id: "sub_upd_4", customer: "cus_upd_4", status: "canceled", items: { data: [{ price: { id: "p" } }] } };
+    mockStripe.webhooks.constructEvent.mockReturnValue(makeStripeEvent("customer.subscription.updated", sub, "evt_upd_4"));
+
+    await WebhookHandlers.processWebhook(Buffer.from("{}"), "sig");
+
+    expect(txState.updates.some((u: Record<string, unknown>) => "subscriptionEndedAt" in u)).toBe(false);
   });
 
   it("maps all Stripe statuses to internal statuses (Task #90)", () => {

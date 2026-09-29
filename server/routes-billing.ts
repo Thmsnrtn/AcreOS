@@ -15,6 +15,7 @@ import { requirePermission } from "./utils/permissions";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { customerAuditFromRequest, CustomerAuditActions } from "./utils/customerAudit";
 import { z } from "zod";
+import { subscriptionEndedPatch } from "./services/borrower/servicingPhase";
 
 export function registerBillingRoutes(app: Express): void {
   const api = app;
@@ -1582,6 +1583,8 @@ export function registerBillingRoutes(app: Express): void {
             subscriptionTier: "free",
             subscriptionStatus: "cancelled",
             stripeSubscriptionId: null,
+            // Starts the 90-day borrower wind-down (ruling #3, DEFECT-0106).
+            ...subscriptionEndedPatch(),
           });
 
           await storage.logSubscriptionEvent({

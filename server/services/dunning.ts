@@ -16,6 +16,7 @@ import {
 import { users } from "@shared/models/auth";
 import { logActivity } from "./systemActivityLogger";
 import { logger } from "../utils/logger";
+import { subscriptionEndedPatch, subscriptionHasEnded } from "./borrower/servicingPhase";
 
 const APP_URL = process.env.APP_URL || "https://app.acreos.io";
 
@@ -632,6 +633,11 @@ class DunningService {
               await storage.updateOrganization(org.id, {
                 subscriptionTier: "free",
                 subscriptionStatus: expectedStage === "cancelled" ? "cancelled" : "suspended",
+                // A cancel starts the 90-day borrower wind-down (ruling #3,
+                // DEFECT-0106); a suspension is a billing problem, not an end.
+                ...(expectedStage === "cancelled" && !subscriptionHasEnded(org.subscriptionStatus)
+                  ? subscriptionEndedPatch()
+                  : {}),
               });
 
               await this.createRevenueAtRiskAlert(

@@ -117,6 +117,7 @@ import { addMonths } from "../utils/dateUtils";
 import { emitDurablePaymentEvent } from "./workflow-engine";
 import { isCategorySimulated } from "../utils/simulationMode";
 import { noteGracePeriodDays } from "@shared/notes/delinquency";
+import { lenderServicingPhase, type ServicingPhase } from "./borrower/servicingPhase";
 import {
   // `classifyAchReturn` is deliberately NOT imported: the two helpers below
   // already carry every decision this file makes about a return — which R-code
@@ -247,7 +248,8 @@ export type AchRefusalReason =
   | "processor_account_missing"
   | "max_attempts_exhausted"
   | "retry_not_due"
-  | "already_attempted";
+  | "already_attempted"
+  | "lender_servicing_ended";
 
 export interface EligibilityInput {
   note: AutopayNote;
@@ -472,6 +474,11 @@ export interface PostReversalResult {
 export interface AchAutopayStore {
   /** Active notes with autopay on whose next payment is due on/before `through`. */
   listAutopayDueNotes(through: Date): Promise<AutopayNote[]>;
+  /**
+   * The lender's borrower-servicing phase (founder ruling 2026-09-29 #3). A
+   * lender whose subscription ended more than 90 days ago takes no new debit.
+   */
+  lenderServicingPhase(organizationId: number, now: Date): Promise<ServicingPhase>;
   getNote(noteId: number): Promise<AutopayNote | null>;
   getActiveMandateForNote(noteId: number): Promise<AchMandate | null>;
   getMandateById(mandateId: number): Promise<AchMandate | null>;
@@ -644,6 +651,21 @@ export async function submitDebitForNote(
   }
   if (!note.nextPaymentDate) {
     return { noteId: note.id, periodKey: "", attemptNumber: null, status: "refused", reason: "no_due_date", message: `Note ${note.id} has no scheduled next payment date.` };
+  }
+
+  // The 90-day borrower wind-down (founder ruling 2026-09-29 #3,
+  // DEFECT-0106): once the lender's subscription has been over for 90 days,
+  // no NEW debit starts. In-flight debits still reconcile (a different path).
+  const servicing = await deps.store.lenderServicingPhase(note.organizationId, now);
+  if (servicing.phase === "ended") {
+    return {
+      noteId: note.id,
+      periodKey: "",
+      attemptNumber: null,
+      status: "refused",
+      reason: "lender_servicing_ended",
+      message: `The lender's subscription ended ${servicing.endedAt.toISOString().slice(0, 10)}; AcreOS stopped taking new payments on ${servicing.windDownEndsAt.toISOString().slice(0, 10)}.`,
+    };
   }
 
   const dueDate = note.nextPaymentDate;
@@ -1082,6 +1104,10 @@ export const dbAchAutopayStore: AchAutopayStore = {
           lte(notes.nextPaymentDate, through),
         ),
       );
+  },
+
+  lenderServicingPhase(organizationId: number, now: Date): Promise<ServicingPhase> {
+    return lenderServicingPhase(organizationId, now);
   },
 
   async getNote(noteId: number): Promise<AutopayNote | null> {

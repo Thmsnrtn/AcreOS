@@ -2725,7 +2725,7 @@ Resolving commits: (this branch, round 3 batch 3)
 ### DEFECT-0106
 Title: Subscription lifecycle is split across borrower money paths
 Severity: P2
-Status: OPEN — policy decision owed
+Status: FIXED (2026-09-29, founder ruling #3: 90-day wind-down)
 Surfaced by lenses: research report §29, re-verified at `9cb534f`
 Description: The monthly periodic-statement job selects only orgs with
 `subscription_status = 'active'` (`server/jobs/runScheduledJobs.ts:2264`); the ACH
@@ -2737,7 +2737,56 @@ Remediation plan: A live-obligations inventory at pause/cancel and one
 explicit policy per state (new debits, in-flight reconciliation, statements,
 export/handoff). The choice is the founder's; continuing borrower access may be
 the protective default, but then the associated duties continue too.
-Resolving commits: —
+Founder ruling 2026-09-29 #3: a 90-day wind-down. One policy now governs every
+borrower money path (`server/services/borrower/servicingPhase.ts`):
+- `full` while the lender's subscription has not ended. That covers active,
+  trialing, past_due, paused and suspended: a billing problem between the
+  lender and AcreOS is not the borrower's.
+- `wind_down` for 90 days after it ended. Autopay, the portal and statements
+  continue, and the lender is told to export or move the book.
+- `ended` after that. No new ACH debit, card payment, bank authorization or
+  autopay switch-on starts. Money already moving still reconciles. The
+  borrower can still sign in, read the loan, get a payoff quote and turn
+  autopay off, and is told to pay the lender directly.
+Built:
+- `organizations.subscription_ended_at` (migration 0255, mirrored in
+  `scripts/migrate.mjs`). It is stamped by all five writers that can end a
+  subscription: the Stripe deletion, a Stripe update to canceled, the
+  refund-and-cancel route, the dunning cancel and the support agent's Stripe
+  resync. A lender already cancelled when this shipped is stamped on first
+  sight, so nobody's notice period is spent unseen.
+- ACH autopay: `submitDebitForNote` refuses with `lender_servicing_ended`
+  before any claim or processor call. It is the one path for both the job
+  and "collect now".
+- Portal: `/api/borrower/payment`, `/api/borrower/autopay/mandate` and
+  switching `/api/borrower/autopay` on are refused with the reason.
+  `/api/borrower/verify` and `/session` return the servicing state. The portal
+  shows the date payments there end, then "Pay <lender> directly", and
+  disables the pay buttons.
+- Statements: the monthly §1026.41 job used to select only `active` orgs. It
+  now reads `orgsStillServiced()`, so the borrowers of paused, past-due and
+  winding-down lenders get the statements they are owed.
+- Notices: a daily worker job (`borrower_servicing_wind_down`, critical in
+  the roster) does two things. It emails the lender during the wind-down, on
+  the system lane. After the wind-down it emails each borrower from the
+  lender's own identity (the counterparty lane; refused, and counted, if the
+  lender has none). Each notice is idempotency-keyed on the stamped end date,
+  and borrower notices are attempted for 30 days.
+Falsified by:
+- `tests/unit/borrowerPortalWindDown.test.ts`: six cases red against the
+  pre-fix routes.
+- `tests/unit/achAutopayMoneyPath.test.ts`: the ended case goes red with the
+  gate removed.
+- `tests/unit/borrowerServicingWindDown.test.ts`: the rule, the stamp, the
+  statements population and the notices.
+- `tests/integration/stripeWebhooks.test.ts`: the stamp on deletion and on an
+  update to canceled, and no stamp for past_due or a repeat.
+- `tests/unit/subscriptionEndStampsTheClock.test.ts`: the population gate
+  over every end-capable writer. It goes red when a stamp is removed.
+Not decided here: whether a `suspended` lender (dunning, pre-cancel) should
+also wind down. Today it is `full`, and dunning moves it to `cancelled`,
+which starts the clock.
+Resolving commits: this branch, batch D (2026-09-29)
 
 ### DEFECT-0107
 Title: Blind-offer comps include a USDA survey average and a SYNTHETIC trend point, so the zero-comp refusal is unreachable
@@ -5104,8 +5153,8 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 10  | 10    |
-| FIXED  | 14  | 91  | 67  | 172   |
+| OPEN   | 0   | 0   | 9   | 9     |
+| FIXED  | 14  | 91  | 68  | 173   |
 | DEFERRED | 0 | 2   | 0   | 2     |
 | **Total** | **14** | **93** | **77** | **184** |
 

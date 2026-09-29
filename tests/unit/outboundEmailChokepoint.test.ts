@@ -99,6 +99,11 @@ const REGISTER: Record<string, [number, SendClass]> = {
   // 2026-09-27 (DEFECT-0096): one posting rule for both writers, one receipt
   // on the winning writer.
   "server/services/borrower/portalPaymentPosting.ts": [1, "counterparty-byo"],
+  // Founder ruling 2026-09-29 #3: the 90-day borrower wind-down notices. The
+  // lender half is AcreOS telling its own customer; the borrower half is
+  // mail to the lender's counterparty, sent only from the lender's identity.
+  "server/services/borrower/servicingWindDown.ts": [1, "system-mail"],
+  "server/services/borrower/servicingWindDownBorrowerNotice.ts": [1, "counterparty-byo"],
   "server/webhookHandlers.ts": [3, "system-mail"],
   "server/worker.ts": [1, "system-mail"],
 };

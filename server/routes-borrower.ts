@@ -66,6 +66,7 @@ import {
 } from "./services/customerMoneyRouting";
 import { isCategorySimulated } from "./utils/simulationMode";
 import { noteGracePeriodDays } from "@shared/notes/delinquency";
+import { lenderServicingPhase, servicingEndedBorrowerMessage } from "./services/borrower/servicingPhase";
 import { getClientIp, clientIpOrNull } from "./utils/clientIp";
 
 // ─────────────────────────────────────────────────────────────────────
@@ -277,6 +278,34 @@ function sunsetMiddleware(sunsetDateStr: string = BORROWER_PORTAL_SUNSET_DATE) {
     );
     next();
   };
+}
+
+// The 90-day borrower wind-down (founder ruling 2026-09-29 #3, DEFECT-0106).
+// Once the lender's subscription has been over for 90 days, the portal starts
+// no NEW money movement — a card payment, a new bank authorization, or
+// switching autopay on — and tells the borrower to pay the lender directly.
+// Everything else (signing in, history, statements, payoff quotes, finishing
+// a payment already made, turning autopay OFF) keeps working. Returns true
+// when it has sent the refusal.
+/** What the portal tells the borrower about the lender's servicing (ruling #3). */
+async function borrowerServicingState(
+  organizationId: number,
+): Promise<{ phase: "full" } | { phase: "wind_down" | "ended"; paymentsThroughPortalUntil: string }> {
+  const servicing = await lenderServicingPhase(organizationId);
+  return servicing.phase === "full"
+    ? { phase: "full" }
+    : { phase: servicing.phase, paymentsThroughPortalUntil: servicing.windDownEndsAt.toISOString().slice(0, 10) };
+}
+
+async function refuseIfLenderServicingEnded(res: Response, organizationId: number): Promise<boolean> {
+  const servicing = await lenderServicingPhase(organizationId);
+  if (servicing.phase !== "ended") return false;
+  const org = await storage.getOrganization(organizationId);
+  Errors.badRequest(res, servicingEndedBorrowerMessage(org?.name ?? null), {
+    reason: "lender_servicing_ended",
+    servicingEndedOn: servicing.windDownEndsAt.toISOString().slice(0, 10),
+  });
+  return true;
 }
 
 // Middleware to validate borrower session from cookie or header.
@@ -496,6 +525,9 @@ export function registerBorrowerRoutes(app: Express): void {
         payments: notePayments,
         borrower: borrower ? { firstName: borrower.firstName, lastName: borrower.lastName } : null,
         lenderName: lenderOrg?.name || null,
+        // What the portal still does for this loan (ruling #3): the borrower
+        // is told during the wind-down, and after it, to pay the lender.
+        servicing: await borrowerServicingState(note.organizationId),
         sessionToken, // Also return in response for clients that prefer header-based auth
       });
     } catch (err) {
@@ -637,6 +669,8 @@ export function registerBorrowerRoutes(app: Express): void {
       res.json({
         note: { ...note, property },
         payments: notePayments,
+        // What the portal still does for this loan (ruling #3).
+        servicing: await borrowerServicingState(note.organizationId),
         borrower: borrower ? { firstName: borrower.firstName, lastName: borrower.lastName } : null,
         session: {
           email: session.email,
@@ -677,7 +711,8 @@ export function registerBorrowerRoutes(app: Express): void {
         return Errors.notFound(res, "loan");
       }
       const note = noteResults[0];
-      
+      if (await refuseIfLenderServicingEnded(res, note.organizationId)) return;
+
       const paymentAmount = amount ? Number(amount) : Number(note.monthlyPayment || 0);
       if (paymentAmount <= 0) {
         return Errors.badRequest(res, "Invalid payment amount");
@@ -1250,6 +1285,7 @@ export function registerBorrowerRoutes(app: Express): void {
 
         const [note] = await db.select().from(notes).where(eq(notes.id, session.noteId));
         if (!note) return Errors.notFound(res, "loan");
+        if (await refuseIfLenderServicingEnded(res, note.organizationId)) return;
 
         // Already armed — do not mint a second authorization for the same note.
         const existing = await getAchMandateSummary(note.organizationId, note.id);
@@ -1445,6 +1481,9 @@ export function registerBorrowerRoutes(app: Express): void {
       const noteResults = await db.select().from(notes).where(eq(notes.id, session.noteId));
       if (noteResults.length === 0) return Errors.notFound(res, "loan");
       const note = noteResults[0];
+      // Turning autopay OFF is always allowed; switching it ON is new money
+      // movement and stops once the wind-down is over.
+      if (wantEnabled && (await refuseIfLenderServicingEnded(res, note.organizationId))) return;
 
       const mandate = await getAchMandateSummary(note.organizationId, note.id);
 

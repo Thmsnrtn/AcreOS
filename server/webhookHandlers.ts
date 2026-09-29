@@ -15,6 +15,7 @@ import Stripe from 'stripe';
 import { logger } from './utils/logger';
 import { postBorrowerPortalCheckoutPayment } from './services/borrower/portalPaymentPosting';
 import { recordSense } from './services/autopilot/perception';
+import { subscriptionEndedPatch, subscriptionHasEnded } from './services/borrower/servicingPhase';
 
 // ─── Refund reversal derivation (PURE) ──────────────────────────────────────
 //
@@ -744,6 +745,8 @@ export class WebhookHandlers {
             subscriptionStatus: 'cancelled',
             dunningStage: 'cancelled',
             stripeSubscriptionId: null,
+            // Starts the 90-day borrower wind-down (ruling #3, DEFECT-0106).
+            ...subscriptionEndedPatch(),
             updatedAt: new Date(),
           })
           .where(eq(organizations.id, org.id));
@@ -960,6 +963,11 @@ export class WebhookHandlers {
         subscriptionStatus: statusMap[subscription.status] || subscription.status,
         stripeSubscriptionId: subscription.id,
       };
+      // A subscription that ENDS through an update (status → canceled)
+      // starts the borrower wind-down clock like a deletion does (ruling #3).
+      if (subscriptionHasEnded(updates.subscriptionStatus) && !subscriptionHasEnded(org.subscriptionStatus)) {
+        Object.assign(updates, subscriptionEndedPatch());
+      }
 
       // Capture the priced state from Stripe for the audit log.
       const priceUnitAmount =

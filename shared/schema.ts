@@ -309,6 +309,12 @@ export const organizations = pgTable("organizations", {
   subscriptionPausedAt: timestamp("subscription_paused_at"),
   subscriptionPauseEndsAt: timestamp("subscription_pause_ends_at"),
   subscriptionPauseReason: text("subscription_pause_reason"),
+  // When the subscription last ENDED (founder ruling 2026-09-29 #3,
+  // DEFECT-0106). Starts the 90-day borrower wind-down clock
+  // (server/services/borrower/servicingPhase.ts). Stamped by every writer
+  // that ends a subscription; a lender cancelled before this column existed
+  // is stamped on first sight, so nobody's notice period is spent unseen.
+  subscriptionEndedAt: timestamp("subscription_ended_at"),
   // ─── AI cost ceiling (Phase 3 Week 9) ───────────────────────────────────────
   // Per-org daily USD cap on AI spend. Enforced in routeAITask: if
   // sum(ai_usage_daily.totalUsd WHERE org=this AND date=today) >= this cap,

@@ -36,6 +36,7 @@ import { startAcquiredNoteAgingJob } from "./acquiredNoteAging"; // acquired-not
 // job-group (S3 decomposition). startLeaseExpiryDetectorJob is the net-new
 // buy_and_hold beta→core registration (audit Wave 1).
 import { startNotePaymentDueDetectorJob, startLeaseExpiryDetectorJob } from "./expiryDetectorJobs";
+import { startServicingWindDownJob } from "./servicingWindDownJob";
 import { seedFounderDecisionCardsOnStartup } from "./seedFounderDecisionCards";
 import {
   runDecisionExecutorTickBounded,
@@ -2249,28 +2250,25 @@ function startPeriodicStatementsMonthlyJob() {
         const { generateStatementsForCycle } = await import(
           '../services/periodicStatements'
         );
-        const { db: dbHandle } = await import('../db');
-        const { organizations: orgsTable } = await import('@shared/schema');
-        const { sql: sqlOp } = await import('drizzle-orm');
+        const { orgsStillServiced } = await import('../services/borrower/servicingPhase');
 
         // Last month's last day — the cycle anchor.
         const asOfDate = new Date(
           Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0),
         );
 
-        const activeOrgs = await dbHandle
-          .select({ id: orgsTable.id })
-          .from(orgsTable)
-          .where(sqlOp`${orgsTable.subscriptionStatus} = 'active'`);
+        // Every lender whose borrowers AcreOS still services — not just
+        // 'active' ones (ruling 2026-09-29 #3, DEFECT-0106).
+        const servicedOrgs = (await orgsStillServiced(now)).map((id) => ({ id }));
 
         log(
-          `Running §1026.41 statements for ${activeOrgs.length} orgs, asOfDate=${asOfDate.toISOString().slice(0, 10)}`,
+          `Running §1026.41 statements for ${servicedOrgs.length} orgs, asOfDate=${asOfDate.toISOString().slice(0, 10)}`,
           'compliance',
         );
 
         let totalGenerated = 0;
         let totalErrors = 0;
-        for (const org of activeOrgs) {
+        for (const org of servicedOrgs) {
           try {
             const result = await generateStatementsForCycle(org.id, asOfDate);
             totalGenerated += result.statementsGenerated;
@@ -4051,6 +4049,7 @@ export async function runScheduledJobs(): Promise<void> {
   // Jarvis 2.1 (audit G2) — note payment due-date detector (daily 11:00 UTC):
   // borrower payments due-soon/overdue become mesh events + outward senses.
   startNotePaymentDueDetectorJob();
+  startServicingWindDownJob();
 
   // Audit Wave 1 (buy_and_hold beta→core) — lease-expiry detector (daily 10:00
   // UTC): active leases ~60 days from end become mesh events + fire both lease

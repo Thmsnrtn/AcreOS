@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useDocumentTitle } from "@/hooks/use-document-title";
-import { usd } from "@/lib/format";
+import { usd, formatDate } from "@/lib/format";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -46,6 +46,13 @@ type BorrowerLoanData = {
    * degrades to "your lender" rather than inventing one.
    */
   lenderName?: string | null;
+  /**
+   * Whether AcreOS still takes payments for this loan (founder ruling
+   * 2026-09-29 #3). When the lender's subscription ends, the portal keeps
+   * working for 90 days ("wind_down"); after that ("ended") no new payment
+   * starts here and the borrower pays the lender directly.
+   */
+  servicing?: { phase: "full" } | { phase: "wind_down" | "ended"; paymentsThroughPortalUntil: string };
 };
 
 /**
@@ -395,6 +402,40 @@ function PortalSunsetBanner() {
   );
 }
 
+function LenderServicingNotice({
+  servicing,
+  lenderName,
+}: {
+  servicing: BorrowerLoanData["servicing"];
+  lenderName: string;
+}) {
+  if (!servicing || servicing.phase === "full") return null;
+  // A calendar date, not an instant: built from its parts in local time so
+  // "2026-11-30" never renders as Nov 29 west of UTC.
+  const [y, m, d] = servicing.paymentsThroughPortalUntil.split("-").map(Number);
+  const until = formatDate(new Date(y, m - 1, d));
+  const ended = servicing.phase === "ended";
+  return (
+    <div className="max-w-5xl mx-auto px-4 pt-4">
+      <Alert
+        className="border-acr-warn/40 bg-acr-warn-soft/60 dark:bg-acr-warn-soft/20"
+        role="status"
+        data-testid={ended ? "banner-servicing-ended" : "banner-servicing-wind-down"}
+      >
+        <AlertTriangle className="h-4 w-4 text-acr-warn" aria-hidden="true" />
+        <AlertTitle className="text-acr-warn dark:text-acr-warn">
+          {ended ? `Pay ${lenderName} directly` : `Payments here end ${until}`}
+        </AlertTitle>
+        <AlertDescription className="text-acr-warn/80 dark:text-acr-warn/80">
+          {ended
+            ? `${lenderName} no longer services this loan through AcreOS, so payments can't be made here. Contact ${lenderName} to arrange how to pay them. Your loan terms, balance and payment history are unchanged.`
+            : `${lenderName} is moving servicing of this loan away from AcreOS. You can keep paying here, and autopay keeps running, until ${until}. AcreOS has asked ${lenderName} to tell you how to pay after that.`}
+        </AlertDescription>
+      </Alert>
+    </div>
+  );
+}
+
 function BorrowerLandingPage() {
   useDocumentTitle("Borrower portal — AcreOS");
   return (
@@ -455,6 +496,9 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
   // Never fabricated: when the org has no name on file this stays generic
   // rather than naming a lender that isn't in the record.
   const collectorName = data.lenderName?.trim() || "your lender";
+  // After the wind-down the server refuses new payments; the buttons say so
+  // up front instead of failing on click (ruling #3).
+  const paymentsClosed = data.servicing?.phase === "ended";
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentStatusState, setPaymentStatusMessage] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
   const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
@@ -1111,6 +1155,7 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
       </header>
 
       <PortalSunsetBanner />
+      <LenderServicingNotice servicing={data.servicing} lenderName={collectorName} />
 
       {/* Standing disclaimer — statements and figures are an informational
           worksheet rendered by software, not servicer/lender advice */}
@@ -1194,7 +1239,7 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
                   size="lg"
                   className="w-full sm:w-auto text-lg px-8 py-6"
                   onClick={handleMakePayment}
-                  disabled={isProcessingPayment}
+                  disabled={isProcessingPayment || paymentsClosed}
                   data-testid="button-make-payment"
                   variant={autopayEnabled && autopayArmed ? "outline" : "default"}
                 >
@@ -2026,7 +2071,7 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
             variant="ghost"
             className="flex flex-col items-center gap-1 h-auto py-2 min-h-14"
             onClick={handleMakePayment}
-            disabled={isProcessingPayment}
+            disabled={isProcessingPayment || paymentsClosed}
             data-testid="mobile-button-pay"
           >
             <CreditCard className="w-5 h-5" aria-hidden="true" />

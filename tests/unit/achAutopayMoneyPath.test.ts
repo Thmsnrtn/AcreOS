@@ -48,6 +48,7 @@ import {
 } from "../../server/services/achAutopay";
 import { classifyAchReturn } from "../../server/services/actumProcessing";
 import type { AchDebitAttempt, AchMandate } from "../../shared/schema/ach-autopay";
+import type { ServicingPhase } from "../../server/services/borrower/servicingPhase";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Fixtures
@@ -161,6 +162,12 @@ class FakeStore implements AchAutopayStore {
   reversalsPosted = 0;
   private nextAttemptId = 1;
   private nextPaymentId = 500;
+
+  /** The lender's servicing phase per org; absent = full servicing. */
+  phases = new Map<number, ServicingPhase>();
+  async lenderServicingPhase(organizationId: number): Promise<ServicingPhase> {
+    return this.phases.get(organizationId) ?? { phase: "full" };
+  }
 
   async listAutopayDueNotes(through: Date): Promise<AutopayNote[]> {
     return this.notes.filter(
@@ -498,6 +505,45 @@ describe("ACH autopay — autopay off means no debit", () => {
 
     expect(outcome.reason).toBe("not_yet_due");
     expect(processor.submissions).toHaveLength(0);
+  });
+});
+
+describe("ACH autopay — the 90-day wind-down after a lender's subscription ends (ruling #3, DEFECT-0106)", () => {
+  const endedAt = new Date("2026-04-01T00:00:00.000Z");
+  const windDownEndsAt = new Date("2026-06-30T00:00:00.000Z");
+
+  function setup(phase: ServicingPhase | null) {
+    const store = new FakeStore();
+    const processor = new FakeProcessor();
+    const note = makeNote();
+    store.notes.push(note);
+    store.mandates.push(makeMandate());
+    if (phase) store.phases.set(note.organizationId, phase);
+    return { store, processor, note, deps: makeDeps(store, processor) };
+  }
+
+  it("after the wind-down, NO new debit starts — refused with a reason, processor never contacted, nothing claimed", async () => {
+    const { store, processor, deps } = setup({ phase: "ended", endedAt, windDownEndsAt });
+    const cycle = await submitDueDebits(deps);
+    expect(cycle.scanned).toBe(1);
+    expect(cycle.submitted).toBe(0);
+    expect(cycle.outcomes[0]).toMatchObject({ status: "refused", reason: "lender_servicing_ended" });
+    expect(cycle.outcomes[0].message).toMatch(/2026-04-01.*2026-06-30/);
+    expect(processor.submissions).toEqual([]);
+    expect(store.attempts).toEqual([]);
+  });
+
+  it("DURING the wind-down the borrower's autopay continues", async () => {
+    const { processor, deps } = setup({ phase: "wind_down", endedAt, windDownEndsAt });
+    const cycle = await submitDueDebits(deps);
+    expect(cycle.submitted).toBe(1);
+    expect(processor.submissions).toHaveLength(1);
+  });
+
+  it("the phase is read for the NOTE's own lender", async () => {
+    const { store, deps, note } = setup(null);
+    store.phases.set(note.organizationId + 1, { phase: "ended", endedAt, windDownEndsAt });
+    expect((await submitDebitForNote(deps, note, NOW)).status).toBe("submitted");
   });
 });
 

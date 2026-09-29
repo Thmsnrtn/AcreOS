@@ -207,6 +207,11 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   // counts-only outward senses. Non-critical: a dark scan delays perception
   // by a day; the deadman still surfaces the absence.
   { name: "note_payment_due_scan", intervalMs: DAY, critical: false, cron: "0 11 * * *" },
+  // Founder ruling 2026-09-29 #3 (DEFECT-0106) — the 90-day borrower
+  // wind-down notices: lender told to export/move the book; after it,
+  // borrowers told to pay the lender directly. Critical: a dark pass means
+  // borrowers whose portal payments have stopped are never told where to pay.
+  { name: "borrower_servicing_wind_down", intervalMs: DAY, critical: true, cron: "0 14 * * *" },
   // Audit Wave 1 (buy_and_hold beta→core) — daily lease-expiry scan turning
   // active leases ~60 days from their end into mesh events + the two lease
   // workflow events (renewal countdown + expiring). Non-critical: a dark scan

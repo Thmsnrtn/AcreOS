@@ -31,6 +31,7 @@ import type { ExecuteToolOptions } from "./tools";
 import { validateCompliance } from "../services/complianceValidator";
 import { assertAiSpendAllowed, recordExternalAiSpend } from "../services/aiSpendGuard";
 import { serializeToolResultForModel } from "./untrustedEnvelope";
+import { subscriptionEndedPatch, subscriptionHasEnded } from "../services/borrower/servicingPhase";
 
 const MAX_TOOL_ITERATIONS = 10;
 
@@ -3752,7 +3753,12 @@ export async function executeSupportTool(
                 .set({
                   stripeSubscriptionId: sub.id,
                   subscriptionStatus: sub.status as any,
-                  subscriptionTier: sub.items.data[0]?.price?.lookup_key as any || org.subscriptionTier
+                  subscriptionTier: sub.items.data[0]?.price?.lookup_key as any || org.subscriptionTier,
+                  // Syncing an ended subscription starts the borrower
+                  // wind-down clock (ruling #3, DEFECT-0106).
+                  ...(subscriptionHasEnded(sub.status) && !subscriptionHasEnded(org.subscriptionStatus)
+                    ? subscriptionEndedPatch()
+                    : {}),
                 })
                 .where(eq(organizations.id, org.id));
               syncResults.subscription = { id: sub.id, status: sub.status, synced: true };
