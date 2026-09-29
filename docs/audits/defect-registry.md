@@ -493,12 +493,36 @@ Resolving commits: 8642682
 ### DEFECT-0046
 Title: No file storage backend -- photo and voice uploads accepted then discarded
 Severity: P1
-Status: DEFERRED
+Status: FIXED (2026-09-29, founder ruling #1: AWS S3) — code; dormant until the bucket and credentials are provisioned
 Surfaced by lenses: 61 (061-3, 061-4)
 Description: All uploads use `multer.memoryStorage()`. There is no S3, GCS, or persistent storage integration. Photo uploads save metadata to DB but the actual `file.buffer` is never stored. Voice uploads are similarly discarded.
 Evidence: `server/routes-field-scout.ts:191-200` -- saves metadata, discards buffer.
 Remediation plan: Add S3 or equivalent storage backend. Store file URLs in DB. Wire upload security middleware.
 Resolving commits: DEFERRED — requires infrastructure provisioning (S3/R2 bucket, IAM credentials). Upload security middleware is now wired (DEFECT-0045). Storage integration requires a dedicated session with founder to select provider and configure credentials.
+Founder ruling 2026-09-29 #1 chose AWS S3 (docs/company/founder-decisions-2026-09-29.md). Built:
+- `server/services/documentStore.ts` — one store for customer file bytes.
+  Tenancy is in the key: every object lives under `org/<orgId>/`, the row
+  records `s3://<bucket>/org/<orgId>/…`, and every read (signed URL or bytes)
+  takes the caller's org and refuses a reference outside that prefix, so a
+  mis-attributed row cannot hand one tenant another's file. Objects are
+  written with SSE (AES256). Traversal, absolute and empty keys are refused.
+- Dormant until configured: `documentStoreConfigured()` needs
+  DOCUMENTS_S3_BUCKET, AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. Until
+  then every caller refuses honestly (the DEFECT-0164 503s stand), and a
+  write throws, so nothing records a row for bytes it did not keep.
+- Rehab photos and DriveMode field photos write the bytes, then record the
+  reference (rehab: inside the row's transaction). Their list routes return a
+  short-lived signed `imageUrl` per stored photo, and the rehab gallery
+  renders it. The field-photo hash dedup ignores pre-storage rows, which held
+  no image.
+- Voice uploads are transcribed or refused (DEFECT-0164); they are not kept.
+Falsified by: `tests/unit/documentStore.test.ts` (mutation-checked: dropping
+the org-prefix check on reads, or the prefix on writes, goes red) and
+`tests/unit/uploadsWithStorageAreKept.test.ts` (mutation-checked: dedup
+against a pre-storage row, or recording the bare key, goes red).
+Founder action owed: provision the bucket (private, block public access) and
+an IAM key scoped to it, then set the three secrets on Fly.
+Resolving commits: this branch, batch C (2026-09-29)
 
 ### DEFECT-0047
 Title: Campaign email/SMS send has TOCTOU on credit check and no per-recipient dedup
@@ -3611,7 +3635,7 @@ Resolving commits: this branch, round 3
 ### DEFECT-0143
 Title: Imported documents are written to one machine's /tmp and are lost
 Severity: P1
-Status: OPEN (needs a storage decision — DEFECT-0046)
+Status: FIXED (2026-09-29, founder ruling #1) — code; stores once DEFECT-0046's secrets are provisioned
 Surfaced by lenses: independent audit of DEFECT-0130, 2026-09-28
 Description: A documents import (`server/services/migrationJobs.ts`) writes
 each file to the worker's /tmp and records that path in `activity_log`
@@ -3621,7 +3645,19 @@ find, silently, so `counts.attachments` under-reports. The storage directory
 is now created where the files are written. The durable fix is a shared file
 store: object storage, or bytes in the database. That is the deferred
 DEFECT-0046 decision, so it is recorded here rather than guessed at.
-Resolving commits: —
+Remediation (2026-09-29, founder ruling #1):
+- Each imported document goes to the org's namespace in the document store
+  (`imports/<jobId>/<index>-<file>`) BEFORE its `activity_log` record, which
+  carries the `ref`, not a path. With storage not configured, the file is
+  counted as an error with the reason "Document storage isn't connected, so
+  <file> was not kept" and nothing is recorded.
+- The /tmp directory and its creation are gone from `migrationJobs.ts`.
+- The export re-pack reads stored documents back from the org's own
+  namespace, still tries a legacy /tmp path, and counts what it could not
+  include as `attachmentsMissing` instead of skipping silently.
+Falsified by: `tests/unit/importJobsSurviveMachines.test.ts` (the three
+DEFECT-0143 cases are red against the pre-fix source).
+Resolving commits: this branch, batch C (2026-09-29)
 ### DEFECT-0144
 Title: The founder forecast's churn rate counts every free org touched in 30 days as churned
 Severity: P2
@@ -4179,6 +4215,12 @@ Audit follow-up, same day:
 Falsified by: `tests/unit/uploadsWithoutStorageAreRefused.test.ts` (four cases
 red pre-fix) and `tests/unit/noAttestationWithoutTheThing.test.ts`.
 Resolving commits: this branch, round 3
+Follow-up 2026-09-29 (founder rulings #1 and #9d): the store now exists
+(DEFECT-0046), so `persistPhotoBytes` writes to it and returns the reference
+the row records; the refusal still holds while it is unconfigured. The rows
+recorded before it (no image behind them) are deleted, after export, by
+`scripts/data/delete-orphan-photo-and-vision-rows.ts`, which the founder
+runs with `--apply`. A stored `s3://` photo is never a target.
 ### DEFECT-0165
 Title: A daily job wrote invented vision "detections" for every customer property
 Severity: P1
@@ -4206,6 +4248,10 @@ Remediation plan: DONE.
 Falsified by: `tests/unit/propertyVisionReimaging.test.ts` (the pass test
 reached the database pre-fix).
 Resolving commits: this branch, round 3
+Follow-up 2026-09-29 (founder ruling #9d): the existing snapshot rows are
+deleted, after export, by `scripts/data/delete-orphan-photo-and-vision-rows.ts`
+(founder runs it with `--apply`). It is bounded to rows captured before
+2026-09-29, so a real vision model configured later never loses its output.
 ### DEFECT-0166
 Title: The deal-room NDA attested a signature nobody gave
 Severity: P2
@@ -5036,15 +5082,16 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 1   | 11  | 12    |
-| FIXED  | 14  | 89  | 66  | 169   |
-| DEFERRED | 0 | 3   | 0   | 3     |
+| OPEN   | 0   | 0   | 10  | 10    |
+| FIXED  | 14  | 91  | 67  | 172   |
+| DEFERRED | 0 | 2   | 0   | 2     |
 | **Total** | **14** | **93** | **77** | **184** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
-FIXED P1 and 1 FIXED P2 short.
+FIXED P1 and 1 FIXED P2 short. Recounted again 2026-09-29 (batch C): the
+batch-A commit had marked DEFECT-0049 (P2) FIXED without moving it here.
 
 DEFECT-0089 through 0095 added 2026-09-06. Two further census entries were
 re-verified at HEAD and REFUTED rather than implemented against — see the

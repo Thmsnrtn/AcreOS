@@ -64,6 +64,8 @@ interface PhotoRow {
   rehabId: string;
   lineItemId: string | null;
   s3Key: string;
+  /** Short-lived signed URL; null when the image bytes were never kept. */
+  imageUrl?: string | null;
   caption: string | null;
   tag: string | null;
   capturedAt: string | null;
@@ -288,18 +290,28 @@ function GalleryBody({ rehabId }: { rehabId: string }) {
 }
 
 function PhotoTile({ photo, fileKept }: { photo: PhotoRow; fileKept: boolean }) {
-  // Until the blob driver lands there is no image to render. The tile used
-  // to show the key "so operators understand a photo IS attached" — it was
-  // not: the bytes were dropped (DEFECT-0164). Say so.
+  // A tile shows the image only when the server signed a URL for bytes it
+  // actually holds (founder ruling #1). A record without one says so — the
+  // bytes of pre-storage uploads were dropped (DEFECT-0164).
+  const kept = fileKept && !!photo.imageUrl;
   return (
     <div className="border border-border rounded-md p-2 text-xs bg-muted/30">
-      <div className="aspect-square bg-muted/60 rounded mb-2 flex items-center justify-center text-muted-foreground">
-        <Camera className="w-6 h-6" aria-hidden="true" />
+      <div className="aspect-square bg-muted/60 rounded mb-2 flex items-center justify-center text-muted-foreground overflow-hidden">
+        {kept ? (
+          <img
+            src={photo.imageUrl!}
+            alt={photo.caption ?? "Rehab photo"}
+            loading="lazy"
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <Camera className="w-6 h-6" aria-hidden="true" />
+        )}
       </div>
-      <div className="font-medium truncate" title={photo.caption ?? photo.s3Key}>
-        {photo.caption ?? (fileKept ? photo.s3Key.split("/").pop() : "Photo record")}
+      <div className="font-medium truncate" title={photo.caption ?? undefined}>
+        {photo.caption ?? (kept ? "Photo" : "Photo record")}
       </div>
-      {!fileKept && <div className="text-muted-foreground">Image not kept</div>}
+      {!kept && <div className="text-muted-foreground">Image not kept</div>}
       <div className="text-muted-foreground flex items-center gap-1 mt-1">
         {photo.capturedAt && (
           <span>{formatDate(photo.capturedAt)}</span>

@@ -1,5 +1,5 @@
 /**
- * Founder rulings 2026-09-29 #9b, #9c, #10 — the data scripts do exactly what
+ * Founder rulings 2026-09-29 #9a–#9d, #10 — the data scripts do exactly what
  * the ruling authorised, and nothing without --apply.
  *
  * The scripts run against production only by the founder's hand
@@ -17,6 +17,7 @@ import { numericPrecisionReport } from "../../scripts/data/numeric-precision-rep
 import { nullPlaintextVendorKeys } from "../../scripts/data/null-plaintext-vendor-keys";
 import { deletePollutedMarketRows, findPollutedMonthlyRows, type MarketRow } from "../../scripts/data/delete-polluted-market-rows";
 import { exportAndDropPayoffQuotes } from "../../scripts/data/export-and-drop-payoff-quotes";
+import { deleteOrphanPhotoAndVisionRows, ORPHAN_TARGETS } from "../../scripts/data/delete-orphan-photo-and-vision-rows";
 import { readdirSync } from "node:fs";
 import { stripComments, REPO_SWEEP_TIMEOUT_MS } from "../helpers/stripComments";
 
@@ -169,6 +170,51 @@ describe("#9a — legacy payoff_quotes", () => {
         .map((f) => join(dir, f)),
     );
     expect(hits).toEqual([]);
+  });
+});
+
+describe("#9d — photo and vision rows that point at nothing", () => {
+  const rows: Record<string, Array<Record<string, unknown>>> = {
+    rehab_photos: [{ id: "p1", s3_key: "rehabs/r1/p1.jpg" }, { id: "p2", s3_key: "pending" }],
+    field_scout_photos: [{ id: 3, url: "/uploads/field-scout/abc" }],
+    property_vision_snapshots: [],
+  };
+  const answer = (sql: string) => {
+    const t = ORPHAN_TARGETS.find((x) => sql.startsWith(`SELECT * FROM ${x.table} `));
+    return t ? rows[t.table] : [];
+  };
+
+  it("a stored s3:// photo is never a target, and vision rows are bounded to the fabricated era", () => {
+    const where = Object.fromEntries(ORPHAN_TARGETS.map((t) => [t.table, t.where]));
+    expect(where.rehab_photos).toBe(`s3_key NOT LIKE 's3://%'`);
+    expect(where.field_scout_photos).toBe(`url NOT LIKE 's3://%'`);
+    // Not `TRUE`: a real vision model configured later keeps its snapshots.
+    expect(where.property_vision_snapshots).toMatch(/^captured_at < '2026-09-29'$/);
+  });
+
+  it("a dry run counts and changes nothing", async () => {
+    const r = recorder(answer);
+    const out = await deleteOrphanPhotoAndVisionRows(r.client, { apply: false, outDir: "unused" });
+    expect(out.counts).toEqual({ rehab_photos: 2, field_scout_photos: 1, property_vision_snapshots: 0 });
+    expect(out.applied).toBe(false);
+    expect(r.writes()).toEqual([]);
+  });
+
+  it("--apply exports each table, then deletes exactly the exported ids and only while they still match", async () => {
+    const outDir = mkdtempSync(join(tmpdir(), "orphans-"));
+    const r = recorder(answer);
+    const out = await deleteOrphanPhotoAndVisionRows(r.client, { apply: true, outDir });
+    expect(out.exports).toHaveLength(2); // the empty table exports and deletes nothing
+    for (const f of out.exports) expect(existsSync(f)).toBe(true);
+    expect(JSON.parse(readFileSync(out.exports[0], "utf8"))).toEqual(rows.rehab_photos);
+    const deletes = r.writes();
+    expect(deletes.map((d) => d.sql)).toEqual([
+      `DELETE FROM rehab_photos WHERE id = ANY($1) AND (s3_key NOT LIKE 's3://%')`,
+      `DELETE FROM field_scout_photos WHERE id = ANY($1) AND (url NOT LIKE 's3://%')`,
+    ]);
+    expect(deletes[0].params).toEqual([["p1", "p2"]]);
+    const seq = r.calls.map((c) => c.sql.split(/\s+/)[0]);
+    expect(seq.slice(3)).toEqual(["BEGIN", "DELETE", "COMMIT", "BEGIN", "DELETE", "COMMIT"]);
   });
 });
 

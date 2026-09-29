@@ -24,8 +24,8 @@
  *   - 500 rows processed per chunk (yields between chunks)
  */
 
+import { documentStoreConfigured, getOrgObject, putOrgObject } from "./documentStore";
 import path from "node:path";
-import os from "node:os";
 import fs from "node:fs/promises";
 import zlib from "node:zlib";
 import { promisify } from "node:util";
@@ -64,12 +64,26 @@ const deflateRaw = promisify(zlib.deflateRaw);
 export const MAX_IMPORT_ROWS = 50_000;
 export const IMPORT_CHUNK_SIZE = 500;
 
-// Where intermediate CSV/ZIP payloads live. /tmp is fine for dev + Fly.io
-// (ephemeral but cleaned up on each deploy).
-const STORAGE_DIR = path.join(os.tmpdir(), "acreos-migration-jobs");
 
-async function ensureStorageDir(): Promise<void> {
-  await fs.mkdir(STORAGE_DIR, { recursive: true });
+/**
+ * Keep an imported document's bytes (DEFECT-0143, founder ruling 2026-09-29
+ * #1). This wrote each file to the worker's /tmp — gone on the next deploy and
+ * invisible to other machines — and counted it imported. Now the bytes go to
+ * the org's S3 namespace BEFORE the record; with storage not configured the
+ * file is refused (counted as an error with this reason), never recorded as
+ * kept.
+ */
+async function keepImportedDocument(
+  organizationId: number,
+  jobId: number,
+  index: number,
+  filename: string,
+  bytes: Buffer,
+): Promise<string> {
+  if (!documentStoreConfigured()) {
+    throw new Error(`Document storage isn't connected, so ${filename} was not kept`);
+  }
+  return putOrgObject(organizationId, `imports/${jobId}/${index}-${filename}`, bytes);
 }
 
 // ─── Tiny pure-JS ZIP writer/reader ──────────────────────────────────────────
@@ -758,9 +772,6 @@ async function processDocumentImport(
     throw new Error("Documents import expects a ZIP file");
   }
   const entries = readZipArchive(payload);
-  // The directory was only ever created by createImportJob — on the machine
-  // that took the upload, not necessarily this one.
-  await ensureStorageDir();
 
   let success = 0;
   let errorCount = 0;
@@ -781,16 +792,15 @@ async function processDocumentImport(
           .where(and(eq(leads.organizationId, job.organizationId), eq(leads.email, email)))
           .limit(1);
         if (!lead) throw new Error(`No lead with email ${email}`);
-        // Persist as activity-log entry referencing the file (stored on disk).
-        const filePath = path.join(STORAGE_DIR, `doc-${job.id}-${i}-${base}`);
-        await fs.writeFile(filePath, entry.data);
+        // Persist in the org's document store, then record it (DEFECT-0143).
+        const ref = await keepImportedDocument(job.organizationId, job.id, i, base, entry.data);
         await db.insert(activityLog).values({
           organizationId: job.organizationId,
           action: "document_imported",
           entityType: "lead",
           entityId: lead.id,
           description: `Imported document: ${base}`,
-          metadata: { filename: base, sizeBytes: entry.data.length, path: filePath },
+          metadata: { filename: base, sizeBytes: entry.data.length, ref },
         });
         success++;
       } else if (propMatch) {
@@ -801,15 +811,14 @@ async function processDocumentImport(
           .where(and(eq(properties.organizationId, job.organizationId), eq(properties.apn, apn)))
           .limit(1);
         if (!prop) throw new Error(`No property with APN ${apn}`);
-        const filePath = path.join(STORAGE_DIR, `doc-${job.id}-${i}-${base}`);
-        await fs.writeFile(filePath, entry.data);
+        const ref = await keepImportedDocument(job.organizationId, job.id, i, base, entry.data);
         await db.insert(activityLog).values({
           organizationId: job.organizationId,
           action: "document_imported",
           entityType: "property",
           entityId: prop.id,
           description: `Imported document: ${base}`,
-          metadata: { filename: base, sizeBytes: entry.data.length, path: filePath },
+          metadata: { filename: base, sizeBytes: entry.data.length, ref },
         });
         success++;
       } else {
@@ -1013,11 +1022,14 @@ async function runExportJob(job: ExportJob): Promise<void> {
           and(eq(activityLog.organizationId, orgId), eq(activityLog.action, "document_imported"))
         );
       let attachmentCount = 0;
+      let attachmentsMissing = 0;
       for (const row of docRows) {
-        const meta = (row.metadata as { filename?: string; path?: string } | null) ?? null;
-        if (!meta?.path) continue;
+        const meta = (row.metadata as { filename?: string; path?: string; ref?: string } | null) ?? null;
+        if (!meta?.ref && !meta?.path) continue;
         try {
-          const data = await fs.readFile(meta.path);
+          // Stored documents come back from the org's own namespace; legacy
+          // /tmp paths are read if still present (they usually are not).
+          const data = meta.ref ? await getOrgObject(orgId, meta.ref) : await fs.readFile(meta.path!);
           const safeName = (meta.filename ?? "file").replace(/[^A-Za-z0-9._-]/g, "_");
           archiveEntries.push({
             name: `attachments/${row.entityType}/${row.entityId}/${safeName}`,
@@ -1025,10 +1037,14 @@ async function runExportJob(job: ExportJob): Promise<void> {
           });
           attachmentCount++;
         } catch {
-          // attachment file gone — skip silently
+          // The bytes are gone (a legacy /tmp path from before storage, or a
+          // deleted object). Count it: the export says what it could NOT
+          // include instead of under-reporting silently (DEFECT-0143).
+          attachmentsMissing++;
         }
       }
       counts.attachments = attachmentCount;
+      counts.attachmentsMissing = attachmentsMissing;
     }
 
     const schemaJson = {

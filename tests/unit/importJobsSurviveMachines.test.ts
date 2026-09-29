@@ -10,6 +10,9 @@
  * Now the upload lives in the row, the worker reads it from there, a stale
  * running job is failed with the rows it reached, the API never returns the
  * bytes, and the worker stages lead.created durably.
+ *
+ * DEFECT-0143 (below): an imported DOCUMENT's bytes go to the org's S3
+ * namespace, or the file is refused — never to the worker's /tmp.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -25,6 +28,9 @@ const h = vi.hoisted(() => ({
   exportClaim: null as Record<string, unknown> | null,
   selectRows: [] as unknown[][],
   writeFile: vi.fn(async () => undefined),
+  docStoreConfigured: false,
+  putOrgObject: vi.fn(async (orgId: number, key: string, _b: Buffer) => `s3://acre-docs/org/${orgId}/${key}`),
+  getOrgObject: vi.fn(async (_orgId: number, _ref: string) => Buffer.from("stored-bytes")),
 }));
 
 vi.mock("node:fs/promises", () => ({
@@ -80,8 +86,20 @@ vi.mock("../../server/services/importExport", async (orig) => ({
   importLeads: h.importLeads,
 }));
 vi.mock("../../server/services/solene/verifyQueue", () => ({ enqueueImportVerify: vi.fn(), buildImportVerifyCriteria: vi.fn() }));
+vi.mock("../../server/services/documentStore", () => ({
+  documentStoreConfigured: () => h.docStoreConfigured,
+  putOrgObject: h.putOrgObject,
+  getOrgObject: h.getOrgObject,
+}));
 
-import { createImportJob, runMigrationJobsTick, getImportJob, getExportJob, readExportArchive } from "../../server/services/migrationJobs";
+import {
+  buildZipArchive,
+  createImportJob,
+  runMigrationJobsTick,
+  getImportJob,
+  getExportJob,
+  readExportArchive,
+} from "../../server/services/migrationJobs";
 
 beforeEach(() => {
   h.inserted.length = 0;
@@ -93,7 +111,11 @@ beforeEach(() => {
   h.selectRows.length = 0;
   h.writeFile.mockClear();
   h.importLeads.mockClear();
-  h.readFile.mockClear();
+  h.readFile.mockReset();
+  h.readFile.mockResolvedValue(Buffer.from(""));
+  h.docStoreConfigured = false;
+  h.putOrgObject.mockClear();
+  h.getOrgObject.mockClear();
 });
 
 const CSV = Buffer.from("first_name,last_name,email\nAda,Lovelace,ada@example.com\n");
@@ -176,6 +198,72 @@ describe("DEFECT-0130 — import jobs survive a different machine claiming them"
     expect(projection, "select() with no projection returns every column").toBeDefined();
     expect(Object.keys(projection!)).not.toContain("payloadBytes");
     expect(Object.keys(projection!)).toContain("status");
+  });
+});
+
+// ── DEFECT-0143 / founder ruling 2026-09-29 #1 ──────────────────────────────
+// A documents import wrote each file to the worker's /tmp and counted it
+// imported; the next deploy lost it, and the export re-pack skipped the gap
+// silently. Now the bytes go to the org's S3 namespace before the record, or
+// the file is refused with a reason.
+describe("DEFECT-0143 — imported documents are kept in the document store, or refused", () => {
+  async function documentsJob() {
+    const zip = await buildZipArchive([{ name: "lead_ada@example.com.pdf", data: Buffer.from("%PDF-deed") }]);
+    h.claimRow = {
+      id: 5, organization_id: 7, user_id: "u1", kind: "documents", status: "running",
+      payload_ref: "db:import_jobs.payload_bytes", payload_bytes: zip, field_map: null,
+      total_rows: 1, processed_count: 0, success_count: 0, error_count: 0, duplicates_skipped: 0, errors: [],
+    };
+    h.selectRows.push([{ id: 11 }]); // the lead the filename names, in org 7
+  }
+  const activityRows = () => h.inserted.filter((v) => v.action === "document_imported");
+
+  it("storage not configured: the file is refused with a reason, nothing is recorded, nothing touches /tmp", async () => {
+    await documentsJob();
+    await runMigrationJobsTick();
+    expect(h.writeFile).not.toHaveBeenCalled();
+    expect(h.putOrgObject).not.toHaveBeenCalled();
+    expect(activityRows()).toEqual([]);
+    const done = h.sets.find((p) => p.status === "completed");
+    expect(done).toMatchObject({ successCount: 0, errorCount: 1 });
+    expect(JSON.stringify(done!.errors)).toMatch(/Document storage isn't connected, so lead_ada@example.com.pdf was not kept/);
+  });
+
+  it("storage configured: the bytes go to the org's namespace first and the record carries the reference", async () => {
+    h.docStoreConfigured = true;
+    await documentsJob();
+    await runMigrationJobsTick();
+    expect(h.writeFile).not.toHaveBeenCalled();
+    expect(h.putOrgObject).toHaveBeenCalledTimes(1);
+    const [orgId, key, bytes] = h.putOrgObject.mock.calls[0];
+    expect(orgId).toBe(7);
+    expect(key).toBe("imports/5/0-lead_ada@example.com.pdf");
+    expect(bytes.toString()).toBe("%PDF-deed");
+    const [row] = activityRows();
+    expect(row).toMatchObject({ organizationId: 7, entityType: "lead", entityId: 11 });
+    expect(row.metadata).toEqual({
+      filename: "lead_ada@example.com.pdf",
+      sizeBytes: 9,
+      ref: "s3://acre-docs/org/7/imports/5/0-lead_ada@example.com.pdf",
+    });
+    expect(h.sets.find((p) => p.status === "completed")).toMatchObject({ successCount: 1, errorCount: 0 });
+  });
+
+  it("the export re-packs stored documents from the org's namespace and COUNTS the ones it could not include", async () => {
+    h.exportClaim = {
+      id: 9, organization_id: 7, user_id: "u1", kind: "everything", status: "running",
+      params: { entityTypes: [], includeAttachments: true }, archive_path: null, archive_bytes: null,
+    };
+    h.readFile.mockRejectedValue(new Error("ENOENT")); // the legacy /tmp file is gone
+    h.selectRows.push([
+      { entityType: "lead", entityId: 11, metadata: { filename: "a.pdf", ref: "s3://acre-docs/org/7/imports/5/0-a.pdf" } },
+      { entityType: "lead", entityId: 12, metadata: { filename: "b.pdf", path: "/tmp/acreos-migration-jobs/doc-4-0-b.pdf" } },
+    ]);
+    await runMigrationJobsTick();
+    expect(h.getOrgObject).toHaveBeenCalledWith(7, "s3://acre-docs/org/7/imports/5/0-a.pdf");
+    const done = h.sets.find((p) => p.status === "completed");
+    expect(done, `export did not complete: ${JSON.stringify(h.sets.map((p) => p.errorMessage ?? p.status))}`).toBeDefined();
+    expect(done!.entityCounts).toMatchObject({ attachments: 1, attachmentsMissing: 1 });
   });
 });
 

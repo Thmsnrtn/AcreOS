@@ -51,6 +51,10 @@ const SECRETS: SecretSpec[] = [
   { key: "AWS_SECRET_ACCESS_KEY", required: false, description: "AWS secret for SES" },
   { key: "AWS_REGION", required: false, description: "AWS region (e.g. us-east-1)" },
 
+  // Customer file storage (founder ruling 2026-09-29 #1). Unset = photo and
+  // document uploads are refused honestly (services/documentStore.ts).
+  { key: "DOCUMENTS_S3_BUCKET", required: false, description: "Private S3 bucket for customer photos and imported documents (org-prefixed keys)" },
+
   // Payments
   { key: "STRIPE_SECRET_KEY", required: false, description: "Stripe secret key for billing" },
   { key: "STRIPE_WEBHOOK_SECRET", required: false, description: "Stripe webhook signature secret", productionOnly: true },

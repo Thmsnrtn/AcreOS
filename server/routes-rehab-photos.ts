@@ -41,6 +41,7 @@ import {
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { persistPhotoBytes, photoStorageAvailable, PHOTO_STORAGE_UNAVAILABLE_MESSAGE } from "./services/photoStorage";
+import { signedOrgObjectUrl } from "./services/documentStore";
 
 const photoUpload = createUploadMiddleware({ maxSizeMB: 10, allowedTypes: ["image"] });
 const validatePhotos = validateFileMiddleware(["image"]);
@@ -168,10 +169,12 @@ export function registerRehabPhotoRoutes(app: Express): void {
             }).returning();
 
             const key = `rehabs/${rehabId}/${row.id}.${ext}`;
-            await persistPhotoBytes(key, file.buffer);
+            // The stored reference (s3://…/org/<orgId>/rehabs/…), not the
+            // bare key: the read route signs it for this org only.
+            const ref = await persistPhotoBytes(orgId, key, file.buffer, file.mimetype);
 
             const [updated] = await tx.update(rehabPhotos)
-              .set({ s3Key: key })
+              .set({ s3Key: ref })
               .where(eq(rehabPhotos.id, row.id))
               .returning();
             return updated ?? row;
@@ -222,13 +225,30 @@ export function registerRehabPhotoRoutes(app: Express): void {
           groups[k].push(r);
         }
 
+        // A short-lived signed URL per photo whose bytes are in the store
+        // (founder ruling #1). Signing checks the reference lies inside this
+        // org's prefix; a row that points at nothing gets no URL.
+        const storageAvailable = photoStorageAvailable();
+        const withUrls: Record<string, Array<(typeof rows)[number] & { imageUrl: string | null }>> = {};
+        for (const [k, list] of Object.entries(groups)) {
+          withUrls[k] = await Promise.all(
+            list.map(async (r) => ({
+              ...r,
+              imageUrl:
+                storageAvailable && r.s3Key.startsWith("s3://")
+                  ? await signedOrgObjectUrl(orgId, r.s3Key).catch(() => null)
+                  : null,
+            })),
+          );
+        }
+
         return res.json({
           rehabId,
           total: rows.length,
-          // False while there is no blob store: the rows below are records
-          // whose image files were never kept (DEFECT-0164).
-          storageAvailable: photoStorageAvailable(),
-          groups,
+          // False while storage isn't configured: rows without an imageUrl
+          // are records whose image files were never kept (DEFECT-0164).
+          storageAvailable,
+          groups: withUrls,
         });
       } catch (err) {
         return Errors.internal(res, err);

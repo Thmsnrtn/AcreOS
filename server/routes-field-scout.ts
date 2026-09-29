@@ -8,6 +8,7 @@ import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fil
 // Phase 8 Mo 12 — Yara §1: EXIF strip + SHA-256 hash + resize variants.
 import { processUploadedImage } from "./services/imagePipeline";
 import { persistPhotoBytes, photoStorageAvailable, PHOTO_STORAGE_UNAVAILABLE_MESSAGE } from "./services/photoStorage";
+import { signedOrgObjectUrl } from "./services/documentStore";
 
 const fieldScoutRouter = Router();
 
@@ -245,18 +246,18 @@ fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), vali
       // before, return the existing record's URLs instead of re-storing.
       if (imageHash) {
         const existing = await storage.findFieldScoutPhotoByHash(org.id, imageHash);
-        if (existing) {
+        // Only a record whose bytes are actually in the store counts as a
+        // duplicate. A pre-storage row pointing at /uploads/… holds no image,
+        // and deduping against it made that photo un-uploadable forever.
+        if (existing && existing.url.startsWith("s3://")) {
           dedupedHashes.push(imageHash);
           results.push(existing);
           continue;
         }
       }
 
-      // TODO(Wave 10 blob-storage): once the S3/R2 client lands per
-      // docs/cost/blob-storage-migration.md, upload `processed.variants.*`
-      // and use the returned URLs here. For now we persist the hash + sizes
-      // so the dedup table is populated; URL points to a placeholder data
-      // path the surface API will resolve at read time.
+      // The stripped original is stored; resized variants are not stored
+      // separately yet, so the client uses the original.
       const filename = (file.originalname || `photo_${Date.now()}_${i}`).replace(/[^a-zA-Z0-9._-]/g, "_");
 
       const parsedVisitId = meta.visitId != null ? parseInt(String(meta.visitId)) : NaN;
@@ -265,20 +266,28 @@ fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), vali
       // (DEFECT-0164). This throws until a photo storage driver exists, so
       // the refusal above can never be bypassed into a row for a URL that
       // nothing serves.
-      await persistPhotoBytes(`field-scout/${imageHash || filename}`, processed?.stripped ?? file.buffer);
+      const ref = await persistPhotoBytes(
+        org.id,
+        `field-scout/${imageHash || filename}`,
+        processed?.stripped ?? file.buffer,
+        file.mimetype ?? undefined,
+      );
 
+      // The row records the store reference (founder ruling #1). The resized
+      // variants are not stored separately, so their URLs are null rather
+      // than /uploads/… paths nothing serves.
       const photoRecord = await storage.createFieldScoutPhoto({
         organizationId: org.id,
         visitId: Number.isFinite(parsedVisitId) ? parsedVisitId : 0,
         leadId,
-        url: `/uploads/field-scout/${imageHash || filename}`,
+        url: ref,
         caption: typeof meta.caption === "string" ? meta.caption : null,
         latitude: meta.latitude != null ? Number(meta.latitude) : null,
         longitude: meta.longitude != null ? Number(meta.longitude) : null,
         imageHash,
-        thumbnailUrl: imageHash ? `/uploads/field-scout/${imageHash}/thumbnail.jpg` : null,
-        cardUrl: imageHash ? `/uploads/field-scout/${imageHash}/card.jpg` : null,
-        fullUrl: imageHash ? `/uploads/field-scout/${imageHash}/full.jpg` : null,
+        thumbnailUrl: null,
+        cardUrl: null,
+        fullUrl: null,
         bytes: processed?.stripped.length ?? file.size,
         mime: file.mimetype ?? null,
       });
@@ -395,7 +404,19 @@ fieldScoutRouter.get('/field-scout/visits', async (req: Request, res: Response) 
         // org may not be available; skip enrichment
       }
 
-      const photos = await storage.getFieldScoutPhotosByVisit(visit.id);
+      const rawPhotos = await storage.getFieldScoutPhotosByVisit(visit.id);
+      // A stored photo's url is an s3:// reference; the browser gets a
+      // short-lived signed URL for it, signed for this org only (ruling #1).
+      const org = req.organization;
+      const photos = await Promise.all(
+        rawPhotos.map(async (p) => ({
+          ...p,
+          imageUrl:
+            org && photoStorageAvailable() && p.url.startsWith("s3://")
+              ? await signedOrgObjectUrl(org.id, p.url).catch(() => null)
+              : null,
+        })),
+      );
 
       return {
         ...visit,

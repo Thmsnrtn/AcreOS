@@ -1,31 +1,35 @@
 /**
- * Can an uploaded image actually be KEPT? (DEFECT-0164)
+ * Can an uploaded image actually be KEPT? (DEFECT-0164, founder ruling
+ * 2026-09-29 #1)
  *
- * There is no blob store yet — choosing one is the founder's storage
- * decision recorded on DEFECT-0046. Until then, two upload routes accepted
- * photos, wrote a row pointing at a key or URL nothing serves, dropped the
- * bytes and answered success: rehab photos ("N photo(s) uploaded" — lender
- * draw and tax-basis evidence) and DriveMode field photos ("Saved to the
- * lead."). Both now ask this first and refuse before writing anything, so
- * the customer keeps the only copy on their device instead of trusting a
- * record with no file behind it.
+ * Two upload routes once accepted photos, wrote a row pointing at a key or URL
+ * nothing served, dropped the bytes and answered success: rehab photos (lender
+ * draw and tax-basis evidence) and DriveMode field photos. They were made to
+ * refuse. The founder has since chosen AWS S3, and this is now the check that
+ * the store is configured (`documentStoreConfigured`) plus the write that puts
+ * the bytes in it BEFORE the row that points at them.
  *
- * When a driver lands, this becomes the check that it is configured, and
- * each route writes the bytes BEFORE it reports success. The nearest
- * existing candidate is the StorageDriver in server/services/cmo/storage.ts
- * (local FS + R2, founder-only CMO assets today).
+ * Until DOCUMENTS_S3_BUCKET and AWS credentials are provisioned the answer is
+ * still "no", and both routes still refuse with the message below.
  */
+import { documentStoreConfigured, putOrgObject, type StoredObjectRef } from "./documentStore";
+
 export function photoStorageAvailable(): boolean {
-  return false;
+  return documentStoreConfigured();
 }
 
 /**
- * Write a photo's bytes. THROWS until a driver exists — so flipping the
- * switch above without wiring storage fails loudly, inside the caller's
- * transaction, instead of recording a row for bytes that were dropped.
+ * Write a photo's bytes into the org's namespace and return the reference to
+ * record on the row. THROWS when storage isn't configured — inside the
+ * caller's transaction — so nothing records a row for bytes that were dropped.
  */
-export async function persistPhotoBytes(key: string, bytes: Buffer): Promise<void> {
-  throw new Error(`No photo storage driver: refusing to record ${key} (${bytes.length} bytes) as stored`);
+export async function persistPhotoBytes(
+  organizationId: number,
+  key: string,
+  bytes: Buffer,
+  contentType?: string,
+): Promise<StoredObjectRef> {
+  return putOrgObject(organizationId, key, bytes, contentType);
 }
 
 export const PHOTO_STORAGE_UNAVAILABLE_MESSAGE =

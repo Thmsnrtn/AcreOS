@@ -8,6 +8,10 @@
  * "Saved to the lead."). The field-scout voice memo fallback answered 200
  * "pending" over audio nothing kept. Each is now a 503 that says what
  * happened, with no row written.
+ *
+ * Founder ruling 2026-09-29 #1 chose AWS S3. This file pins the side where the
+ * store is NOT configured (DOCUMENTS_S3_BUCKET + AWS credentials absent);
+ * `uploadsWithStorageAreKept.test.ts` pins the configured side.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
@@ -88,6 +92,8 @@ beforeEach(() => {
   h.inserts = 0;
   h.createFieldScoutPhoto.mockReset();
   delete process.env.OPENAI_API_KEY;
+  // The unconfigured side, whatever the machine running the suite has set.
+  delete process.env.DOCUMENTS_S3_BUCKET;
 });
 
 describe("DEFECT-0164 — rehab photos", () => {
@@ -133,13 +139,13 @@ import { resolve } from "node:path";
 import { stripComments } from "../helpers/stripComments";
 
 const ROOT = resolve(__dirname, "../..");
-type Verdict = "refused-without-storage" | "parsed-not-kept" | "stored-in-db";
+type Verdict = "kept-in-store-or-refused" | "parsed-not-kept" | "stored-in-db";
 const UPLOAD_SITES: Record<string, Verdict> = {
-  "server/routes-rehab-photos.ts": "refused-without-storage",
-  "server/routes-field-scout.ts": "refused-without-storage", // photos; its voice memo is transcribed or 503
+  "server/routes-rehab-photos.ts": "kept-in-store-or-refused",
+  "server/routes-field-scout.ts": "kept-in-store-or-refused", // photos; its voice memo is transcribed or 503
   "server/routes-properties.ts": "parsed-not-kept", // CSV import
   "server/routes-leads.ts": "parsed-not-kept", // CSV import
-  "server/routes-import-export.ts": "parsed-not-kept", // CSV / ZIP jobs (ZIP files on /tmp: DEFECT-0143)
+  "server/routes-import-export.ts": "parsed-not-kept", // CSV / ZIP jobs: payload in the row; documents to S3 or refused (DEFECT-0143)
   "server/routes-bid-estimates.ts": "parsed-not-kept", // bid PDF text extraction
   "server/routes-ai.ts": "parsed-not-kept", // voice → transcript
   "server/routes-founder-life-cockpit.ts": "stored-in-db", // encrypted vault bytea
@@ -167,7 +173,7 @@ describe("DEFECT-0164 — every upload site is classified", () => {
   for (const [file, verdict] of Object.entries(UPLOAD_SITES)) {
     it(`${file} is still an upload site (vacuity) and honours '${verdict}'`, () => {
       expect(found).toContain(file);
-      if (verdict === "refused-without-storage") {
+      if (verdict === "kept-in-store-or-refused") {
         const src = stripComments(readFileSync(resolve(ROOT, file), "utf8"));
         expect(src).toMatch(/photoStorageAvailable\(\)/);
         expect(src).toMatch(/persistPhotoBytes\(/);
