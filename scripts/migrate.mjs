@@ -4838,8 +4838,22 @@ END $mig0247$`,
   // (uuid ids) live in distinct id-spaces but their stringified forms
   // share a collision space. Composite (loan_id, period_start, loan_type)
   // keeps §1026.36(c)(2) non-pyramiding guarantees holding across the two
-  // loan-table boundary. Drop the old 2-col index before replacing.
-  `DROP INDEX IF EXISTS "late_fee_assessments_loan_period_uk"`,
+  // loan-table boundary. Drop the old 2-col index before replacing — ONLY
+  // when it is still the 2-col form. An unconditional drop ran on every
+  // deploy; once the serviced-note ledger (DEFECT-0099) wrote to this table
+  // continuously, an insert landing between the drop and the re-create could
+  // leave a duplicate, fail the CREATE, and ship with no index at all — after
+  // which onConflictDoNothing() protects nothing and the daily sweep charges
+  // the same fee every day.
+  `DO $$ BEGIN
+     IF EXISTS (
+       SELECT 1 FROM pg_indexes
+        WHERE indexname = 'late_fee_assessments_loan_period_uk'
+          AND indexdef NOT LIKE '%loan_type%'
+     ) THEN
+       DROP INDEX "late_fee_assessments_loan_period_uk";
+     END IF;
+   END $$`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "late_fee_assessments_loan_period_uk" ON "late_fee_assessments" ("loan_id", "period_start", "loan_type")`,
   `CREATE INDEX IF NOT EXISTS "late_fee_assessments_org_assessed_idx" ON "late_fee_assessments" ("organization_id", "assessed_at")`,
 

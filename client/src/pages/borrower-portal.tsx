@@ -53,6 +53,12 @@ type BorrowerLoanData = {
    * starts here and the borrower pays the lender directly.
    */
   servicing?: { phase: "full" } | { phase: "wind_down" | "ended"; paymentsThroughPortalUntil: string };
+  /**
+   * Late fees assessed and not yet paid (founder ruling 2026-09-29 #6). The
+   * portal payment covers the installment AND these, so paying "Amount due"
+   * pays the statement's amount due.
+   */
+  lateFeesOwedCents?: number;
 };
 
 /**
@@ -501,6 +507,9 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
   // After the wind-down the server refuses new payments; the buttons say so
   // up front instead of failing on click (ruling #3).
   const paymentsClosed = data.servicing?.phase === "ended";
+  const lateFeesOwedCents = data.lateFeesOwedCents ?? 0;
+  // In cents, then back: 0.1 + 0.2 must not become a 30.000000000000004 charge.
+  const amountDueDollars = (Math.round(Number(note.monthlyPayment || 0) * 100) + lateFeesOwedCents) / 100;
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentStatusState, setPaymentStatusMessage] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
   const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
@@ -651,7 +660,7 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: Number(note.monthlyPayment) }),
+        body: JSON.stringify({ amount: amountDueDollars }),
       });
       
       if (res.ok) {
@@ -1213,8 +1222,13 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
               <div className="text-center sm:text-left">
                 <p className="text-sm text-muted-foreground font-medium uppercase tracking-wide">Amount due</p>
                 <p className="text-4xl sm:text-5xl font-bold font-mono tabular-nums text-primary" data-testid="text-payment-amount">
-                  ${Number(note.monthlyPayment || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ${amountDueDollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
+                {lateFeesOwedCents > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1 tabular-nums" data-testid="text-late-fees-owed">
+                    Includes ${(lateFeesOwedCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} in late fees owed
+                  </p>
+                )}
                 {note.nextPaymentDate && (
                   <p className={`text-sm mt-1 tabular-nums ${paymentStatusBadge.status === 'late' ? 'text-acr-neg dark:text-acr-neg font-semibold' : 'text-muted-foreground'}`}>
                     Due {format(new Date(note.nextPaymentDate), 'MMMM d, yyyy')}

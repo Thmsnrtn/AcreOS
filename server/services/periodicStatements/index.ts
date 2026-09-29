@@ -885,7 +885,9 @@ async function computeStatementFields(
   // Late fees owed (founder ruling 2026-09-29 #6, DEFECT-0099): assessed
   // under the note and unpaid. They are part of the amount due, and a payment
   // of the amount due pays them — the collection rule applies money above the
-  // installment to fees (services/notes/servicedLateFees.ts).
+  // installment to fees (services/notes/servicedLateFees.ts), and the portal's
+  // Pay button charges installment + owed. Autopay debits only the authorized
+  // installment, so an autopay borrower's fees stay owed until paid here.
   const lateFeesOwedCents = await outstandingServicedLateFeesCents(organizationId, loan.id);
   const installmentCents = dollarsToCents(loan.monthlyPayment);
   const amountDueCents = installmentCents + lateFeesOwedCents;

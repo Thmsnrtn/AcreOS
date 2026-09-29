@@ -441,7 +441,7 @@ async function renderBorrowerPayoffQuotePdf(
 }
 
 /** What a payoff quote says about late fees (ruling 2026-09-29 #6, DEFECT-0099). */
-const BORROWER_LATE_FEES_NOTE = "Late fees owed are the fees assessed under your note that are unpaid as of today. They are included in this total.";
+const BORROWER_LATE_FEES_NOTE = "Late fees owed are the fees assessed under your note that are unpaid as of today, plus any late fee your note charges before the good-through date. They are included in this total.";
 
 export function registerBorrowerRoutes(app: Express): void {
   const api = app;
@@ -676,6 +676,9 @@ export function registerBorrowerRoutes(app: Express): void {
         payments: notePayments,
         // What the portal still does for this loan (ruling #3).
         servicing: await borrowerServicingState(note.organizationId),
+        // Assessed and unpaid (ruling #6): the portal payment covers them, so
+        // the statement's amount due is payable here.
+        lateFeesOwedCents: await outstandingServicedLateFeesCents(note.organizationId, note.id),
         borrower: borrower ? { firstName: borrower.firstName, lastName: borrower.lastName } : null,
         session: {
           email: session.email,

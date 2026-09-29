@@ -25,6 +25,7 @@
  * `daysValid: 30` and printed the literal string.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { stripComments } from "../helpers/stripComments";
 import express from "express";
 import request from "supertest";
 import { readFileSync } from "node:fs";
@@ -137,13 +138,14 @@ vi.mock("../../server/db", () => {
 });
 // The late-fee ledger (ruling 2026-09-29 #6): what the note owes is read
 // from it; this note owes $25 in assessed, unpaid fees.
-const FEES = vi.hoisted(() => ({ owedCents: 2500, assessCalls: 0 }));
+const FEES = vi.hoisted(() => ({ owedCents: 2500, dueByCents: 0, assessCalls: 0 }));
 vi.mock("../../server/services/notes/servicedLateFees", () => ({
   assessServicedNoteLateFee: async () => {
     FEES.assessCalls++;
     return { assessed: false, alreadyExisted: false, feeCents: 0, reason: "test" };
   },
   outstandingServicedLateFeesCents: async () => FEES.owedCents,
+  lateFeeDueByCents: async () => FEES.dueByCents,
   feeFromExcessCents: () => 0,
 }));
 
@@ -210,6 +212,8 @@ describe("GET /api/borrower/payoff-quote — engine, session, recorded", () => {
     // "Today" is 2026-08-14 so a 2026-08-15 payoff date is in the future and
     // the 2026-08-03 ledger posting is the accrual start.
     vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-08-14T12:00:00Z") });
+    FEES.owedCents = 2500;
+    FEES.dueByCents = 0;
     SESSIONS.clear();
     SESSIONS.set(TOKEN, {
       id: 1,
@@ -290,6 +294,18 @@ describe("GET /api/borrower/payoff-quote — engine, session, recorded", () => {
     expect(row.notes).toBe("borrower_session:1");
   });
 
+  it("(6a) a fee grace will pass on before the good-through date is in the total", async () => {
+    // Paying the quoted total on that date must pay the note off; posting
+    // would assess the fee first and take it out of the money.
+    FEES.dueByCents = 2500;
+    const res = await request(app)
+      .get("/api/borrower/payoff-quote?payoffDate=2026-08-15")
+      .set("Cookie", `borrower_session=${TOKEN}`);
+    expect(res.status).toBe(200);
+    expect(res.body.lateFeesOutstandingCents).toBe(5000);
+    expect(res.body.lateFeesOutstandingNote).toMatch(/before the good-through date/);
+  });
+
   it("(6b) refuses a past payoff date rather than flooring it to zero days of interest", async () => {
     const res = await request(app)
       .get("/api/borrower/payoff-quote?payoffDate=2026-08-01")
@@ -333,6 +349,19 @@ describe("GET /api/borrower/payoff-quote — engine, session, recorded", () => {
       .set("Cookie", `borrower_session=${TOKEN}`);
     expect(res.status).toBe(404);
     expect(QUOTES.rows).toHaveLength(0);
+  });
+
+  it("(9) the portal session carries what is owed, and the Pay button charges installment + owed", async () => {
+    const res = await request(app).get("/api/borrower/session").set("Cookie", `borrower_session=${TOKEN}`);
+    expect(res.status).toBe(200);
+    expect(res.body.lateFeesOwedCents).toBe(2500);
+    // Before, the portal always charged the bare installment, so an assessed
+    // fee could never be paid here — while the statement's amount due said
+    // installment + fees.
+    const portal = stripComments(readFileSync(resolve(__dirname, "../../client/src/pages/borrower-portal.tsx"), "utf8"));
+    expect(portal).toMatch(/const amountDueDollars = \(Math\.round\(Number\(note\.monthlyPayment \|\| 0\) \* 100\) \+ lateFeesOwedCents\) \/ 100;/);
+    expect(portal).toContain("JSON.stringify({ amount: amountDueDollars })");
+    expect(portal).not.toContain("JSON.stringify({ amount: Number(note.monthlyPayment) })");
   });
 
   it("(8) the recorded-quote read is pinned to the session's organization and note (source)", () => {

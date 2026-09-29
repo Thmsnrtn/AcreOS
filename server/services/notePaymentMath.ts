@@ -9,9 +9,10 @@
  *      strings. We now do the split in integer cents and only stringify
  *      at the response boundary.
  *
- *   2. lateFee was hard-coded to "0". computeAppliedLateFeeCents reads
- *      the note's configured lateFee + gracePeriodDays and returns the
- *      cents to assess.
+ *   2. lateFee was hard-coded to "0". (Its day-count replacement here,
+ *      computeAppliedLateFeeCents, was itself deleted 2026-09-29: it wrote a
+ *      fee as COLLECTED that no money paid. Serviced-note fees are now an
+ *      assessed ledger — server/services/notes/servicedLateFees.ts.)
  *
  *   3. Payoff diverged from the live ledger because financialOSService
  *      indexed an amortization schedule by paymentsReceived - 1. The
