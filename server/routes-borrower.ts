@@ -806,7 +806,9 @@ export function registerBorrowerRoutes(app: Express): void {
       if (!note) {
         return Errors.notFound(res, "loan");
       }
-      
+      // Sunset, but an env var can extend it: never a way around the wind-down.
+      if (await refuseIfLenderServicingEnded(res, note.organizationId)) return;
+
       const paymentAmount = amount ? Number(amount) : Number(note.monthlyPayment || 0);
       if (paymentAmount <= 0) {
         return Errors.badRequest(res, "Invalid payment amount");
@@ -1426,6 +1428,8 @@ export function registerBorrowerRoutes(app: Express): void {
 
         const [note] = await db.select().from(notes).where(eq(notes.id, session.noteId));
         if (!note) return Errors.notFound(res, "loan");
+        // A setup started before the wind-down ended does not arm after it.
+        if (await refuseIfLenderServicingEnded(res, note.organizationId)) return;
 
         const confirmed = await confirmAchMandateSetup({ noteId: note.id, setupReference });
         if (!confirmed.ok) {
@@ -1572,6 +1576,7 @@ export function registerBorrowerRoutes(app: Express): void {
       // can extend its window it must not be a back door to a flag that
       // promises a collection nothing performs.
       const wantEnabled = enabled === true;
+      if (wantEnabled && (await refuseIfLenderServicingEnded(res, note.organizationId))) return;
       const mandate = await getAchMandateSummary(note.organizationId, note.id);
       if (wantEnabled && !mandate.armed) {
         return Errors.badRequest(

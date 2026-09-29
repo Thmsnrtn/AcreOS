@@ -34,11 +34,23 @@ function endCapableSites(src: string): string[] {
   for (const m of src.matchAll(/\bsubscriptionStatus\s*:\s*([^,\n}]+)/g)) {
     const v = m[1].trim();
     if (NOT_ENDED_LITERAL.test(v)) continue;
-    // A READ of the column (a select projection, `org.subscriptionStatus`) is not a write.
-    if (/(^|\.)subscription_?[sS]tatus\b/.test(v) && !/cancel/i.test(v)) continue;
+    // A READ of the column into another object — a select projection or an
+    // org row's own field — is not a write. Only these exact shapes: a value
+    // taken from `req.body.subscriptionStatus` (or any other object) IS a
+    // write of whatever that object holds.
+    if (/^(organizations|orgsTable)\.subscriptionStatus$/.test(v)) continue;
+    if (/^\(?(org|o|r)\??\.subscription_?[sS]tatus( \?\? ("[^"]*"|null))?\)?( as [\w |]+)?$/.test(v)) continue;
+    // A ternary whose every branch is a non-ended literal.
+    const branches = v.match(/\?\s*(["'][^"']*["'])\s*:\s*(["'][^"']*["'])\s*$/);
+    if (branches && NOT_ENDED_LITERAL.test(branches[1]) && NOT_ENDED_LITERAL.test(branches[2])) continue;
     // A type annotation (`subscriptionStatus: string | null`).
     if (/^(string|number|boolean|text\()/.test(v)) continue;
     sites.push(v);
+  }
+  // Assignment form: `updates.subscriptionStatus = …` (not a comparison).
+  for (const m of src.matchAll(/\.subscriptionStatus\s*=(?!=)\s*([^;\n]+)/g)) {
+    const v = m[1].trim();
+    if (!NOT_ENDED_LITERAL.test(v)) sites.push(v);
   }
   return sites;
 }
@@ -51,7 +63,8 @@ const WRITERS: Record<string, number> = {
   "server/ai/supportAgent.ts": 1, // Stripe resync writes the raw Stripe status
 };
 
-const files = execSync("git ls-files 'server/*.ts'", { cwd: ROOT, encoding: "utf8" })
+// server/ AND scripts/ — a maintenance script can end a subscription too.
+const files = execSync("git ls-files 'server/*.ts' 'scripts/*.ts' 'scripts/*.mjs'", { cwd: ROOT, encoding: "utf8" })
   .split("\n")
   .filter((f) => f && !f.includes(".test."));
 const found: Record<string, { sites: number; stamps: number }> = {};
@@ -73,6 +86,15 @@ describe("every writer that can end a subscription stamps the wind-down clock", 
     expect(endCapableSites(`x.set({ subscriptionStatus: "active" })`)).toHaveLength(0);
     expect(endCapableSites(`select({ subscriptionStatus: organizations.subscriptionStatus })`)).toHaveLength(0);
     expect(endCapableSites(`interface F { subscriptionStatus: string | null }`)).toHaveLength(0);
+    // Values taken from another object are writes of what it holds.
+    expect(endCapableSites(`x.set({ subscriptionStatus: req.body.subscriptionStatus })`)).toHaveLength(1);
+    expect(endCapableSites(`const facts = { subscriptionStatus: org.subscriptionStatus }`)).toHaveLength(0);
+    expect(endCapableSites(`({ subscriptionStatus: (r.subscription_status ?? null) as string | null })`)).toHaveLength(0);
+    expect(endCapableSites(`({ subscriptionStatus: x ? "past_due" : "active" })`)).toHaveLength(0);
+    expect(endCapableSites(`({ subscriptionStatus: x ? "cancelled" : "suspended" })`)).toHaveLength(1);
+    // Assignment form.
+    expect(endCapableSites(`updates.subscriptionStatus = "cancelled";`)).toHaveLength(1);
+    expect(endCapableSites(`if (org.subscriptionStatus === "cancelled") {}`)).toHaveLength(0);
   });
 
   it("no unregistered writer", () => {

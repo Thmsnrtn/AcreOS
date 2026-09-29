@@ -14,7 +14,6 @@ import { emailService } from "../emailService";
 
 export async function sendBorrowerNotice(
   org: { id: number; name: string },
-  noteId: number,
   to: string,
   firstName: string | null,
   endedAt: Date,
@@ -34,12 +33,11 @@ export async function sendBorrowerNotice(
       subject: `How to pay ${lender} from now on`,
       html: lines.map((l) => `<p>${escapeHtml(l)}</p>`).join("\n"),
       text: lines.join("\n\n"),
-      idempotencyKey: `servicing-wind-down:borrower:${org.id}:${noteId}:${endedAt.toISOString()}`,
+      idempotencyKey: `servicing-wind-down:borrower:${org.id}:${to}:${endedAt.toISOString()}`,
     });
     if (!result.success) {
       logger.warn("[servicingWindDown] borrower notice not sent", {
         organizationId: org.id,
-        noteId,
         errorType: result.errorType,
         error: result.error,
       });
@@ -50,7 +48,6 @@ export async function sendBorrowerNotice(
     // pass tries again (or replays if it went out).
     logger.warn("[servicingWindDown] borrower notice refused", {
       organizationId: org.id,
-      noteId,
       error: err instanceof Error ? err.message : String(err),
     });
     return false;

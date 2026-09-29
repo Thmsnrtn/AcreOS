@@ -745,8 +745,12 @@ export class WebhookHandlers {
             subscriptionStatus: 'cancelled',
             dunningStage: 'cancelled',
             stripeSubscriptionId: null,
-            // Starts the 90-day borrower wind-down (ruling #3, DEFECT-0106).
-            ...subscriptionEndedPatch(),
+            // Starts the 90-day borrower wind-down (ruling #3, DEFECT-0106) —
+            // only if it has not already ended. A dunning cancel keeps the
+            // Stripe subscription id, so Stripe's later deletion of it would
+            // otherwise restart the clock and re-open borrower payments that
+            // borrowers were already told had ended.
+            ...(subscriptionHasEnded(org.subscriptionStatus) ? {} : subscriptionEndedPatch()),
             updatedAt: new Date(),
           })
           .where(eq(organizations.id, org.id));

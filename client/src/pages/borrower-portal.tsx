@@ -429,7 +429,7 @@ function LenderServicingNotice({
         <AlertDescription className="text-acr-warn/80 dark:text-acr-warn/80">
           {ended
             ? `${lenderName} no longer services this loan through AcreOS, so payments can't be made here. Contact ${lenderName} to arrange how to pay them. Your loan terms, balance and payment history are unchanged.`
-            : `${lenderName} is moving servicing of this loan away from AcreOS. You can keep paying here, and autopay keeps running, until ${until}. AcreOS has asked ${lenderName} to tell you how to pay after that.`}
+            : `${lenderName} is moving servicing of this loan away from AcreOS. You can keep paying here, and autopay keeps running, until ${until}. After that, contact ${lenderName} to arrange how to pay them directly.`}
         </AlertDescription>
       </Alert>
     </div>
@@ -1221,13 +1221,13 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
                 {/* Only claim automatic collection when a debit could really
                     be created: autopay on AND a stored, confirmed bank
                     authorization. Anything less says what's still missing. */}
-                {autopayEnabled && autopayArmed && (
+                {autopayEnabled && autopayArmed && !paymentsClosed && (
                   <p className="text-xs text-acr-pos dark:text-acr-pos mt-1 flex items-center gap-1 justify-center sm:justify-start">
                     <CheckCircle className="w-3 h-3" aria-hidden="true" /> Autopay is on — we'll debit your
                     {autopayStatus?.mandate.accountLast4 ? ` account ending ${autopayStatus.mandate.accountLast4}` : ' authorized bank account'} on this due date.
                   </p>
                 )}
-                {autopayEnabled && !autopayArmed && !isLoadingAutopayStatus && (
+                {autopayEnabled && !autopayArmed && !isLoadingAutopayStatus && !paymentsClosed && (
                   <p className="text-xs text-acr-warn dark:text-acr-warn mt-1 flex items-center gap-1 justify-center sm:justify-start">
                     <AlertTriangle className="w-3 h-3" aria-hidden="true" /> Autopay is on but no bank account is
                     authorized yet, so this payment will not be collected automatically.
@@ -1389,6 +1389,8 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
                     isTogglingAutopay
                     || isLoadingAutopayStatus
                     || (!autopayEnabled && !autopayArmed && autopayStatus?.achAvailable !== true)
+                    // After the wind-down it can only be switched OFF.
+                    || (paymentsClosed && !autopayEnabled)
                   }
                   aria-labelledby="autopay-label"
                   aria-describedby="autopay-help"

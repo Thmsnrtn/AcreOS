@@ -156,8 +156,12 @@ describe("mandate capture and the autopay toggle are exposed as routes", () => {
 });
 
 describe("the borrower portal toggle no longer over-promises", () => {
-  it("only claims automatic collection when the mandate is armed", () => {
-    expect(portalSource).toContain("autopayEnabled && autopayArmed && (");
+  it("only claims automatic collection when the mandate is armed — and servicing has not ended", () => {
+    // Armed, AND the lender's 90-day wind-down is not over (ruling
+    // 2026-09-29 #3): after it the server refuses the debit, so promising
+    // one would be false.
+    expect(portalSource).toContain("autopayEnabled && autopayArmed && !paymentsClosed && (");
+    expect(portalSource).toMatch(/const paymentsClosed = data\.servicing\?\.phase === "ended";/);
     // The old unconditional promise must be gone.
     expect(portalSource).not.toContain("we'll collect this payment automatically");
   });

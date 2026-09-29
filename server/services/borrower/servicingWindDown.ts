@@ -18,11 +18,13 @@
  * again. Borrower notices are attempted for 30 days after the wind-down ends,
  * then the pass stops trying and says so in its result.
  */
-import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { leads, notes, organizations, teamMembers } from "@shared/schema";
 import { db } from "../../db";
 import { logger } from "../../utils/logger";
 import { emailService } from "../emailService";
+import { storage } from "../../storage";
+import { revokeAchMandatesForNote } from "../achMandateSetup";
 import { sendBorrowerNotice } from "./servicingWindDownBorrowerNotice";
 import {
   SUBSCRIPTION_ENDED_STATUSES,
@@ -42,6 +44,8 @@ export interface WindDownPassResult {
   borrowerNoticesSent: number;
   borrowerNoticesNotSent: number;
   borrowersWithoutEmail: number;
+  /** Notes whose autopay was switched off (and mandates revoked) at the end. */
+  autopayStopped: number;
 }
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
@@ -55,6 +59,7 @@ export async function runServicingWindDownPass(now: Date = new Date()): Promise<
     borrowerNoticesSent: 0,
     borrowerNoticesNotSent: 0,
     borrowersWithoutEmail: 0,
+    autopayStopped: 0,
   };
 
   const ended = await db
@@ -77,29 +82,56 @@ export async function runServicingWindDownPass(now: Date = new Date()): Promise<
     if (phase.phase === "full") continue;
     try {
       const book = await db
-        .select({ noteId: notes.id, email: leads.email, firstName: leads.firstName })
+        .select({ noteId: notes.id, autoPayEnabled: notes.autoPayEnabled, email: leads.email, firstName: leads.firstName })
         .from(notes)
         .leftJoin(leads, and(eq(leads.id, notes.borrowerId), eq(leads.organizationId, org.id)))
-        .where(and(eq(notes.organizationId, org.id), eq(notes.status, "active"), isNull(notes.deletedAt)));
+        .where(and(eq(notes.organizationId, org.id), eq(notes.status, "active"), isNull(notes.deletedAt)))
+        // Stable order: the notice payload (greeting name) must not vary run
+        // to run, or its idempotency claim refuses it as a reused key.
+        .orderBy(asc(notes.id));
       // A lender with no live book has nothing to wind down and nobody to tell.
       if (book.length === 0) continue;
 
       if (phase.phase === "wind_down") {
         result.lendersInWindDown++;
-        const sent = await sendLenderNotice(org, phase.endedAt, phase.windDownEndsAt, book.length);
+        const sent = await sendLenderNotice(org, phase.endedAt, phase.windDownEndsAt);
         if (sent) result.lenderNoticesSent++;
         else result.lenderNoticesNotSent++;
         continue;
       }
 
-      // Ended: tell each borrower once, for a bounded window.
+      // Ended. First make "autopay has stopped" true IN STATE: switch it
+      // off and withdraw the bank authorizations given through AcreOS. The
+      // debit gate already refuses, but a later return to a non-ended status
+      // (a resubscribe, an out-of-order Stripe event) must not silently
+      // resume debiting — possibly for periods the borrower has since paid
+      // the lender directly. Resuming needs the borrower to authorize again.
+      for (const b of book) {
+        if (!b.autoPayEnabled) continue;
+        await storage.updateNote(b.noteId, { autoPayEnabled: false }, org.id);
+        await revokeAchMandatesForNote({
+          organizationId: org.id,
+          noteId: b.noteId,
+          reason: "lender_servicing_ended",
+          at: now,
+        });
+        result.autopayStopped++;
+      }
+
+      // Then tell each borrower once — one notice per address, however many
+      // notes they hold — for a bounded window.
       if (now.getTime() - phase.windDownEndsAt.getTime() > BORROWER_NOTICE_WINDOW_DAYS * DAY_MS) continue;
+      const byAddress = new Map<string, string | null>();
       for (const b of book) {
         if (!b.email) {
           result.borrowersWithoutEmail++;
           continue;
         }
-        const sent = await sendBorrowerNotice(org, b.noteId, b.email, b.firstName, phase.endedAt);
+        const address = b.email.trim().toLowerCase();
+        if (!byAddress.has(address)) byAddress.set(address, b.firstName);
+      }
+      for (const [address, firstName] of byAddress) {
+        const sent = await sendBorrowerNotice(org, address, firstName, phase.endedAt);
         if (sent) result.borrowerNoticesSent++;
         else result.borrowerNoticesNotSent++;
       }
@@ -113,10 +145,20 @@ export async function runServicingWindDownPass(now: Date = new Date()): Promise<
 }
 
 async function ownerEmail(organizationId: number): Promise<string | null> {
+  // An ACTIVE owner WITH an address — a deactivated or address-less owner
+  // row must not mask one who can be reached.
   const [owner] = await db
     .select({ email: teamMembers.email })
     .from(teamMembers)
-    .where(and(eq(teamMembers.organizationId, organizationId), eq(teamMembers.role, "owner")))
+    .where(
+      and(
+        eq(teamMembers.organizationId, organizationId),
+        eq(teamMembers.role, "owner"),
+        eq(teamMembers.isActive, true),
+        isNotNull(teamMembers.email),
+      ),
+    )
+    .orderBy(asc(teamMembers.id))
     .limit(1);
   return owner?.email ?? null;
 }
@@ -125,7 +167,6 @@ async function sendLenderNotice(
   org: { id: number; name: string },
   endedAt: Date,
   windDownEndsAt: Date,
-  activeNotes: number,
 ): Promise<boolean> {
   const to = await ownerEmail(org.id);
   if (!to) {
@@ -134,9 +175,12 @@ async function sendLenderNotice(
   }
   const lines = [
     `Your AcreOS subscription ended on ${day(endedAt)}.`,
-    `You have ${activeNotes} active note${activeNotes === 1 ? "" : "s"}. For your borrowers' protection, AcreOS keeps servicing them — autopay, the borrower portal and monthly statements — until ${day(windDownEndsAt)} (${WIND_DOWN_DAYS} days).`,
+    // Nothing in this text may change from one day's run to the next: the
+    // idempotency claim hashes the payload, and a changed payload under the
+    // same key is refused as a reused key — the notice would never go out.
+    `For your borrowers' protection, AcreOS keeps servicing your active notes — autopay, the borrower portal and monthly statements — until ${day(windDownEndsAt)} (${WIND_DOWN_DAYS} days).`,
     `Before then, export your book (${appUrl()}/data-export) or move servicing elsewhere, and tell your borrowers where to pay.`,
-    `After ${day(windDownEndsAt)} no new payment will be taken through AcreOS. Borrowers who sign in will be told to pay you directly, and AcreOS will email them that notice from your own sending identity. If you have not connected one, AcreOS cannot email them — you will need to tell them yourself.`,
+    `After ${day(windDownEndsAt)} no new payment will be taken through AcreOS: borrowers' autopay is switched off and their bank authorizations through AcreOS are withdrawn, borrowers who sign in are told to pay you directly, and AcreOS emails them that notice from your own sending identity. If you have not connected one, AcreOS cannot email them — you will need to tell them yourself.`,
     `Payments already in progress will still settle and be recorded. Resubscribing at any time restores full servicing.`,
   ];
   let result: Awaited<ReturnType<typeof emailService.sendEmail>>;
@@ -149,7 +193,8 @@ async function sendLenderNotice(
     subject: `Your borrowers: AcreOS servicing ends ${day(windDownEndsAt)}`,
     html: lines.map((l) => `<p>${escapeHtml(l)}</p>`).join("\n"),
     text: lines.join("\n\n"),
-    idempotencyKey: `servicing-wind-down:lender:${org.id}:${endedAt.toISOString()}`,
+    // The recipient is part of the key: a new owner address is a new notice.
+    idempotencyKey: `servicing-wind-down:lender:${org.id}:${endedAt.toISOString()}:${to.toLowerCase()}`,
     });
   } catch (err) {
     // An in-flight or ambiguous prior claim refuses by throwing; the next

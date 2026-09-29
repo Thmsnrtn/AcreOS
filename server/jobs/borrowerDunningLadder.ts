@@ -30,6 +30,7 @@ import { logger } from "../utils/logger";
 import { storage } from "../storage";
 import { logActivity } from "../services/systemActivityLogger";
 import { financeAgentService } from "../services/financeAgent";
+import { orgsStillServiced } from "../services/borrower/servicingPhase";
 
 const JOB_TYPE = "dunning";
 
@@ -63,7 +64,10 @@ export async function runBorrowerDunningLadder(): Promise<BorrowerDunningLadderR
     // ── Pass 1: build the ladder ──────────────────────────────────────────
     let orgIds: number[] = [];
     try {
-      orgIds = await storage.getOrganizationIdsWithActiveNotes();
+      // Lenders whose 90-day wind-down is over get no new reminders
+      // (ruling 2026-09-29 #3); their borrowers pay them directly now.
+      const serviced = new Set(await orgsStillServiced());
+      orgIds = (await storage.getOrganizationIdsWithActiveNotes()).filter((id) => serviced.has(id));
     } catch (error) {
       errors.push(
         `Could not enumerate orgs holding active notes: ${error instanceof Error ? error.message : "Unknown"}`,

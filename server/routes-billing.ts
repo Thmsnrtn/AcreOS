@@ -15,7 +15,7 @@ import { requirePermission } from "./utils/permissions";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { customerAuditFromRequest, CustomerAuditActions } from "./utils/customerAudit";
 import { z } from "zod";
-import { subscriptionEndedPatch } from "./services/borrower/servicingPhase";
+import { lenderServicingPhase, subscriptionEndedPatch } from "./services/borrower/servicingPhase";
 
 export function registerBillingRoutes(app: Express): void {
   const api = app;
@@ -1033,6 +1033,18 @@ export function registerBillingRoutes(app: Express): void {
       const note = await storage.getNote(org.id, noteId);
       if (!note) {
         return Errors.notFound(res, "Note");
+      }
+
+      // The 90-day borrower wind-down (ruling 2026-09-29 #3, DEFECT-0106):
+      // once it is over, AcreOS mints no new way for a borrower to pay it.
+      // This route is a GET, so the pause gate lets a cancelled lender reach it.
+      const servicing = await lenderServicingPhase(org.id);
+      if (servicing.phase === "ended") {
+        return Errors.badRequest(
+          res,
+          `Your subscription ended on ${servicing.endedAt.toISOString().slice(0, 10)} and AcreOS stopped taking borrower payments on ${servicing.windDownEndsAt.toISOString().slice(0, 10)}. Collect from your borrowers directly, or resubscribe to restore payment links.`,
+          { reason: "lender_servicing_ended" },
+        );
       }
 
       const amount = Number(note.monthlyPayment);

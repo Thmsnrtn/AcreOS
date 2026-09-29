@@ -168,6 +168,12 @@ describe("after the wind-down, the portal starts no new money movement", () => {
     expect(h.mandateStarts).toBe(0);
   });
 
+  it("a bank setup started before the end does not arm after it", async () => {
+    const res = await request(app).post("/api/borrower/autopay/mandate/confirm").send({ setupReference: "seti_1" });
+    expect(res.status).toBe(400);
+    expect(res.body.details.reason).toBe("lender_servicing_ended");
+  });
+
   it("switching autopay ON is refused; switching it OFF still works", async () => {
     const on = await request(app).post("/api/borrower/autopay").send({ enabled: true });
     expect(on.status).toBe(400);

@@ -689,6 +689,19 @@ describe("Stripe Webhook: customer.subscription.deleted (Tasks #86-87)", () => {
     );
   });
 
+  it("Stripe deleting a subscription dunning ALREADY cancelled does not restart the wind-down clock", async () => {
+    txState.updates.length = 0;
+    (storageMock.getOrganizationByStripeCustomerId as any).mockResolvedValue({ ...MOCK_ORG, subscriptionStatus: "cancelled" });
+    const sub = { id: "sub_del_late", customer: "cus_del_late" };
+    mockStripe.webhooks.constructEvent.mockReturnValue(makeStripeEvent("customer.subscription.deleted", sub, "evt_del_late"));
+
+    await WebhookHandlers.processWebhook(Buffer.from("{}"), "sig");
+
+    const orgUpdate = txState.updates.find((u: Record<string, unknown>) => u.subscriptionTier === "free");
+    expect(orgUpdate, "the downgrade still lands").toBeDefined();
+    expect("subscriptionEndedAt" in orgUpdate!).toBe(false);
+  });
+
   it("logs cancellation subscription event (Task #87)", async () => {
     txState.inserts.length = 0;
     (storageMock.getOrganizationByStripeCustomerId as any).mockResolvedValue(MOCK_ORG);

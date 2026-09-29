@@ -65,6 +65,7 @@ import { PAX_LABELS } from "@shared/pax-glossary";
 import { checkSendRateLimit, recordAutonomousSend } from "./autonomyGuardrails";
 import { getIdentityForSend } from "./orgEmailIdentity";
 import { readIntegrationCredentials } from "./integrationCredentials";
+import { lenderServicingPhase } from "./borrower/servicingPhase";
 import {
   buildBorrowerLetter,
   buildBorrowerNotice,
@@ -742,6 +743,20 @@ export class FinanceAgentService {
 
     for (const reminder of due) {
       try {
+        // After the 90-day wind-down (ruling 2026-09-29 #3, DEFECT-0106) a
+        // reminder would send the borrower to a portal that refuses payment.
+        // Block it with the reason; the borrower has been told to pay the
+        // lender directly.
+        const servicing = await lenderServicingPhase(reminder.organizationId);
+        if (servicing.phase === "ended") {
+          await storage.recordReminderOutcome(
+            reminder.id,
+            { status: REMINDER_STATUS.blocked, reason: "lender_servicing_ended: AcreOS no longer services this lender's loans" },
+            reminder.organizationId,
+          );
+          tally.blocked++;
+          continue;
+        }
         const outcome = await this.dispatchReminder(reminder);
         switch (outcome.status) {
           case REMINDER_STATUS.sent:

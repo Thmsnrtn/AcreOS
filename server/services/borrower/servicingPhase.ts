@@ -25,15 +25,21 @@
  * NOW on first sight, so every party gets the full 90 days of notice rather
  * than having it retroactively spent.
  */
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { organizations } from "@shared/schema";
 import { db } from "../../db";
 
 export const WIND_DOWN_DAYS = 90;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Statuses meaning the lender's AcreOS subscription has ended. */
-export const SUBSCRIPTION_ENDED_STATUSES = ["cancelled", "canceled"] as const;
+/**
+ * Statuses meaning the lender's AcreOS subscription has ended: cancelled
+ * (AcreOS spelling), canceled (Stripe's, written raw by the support resync),
+ * and an incomplete subscription that expired unpaid (`expired` as mapped by
+ * the webhook, `incomplete_expired` raw). `unpaid` and `past_due` are billing
+ * problems dunning is still working, not ends.
+ */
+export const SUBSCRIPTION_ENDED_STATUSES = ["cancelled", "canceled", "expired", "incomplete_expired"] as const;
 
 export type ServicingPhase =
   | { phase: "full" }
@@ -90,13 +96,23 @@ export async function lenderServicingPhase(organizationId: number, now: Date = n
     .limit(1);
   if (!org) return { phase: "full" };
   if (subscriptionHasEnded(org.subscriptionStatus) && !org.subscriptionEndedAt) {
-    // COALESCE keeps a concurrent stamp: both callers then agree on one date.
+    // Stamp only a NULL stamp; if a concurrent caller won, read theirs, so
+    // both agree on one date.
     const [row] = await db
       .update(organizations)
-      .set({ subscriptionEndedAt: sql`COALESCE(${organizations.subscriptionEndedAt}, ${now})` })
-      .where(eq(organizations.id, organizationId))
+      .set({ subscriptionEndedAt: now })
+      .where(and(eq(organizations.id, organizationId), isNull(organizations.subscriptionEndedAt)))
       .returning({ subscriptionEndedAt: organizations.subscriptionEndedAt });
-    return servicingPhaseFor({ ...org, subscriptionEndedAt: row?.subscriptionEndedAt ?? now }, now);
+    let endedAt = row?.subscriptionEndedAt ?? null;
+    if (!endedAt) {
+      const [again] = await db
+        .select({ subscriptionEndedAt: organizations.subscriptionEndedAt })
+        .from(organizations)
+        .where(eq(organizations.id, organizationId))
+        .limit(1);
+      endedAt = again?.subscriptionEndedAt ?? now;
+    }
+    return servicingPhaseFor({ ...org, subscriptionEndedAt: endedAt }, now);
   }
   return servicingPhaseFor(org, now);
 }

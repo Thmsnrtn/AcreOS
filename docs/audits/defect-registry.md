@@ -2755,9 +2755,8 @@ Built:
   refund-and-cancel route, the dunning cancel and the support agent's Stripe
   resync. A lender already cancelled when this shipped is stamped on first
   sight, so nobody's notice period is spent unseen.
-- ACH autopay: `submitDebitForNote` refuses with `lender_servicing_ended`
-  before any claim or processor call. It is the one path for both the job
-  and "collect now".
+- ACH autopay: `submitDebitForNote` (the job's only debit path) refuses with
+  `lender_servicing_ended` before any claim or processor call.
 - Portal: `/api/borrower/payment`, `/api/borrower/autopay/mandate` and
   switching `/api/borrower/autopay` on are refused with the reason.
   `/api/borrower/verify` and `/session` return the servicing state. The portal
@@ -2780,13 +2779,47 @@ Falsified by:
 - `tests/unit/borrowerServicingWindDown.test.ts`: the rule, the stamp, the
   statements population and the notices.
 - `tests/integration/stripeWebhooks.test.ts`: the stamp on deletion and on an
-  update to canceled, and no stamp for past_due or a repeat.
+  update to canceled, and no stamp for past_due, a repeated update, or a
+  deletion of an already-cancelled subscription.
 - `tests/unit/subscriptionEndStampsTheClock.test.ts`: the population gate
   over every end-capable writer. It goes red when a stamp is removed.
 Not decided here: whether a `suspended` lender (dunning, pre-cancel) should
 also wind down. Today it is `full`, and dunning moves it to `cancelled`,
 which starts the clock.
-Resolving commits: this branch, batch D (2026-09-29)
+Independent audit, same day. It found five defects and four gaps. All are
+fixed:
+- A Stripe deletion re-stamped a subscription dunning had already
+  cancelled. That flipped `ended` back to `wind_down`, re-opened payments
+  after borrowers were told they had ended, and sent a second round of
+  notices. Every writer now stamps only a transition into an ended status.
+- The lender notice embedded the note count, and the idempotency claim
+  hashes the payload. A book that changed during the 90 days made every
+  later send refuse as a reused key, so the lender might never be told. The
+  text is now fixed per end date, the key includes the recipient, and the
+  book is read in a stable order.
+- The lender's `GET /api/stripe/connect/payment-link/:noteId` minted links
+  after the end. The pause gate lets GETs through. It now refuses.
+- The portal still said "we'll debit your account" after the end, and the
+  borrower email said autopay "has stopped" while mandates stayed active,
+  so a later status flip could resume debiting for periods possibly paid
+  elsewhere. At the end the pass now switches autopay off and withdraws the
+  AcreOS mandates, and the portal promises no debit.
+- The borrower dunning ladder kept queuing and sending late reminders that
+  linked to a portal refusing payment. Ended lenders are skipped, and
+  queued reminders are blocked with the reason.
+- `expired` / `incomplete_expired` now count as ended.
+- The sunset legacy token routes and mandate confirmation are gated too,
+  in case the sunset date is extended.
+- The owner lookup requires an active owner with an address.
+- Borrower notices are one per address, not per note.
+- The population gate now reads `scripts/`. It counts assignment-form
+  writers, and it treats a value copied from another object as a write.
+Falsified by: ten cases in `tests/unit/borrowerServicingWindDown.test.ts`,
+`tests/unit/borrowerPortalWindDown.test.ts`,
+`tests/unit/paymentLinkWindDown.test.ts` and
+`tests/integration/stripeWebhooks.test.ts`, all red against the first
+commit.
+Resolving commits: this branch, batch D (2026-09-29) and its audit follow-up
 
 ### DEFECT-0107
 Title: Blind-offer comps include a USDA survey average and a SYNTHETIC trend point, so the zero-comp refusal is unreachable
