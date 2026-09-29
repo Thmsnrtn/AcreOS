@@ -46,6 +46,8 @@ const state = vi.hoisted(() => ({
 }));
 
 function resetState() {
+  FEES.owedCents = 0;
+  FEES.assessCalls.length = 0;
   state.payments.clear();
   state.nextId = 1;
   state.noteBalance = "10000.00";
@@ -149,6 +151,18 @@ vi.mock("../../server/services/activation", () => ({
   recordActivationEventAsync: vi.fn(),
 }));
 
+// The late-fee ledger (ruling 2026-09-29 #6): assessments are recorded, and
+// what is owed is controllable per test. The pure collection rule is REAL.
+const FEES = vi.hoisted(() => ({ owedCents: 0, assessCalls: [] as Array<{ noteId: number; at: Date }> }));
+vi.mock("../../server/services/notes/servicedLateFees", async (orig) => ({
+  ...(await orig<typeof import("../../server/services/notes/servicedLateFees")>()),
+  assessServicedNoteLateFee: async (note: { id: number }, at: Date) => {
+    FEES.assessCalls.push({ noteId: note.id, at });
+    return { assessed: true, alreadyExisted: false, feeCents: 2500, reason: "test" };
+  },
+  outstandingServicedLateFeesCents: async () => FEES.owedCents,
+}));
+
 import { payments as paymentsTable, type Note } from "@shared/schema";
 import {
   postBorrowerPortalCheckoutPayment,
@@ -228,14 +242,40 @@ describe("postBorrowerPortalCheckoutPayment — one rule for both writers", () =
     expect(webhookFirst).toEqual(browserFirst);
 
     // And the facts themselves are the browser path's rule: integer-cent
-    // split (6% on $10,000 for one month = $50.00 interest), grace-aware late
-    // fee (19 days late against a 10-day grace → the $25 the note states).
+    // split (6% on $10,000 for one month = $50.00 interest). Nineteen days
+    // late against a 10-day grace, the installment's fee is ASSESSED — and
+    // this installment-sized payment COLLECTS none of it: every cent covers
+    // the installment (ruling 2026-09-29 #6). It used to record "$25
+    // collected" here while the whole $100 went to principal and interest.
     expect(browserFirst.interestAmount).toBe("50");
     expect(browserFirst.principalAmount).toBe("50");
-    expect(browserFirst.lateFeeAmount).toBe("25");
+    expect(browserFirst.lateFeeAmount).toBe("0");
+    expect(FEES.assessCalls[0]).toEqual({ noteId: 42, at: NOW });
     expect(browserFirst.noteBalance).toBe("9950");
     expect(browserFirst.scheduleStatuses).toEqual(["paid", "pending"]);
     expect(browserFirst.nextPaymentDate).toEqual(new Date("2026-10-01T00:00:00Z"));
+  });
+
+  it("(1b) money ABOVE the installment pays the owed fee; the installment is covered first", async () => {
+    FEES.owedCents = 2500;
+    const result = await post("borrower_portal", session({ amount_total: 12500 }));
+    expect(result.outcome).toBe("posted");
+    const facts = ledgerFacts();
+    expect(facts.amount).toBe("125");
+    expect(facts.lateFeeAmount).toBe("25");
+    // The remaining $100 is split exactly as an installment payment would be.
+    expect(facts.interestAmount).toBe("50");
+    expect(facts.principalAmount).toBe("50");
+    expect(facts.noteBalance).toBe("9950");
+    if (result.outcome === "posted") expect(result.lateFeeCents).toBe(2500);
+  });
+
+  it("(1c) a fee owed never makes an installment-sized payment short", async () => {
+    FEES.owedCents = 2500;
+    await post("borrower_portal");
+    const facts = ledgerFacts();
+    expect(facts.lateFeeAmount).toBe("0");
+    expect(facts.scheduleStatuses).toEqual(["paid", "pending"]);
   });
 
   it("(2) a $50 payment against a $100 installment leaves the installment pending and the due date put", async () => {

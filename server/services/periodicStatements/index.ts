@@ -37,7 +37,8 @@ import {
   periodicStatementSkips,
   type InsertPeriodicStatement,
 } from "@shared/schema/reg-z";
-import { paymentApplications } from "@shared/schema/reg-z";
+import { lateFeeAssessments, paymentApplications } from "@shared/schema/reg-z";
+import { outstandingServicedLateFeesCents } from "../notes/servicedLateFees";
 import { acquiredNotes, notePayments, type AcquiredNote } from "@shared/schema/notes-vertical";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { logger } from "../../utils/logger";
@@ -881,7 +882,13 @@ async function computeStatementFields(
     return Math.round(n * 100);
   };
 
-  const amountDueCents = dollarsToCents(loan.monthlyPayment);
+  // Late fees owed (founder ruling 2026-09-29 #6, DEFECT-0099): assessed
+  // under the note and unpaid. They are part of the amount due, and a payment
+  // of the amount due pays them — the collection rule applies money above the
+  // installment to fees (services/notes/servicedLateFees.ts).
+  const lateFeesOwedCents = await outstandingServicedLateFeesCents(organizationId, loan.id);
+  const installmentCents = dollarsToCents(loan.monthlyPayment);
+  const amountDueCents = installmentCents + lateFeesOwedCents;
   const principalBalanceCents = dollarsToCents(loan.currentBalance);
   const interestRateBps = Math.round(parseFloat(loan.interestRate ?? "0") * 100);
 
@@ -976,14 +983,38 @@ async function computeStatementFields(
   const upcomingEscrow = dollarsToCents(loan.monthlyTaxEscrow);
   const upcomingPrincipal = Math.max(
     0,
-    amountDueCents - upcomingInterest - upcomingEscrow,
+    installmentCents - upcomingInterest - upcomingEscrow,
   );
   const paymentApplicationExplanation = {
     principalCents: upcomingPrincipal,
     interestCents: upcomingInterest,
     escrowCents: upcomingEscrow,
-    feesCents: 0,
+    feesCents: lateFeesOwedCents,
   };
+
+  // Fees CHARGED in the cycle belong in the transaction activity
+  // (§1026.41(d)(5)): each late fee the ledger assessed in it.
+  const chargedInCycle = await db
+    .select({ assessedAt: lateFeeAssessments.assessedAt, feeAmountCents: lateFeeAssessments.feeAmountCents })
+    .from(lateFeeAssessments)
+    .where(
+      and(
+        eq(lateFeeAssessments.organizationId, organizationId),
+        eq(lateFeeAssessments.loanType, "note"),
+        eq(lateFeeAssessments.loanId, String(loan.id)),
+        eq(lateFeeAssessments.status, "assessed"),
+        gte(lateFeeAssessments.assessedAt, cycleStart),
+        lte(lateFeeAssessments.assessedAt, cycleEnd),
+      ),
+    );
+  for (const fee of chargedInCycle) {
+    transactions.push({
+      date: new Date(fee.assessedAt).toISOString().slice(0, 10),
+      label: "Late fee charged",
+      amountCents: Number(fee.feeAmountCents),
+      appliedTo: "fees",
+    });
+  }
 
   // §1026.41(d)(8) delinquency block — only when >= 45 days delinquent.
   const daysDelinquent = loan.daysDelinquent ?? 0;

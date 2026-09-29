@@ -135,6 +135,18 @@ vi.mock("../../server/db", () => {
     },
   };
 });
+// The late-fee ledger (ruling 2026-09-29 #6): what the note owes is read
+// from it; this note owes $25 in assessed, unpaid fees.
+const FEES = vi.hoisted(() => ({ owedCents: 2500, assessCalls: 0 }));
+vi.mock("../../server/services/notes/servicedLateFees", () => ({
+  assessServicedNoteLateFee: async () => {
+    FEES.assessCalls++;
+    return { assessed: false, alreadyExisted: false, feeCents: 0, reason: "test" };
+  },
+  outstandingServicedLateFeesCents: async () => FEES.owedCents,
+  feeFromExcessCents: () => 0,
+}));
+
 vi.mock("../../server/auth", () => ({
   isAuthenticated: (_q: unknown, _s: unknown, next: () => void) => next(),
 }));
@@ -241,6 +253,7 @@ describe("GET /api/borrower/payoff-quote — engine, session, recorded", () => {
           { paymentDate: "2026-08-24", interestAmount: "0" },
         ],
         payoffDate: parseIsoDateUtc("2026-08-15"),
+        lateFeesOutstandingCents: 2500,
       }),
     );
 
@@ -253,8 +266,11 @@ describe("GET /api/borrower/payoff-quote — engine, session, recorded", () => {
     expect(res.body.accrualStartDate).toBe("2026-08-03");
     expect(res.body.payoffDate).toBe("2026-08-15");
     expect(res.body.goodThroughDate).toBe(res.body.payoffDate);
-    // Not tracked → not asserted as zero-owed.
-    expect(res.body.lateFeesOutstandingCents).toBeNull();
+    // Owed late fees come from the assessed ledger and are IN the total
+    // (ruling 2026-09-29 #6) — they used to be "not tracked" and left out.
+    expect(res.body.lateFeesOutstandingCents).toBe(2500);
+    expect(res.body.lateFeesOutstandingNote).toMatch(/assessed under your note that are unpaid as of today/);
+    expect(FEES.assessCalls).toBe(1); // the current installment is assessed before quoting
     expect(res.body.quoteId).toBe("q-1");
     expect(res.body.pdfUrl).toBe("/api/borrower/payoff-quote?quoteId=q-1");
 
@@ -268,6 +284,7 @@ describe("GET /api/borrower/payoff-quote — engine, session, recorded", () => {
     expect(row.goodThroughDate).toBe("2026-08-15");
     expect(row.payoffDate).toBe("2026-08-15");
     expect(row.totalPayoffCents).toBe(expected.totalPayoffCents);
+    expect(row.lateFeesOutstandingCents).toBe(2500);
     expect(row.engineVersion).toBe(expected.engineVersion);
     expect(row.engineInputJson.accrualStartDate).toBe("2026-08-03");
     expect(row.notes).toBe("borrower_session:1");

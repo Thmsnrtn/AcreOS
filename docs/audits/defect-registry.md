@@ -2517,18 +2517,46 @@ Resolving commits: (this branch, round 3 batch 2)
 ### DEFECT-0099
 Title: Serviced notes cannot separate late fees assessed from late fees collected
 Severity: P2
-Status: OPEN
+Status: FIXED (founder ruling 2026-09-29 #6 — an assessed-fee ledger)
 Surfaced by lenses: research report §24, DEFECT-0097's repair
 Description: `payments.late_fee_amount` is fees COLLECTED. No serviced-note
-record carries fees ASSESSED and still owed, so every serviced payoff quote
-must pass `lateFeesOutstandingCents = 0` and say so (the acquired book records
-the same limitation at `server/routes-notes.ts` `payoffResponseBody`).
-Evidence: `server/routes-borrower.ts` payoff-quote route (comment at the
-engine inputs); `server/routes-notes.ts` `lateFeesOutstandingNote`.
-Remediation plan: An assessed-late-fee ledger on the serviced book, or an
-explicit decision that serviced notes never carry them. Refuse, don't estimate,
-meanwhile.
-Resolving commits: —
+record carried fees ASSESSED and still owed, so every serviced payoff quote
+had to pass `lateFeesOutstandingCents = 0` and say so. Worse, found while
+fixing it: every posting path (portal Checkout, Payment Link, legacy verify)
+wrote a day-count fee into `late_fee_amount` as COLLECTED while the whole
+payment was split to principal and interest — a collection no money made,
+which fed the annual interest report and 1098 late-fee totals.
+Evidence: `server/services/notes/servicedLateFees.ts` (new);
+`server/services/borrower/portalPaymentPosting.ts`;
+`server/services/achAutopay.ts`; `server/routes-borrower.ts`;
+`server/services/notes/servicedNotePayoff.ts`;
+`server/services/periodicStatements/index.ts`;
+`server/jobs/servicedLateFeeJob.ts`.
+Remediation: A fee is ASSESSED into `late_fee_assessments` (loan_type
+'note', one row per installment by its unique period) when grace passes on an
+installment not paid in full, by the existing §1026.36(c)(2) non-pyramiding
+rule (`shouldAssessLateFee`) — daily by `serviced_late_fee_assessment`
+(13:00 UTC, worker-only, skips orgs whose borrower servicing has ended) and
+again at every posting and payoff quote. A payment COLLECTS toward fees only
+what EXCEEDS the scheduled installment (`feeFromExcessCents`); the fee never
+makes an installment short. Owed = assessed − collected, floored at 0 —
+legacy rows that recorded a "collected" fee nothing assessed can only lower
+what is owed, never raise it. Payoff quotes (JSON, PDF "Late fees owed",
+borrower portal, agent skill) and periodic statements (amount due,
+§1026.41(d)(2) fees line, a "Late fee charged" transaction per assessment in
+the cycle) carry what is owed. `computeAppliedLateFeeCents` (the day-count
+"collected" fee) is deleted. The acquired book's `payoffResponseBody` is
+unchanged (a separate ledger, DEFECT-0097's note stands there).
+Falsified: `tests/unit/servicedLateFeeLedger.test.ts` (assessment boundary,
+idempotency, owed = assessed − collected with org/loan_type/status
+predicates, excess-only collection); `borrowerPortalPaymentPosting.test.ts`
+(1)/(1b)/(1c) — an installment-sized late payment now records `0` collected
+and ONE assessment (RED before: "25" collected); `borrowerPayoffQuoteRoute.test.ts`
+(6) — the owed fee is in the total and on the PDF (RED before: 0 and "not
+tracked"); `tenancyResolveById2.test.ts` — another org's assessment on the
+same loan id never reaches the statement (mutation: dropping the org
+predicate goes red); `paymentLinkPostsThroughSharedRule.test.ts` (1).
+Resolving commits: batch F (this commit)
 
 ### DEFECT-0100
 Title: Legacy payoff surfaces still compute off the one engine
@@ -5282,8 +5310,8 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 8   | 8     |
-| FIXED  | 14  | 91  | 69  | 174   |
+| OPEN   | 0   | 0   | 7   | 7     |
+| FIXED  | 14  | 91  | 70  | 175   |
 | DEFERRED | 0 | 2   | 0   | 2     |
 | **Total** | **14** | **93** | **77** | **184** |
 

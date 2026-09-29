@@ -340,11 +340,20 @@ vi.mock("../../server/services/fieldEncryption", () => ({
   encrypt: (s: string) => `enc:${s}`,
 }));
 
+// The owed-fee total sums a ROUND() expression this fake does not evaluate;
+// its own org predicates are pinned in servicedLateFeeLedger.test.ts. The
+// in-cycle "Late fee charged" read below runs against the fake for real.
+vi.mock("../../server/services/notes/servicedLateFees", async (orig) => ({
+  ...(await orig<typeof import("../../server/services/notes/servicedLateFees")>()),
+  outstandingServicedLateFeesCents: async () => 0,
+}));
+
 // ============================================================================
 
 import { achMandates } from "@shared/schema/ach-autopay";
 import { titleOrders, titlePartners, notes } from "@shared/schema";
 import {
+  lateFeeAssessments,
   paymentApplications,
   periodicStatements as periodicStatementsTable,
   periodicStatementSkips,
@@ -361,6 +370,7 @@ for (const t of [
   periodicStatementsTable,
   periodicStatementSkips,
   acquiredNotes,
+  lateFeeAssessments,
 ]) register(t);
 
 // Loaded in beforeAll, not statically: a static import would pull
@@ -601,6 +611,18 @@ describe("computeStatementFields sums only the caller's org", () => {
         appliedToSuspenseCents: 0,
       },
     ];
+    store[getTableName(lateFeeAssessments)] = [
+      {
+        // ORG_B's fee on ITS loan #7, charged in this cycle.
+        id: "lfa-b",
+        organizationId: ORG_B,
+        loanId: SHARED_LOAN_ID,
+        loanType: "note",
+        status: "assessed",
+        assessedAt: new Date("2026-08-12T00:00:00.000Z"),
+        feeAmountCents: 2500,
+      },
+    ];
   });
 
   it("neither the cycle breakdown nor the YTD totals include the other org", async () => {
@@ -628,6 +650,23 @@ describe("computeStatementFields sums only the caller's org", () => {
     // The transactions array is rendered onto the borrower's statement; one
     // foreign row here is a disclosed transaction that never happened.
     expect((row.transactions as unknown[]).length).toBe(1);
+  });
+
+  it("the caller's own late fee IS listed — the fee read is not vacuously empty", async () => {
+    store[getTableName(lateFeeAssessments)].push({
+      id: "lfa-a",
+      organizationId: ORG_A,
+      loanId: SHARED_LOAN_ID,
+      loanType: "note",
+      status: "assessed",
+      assessedAt: new Date("2026-08-12T00:00:00.000Z"),
+      feeAmountCents: 2500,
+    });
+    const result = await generateStatementsForCycle(ORG_A, new Date("2026-08-16T00:00:00.000Z"));
+    expect(result.errors).toEqual([]);
+    const [row] = store[getTableName(periodicStatementsTable)];
+    const fees = (row.transactions as Array<{ label: string; amountCents: number }>).filter((t) => t.label === "Late fee charged");
+    expect(fees).toEqual([expect.objectContaining({ amountCents: 2500 })]);
   });
 });
 

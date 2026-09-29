@@ -104,35 +104,14 @@ export function splitPaymentCents(input: SplitPaymentInput): SplitPaymentResult 
 }
 
 // ---------------------------------------------------------------------------
-// Late fee — computed inside the same withTransaction as the payment write.
-// Returns 0 inside grace, configuredLateFeeCents otherwise.
-//
-// Boundary: payment posted EXACTLY at dueDate + gracePeriodDays is still
-// inside grace (the borrower had the full grace period). Only payments
-// strictly LATER than that incur the fee.
+// Late fee — REMOVED 2026-09-29 (founder ruling #6, DEFECT-0099).
+// `computeAppliedLateFeeCents` computed a fee from days late at payment time,
+// and every posting path wrote it as COLLECTED while the whole payment went
+// to principal and interest. Serviced-note late fees are now an assessed
+// ledger decided by the §1026.36(c)(2) rule `shouldAssessLateFee`
+// (services/lateFees) and collected only from money above the installment
+// (services/notes/servicedLateFees.ts).
 // ---------------------------------------------------------------------------
-
-export interface ComputeLateFeeInput {
-  dueDate: Date;
-  paymentDate: Date;
-  gracePeriodDays: number;
-  configuredLateFeeCents: number;
-}
-
-export function computeAppliedLateFeeCents(input: ComputeLateFeeInput): number {
-  const { dueDate, paymentDate, gracePeriodDays, configuredLateFeeCents } = input;
-
-  if (configuredLateFeeCents <= 0) return 0;
-  if (gracePeriodDays < 0) return 0;
-
-  const MS_PER_DAY = 24 * 60 * 60 * 1000;
-  const daysLate = Math.floor(
-    (paymentDate.getTime() - dueDate.getTime()) / MS_PER_DAY,
-  );
-
-  if (daysLate <= gracePeriodDays) return 0;
-  return configuredLateFeeCents;
-}
 
 // ===========================================================================
 // PAYOFF — THE ONE ENGINE (Wave C "Money moves", agent C3)

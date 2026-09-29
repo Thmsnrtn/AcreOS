@@ -144,6 +144,17 @@ vi.mock("../../server/services/emailService", () => ({
     }),
   },
 }));
+// Founder ruling 2026-09-29 #6: the late fee is ASSESSED to the ledger, and a
+// payment only COLLECTS toward fees what exceeds the installment.
+const LEDGER = vi.hoisted(() => ({ assessed: [] as Array<{ noteId: number }> }));
+vi.mock("../../server/services/notes/servicedLateFees", async (orig) => ({
+  ...(await orig<typeof import("../../server/services/notes/servicedLateFees")>()),
+  assessServicedNoteLateFee: async (note: { id: number }) => {
+    LEDGER.assessed.push({ noteId: note.id });
+    return { assessed: true, alreadyExisted: false, feeCents: 2500, reason: "test" };
+  },
+  outstandingServicedLateFeesCents: async () => 2500,
+}));
 vi.mock("../../server/services/activation", () => ({ recordActivationEventAsync: vi.fn() }));
 vi.mock("../../server/stripeClient", () => ({
   STRIPE_API_VERSION: "2026-02-25.clover",
@@ -200,6 +211,7 @@ async function fire(event: any) {
 describe("DEFECT-0116 — Payment Link payments post through the one rule, keyed on the session", () => {
   beforeEach(() => {
     resetState();
+    LEDGER.assessed = [];
     LAST_TXN.id = "cs_link_1";
   });
 
@@ -214,9 +226,11 @@ describe("DEFECT-0116 — Payment Link payments post through the one rule, keyed
     const split = splitPaymentCents({ paymentAmountCents: 50000, currentBalanceCents: 1_000_000, annualRateBps: 600 });
     expect(Number(row.principalAmount)).toBe(split.principalCents / 100);
     expect(Number(row.interestAmount)).toBe(split.interestCents / 100);
-    // 19 days late against a 10-day grace → the note's stated $25 fee, which
-    // the old PaymentIntent writer never applied.
-    expect(Number(row.lateFeeAmount)).toBe(25);
+    // 19 days late against a 10-day grace → the note's $25 fee is ASSESSED
+    // (the old PaymentIntent writer never recorded one). An installment-sized
+    // payment has no excess, so none of it is collected as a fee.
+    expect(LEDGER.assessed).toEqual([{ noteId: 77 }]);
+    expect(Number(row.lateFeeAmount)).toBe(0);
 
     expect(state.events).toHaveLength(1);
     expect(state.events[0].type).toBe("payment.received");

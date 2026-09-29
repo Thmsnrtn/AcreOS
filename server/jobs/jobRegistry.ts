@@ -212,6 +212,11 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   // borrowers told to pay the lender directly. Critical: a dark pass means
   // borrowers whose portal payments have stopped are never told where to pay.
   { name: "borrower_servicing_wind_down", intervalMs: DAY, critical: true, cron: "0 14 * * *" },
+  // Founder ruling 2026-09-29 #6 (DEFECT-0099) — serviced-note late-fee
+  // assessment. Non-critical: a dark pass delays a fee's record by a day (a
+  // late posting or payoff quote assesses the installment itself); the
+  // deadman still surfaces the absence.
+  { name: "serviced_late_fee_assessment", intervalMs: DAY, critical: false, cron: "0 13 * * *" },
   // Audit Wave 1 (buy_and_hold beta→core) — daily lease-expiry scan turning
   // active leases ~60 days from their end into mesh events + the two lease
   // workflow events (renewal countdown + expiring). Non-critical: a dark scan

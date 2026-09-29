@@ -1587,9 +1587,9 @@ const processPayoffSkill: Skill = {
             dayCountConvention: quote.dayCountConvention,
           },
           goodThroughDate: quote.payoffDate,
-          lateFeesOutstanding: null,
-          lateFeesOutstandingNote:
-            "Outstanding late fees are not tracked separately from collected late fees in this ledger, so they are excluded from this total rather than estimated.",
+          // From the assessed-fee ledger (ruling 2026-09-29 #6, DEFECT-0099).
+          lateFeesOutstanding: dollars(quote.lateFeesOutstandingCents),
+          lateFeesOutstandingNote: "Late fees assessed under the note and unpaid as of today; included in the payoff amount.",
           ...(discountRequested
             ? { discountNote: "No early-payoff discount was applied: the note carries no such term. Any concession is the lender's decision, made outside this quote." }
             : {}),

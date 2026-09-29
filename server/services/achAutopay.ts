@@ -112,11 +112,11 @@ import {
 } from "@shared/schema/ach-autopay";
 import { centsFromDecimal } from "@shared/finance/cents";
 import { logger } from "../utils/logger";
-import { splitPaymentCents, computeAppliedLateFeeCents } from "./notePaymentMath";
+import { splitPaymentCents } from "./notePaymentMath";
+import { assessServicedNoteLateFee } from "./notes/servicedLateFees";
 import { addMonths } from "../utils/dateUtils";
 import { emitDurablePaymentEvent } from "./workflow-engine";
 import { isCategorySimulated } from "../utils/simulationMode";
-import { noteGracePeriodDays } from "@shared/notes/delinquency";
 import { lenderServicingPhase, type ServicingPhase } from "./borrower/servicingPhase";
 import {
   // `classifyAchReturn` is deliberately NOT imported: the two helpers below
@@ -1220,29 +1220,25 @@ export const dbAchAutopayStore: AchAutopayStore = {
     const split = splitPaymentCents({ paymentAmountCents: amountCents, currentBalanceCents, annualRateBps });
 
     const dueDate = attempt.dueDate;
-    // Same correction as routes-borrower's two payment handlers, and this one
-    // runs UNATTENDED: an autopay settlement assessing a late fee under a
-    // ten-day clause the note does not contain, with nobody in the loop to
-    // notice. An applied fee is money, recorded, shown to the borrower, and
-    // not re-derivable — so an unstated term means there is no fee to apply,
-    // not a term to invent. (The aging sweep's opposite choice, ZERO, is for
-    // an internal signal that CAN be re-derived; see acquiredNoteAging.ts:291.)
-    const statedGrace = noteGracePeriodDays(note.gracePeriodDays);
-    const configuredLateFeeCents = centsFromDecimal(note.lateFee);
-    const lateFeeCents =
-      statedGrace === null
-        ? 0
-        : computeAppliedLateFeeCents({
-            dueDate,
-            paymentDate: settledAt,
-            gracePeriodDays: statedGrace,
-            configuredLateFeeCents,
-          });
-    if (statedGrace === null && configuredLateFeeCents > 0) {
-      logger.info("note_late_fee_skipped_grace_unstated", {
-        metadata: { noteId: note.id, source: "ach_autopay", configuredLateFeeCents },
-      });
-    }
+    // Late fees (founder ruling 2026-09-29 #6, DEFECT-0099). A settlement
+    // landing after grace records that installment's fee as ASSESSED (the
+    // shared ledger; idempotent with the daily job). It COLLECTS nothing: the
+    // debit is the scheduled installment plus service fee and escrow, so no
+    // part of it is above the installment — the fee stays owed rather than
+    // being written as "collected" out of money that went to principal and
+    // interest. An unstated grace period still means no fee at all.
+    await assessServicedNoteLateFee(
+      {
+        id: note.id,
+        organizationId: note.organizationId,
+        nextPaymentDate: dueDate,
+        gracePeriodDays: note.gracePeriodDays,
+        lateFee: note.lateFee,
+        monthlyPayment: note.monthlyPayment,
+      },
+      settledAt,
+    );
+    const lateFeeCents = 0;
 
     const outcome = await withTransaction(async (tx) => {
       const inserted = await tx

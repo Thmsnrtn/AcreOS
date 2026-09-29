@@ -29,9 +29,9 @@
 
 import { describe, it, expect } from "vitest";
 
+import { shouldAssessLateFee } from "../../server/services/lateFees";
 import {
   splitPaymentCents,
-  computeAppliedLateFeeCents,
   computePayoffCents,
   insertPaymentIdempotentCents,
   type PaymentLedgerEntry,
@@ -186,48 +186,42 @@ describe("Workstream B — payoff math (live ledger, not schedule replay)", () =
 });
 
 // ---------------------------------------------------------------------------
-// (b) Late fee — applied when paymentDate > dueDate + gracePeriodDays.
+// (b) Late fee — owed when an installment is not paid in full by
+// dueDate + gracePeriodDays. Since ruling 2026-09-29 #6 (DEFECT-0099) the
+// decision is the §1026.36(c)(2) rule `shouldAssessLateFee`, which records an
+// ASSESSED fee; the day-count function these cases pinned
+// (computeAppliedLateFeeCents) wrote a "collected" fee no money paid and is
+// gone. The boundaries it held are held here, by the rule that replaced it.
 // ---------------------------------------------------------------------------
 
-describe("Workstream B — late fee application", () => {
-  it("applies lateFee in cents when payment posts after grace period — (b)", () => {
-    // $25.00 late fee, 10-day grace, payment 12 days after due.
-    const dueDate = new Date("2026-03-01T00:00:00Z");
-    const paymentDate = new Date("2026-03-13T00:00:00Z"); // day 12
-    const lateFeeCents = 25_00; // $25.00
-    const gracePeriodDays = 10;
-
-    const applied = computeAppliedLateFeeCents({
-      dueDate,
-      paymentDate,
-      gracePeriodDays,
-      configuredLateFeeCents: lateFeeCents,
+describe("Workstream B — late fee assessment boundaries", () => {
+  const decide = (evaluationDate: Date, credited = 0) =>
+    shouldAssessLateFee({
+      periodStart: new Date("2026-03-01T00:00:00Z"),
+      periodEnd: new Date("2026-04-01T00:00:00Z"),
+      dueDate: new Date("2026-03-01T00:00:00Z"),
+      gracePeriodDays: 10,
+      periodicPaymentAmountCents: 100_00,
+      amountCreditedToCycleCents: credited,
+      evaluationDate,
+      configuredLateFeeCents: 25_00,
     });
-    expect(applied).toBe(2500);
+
+  it("assesses the fee in cents once grace has passed on an unpaid installment — (b)", () => {
+    const r = decide(new Date("2026-03-13T00:00:00Z")); // day 12
+    expect(r).toMatchObject({ shouldAssess: true, feeAmountCents: 2500 });
   });
 
-  it("does NOT apply lateFee when payment posts within grace — (b)", () => {
-    const dueDate = new Date("2026-03-01T00:00:00Z");
-    const paymentDate = new Date("2026-03-09T00:00:00Z"); // day 8 — inside grace
-    const applied = computeAppliedLateFeeCents({
-      dueDate,
-      paymentDate,
-      gracePeriodDays: 10,
-      configuredLateFeeCents: 2500,
-    });
-    expect(applied).toBe(0);
+  it("does NOT assess within grace — (b)", () => {
+    expect(decide(new Date("2026-03-09T00:00:00Z")).shouldAssess).toBe(false); // day 8
   });
 
-  it("does NOT apply lateFee on the exact grace boundary — (b)", () => {
-    const dueDate = new Date("2026-03-01T00:00:00Z");
-    const paymentDate = new Date("2026-03-11T00:00:00Z"); // day 10 — last grace day
-    const applied = computeAppliedLateFeeCents({
-      dueDate,
-      paymentDate,
-      gracePeriodDays: 10,
-      configuredLateFeeCents: 2500,
-    });
-    expect(applied).toBe(0);
+  it("does NOT assess on the exact grace boundary — (b)", () => {
+    expect(decide(new Date("2026-03-11T00:00:00Z")).shouldAssess).toBe(false); // day 10
+  });
+
+  it("never assesses on an installment paid in full, however late the evaluation — (b)", () => {
+    expect(decide(new Date("2026-05-01T00:00:00Z"), 100_00).shouldAssess).toBe(false);
   });
 });
 

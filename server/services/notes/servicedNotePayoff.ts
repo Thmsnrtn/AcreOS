@@ -26,6 +26,7 @@ import {
   type PayoffQuote,
 } from "../notePaymentMath";
 import { dayInZone } from "../form1098Batch";
+import { assessServicedNoteLateFee, outstandingServicedLateFeesCents } from "./servicedLateFees";
 
 export async function quoteServicedNotePayoff(args: {
   note: Note;
@@ -54,6 +55,8 @@ export async function quoteServicedNotePayoff(args: {
   // posted, and which day an instant fell on is a question about the
   // LENDER's zone — the same rule Form 1098 Box 1 uses (dayInZone's header
   // has what answering it with the server's zone cost).
+  await assessServicedNoteLateFee(note, new Date());
+  const lateFeesOwedCents = await outstandingServicedLateFeesCents(note.organizationId, note.id);
   const input = payoffInputsFromServicedNote({
     note: {
       currentBalance: note.currentBalance,
@@ -66,13 +69,15 @@ export async function quoteServicedNotePayoff(args: {
     })),
     payoffDate,
     // The servicing book has no unapplied-funds column (an overpayment's
-    // residue is recorded as an activity, not a balance — DEFECT-0098) and
-    // does not separate late fees ASSESSED from late fees COLLECTED
-    // (`payments.late_fee_amount` is collected — DEFECT-0099). 0 here is the
-    // absence of a tracked term, not an estimate — callers say so rather than
-    // asserting nothing is owed.
+    // residue is recorded as an activity, not a balance — DEFECT-0098); 0
+    // there is the absence of a tracked term, and callers say so.
     unappliedCreditCents: 0,
-    lateFeesOutstandingCents: 0,
+    // Late fees OWED today: assessed minus collected, from the ledger
+    // (founder ruling 2026-09-29 #6, DEFECT-0099). The current installment is
+    // assessed first if grace has already passed, so the quote never misses
+    // a fee the daily job simply has not reached yet. A fee that would only
+    // arise after today is not owed, and is not quoted.
+    lateFeesOutstandingCents: lateFeesOwedCents,
     // No org-configured payoff fee exists for serviced notes.
     payoffFeeCents: 0,
   });

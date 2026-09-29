@@ -10,7 +10,6 @@ import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 import {
   splitPaymentCents,
-  computeAppliedLateFeeCents,
   computePayoffQuote,
   payoffInputsFromServicedNote,
   parseIsoDateUtc,
@@ -65,7 +64,11 @@ import {
   buildBorrowerCardCheckoutParams,
 } from "./services/customerMoneyRouting";
 import { isCategorySimulated } from "./utils/simulationMode";
-import { noteGracePeriodDays } from "@shared/notes/delinquency";
+import {
+  assessServicedNoteLateFee,
+  feeFromExcessCents,
+  outstandingServicedLateFeesCents,
+} from "./services/notes/servicedLateFees";
 import { lenderServicingPhase, servicingEndedBorrowerMessage } from "./services/borrower/servicingPhase";
 import { getClientIp, clientIpOrNull } from "./utils/clientIp";
 
@@ -418,6 +421,7 @@ async function renderBorrowerPayoffQuotePdf(
   if (row.unappliedCreditCents > 0) {
     doc.text(`Unapplied credit:      -${dollars(row.unappliedCreditCents)}`);
   }
+  doc.text(`Late fees owed:        ${dollars(row.lateFeesOutstandingCents)}`);
   doc.text(`Payoff fee:            ${dollars(row.payoffFeeCents)}`);
   doc.moveDown(0.5);
   doc.fontSize(16).text(`Total payoff amount:   ${dollars(row.totalPayoffCents)}`);
@@ -429,14 +433,15 @@ async function renderBorrowerPayoffQuotePdf(
   doc.text(
     `This amount is good through ${row.goodThroughDate}. Interest accrues at ${dollars(row.perDiemInterestCents)} per day after that date — ask your lender for an updated quote if you will pay later.`,
   );
-  doc.text(
-    "Outstanding late fees are not tracked separately from collected late fees in this ledger, so they are excluded from this total rather than estimated.",
-  );
+  doc.text(BORROWER_LATE_FEES_NOTE);
   doc.moveDown();
   doc.text(`Engine: ${row.engineVersion} · Generated: ${new Date().toISOString()}`, { align: "center" });
 
   doc.end();
 }
+
+/** What a payoff quote says about late fees (ruling 2026-09-29 #6, DEFECT-0099). */
+const BORROWER_LATE_FEES_NOTE = "Late fees owed are the fees assessed under your note that are unpaid as of today. They are included in this total.";
 
 export function registerBorrowerRoutes(app: Express): void {
   const api = app;
@@ -928,56 +933,32 @@ export function registerBorrowerRoutes(app: Express): void {
       // `notes`/`payments` schema) — we only stringify at the writer
       // boundary so the math stays drift-free up to that point.
       const paymentAmountCents = Math.round(paymentAmount * 100);
+
+      // Late fee — the shared ledger rule (founder ruling 2026-09-29 #6,
+      // DEFECT-0099), the same as every other borrower writer: a payment
+      // arriving after grace records the installment's fee as ASSESSED, and
+      // only money ABOVE the scheduled installment collects it. This used to
+      // write the day-count fee as "collected" while the whole amount went
+      // to principal and interest. No grace period stated = no fee.
+      const paymentDate = new Date();
+      const dueDate = note.nextPaymentDate || new Date();
+      await assessServicedNoteLateFee(note, paymentDate);
+      const lateFeeAppliedCents = feeFromExcessCents({
+        amountCents: paymentAmountCents,
+        scheduledCents: note.monthlyPayment != null ? Math.round(Number(note.monthlyPayment) * 100) : null,
+        outstandingFeeCents: await outstandingServicedLateFeesCents(note.organizationId, note.id),
+      });
+      const lateFeeAmount = lateFeeAppliedCents / 100;
+
       const currentBalanceCents = Math.round(Number(note.currentBalance || 0) * 100);
       const annualRateBps = Math.round(Number(note.interestRate || 0) * 100);
       const split = splitPaymentCents({
-        paymentAmountCents,
+        paymentAmountCents: paymentAmountCents - lateFeeAppliedCents,
         currentBalanceCents,
         annualRateBps,
       });
       const principalAmount = split.principalCents / 100;
       const interestAmount = split.interestCents / 100;
-
-      // Late fee — assessed when payment posts past gracePeriodDays of
-      // the next-payment due date. Configured per-note via note.lateFee
-      // ($) + note.gracePeriodDays. Always 0 when the borrower paid
-      // inside grace.
-      const paymentDate = new Date();
-      const dueDate = note.nextPaymentDate || new Date();
-      const configuredLateFeeCents = Math.round(Number(note.lateFee || 0) * 100);
-      // WAS a hardcoded ten-day fallback. THIS ASSESSES A FEE AGAINST A
-      // BORROWER, so an invented term is money taken under a clause the note
-      // does not contain. Ten days was invented in the borrower's favour; zero
-      // would be invented against them. Neither is a term anyone agreed to.
-      //
-      // The repo already resolved this asymmetry deliberately, and this site
-      // was outside the population that enforced it: the aging sweep measures
-      // an unstated term as ZERO because an internal signal can be re-derived
-      // (acquiredNoteAging.ts:291, and it LOGS the assumption), while a
-      // generated instrument declines to state a term at all
-      // (routes-documents.ts:23). An APPLIED FEE is the second kind, not the
-      // first — money, recorded, shown to the borrower, not re-derivable — so
-      // when the record states no grace period there is no late fee to apply.
-      const statedGrace = noteGracePeriodDays(note.gracePeriodDays);
-      const lateFeeAppliedCents =
-        statedGrace === null
-          ? 0
-          : computeAppliedLateFeeCents({
-              dueDate,
-              paymentDate,
-              gracePeriodDays: statedGrace,
-              configuredLateFeeCents,
-            });
-      if (statedGrace === null && configuredLateFeeCents > 0) {
-        logger.info("note_late_fee_skipped_grace_unstated", {
-          metadata: {
-            noteId: note.id,
-            organizationId: note.organizationId,
-            configuredLateFeeCents,
-          },
-        });
-      }
-      const lateFeeAmount = lateFeeAppliedCents / 100;
 
       // Schedule mark-paid still uses the schedule index as before — the
       // legacy borrower portal surfaces the schedule for visual progress,
@@ -1739,10 +1720,9 @@ export function registerBorrowerRoutes(app: Express): void {
         perDiemInterestCents: quote.perDiemInterestCents,
         unappliedCreditCents: quote.unappliedCreditCents,
         payoffFeeCents: quote.payoffFeeCents,
-        // Not tracked, therefore not asserted as zero-owed. Refuse, don't fabricate.
-        lateFeesOutstandingCents: null as number | null,
-        lateFeesOutstandingNote:
-          "Outstanding late fees are not tracked separately from collected late fees in this ledger, so they are excluded from the payoff total rather than estimated.",
+        // From the assessed-fee ledger (ruling 2026-09-29 #6, DEFECT-0099).
+        lateFeesOutstandingCents: quote.lateFeesOutstandingCents,
+        lateFeesOutstandingNote: BORROWER_LATE_FEES_NOTE,
         totalPayoffCents: quote.totalPayoffCents,
         engineVersion: quote.engineVersion,
         pdfUrl: `/api/borrower/payoff-quote?quoteId=${encodeURIComponent(quoteRow.id)}`,

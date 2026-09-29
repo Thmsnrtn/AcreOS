@@ -116,6 +116,8 @@ type PayoffQuote = {
   perDiemInterestCents: number;
   payoffFeeCents: number;
   totalPayoffCents: number;
+  /** Late fees assessed under the note and unpaid today — included in the total. */
+  lateFeesOutstandingCents: number;
   lateFeesOutstandingNote: string;
   pdfUrl: string;
 };
@@ -1895,6 +1897,14 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
                     ${(payoffQuote.accruedInterestCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </dd>
                 </div>
+                {payoffQuote.lateFeesOutstandingCents > 0 && (
+                  <div className="flex justify-between py-2 border-b" data-testid="row-payoff-late-fees">
+                    <dt className="text-muted-foreground">Late fees owed</dt>
+                    <dd className="font-mono font-medium tabular-nums">
+                      ${(payoffQuote.lateFeesOutstandingCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </dd>
+                  </div>
+                )}
                 {payoffQuote.payoffFeeCents > 0 && (
                   <div className="flex justify-between py-2 border-b">
                     <dt className="text-muted-foreground">Payoff fee</dt>

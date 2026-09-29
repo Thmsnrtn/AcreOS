@@ -82,6 +82,14 @@ vi.mock("../../server/db", () => ({
   withTransaction: (fn: (tx: unknown) => Promise<unknown>) => withTransactionSpy(fn),
 }));
 
+// The late-fee ledger (ruling 2026-09-29 #6) is tested on its own; this note
+// states no grace period, so nothing is assessed and nothing is owed.
+vi.mock("../../server/services/notes/servicedLateFees", async (orig) => ({
+  ...(await orig<typeof import("../../server/services/notes/servicedLateFees")>()),
+  assessServicedNoteLateFee: async () => ({ assessed: false, alreadyExisted: false, feeCents: 0, reason: "no grace" }),
+  outstandingServicedLateFeesCents: async () => 0,
+}));
+
 vi.mock("../../server/auth", () => ({
   isAuthenticated: (_q: unknown, _s: unknown, next: () => void) => next(),
 }));

@@ -45,10 +45,14 @@ import { addMonths } from "../../utils/dateUtils";
 import { emitPaymentEvent } from "../workflow-engine";
 import {
   splitPaymentCents,
-  computeAppliedLateFeeCents,
   decimalDollarsToCents,
   percentStringToBps,
 } from "../notePaymentMath";
+import {
+  assessServicedNoteLateFee,
+  feeFromExcessCents,
+  outstandingServicedLateFeesCents,
+} from "../notes/servicedLateFees";
 
 // ─────────────────────────────────────────────────────────────────────
 // Workflow payment events (Wave B — "wire the engine")
@@ -252,14 +256,40 @@ export async function postBorrowerPortalCheckoutPayment(
       ? stripeSession.amount_total
       : decimalDollarsToCents(stripeSession.metadata?.paymentAmount ?? note.monthlyPayment);
 
+  // ── Late fee — assessed, then paid only from money ABOVE the installment
+  // (founder ruling 2026-09-29 #6, DEFECT-0099). A payment arriving after
+  // grace on an installment not yet paid in full records that installment's
+  // fee as ASSESSED (idempotent — the daily job may already have). What this
+  // payment COLLECTS toward fees is only what exceeds the scheduled
+  // installment, up to what is owed; the installment is covered first, so a
+  // fee never makes a payment short (§1026.36(c)(2)). This used to write the
+  // day-count fee as "collected" while the whole amount went to principal
+  // and interest — a collection no money made.
+  const paymentDate = now;
+  const dueDate = note.nextPaymentDate ?? now;
+  const scheduledCents =
+    note.monthlyPayment != null ? decimalDollarsToCents(note.monthlyPayment) : null;
+  await assessServicedNoteLateFee(note, now);
+  if (noteGracePeriodDays(note.gracePeriodDays) === null && decimalDollarsToCents(note.lateFee) > 0) {
+    logger.info("note_late_fee_skipped_grace_unstated", {
+      metadata: { noteId: note.id, organizationId: note.organizationId, configuredLateFeeCents: decimalDollarsToCents(note.lateFee) },
+    });
+  }
+  const lateFeeCents = feeFromExcessCents({
+    amountCents,
+    scheduledCents,
+    outstandingFeeCents: await outstandingServicedLateFeesCents(note.organizationId, note.id),
+  });
+
   // ── Split — integer cents, exact decimal→cents conversion ───────────
   // `decimalDollarsToCents` / `percentStringToBps` replace the earlier
   // `Math.round(Number(x) * 100)`: identical for two-decimal balances and
   // whole-bp rates, exact (rather than float-rounded) for anything finer.
+  // What went to fees is not split into principal and interest.
   const currentBalanceCents = decimalDollarsToCents(note.currentBalance);
   const annualRateBps = percentStringToBps(note.interestRate);
   const split = splitPaymentCents({
-    paymentAmountCents: amountCents,
+    paymentAmountCents: amountCents - lateFeeCents,
     currentBalanceCents,
     annualRateBps,
   });
@@ -269,30 +299,6 @@ export async function postBorrowerPortalCheckoutPayment(
   // commit the lender gets an activity entry naming the unapplied excess, the
   // borrower's receipt says so, and the result carries it. Returning or
   // applying it is the lender's call — moving customer money is not ours.
-
-  // ── Late fee ────────────────────────────────────────────────────────
-  // THIS ASSESSES A FEE AGAINST A BORROWER. When the record states no grace
-  // period there is no late fee to apply: an invented term is money taken
-  // under a clause the note does not contain (see routes-documents.ts:23 for
-  // the same refusal on the generated instrument).
-  const paymentDate = now;
-  const dueDate = note.nextPaymentDate ?? now;
-  const configuredLateFeeCents = decimalDollarsToCents(note.lateFee);
-  const statedGrace = noteGracePeriodDays(note.gracePeriodDays);
-  const lateFeeCents =
-    statedGrace === null
-      ? 0
-      : computeAppliedLateFeeCents({
-          dueDate,
-          paymentDate,
-          gracePeriodDays: statedGrace,
-          configuredLateFeeCents,
-        });
-  if (statedGrace === null && configuredLateFeeCents > 0) {
-    logger.info("note_late_fee_skipped_grace_unstated", {
-      metadata: { noteId: note.id, organizationId: note.organizationId, configuredLateFeeCents },
-    });
-  }
 
   // ── Idempotent write ────────────────────────────────────────────────
   // INSERT … ON CONFLICT (transaction_id) DO NOTHING RETURNING * inside one
@@ -400,8 +406,6 @@ export async function postBorrowerPortalCheckoutPayment(
   // `notes.monthly_payment` is NOT NULL in the schema; the null branch exists
   // for fixtures and legacy rows and applies the pre-existing behaviour
   // (the event's `isPartial` is null there — no verdict is invented).
-  const scheduledCents =
-    note.monthlyPayment != null ? decimalDollarsToCents(note.monthlyPayment) : null;
   const isPartial = scheduledCents !== null && amountCents < scheduledCents;
 
   const schedule = note.amortizationSchedule || [];

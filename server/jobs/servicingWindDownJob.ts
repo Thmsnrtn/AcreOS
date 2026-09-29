@@ -9,8 +9,15 @@
  * Registered by runScheduledJobs() — worker process only (ruling #5).
  */
 import { trackInterval, withJobLock, jobLog as log } from "../utils/jobRuntime";
+import { startServicedLateFeeJob } from "./servicedLateFeeJob";
 
-export function startServicingWindDownJob() {
+/** The borrower-servicing duties the worker runs daily (rulings #3 and #6). */
+export function startBorrowerServicingJobs() {
+  startServicingWindDownJob();
+  startServicedLateFeeJob();
+}
+
+function startServicingWindDownJob() {
   const ONE_HOUR = 60 * 60 * 1000;
   const TTL_SECONDS = 15 * 60;
 

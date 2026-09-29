@@ -36,7 +36,7 @@ import { startAcquiredNoteAgingJob } from "./acquiredNoteAging"; // acquired-not
 // job-group (S3 decomposition). startLeaseExpiryDetectorJob is the net-new
 // buy_and_hold beta→core registration (audit Wave 1).
 import { startNotePaymentDueDetectorJob, startLeaseExpiryDetectorJob } from "./expiryDetectorJobs";
-import { startServicingWindDownJob } from "./servicingWindDownJob";
+import { startBorrowerServicingJobs } from "./servicingWindDownJob";
 import { seedFounderDecisionCardsOnStartup } from "./seedFounderDecisionCards";
 import {
   runDecisionExecutorTickBounded,
@@ -4049,7 +4049,7 @@ export async function runScheduledJobs(): Promise<void> {
   // Jarvis 2.1 (audit G2) — note payment due-date detector (daily 11:00 UTC):
   // borrower payments due-soon/overdue become mesh events + outward senses.
   startNotePaymentDueDetectorJob();
-  startServicingWindDownJob();
+  startBorrowerServicingJobs();
 
   // Audit Wave 1 (buy_and_hold beta→core) — lease-expiry detector (daily 10:00
   // UTC): active leases ~60 days from end become mesh events + fire both lease
