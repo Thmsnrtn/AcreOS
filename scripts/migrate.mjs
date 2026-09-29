@@ -226,6 +226,9 @@ END $mig0247$`,
   // 0255 — founder ruling 2026-09-29 #3 (DEFECT-0106): the borrower
   // wind-down clock starts when the subscription ended.
   `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "subscription_ended_at" timestamp`,
+  // 0256 — founder ruling 2026-09-29 #11 (DEFECT-0159): a customer deal in
+  // transaction_training names its org, so it is a comp for that org only.
+  `ALTER TABLE "transaction_training" ADD COLUMN IF NOT EXISTS "contributor_org_id" integer`,
   `CREATE INDEX IF NOT EXISTS "idx_organizations_pause_resume" ON "organizations" ("subscription_paused", "subscription_pause_ends_at")`,
   `ALTER TABLE "cancellation_surveys" ADD COLUMN IF NOT EXISTS "offered_pause" boolean DEFAULT false`,
   `ALTER TABLE "cancellation_surveys" ADD COLUMN IF NOT EXISTS "accepted_pause" boolean DEFAULT false`,

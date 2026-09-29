@@ -14,6 +14,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
+import { publicRecordTransaction } from "./services/acreOSValuation";
 
 const router = Router();
 
@@ -66,6 +67,9 @@ router.get("/benchmarks/:state/:propertyType", requireApiKey, async (req: Reques
     })
       .from(transactionTraining)
       .where(and(
+        // Public records only — a customer's deal never enters a figure
+        // served outside its org (ruling 2026-09-29 #11).
+        publicRecordTransaction(),
         eq(transactionTraining.state, state.toUpperCase()),
         eq(transactionTraining.propertyType, propertyType),
         gte(transactionTraining.saleDate, since),

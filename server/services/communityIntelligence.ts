@@ -7,6 +7,8 @@ import { db } from "../db";
 import { organizations, deals, properties } from "@shared/schema";
 import { eq, and, desc, sql, count, avg } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { consentingOrgIds } from "./sophiePrivacyGuard";
+import { MIN_DISTINCT_OPERATORS } from "./dataCoop/privacyRollup";
 
 // ── County Reviews ──────────────────────────────────────────────────
 
@@ -21,10 +23,16 @@ export interface CountyReview {
   tips: string[];
 }
 
+/**
+ * County reviews aggregate closed deals across organizations, so they follow
+ * ruling 2026-09-29 #11: only deals of orgs that have opted in, and only
+ * counties where at least MIN_DISTINCT_OPERATORS of them closed deals.
+ */
 export async function getCountyReviews(state?: string): Promise<CountyReview[]> {
-  const conditions = state
-    ? sql`p.state = ${state.toUpperCase()} AND d.status = 'closed' AND p.county IS NOT NULL`
-    : sql`d.status = 'closed' AND p.county IS NOT NULL`;
+  const consenting = [...(await consentingOrgIds())];
+  if (consenting.length < MIN_DISTINCT_OPERATORS) return [];
+  const consentingArray = sql`ARRAY[${sql.join(consenting.map((id) => sql`${id}`), sql`, `)}]::int[]`;
+  const stateFilter = state ? sql`AND p.state = ${state.toUpperCase()}` : sql``;
 
   // accepted_amount and offer_amount are numeric columns in prod — no NULLIF/cast needed
   const result = await db.execute(sql`
@@ -35,9 +43,12 @@ export async function getCountyReviews(state?: string): Promise<CountyReview[]> 
       AVG(EXTRACT(EPOCH FROM (COALESCE(d.closing_date, d.updated_at) - d.created_at)) / 86400) as avg_days
     FROM deals d
     JOIN properties p ON p.id = d.property_id
-    WHERE ${conditions}
+    WHERE d.status = 'closed' AND p.county IS NOT NULL
+      AND d.organization_id = ANY(${consentingArray})
+      ${stateFilter}
     GROUP BY p.county, p.state
-    HAVING COUNT(d.id) >= 3
+    HAVING COUNT(d.id) >= ${MIN_DISTINCT_OPERATORS}
+      AND COUNT(DISTINCT d.organization_id) >= ${MIN_DISTINCT_OPERATORS}
     ORDER BY COUNT(d.id) DESC
     LIMIT 50
   `);
@@ -63,129 +74,12 @@ export async function getCountyReviews(state?: string): Promise<CountyReview[]> 
   });
 }
 
-// ── Deal Case Studies ───────────────────────────────────────────────
-
-export interface DealCaseStudy {
-  county: string;
-  state: string;
-  acres: number;
-  buyPrice: number;
-  sellPrice: number;
-  profit: number;
-  daysToClose: number;
-  strategy: string;
-  lessonsLearned: string[];
-}
-
-export async function getAnonymizedCaseStudies(limit = 10): Promise<DealCaseStudy[]> {
-  // accepted_amount/offer_amount are numeric columns in prod — no NULLIF/cast needed
-  const result = await db.execute(sql`
-    SELECT p.county, p.state, p.size_acres,
-      COALESCE(d.offer_amount, 0) as buy_price,
-      COALESCE(d.accepted_amount, 0) as sell_price,
-      EXTRACT(EPOCH FROM (COALESCE(d.closing_date, d.updated_at) - d.created_at)) / 86400 as days
-    FROM deals d
-    JOIN properties p ON p.id = d.property_id
-    WHERE d.status = 'closed'
-      AND p.county IS NOT NULL
-      AND COALESCE(d.accepted_amount, 0) > COALESCE(d.offer_amount, 0)
-    ORDER BY (COALESCE(d.accepted_amount, 0) - COALESCE(d.offer_amount, 0)) DESC
-    LIMIT ${limit}
-  `);
-
-  return ((result as any).rows ?? []).map((r: any) => {
-    const buy = Number(r.buy_price) || 0;
-    const sell = Number(r.sell_price) || 0;
-    const profit = sell - buy;
-    const days = Math.round(Number(r.days) || 0);
-    const acres = Number(r.size_acres) || 0;
-
-    let strategy = "Cash purchase";
-    if (days < 30) strategy = "Quick flip";
-    else if (days > 180) strategy = "Hold and develop";
-    else if (profit / Math.max(buy, 1) > 0.5) strategy = "Deep value acquisition";
-
-    return {
-      county: r.county,
-      state: r.state,
-      acres: parseFloat(acres.toFixed(1)),
-      buyPrice: Math.round(buy),
-      sellPrice: Math.round(sell),
-      profit: Math.round(profit),
-      daysToClose: days,
-      strategy,
-      lessonsLearned: generateLessons(profit, days, acres),
-    };
-  });
-}
-
-function generateLessons(profit: number, days: number, acres: number): string[] {
-  const lessons: string[] = [];
-  if (days < 30) lessons.push("Fast turnaround — had buyer lined up before closing");
-  if (profit > 10000) lessons.push("Strong market research paid off");
-  if (acres > 20) lessons.push("Larger parcels can command premium per-acre pricing");
-  if (days > 90) lessons.push("Patience in marketing led to better final price");
-  if (lessons.length === 0) lessons.push("Standard acquisition with solid fundamentals");
-  return lessons;
-}
-
-// ── Mentorship Matching ─────────────────────────────────────────────
-
-export interface MentorMatch {
-  orgId: number;
-  dealsClosed: number;
-  specialties: string[];
-  matchScore: number;
-  matchReason: string;
-}
-
-export async function findMentorMatches(orgId: number): Promise<MentorMatch[]> {
-  // Find orgs with significantly more experience in similar markets
-  // Mentors must have trust score > 500 and 10+ closed deals
-  const [orgDeals] = await db.select({ cnt: count() }).from(deals)
-    .where(and(eq(deals.organizationId, orgId), eq(deals.status, "closed")));
-  const myDealCount = Number(orgDeals?.cnt || 0);
-
-  const MIN_MENTOR_DEALS = 10;
-  const MIN_MENTOR_TRUST = 500;
-
-  const result = await db.execute(sql`
-    SELECT d.organization_id, COUNT(d.id) as deal_count,
-      ARRAY_AGG(DISTINCT p.state) as states
-    FROM deals d
-    JOIN properties p ON p.id = d.property_id
-    WHERE d.status = 'closed'
-      AND d.organization_id != ${orgId}
-    GROUP BY d.organization_id
-    HAVING COUNT(d.id) >= ${MIN_MENTOR_DEALS}
-    ORDER BY COUNT(d.id) DESC
-    LIMIT 10
-  `);
-
-  // Filter by trust score — only mentors with trust > 500
-  const candidates = (result as any).rows ?? [];
-  const mentors: MentorMatch[] = [];
-
-  for (const r of candidates) {
-    if (mentors.length >= 5) break;
-    try {
-      const { computeInvestorTrustScore } = await import("./investorNetworkService");
-      const trust = await computeInvestorTrustScore(r.organization_id);
-      const trustScore = trust?.total ?? 0;
-      if (trustScore < MIN_MENTOR_TRUST) continue;
-
-      mentors.push({
-        orgId: r.organization_id,
-        dealsClosed: Number(r.deal_count),
-        specialties: (r.states || []).slice(0, 3),
-        matchScore: Math.min(100, Math.round((Number(r.deal_count) / Math.max(myDealCount, 1)) * 20)),
-        matchReason: `${Number(r.deal_count)} deals closed across ${(r.states || []).length} states — Trust Score: ${trustScore}`,
-      });
-    } catch { /* trust score unavailable — skip candidate */ }
-  }
-
-  return mentors;
-}
+// ── Deal case studies and mentor matching: REMOVED (ruling 2026-09-29 #11) ──
+// getAnonymizedCaseStudies published single deals' exact buy price, sell
+// price, profit, county and acreage from every org, and findMentorMatches
+// returned other orgs' ids with their deal counts and states. A single deal
+// or a single org is one operator's figure: it can never clear the
+// 5-distinct-operator floor, and neither was opt-in. Neither had a client.
 
 // ── Achievement Gates ───────────────────────────────────────────────
 

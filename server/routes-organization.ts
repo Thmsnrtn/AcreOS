@@ -29,9 +29,10 @@ import {
 } from "./services/commissionService";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { sophiePrivacyGuard } from "./services/sophiePrivacyGuard";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { customerAuditFromRequest, CustomerAuditActions } from "./utils/customerAudit";
-import type { AuthenticatedRequest } from "./types/request";
+import { getOrganization, type AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
 import type { Response } from "express";
 import {
@@ -459,6 +460,36 @@ export function registerOrganizationRoutes(app: Express): void {
     res.json(org);
   });
   
+  // ── Cross-customer data sharing (founder ruling 2026-09-29 #11) ─────────
+  // Opt-in. Off unless the OWNER switches it on. While on, this org's
+  // anonymized figures may appear in shared benchmarks — county market
+  // rollups, network comps, credit benchmarks, county reviews, support
+  // patterns — each published only when five opted-in operators back it.
+  // Switching it off takes the org out of every figure from then on. The
+  // setting is read and written only through sophiePrivacyGuard; the
+  // general settings PATCH cannot set it (its schema strips the key).
+  api.get("/api/organization/data-sharing", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = getOrganization(req as AuthenticatedRequest);
+      res.json({ enabled: await sophiePrivacyGuard.hasConsent(org.id) });
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
+  api.put("/api/organization/data-sharing", isAuthenticated, getOrCreateOrg, requireOwner(), async (req, res) => {
+    try {
+      const org = getOrganization(req as AuthenticatedRequest);
+      const parsed = z.object({ enabled: z.boolean() }).strict().safeParse(req.body);
+      if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+      await sophiePrivacyGuard.setConsent(org.id, parsed.data.enabled);
+      logger.info("[data-sharing] consent changed", { organizationId: org.id, enabled: parsed.data.enabled });
+      res.json({ enabled: parsed.data.enabled });
+    } catch (err) {
+      Errors.internal(res, err);
+    }
+  });
+
   api.patch("/api/organization", isAuthenticated, getOrCreateOrg, requireScope("settings_write"), async (req, res) => {
     const org = req.organization;
     const parsed = updateOrganizationSchema.safeParse(req.body);

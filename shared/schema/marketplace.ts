@@ -436,6 +436,13 @@ export const transactionTraining = pgTable("transaction_training", {
   
   // Anonymized (no orgId)
   transactionHash: text("transaction_hash").notNull().unique(),
+  // The org whose closed deal this row is (founder ruling 2026-09-29 #11).
+  // NULL for public-record rows (county assessor ingest). A customer's deal is
+  // a single operator's figure, so it is only ever a comp for its OWN org and
+  // never enters a cross-org aggregate; rows written before this column
+  // existed cannot be attributed and are used by nobody (see
+  // server/services/acreOSValuation.ts publicRecordTransaction()).
+  contributorOrgId: integer("contributor_org_id"),
   
   // Location
   state: text("state").notNull(),

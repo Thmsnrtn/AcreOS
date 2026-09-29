@@ -9,9 +9,11 @@
  *      with >= MIN_COHORT_SIZE distinct APNs. The HAVING clause is a
  *      belt-and-braces twin of the structural gate in computeCountyRollup()
  *      — a sub-k county never even reaches the aggregation.
- *   2. Gathers raw cross-org samples per county (asked/accepted $/acre,
- *      days-to-response, observation density, LCS grades). Org columns are
- *      never SELECTed — the gather queries are org-blind by construction.
+ *   2. Gathers raw samples per county (asked/accepted $/acre,
+ *      days-to-response, observation density, LCS grades) from CONSENTING
+ *      operators only (founder ruling 2026-09-29 #11, DEFECT-0159). The org
+ *      column is selected so the 5-distinct-operator floor can be counted;
+ *      it never reaches the persisted row.
  *   3. computeCountyRollup() (pure substrate) k-gates + buckets + composes;
  *      non-null results are upserted into county_market_rollups.
  *   4. Records a county_rollup_runs ledger row; if the last TWO runs both
@@ -26,7 +28,7 @@
  * keeps the Map-door heat surface fresh mid-period.
  */
 
-import { sql, and, eq, desc, gte, lt, isNotNull } from "drizzle-orm";
+import { sql, and, eq, desc, gte, inArray, lt, isNotNull } from "drizzle-orm";
 import { db } from "../../db";
 import {
   countyMarketRollups,
@@ -38,8 +40,11 @@ import {
   properties,
 } from "@shared/schema";
 import { logger } from "../../utils/logger";
+import { consentingOrgIds } from "../sophiePrivacyGuard";
 import {
   MIN_COHORT_SIZE,
+  MIN_DISTINCT_OPERATORS,
+  type OperatorSample,
   computeCountyRollup,
   periodOf,
   periodWindow,
@@ -53,8 +58,20 @@ interface CandidateCounty {
   parcelsObserved: number;
 }
 
-/** Counties whose cross-org observation cohort clears the k floor. */
-async function findCandidateCounties(): Promise<CandidateCounty[]> {
+/** An int[] literal for `= ANY(...)`; empty is a valid, match-nothing array. */
+function intArray(ids: Iterable<number>) {
+  const list = [...ids].filter((n) => Number.isInteger(n));
+  return list.length === 0
+    ? sql`ARRAY[]::int[]`
+    : sql`ARRAY[${sql.join(list.map((n) => sql`${n}`), sql`, `)}]::int[]`;
+}
+
+/**
+ * Counties with at least k parcels observed by the platform itself (public
+ * records, organization_id NULL) or by a consenting operator. A candidate
+ * only — the published density is decided per county in the gather.
+ */
+async function findCandidateCounties(consenting: Set<number>): Promise<CandidateCounty[]> {
   const result = await db.execute<{
     state: string;
     county: string;
@@ -63,6 +80,7 @@ async function findCandidateCounties(): Promise<CandidateCounty[]> {
     SELECT state, county, COUNT(DISTINCT apn)::int AS parcels
     FROM parcel_observations
     WHERE state IS NOT NULL AND county IS NOT NULL
+      AND (organization_id IS NULL OR organization_id = ANY(${intArray(consenting)}))
     GROUP BY state, county
     HAVING COUNT(DISTINCT apn) >= ${MIN_COHORT_SIZE}
   `);
@@ -79,26 +97,60 @@ async function findCandidateCounties(): Promise<CandidateCounty[]> {
 async function gatherCountyRollup(
   candidate: CandidateCounty,
   period: string,
+  consenting: Set<number>,
 ): Promise<CountyRollupRow | null> {
   const { start, end } = periodWindow(period);
   const st = candidate.state.trim().toUpperCase();
   const county = candidate.county.trim();
+  const consentingIds = [...consenting];
 
-  // Observation density inside the period (cohort itself is all-time).
-  const obsCount = await db.execute<{ n: number }>(sql`
-    SELECT COUNT(*)::int AS n
+  // Parcel density. Platform observations (public records, no org) always
+  // count; consenting operators' observations count only when at least
+  // MIN_DISTINCT_OPERATORS of them observed parcels here — otherwise the
+  // density figure would carry one operator's activity.
+  const opsResult = await db.execute<{ ops: number }>(sql`
+    SELECT COUNT(DISTINCT organization_id)::int AS ops
     FROM parcel_observations
     WHERE state = ${candidate.state} AND county = ${candidate.county}
-      AND observed_at >= ${start} AND observed_at < ${end}
+      AND organization_id = ANY(${intArray(consenting)})
   `);
-  const observationsInPeriod = Number(
-    ((obsCount as unknown as { rows?: Array<{ n: number }> })?.rows ?? [])[0]
-      ?.n ?? 0,
+  const observingOperators = Number(
+    ((opsResult as unknown as { rows?: Array<{ ops: number }> })?.rows ?? [])[0]?.ops ?? 0,
   );
+  const includeOperators = observingOperators >= MIN_DISTINCT_OPERATORS;
+  const densityResult = await db.execute<{ parcels: number; n: number }>(sql`
+    SELECT COUNT(DISTINCT apn)::int AS parcels,
+           COUNT(*) FILTER (WHERE observed_at >= ${start} AND observed_at < ${end})::int AS n
+    FROM parcel_observations
+    WHERE state = ${candidate.state} AND county = ${candidate.county}
+      AND (organization_id IS NULL
+           OR (${includeOperators} AND organization_id = ANY(${intArray(consenting)})))
+  `);
+  const density = ((densityResult as unknown as { rows?: Array<{ parcels: number; n: number }> })?.rows ?? [])[0];
+  const parcelsObserved = Number(density?.parcels ?? 0);
+  const observationsInPeriod = Number(density?.n ?? 0);
 
-  // Asked $/acre — offer letters sent in the period. No org column selected.
+  // Priced samples come only from consenting operators; with none, there is
+  // nothing to gather (and `inArray` over an empty list is not a query).
+  if (consentingIds.length === 0) {
+    return computeCountyRollup({
+      state: st,
+      county,
+      period,
+      parcelsObserved,
+      observationsInPeriod,
+      askedPricePerAcre: [],
+      acceptedPricePerAcre: [],
+      daysToResponse: [],
+      lcsGradeCounts: {},
+      lcsOperators: [],
+    });
+  }
+
+  // Asked $/acre — offer letters sent in the period, by consenting operators.
   const askedRows = await db
     .select({
+      operator: offerLetters.organizationId,
       offerAmount: offerLetters.offerAmount,
       sizeAcres: properties.sizeAcres,
     })
@@ -106,6 +158,7 @@ async function gatherCountyRollup(
     .innerJoin(properties, eq(properties.id, offerLetters.propertyId))
     .where(
       and(
+        inArray(offerLetters.organizationId, consentingIds),
         eq(properties.county, county),
         eq(properties.state, st),
         isNotNull(offerLetters.sentAt),
@@ -113,18 +166,17 @@ async function gatherCountyRollup(
         lt(offerLetters.sentAt, end),
       ),
     );
-  const askedPricePerAcre = askedRows
-    .map((r) => {
-      const amount = parseFloat(String(r.offerAmount ?? "0"));
-      const acres = parseFloat(String(r.sizeAcres ?? "0"));
-      return acres > 0 && amount > 0 ? amount / acres : NaN;
-    })
-    .filter((v) => Number.isFinite(v));
+  const askedPricePerAcre: OperatorSample[] = askedRows.map((r) => {
+    const amount = parseFloat(String(r.offerAmount ?? "0"));
+    const acres = parseFloat(String(r.sizeAcres ?? "0"));
+    return { operator: r.operator, value: acres > 0 && amount > 0 ? amount / acres : NaN };
+  });
 
   // Accepted $/acre — deals with an accepted amount, anchored to the period
   // by close date (or offer date when not yet closed).
   const acceptedRows = await db
     .select({
+      operator: deals.organizationId,
       acceptedAmount: deals.acceptedAmount,
       sizeAcres: properties.sizeAcres,
     })
@@ -132,6 +184,7 @@ async function gatherCountyRollup(
     .innerJoin(properties, eq(properties.id, deals.propertyId))
     .where(
       and(
+        inArray(deals.organizationId, consentingIds),
         eq(properties.county, county),
         eq(properties.state, st),
         isNotNull(deals.acceptedAmount),
@@ -139,18 +192,17 @@ async function gatherCountyRollup(
         sql`COALESCE(${deals.closingDate}, ${deals.offerDate}, ${deals.createdAt}) < ${end}`,
       ),
     );
-  const acceptedPricePerAcre = acceptedRows
-    .map((r) => {
-      const amount = parseFloat(String(r.acceptedAmount ?? "0"));
-      const acres = parseFloat(String(r.sizeAcres ?? "0"));
-      return acres > 0 && amount > 0 ? amount / acres : NaN;
-    })
-    .filter((v) => Number.isFinite(v));
+  const acceptedPricePerAcre: OperatorSample[] = acceptedRows.map((r) => {
+    const amount = parseFloat(String(r.acceptedAmount ?? "0"));
+    const acres = parseFloat(String(r.sizeAcres ?? "0"));
+    return { operator: r.operator, value: acres > 0 && amount > 0 ? amount / acres : NaN };
+  });
 
   // Days-to-response — offers with both sent + responded timestamps,
   // anchored by response date.
   const responseRows = await db
     .select({
+      operator: offerLetters.organizationId,
       sentAt: offerLetters.sentAt,
       respondedAt: offerLetters.respondedAt,
     })
@@ -158,6 +210,7 @@ async function gatherCountyRollup(
     .innerJoin(properties, eq(properties.id, offerLetters.propertyId))
     .where(
       and(
+        inArray(offerLetters.organizationId, consentingIds),
         eq(properties.county, county),
         eq(properties.state, st),
         isNotNull(offerLetters.sentAt),
@@ -166,45 +219,50 @@ async function gatherCountyRollup(
         lt(offerLetters.respondedAt, end),
       ),
     );
-  const daysToResponse = responseRows
-    .map((r) => {
-      const sent = r.sentAt ? new Date(r.sentAt).getTime() : NaN;
-      const responded = r.respondedAt ? new Date(r.respondedAt).getTime() : NaN;
-      const days = (responded - sent) / (24 * 60 * 60 * 1000);
-      return Number.isFinite(days) && days >= 0 ? days : NaN;
-    })
-    .filter((v) => Number.isFinite(v));
+  const daysToResponse: OperatorSample[] = responseRows.map((r) => {
+    const sent = r.sentAt ? new Date(r.sentAt).getTime() : NaN;
+    const responded = r.respondedAt ? new Date(r.respondedAt).getTime() : NaN;
+    const days = (responded - sent) / (24 * 60 * 60 * 1000);
+    return { operator: r.operator, value: Number.isFinite(days) && days >= 0 ? days : NaN };
+  });
 
-  // LCS grade counts — latest score per parcel, assembled from the parcel
-  // identity columns (0152) so NO org structure is walked.
-  const gradeResult = await db.execute<{ grade: string; n: number }>(sql`
-    SELECT grade, COUNT(*)::int AS n
+  // LCS grade counts — latest score per parcel, for parcels a CONSENTING
+  // operator holds. land_credit_scores has no org column; the property's
+  // owner is the operator whose work produced the score.
+  const gradeResult = await db.execute<{ grade: string; operator: number; n: number }>(sql`
+    SELECT grade, operator, COUNT(*)::int AS n
     FROM (
-      SELECT DISTINCT ON (property_id) property_id, grade
-      FROM land_credit_scores
-      WHERE state = ${st} AND county = ${county}
-      ORDER BY property_id, created_at DESC
+      SELECT DISTINCT ON (s.property_id) s.property_id, s.grade, p.organization_id AS operator
+      FROM land_credit_scores s
+      JOIN properties p ON p.id = s.property_id
+      WHERE s.state = ${st} AND s.county = ${county}
+        AND p.organization_id = ANY(${intArray(consenting)})
+      ORDER BY s.property_id, s.created_at DESC
     ) latest
-    GROUP BY grade
+    GROUP BY grade, operator
   `);
   const gradeRows = ((gradeResult as unknown as {
-    rows?: Array<{ grade: string; n: number }>;
-  })?.rows ?? []) as Array<{ grade: string; n: number }>;
+    rows?: Array<{ grade: string; operator: number; n: number }>;
+  })?.rows ?? []) as Array<{ grade: string; operator: number; n: number }>;
   const lcsGradeCounts: Record<string, number> = {};
+  const lcsOperators = new Set<number>();
   for (const r of gradeRows) {
-    if (r.grade) lcsGradeCounts[r.grade] = Number(r.n);
+    if (!r.grade) continue;
+    lcsGradeCounts[r.grade] = (lcsGradeCounts[r.grade] ?? 0) + Number(r.n);
+    lcsOperators.add(Number(r.operator));
   }
 
   return computeCountyRollup({
     state: st,
     county,
     period,
-    parcelsObserved: candidate.parcelsObserved,
+    parcelsObserved,
     observationsInPeriod,
     askedPricePerAcre,
     acceptedPricePerAcre,
     daysToResponse,
     lcsGradeCounts,
+    lcsOperators: [...lcsOperators],
   });
 }
 
@@ -229,13 +287,15 @@ export async function runCountyMarketRollup(
   const previousPeriod = periodOf(prevMonth);
   const periods = [previousPeriod, currentPeriod];
 
-  const candidates = await findCandidateCounties();
+  // Read once per run: an org that opted out is excluded from this run on.
+  const consenting = await consentingOrgIds();
+  const candidates = await findCandidateCounties(consenting);
   let rollupsWritten = 0;
 
   for (const candidate of candidates) {
     for (const period of periods) {
       try {
-        const rollup = await gatherCountyRollup(candidate, period);
+        const rollup = await gatherCountyRollup(candidate, period, consenting);
         if (!rollup) continue; // structurally below k — never materialized
         await db
           .insert(countyMarketRollups)

@@ -526,23 +526,10 @@ export function registerPlatformFeatureRoutes(app: Express): void {
     } catch (error) { Errors.internal(res, error); }
   });
 
-  app.get("/api/community/case-studies", isAuthenticated, async (req, res) => {
-    try {
-      const limit = Number(req.query.limit) || 10;
-      const { getAnonymizedCaseStudies } = await import("./services/communityIntelligence");
-      const studies = await getAnonymizedCaseStudies(limit);
-      res.json({ studies });
-    } catch (error) { Errors.internal(res, error); }
-  });
-
-  app.get("/api/community/mentor-matches", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const { findMentorMatches } = await import("./services/communityIntelligence");
-      const matches = await findMentorMatches(org.id);
-      res.json({ matches });
-    } catch (error) { Errors.internal(res, error); }
-  });
+  // GET /api/community/case-studies and /api/community/mentor-matches were
+  // REMOVED (ruling 2026-09-29 #11): they published single deals' exact
+  // economics and other orgs' identities, which no 5-operator floor can
+  // cover. Neither had a client caller.
 
   app.get("/api/community/achievements", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {

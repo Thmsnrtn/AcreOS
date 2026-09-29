@@ -8,12 +8,17 @@
  *   2. Value bucketing happens BEFORE aggregation (nearest $500/acre),
  *      so no exact deal value survives into a percentile.
  *   3. Org-null output — the rollup shape carries no organization linkage.
+ *   4. (ruling 2026-09-29 #11, DEFECT-0159) a 5-DISTINCT-OPERATOR floor on
+ *      every distribution and category share — a sample count is not a
+ *      privacy floor when one operator can supply all of it.
  */
 
 import { describe, it, expect } from "vitest";
 import {
   MIN_COHORT_SIZE,
+  MIN_DISTINCT_OPERATORS,
   PRICE_PER_ACRE_BUCKET,
+  meetsOperatorFloor,
   bucketValue,
   computeCategoryDistribution,
   computeCountyRollup,
@@ -24,7 +29,14 @@ import {
   periodsOfQuarter,
   quarterOf,
   type CountyRollupInput,
+  type OperatorSample,
 } from "../../server/services/dataCoop/privacyRollup";
+
+/** Samples spread across distinct operators (operator i % spread + 1). */
+function ops(values: number[], spread = MIN_DISTINCT_OPERATORS): OperatorSample[] {
+  return values.map((value, i) => ({ value, operator: (i % spread) + 1 }));
+}
+const FIVE_OPERATORS = [1, 2, 3, 4, 5];
 
 function validInput(overrides: Partial<CountyRollupInput> = {}): CountyRollupInput {
   return {
@@ -33,10 +45,11 @@ function validInput(overrides: Partial<CountyRollupInput> = {}): CountyRollupInp
     period: "2026-05",
     parcelsObserved: 12,
     observationsInPeriod: 40,
-    askedPricePerAcre: [4100, 4900, 5300, 6100, 7200],
-    acceptedPricePerAcre: [3900, 4400, 4800, 5100, 5600, 6000],
-    daysToResponse: [3.2, 7.9, 11.4, 14.1, 21.7],
+    askedPricePerAcre: ops([4100, 4900, 5300, 6100, 7200]),
+    acceptedPricePerAcre: ops([3900, 4400, 4800, 5100, 5600, 6000]),
+    daysToResponse: ops([3.2, 7.9, 11.4, 14.1, 21.7]),
     lcsGradeCounts: { A: 3, B: 5, C: 4 },
+    lcsOperators: FIVE_OPERATORS,
     ...overrides,
   };
 }
@@ -57,9 +70,9 @@ describe("k>=5 cohort floor (structural)", () => {
   it("every sub-metric is independently k-gated — thin cohorts go null, never extrapolated", () => {
     const row = computeCountyRollup(
       validInput({
-        askedPricePerAcre: [5000, 6000], // 2 < k
+        askedPricePerAcre: ops([5000, 6000]), // 2 < k
         acceptedPricePerAcre: [], // no data at all
-        daysToResponse: [1, 2, 3, 4], // 4 < k
+        daysToResponse: ops([1, 2, 3, 4]), // 4 < k
       }),
     );
     expect(row).not.toBeNull();
@@ -71,26 +84,70 @@ describe("k>=5 cohort floor (structural)", () => {
   });
 
   it("computePrivateDistribution returns null below k and a distribution at k", () => {
-    expect(computePrivateDistribution([1000, 2000, 3000, 4000], 500)).toBeNull();
-    const dist = computePrivateDistribution([1000, 2000, 3000, 4000, 5000], 500);
+    expect(computePrivateDistribution(ops([1000, 2000, 3000, 4000]), 500)).toBeNull();
+    const dist = computePrivateDistribution(ops([1000, 2000, 3000, 4000, 5000]), 500);
     expect(dist).not.toBeNull();
     expect(dist!.n).toBe(5);
     expect(dist!.median).toBe(3000);
   });
 
   it("invalid samples (zero/negative/NaN) don't count toward the metric cohort", () => {
-    const dist = computePrivateDistribution([0, -50, NaN, 1000, 2000, 3000, 4000], 500);
+    const dist = computePrivateDistribution(ops([0, -50, NaN, 1000, 2000, 3000, 4000], 7), 500);
     expect(dist).toBeNull(); // only 4 valid samples
   });
 
   it("category distribution is k-gated on total members", () => {
-    expect(computeCategoryDistribution({ A: 2, B: 2 })).toBeNull(); // total 4 < k
-    const dist = computeCategoryDistribution({ A: 3, B: 5, C: 4 });
+    expect(computeCategoryDistribution({ A: 2, B: 2 }, FIVE_OPERATORS)).toBeNull(); // total 4 < k
+    const dist = computeCategoryDistribution({ A: 3, B: 5, C: 4 }, FIVE_OPERATORS);
     expect(dist).not.toBeNull();
     expect(dist!.total).toBe(12);
     expect(dist!.shares.A).toBe(25);
     expect(dist!.shares.B).toBeCloseTo(41.7, 1);
     expect(dist!.shares.C).toBeCloseTo(33.3, 1);
+  });
+});
+
+describe("5-distinct-operator floor (ruling 2026-09-29 #11, DEFECT-0159)", () => {
+  it("ten samples from ONE operator publish nothing — the sample count was never the floor", () => {
+    expect(computePrivateDistribution(ops([1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000], 1), 500)).toBeNull();
+  });
+
+  it("four operators are not enough; five are", () => {
+    expect(computePrivateDistribution(ops([1000, 2000, 3000, 4000, 5000, 6000], 4), 500)).toBeNull();
+    expect(computePrivateDistribution(ops([1000, 2000, 3000, 4000, 5000]), 500)).not.toBeNull();
+  });
+
+  it("an operator whose samples are all invalid does not count toward the floor", () => {
+    const samples: OperatorSample[] = [...ops([1000, 2000, 3000, 4000, 5000, 6000], 4), { value: NaN, operator: 99 }];
+    expect(computePrivateDistribution(samples, 500)).toBeNull();
+  });
+
+  it("a category share needs five operators behind its members, however many members", () => {
+    expect(computeCategoryDistribution({ A: 30, B: 50 }, [7])).toBeNull();
+    expect(computeCategoryDistribution({ A: 30, B: 50 }, [1, 2, 3, 4])).toBeNull();
+    expect(computeCategoryDistribution({ A: 30, B: 50 }, FIVE_OPERATORS)).not.toBeNull();
+  });
+
+  it("a county whose priced samples all come from one operator publishes its density, never its prices", () => {
+    const row = computeCountyRollup(
+      validInput({
+        askedPricePerAcre: ops([4100, 4900, 5300, 6100, 7200, 8000], 1),
+        acceptedPricePerAcre: ops([3900, 4400, 4800, 5100, 5600, 6000], 1),
+        daysToResponse: ops([3, 8, 11, 14, 22], 1),
+        lcsOperators: [1],
+      }),
+    );
+    expect(row!.metrics.askedPricePerAcre).toBeNull();
+    expect(row!.metrics.acceptedPricePerAcre).toBeNull();
+    expect(row!.metrics.daysToResponse).toBeNull();
+    expect(row!.metrics.lcsGradeDistribution).toBeNull();
+  });
+
+  it("meetsOperatorFloor counts distinct, present operators only", () => {
+    expect(MIN_DISTINCT_OPERATORS).toBe(5);
+    expect(meetsOperatorFloor([1, 1, 2, 2, 3, 3, 4, 4])).toBe(false);
+    expect(meetsOperatorFloor([1, 2, 3, 4, null, undefined, ""])).toBe(false);
+    expect(meetsOperatorFloor(["a", "b", "c", "d", "e"])).toBe(true);
   });
 });
 
@@ -106,7 +163,7 @@ describe("value bucketing", () => {
     // Five identical exact prices: $4,734/acre. If bucketing happened after
     // (or not at all) the median would be 4734; bucketed-first it's 4500.
     const dist = computePrivateDistribution(
-      [4734, 4734, 4734, 4734, 4734],
+      ops([4734, 4734, 4734, 4734, 4734]),
       PRICE_PER_ACRE_BUCKET,
     );
     expect(dist!.median).toBe(4500);
@@ -140,6 +197,8 @@ describe("org-null aggregation", () => {
     expect(serialized).not.toContain("organization_id");
     expect(serialized).not.toContain("orgid");
     expect(serialized).not.toContain("org_id");
+    // The operator tags samples arrive with never leave.
+    expect(serialized).not.toContain("operator");
   });
 
   it("output shape is exactly the org-free contract", () => {

@@ -1,7 +1,18 @@
+/**
+ * The "data network" figures customers see about each other (founder ruling
+ * 2026-09-29 #11, DEFECT-0159): county coverage, county LCS averages and a
+ * contributor's percentile. Each is computed from organizations that have
+ * OPTED IN only (`consentingOrgIds()`), and a county or rank is published
+ * only when MIN_DISTINCT_OPERATORS of them stand behind it. These ran across
+ * every org with no floor: a county with one operator showed that
+ * operator's property count and average credit score.
+ */
 import { db } from "../db";
 import { properties, deals, landCreditScores, organizations } from "@shared/schema";
-import { eq, sql, count, desc, avg } from "drizzle-orm";
+import { eq, inArray, sql, count, desc, avg } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { consentingOrgIds } from "./sophiePrivacyGuard";
+import { MIN_DISTINCT_OPERATORS } from "./dataCoop/privacyRollup";
 
 interface CountyStats {
   county: string;
@@ -23,7 +34,10 @@ interface ContributionMetrics {
   propertiesContributed: number;
   countiesReached: number;
   dealsCompleted: number;
-  percentileRank: number;
+  /** Null unless MIN_DISTINCT_OPERATORS other opted-in orgs exist to rank against. */
+  percentileRank: number | null;
+  /** Whether this org has opted in — only then is it a contributor at all. */
+  contributing: boolean;
 }
 
 interface LcsBenchmark {
@@ -40,6 +54,10 @@ export async function getCountyIntelligenceOverview(
   orgId: number,
 ): Promise<CountyIntelligenceOverview> {
   try {
+    const consenting = [...(await consentingOrgIds())];
+    if (consenting.length < MIN_DISTINCT_OPERATORS) {
+      return { counties: [], totalCounties: 0, totalProperties: 0, totalContributingOrgs: 0 };
+    }
     const countyData = await db
       .select({
         county: properties.county,
@@ -49,12 +67,15 @@ export async function getCountyIntelligenceOverview(
         lastUpdated: sql<string>`max(${properties.purchaseDate})`,
       })
       .from(properties)
+      .where(inArray(properties.organizationId, consenting))
       .groupBy(properties.county, properties.state)
+      .having(sql`count(distinct ${properties.organizationId}) >= ${MIN_DISTINCT_OPERATORS}`)
       .orderBy(desc(count(properties.id)));
 
     const totalOrgs = await db
       .select({ ct: sql<number>`count(distinct ${properties.organizationId})` })
-      .from(properties);
+      .from(properties)
+      .where(inArray(properties.organizationId, consenting));
 
     const counties: CountyStats[] = countyData.map((row) => ({
       county: row.county,
@@ -101,19 +122,27 @@ export async function getDataContributionMetrics(
       .from(deals)
       .where(eq(deals.organizationId, orgId));
 
-    // Percentile rank: what % of orgs have fewer properties than this org
+    // Percentile rank among OPTED-IN orgs: what % have fewer properties than
+    // this org. Only for an org that has opted in itself, and only when at
+    // least MIN_DISTINCT_OPERATORS others stand in the ranking — with fewer,
+    // a rank reads individual operators' portfolio sizes.
     const orgPropertyCount = Number(propStats?.propertyCount ?? 0);
-    const allOrgCounts = await db
-      .select({
-        orgId: properties.organizationId,
-        ct: count(properties.id),
-      })
-      .from(properties)
-      .groupBy(properties.organizationId);
-
-    const below = allOrgCounts.filter((o) => Number(o.ct) < orgPropertyCount).length;
-    const total = allOrgCounts.length;
-    const percentileRank = total > 0 ? Math.round((below / total) * 100) : 0;
+    const consenting = await consentingOrgIds();
+    const contributing = consenting.has(orgId);
+    const others = [...consenting].filter((id) => id !== orgId);
+    let percentileRank: number | null = null;
+    if (contributing && others.length >= MIN_DISTINCT_OPERATORS) {
+      const allOrgCounts = await db
+        .select({
+          orgId: properties.organizationId,
+          ct: count(properties.id),
+        })
+        .from(properties)
+        .where(inArray(properties.organizationId, [...consenting]))
+        .groupBy(properties.organizationId);
+      const below = allOrgCounts.filter((o) => Number(o.ct) < orgPropertyCount).length;
+      percentileRank = Math.round((below / consenting.size) * 100);
+    }
 
     logger.info("Data contribution metrics generated", { orgId, orgPropertyCount });
 
@@ -123,6 +152,7 @@ export async function getDataContributionMetrics(
       countiesReached: Number(propStats?.countyCount ?? 0),
       dealsCompleted: Number(dealStats?.dealCount ?? 0),
       percentileRank,
+      contributing,
     };
   } catch (error) {
     logger.error("Failed to generate contribution metrics", { orgId, error });
@@ -134,6 +164,8 @@ export async function getLcsBenchmarks(
   orgId: number,
 ): Promise<LcsBenchmark[]> {
   try {
+    const consenting = [...(await consentingOrgIds())];
+    if (consenting.length < MIN_DISTINCT_OPERATORS) return [];
     const benchmarks = await db
       .select({
         county: properties.county,
@@ -146,7 +178,9 @@ export async function getLcsBenchmarks(
       })
       .from(landCreditScores)
       .innerJoin(properties, eq(landCreditScores.propertyId, properties.id))
+      .where(inArray(properties.organizationId, consenting))
       .groupBy(properties.county, properties.state)
+      .having(sql`count(distinct ${properties.organizationId}) >= ${MIN_DISTINCT_OPERATORS}`)
       .orderBy(desc(avg(landCreditScores.overallScore)));
 
     const results: LcsBenchmark[] = benchmarks.map((row) => ({

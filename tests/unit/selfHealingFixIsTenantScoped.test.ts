@@ -20,6 +20,7 @@ const h = vi.hoisted(() => ({
   processJobs: vi.fn(async () => ({ processed: 1, failed: 0 })),
   checkAll: vi.fn(async () => undefined),
   invalidate: vi.fn(),
+  consenting: new Set<number>([1, 2, 3, 4, 5]),
 }));
 
 vi.mock("../../server/db", () => {
@@ -40,6 +41,10 @@ vi.mock("../../server/utils/openaiClient", () => ({ requireOpenAIClient: vi.fn()
 vi.mock("../../server/services/jobQueue", () => ({ jobQueueService: { processJobs: h.processJobs } }));
 vi.mock("../../server/services/healthCheck", () => ({ healthCheckService: { checkAll: h.checkAll } }));
 vi.mock("../../server/services/aiContextAggregator", () => ({ invalidateContextCache: h.invalidate }));
+vi.mock("../../server/services/sophiePrivacyGuard", () => ({
+  consentingOrgIds: async () => h.consenting,
+  sophiePrivacyGuard: { hasConsent: async (id: number) => h.consenting.has(id) },
+}));
 
 import { paxLearningService } from "../../server/services/paxLearning";
 
@@ -69,12 +74,15 @@ describe("DEFECT-0154 — known fix patterns are the caller's own, or k-anonymou
     expect(q[0].params[0]).toBe(7);
   });
 
-  it("cross-org patterns require at least 3 contributing orgs", async () => {
-    await paxLearningService.getKnownFixPatterns(7);
-    const q = rendered("pax_cross_org_learnings");
-    expect(q).toHaveLength(1);
-    expect(q[0].sql).toMatch(/"contributing_orgs" >= \$\d/);
-    expect(q[0].params).toContain(3);
+  it("a cross-org pattern is used only when five CURRENTLY consenting orgs contributed (ruling 2026-09-29 #11)", async () => {
+    h.rows.pax_cross_org_learnings = [
+      { id: 1, issuePattern: "five consenting", autoFixAction: "clear_cache", successRate: "90", contributingOrgIds: [1, 2, 3, 4, 5], contributingOrgs: 5 },
+      // The stored count is not the floor: it still counts an org that opted out.
+      { id: 2, issuePattern: "one opted out", autoFixAction: "clear_cache", successRate: "90", contributingOrgIds: [1, 2, 3, 4, 9], contributingOrgs: 5 },
+      { id: 3, issuePattern: "was three", autoFixAction: "clear_cache", successRate: "90", contributingOrgIds: [1, 2, 3], contributingOrgs: 3 },
+    ];
+    const patterns = await paxLearningService.getKnownFixPatterns(7);
+    expect(patterns.filter((p) => p.crossOrgId !== null).map((p) => p.crossOrgId)).toEqual([1]);
   });
 
   it("what reaches the caller is an action category, never stored text", async () => {

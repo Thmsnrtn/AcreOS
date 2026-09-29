@@ -22,6 +22,7 @@ import {
 import { eq, and, desc, sql, gte } from "drizzle-orm";
 import { subDays } from "date-fns";
 import { logger } from "../utils/logger";
+import { publicRecordTransaction } from "../services/acreOSValuation";
 
 export const FEATURE_ENGINEERING_QUEUE_NAME = "feature-engineering";
 
@@ -128,6 +129,9 @@ async function computeMarketFeatures(
     .from(transactionTraining)
     .where(
       and(
+        // Public records only — a customer's deal never enters a county
+        // aggregate other orgs see (ruling 2026-09-29 #11).
+        publicRecordTransaction(),
         eq(transactionTraining.state, state),
         eq(transactionTraining.county, county),
         gte(transactionTraining.saleDate, lookbackDate),

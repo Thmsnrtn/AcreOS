@@ -8,6 +8,10 @@
  * re-published it as a monthly metric. The cohort floor counted deals, not
  * operators, min/max were single deals, and the copy claimed "N operators …
  * over the last 90 days" (neither true).
+ *
+ * Ruling 2026-09-29 #11 (DEFECT-0159) raised the operator floor from 3 to 5
+ * and made it opt-in: a contribution counts only while its org CURRENTLY
+ * consents, so an opt-out leaves the next figure served.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -17,32 +21,48 @@ import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 
 vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
-const h = vi.hoisted(() => ({ rows: [] as Array<{ ppa: string; contributor: string | null }> }));
+const h = vi.hoisted(() => ({
+  rows: [] as Array<{ ppa: string; contributor: string | null }>,
+  consenting: new Set<number>(),
+  consentChecks: [] as number[],
+  hasConsent: true,
+}));
 
 vi.mock("../../server/db", () => ({
   db: {
     select: () => {
       const q: Record<string, unknown> = {};
       q.from = () => q;
-      q.where = async () => h.rows;
+      q.innerJoin = () => q;
+      q.where = () => Object.assign(Promise.resolve(h.rows), { limit: async () => h.rows });
       return q;
     },
   },
 }));
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
+vi.mock("../../server/services/sophiePrivacyGuard", () => ({
+  consentingOrgIds: async () => h.consenting,
+  sophiePrivacyGuard: { hasConsent: async (id: number) => (h.consentChecks.push(id), h.hasConsent) },
+}));
 
-import { getNetworkCompsForCounty } from "../../server/services/marketNetworkContributor";
+import { createHash } from "node:crypto";
+import { contributeClosedDealToNetwork, getNetworkCompsForCounty } from "../../server/services/marketNetworkContributor";
 
 const ROOT = resolve(__dirname, "../..");
-const row = (ppa: number, contributor: string | null) => ({ ppa: String(ppa), contributor });
+/** The contributor tag the module stores for an org (pinned here on purpose). */
+const tag = (orgId: number) => createHash("sha256").update(`acreos-market-network:${orgId}`).digest("hex").slice(0, 16);
+const row = (ppa: number, orgId: number | null) => ({ ppa: String(ppa), contributor: orgId === null ? null : tag(orgId) });
 
 beforeEach(() => {
   h.rows = [];
+  h.consenting = new Set([1, 2, 3, 4, 5, 6, 7]);
+  h.consentChecks = [];
+  h.hasConsent = true;
 });
 
 describe("DEFECT-0155 — the cohort floor counts operators", () => {
   it("five deals from ONE operator are not served", async () => {
-    h.rows = [1000, 1500, 2000, 2500, 3000].map((p) => row(p, "op-a"));
+    h.rows = [1000, 1500, 2000, 2500, 3000].map((p) => row(p, 1));
     expect(await getNetworkCompsForCounty("Travis", "TX")).toBeNull();
   });
 
@@ -51,13 +71,38 @@ describe("DEFECT-0155 — the cohort floor counts operators", () => {
     expect(await getNetworkCompsForCounty("Travis", "TX")).toBeNull();
   });
 
-  it("five deals from three operators are served, without single-deal extremes", async () => {
-    h.rows = [row(1000, "a"), row(1500, "a"), row(2000, "b"), row(2500, "c"), row(3000, "c")];
+  it("three operators are no longer enough (the floor is five, ruling #11)", async () => {
+    h.rows = [row(1000, 1), row(1500, 1), row(2000, 2), row(2500, 3), row(3000, 3)];
+    expect(await getNetworkCompsForCounty("Travis", "TX")).toBeNull();
+  });
+
+  it("five deals from five consenting operators are served, without single-deal extremes", async () => {
+    h.rows = [row(1000, 1), row(1500, 2), row(2000, 3), row(2500, 4), row(3000, 5)];
     const r = await getNetworkCompsForCounty("Travis", "TX");
     expect(r).not.toBeNull();
     expect(r).toMatchObject({ medianPricePerAcre: 2000, dataPoints: 5 });
     expect(r).not.toHaveProperty("minPricePerAcre");
     expect(r).not.toHaveProperty("maxPricePerAcre");
+  });
+
+  it("an org that has not opted in contributes nothing when its deal closes", async () => {
+    h.hasConsent = false;
+    h.rows = [{ dealValue: "50000", closingDate: new Date(), propertyId: 1, county: "Travis", state: "TX", sizeAcres: "10", zoning: null } as never];
+    const r = await contributeClosedDealToNetwork(42, 7);
+    expect(r).toEqual({ contributed: false, reason: "Organization has not opted in to shared market data" });
+    expect(h.consentChecks).toEqual([7]);
+  });
+
+  it("an operator who opted OUT leaves the figure at once — its rows no longer count", async () => {
+    h.rows = [row(1000, 1), row(1500, 2), row(2000, 3), row(2500, 4), row(3000, 5)];
+    h.consenting = new Set([1, 2, 3, 4]); // org 5 switched sharing off
+    expect(await getNetworkCompsForCounty("Travis", "TX")).toBeNull();
+  });
+
+  it("a figure is never computed from non-consenting rows, even with enough consenting operators", async () => {
+    h.rows = [row(1000, 1), row(1000, 2), row(1000, 3), row(1000, 4), row(1000, 5), row(99000, 99)];
+    const r = await getNetworkCompsForCounty("Travis", "TX");
+    expect(r).toMatchObject({ dataPoints: 5, medianPricePerAcre: 1000 }); // org 99's deal is not in it
   });
 });
 

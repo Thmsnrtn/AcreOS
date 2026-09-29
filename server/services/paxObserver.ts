@@ -21,6 +21,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, gte, ne, sql, like, lt, lte } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { publishableCrossOrgLearnings } from "./paxLearning";
 
 export type ObservationSeverity = 'info' | 'low' | 'medium' | 'high';
 export type NotificationType = 'none' | 'passive' | 'active';
@@ -780,15 +781,18 @@ class PaxObserverService {
       const issueText = `${observation.title} ${observation.description}`.toLowerCase();
       const meta = observation.metadata as any || {};
       
-      const matchingPatterns = await db
-        .select()
-        .from(paxCrossOrgLearnings)
-        .where(and(
-          gte(paxCrossOrgLearnings.successRate, "70"),
-          eq(paxCrossOrgLearnings.isAutoFixable, true)
-        ))
-        .orderBy(desc(paxCrossOrgLearnings.successRate))
-        .limit(50);
+      // Only patterns five currently-consenting orgs contributed (ruling #11).
+      const matchingPatterns = await publishableCrossOrgLearnings(
+        await db
+          .select()
+          .from(paxCrossOrgLearnings)
+          .where(and(
+            gte(paxCrossOrgLearnings.successRate, "70"),
+            eq(paxCrossOrgLearnings.isAutoFixable, true)
+          ))
+          .orderBy(desc(paxCrossOrgLearnings.successRate))
+          .limit(50),
+      );
       
       let matchedPattern = null;
       for (const pattern of matchingPatterns) {
@@ -874,19 +878,23 @@ class PaxObserverService {
     try {
       const keywords = issueText.toLowerCase().split(/\s+/).filter(w => w.length > 3);
 
-      const patterns = await db
-        .select({
-          id: paxCrossOrgLearnings.id,
-          issuePattern: paxCrossOrgLearnings.issuePattern,
-          autoFixAction: paxCrossOrgLearnings.autoFixAction,
-          successRate: paxCrossOrgLearnings.successRate
-        })
-        .from(paxCrossOrgLearnings)
-        .where(gte(paxCrossOrgLearnings.successRate, "70"))
-        .orderBy(desc(paxCrossOrgLearnings.successRate))
-        .limit(20);
+      // Only patterns five currently-consenting orgs contributed (ruling #11).
+      const patterns = await publishableCrossOrgLearnings(
+        await db
+          .select({
+            id: paxCrossOrgLearnings.id,
+            issuePattern: paxCrossOrgLearnings.issuePattern,
+            autoFixAction: paxCrossOrgLearnings.autoFixAction,
+            successRate: paxCrossOrgLearnings.successRate,
+            contributingOrgIds: paxCrossOrgLearnings.contributingOrgIds,
+          })
+          .from(paxCrossOrgLearnings)
+          .where(gte(paxCrossOrgLearnings.successRate, "70"))
+          .orderBy(desc(paxCrossOrgLearnings.successRate))
+          .limit(20),
+      );
 
-      return patterns.filter(pattern => {
+      return patterns.map(({ contributingOrgIds: _ids, ...p }) => p).filter(pattern => {
         const patternLower = (pattern.issuePattern || "").toLowerCase();
         return keywords.some(k => patternLower.includes(k));
       });

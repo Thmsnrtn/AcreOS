@@ -4,6 +4,8 @@ import {
   properties,
 } from "@shared/schema";
 import { and, eq, inArray, lte, sql } from "drizzle-orm";
+import { consentingOrgIds } from "./sophiePrivacyGuard";
+import { MIN_DISTINCT_OPERATORS, meetsOperatorFloor } from "./dataCoop/privacyRollup";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 2026-06-10 (T0-12, docs/internal/roadmap/elevation-blueprint-2026-06-10.md):
@@ -65,13 +67,15 @@ const NO_COHORT_DATA_REASON =
   "Network-wide cohort percentiles are not computed yet — AcreOS only reports benchmarks derived from real scored transactions, and that dataset does not exist yet.";
 
 /**
- * Privacy floor for cross-org cohorts — mirrors marketNetworkContributor's
- * MIN_COHORT_SIZE. A benchmark is only reported when at least 5 scored
- * parcels back it, so no single org's portfolio is inferable from the
- * aggregate. Cohorts are keyed by parcel identity (the state column added
- * to land_credit_scores in 0152), never by organization.
+ * Privacy floors for cross-org cohorts (founder ruling 2026-09-29 #11,
+ * DEFECT-0159). A benchmark needs at least 5 scored parcels AND those parcels
+ * must belong to at least MIN_DISTINCT_OPERATORS consenting operators. The
+ * parcel count alone let one operator's five parcels be the whole "network".
  */
 const MIN_COHORT_SIZE = 5;
+
+const operatorFloorReason = (state: string, parcels: number) =>
+  `The ${state.toUpperCase()} network cohort has ${parcels} scored parcel${parcels === 1 ? "" : "s"}, but not from ${MIN_DISTINCT_OPERATORS} different operators who have opted in to shared benchmarks — AcreOS reports a benchmark only then, so no one operator's portfolio can be read from it.`;
 
 /** Linear-interpolated percentile value from an ASCENDING-sorted array. */
 function percentileValue(sortedAsc: number[], p: number): number {
@@ -87,35 +91,43 @@ function percentileValue(sortedAsc: number[], p: number): number {
 export class CreditBenchmarkingService {
 
   /**
-   * Own-network cohort scores for a state: latest LCS per property across
-   * ALL orgs, restricted to rows that carry the state identity column
-   * (pre-0152 rows have NULL state and are honestly excluded). Cohorts are
-   * by state only — property-type slicing would require an org-linked join
-   * to properties, which the privacy model deliberately avoids.
+   * Network cohort scores for a state: latest LCS per property, for
+   * properties held by operators who have opted in to cross-customer data
+   * (ruling #11), restricted to rows carrying the state identity column
+   * (pre-0152 rows have NULL state and are excluded). The property's owner is
+   * read only to apply consent and count distinct operators; it is never
+   * returned.
    */
-  private async cohortScores(state: string): Promise<number[]> {
+  private async cohortScores(state: string): Promise<{ scores: number[]; operatorsOk: boolean }> {
     const st = (state || "").trim().toUpperCase();
-    if (!st) return [];
+    const consenting = [...(await consentingOrgIds())];
+    if (!st || consenting.length === 0) return { scores: [], operatorsOk: false };
 
     const rows = await db.select({
       propertyId: landCreditScores.propertyId,
       overallScore: landCreditScores.overallScore,
       createdAt: landCreditScores.createdAt,
+      operator: properties.organizationId,
     })
       .from(landCreditScores)
-      .where(eq(landCreditScores.state, st));
+      .innerJoin(properties, eq(properties.id, landCreditScores.propertyId))
+      .where(and(eq(landCreditScores.state, st), inArray(properties.organizationId, consenting)));
 
     // Latest score per property — rescoring must not double-count a parcel.
-    const latestByProperty = new Map<number, { score: number; at: number }>();
+    const latestByProperty = new Map<number, { score: number; at: number; operator: number }>();
     for (const row of rows) {
       if (typeof row.overallScore !== "number") continue;
       const at = row.createdAt ? new Date(row.createdAt as any).getTime() : 0;
       const prev = latestByProperty.get(row.propertyId);
       if (!prev || at >= prev.at) {
-        latestByProperty.set(row.propertyId, { score: row.overallScore, at });
+        latestByProperty.set(row.propertyId, { score: row.overallScore, at, operator: row.operator });
       }
     }
-    return Array.from(latestByProperty.values()).map((v) => v.score).sort((a, b) => a - b);
+    const latest = Array.from(latestByProperty.values());
+    return {
+      scores: latest.map((v) => v.score).sort((a, b) => a - b),
+      operatorsOk: meetsOperatorFloor(latest.map((v) => v.operator)),
+    };
   }
 
   /**
@@ -126,7 +138,10 @@ export class CreditBenchmarkingService {
    * never an invented median.
    */
   async getBenchmarks(_propertyType: string, state: string): Promise<BenchmarksResult> {
-    const scores = await this.cohortScores(state);
+    const { scores, operatorsOk } = await this.cohortScores(state);
+    if (scores.length >= MIN_COHORT_SIZE && !operatorsOk) {
+      return { available: false, reason: operatorFloorReason(state, scores.length) };
+    }
     if (scores.length < MIN_COHORT_SIZE) {
       return {
         available: false,
@@ -151,7 +166,10 @@ export class CreditBenchmarkingService {
    * Returns insufficient-data when the cohort is below the privacy floor.
    */
   async compareToIndustry(landCreditScore: number, _propertyType: string, state: string): Promise<IndustryComparisonResult> {
-    const scores = await this.cohortScores(state);
+    const { scores, operatorsOk } = await this.cohortScores(state);
+    if (scores.length >= MIN_COHORT_SIZE && !operatorsOk) {
+      return { available: false, reason: operatorFloorReason(state, scores.length) };
+    }
     if (scores.length < MIN_COHORT_SIZE) {
       return {
         available: false,

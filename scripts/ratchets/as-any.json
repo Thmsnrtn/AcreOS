@@ -9,9 +9,9 @@
     "**/*.test.ts",
     "**/*.spec.ts"
   ],
-  "baselineCount": 1096,
+  "baselineCount": 1092,
   "direction": "down",
-  "lastBumpNote": "2026-09-28 DEFECT-0063: 1237 -> 1099. All 135 `req.user as any` casts removed (Express's Request is globally typed `user: User` in server/types/express.d.ts, and every cast read id, email or clerkUserId, which User declares; the typechecker is the proof), plus `req as any` x2 in routes-solene-audit.ts and `res.req as any` in utils/apiError.ts (correlationId is declared on Request by middleware/correlationId.ts).",
+  "lastBumpNote": "2026-09-29 ruling #11 (DEFECT-0159): 1096 -> 1092. sophiePrivacyGuard's two casts went (`(org?.settings as any)` now that `crossOrgLearningConsent` is on the organizations.settings type, and the nonexistent-table k-anonymity query's `(result as any)`), and communityIntelligence's deleted single-operator case studies and mentor matches took two `(result as any).rows`. PRIOR NOTE — 2026-09-28 DEFECT-0063: 1237 -> 1099. All 135 `req.user as any` casts removed (Express's Request is globally typed `user: User` in server/types/express.d.ts, and every cast read id, email or clerkUserId, which User declares; the typechecker is the proof), plus `req as any` x2 in routes-solene-audit.ts and `res.req as any` in utils/apiError.ts (correlationId is declared on Request by middleware/correlationId.ts).",
   "minima": {
     "files": 1100
   },

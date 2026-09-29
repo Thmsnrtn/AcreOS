@@ -16,7 +16,7 @@ interface ContributionMetrics {
   propertiesContributed: number;
   countiesReached: number;
   dealsCompleted: number;
-  percentileRank: number;
+  percentileRank: number | null;
 }
 
 interface LcsBenchmark {
@@ -125,7 +125,7 @@ export function DataNetworkCard() {
           tooltip="Highest average Land Credit Score by county across the network"
         />
 
-        {metrics && metrics.percentileRank > 0 && (
+        {metrics && metrics.percentileRank != null && metrics.percentileRank > 0 && (
           <div className="pt-2 border-t">
             <p className="text-xs text-muted-foreground">
               Your data contribution ranks in the{" "}

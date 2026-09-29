@@ -4009,6 +4009,14 @@ and is not done here.
 Falsified by: `tests/unit/selfHealingFixIsTenantScoped.test.ts` (all five
 cases red pre-fix).
 Resolving commits: this branch, round 3
+Follow-up 2026-09-29 (founder ruling #11): cross-org learnings are opt-in,
+and a pattern is used only when at least five CURRENTLY consenting orgs
+contributed. Every reader goes through `publishableCrossOrgLearnings`
+(`server/services/paxLearning.ts`); that covers `getKnownFixPatterns`,
+`findMatchingLearning` and both `paxObserver` readers, which had no floor
+at all. A non-consenting org's ticket no longer creates or strengthens a
+pattern. The stored `contributing_orgs` count still includes orgs that later
+opted out, so it is no longer used as the floor.
 ### DEFECT-0155
 Title: The market network served a single operator's just-closed deal as the county's price per acre
 Severity: P1
@@ -4100,7 +4108,7 @@ Resolving commits: this branch, round 3
 ### DEFECT-0159
 Title: The data-coop and credit-benchmark privacy floors count parcels, not operators
 Severity: P2
-Status: OPEN
+Status: FIXED (2026-09-29, founder ruling #11: opt-in + 5-distinct-operator floor)
 Surfaced by lenses: cross-org privacy trace, 2026-09-28
 Description: The county rollup uses `HAVING COUNT(DISTINCT apn) >= 5`
 (`server/services/dataCoop/countyRollupJob.ts`), and credit benchmarking sets its cohort
@@ -4109,7 +4117,64 @@ parcels in a county can be the whole cohort behind the accepted $/acre
 percentiles served by the market-heat routes. The fix mirrors DEFECT-0155: a
 distinct-contributor floor. Neither has an opt-in, which is the same
 data-policy decision noted on DEFECT-0154.
-Resolving commits: —
+Founder ruling 2026-09-29 #11: opt-in, plus a 5-distinct-operator floor on
+every published figure, with consent wired through `sophiePrivacyGuard`.
+The guard used to declare the rule and enforce nothing: it had no callers
+and k = 3, and its k-anonymity check and opt-out purge queried a table that
+does not exist.
+Built:
+- `consentingOrgIds()` (`server/services/sophiePrivacyGuard.ts`) is read AT
+  PUBLICATION TIME by every surface below. Opting out removes the org from
+  every figure from that moment, so nothing needs deleting. An unreadable
+  consent store means nobody is in. It is set only by the owner, through
+  `PUT /api/organization/data-sharing`; the Privacy settings page has the
+  switch. It is off by default.
+- `MIN_DISTINCT_OPERATORS = 5` and `meetsOperatorFloor`
+  (`server/services/dataCoop/privacyRollup.ts`) are the one floor. Every
+  distribution and category share needs samples from five operators.
+- County rollups (`countyRollupJob.ts`): priced samples and LCS grades come
+  from consenting operators only, tagged with their operator so the floor
+  can be counted; the tag never reaches the row. Parcel density counts
+  public-record observations, plus consenting operators' only when five of
+  them observed the county.
+- Credit benchmarks (`creditBenchmarking.ts`): the cohort is consenting
+  operators' parcels, and five parcels from one operator is not a benchmark.
+- Market network comps (`marketNetworkContributor.ts`): the floor rises from
+  3 to 5 orgs. A deal contributes only while its org consents, and counts
+  only while it still does (contributor tags). The uncalled
+  `getNetworkCoverageStats` published per-county averages with no floor and
+  is deleted.
+- County reviews (`communityIntelligence.ts`) cover consenting orgs only,
+  with five of them per county.
+- Anonymized case studies and mentor matches published single deals' exact
+  economics and other orgs' identities. They are removed along with their
+  routes; neither had a client.
+- `dataNetworkVisibility.ts` had no floor at all: county coverage and county
+  LCS averages across every org, and a percentile rank. All three now use
+  consenting orgs only and publish only what five of them back. The
+  cancellation dialog's "contributor" means an org that opted in.
+- Valuation comps (`acreOSValuation.ts`): `transaction_training` mixed public
+  assessor records with customers' closed deals. A customer deal is one
+  operator's figure, so now:
+  - it is a comp for its own org only (`contributor_org_id`, migration 0256);
+  - it never enters a cross-org aggregate: county features, the data API
+    benchmark and the training stats read `publicRecordTransaction()` only;
+  - customer rows written before 0256 cannot be attributed and are used by
+    nobody.
+Falsified by: `tests/unit/crossOrgDataIsOptIn.test.ts`, which pins each
+surface's behaviour and runs a population gate over every server reader of
+`pax_cross_org_learnings`, `transaction_training` and `land_credit_scores`.
+It was mutation-checked by removing the HAVING floor, the consent early
+return and the credit operator floor. The rewritten
+`tests/unit/dataCoopPrivacyRollup.test.ts`,
+`tests/unit/marketNetworkIsKAnonymous.test.ts` and
+`tests/unit/selfHealingFixIsTenantScoped.test.ts` pin the old floors'
+replacements; "three operators are served" is now inverted.
+Still open: `/api/data-api/price-trends` and `/demand` serve `price_trends`
+and `demand_heatmaps`, whose provenance this pass did not trace. They sit
+behind data-API key issuance, which is dormant under the expansion ladder.
+Trace them before any key is issued.
+Resolving commits: this branch, batch E (2026-09-29)
 ### DEFECT-0160
 Title: Client panels rendered a failed fetch as an empty list, and the ratchet could not see the idiom
 Severity: P2
@@ -5186,8 +5251,8 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 9   | 9     |
-| FIXED  | 14  | 91  | 68  | 173   |
+| OPEN   | 0   | 0   | 8   | 8     |
+| FIXED  | 14  | 91  | 69  | 174   |
 | DEFERRED | 0 | 2   | 0   | 2     |
 | **Total** | **14** | **93** | **77** | **184** |
 

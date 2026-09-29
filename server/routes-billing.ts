@@ -1248,7 +1248,7 @@ export function registerBillingRoutes(app: Express): void {
             propertiesContributed: number;
             countiesReached: number;
             dealsCompleted: number;
-            percentileRank: number;
+            percentileRank: number | null;
             contributing: boolean;
           }
         | null = null;
@@ -1260,7 +1260,9 @@ export function registerBillingRoutes(app: Express): void {
           countiesReached: metrics.countiesReached,
           dealsCompleted: metrics.dealsCompleted,
           percentileRank: metrics.percentileRank,
-          contributing: metrics.propertiesContributed > 0,
+          // A contributor is an org that opted in (ruling 2026-09-29 #11) and
+          // has data to contribute — not merely one that has properties.
+          contributing: metrics.contributing && metrics.propertiesContributed > 0,
         };
       } catch (metricsErr) {
         // Non-fatal: cancellation flow must not break if metrics are

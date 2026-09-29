@@ -9,8 +9,13 @@
  * - APN, lead names, org ID are stripped from every contribution
  * - Acreage is bucketed; price-per-acre is rounded to nearest $500
  * - Minimum cohort of 5 contributions per county before aggregate data is served
+ * - OPT-IN, and 5 DISTINCT consenting operators behind every served figure
+ *   (founder ruling 2026-09-29 #11, DEFECT-0159): an org contributes only
+ *   while it has consented, and a contribution counts only while its org
+ *   still consents — an opt-out removes it from the next figure served.
  *
- * Network effect: every closed deal on AcreOS enriches market comps for all orgs.
+ * Network effect: every closed deal from a consenting org enriches market
+ * comps for all orgs.
  */
 
 import { db } from "../db";
@@ -18,6 +23,8 @@ import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
 import { eq, and, isNull, count, sql, type SQL } from "drizzle-orm";
 import { createHash } from "crypto";
 import { marketMetrics, agentMemory, properties, deals, organizations } from "@shared/schema";
+import { consentingOrgIds, sophiePrivacyGuard } from "./sophiePrivacyGuard";
+import { MIN_DISTINCT_OPERATORS } from "./dataCoop/privacyRollup";
 import { logger } from "../utils/logger";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -26,9 +33,10 @@ const MIN_COHORT_SIZE = 5; // Minimum contributions before county data is served
 /**
  * And the contributions must come from at least this many DISTINCT orgs
  * (DEFECT-0155). Counting deals alone let one operator's five deals be the
- * whole cohort, so the "network" median was that operator's pricing.
+ * whole cohort, so the "network" median was that operator's pricing. Raised
+ * from 3 to the platform-wide floor of 5 by ruling 2026-09-29 #11.
  */
-const MIN_DISTINCT_ORGS = 3;
+const MIN_DISTINCT_ORGS = MIN_DISTINCT_OPERATORS;
 
 /**
  * Raw network contributions (one row per closed deal, organizationId NULL,
@@ -149,6 +157,10 @@ export async function contributeClosedDealToNetwork(
     const deal = rows[0];
     if (!deal) {
       return { contributed: false, reason: "Deal not found" };
+    }
+    // Opt-in (ruling #11): nothing leaves an org that has not consented.
+    if (!(await sophiePrivacyGuard.hasConsent(orgId))) {
+      return { contributed: false, reason: "Organization has not opted in to shared market data" };
     }
 
     const { county, state, sizeAcres, zoning, dealValue, closingDate } = deal;
@@ -304,15 +316,18 @@ export async function getNetworkCompsForCounty(
         )
       );
 
-    // Privacy floor: enough deals AND enough distinct operators. Rows written
-    // before contributor tags existed count toward neither the tag set nor a
-    // guess — the floor fails closed until real tags accumulate.
-    const distinctOrgs = new Set(rows.map((r) => r.contributor).filter((c): c is string => !!c)).size;
-    if (rows.length < MIN_COHORT_SIZE || distinctOrgs < MIN_DISTINCT_ORGS) {
+    // Consent is read NOW: only contributions whose org currently consents
+    // count, so an opt-out leaves the next figure served (ruling #11). Rows
+    // written before contributor tags existed carry no tag and never count —
+    // the floor fails closed until real tags accumulate.
+    const consentingTags = new Set([...(await consentingOrgIds())].map(contributorTag));
+    const served = rows.filter((r) => !!r.contributor && consentingTags.has(r.contributor));
+    const distinctOrgs = new Set(served.map((r) => r.contributor)).size;
+    if (served.length < MIN_COHORT_SIZE || distinctOrgs < MIN_DISTINCT_ORGS) {
       return null;
     }
 
-    const prices = rows
+    const prices = served
       .map((r) => parseFloat(String(r.ppa ?? "0")))
       .filter((p) => p > 0)
       .sort((a, b) => a - b);
@@ -361,46 +376,3 @@ export async function getCountyNetworkIntelligence(
   };
 }
 
-/**
- * Returns a coverage summary of which counties have network data and how many
- * data points each has. Used for the admin dashboard.
- */
-export async function getNetworkCoverageStats(): Promise<
-  Array<{
-    county: string;
-    state: string;
-    dataPoints: number;
-    avgPricePerAcre: number | null;
-    meetsThreshold: boolean;
-  }>
-> {
-  try {
-    const rows = await db
-      .select({
-        county: marketMetrics.county,
-        state: marketMetrics.state,
-        dataPoints: count(),
-        avgPpa: sql<string>`AVG(${marketMetrics.averagePricePerAcre}::numeric)`,
-      })
-      .from(marketMetrics)
-      .where(
-        and(
-          isNull(marketMetrics.organizationId),
-          sql`${marketMetrics.dataSources}::text LIKE '%network_aggregate%'`
-        )
-      )
-      .groupBy(marketMetrics.county, marketMetrics.state)
-      .orderBy(sql`COUNT(*) DESC`);
-
-    return rows.map((r) => ({
-      county: r.county,
-      state: r.state,
-      dataPoints: Number(r.dataPoints),
-      avgPricePerAcre: r.avgPpa ? Math.round(parseFloat(r.avgPpa)) : null,
-      meetsThreshold: Number(r.dataPoints) >= MIN_COHORT_SIZE,
-    }));
-  } catch (err: any) {
-    logger.error("[marketNetworkContributor] getNetworkCoverageStats error", err);
-    return [];
-  }
-}

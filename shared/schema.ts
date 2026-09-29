@@ -121,6 +121,10 @@ export const organizations = pgTable("organizations", {
     taxIdentityCapturedAt?: string;
   }>(),
   settings: jsonb("settings").$type<{
+    // Opt-in to cross-customer data (founder ruling 2026-09-29 #11): only
+    // orgs with this true contribute to any figure shown to another org.
+    // Read and written ONLY through server/services/sophiePrivacyGuard.ts.
+    crossOrgLearningConsent?: boolean;
     timezone?: string;
     currency?: string;
     defaultInterestRate?: number;

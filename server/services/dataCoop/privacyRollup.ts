@@ -14,11 +14,18 @@
  *   2. Value bucketing: every price sample is rounded to the nearest
  *      PRICE_PER_ACRE_BUCKET ($500/acre — same constant as the contributor)
  *      BEFORE any percentile is computed, so no exact deal is recoverable.
- *   3. Org-null aggregation: nothing in this module accepts or emits an
- *      organization identifier. The output shape has no org field to leak.
+ *   3. Org-null OUTPUT: nothing this module emits carries an organization
+ *      identifier. Samples arrive tagged with their OPERATOR only so the
+ *      operator floor below can be counted; the tag never leaves.
  *   4. Per-metric honesty: each sub-metric is independently k-gated — a
  *      county can clear the parcel-density floor while its accepted-price
  *      cohort is still thin; that metric is null, never extrapolated.
+ *   5. A 5-DISTINCT-OPERATOR floor (founder ruling 2026-09-29 #11,
+ *      DEFECT-0159): a sample or parcel count is not a privacy floor — one
+ *      operator's five deals were the whole cohort. Every distribution and
+ *      category share needs samples from MIN_DISTINCT_OPERATORS consenting
+ *      operators, or it is null. Consent is filtered by the caller
+ *      (`consentingOrgIds()`, sophiePrivacyGuard.ts) before samples arrive.
  *
  * Everything here is deterministic and synchronous — the DB-facing gather/
  * materialize lives in countyRollupJob.ts; tests exercise this module
@@ -30,6 +37,27 @@
  * marketNetworkContributor.MIN_COHORT_SIZE — keep the two in lockstep.
  */
 export const MIN_COHORT_SIZE = 5;
+
+/**
+ * Distinct consenting operators behind ANY figure shown across customers
+ * (founder ruling 2026-09-29 #11). The one floor every cross-org surface
+ * imports — market network, credit benchmarks, community reviews, support
+ * learnings and the county rollups below.
+ */
+export const MIN_DISTINCT_OPERATORS = 5;
+
+/** Does this set of contributing operators clear the floor? Null/absent tags never count. */
+export function meetsOperatorFloor(operators: Iterable<unknown>): boolean {
+  const distinct = new Set<string>();
+  for (const o of operators) if (o !== null && o !== undefined && o !== "") distinct.add(String(o));
+  return distinct.size >= MIN_DISTINCT_OPERATORS;
+}
+
+/** One raw sample and the operator (organization) it came from. */
+export interface OperatorSample {
+  value: number;
+  operator: number;
+}
 
 /** Price-per-acre bucket width ($) — mirrors the contributor's $500 rounding. */
 export const PRICE_PER_ACRE_BUCKET = 500;
@@ -63,16 +91,16 @@ export interface PrivateDistribution {
 /**
  * Compute a {median, p25, p75} distribution from raw samples, bucketing each
  * sample to `bucketStep` first. Returns null — never a thin estimate — when
- * fewer than MIN_COHORT_SIZE valid samples exist.
+ * fewer than MIN_COHORT_SIZE valid samples exist, or when those samples come
+ * from fewer than MIN_DISTINCT_OPERATORS operators.
  */
 export function computePrivateDistribution(
-  values: number[],
+  samples: OperatorSample[],
   bucketStep: number,
 ): PrivateDistribution | null {
-  const bucketed = values
-    .filter((v) => Number.isFinite(v) && v > 0)
-    .map((v) => bucketValue(v, bucketStep))
-    .sort((a, b) => a - b);
+  const valid = samples.filter((s) => Number.isFinite(s.value) && s.value > 0);
+  if (!meetsOperatorFloor(valid.map((s) => s.operator))) return null;
+  const bucketed = valid.map((s) => bucketValue(s.value, bucketStep)).sort((a, b) => a - b);
   if (bucketed.length < MIN_COHORT_SIZE) return null;
   return {
     median: percentileValue(bucketed, 50),
@@ -94,12 +122,14 @@ export interface PrivateCategoryDistribution {
 
 export function computeCategoryDistribution(
   counts: Record<string, number>,
+  /** The distinct operators behind these counts — the floor is theirs, not the members'. */
+  operators: Iterable<unknown>,
 ): PrivateCategoryDistribution | null {
   const entries = Object.entries(counts).filter(
     ([, n]) => Number.isFinite(n) && n > 0,
   );
   const total = entries.reduce((s, [, n]) => s + n, 0);
-  if (total < MIN_COHORT_SIZE) return null;
+  if (total < MIN_COHORT_SIZE || !meetsOperatorFloor(operators)) return null;
   const shares: Record<string, number> = {};
   for (const [cat, n] of entries) {
     shares[cat] = Math.round((n / total) * 1000) / 10;
@@ -109,7 +139,11 @@ export function computeCategoryDistribution(
 
 // ── County rollup composition ────────────────────────────────────────────────
 
-/** Raw (pre-aggregation) cross-org samples for one county+period. NO org ids. */
+/**
+ * Raw (pre-aggregation) samples for one county+period, from CONSENTING
+ * operators only. Each carries its operator so the floor can be counted; no
+ * operator id reaches the output.
+ */
 export interface CountyRollupInput {
   state: string; // 2-letter code (will be uppercased)
   county: string;
@@ -119,13 +153,15 @@ export interface CountyRollupInput {
   /** Observation rows logged during the period (density signal). */
   observationsInPeriod: number;
   /** Raw asked $/acre samples (offers sent) — bucketed before aggregation. */
-  askedPricePerAcre: number[];
+  askedPricePerAcre: OperatorSample[];
   /** Raw accepted $/acre samples (deals accepted/closed). */
-  acceptedPricePerAcre: number[];
+  acceptedPricePerAcre: OperatorSample[];
   /** Days from offer sent to seller response (where both timestamps exist). */
-  daysToResponse: number[];
+  daysToResponse: OperatorSample[];
   /** LCS grade -> count of scored parcels (latest score per parcel). */
   lcsGradeCounts: Record<string, number>;
+  /** The distinct operators whose parcels make up lcsGradeCounts. */
+  lcsOperators: number[];
 }
 
 /** The metrics jsonb persisted on county_market_rollups rows. */
@@ -179,7 +215,7 @@ export function computeCountyRollup(
       parcelsObserved: input.parcelsObserved,
       observationsInPeriod: input.observationsInPeriod,
     },
-    lcsGradeDistribution: computeCategoryDistribution(input.lcsGradeCounts),
+    lcsGradeDistribution: computeCategoryDistribution(input.lcsGradeCounts, input.lcsOperators),
   };
 
   return {

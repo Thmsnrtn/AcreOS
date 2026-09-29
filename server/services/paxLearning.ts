@@ -8,9 +8,24 @@ import { eq, and, desc, gte, sql, count, like, or } from "drizzle-orm";
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
+import { consentingOrgIds, sophiePrivacyGuard } from "./sophiePrivacyGuard";
+import { meetsOperatorFloor } from "./dataCoop/privacyRollup";
 
-/** k-anonymity: a cross-org pattern is usable only once this many orgs contributed. */
-const CROSS_ORG_MIN_ORGS = 3;
+/**
+ * A cross-org learning may be shown to (or acted on for) another org only
+ * when MIN_DISTINCT_OPERATORS orgs that CURRENTLY consent contributed to it
+ * (founder ruling 2026-09-29 #11). Every reader of pax_cross_org_learnings
+ * filters through this — the stored `contributing_orgs` count includes orgs
+ * that have since opted out, so it is not the floor.
+ */
+export async function publishableCrossOrgLearnings<T extends { contributingOrgIds?: unknown }>(rows: T[]): Promise<T[]> {
+  if (rows.length === 0) return rows;
+  const consenting = await consentingOrgIds();
+  return rows.filter((r) => {
+    const ids = Array.isArray(r.contributingOrgIds) ? (r.contributingOrgIds as unknown[]) : [];
+    return meetsOperatorFloor(ids.filter((id) => consenting.has(Number(id))));
+  });
+}
 
 /**
  * The only fixes self-healing can run. A stored action is mapped to one of
@@ -197,6 +212,10 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
     ticketId: number,
     orgId: number
   ): Promise<any> {
+    // Opt-in (ruling #11): a non-consenting org's ticket never becomes — or
+    // adds weight to — a pattern other orgs are shown.
+    if (!(await sophiePrivacyGuard.hasConsent(orgId))) return null;
+
     const existingPattern = await db.select()
       .from(paxCrossOrgLearnings)
       .where(like(paxCrossOrgLearnings.issuePattern, `%${issuePattern.substring(0, 50)}%`))
@@ -304,11 +323,13 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
   async findMatchingLearning(issueText: string, category?: string): Promise<any | null> {
     const keywords = issueText.toLowerCase().split(/\s+/).filter(w => w.length > 3);
     
-    const learnings = await db.select()
-      .from(paxCrossOrgLearnings)
-      .where(gte(paxCrossOrgLearnings.successRate, "70"))
-      .orderBy(desc(paxCrossOrgLearnings.successRate))
-      .limit(50);
+    const learnings = await publishableCrossOrgLearnings(
+      await db.select()
+        .from(paxCrossOrgLearnings)
+        .where(gte(paxCrossOrgLearnings.successRate, "70"))
+        .orderBy(desc(paxCrossOrgLearnings.successRate))
+        .limit(50),
+    );
     
     for (const learning of learnings) {
       const learningKeywords = (learning.keywords as string[]) || [];
@@ -599,9 +620,9 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
    * org's ticket — to a customer's support chat through
    * apply_self_healing_fix. Now:
    *   - the caller's OWN successful resolutions, and
-   *   - cross-org patterns only when at least CROSS_ORG_MIN_ORGS distinct orgs
-   *     contributed (the k-anonymity floor sophiePrivacyGuard declared and
-   *     nothing enforced), and only via their canonical autoFixAction;
+   *   - cross-org patterns only when at least five distinct CURRENTLY
+   *     consenting orgs contributed (`publishableCrossOrgLearnings`, ruling
+   *     2026-09-29 #11), and only via their canonical autoFixAction;
    * and what is returned is an action CATEGORY, never the source text.
    */
   async getKnownFixPatterns(orgId: number): Promise<Array<{
@@ -612,14 +633,13 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
     isAutoFixable: boolean;
     crossOrgId: number | null;
   }>> {
-    const crossOrgPatterns = await db.select()
-      .from(paxCrossOrgLearnings)
-      .where(and(
-        gte(paxCrossOrgLearnings.successRate, "70"),
-        gte(paxCrossOrgLearnings.contributingOrgs, CROSS_ORG_MIN_ORGS),
-      ))
-      .orderBy(desc(paxCrossOrgLearnings.successRate))
-      .limit(100);
+    const crossOrgPatterns = await publishableCrossOrgLearnings(
+      await db.select()
+        .from(paxCrossOrgLearnings)
+        .where(gte(paxCrossOrgLearnings.successRate, "70"))
+        .orderBy(desc(paxCrossOrgLearnings.successRate))
+        .limit(100),
+    );
 
     const patterns: Array<{
       issuePattern: string;

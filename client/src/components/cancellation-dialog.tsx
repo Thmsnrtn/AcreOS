@@ -117,7 +117,7 @@ export function CancellationDialog({ open, onOpenChange, currentTier, onDowngrad
     propertiesContributed: number;
     countiesReached: number;
     dealsCompleted: number;
-    percentileRank: number;
+    percentileRank: number | null;
     contributing: boolean;
   } | null = contextQuery.data?.dataNetwork ?? null;
 
@@ -208,10 +208,10 @@ export function CancellationDialog({ open, onOpenChange, currentTier, onDowngrad
                     You'd be going blind on the market
                   </p>
                   <p className="mt-1 text-muted-foreground">
-                    {network.percentileRank >= 50 ? (
+                    {network.percentileRank != null && network.percentileRank >= 50 ? (
                       <>
                         You're a{" "}
-                        <span className="font-medium text-foreground">top {Math.max(1, 100 - network.percentileRank)}%</span>{" "}
+                        <span className="font-medium text-foreground">top {Math.max(1, 100 - (network.percentileRank ?? 0))}%</span>{" "}
                         contributor —{" "}
                       </>
                     ) : (

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -258,6 +259,8 @@ export function PrivacyDataRights({
           </CardContent>
         </Card>
       )}
+
+      <DataSharingCard />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Data Export */}
@@ -558,6 +561,77 @@ export function PrivacyDataRights({
  * The standalone route at `/settings/privacy`, linked from the public privacy
  * policy and from the data-export page. Nothing but chrome and a title.
  */
+/**
+ * Cross-customer data sharing — opt-in (founder ruling 2026-09-29 #11).
+ * Off unless the owner turns it on; every shared figure needs five opted-in
+ * operators behind it; turning it off removes the org from every figure.
+ */
+function DataSharingCard() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const switchId = useId();
+  const { data, isLoading } = useQuery<{ enabled: boolean }>({
+    queryKey: ["/api/organization/data-sharing"],
+    queryFn: () =>
+      fetch("/api/organization/data-sharing", { credentials: "include" }).then((r) => r.json()),
+  });
+  const mutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const res = await apiRequest("PUT", "/api/organization/data-sharing", { enabled });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.message ?? "Couldn't change data sharing");
+      return json as { enabled: boolean };
+    },
+    onSuccess: (next) => {
+      qc.invalidateQueries({ queryKey: ["/api/organization/data-sharing"] });
+      toast({
+        title: next.enabled ? "Shared benchmarks: on" : "Shared benchmarks: off",
+        description: next.enabled
+          ? "Your anonymized figures can now count toward shared benchmarks — only where five opted-in operators back each one."
+          : "Your data is out of every shared figure from now on.",
+      });
+    },
+    onError: (err: Error) =>
+      toast({
+        title: "Setting unchanged",
+        description: err.message || "Only the account owner can change this.",
+        variant: "destructive",
+      }),
+  });
+  const enabled = data?.enabled === true;
+
+  return (
+    <Card data-testid="card-data-sharing">
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Shield className="w-5 h-5 text-primary" aria-hidden="true" />
+          <CardTitle className="text-base">Shared market benchmarks</CardTitle>
+        </div>
+        <CardDescription>
+          Off unless you turn it on. When on, anonymized figures from your deals, offers and
+          scored parcels can count toward benchmarks other AcreOS operators see — county price
+          ranges, network comps, credit-score benchmarks, county reviews. A figure is only shown
+          when at least five different operators who have also opted in are behind it, so no
+          single operator can be read from it. Turning it off takes your data out of every figure
+          from then on.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex items-center justify-between gap-4">
+        <Label htmlFor={switchId} className="text-sm">
+          Contribute my anonymized data to shared benchmarks
+        </Label>
+        <Switch
+          id={switchId}
+          checked={enabled}
+          disabled={isLoading || mutation.isPending}
+          onCheckedChange={(v) => mutation.mutate(v)}
+          data-testid="switch-data-sharing"
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function PrivacySettingsPage() {
   useDocumentTitle("Privacy & data");
   return <PrivacyDataRights variant="page" />;

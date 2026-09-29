@@ -86,7 +86,9 @@ const MAX_GHOSTS = 0;
 // `COUNT(DISTINCT "orgHash") FROM sophie_cross_org_learnings` — a table the
 // schema does not model. It has no callers and fails closed (catch → false);
 // it is not newly unread code, it is newly READ code this gate cannot resolve.
-const MAX_UNRESOLVED = 70;
+// 70 → 69 (2026-09-29, ruling #11): that query is gone — sophiePrivacyGuard's
+// k-anonymity check and purge were rewritten, consent now read at publication.
+const MAX_UNRESOLVED = 69;
 const MIN_TEMPLATES = 800;
 const MIN_WITH_COLUMNS = 150;
 

@@ -11,6 +11,25 @@ import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
 import { assertFeeSimpleOrThrow } from "../utils/landStatus";
 
+/**
+ * Which transaction_training rows may be used outside the org that produced
+ * them (founder ruling 2026-09-29 #11, DEFECT-0159). The table mixes two
+ * kinds of row:
+ *  - PUBLIC RECORDS from county assessor ingest — keyed by a sha256 hex hash;
+ *  - a CUSTOMER'S closed deal — keyed by a raw `state|county|acres|price|date`
+ *    string, and since migration 0256 naming its org in contributor_org_id.
+ * A customer deal is one operator's figure: it can never clear the
+ * 5-distinct-operator floor, so it is a comp for its OWN org only and never
+ * enters a cross-org aggregate. A customer row written before 0256 cannot be
+ * attributed, so it is used by nobody.
+ */
+export const publicRecordTransaction = () =>
+  sql`(${transactionTraining.transactionHash} NOT LIKE '%|%' AND ${transactionTraining.contributorOrgId} IS NULL)`;
+
+/** Public records plus this org's OWN closed deals — the only individual comps an org may see. */
+export const compsVisibleTo = (organizationId: number) =>
+  sql`(${publicRecordTransaction()} OR ${transactionTraining.contributorOrgId} = ${organizationId})`;
+
 // ---------------------------------------------------------------------------
 // Singleton GBM model — loaded once, reused per request.
 // Falls back to null when no serialised model is available yet.
@@ -247,7 +266,7 @@ class AcreOSValuationModel {
    * Record transaction for training data
    */
   async recordTransactionForTraining(
-    _organizationId: string,
+    organizationId: string,
     transactionData: TransactionDataPoint,
     // On-platform CLOSED deals are arm's-length ground truth — the richest,
     // most-trusted training signal. Callers with that provenance can override
@@ -281,6 +300,8 @@ class AcreOSValuationModel {
           : undefined,
         hasWater: transactionData.characteristics.waterRights,
         dataQuality,
+        // Its org, so it is this org's comp and nobody else's (ruling #11).
+        contributorOrgId: Number.isInteger(Number(organizationId)) ? Number(organizationId) : null,
       }).returning();
 
       return String(record.id);
@@ -785,6 +806,8 @@ Base your estimate on typical rural land market conditions in ${county} County, 
       // state/county and acreage band rather than by geographic radius.
       const transactions = await db.query.transactionTraining.findMany({
         where: and(
+          // Public records and this org's own deals only (ruling #11).
+          compsVisibleTo(Number(organizationId)),
           eq(transactionTraining.state, location.state),
           gte(transactionTraining.saleDate, cutoffDate),
           // Filter by similar acreage (50% to 200% of target)
@@ -1152,7 +1175,10 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
       // column. Stats are global aggregates across all contributing orgs;
       // an earlier version tried to filter by org.id, hit a missing column
       // at runtime, and crashed /avm with HTTP 500.
+      // Public records only: these are cross-org aggregates, and a customer
+      // deal never enters one (ruling #11).
       const transactions = await db.query.transactionTraining.findMany({
+        where: publicRecordTransaction(),
         orderBy: [desc(transactionTraining.saleDate)],
       });
 
