@@ -4011,10 +4011,13 @@ cases red pre-fix).
 Resolving commits: this branch, round 3
 Follow-up 2026-09-29 (founder ruling #11): cross-org learnings are opt-in,
 and a pattern is used only when at least five CURRENTLY consenting orgs
-contributed. Every reader goes through `publishableCrossOrgLearnings`
-(`server/services/paxLearning.ts`); that covers `getKnownFixPatterns`,
+contributed, its creator among them. Every reader that uses a pattern for
+another org goes through `publishableCrossOrgLearnings`
+(`server/services/paxLearning.ts`): `getKnownFixPatterns`,
 `findMatchingLearning` and both `paxObserver` readers, which had no floor
-at all. A non-consenting org's ticket no longer creates or strengthens a
+at all. The merge lookup inside `updateCrossOrgLearning` reads a row only to
+add to it, and the founder-only `getAllLearnings` is an operator view; neither
+publishes. A non-consenting org's ticket no longer creates or strengthens a
 pattern. The stored `contributing_orgs` count still includes orgs that later
 opted out, so it is no longer used as the floor.
 ### DEFECT-0155
@@ -4124,9 +4127,12 @@ and k = 3, and its k-anonymity check and opt-out purge queried a table that
 does not exist.
 Built:
 - `consentingOrgIds()` (`server/services/sophiePrivacyGuard.ts`) is read AT
-  PUBLICATION TIME by every surface below. Opting out removes the org from
-  every figure from that moment, so nothing needs deleting. An unreadable
-  consent store means nobody is in. It is set only by the owner, through
+  PUBLICATION TIME by every live surface below, so opting out removes the org
+  from them from that moment. The exception is the materialized county
+  rollups: they are recomputed monthly, so an opt-out leaves them at the next
+  run. A rollup computed before the rule took effect
+  (`CROSS_ORG_CONSENT_EFFECTIVE_AT`) is never served. An unreadable consent
+  store means nobody is in. It is set only by the owner, through
   `PUT /api/organization/data-sharing`; the Privacy settings page has the
   switch. It is off by default.
 - `MIN_DISTINCT_OPERATORS = 5` and `meetsOperatorFloor`
@@ -4135,8 +4141,9 @@ Built:
 - County rollups (`countyRollupJob.ts`): priced samples and LCS grades come
   from consenting operators only, tagged with their operator so the floor
   can be counted; the tag never reaches the row. Parcel density counts
-  public-record observations, plus consenting operators' only when five of
-  them observed the county.
+  platform observations (unattributed rows other than customer due-diligence
+  reports), plus consenting operators' only when five of them observed the
+  county.
 - Credit benchmarks (`creditBenchmarking.ts`): the cohort is consenting
   operators' parcels, and five parcels from one operator is not a benchmark.
 - Market network comps (`marketNetworkContributor.ts`): the floor rises from
@@ -4171,10 +4178,34 @@ return and the credit operator floor. The rewritten
 `tests/unit/selfHealingFixIsTenantScoped.test.ts` pin the old floors'
 replacements; "three operators are served" is now inverted.
 Still open: `/api/data-api/price-trends` and `/demand` serve `price_trends`
-and `demand_heatmaps`, whose provenance this pass did not trace. They sit
-behind data-API key issuance, which is dormant under the expansion ladder.
-Trace them before any key is issued.
-Resolving commits: this branch, batch E (2026-09-29)
+and `demand_heatmaps`. Nothing in the code writes either table today
+(`recordPriceTrend` and `buyerNetwork.ts` are uncalled), and both sit behind
+data-API key issuance, which is dormant under the expansion ladder. Give them
+the floor before either gains a writer.
+Independent audit, same day. It found five defects, all fixed:
+- County rollups built before the rule, or while an org consented, kept being
+  served, because only the last two months are recomputed. Market heat now
+  serves only rollups computed after `CROSS_ORG_CONSENT_EFFECTIVE_AT`.
+- Below the floor, market heat showed how many parcels (1–4) other operators
+  had touched in the county, with no consent. It now shows no count.
+- Customer due-diligence reports recorded observations with no org, so they
+  counted as "platform" density. They now carry the org, and legacy
+  unattributed report rows are not platform data.
+- The percentile rank's floor counted opted-in orgs, not ranked operators,
+  and its denominator mixed the two. It now ranks only opted-in orgs that
+  hold properties, against at least five others.
+- The credit-benchmark refusals stated the below-floor cohort size. The
+  refusal is now one message with no count.
+- A learning's text now needs its creator's current consent too.
+- The test's consent mock answers only a consent-filtered query. The floor
+  values are checked, not just their shape. The population gate now reads
+  more query shapes and two more tables (`parcel_observations`,
+  `county_market_rollups`).
+Open: the general settings writers (`PATCH /api/organization`, the
+import-export and onboarding settings updates) write back a settings object
+read earlier in the request. An opt-out landing mid-request could be undone
+by that stale copy. No path can set the flag directly.
+Resolving commits: this branch, batch E (2026-09-29) and its audit follow-up
 ### DEFECT-0160
 Title: Client panels rendered a failed fetch as an empty list, and the ratchet could not see the idiom
 Severity: P2

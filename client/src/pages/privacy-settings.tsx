@@ -558,10 +558,6 @@ export function PrivacyDataRights({
 }
 
 /**
- * The standalone route at `/settings/privacy`, linked from the public privacy
- * policy and from the data-export page. Nothing but chrome and a title.
- */
-/**
  * Cross-customer data sharing — opt-in (founder ruling 2026-09-29 #11).
  * Off unless the owner turns it on; every shared figure needs five opted-in
  * operators behind it; turning it off removes the org from every figure.
@@ -608,12 +604,14 @@ function DataSharingCard() {
           <CardTitle className="text-base">Shared market benchmarks</CardTitle>
         </div>
         <CardDescription>
-          Off unless you turn it on. When on, anonymized figures from your deals, offers and
-          scored parcels can count toward benchmarks other AcreOS operators see — county price
-          ranges, network comps, credit-score benchmarks, county reviews. A figure is only shown
-          when at least five different operators who have also opted in are behind it, so no
-          single operator can be read from it. Turning it off takes your data out of every figure
-          from then on.
+          Off unless you turn it on. When on, anonymized figures from your deals, offers,
+          properties and scored parcels can count toward benchmarks other AcreOS operators see —
+          county price ranges, network comps, credit-score benchmarks, county reviews, county
+          coverage — and patterns from your resolved support tickets can help other operators'
+          support. A figure is only shown when at least five different operators who have also
+          opted in are behind it, so no single operator can be read from it. Turning it off takes
+          your data out of every figure from then on; monthly county figures drop it at their next
+          recompute.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex items-center justify-between gap-4">
@@ -632,6 +630,10 @@ function DataSharingCard() {
   );
 }
 
+/**
+ * The standalone route at `/settings/privacy`, linked from the public privacy
+ * policy and from the data-export page. Nothing but chrome and a title.
+ */
 export default function PrivacySettingsPage() {
   useDocumentTitle("Privacy & data");
   return <PrivacyDataRights variant="page" />;

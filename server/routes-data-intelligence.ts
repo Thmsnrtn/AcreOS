@@ -512,6 +512,7 @@ router.post("/parcel-intelligence", async (req: Request, res: Response) => {
 
     // 2) Miss / stale / forced: recompute (unchanged fusion math).
     const report = await generateLandIntelligenceReport({
+      organizationId,
       latitude: lat,
       longitude: lng,
       acres: parsedAcres,

@@ -129,9 +129,8 @@ export async function getDataContributionMetrics(
     const orgPropertyCount = Number(propStats?.propertyCount ?? 0);
     const consenting = await consentingOrgIds();
     const contributing = consenting.has(orgId);
-    const others = [...consenting].filter((id) => id !== orgId);
     let percentileRank: number | null = null;
-    if (contributing && others.length >= MIN_DISTINCT_OPERATORS) {
+    if (contributing && orgPropertyCount > 0 && consenting.size > MIN_DISTINCT_OPERATORS) {
       const allOrgCounts = await db
         .select({
           orgId: properties.organizationId,
@@ -140,8 +139,15 @@ export async function getDataContributionMetrics(
         .from(properties)
         .where(inArray(properties.organizationId, [...consenting]))
         .groupBy(properties.organizationId);
-      const below = allOrgCounts.filter((o) => Number(o.ct) < orgPropertyCount).length;
-      percentileRank = Math.round((below / consenting.size) * 100);
+      // The ranked population is opted-in orgs that HOLD properties — an
+      // opted-in org with none is not an operator in this ranking. Rank only
+      // against at least MIN_DISTINCT_OPERATORS others, or the rank reads
+      // their portfolio sizes.
+      const others = allOrgCounts.filter((o) => o.orgId !== orgId && Number(o.ct) > 0);
+      if (others.length >= MIN_DISTINCT_OPERATORS) {
+        const below = others.filter((o) => Number(o.ct) < orgPropertyCount).length;
+        percentileRank = Math.round((below / (others.length + 1)) * 100);
+      }
     }
 
     logger.info("Data contribution metrics generated", { orgId, orgPropertyCount });

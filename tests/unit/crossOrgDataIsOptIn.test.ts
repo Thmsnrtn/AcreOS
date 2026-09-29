@@ -25,13 +25,15 @@ import { stripComments, REPO_SWEEP_TIMEOUT_MS } from "../helpers/stripComments";
 
 vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
+const ALL_ORGS = Array.from({ length: 20 }, (_, i) => i + 1);
 const h = vi.hoisted(() => ({
   consenting: [] as number[],
   selectThrows: false,
-  queries: [] as Array<{ table: string; where: string; having: string }>,
+  queries: [] as Array<{ table: string; where: string; having: string; havingParams: unknown[] }>,
   executes: [] as string[],
   rowsByTable: {} as Record<string, unknown[]>,
   executeRows: [] as unknown[],
+  executeParams: [] as unknown[][],
 }));
 
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
@@ -40,7 +42,7 @@ vi.mock("../../server/db", () => {
   const render = (w: unknown) => (w ? dialect.sqlToQuery(w as SQL).sql : "");
   const select = (proj?: Record<string, unknown>) => {
     if (h.selectThrows) throw new Error("db down");
-    const rec = { table: "", where: "", having: "" };
+    const rec = { table: "", where: "", having: "", havingParams: [] as unknown[] };
     const q: Record<string, unknown> = {};
     q.from = (t: unknown) => {
       rec.table = getTableName(t as never);
@@ -55,22 +57,30 @@ vi.mock("../../server/db", () => {
     };
     q.groupBy = () => q;
     q.having = (w: unknown) => {
-      rec.having = render(w);
+      const r = dialect.sqlToQuery(w as SQL);
+      rec.having = r.sql;
+      rec.havingParams = r.params;
       return q;
     };
     q.orderBy = () => q;
     q.limit = () => q;
     q.then = (f: (v: unknown) => unknown, r?: (e: unknown) => unknown) => {
-      // The consent read: every org in h.consenting has opted in.
+      // The consent read answers with the consenting orgs ONLY when the
+      // query actually filters on consent; an unfiltered read of organizations
+      // gets every org — so a surface that skipped the consent predicate
+      // would publish non-consenting orgs and the tests below would see it.
       if (rec.table === "organizations" && proj && "id" in proj) {
-        return Promise.resolve(h.consenting.map((id) => ({ id }))).then(f, r);
+        const ids = /crossOrgLearningConsent/.test(rec.where) ? h.consenting : ALL_ORGS;
+        return Promise.resolve(ids.map((id) => ({ id }))).then(f, r);
       }
       return Promise.resolve(h.rowsByTable[rec.table] ?? []).then(f, r);
     };
     return q;
   };
   const execute = async (q: unknown) => {
-    h.executes.push(render(q));
+    const r = dialect.sqlToQuery(q as SQL);
+    h.executes.push(r.sql);
+    h.executeParams.push(r.params);
     return { rows: h.executeRows };
   };
   return { db: { select, execute } };
@@ -96,6 +106,7 @@ beforeEach(() => {
   h.executes = [];
   h.rowsByTable = {};
   h.executeRows = [];
+  h.executeParams = [];
 });
 
 describe("consent is opt-in and fails closed", () => {
@@ -133,6 +144,7 @@ describe("county reviews (communityIntelligence)", () => {
     const q = h.executes[0];
     expect(q).toMatch(/d\.organization_id = ANY\(ARRAY\[\$1, \$2, \$3, \$4, \$5\]::int\[\]\)/);
     expect(q).toMatch(/COUNT\(DISTINCT d\.organization_id\) >= \$\d+/);
+    expect(h.executeParams[0].slice(-2)).toEqual([5, 5]); // deals floor, operator floor
   });
 });
 
@@ -153,19 +165,25 @@ describe("data network figures (dataNetworkVisibility)", () => {
     for (const r of reads) expect(r.where).toMatch(/"properties"\."organization_id" in \(/);
     const grouped = reads.filter((r) => r.having);
     expect(grouped).toHaveLength(2);
-    for (const r of grouped) expect(r.having).toMatch(/count\(distinct "properties"\."organization_id"\) >= \$\d/);
+    for (const r of grouped) {
+      expect(r.having).toMatch(/count\(distinct "properties"\."organization_id"\) >= \$\d/);
+      expect(r.havingParams.at(-1)).toBe(5); // the floor's VALUE, not just its shape
+    }
   });
 
-  it("a percentile rank is only for an org that opted in, among at least five other opted-in orgs", async () => {
-    h.rowsByTable.properties = [{ propertyCount: 10, countyCount: 2, orgId: 1, ct: 10 }];
+  it("a percentile rank is only for an org that opted in, ranked among at least five other opted-in orgs that HOLD properties", async () => {
+    const holding = (ids: number[]) => ids.map((id) => ({ propertyCount: 10, countyCount: 2, orgId: id, ct: id === 1 ? 10 : 5 }));
     h.consenting = [2, 3, 4, 5, 6, 7];
+    h.rowsByTable.properties = holding([1, 2, 3, 4, 5, 6, 7]);
     expect(await getDataContributionMetrics(1)).toMatchObject({ contributing: false, percentileRank: null });
-    h.consenting = [1, 2, 3, 4, 5];
-    expect(await getDataContributionMetrics(1)).toMatchObject({ contributing: true, percentileRank: null });
+    // Five other opted-in orgs — but only one holds properties: no rank.
     h.consenting = [1, 2, 3, 4, 5, 6];
+    h.rowsByTable.properties = [...holding([1, 2]), ...[3, 4, 5, 6].map((id) => ({ propertyCount: 10, countyCount: 2, orgId: id, ct: 0 }))];
+    expect(await getDataContributionMetrics(1)).toMatchObject({ contributing: true, percentileRank: null });
+    // Five others holding properties, all smaller: top of the ranking.
+    h.rowsByTable.properties = holding([1, 2, 3, 4, 5, 6]);
     const r = await getDataContributionMetrics(1);
-    expect(r.contributing).toBe(true);
-    expect(typeof r.percentileRank).toBe("number");
+    expect(r).toMatchObject({ contributing: true, percentileRank: Math.round((5 / 6) * 100) });
   });
 });
 
@@ -183,7 +201,9 @@ describe("credit benchmarks (creditBenchmarking)", () => {
     h.rowsByTable.land_credit_scores = [1, 2, 3, 4, 5, 6].map((p) => scoreRow(p, 1));
     const r = await svc.getBenchmarks("land", "TX");
     expect(r.available).toBe(false);
-    expect((r as { reason: string }).reason).toMatch(/not from 5 different operators who have opted in/);
+    const reason = (r as { reason: string }).reason;
+    expect(reason).toMatch(/5 different operators who opted in/);
+    expect(reason).not.toMatch(/\b6\b/); // the below-floor cohort size is not disclosed
   });
 
   it("five parcels from five opted-in operators are, and the cohort query reads opted-in orgs only", async () => {
@@ -220,11 +240,21 @@ describe("valuation comps (acreOSValuation)", () => {
 // say why they are not a publication across customers.
 const ROOT = resolve(__dirname, "../..");
 type Verdict = "consented" | "own-org" | "founder-only" | "platform-op";
-const CONSENT_FILTERS = /\b(consentingOrgIds|publishableCrossOrgLearnings|publicRecordTransaction|compsVisibleTo)\(/;
+const CONSENT_FILTERS = /\b(consentingOrgIds|publishableCrossOrgLearnings|publicRecordTransaction|compsVisibleTo)\(|\bCROSS_ORG_CONSENT_EFFECTIVE_AT\b/;
+// Every query shape a reader can take: a Drizzle .from()/.join() (spacing or
+// line breaks inside the parens included), the relational db.query API, and
+// raw SQL FROM/JOIN in any case.
+const shape = (ident: string, table: string) =>
+  new RegExp(
+    `\\.from\\(\\s*${ident}\\s*\\)|\\.(inner|left|right|full)?[jJ]oin\\(\\s*${ident}\\b|\\bdb\\.query\\.${ident}\\.|\\b(from|join)\\s+${table}\\b`,
+    "i",
+  );
 const SOURCES: Record<string, RegExp> = {
-  pax_cross_org_learnings: /from\(paxCrossOrgLearnings\)|FROM pax_cross_org_learnings/,
-  transaction_training: /from\(transactionTraining\)|transactionTraining\.findMany|FROM transaction_training/,
-  land_credit_scores: /from\(landCreditScores\)|FROM land_credit_scores/,
+  pax_cross_org_learnings: shape("paxCrossOrgLearnings", "pax_cross_org_learnings"),
+  transaction_training: shape("transactionTraining", "transaction_training"),
+  land_credit_scores: shape("landCreditScores", "land_credit_scores"),
+  parcel_observations: shape("parcelObservations", "parcel_observations"),
+  county_market_rollups: shape("countyMarketRollups", "county_market_rollups"),
 };
 const REGISTER: Record<string, Verdict> = {
   "server/services/paxLearning.ts": "consented",
@@ -240,6 +270,11 @@ const REGISTER: Record<string, Verdict> = {
   "server/services/outcomeCalibrationLoop.ts": "own-org",
   "server/services/lcsCalibrator.ts": "own-org", // per-deal latest score lookup
   "server/jobs/landCreditScoreRecalculation.ts": "platform-op", // rescoring job, publishes nothing
+  "server/routes-market-heat.ts": "consented", // serves only rollups computed under the consent rule
+  "server/services/dataCoop/quarterlyMarketReport.ts": "founder-only", // draft, founder-reviewed
+  "server/services/parcel-biography.ts": "own-org", // the org's own + unattributed public facts
+  "server/services/parcelDeltaDetector.ts": "own-org", // same
+  "server/services/audit/detectors/observationRateDetector.ts": "platform-op", // insert-rate health signal
 };
 
 function readers(src: string): string[] {
@@ -259,8 +294,12 @@ describe("every reader of a cross-org source is classified", () => {
   it("the scan read the whole server tree, and its detector is live (canary)", () => {
     expect(files.length).toBeGreaterThan(1000);
     expect(readers(`db.select().from(paxCrossOrgLearnings)`)).toEqual(["pax_cross_org_learnings"]);
+    expect(readers(`db.select().from(\n  paxCrossOrgLearnings\n)`)).toEqual(["pax_cross_org_learnings"]);
     expect(readers(`db.query.transactionTraining.findMany({})`)).toEqual(["transaction_training"]);
+    expect(readers(`db.query.landCreditScores.findFirst({})`)).toEqual(["land_credit_scores"]);
+    expect(readers(`q.innerJoin(landCreditScores, eq(a, b))`)).toEqual(["land_credit_scores"]);
     expect(readers(`sql\`SELECT * FROM land_credit_scores\``)).toEqual(["land_credit_scores"]);
+    expect(readers(`sql\`select n from x join parcel_observations po on true\``)).toEqual(["parcel_observations"]);
     expect(readers(`// db.select().from(landCreditScores)`.replace(/^\/\/.*$/, ""))).toEqual([]);
   });
 
@@ -282,6 +321,14 @@ describe("every reader of a cross-org source is classified", () => {
     const patchSchema = src.slice(src.indexOf("const orgSettingsPatchSchema"), src.indexOf("});", src.indexOf("const orgSettingsPatchSchema")));
     expect(patchSchema.length).toBeGreaterThan(100); // located (vacuity)
     expect(patchSchema).not.toMatch(/crossOrgLearningConsent/);
+  });
+
+  it("market heat serves only rollups computed under the consent rule, and no below-floor count", () => {
+    const src = stripComments(readFileSync(resolve(ROOT, "server/routes-market-heat.ts"), "utf8"));
+    // Both reads — the per-county latest and the state browse.
+    expect(src.match(/gte\(countyMarketRollups\.computedAt, CROSS_ORG_CONSENT_EFFECTIVE_AT\)/g) ?? []).toHaveLength(1);
+    expect(src.match(/computed_at >= \$\{CROSS_ORG_CONSENT_EFFECTIVE_AT\}/g) ?? []).toHaveLength(1);
+    expect(src).not.toMatch(/parcelsObserved|parcelsNeeded|FROM parcel_observations/);
   });
 
   it("the single-operator publications stay gone", () => {

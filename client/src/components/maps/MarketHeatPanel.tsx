@@ -55,8 +55,6 @@ interface CountyHeat {
     };
     lcsGradeDistribution: { total: number; shares: Record<string, number> } | null;
   };
-  parcelsObserved?: number;
-  parcelsNeeded?: number;
   privacyFloor?: number;
 }
 
@@ -112,7 +110,6 @@ function DistRow({ label, dist, money }: { label: string; dist: Distribution | n
 
 function CountyHeatCard({ c }: { c: CountyHeat }) {
   if (!c.hasData) {
-    const needed = c.parcelsNeeded ?? 0;
     return (
       <div className="rounded-card border border-border/50 p-3 space-y-1" data-testid={`heat-county-${c.county}`}>
         <div className="flex items-center justify-between gap-2">
@@ -120,9 +117,9 @@ function CountyHeatCard({ c }: { c: CountyHeat }) {
           <Badge variant="outline" className="text-micro shrink-0">Building coverage</Badge>
         </div>
         <p className="text-micro text-muted-foreground">
-          Not enough network data in this county yet — {needed} more contributing
-          parcel{needed === 1 ? "" : "s"} needed before aggregates unlock
-          ({c.parcelsObserved ?? 0} of {c.privacyFloor ?? 5} so far).
+          Not enough shared data in this county yet. Figures appear once at
+          least {c.privacyFloor ?? 5} operators who opted in to shared
+          benchmarks stand behind them.
         </p>
       </div>
     );
@@ -293,8 +290,9 @@ export function MarketHeatPanel({
           ) : browseState && browse.data ? (
             browse.data.counties.length === 0 ? (
               <p className="text-micro text-muted-foreground" role="status">
-                No county in {browseState} has cleared the 5-parcel network
-                floor yet. Working a county adds to its coverage.
+                No county in {browseState} has shared figures yet — each needs
+                data from at least five operators who opted in to shared
+                benchmarks.
               </p>
             ) : (
               <div className="space-y-2">

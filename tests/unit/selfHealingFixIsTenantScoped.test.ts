@@ -80,6 +80,8 @@ describe("DEFECT-0154 — known fix patterns are the caller's own, or k-anonymou
       // The stored count is not the floor: it still counts an org that opted out.
       { id: 2, issuePattern: "one opted out", autoFixAction: "clear_cache", successRate: "90", contributingOrgIds: [1, 2, 3, 4, 9], contributingOrgs: 5 },
       { id: 3, issuePattern: "was three", autoFixAction: "clear_cache", successRate: "90", contributingOrgIds: [1, 2, 3], contributingOrgs: 3 },
+      // Its text came from org 9's ticket; five later consenters don't publish it.
+      { id: 4, issuePattern: "creator opted out", autoFixAction: "clear_cache", successRate: "90", contributingOrgIds: [9, 1, 2, 3, 4, 5], contributingOrgs: 6 },
     ];
     const patterns = await paxLearningService.getKnownFixPatterns(7);
     expect(patterns.filter((p) => p.crossOrgId !== null).map((p) => p.crossOrgId)).toEqual([1]);

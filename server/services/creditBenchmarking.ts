@@ -74,8 +74,13 @@ const NO_COHORT_DATA_REASON =
  */
 const MIN_COHORT_SIZE = 5;
 
-const operatorFloorReason = (state: string, parcels: number) =>
-  `The ${state.toUpperCase()} network cohort has ${parcels} scored parcel${parcels === 1 ? "" : "s"}, but not from ${MIN_DISTINCT_OPERATORS} different operators who have opted in to shared benchmarks — AcreOS reports a benchmark only then, so no one operator's portfolio can be read from it.`;
+/**
+ * One refusal for every below-floor case. It states NO count: how many
+ * parcels opted-in operators have scored in a state is itself a figure about
+ * them, and below the floor it has nothing behind it (audit of ruling #11).
+ */
+const belowFloorReason = (state: string) =>
+  `Not enough shared data in ${state.toUpperCase()} yet. AcreOS reports a benchmark only when at least ${MIN_COHORT_SIZE} scored parcels from ${MIN_DISTINCT_OPERATORS} different operators who opted in to shared benchmarks stand behind it, so no one operator's portfolio can be read from it.`;
 
 /** Linear-interpolated percentile value from an ASCENDING-sorted array. */
 function percentileValue(sortedAsc: number[], p: number): number {
@@ -139,16 +144,8 @@ export class CreditBenchmarkingService {
    */
   async getBenchmarks(_propertyType: string, state: string): Promise<BenchmarksResult> {
     const { scores, operatorsOk } = await this.cohortScores(state);
-    if (scores.length >= MIN_COHORT_SIZE && !operatorsOk) {
-      return { available: false, reason: operatorFloorReason(state, scores.length) };
-    }
-    if (scores.length < MIN_COHORT_SIZE) {
-      return {
-        available: false,
-        reason: scores.length === 0
-          ? NO_COHORT_DATA_REASON
-          : `Only ${scores.length} scored parcels in the ${state.toUpperCase()} network cohort — a minimum of ${MIN_COHORT_SIZE} is required before AcreOS reports a benchmark (privacy floor + statistical honesty).`,
-      };
+    if (scores.length < MIN_COHORT_SIZE || !operatorsOk) {
+      return { available: false, reason: belowFloorReason(state) };
     }
     return {
       available: true,
@@ -167,16 +164,8 @@ export class CreditBenchmarkingService {
    */
   async compareToIndustry(landCreditScore: number, _propertyType: string, state: string): Promise<IndustryComparisonResult> {
     const { scores, operatorsOk } = await this.cohortScores(state);
-    if (scores.length >= MIN_COHORT_SIZE && !operatorsOk) {
-      return { available: false, reason: operatorFloorReason(state, scores.length) };
-    }
-    if (scores.length < MIN_COHORT_SIZE) {
-      return {
-        available: false,
-        reason: scores.length === 0
-          ? NO_COHORT_DATA_REASON
-          : `Only ${scores.length} scored parcels in the ${state.toUpperCase()} network cohort — a minimum of ${MIN_COHORT_SIZE} is required before AcreOS reports a comparison (privacy floor + statistical honesty).`,
-      };
+    if (scores.length < MIN_COHORT_SIZE || !operatorsOk) {
+      return { available: false, reason: belowFloorReason(state) };
     }
 
     const median = percentileValue(scores, 50);

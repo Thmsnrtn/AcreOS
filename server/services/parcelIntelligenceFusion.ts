@@ -54,6 +54,12 @@ import { buildCountyOpportunityProfile, getKnownMigrationHotspots } from "./cens
 // ---------------------------------------------------------------------------
 
 export interface ParcelIntelligenceInput {
+  /**
+   * The org whose report this is. Its observations are attributed to it:
+   * a report is a customer's activity, not a public record, and only
+   * opt-in data may reach a shared figure (ruling 2026-09-29 #11).
+   */
+  organizationId?: number;
   latitude: number;
   longitude: number;
   acres: number;
@@ -314,6 +320,7 @@ export async function generateLandIntelligenceReport(
       state: input.state.toUpperCase(),
       county: input.county,
       source: "fusion_due_diligence",
+      organizationId: input.organizationId ?? null,
       facts: {
         flood_zone: dd.checks.floodZone.zone ?? undefined,
         wetlands_percent: dd.checks.wetlands.wetlandPercent ?? undefined,

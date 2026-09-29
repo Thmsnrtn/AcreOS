@@ -23,6 +23,10 @@ export async function publishableCrossOrgLearnings<T extends { contributingOrgId
   const consenting = await consentingOrgIds();
   return rows.filter((r) => {
     const ids = Array.isArray(r.contributingOrgIds) ? (r.contributingOrgIds as unknown[]) : [];
+    // The pattern's TEXT was written from its first contributor's ticket, so
+    // that org must consent too — five later consenters do not publish words
+    // taken from an org that never agreed (audit of ruling #11).
+    if (ids.length === 0 || !consenting.has(Number(ids[0]))) return false;
     return meetsOperatorFloor(ids.filter((id) => consenting.has(Number(id))));
   });
 }

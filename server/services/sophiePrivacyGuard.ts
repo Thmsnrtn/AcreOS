@@ -29,6 +29,13 @@ import { db } from "../db";
 import { organizations } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 
+/**
+ * When the consent rule took effect. A materialized cross-org figure computed
+ * before this was built without asking anyone and is never served (the county
+ * rollups: server/routes-market-heat.ts).
+ */
+export const CROSS_ORG_CONSENT_EFFECTIVE_AT = new Date("2026-09-30T00:00:00Z");
+
 export const sophiePrivacyGuard = {
   /** Has this org opted in to cross-customer data? Absent or unreadable = no. */
   async hasConsent(orgId: number): Promise<boolean> {

@@ -58,6 +58,14 @@ interface CandidateCounty {
   parcelsObserved: number;
 }
 
+/**
+ * A platform observation: bulk public-record ingest, not any customer's
+ * activity. Unattributed rows from the due-diligence report path were a
+ * CUSTOMER's report before that path recorded its org (audit of ruling #11),
+ * so they never count as platform data.
+ */
+const PLATFORM_OBSERVATION = sql`(${parcelObservations.organizationId} IS NULL AND ${parcelObservations.source} <> 'fusion_due_diligence')`;
+
 /** An int[] literal for `= ANY(...)`; empty is a valid, match-nothing array. */
 function intArray(ids: Iterable<number>) {
   const list = [...ids].filter((n) => Number.isInteger(n));
@@ -80,7 +88,7 @@ async function findCandidateCounties(consenting: Set<number>): Promise<Candidate
     SELECT state, county, COUNT(DISTINCT apn)::int AS parcels
     FROM parcel_observations
     WHERE state IS NOT NULL AND county IS NOT NULL
-      AND (organization_id IS NULL OR organization_id = ANY(${intArray(consenting)}))
+      AND (${PLATFORM_OBSERVATION} OR organization_id = ANY(${intArray(consenting)}))
     GROUP BY state, county
     HAVING COUNT(DISTINCT apn) >= ${MIN_COHORT_SIZE}
   `);
@@ -123,7 +131,7 @@ async function gatherCountyRollup(
            COUNT(*) FILTER (WHERE observed_at >= ${start} AND observed_at < ${end})::int AS n
     FROM parcel_observations
     WHERE state = ${candidate.state} AND county = ${candidate.county}
-      AND (organization_id IS NULL
+      AND (${PLATFORM_OBSERVATION}
            OR (${includeOperators} AND organization_id = ANY(${intArray(consenting)})))
   `);
   const density = ((densityResult as unknown as { rows?: Array<{ parcels: number; n: number }> })?.rows ?? [])[0];
