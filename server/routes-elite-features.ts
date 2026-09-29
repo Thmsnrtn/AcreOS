@@ -12,6 +12,7 @@
  * - State Document Config (get state requirements)
  */
 
+import { OCCUPIED_TARGET_STATUSES, MANUAL_POSTING } from "./services/listingWithdrawal";
 import { offerabilityRefusal } from "./services/listability";
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
@@ -451,14 +452,36 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   app.post("/api/listings/:id/syndicate", ...auth, async (req: Request, res: Response) => {
     try {
       const org = req.organization;
-      const { platforms, overrides } = req.body;
+      // No `overrides` (DEFECT-0182): the body could change the price and
+      // terms a portal showed without the listing ever recording them.
+      // Known platforms only, canonical (Lands of America posts as Land.com),
+      // each once — or an alias re-posts over a live posting (DEFECT-0182 audit).
+      const platforms = listingSyndication.normalizePlatformRequest((req.body as { platforms?: unknown })?.platforms);
 
-      if (!platforms?.length) return Errors.badRequest(res, "platforms array required");
+      if (platforms.length === 0) return Errors.badRequest(res, "platforms array required (known platforms)");
 
       // Load property from listing
       const { storage } = await import("./storage");
       const listing = await storage.getPropertyListing(org.id, parseInt(req.params.id));
       if (!listing) return Errors.notFound(res, "Listing");
+      // A withdrawn or sold listing is off the market; re-listing goes
+      // through publish (DEFECT-0182).
+      if (listing.status !== "active") {
+        return Errors.badRequest(res, `This listing is ${listing.status}. Publish it first; channels only receive active listings.`);
+      }
+      // Never post a second copy onto a channel where one is live or still
+      // coming down: the new external id would orphan the old posting, which
+      // could then never be taken down.
+      const priorTargets = listing.syndicationTargets ?? [];
+      const occupied = platforms.filter((p) =>
+        priorTargets.some((t) => listingSyndication.canonicalPlatform(t.platform) === p && OCCUPIED_TARGET_STATUSES.includes(t.status)),
+      );
+      if (occupied.length > 0) {
+        return Errors.badRequest(
+          res,
+          `Already live or still being withdrawn on: ${occupied.join(", ")}. Take it down there first.`,
+        );
+      }
 
       const [property] = await db.select().from(properties)
         .where(and(eq(properties.id, listing.propertyId), eq(properties.organizationId, org.id)));
@@ -475,10 +498,28 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
         downPaymentMin: listing.downPaymentMin ? parseFloat(listing.downPaymentMin) : undefined,
         monthlyPaymentMin: listing.monthlyPaymentMin ? parseFloat(listing.monthlyPaymentMin) : undefined,
         interestRate: listing.interestRate ? parseFloat(listing.interestRate) : undefined,
-        ...overrides,
       });
 
       const results = await listingSyndication.syndicateListing(normalizedListing, platforms);
+      // Record every outcome on the listing (DEFECT-0182): this returned the
+      // results and saved nothing, so a posting made here had no stored
+      // external id and could never be taken down.
+      const nextTargets = [...priorTargets];
+      for (const r of results) {
+        const manual = r.success && r.requiresManualAction && !r.listingId;
+        const record = {
+          platform: listingSyndication.canonicalPlatform(r.platform),
+          listingId: r.listingId,
+          listingUrl: r.listingUrl,
+          status: manual ? MANUAL_POSTING : r.success ? "active" : "failed",
+          postedAt: r.success && !manual ? new Date().toISOString() : undefined,
+          error: r.success ? undefined : r.error,
+        };
+        const idx = nextTargets.findIndex((t) => listingSyndication.canonicalPlatform(t.platform) === record.platform);
+        if (idx >= 0) nextTargets[idx] = { ...nextTargets[idx], ...record };
+        else nextTargets.push(record);
+      }
+      await storage.updatePropertyListing(listing.id, { syndicationTargets: nextTargets }, org.id);
       res.json({ results });
     } catch (err: any) {
       Errors.internal(res, err);
@@ -517,7 +558,9 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       );
       const updatedTargets = targets.map((t) =>
         t === target
-          ? { ...t, status: result.success ? "removed" : "withdrawal_failed", error: result.success ? undefined : result.error }
+          ? result.success
+            ? { ...t, status: "removed", error: undefined, removalSource: "provider" as const, removedAt: new Date().toISOString(), removedBy: req.user?.id }
+            : { ...t, status: "withdrawal_failed", error: result.error }
           : t,
       );
       await storage.updatePropertyListing(listing.id, { syndicationTargets: updatedTargets }, org.id);

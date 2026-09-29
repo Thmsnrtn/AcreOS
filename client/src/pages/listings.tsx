@@ -50,13 +50,14 @@ const SYNDICATION_REQUIRES_KEYS = new Set([
 ]);
 
 const SYNDICATION_TARGETS = [
-  { id: "land_com", name: "Land.com", icon: Globe },
+  // Lands of America posts through the Land.com network: one channel, one
+  // posting (DEFECT-0182 audit — a separate row double-posted).
+  { id: "land_com", name: "Land.com / Lands of America", icon: Globe },
   { id: "facebook_marketplace", name: "Facebook Marketplace", icon: Globe },
   { id: "craigslist", name: "Craigslist", icon: Globe },
   { id: "landwatch", name: "LandWatch", icon: Globe },
   { id: "landflip", name: "LandFlip", icon: Globe },
-  { id: "lands_of_america", name: "Lands of America", icon: Globe },
-  { id: "landsearch", name: "LandSearch", icon: Building },
+{ id: "landsearch", name: "LandSearch", icon: Building },
 ];
 
 // Per-platform syndication response from POST /api/listings/:id/publish.
@@ -176,6 +177,29 @@ export default function ListingsPage() {
     },
     onError: (error: any) => {
       toast({ title: "Couldn't delete listing", description: `${error.message} — the listing is still live.`, variant: "destructive" });
+    },
+  });
+
+  // Per-channel removal (DEFECT-0182 audit): the take-down route existed with
+  // no caller, and a manual channel had no way out of "remove manually".
+  const channelRemovalMutation = useMutation({
+    mutationFn: async ({ listingId, platform, how }: { listingId: number; platform: string; how: "take_down" | "confirm" }) => {
+      const res =
+        how === "take_down"
+          ? await apiRequest("POST", "/api/syndication/take-down", { listingId, platform })
+          : await apiRequest("POST", `/api/listings/${listingId}/targets/${encodeURIComponent(platform)}/confirm-removed`, {});
+      return (await res.json()) as { success?: boolean; error?: string };
+    },
+    onSuccess: (data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+      if (vars.how === "take_down" && data.success === false) {
+        toast({ title: "Take-down failed", description: data.error ?? "The platform did not confirm removal.", variant: "destructive" });
+      } else {
+        toast({ title: vars.how === "take_down" ? "Taken down" : "Recorded as removed" });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: "Couldn't update the channel", description: err.message, variant: "destructive" });
     },
   });
 
@@ -822,6 +846,7 @@ export default function ListingsPage() {
                                       withdrawal_requested: "take-down needed",
                                       withdrawal_failed: "take-down failed",
                                       manual_action_required: "remove manually",
+                                      manual_posting: "post by hand",
                                     };
                                     const tone =
                                       target.status === "active"
@@ -862,6 +887,32 @@ export default function ListingsPage() {
                                           >
                                             {platformLabel} · {shown}
                                           </Badge>
+                                        )}
+                                        {(target.status === "withdrawal_requested" || target.status === "withdrawal_failed") && target.listingId && (
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="ml-1 h-6 px-2 text-xs"
+                                            disabled={channelRemovalMutation.isPending}
+                                            onClick={() => channelRemovalMutation.mutate({ listingId: listing.id, platform: target.platform, how: "take_down" })}
+                                            aria-label={`Take down the ${platformLabel} posting`}
+                                            data-testid={`button-take-down-${target.platform}`}
+                                          >
+                                            Take down
+                                          </Button>
+                                        )}
+                                        {(target.status === "manual_action_required" || target.status === "withdrawal_failed") && (
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="ml-1 h-6 px-2 text-xs"
+                                            disabled={channelRemovalMutation.isPending}
+                                            onClick={() => channelRemovalMutation.mutate({ listingId: listing.id, platform: target.platform, how: "confirm" })}
+                                            aria-label={`I removed it from ${platformLabel}`}
+                                            data-testid={`button-confirm-removed-${target.platform}`}
+                                          >
+                                            I removed it
+                                          </Button>
                                         )}
                                       </li>
                                     );

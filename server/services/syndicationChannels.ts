@@ -20,6 +20,7 @@
  * channel's lastSyncError carries the first real failure message.
  */
 
+import { OCCUPIED_TARGET_STATUSES } from "./listingWithdrawal";
 import { offerabilityRefusal } from "./listability";
 import { db } from "../db";
 import {
@@ -35,6 +36,7 @@ import {
   PLATFORMS,
   buildNormalizedListing,
   syndicateListing,
+  canonicalPlatform,
   type LegacySyndicationPlatform,
   type PlatformConfig,
 } from "./listingSyndication";
@@ -278,9 +280,12 @@ export async function syncChannels(
     // Only push to channels where this listing isn't already live — and
     // never back onto a channel it was withdrawn or taken down from (a
     // verified take-down was undone by the next sync).
-    const WITHDRAWN = new Set(["active", "removed", "withdrawal_requested", "withdrawal_failed", "manual_action_required"]);
-    const needed = syncable.filter((id) => {
-      const t = (listing.syndicationTargets ?? []).find((x) => x.platform === id);
+    const WITHDRAWN = new Set([...OCCUPIED_TARGET_STATUSES, "removed"]);
+    // Canonical channels (DEFECT-0182 audit): Lands of America posts as
+    // Land.com, so with both enabled sync-all posted Land.com twice and, on
+    // every later run, re-posted over the live Land.com target.
+    const needed = [...new Set(syncable.map(canonicalPlatform))].filter((id) => {
+      const t = (listing.syndicationTargets ?? []).find((x) => canonicalPlatform(x.platform) === id);
       return !t || !WITHDRAWN.has(t.status);
     });
     if (needed.length === 0) continue;
@@ -293,7 +298,8 @@ export async function syncChannels(
 
     const nextTargets = [...(listing.syndicationTargets ?? [])];
     for (const r of results) {
-      const tally = perChannel.get(r.platform);
+      const tally =
+        perChannel.get(r.platform) ?? [...perChannel.entries()].find(([id]) => canonicalPlatform(id) === r.platform)?.[1];
       if (tally) {
         if (r.success) tally.succeeded++;
         else {
@@ -301,7 +307,7 @@ export async function syncChannels(
           if (!tally.firstError && r.error) tally.firstError = r.error;
         }
       }
-      const idx = nextTargets.findIndex((t) => t.platform === r.platform);
+      const idx = nextTargets.findIndex((t) => canonicalPlatform(t.platform) === r.platform);
       const record = {
         platform: r.platform as string,
         listingId: r.listingId,

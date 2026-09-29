@@ -4526,16 +4526,10 @@ Remediation plan: DONE.
   so the next sync re-posted a listing that had just been taken down. Sync
   now applies `offerabilityRefusal` and never re-posts onto a withdrawn
   channel. A `failed` target is still retried.
-- Still open:
-  - When a parcel sells, its listing is not withdrawn. It stays "active" and
-    stays live wherever it already reached.
-  - The elite `POST /api/listings/:id/syndicate` pushes to any requested
-    platform, ignoring a withdrawn listing or target. It never saves the
-    external id, so that posting can't be taken down. Its only client
-    (`client/src/pages/syndication.tsx`) passes a property id where the
-    route expects a listing id.
-  - Re-publishing a platform overwrites a `withdrawal_requested` or
-    `withdrawal_failed` target and its external id.
+- Formerly open, since fixed:
+  - Sold land staying live is DEFECT-0181.
+  - The elite syndicate route and publish overwriting live targets are
+    DEFECT-0182.
 Falsified by: `tests/unit/listingWithdrawalIsVerified.test.ts` (the create
 case red pre-fix); `tests/unit/syncNeverRepublishesWithdrawn.test.ts` (five
 cases red pre-fix).
@@ -4619,10 +4613,8 @@ Remediation plan: DONE.
   - Unticking clears both vocabularies and the stored evidence. Every
     progress reader counts `checkedAt || completed`.
   - The manual generator no longer falls back to "TX".
-- Still open: a deal whose checklist started from a template never gets the
-  closing items, and so never gets the wire item. Both
-  `_autoGenerateClosingChecklist` and the generator return early when a row
-  exists, and the manual route still answers "created".
+- Formerly open, fixed as DEFECT-0180: a deal whose checklist started from
+  a template never got the closing items, and so never got the wire item.
 - The stage gate counts either vocabulary.
 - A template MERGES: the closing items and any item with progress are kept.
 - The hook uses the deal's current property (org-scoped), its org and its
@@ -4712,13 +4704,17 @@ Remediation plan: DONE.
   of a removal does not trip the gate.
 - There is a vacuity floor per file. Canaries prove that each of the five
   written shapes goes red.
-- Not yet covered, found by an independent audit:
-  - The population is a hand list, not a glob. It omits seller
-    motivation and psychology, lead intelligence, disposition, the
-    offer services and the VA / executive qualification prompts. None of
-    these uses a forbidden token today.
-  - The pattern misses field names without a comparison (`.age`,
-    `birthYear`, `dateOfBirth`) and camelCase `ssiIncome` / `isDisabled`.
+- Widened after an independent audit found the first version was a hand
+  list:
+  - The population is now every non-test module under `server/services` and
+  `server/ai` (894 files, floor 800).
+  - An exemption register gives the reason for each exempt file: time-based
+    "age", the founder's own self-employment tax, and the fair-housing
+    checker that refuses protected classes. A stale exemption fails.
+  - The pattern also catches field names (`estimatedOwnerAge`,
+    `birthYear`, `dateOfBirth`, `isDisabled`, `ssiIncome`), reversed
+    comparisons, and case-sensitive SNAP/TANF.
+  - Thirteen canaries cover these shapes.
 - Not decided here, recorded for the founder: seller-side life-event
   signals ("recent divorce" in `server/services/prospectIntelligence.ts`,
   keywords in `server/services/sellerIntentPredictor.ts`). Marital status is
@@ -4776,6 +4772,174 @@ Falsified by: `tests/unit/buyerAudienceIsTheOrgsOwn.test.ts` (three cases red
 pre-fix) and `tests/unit/buyerQualificationClaimsOnlyWhatIsVerified.test.ts`
 (five cases red pre-fix). Both doubles render the real predicates.
 Resolving commits: this branch, round 3
+### DEFECT-0180
+Title: A deal whose checklist started from a template never received the closing items — the wire-fraud interlock included
+Severity: P1
+Status: FIXED (round 3, 2026-09-29)
+Surfaced by lenses: independent audit of DEFECT-0176
+Description: `_autoGenerateClosingChecklist` (`server/storage/dealRepo.ts`)
+returned as soon as any checklist row existed. `generateClosingChecklist`
+(`server/services/closingChecklistGenerator.ts`) returned an existing row
+unchanged. So once a due-diligence template had been applied, the deal
+never received "Verify wire instructions — two-channel out-of-band" or any
+other closing step. The manual route still answered "Closing checklist
+created — N items".
+Remediation plan: DONE.
+- A row that already holds the closing items (any item with a `phase`) is
+  left alone.
+- Any other row has the closing items MERGED in. Existing items keep their
+  progress.
+- A non-closing item that shares a closing item's id is replaced, so a
+  template can't pre-tick the wire interlock by squatting on its id.
+- The hook generates for template-started deals, and the route says how
+  many closing items it added.
+- Audit follow-up: the stage gate (`checkStageGate`) was phase-blind. A
+  deal holding the ~30 closing items, including post-closing recording
+  steps due weeks AFTER closing, could not move at all without `force`,
+  and 0180 put more deals in that state. Now:
+  - A closing item blocks only the stages its phase must precede:
+    pre-contract items block acceptance and escrow; every pre-closing
+    phase blocks closing.
+  - Post-closing items never block.
+  - Cancelling is never blocked.
+  - Template items (no phase) keep the original rule.
+  - A second audit found the deal page pre-checked every status change
+    with the stage-less gate, so the fix never reached it. The page now
+    asks `GET /api/deals/:id/stage-gate?to=<stage>`.
+- Not changed:
+  - reconciling the closing items when the deal's state or closing date
+    later changes;
+  - `deal_checklists` has no unique index on `deal_id`, so a concurrent
+    hook and route could insert two rows;
+  - the merge is a read-modify-write outside a transaction.
+Falsified by: `tests/unit/closingItemsReachEveryDeal.test.ts` (four cases red
+pre-fix).
+Resolving commits: this branch, round 3
+### DEFECT-0181
+Title: Land that sold stayed listed and live on every channel it had reached
+Severity: P2
+Status: FIXED (round 3, 2026-09-29)
+Surfaced by lenses: independent audit of DEFECT-0174; practitioner supplement ("a stale or sold listing cannot be selected")
+Description: A parcel that sold kept its listing "active" and live wherever
+it had been syndicated. Sync-all skipped it (DEFECT-0174), but no path ever
+asked for it to come down.
+Remediation plan: DONE.
+- `withdrawListingsForUnheldProperty`
+  (`server/services/listingWithdrawal.ts`) withdraws every open listing for
+  a property once the property is no longer held. The listing is marked
+  `sold` or `withdrawn`, and each live target becomes
+  `withdrawal_requested` or `manual_action_required`, using the same
+  transition unpublish now shares (`withdrawnTargets`).
+- It runs from `updateProperty` whenever a status changes, from the
+  lot-sale route (`server/routes-lot-basis.ts`), and from soft-delete.
+- An independent audit found three more status writers the first version
+  missed:
+  - `bulkUpdateProperties`, behind the Properties page's bulk status
+    action;
+  - `POST /api/bulk/properties/update`;
+  - the lot PATCH in `server/routes-subdivisions.ts`.
+  All three now withdraw. The bulk count is what was actually updated.
+- A population gate now reads every server file. Any
+  `.update(properties).set(...)` that names `status:` or passes a
+  variable or spread must sit in a file that calls the withdrawal helper.
+  It has canaries per writer shape and a floor.
+Falsified by: `tests/unit/soldLandIsWithdrawn.test.ts` (five cases red
+pre-fix, including the bulk path; the population gate goes red when one
+writer's call is removed).
+Resolving commits: this branch, round 3
+### DEFECT-0182
+Title: The manual syndicate route re-posted withdrawn listings and saved nothing; publish previews overwrote live postings' records
+Severity: P2
+Status: FIXED (round 3, 2026-09-29)
+Surfaced by lenses: independent audit of DEFECT-0173 / 0174
+Description:
+- `POST /api/listings/:id/syndicate` (`server/routes-elite-features.ts`)
+  pushed to any platform named in the body:
+  - onto a withdrawn listing, and onto a channel where the listing was
+    already live or still coming down;
+  - spreading a body `overrides` over the price and terms;
+  - saving NOTHING, so a posting made there had no stored external id and
+    could never be taken down.
+- Its only client (`client/src/pages/syndication.tsx`) sent a PROPERTY id
+  where the route takes a listing id.
+- Publish (`server/routes-team-messaging.ts`) replaced a platform's target
+  entry with each run's result. A dry-run preview or a credentials skip
+  therefore overwrote an ACTIVE target with "preview" and no external id,
+  orphaning a live posting.
+Remediation plan: DONE.
+- Syndicate refuses a withdrawn or sold listing and any channel that is
+  live or mid-withdrawal. It ignores `overrides` and records every outcome
+  on the listing.
+- The page resolves the selected property's listing, and says so when
+  there is none.
+- Publish skips occupied channels and never replaces their entries.
+- An independent audit found three more gaps:
+  - Aliases. Lands of America posts through Land.com and reports
+    `land_com`, so a request under the other name re-posted over a live
+    posting. Both routes now normalize the request to known, canonical,
+    de-duplicated platforms, and compare and record by canonical name.
+  - Copy/paste channels. A Craigslist result carries only text and no
+    external id, yet it was recorded as "active", a live posting AcreOS
+    never made. After a withdrawal it then sat in
+    `manual_action_required` forever, occupying the channel. It is now
+    recorded as `manual_posting`.
+    `POST /api/listings/:id/targets/:platform/confirm-removed` records the
+    operator's word that a manual channel is down (`removalSource:
+    "operator"`); take-down records `"provider"`.
+  - Unwired take-down. The take-down route had no client caller. The
+    listing badges now offer "Take down" and "I removed it".
+- Syndicate also refuses anything but an active listing.
+- The syndication page's platform picker was always empty: it read
+  `.platforms` off a bare array. It is now fixed.
+- The occupied-status set is shared by publish, syndicate and sync-all.
+- A second audit found three more gaps:
+  - Sync-all was a third target writer that was never canonicalized. With
+    both Land.com and Lands of America enabled, it double-posted Land.com
+    and re-posted over the live target on every run. It is now
+    canonicalized.
+  - Legacy alias rows were matched by raw name in publish (carry-over and
+    idempotency), confirm-removed and take-down eligibility.
+  - A Craigslist-only publish flipped the listing active and reported it
+    "published". Copy/paste text no longer counts as a publication.
+- The listing page no longer offers "Lands of America" as a second row
+  that double-posted.
+Falsified by: `tests/unit/syndicateRecordsAndRespectsWithdrawal.test.ts`
+(eight cases red pre-fix, plus the alias, duplicate, manual-posting and
+re-postable cases); the two publish cases and three confirm-removed cases
+in `tests/unit/listingWithdrawalIsVerified.test.ts`.
+Resolving commits: this branch, round 3
+### DEFECT-0183
+Title: Bulk property delete hard-deleted other tenants' deals, listings and diligence by request-supplied id
+Severity: P0
+Status: FIXED (round 3, 2026-09-29)
+Surfaced by lenses: independent audit of DEFECT-0181 (pre-existing)
+Description: `bulkDeleteProperties` (`server/storage/propertyRepo.ts`, route
+`POST /api/properties/bulk-delete`) ran `db.delete` on
+`dueDiligenceDossiers`, `dueDiligenceChecklists`, `dueDiligenceItems`,
+`propertyListings` and `deals` with `inArray(propertyId, ids)` and NO
+organization predicate. Only then did it run the org-scoped property
+delete. A signed-in user who posted another tenant's property ids therefore
+HARD-deleted that tenant's deals, listings and diligence records. It also
+skipped the legal-hold check the single delete enforces, and it
+hard-deleted where the single delete soft-deletes. Customer-data deletion
+is a founder-only hard-stop.
+Remediation plan: DONE.
+- It resolves the org's own ids first, and another org's ids touch nothing.
+- It checks the legal hold per property.
+- It does exactly what the single delete does: soft-delete the property and
+  its deals, and withdraw its listings.
+- It returns the number actually deleted, and ids already deleted are
+  skipped. Diligence rows are kept, as the single delete keeps them.
+- A second audit found soft-deleted properties still counted toward the
+  plan's property limit. Bulk hard-delete had been the only way back under
+  the limit. The count (`server/services/usageLimits.ts`) now excludes
+  `status = 'deleted'`.
+- The audit log records the requested ids alongside the count actually
+  deleted.
+Falsified by: `tests/unit/soldLandIsWithdrawn.test.ts` (the two
+DEFECT-0183 cases red pre-fix); `tests/unit/planLimitsIgnoreSampleData.test.ts`
+(the deleted-property case red pre-fix).
+Resolving commits: this branch, round 3
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -4813,11 +4977,11 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 1   | 11  | 12    |
-| FIXED  | 13  | 87  | 64  | 164   |
+| FIXED  | 14  | 88  | 66  | 168   |
 | DEFERRED | 0 | 3   | 0   | 3     |
-| **Total** | **13** | **91** | **75** | **179** |
+| **Total** | **14** | **92** | **77** | **183** |
 
-Recounted from the entries themselves on 2026-09-28 (179 `### DEFECT-` blocks
+Recounted from the entries themselves on 2026-09-28 (183 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
 OPEN). The table had drifted from the entries before this date — it read 3
 FIXED P1 and 1 FIXED P2 short.

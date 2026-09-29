@@ -468,7 +468,7 @@ export interface IStorage {
   updateDealChecklist(id: number, updates: Partial<InsertDealChecklist>): Promise<DealChecklist>;
   applyChecklistTemplateToDeal(organizationId: number, dealId: number, templateId: number): Promise<DealChecklist>;
   updateDealChecklistItem(dealId: number, itemId: string, updates: { checked?: boolean; documentUrl?: string; checkedBy?: string; verification?: DealChecklistItem["verification"] }): Promise<DealChecklist>;
-  checkStageGate(dealId: number): Promise<{ canAdvance: boolean; incompleteItems: DealChecklistItem[] }>;
+  checkStageGate(dealId: number, toStage?: string): Promise<{ canAdvance: boolean; incompleteItems: DealChecklistItem[] }>;
 
   // Usage Records
   getUsageRecords(orgId: number, limit?: number): Promise<UsageRecord[]>;

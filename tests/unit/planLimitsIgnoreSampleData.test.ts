@@ -44,3 +44,15 @@ describe("DEFECT-0147 — plan limits exclude the sample book", () => {
     });
   }
 });
+
+describe("DEFECT-0183 audit — a deleted property frees its plan slot", () => {
+  it("the property count excludes status 'deleted'", async () => {
+    h.wheres.length = 0;
+    await checkUsageLimit(7, "properties");
+    const q = h.wheres.filter((w) => w.table === "properties");
+    expect(q.length).toBe(1);
+    const r = new PgDialect().sqlToQuery(q[0].where as SQL);
+    expect(r.sql).toMatch(/"properties"\."status" <> \$/);
+    expect(r.params).toContain("deleted");
+  });
+});

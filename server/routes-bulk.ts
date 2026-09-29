@@ -10,6 +10,7 @@
  * All operations are scoped to the user's organization and capped at 100 records per request.
  */
 
+import { withdrawListingsForUnheldProperty } from "./services/listingWithdrawal";
 import { Router, type Response } from "express";
 import { attachPermissionContext } from "./utils/permissions";
 import { refuseUnpermittedAssignment } from "./utils/leadAssignmentGate";
@@ -150,14 +151,19 @@ router.post("/properties/update", async (req: AuthenticatedRequest, res: Respons
 
     allowedUpdates.updatedAt = new Date();
 
-    await db.update(properties)
+    const updatedRows = await db.update(properties)
       .set(allowedUpdates)
       .where(and(
         eq(properties.organizationId, orgId),
         inArray(properties.id, parsedIds)
-      ));
+      ))
+      .returning({ id: properties.id, status: properties.status });
+    // Land that is no longer held comes off the market (DEFECT-0181 audit).
+    if (allowedUpdates.status !== undefined) {
+      for (const p of updatedRows) await withdrawListingsForUnheldProperty(orgId, p.id, p.status);
+    }
 
-    res.json({ success: true, updated: parsedIds.length });
+    res.json({ success: true, updated: updatedRows.length });
   } catch (err) {
     logger.error("bulk.properties.update failed", err instanceof Error ? err : undefined);
     Errors.internal(res, err);

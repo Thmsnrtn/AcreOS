@@ -9,49 +9,94 @@
  * protects receipt of public assistance; age is a protected basis too).
  * At HEAD, `leadScoring.ts` still carried `calcOwnerAgeSignal` — "Owner age
  * >75 — estate/probate probability elevated (+75)" — unwired, one call from
- * live. It is deleted; this gate keeps the whole decision population clean.
+ * live. It is deleted; this gate keeps it from coming back anywhere.
  *
- * The POPULATION is enumerated, not globbed by convention: every module that
- * scores, matches, qualifies or prices a counterparty. Adding one means
- * adding it here. String literals are READ (prompts are strings); comments
- * are stripped, so a comment recording what was removed does not trip it.
+ * POPULATION (widened after an independent audit found the first version a
+ * hand list): EVERY non-test module under server/services and server/ai —
+ * scorers, qualifiers, pricing, and the prompts agents run on — with a
+ * floor on the count. A file that legitimately says "age" about TIME, or a
+ * compliance checker that names a protected class in order to REFUSE it,
+ * sits in EXEMPT with its reason; an exemption that no longer matches fails,
+ * so the register can't rot into headroom.
+ *
+ * String literals (prompts) are read; comments are stripped, so the record
+ * of a removal does not trip it.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { stripComments } from "../helpers/stripComments";
 
-const DECISION_POPULATION = [
-  "server/services/leadScoring.ts",
-  "server/services/leadQualification.ts",
-  "server/services/leadScoreDecay.ts",
-  "server/services/buyerMatchingAI.ts",
-  "server/services/buyerQualificationBot.ts",
-  "server/services/sellerIntentPredictor.ts",
-  "server/services/prospectIntelligence.ts",
-  "server/services/landCredit.ts",
-  "server/services/dealUnderwriting.ts",
-];
-
-/**
- * A protected trait used as an input: an age field or threshold, disability,
- * Social Security / SSI / SSDI, public assistance or welfare income.
- */
-const FORBIDDEN =
-  /\b(?:owner|buyer|borrower|seller|lead)?_?age\b\s*[<>]=?|\b(?:owner|buyer|borrower|seller)Age\b|\bdisabilit(?:y|ies)\b|\bSS(?:I|DI)\b|social\s+security|public\s+assistance|\bwelfare\b/i;
+/** An age input, a birth date, disability, SSI/SSDI or public-assistance income. */
+const FORBIDDEN_I =
+  /\b(?:owner|buyer|borrower|seller|lead)?_?age\b\s*(?:[<>]=?|===?)|(?:[<>]=?|===?)\s*(?:\w+\.)?age\b|\b\w*(?:owner|buyer|borrower|seller)_?age(?:years)?\b|\bbirth_?(?:year|date)\b|\bdate_?of_?birth\b|\bdob\b|\byears_?old\b|\bdisabilit(?:y|ies)\b|\bis_?disabled\b|\bSS(?:I|DI)\b|ss(?:di|i)_?income|social[\s_-]*security|public[\s_-]*assistance|\bwelfare\b|\bmedicaid\b/i;
+/** Benefit program acronyms — case-sensitive, or "snap" (a snapshot) matches. */
+const FORBIDDEN_CS = /\bSNAP\b|\bTANF\b/;
 
 function protectedTraitHits(source: string): string[] {
   return stripComments(source)
     .split("\n")
-    .filter((line) => FORBIDDEN.test(line));
+    .filter((line) => FORBIDDEN_I.test(line) || FORBIDDEN_CS.test(line));
 }
+
+/**
+ * Each exemption is pinned to its EXACT number of matching lines: the
+ * exemption covers those lines, not the file. A new protected-trait line in
+ * an exempt file (executive.ts is a prompt file) raises the count and fails.
+ */
+const EXEMPT: Record<string, { reason: string; lines: number }> = {
+  "server/ai/executive.ts": { reason: "portfolio note AGE in months (a loan's age), not a person's", lines: 1 },
+  "server/services/andrei/confidenceBand.ts": { reason: "age of a data point in days (staleness)", lines: 2 },
+  "server/services/autopilot/dealActions.ts": { reason: "days since first contact", lines: 1 },
+  "server/services/autopilot/loopStall.ts": { reason: "milliseconds since dispatch", lines: 2 },
+  "server/services/contextProfile.ts": { reason: "cache entry age", lines: 1 },
+  "server/services/fcraAttestation.ts": { reason: "attestation TTL", lines: 1 },
+  "server/services/founder-chat/providers/fly.ts": { reason: "machine/deploy age", lines: 1 },
+  "server/services/founder/taxEngine.ts": { reason: "the founder's own self-employment tax (Social Security wage base)", lines: 2 },
+  "server/services/founder/taxRules.ts": { reason: "the founder's own self-employment tax (Social Security wage base)", lines: 3 },
+  "server/services/landlordCompliance.ts": { reason: "fair-housing checker: names protected classes in order to REFUSE them", lines: 3 },
+};
+
+const POPULATION = [
+  ...new Set(
+    execSync("git ls-files 'server/services/*.ts' 'server/services/**/*.ts' 'server/ai/*.ts' 'server/ai/**/*.ts'")
+      .toString()
+      .trim()
+      .split("\n")
+      .filter((f) => f && !/\.test\.ts$|\.spec\.ts$/.test(f)),
+  ),
+];
+
+/** The modules that decide who is scored, matched, qualified or priced. */
+const DECISION_CORE = [
+  "server/services/leadScoring.ts",
+  "server/services/leadQualification.ts",
+  "server/services/buyerMatchingAI.ts",
+  "server/services/buyerQualificationBot.ts",
+  "server/services/sellerIntentPredictor.ts",
+  "server/services/sellerMotivationEngine.ts",
+  "server/services/sellerPsychologyStrategy.ts",
+  "server/services/prospectIntelligence.ts",
+  "server/services/landCredit.ts",
+  "server/services/dealUnderwriting.ts",
+  "server/ai/vaService.ts",
+];
 
 describe("the gate itself (canaries)", () => {
   it.each([
     ["an owner-age threshold", "const s = ownerAge > 75 ? 75 : 0;"],
     ["a snake_case age input", "if (owner_age >= 65) score += 40;"],
+    ["a reversed comparison", "if (65 <= owner.age) score += 40;"],
+    ["an estimated owner age field", "const a = parcel.estimatedOwnerAge;"],
+    ["a birth year", "const y = enrichment.birthYear;"],
+    ["a date of birth", "const d = person.dateOfBirth;"],
     ["disability in a prompt", 'const prompt = "Flag buyers on disability as higher risk";'],
+    ["an isDisabled flag", "if (buyer.isDisabled) reject();"],
     ["SSI income", "if (income.source === 'SSI') reject();"],
+    ["ssiIncome", "const x = profile.ssiIncome;"],
     ["Social Security income", 'reasons.push("Income is Social Security only");'],
+    ["public assistance", 'const q = "receives public assistance";'],
+    ["SNAP", 'if (benefits.includes("SNAP")) score -= 10;'],
   ])("goes red on %s", (_label, line) => {
     expect(protectedTraitHits(line)).toHaveLength(1);
   });
@@ -59,18 +104,33 @@ describe("the gate itself (canaries)", () => {
     expect(protectedTraitHits("// calcOwnerAgeSignal deleted: ownerAge > 75 is not a factor\nconst x = 1;")).toEqual([]);
   });
   it("does not trip on unrelated words", () => {
-    expect(protectedTraitHits("const disabled = true; const disabledReason = 'x'; const page = 1; const average = 2; const ownerAgentCodename = 'a';")).toEqual(
-      [],
-    );
+    expect(
+      protectedTraitHits(
+        "const disabled = true; const disabledReason = 'x'; const page = 1; const average = 2; const ownerAgentCodename = 'a'; const snap = s; const usage = 3;",
+      ),
+    ).toEqual([]);
   });
 });
 
-describe("the decision population", () => {
-  it.each(DECISION_POPULATION)("%s uses no protected trait as an input", (file) => {
-    expect(existsSync(file)).toBe(true);
-    const src = readFileSync(file, "utf8");
-    // Vacuity floor: the file was actually read and has code in it.
-    expect(stripComments(src).trim().length).toBeGreaterThan(200);
-    expect(protectedTraitHits(src)).toEqual([]);
+describe("the population", () => {
+  it("is every service and AI module (floor), and includes the decision core", () => {
+    expect(POPULATION.length).toBeGreaterThan(800);
+    for (const f of DECISION_CORE) expect(POPULATION).toContain(f);
+  });
+
+  it("no module outside the exemption register uses a protected trait", () => {
+    const offenders = POPULATION.filter((f) => !(f in EXEMPT)).flatMap((f) =>
+      protectedTraitHits(readFileSync(f, "utf8")).map((line) => `${f}: ${line.trim().slice(0, 120)}`),
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it.each(Object.keys(EXEMPT))("the exemption for %s covers exactly its pinned lines (no stale headroom, no new hits)", (f) => {
+    expect(POPULATION).toContain(f);
+    expect(protectedTraitHits(readFileSync(f, "utf8")).length).toBe(EXEMPT[f].lines);
+  });
+
+  it.each(DECISION_CORE)("%s was read and has code in it (vacuity floor)", (f) => {
+    expect(stripComments(readFileSync(f, "utf8")).trim().length).toBeGreaterThan(200);
   });
 });

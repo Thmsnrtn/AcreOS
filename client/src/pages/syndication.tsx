@@ -62,9 +62,12 @@ export default function SyndicationPage() {
   const [results, setResults] = useState<SyndicationResult[] | null>(null);
   const [propertySearch, setPropertySearch] = useState("");
 
-  const { data: platformData, isLoading: platformsLoading } = useQuery<{ platforms: Platform[] }>({
+  // The route answers a bare array (`Object.values(PLATFORMS)`); this read
+  // `.platforms` off it, so the picker always rendered empty. A failed read
+  // is an error, not an empty list.
+  const { data: platformData, isLoading: platformsLoading } = useQuery<Platform[]>({
     queryKey: ["/api/syndication/platforms"],
-    queryFn: () => fetch("/api/syndication/platforms").then(r => r.json()),
+    queryFn: async () => (await okOrThrow(await fetch("/api/syndication/platforms", { credentials: "include" }))).json(),
   });
 
   // /api/properties answers { data, total, … }. This read `.properties` —
@@ -90,8 +93,27 @@ export default function SyndicationPage() {
     placeholderData: keepPreviousData,
   });
 
+  // The route takes a LISTING id (DEFECT-0182): this page sent the selected
+  // property's id, so it syndicated whichever listing happened to share that
+  // number — or 404'd.
+  const { data: listingsData } = useQuery<Array<{ id: number; propertyId: number; status: string }>>({
+    queryKey: ["/api/listings"],
+  });
+
   async function syndicateProperty() {
     if (!selectedPropertyId || selectedPlatforms.length === 0) return;
+    // The property's ACTIVE listing: a withdrawn or sold one is refused by
+    // the route even when a live listing exists for the same property.
+    const forProperty = (listingsData ?? []).filter((l) => l.propertyId === selectedPropertyId);
+    const listing = forProperty.find((l) => l.status === "active") ?? forProperty[0];
+    if (!listing) {
+      toast({
+        title: "No listing for this property yet",
+        description: "Create a listing for it under Listings first; syndication sends that listing to each channel.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSyndicating(true);
     setResults(null);
     try {
@@ -99,13 +121,13 @@ export default function SyndicationPage() {
       // and the toast read "Syndicated to 0/3 platforms" — a FAILURE dressed
       // as a partial success, on an action that publishes a listing to third
       // parties. apiRequest throws, so the catch below tells the truth.
-      const res = await apiRequest("POST", `/api/listings/${selectedPropertyId}/syndicate`, {
+      const res = await apiRequest("POST", `/api/listings/${listing.id}/syndicate`, {
         platforms: selectedPlatforms,
       });
       const data = await res.json();
       setResults(data.results || []);
       const successCount = (data.results || []).filter((r: SyndicationResult) => r.success).length;
-      toast({ title: `Syndicated to ${successCount}/${selectedPlatforms.length} platforms` });
+      toast({ title: `Syndicated to ${successCount}/${(data.results || []).length} platforms` });
     } catch (err: any) {
       toast({
         title: "Couldn't syndicate listing",
@@ -117,7 +139,7 @@ export default function SyndicationPage() {
     }
   }
 
-  const platforms = platformData?.platforms || [];
+  const platforms = Array.isArray(platformData) ? platformData : [];
   const loadedProperties = propertiesData?.data ?? [];
   const totalProperties = propertiesData?.total ?? loadedProperties.length;
   const properties = loadedProperties;
@@ -246,7 +268,7 @@ export default function SyndicationPage() {
               <Button
                 className="w-full mt-4"
                 onClick={syndicateProperty}
-                disabled={!selectedPropertyId || selectedPlatforms.length === 0 || syndicating}
+                disabled={!selectedPropertyId || selectedPlatforms.length === 0 || syndicating || !listingsData}
                 aria-label={selectedProperty ? `Syndicate ${selectedProperty.address || `Property #${selectedProperty.id}`} to selected platforms` : "Syndicate listing to selected platforms"}
               >
                 {syndicating ? (

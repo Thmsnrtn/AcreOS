@@ -203,6 +203,29 @@ describe("checklist state", () => {
     expect((await dueDiligenceRepo.checkStageGate.call(self as never, 4)).canAdvance).toBe(true);
   });
 
+  it("the gate is phase-aware: post-closing never blocks, cancelling is never blocked", async () => {
+    const items = [
+      { id: "pc", required: true, phase: "pre_contract", completed: true },
+      { id: "uc", required: true, phase: "under_contract" },
+      { id: "rec", required: true, phase: "post_closing" },
+    ];
+    const self = { getDealChecklist: async () => ({ items }) };
+    const gate = (to?: string) => dueDiligenceRepo.checkStageGate.call(self as never, 4, to);
+    expect((await gate("accepted")).canAdvance).toBe(true); // only pre_contract must precede acceptance
+    expect((await gate("in_escrow")).canAdvance).toBe(true); // escrow work happens IN escrow
+    expect((await gate("closed")).canAdvance).toBe(false); // ...and must be done by closing
+    expect((await gate("closed")).incompleteItems.map((i) => i.id)).toEqual(["uc"]);
+    expect((await gate("cancelled")).canAdvance).toBe(true);
+    expect((await gate("toString")).canAdvance).toBe(false); // an inherited key is not a stage
+    items[1].completed = true as never;
+    expect((await gate("closed")).canAdvance).toBe(true); // the post-closing recording step does not block closing
+  });
+
+  it("template items (no phase) still gate every forward move", async () => {
+    const self = { getDealChecklist: async () => ({ items: [{ id: "t", required: true }] }) };
+    expect((await dueDiligenceRepo.checkStageGate.call(self as never, 4, "offer_sent")).canAdvance).toBe(false);
+  });
+
   it("auto-generation waits for a real closing date instead of inventing one", async () => {
     const self = { getDealChecklist: async () => undefined };
     h.checklistRows = [];

@@ -238,11 +238,26 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
     },
   });
 
-  const handleStatusChange = (newStatus: string) => {
-    if (stageGate && !stageGate.canAdvance && stageGate.incompleteItems.length > 0) {
+  // Ask the gate about THIS transition (DEFECT-0180 audit): the stage-less
+  // gate blocks on every closing phase, so a deal could neither enter escrow
+  // nor be cancelled from this page while closing items were open.
+  const handleStatusChange = async (newStatus: string) => {
+    try {
+      const res = await fetch(`/api/deals/${deal.id}/stage-gate?to=${encodeURIComponent(newStatus)}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const gate = (await res.json()) as { canAdvance: boolean; incompleteItems: unknown[] };
+      if (!gate.canAdvance && gate.incompleteItems.length > 0) {
+        toast({
+          title: "Couldn't advance stage",
+          description: `Complete ${gate.incompleteItems.length} required checklist item(s) first.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    } catch (err) {
       toast({
-        title: "Couldn't advance stage",
-        description: `Complete ${stageGate.incompleteItems.length} required checklist item(s) first.`,
+        title: "Couldn't check the checklist",
+        description: `${err instanceof Error ? err.message : String(err)} — the stage is unchanged.`,
         variant: "destructive",
       });
       return;

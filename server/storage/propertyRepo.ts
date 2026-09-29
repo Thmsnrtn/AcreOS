@@ -5,8 +5,6 @@ import { and, desc, asc, eq, sql, count, inArray, ilike, ne, or } from "drizzle-
 import { db } from "../db";
 import {
   properties, deals,
-  dueDiligenceDossiers, dueDiligenceChecklists, dueDiligenceItems,
-  propertyListings,
   type Property, type InsertProperty,
 } from "@shared/schema";
 import { assertNotUnderLegalHold } from "../services/legalHold";
@@ -105,6 +103,11 @@ export const propertyRepo = {
       .set({ ...updates, updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
+    // Land that is no longer held comes off the market (DEFECT-0181).
+    if (updated && updates.status !== undefined) {
+      const { withdrawListingsForUnheldProperty } = await import("../services/listingWithdrawal");
+      await withdrawListingsForUnheldProperty(updated.organizationId, updated.id, updated.status);
+    }
     return updated;
   },
 
@@ -121,6 +124,10 @@ export const propertyRepo = {
     await db.update(properties)
       .set({ status: "deleted", updatedAt: new Date() })
       .where(and(...conditions));
+    if (organizationId !== undefined) {
+      const { withdrawListingsForUnheldProperty } = await import("../services/listingWithdrawal");
+      await withdrawListingsForUnheldProperty(organizationId, id, "deleted");
+    }
     // Soft-delete any deals tied to this property so they also disappear from list views
     const dealConditions: any[] = [eq(deals.propertyId, id)];
     if (organizationId) dealConditions.push(eq(deals.organizationId, organizationId));
@@ -136,26 +143,43 @@ export const propertyRepo = {
 
   async bulkDeleteProperties(this: DatabaseStorage, orgId: number, ids: number[]): Promise<number> {
     if (ids.length === 0) return 0;
-
-    // Delete all related records first to avoid foreign key constraints
-    await db.delete(dueDiligenceDossiers).where(inArray(dueDiligenceDossiers.propertyId, ids));
-    await db.delete(dueDiligenceChecklists).where(inArray(dueDiligenceChecklists.propertyId, ids));
-    await db.delete(dueDiligenceItems).where(inArray(dueDiligenceItems.propertyId, ids));
-    await db.delete(propertyListings).where(inArray(propertyListings.propertyId, ids));
-    await db.delete(deals).where(inArray(deals.propertyId, ids));
-
-    // Now delete the properties
-    await db.delete(properties)
-      .where(and(eq(properties.organizationId, orgId), inArray(properties.id, ids)));
-    return ids.length;
+    // Only this org's own properties (DEFECT-0183). This HARD-deleted
+    // diligence rows, listings and deals by the request's ids with no org
+    // predicate before the org-scoped property delete — so another tenant's
+    // property id deleted that tenant's deals and listings — and it skipped
+    // the legal-hold check. It now does exactly what the single delete does
+    // (soft delete, legal hold, listings withdrawn), for owned ids only.
+    const owned = (
+      await db.select({ id: properties.id })
+        .from(properties)
+        .where(and(eq(properties.organizationId, orgId), inArray(properties.id, ids), ne(properties.status, "deleted")))
+    ).map((r) => r.id);
+    if (owned.length === 0) return 0;
+    for (const id of owned) await assertNotUnderLegalHold(orgId, "property", id);
+    await db.update(properties)
+      .set({ status: "deleted", updatedAt: new Date() })
+      .where(and(eq(properties.organizationId, orgId), inArray(properties.id, owned)));
+    await db.update(deals)
+      .set({ status: "deleted", updatedAt: new Date() })
+      .where(and(eq(deals.organizationId, orgId), inArray(deals.propertyId, owned)));
+    const { withdrawListingsForUnheldProperty } = await import("../services/listingWithdrawal");
+    for (const id of owned) await withdrawListingsForUnheldProperty(orgId, id, "deleted");
+    return owned.length;
   },
 
   async bulkUpdateProperties(this: DatabaseStorage, orgId: number, ids: number[], updates: Partial<InsertProperty>): Promise<number> {
     if (ids.length === 0) return 0;
-    await db.update(properties)
+    const updated = await db.update(properties)
       .set({ ...updates, updatedAt: new Date() })
-      .where(and(eq(properties.organizationId, orgId), inArray(properties.id, ids)));
-    return ids.length;
+      .where(and(eq(properties.organizationId, orgId), inArray(properties.id, ids)))
+      .returning({ id: properties.id, status: properties.status });
+    // A bulk status change that ends the holding withdraws the listings
+    // (DEFECT-0181 audit: this path left sold land live).
+    if (updates.status !== undefined) {
+      const { withdrawListingsForUnheldProperty } = await import("../services/listingWithdrawal");
+      for (const p of updated) await withdrawListingsForUnheldProperty(orgId, p.id, p.status);
+    }
+    return updated.length;
   },
 };
 

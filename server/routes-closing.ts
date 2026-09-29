@@ -41,7 +41,10 @@ export function registerClosingRoutes(app: Express): void {
       res.json({
         ...result,
         state,
-        message: `Closing checklist created — ${result.count} items based on ${state} requirements.`,
+        message:
+          result.added === 0
+            ? `Closing checklist already in place — ${result.count} items.`
+            : `Closing checklist: ${result.added} ${state} closing items added (${result.count} total).`,
       });
     } catch (error) {
       Errors.internal(res, error);

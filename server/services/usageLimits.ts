@@ -1,6 +1,6 @@
 import { db } from "../storage";
 import { organizations, leads, properties, notes, campaigns, usageEvents } from "@shared/schema";
-import { eq, and, gte, count, sum } from "drizzle-orm";
+import { eq, and, gte, count, sum, ne } from "drizzle-orm";
 import { realLead, realNote, realProperty } from "./onboarding/sampleFilters";
 // Lens 3 (Pricing Coherence): tier limits live in shared/billing so the
 // pricing page, upgrade modal, and server gate can never drift. Re-exported
@@ -81,7 +81,10 @@ async function getPropertyCount(organizationId: number): Promise<number> {
   const [result] = await db
     .select({ count: count() })
     .from(properties)
-    .where(and(eq(properties.organizationId, organizationId), realProperty()));
+    // A deleted property no longer counts toward the plan (DEFECT-0183
+    // audit): bulk delete now soft-deletes like the single delete, and a
+    // soft-deleted row counted, so deleting never freed the limit.
+    .where(and(eq(properties.organizationId, organizationId), realProperty(), ne(properties.status, "deleted")));
   return result?.count ?? 0;
 }
 

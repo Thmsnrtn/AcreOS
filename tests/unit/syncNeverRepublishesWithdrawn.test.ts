@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   listings: [] as Array<Record<string, unknown>>,
   properties: [] as Array<Record<string, unknown>>,
   pushed: [] as Array<{ listingTitle: string; platforms: string[] }>,
+  channels: ["land_com", "landwatch"] as string[],
 }));
 
 vi.mock("../../server/db", () => {
@@ -26,7 +27,7 @@ vi.mock("../../server/db", () => {
     };
     q.where = async () =>
       table === "syndication_channel_states"
-        ? [{ channelId: "land_com", enabled: true }, { channelId: "landwatch", enabled: true }]
+        ? h.channels.map((channelId) => ({ channelId, enabled: true }))
         : table === "property_listings"
           ? h.listings
           : table === "properties"
@@ -45,17 +46,21 @@ vi.mock("../../server/services/listingSyndication", () => ({
   PLATFORMS: {
     land_com: { apiAvailable: true, envKeys: [] },
     landwatch: { apiAvailable: true, envKeys: [] },
+    lands_of_america: { apiAvailable: true, envKeys: [] },
   },
+  canonicalPlatform: (p: string) => (p === "lands_of_america" ? "land_com" : p),
   buildNormalizedListing: async (p: { id: number }) => ({ title: `parcel-${p.id}` }),
   syndicateListing: async (n: { title: string }, platforms: string[]) => {
     h.pushed.push({ listingTitle: n.title, platforms });
-    return platforms.map((platform) => ({ platform, success: true, listingId: `x-${platform}` }));
+    // Like the real adapter: Lands of America posts as Land.com.
+    return platforms.map((p) => ({ platform: p === "lands_of_america" ? "land_com" : p, success: true, listingId: `x-${p}` }));
   },
 }));
 
 import { syncChannels } from "../../server/services/syndicationChannels";
 
 beforeEach(() => {
+  h.channels = ["land_com", "landwatch"];
   h.pushed = [];
   h.listings = [];
   h.properties = [];
@@ -91,4 +96,20 @@ describe("syncChannels", () => {
       expect(h.pushed).toEqual([{ listingTitle: "parcel-2", platforms: ["landwatch"] }]);
     },
   );
+
+  it("an alias channel never double-posts Land.com (DEFECT-0182 audit)", async () => {
+    h.channels = ["land_com", "lands_of_america"];
+    h.properties = [{ id: 2, status: "owned" }];
+    h.listings = [{ id: 11, propertyId: 2, status: "active", syndicationTargets: [] }];
+    await syncChannels(7);
+    expect(h.pushed).toEqual([{ listingTitle: "parcel-2", platforms: ["land_com"] }]);
+  });
+
+  it("an alias channel never re-posts over a live Land.com posting", async () => {
+    h.channels = ["lands_of_america"];
+    h.properties = [{ id: 2, status: "owned" }];
+    h.listings = [{ id: 11, propertyId: 2, status: "active", syndicationTargets: [{ platform: "land_com", status: "active", listingId: "live" }] }];
+    await syncChannels(7);
+    expect(h.pushed).toEqual([]);
+  });
 });

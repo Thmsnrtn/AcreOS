@@ -285,16 +285,40 @@ export const dueDiligenceRepo = {
     });
   },
 
-  async checkStageGate(this: DatabaseStorage, dealId: number): Promise<{ canAdvance: boolean; incompleteItems: DealChecklistItem[] }> {
+  async checkStageGate(
+    this: DatabaseStorage,
+    dealId: number,
+    toStage?: string,
+  ): Promise<{ canAdvance: boolean; incompleteItems: DealChecklistItem[] }> {
+    // Cancelling is never blocked by unfinished work.
+    if (toStage === "cancelled") return { canAdvance: true, incompleteItems: [] };
     const checklist = await this.getDealChecklist(dealId);
     if (!checklist) {
       return { canAdvance: true, incompleteItems: [] };
     }
 
+    // A closing item blocks only the stages its phase must precede
+    // (DEFECT-0180 audit): the gate was phase-blind, so a deal holding the
+    // ~30 closing items — post-closing recording steps due weeks AFTER
+    // closing among them — could not move at all without `force`.
+    // Template items (no phase) keep the original rule.
+    const phasesBefore: Record<string, string[]> = {
+      offer_sent: [],
+      countered: [],
+      accepted: ["pre_contract"],
+      // Title order, EMD, survey and lien search are escrow work: they must
+      // be done by closing, not before escrow opens.
+      in_escrow: ["pre_contract"],
+      closed: ["pre_contract", "under_contract", "pre_closing", "closing_day"],
+    };
+    const blocking = toStage && Object.hasOwn(phasesBefore, toStage)
+      ? new Set(phasesBefore[toStage])
+      : new Set(["pre_contract", "under_contract", "pre_closing", "closing_day"]);
+
     // Either vocabulary counts as done (DEFECT-0176): the closing
     // checklist marks `completed`, the deal page marks `checkedAt`.
     const incompleteItems = checklist.items.filter(item =>
-      item.required && !item.checkedAt && !item.completed
+      item.required && !item.checkedAt && !item.completed && (!item.phase || blocking.has(item.phase))
     );
 
     return {

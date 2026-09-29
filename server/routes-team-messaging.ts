@@ -1,6 +1,6 @@
 import type { Express, Response, NextFunction } from "express";
+import { withdrawnTargets, OCCUPIED_TARGET_STATUSES, MANUAL_POSTING } from "./services/listingWithdrawal";
 import { offerabilityRefusal } from "./services/listability";
-import { TAKE_DOWN_PLATFORMS } from "./services/listingSyndication";
 import { readPropertiesBySellerIds } from "./storage/wholeBookReads";
 import type { AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
@@ -1134,13 +1134,9 @@ export function registerTeamMessagingRoutes(app: Express): void {
           );
         }
 
-        // Coerce + validate against known PLATFORMS registry
-        const knownIds = new Set(
-          Object.keys(listingSyndication.PLATFORMS)
-        ) as Set<string>;
-        const platforms = (platformsInput as unknown[])
-          .filter((p): p is string => typeof p === "string")
-          .filter((p) => knownIds.has(p)) as listingSyndication.LegacySyndicationPlatform[];
+        // Known platforms only, canonical (Lands of America posts as
+        // Land.com), each once (DEFECT-0182 audit).
+        const platforms = listingSyndication.normalizePlatformRequest(platformsInput);
 
         if (platforms.length === 0) {
           return Errors.badRequest(
@@ -1165,7 +1161,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
           if (!t.postedAt) continue;
           const ageMs = now - new Date(t.postedAt).getTime();
           if (Number.isFinite(ageMs) && ageMs < 60_000) {
-            recentByPlatform.set(t.platform, t);
+            recentByPlatform.set(listingSyndication.canonicalPlatform(t.platform), t);
           }
         }
 
@@ -1225,7 +1221,22 @@ export function registerTeamMessagingRoutes(app: Express): void {
           manualInstructions?: string;
         }> = [];
 
+        // A channel holding a live posting — or one still coming down — is
+        // never re-posted, and its saved entry (with the external id
+        // take-down needs) is never replaced (DEFECT-0182). A dry-run or a
+        // credentials skip used to overwrite an ACTIVE target with
+        // "preview" and no listingId, orphaning the live posting.
+        const occupiedPlatforms = new Set<string>(
+          existingTargets
+            .filter((t) => OCCUPIED_TARGET_STATUSES.includes(t.status))
+            .map((t) => listingSyndication.canonicalPlatform(t.platform)),
+        );
+
         for (const p of platforms) {
+          if (occupiedPlatforms.has(p)) {
+            earlyResults.push({ platform: p, status: "idempotent_skip" });
+            continue;
+          }
           // 1. Idempotency check
           if (recentByPlatform.has(p)) {
             earlyResults.push({
@@ -1328,24 +1339,30 @@ export function registerTeamMessagingRoutes(app: Express): void {
             listingUrl: r.listingUrl,
             deepLinkUrl: r.deepLinkUrl,
             manualInstructions: r.manualInstructions,
+            requiresManualAction: r.requiresManualAction,
           };
         });
 
         // 7. Persist results into the listing's syndicationTargets log
         // Merge: keep any pre-existing entries for other platforms, replace
         // entries for platforms we just touched.
-        const touched = new Set(finalResults.map((r) => r.platform));
+        const touched = new Set(
+          finalResults.map((r) => r.platform).filter((p) => !occupiedPlatforms.has(p)),
+        );
         const carriedOver = existingTargets.filter(
-          (t) => !touched.has(t.platform)
+          (t) => !touched.has(listingSyndication.canonicalPlatform(t.platform))
         );
         const stamp = new Date().toISOString();
-        const newEntries = finalResults.map((r) => ({
+        const newEntries = finalResults.filter((r) => touched.has(r.platform)).map((r) => ({
           platform: r.platform,
           listingId: r.listingId,
           listingUrl: r.listingUrl,
           status:
             r.status === "sent"
-              ? "active"
+              ? // Copy/paste text is not a live posting (DEFECT-0182 audit).
+                "requiresManualAction" in r && r.requiresManualAction && !r.listingId
+                ? MANUAL_POSTING
+                : "active"
               : r.status === "simulated"
               ? "simulated"
               : r.status === "dry_run"
@@ -1360,8 +1377,13 @@ export function registerTeamMessagingRoutes(app: Express): void {
         }));
 
         const merged = [...carriedOver, ...newEntries];
+        // Copy/paste text is not a publication (DEFECT-0182 audit): a
+        // Craigslist-only run flipped the listing active and reported it
+        // published.
         const anySent = finalResults.some(
-          (r) => r.status === "sent" || r.status === "simulated"
+          (r) =>
+            (r.status === "sent" && !("requiresManualAction" in r && r.requiresManualAction && !r.listingId)) ||
+            r.status === "simulated"
         );
 
         await storage.updatePropertyListing(id, {
@@ -1392,6 +1414,47 @@ export function registerTeamMessagingRoutes(app: Express): void {
     }
   );
 
+  // POST /api/listings/:id/targets/:platform/confirm-removed
+  // A channel with no take-down API (or one whose take-down keeps failing)
+  // can only be removed by hand. The operator's confirmation is its exit
+  // from `manual_action_required` / `withdrawal_failed` — without it the
+  // channel stayed "occupied" forever and could never be re-listed
+  // (DEFECT-0182 audit). Recorded as the operator's word, not the provider's.
+  api.post("/api/listings/:id/targets/:platform/confirm-removed", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return Errors.badRequest(res, "Invalid listing ID");
+      const listing = await storage.getPropertyListing(org.id, id);
+      if (!listing) return Errors.notFound(res, "Listing");
+      const platform = listingSyndication.canonicalPlatform(req.params.platform);
+      const targets = listing.syndicationTargets ?? [];
+      // Prefer the entry awaiting removal: a legacy alias row may sit beside it.
+      const matches = targets
+        .map((t, i) => ({ t, i }))
+        .filter(({ t }) => listingSyndication.canonicalPlatform(t.platform) === platform);
+      if (matches.length === 0) return Errors.notFound(res, "Channel");
+      const idx = (matches.find(({ t }) => t.status === "manual_action_required" || t.status === "withdrawal_failed") ?? matches[0]).i;
+      if (targets[idx].status !== "manual_action_required" && targets[idx].status !== "withdrawal_failed") {
+        return Errors.badRequest(res, `This channel is "${targets[idx].status}"; only a channel awaiting manual removal can be confirmed removed.`);
+      }
+      const next = [...targets];
+      next[idx] = {
+        ...targets[idx],
+        status: "removed",
+        error: undefined,
+        removalSource: "operator",
+        removedAt: new Date().toISOString(),
+        removedBy: req.user?.id,
+      };
+      const updated = await storage.updatePropertyListing(id, { syndicationTargets: next }, org.id);
+      res.json(updated);
+    } catch (error: unknown) {
+      logger.error("Confirm channel removal error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
+    }
+  });
+
   // POST /api/listings/:id/unpublish - Remove from syndication
   api.post("/api/listings/:id/unpublish", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -1414,12 +1477,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       // is now `withdrawal_requested` (take it down per channel, verified by
       // the provider) or `manual_action_required` (no API or no external id);
       // one that never went out keeps its status.
-      const syndicationTargets =
-        listing.syndicationTargets?.map((target) => {
-          if (target.status !== "active" && target.status !== "pending") return target;
-          const apiRemovable = !!target.listingId && TAKE_DOWN_PLATFORMS.includes(target.platform);
-          return { ...target, status: apiRemovable ? "withdrawal_requested" : "manual_action_required" };
-        }) ?? [];
+      const syndicationTargets = withdrawnTargets(listing.syndicationTargets);
 
       const updated = await storage.updatePropertyListing(
         id,

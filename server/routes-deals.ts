@@ -2466,7 +2466,10 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     // Task #2: Verify deal belongs to org (IDOR prevention)
     const deal = await storage.getDeal(org.id, dealId);
     if (!deal) return Errors.notFound(res, "Deal");
-    const result = await storage.checkStageGate(dealId);
+    // `?to=<stage>` asks about one transition (DEFECT-0180 audit): the deal
+    // page pre-checked every status change with the stage-less gate.
+    const to = typeof req.query.to === "string" ? req.query.to : undefined;
+    const result = await storage.checkStageGate(dealId, to);
     res.json(result);
   });
 
@@ -2523,7 +2526,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       }
 
       if (!force) {
-        const stageGate = await storage.checkStageGate(dealId);
+        const stageGate = await storage.checkStageGate(dealId, stage);
         if (!stageGate.canAdvance) {
           return Errors.badRequest(res, "Cannot advance stage: incomplete required checklist items", { incompleteItems: stageGate.incompleteItems });
         }

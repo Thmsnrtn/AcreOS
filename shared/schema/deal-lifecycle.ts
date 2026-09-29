@@ -448,10 +448,14 @@ export const propertyListings = pgTable("property_listings", {
     platform: string; // landwatch, landandfarm, lands_of_america, facebook_marketplace, craigslist
     listingId?: string;
     listingUrl?: string;
-    status: string; // pending, active, failed, removed
+    status: string; // pending, active, failed, removed, manual_posting, withdrawal_requested, withdrawal_failed, manual_action_required
     postedAt?: string;
     expiresAt?: string;
     error?: string;
+    /** Who established the removal: the provider's 2xx, or the operator's word for a manual channel. */
+    removalSource?: "provider" | "operator";
+    removedAt?: string;
+    removedBy?: string;
   }[]>(),
   
   viewCount: integer("view_count").default(0),

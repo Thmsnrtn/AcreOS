@@ -692,6 +692,30 @@ ${listing.contactEmail ? `Email: ${listing.contactEmail}` : ""}
   };
 }
 
+/**
+ * The posting a platform request actually lands on (DEFECT-0182 audit):
+ * Lands of America goes out through the Land.com network, and the result
+ * comes back as `land_com`. Every occupied-channel check and every recorded
+ * target must key on this, or a request for one name re-posts over a live
+ * posting recorded under the other.
+ */
+export function canonicalPlatform(platform: string): LegacySyndicationPlatform {
+  return (platform === "lands_of_america" ? "land_com" : platform) as LegacySyndicationPlatform;
+}
+
+/** Known platforms only, canonical, each once. */
+export function normalizePlatformRequest(requested: unknown): LegacySyndicationPlatform[] {
+  if (!Array.isArray(requested)) return [];
+  const known = new Set(Object.keys(PLATFORMS));
+  return [
+    ...new Set(
+      requested
+        .filter((p): p is string => typeof p === "string" && known.has(p))
+        .map(canonicalPlatform),
+    ),
+  ];
+}
+
 export async function syndicateListing(
   listing: NormalizedListing,
   platforms: LegacySyndicationPlatform[],

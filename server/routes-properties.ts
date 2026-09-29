@@ -632,7 +632,9 @@ export function registerPropertyRoutes(app: Express): void {
         action: "bulk_delete",
         entityType: "property",
         entityId: 0,
-        changes: { after: { ids, count: deletedCount } },
+        // What was asked vs what was deleted: other tenants' and already-
+        // deleted ids are ignored (DEFECT-0183).
+        changes: { after: { requestedIds: ids, count: deletedCount } },
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });

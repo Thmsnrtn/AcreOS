@@ -19,6 +19,7 @@
  *   GET   /api/lots/economics-summary           — org-level lot-economics roll-up
  */
 
+import { withdrawListingsForUnheldProperty } from "./services/listingWithdrawal";
 import type { Express, Response } from "express";
 import { z } from "zod";
 import { and, eq, sql, asc } from "drizzle-orm";
@@ -268,6 +269,8 @@ export function registerLotBasisRoutes(app: Express): void {
           eq(properties.id, childId),
           eq(properties.organizationId, orgId),
         ));
+        // A sold lot comes off the market (DEFECT-0181).
+        await withdrawListingsForUnheldProperty(orgId, childId, "sold");
 
         logger.info("[SD-4] COGS realized", {
           orgId, userId, childId,

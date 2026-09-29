@@ -35,9 +35,29 @@ vi.mock("../../server/middleware/getOrCreateOrg", () => ({
     n();
   },
 }));
+vi.mock("../../server/middleware/idempotency", () => ({
+  idempotencyMiddleware: (_q: unknown, _s: unknown, n: () => void) => n(),
+}));
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
-vi.mock("../../server/storage", () => ({
-  db: {},
+vi.mock("../../server/storage", async () => {
+  const { getTableName } = await import("drizzle-orm");
+  // Publish reads the property and the org row directly.
+  const db = {
+    select: () => {
+      let table = "";
+      const q: Record<string, unknown> = {
+        from: (t: Parameters<typeof getTableName>[0]) => {
+          table = getTableName(t);
+          return q;
+        },
+        where: async () =>
+          table === "properties" ? (h.property ? [{ address: "1 Road", state: "NM", ...h.property }] : []) : table === "organizations" ? [{ id: 7, name: "Org" }] : [],
+      };
+      return q;
+    },
+  };
+  return {
+  db,
   storage: {
     // Org-scoped: another org's listing is simply not found.
     getPropertyListing: async (orgId: number, id: number) =>
@@ -50,7 +70,8 @@ vi.mock("../../server/storage", () => ({
     getPropertyListingByPropertyId: async () => undefined,
     createPropertyListing: async (v: Record<string, unknown>) => ({ id: 1, ...v }),
   },
-}));
+  };
+});
 
 globalThis.fetch = vi.fn(async (url: string) => {
   h.fetchCalls.push(String(url));
@@ -157,6 +178,55 @@ describe("DEFECT-0173 audit — the listing PUT edits content, never channel sta
     const res = await request(await appWithPut()).put("/api/listings/5").send({ title: "Ten acres" });
     expect(res.status).toBe(200);
     expect(h.updates).toEqual([{ title: "Ten acres" }]);
+  });
+});
+
+describe("DEFECT-0182 — publish never replaces a live posting's record", () => {
+  it.each(["active", "withdrawal_requested"])(
+    "a dry-run over a %s target keeps its external id and status",
+    async (status) => {
+      h.property = { id: 3, status: "owned" };
+      h.listing = { id: 5, propertyId: 3, status: "active", syndicationTargets: [target("land_com", status, "ext-1")] };
+      const app = express();
+      app.use(express.json());
+      const { registerTeamMessagingRoutes } = await import("../../server/routes-team-messaging");
+      registerTeamMessagingRoutes(app);
+      const res = await request(app).post("/api/listings/5/publish").send({ platforms: ["land_com"], dryRun: true });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      // The route always writes its merged log; the live entry must survive it.
+      const written = h.updates.at(-1)?.syndicationTargets as Array<{ platform: string; status: string; listingId?: string }>;
+      const land = written.find((t) => t.platform === "land_com");
+      expect(land).toMatchObject({ status, listingId: "ext-1" });
+      expect(h.fetchCalls).toHaveLength(0);
+    },
+  );
+});
+
+describe("DEFECT-0182 audit — a manual channel has a way out", () => {
+  const appWith2 = async () => {
+    const app = express();
+    app.use(express.json());
+    const { registerTeamMessagingRoutes } = await import("../../server/routes-team-messaging");
+    registerTeamMessagingRoutes(app);
+    return app;
+  };
+  it("the operator confirms removal of a manual channel; it is recorded as their word", async () => {
+    h.listing = { id: 5, syndicationTargets: [target("craigslist", "manual_action_required")] };
+    const res = await request(await appWith2()).post("/api/listings/5/targets/craigslist/confirm-removed");
+    expect(res.status).toBe(200);
+    const written = h.updates[0].syndicationTargets as Array<Record<string, unknown>>;
+    expect(written[0]).toMatchObject({ status: "removed", removalSource: "operator", removedBy: "u1" });
+  });
+  it("a live posting cannot be 'confirmed removed' — it needs the provider's take-down", async () => {
+    h.listing = { id: 5, syndicationTargets: [target("land_com", "active", "ext-1")] };
+    const res = await request(await appWith2()).post("/api/listings/5/targets/land_com/confirm-removed");
+    expect(res.status).toBe(400);
+    expect(h.updates).toHaveLength(0);
+  });
+  it("another org's listing is not found", async () => {
+    h.listing = { id: 5, syndicationTargets: [target("craigslist", "manual_action_required")] };
+    const res = await request(await appWith2()).post("/api/listings/99/targets/craigslist/confirm-removed");
+    expect(res.status).toBe(404);
   });
 });
 

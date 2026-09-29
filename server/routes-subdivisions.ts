@@ -22,6 +22,7 @@
  *   - status counts (held / listed / under_contract / sold)
  */
 
+import { withdrawListingsForUnheldProperty } from "./services/listingWithdrawal";
 import type { Express, Response } from "express";
 import { randomBytes } from "crypto";
 import { z } from "zod";
@@ -401,6 +402,11 @@ export function registerSubdivisionRoutes(app: Express): void {
           ))
           .returning();
         if (!updated) return Errors.notFound(res, "Lot");
+        // A lot that sold (or otherwise left the holding) comes off the
+        // market (DEFECT-0181 audit).
+        if (parsed.data.status !== undefined) {
+          await withdrawListingsForUnheldProperty(orgId, childId, updated.status);
+        }
 
         // ────────────────────────────────────────────────────────────────
         // LOT → NOTE bridge (Brigid Lens 19 #2 — most important code gap):

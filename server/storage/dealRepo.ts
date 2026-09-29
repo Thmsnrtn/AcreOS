@@ -153,7 +153,9 @@ export const dealRepo = {
     closingDate: Date | null,
   ): Promise<void> {
     const existing = await this.getDealChecklist(dealId);
-    if (existing) return;
+    // A template-started checklist still needs the closing items
+    // (DEFECT-0180); only a row that already holds them is done.
+    if (existing?.items.some((i) => i.phase)) return;
     // No guessed facts (DEFECT-0176): this fell back to "TX" and a closing
     // date 30 days out, and the generator then returned that checklist
     // forever — due dates computed from a date nobody agreed and one state's

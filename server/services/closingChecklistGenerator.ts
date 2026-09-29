@@ -26,7 +26,7 @@
  */
 
 import { db } from "../db";
-import { dealChecklists } from "@shared/schema";
+import { dealChecklists, type DealChecklistItem } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { STATE_DOCUMENT_CONFIGS, getDeedTypeLabel } from "./stateDocumentConfig";
 import { logger } from "../utils/logger";
@@ -530,8 +530,16 @@ export function buildClosingChecklist(
 }
 
 /**
- * Generate and persist the closing checklist for a deal. Idempotent —
- * if a checklist already exists for the deal, returns the existing one.
+ * Generate and persist the closing checklist for a deal. Idempotent: a row
+ * that already holds the closing items is returned unchanged.
+ *
+ * A row that does NOT hold them — a deal whose checklist started from a
+ * due-diligence template — gets them MERGED in (DEFECT-0180). This returned
+ * any existing row as-is, so a template-started deal never received the
+ * closing steps, the wire-fraud interlock among them. Existing items keep
+ * their progress; a non-closing item that happens to share a closing
+ * item's id is replaced by the closing item (a template can't pre-tick the
+ * wire interlock by squatting on its id).
  */
 export async function generateClosingChecklist(
   dealId: number,
@@ -544,29 +552,45 @@ export async function generateClosingChecklist(
     hasLender?: boolean;
     improvedProperty?: boolean;
   } = {}
-): Promise<{ items: ChecklistItem[]; count: number }> {
+): Promise<{ items: ChecklistItem[]; count: number; added: number }> {
   const closing =
     typeof closingDate === "string" ? new Date(closingDate) : closingDate;
   if (isNaN(closing.getTime())) {
-    return { items: [], count: 0 };
+    return { items: [], count: 0, added: 0 };
   }
 
-  // Idempotency check — never blow away an in-progress checklist.
   const existing = await db
     .select()
     .from(dealChecklists)
     .where(eq(dealChecklists.dealId, dealId))
     .limit(1);
 
-  if (existing.length > 0) {
-    const items = existing[0].items as unknown as ChecklistItem[];
-    return { items, count: items.length };
-  }
-
-  const items = buildClosingChecklist(state, closing, {
+  const generated = buildClosingChecklist(state, closing, {
     isSellerFinanced,
     ...opts,
   });
+
+  if (existing.length > 0) {
+    const current = (existing[0].items ?? []) as unknown as Array<ChecklistItem & { phase?: string }>;
+    // Already holds the closing items: never blow away an in-progress list.
+    if (current.some((i) => i.phase)) return { items: current, count: current.length, added: 0 };
+    const closingIds = new Set(generated.map((g) => g.id));
+    const kept = current.filter((i) => !closingIds.has(i.id));
+    const merged = [...kept, ...generated];
+    await db
+      .update(dealChecklists)
+      .set({ items: merged as unknown as DealChecklistItem[], updatedAt: new Date() })
+      .where(eq(dealChecklists.id, existing[0].id));
+    logger.info("Closing checklist merged into an existing checklist", {
+      dealId,
+      state,
+      kept: kept.length,
+      added: generated.length,
+    });
+    return { items: merged, count: merged.length, added: generated.length };
+  }
+
+  const items = generated;
 
   await db.insert(dealChecklists).values({
     dealId,
@@ -587,5 +611,5 @@ export async function generateClosingChecklist(
     critical: items.filter((i) => i.critical).length,
   });
 
-  return { items, count: items.length };
+  return { items, count: items.length, added: items.length };
 }
