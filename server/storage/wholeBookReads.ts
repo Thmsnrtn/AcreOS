@@ -15,6 +15,18 @@ import { and, asc, eq, gt, inArray, notInArray, sql, type SQL } from "drizzle-or
 import { db } from "../db";
 import { deals, leads, notes, payments, properties } from "@shared/schema";
 import { ADMINISTRATIVE_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
+import { realDeal, realNote, realPayment, realProperty } from "../services/onboarding/sampleFilters";
+
+/**
+ * `realOnly`: leave out the "Try with sample data" book (DEFECT-0137's
+ * lineage — sample properties, and the deals/notes/payments hanging off
+ * them). Exports keep everything the customer holds; a figure that claims
+ * what the customer EARNED must not count a fixture (quality directive
+ * 2026-09-29).
+ */
+export interface WholeBookOpts {
+  realOnly?: boolean;
+}
 
 /** The page size readAllPages expects: a shorter page means the end. */
 export const WHOLE_BOOK_PAGE = 1000;
@@ -59,16 +71,16 @@ export function readAllLeads(orgId: number) {
   );
 }
 
-export function readAllProperties(orgId: number) {
+export function readAllProperties(orgId: number, opts: WholeBookOpts = {}) {
   return readAllPages("properties", (afterId) =>
     db.select().from(properties)
-      .where(and(eq(properties.organizationId, orgId), sql`${properties.status} != 'deleted'`, gt(properties.id, afterId)) as SQL)
+      .where(and(eq(properties.organizationId, orgId), sql`${properties.status} != 'deleted'`, gt(properties.id, afterId), opts.realOnly ? realProperty() : undefined) as SQL)
       .orderBy(asc(properties.id))
       .limit(PAGE),
   );
 }
 
-export function readAllDeals(orgId: number) {
+export function readAllDeals(orgId: number, opts: WholeBookOpts = {}) {
   return readAllPages("deals", (afterId) =>
     db.select().from(deals)
       .where(
@@ -76,6 +88,7 @@ export function readAllDeals(orgId: number) {
           eq(deals.organizationId, orgId),
           notInArray(deals.status, [...ADMINISTRATIVE_DEAL_STATUSES]),
           gt(deals.id, afterId),
+          opts.realOnly ? realDeal() : undefined,
         ) as SQL,
       )
       .orderBy(asc(deals.id))
@@ -83,10 +96,10 @@ export function readAllDeals(orgId: number) {
   );
 }
 
-export function readAllNotes(orgId: number) {
+export function readAllNotes(orgId: number, opts: WholeBookOpts = {}) {
   return readAllPages("notes", (afterId) =>
     db.select().from(notes)
-      .where(and(eq(notes.organizationId, orgId), gt(notes.id, afterId)) as SQL)
+      .where(and(eq(notes.organizationId, orgId), gt(notes.id, afterId), opts.realOnly ? realNote() : undefined) as SQL)
       .orderBy(asc(notes.id))
       .limit(PAGE),
   );
@@ -97,10 +110,10 @@ export function readAllNotes(orgId: number) {
  * 5000 (newest first), so a servicer's lifetime "collected" and its
  * 12-month cash-flow chart were cut short with no signal.
  */
-export function readAllPayments(orgId: number) {
+export function readAllPayments(orgId: number, opts: WholeBookOpts = {}) {
   return readAllPages("payments", (afterId) =>
     db.select().from(payments)
-      .where(and(eq(payments.organizationId, orgId), gt(payments.id, afterId)) as SQL)
+      .where(and(eq(payments.organizationId, orgId), gt(payments.id, afterId), opts.realOnly ? realPayment() : undefined) as SQL)
       .orderBy(asc(payments.id))
       .limit(PAGE),
   );

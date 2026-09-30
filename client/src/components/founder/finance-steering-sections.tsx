@@ -265,14 +265,17 @@ function MrrMarginSection() {
                   Revenue collected (trailing 30d)
                 </div>
                 <div className="text-2xl font-semibold tabular-nums">
-                  {formatUsd(mrr.data.currentMrr)}
+                  {formatUsd(mrr.data.trailing30dRevenueCents)}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Recurring MRR {formatUsd(mrr.data.recurringMrrCents)} · {mrr.data.payingOrgs} paying
                 </div>
                 <div className="h-24 mt-2">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={mrr.data.mrrTrend}>
+                    <LineChart data={mrr.data.revenueTrend}>
                       <Line
                         type="monotone"
-                        dataKey="mrr"
+                        dataKey="revenueCents"
                         stroke={CHART_PRIMARY}
                         strokeWidth={2}
                         dot={false}
@@ -303,34 +306,34 @@ function MrrMarginSection() {
               </div>
             </div>
             <div>
-              <div className="text-xs font-semibold mb-2">By tier (last 30d)</div>
+              <div className="text-xs font-semibold mb-2">Revenue by tier (last 30d)</div>
               <table
                 className="w-full text-sm"
-                aria-label="MRR breakdown by tier"
+                aria-label="Revenue collected by tier, last 30 days"
               >
                 <thead>
                   <tr className="text-left text-xs text-muted-foreground">
                     <th className="font-medium py-1">Tier</th>
-                    <th className="font-medium py-1 text-right">MRR</th>
+                    <th className="font-medium py-1 text-right">Revenue</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
                     <td className="py-1">Starter</td>
                     <td className="py-1 text-right tabular-nums">
-                      {formatUsd(mrr.data.byTier.starter)}
+                      {formatUsd(mrr.data.revenueByTier30d.starter)}
                     </td>
                   </tr>
                   <tr>
                     <td className="py-1">Pro</td>
                     <td className="py-1 text-right tabular-nums">
-                      {formatUsd(mrr.data.byTier.pro)}
+                      {formatUsd(mrr.data.revenueByTier30d.pro)}
                     </td>
                   </tr>
                   <tr>
                     <td className="py-1">Scale</td>
                     <td className="py-1 text-right tabular-nums">
-                      {formatUsd(mrr.data.byTier.scale)}
+                      {formatUsd(mrr.data.revenueByTier30d.scale)}
                     </td>
                   </tr>
                 </tbody>

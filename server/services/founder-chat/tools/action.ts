@@ -25,18 +25,8 @@ import {
 } from "@shared/schema";
 import { db } from "../../../db";
 import { registerTool } from "../tool-registry";
+import { REVENUE_TRIGGER_LADDER } from "../../finance/scaleUpTriggers";
 
-const REVENUE_TRIGGER_LADDER = [
-  { thresholdId: "mrr-50",     thresholdCents:    5_000, action: "Re-enable Sentry Starter",                  costOneTimeCents:     0, costRecurringCents:  2_900 },
-  { thresholdId: "mrr-200",    thresholdCents:   20_000, action: "Upgrade Fly app to shared-cpu-2x",          costOneTimeCents:     0, costRecurringCents:    800 },
-  { thresholdId: "mrr-500",    thresholdCents:   50_000, action: "Add 2nd Fly app machine for redundancy",    costOneTimeCents:     0, costRecurringCents:  2_400 },
-  { thresholdId: "mrr-1000a",  thresholdCents:  100_000, action: "Apply for USPS Mail.dat permit",            costOneTimeCents: 35_000, costRecurringCents:  2_900 },
-  { thresholdId: "mrr-1000b",  thresholdCents:  100_000, action: "Re-enable ElevenLabs Pro",                  costOneTimeCents:     0, costRecurringCents:  2_200 },
-  { thresholdId: "mrr-2000",   thresholdCents:  200_000, action: "Migrate Postgres off Neon free tier",       costOneTimeCents:     0, costRecurringCents:  8_500 },
-  { thresholdId: "mrr-3000",   thresholdCents:  300_000, action: "Telnyx account + A2P 10DLC registration",   costOneTimeCents:  5_000, costRecurringCents:      0 },
-  { thresholdId: "mrr-5000",   thresholdCents:  500_000, action: "Wire aggregation queue + presort partner",  costOneTimeCents:     0, costRecurringCents:      0 },
-  { thresholdId: "mrr-10000",  thresholdCents: 1_000_000, action: "Right-size Fly to performance-2x",         costOneTimeCents:     0, costRecurringCents: 54_000 },
-];
 
 // ─── 1. approve_trigger (T2) ───────────────────────────────────────────────
 registerTool({

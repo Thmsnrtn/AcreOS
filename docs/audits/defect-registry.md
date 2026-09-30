@@ -5826,6 +5826,218 @@ tier at zero cost.
 Falsified: `tests/unit/femaEmptyIsNotZoneX.test.ts` (broker cases, red before).
 Resolving commits: quality-directive slice H2
 
+### DEFECT-0208
+Title: Mailbox audit of 60ebfd9 — Outlook replies failed, a second linked account could not be connected, any member could disconnect a teammate's mailbox
+Severity: P1
+Status: FIXED
+Surfaced by lenses: independent audit of 60ebfd9
+Description: Graph refuses any custom internet header not prefixed `x-`, so
+the `In-Reply-To` header made every Outlook reply fail with a 400 (the header
+predates 60ebfd9; the panel now always sent it). The server's
+`choose_account` refusal had no client handler, so a user with two linked
+accounts of one provider could not connect a mailbox at all. `DELETE
+/api/mailbox/:id` let any org member revoke a teammate's mailbox.
+Evidence: `server/services/mailbox/mailboxClient.ts` `graphSend`;
+`client/src/components/settings/mailbox-connect.tsx`; `server/routes-mailbox.ts`.
+Remediation: An Outlook reply goes through `POST /messages/{id}/reply` (the
+provider threads it); the connect card shows the addresses and re-posts with
+the chosen one; disconnecting another member's mailbox needs owner or admin.
+Falsified: `tests/unit/mailboxSendOutcome.test.ts`,
+`tests/unit/mailboxActsAsItsOwner.test.ts` (red before).
+Resolving commits: quality-directive H2 audit fixes
+
+### DEFECT-0209
+Title: The flood population — a third FEMA caller still invented Zone X, and three scorers read the label wrongly
+Severity: P1
+Status: FIXED
+Surfaced by lenses: independent audit of 60ebfd9
+Description: `dueDiligenceEngine.checkFloodZone` still called the retired
+host and reported "likely Zone X", risk low, when FEMA returned nothing, and
+green-flagged any zone label (Zone D included). The diligence pods compared
+the broker's "Zone X" label with a bare "X" (every mapped X was a concern)
+and counted an unmapped point as clean. `leadScoring` tested
+`"Zone AE".startsWith("A")`, so no parcel ever scored as high flood risk.
+`acquisitionRadar` did the same bare-label comparison. "AREA NOT INCLUDED"
+read as high risk; shaded X was labelled "Zone X" and scored 95; pre-fix
+cached flood rows (possibly the invented Zone X) kept being served; disabled
+sources still answered from cache; the diligence panel wrote "Flood zone
+data retrieved" for an unmapped or failed lookup.
+Evidence: `server/services/dueDiligenceEngine.ts`;
+`server/services/dueDiligencePods.ts`; `server/services/leadScoring.ts`;
+`server/services/acquisitionRadar.ts`; `server/services/data-source-broker.ts`;
+`server/services/publicParcelReport.ts`; `client/src/components/due-diligence-panel.tsx`.
+Remediation: Every FEMA caller reads through `floodZoneFromNfhl`; consumers
+read `riskLevel`/`status`, not the label; SFHA codes are matched by pattern;
+shaded X is labelled and scored moderate; flood cache rows without `status`,
+and rows of disabled sources, are not served; the built-in source (no
+`data_sources` row) is never cached.
+Falsified: `tests/unit/femaEmptyIsNotZoneX.test.ts` (audit cases),
+`tests/unit/dueDiligenceUnverifiedIsNotClean.test.ts`, `tests/unit/leadScoring.test.ts`
+(real-shape cases) — red before.
+Resolving commits: quality-directive H2 audit fixes
+
+### DEFECT-0210
+Title: The second MCP endpoint (/mcp) ignored API-key scopes, and allowlisted context reads needed only any one scope
+Severity: P1
+Status: FIXED
+Surfaced by lenses: independent audit of 60ebfd9
+Description: `/mcp` accepts the same per-org `ak_` keys as `/api/mcp` and
+never read their scopes, so a key with no scopes could search leads and read
+deals, properties and the portfolio summary there. On `/api/mcp`, a null-scope
+intent was satisfied by any single read scope, so a notes-only key read recent
+lead names through `get_system_context`; `retrieve_land_knowledge` calls a
+paid embeddings provider when its flag is on.
+Evidence: `server/mcp/auth.ts`, `server/mcp/index.ts`, `server/index.ts`,
+`server/mcp/safeIntents.ts`.
+Remediation: The auth result carries the key's scopes (the static key reads
+"all"); each org-data tool on `/mcp` needs its matching read scope. The four
+null-scope intents name every read scope they touch, all required.
+`retrieve_land_knowledge` left the allowlist.
+Falsified: `tests/unit/mcpEndpointHardening.test.ts`,
+`tests/unit/mcpExternalAllowlist.test.ts` (red before).
+Resolving commits: quality-directive H2 audit fixes
+
+### DEFECT-0211
+Title: Credit-pool refunds gave nothing back
+Severity: P1
+Status: FIXED
+Surfaced by lenses: independent audit of 60ebfd9
+Description: `refundPoolDebit` writes a positive row under feature
+"refund". The pool usage sum and the atomic gate counted only pool features
+(and summed `abs()`), so every refund — a failed send, a suppressed piece, a
+cancelled shipment — left the pool consumed. A debit the pool could not cover
+had been paid from purchased credits; its refund never returned them.
+Evidence: `server/services/creditPool.ts`.
+Remediation: Usage and the gate net refund rows. A refund of a
+purchased-credit debit is written under its own feature (not netted from the
+pool) and returns the credits to the balance, once, never more than the
+original debit.
+Falsified: `tests/unit/creditPoolFailClosed.test.ts` (refund-purse cases, red
+before). The netting lives in SQL; the unit suite mocks the database, so the
+sum itself is source-level proof only.
+Resolving commits: quality-directive H2 audit fixes
+
+### DEFECT-0212
+Title: The printed letter collapsed the preview's paragraphs and read typed "<" and "&" as markup
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 60ebfd9
+Description: The composer copy is plain text; the flusher sent it to the
+provider as HTML with only the merged values escaped.
+Evidence: `shared/parcel/ownerName.ts` `mergeMailCopy`.
+Remediation: In HTML mode the whole copy is escaped, merged, and line breaks
+become `<br>`.
+Falsified: `tests/unit/mailHoldHonoursLateOptOut.test.ts` (red before).
+Resolving commits: quality-directive H2 audit fixes
+
+### DEFECT-0213
+Title: A crash between the mail debit and the shipment commit leaves a debit no retry finds
+Severity: P2
+Status: OPEN
+Surfaced by lenses: independent audit of 60ebfd9
+Description: `poolDebit` writes on the global connection, not the queue
+transaction. An ordinary transaction failure is refunded by the route, but a
+process crash between the two commits leaves a debit with no shipment; the
+per-attempt key contains the operation key, so it is traceable but not
+found by a retry.
+Evidence: `server/routes-outreach-mail.ts`; `server/services/creditPool.ts`.
+Remediation plan: Let `poolDebit` accept a transaction handle and take the
+mail debit inside the queue transaction; until then a reconciliation can
+match `mail:queue:<org>:op:` debits without a shipment.
+Resolving commits: —
+
+### DEFECT-0214
+Title: Rent Roll recorded one payment as several, and a retried payment could be recorded twice
+Severity: P1
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H3)
+Description: The Rent Roll posted one request per allocation line although
+the server allocates a payment across open charges atomically; a failure half
+way left half a payment recorded, and each line was its own payment row,
+event and receipt. Neither the rent nor the acquired-note payment route had a
+durable operation identity, so a retry after a lost response posted again.
+Evidence: `client/src/pages/rent-roll.tsx`; `server/routes-rent-ledger.ts`;
+`server/routes-notes.ts`; `shared/schema/rental.ts`; `shared/schema/notes-vertical.ts`.
+Remediation: One POST for the whole amount with an Idempotency-Key held
+across retries; both payment tables store `operation_key` with a unique
+(org, key) index (`migrations/0258_payment_operation_key.sql`); a repeat or a
+lost unique-key race answers with the recorded payment.
+Falsified: `tests/unit/waveDTaxRentSurfaces.test.tsx` (rewritten to one
+POST), `tests/unit/paymentWorkflowEvents.test.ts`,
+`tests/unit/noteReversalIdentity.test.ts` (red before).
+Resolving commits: quality-directive slice H3
+
+### DEFECT-0215
+Title: An NSF reversal could name any payment, or none, and move the balance by any amount
+Severity: P1
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H3)
+Description: `originalPaymentId` was stored unchecked with whatever amounts
+were sent: no payment, another note's payment, a reversal, or a payment
+already reversed; the balance rose by the typed figures.
+Evidence: `server/routes-notes.ts` `POST /api/notes/:id/payments`;
+`client/src/components/note-record-payment-modal.tsx`.
+Remediation: The original must be a non-reversal payment on this note and
+org, not already reversed (checked under the note's row lock); the reversal is
+its exact negation — derived by the server when no amounts are sent, refused
+when sent amounts differ. The modal sends only the original's id.
+Falsified: `tests/unit/noteReversalIdentity.test.ts` (red before).
+Resolving commits: quality-directive slice H3
+
+### DEFECT-0216
+Title: Finance counted the demonstration book, called a contract price a collected fee, and a list price a sale
+Severity: P1
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H3)
+Description: The portfolio summary, delinquency and projections read every
+note, payment, deal and property, including the "Try with sample data" book
+(which seeds closed deals). "Collected MTD" summed closed deals' accepted
+amount. Unsold properties' list price counted as sale proceeds in the margin.
+Evidence: `server/routes-finance.ts`; `server/storage/wholeBookReads.ts`;
+`server/services/onboarding/sampleFilters.ts`;
+`client/src/components/finance/PersonaFinanceHero.tsx`.
+Remediation: Those reads take `realOnly` (the existing sample-lineage
+predicates, plus `realPayment`); the summary reports `sampleExcluded` and the
+hero says what was left out. Fees are recorded `contract_assignments` fees;
+margin and realized net use sold prices only; unsold projects are flagged
+"at asking price".
+Falsified: `tests/unit/financeSummaryIsTheRealBook.test.ts` (red before).
+Resolving commits: quality-directive slice H3
+
+### DEFECT-0217
+Title: Founder "MRR" was 30 days of posted revenue, and scale-up triggers claimed a crossing time they did not know
+Severity: P2
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H3)
+Description: The trigger ladder (three copies) read the sum of revenue rows
+posted in 30 days as MRR — an annual signup counted a year as a month's run
+rate — and stamped `crossedAt` with the moment of the read.
+Evidence: `server/routes-finance-ledger.ts`;
+`server/services/founder-chat/tools/inquiry.ts`, `action.ts`.
+Remediation: One ladder (`server/services/finance/scaleUpTriggers.ts`)
+crossed on recurring MRR (`liveMrrDetail`); `crossedAt` is the first weekly
+snapshot at or above the rung, or null. `/mrr` reports recurring MRR and
+trailing revenue under their own names; the refund-reserve alarm reads
+revenue, the opex alarm the run rate.
+Falsified: `tests/unit/scaleUpTriggersReadRecurringMrr.test.ts` (red before).
+Resolving commits: quality-directive slice H3
+
+### DEFECT-0218
+Title: A paid lookup's debit was shared across orgs, collapsed across genuine calls, unawaited, and skipped the credit check when a BYOK key failed
+Severity: P2
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H3)
+Description: The debit's id was input fingerprint + UTC day with no org, and
+`poolDebit` dedups globally: a second org's lookup of the same parcel that day
+was never debited, and two genuine calls by one org were one row. The debit
+was fire-and-forget. A present BYOK row passed the affordability check; when
+the key did not resolve, the call ran on the platform key regardless.
+Evidence: `server/services/providers/provider-registry.ts`.
+Remediation: One id per successful vendor call, owned by the org; the debit
+is awaited (still non-fatal); an unresolved BYOK key re-runs the credit check.
+Falsified: `tests/unit/paidLookupDebitIdentity.test.ts` (red before).
+Resolving commits: quality-directive slice H3
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -5862,10 +6074,10 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 9   | 9     |
-| FIXED  | 14  | 101 | 81  | 196   |
+| OPEN   | 0   | 0   | 10  | 10    |
+| FIXED  | 14  | 108 | 84  | 206   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **103** | **90** | **207** |
+| **Total** | **14** | **110** | **94** | **218** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
@@ -5894,7 +6106,8 @@ table above is the count of record; it is recounted from the entries.
 DEFECT-0186 through 0207 come from the 2026-09-29 quality directive and the
 independent audits of its slices (see
 `docs/audits/quality-directive-2026-09-29-reconciliation.md`, the queue).
-0203 records the audit of the first-mail slice; 0204–0207 are slice H2.
+0203 records the audit of the first-mail slice; 0204–0207 are slice H2;
+0208–0213 the audit of H2 (0213 OPEN); 0214–0218 slice H3.
 
 ### Fixed Defects Summary
 

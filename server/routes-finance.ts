@@ -4,8 +4,9 @@ import type { Express } from "express";
 import { readAllDeals, readAllNotes, readAllPayments, readAllProperties } from "./storage/wholeBookReads";
 import { storage, db, calculateMonthlyPayment } from "./storage";
 import { z } from "zod";
-import { insertNoteSchema, insertPaymentSchema, paymentReminders, notes as notesTable } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { insertNoteSchema, insertPaymentSchema, paymentReminders, notes as notesTable, contractAssignments, deals as dealsTable, properties as propertiesTable } from "@shared/schema";
+import { eq, and, ne, sql, count } from "drizzle-orm";
+import { realDeal, realNote, realProperty } from "./services/onboarding/sampleFilters";
 import { isAuthenticated } from "./auth";
 import { Errors } from "./utils/errors";
 // A declared permission that nothing enforces is not a permission.
@@ -91,6 +92,20 @@ const updateNoteSchema = z.object({
   // Free-text notes
   notes: z.string().nullable().optional(),
 }).strict();
+
+/**
+ * How much of the org's book is the "Try with sample data" fixture — so a
+ * surface that leaves it out can say so ("3 sample notes not included")
+ * instead of showing a demo's figures as earned, or zeros with no reason.
+ */
+async function countSampleBook(orgId: number): Promise<{ notes: number; deals: number; properties: number }> {
+  const [[n], [d], [p]] = await Promise.all([
+    db.select({ c: count() }).from(notesTable).where(and(eq(notesTable.organizationId, orgId), sql`NOT (${realNote()})`)),
+    db.select({ c: count() }).from(dealsTable).where(and(eq(dealsTable.organizationId, orgId), sql`NOT (${realDeal()})`)),
+    db.select({ c: count() }).from(propertiesTable).where(and(eq(propertiesTable.organizationId, orgId), sql`NOT (${realProperty()})`)),
+  ]);
+  return { notes: Number(n?.c ?? 0), deals: Number(d?.c ?? 0), properties: Number(p?.c ?? 0) };
+}
 
 export function registerFinanceRoutes(app: Express): void {
   const api = app;
@@ -927,8 +942,13 @@ export function registerFinanceRoutes(app: Express): void {
   api.get("/api/finance/portfolio-summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const allNotes = await readAllNotes(org.id);
-      const allPayments = await readAllPayments(org.id);
+      // Real book only (quality directive 2026-09-29): "Try with sample
+      // data" seeds notes, payments and CLOSED deals; this summary counted
+      // them, so a demo workspace showed collected fees and a note portfolio
+      // no customer earned. The sample book is counted separately below so
+      // the page can say it is not included.
+      const allNotes = await readAllNotes(org.id, { realOnly: true });
+      const allPayments = await readAllPayments(org.id, { realOnly: true });
 
       const activeNotes = allNotes.filter(n => n.status === 'active');
       const paidOffNotes = allNotes.filter(n => n.status === 'paid_off');
@@ -1001,23 +1021,44 @@ export function registerFinanceRoutes(app: Express): void {
         .filter(p => p.status === 'completed' && p.paymentDate && new Date(p.paymentDate) >= monthStart)
         .reduce((s, p) => s + Number(p.amount || 0), 0);
 
-      // Wholesaler: assignment fee summary (derived from deals — acceptedAmount
-      // on closed deals = realized fee; pending = active deals).
-      let assignmentFees = { mtdCollected: 0, pendingCount: 0, pendingValue: 0, avgPerClose: 0, closedCount: 0 };
+      // Wholesaler: assignment fees. These were the deals' ACCEPTED AMOUNT —
+      // the contract price — labelled "Collected MTD": a $60,000 contract
+      // read as a $60,000 fee. The fee is the recorded assignment fee on a
+      // contract_assignments row (non-cancelled); a closed deal with no
+      // recorded assignment contributes no fee rather than its price.
+      let assignmentFees = { mtdClosedFees: 0, pendingCount: 0, pendingFees: 0, avgFeePerClose: 0, closedCount: 0 };
       try {
-        const deals = await readAllDeals(org.id);
-        const closed = deals.filter(d => d.status === 'closed' && d.acceptedAmount);
-        const closedMtd = closed.filter(d => d.updatedAt && new Date(d.updatedAt) >= monthStart);
-        const active = deals.filter(d => !['closed', 'cancelled', 'dead'].includes(d.status));
-        const mtdSum = closedMtd.reduce((s, d) => s + Number(d.acceptedAmount || 0), 0);
-        const closedSum = closed.reduce((s, d) => s + Number(d.acceptedAmount || 0), 0);
-        const pendingSum = active.reduce((s, d) => s + Number(d.acceptedAmount || d.offerAmount || 0), 0);
+        const deals = await readAllDeals(org.id, { realOnly: true });
+        const dealById = new Map(deals.map((d) => [d.id, d]));
+        const assignments = await db
+          .select({ dealId: contractAssignments.dealId, feeCents: contractAssignments.assignmentFeeCents, status: contractAssignments.status })
+          .from(contractAssignments)
+          .where(and(eq(contractAssignments.organizationId, org.id), ne(contractAssignments.status, "cancelled")));
+        let closedFeesCents = 0;
+        let closedMtdCents = 0;
+        let closedCount = 0;
+        let pendingCents = 0;
+        let pendingCount = 0;
+        for (const a of assignments) {
+          const d = dealById.get(a.dealId);
+          if (!d) continue; // a sample deal, or a deal no longer on the book
+          const fee = Number(a.feeCents ?? 0);
+          if (d.status === "closed") {
+            closedCount += 1;
+            closedFeesCents += fee;
+            const closedAt = d.closingDate ?? d.updatedAt;
+            if (closedAt && new Date(closedAt) >= monthStart) closedMtdCents += fee;
+          } else if (!["cancelled", "dead"].includes(d.status)) {
+            pendingCount += 1;
+            pendingCents += fee;
+          }
+        }
         assignmentFees = {
-          mtdCollected: Math.round(mtdSum * 100) / 100,
-          pendingCount: active.length,
-          pendingValue: Math.round(pendingSum * 100) / 100,
-          avgPerClose: closed.length > 0 ? Math.round((closedSum / closed.length) * 100) / 100 : 0,
-          closedCount: closed.length,
+          mtdClosedFees: closedMtdCents / 100,
+          pendingCount,
+          pendingFees: pendingCents / 100,
+          avgFeePerClose: closedCount > 0 ? Math.round(closedFeesCents / closedCount) / 100 : 0,
+          closedCount,
         };
       } catch (err) {
         // A whole-book refusal (413) is not "no fees" (DEFECT-0170 audit):
@@ -1030,12 +1071,16 @@ export function registerFinanceRoutes(app: Express): void {
       // the three with the largest realized/projected net.
       let projects = { netMtd: 0, grossMarginPct: 0, top: [] as Array<{ id: number; label: string; net: number; status: string }> };
       try {
-        const properties = await readAllProperties(org.id);
+        const properties = await readAllProperties(org.id, { realOnly: true });
+        // Realized figures use the SOLD price only. A list price is an ask,
+        // not a sale: it was counted as sale proceeds in the gross margin
+        // and as "net" (quality directive 2026-09-29).
         const projectRows = properties
           .filter((p: any) => p.purchasePrice || p.listPrice)
           .map((p: any) => {
             const buy = Number(p.purchasePrice || 0);
-            const sell = Number(p.soldPrice || p.listPrice || 0);
+            const sold = p.soldPrice != null && p.soldPrice !== "" ? Number(p.soldPrice) : null;
+            const sell = sold ?? Number(p.listPrice || 0);
             const net = sell - buy;
             return {
               id: p.id,
@@ -1044,19 +1089,22 @@ export function registerFinanceRoutes(app: Express): void {
               status: p.status || 'unknown',
               buy,
               sell,
+              realized: sold !== null,
               soldAt: p.soldDate || p.updatedAt,
             };
           });
-        const soldThisMonth = projectRows.filter(p => p.status === 'sold' && p.soldAt && new Date(p.soldAt) >= monthStart);
+        const soldThisMonth = projectRows.filter(p => p.realized && p.status === 'sold' && p.soldAt && new Date(p.soldAt) >= monthStart);
         const netMtd = soldThisMonth.reduce((s, p) => s + p.net, 0);
-        const totalBuy = projectRows.reduce((s, p) => s + p.buy, 0);
-        const totalSell = projectRows.reduce((s, p) => s + p.sell, 0);
+        const realizedRows = projectRows.filter(p => p.realized);
+        const totalBuy = realizedRows.reduce((s, p) => s + p.buy, 0);
+        const totalSell = realizedRows.reduce((s, p) => s + p.sell, 0);
         const grossMarginPct = totalSell > 0 ? ((totalSell - totalBuy) / totalSell) * 100 : 0;
         const active = projectRows.filter(p => p.status !== 'sold');
+        // Unsold projects: net at the ASKING price — flagged projected.
         const top = active
           .sort((a, b) => b.net - a.net)
           .slice(0, 3)
-          .map(p => ({ id: p.id, label: p.label, net: p.net, status: p.status }));
+          .map(p => ({ id: p.id, label: p.label, net: p.net, status: p.status, projected: !p.realized }));
         projects = {
           netMtd: Math.round(netMtd * 100) / 100,
           grossMarginPct: Math.round(grossMarginPct * 10) / 10,
@@ -1083,6 +1131,7 @@ export function registerFinanceRoutes(app: Express): void {
         netInflowMtd: Math.round(netInflowMtd * 100) / 100,
         assignmentFees,
         projects,
+        sampleExcluded: await countSampleBook(org.id),
       });
     } catch (err: any) {
       logger.error("Error getting portfolio summary", err instanceof Error ? err : undefined);
@@ -1093,7 +1142,8 @@ export function registerFinanceRoutes(app: Express): void {
   api.get("/api/finance/delinquency", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const allNotes = await readAllNotes(org.id);
+      // Real book only — a sample note is not a delinquent borrower.
+      const allNotes = await readAllNotes(org.id, { realOnly: true });
       const activeNotes = allNotes.filter(n => n.status === 'active');
 
       const now = new Date();
@@ -1131,7 +1181,7 @@ export function registerFinanceRoutes(app: Express): void {
 
       const atRiskAmount = delinquentNotes.reduce((sum, n) => sum + Number(n.currentBalance || 0), 0);
 
-      const allPayments = await readAllPayments(org.id);
+      const allPayments = await readAllPayments(org.id, { realOnly: true });
       const completedPayments = allPayments.filter(p => p.status === 'completed');
       const totalPrincipalCollected = completedPayments.reduce((sum, p) => sum + Number(p.principalAmount || 0), 0);
       const totalInterestCollected = completedPayments.reduce((sum, p) => sum + Number(p.interestAmount || 0), 0);
@@ -1178,8 +1228,9 @@ export function registerFinanceRoutes(app: Express): void {
   api.get("/api/finance/projections", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const allNotes = await readAllNotes(org.id);
-      const allPayments = await readAllPayments(org.id);
+      // Real book only — projections from a fixture are not the customer's.
+      const allNotes = await readAllNotes(org.id, { realOnly: true });
+      const allPayments = await readAllPayments(org.id, { realOnly: true });
 
       const activeNotes = allNotes.filter(n => n.status === 'active');
       const completedPayments = allPayments.filter(p => p.status === 'completed');

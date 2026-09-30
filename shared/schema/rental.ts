@@ -767,9 +767,14 @@ export const rentPayments = pgTable(
     allocationOrderRule: text("allocation_order_rule"),  // see shared/rental/paymentAllocation.ts
 
     notes: text("notes"),
+    // The client's Idempotency-Key for "record this payment" (0258). A retry
+    // after a lost response finds this row instead of posting the money
+    // twice. NULL for rows recorded before it existed.
+    operationKey: text("operation_key"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    uniqueIndex("rent_payments_org_operation_uidx").on(table.organizationId, table.operationKey),
     index("rent_payments_lease_idx").on(table.leaseId, table.receivedAt),
     index("rent_payments_charge_idx").on(table.rentChargeId),
     index("rent_payments_org_received_idx").on(table.organizationId, table.receivedAt),

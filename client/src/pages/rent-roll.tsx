@@ -37,7 +37,7 @@
  * a tenant payment button to this page.
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Wallet, AlertTriangle, FileText, ShieldAlert, Clock, ScrollText } from "lucide-react";
@@ -71,14 +71,13 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useOrganization } from "@/hooks/use-organization";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, generateIdempotencyKey } from "@/lib/queryClient";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { Verbs } from "@/lib/labels";
 
 import {
   allocatePayment,
   splitChargeOutstanding,
-  type ChargeAllocation,
   type OpenChargeForAllocation,
 } from "@shared/rental/paymentAllocation";
 import { parseLateFeeRuleRow, proposeLateFee, type LateFeeProposal } from "@shared/rental/lateFeeProposal";
@@ -197,11 +196,11 @@ function csrfHeaders(): Record<string, string> {
   };
 }
 
-async function apiPost<T>(url: string, body: unknown): Promise<T> {
+async function apiPost<T>(url: string, body: unknown, extraHeaders?: Record<string, string>): Promise<T> {
   const res = await fetch(url, {
     method: "POST",
     credentials: "include",
-    headers: csrfHeaders(),
+    headers: { ...csrfHeaders(), ...extraHeaders },
     body: JSON.stringify(body),
   });
   const parsed = await res.json().catch(() => null);
@@ -929,6 +928,10 @@ function RecordPaymentForm({
   const [payorType, setPayorType] = useState<"tenant" | "hap">("tenant");
   const [acceptPartial, setAcceptPartial] = useState(false);
   const [postedLines, setPostedLines] = useState<number | null>(null);
+  // One key per payment the operator is recording, held across retries of
+  // THAT payment (a lost response, a second click) and replaced once it is
+  // recorded — so the server records it exactly once.
+  const operationKey = useRef<string>(generateIdempotencyKey());
 
   const amountCents = useMemo(() => {
     const t = amount.trim();
@@ -962,50 +965,51 @@ function RecordPaymentForm({
           "This payment leaves a charge under a notice to vacate short. Confirm you accept a partial payment first — in several states accepting it voids the notice.",
         );
       }
-      const total = allocation.allocations.length + (allocation.unappliedCents > 0 ? 1 : 0);
-      let done = 0;
-      for (const line of allocation.allocations) {
-        await apiPost(`/api/leases/${leaseId}/payments`, {
-          amountCents: line.appliedCents,
+      // ONE request for the whole amount (quality directive 2026-09-29). The
+      // server allocates it across every open charge atomically — the same
+      // rule as the preview above. Posting one request per allocation line
+      // made one payment several ledger rows, events and receipts, and a
+      // failure half-way left half of it recorded.
+      const result = await apiPost<{
+        replayed?: boolean;
+        allocation?: { lines: unknown[]; unappliedCents: number };
+      }>(
+        `/api/leases/${leaseId}/payments`,
+        {
+          amountCents,
           receivedAt,
           method: method.trim() || undefined,
           payorType,
           acceptedDespitePartial: acceptPartial,
-          notes: allocationNote(line, allocation.allocations.length, amountCents),
-        });
-        done += 1;
-      }
-      if (allocation.unappliedCents > 0) {
-        await apiPost(`/api/leases/${leaseId}/payments`, {
-          amountCents: allocation.unappliedCents,
-          receivedAt,
-          method: method.trim() || undefined,
-          payorType,
-          acceptedDespitePartial: acceptPartial,
-          notes: `Unapplied credit: no open charge left to apply this to (part of ${centsExact(amountCents)} received ${receivedAt}).`,
-        });
-        done += 1;
-      }
-      return { done, total };
+        },
+        { "Idempotency-Key": operationKey.current },
+      );
+      const lines =
+        (result.allocation?.lines.length ?? 0) + ((result.allocation?.unappliedCents ?? 0) > 0 ? 1 : 0);
+      return { done: result.replayed ? null : lines, replayed: result.replayed === true };
     },
     onSuccess: (res) => {
+      operationKey.current = generateIdempotencyKey();
       setPostedLines(res.done);
       setAmount("");
       setAcceptPartial(false);
       queryClient.invalidateQueries({ queryKey: ["/api/leases", leaseId, "ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/rent/aging"] });
       toast({
-        title: `Payment recorded across ${res.done} ledger line${res.done === 1 ? "" : "s"}`,
+        title: res.replayed
+          ? "This payment was already recorded"
+          : `Payment recorded — applied across ${res.done} line${res.done === 1 ? "" : "s"}`,
       });
     },
     onError: (err: any) => {
-      // A mid-sequence failure leaves earlier lines posted. Refresh so the
-      // ledger shows exactly what landed rather than what we intended.
+      // One request: it either landed whole or not at all. Refresh anyway so
+      // the ledger shows the server's truth; the key is kept, so trying again
+      // cannot record it twice.
       queryClient.invalidateQueries({ queryKey: ["/api/leases", leaseId, "ledger"] });
       queryClient.invalidateQueries({ queryKey: ["/api/rent/aging"] });
       toast({
-        title: "Couldn't record the whole payment",
-        description: `${err.message} The ledger above now shows exactly which lines were recorded.`,
+        title: "Couldn't record the payment",
+        description: `${err.message} Nothing was recorded twice — you can try again.`,
         variant: "destructive",
       });
     },
@@ -1176,20 +1180,10 @@ function RecordPaymentForm({
       </div>
       {postedLines !== null && !record.isPending && (
         <p className="text-xs text-acr-pos" role="status">
-          Recorded {postedLines} ledger line{postedLines === 1 ? "" : "s"}.
+          Recorded one payment, applied across {postedLines} line{postedLines === 1 ? "" : "s"}.
         </p>
       )}
     </div>
-  );
-}
-
-function allocationNote(line: ChargeAllocation, lineCount: number, paymentCents: number): string {
-  const feeBit =
-    line.appliedToLateFeeCents > 0 ? ` + ${centsExact(line.appliedToLateFeeCents)} late fee` : "";
-  return (
-    `Allocation ${line.sequence} of ${lineCount} from a ${centsExact(paymentCents)} payment: ` +
-    `${centsExact(line.appliedToRentCents)} rent${feeBit} against ${line.chargedForMonth.slice(0, 7)}, ` +
-    `leaving ${centsExact(line.balanceAfterCents)}. Oldest charge first, rent before late fees.`
   );
 }
 

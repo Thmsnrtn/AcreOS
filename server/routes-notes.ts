@@ -1662,9 +1662,17 @@ export function registerNoteRoutes(app: Express): void {
         // nothing) or posts BOTH writes. Rejections return normally rather
         // than throwing: no write has happened at that point, so there is
         // nothing to roll back and an error path would be noise.
+        // One "record this payment" = one ledger row (quality directive
+        // 2026-09-29): the client's Idempotency-Key is stored on the row
+        // (0258), so a retry after a lost response finds it instead of moving
+        // the balance twice.
+        const rawKey = req.headers?.["idempotency-key"];
+        const operationKey = typeof rawKey === "string" && rawKey.trim() ? rawKey.trim().slice(0, 200) : null;
+
         type Outcome =
           | { kind: "not_found" }
           | { kind: "bad_request"; message: string }
+          | { kind: "replayed"; row: typeof notePayments.$inferSelect }
           | {
               kind: "posted";
               posted: PostedNotePayment;
@@ -1717,6 +1725,20 @@ export function registerNoteRoutes(app: Express): void {
             return { kind: "not_found" };
           }
 
+          if (operationKey) {
+            const [already] = await tx
+              .select()
+              .from(notePayments)
+              .where(and(eq(notePayments.organizationId, orgId), eq(notePayments.operationKey, operationKey)))
+              .limit(1);
+            if (already) {
+              if (already.noteId !== id) {
+                return { kind: "bad_request", message: "This Idempotency-Key was already used for a payment on another note." };
+              }
+              return { kind: "replayed", row: already };
+            }
+          }
+
           // Per-type validation. The zod schema accepts negative cents on
           // every type so NSF reversals can pass; here we tighten for the
           // common cases.
@@ -1739,6 +1761,68 @@ export function registerNoteRoutes(app: Express): void {
 
           if (isReversal && !data.originalPaymentId) {
             return { kind: "bad_request", message: "originalPaymentId is required for nsf_reversal" };
+          }
+
+          // A reversal backs out ONE real payment on THIS note, once, by
+          // exactly what it posted (quality directive 2026-09-29). Any
+          // originalPaymentId used to be stored unchecked with any amounts, so
+          // a reversal could name no payment, another note's payment, a
+          // payment already reversed — and raise the balance by an invented
+          // amount. The note row is held FOR UPDATE above, so two reversals of
+          // one payment serialize and the second finds the first.
+          if (isReversal && data.originalPaymentId) {
+            const [original] = await tx
+              .select()
+              .from(notePayments)
+              .where(
+                and(
+                  eq(notePayments.id, data.originalPaymentId),
+                  eq(notePayments.noteId, id),
+                  eq(notePayments.organizationId, orgId),
+                ),
+              )
+              .limit(1);
+            if (!original) {
+              return { kind: "bad_request", message: "originalPaymentId does not name a payment on this note" };
+            }
+            if (original.paymentType === "nsf_reversal") {
+              return { kind: "bad_request", message: "A reversal cannot itself be reversed" };
+            }
+            const [priorReversal] = await tx
+              .select({ id: notePayments.id })
+              .from(notePayments)
+              .where(
+                and(
+                  eq(notePayments.organizationId, orgId),
+                  eq(notePayments.noteId, id),
+                  eq(notePayments.paymentType, "nsf_reversal"),
+                  eq(notePayments.originalPaymentId, original.id),
+                ),
+              )
+              .limit(1);
+            if (priorReversal) {
+              return { kind: "bad_request", message: "That payment has already been reversed" };
+            }
+            const expected = {
+              principalCents: -Number(original.principalCents ?? 0),
+              interestCents: -Number(original.interestCents ?? 0),
+              escrowCents: -Number(original.escrowCents ?? 0),
+              lateFeeCents: -Number(original.lateFeeCents ?? 0),
+              unappliedCents: -Number(original.unappliedCents ?? 0),
+            };
+            const bucketKeys = Object.keys(expected) as Array<keyof typeof expected>;
+            // No amounts sent: the reversal IS the original's negation — the
+            // server derives it rather than trusting re-typed figures.
+            if (bucketKeys.every((k) => data[k] === 0)) Object.assign(data, expected);
+            const mismatch = bucketKeys.filter((k) => data[k] !== expected[k]);
+            if (mismatch.length > 0) {
+              return {
+                kind: "bad_request",
+                message:
+                  `A reversal must exactly negate the original payment — expected ` +
+                  (Object.keys(expected) as Array<keyof typeof expected>).map((k) => `${k} ${expected[k]}`).join(", "),
+              };
+            }
           }
 
           // For 'partial' payments — no principal/interest applied, all into
@@ -1803,6 +1887,7 @@ export function registerNoteRoutes(app: Express): void {
               paymentMethod: data.paymentMethod,
               referenceNumber: data.referenceNumber ?? null,
               notes: data.notes ?? null,
+              operationKey,
             })
             .returning();
 
@@ -1924,6 +2009,7 @@ export function registerNoteRoutes(app: Express): void {
 
         if (outcome.kind === "not_found") return Errors.notFound(res, "Note");
         if (outcome.kind === "bad_request") return Errors.badRequest(res, outcome.message);
+        if (outcome.kind === "replayed") return res.json({ payment: outcome.row, replayed: true });
 
         // Both ledger writes are COMMITTED. Only now do we tell the workflow
         // engine. Fire-and-forget, never throws. If the transaction had rolled

@@ -18,7 +18,9 @@
  *   4. The not-attorney-reviewed caveat is on the rule surfaces, and a
  *      reference-only state's absent interest rate renders as words, not 0.00%.
  *   5. A payment spanning two charges renders its allocation TO THE CENT, and
- *      posts one ledger line per charge with those exact amounts.
+ *      is recorded as ONE payment — the server allocates it atomically by the
+ *      same rule (quality directive 2026-09-29; it used to post one request
+ *      per allocation line, so a failure half-way recorded half a payment).
  *   6. A late fee is a PROPOSAL: nothing is charged until the operator confirms
  *      the exact figure.
  *
@@ -69,6 +71,7 @@ interface FetchCall {
   url: string;
   method: string;
   body: Record<string, unknown> | null;
+  idempotencyKey?: string;
 }
 
 let calls: FetchCall[] = [];
@@ -87,7 +90,8 @@ function installFetch(handler: Handler) {
         body = null;
       }
     }
-    const call: FetchCall = { url, method, body };
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    const call: FetchCall = { url, method, body, idempotencyKey: headers["Idempotency-Key"] };
     calls.push(call);
     const res = handler(call);
     if (!res) {
@@ -816,13 +820,20 @@ describe("rent roll — allocation, deposit clock and late-fee proposal", () => 
         };
       }
       if (url === `/api/leases/${LEASE_ID}/payments` && method === "POST") {
-        return { status: 201, body: { payment: { id: `pay-${calls.length}` }, isPartial: false } };
+        return {
+          status: 201,
+          body: {
+            payment: { id: `pay-${calls.length}` },
+            isPartial: false,
+            allocation: { appliedCents: 210_050, unappliedCents: 0, lines: [{}, {}] },
+          },
+        };
       }
       return undefined;
     };
   }
 
-  it("renders a multi-charge allocation to the cent and posts one ledger line per charge", async () => {
+  it("renders a multi-charge allocation to the cent and records it as ONE payment", async () => {
     window.history.pushState({}, "", "/rent-roll");
     installFetch(rentHandler());
 
@@ -855,17 +866,15 @@ describe("rent roll — allocation, deposit clock and late-fee proposal", () => 
 
     await click(byTestId("button-record-payment"));
 
-    // One POST per charge, in oldest-first order, each for the exact allocated
-    // cents — so neither month's balance is mis-stated.
+    // ONE POST for the whole amount — the server allocates it by the same
+    // rule the preview used, atomically — carrying an Idempotency-Key so a
+    // retry cannot record it twice.
     const posts = calls.filter(
       (c) => c.url === `/api/leases/${LEASE_ID}/payments` && c.method === "POST",
     );
-    expect(posts).toHaveLength(2);
-    expect(posts[0].body?.amountCents).toBe(70_050);
-    expect(posts[1].body?.amountCents).toBe(140_000);
-    expect(Number(posts[0].body?.amountCents) + Number(posts[1].body?.amountCents)).toBe(210_050);
-    // Each line carries its own explanation into the ledger row's notes.
-    expect(String(posts[0].body?.notes)).toContain("$650.50 rent + $50.00 late fee");
+    expect(posts).toHaveLength(1);
+    expect(posts[0].body?.amountCents).toBe(210_050);
+    expect(posts[0].idempotencyKey).toBeTruthy();
   });
 
   it("shows the deposit clock for an encoded state and refuses to guess an unencoded one", async () => {

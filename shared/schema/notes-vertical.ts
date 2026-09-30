@@ -320,9 +320,13 @@ export const notePayments = pgTable(
     paymentMethod: text("payment_method").notNull().default("ach"), // ach | check | wire | cash | other
     referenceNumber: text("reference_number"),
     notes: text("notes"),
+    // The client's Idempotency-Key for "record this payment" (0258): a retry
+    // finds this row instead of moving the balance twice.
+    operationKey: text("operation_key"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    uniqueIndex("note_payments_org_operation_uidx").on(table.organizationId, table.operationKey),
     index("note_payments_note_date_idx").on(table.noteId, table.paymentDate),
     // 1099-INT aggregation read path.
     index("note_payments_org_date_idx").on(table.organizationId, table.paymentDate),

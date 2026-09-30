@@ -58,11 +58,11 @@ operation at scale.
 
 | Case | At HEAD | Status |
 |---|---|---|
-| Rent Roll posts one request per allocation line although the server allocates one payment atomically | `rent-roll.tsx:955-990`; pinned by `waveDTaxRentSurfaces.test.tsx` | QUEUED — H3 |
-| Finance summary includes sample deals/notes; accepted price shown as "Collected MTD" | `routes-finance.ts:927,1004`; `realDeal()`/`realNote()` exist but are not used there | QUEUED — H3 |
-| Acquired-note NSF reversal stores any `originalPaymentId` unchecked | `routes-notes.ts:1740-1805` | QUEUED — H3 |
-| Founder "MRR" is 30-day posted revenue (annual/one-time included, refunds not netted); `crossedAt` is read time | `routes-finance-ledger.ts:59-71,479` | QUEUED — H3 |
-| Registry: a present BYOK row skips the balance check; a failed BYOK resolve falls back to the platform key without re-checking; debit not awaited; event id = fingerprint + day (no org) | `provider-registry.ts:177-201,264-271,305,646` | QUEUED — H3. (Charging the *reported* cost rather than the list price was fixed as DEFECT-0199.) |
+| Rent Roll posts one request per allocation line although the server allocates one payment atomically | `rent-roll.tsx:955-990`; pinned by `waveDTaxRentSurfaces.test.tsx` | **FIXED** — DEFECT-0214 (one POST + durable operation key on both payment ledgers) |
+| Finance summary includes sample deals/notes; accepted price shown as "Collected MTD" | `routes-finance.ts:927,1004`; `realDeal()`/`realNote()` exist but are not used there | **FIXED** — DEFECT-0216 (also list price as sale proceeds) |
+| Acquired-note NSF reversal stores any `originalPaymentId` unchecked | `routes-notes.ts:1740-1805` | **FIXED** — DEFECT-0215 |
+| Founder "MRR" is 30-day posted revenue (annual/one-time included, refunds not netted); `crossedAt` is read time | `routes-finance-ledger.ts:59-71,479` | **FIXED** — DEFECT-0217 |
+| Registry: a present BYOK row skips the balance check; a failed BYOK resolve falls back to the platform key without re-checking; debit not awaited; event id = fingerprint + day (no org) | `provider-registry.ts:177-201,264-271,305,646` | **FIXED** — DEFECT-0218. (Charging the *reported* cost rather than the list price was fixed as DEFECT-0199.) |
 
 ## Deal evidence (H4)
 
@@ -101,6 +101,17 @@ operation at scale.
 | Finding | Status |
 |---|---|
 | County regex received `s+county$`; multi-state counties matched every same-named county; debit before the lock (double debit on a concurrent retry); free allowance counted shipments and failed pieces; printed copy unmerged; cost = quote not pieces sent; Send enabled over a stale preview; undated Lob event retried for ever; comps cache shared across caller keys; `first_letter_sent` on a test key | **FIXED** — DEFECT-0203 |
+
+## Independent audit of `60ebfd9` (H2) — folded into the H3 change
+
+| Finding | Status |
+|---|---|
+| Outlook replies 400'd on a non-`x-` header; two linked accounts could not connect; any member could disconnect a teammate's mailbox | **FIXED** — DEFECT-0208 |
+| A third FEMA caller still invented Zone X; pods, lead scoring and the radar read the "Zone X" label wrongly; edge codes, shaded X, stale cache rows, disabled sources | **FIXED** — DEFECT-0209 |
+| `/mcp` ignored key scopes; a notes-only key read lead names; an allowlisted intent could spend | **FIXED** — DEFECT-0210 |
+| Credit-pool refunds never returned credit (pool or purchased) | **FIXED** — DEFECT-0211 |
+| Printed letter collapsed paragraphs and read typed markup | **FIXED** — DEFECT-0212 |
+| Crash window between the mail debit and the shipment commit | OPEN — DEFECT-0213 |
 
 ## What remains outside any code change
 

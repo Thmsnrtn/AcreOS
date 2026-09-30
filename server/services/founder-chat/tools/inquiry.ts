@@ -21,18 +21,8 @@ import {
 } from "@shared/schema";
 import { db } from "../../../db";
 import { registerTool } from "../tool-registry";
+import { pendingScaleUpTriggers } from "../../finance/scaleUpTriggers";
 
-const REVENUE_TRIGGER_LADDER = [
-  { thresholdId: "mrr-50",     thresholdCents:    5_000, action: "Re-enable Sentry Starter",                  costOneTimeCents:     0, costRecurringCents:  2_900 },
-  { thresholdId: "mrr-200",    thresholdCents:   20_000, action: "Upgrade Fly app to shared-cpu-2x",          costOneTimeCents:     0, costRecurringCents:    800 },
-  { thresholdId: "mrr-500",    thresholdCents:   50_000, action: "Add 2nd Fly app machine for redundancy",    costOneTimeCents:     0, costRecurringCents:  2_400 },
-  { thresholdId: "mrr-1000a",  thresholdCents:  100_000, action: "Apply for USPS Mail.dat permit",            costOneTimeCents: 35_000, costRecurringCents:  2_900 },
-  { thresholdId: "mrr-1000b",  thresholdCents:  100_000, action: "Re-enable ElevenLabs Pro",                  costOneTimeCents:     0, costRecurringCents:  2_200 },
-  { thresholdId: "mrr-2000",   thresholdCents:  200_000, action: "Migrate Postgres off Neon free tier",       costOneTimeCents:     0, costRecurringCents:  8_500 },
-  { thresholdId: "mrr-3000",   thresholdCents:  300_000, action: "Telnyx account + A2P 10DLC registration",   costOneTimeCents:  5_000, costRecurringCents:      0 },
-  { thresholdId: "mrr-5000",   thresholdCents:  500_000, action: "Wire aggregation queue + presort partner",  costOneTimeCents:     0, costRecurringCents:      0 },
-  { thresholdId: "mrr-10000",  thresholdCents: 1_000_000, action: "Right-size Fly to performance-2x",         costOneTimeCents:     0, costRecurringCents: 54_000 },
-];
 
 function daysAgo(n: number): Date {
   return new Date(Date.now() - n * 24 * 60 * 60 * 1000);
@@ -209,31 +199,15 @@ registerTool({
   artifactType: "trigger_card",
   slashAliases: ["triggers"],
   async handler() {
-    const [mrrRow] = await db
-      .select({ total: sum(financialLedger.amountCents).mapWith(Number) })
-      .from(financialLedger)
-      .where(and(eq(financialLedger.category, "revenue"), gte(financialLedger.postedAt, daysAgo(30))));
-    const mrr = mrrRow?.total ?? 0;
-    const prior = await db.select({ targetId: founderAudit.targetId, action: founderAudit.action, createdAt: founderAudit.createdAt })
-      .from(founderAudit).where(eq(founderAudit.area, "scale_up")).orderBy(desc(founderAudit.createdAt));
-    const decided = new Map<string, { status: "approved" | "deferred"; at: Date }>();
-    for (const r of prior) {
-      if (!r.targetId || decided.has(r.targetId)) continue;
-      if (r.action === "approve") decided.set(r.targetId, { status: "approved", at: r.createdAt! });
-      else if (r.action === "defer") decided.set(r.targetId, { status: "deferred", at: r.createdAt! });
-    }
-    const now = Date.now();
-    const items = REVENUE_TRIGGER_LADDER
-      .filter((t) => mrr >= t.thresholdCents)
-      .map((t) => {
-        const d = decided.get(t.thresholdId);
-        let status: "pending" | "approved" | "deferred" = "pending";
-        if (d?.status === "approved") status = "approved";
-        else if (d?.status === "deferred" && now - d.at.getTime() < 7 * 86_400_000) status = "deferred";
-        return { ...t, status };
-      })
-      .filter((t) => t.status === "pending");
-    return { artifact: { type: "trigger_card", items, trailing30dMrrCents: mrr } };
+    const t = await pendingScaleUpTriggers();
+    return {
+      artifact: {
+        type: "trigger_card",
+        items: t.items,
+        recurringMrrCents: t.recurringMrrCents,
+        trailing30dRevenueCents: t.trailing30dRevenueCents,
+      },
+    };
   },
 });
 

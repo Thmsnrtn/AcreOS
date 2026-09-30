@@ -85,6 +85,8 @@ export interface RecordRentPaymentInput {
    */
   acceptedDespitePartial: boolean;
   notes: string | null;
+  /** The client's Idempotency-Key — unique per org (0258). Null when absent. */
+  operationKey?: string | null;
 }
 
 /** One charge row as it stands after the payment applied. */
@@ -250,6 +252,7 @@ export async function recordRentPayment(
       unappliedCents: allocation.unappliedCents,
       allocationOrderRule: ALLOCATION_ORDER_RULE,
       notes: input.notes,
+      operationKey: input.operationKey ?? null,
     })
     .returning();
 

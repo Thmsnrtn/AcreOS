@@ -2,6 +2,7 @@
  * Provider Registry — orchestrates multi-provider lookups with
  * tier filtering, credit deduction, circuit breaking, and caching.
  */
+import { randomUUID } from "crypto";
 import { eq, and, gt, lte, desc } from "drizzle-orm";
 import { db } from "../../db";
 import { providerCache } from "@shared/schema";
@@ -269,6 +270,18 @@ class ProviderRegistry {
           byokServed = true;
         }
       }
+      // The affordability check above passed this provider as FREE because a
+      // key row existed. If the key did not resolve, this call runs on the
+      // platform key and bills the pool — so it must pass the same check a
+      // non-BYOK call does (quality directive 2026-09-29), not ride through
+      // on a key that turned out not to work.
+      if (!byokServed && costCents > 0 && creditBalance < costCents) {
+        logger.info(`Skipping ${provider.name}: BYOK key did not resolve and credits are insufficient`, {
+          source: "ProviderRegistry",
+          metadata: { need: costCents, have: creditBalance },
+        });
+        continue;
+      }
 
       // ── Live lookup ────────────────────────────────────────
       try {
@@ -310,8 +323,11 @@ class ProviderRegistry {
         // Debit the org credit pool only for a PAID, non-cached provider
         // success. Free providers (costCents=0), cached hits, and BYOK-served
         // lookups (customer paid their own vendor) debit 0.
+        // Awaited: a fire-and-forget debit let the caller act on (and a
+        // concurrent lookup spend) a balance the debit had not reached yet.
+        // A debit failure still never fails the lookup the customer asked for.
         if (!byokServed && chargedCents > 0 && organizationId && !finalResult.cached) {
-          this.debitPaidLookup(organizationId, category, provider.name, chargedCents, input).catch(
+          await this.debitPaidLookup(organizationId, category, provider.name, chargedCents, input).catch(
             (debitErr) =>
               logger.warn(`Credit debit error (non-fatal)`, {
                 source: "ProviderRegistry",
@@ -644,20 +660,20 @@ class ProviderRegistry {
     const action = creditActionForCategory(category);
     if (!action) return; // category has no paid-lookup weight — nothing to debit
 
-    // Idempotency anchor: provider + category + a stable input fingerprint,
-    // bucketed by UTC day. The old `Date.now()` suffix made every call unique,
-    // defeating poolDebit's externalEventId dedup entirely — request replays
-    // and double-fires wrote duplicate opex rows and inflated per-org COGS in
-    // unitEconomics. Day-bucketing collapses same-day duplicates of the same
-    // lookup into one ledger row while a genuine repeat lookup on a later day
-    // (a fresh provider charge) still records.
+    // Identity = THIS vendor call, owned by THIS org (quality directive
+    // 2026-09-29). The previous anchor was input fingerprint + UTC day with
+    // no org: two orgs looking up the same parcel the same day shared one
+    // ledger row (the second org's paid lookup went unrecorded), and two
+    // genuine vendor calls by one org the same day collapsed into one. This
+    // function runs exactly once per successful live vendor call (never on a
+    // cache hit), so one call is one ledger row. The fingerprint stays in the
+    // id for tracing only.
     const fingerprint = buildCacheKey(providerName, category, input);
-    const dayBucket = new Date().toISOString().slice(0, 10);
     await poolDebit({
       organizationId,
       action,
       units: 1,
-      externalEventId: `datalookup:${fingerprint}:${dayBucket}`,
+      externalEventId: `datalookup:org:${organizationId}:${fingerprint}:${randomUUID()}`,
       notes: `${providerName} ${category} lookup (${costCents}¢ provider cost)`,
       // Post-hoc COGS recorder: the paid lookup already happened, so the
       // ledger row must be written even when the pool is over — never gate.

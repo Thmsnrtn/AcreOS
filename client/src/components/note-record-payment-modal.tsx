@@ -183,8 +183,12 @@ export function NoteRecordPaymentModal({ open, onOpenChange, note }: Props) {
     const noteAlreadyPaidOff =
       (note.status === "paid_off" || note.status === "sold") &&
       paymentType !== "nsf_reversal";
+    // A reversal carries no typed amounts (the server derives them from the
+    // original), so it is "empty" only until the original payment is named.
     const everythingZero =
-      grossCash === 0 && unappliedDelta === 0 && principalApplied === 0;
+      paymentType === "nsf_reversal"
+        ? originalPaymentId.trim() === ""
+        : grossCash === 0 && unappliedDelta === 0 && principalApplied === 0;
 
     return {
       principal,
@@ -210,6 +214,7 @@ export function NoteRecordPaymentModal({ open, onOpenChange, note }: Props) {
     lateFeeDollars,
     partialDollars,
     unappliedApplyDollars,
+    originalPaymentId,
     note.currentBalanceCents,
     note.unappliedBalanceCents,
     note.status,
@@ -236,13 +241,11 @@ export function NoteRecordPaymentModal({ open, onOpenChange, note }: Props) {
       } else if (paymentType === "extra_principal") {
         body.principalCents = dollarsToCents(principalDollars);
       } else if (paymentType === "nsf_reversal") {
-        // NSF reversal: invert the buckets so the user enters positive
-        // dollars and we send negatives to restore balance.
-        body.principalCents = -dollarsToCents(principalDollars);
-        body.interestCents = -dollarsToCents(interestDollars);
-        body.escrowCents = -dollarsToCents(escrowDollars);
-        body.lateFeeCents = -dollarsToCents(lateFeeDollars);
-        body.originalPaymentId = originalPaymentId;
+        // NSF reversal: the server backs out EXACTLY what the original
+        // payment posted (every bucket, including unapplied funds). Re-typed
+        // dollar figures used to be trusted as-is, so a reversal could move
+        // the balance by an amount no payment ever posted.
+        body.originalPaymentId = originalPaymentId.trim();
       } else {
         // regular | payoff
         body.principalCents = dollarsToCents(principalDollars);
@@ -383,7 +386,7 @@ export function NoteRecordPaymentModal({ open, onOpenChange, note }: Props) {
             </>
           )}
 
-          {(paymentType === "regular" || paymentType === "payoff" || paymentType === "nsf_reversal") && (
+          {(paymentType === "regular" || paymentType === "payoff") && (
             <BucketsGrid
               principalDollars={principalDollars} setPrincipalDollars={setPrincipalDollars}
               interestDollars={interestDollars} setInterestDollars={setInterestDollars}
@@ -402,7 +405,8 @@ export function NoteRecordPaymentModal({ open, onOpenChange, note }: Props) {
                 onChange={(e) => setOriginalPaymentId(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Find it in the ledger; copy the payment row ID.
+                Find it in the ledger; copy the payment row ID. The reversal backs out exactly what that
+                payment posted — you don't re-enter the amounts.
               </p>
             </div>
           )}

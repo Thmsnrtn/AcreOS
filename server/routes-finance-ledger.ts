@@ -29,45 +29,15 @@ import {
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { REVENUE_TRIGGER_LADDER, pendingScaleUpTriggers, trailing30dRevenueCents } from "./services/finance/scaleUpTriggers";
+import { liveMrrDetail } from "./services/finance/runwayModel";
 
 const router = Router();
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
 
-const REVENUE_TRIGGER_LADDER: Array<{
-  thresholdId: string;
-  thresholdCents: number;
-  action: string;
-  costOneTimeCents: number;
-  costRecurringCents: number;
-}> = [
-  { thresholdId: "mrr-50",     thresholdCents:    5_000, action: "Re-enable Sentry Starter",                  costOneTimeCents:     0, costRecurringCents:  2_900 },
-  { thresholdId: "mrr-200",    thresholdCents:   20_000, action: "Upgrade Fly app to shared-cpu-2x",          costOneTimeCents:     0, costRecurringCents:    800 },
-  { thresholdId: "mrr-500",    thresholdCents:   50_000, action: "Add 2nd Fly app machine for redundancy",    costOneTimeCents:     0, costRecurringCents:  2_400 },
-  { thresholdId: "mrr-1000a",  thresholdCents:  100_000, action: "Apply for USPS Mail.dat permit",            costOneTimeCents: 35_000, costRecurringCents:  2_900 },
-  { thresholdId: "mrr-1000b",  thresholdCents:  100_000, action: "Re-enable ElevenLabs Pro",                  costOneTimeCents:     0, costRecurringCents:  2_200 },
-  { thresholdId: "mrr-2000",   thresholdCents:  200_000, action: "Migrate Postgres off Neon free tier",       costOneTimeCents:     0, costRecurringCents:  8_500 },
-  { thresholdId: "mrr-3000",   thresholdCents:  300_000, action: "Telnyx account + A2P 10DLC registration",   costOneTimeCents:  5_000, costRecurringCents:      0 },
-  { thresholdId: "mrr-5000",   thresholdCents:  500_000, action: "Wire aggregation queue + presort partner",  costOneTimeCents:     0, costRecurringCents:      0 },
-  { thresholdId: "mrr-10000",  thresholdCents: 1_000_000, action: "Right-size Fly to performance-2x",         costOneTimeCents:     0, costRecurringCents: 54_000 },
-];
-
 function daysAgo(n: number): Date {
   return new Date(Date.now() - n * 24 * 60 * 60 * 1000);
-}
-
-async function computeTrailing30dMrrCents(): Promise<number> {
-  const since = daysAgo(30);
-  const [row] = await db
-    .select({ total: sum(financialLedger.amountCents).mapWith(Number) })
-    .from(financialLedger)
-    .where(
-      and(
-        eq(financialLedger.category, "revenue"),
-        gte(financialLedger.postedAt, since),
-      ),
-    );
-  return row?.total ?? 0;
 }
 
 // ── GET /buckets ─────────────────────────────────────────────────────────────
@@ -141,8 +111,11 @@ router.get("/mrr", async (_req: AuthenticatedRequest, res: Response) => {
   try {
     const since = daysAgo(90);
 
-    // Trailing 30d MRR (sum of revenue rows over the last 30 days).
-    const currentMrr = await computeTrailing30dMrrCents();
+    // Two different numbers, named for what they are (quality directive
+    // 2026-09-29): posted revenue over 30 days (annual plans and one-time
+    // charges included, refunds not netted) was reported as "MRR". The run
+    // rate is recurring MRR from active subscriptions.
+    const [revenue30d, recurring] = await Promise.all([trailing30dRevenueCents(), liveMrrDetail()]);
 
     // Per-day trend over the last 90 days.
     const trendRows = await db
@@ -160,7 +133,8 @@ router.get("/mrr", async (_req: AuthenticatedRequest, res: Response) => {
       .groupBy(sql`date_trunc('day', ${financialLedger.postedAt})`)
       .orderBy(sql`date_trunc('day', ${financialLedger.postedAt})`);
 
-    const mrrTrend = trendRows.map((r) => ({ date: r.day, mrr: r.total ?? 0 }));
+    // Daily posted revenue — not a run rate.
+    const revenueTrend = trendRows.map((r) => ({ date: r.day, revenueCents: r.total ?? 0 }));
 
     // Per-tier breakdown — join ledger revenue against organizations.subscriptionTier.
     const byTierRows = await db
@@ -190,7 +164,13 @@ router.get("/mrr", async (_req: AuthenticatedRequest, res: Response) => {
       else if (tier === "scale") byTier.scale += r.total ?? 0;
     }
 
-    res.json({ currentMrr, mrrTrend, byTier });
+    res.json({
+      recurringMrrCents: recurring.cents,
+      payingOrgs: recurring.payingOrgs,
+      trailing30dRevenueCents: revenue30d,
+      revenueTrend,
+      revenueByTier30d: byTier,
+    });
   } catch (err) {
     Errors.internal(res, err);
   }
@@ -436,52 +416,20 @@ router.get("/scale-up-history", async (_req: AuthenticatedRequest, res: Response
 
 router.get("/triggers/active", async (_req: AuthenticatedRequest, res: Response) => {
   try {
-    const mrr = await computeTrailing30dMrrCents();
-
-    // Pull any prior decisions on scale-up triggers (approved or deferred).
-    const priorRows = await db
-      .select({
-        targetId: founderAudit.targetId,
-        action: founderAudit.action,
-        createdAt: founderAudit.createdAt,
-      })
-      .from(founderAudit)
-      .where(eq(founderAudit.area, "scale_up"))
-      .orderBy(desc(founderAudit.createdAt));
-
-    const decided = new Map<string, { status: "approved" | "deferred"; at: Date }>();
-    for (const r of priorRows) {
-      if (!r.targetId) continue;
-      if (decided.has(r.targetId)) continue; // first row is most recent
-      if (r.action === "approve") decided.set(r.targetId, { status: "approved", at: r.createdAt });
-      else if (r.action === "defer") decided.set(r.targetId, { status: "deferred", at: r.createdAt });
-    }
-
-    const now = Date.now();
-    const items = REVENUE_TRIGGER_LADDER
-      .filter((t) => mrr >= t.thresholdCents)
-      .map((t) => {
-        const d = decided.get(t.thresholdId);
-        let status: "pending" | "approved" | "deferred" = "pending";
-        if (d?.status === "approved") status = "approved";
-        else if (d?.status === "deferred") {
-          // defer expires after 7 days
-          const ageMs = now - d.at.getTime();
-          status = ageMs < 7 * 86_400_000 ? "deferred" : "pending";
-        }
-        return {
-          thresholdId: t.thresholdId,
-          threshold: t.thresholdCents,
-          action: t.action,
-          costOneTimeCents: t.costOneTimeCents,
-          costRecurringCents: t.costRecurringCents,
-          status,
-          crossedAt: new Date().toISOString(),
-        };
-      })
-      .filter((it) => it.status === "pending");
-
-    res.json({ items, trailing30dMrrCents: mrr });
+    const t = await pendingScaleUpTriggers();
+    res.json({
+      items: t.items.map((it) => ({
+        thresholdId: it.thresholdId,
+        threshold: it.thresholdCents,
+        action: it.action,
+        costOneTimeCents: it.costOneTimeCents,
+        costRecurringCents: it.costRecurringCents,
+        status: it.status,
+        crossedAt: it.crossedAt,
+      })),
+      recurringMrrCents: t.recurringMrrCents,
+      trailing30dRevenueCents: t.trailing30dRevenueCents,
+    });
   } catch (err) {
     Errors.internal(res, err);
   }

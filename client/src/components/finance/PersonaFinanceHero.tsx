@@ -39,18 +39,37 @@ interface PortfolioSummary {
   delinquentCount?: number;
   delinquencyRate?: number;
   netInflowMtd?: number;
+  /** Recorded assignment fees (contract_assignments), never a contract price. */
   assignmentFees?: {
-    mtdCollected: number;
+    mtdClosedFees: number;
     pendingCount: number;
-    pendingValue: number;
-    avgPerClose: number;
+    pendingFees: number;
+    avgFeePerClose: number;
     closedCount: number;
   };
   projects?: {
     netMtd: number;
     grossMarginPct: number;
-    top: Array<{ id: number; label: string; net: number; status: string }>;
+    top: Array<{ id: number; label: string; net: number; status: string; projected?: boolean }>;
   };
+  /** The "Try with sample data" book, left out of every figure above. */
+  sampleExcluded?: { notes: number; deals: number; properties: number };
+}
+
+/** "3 sample notes and 2 sample deals are not included." — or nothing. */
+function SampleExcludedNote({ sample }: { sample?: PortfolioSummary["sampleExcluded"] }) {
+  if (!sample) return null;
+  const parts = [
+    sample.notes > 0 ? `${sample.notes} sample note${sample.notes === 1 ? "" : "s"}` : null,
+    sample.deals > 0 ? `${sample.deals} sample deal${sample.deals === 1 ? "" : "s"}` : null,
+    sample.properties > 0 ? `${sample.properties} sample propert${sample.properties === 1 ? "y" : "ies"}` : null,
+  ].filter(Boolean);
+  if (parts.length === 0) return null;
+  return (
+    <p className="text-xs text-muted-foreground mt-3" data-testid="text-sample-excluded">
+      Demonstration data is not counted: {parts.join(", ")} left out of these figures.
+    </p>
+  );
 }
 
 /**
@@ -203,10 +222,10 @@ export function PersonaFinanceHero({ notes }: PersonaFinanceHeroProps) {
 
   if (isWholesaler) {
     const fees = summary.assignmentFees || {
-      mtdCollected: 0,
+      mtdClosedFees: 0,
       pendingCount: 0,
-      pendingValue: 0,
-      avgPerClose: 0,
+      pendingFees: 0,
+      avgFeePerClose: 0,
       closedCount: 0,
     };
     return (
@@ -215,21 +234,21 @@ export function PersonaFinanceHero({ notes }: PersonaFinanceHeroProps) {
           <div className="flex items-center justify-between mb-4">
             <div>
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Assignment fees</p>
-              <p className="text-sm text-muted-foreground">This month's take, what's pending, and what a close averages.</p>
+              <p className="text-sm text-muted-foreground">Fees recorded on your assignments — closed this month, pending, and the average per close.</p>
             </div>
             <Handshake className="w-5 h-5 text-acr-brand" aria-hidden="true" />
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <p className="text-xs text-muted-foreground">Collected MTD</p>
+              <p className="text-xs text-muted-foreground">Fees closed (MTD)</p>
               <p className="text-2xl font-bold font-mono tabular-nums text-acr-pos" data-testid="text-assignment-mtd">
-                {usd(fees.mtdCollected, { noCents: true })}
+                {usd(fees.mtdClosedFees, { noCents: true })}
               </p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Pending close</p>
+              <p className="text-xs text-muted-foreground">Fees pending close</p>
               <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-assignment-pending">
-                {usd(fees.pendingValue, { noCents: true })}
+                {usd(fees.pendingFees, { noCents: true })}
                 <span className="text-sm font-normal text-muted-foreground ml-1">
                   ({fees.pendingCount})
                 </span>
@@ -238,10 +257,11 @@ export function PersonaFinanceHero({ notes }: PersonaFinanceHeroProps) {
             <div>
               <p className="text-xs text-muted-foreground">Avg fee / close</p>
               <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-assignment-avg">
-                {usd(fees.avgPerClose, { noCents: true })}
+                {usd(fees.avgFeePerClose, { noCents: true })}
               </p>
             </div>
           </div>
+          <SampleExcludedNote sample={summary.sampleExcluded} />
         </CardContent>
       </Card>
     );
@@ -286,6 +306,9 @@ export function PersonaFinanceHero({ notes }: PersonaFinanceHeroProps) {
                 </span>
                 <span className={`font-mono tabular-nums ${p.net < 0 ? "text-acr-neg" : "text-acr-pos"}`}>
                   {usd(p.net, { noCents: true })}
+                  {p.projected && (
+                    <span className="ml-1 text-[11px] font-sans text-muted-foreground">at asking price</span>
+                  )}
                 </span>
               </li>
             ))}
@@ -296,6 +319,7 @@ export function PersonaFinanceHero({ notes }: PersonaFinanceHeroProps) {
             No {propertyPluralLabel.toLowerCase()} with cost data yet — add purchase prices to see net P&L.
           </div>
         )}
+        <SampleExcludedNote sample={summary.sampleExcluded} />
       </CardContent>
     </Card>
   );

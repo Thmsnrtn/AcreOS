@@ -22,10 +22,13 @@ export interface BucketsResponse {
   asOf: string;
 }
 
+/** Recurring run rate and posted revenue — two numbers, named apart. */
 export interface MrrResponse {
-  currentMrr: number;
-  mrrTrend: Array<{ date: string; mrr: number }>;
-  byTier: { starter: number; pro: number; scale: number };
+  recurringMrrCents: number;
+  payingOrgs: number;
+  trailing30dRevenueCents: number;
+  revenueTrend: Array<{ date: string; revenueCents: number }>;
+  revenueByTier30d: { starter: number; pro: number; scale: number };
 }
 
 export interface ContributionMarginRow {
@@ -86,12 +89,14 @@ export interface ActiveTriggerItem {
   costOneTimeCents: number;
   costRecurringCents: number;
   status: "pending" | "approved" | "deferred";
-  crossedAt: string;
+  /** First weekly MRR snapshot at or above the threshold; null if none recorded it. */
+  crossedAt: string | null;
 }
 
 export interface ActiveTriggersResponse {
   items: ActiveTriggerItem[];
-  trailing30dMrrCents: number;
+  recurringMrrCents: number;
+  trailing30dRevenueCents: number;
 }
 
 export function useBuckets() {

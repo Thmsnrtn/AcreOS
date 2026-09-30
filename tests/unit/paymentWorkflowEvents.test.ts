@@ -457,6 +457,35 @@ describe("POST /api/leases/:id/payments — emit happens after the transaction c
     expect(res.body.error).toBeUndefined();
   });
 
+  it("a retry with the same Idempotency-Key finds the recorded payment — no second posting", async () => {
+    dbMock.select.mockReturnValueOnce(chain([lease]));
+    dbMock.select.mockReturnValueOnce(chain([{ id: "rent-payment-uuid-1", leaseId: "lease-uuid-1", operationKey: "op-1" }]));
+    dbMock.transaction.mockImplementation(async () => {
+      throw new Error("must not post again");
+    });
+    const handler = captureRentPaymentHandler();
+    const res = fakeRes();
+    await handler({ ...req(), headers: { "idempotency-key": "op-1" } }, res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ replayed: true, payment: { id: "rent-payment-uuid-1" } });
+    expect(emitSpy).not.toHaveBeenCalled();
+  });
+
+  it("a concurrent retry that loses the unique-key race answers with the winner's payment", async () => {
+    dbMock.select.mockReturnValueOnce(chain([lease]));
+    dbMock.select.mockReturnValueOnce(chain([])); // not yet recorded
+    dbMock.transaction.mockImplementation(async () => {
+      throw Object.assign(new Error("duplicate key value violates unique constraint"), { code: "23505" });
+    });
+    dbMock.select.mockReturnValueOnce(chain([{ id: "rent-payment-uuid-9", leaseId: "lease-uuid-1", operationKey: "op-2" }]));
+    const handler = captureRentPaymentHandler();
+    const res = fakeRes();
+    await handler({ ...req(), headers: { "idempotency-key": "op-2" } }, res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ replayed: true, payment: { id: "rent-payment-uuid-9" } });
+    expect(emitSpy).not.toHaveBeenCalled();
+  });
+
   it("a failed transaction posts nothing and emits nothing", async () => {
     dbMock.select.mockReturnValueOnce(chain([lease]));
     dbMock.transaction.mockImplementation(async () => {

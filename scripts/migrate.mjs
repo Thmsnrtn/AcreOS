@@ -233,6 +233,12 @@ END $mig0247$`,
   // operation identity; quality directive 2026-09-29, first-mail wedge).
   `ALTER TABLE "mail_shipments" ADD COLUMN IF NOT EXISTS "operation_key" text`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "mail_shipments_org_operation_uidx" ON "mail_shipments" ("organization_id", "operation_key")`,
+  // 0258 — one "record this payment" = one ledger row (rent + acquired-note
+  // payment operation identity; quality directive 2026-09-29, H3).
+  `ALTER TABLE "rent_payments" ADD COLUMN IF NOT EXISTS "operation_key" text`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "rent_payments_org_operation_uidx" ON "rent_payments" ("organization_id", "operation_key")`,
+  `ALTER TABLE "note_payments" ADD COLUMN IF NOT EXISTS "operation_key" text`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "note_payments_org_operation_uidx" ON "note_payments" ("organization_id", "operation_key")`,
   `CREATE INDEX IF NOT EXISTS "idx_organizations_pause_resume" ON "organizations" ("subscription_paused", "subscription_pause_ends_at")`,
   `ALTER TABLE "cancellation_surveys" ADD COLUMN IF NOT EXISTS "offered_pause" boolean DEFAULT false`,
   `ALTER TABLE "cancellation_surveys" ADD COLUMN IF NOT EXISTS "accepted_pause" boolean DEFAULT false`,

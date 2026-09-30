@@ -60,11 +60,15 @@ export function FounderFinanceNowTiles() {
   // ── Tile 1: Bucket alarm ───────────────────────────────────────────────
   // Show if opex_available_net < 20% of monthly MRR OR refund reserve < 5%
   // of trailing-30d revenue.
-  const monthlyMrr = mrr.data?.currentMrr ?? 0;
+  // The run rate, not 30 days of posted revenue (an annual signup is one
+  // month of MRR, not twelve).
+  const monthlyMrr = mrr.data?.recurringMrrCents ?? 0;
   const opexNet = buckets.data?.opexAvailableNet ?? 0;
   const refundReserve = buckets.data?.refundReserve ?? 0;
   const opexAlarm = monthlyMrr > 0 && opexNet < monthlyMrr * 0.2;
-  const refundAlarm = monthlyMrr > 0 && refundReserve < monthlyMrr * 0.05;
+  // Refunds are claims on revenue actually collected, as the rule above says.
+  const revenue30d = mrr.data?.trailing30dRevenueCents ?? 0;
+  const refundAlarm = revenue30d > 0 && refundReserve < revenue30d * 0.05;
   const showBucketAlarm = opexAlarm || refundAlarm;
 
   // ── Tile 2: Net-negative orgs ──────────────────────────────────────────

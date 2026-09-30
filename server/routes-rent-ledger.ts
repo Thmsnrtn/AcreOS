@@ -1149,6 +1149,28 @@ export function registerRentLedgerRoutes(app: Express): void {
         .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
 
+      // One "record this payment" = one ledger row (quality directive
+      // 2026-09-29). The Rent Roll used to post one request PER allocation
+      // line, so a failure half-way left half a payment recorded and a retry
+      // posted the rest again. It now sends the whole amount once with an
+      // Idempotency-Key; a retry of the same key finds the recorded payment.
+      const rawKey = req.headers?.["idempotency-key"];
+      const operationKey = typeof rawKey === "string" && rawKey.trim() ? rawKey.trim().slice(0, 200) : null;
+      const findRecorded = async () => {
+        if (!operationKey) return undefined;
+        const [row] = await db.select().from(rentPayments)
+          .where(and(eq(rentPayments.organizationId, orgId), eq(rentPayments.operationKey, operationKey)))
+          .limit(1);
+        return row;
+      };
+      const recorded = await findRecorded();
+      if (recorded) {
+        if (recorded.leaseId !== lease.id) {
+          return Errors.badRequest(res, "This Idempotency-Key was already used for a payment on another lease.");
+        }
+        return res.json({ payment: recorded, replayed: true });
+      }
+
       // Everything below — the charge read (FOR UPDATE), the payment row, the
       // allocation rows and every charge update — lands in one transaction or
       // not at all. The read lives INSIDE it so two payments recorded at the
@@ -1167,9 +1189,16 @@ export function registerRentLedgerRoutes(app: Express): void {
             payorTenantId: parsed.data.payorTenantId ?? null,
             acceptedDespitePartial: parsed.data.acceptedDespitePartial,
             notes: parsed.data.notes ?? null,
+            operationKey,
           }),
         );
       } catch (err) {
+        // A concurrent retry with the same key committed first: the unique
+        // (org, operation_key) index rolled this one back. Answer with theirs.
+        if ((err as { code?: string } | null)?.code === "23505" && operationKey) {
+          const winner = await findRecorded();
+          if (winner) return res.json({ payment: winner, replayed: true });
+        }
         // Imelda §2.5: "accepting partial rent after filing a notice to vacate
         // can void the notice and force me to start over." The refusal is
         // raised inside the transaction, so nothing was posted.
