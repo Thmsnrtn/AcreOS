@@ -11,6 +11,7 @@ import {
 import { assertNotUnderLegalHold, filterOutHeldIds } from "../services/legalHold";
 import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../storage";
 import { LIST_READ_CAP, capListRead } from "./listCap";
+import { withoutIdentityKeys } from "../utils/patch";
 
 /** Refused merge: the two leads are different parcels (DEFECT-0161). */
 class LeadsAreDistinctParcelsError extends Error {
@@ -304,7 +305,7 @@ export const leadRepo = {
     const conditions = [eq(leads.id, id)];
     if (organizationId) conditions.push(eq(leads.organizationId, organizationId));
     const [updated] = await db.update(leads)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...withoutIdentityKeys(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -350,7 +351,7 @@ export const leadRepo = {
   async bulkUpdateLeads(this: DatabaseStorage, orgId: number, ids: number[], updates: Partial<InsertLead>): Promise<number> {
     if (ids.length === 0) return 0;
     await db.update(leads)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...withoutIdentityKeys(updates), updatedAt: new Date() })
       .where(and(
         eq(leads.organizationId, orgId),
         inArray(leads.id, ids),

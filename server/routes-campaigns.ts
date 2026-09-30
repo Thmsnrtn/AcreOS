@@ -911,31 +911,54 @@ export function registerCampaignRoutes(app: Express): void {
 
       // Only deduct credits if NOT using org Lob credentials (BYOK). After the
       // claim, so a duplicate never reaches the debit.
+      // A send that fails before any piece is sent RELEASES its claim (the
+      // order is marked failed and its key cleared), so a retry of the same
+      // send is a new attempt — not a 409 saying it "already started" when it
+      // never did (audit of 7cc7345). A debit already taken is returned.
+      const debitCents = costPerPiece * validLeads.length;
+      let debited = false;
+      const releaseClaim = async (errorMessage: string) => {
+        await storage
+          .updateMailingOrder(mailingOrder.id, { status: 'failed', errorMessage, operationKey: null }, org.id)
+          .catch((e) => logger.error('[Campaigns] could not release a failed send claim', e instanceof Error ? e : undefined));
+      };
       let deductResult: any = true;
-      if (!usingOrgLobCredentials) {
-        deductResult = await creditService.deductCredits(
-          org.id,
-          costPerPiece * validLeads.length,
-          `Direct mail campaign: ${campaign.name} - ${validLeads.length} pieces`,
-          { campaignId, pieceType, recipientCount: validLeads.length, mailingOrderId: mailingOrder.id }
-        );
+      try {
+        if (!usingOrgLobCredentials) {
+          deductResult = await creditService.deductCredits(
+            org.id,
+            debitCents,
+            `Direct mail campaign: ${campaign.name} - ${validLeads.length} pieces`,
+            { campaignId, pieceType, recipientCount: validLeads.length, mailingOrderId: mailingOrder.id }
+          );
 
-        if (!deductResult) {
-          await storage.updateMailingOrder(mailingOrder.id, {
-            status: 'failed',
-            errorMessage: 'Insufficient credits — nothing was mailed',
-          }, org.id);
-          return Errors.paymentRequired(res, "Insufficient credits");
+          if (!deductResult) {
+            await releaseClaim('Insufficient credits — nothing was mailed');
+            return Errors.paymentRequired(res, "Insufficient credits");
+          }
+          debited = true;
+        } else {
+          logger.info(`Skipping credit deduction for org - using org Lob credentials`, { orgId: org.id });
         }
-      } else {
-        logger.info(`Skipping credit deduction for org - using org Lob credentials`, { orgId: org.id });
-      }
 
-      // Update order status to in_progress when sending starts
-      await storage.updateMailingOrder(mailingOrder.id, {
-        status: 'sending',
-        startedAt: new Date(),
-      });
+        // Update order status to in_progress when sending starts
+        await storage.updateMailingOrder(mailingOrder.id, {
+          status: 'sending',
+          startedAt: new Date(),
+        });
+      } catch (preSendErr) {
+        if (debited) {
+          await creditService
+            .addCredits(org.id, debitCents, 'refund', `Refund: direct mail send failed before any piece was sent (${campaign.name})`, {
+              campaignId,
+              pieceType,
+              mailingOrderId: mailingOrder.id,
+            })
+            .catch((e) => logger.error('[Campaigns] refund after a failed send start did not post', e instanceof Error ? e : undefined));
+        }
+        await releaseClaim('The send failed before any piece was sent — nothing was mailed');
+        throw preSendErr;
+      }
 
       // Build sender address for Lob
       const senderAddress = {

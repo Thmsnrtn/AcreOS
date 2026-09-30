@@ -152,6 +152,18 @@ operation at scale.
 | A failed Close & Carry retraction was never retried | **FIXED** — DEFECT-0257 |
 | Close/carry race, unsurfaced gapped runs, blocked first-mail backfill, clear-sample cascade, late probe report | OPEN — DEFECT-0258 |
 
+## Independent audit of `7cc7345` — folded into the second follow-up
+
+| Finding | Status |
+|---|---|
+| A workflow update could move a record into another tenant, and write any status | **FIXED** — DEFECT-0259 |
+| Any member could purge; a purged closed deal stayed a comp | **FIXED** — DEFECT-0260 |
+| A send refused before any piece locked its key out | **FIXED** — DEFECT-0261 |
+| Payoff guard ignored late fees owed | **FIXED** — DEFECT-0262 |
+| Members saw a Record payment button the server refuses | **FIXED** — DEFECT-0263 |
+| A deleted deal could be moved to any stage; the undo trusted the client | **FIXED** — DEFECT-0264 |
+| requireRole vs ownerId; offer attribution; backdating; ACH overlap; seeder cap; gate asserts the call not the answer | OPEN — DEFECT-0265 |
+
 ## What remains outside any code change
 
 These need outside proof or a founder decision, as the directive's own limits section says:

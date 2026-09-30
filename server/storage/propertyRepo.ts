@@ -11,6 +11,7 @@ import { assertNotUnderLegalHold } from "../services/legalHold";
 import { recordDealTransitionEvidence } from "../services/dealLifecycleEvents";
 import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../storage";
 import { LIST_READ_CAP, capListRead } from "./listCap";
+import { withoutIdentityKeys } from "../utils/patch";
 
 /** Search / lookup filters for the paginated property list (DEFECT-0168). */
 interface PropertyListFilters {
@@ -101,7 +102,7 @@ export const propertyRepo = {
     const conditions = [eq(properties.id, id)];
     if (organizationId) conditions.push(eq(properties.organizationId, organizationId));
     const [updated] = await db.update(properties)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...withoutIdentityKeys(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     // Land that is no longer held comes off the market (DEFECT-0181).
@@ -182,7 +183,7 @@ export const propertyRepo = {
   async bulkUpdateProperties(this: DatabaseStorage, orgId: number, ids: number[], updates: Partial<InsertProperty>): Promise<number> {
     if (ids.length === 0) return 0;
     const updated = await db.update(properties)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...withoutIdentityKeys(updates), updatedAt: new Date() })
       .where(and(eq(properties.organizationId, orgId), inArray(properties.id, ids)))
       .returning({ id: properties.id, status: properties.status });
     // A bulk status change that ends the holding withdraws the listings

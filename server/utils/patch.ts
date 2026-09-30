@@ -49,3 +49,19 @@ export function assertWritablePatch<T extends object>(patch: T, what: string): T
       `no-op (return early) or a bad request (answer 400).`,
   );
 }
+
+/**
+ * A patch without the row's identity. The tenant key and the primary key are
+ * immutable through an update: a patch carrying `organizationId` was applied
+ * under a WHERE scoped to the OLD org, so a workflow `update_record` with
+ * `{ organizationId: <another org> }` moved the row into another tenant
+ * (audit of 7cc7345). Every deal, lead and property update strips them here,
+ * at the write, whatever the caller passed.
+ */
+export function withoutIdentityKeys<T extends object>(patch: T): T {
+  const out: Record<string, unknown> = { ...(patch as Record<string, unknown>) };
+  delete out.id;
+  delete out.organizationId;
+  delete out.createdAt;
+  return out as T;
+}

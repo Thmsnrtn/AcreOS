@@ -18,6 +18,14 @@ const S = vi.hoisted(() => ({
   posted: [] as Array<Record<string, unknown>>,
   byTxn: new Map<string, Record<string, unknown>>(),
   audit: 0,
+  owedFeeCents: 0,
+  assessed: 0,
+}));
+
+vi.mock("../../server/services/notes/servicedLateFees", async (orig) => ({
+  ...(await orig<typeof import("../../server/services/notes/servicedLateFees")>()),
+  assessServicedNoteLateFee: async () => void S.assessed++,
+  outstandingServicedLateFeesCents: async () => S.owedFeeCents,
 }));
 
 vi.mock("../../server/middleware/roleGuard", () => ({
@@ -92,6 +100,8 @@ beforeEach(() => {
   S.posted = [];
   S.byTxn = new Map();
   S.audit = 0;
+  S.owedFeeCents = 0;
+  S.assessed = 0;
 });
 
 describe("a recorded payment is a real posting", () => {
@@ -130,6 +140,19 @@ describe("a recorded payment is a real posting", () => {
     await (await handler())(req(body("20000.00")), r);
     expect(r.statusCode).toBe(400);
     expect(S.posted).toHaveLength(0);
+  });
+
+  it("the payoff includes late fees owed — the quoted payoff is accepted, a cent more is refused (audit of 7cc7345)", async () => {
+    S.owedFeeCents = 2_500; // $25 assessed and unpaid
+    // $10,000.00 balance + $50.00 of interest + $25.00 of fees.
+    const exact = res();
+    await (await handler())(req(body("10075.00"), "op-key-0100"), exact);
+    expect(exact.statusCode).toBe(201);
+    const over = res();
+    await (await handler())(req(body("10075.01"), "op-key-0101"), over);
+    expect(over.statusCode).toBe(400);
+    expect(over.body).toMatchObject({ details: { payoffCents: 1_007_500, lateFeesIncludedCents: 2_500 } });
+    expect(S.assessed).toBeGreaterThan(0);
   });
 
   it("another org's note is not found", async () => {

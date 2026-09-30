@@ -11,6 +11,7 @@ import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../sto
 import { logger } from "../utils/logger";
 import { publishDealLifecycle, recordDealTransitionEvidence } from "../services/dealLifecycleEvents";
 import { LIST_READ_CAP, capListRead } from "./listCap";
+import { withoutIdentityKeys } from "../utils/patch";
 
 import { ADMINISTRATIVE_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 export const dealRepo = {
@@ -100,7 +101,7 @@ export const dealRepo = {
       .where(eq(deals.id, id));
 
     const [updated] = await db.update(deals)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...withoutIdentityKeys(updates), updatedAt: new Date() })
       .where(whereClause!)
       .returning();
 
@@ -220,7 +221,7 @@ export const dealRepo = {
     }
 
     await db.update(deals)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...withoutIdentityKeys(updates), updatedAt: new Date() })
       .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
 
     for (const before of beforeRows) {

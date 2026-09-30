@@ -2,6 +2,7 @@ import { PageShell } from "@/components/page-shell";
 import { useNotes, useCreateNote, useDeleteNote } from "@/hooks/use-notes";
 import { usePayments, useRecordPayment } from "@/hooks/use-payments";
 import { useLeads } from "@/hooks/use-leads";
+import { useUserPermissions } from "@/hooks/use-organization";
 import { usePropertiesByIds } from "@/hooks/use-properties";
 import { PropertyCombobox } from "@/components/property-combobox";
 import { useState, useEffect } from "react";
@@ -778,6 +779,8 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
   // Held here, not in the modal: closing and reopening the modal to retry a
   // timed-out payment must keep the same Idempotency-Key.
   const recordPayment = useRecordPayment();
+  const { data: permissions } = useUserPermissions();
+  const mayRecordPayment = permissions?.role === "owner" || permissions?.role === "admin";
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDownloadingSchedule, setIsDownloadingSchedule] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
@@ -1242,9 +1245,18 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
           </Card>
 
           <div className="flex flex-col sm:flex-row gap-2">
-            <Button onClick={() => setShowRecordPayment(true)} className="flex-1 min-h-11 pointer-fine:sm:min-h-9" data-testid="button-record-payment">
-              <Receipt className="w-4 h-4 mr-2" aria-hidden="true" /> Record payment
-            </Button>
+            {mayRecordPayment ? (
+              <Button onClick={() => setShowRecordPayment(true)} className="flex-1 min-h-11 pointer-fine:sm:min-h-9" data-testid="button-record-payment">
+                <Receipt className="w-4 h-4 mr-2" aria-hidden="true" /> Record payment
+              </Button>
+            ) : (
+              // Recording a payment moves a borrower's balance: owner or admin
+              // only, as the server enforces (audit of 7cc7345 — members saw a
+              // button that answered 403).
+              <p className="flex-1 text-sm text-muted-foreground" data-testid="text-record-payment-role">
+                Only an owner or admin can record a payment.
+              </p>
+            )}
             {/* "Send payment link" removed 2026-07-07 (WS1): it was a
                 permanently-disabled "Coming soon" button — Generate payment
                 link above covers the job. Restore when a send channel ships. */}

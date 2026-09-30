@@ -6334,9 +6334,9 @@ Severity: P1
 Status: FIXED
 Surfaced by lenses: independent audit of e3debe0
 Description: Only `PUT /api/deals/:id` recorded `first_offer_made` on entering offer_sent and retracted a reopened sale. The stage PATCH, bulk-update, advance-stage (swipe), Pax `update_deal` and `draft_offer` did neither, and `POST /api/deals/bulk-stage-update` emitted no stage change at all.
-Evidence: `server/services/dealEvents.ts`; `server/routes-deals.ts`; `server/routes.ts`; `server/ai/tools.ts`.
+Evidence: `server/services/dealLifecycleEvents.ts` (`recordDealTransitionEvidence`); `server/storage/dealRepo.ts`; `server/storage/propertyRepo.ts`; `server/storage/auditRepo.ts`; `server/routes.ts`; `server/routes-bulk.ts`.
 Remediation: As first shipped, `recordDealTransitionEvidence` sat beside every `emitDealStageChanged` — a population of EMITTERS, while the status is written by more paths than emit (the undo, `/api/bulk/deals/update`, workflow `update_record`, the agent's `advance_deal`, voice-call CRM updates, title closing, soft deletes). Since `closed` is terminal in the validated paths, the reopen retraction could only ever run on exactly those unpaired writers (audit of 224a5c0). It now runs in the deal repository (`updateDeal`, `bulkUpdateDeals`, the soft deletes), and every raw deals write outside `server/storage/` was routed through it; the bulk endpoint and voice updates are held to the state machine; the undo accepts only real stages.
-Falsified: `tests/unit/dealTransitionEvidenceEverywhere.test.ts` — the population is every `.update(<deals table>)` in `server/` (aliases included): none outside storage, and every repository method writing it records the evidence; plus behavioural repo tests (red before).
+Falsified: `tests/unit/dealTransitionEvidenceEverywhere.test.ts` — the population is every write to the deals table in `server/`: Drizzle update/delete by any alias or namespace import, and raw `sql` UPDATE-with-status / DELETE FROM (widened after the audit of 7cc7345 found the compliance purge hard-deleting closed deals unretracted); none outside storage, and every repository method writing it records the evidence; plus behavioural repo tests (red before; removing the purge's retraction turns it red, checked).
 Resolving commits: quality-directive H5 (audit fixes); H5 audit fixes
 
 ### DEFECT-0247
@@ -6412,7 +6412,7 @@ Status: FIXED
 Surfaced by lenses: independent audit of 224a5c0
 Description: Once `POST /api/payments` worked (DEFECT-0249) it was a second-class writer: `createPayment` lowered `currentBalance` only — the installment and due date never moved (the note stayed due; the due detector kept raising "overdue"; autopay, selecting on `nextPaymentDate`, could debit the same installment), no late-fee rule, no `payment.received`. It had no role guard. It passed the body's `transactionId`, fees and status through, and ignored a malformed key.
 Evidence: `server/routes-finance.ts`; `server/services/borrower/portalPaymentPosting.ts`; `client/src/pages/finance.tsx`.
-Remediation: The body of the portal posting rule is now `postServicedNotePayment` — the late-fee rule, the integer-cents split, one row per `transactionId`, the balance moved on the locked row, the installment and due date advanced by a full installment, `payment.received` once. The portal, webhook, Payment Links and the finance route (`source: operator_recorded`, no card receipt) all post through it. The route is owner/admin only, reads only `noteId`, `amount` and `paymentMethod`, and requires a well-formed key. The key is held above the modal, so close → reopen → retry keeps it.
+Remediation: The body of the portal posting rule is now `postServicedNotePayment` — the late-fee rule, the integer-cents split, one row per `transactionId`, the balance moved on the locked row, the installment and due date advanced by a full installment, `payment.received` once. The portal, webhook, Payment Links and the finance route (`source: operator_recorded`, no card receipt) all post through it. (Not ACH autopay, which has its own ledger path, nor the sunset legacy-token writer in `routes-borrower.ts`; corrected after the audit of 7cc7345.) The route is owner/admin only, reads only `noteId`, `amount` and `paymentMethod`, and requires a well-formed key. The key is held above the modal, so close → reopen → retry keeps it.
 Falsified: `tests/unit/financePaymentIsRecordedOnce.test.ts`, `tests/unit/borrowerPortalPaymentPosting.test.ts` (operator posting advances the installment, applies the fee rule, emits once, sends no receipt).
 Resolving commits: H5 audit fixes
 
@@ -6424,8 +6424,8 @@ Surfaced by lenses: independent audit of 224a5c0
 Description: `POST /api/bulk/deals/update` set any string as a deal status, around the state machine; `applyCRMUpdates` wrote a status read out of a call transcript, without an org predicate on the deal read (it has no caller today). The undo took an arbitrary `previousStage`.
 Evidence: `server/routes-bulk.ts`; `server/services/voiceCallAI.ts`; `server/routes.ts`.
 Remediation: The bulk endpoint validates the stage and each transition; voice updates apply only a legal next stage, org-scoped, through the repository; the undo accepts only real stages (it may move backwards — that is its purpose).
-Falsified: `tests/unit/dealTransitionEvidenceEverywhere.test.ts` (no raw deals writer outside storage).
-Resolving commits: H5 audit fixes
+Falsified: `tests/unit/dealStatusWritersHoldTheStateMachine.test.ts` (added after the audit of 7cc7345 found no test behind these fixes — red before); `tests/unit/dealTransitionEvidenceEverywhere.test.ts` (no raw deals writer outside storage).
+Resolving commits: H5 audit fixes; second audit fixes
 
 ### DEFECT-0255
 Title: Onboarding let any member rewrite what the organization is
@@ -6470,6 +6470,82 @@ Evidence: `server/routes-deals.ts`; `server/services/workflow-engine.ts`; `serve
 Remediation plan: (1) record at the close inside the status write; (2) show gapped runs where runs are listed; (3) backfill from send logs (founder-run script); (4) sample lineage on deals and notes; (5) tag each probe claim.
 Resolving commits: —
 
+### DEFECT-0259
+Title: A workflow update could move a record into another tenant and write any status
+Severity: P1
+Status: FIXED
+Surfaced by lenses: independent audit of 7cc7345
+Description: Workflow `update_record` passed `config.updates` straight into `updateDeal` / `updateLead` / `updateProperty`, which spread the patch into a `SET` under a `WHERE` scoped to the OLD org. `{ organizationId: <another org> }` moved the row into another tenant; any status was written around the state machine.
+Evidence: `server/services/workflow-engine.ts`; `server/storage/dealRepo.ts`; `server/storage/leadRepo.ts`; `server/storage/propertyRepo.ts`; `server/utils/patch.ts`.
+Remediation: `withoutIdentityKeys` strips `organizationId`, `id` and `createdAt` from every deal, lead and property update and bulk update, at the repository, whatever the caller passed. A status a workflow writes is validated against the deal or lead state machine.
+Falsified: `tests/unit/dealStatusWritersHoldTheStateMachine.test.ts` (red before).
+Resolving commits: second audit fixes
+
+### DEFECT-0260
+Title: Any member could purge the org's data; a purged closed deal stayed a sale comp
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 7cc7345
+Description: `POST /api/compliance/purge-data` hard-deletes leads and closed deals and seal-purges the audit log with no role guard. A purged closed deal left its recorded sale in the valuation corpus.
+Evidence: `server/routes-import-export.ts`; `server/storage/auditRepo.ts`.
+Remediation: Owner/admin only. The purge retracts each closed deal's recorded sale.
+Falsified: `tests/unit/dealTransitionEvidenceEverywhere.test.ts` (the purge is in its population; removing the retraction turns it red).
+Resolving commits: second audit fixes
+
+### DEFECT-0261
+Title: A campaign send refused before any piece was sent locked its key out
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 7cc7345
+Description: A send refused for credits (or failing between the debit and the first piece) kept its claim, so the retry with the same key was told it had "already started". A debit taken before such a failure was not returned.
+Evidence: `server/routes-campaigns.ts`.
+Remediation: Such a failure releases the claim (order failed, key cleared) and refunds a debit already taken.
+Falsified: `tests/unit/campaignSendIsClaimedOnce.test.ts` (2 cases, red before).
+Resolving commits: second audit fixes
+
+### DEFECT-0262
+Title: The recorded-payment payoff guard ignored late fees owed
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 7cc7345
+Description: The guard split the whole amount against balance plus a month's interest; the posting rule takes owed fees first. The quoted payoff was refused, and the suggested lower amount left the note open by the fee.
+Evidence: `server/routes-finance.ts`.
+Remediation: The fee is assessed (idempotent) and taken out first, as the posting does; the refusal names the fees included.
+Falsified: `tests/unit/financePaymentIsRecordedOnce.test.ts` (quoted payoff accepted, a cent more refused).
+Resolving commits: second audit fixes
+
+### DEFECT-0263
+Title: Members saw a "Record payment" button the server refuses
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 7cc7345
+Description: The finance page showed the button to every role; a member's click answered 403.
+Evidence: `client/src/pages/finance.tsx`.
+Remediation: Owners and admins see the button; others see who can record a payment.
+Falsified: Source-level (the render branches on the permissions role).
+Resolving commits: second audit fixes
+
+### DEFECT-0264
+Title: A deleted deal could be moved to any stage; the undo took any client stage
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 7cc7345
+Description: `validateDealTransition` let an unknown current status re-enter as "legacy", which admitted `deleted` — the bulk endpoint and the agent could close a soft-deleted deal. The undo accepted any `{id, previousStage}`.
+Evidence: `shared/lifecycle/pipeline-status.ts`; `server/routes.ts`.
+Remediation: A deleted deal (or lead) cannot change stage until restored. The undo restores only what a recorded `bulk_stage_update` of the last 24 hours changed, and only while the deal is still at that move's stage.
+Falsified: `tests/unit/dealStatusWritersHoldTheStateMachine.test.ts` (red before).
+Resolving commits: second audit fixes
+
+### DEFECT-0265
+Title: Residue from the audit of 7cc7345 not fixed in this change
+Severity: P2
+Status: OPEN
+Surfaced by lenses: independent audit of 7cc7345
+Description: (1) `requireRole` does not honour `organizations.ownerId`; an owner with no active `team_members` row would be refused — unverified against data, and widening a security middleware that deliberately requires an active row is a decision, not a fix. (2) `first_offer_made` now records no user, and a demo deal dragged to offer_sent counts as activation. (3) A recorded payment cannot be backdated; late fees measure from entry time. (4) Recording a payment while an ACH debit for the same installment is in flight advances the installment twice, unwarned. (5) The seeder's resume reads the 5,000-row capped lead/property lists; an org that imported more than that since seeding would get sample leads again; `counts` mixes matched and created. (6) `orgTypeWritersAskAuthority` checks that the rule is called, not that its answer is used.
+Evidence: `server/middleware/roleGuard.ts`; `server/services/dealLifecycleEvents.ts`; `server/routes-finance.ts`; `server/services/onboarding/sampleSeeder.ts`; `tests/unit/orgTypeWritersAskAuthority.test.ts`.
+Remediation plan: (1) measure orgs whose owner lacks an active row, then decide; (2) carry the actor through the repository write, and skip sample lineage; (3) an optional received date, bounded to the past; (4) refuse or warn while an ACH attempt is pending; (5) resume from a sample-lineage query, uncapped; (6) assert the gated write behaviourally per route.
+Resolving commits: —
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -6506,10 +6582,10 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 18  | 18    |
-| FIXED  | 14  | 126 | 98  | 238   |
+| OPEN   | 0   | 0   | 19  | 19    |
+| FIXED  | 14  | 127 | 103 | 244   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **128** | **116** | **258** |
+| **Total** | **14** | **129** | **122** | **265** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
@@ -6543,6 +6619,8 @@ independent audits of `92bf405` and `e3debe0`; recounted from the entries.
 DEFECT-0252 through 0258 (2026-09-30) come from the independent audit of
 `224a5c0`, which also corrected three of that commit's own claims (0238's
 "real rows untouched", 0246's population, 0237's reach); recounted.
+DEFECT-0259 through 0265 come from the independent audit of `7cc7345`
+(0253's "all post through it" and 0254's missing test corrected); recounted.
 0203 records the audit of the first-mail slice; 0204–0207 are slice H2;
 0208–0213 the audit of H2 (0213 OPEN); 0214–0218 slice H3; 0219–0229 the
 audit of H3 (0225, 0227, 0229 OPEN); 0230–0235 slice H4 (0232, 0235 OPEN).

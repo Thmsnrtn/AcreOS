@@ -9,6 +9,7 @@ import {
   type Lead,
 } from "@shared/schema";
 import { orgHasActiveHold } from "../services/legalHold";
+import { recordDealTransitionEvidence } from "../services/dealLifecycleEvents";
 import type { DatabaseStorage } from "../storage";
 
 export const auditRepo = {
@@ -121,6 +122,9 @@ export const auditRepo = {
         eq(deals.status, status)
       ))
       .returning({ id: deals.id });
+    // A purged closed deal is not a sale: the comp its close recorded is
+    // retracted, as for any deal leaving closed (audit of 7cc7345).
+    for (const d of result) recordDealTransitionEvidence(orgId, { status }, { id: d.id, status: "deleted" });
     return result.length;
   },
 

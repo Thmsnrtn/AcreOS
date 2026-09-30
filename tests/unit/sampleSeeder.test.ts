@@ -268,6 +268,16 @@ describe("seedSampleDataForOrg — a partial seed can be finished (quality direc
     expect(mem.orgs.get(ORG)?.onboardingData).toMatchObject({ sampleDataLoaded: true });
   });
 
+  it("a demo deal whose notes the customer edited is not duplicated by the resume (audit of 7cc7345)", async () => {
+    await seedSampleDataForOrg(String(ORG), "land_flipper");
+    const dealCount = mem.deals.length;
+    expect(dealCount).toBeGreaterThan(0);
+    mem.deals[0] = { ...mem.deals[0], notes: "My notes now" };
+    mem.orgs.set(ORG, { ...mem.orgs.get(ORG)!, onboardingData: null });
+    await seedSampleDataForOrg(String(ORG), "land_flipper");
+    expect(mem.deals.length).toBe(dealCount);
+  });
+
   it("a deal the customer added to a demo parcel survives the resume", async () => {
     await seedSampleDataForOrg(String(ORG), "land_flipper");
     const demoParcel = mem.properties[0];

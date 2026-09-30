@@ -765,7 +765,7 @@ export async function seedSampleDataForOrg(
   const [presentDeals, presentNotes] = repaired
     ? await Promise.all([storage.getDeals(id), storage.getNotes(id)])
     : [[], []];
-  const dealsOnSampleParcels = (presentDeals as Array<{ propertyId?: number | null; notes?: string | null; type?: string | null }>)
+  const dealsOnSampleParcels = (presentDeals as Array<{ propertyId?: number | null; type?: string | null }>)
     .filter((d) => d.propertyId != null && sampleParcelIds.has(d.propertyId));
   const notesOnSampleParcels = (presentNotes as Array<{ propertyId?: number | null; originalPrincipal?: string | null }>)
     .filter((n) => n.propertyId != null && sampleParcelIds.has(n.propertyId));
@@ -775,8 +775,12 @@ export async function seedSampleDataForOrg(
     const { propertyIndex, ...dealData } = dealSpec;
     const propertyId = propertyIndex != null ? createdProperties[propertyIndex]?.id : undefined;
     if (propertyIndex != null && propertyId == null) continue;
+    // Matched on the parcel and the deal type, not the notes text: a
+    // customer who edited a demo deal's notes would otherwise get a second
+    // one (audit of 7cc7345). No fixture set has two deals of one type on
+    // one parcel.
     const already = dealsOnSampleParcels.some(
-      (d) => d.propertyId === propertyId && d.type === dealData.type && d.notes === dealData.notes,
+      (d) => d.propertyId === propertyId && d.type === dealData.type,
     );
     if (already) continue;
     await storage.createDeal({ ...dealData, propertyId } as any);

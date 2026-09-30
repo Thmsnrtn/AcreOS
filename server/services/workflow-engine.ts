@@ -1,4 +1,5 @@
 import { storage } from "../storage";
+import { isDealStatus, isLeadStatus, validateDealTransition, validateLeadTransition } from "@shared/lifecycle/pipeline-status";
 import {
   type Workflow,
   type WorkflowRun,
@@ -2765,6 +2766,28 @@ class WorkflowEngine {
       updates[key] = typeof value === "string"
         ? this.interpolateTemplate(value, context.variables)
         : value;
+    }
+
+    // A status a workflow writes is held to the same state machine as every
+    // other writer (audit of 7cc7345: `config.updates` went straight into the
+    // row). The row's identity is stripped at the repository.
+    if (updates.status !== undefined && (entityType === "deal" || entityType === "lead")) {
+      const next = String(updates.status);
+      if (entityType === "deal") {
+        const current = await storage.getDeal(context.organizationId, entityId);
+        if (!current) throw new Error(`Deal ${entityId} not found in this organization`);
+        const refusal = !isDealStatus(next)
+          ? `not a deal stage: ${next}`
+          : current.status === next ? null : validateDealTransition(current.status, next);
+        if (refusal) throw new Error(`update_record refused: ${refusal}`);
+      } else {
+        const current = await storage.getLead(context.organizationId, entityId);
+        if (!current) throw new Error(`Lead ${entityId} not found in this organization`);
+        const refusal = !isLeadStatus(next)
+          ? `not a lead status: ${next}`
+          : current.status === next ? null : validateLeadTransition(current.status, next);
+        if (refusal) throw new Error(`update_record refused: ${refusal}`);
+      }
     }
 
     switch (entityType) {

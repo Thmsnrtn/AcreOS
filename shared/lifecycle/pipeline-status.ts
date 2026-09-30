@@ -292,6 +292,7 @@ export function validateLeadTransition(
     return `"${next}" is not a valid lead status (expected one of: ${LEAD_STATUSES.join(", ")})`;
   }
   if (current === next) return null;
+  if (current === "deleted") return "A deleted lead cannot change status — restore it first";
   if (!current || !isLeadStatus(current)) return null; // legacy row — allow re-entry
   const allowed = LEAD_STATUS_TRANSITIONS[current];
   if (!allowed.includes(next)) {
@@ -309,6 +310,12 @@ export function validateDealTransition(
     return `"${next}" is not a valid deal status (expected one of: ${DEAL_STATUSES.join(", ")})`;
   }
   if (current === next) return null;
+  // A deleted deal is not a legacy value to re-enter from: a stage move would
+  // resurrect it (the bulk endpoint and the agent could close a soft-deleted
+  // deal; audit of 7cc7345). Restoring it is its own action.
+  if ((ADMINISTRATIVE_DEAL_STATUSES as readonly string[]).includes(current ?? "")) {
+    return `A ${current} deal cannot change stage — restore it first`;
+  }
   if (!current || !isDealStatus(current)) return null; // legacy row — allow re-entry
   const allowed = DEAL_STATUS_TRANSITIONS[current];
   if (!allowed.includes(next)) {

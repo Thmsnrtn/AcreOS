@@ -19,6 +19,8 @@ const S = vi.hoisted(() => ({
   deducted: [] as number[],
   deductOk: true,
   lobCalls: 0,
+  refunds: [] as number[],
+  failSendingUpdate: false,
 }));
 
 vi.mock("../../server/middleware/idempotency", () => ({
@@ -28,7 +30,7 @@ vi.mock("../../server/services/credits", () => ({
   creditService: {
     getBalance: async () => 1_000_000,
     deductCredits: async (_o: number, cents: number) => (S.deducted.push(cents), S.deductOk),
-    addCredits: async () => true,
+    addCredits: async (_o: number, cents: number) => (S.refunds.push(cents), true),
   },
   usageMeteringService: {},
 }));
@@ -66,7 +68,15 @@ vi.mock("../../server/storage", () => ({
       if (key) S.claimed.set(key, { id: row.id, status: "sending" });
       return row;
     },
-    updateMailingOrder: async (id: number, patch: Record<string, unknown>) => (S.orderUpdates.push({ id, patch }), { id, ...patch }),
+    updateMailingOrder: async (id: number, patch: Record<string, unknown>) => {
+      if (patch.status === "sending" && S.failSendingUpdate) throw new Error("connection reset");
+      S.orderUpdates.push({ id, patch });
+      // A cleared key releases the claim (the unique index no longer holds it).
+      if (patch.operationKey === null) {
+        for (const [k, v] of S.claimed) if (v.id === id) S.claimed.delete(k);
+      }
+      return { id, ...patch };
+    },
   },
   db: {
     select: () => ({
@@ -118,6 +128,8 @@ beforeEach(() => {
   S.deducted = [];
   S.deductOk = true;
   S.lobCalls = 0;
+  S.refunds = [];
+  S.failSendingUpdate = false;
 });
 
 describe("a campaign send is claimed once, before any credit moves", () => {
@@ -141,7 +153,28 @@ describe("a campaign send is claimed once, before any credit moves", () => {
     expect(S.deducted).toEqual([300]);
     // Insufficient credits after the claim: the order says so and nothing is mailed.
     expect(r.statusCode).toBe(402);
-    expect(S.orderUpdates).toEqual([{ id: 1, patch: expect.objectContaining({ status: "failed" }) }]);
+    expect(S.orderUpdates).toEqual([{ id: 1, patch: expect.objectContaining({ status: "failed", operationKey: null }) }]);
+    expect(S.lobCalls).toBe(0);
+  });
+
+  it("a send refused before any piece was sent releases its claim — the retry is a new attempt, not 'already started' (audit of 7cc7345)", async () => {
+    S.deductOk = false;
+    await (await handler())(req("send-key-0003"), res());
+    S.deductOk = true;
+    S.failSendingUpdate = true; // stop the retry right after its claim + debit
+    const retry = res();
+    await (await handler())(req("send-key-0003"), retry).catch(() => undefined);
+    expect(retry.statusCode).not.toBe(409);
+    expect(S.orders).toHaveLength(2);
+  });
+
+  it("a failure after the debit and before any piece refunds the debit and releases the claim", async () => {
+    S.failSendingUpdate = true;
+    await (await handler())(req("send-key-0004"), res()).catch(() => undefined);
+    expect(S.deducted).toEqual([300]);
+    expect(S.refunds).toEqual([300]);
+    expect(S.orderUpdates.at(-1)).toMatchObject({ id: 1, patch: { status: "failed", operationKey: null } });
+    expect(S.claimed.has("send-key-0004")).toBe(false);
     expect(S.lobCalls).toBe(0);
   });
 });

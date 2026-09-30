@@ -1395,14 +1395,30 @@ export function registerFinanceRoutes(app: Express): void {
       // More than the payoff is refused here rather than posted with an
       // unapplied excess: the lender is recording money by hand and can
       // record the right amount (the portal cannot un-send a card charge).
+      // The payoff includes late fees owed: the posting rule takes the fee
+      // from money above the installment first, so the guard measures what
+      // is left for principal and interest — otherwise the quoted payoff was
+      // refused as "more than the payoff", and the suggested lower amount
+      // left the note open by the fee (audit of 7cc7345). Assessing first is
+      // what the posting does anyway (idempotent; the daily job would too).
+      const { assessServicedNoteLateFee, outstandingServicedLateFeesCents, feeFromExcessCents } = await import(
+        "./services/notes/servicedLateFees"
+      );
+      await assessServicedNoteLateFee(note, new Date());
+      const feeCents = feeFromExcessCents({
+        amountCents,
+        scheduledCents: note.monthlyPayment != null ? decimalDollarsToCents(note.monthlyPayment) : null,
+        outstandingFeeCents: await outstandingServicedLateFeesCents(org.id, note.id),
+      });
       const guard = splitPaymentCents({
-        paymentAmountCents: amountCents,
+        paymentAmountCents: amountCents - feeCents,
         currentBalanceCents: Math.max(0, decimalDollarsToCents(note.currentBalance)),
         annualRateBps: percentStringToBps(note.interestRate),
       });
       if (guard.residueCents > 0) {
         return Errors.badRequest(res, "This amount is more than the note's payoff. Record the payoff amount, and return or apply the excess outside this form.", {
           payoffCents: amountCents - guard.residueCents,
+          lateFeesIncludedCents: feeCents,
         });
       }
 

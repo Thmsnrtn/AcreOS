@@ -1784,6 +1784,28 @@ export async function registerRoutes(
         }
       }
       
+      // What may be undone is what a recorded bulk move changed, not what the
+      // client says it changed (audit of 7cc7345: this took any {id,
+      // previousStage}, so it could set any stage on any deal — a deleted one
+      // included — around the state machine the bulk move itself enforces).
+      // The server's own record: the bulk_stage_update audit entries of the
+      // last 24 hours, newest first.
+      const recentMoves = await storage.getAuditLogs(org.id, {
+        action: "bulk_stage_update",
+        entityType: "deal",
+        startDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        limit: 200,
+      });
+      const recordedMove = new Map<number, { previousStage: string; newStage: string }>();
+      for (const entry of recentMoves) {
+        const after = (entry.changes as { after?: { newStage?: string; previousStates?: Array<{ id: number; previousStage: string }> } } | null)?.after;
+        for (const ps of after?.previousStates ?? []) {
+          if (!recordedMove.has(ps.id) && after?.newStage) {
+            recordedMove.set(ps.id, { previousStage: ps.previousStage, newStage: after.newStage });
+          }
+        }
+      }
+
       // Restore each deal to its previous state
       let restoredCount = 0;
       const errors: Array<{ id: number; error: string }> = [];
@@ -1793,6 +1815,11 @@ export async function registerRoutes(
           const deal = await storage.getDeal(org.id, state.id);
           if (!deal) {
             errors.push({ id: state.id, error: "Deal not found" });
+            continue;
+          }
+          const move = recordedMove.get(Number(state.id));
+          if (!move || move.previousStage !== state.previousStage || move.newStage !== deal.status) {
+            errors.push({ id: state.id, error: "No recent bulk move of this deal to undo" });
             continue;
           }
           // The restored stage must be a real deal stage (this took any

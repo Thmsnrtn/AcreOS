@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { requireRole } from "./middleware/roleGuard";
 import { storage, db } from "./storage";
 import { z } from "zod";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -678,7 +679,9 @@ export function registerImportExportRoutes(app: Express): void {
     }
   });
 
-  api.post("/api/compliance/purge-data", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // Owner/admin only (audit of 7cc7345): it hard-deletes leads and closed
+  // deals and seal-purges the audit log, and any member could call it.
+  api.post("/api/compliance/purge-data", isAuthenticated, getOrCreateOrg, requireRole(["owner", "admin"]), async (req, res) => {
     try {
       const orgId = req.organization!.id;
       const userId = req.user.id;

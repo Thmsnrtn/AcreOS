@@ -6,10 +6,12 @@
  * updates, title closing and soft deletes wrote `deals.status` without it.
  *
  * The evidence now lives where the status is written: the deal repository.
- * The population is every `.update(<deals table>)` in server/, enumerated
- * from the source (aliases included): outside server/storage/ there must be
- * none, and every repository method that writes the table must record the
- * evidence. A new raw writer is the thing that fails.
+ * The population is every write to the deals table in server/ — Drizzle
+ * `.update(…)`/`.delete(…)` by any alias or namespace import, and raw
+ * `UPDATE deals` / `DELETE FROM deals` SQL — enumerated from the source:
+ * outside server/storage/ there must be none, and every repository method
+ * that writes the table must record the evidence. A new raw writer is the
+ * thing that fails.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs";
@@ -70,22 +72,42 @@ function serverFiles(): string[] {
   return out;
 }
 
-/** Names the `deals` table is bound to in a file (`deals`, `deals as dealsTable`). */
+/**
+ * Names the `deals` table is bound to in a file: a named import from the
+ * shared schema (`deals`, `deals as dealsTable`), by any specifier that
+ * reaches it (`@shared/schema`, a relative `shared/schema` path), or a
+ * namespace import (`import * as schema` → `schema.deals`).
+ */
 function dealsAliases(src: string): string[] {
   const names = new Set<string>();
-  for (const m of src.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']@shared\/schema[^"']*["']/g)) {
+  const fromSchema = String.raw`from\s*["'](?:@shared\/schema|[./]*shared\/schema)[^"']*["']`;
+  for (const m of src.matchAll(new RegExp(String.raw`import\s*\{([^}]*)\}\s*` + fromSchema, "g"))) {
     for (const part of m[1].split(",")) {
       const t = part.trim().replace(/^type\s+/, "");
       const a = t.match(/^deals(?:\s+as\s+(\w+))?$/);
       if (a) names.add(a[1] ?? "deals");
     }
   }
+  for (const m of src.matchAll(new RegExp(String.raw`import\s*\*\s*as\s+(\w+)\s*` + fromSchema, "g"))) {
+    names.add(`${m[1]}\\.deals`);
+  }
   return [...names];
 }
+/** Every write to the deals table: Drizzle update/delete by any alias, and raw SQL. */
 function dealsUpdates(src: string): number[] {
   const at: number[] = [];
   for (const name of dealsAliases(src)) {
-    for (const m of src.matchAll(new RegExp(String.raw`\.update\(\s*${name}\s*\)`, "g"))) at.push(m.index ?? 0);
+    for (const m of src.matchAll(new RegExp(String.raw`\.(?:update|delete)\(\s*${name}\s*\)`, "g"))) at.push(m.index ?? 0);
+  }
+  // Raw SQL in a `sql` tagged template: DELETE FROM deals, or an UPDATE deals
+  // whose SET names status (paxLearning's `UPDATE deals SET property_id` is
+  // not a status write). Anchored on the tag, so text between two unrelated
+  // templates is never read as one statement.
+  for (const m of src.matchAll(/\bsql`([^`]*)`/g)) {
+    const body = m[1];
+    if (/\bdelete\s+from\s+"?deals"?\b/i.test(body) || (/\bupdate\s+"?deals"?\s/i.test(body) && /\bstatus\b/i.test(body))) {
+      at.push(m.index ?? 0);
+    }
   }
   return at;
 }
@@ -127,8 +149,9 @@ describe("every deal status write passes the repository, which records the evide
         if (!/recordDealTransitionEvidence\(/.test(body)) missing.push(`${path.relative(ROOT, abs)}: ${method.name}`);
       }
     }
-    // Vacuity: updateDeal, bulkUpdateDeals, bulkDeleteDeals, deleteProperty, bulkDeleteProperties.
-    expect(sites).toBeGreaterThanOrEqual(5);
+    // Vacuity: updateDeal, bulkUpdateDeals, bulkDeleteDeals, deleteProperty,
+    // bulkDeleteProperties, purgeOldDeals (a hard delete — audit of 7cc7345).
+    expect(sites).toBeGreaterThanOrEqual(6);
     expect(missing, missing.join("\n")).toEqual([]);
   });
 });
