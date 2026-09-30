@@ -27,6 +27,7 @@ import {
   PhoneOff
 } from "lucide-react";
 import { useState } from "react";
+import { useUserPermissions } from "@/hooks/use-organization";
 import { format } from "date-fns";
 import type { AuditLogEntry } from "@shared/schema";
 
@@ -432,6 +433,11 @@ function TcpaCompliancePanel() {
 function RetentionPoliciesPanel() {
   const { toast } = useToast();
   const [purgeType, setPurgeType] = useState<string>("");
+  // Purging and retention are owner/admin actions — the server enforces it;
+  // a member is told so instead of offered a button that answers 403 (audit
+  // of 9ed61f4).
+  const { data: permissions } = useUserPermissions();
+  const mayPurge = permissions?.role === "owner" || permissions?.role === "admin";
   const [purgeDays, setPurgeDays] = useState<number>(365);
 
   const { data: policies, isLoading } = useQuery<RetentionPolicies>({
@@ -463,7 +469,6 @@ function RetentionPoliciesPanel() {
   const purgeDataMutation = useMutation({
     mutationFn: async ({ dataType, beforeDate }: { dataType: string; beforeDate: string }) => {
       const res = await apiRequest("POST", "/api/compliance/purge-data", { dataType, beforeDate });
-      if (!res.ok) throw new Error("Failed to purge data");
       return res.json();
     },
     onSuccess: (data) => {
@@ -473,10 +478,10 @@ function RetentionPoliciesPanel() {
         description: `${data.purgedCount} ${data.dataType} records have been deleted.`,
       });
     },
-    onError: () => {
+    onError: (err: unknown) => {
       toast({
         title: "Couldn't purge data",
-        description: "No records were deleted. Try again or check the system status.",
+        description: `No records were deleted. ${err instanceof Error ? err.message : "Try again."}`,
         variant: "destructive",
       });
     },
@@ -620,11 +625,16 @@ function RetentionPoliciesPanel() {
                 data-testid="input-purge-days"
               />
             </div>
+            {!mayPurge && (
+              <p className="text-sm text-muted-foreground" data-testid="text-purge-role">
+                Only an owner or admin can purge data.
+              </p>
+            )}
             <Button
               type="button"
               variant="destructive"
               onClick={handlePurge}
-              disabled={!purgeType || purgeDataMutation.isPending}
+              disabled={!mayPurge || !purgeType || purgeDataMutation.isPending}
               aria-busy={purgeDataMutation.isPending}
               data-testid="button-purge-data"
             >

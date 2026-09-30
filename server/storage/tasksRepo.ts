@@ -7,6 +7,7 @@
 // method to a module-level pure function.
 
 import { and, desc, eq, lte } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import { addMonths } from "../utils/dateUtils";
 import {
@@ -88,7 +89,7 @@ export const tasksRepo = {
     const conditions = [eq(tasks.id, id)];
     if (organizationId) conditions.push(eq(tasks.organizationId, organizationId));
     const [updated] = await db.update(tasks)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;

@@ -2,6 +2,7 @@
 // Extracted from the god-class server/storage.ts.
 
 import { and, asc, count, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db, type PrimaryDb } from "../db";
 import {
   deals, properties,
@@ -11,9 +12,37 @@ import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../sto
 import { logger } from "../utils/logger";
 import { publishDealLifecycle, recordDealTransitionEvidence } from "../services/dealLifecycleEvents";
 import { LIST_READ_CAP, capListRead } from "./listCap";
-import { withoutIdentityKeys } from "../utils/patch";
 
-import { ADMINISTRATIVE_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
+import { ADMINISTRATIVE_DEAL_STATUSES, isDealStatus, validateDealTransition } from "@shared/lifecycle/pipeline-status";
+
+/**
+ * A deal status write the state machine refuses. Thrown by the repository —
+ * the last line, where every status write passes (audit of 9ed61f4: PUT,
+ * PATCH /stage and Pax update_deal each checked a copy of the table, or
+ * nothing, and a deleted deal passed them all). Routes validate first and
+ * answer 400; reaching this is a writer that forgot to.
+ */
+export class DealTransitionRefusedError extends Error {
+  constructor(readonly dealId: number, readonly refusal: string) {
+    super(`Deal ${dealId}: ${refusal}`);
+    this.name = "DealTransitionRefusedError";
+  }
+}
+
+/**
+ * The state machine's verdict on a status write. `backwardUndo` is the bulk
+ * undo's reverse move — it may go backwards (that is its purpose) but still
+ * only to a real stage and never out of an administrative status.
+ */
+function dealStatusRefusal(current: string | null | undefined, next: string, opts: { backwardUndo?: boolean }): string | null {
+  if (current === next) return null;
+  if (opts.backwardUndo) {
+    if (!isDealStatus(next)) return `"${next}" is not a valid deal status`;
+    if ((ADMINISTRATIVE_DEAL_STATUSES as readonly string[]).includes(current ?? "")) return `A ${current} deal cannot change stage`;
+    return null;
+  }
+  return validateDealTransition(current, next);
+}
 export const dealRepo = {
   async getDeals(this: DatabaseStorage, orgId: number): Promise<Deal[]> {
     // Task 223: exclude soft-deleted deals from list queries
@@ -85,7 +114,14 @@ export const dealRepo = {
     return newDeal;
   },
 
-  async updateDeal(this: DatabaseStorage, id: number, updates: Partial<InsertDeal>, expectedUpdatedAt?: Date, organizationId?: number): Promise<Deal> {
+  async updateDeal(
+    this: DatabaseStorage,
+    id: number,
+    updates: Partial<InsertDeal>,
+    expectedUpdatedAt?: Date,
+    organizationId?: number,
+    opts: { backwardUndo?: boolean } = {},
+  ): Promise<Deal> {
     // Task 219: Optimistic locking — if the caller provides an expectedUpdatedAt timestamp,
     // only apply the update when the row still has that timestamp (prevents lost-update
     // races between concurrent requests).
@@ -98,10 +134,15 @@ export const dealRepo = {
     // whether the status actually transitioned (vs. other field updates).
     const [before] = await db.select({ status: deals.status, propertyId: deals.propertyId })
       .from(deals)
-      .where(eq(deals.id, id));
+      .where(organizationId ? and(eq(deals.id, id), eq(deals.organizationId, organizationId)) : eq(deals.id, id));
+
+    if (updates.status !== undefined && before) {
+      const refusal = dealStatusRefusal(before.status, String(updates.status), opts);
+      if (refusal) throw new DealTransitionRefusedError(id, refusal);
+    }
 
     const [updated] = await db.update(deals)
-      .set({ ...withoutIdentityKeys(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(whereClause!)
       .returning();
 
@@ -206,22 +247,27 @@ export const dealRepo = {
     if (ids.length === 0) return 0;
 
     // Jarvis 2.1 (audit G2): a bulk stage move is N real transitions the brain
-    // should see. Capture pre-images only when status is actually changing;
-    // read failure degrades to "no events" (never fails the mutation).
+    // should see. Capture pre-images only when status is actually changing.
+    // The pre-image is also what the state machine checks, so a failed read
+    // fails the write — it used to degrade to "no events", which would now
+    // mean "no check" (audit of 9ed61f4).
     let beforeRows: Array<{ id: number; status: string | null; acceptedAmount: string | null; offerAmount: string | null }> = [];
     if (updates.status !== undefined) {
-      try {
-        beforeRows = await db
-          .select({ id: deals.id, status: deals.status, acceptedAmount: deals.acceptedAmount, offerAmount: deals.offerAmount })
-          .from(deals)
-          .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
-      } catch (err) {
-        logger.warn(`[storage.bulkUpdateDeals] lifecycle pre-image read skipped: ${(err as Error)?.message}`);
+      beforeRows = await db
+        .select({ id: deals.id, status: deals.status, acceptedAmount: deals.acceptedAmount, offerAmount: deals.offerAmount })
+        .from(deals)
+        .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
+    }
+
+    if (updates.status !== undefined) {
+      for (const before of beforeRows) {
+        const refusal = dealStatusRefusal(before.status, String(updates.status), {});
+        if (refusal) throw new DealTransitionRefusedError(before.id, refusal);
       }
     }
 
     await db.update(deals)
-      .set({ ...withoutIdentityKeys(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
 
     for (const before of beforeRows) {

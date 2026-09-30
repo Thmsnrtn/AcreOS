@@ -715,8 +715,21 @@ export async function runPostCloseAutomation(
     // a closedDate string column.
     // Through the repository (org-scoped), where every status write records
     // its transition evidence (audit of 224a5c0).
-    const { storage } = await import("../storage");
-    await storage.updateDeal(dealId, { status: "closed", closingDate: deal.closingDate || new Date() }, undefined, organizationId);
+    // The state machine applies here too (audit of 9ed61f4): only a deal in
+    // escrow is closed by a recorded title; any other stage (a deleted deal
+    // included) is left for the operator, and nothing downstream runs.
+    if (deal.status !== "closed") {
+      const { validateDealTransition } = await import("@shared/lifecycle/pipeline-status");
+      const refusal = validateDealTransition(deal.status, "closed");
+      if (refusal) {
+        logger.warn("[titleChain] post-close automation skipped — deal is not at a stage that closes", {
+          metadata: { dealId, organizationId, status: deal.status, refusal },
+        });
+        return result;
+      }
+      const { storage } = await import("../storage");
+      await storage.updateDeal(dealId, { status: "closed", closingDate: deal.closingDate || new Date() }, undefined, organizationId);
+    }
 
     result.portfolioEntryCreated = true;
 

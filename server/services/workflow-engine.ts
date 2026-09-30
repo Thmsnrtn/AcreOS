@@ -2760,6 +2760,14 @@ class WorkflowEngine {
     if (!entityId) {
       throw new Error("No entity ID available for update");
     }
+    // The id is the TRIGGER's entity; a configured type that differs would
+    // write whatever row of that other table shares the number — a
+    // lead-triggered workflow set to "deal" updated the deal whose id equals
+    // the lead's (audit of 9ed61f4).
+    const triggerType = context.triggerData.entityType;
+    if (config.entityType && triggerType && config.entityType !== triggerType) {
+      throw new Error(`update_record refused: it updates a ${config.entityType}, but this run was triggered by a ${triggerType}`);
+    }
 
     const updates: Record<string, any> = {};
     for (const [key, value] of Object.entries(config.updates || {})) {
@@ -2771,6 +2779,11 @@ class WorkflowEngine {
     // A status a workflow writes is held to the same state machine as every
     // other writer (audit of 7cc7345: `config.updates` went straight into the
     // row). The row's identity is stripped at the repository.
+    // Deleting is its own action, with its cascade (deals, listings); a
+    // workflow cannot do it by writing a status (audit of 9ed61f4).
+    if (entityType === "property" && String(updates.status ?? "") === "deleted") {
+      throw new Error("update_record refused: a workflow cannot delete a property by setting its status");
+    }
     if (updates.status !== undefined && (entityType === "deal" || entityType === "lead")) {
       const next = String(updates.status);
       if (entityType === "deal") {

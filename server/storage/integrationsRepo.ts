@@ -7,6 +7,7 @@
 // reads back via this.getOrganizationIntegration).
 
 import { and, desc, eq } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import { forOrg } from "../utils/orgScopedDb";
 import {
@@ -45,7 +46,7 @@ export const integrationsRepo = {
     if (existing) {
       const [updated] = await db.update(organizationIntegrations)
         .set({
-          ...data,
+          ...omitProtectedFields(data),
           updatedAt: new Date(),
         })
         .where(eq(organizationIntegrations.id, existing.id))
@@ -114,7 +115,7 @@ export const integrationsRepo = {
     const conditions = [eq(verifiedEmailDomains.id, id)];
     if (organizationId) conditions.push(eq(verifiedEmailDomains.organizationId, organizationId));
     const [domain] = await db.update(verifiedEmailDomains)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return domain;
@@ -147,7 +148,7 @@ export const integrationsRepo = {
     const conditions = [eq(provisionedPhoneNumbers.id, id)];
     if (organizationId) conditions.push(eq(provisionedPhoneNumbers.organizationId, organizationId));
     const [phone] = await db.update(provisionedPhoneNumbers)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return phone;

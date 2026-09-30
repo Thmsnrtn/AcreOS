@@ -5,6 +5,7 @@
 // DatabaseStorage instance.
 
 import { and, desc, eq } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import { forOrg } from "../utils/orgScopedDb";
 import {
@@ -106,7 +107,7 @@ export const aiRepo = {
     const conditions = [eq(aiConversations.id, id)];
     if (organizationId) conditions.push(eq(aiConversations.organizationId, organizationId));
     const [updated] = await db.update(aiConversations)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;

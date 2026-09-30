@@ -161,7 +161,9 @@ describe("the repository records the evidence on a real transition", () => {
     const { dealRepo } = await import("../../server/storage/dealRepo");
     H.before = { status: "closed", propertyId: 3 };
     H.after = { id: 9, organizationId: 5, status: "negotiating", propertyId: 3 };
-    await dealRepo.updateDeal.call({} as never, 9, { status: "negotiating" }, undefined, 5);
+    // `closed` is terminal; the one path that reopens a deal is the bulk
+    // undo's backward move (audit of 9ed61f4).
+    await dealRepo.updateDeal.call({} as never, 9, { status: "negotiating" }, undefined, 5, { backwardUndo: true });
     await new Promise((r) => setTimeout(r, 20));
     expect(H.retracted).toEqual([[5, "deal:key-5-9"]]);
 
@@ -170,6 +172,30 @@ describe("the repository records the evidence on a real transition", () => {
     await dealRepo.updateDeal.call({} as never, 9, { status: "offer_sent" }, undefined, 5);
     await new Promise((r) => setTimeout(r, 20));
     expect(H.activation).toEqual([expect.objectContaining({ orgId: 5, eventName: "first_offer_made", eventValue: { dealId: 9, offerAmount: "12000" } })]);
+  });
+
+  it("the repository refuses a move the state machine forbids — every writer passes here (audit of 9ed61f4)", async () => {
+    const { dealRepo, DealTransitionRefusedError } = await import("../../server/storage/dealRepo");
+    H.before = { status: "closed", propertyId: 3 };
+    H.after = { id: 9, organizationId: 5, status: "negotiating", propertyId: 3 };
+    await expect(dealRepo.updateDeal.call({} as never, 9, { status: "negotiating" }, undefined, 5)).rejects.toBeInstanceOf(
+      DealTransitionRefusedError,
+    );
+    H.before = { status: "deleted", propertyId: 3 };
+    await expect(dealRepo.updateDeal.call({} as never, 9, { status: "closed" }, undefined, 5)).rejects.toThrow(/deleted deal/);
+    // Not even the undo moves a deleted deal, or to a word that is not a stage.
+    await expect(dealRepo.updateDeal.call({} as never, 9, { status: "negotiating" }, undefined, 5, { backwardUndo: true })).rejects.toThrow(/deleted deal/);
+    H.before = { status: "offer_sent", propertyId: 3 };
+    await expect(dealRepo.updateDeal.call({} as never, 9, { status: "closing" }, undefined, 5, { backwardUndo: true })).rejects.toThrow(/not a valid deal status/);
+    expect(H.retracted).toEqual([]);
+  });
+
+  it("bulkUpdateDeals refuses the whole batch when one move is illegal", async () => {
+    const { dealRepo, DealTransitionRefusedError } = await import("../../server/storage/dealRepo");
+    H.before = { id: 9, status: "closed" } as never;
+    await expect(dealRepo.bulkUpdateDeals.call({} as never, 5, [9], { status: "offer_sent" })).rejects.toBeInstanceOf(
+      DealTransitionRefusedError,
+    );
   });
 
   it("a write that does not move the status records nothing", async () => {

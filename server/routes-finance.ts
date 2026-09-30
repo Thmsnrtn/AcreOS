@@ -4,7 +4,7 @@ import type { Express } from "express";
 import { readAllDeals, readAllNotes, readAllPayments, readAllProperties } from "./storage/wholeBookReads";
 import { storage, db, calculateMonthlyPayment } from "./storage";
 import { z } from "zod";
-import { insertNoteSchema, paymentReminders, notes as notesTable, contractAssignments, deals as dealsTable, properties as propertiesTable } from "@shared/schema";
+import { insertNoteSchema, payments as paymentsTable, paymentReminders, notes as notesTable, contractAssignments, deals as dealsTable, properties as propertiesTable } from "@shared/schema";
 import { eq, and, sql, count } from "drizzle-orm";
 import { realDeal, realNote, realProperty } from "./services/onboarding/sampleFilters";
 import { isAuthenticated } from "./auth";
@@ -1392,6 +1392,37 @@ export function registerFinanceRoutes(app: Express): void {
         return Errors.badRequest(res, "amount must be a dollar amount");
       }
       if (!(amountCents > 0)) return Errors.badRequest(res, "amount must be greater than zero");
+
+      // A retry is answered BEFORE anything is measured or written: the
+      // first attempt may have paid the note off, and the payoff guard would
+      // then refuse the retry as "more than the payoff" instead of replaying
+      // it (audit of 9ed61f4).
+      const [prior] = await db
+        .select({ id: paymentsTable.id, noteId: paymentsTable.noteId, amount: paymentsTable.amount })
+        .from(paymentsTable)
+        .where(and(eq(paymentsTable.organizationId, org.id), eq(paymentsTable.transactionId, transactionId)))
+        .limit(1);
+      if (prior) {
+        if (prior.noteId === noteId && decimalDollarsToCents(prior.amount) === amountCents) {
+          const [row] = await db
+            .select()
+            .from(paymentsTable)
+            .where(and(eq(paymentsTable.organizationId, org.id), eq(paymentsTable.id, prior.id)))
+            .limit(1);
+          return res.json({ ...row, replayed: true });
+        }
+        return sendError(res, 409, "IDEMPOTENCY_KEY_REUSED", "This Idempotency-Key was already used for a different payment. Nothing was recorded.", {
+          recordedPaymentId: prior.id,
+        });
+      }
+
+      // Money is recorded against a note being serviced. A paid-off or
+      // closed note takes no payment here — and no late fee is assessed on
+      // it by the attempt (audit of 9ed61f4: the pre-guard assessment could
+      // create a fee on a paid-off note).
+      if (!["active", "late", "delinquent"].includes(String(note.status))) {
+        return Errors.badRequest(res, `This note is ${note.status}; it takes no payment here.`);
+      }
       // More than the payoff is refused here rather than posted with an
       // unapplied excess: the lender is recording money by hand and can
       // record the right amount (the portal cannot un-send a card charge).

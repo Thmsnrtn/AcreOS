@@ -6,6 +6,7 @@
 // resolve against the composed prototype).
 
 import { and, count, desc, eq, gte, lte } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import {
   vaAgents,
@@ -55,7 +56,7 @@ export const vaRepo = {
     const conditions = [eq(vaAgents.id, id)];
     if (organizationId) conditions.push(eq(vaAgents.organizationId, organizationId));
     const [updated] = await db.update(vaAgents)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -202,7 +203,7 @@ export const vaRepo = {
     const conditions = [eq(vaActions.id, id)];
     if (organizationId) conditions.push(eq(vaActions.organizationId, organizationId));
     const [updated] = await db.update(vaActions)
-      .set({ ...safeUpdates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(safeUpdates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -302,7 +303,7 @@ export const vaRepo = {
     const conditions = [eq(vaCalendarEvents.id, id)];
     if (organizationId) conditions.push(eq(vaCalendarEvents.organizationId, organizationId));
     const [updated] = await db.update(vaCalendarEvents)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -335,7 +336,7 @@ export const vaRepo = {
     const conditions = [eq(vaTemplates.id, id)];
     if (organizationId) conditions.push(eq(vaTemplates.organizationId, organizationId));
     const [updated] = await db.update(vaTemplates)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;

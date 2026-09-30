@@ -1,5 +1,6 @@
 import { storage } from "../storage";
 import type { Organization } from "@shared/schema";
+import { DEAL_STATUSES, validateDealTransition, validateLeadTransition } from "@shared/lifecycle/pipeline-status";
 import { getSystemContext, formatContextForAI, invalidateContextCache } from "../services/aiContextAggregator";
 import { lookupParcelByAPN } from "../services/parcel";
 import { generateOfferSuggestions, generateOfferLetter } from "../services/aiOfferService";
@@ -1373,6 +1374,11 @@ export async function executeTool(
       
       case "update_lead_status": {
         const leadBeforeUpdate = await storage.getLead(org.id, args.lead_id);
+        // The lead state machine, as every other writer (audit of 9ed61f4:
+        // this wrote any string the model supplied).
+        if (!leadBeforeUpdate) return { success: false, error: `Lead ${args.lead_id} not found` };
+        const leadRefusal = validateLeadTransition(leadBeforeUpdate.status, String(args.status));
+        if (leadRefusal) return { success: false, error: `${leadRefusal}.` };
         const updated = await storage.updateLead(args.lead_id, {
           status: args.status,
           notes: args.notes
@@ -1689,6 +1695,13 @@ export async function executeTool(
         // capped list missed older deals, so the receipt's "before" values
         // were undefined and the stage-change event was dropped.
         const dealBeforeUpdate = await storage.getDeal(org.id, args.deal_id);
+        // The state machine, as every other writer (audit of 9ed61f4: this
+        // wrote any string the model supplied).
+        if (dealUpdates.status !== undefined) {
+          if (!dealBeforeUpdate) return { success: false, error: `Deal ${args.deal_id} not found` };
+          const refusal = validateDealTransition(dealBeforeUpdate.status, String(dealUpdates.status));
+          if (refusal) return { success: false, error: `${refusal}. Valid deal stages: ${DEAL_STATUSES.join(", ")}.` };
+        }
         const dealBefore: Record<string, any> = {};
         const dealAfter: Record<string, any> = {};
         for (const key of Object.keys(dealUpdates)) {

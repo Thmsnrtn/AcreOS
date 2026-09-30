@@ -28,6 +28,7 @@ import { resolve } from "node:path";
 import { stripComments } from "../helpers/stripComments";
 
 const S = vi.hoisted(() => ({
+  debitInTx: [] as boolean[],
   leads: [] as Array<Record<string, unknown>>,
   leadReads: 0,
   leadWhere: { sql: "", params: [] as unknown[] },
@@ -131,8 +132,9 @@ vi.mock("../../server/db", () => {
 });
 vi.mock("../../server/services/mail/router", () => ({ mailRouter: { quote: async () => [] } }));
 vi.mock("../../server/services/creditPool", () => ({
-  poolDebit: async (a: { externalEventId: string }) => {
+  poolDebit: async (a: { externalEventId: string; tx?: unknown }) => {
     S.debitKeys.push(a.externalEventId);
+    S.debitInTx.push(a.tx !== undefined && a.tx !== null);
     if (S.debitDelayMs) await new Promise((r) => setTimeout(r, S.debitDelayMs));
     // As creditPool does: ON CONFLICT on the key — a replay debits nothing.
     const replay = S.ledgerKeys.has(a.externalEventId);
@@ -196,6 +198,7 @@ beforeEach(() => {
   S.shipments = [];
   S.pieces = 0;
   S.debitKeys = [];
+  S.debitInTx = [];
   S.refunds = [];
   S.events = [];
   S.locks = 0;
@@ -340,7 +343,11 @@ describe("one confirmed set, one operation", () => {
     S.failNextInsert = true;
     const first = await send();
     expect(first.status).toBe(500);
-    expect(S.refunds).toHaveLength(1);
+    // The debit is taken INSIDE the shipment transaction (DEFECT-0213), so
+    // the failed save rolled it back with it — there is nothing to refund,
+    // and no crash between two commits can strand it.
+    expect(S.debitInTx).toEqual([true]);
+    expect(S.refunds).toHaveLength(0);
     const second = await send();
     expect(second.status).toBe(201);
     // A fresh debit for the attempt that saved — the refunded one is not reused.

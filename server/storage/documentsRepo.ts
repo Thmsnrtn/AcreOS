@@ -8,6 +8,7 @@
 // resolve against the composed prototype).
 
 import { and, desc, eq, max, or, sql } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import { forOrg } from "../utils/orgScopedDb";
 import {
@@ -66,7 +67,7 @@ export const documentsRepo = {
     const conditions = [eq(documentTemplates.id, id), eq(documentTemplates.organizationId, organizationId)];
     const [updated] = await db.update(documentTemplates)
       .set({
-        ...updates,
+        ...omitProtectedFields(updates),
         version: currentVersion + 1,
         updatedAt: new Date()
       })
@@ -529,7 +530,7 @@ Notary Public</p>
     const conditions = [eq(generatedDocuments.id, id)];
     if (organizationId) conditions.push(eq(generatedDocuments.organizationId, organizationId));
     const [updated] = await db.update(generatedDocuments)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -680,7 +681,7 @@ Notary Public</p>
     const conditions = [eq(documentPackages.id, id)];
     if (organizationId) conditions.push(eq(documentPackages.organizationId, organizationId));
     const [updated] = await db.update(documentPackages)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;

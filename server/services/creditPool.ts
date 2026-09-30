@@ -38,7 +38,7 @@
  */
 
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
-import { db } from "../db";
+import { db, withTransaction, type PrimaryDb } from "../db";
 import { financialLedger, organizations, type ByokChannel } from "@shared/schema";
 import { TIER_LIMITS, type SubscriptionTier } from "@shared/billing/tier-limits";
 // Tier 1C: creditCost moved out of shared/ (it reaches into server settings).
@@ -128,6 +128,13 @@ export interface PoolDebitArgs {
    * the ledger row even over-pool; `allowed` is advisory only.
    */
   enforce?: "gate" | "record";
+  /**
+   * Take the debit inside the caller's transaction, so it commits or rolls
+   * back with the thing it pays for. The mail queue passes its shipment
+   * transaction: a crash between two commits left a debit no retry could
+   * find (DEFECT-0213).
+   */
+  tx?: PrimaryDb;
 }
 
 export interface PoolDebitResult {
@@ -180,6 +187,8 @@ async function fetchOrgTier(
 const POOL_REFUND_FEATURE = "refund";
 /** A refund of a debit paid from purchased credits — returned to the balance, not netted from the pool. */
 const PURCHASED_REFUND_FEATURE = "refund_purchased_credits";
+/** A pool refund of a debit from a closed month — kept out of the monthly pool sum (DEFECT-0227). */
+const PRIOR_PERIOD_POOL_REFUND_FEATURE = "refund_prior_period";
 
 async function poolUsageThisMonth(organizationId: number): Promise<number> {
   const now = new Date();
@@ -312,6 +321,9 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
   const feature = POOL_FEATURE_FOR_ACTION[args.action];
   const provider = PROVIDER_HINT_FOR_ACTION[args.action];
   const enforce = args.enforce ?? "gate";
+  // The connection the debit's writes and reads run on (the caller's
+  // transaction when one is given).
+  const q = args.tx ?? db;
 
   try {
     // FAIL CLOSED on a genuinely-exhausted pool (gate mode only). Roadmap
@@ -331,7 +343,7 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
 
     let inserted: Array<{ id: number }>;
     if (enforce === "gate") {
-      const res = await db.execute<{ id: number }>(sql`
+      const res = await q.execute<{ id: number }>(sql`
         INSERT INTO financial_ledger
           (organization_id, bucket, category, amount_cents, feature, provider,
            external_event_id, posted_at, posted_by, notes)
@@ -362,7 +374,7 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
       if (inserted.length === 0) {
         // Zero rows = either an idempotent replay (row already exists for
         // this externalEventId) or the gate refused. Disambiguate honestly.
-        const [replay] = await db
+        const [replay] = await q
           .select({ id: financialLedger.id })
           .from(financialLedger)
           .where(eq(financialLedger.externalEventId, args.externalEventId))
@@ -382,10 +394,10 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
               source: "credit-pool-overflow",
               action: args.action,
               externalEventId: args.externalEventId,
-            })
+            }, { tx: args.tx })
             .catch(() => null);
           if (overflowTx) {
-            const recorded = await db
+            const recorded = await q
               .insert(financialLedger)
               .values({
                 organizationId: args.organizationId,
@@ -432,7 +444,7 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
       }
     } else {
       // record mode — the spend already happened; always write the row.
-      inserted = await db
+      inserted = await q
         .insert(financialLedger)
         .values({
           organizationId: args.organizationId,
@@ -543,7 +555,11 @@ export async function refundPoolDebit(args: {
     // skipped feature "refund" and bought credits were never returned
     // (audit of 60ebfd9).
     const [original] = await db
-      .select({ amountCents: financialLedger.amountCents, postedBy: financialLedger.postedBy })
+      .select({
+        amountCents: financialLedger.amountCents,
+        postedBy: financialLedger.postedBy,
+        postedAt: financialLedger.postedAt,
+      })
       .from(financialLedger)
       .where(
         and(
@@ -568,31 +584,53 @@ export async function refundPoolDebit(args: {
       ? Math.min(Math.abs(args.amountCents), originalCents)
       : Math.abs(args.amountCents);
 
-    const refunded = await db
-      .insert(financialLedger)
-      .values({
-        organizationId: args.organizationId,
-        bucket: "opex_available",
-        category: "opex_spent",
-        amountCents: refundCents, // POSITIVE to reverse the debit
-        feature: fromPurchased ? PURCHASED_REFUND_FEATURE : POOL_REFUND_FEATURE,
-        provider: null,
-        externalEventId: `${args.originalEventId}:refund`,
-        postedAt: new Date(),
-        postedBy: "system:credit-pool:refund",
-        notes: args.reason,
-      })
-      .onConflictDoNothing({ target: financialLedger.externalEventId })
-      .returning({ id: financialLedger.id });
+    // A pool debit refunded in a LATER month does not net this month's
+    // usage: the allowance it drew on belonged to a month that has closed, and
+    // netting it now handed the org more than a month's allowance (DEFECT-0227).
+    // It is recorded under its own feature, which the pool sum does not read.
+    const now = new Date();
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const originalThisMonth = original.postedAt != null && new Date(original.postedAt) >= monthStart;
+    const feature = fromPurchased
+      ? PURCHASED_REFUND_FEATURE
+      : originalThisMonth
+        ? POOL_REFUND_FEATURE
+        : PRIOR_PERIOD_POOL_REFUND_FEATURE;
 
-    // Only on the first write of this refund — a replay returns no row.
-    if (fromPurchased && refunded.length > 0) {
-      const { creditService } = await import("./credits");
-      await creditService.addCredits(args.organizationId, refundCents, "refund", `Refund: ${args.reason}`, {
-        source: "credit-pool-refund",
-        externalEventId: `${args.originalEventId}:refund`,
-      });
-    }
+    // The refund row and the purchased-credit return commit together — a
+    // crash between two transactions used to leave the row (so a replay wrote
+    // nothing) and no credits returned (DEFECT-0227).
+    await withTransaction(async (tx) => {
+      const refunded = await tx
+        .insert(financialLedger)
+        .values({
+          organizationId: args.organizationId,
+          bucket: "opex_available",
+          category: "opex_spent",
+          amountCents: refundCents, // POSITIVE to reverse the debit
+          feature,
+          provider: null,
+          externalEventId: `${args.originalEventId}:refund`,
+          postedAt: now,
+          postedBy: "system:credit-pool:refund",
+          notes: args.reason,
+        })
+        .onConflictDoNothing({ target: financialLedger.externalEventId })
+        .returning({ id: financialLedger.id });
+
+      // Only on the first write of this refund — a replay returns no row.
+      if (fromPurchased && refunded.length > 0) {
+        const { creditService } = await import("./credits");
+        await creditService.addCredits(
+          args.organizationId,
+          refundCents,
+          "refund",
+          `Refund: ${args.reason}`,
+          { source: "credit-pool-refund", externalEventId: `${args.originalEventId}:refund` },
+          { tx },
+        );
+      }
+    });
   } catch (err) {
     logger.error("[credit-pool] refund failed", err instanceof Error ? err : undefined);
   }

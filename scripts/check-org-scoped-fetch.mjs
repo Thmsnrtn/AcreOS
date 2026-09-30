@@ -428,7 +428,6 @@ const BASELINE_UNUSED_ORG = new Set([
   "server/storage/agentWorkflowsRepo.ts::getWorkflowById",
   "server/storage/customizationRepo.ts::setDefaultView",
   "server/storage/customizationRepo.ts::upsertNotificationPreference",
-  "server/storage/dealRepo.ts::updateDeal",
   "server/storage/integrationsRepo.ts::upsertOrganizationIntegration",
   "server/storage/supportOpsRepo.ts::getSupportCaseForPlatformOps",
   "server/storage/tasksRepo.ts::createNextRecurringTask",

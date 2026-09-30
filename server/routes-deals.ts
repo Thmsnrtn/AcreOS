@@ -1,8 +1,10 @@
 import type { Express } from "express";
+import { DealTransitionRefusedError } from "./storage/dealRepo";
+import { omitProtectedFields } from "./utils/updatePayload";
 import { fraudGateRefusal, sealWireAttestation, stampWireConfirmation, withdrawWireConfirmation } from "./services/closingEvidence";
 import { storage } from "./storage";
 import { z } from "zod";
-import { DEAL_STATUS_TRANSITIONS as SHARED_DEAL_TRANSITIONS } from "@shared/lifecycle/pipeline-status";
+import { DEAL_STATUS_TRANSITIONS as SHARED_DEAL_TRANSITIONS, validateDealTransition } from "@shared/lifecycle/pipeline-status";
 import { insertDealSchema } from "@shared/schema";
 import type { DueDiligenceChecklistItem, InsertDeal } from "@shared/schema";
 import { isAuthenticated } from "./auth";
@@ -783,13 +785,13 @@ export function registerDealRoutes(app: Express): void {
 
       const validated = updateDealSchema.parse(req.body);
 
-      // Task #210: Enforce deal status state machine transitions
+      // Task #210: Enforce deal status state machine transitions — the
+      // shared rule, not a copy of the table that let an unknown current
+      // status (a deleted deal) through (audit of 9ed61f4). The repository
+      // enforces the same rule; this answers 400 instead of 500.
       if (validated.status && validated.status !== existingDeal.status) {
-        const currentStatus = existingDeal.status || "negotiating";
-        const allowedNext = DEAL_STATUS_TRANSITIONS[currentStatus];
-        if (allowedNext && !allowedNext.includes(validated.status)) {
-          return Errors.badRequest(res, `Cannot transition from ${currentStatus} to ${validated.status}`);
-        }
+        const refusal = validateDealTransition(existingDeal.status, validated.status);
+        if (refusal) return Errors.badRequest(res, refusal);
       }
 
       // Usury hard block: check updated analysisResults.interestRate against state law before saving
@@ -1239,6 +1241,11 @@ export function registerDealRoutes(app: Express): void {
       // Task 219: surface optimistic-lock conflicts as 409 Conflict
       if (err instanceof Error && err.message.includes("modified by another request")) {
         return Errors.badRequest(res, err.message);
+      }
+      // The repository's state machine refused the move: the deal changed
+      // stage between this route's check and the write (audit of 9ed61f4).
+      if (err instanceof DealTransitionRefusedError) {
+        return Errors.badRequest(res, err.refusal);
       }
       throw err;
     }
@@ -1750,7 +1757,11 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       if (!existing) {
         return Errors.notFound(res, "Checklist");
       }
-      const updated = await storage.updateDueDiligenceChecklist(existing.id, req.body);
+      // The checklist stays this org's, on this property: identity and
+      // tenancy columns are stripped at the repository, and `propertyId` is
+      // not the body's to re-point (audit of 9ed61f4). The write names the org.
+      const { propertyId: _ignoredPropertyId, ...patch } = omitProtectedFields<Record<string, unknown>>(req.body);
+      const updated = await storage.updateDueDiligenceChecklist(existing.id, patch, org.id);
       res.json(updated);
     } catch (error: any) {
       logger.error("Update due diligence checklist error", error instanceof Error ? error : undefined);
@@ -2569,12 +2580,12 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       const existingDeal = await storage.getDeal(org.id, dealId);
       if (!existingDeal) return Errors.notFound(res, "Deal");
 
-      // Task #210: Enforce deal status state machine transitions
-      const currentStatus = existingDeal.status || "negotiating";
-      const allowedNext = DEAL_STATUS_TRANSITIONS[currentStatus];
-      if (allowedNext && !allowedNext.includes(stage)) {
-        return Errors.badRequest(res, `Cannot transition from ${currentStatus} to ${stage}`);
-      }
+      // Task #210: Enforce deal status state machine transitions (the shared
+      // rule; it also refuses a stage that is not a deal status — this took
+      // any string — and a deleted deal; audit of 9ed61f4).
+      if (typeof stage !== "string") return Errors.badRequest(res, "stage is required");
+      const stageRefusal = validateDealTransition(existingDeal.status, stage);
+      if (stageRefusal) return Errors.badRequest(res, stageRefusal);
 
       if (!force) {
         const stageGate = await storage.checkStageGate(dealId, stage);
@@ -2629,6 +2640,18 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       // update; rows whose status is unchanged emit nothing. A pre-image read
       // failure degrades to "no events" and never fails the bulk write.
       const bulkStatus = typeof updates.status === "string" ? updates.status : null;
+      // The state machine, before anything is written (the repository
+      // enforces it too; this answers 400 instead of 500 — audit of 9ed61f4).
+      if (updates.status !== undefined) {
+        if (!bulkStatus) return Errors.badRequest(res, "status must be a deal stage");
+        const current = await storage.getDealsByIds(org.id, ids.map((id: unknown) => Number(id)).filter((id: number) => Number.isInteger(id)));
+        const blocked = current
+          .map((d) => ({ id: d.id, error: validateDealTransition(d.status, bulkStatus) }))
+          .filter((b): b is { id: number; error: string } => b.error !== null);
+        if (blocked.length > 0) {
+          return Errors.badRequest(res, `${blocked.length} deal(s) cannot move to "${bulkStatus}": ${blocked[0].error}`, { blocked });
+        }
+      }
       let beforeDeals: Array<Awaited<ReturnType<typeof storage.getDeal>>> = [];
       if (bulkStatus) {
         try {

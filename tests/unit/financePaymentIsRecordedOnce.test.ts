@@ -20,6 +20,10 @@ const S = vi.hoisted(() => ({
   audit: 0,
   owedFeeCents: 0,
   assessed: 0,
+  lookupTxn: "",
+  noteStatus: "active",
+  balance: "10000.00",
+  paysDown: false,
 }));
 
 vi.mock("../../server/services/notes/servicedLateFees", async (orig) => ({
@@ -44,6 +48,8 @@ vi.mock("../../server/services/borrower/portalPaymentPosting", () => ({
     };
     S.posted.push(input);
     S.byTxn.set(txn, payment);
+    // A payoff pays the note down, as the real posting does.
+    if (S.paysDown && (input.amountCents as number) >= 1_005_000) S.balance = "0.00";
     return { outcome: "posted", payment, installment: "applied", nextPaymentDate: null, remainingBalanceCents: 0, lateFeeCents: 0 };
   },
 }));
@@ -51,12 +57,25 @@ vi.mock("../../server/storage", () => ({
   storage: {
     getNote: async (orgId: number, id: number) =>
       orgId === 5 && id === 77
-        ? { id: 77, organizationId: 5, currentBalance: "10000.00", interestRate: "6", monthlyPayment: "100.00", nextPaymentDate: new Date("2026-10-01T00:00:00Z") }
+        ? { id: 77, organizationId: 5, status: S.noteStatus, currentBalance: S.balance, interestRate: "6", monthlyPayment: "100.00", nextPaymentDate: new Date("2026-10-01T00:00:00Z") }
         : undefined,
     createAuditLogEntry: async () => void S.audit++,
   },
   calculateMonthlyPayment: () => 0,
-  db: {},
+  // The replay lookup reads the payment recorded under this request's
+  // transactionId (org-scoped) before anything else runs.
+  db: {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: async () => {
+            const row = S.byTxn.get(S.lookupTxn);
+            return row ? [row] : [];
+          },
+        }),
+      }),
+    }),
+  },
 }));
 
 type Handler = (req: unknown, res: unknown) => Promise<unknown>;
@@ -88,7 +107,7 @@ function res() {
   return r;
 }
 const body = (amount: string) => ({ noteId: 77, amount, paymentMethod: "check" });
-const req = (b: Record<string, unknown>, key: string | null = "op-key-0001") => ({
+const req = (b: Record<string, unknown>, key: string | null = "op-key-0001") => (S.lookupTxn = `op:5:${key}`, {
   body: b,
   headers: key ? { "idempotency-key": key } : {},
   organization: { id: 5 },
@@ -102,6 +121,10 @@ beforeEach(() => {
   S.audit = 0;
   S.owedFeeCents = 0;
   S.assessed = 0;
+  S.lookupTxn = "";
+  S.noteStatus = "active";
+  S.balance = "10000.00";
+  S.paysDown = false;
 });
 
 describe("a recorded payment is a real posting", () => {
@@ -153,6 +176,28 @@ describe("a recorded payment is a real posting", () => {
     expect(over.statusCode).toBe(400);
     expect(over.body).toMatchObject({ details: { payoffCents: 1_007_500, lateFeesIncludedCents: 2_500 } });
     expect(S.assessed).toBeGreaterThan(0);
+  });
+
+  it("a retried payoff is replayed — not refused as 'more than the payoff' by the balance it just paid (audit of 9ed61f4)", async () => {
+    S.paysDown = true;
+    const h = await handler();
+    const first = res();
+    await h(req(body("10050.00"), "op-key-0200"), first);
+    expect(first.statusCode).toBe(201);
+    const retry = res();
+    await h(req(body("10050.00"), "op-key-0200"), retry);
+    expect(retry.statusCode).toBe(200);
+    expect(retry.body).toMatchObject({ replayed: true });
+    expect(S.posted).toHaveLength(1);
+  });
+
+  it("a paid-off note takes no payment, and the attempt assesses no fee (audit of 9ed61f4)", async () => {
+    S.noteStatus = "paid_off";
+    const r = res();
+    await (await handler())(req(body("100.00"), "op-key-0201"), r);
+    expect(r.statusCode).toBe(400);
+    expect(S.assessed).toBe(0);
+    expect(S.posted).toHaveLength(0);
   });
 
   it("another org's note is not found", async () => {

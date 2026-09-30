@@ -7,6 +7,7 @@
 // to the full DatabaseStorage instance.
 
 import { and, desc, eq, gte, lt, lte, or } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import {
   featureRequests,
@@ -50,7 +51,7 @@ export const platformOpsRepo = {
     const conditions = [eq(featureRequests.id, id)];
     if (organizationId) conditions.push(eq(featureRequests.organizationId, organizationId));
     const [updated] = await db.update(featureRequests)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;

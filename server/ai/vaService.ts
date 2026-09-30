@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { storage } from "../storage";
+import { validateLeadTransition } from "@shared/lifecycle/pipeline-status";
 import { toolDefinitions, executeTool, type ToolName } from "./tools";
 import { serializeToolResultForModel, USER_DATA_SYSTEM_CLAUSE } from "./untrustedEnvelope";
 import type { Organization, VaAgent, VaAction, InsertVaAction, InsertVaBriefing } from "@shared/schema";
@@ -1030,6 +1031,9 @@ Keep it concise and actionable.`;
     if (!lead) {
       throw new Error(`Lead ${leadId} not found`);
     }
+    // The lead state machine, as every other writer (audit of 9ed61f4).
+    const refusal = validateLeadTransition(lead.status, String(newStatus));
+    if (refusal) throw new Error(refusal);
     
     await storage.updateLead(leadId, { status: newStatus }, action.organizationId);
     

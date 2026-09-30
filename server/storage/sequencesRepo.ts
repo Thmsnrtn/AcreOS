@@ -6,6 +6,7 @@
 // DatabaseStorage instance.
 
 import { and, desc, eq, lte } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import {
   campaignSequences,
@@ -51,7 +52,7 @@ export const sequencesRepo = {
     const conditions = [eq(campaignSequences.id, id)];
     if (organizationId) conditions.push(eq(campaignSequences.organizationId, organizationId));
     const [updated] = await db.update(campaignSequences)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -89,7 +90,7 @@ export const sequencesRepo = {
     const conditions = [eq(sequenceSteps.id, id)];
     if (sequenceId !== undefined) conditions.push(eq(sequenceSteps.sequenceId, sequenceId));
     const [updated] = await db.update(sequenceSteps)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -180,7 +181,7 @@ export const sequencesRepo = {
     // Note: sequenceEnrollments table doesn't have organizationId column;
     // tenant isolation is enforced via the parent sequence's organizationId.
     const [updated] = await db.update(sequenceEnrollments)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(eq(sequenceEnrollments.id, id))
       .returning();
     return updated;
@@ -248,7 +249,7 @@ export const sequencesRepo = {
     const conditions = [eq(abTests.id, id)];
     if (organizationId) conditions.push(eq(abTests.organizationId, organizationId));
     const [updated] = await db.update(abTests)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -281,7 +282,7 @@ export const sequencesRepo = {
 
   async updateAbTestVariant(this: DatabaseStorage, id: number, updates: Partial<InsertAbTestVariant>): Promise<AbTestVariant> {
     const [updated] = await db.update(abTestVariants)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(eq(abTestVariants.id, id))
       .returning();
     return updated;

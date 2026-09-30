@@ -7,6 +7,7 @@
 // the composed prototype).
 
 import { and, desc, eq } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import { forOrg } from "../utils/orgScopedDb";
 import {
@@ -157,7 +158,7 @@ export const dueDiligenceRepo = {
     const conditions = [eq(checklistTemplates.id, id)];
     if (organizationId) conditions.push(eq(checklistTemplates.organizationId, organizationId));
     const [updated] = await db.update(checklistTemplates)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -203,7 +204,7 @@ export const dueDiligenceRepo = {
 
   async updateDealChecklist(this: DatabaseStorage, id: number, updates: Partial<InsertDealChecklist>) {
     const [updated] = await db.update(dealChecklists)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(eq(dealChecklists.id, id))
       .returning();
     return updated;

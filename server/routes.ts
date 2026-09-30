@@ -1832,7 +1832,7 @@ export async function registerRoutes(
             errors.push({ id: state.id, error: `Not a deal stage: ${String(state.previousStage)}` });
             continue;
           }
-          const restored = await storage.updateDeal(state.id, { status: state.previousStage }, undefined, org.id);
+          const restored = await storage.updateDeal(state.id, { status: state.previousStage }, undefined, org.id, { backwardUndo: true });
           const { emitDealStageChanged } = await import("./services/dealEvents");
           emitDealStageChanged(org.id, deal, restored);
           restoredCount++;

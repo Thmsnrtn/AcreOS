@@ -2,6 +2,7 @@
 // Extracted from the god-class server/storage.ts.
 
 import { and, asc, desc, eq, sql, count, ilike, inArray, like, lte, or, type SQL } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import {
   leads, leadActivities, activityLog,
@@ -11,7 +12,6 @@ import {
 import { assertNotUnderLegalHold, filterOutHeldIds } from "../services/legalHold";
 import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../storage";
 import { LIST_READ_CAP, capListRead } from "./listCap";
-import { withoutIdentityKeys } from "../utils/patch";
 
 /** Refused merge: the two leads are different parcels (DEFECT-0161). */
 class LeadsAreDistinctParcelsError extends Error {
@@ -305,7 +305,7 @@ export const leadRepo = {
     const conditions = [eq(leads.id, id)];
     if (organizationId) conditions.push(eq(leads.organizationId, organizationId));
     const [updated] = await db.update(leads)
-      .set({ ...withoutIdentityKeys(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -322,11 +322,13 @@ export const leadRepo = {
     }
     const conditions = [eq(leads.id, id)];
     if (organizationId) conditions.push(eq(leads.organizationId, organizationId));
-    // `deletedAt` too: every list read filters on it, so a lead deleted with
-    // status alone kept appearing — the "clear sample data" leads included
-    // (audit of 224a5c0). The route's own delete already stamps both.
+    // `deletedAt` is the soft delete: every list read filters on it, so a
+    // lead deleted with status alone kept appearing — the "clear sample
+    // data" leads included (audit of 224a5c0). The status is kept, as the
+    // route's own delete keeps it, so a restore brings the lead back as it
+    // was (audit of 9ed61f4).
     await db.update(leads)
-      .set({ status: "deleted", deletedAt: new Date(), updatedAt: new Date() })
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
       .where(and(...conditions));
   },
 
@@ -337,13 +339,17 @@ export const leadRepo = {
   },
 
   async bulkDeleteLeads(this: DatabaseStorage, orgId: number, ids: number[], _userId?: string): Promise<number> {
-    // Task 223: Soft delete — set status='deleted' rather than hard-deleting
+    // Soft delete is `deletedAt` — the one field every list read filters and
+    // restore clears. This set status='deleted' instead, so a bulk-deleted
+    // lead stayed listed and the Undo (restoreLeads, which matches
+    // `deletedAt IS NOT NULL`) restored nothing (audit of 9ed61f4). The
+    // lead's real status is kept, so a restore brings it back as it was.
     // Legal-hold (Phase 3 Week 11): drop held ids from the batch before delete.
     if (ids.length === 0) return 0;
     const allowed = await filterOutHeldIds(orgId, "lead", ids);
     if (allowed.length === 0) return 0;
     await db.update(leads)
-      .set({ status: "deleted", updatedAt: new Date() })
+      .set({ deletedAt: new Date(), deletedBy: _userId ?? null, updatedAt: new Date() })
       .where(and(eq(leads.organizationId, orgId), inArray(leads.id, allowed)));
     return allowed.length;
   },
@@ -351,7 +357,7 @@ export const leadRepo = {
   async bulkUpdateLeads(this: DatabaseStorage, orgId: number, ids: number[], updates: Partial<InsertLead>): Promise<number> {
     if (ids.length === 0) return 0;
     await db.update(leads)
-      .set({ ...withoutIdentityKeys(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(
         eq(leads.organizationId, orgId),
         inArray(leads.id, ids),
@@ -373,18 +379,23 @@ export const leadRepo = {
 
   async restoreLeads(this: DatabaseStorage, orgId: number, ids: number[]): Promise<number> {
     if (ids.length === 0) return 0;
-    await db.update(leads)
+    // A legacy row soft-deleted by status alone comes back as "new"; any
+    // other status is the lead's own and is kept. The count is what matched,
+    // not what was asked for (audit of 9ed61f4: it reported every id).
+    const restored = await db.update(leads)
       .set({
         deletedAt: null,
         deletedBy: null,
+        status: sql`case when ${leads.status} = 'deleted' then 'new' else ${leads.status} end`,
         updatedAt: new Date()
       })
       .where(and(
         eq(leads.organizationId, orgId),
         inArray(leads.id, ids),
-        sql`${leads.deletedAt} IS NOT NULL`
-      ));
-    return ids.length;
+        or(sql`${leads.deletedAt} IS NOT NULL`, eq(leads.status, "deleted"))
+      ))
+      .returning({ id: leads.id });
+    return restored.length;
   },
 
   async permanentlyDeleteLeads(this: DatabaseStorage, orgId: number, ids: number[]): Promise<number> {

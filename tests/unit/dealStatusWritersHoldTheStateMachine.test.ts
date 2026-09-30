@@ -13,6 +13,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/stripComments";
+
+// It reads every repository under server/storage.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 
@@ -71,10 +75,10 @@ async function bulkApp() {
 }
 
 describe("the state machine has no side door", () => {
-  it("a deleted deal cannot change stage — it must be restored first", async () => {
+  it("a deleted deal cannot change stage", async () => {
     const { validateDealTransition } = await import("@shared/lifecycle/pipeline-status");
-    expect(validateDealTransition("deleted", "closed")).toMatch(/restore it first/);
-    expect(validateDealTransition("deleted", "negotiating")).toMatch(/restore it first/);
+    expect(validateDealTransition("deleted", "closed")).toMatch(/deleted deal cannot change stage/);
+    expect(validateDealTransition("deleted", "negotiating")).toMatch(/deleted deal cannot change stage/);
     // A genuinely legacy value still re-enters, as documented.
     expect(validateDealTransition("closing", "closed")).toBeNull();
   });
@@ -112,13 +116,25 @@ describe("a workflow update_record holds the state machine", () => {
   it("refuses an illegal or unknown deal stage, and a deleted deal", async () => {
     await expect(run("deal", 1, { status: "offer_sent" })).rejects.toThrow(/update_record refused/);
     await expect(run("deal", 3, { status: "won" })).rejects.toThrow(/not a deal stage/);
-    await expect(run("deal", 2, { status: "closed" })).rejects.toThrow(/restore it first/);
+    await expect(run("deal", 2, { status: "closed" })).rejects.toThrow(/deleted deal cannot change stage/);
     expect(S.dealUpdates).toEqual([]);
   });
 
   it("refuses an illegal lead status", async () => {
     await expect(run("lead", 3, { status: "closed" })).rejects.toThrow(/update_record refused/);
     expect(S.leadUpdates).toEqual([]);
+  });
+
+  it("refuses a type that differs from the trigger's entity (audit of 9ed61f4)", async () => {
+    const { workflowEngine } = await import("../../server/services/workflow-engine");
+    const engine = workflowEngine as unknown as { executeUpdateRecord: (a: unknown, c: unknown) => Promise<unknown> };
+    await expect(
+      engine.executeUpdateRecord(
+        { id: "a1", type: "update_record", config: { entityType: "deal", updates: { status: "offer_sent" } } },
+        { organizationId: 5, triggerData: { entityType: "lead", entityId: 3 }, variables: {} },
+      ),
+    ).rejects.toThrow(/triggered by a lead/);
+    expect(S.dealUpdates).toEqual([]);
   });
 
   it("applies a legal move", async () => {
@@ -128,22 +144,63 @@ describe("a workflow update_record holds the state machine", () => {
 });
 
 describe("no update moves a row out of its tenant", () => {
-  it("withoutIdentityKeys strips the tenant and primary keys", async () => {
-    const { withoutIdentityKeys } = await import("../../server/utils/patch");
-    expect(withoutIdentityKeys({ organizationId: 99, id: 7, createdAt: new Date(), status: "closed" })).toEqual({ status: "closed" });
+  it("assertWritablePatch returns the patch without identity, tenancy or audit columns", async () => {
+    const { assertWritablePatch } = await import("../../server/utils/patch");
+    expect(
+      assertWritablePatch({ organizationId: 99, organization_id: 99, id: 7, createdAt: new Date(), createdBy: "x", status: "closed" }, "t"),
+    ).toEqual({ status: "closed" });
+    // A patch that was ONLY a tenant move is empty, and refused.
+    expect(() => assertWritablePatch({ organizationId: 99 }, "t")).toThrow(/empty patch/);
   });
 
-  it("every deal, lead and property update in the repositories applies it", async () => {
-    const { readFileSync } = await import("node:fs");
-    const { resolve } = await import("node:path");
+  /**
+   * The population: every `.set(…)` in every repository under server/storage
+   * (audit of 9ed61f4: the first version read three repos, and tasks and
+   * due diligence carried the same shape a request body reached). A caller's
+   * patch may reach the row only through omitProtectedFields — directly, or
+   * via assertWritablePatch, which applies it. A spread of anything else, or a
+   * bare method parameter passed to `.set`, is the thing that fails.
+   */
+  it("every repository write passes a caller's patch through omitProtectedFields", async () => {
+    const { readFileSync, readdirSync } = await import("node:fs");
+    const { resolve, join } = await import("node:path");
     const { stripComments } = await import("../helpers/stripComments");
-    for (const [file, table] of [["dealRepo", "deals"], ["leadRepo", "leads"], ["propertyRepo", "properties"]] as const) {
-      const src = stripComments(readFileSync(resolve(__dirname, `../../server/storage/${file}.ts`), "utf8"));
-      const sets = [...src.matchAll(new RegExp(String.raw`\.update\(${table}\)\s*\.set\(([^)]*\))`, "g"))].map((m) => m[1]);
-      // Vacuity: the update and bulk-update of each table.
-      expect(sets.filter((x) => /\.\.\.(updates|withoutIdentityKeys\(updates\))/.test(x)).length, file).toBeGreaterThanOrEqual(2);
-      for (const set of sets) expect(set, `${file}: ${set}`).not.toMatch(/\.\.\.updates\b/);
+    const dir = resolve(__dirname, "../../server/storage");
+    const files = readdirSync(dir).filter((f) => f.endsWith(".ts") && !/\.test\./.test(f));
+    expect(files.length).toBeGreaterThan(30); // vacuity: the repositories are here
+    let sets = 0;
+    const offenders: string[] = [];
+    for (const f of files) {
+      const src = stripComments(readFileSync(join(dir, f), "utf8"));
+      const methods = [...src.matchAll(/async\s+(\w+)\s*\(\s*this:\s*DatabaseStorage\s*,?([^)]*)\)/g)].map((m) => ({
+        at: m.index ?? 0,
+        params: new Set(m[2].split(",").map((p) => p.trim().split(/[?:\s=]/)[0]).filter(Boolean)),
+      }));
+      for (const m of src.matchAll(/\.set\(/g)) {
+        // The argument, by bracket depth.
+        let depth = 0;
+        let k = (m.index ?? 0) + 5;
+        const start = k;
+        for (; k < src.length; k++) {
+          const c = src[k];
+          if (c === "(" || c === "{" || c === "[") depth++;
+          else if (c === ")" || c === "}" || c === "]") {
+            if (depth === 0) break;
+            depth--;
+          }
+        }
+        const arg = src.slice(start, k).trim();
+        sets++;
+        const params = methods.filter((x) => x.at < (m.index ?? 0)).at(-1)?.params ?? new Set<string>();
+        const badSpread = [...arg.matchAll(/\.\.\.\s*(\w+)/g)].some(
+          (sp) => sp[1] !== "omitProtectedFields" && params.has(sp[1]),
+        );
+        const bareParam = /^\w+$/.test(arg) && params.has(arg);
+        if (badSpread || bareParam) offenders.push(`${f}: .set(${arg.slice(0, 60)})`);
+      }
     }
+    expect(sets).toBeGreaterThanOrEqual(140); // vacuity: measured 146 on 2026-09-30
+    expect(offenders, offenders.join("\n")).toEqual([]);
   });
 });
 

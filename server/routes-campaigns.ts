@@ -936,7 +936,10 @@ export function registerCampaignRoutes(app: Express): void {
             await releaseClaim('Insufficient credits — nothing was mailed');
             return Errors.paymentRequired(res, "Insufficient credits");
           }
-          debited = true;
+          // What was actually taken: the founder bypass debits 0 and returns
+          // a row, and must not be refunded a debit it never paid (audit of
+          // 9ed61f4).
+          debited = Number(deductResult?.amountCents ?? 0) !== 0;
         } else {
           logger.info(`Skipping credit deduction for org - using org Lob credentials`, { orgId: org.id });
         }

@@ -4,6 +4,7 @@
 // calculateMonthlyPayment) — they're imported here.
 
 import { randomBytes } from "crypto";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { and, desc, eq, count, sum } from "drizzle-orm";
 import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import { db, withTransaction } from "../db";
@@ -223,7 +224,7 @@ export const noteRepo = {
     // narrowed back to the column's type — see TODO(tsc) in createNote: a
     // drizzle-zod inference gap widens InsertNote['atrDetermination'] to `Json`.
     const setValues: PgUpdateSetSource<typeof notes> = {
-      ...updates,
+      ...omitProtectedFields(updates),
       atrDetermination: updates.atrDetermination as typeof notes.$inferInsert["atrDetermination"],
       // Same drizzle-zod inference workaround as createNote — narrow to the
       // column's typed enum-or-null. Route-layer Zod validates before this.

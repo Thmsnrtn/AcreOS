@@ -6,6 +6,7 @@
 // full DatabaseStorage instance.
 
 import { and, desc, eq, gte, ne, or, sql } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import { forOrg, unscopedForPlatformOps } from "../utils/orgScopedDb";
 import {
@@ -109,7 +110,7 @@ export const supportOpsRepo = {
     const conditions = [eq(supportCases.id, id)];
     if (organizationId) conditions.push(eq(supportCases.organizationId, organizationId));
     const [updated] = await db.update(supportCases)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -223,7 +224,7 @@ export const supportOpsRepo = {
     const conditions = [eq(dunningEvents.id, id)];
     if (organizationId) conditions.push(eq(dunningEvents.organizationId, organizationId));
     const [updated] = await db.update(dunningEvents)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;

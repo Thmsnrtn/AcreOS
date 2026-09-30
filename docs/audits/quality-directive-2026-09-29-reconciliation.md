@@ -164,6 +164,17 @@ operation at scale.
 | A deleted deal could be moved to any stage; the undo trusted the client | **FIXED** — DEFECT-0264 |
 | requireRole vs ownerId; offer attribution; backdating; ACH overlap; seeder cap; gate asserts the call not the answer | OPEN — DEFECT-0265 |
 
+## Independent audit of `9ed61f4` — folded into the third follow-up
+
+| Finding | Status |
+|---|---|
+| Regression: the lead "deleted" refusal stranded bulk-deleted leads; bulk delete, Undo and restore disagreed on what "deleted" is | **FIXED** — DEFECT-0266 (founder script stamps legacy rows) |
+| The deal state machine had side doors (PUT, PATCH /stage, Pax, VA, title close) | **FIXED** — DEFECT-0267 (enforced in the repository) |
+| Tasks and due diligence could be moved into another tenant; the rule covered three repos | **FIXED** — DEFECT-0268 (one rule at every repository write) |
+| Payoff retry refused; fee assessed on a paid-off note | **FIXED** — DEFECT-0269 |
+| Founder refund, undo toast, purge gating, workflow type mismatch | **FIXED** — DEFECT-0270 |
+| (Also closed in this change) the mail debit crash window; the two-transaction refund and cross-month netting | **FIXED** — DEFECT-0213, DEFECT-0227 |
+
 ## What remains outside any code change
 
 These need outside proof or a founder decision, as the directive's own limits section says:

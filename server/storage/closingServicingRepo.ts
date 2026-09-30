@@ -6,6 +6,7 @@
 // to the full DatabaseStorage instance.
 
 import { and, desc, eq } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import {
   buyerReservations,
@@ -93,7 +94,7 @@ export const closingServicingRepo = {
 
   async updateEscrowChecklist(this: DatabaseStorage, organizationId: number, id: number, data: Partial<InsertEscrowChecklist>): Promise<EscrowChecklist | undefined> {
     const [updated] = await db.update(escrowChecklists)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
       .where(and(eq(escrowChecklists.id, id), eq(escrowChecklists.organizationId, organizationId)))
       .returning();
     return updated;
@@ -235,7 +236,7 @@ export const closingServicingRepo = {
 
   async updateDelinquencyEscalation(this: DatabaseStorage, organizationId: number, id: number, data: Partial<InsertDelinquencyEscalation>): Promise<DelinquencyEscalation | undefined> {
     const [updated] = await db.update(delinquencyEscalations)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
       .where(and(eq(delinquencyEscalations.id, id), eq(delinquencyEscalations.organizationId, organizationId)))
       .returning();
     return updated;

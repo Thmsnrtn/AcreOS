@@ -5,6 +5,7 @@
 // time; `this` refers to the full DatabaseStorage instance.
 
 import { and, count, desc, eq, sql } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import { forOrg } from "../utils/orgScopedDb";
 import {
@@ -66,7 +67,7 @@ export const mailRepo = {
     const conditions = [eq(emailSenderIdentities.id, id)];
     if (organizationId) conditions.push(eq(emailSenderIdentities.organizationId, organizationId));
     const [updated] = await db.update(emailSenderIdentities)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -240,7 +241,7 @@ export const mailRepo = {
     const conditions = [eq(mailSenderIdentities.id, id)];
     if (organizationId) conditions.push(eq(mailSenderIdentities.organizationId, organizationId));
     const [updated] = await db.update(mailSenderIdentities)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -302,7 +303,7 @@ export const mailRepo = {
     const conditions = [eq(mailingOrders.id, id)];
     if (organizationId) conditions.push(eq(mailingOrders.organizationId, organizationId));
     const [updated] = await db.update(mailingOrders)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -343,7 +344,7 @@ export const mailRepo = {
 
   async updateMailingOrderPiece(this: DatabaseStorage, id: number, data: Partial<MailingOrderPiece>): Promise<MailingOrderPiece> {
     const [updated] = await db.update(mailingOrderPieces)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
       .where(eq(mailingOrderPieces.id, id))
       .returning();
     return updated;

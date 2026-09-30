@@ -201,7 +201,7 @@ function caseLabels(rel: string, fn: string): string[] {
 
 /** Minimal args that make each member SUCCEED against the stubbed storage. */
 const ARGS: Record<string, Record<string, unknown>> = {
-  update_lead_status: { lead_id: 42, status: "qualified" },
+  update_lead_status: { lead_id: 42, status: "accepted" },
   create_lead: { first_name: "Gil", last_name: "Praeger" },
   create_property: { apn: "123-45", county: "Travis", state: "TX", sizeAcres: 10 },
   update_property: { property_id: 3, status: "active" },
@@ -292,13 +292,13 @@ describe("each executed member yields exactly one activity_log row with agentTyp
 
 describe("attribution and the one-tap-one-row rule", () => {
   it("update_lead_status writes its OWN receipt with the real before → after, and the hook does not add a second", async () => {
-    await executeTool("update_lead_status", { lead_id: 42, status: "qualified" }, org, { userId: "u-1" });
+    await executeTool("update_lead_status", { lead_id: 42, status: "accepted" }, org, { userId: "u-1" });
     const rows = paxRows();
     expect(rows).toHaveLength(1);
     expect(rows[0].action).toBe("status_changed");
     expect(rows[0].entityType).toBe("lead");
     expect(rows[0].entityId).toBe(42);
-    expect(rows[0].changes).toEqual({ before: { status: "negotiating" }, after: { status: "qualified" } });
+    expect(rows[0].changes).toEqual({ before: { status: "negotiating" }, after: { status: "accepted" } });
   });
 
   it("the generic receipt names the record the tool wrote, read from the result", async () => {

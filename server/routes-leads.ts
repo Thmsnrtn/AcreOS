@@ -796,15 +796,18 @@ export function registerLeadRoutes(app: Express): void {
     // Restoring is a write like any other. It had NO permission gate at all.
     if (assertAssignedLeadWritable(req as AuthenticatedRequest, res, lead)) return;
 
+    // A legacy row soft-deleted by status alone comes back as "new" (audit
+    // of 9ed61f4); any other status is the lead's own and is kept.
     const [restored] = await db.update(leads).set({
       deletedAt: null,
       deletedBy: null,
+      status: sql`case when ${leads.status} = 'deleted' then 'new' else ${leads.status} end`,
     }).where(and(eq(leads.id, leadId), eq(leads.organizationId, org.id))).returning();
 
     // Wave B — restoring a soft-deleted lead really does change its state,
     // so automations should see it. Restoring an ALREADY-active lead changed
     // nothing, so it emits nothing.
-    if (lead.deletedAt != null && restored) {
+    if ((lead.deletedAt != null || lead.status === "deleted") && restored) {
       safeEmitLeadEvent(
         "lead.updated",
         org.id,

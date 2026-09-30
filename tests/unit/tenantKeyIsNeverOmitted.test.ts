@@ -78,7 +78,7 @@ const ROOT = path.resolve(__dirname, "../..");
  * updatePropertyListing.
  * 110 -> 109 (DEFECT-0173 audit): the listing PUT passes the org too.
  */
-const OMISSION_BASELINE = 109;
+const OMISSION_BASELINE = 107;
 
 /**
  * Call sites whose enclosing function never names an organization, so nothing

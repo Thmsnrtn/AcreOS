@@ -1,4 +1,5 @@
 import type { Express, Response } from "express";
+import { omitProtectedFields } from "./utils/updatePayload";
 import { getOrganization, type AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
 import { z } from "zod";
@@ -377,11 +378,14 @@ export function registerCRMExtrasRoutes(app: Express): void {
         return Errors.notFound(res, "Task");
       }
       
-      const updates: any = { ...req.body };
+      // The body may not carry the task's identity or tenancy — `{
+      // organizationId }` moved the task into another org — and the write
+      // names the org (audit of 9ed61f4).
+      const updates: any = omitProtectedFields(req.body);
       if (updates.dueDate) updates.dueDate = new Date(updates.dueDate);
       if (updates.nextOccurrence) updates.nextOccurrence = new Date(updates.nextOccurrence);
       
-      const task = await storage.updateTask(id, updates);
+      const task = await storage.updateTask(id, updates, orgId);
       
       const changes = Object.keys(updates).filter(k => k !== 'updatedAt').join(', ');
       await activityLogger.logTaskUpdated(

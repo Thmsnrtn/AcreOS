@@ -228,7 +228,7 @@ export interface IStorage {
   getDeal(orgId: number, id: number): Promise<Deal | undefined>;
   getDealsByIds(orgId: number, ids: number[]): Promise<Deal[]>;
   createDeal(deal: InsertDeal & { organizationId: number }): Promise<Deal>;
-  updateDeal(id: number, updates: Partial<InsertDeal>, expectedUpdatedAt?: Date): Promise<Deal>;
+  updateDeal(id: number, updates: Partial<InsertDeal>, expectedUpdatedAt?: Date, organizationId?: number, opts?: { backwardUndo?: boolean }): Promise<Deal>;
   bulkDeleteDeals(orgId: number, ids: number[]): Promise<number>;
   bulkUpdateDeals(orgId: number, ids: number[], updates: Partial<InsertDeal>): Promise<number>;
   
@@ -620,7 +620,7 @@ export interface IStorage {
   getTasks(orgId: number, filters?: { status?: string; priority?: string; assignedTo?: number; entityType?: string; entityId?: number }): Promise<Task[]>;
   getTask(orgId: number, id: number): Promise<Task | undefined>;
   createTask(task: InsertTask): Promise<Task>;
-  updateTask(id: number, updates: Partial<InsertTask>): Promise<Task>;
+  updateTask(id: number, updates: Partial<InsertTask>, organizationId?: number): Promise<Task>;
   deleteTask(id: number): Promise<void>;
   completeTask(id: number): Promise<Task>;
   getRecurringTasksDue(organizationId: number): Promise<Task[]>;
@@ -685,7 +685,7 @@ export interface IStorage {
   // Due Diligence Checklists (Enhanced)
   getDueDiligenceChecklist(propertyId: number): Promise<DueDiligenceChecklist | undefined>;
   getOrCreateDueDiligenceChecklist(orgId: number, propertyId: number): Promise<DueDiligenceChecklist>;
-  updateDueDiligenceChecklist(id: number, updates: Partial<InsertDueDiligenceChecklist>): Promise<DueDiligenceChecklist>;
+  updateDueDiligenceChecklist(id: number, updates: Partial<InsertDueDiligenceChecklist>, organizationId?: number): Promise<DueDiligenceChecklist>;
 
   // Skip Traces
   getSkipTraces(orgId: number): Promise<SkipTrace[]>;

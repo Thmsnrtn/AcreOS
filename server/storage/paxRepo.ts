@@ -5,6 +5,7 @@
 // time; `this` refers to the full DatabaseStorage instance.
 
 import { and, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import { forOrg } from "../utils/orgScopedDb";
 import {
@@ -179,7 +180,7 @@ export const paxRepo = {
   async updatePaxScheduledTask(this: DatabaseStorage, id: number, updates: { isActive?: boolean; schedule?: string; lastRunAt?: Date; nextRunAt?: Date; lastRunConversationId?: number; lastRunStatus?: string; lastRunSummary?: string; runCount?: number; updatedAt?: Date }, organizationId?: number): Promise<void> {
     const conditions = [eq(paxScheduledTasks.id, id)];
     if (organizationId) conditions.push(eq(paxScheduledTasks.organizationId, organizationId));
-    await db.update(paxScheduledTasks).set({ ...updates, updatedAt: new Date() }).where(and(...conditions));
+    await db.update(paxScheduledTasks).set({ ...omitProtectedFields(updates), updatedAt: new Date() }).where(and(...conditions));
   },
 
   async deletePaxScheduledTask(this: DatabaseStorage, id: number, organizationId?: number): Promise<void> {
@@ -274,7 +275,7 @@ export const paxRepo = {
     const existing = await this.getPaxConnector(orgId, connectorId);
     if (existing) {
       const [row] = await db.update(paxConnectorInstances)
-        .set({ ...updates, updatedAt: new Date() })
+        .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
         .where(and(eq(paxConnectorInstances.organizationId, orgId), eq(paxConnectorInstances.connectorId, connectorId)))
         .returning();
       return row;

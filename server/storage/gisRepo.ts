@@ -7,6 +7,7 @@
 // DatabaseStorage instance.
 
 import { and, asc, desc, eq, gte, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import {
   countyGisEndpoints,
@@ -56,7 +57,7 @@ export const gisRepo = {
   async updateCountyGisEndpoint(this: DatabaseStorage, id: number, updates: { isVerified?: boolean; errorCount?: number; lastVerified?: Date; isActive?: boolean; lastError?: string | null }): Promise<any> {
     const { countyGisEndpoints } = await import('@shared/schema');
     const [updated] = await db.update(countyGisEndpoints)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(eq(countyGisEndpoints.id, id))
       .returning();
     return updated;
@@ -146,7 +147,7 @@ export const gisRepo = {
 
   async updateDataSource(this: DatabaseStorage, id: number, updates: Partial<InsertDataSource>): Promise<DataSource> {
     const [updated] = await db.update(dataSources)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(eq(dataSources.id, id))
       .returning();
     return updated;
@@ -425,7 +426,7 @@ export const gisRepo = {
       const [updated] = await db
         .update(parcelSnapshots)
         .set({
-          ...data,
+          ...omitProtectedFields(data),
           ...normalized,
           fetchedAt: new Date(),
           expiresAt,

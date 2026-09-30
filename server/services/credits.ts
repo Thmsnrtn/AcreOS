@@ -1,5 +1,5 @@
 import type Stripe from "stripe";
-import { db, withTransaction } from "../db";
+import { db, withTransaction, type PrimaryDb } from "../db";
 import { eq, desc, sql, and } from "drizzle-orm";
 import {
   organizations,
@@ -42,11 +42,15 @@ export class CreditService {
     amountCents: number,
     type: CreditTransaction["type"],
     description: string,
-    metadata?: InsertCreditTransaction["metadata"]
+    metadata?: InsertCreditTransaction["metadata"],
+    // Run inside the caller's transaction, so a credit return commits with
+    // the ledger row that justifies it — or not at all (audit of 0e54c75,
+    // DEFECT-0227).
+    opts: { tx?: PrimaryDb } = {},
   ): Promise<CreditTransaction> {
     // Wrap balance update + transaction log in a single DB transaction
     // to prevent ledger desync on crash (P0 fix DI-001)
-    return await withTransaction(async (tx) => {
+    const run = async (tx: PrimaryDb) => {
       const [updated] = await tx
         .update(organizations)
         .set({
@@ -70,14 +74,18 @@ export class CreditService {
         .returning();
 
       return transaction;
-    });
+    };
+    return opts.tx ? run(opts.tx) : await withTransaction(run);
   }
 
   async deductCredits(
     organizationId: number,
     amountCents: number,
     description: string,
-    metadata?: InsertCreditTransaction["metadata"]
+    metadata?: InsertCreditTransaction["metadata"],
+    // Inside the caller's transaction: a mail debit taken in the queue's
+    // transaction rolls back with it (DEFECT-0213).
+    opts: { tx?: PrimaryDb } = {},
   ): Promise<CreditTransaction | null> {
     if (await this.isFounder(organizationId)) {
       const [transaction] = await db
@@ -96,7 +104,7 @@ export class CreditService {
 
     // Wrap balance update + transaction log in a single DB transaction
     // to prevent ledger desync on crash (P1-SWEEP3-001)
-    const result = await withTransaction(async (tx) => {
+    const debit = async (tx: PrimaryDb) => {
       const [updated] = await tx
         .update(organizations)
         .set({
@@ -127,7 +135,8 @@ export class CreditService {
         .returning();
 
       return transaction;
-    });
+    };
+    const result = opts.tx ? await debit(opts.tx) : await withTransaction(debit);
 
     if (!result) {
       return null;

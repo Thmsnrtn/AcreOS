@@ -2,6 +2,7 @@
 // Extracted from the god-class server/storage.ts.
 
 import { and, desc, eq, sql, or, lte } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import {
   campaigns, campaignOptimizations,
@@ -33,7 +34,7 @@ export const campaignRepo = {
     const conditions = [eq(campaigns.id, id)];
     if (organizationId) conditions.push(eq(campaigns.organizationId, organizationId));
     const [updated] = await db.update(campaigns)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;

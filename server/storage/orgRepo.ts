@@ -5,6 +5,7 @@
 // call methods from any sibling repo.
 
 import { sql, eq } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import { organizations, type Organization, type InsertOrganization } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
@@ -75,7 +76,7 @@ export const orgRepo = {
 
   async updateOrganization(this: DatabaseStorage, id: number, updates: Partial<InsertOrganization>): Promise<Organization> {
     const [updated] = await db.update(organizations)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(eq(organizations.id, id))
       .returning();
     return updated;

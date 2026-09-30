@@ -6,6 +6,7 @@
 // to the full DatabaseStorage instance.
 
 import { and, desc, eq, sql } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import {
   marketingLists,
@@ -62,7 +63,7 @@ export const vaEngineRepo = {
 
   async updateMarketingList(this: DatabaseStorage, orgId: number, id: number, updates: Partial<InsertMarketingList>): Promise<MarketingList> {
     const [updated] = await db.update(marketingLists)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(eq(marketingLists.id, id), eq(marketingLists.organizationId, orgId)))
       .returning();
     return updated;
@@ -91,7 +92,7 @@ export const vaEngineRepo = {
 
   async updateOfferBatch(this: DatabaseStorage, orgId: number, id: number, updates: Partial<InsertOfferBatch>): Promise<OfferBatch> {
     const [updated] = await db.update(offerBatches)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(eq(offerBatches.id, id), eq(offerBatches.organizationId, orgId)))
       .returning();
     return updated;
@@ -126,7 +127,7 @@ export const vaEngineRepo = {
 
   async updateOffer(this: DatabaseStorage, orgId: number, id: number, updates: Partial<InsertOffer>): Promise<Offer> {
     const [updated] = await db.update(offers)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(eq(offers.id, id), eq(offers.organizationId, orgId)))
       .returning();
     return updated;
@@ -194,7 +195,7 @@ export const vaEngineRepo = {
 
   async updateAdPosting(this: DatabaseStorage, orgId: number, id: number, updates: Partial<InsertAdPosting>): Promise<AdPosting> {
     const [updated] = await db.update(adPostings)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(eq(adPostings.id, id), eq(adPostings.organizationId, orgId)))
       .returning();
     return updated;
@@ -231,7 +232,7 @@ export const vaEngineRepo = {
 
   async updateBuyerPrequalification(this: DatabaseStorage, orgId: number, id: number, updates: Partial<InsertBuyerPrequalification>): Promise<BuyerPrequalification> {
     const [updated] = await db.update(buyerPrequalifications)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(eq(buyerPrequalifications.id, id), eq(buyerPrequalifications.organizationId, orgId)))
       .returning();
     return updated;
@@ -279,7 +280,7 @@ export const vaEngineRepo = {
 
   async updateCollectionSequence(this: DatabaseStorage, orgId: number, id: number, updates: Partial<InsertCollectionSequence>): Promise<CollectionSequence> {
     const [updated] = await db.update(collectionSequences)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(eq(collectionSequences.id, id), eq(collectionSequences.organizationId, orgId)))
       .returning();
     return updated;
@@ -354,7 +355,7 @@ export const vaEngineRepo = {
 
   async updateCountyResearch(this: DatabaseStorage, id: number, updates: Partial<InsertCountyResearch>): Promise<CountyResearch> {
     const [updated] = await db.update(countyResearch)
-      .set({ ...updates, lastUpdatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), lastUpdatedAt: new Date() })
       .where(eq(countyResearch.id, id))
       .returning();
     return updated;

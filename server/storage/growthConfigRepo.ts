@@ -8,6 +8,7 @@
 // construction time; `this` refers to the full DatabaseStorage instance.
 
 import { and, count, desc, eq, ne, sql } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { openFounderAdAccount, sealAdAccountSecret } from "../services/founderAdAccountSecrets";
 import { db } from "../db";
 import {
@@ -83,7 +84,7 @@ export const growthConfigRepo = {
 
   async updatePlaybookInstance(this: DatabaseStorage, organizationId: number, id: number, data: Partial<InsertPlaybookInstance>): Promise<PlaybookInstance | undefined> {
     const [updated] = await db.update(playbookInstances)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
       .where(and(eq(playbookInstances.id, id), eq(playbookInstances.organizationId, organizationId)))
       .returning();
     return updated;
@@ -149,7 +150,7 @@ export const growthConfigRepo = {
 
   async updatePricingConfig(this: DatabaseStorage, tier: string, data: Partial<InsertPricingConfig>): Promise<PricingConfig | undefined> {
     const [updated] = await db.update(pricingConfig)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
       .where(eq(pricingConfig.tier, tier))
       .returning();
     return updated;
@@ -182,7 +183,7 @@ export const growthConfigRepo = {
     const existing = await this.getFounderAdAccount(data.platform);
     if (existing) {
       const [updated] = await db.update(founderAdAccounts)
-        .set({ ...sealed, updatedAt: new Date() })
+        .set({ ...omitProtectedFields(sealed), updatedAt: new Date() })
         .where(eq(founderAdAccounts.id, existing.id))
         .returning();
       return openFounderAdAccount(updated);
@@ -208,7 +209,7 @@ export const growthConfigRepo = {
 
   async updateGrowthCampaign(this: DatabaseStorage, id: number, data: Partial<InsertGrowthCampaign>): Promise<GrowthCampaign | undefined> {
     const [updated] = await db.update(growthCampaigns)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
       .where(eq(growthCampaigns.id, id))
       .returning();
     return updated;

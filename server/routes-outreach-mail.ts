@@ -26,7 +26,7 @@ import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization, getOrganizationId, getUserId } from "./types/request";
-import { db } from "./db";
+import { db, type PrimaryDb } from "./db";
 import {
   deals,
   financialLedger,
@@ -689,6 +689,11 @@ export function registerOutreachMailRoutes(app: Express): void {
               externalEventId: mailDebitKey,
               notes: `Mail queue: ${pieceType} via ${quote.provider} (${quote.pieceCount} pieces)`,
               isFounder: req.isFounder,
+              // Inside this transaction: the debit commits with the shipment
+              // it pays for, or rolls back with it. On the global connection a
+              // crash between the two commits left a debit no retry could
+              // find (DEFECT-0213).
+              tx: tx as unknown as PrimaryDb,
             });
             if (!mailDebit.allowed) throw new PoolRefusal(mailDebit);
             const [row] = await tx
@@ -778,15 +783,8 @@ export function registerOutreachMailRoutes(app: Express): void {
           if (txErr instanceof PoolRefusal) {
             return Errors.limitExceeded(res, poolRefusalDetails(poolAction, txErr.result));
           }
-          const taken = debitTaken();
-          if (taken && taken.debitedCents > 0) {
-            await refundPoolDebit({
-              organizationId: org.id,
-              originalEventId: mailDebitKey,
-              amountCents: taken.debitedCents,
-              reason: txErr instanceof FreeTierRaceRefusal ? "Free allowance taken by a concurrent send" : "Mail shipment persist failed",
-            });
-          }
+          // The debit was taken inside the transaction that just rolled back,
+          // so it rolled back with it: there is nothing to refund (DEFECT-0213).
           if (txErr instanceof FreeTierRaceRefusal) {
             return Errors.limitExceeded(res, {
               reason: "free_send_cap",

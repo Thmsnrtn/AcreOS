@@ -20,6 +20,7 @@ import { exportAndDropPayoffQuotes } from "../../scripts/data/export-and-drop-pa
 import { deleteOrphanPhotoAndVisionRows, ORPHAN_TARGETS } from "../../scripts/data/delete-orphan-photo-and-vision-rows";
 import { readdirSync } from "node:fs";
 import { deleteQueuedMailFirstMailerRows } from "../../scripts/data/delete-queued-mail-first-mailer-rows";
+import { stampStatusDeletedLeads } from "../../scripts/data/stamp-status-deleted-leads";
 import { stripComments, REPO_SWEEP_TIMEOUT_MS } from "../helpers/stripComments";
 
 // It reads every server/shared/client file (the "nothing reads the table" check).
@@ -251,6 +252,29 @@ describe("quality directive 2026-09-29 — queued-mail first_mailer_sent rows", 
     expect(del[0].sql).toMatch(/first_mailer_sent/);
     expect(del[0].params).toEqual([[3], "outreach:mail:queue"]);
     expect(r.calls.map((c) => c.sql.trim().split(/\s+/)[0])).toEqual(["SELECT", "BEGIN", "DELETE", "COMMIT"]);
+  });
+});
+
+describe("legacy status-deleted leads get deleted_at (audit of 9ed61f4)", () => {
+  const found = [{ id: 11, organization_id: 7, status: "deleted", updated_at: "2026-09-01" }];
+  it("a dry run reads only status-deleted rows without deleted_at and writes nothing", async () => {
+    const r = recorder((sql) => (/SELECT/.test(sql) ? found : []));
+    const out = await stampStatusDeletedLeads(r.client, { apply: false, outDir: mkdtempSync(join(tmpdir(), "sd-")) });
+    expect(out.rows).toHaveLength(1);
+    expect(r.writes()).toEqual([]);
+    expect(r.calls[0].sql).toMatch(/status = 'deleted' AND deleted_at IS NULL/);
+  });
+  it("--apply exports first, then stamps only those ids, in one transaction, changing no status", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sd-"));
+    const r = recorder((sql) => (/SELECT/.test(sql) ? found : []));
+    const out = await stampStatusDeletedLeads(r.client, { apply: true, outDir: dir });
+    expect(existsSync(out.exportPath!)).toBe(true);
+    const w = r.writes();
+    expect(w).toHaveLength(1);
+    expect(w[0].sql).toMatch(/SET deleted_at = coalesce\(updated_at, now\(\)\)/);
+    expect(w[0].sql).not.toMatch(/SET[^W]*status/);
+    expect(w[0].params).toEqual([[11]]);
+    expect(r.calls.map((c) => c.sql.trim().split(/\s+/)[0])).toEqual(["SELECT", "BEGIN", "UPDATE", "COMMIT"]);
   });
 });
 

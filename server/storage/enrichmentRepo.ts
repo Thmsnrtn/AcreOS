@@ -5,6 +5,7 @@
 // `this` refers to the full DatabaseStorage instance.
 
 import { and, desc, eq } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import {
   encryptSkipTracePayload,
   decryptSkipTraceRow,
@@ -112,7 +113,7 @@ export const enrichmentRepo = {
     const conditions = [eq(propertyListings.id, id)];
     if (organizationId) conditions.push(eq(propertyListings.organizationId, organizationId));
     const [updated] = await db.update(propertyListings)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;

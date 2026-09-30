@@ -5,6 +5,7 @@
 // at construction time; `this` refers to the full DatabaseStorage instance.
 
 import { and, desc, eq, sql } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import {
   customFieldDefinitions,
@@ -55,7 +56,7 @@ export const customizationRepo = {
     const conditions = [eq(customFieldDefinitions.id, id)];
     if (organizationId) conditions.push(eq(customFieldDefinitions.organizationId, organizationId));
     const [updated] = await db.update(customFieldDefinitions)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -163,7 +164,7 @@ export const customizationRepo = {
     const conditions = [eq(savedViews.id, id)];
     if (organizationId) conditions.push(eq(savedViews.organizationId, organizationId));
     const [updated] = await db.update(savedViews)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -220,7 +221,7 @@ export const customizationRepo = {
     const conditions = [eq(workspacePresets.id, id)];
     if (organizationId) conditions.push(eq(workspacePresets.organizationId, organizationId));
     const [updated] = await db.update(workspacePresets)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -252,7 +253,7 @@ export const customizationRepo = {
     
     if (existing.length > 0) {
       const [updated] = await db.update(notificationPreferences)
-        .set({ ...pref, updatedAt: new Date() })
+        .set({ ...omitProtectedFields(pref), updatedAt: new Date() })
         .where(eq(notificationPreferences.id, existing[0].id))
         .returning();
       return updated;
@@ -266,7 +267,7 @@ export const customizationRepo = {
     const conditions = [eq(notificationPreferences.id, id)];
     if (organizationId) conditions.push(eq(notificationPreferences.organizationId, organizationId));
     const [updated] = await db.update(notificationPreferences)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;

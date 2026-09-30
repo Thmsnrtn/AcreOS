@@ -642,7 +642,8 @@ export function registerImportExportRoutes(app: Express): void {
     }
   });
 
-  api.patch("/api/compliance/retention-policies", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // Owner/admin only, as the purge it configures (audit of 9ed61f4).
+  api.patch("/api/compliance/retention-policies", isAuthenticated, getOrCreateOrg, requireRole(["owner", "admin"]), async (req, res) => {
     try {
       const orgId = req.organization!.id;
       const userId = req.user.id;

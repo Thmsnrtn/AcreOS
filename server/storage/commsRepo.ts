@@ -5,6 +5,7 @@
 // `this` therefore refers to the full DatabaseStorage instance.
 
 import { and, count, desc, eq, gte, like } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import { forOrg } from "../utils/orgScopedDb";
 import {
@@ -106,7 +107,7 @@ export const commsRepo = {
     const conditions = [eq(campaignResponses.id, id)];
     if (organizationId) conditions.push(eq(campaignResponses.organizationId, organizationId));
     const [response] = await db.update(campaignResponses)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return response;

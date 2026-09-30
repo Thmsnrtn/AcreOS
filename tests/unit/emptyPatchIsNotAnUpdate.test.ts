@@ -195,9 +195,12 @@ describe("the two helpers the guarded writes depend on", () => {
     expect(hasWritableValues({ a: undefined, b: 1 })).toBe(true);
   });
 
-  it("assertWritablePatch returns the patch it was given, unchanged", () => {
+  it("assertWritablePatch returns the patch's writable values, without identity or tenancy columns", () => {
     const patch = { status: "queued" };
-    expect(assertWritablePatch(patch, "t.m")).toBe(patch);
+    expect(assertWritablePatch(patch, "t.m")).toEqual(patch);
+    // It is also the one tenant-key rule at the repository write (audit of
+    // 9ed61f4): a caller's organizationId never reaches the SET.
+    expect(assertWritablePatch({ status: "queued", organizationId: 99, id: 3 }, "t.m")).toEqual({ status: "queued" });
   });
 
   it("assertWritablePatch throws — naming the write — on an empty patch", () => {

@@ -6,6 +6,7 @@
 // full DatabaseStorage instance.
 
 import { and, desc, eq } from "drizzle-orm";
+import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import {
   targetCounties,
@@ -38,7 +39,7 @@ export const acquisitionRepo = {
   async updateTargetCounty(this: DatabaseStorage, id: number, updates: Partial<InsertTargetCounty>, organizationId?: number) {
     const conditions = [eq(targetCounties.id, id)];
     if (organizationId) conditions.push(eq(targetCounties.organizationId, organizationId));
-    const [updated] = await db.update(targetCounties).set({ ...updates, updatedAt: new Date() }).where(and(...conditions)).returning();
+    const [updated] = await db.update(targetCounties).set({ ...omitProtectedFields(updates), updatedAt: new Date() }).where(and(...conditions)).returning();
     return updated;
   },
 
@@ -84,7 +85,7 @@ export const acquisitionRepo = {
     const conditions = [eq(offerLetters.id, id)];
     if (organizationId) conditions.push(eq(offerLetters.organizationId, organizationId));
     const [updated] = await db.update(offerLetters)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -118,7 +119,7 @@ export const acquisitionRepo = {
     const conditions = [eq(offerTemplates.id, id)];
     if (organizationId) conditions.push(eq(offerTemplates.organizationId, organizationId));
     const [updated] = await db.update(offerTemplates)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -184,7 +185,7 @@ export const acquisitionRepo = {
     const conditions = [eq(dueDiligenceChecklists.id, id)];
     if (organizationId) conditions.push(eq(dueDiligenceChecklists.organizationId, organizationId));
     const [updated] = await db.update(dueDiligenceChecklists)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;

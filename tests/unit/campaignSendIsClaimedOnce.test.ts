@@ -29,7 +29,8 @@ vi.mock("../../server/middleware/idempotency", () => ({
 vi.mock("../../server/services/credits", () => ({
   creditService: {
     getBalance: async () => 1_000_000,
-    deductCredits: async (_o: number, cents: number) => (S.deducted.push(cents), S.deductOk),
+    // Mirrors creditService: the debit row on success (negative amount), null when refused.
+    deductCredits: async (_o: number, cents: number) => (S.deducted.push(cents), S.deductOk ? { id: 1, amountCents: -cents } : null),
     addCredits: async (_o: number, cents: number) => (S.refunds.push(cents), true),
   },
   usageMeteringService: {},
@@ -166,6 +167,18 @@ describe("a campaign send is claimed once, before any credit moves", () => {
     await (await handler())(req("send-key-0003"), retry).catch(() => undefined);
     expect(retry.statusCode).not.toBe(409);
     expect(S.orders).toHaveLength(2);
+  });
+
+  it("a founder's zero debit is not refunded (audit of 9ed61f4)", async () => {
+    const { creditService } = (await import("../../server/services/credits")) as unknown as {
+      creditService: { deductCredits: (o: number, c: number) => Promise<unknown> };
+    };
+    const real = creditService.deductCredits;
+    creditService.deductCredits = async (_o: number, cents: number) => (S.deducted.push(cents), { id: 2, amountCents: 0 });
+    S.failSendingUpdate = true;
+    await (await handler())(req("send-key-0005"), res()).catch(() => undefined);
+    creditService.deductCredits = real;
+    expect(S.refunds).toEqual([]);
   });
 
   it("a failure after the debit and before any piece refunds the debit and releases the claim", async () => {

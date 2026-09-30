@@ -311,11 +311,27 @@ export function useBulkStageUndo() {
       }
       return res.json();
     },
-    onSuccess: () => {
+    // Say what was undone — a 207 counts as ok, and "Stage changes have been
+    // undone." showed even when nothing was (a double click, or a deal that
+    // moved again after the bulk move; audit of 9ed61f4).
+    onSuccess: (data: { restoredCount?: number; errors?: Array<{ id: number; error: string }> }) => {
       queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
+      const restored = data?.restoredCount ?? 0;
+      const skipped = data?.errors?.length ?? 0;
+      if (restored === 0) {
+        toast({
+          title: "Nothing was undone",
+          description: skipped > 0 ? data.errors![0].error : "These deals no longer match the move being undone.",
+          variant: "destructive",
+        });
+        return;
+      }
       toast({
-        title: "Success",
-        description: "Stage changes have been undone.",
+        title: "Undone",
+        description:
+          skipped > 0
+            ? `${restored} deal(s) moved back; ${skipped} could not be (they changed since).`
+            : `${restored} deal(s) moved back.`,
       });
     },
     onError: (error) => {

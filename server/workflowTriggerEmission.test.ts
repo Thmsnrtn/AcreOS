@@ -65,6 +65,11 @@ const storageMock = {
     DEALS.set(id, row);
     return { ...row };
   }),
+  // The bulk route validates the state machine against the real pre-images
+  // before it writes (audit of 9ed61f4).
+  getDealsByIds: vi.fn(async (orgId: number, ids: number[]) =>
+    ids.map((id) => DEALS.get(id)).filter((d): d is Row => !!d && d.organizationId === orgId).map((d) => ({ ...d })),
+  ),
   bulkUpdateDeals: vi.fn(async (orgId: number, ids: number[], updates: Row) => {
     for (const id of ids) {
       const row = DEALS.get(id);

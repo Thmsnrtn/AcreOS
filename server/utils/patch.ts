@@ -23,6 +23,7 @@
  *     that names no call site. `assertWritablePatch` fails in the same place
  *     with a message that names the table and the caller.
  */
+import { omitProtectedFields } from "./updatePayload";
 
 /** True iff at least one value survives Drizzle's undefined-dropping. */
 export function hasWritableValues(patch: object | undefined | null): boolean {
@@ -41,7 +42,12 @@ export function hasWritableValues(patch: object | undefined | null): boolean {
  * argument inline.
  */
 export function assertWritablePatch<T extends object>(patch: T, what: string): T {
-  if (hasWritableValues(patch)) return patch;
+  // A patch never carries the row's identity, tenancy or audit columns: a
+  // caller-supplied `organizationId` under a WHERE scoped to the old org
+  // moved the row into another tenant (audits of 7cc7345 and 9ed61f4). One
+  // rule — omitProtectedFields — at every repository write.
+  const cleaned = omitProtectedFields(patch as Record<string, unknown>) as T;
+  if (hasWritableValues(cleaned)) return cleaned;
   throw new Error(
     `Refusing to UPDATE ${what} with an empty patch: every value was undefined, ` +
       `which renders "set  where …" and is rejected by Postgres as a syntax error. ` +
@@ -50,18 +56,3 @@ export function assertWritablePatch<T extends object>(patch: T, what: string): T
   );
 }
 
-/**
- * A patch without the row's identity. The tenant key and the primary key are
- * immutable through an update: a patch carrying `organizationId` was applied
- * under a WHERE scoped to the OLD org, so a workflow `update_record` with
- * `{ organizationId: <another org> }` moved the row into another tenant
- * (audit of 7cc7345). Every deal, lead and property update strips them here,
- * at the write, whatever the caller passed.
- */
-export function withoutIdentityKeys<T extends object>(patch: T): T {
-  const out: Record<string, unknown> = { ...(patch as Record<string, unknown>) };
-  delete out.id;
-  delete out.organizationId;
-  delete out.createdAt;
-  return out as T;
-}
