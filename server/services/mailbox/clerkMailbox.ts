@@ -37,24 +37,38 @@ export function clerkStrategyFor(provider: string): string | null {
   return CLERK_STRATEGY[provider] ?? null;
 }
 
+/** The user's linked Clerk accounts for a mailbox provider (id + address). */
+async function linkedAccounts(userId: string, provider: string): Promise<Array<{ id: string; emailAddress: string }>> {
+  const strat = CLERK_STRATEGY[provider];
+  if (!strat) return [];
+  const user = await clerkClient.users.getUser(userId);
+  return user.externalAccounts
+    .filter((a) => (a.provider === strat || a.provider === `oauth_${strat}`) && Boolean(a.emailAddress))
+    .map((a) => ({ id: a.id, emailAddress: a.emailAddress }));
+}
+
+const sameAddress = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
 /**
- * Find the user's linked Clerk external account for a mailbox provider, or
- * null when they haven't connected that account (the client initiates the
- * link via Clerk's createExternalAccount). Returns the linked email too.
+ * Which linked account to record for a new mailbox connection. With several
+ * accounts of one provider linked, the caller must say which address —
+ * picking "the first" is how a row could name one address and act as another
+ * (quality directive 2026-09-29). Returns null when none matches.
  */
 export async function getLinkedMailAccount(
   userId: string,
   provider: string,
-): Promise<{ emailAddress: string } | null> {
-  const strat = CLERK_STRATEGY[provider];
-  if (!strat) return null;
+  preferredEmail?: string,
+): Promise<{ emailAddress: string } | { ambiguous: string[] } | null> {
   try {
-    const user = await clerkClient.users.getUser(userId);
-    const acct = user.externalAccounts.find(
-      (a) => a.provider === strat || a.provider === `oauth_${strat}`,
-    );
-    if (!acct?.emailAddress) return null;
-    return { emailAddress: acct.emailAddress };
+    const accts = await linkedAccounts(userId, provider);
+    if (preferredEmail) {
+      const hit = accts.find((a) => sameAddress(a.emailAddress, preferredEmail));
+      return hit ? { emailAddress: hit.emailAddress } : null;
+    }
+    if (accts.length === 0) return null;
+    if (accts.length > 1) return { ambiguous: accts.map((a) => a.emailAddress) };
+    return { emailAddress: accts[0].emailAddress };
   } catch (err) {
     logger.warn(`[mailbox] Clerk getUser failed for ${provider}`, err instanceof Error ? err : undefined);
     return null;
@@ -62,18 +76,26 @@ export async function getLinkedMailAccount(
 }
 
 /**
- * A fresh OAuth access token for the user's linked mailbox, or null. Read
- * on-demand at the point of a Gmail/Graph call — never stored. (Used by the
- * on-demand read/send slices.)
+ * A fresh OAuth access token for EXACTLY this linked address, or null. The
+ * token is matched to the Clerk external account whose address is the
+ * mailbox row's — it used to be `list[0]`, the first token of any linked
+ * account of that provider, so a row naming one address could read and send
+ * as another. Read on-demand, never stored.
  */
-export async function getMailboxAccessToken(userId: string, provider: string): Promise<string | null> {
+export async function getMailboxAccessToken(
+  userId: string,
+  provider: string,
+  emailAddress: string,
+): Promise<string | null> {
   const tokenProvider = CLERK_TOKEN_PROVIDER[provider];
   if (!tokenProvider) return null;
   try {
+    const acct = (await linkedAccounts(userId, provider)).find((a) => sameAddress(a.emailAddress, emailAddress));
+    if (!acct) return null;
     const res = await clerkClient.users.getUserOauthAccessToken(userId, tokenProvider);
     // Clerk backend v2 returns a paginated { data: [...] } shape.
     const list = Array.isArray(res) ? res : (res?.data ?? []);
-    return list[0]?.token ?? null;
+    return list.find((t) => t.externalAccountId === acct.id)?.token ?? null;
   } catch (err) {
     logger.warn(`[mailbox] Clerk token vend failed for ${provider}`, err instanceof Error ? err : undefined);
     return null;

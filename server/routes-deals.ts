@@ -1731,7 +1731,6 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         res.json({
           zone: "Unknown (No coordinates)",
           riskLevel: "unknown",
-          lastUpdated: new Date().toISOString(),
           source: "N/A",
           details: { message: "Property has no coordinates for flood zone lookup" },
         });

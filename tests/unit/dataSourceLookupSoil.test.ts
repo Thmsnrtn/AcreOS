@@ -44,7 +44,7 @@ describe("data-source-lookup SDA source shape", () => {
 
   it("sanitises coordinates through the broker's safeWgs84 before interpolation", () => {
     expect(LOOKUP_SOURCE).toMatch(
-      /import \{ safeWgs84, parseSdaColumnRows \} from "\.\/data-source-broker"/,
+      /import \{ safeWgs84, parseSdaColumnRows[^}]*\} from "\.\/data-source-broker"/,
     );
     expect(LOOKUP_SOURCE).toContain("safeWgs84(lat, lng)");
   });

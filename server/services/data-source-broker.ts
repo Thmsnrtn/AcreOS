@@ -1,7 +1,7 @@
 import { storage } from "../storage";
 import { db } from "../db";
 import { dataSources, dataSourceCache } from "@shared/schema";
-import { eq, and, gte, desc, sql, or, ilike } from "drizzle-orm";
+import { eq, and, gte, desc, sql, or, ilike, inArray } from "drizzle-orm";
 import type { DataSource } from "@shared/schema";
 import { orderSourcesForLookup, TIER_PRIORITY } from "./dataSourceOrdering";
 import { enrichmentCircuitBreaker, countyApiCircuitBreaker, CircuitOpenError } from "../utils/circuitBreaker";
@@ -376,6 +376,67 @@ export function parseSdaColumnRows(payload: unknown): Array<Record<string, strin
  * before a free one. Verified-first always applies — that axis is data
  * quality, not cost.
  */
+/**
+ * The one reading of an NFHL flood-hazard-zone query (quality directive
+ * 2026-09-29). Both FEMA callers — this broker and `data-source-lookup.ts` —
+ * interpret the response here, so the rule cannot drift between them.
+ *
+ *  - NO FEATURE is not Zone X. It means FEMA has no digital zone at the point
+ *    (unmapped, a paper-only FIRM, or outside the NFHL). It was reported as
+ *    "Zone X (Minimal Flood Hazard)", risk low, which scored the parcel as
+ *    minimal-risk and cleared the diligence checklist item. It is now
+ *    `status: "unmapped"`, zone null, risk unknown.
+ *  - Zone D is "undetermined" by definition; its risk is unknown, not low.
+ *  - `lastUpdated` was the lookup instant and read downstream as the map's
+ *    vintage. The response carries no effective date, so there is no
+ *    `lastUpdated` — only `retrievedAt`, named for what it is.
+ */
+export function floodZoneFromNfhl(
+  features: unknown,
+  retrievedAt: Date,
+): {
+  status: "mapped" | "unmapped";
+  zone: string | null;
+  riskLevel: "low" | "medium" | "high" | "unknown";
+  source: string;
+  retrievedAt: string;
+  details: Record<string, unknown>;
+} {
+  const feature = Array.isArray(features)
+    ? (features[0] as { attributes?: Record<string, unknown> } | undefined)?.attributes
+    : undefined;
+  const rawZone = typeof feature?.FLD_ZONE === "string" ? feature.FLD_ZONE.trim().toUpperCase() : "";
+  if (!feature || !rawZone) {
+    return {
+      status: "unmapped",
+      zone: null,
+      riskLevel: "unknown",
+      source: "FEMA NFHL",
+      retrievedAt: retrievedAt.toISOString(),
+      details: {
+        message:
+          "FEMA's flood map has no zone at this point (not digitally mapped, or outside the NFHL). This is not the same as minimal risk — check the county's FIRM.",
+      },
+    };
+  }
+  const highRiskZones = ["A", "AE", "AH", "AO", "AR", "A99", "V", "VE"];
+  const mediumRiskZones = ["B", "X500"];
+  let riskLevel: "low" | "medium" | "high" | "unknown" = "low";
+  if (rawZone === "D") riskLevel = "unknown";
+  else if (highRiskZones.some((z) => rawZone.startsWith(z))) riskLevel = "high";
+  else if (mediumRiskZones.some((z) => rawZone.startsWith(z))) riskLevel = "medium";
+  const subtype = typeof feature.ZONE_SUBTY === "string" ? feature.ZONE_SUBTY : null;
+  if (riskLevel === "low" && subtype && /0\.2 PCT/i.test(subtype)) riskLevel = "medium";
+  return {
+    status: "mapped",
+    zone: `Zone ${rawZone}`,
+    riskLevel,
+    source: "FEMA NFHL",
+    retrievedAt: retrievedAt.toISOString(),
+    details: feature,
+  };
+}
+
 export class DataSourceBroker {
   private healthCache: Map<number, SourceHealth> = new Map();
   private usageMetrics: Map<number, UsageMetrics> = new Map();
@@ -483,30 +544,64 @@ export class DataSourceBroker {
     });
   }
 
-  private async getCachedResult(lookupKey: string, sourceId?: number): Promise<{ data: any; cachedAt: Date } | null> {
+  /**
+   * A cache hit answers with the same rights as a live fetch (quality directive
+   * 2026-09-29). The cache was read BEFORE the tier check and returned the
+   * newest row whatever source wrote it, labelled "Cache" — so a caller capped
+   * at `maxTier: "free"` could be handed a paid source's row, and nobody could
+   * tell which source it was. Each candidate row is now resolved to the source
+   * that wrote it: a row whose source is above the caller's tier, a BYOK row
+   * without the caller's key, or a row whose source no longer exists is skipped.
+   */
+  private async getCachedResult(
+    category: LookupCategory,
+    lookupKey: string,
+    maxTierIndex: number,
+    byokKeys: Record<string, string> | undefined,
+  ): Promise<{ data: any; cachedAt: Date; source: { id: number; title: string; tier: AccessTier } } | null> {
     const expirationDate = new Date();
     expirationDate.setDate(expirationDate.getDate() - CACHE_DURATION_DAYS);
 
-    let query = db.select().from(dataSourceCache)
+    const rows = await db.select().from(dataSourceCache)
       .where(and(
         eq(dataSourceCache.lookupKey, lookupKey),
         gte(dataSourceCache.fetchedAt, expirationDate),
         eq(dataSourceCache.successfulFetch, true)
       ))
       .orderBy(desc(dataSourceCache.fetchedAt))
-      .limit(1);
+      .limit(5);
+    const candidates = rows.filter((r) => r.data);
+    if (candidates.length === 0) return null;
 
-    const results = await query;
-    if (results.length > 0 && results[0].data) {
-      return {
-        data: results[0].data,
-        cachedAt: results[0].fetchedAt || new Date(),
-      };
+    const ids = Array.from(
+      new Set(candidates.map((r) => r.dataSourceId).filter((id): id is number => typeof id === "number" && id > 0)),
+    );
+    const sourceRows = ids.length > 0
+      ? await db.select().from(dataSources).where(inArray(dataSources.id, ids))
+      : [];
+    const byId = new Map(sourceRows.map((row) => [row.id, row]));
+
+    for (const row of candidates) {
+      let source: { id: number; title: string; tier: AccessTier };
+      if (row.dataSourceId === BUILTIN_FEDERAL_SOURCE_ID) {
+        source = { id: BUILTIN_FEDERAL_SOURCE_ID, title: this.buildVirtualFederalSource(category).title, tier: "free" };
+      } else {
+        const known = row.dataSourceId == null ? undefined : byId.get(row.dataSourceId);
+        if (!known) continue;
+        const tier = this.determineTier(known);
+        if (tier === "byok" && !byokKeys?.[known.key]) continue;
+        source = { id: known.id, title: known.title, tier };
+      }
+      if (TIER_PRIORITY.indexOf(source.tier) > maxTierIndex) continue;
+      return { data: row.data, cachedAt: row.fetchedAt || new Date(), source };
     }
     return null;
   }
 
   private async cacheResult(sourceId: number, lookupKey: string, data: any, state?: string, county?: string): Promise<void> {
+    // An unmapped FEMA point is a statement about today's map; holding it for
+    // CACHE_DURATION_DAYS would hide a panel FEMA digitises next week.
+    if (data && typeof data === "object" && (data as { status?: unknown }).status === "unmapped") return;
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + CACHE_DURATION_DAYS);
 
@@ -633,17 +728,14 @@ export class DataSourceBroker {
     }
 
     if (!options.forceRefresh) {
-      const cached = await this.getCachedResult(lookupKey);
+      const cached = await this.getCachedResult(category, lookupKey, maxTierIndex, options.byokKeys);
       if (cached) {
         return {
           success: true,
           data: cached.data,
-          source: {
-            id: 0,
-            title: "Cache",
-            tier: "cached",
-            costCents: 0,
-          },
+          // The source that wrote the row — not "Cache". `fromCache` says how
+          // it was served; a cache hit is never charged.
+          source: { ...cached.source, costCents: 0 },
           fromCache: true,
           cachedAt: cached.cachedAt,
           lookupTimeMs: Date.now() - startTime,
@@ -1019,22 +1111,7 @@ export class DataSourceBroker {
       const data = await response.json();
       if (data.error) throw new Error(data.error.message);
 
-      const feature = data.features?.[0]?.attributes;
-      const zone = feature?.FLD_ZONE || "X";
-      const highRiskZones = ["A", "AE", "AH", "AO", "AR", "A99", "V", "VE"];
-      const mediumRiskZones = ["B", "X500"];
-
-      let riskLevel: "low" | "medium" | "high" = "low";
-      if (highRiskZones.some(z => zone.startsWith(z))) riskLevel = "high";
-      else if (mediumRiskZones.some(z => zone.startsWith(z))) riskLevel = "medium";
-
-      return {
-        zone: feature ? `Zone ${zone}` : "Zone X (Minimal Flood Hazard)",
-        riskLevel,
-        source: "FEMA NFHL",
-        lastUpdated: new Date().toISOString(),
-        details: feature || {},
-      };
+      return floodZoneFromNfhl(data.features, new Date());
     });
   }
 

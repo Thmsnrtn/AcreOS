@@ -12,12 +12,9 @@
  * registry — we never hand-maintain a second list.
  *
  * Safety gate (an intent is external-callable iff ALL hold):
- *   1. approvalRequired === false   — no human-approval-gated actions.
- *   2. requiredScope is null OR a read-only scope (ends in "_read").
- *      → every "_write" intent (create/update/send/generate/trigger) is
- *        excluded automatically. This is the core "read-mostly" guarantee.
- *   3. The intent name is not on the explicit external deny-list (defence in
- *      depth against a future read-scoped-but-sensitive intent).
+ *   1. The intent is on EXTERNAL_ALLOW, the reviewed list of bounded reads.
+ *   2. approvalRequired === false   — no human-approval-gated actions.
+ *   3. requiredScope is null OR a read-only scope (ends in "_read").
  *
  * Founder-only intents never reach here: this registry is the CUSTOMER
  * registry (persona separation, project_persona_architecture.md) — founder
@@ -36,15 +33,37 @@ import type { Scope } from "../middleware/roleScope";
 import type { ApiScope } from "../services/apiKeys";
 
 /**
- * Explicit deny-list: intents that would pass the structural filter but must
- * never be exposed to external agents regardless. The structural filter
- * already excludes every write/approval intent; this is a hard stop so a
- * future read-only-but-sensitive intent can be blocked by name without
- * weakening the general rule.
+ * The POSITIVE allowlist: the only intents an external agent may see or call,
+ * each reviewed as a bounded read of the org's own records — no row written,
+ * no agent run, no provider spend, no outbound call.
+ *
+ * It replaced a deny-list over a structural rule ("scope is null or ends in
+ * _read"), which exposed `remember_fact` (writes a Pax memory row) and
+ * `spawn_subagent` (runs a billed LLM loop) to a key holding NO scopes — both
+ * had `scope: null`, which the rule read as "read-only" — along with reads
+ * that spend (`run_comps*`, `propstream_*`, `get_property_enrichment`,
+ * `research_property`) or reach third-party accounts (`search_gmail`,
+ * `get_drive_file`, Stripe). A new intent is external only when it is added
+ * here, on purpose (quality directive 2026-09-29).
  */
-const EXTERNAL_DENY = new Set<string>([
-  // Arbitrary outbound web fetch — not appropriate to hand to external agents.
-  "browse_web",
+const EXTERNAL_ALLOW = new Set<string>([
+  "get_system_context",
+  "get_dashboard_stats",
+  "get_tasks",
+  "recall_facts",
+  "get_properties",
+  "get_property_details",
+  "get_leads",
+  "get_lead_details",
+  "get_pipeline_summary",
+  "get_deals",
+  "get_stale_leads",
+  "get_notes",
+  "get_cashflow_summary",
+  "calculate_amortization",
+  "calculate_roi",
+  "calculate_payment_schedule",
+  "retrieve_land_knowledge",
 ]);
 
 /** A role-Scope is read-only if it is null or ends in "_read". */
@@ -57,9 +76,11 @@ function isReadOnlyScope(scope: Scope | null): boolean {
  * Exported so the unit test can assert the rule directly.
  */
 export function isExternalSafeIntent(intent: AppIntent): boolean {
+  if (!EXTERNAL_ALLOW.has(intent.name)) return false;
+  // Defence in depth: an allowlisted name that becomes approval-gated or
+  // write-scoped drops out rather than being exposed.
   if (intent.approvalRequired) return false;
   if (!isReadOnlyScope(intent.requiredScope)) return false;
-  if (EXTERNAL_DENY.has(intent.name)) return false;
   return true;
 }
 
@@ -77,12 +98,12 @@ export function listExternalSafeIntents(): AppIntent[] {
  *   deals      → leads + deals read
  *   finance    → notes read
  *
- * Returns an empty array for intents whose role-Scope is null — those are
- * ungated reads (e.g. get_system_context, calculators) and need no API scope.
+ * A null role-Scope is NOT ungated here: org data read by an external agent
+ * needs a read scope on the key. A key with no scopes calls nothing.
  */
 export function requiredApiScopesFor(intent: AppIntent): ApiScope[] {
   const scope = intent.requiredScope;
-  if (scope === null) return [];
+  if (scope === null) return ["properties:read", "deals:read", "leads:read", "notes:read"];
 
   switch (scope) {
     case "deal_read":
@@ -111,15 +132,11 @@ export function requiredApiScopesFor(intent: AppIntent): ApiScope[] {
   }
 }
 
-/**
- * Does a key holding `grantedScopes` satisfy the authorization for `intent`?
- * Null-scope intents (ungated reads) are always satisfied.
- */
+/** Does a key holding `grantedScopes` satisfy the authorization for `intent`? */
 export function keyMaySatisfyIntent(
   intent: AppIntent,
   grantedScopes: readonly string[],
 ): boolean {
   const required = requiredApiScopesFor(intent);
-  if (required.length === 0) return true; // ungated read
   return required.some((s) => grantedScopes.includes(s));
 }

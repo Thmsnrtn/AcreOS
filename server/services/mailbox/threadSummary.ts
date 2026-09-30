@@ -94,16 +94,19 @@ export function _clearSummaryCache(): void {
 /**
  * Produce a one-line summary of a fetched message. Returns "" when there is
  * nothing meaningful to summarize (empty body) — the caller renders nothing in
- * that case rather than a hollow line. The summary is cached by message id for
- * the life of the process only.
+ * that case rather than a hollow line. The summary is cached for the life of
+ * the process only, under the mailbox it was read from: `scope` names the org
+ * and the mailbox address, because a provider message id is only unique
+ * within its own mailbox (it was keyed by message id alone).
  */
-export async function summarizeThread(msg: FullMessage): Promise<string> {
-  const cached = cacheGet(msg.id);
+export async function summarizeThread(msg: FullMessage, scope: string): Promise<string> {
+  const key = `${scope}:${msg.id}`;
+  const cached = cacheGet(key);
   if (cached !== undefined) return cached;
 
   const input = buildSummaryInput(msg);
   if (!input) {
-    cacheSet(msg.id, "");
+    cacheSet(key, "");
     return "";
   }
 
@@ -123,6 +126,6 @@ export async function summarizeThread(msg: FullMessage): Promise<string> {
   });
 
   const summary = response.content.replace(/^["']|["']$/g, "").trim();
-  cacheSet(msg.id, summary);
+  cacheSet(key, summary);
   return summary;
 }

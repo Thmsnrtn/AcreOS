@@ -1,7 +1,7 @@
 import { storage } from "../storage";
 import type { DataSource, DataSourceCache } from "@shared/schema";
 import { logger } from "../utils/logger";
-import { safeWgs84, parseSdaColumnRows } from "./data-source-broker";
+import { safeWgs84, parseSdaColumnRows, floodZoneFromNfhl } from "./data-source-broker";
 
 interface LookupResult {
   success: boolean;
@@ -74,8 +74,10 @@ export class DataSourceLookupService {
 
     try {
       const floodData = await this.queryFemaFloodService(options.latitude, options.longitude);
-      
-      if (femaSource) {
+
+      // An unmapped point is an answer about today's map, not a reading worth
+      // holding for 30 days — a panel FEMA digitises next week should show.
+      if (femaSource && floodData.status === "mapped") {
         await this.cacheData(femaSource.id, lookupKey, floodData, options.state, options.county);
       }
       
@@ -90,14 +92,17 @@ export class DataSourceLookupService {
       return {
         success: false,
         source: "FEMA National Flood Hazard Layer",
-        data: this.getDefaultFloodData(),
+        data: this.unavailableFloodData(),
         fromCache: false,
       };
     }
   }
 
-  private async queryFemaFloodService(lat: number, lng: number): Promise<any> {
-    const baseUrl = "https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer";
+  private async queryFemaFloodService(lat: number, lng: number) {
+    // `/gis/nfhl/` is a WebSEAL gateway that answers with an HTML error page;
+    // the public NFHL service lives under `/arcgis/` (the broker moved on
+    // 2026-06-09; this path never did, so every lookup here failed).
+    const baseUrl = "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer";
     const geometryParam = encodeURIComponent(JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }));
     
     const url = `${baseUrl}/28/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=DFIRM_ID,FLD_ZONE,ZONE_SUBTY,STATIC_BFE,SOURCE_CIT&returnGeometry=false&f=json`;
@@ -117,68 +122,20 @@ export class DataSourceLookupService {
       throw new Error(data.error.message || "FEMA API returned an error");
     }
     
-    const feature = data.features?.[0]?.attributes;
-    
-    if (!feature) {
-      return {
-        zone: "Zone X (Area of Minimal Flood Hazard)",
-        riskLevel: "low",
-        lastUpdated: new Date().toISOString(),
-        source: "FEMA NFHL",
-        details: { message: "No flood zone data found for this location" },
-      };
-    }
-    
-    const zone = feature.FLD_ZONE || "Unknown";
-    const riskLevel = this.determineFloodRisk(zone);
-    
+    return floodZoneFromNfhl(data.features, new Date());
+  }
+
+  /**
+   * FEMA could not be reached. This was "Zone X (Minimal Flood Hazard)", risk
+   * low — a flood verdict invented from an outage. It is now no reading.
+   */
+  private unavailableFloodData() {
     return {
-      zone: this.formatFloodZone(zone, feature.ZONE_SUBTY),
-      riskLevel,
-      lastUpdated: new Date().toISOString(),
-      source: "FEMA NFHL",
-      details: {
-        dfirmId: feature.DFIRM_ID,
-        zoneSubtype: feature.ZONE_SUBTY,
-        staticBfe: feature.STATIC_BFE,
-        sourceCitation: feature.SOURCE_CIT,
-      },
-    };
-  }
-
-  private determineFloodRisk(zone: string): "low" | "medium" | "high" {
-    const highRiskZones = ["A", "AE", "AH", "AO", "AR", "A99", "V", "VE"];
-    const mediumRiskZones = ["B", "X500"];
-    
-    if (highRiskZones.some(z => zone.startsWith(z))) return "high";
-    if (mediumRiskZones.some(z => zone.startsWith(z))) return "medium";
-    return "low";
-  }
-
-  private formatFloodZone(zone: string, subtype?: string): string {
-    const zoneDescriptions: Record<string, string> = {
-      "A": "Zone A (High Risk - 1% Annual Flood Chance)",
-      "AE": "Zone AE (High Risk with Base Flood Elevations)",
-      "AH": "Zone AH (Shallow Flooding - Ponding)",
-      "AO": "Zone AO (Shallow Flooding - Sheet Flow)",
-      "V": "Zone V (Coastal High Hazard)",
-      "VE": "Zone VE (Coastal High Hazard with BFE)",
-      "X": "Zone X (Minimal Flood Hazard)",
-      "B": "Zone B (Moderate Flood Hazard)",
-      "C": "Zone C (Minimal Flood Hazard)",
-      "D": "Zone D (Undetermined Flood Hazard)",
-    };
-    
-    return zoneDescriptions[zone] || `Zone ${zone}${subtype ? ` (${subtype})` : ""}`;
-  }
-
-  private getDefaultFloodData(): any {
-    return {
-      zone: "Zone X (Minimal Flood Hazard)",
-      riskLevel: "low",
-      lastUpdated: new Date().toISOString(),
-      source: "Default (API Unavailable)",
-      details: { message: "Could not reach FEMA flood service" },
+      status: "unavailable" as const,
+      zone: null,
+      riskLevel: "unknown" as const,
+      source: "FEMA NFHL (unavailable)",
+      details: { message: "Could not reach FEMA's flood service — no flood reading." },
     };
   }
 

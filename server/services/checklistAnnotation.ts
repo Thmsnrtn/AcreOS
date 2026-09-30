@@ -150,6 +150,18 @@ export function annotateFlood(data: any): ChecklistAnnotation {
   const source: string = data.source;
   const asOf = extractAsOf(data);
 
+  // No mapped zone at the point is not Zone X — it is an open question.
+  if (data.status === "unmapped") {
+    return knownAnnotation({
+      itemId: id,
+      lead: `${source} has no mapped flood zone here — check the county's flood map`,
+      verdict: "needs_attention",
+      confidence: "low",
+      source,
+      asOf,
+    });
+  }
+
   if (risk === "low") {
     return knownAnnotation({
       itemId: id,

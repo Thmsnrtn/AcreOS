@@ -20,10 +20,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ── Controlled intent registry ───────────────────────────────────────────────
 // Three intents exercise the full safety matrix.
 const readAllowed = {
-  name: "get_portfolio_summary",
+  name: "get_dashboard_stats",
   description: "Read-only portfolio summary.",
   door: "today" as const,
-  requiredScope: null, // ungated read → always callable
+  requiredScope: null, // org-wide read → needs any read scope on the key
   approvalRequired: false,
   inputSchema: { type: "object", properties: {} },
   handler: vi.fn(async (_args: any, org: any) => ({
@@ -53,7 +53,7 @@ const writeUnsafe = {
 };
 
 const FAKE_INTENTS: Record<string, any> = {
-  get_portfolio_summary: readAllowed,
+  get_dashboard_stats: readAllowed,
   get_leads: readScoped,
   create_lead: writeUnsafe,
 };
@@ -85,7 +85,7 @@ const ORG = { id: 42, name: "Acme Land Co" } as any;
 
 // A key that can read leads/deals but holds no write scope.
 const readKey = { organization: ORG, scopes: ["leads:read", "deals:read"] };
-// A key with NO scopes — only ungated reads should be callable.
+// A key with NO scopes — calls nothing (quality directive 2026-09-29).
 const noScopeKey = { organization: ORG, scopes: [] as string[] };
 
 beforeEach(() => {
@@ -95,7 +95,7 @@ beforeEach(() => {
 describe("MCP safe-intent subset", () => {
   it("excludes write/approval intents from the external surface", () => {
     const safe = listExternalSafeIntents().map((i) => i.name);
-    expect(safe).toContain("get_portfolio_summary");
+    expect(safe).toContain("get_dashboard_stats");
     expect(safe).toContain("get_leads");
     // The write intent must NEVER appear.
     expect(safe).not.toContain("create_lead");
@@ -103,8 +103,9 @@ describe("MCP safe-intent subset", () => {
   });
 
   it("maps role-scope to API scope for authorization", () => {
-    // Ungated read is always satisfiable.
-    expect(keyMaySatisfyIntent(readAllowed, [])).toBe(true);
+    // A null role-scope is not "ungated": a key with no scopes reads nothing.
+    expect(keyMaySatisfyIntent(readAllowed, [])).toBe(false);
+    expect(keyMaySatisfyIntent(readAllowed, ["notes:read"])).toBe(true);
     // deal_read on the deals door needs deals:read OR leads:read.
     expect(keyMaySatisfyIntent(readScoped, ["leads:read"])).toBe(true);
     expect(keyMaySatisfyIntent(readScoped, ["notes:read"])).toBe(false);
@@ -131,7 +132,7 @@ describe("MCP dispatch — tools/list", () => {
     )) as any;
     const names = res.result.tools.map((t: any) => t.name).sort();
     // Both safe reads are callable with leads:read+deals:read; write excluded.
-    expect(names).toEqual(["get_leads", "get_portfolio_summary"]);
+    expect(names).toEqual(["get_dashboard_stats", "get_leads"]);
     // Each tool carries the MCP { name, description, inputSchema } shape.
     for (const t of res.result.tools) {
       expect(t).toHaveProperty("name");
@@ -146,8 +147,8 @@ describe("MCP dispatch — tools/list", () => {
       noScopeKey,
     )) as any;
     const names = res.result.tools.map((t: any) => t.name);
-    // No scopes → only the ungated read is visible.
-    expect(names).toEqual(["get_portfolio_summary"]);
+    // No scopes → nothing is visible.
+    expect(names).toEqual([]);
   });
 });
 
@@ -158,7 +159,7 @@ describe("MCP dispatch — tools/call", () => {
         jsonrpc: "2.0",
         id: 4,
         method: "tools/call",
-        params: { name: "get_portfolio_summary", arguments: {} },
+        params: { name: "get_dashboard_stats", arguments: {} },
       },
       readKey,
     )) as any;

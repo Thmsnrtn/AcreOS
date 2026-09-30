@@ -19,7 +19,7 @@ import {
   MAILBOX_OAUTH_PROVIDERS,
   type MailboxOAuthProvider,
 } from "@shared/schema";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { getLinkedMailAccount } from "./services/mailbox/clerkMailbox";
 import {
@@ -43,7 +43,7 @@ function isKnownProvider(p: string): p is (typeof MAILBOX_OAUTH_PROVIDERS)[numbe
  * by the read/send/settings routes so ownership + revocation are enforced in
  * exactly one place.
  */
-async function loadOwnedMailbox(organizationId: number, id: number) {
+async function loadOrgMailbox(organizationId: number, id: number) {
   const [row] = await db
     .select()
     .from(connectedMailboxes)
@@ -58,10 +58,50 @@ async function loadOwnedMailbox(organizationId: number, id: number) {
   return row ?? null;
 }
 
+/**
+ * The mailbox a request may READ or SEND through: this org's row, linked by
+ * THIS user. Reading and sending act as a person's own mailbox; a teammate's
+ * row being in the same org does not make it theirs (quality directive
+ * 2026-09-29: the row was resolved by org alone and the REQUESTER's token
+ * used, so a teammate opening another member's mailbox read and sent from
+ * their own account under the other member's address). Delegation is not
+ * built; until it is, only the linking user may use a mailbox. Responds and
+ * returns null when the request may not.
+ */
+async function loadUsableMailbox(req: AuthenticatedRequest, res: Response, id: number) {
+  const mailbox = await loadOrgMailbox(getOrganizationId(req), id);
+  if (!mailbox) {
+    Errors.notFound(res, "Mailbox");
+    return null;
+  }
+  if (mailbox.userId !== getUserId(req)) {
+    Errors.forbidden(res, "This mailbox was connected by another team member — only they can read or send from it.");
+    return null;
+  }
+  if (!isKnownProvider(mailbox.provider)) {
+    Errors.badRequest(res, "Unsupported mailbox provider");
+    return null;
+  }
+  return {
+    row: mailbox,
+    account: { userId: mailbox.userId, provider: mailbox.provider as MailboxOAuthProvider, emailAddress: mailbox.emailAddress },
+  };
+}
+
+function escapeHtml(t: string): string {
+  return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 /** Map a mailboxClient throw onto the right Errors.* response. Returns true if handled. */
 function handleMailboxError(res: Response, err: unknown): boolean {
   if (err instanceof MailboxNotConnectedError) {
     Errors.badRequest(res, err.message);
+    return true;
+  }
+  if (err instanceof MailboxApiError && err.outcome === "unknown") {
+    // The provider may have received it. Never presented as a plain failure
+    // (which invites a second send).
+    sendError(res, 502, "send_outcome_unknown", err.message, { outcome: "unknown" });
     return true;
   }
   if (err instanceof MailboxApiError) {
@@ -84,12 +124,19 @@ router.post("/", async (req: AuthenticatedRequest, res: Response) => {
     const organizationId = getOrganizationId(req);
     const userId = getUserId(req);
 
-    const linked = await getLinkedMailAccount(userId, provider);
+    const preferred = (req.body as { emailAddress?: unknown }).emailAddress;
+    const linked = await getLinkedMailAccount(userId, provider, typeof preferred === "string" ? preferred : undefined);
     if (!linked) {
       return Errors.badRequest(
         res,
-        `No linked ${provider} account found. Connect it first, then try again.`,
+        `No linked ${provider} account found${typeof preferred === "string" ? ` for ${preferred}` : ""}. Connect it first, then try again.`,
       );
+    }
+    if ("ambiguous" in linked) {
+      return Errors.badRequest(res, `Several ${provider} accounts are linked — choose which address to connect.`, {
+        reason: "choose_account",
+        addresses: linked.ambiguous,
+      });
     }
 
     const [row] = await db.transaction(async (tx) => {
@@ -140,11 +187,20 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
         lastError: connectedMailboxes.lastError,
         lastSyncedAt: connectedMailboxes.lastSyncedAt,
         createdAt: connectedMailboxes.createdAt,
+        // The settings the dialog edits — GET omitted them, so the dialog
+        // showed defaults over what was saved.
+        settings: connectedMailboxes.settings,
+        userId: connectedMailboxes.userId,
       })
       .from(connectedMailboxes)
       .where(and(eq(connectedMailboxes.organizationId, organizationId), isNull(connectedMailboxes.revokedAt)))
       .orderBy(desc(connectedMailboxes.createdAt));
-    res.json({ mailboxes: rows, providers: [...MAILBOX_OAUTH_PROVIDERS] });
+    const me = getUserId(req);
+    res.json({
+      // `mine`: only the linking user may read or send through a mailbox.
+      mailboxes: rows.map(({ userId: owner, ...r }) => ({ ...r, mine: owner === me })),
+      providers: [...MAILBOX_OAUTH_PROVIDERS],
+    });
   } catch (err) {
     Errors.internal(res, err);
   }
@@ -179,19 +235,16 @@ router.delete("/:id", async (req: AuthenticatedRequest, res: Response) => {
 // ── Read: list messages on-demand (nothing persisted) ───────────────────────
 router.get("/:id/messages", async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const organizationId = getOrganizationId(req);
-    const userId = getUserId(req);
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid mailbox id");
 
-    const mailbox = await loadOwnedMailbox(organizationId, id);
-    if (!mailbox) return Errors.notFound(res, "Mailbox");
-    if (!isKnownProvider(mailbox.provider)) return Errors.badRequest(res, "Unsupported mailbox provider");
+    const usable = await loadUsableMailbox(req, res, id);
+    if (!usable) return;
 
     const q = typeof req.query.q === "string" ? req.query.q : undefined;
     const pageToken = typeof req.query.pageToken === "string" ? req.query.pageToken : undefined;
 
-    const result = await listMessages(userId, mailbox.provider as MailboxOAuthProvider, { query: q, pageToken });
+    const result = await listMessages(usable.account, { query: q, pageToken });
     res.json(result);
   } catch (err) {
     if (handleMailboxError(res, err)) return;
@@ -202,16 +255,13 @@ router.get("/:id/messages", async (req: AuthenticatedRequest, res: Response) => 
 // ── Read: full single message on-demand ─────────────────────────────────────
 router.get("/:id/messages/:messageId", async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const organizationId = getOrganizationId(req);
-    const userId = getUserId(req);
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid mailbox id");
 
-    const mailbox = await loadOwnedMailbox(organizationId, id);
-    if (!mailbox) return Errors.notFound(res, "Mailbox");
-    if (!isKnownProvider(mailbox.provider)) return Errors.badRequest(res, "Unsupported mailbox provider");
+    const usable = await loadUsableMailbox(req, res, id);
+    if (!usable) return;
 
-    const message = await getMessage(userId, mailbox.provider as MailboxOAuthProvider, req.params.messageId);
+    const message = await getMessage(usable.account, req.params.messageId);
     res.json({ message });
   } catch (err) {
     if (handleMailboxError(res, err)) return;
@@ -222,17 +272,14 @@ router.get("/:id/messages/:messageId", async (req: AuthenticatedRequest, res: Re
 // ── Read: one-line Pax summary of a thread (on-demand, never persisted) ──────
 router.get("/:id/messages/:messageId/summary", async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const organizationId = getOrganizationId(req);
-    const userId = getUserId(req);
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid mailbox id");
 
-    const mailbox = await loadOwnedMailbox(organizationId, id);
-    if (!mailbox) return Errors.notFound(res, "Mailbox");
-    if (!isKnownProvider(mailbox.provider)) return Errors.badRequest(res, "Unsupported mailbox provider");
+    const usable = await loadUsableMailbox(req, res, id);
+    if (!usable) return;
 
-    const message = await getMessage(userId, mailbox.provider as MailboxOAuthProvider, req.params.messageId);
-    const summary = await summarizeThread(message);
+    const message = await getMessage(usable.account, req.params.messageId);
+    const summary = await summarizeThread(message, `${getOrganizationId(req)}:${usable.account.emailAddress}`);
     res.json({ summary });
   } catch (err) {
     if (handleMailboxError(res, err)) return;
@@ -252,20 +299,26 @@ const sendSchema = z.object({
 router.post("/:id/send", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const organizationId = getOrganizationId(req);
-    const userId = getUserId(req);
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid mailbox id");
 
     const parsed = sendSchema.safeParse(req.body);
     if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-    const mailbox = await loadOwnedMailbox(organizationId, id);
-    if (!mailbox) return Errors.notFound(res, "Mailbox");
-    if (!isKnownProvider(mailbox.provider)) return Errors.badRequest(res, "Unsupported mailbox provider");
+    const usable = await loadUsableMailbox(req, res, id);
+    if (!usable) return;
 
-    const sent = await sendMessage(userId, mailbox.provider as MailboxOAuthProvider, parsed.data);
-    logger.info(`[mailbox] sent via ${mailbox.provider} for org=${organizationId}`);
-    res.json({ ok: true, id: sent.id });
+    // The saved signature is applied — it was stored and shown in the
+    // settings dialog but never reached a sent message.
+    const signature = typeof usable.row.settings?.signature === "string" ? usable.row.settings.signature.trim() : "";
+    const body = signature
+      ? `${parsed.data.body}<br><br>${escapeHtml(signature).replace(/\n/g, "<br>")}`
+      : parsed.data.body;
+    const sent = await sendMessage(usable.account, { ...parsed.data, body });
+    logger.info(`[mailbox] send accepted by ${usable.account.provider} for org=${organizationId}`);
+    // Accepted by the provider — not "delivered". Microsoft's 202 means
+    // accepted for processing; Gmail's id means Gmail took it.
+    res.json({ ok: true, id: sent.id, outcome: sent.outcome, provider: usable.account.provider, from: usable.account.emailAddress });
   } catch (err) {
     if (handleMailboxError(res, err)) return;
     Errors.internal(res, err);
@@ -290,8 +343,12 @@ router.patch("/:id/settings", async (req: AuthenticatedRequest, res: Response) =
     const parsed = settingsSchema.safeParse(req.body);
     if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-    const mailbox = await loadOwnedMailbox(organizationId, id);
-    if (!mailbox) return Errors.notFound(res, "Mailbox");
+    // The signature is appended to every message sent from this mailbox, so
+    // only the member who linked it may change it — a teammate editing it
+    // would be writing into someone else's outgoing mail.
+    const usable = await loadUsableMailbox(req, res, id);
+    if (!usable) return;
+    const mailbox = usable.row;
 
     const merged = { ...(mailbox.settings ?? {}), ...parsed.data };
     const [row] = await db

@@ -41,6 +41,29 @@ export interface FullMessage extends NormalizedMessage {
   bodyHtml?: string;
   bodyText?: string;
   to?: string;
+  /**
+   * The RFC 5322 Message-ID header — what In-Reply-To must carry to thread a
+   * reply. The provider's own message id is an opaque API handle, not this;
+   * a reply that used it did not thread.
+   */
+  internetMessageId?: string;
+}
+
+/**
+ * Exactly which account a call acts as: the linking user, the provider, and
+ * the connected address. The token is chosen for THIS address — never "the
+ * first linked Google account" (quality directive 2026-09-29).
+ */
+export interface MailboxAccount {
+  userId: string;
+  provider: MailboxOAuthProvider;
+  emailAddress: string;
+}
+
+/** What a send can honestly claim: the provider accepted it. Delivery is not observed. */
+export interface SendOutcome {
+  id: string;
+  outcome: "accepted_by_provider";
 }
 
 export interface ListMessagesOpts {
@@ -77,10 +100,17 @@ export class MailboxNotConnectedError extends Error {
 export class MailboxApiError extends Error {
   readonly code = "MAILBOX_API_ERROR";
   readonly status?: number;
-  constructor(message: string, status?: number) {
+  /**
+   * "unknown" — the request may have reached the provider and been acted on
+   * (the connection failed after it was sent). A send in this state must NOT
+   * be retried blindly: the message may already be in the recipient's inbox.
+   */
+  readonly outcome?: "unknown";
+  constructor(message: string, status?: number, outcome?: "unknown") {
     super(message);
     this.name = "MailboxApiError";
     this.status = status;
+    this.outcome = outcome;
   }
 }
 
@@ -227,6 +257,7 @@ export interface GraphMessage {
   from?: { emailAddress?: { name?: string; address?: string } };
   toRecipients?: { emailAddress?: { name?: string; address?: string } }[];
   body?: { contentType?: string; content?: string };
+  internetMessageId?: string;
 }
 
 /** Normalize a Microsoft Graph message into NormalizedMessage. */
@@ -270,6 +301,15 @@ async function authedFetch<T>(
     });
   } catch {
     // Network/DNS/TLS failure — never echo the URL (harmless) or token (absent here).
+    // For a SEND the request may have been delivered before the connection
+    // dropped, so the outcome is unknown, not failed.
+    if ((init.method ?? "GET").toUpperCase() !== "GET") {
+      throw new MailboxApiError(
+        "We couldn't confirm whether your mail provider received this. Check your Sent folder before sending again.",
+        undefined,
+        "unknown",
+      );
+    }
     throw new MailboxApiError("Couldn't reach your mail provider. Try again in a moment.");
   }
   if (!res.ok) {
@@ -287,8 +327,13 @@ async function authedFetch<T>(
         : `Your mail provider returned an error (${res.status}).`;
     throw new MailboxApiError(safe + (detail ? ` (${sanitizeDetail(detail)})` : ""), res.status);
   }
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  // 202 Accepted (Graph sendMail) and 204 carry no body. Parsing them as JSON
+  // threw AFTER the provider had accepted the message, so a sent reply was
+  // reported as failed and the user invited to send it again.
+  if (res.status === 202 || res.status === 204) return undefined as T;
+  const text = await res.text();
+  if (!text.trim()) return undefined as T;
+  return JSON.parse(text) as T;
 }
 
 /** Strip anything token-shaped from an upstream error body before surfacing it. */
@@ -336,7 +381,8 @@ async function gmailGet(token: string, messageId: string): Promise<FullMessage> 
   const base = normalizeGmailMessage(msg);
   const body = extractGmailBody(msg.payload);
   const to = parseAddressHeader(gmailHeader(msg.payload, "To")).email || undefined;
-  return { ...base, ...body, to };
+  const internetMessageId = gmailHeader(msg.payload, "Message-ID") || undefined;
+  return { ...base, ...body, to, internetMessageId };
 }
 
 async function gmailSend(
@@ -404,7 +450,7 @@ async function graphList(token: string, opts: ListMessagesOpts): Promise<ListMes
 
 async function graphGet(token: string, messageId: string): Promise<FullMessage> {
   const msg = await authedFetch<GraphMessage>(
-    `${GRAPH_BASE}/messages/${encodeURIComponent(messageId)}?$select=${GRAPH_SELECT},toRecipients,body`,
+    `${GRAPH_BASE}/messages/${encodeURIComponent(messageId)}?$select=${GRAPH_SELECT},toRecipients,body,internetMessageId`,
     token,
   );
   const base = normalizeGraphMessage(msg);
@@ -415,6 +461,7 @@ async function graphGet(token: string, messageId: string): Promise<FullMessage> 
     bodyHtml: isHtml ? msg.body?.content : undefined,
     bodyText: isHtml ? undefined : msg.body?.content,
     to,
+    internetMessageId: msg.internetMessageId || undefined,
   };
 }
 
@@ -436,41 +483,31 @@ async function graphSend(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message, saveToSentItems: true }),
   });
-  // Graph sendMail returns 202 with no id; surface the thread anchor if any.
+  // Graph sendMail returns 202 Accepted with no body and no id. Microsoft
+  // documents 202 as accepted for processing, not delivered.
   return { id: input.threadId ?? "" };
 }
 
 // ── Public API (resolves a fresh token per call, never stored) ───────────────
 
-async function tokenOrThrow(userId: string, provider: MailboxOAuthProvider): Promise<string> {
-  const token = await getMailboxAccessToken(userId, provider);
-  if (!token) throw new MailboxNotConnectedError(provider);
+async function tokenOrThrow(account: MailboxAccount): Promise<string> {
+  const token = await getMailboxAccessToken(account.userId, account.provider, account.emailAddress);
+  if (!token) throw new MailboxNotConnectedError(account.provider);
   return token;
 }
 
-export async function listMessages(
-  userId: string,
-  provider: MailboxOAuthProvider,
-  opts: ListMessagesOpts = {},
-): Promise<ListMessagesResult> {
-  const token = await tokenOrThrow(userId, provider);
-  return provider === "gmail" ? gmailList(token, opts) : graphList(token, opts);
+export async function listMessages(account: MailboxAccount, opts: ListMessagesOpts = {}): Promise<ListMessagesResult> {
+  const token = await tokenOrThrow(account);
+  return account.provider === "gmail" ? gmailList(token, opts) : graphList(token, opts);
 }
 
-export async function getMessage(
-  userId: string,
-  provider: MailboxOAuthProvider,
-  messageId: string,
-): Promise<FullMessage> {
-  const token = await tokenOrThrow(userId, provider);
-  return provider === "gmail" ? gmailGet(token, messageId) : graphGet(token, messageId);
+export async function getMessage(account: MailboxAccount, messageId: string): Promise<FullMessage> {
+  const token = await tokenOrThrow(account);
+  return account.provider === "gmail" ? gmailGet(token, messageId) : graphGet(token, messageId);
 }
 
-export async function sendMessage(
-  userId: string,
-  provider: MailboxOAuthProvider,
-  input: SendMessageInput,
-): Promise<{ id: string }> {
-  const token = await tokenOrThrow(userId, provider);
-  return provider === "gmail" ? gmailSend(token, input) : graphSend(token, input);
+export async function sendMessage(account: MailboxAccount, input: SendMessageInput): Promise<SendOutcome> {
+  const token = await tokenOrThrow(account);
+  const sent = account.provider === "gmail" ? await gmailSend(token, input) : await graphSend(token, input);
+  return { id: sent.id, outcome: "accepted_by_provider" };
 }

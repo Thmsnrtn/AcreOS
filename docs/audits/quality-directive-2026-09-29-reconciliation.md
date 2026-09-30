@@ -47,11 +47,11 @@ operation at scale.
 
 | Case | At HEAD | Status |
 |---|---|---|
-| Graph `sendMail` returns an empty 202; `authedFetch` parses JSON, so an accepted send returns 500 and the UI invites a resend | `mailboxClient.ts:290`; no test | QUEUED — H2 (first) |
-| Mailbox identity: the row is resolved by org only and the *requester's* token is used; the first linked account is picked; no external-account id stored | `routes-mailbox.ts:46-59`, `clerkMailbox.ts:53,76` | QUEUED — H2 |
-| MCP: `remember_fact` (writes `paxMemory`) and `spawn_subagent` (runs a billed LLM loop) have `scope: null` and are exposed as read-only to a key with no scopes; three data reads are unscoped | `intentScopes.ts`, `safeIntents.ts:51-53`; pinned by `mcpStreamableHttp.test.ts` | QUEUED — H2 |
-| FEMA: empty features are reported as Zone X / low risk; `lastUpdated` is the lookup instant; the empty result is cached | `data-source-broker.ts:1022-1035` | QUEUED — H2 |
-| Broker cache: key is category + rounded point; a cache hit precedes the tier check (`maxTier:"free"` can receive a paid-tier row) | `data-source-broker.ts:383,486,636` | QUEUED — H2 (tier on cache hits) |
+| Graph `sendMail` returns an empty 202; `authedFetch` parses JSON, so an accepted send returns 500 and the UI invites a resend | `mailboxClient.ts:290`; no test | **FIXED** — DEFECT-0204 |
+| Mailbox identity: the row is resolved by org only and the *requester's* token is used; the first linked account is picked; no external-account id stored | `routes-mailbox.ts:46-59`, `clerkMailbox.ts:53,76` | **FIXED** — DEFECT-0204 (linking user only; token matched by external account) |
+| MCP: `remember_fact` (writes `paxMemory`) and `spawn_subagent` (runs a billed LLM loop) have `scope: null` and are exposed as read-only to a key with no scopes; three data reads are unscoped | `intentScopes.ts`, `safeIntents.ts:51-53`; pinned by `mcpStreamableHttp.test.ts` | **FIXED** — DEFECT-0205 (positive allowlist) |
+| FEMA: empty features are reported as Zone X / low risk; `lastUpdated` is the lookup instant; the empty result is cached | `data-source-broker.ts:1022-1035` | **FIXED** — DEFECT-0206 (also: the diligence lookup still called the retired host, and a failure returned Zone X) |
+| Broker cache: key is category + rounded point; a cache hit precedes the tier check (`maxTier:"free"` can receive a paid-tier row) | `data-source-broker.ts:383,486,636` | **FIXED** — DEFECT-0207 |
 | Broker cache leaks a restricted / BYOK result across orgs | every broker source is public federal/county data; `byokKeys` is never supplied | **INAPPLICABLE** — the restricted surface is the provider registry (license-guarded) |
 
 ## Money, cost and demo truth (H3)
@@ -95,6 +95,12 @@ operation at scale.
 | Proprietary Regrid facts recorded in the observation log with no org read as platform data | **FIXED** — DEFECT-0201 |
 | "Unknown Owner" / "Unknown" placeholders in the deal machine and dossier; entity owners greeted "Dear ," | **FIXED** — DEFECT-0201 |
 | County GIS rows cached globally although each endpoint's redistribution is `review-required` | OPEN — DEFECT-0202 |
+
+## Independent audit of `0133993` (first-mail slice)
+
+| Finding | Status |
+|---|---|
+| County regex received `s+county$`; multi-state counties matched every same-named county; debit before the lock (double debit on a concurrent retry); free allowance counted shipments and failed pieces; printed copy unmerged; cost = quote not pieces sent; Send enabled over a stale preview; undated Lob event retried for ever; comps cache shared across caller keys; `first_letter_sent` on a test key | **FIXED** — DEFECT-0203 |
 
 ## What remains outside any code change
 

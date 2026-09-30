@@ -15,7 +15,7 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import DOMPurify from "isomorphic-dompurify";
-import { apiRequest } from "@/lib/queryClient";
+import { ApiError, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -44,6 +44,8 @@ interface MailboxRow {
   emailAddress: string;
   status: string;
   settings?: MailboxSettings | null;
+  /** Linked by the signed-in user — the only mailboxes they may read or send from. */
+  mine?: boolean;
 }
 
 interface MailboxSettings {
@@ -67,9 +69,10 @@ interface FullMessage extends NormalizedMessage {
   bodyHtml?: string;
   bodyText?: string;
   to?: string;
+  /** RFC Message-ID — what a reply's In-Reply-To must carry to thread. */
+  internetMessageId?: string;
 }
 
-const AI_TONES = ["professional", "friendly", "concise", "warm", "direct"] as const;
 
 function initials(name?: string, email?: string): string {
   if (name && name.trim()) {
@@ -86,23 +89,18 @@ function MailboxSettingsDialog({ mailbox }: { mailbox: MailboxRow }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [signature, setSignature] = useState(mailbox.settings?.signature ?? "");
-  const [tone, setTone] = useState(mailbox.settings?.aiReplyTone ?? "professional");
   const sigId = useId();
 
   // Re-seed local state when the dialog opens against the current row.
   useEffect(() => {
     if (open) {
       setSignature(mailbox.settings?.signature ?? "");
-      setTone(mailbox.settings?.aiReplyTone ?? "professional");
     }
   }, [open, mailbox]);
 
   const save = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("PATCH", `/api/mailbox/${mailbox.id}/settings`, {
-        signature,
-        aiReplyTone: tone,
-      });
+      const res = await apiRequest("PATCH", `/api/mailbox/${mailbox.id}/settings`, { signature });
       if (!res.ok) throw new Error("save failed");
       return res.json();
     },
@@ -137,25 +135,14 @@ function MailboxSettingsDialog({ mailbox }: { mailbox: MailboxRow }) {
               id={sigId}
               rows={3}
               placeholder="— Sent from AcreOS"
+              aria-describedby={`${sigId}-hint`}
               value={signature}
               onChange={(e) => setSignature(e.target.value)}
               data-testid="input-mailbox-signature"
             />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="mailbox-tone">AI reply tone</Label>
-            <Select value={tone} onValueChange={setTone}>
-              <SelectTrigger id="mailbox-tone" data-testid="select-mailbox-tone">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {AI_TONES.map((t) => (
-                  <SelectItem key={t} value={t} className="capitalize">
-                    {t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <p id={`${sigId}-hint`} className="text-xs text-muted-foreground">
+              Added to the end of every reply you send from this mailbox in AcreOS.
+            </p>
           </div>
         </div>
         <DialogFooter>
@@ -171,6 +158,10 @@ function MailboxSettingsDialog({ mailbox }: { mailbox: MailboxRow }) {
       </DialogContent>
     </Dialog>
   );
+}
+
+function escapeHtml(t: string): string {
+  return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 // ── Reading pane + reply composer ───────────────────────────────────────────
@@ -202,11 +193,15 @@ function MessageReader({
 
   const full = data?.message;
 
-  // One-line Pax summary — lazy, cached, and independent of the body render so
-  // the message shows instantly while the glance resolves. The server holds
-  // nothing; a blank summary just renders no chip.
+  // One-line Pax summary — ON REQUEST. Summarizing sends this message's text
+  // to Pax's AI provider, so it is the reader's choice per message rather
+  // than something that happens on open (quality directive 2026-09-29). The
+  // server holds nothing; a blank summary just renders no chip.
+  const [wantSummary, setWantSummary] = useState(false);
+  useEffect(() => setWantSummary(false), [selected.id]);
   const { data: summaryData, isLoading: summaryLoading } = useQuery<{ summary: string }>({
     queryKey: ["/api/mailbox", mailboxId, "messages", selected.id, "summary"],
+    enabled: wantSummary,
     queryFn: async () => {
       const res = await apiRequest(
         "GET",
@@ -226,27 +221,42 @@ function MessageReader({
       const res = await apiRequest("POST", `/api/mailbox/${mailboxId}/send`, {
         to: selected.from,
         subject: selected.subject ? `Re: ${selected.subject}` : "",
-        body: `<p>${replyText.replace(/\n/g, "<br>")}</p>`,
-        inReplyTo: selected.id,
+        // Escaped: typed text is text, not markup ("<" used to break the mail).
+        body: `<p>${escapeHtml(replyText).replace(/\n/g, "<br>")}</p>`,
+        // The RFC Message-ID, not the provider's API id (which never threads).
+        inReplyTo: full?.internetMessageId,
         threadId: selected.threadId,
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.message || "Couldn't send");
       }
-      return res.json();
+      return res.json() as Promise<{ provider?: string; from?: string }>;
     },
-    onSuccess: () => {
-      toast({ title: "Reply sent", description: "Sent from your own mailbox." });
+    onSuccess: (result) => {
+      // Accepted by the provider is what we know — not delivered. Microsoft's
+      // 202 means "accepted for processing".
+      toast({
+        title: result?.provider === "outlook" ? "Accepted by Microsoft" : "Accepted by Gmail",
+        description: `Sent from ${result?.from ?? "your own mailbox"}. Delivery isn't confirmed here — check your Sent folder if in doubt.`,
+      });
       setReplyText("");
       setShowReply(false);
     },
-    onError: (err) =>
+    onError: (err) => {
+      // The draft stays in the box either way. When the outcome is unknown
+      // the message may already be sent — say so instead of inviting a retry.
+      const unknown = err instanceof ApiError && err.body?.error === "send_outcome_unknown";
       toast({
-        title: "Couldn't send reply",
-        description: err instanceof Error ? err.message : "Try again in a moment.",
+        title: unknown ? "Not sure it was sent" : "Couldn't send reply",
+        description: unknown
+          ? "We couldn't confirm whether your mail provider received it. Check your Sent folder before sending again — your draft is still here."
+          : err instanceof Error
+            ? err.message
+            : "Try again in a moment.",
         variant: "destructive",
-      }),
+      });
+    },
   });
 
   return (
@@ -288,7 +298,18 @@ function MessageReader({
         <div className="p-4 space-y-4">
           <h2 className="text-section-h2">{selected.subject || "(No subject)"}</h2>
           {/* One-line Pax summary — the "what is this" glance above the body. */}
-          {summaryLoading ? (
+          {!wantSummary ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setWantSummary(true)}
+              data-testid="button-summarize-message"
+              title="Sends this message's text to Pax's AI provider to summarize it"
+            >
+              <Sparkles className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+              Summarize with Pax
+            </Button>
+          ) : summaryLoading ? (
             <div
               className="flex items-center gap-2 rounded-card border border-primary/20 bg-primary/5 px-3 py-2"
               role="status"
@@ -390,7 +411,9 @@ export function NativeMailPanel() {
     },
   });
 
-  const mailboxes = useMemo(() => mailboxData?.mailboxes ?? [], [mailboxData]);
+  // Only the mailboxes this user linked: reading or sending acts as the
+  // linking person's own account, and the server refuses anyone else's.
+  const mailboxes = useMemo(() => (mailboxData?.mailboxes ?? []).filter((m) => m.mine !== false), [mailboxData]);
 
   // Auto-select the first connected mailbox.
   useEffect(() => {

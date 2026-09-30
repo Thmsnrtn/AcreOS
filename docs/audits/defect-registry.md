@@ -5692,6 +5692,140 @@ and cache only reviewed counties globally. Make the ETL/import writers
 refuse non-shareable sources.
 Resolving commits: —
 
+### DEFECT-0203
+Title: The first-mail queue fixes (0133993) left six gaps between what was previewed, charged, printed and counted
+Severity: P1
+Status: FIXED
+Surfaced by lenses: independent audit of 0133993
+Description: The independent audit of the G0 slice found six defects. (1) The
+county filter's regex source was written with a single backslash, so Postgres
+received `s+county$` and "Travis County" never matched "Travis". (2) Counties
+across several states matched every same-named county in all of them.
+(3) The credit debit ran before the advisory lock and the replay lookup, so a
+concurrent retry with the same key could debit twice. (4) The free allowance
+counted shipments, not pieces, and counted suppressed and failed pieces.
+(5) The printed letter was the raw template with `{firstName}` still in it,
+while the preview showed it filled; the shipment's cost was the whole
+quote, not the pieces actually handed off. (6) Send stayed enabled while the
+debounced preview was stale. Also: an undated unmatched Lob event was retried
+for ever; the comps cache was shared across orgs when a caller key was
+supplied; and `first_letter_sent` on the campaign route fired on a test key.
+Evidence: `server/routes-outreach-mail.ts`; `server/services/mail/mailFlusher.ts`;
+`shared/parcel/ownerName.ts`; `client/src/pages/outreach/mail/compose.tsx`;
+`server/routes/lob-webhooks.ts`; `server/services/comps.ts`;
+`server/routes-campaigns.ts`.
+Remediation: The regex is `\\s+county$` in the source string; counties require
+exactly one state. The debit moved inside the transaction, after the lock, the
+replay lookup and the free-tier recount, under a per-attempt key. The free
+allowance counts pieces that are neither suppressed nor failed on shipments
+that were not cancelled. `mergeMailCopy` fills merge fields per piece, escaped,
+for both the preview and the printed letter; cost is per piece handed off. Send
+is disabled until the preview matches the copy. An undated unmatched Lob event
+is acknowledged. The comps cache is keyed by org, or by a hash of the caller's
+key, or not cached. `first_letter_sent` requires a live send.
+Falsified: `tests/unit/outreachMailQueueIsOneOperation.test.ts` (concurrent
+same-key, county regex, two-state refusal, retry after a failed save — red
+before); `tests/unit/mailHoldHonoursLateOptOut.test.ts` (merge);
+`tests/unit/freeTierFirstSend.test.ts`;
+`tests/unit/lobWebhookEarlyEventIsRetried.test.ts` (undated);
+`tests/unit/parcelLayering.test.ts` (key-scoped comps cache).
+Resolving commits: quality-directive slice H1 audit
+
+### DEFECT-0204
+Title: Native mailbox sends reported accepted mail as failed, and a mailbox could act as another person's account
+Severity: P1
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H2)
+Description: Microsoft Graph `sendMail` answers 202 Accepted with no body.
+The client parsed every response as JSON, so an accepted send threw. The route
+then answered 500 and the panel invited a second send. A connection failure
+after a send left was also reported as a plain failure, though the message
+may have been delivered. The mailbox row was resolved by org alone and the
+REQUESTER's OAuth token used, so a teammate could read and send from their
+own account under another member's address. The token was the first one of
+that provider, not the one for the row's address. The saved signature never
+reached a sent message, and any member could edit it. Replies set
+`In-Reply-To` to the provider's API id rather than the RFC Message-ID, so
+they did not thread.
+Evidence: `server/services/mailbox/mailboxClient.ts`;
+`server/services/mailbox/clerkMailbox.ts`; `server/routes-mailbox.ts`;
+`client/src/components/native-mail-panel.tsx`.
+Remediation: 202, 204 and an empty body are success. A send reports
+`accepted_by_provider`, never "delivered". A network failure on a send is
+`send_outcome_unknown` (502, `details.outcome: "unknown"`), and the panel
+says to check the Sent folder. Read, send and settings require the linking
+user. The token is matched to the external account whose address the row
+names. Connecting with two linked accounts must name one (`choose_account`).
+The signature is escaped and applied. The thread summary is opt-in and its
+cache is scoped per org and address. Replies carry `internetMessageId`.
+Falsified: `tests/unit/mailboxSendOutcome.test.ts`,
+`tests/unit/mailboxActsAsItsOwner.test.ts` (all eight red before).
+Resolving commits: quality-directive slice H2
+
+### DEFECT-0205
+Title: The external MCP surface exposed intents that write or spend, to a key holding no scopes
+Severity: P1
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H2)
+Description: `isExternalSafeIntent` allowed any intent whose role scope was
+null or ended in `_read`, minus a one-entry deny-list, and
+`keyMaySatisfyIntent` treated a null scope as ungated. `remember_fact` writes
+a Pax memory row and `spawn_subagent` runs a billed model loop. Both have
+`scope: null`, so both were listed and callable by an API key with no scopes
+at all. The same rule admitted reads that spend credits or reach a connected
+third-party account.
+Evidence: `server/mcp/safeIntents.ts`; `server/services/appIntents/intentScopes.ts`.
+Remediation: A positive allowlist of 17 reviewed, bounded reads of the
+org's own records. An allowlisted intent still drops out if it becomes
+approval-gated or write-scoped. A null scope requires a read scope on the
+key, so a key with no scopes calls nothing.
+Falsified: `tests/unit/mcpExternalAllowlist.test.ts` (built from the real
+`INTENT_META`; red before); `tests/unit/mcpStreamableHttp.test.ts` updated —
+its no-scope key now sees nothing.
+Resolving commits: quality-directive slice H2
+
+### DEFECT-0206
+Title: An unmapped or unreachable FEMA flood query was reported as Zone X, minimal risk
+Severity: P1
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H2)
+Description: An NFHL query that returned no feature was reported as "Zone X
+(Minimal Flood Hazard)", risk low. It scored 95/100 in the public parcel
+report and cleared the diligence checklist item at high confidence. The
+diligence lookup also still called the retired `/gis/nfhl/` host, so every
+lookup failed — and a failure returned the same invented Zone X. Zone D
+(undetermined) read as low risk, shaded X (0.2% annual chance) as low, and
+`lastUpdated` was the lookup instant, shown as the map's vintage. The empty
+answer was cached for the full cache period.
+Evidence: `server/services/data-source-broker.ts` `queryFemaFlood`;
+`server/services/data-source-lookup.ts` `lookupFloodZone`;
+`server/services/checklistAnnotation.ts` `annotateFlood`.
+Remediation: `floodZoneFromNfhl` is the one reading, used by both callers. No
+feature is `status: "unmapped"`, zone null, risk unknown. D is unknown and
+shaded X is medium. There is no `lastUpdated`, only `retrievedAt`. A failure
+is `status: "unavailable"` with no zone. Unmapped answers are not cached. The
+checklist marks an unmapped point for attention, not as clearing.
+Falsified: `tests/unit/femaEmptyIsNotZoneX.test.ts` (all eight red before).
+Resolving commits: quality-directive slice H2
+
+### DEFECT-0207
+Title: A broker cache hit ignored the caller's tier ceiling and hid which source wrote it
+Severity: P2
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H2)
+Description: The data-source broker read its cache before the tier check and
+returned the newest row for the category and point, whatever source had
+written it, labelled "Cache". A caller capped at `maxTier: "free"` could
+receive a paid source's row, and no consumer could tell where a cached
+reading came from.
+Evidence: `server/services/data-source-broker.ts` `getCachedResult`.
+Remediation: Each cached row is resolved to the source that wrote it. A row
+is skipped when its source is above the caller's tier, is BYOK without the
+caller's key, or no longer exists. A hit returns that source's id, title and
+tier at zero cost.
+Falsified: `tests/unit/femaEmptyIsNotZoneX.test.ts` (broker cases, red before).
+Resolving commits: quality-directive slice H2
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -5729,9 +5863,9 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 9   | 9     |
-| FIXED  | 14  | 97  | 80  | 191   |
+| FIXED  | 14  | 101 | 81  | 196   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **99** | **89** | **202** |
+| **Total** | **14** | **103** | **90** | **207** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
@@ -5756,6 +5890,11 @@ and 0052 are structural, 0127 keeps the academy flag off until it is fixed,
 and
 0099 and 0106 wait on a product or founder decision. None blocks launch. The
 table above is the count of record; it is recounted from the entries.
+
+DEFECT-0186 through 0207 come from the 2026-09-29 quality directive and the
+independent audits of its slices (see
+`docs/audits/quality-directive-2026-09-29-reconciliation.md`, the queue).
+0203 records the audit of the first-mail slice; 0204–0207 are slice H2.
 
 ### Fixed Defects Summary
 
