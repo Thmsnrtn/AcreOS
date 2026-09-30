@@ -1,5 +1,7 @@
 # AcreOS Roadmap — July 2026
 
+> **Execution ledger superseded by [`roadmap-2026-10.md`](roadmap-2026-10.md) (2026-09-30).** This file stays as the record of Waves 1–7; open W6.3/W7 items fold into the October roadmap.
+
 *Horizon context: this roadmap executes H0 and early H1 of the north-star
 document, `mature-machine.md` (gates, horizons, and the autonomy switch
 schedule live there; waves live here).*

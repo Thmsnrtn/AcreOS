@@ -7,7 +7,7 @@ between gates.*
 
 *Layering: `CONSTITUTION.md` (who we are — never changes) → **this document**
 (where we're going — gates and horizons) → `roadmap-YYYY-MM.md` (current
-waves under the active horizon) → `autopilot-step-away-doctrine.md` (the
+waves under the active horizon; now `roadmap-2026-10.md`) → `autopilot-step-away-doctrine.md` (the
 autopilot layer's source of truth) → decision memos (single calls). Wave-level
 execution never lives here. Reviewed at every gate crossing and annually with
 the Constitution; gate crossings are recorded in place with dates.*

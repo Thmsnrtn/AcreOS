@@ -189,6 +189,21 @@ operation at scale.
 | Audit of this change, before commit: escrow dialog unreachable from the Details tab; `defaulted` flipped to active and charged a monthly fee; borrower card checkout outside the status and ACH rules; more stale lead readers; refund-cap race | **FIXED** in the same commit |
 | Suppressed-piece refunds skipped before the fix are not repaid | OPEN — DEFECT-0277 (founder-run reconciliation script) |
 
+## Where the remaining OPEN items are scheduled (2026-09-30)
+
+The engineering that remains is scheduled in `docs/company/roadmap-2026-10.md` §D:
+
+| Items | Wave |
+|---|---|
+| DEFECT-0273, 0169, 0171, 0243 | W10.2 (live-lead reads, scale ceiling) |
+| County status vocabulary; list builder | W10.3 |
+| DEFECT-0276, 0244, 0235 (with the founder), 0258 (1) | W10.4 (deal state truth) |
+| DEFECT-0185, 0277 (script), 0052 (report), 0050; autopay vs card checkout (0265 (4)) | W10.5 |
+| DEFECT-0017, 0018; org-scoped writes | W10.6 |
+| DEFECT-0127 (F5, KILL), 0265 (1) (F6), 0225 (F10), 0150 (F9), 0202 (F8) | founder decisions in the roadmap's §A |
+| DEFECT-0258 (2–5), 0265 (2, 3, 5, 6) | not yet scheduled — each needs a gate criterion, partner friction or a ratchet line before it earns a wave (roadmap §G) |
+| QR reply path | W11.3, with design-partner input |
+
 ## What remains outside any code change
 
 These need outside proof or a founder decision, as the directive's own limits section says:
