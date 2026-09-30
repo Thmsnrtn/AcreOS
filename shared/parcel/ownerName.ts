@@ -72,7 +72,12 @@ const escapeHtml = (t: string) =>
  * composer invites {firstName} / {city} / {state}; the flusher used to send
  * the copy raw, so pieces were printed "Hi {firstName}" while the preview
  * showed a name (quality directive 2026-09-29, audit of the G0 slice).
- * `html` escapes the merged values for an HTML piece.
+ *
+ * The copy is PLAIN TEXT (a textarea; the preview renders it with its line
+ * breaks). `html` renders it for an HTML piece: the whole copy is escaped —
+ * not only the merged values — so a typed "<" or "&" prints as itself, and
+ * each line break becomes <br>, so the printed letter keeps the paragraphs
+ * the preview showed instead of collapsing into one (audit of 60ebfd9).
  */
 export function mergeMailCopy(
   copy: string,
@@ -80,8 +85,10 @@ export function mergeMailCopy(
   opts: { html: boolean },
 ): string {
   const v = (t: string | null | undefined) => (opts.html ? escapeHtml(t ?? "") : (t ?? ""));
-  return copy
-    .replace(/\{firstName\}/g, v(greetingName(r.name)))
-    .replace(/\{city\}/g, v(r.city))
-    .replace(/\{state\}/g, v(r.state));
+  const text = opts.html ? escapeHtml(copy) : copy;
+  const merged = text
+    .replace(/\{firstName\}/g, () => v(greetingName(r.name)))
+    .replace(/\{city\}/g, () => v(r.city))
+    .replace(/\{state\}/g, () => v(r.state));
+  return opts.html ? merged.replace(/\r?\n/g, "<br>") : merged;
 }

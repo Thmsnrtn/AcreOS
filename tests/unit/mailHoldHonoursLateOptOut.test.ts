@@ -225,15 +225,17 @@ describe("the first physical mail is measured when a provider accepts a live pie
 describe("what is printed is what the preview showed", () => {
   it("merge fields are filled per piece, escaped, and an entity is greeted by its whole name", async () => {
     const { buildRouterShipment } = await import("../../server/services/mail/mailFlusher");
-    const ship = { id: 1, organizationId: 5, pieceType: "letter_10", speed: "standard", copySnapshot: "<p>Hi {firstName}, land in {city}, {state}?</p>", debitEventKey: null, debitedCents: null };
+    // The copy is plain text from the composer's textarea: two lines, and a
+    // typed "<" that must print as itself.
+    const ship = { id: 1, organizationId: 5, pieceType: "letter_10", speed: "standard", copySnapshot: "Hi {firstName},\nland in {city}, {state}? (<1 acre ok)", debitEventKey: null, debitedCents: null };
     const out = buildRouterShipment(ship, [
       { id: 1, recipientName: "Ana Owner", addressLine1: "1", city: "Edinburg", state: "TX", zip: "1", qrCode: null },
       { id: 2, recipientName: "SMITH FAMILY TRUST", addressLine1: "1", city: "Llano", state: "TX", zip: "1", qrCode: null },
       { id: 3, recipientName: "Bo <script>", addressLine1: "1", city: "A&B", state: "TX", zip: "1", qrCode: null },
     ] as never);
-    expect(out.pieces[0].vars?.htmlContent).toBe("<p>Hi Ana, land in Edinburg, TX?</p>");
-    expect(out.pieces[1].vars?.htmlContent).toBe("<p>Hi SMITH FAMILY TRUST, land in Llano, TX?</p>");
-    expect(out.pieces[2].vars?.htmlContent).toBe("<p>Hi Bo, land in A&amp;B, TX?</p>");
+    expect(out.pieces[0].vars?.htmlContent).toBe("Hi Ana,<br>land in Edinburg, TX? (&lt;1 acre ok)");
+    expect(out.pieces[1].vars?.htmlContent).toBe("Hi SMITH FAMILY TRUST,<br>land in Llano, TX? (&lt;1 acre ok)");
+    expect(out.pieces[2].vars?.htmlContent).toBe("Hi Bo,<br>land in A&amp;B, TX? (&lt;1 acre ok)");
     expect(out.pieces.every((p) => !String(p.vars?.htmlContent).includes("{firstName}"))).toBe(true);
   });
 });

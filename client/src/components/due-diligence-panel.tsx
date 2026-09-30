@@ -237,8 +237,19 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
       if (type === "flood") {
         result = await lookupFlood(propertyId);
         itemId = "env-flood";
-        newStatus = result.riskLevel === "low" ? "passed" : result.riskLevel === "high" ? "failed" : "warning";
-        notes = result.zone || "Flood zone data retrieved";
+        // No reading (FEMA unreachable) leaves the item open; an unmapped
+        // point is a warning with its reason — neither says "retrieved".
+        newStatus =
+          result.status === "unavailable"
+            ? "pending"
+            : result.riskLevel === "low" ? "passed" : result.riskLevel === "high" ? "failed" : "warning";
+        notes =
+          result.zone ||
+          (result.status === "unmapped"
+            ? "No FEMA flood zone mapped here — check the county flood map"
+            : result.status === "unavailable"
+              ? "FEMA flood service unavailable — no reading taken"
+              : "No flood reading");
       } else if (type === "wetlands") {
         result = await lookupWetlands(propertyId);
         itemId = "env-wetlands";

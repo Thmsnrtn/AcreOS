@@ -406,7 +406,9 @@ export function floodZoneFromNfhl(
     ? (features[0] as { attributes?: Record<string, unknown> } | undefined)?.attributes
     : undefined;
   const rawZone = typeof feature?.FLD_ZONE === "string" ? feature.FLD_ZONE.trim().toUpperCase() : "";
-  if (!feature || !rawZone) {
+  // "AREA NOT INCLUDED" is FEMA saying the point is outside the study — it
+  // is not a zone (and `startsWith("A")` read it as high risk).
+  if (!feature || !rawZone || rawZone === "AREA NOT INCLUDED") {
     return {
       status: "unmapped",
       zone: null,
@@ -419,17 +421,22 @@ export function floodZoneFromNfhl(
       },
     };
   }
-  const highRiskZones = ["A", "AE", "AH", "AO", "AR", "A99", "V", "VE"];
-  const mediumRiskZones = ["B", "X500"];
-  let riskLevel: "low" | "medium" | "high" | "unknown" = "low";
-  if (rawZone === "D") riskLevel = "unknown";
-  else if (highRiskZones.some((z) => rawZone.startsWith(z))) riskLevel = "high";
-  else if (mediumRiskZones.some((z) => rawZone.startsWith(z))) riskLevel = "medium";
+  // Special Flood Hazard Areas by code: A, AE, AH, AO, AR, A99, the legacy
+  // numbered A1–A30 / V1–V30, V, VE, and combined codes such as "AR/AE".
+  const highRisk = /^(A|V)(E|H|O|R|99|\d{1,2})?(\/.*)?$/.test(rawZone);
   const subtype = typeof feature.ZONE_SUBTY === "string" ? feature.ZONE_SUBTY : null;
-  if (riskLevel === "low" && subtype && /0\.2 PCT/i.test(subtype)) riskLevel = "medium";
+  const shadedX = rawZone === "X" && subtype !== null && /0\.2 PCT/i.test(subtype);
+  let riskLevel: "low" | "medium" | "high" | "unknown";
+  if (highRisk) riskLevel = "high";
+  else if (rawZone === "B" || rawZone === "X500" || shadedX) riskLevel = "medium";
+  else if (rawZone === "X" || rawZone === "C") riskLevel = "low";
+  // D (undetermined), OPEN WATER and anything unrecognised: not a verdict.
+  else riskLevel = "unknown";
   return {
     status: "mapped",
-    zone: `Zone ${rawZone}`,
+    // Shaded X is labelled as such, so a scorer reading the label alone does
+    // not score a 0.2%-annual-chance zone as minimal.
+    zone: shadedX ? "Zone SHADED X" : `Zone ${rawZone}`,
     riskLevel,
     source: "FEMA NFHL",
     retrievedAt: retrievedAt.toISOString(),
@@ -582,23 +589,28 @@ export class DataSourceBroker {
     const byId = new Map(sourceRows.map((row) => [row.id, row]));
 
     for (const row of candidates) {
-      let source: { id: number; title: string; tier: AccessTier };
-      if (row.dataSourceId === BUILTIN_FEDERAL_SOURCE_ID) {
-        source = { id: BUILTIN_FEDERAL_SOURCE_ID, title: this.buildVirtualFederalSource(category).title, tier: "free" };
-      } else {
-        const known = row.dataSourceId == null ? undefined : byId.get(row.dataSourceId);
-        if (!known) continue;
-        const tier = this.determineTier(known);
-        if (tier === "byok" && !byokKeys?.[known.key]) continue;
-        source = { id: known.id, title: known.title, tier };
-      }
-      if (TIER_PRIORITY.indexOf(source.tier) > maxTierIndex) continue;
+      const known = row.dataSourceId == null ? undefined : byId.get(row.dataSourceId);
+      // A source that no longer exists, or that has been switched off, does
+      // not answer from the cache either.
+      if (!known || known.isEnabled === false) continue;
+      const tier = this.determineTier(known);
+      if (tier === "byok" && !byokKeys?.[known.key]) continue;
+      if (TIER_PRIORITY.indexOf(tier) > maxTierIndex) continue;
+      // A flood reading cached before 2026-09-30 carries no `status`: it may
+      // be the invented "Zone X (Minimal Flood Hazard)" an empty or failed
+      // FEMA query used to produce. It is not served; the lookup re-reads.
+      if (category === "flood_zone" && typeof (row.data as { status?: unknown } | null)?.status !== "string") continue;
+      const source = { id: known.id, title: known.title, tier };
       return { data: row.data, cachedAt: row.fetchedAt || new Date(), source };
     }
     return null;
   }
 
   private async cacheResult(sourceId: number, lookupKey: string, data: any, state?: string, county?: string): Promise<void> {
+    // The built-in federal source (-1) has no data_sources row, and
+    // data_source_cache.data_source_id is a foreign key to it — such a write
+    // can only fail. Skip it rather than issue a doomed insert.
+    if (sourceId <= 0) return;
     // An unmapped FEMA point is a statement about today's map; holding it for
     // CACHE_DURATION_DAYS would hide a panel FEMA digitises next week.
     if (data && typeof data === "object" && (data as { status?: unknown }).status === "unmapped") return;
@@ -621,7 +633,9 @@ export class DataSourceBroker {
         successfulFetch: true,
         fetchedAt: new Date(),
       },
-    }).catch(() => {
+    }).catch(() =>
+      // Fallback plain insert (no upsert target). Awaited and caught: it was
+      // an unawaited promise, so its own failure was an unhandled rejection.
       db.insert(dataSourceCache).values({
         dataSourceId: sourceId,
         lookupKey,
@@ -630,8 +644,8 @@ export class DataSourceBroker {
         data,
         expiresAt,
         successfulFetch: true,
-      });
-    });
+      }).catch(() => undefined),
+    );
   }
 
   private updateHealth(sourceId: number, success: boolean, latencyMs: number): void {

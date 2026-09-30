@@ -11,7 +11,7 @@
 import { useEffect, useState } from "react";
 import { useSafeUser } from "@/lib/clerk-safe";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, ApiError } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Mail, Trash2, Plug, ShieldCheck, Loader2 } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import { clientLogger } from "@/lib/clientLogger";
+import { Verbs } from "@/lib/labels";
 
 interface MailboxRow {
   id: number;
@@ -56,6 +57,9 @@ export function MailboxConnect() {
   const { toast } = useToast();
   const { user, isLoaded } = useSafeUser();
   const [linking, setLinking] = useState<string | null>(null);
+  // With several accounts of one provider linked, the server will not guess
+  // which address to connect — it answers `choose_account` with the list.
+  const [choice, setChoice] = useState<{ provider: string; addresses: string[] } | null>(null);
 
   const { data, isLoading } = useQuery<MailboxResponse>({
     queryKey: ["/api/mailbox"],
@@ -68,16 +72,27 @@ export function MailboxConnect() {
   // Record a mailbox once the user returns from Clerk's OAuth consent
   // (?mailbox_connect=<provider>).
   const record = useMutation({
-    mutationFn: async (provider: string) => {
-      const res = await apiRequest("POST", "/api/mailbox", { provider });
+    mutationFn: async (args: string | { provider: string; emailAddress: string }) => {
+      const body = typeof args === "string" ? { provider: args } : args;
+      const res = await apiRequest("POST", "/api/mailbox", body);
       return (await res.json()) as { mailbox: MailboxRow };
     },
     onSuccess: () => {
+      setChoice(null);
       queryClient.invalidateQueries({ queryKey: ["/api/mailbox"] });
       toast({ title: "Mailbox connected", description: "AcreOS can now work your inbox with you." });
     },
-    onError: () =>
-      toast({ title: "Couldn't finish connecting the mailbox", variant: "destructive" }),
+    onError: (err, args) => {
+      const details = err instanceof ApiError ? (err.body?.details as { reason?: string; addresses?: unknown } | undefined) : undefined;
+      if (details?.reason === "choose_account" && Array.isArray(details.addresses)) {
+        setChoice({
+          provider: typeof args === "string" ? args : args.provider,
+          addresses: details.addresses.filter((a): a is string => typeof a === "string"),
+        });
+        return;
+      }
+      toast({ title: "Couldn't finish connecting the mailbox", variant: "destructive" });
+    },
   });
 
   useEffect(() => {
@@ -186,6 +201,31 @@ export function MailboxConnect() {
                     </Button>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {choice && (
+              <div className="rounded-md border p-3 space-y-2" role="group" aria-label="Choose which address to connect">
+                <p className="text-sm">
+                  More than one {PROVIDER_META[choice.provider]?.label ?? choice.provider} account is linked to your
+                  sign-in. Which address should AcreOS read and send from?
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {choice.addresses.map((address) => (
+                    <Button
+                      key={address}
+                      variant="secondary"
+                      size="sm"
+                      disabled={record.isPending}
+                      onClick={() => record.mutate({ provider: choice.provider, emailAddress: address })}
+                    >
+                      {address}
+                    </Button>
+                  ))}
+                  <Button variant="ghost" size="sm" onClick={() => setChoice(null)}>
+                    {Verbs.CANCEL}
+                  </Button>
+                </div>
               </div>
             )}
 

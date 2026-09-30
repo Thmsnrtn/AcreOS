@@ -84,7 +84,7 @@ const { dispatch, MCP_FORBIDDEN, JSONRPC_METHOD_NOT_FOUND, PROTOCOL_VERSION } = 
 const ORG = { id: 42, name: "Acme Land Co" } as any;
 
 // A key that can read leads/deals but holds no write scope.
-const readKey = { organization: ORG, scopes: ["leads:read", "deals:read"] };
+const readKey = { organization: ORG, scopes: ["leads:read", "deals:read", "properties:read"] };
 // A key with NO scopes — calls nothing (quality directive 2026-09-29).
 const noScopeKey = { organization: ORG, scopes: [] as string[] };
 
@@ -105,7 +105,9 @@ describe("MCP safe-intent subset", () => {
   it("maps role-scope to API scope for authorization", () => {
     // A null role-scope is not "ungated": a key with no scopes reads nothing.
     expect(keyMaySatisfyIntent(readAllowed, [])).toBe(false);
-    expect(keyMaySatisfyIntent(readAllowed, ["notes:read"])).toBe(true);
+    // …and it needs EVERY read scope the org-wide context touches.
+    expect(keyMaySatisfyIntent(readAllowed, ["notes:read"])).toBe(false);
+    expect(keyMaySatisfyIntent(readAllowed, ["leads:read", "deals:read", "properties:read"])).toBe(true);
     // deal_read on the deals door needs deals:read OR leads:read.
     expect(keyMaySatisfyIntent(readScoped, ["leads:read"])).toBe(true);
     expect(keyMaySatisfyIntent(readScoped, ["notes:read"])).toBe(false);

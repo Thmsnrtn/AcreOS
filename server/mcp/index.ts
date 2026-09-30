@@ -54,10 +54,16 @@ export interface McpServerOptions {
    * forced to this binding and refuse when it's absent.
    */
   organizationId?: number;
+  /**
+   * The key's read scopes (server/mcp/auth.ts). Org-data tools require the
+   * matching `*:read` scope; absent means none. "all" = the static key.
+   */
+  scopes?: readonly string[] | "all";
 }
 
 export function createMcpServer(options: McpServerOptions = {}) {
   const boundOrgId = options.organizationId;
+  const grantedScopes = options.scopes ?? [];
 
   const server = new McpServer({
     name: "AcreOS",
@@ -93,12 +99,18 @@ export function createMcpServer(options: McpServerOptions = {}) {
     });
   };
 
-  /** Resolve the session's org binding or produce a uniform refusal. */
-  const requireBoundOrg = (): number => {
+  /**
+   * Resolve the session's org binding — and the key's right to read this
+   * kind of record — or produce a uniform refusal.
+   */
+  const requireBoundOrg = (anyOfScopes: readonly string[]): number => {
     if (boundOrgId === undefined || boundOrgId === null) {
       throw new Error(
         "This MCP session is not bound to an organization. Authenticate with a per-org API key (ak_live_…) or set MCP_ORG_ID for the static key.",
       );
+    }
+    if (grantedScopes !== "all" && !anyOfScopes.some((sc) => grantedScopes.includes(sc))) {
+      throw new Error(`This API key lacks the scope to read this data (needs one of: ${anyOfScopes.join(", ")}).`);
     }
     return boundOrgId;
   };
@@ -472,7 +484,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     },
     async ({ state, county, status, limit }) => {
       try {
-        const organizationId = requireBoundOrg();
+        const organizationId = requireBoundOrg(["properties:read"]);
         const all = await storage.getProperties(organizationId);
         let filtered = all;
         if (state) filtered = filtered.filter(p => p.state?.toUpperCase() === state.toUpperCase());
@@ -508,7 +520,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     },
     async ({ propertyId }) => {
       try {
-        const organizationId = requireBoundOrg();
+        const organizationId = requireBoundOrg(["properties:read"]);
         const property = await storage.getProperty(organizationId, propertyId);
         if (!property) return err(`Property ${propertyId} not found`);
         return ok(property, `Property #${propertyId}:`);
@@ -531,7 +543,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     },
     async ({ state, county, minScore, status, limit }) => {
       try {
-        const organizationId = requireBoundOrg();
+        const organizationId = requireBoundOrg(["leads:read"]);
         const all = await storage.getLeads(organizationId);
         let filtered: any[] = all;
         if (state) filtered = filtered.filter((l: any) => l.state?.toUpperCase() === state.toUpperCase());
@@ -566,7 +578,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     },
     async ({ stage, limit }) => {
       try {
-        const organizationId = requireBoundOrg();
+        const organizationId = requireBoundOrg(["deals:read"]);
         const all = await storage.getDeals(organizationId);
         let filtered = stage ? all.filter((d: any) => d.status === stage) : all;
         const sliced = filtered.slice(0, limit ?? 20);
@@ -593,7 +605,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     {},
     async () => {
       try {
-        const organizationId = requireBoundOrg();
+        const organizationId = requireBoundOrg(["properties:read", "deals:read", "leads:read", "notes:read"]);
         const [org, leads, properties, deals, notes] = await Promise.all([
           storage.getOrganization(organizationId),
           storage.getLeads(organizationId),

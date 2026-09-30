@@ -226,6 +226,8 @@ function MessageReader({
         // The RFC Message-ID, not the provider's API id (which never threads).
         inReplyTo: full?.internetMessageId,
         threadId: selected.threadId,
+        // Outlook threads a reply only through its reply endpoint, by id.
+        replyToMessageId: selected.id,
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));

@@ -51,6 +51,11 @@ const state = {
   insertedValues: [] as any[],
   /** `target` passed to onConflictDoNothing — pins the idempotency column. */
   conflictTargets: [] as any[],
+  /** The original debit row a refund looks up (null = not found). */
+  originalRow: null as null | { amountCents: number; postedBy: string },
+  /** A refund whose eventId already exists writes nothing (returning []). */
+  refundReplay: false,
+  addCreditsCalls: [] as Array<{ orgId: number; cents: number; type: string }>,
 };
 
 function mockModules() {
@@ -94,6 +99,8 @@ function mockModules() {
       let r: any[];
       if (projection && "id" in projection && Object.keys(projection).length === 1) {
         r = state.replayRowExists ? [{ id: 42 }] : [];
+      } else if (projection && "postedBy" in projection) {
+        r = state.originalRow ? [state.originalRow] : [];
       } else {
         r = [{ ...state.orgRow, usedAbsCents: state.usedAbsCents }];
       }
@@ -131,6 +138,11 @@ function mockModules() {
                 returning: () => {
                   state.insertCalls += 1;
                   if (state.insertThrows) return Promise.reject(new Error("ledger down"));
+                  state.insertedValues.push(v);
+                  state.conflictTargets.push(conflictOpts?.target);
+                  if (state.refundReplay && String(v?.externalEventId ?? "").endsWith(":refund")) {
+                    return Promise.resolve([]);
+                  }
                   return Promise.resolve([{ id: 42 }]);
                 },
                 then: (resolve: any, reject: any) => {
@@ -158,6 +170,10 @@ function mockModules() {
       deductCredits: async () => {
         state.deductCalls += 1;
         return state.purchasedCreditsCover ? { id: 9 } : null;
+      },
+      addCredits: async (orgId: number, cents: number, type: string) => {
+        state.addCreditsCalls.push({ orgId, cents, type });
+        return { id: 10 };
       },
     },
   }));
@@ -199,6 +215,9 @@ beforeEach(() => {
   state.deductCalls = 0;
   state.insertedValues = [];
   state.conflictTargets = [];
+  state.originalRow = null;
+  state.refundReplay = false;
+  state.addCreditsCalls = [];
 });
 
 describe("poolDebit — fail-CLOSED semantics (Tier 1I)", () => {
@@ -455,5 +474,39 @@ describe("refundPoolDebit — Track A reversal semantics", () => {
         reason: "ledger down during refund",
       }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("refundPoolDebit — the refund returns credit to the purse that paid (audit of 60ebfd9)", () => {
+  it("a pool-funded debit is refunded by netting the pool (feature \"refund\"), not by adding bought credits", async () => {
+    state.originalRow = { amountCents: -300, postedBy: "system:credit-pool:direct_mail" };
+    const { refundPoolDebit } = await importPool();
+    await refundPoolDebit({ organizationId: 7, originalEventId: "mail:1", amountCents: 100, reason: "suppressed" });
+    expect(state.insertedValues[0]).toMatchObject({ feature: "refund", amountCents: 100 });
+    expect(state.addCreditsCalls).toEqual([]);
+  });
+
+  it("a debit paid from PURCHASED credits returns those credits, and does not also net the pool", async () => {
+    state.originalRow = { amountCents: -300, postedBy: "system:credit-pool:direct_mail:purchased-overflow" };
+    const { refundPoolDebit } = await importPool();
+    await refundPoolDebit({ organizationId: 7, originalEventId: "mail:2", amountCents: 300, reason: "provider failed" });
+    expect(state.insertedValues[0]).toMatchObject({ feature: "refund_purchased_credits", amountCents: 300 });
+    expect(state.addCreditsCalls).toEqual([{ orgId: 7, cents: 300, type: "refund" }]);
+  });
+
+  it("never refunds more than the original debit", async () => {
+    state.originalRow = { amountCents: -120, postedBy: "system:credit-pool:direct_mail:purchased-overflow" };
+    const { refundPoolDebit } = await importPool();
+    await refundPoolDebit({ organizationId: 7, originalEventId: "mail:3", amountCents: 500, reason: "over-ask" });
+    expect(state.insertedValues[0].amountCents).toBe(120);
+    expect(state.addCreditsCalls[0].cents).toBe(120);
+  });
+
+  it("a replayed refund returns nothing twice", async () => {
+    state.originalRow = { amountCents: -300, postedBy: "system:credit-pool:direct_mail:purchased-overflow" };
+    state.refundReplay = true;
+    const { refundPoolDebit } = await importPool();
+    await refundPoolDebit({ organizationId: 7, originalEventId: "mail:4", amountCents: 300, reason: "retry" });
+    expect(state.addCreditsCalls).toEqual([]);
   });
 });

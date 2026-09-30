@@ -68,10 +68,19 @@ const R = vi.hoisted(() => ({
   sent: [] as Array<{ account: unknown; input: { body: string } }>,
   updates: 0,
   sendThrows: null as null | Error,
+  memberRole: null as null | string,
 }));
 vi.mock("../../server/db", () => ({
   db: {
-    select: () => ({ from: () => ({ where: () => ({ limit: async () => (R.row ? [R.row] : []) }) }) }),
+    select: (proj?: Record<string, unknown>) => ({
+      from: () => ({
+        where: () => ({
+          // the role lookup projects { role }; everything else reads the mailbox row
+          limit: async () =>
+            proj && "role" in proj ? (R.memberRole ? [{ role: R.memberRole }] : []) : R.row ? [R.row] : [],
+        }),
+      }),
+    }),
     update: () => ({
       set: () => ({
         where: () => ({
@@ -117,6 +126,7 @@ describe("the mailbox routes act as the connecting member only", () => {
     R.sent = [];
     R.updates = 0;
     R.sendThrows = null;
+    R.memberRole = "member";
   });
 
   it("a teammate cannot send, read, or rewrite the signature of another member's mailbox", async () => {
@@ -146,5 +156,26 @@ describe("the mailbox routes act as the connecting member only", () => {
     expect(r.status).toBe(502);
     expect(r.body.error).toBe("send_outcome_unknown");
     expect(r.body.details).toEqual({ outcome: "unknown" });
+  });
+});
+
+describe("disconnecting a mailbox", () => {
+  beforeEach(() => {
+    R.row = { id: 1, organizationId: 5, userId: "user_owner", provider: "gmail", emailAddress: "ana@land.co", settings: {}, revokedAt: null };
+    R.updates = 0;
+  });
+
+  it("a plain member cannot revoke a teammate's mailbox", async () => {
+    R.memberRole = "member";
+    const r = await request(await app("user_teammate")).delete("/api/mailboxes/1");
+    expect(r.status).toBe(403);
+    expect(R.updates).toBe(0);
+  });
+
+  it("an org admin can, and so can the member who linked it", async () => {
+    R.memberRole = "admin";
+    expect((await request(await app("user_admin")).delete("/api/mailboxes/1")).status).toBe(200);
+    R.memberRole = "member";
+    expect((await request(await app("user_owner")).delete("/api/mailboxes/1")).status).toBe(200);
   });
 });

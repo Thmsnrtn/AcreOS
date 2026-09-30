@@ -263,9 +263,13 @@ class AcquisitionRadarService {
       enriched.environmental = {
         floodZone: results.results.flood_zone?.data?.zone,
         wetlandsPercent: results.results.wetlands?.data?.wetlandPercent,
-        hasEnvironmentalIssues: 
-          (results.results.flood_zone?.data?.zone && 
-           !['X', 'UNSHADED X'].includes(results.results.flood_zone.data.zone)) ||
+        // Flood counts as an issue unless FEMA mapped a LOW-risk zone: the
+        // label is "Zone X" (never the bare "X" this once compared against),
+        // and an unmapped point is an open question, not clear (quality
+        // directive 2026-09-29, audit of 60ebfd9).
+        hasEnvironmentalIssues:
+          (results.results.flood_zone?.success === true &&
+            results.results.flood_zone.data?.riskLevel !== "low") ||
           (results.results.wetlands?.data?.wetlandPercent > 20),
       };
     }

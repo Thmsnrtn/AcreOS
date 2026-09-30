@@ -202,7 +202,9 @@ async function handleToolsCall(
       id,
       MCP_FORBIDDEN,
       `API key lacks a required scope for "${name}"`,
-      { requiredAnyOf: requiredApiScopesFor(intent) },
+      intent.requiredScope === null
+        ? { requiredAllOf: requiredApiScopesFor(intent) }
+        : { requiredAnyOf: requiredApiScopesFor(intent) },
     );
   }
 

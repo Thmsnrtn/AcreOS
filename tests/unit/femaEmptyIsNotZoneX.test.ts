@@ -38,6 +38,7 @@ function chain(rows: () => unknown[]) {
 
 vi.mock("../../server/db", () => ({
   db: {
+    update: () => ({ set: () => ({ where: async () => undefined }) }),
     select: () => ({
       from: (t: unknown) =>
         chain(() => (t === dataSourceCache ? S.cacheRows : t === dataSources ? S.sourceRows : [])),
@@ -135,6 +136,8 @@ describe("the reading downstream", () => {
 
 describe("the broker", () => {
   it("an empty answer is not cached, and the broker also says unmapped", async () => {
+    // Through a real (DB) source row — the built-in source is never cached.
+    S.sourceRows = [{ id: 3, title: "FEMA NFHL", key: "fema_nfhl", accessLevel: "public", isEnabled: true, isVerified: true }];
     femaReturns([]);
     const { DataSourceBroker } = await import("../../server/services/data-source-broker");
     const r = await new DataSourceBroker().lookup("flood_zone", { ...at, maxTier: "free" });
@@ -143,7 +146,7 @@ describe("the broker", () => {
   });
 
   it("a cache hit above the caller's tier is not served", async () => {
-    S.cacheRows = [{ dataSourceId: 9, data: { zone: "Zone AE", riskLevel: "high" }, fetchedAt: new Date(), successfulFetch: true }];
+    S.cacheRows = [{ dataSourceId: 9, data: { status: "mapped", zone: "Zone AE", riskLevel: "high" }, fetchedAt: new Date(), successfulFetch: true }];
     S.sourceRows = [{ id: 9, title: "Paid Flood Co", key: "paid_flood", accessLevel: "paid" }];
     femaReturns([{ attributes: { FLD_ZONE: "X" } }]);
     const { DataSourceBroker } = await import("../../server/services/data-source-broker");
@@ -154,12 +157,65 @@ describe("the broker", () => {
   });
 
   it("a cache hit within the tier names the source that wrote it", async () => {
-    S.cacheRows = [{ dataSourceId: 3, data: { zone: "Zone AE", riskLevel: "high" }, fetchedAt: new Date(), successfulFetch: true }];
+    S.cacheRows = [{ dataSourceId: 3, data: { status: "mapped", zone: "Zone AE", riskLevel: "high" }, fetchedAt: new Date(), successfulFetch: true }];
     S.sourceRows = [{ id: 3, title: "FEMA NFHL (public)", key: "fema_nfhl", accessLevel: "public" }];
     const { DataSourceBroker } = await import("../../server/services/data-source-broker");
     const r = await new DataSourceBroker().lookup("flood_zone", { ...at, maxTier: "free" });
     expect(r.fromCache).toBe(true);
     expect(r.source).toMatchObject({ id: 3, title: "FEMA NFHL (public)", tier: "free", costCents: 0 });
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("independent audit of 60ebfd9 — the rest of the population", () => {
+  it("a flood row cached before the fix (no status — possibly the invented Zone X) is not served", async () => {
+    S.cacheRows = [{ dataSourceId: 3, data: { zone: "Zone X (Minimal Flood Hazard)", riskLevel: "low" }, fetchedAt: new Date(), successfulFetch: true }];
+    S.sourceRows = [{ id: 3, title: "FEMA NFHL (public)", key: "fema_nfhl", accessLevel: "public", isEnabled: true }];
+    femaReturns([]);
+    const { DataSourceBroker } = await import("../../server/services/data-source-broker");
+    const r = await new DataSourceBroker().lookup("flood_zone", { ...at, maxTier: "free" });
+    expect(r.fromCache).toBe(false);
+    expect(r.data.status).toBe("unmapped");
+  });
+
+  it("a disabled source's cached row is not served", async () => {
+    S.cacheRows = [{ dataSourceId: 3, data: { status: "mapped", zone: "Zone AE", riskLevel: "high" }, fetchedAt: new Date(), successfulFetch: true }];
+    S.sourceRows = [{ id: 3, title: "Old flood source", key: "old", accessLevel: "public", isEnabled: false }];
+    femaReturns([{ attributes: { FLD_ZONE: "X" } }]);
+    const { DataSourceBroker } = await import("../../server/services/data-source-broker");
+    const r = await new DataSourceBroker().lookup("flood_zone", { ...at, maxTier: "free" });
+    expect(r.fromCache).toBe(false);
+  });
+
+  it("'AREA NOT INCLUDED' is unmapped, not high risk; OPEN WATER is not a verdict", async () => {
+    const { floodZoneFromNfhl } = await import("../../server/services/data-source-broker");
+    const now = new Date();
+    expect(floodZoneFromNfhl([{ attributes: { FLD_ZONE: "AREA NOT INCLUDED" } }], now)).toMatchObject({ status: "unmapped", riskLevel: "unknown" });
+    expect(floodZoneFromNfhl([{ attributes: { FLD_ZONE: "OPEN WATER" } }], now).riskLevel).toBe("unknown");
+    expect(floodZoneFromNfhl([{ attributes: { FLD_ZONE: "A12" } }], now).riskLevel).toBe("high");
+    expect(floodZoneFromNfhl([{ attributes: { FLD_ZONE: "AR/AE" } }], now).riskLevel).toBe("high");
+  });
+
+  it("shaded X is labelled so a label-only scorer does not call it minimal", async () => {
+    const { floodZoneFromNfhl } = await import("../../server/services/data-source-broker");
+    const { floodZoneSubScore } = await import("../../server/services/publicParcelReport");
+    const shaded = floodZoneFromNfhl([{ attributes: { FLD_ZONE: "X", ZONE_SUBTY: "0.2 PCT ANNUAL CHANCE FLOOD HAZARD" } }], new Date());
+    expect(shaded.zone).toBe("Zone SHADED X");
+    expect(floodZoneSubScore(shaded.zone)).toBe(75);
+    expect(floodZoneSubScore("Zone X")).toBe(95);
+  });
+
+  it("the auto due-diligence engine (the third FEMA caller) no longer reports 'likely Zone X'", async () => {
+    fetchSpy.mockImplementation(async (url: unknown) => {
+      if (String(url).includes("NFHL/MapServer/28/query")) return { ok: true, status: 200, json: async () => ({ features: [] }) };
+      throw new Error("offline");
+    });
+    const { runAutoDueDiligence } = await import("../../server/services/dueDiligenceEngine");
+    const report = await runAutoDueDiligence(1, 5, 30.1, -97.5);
+    const floodCalls = fetchSpy.mock.calls.map((c) => String(c[0])).filter((u) => u.includes("NFHL"));
+    expect(floodCalls.every((u) => u.includes("/arcgis/"))).toBe(true);
+    expect(report.checks.floodZone.zone).toBeNull();
+    expect(report.checks.floodZone.risk).toBe("unknown");
+    expect(report.greenFlags.join(" ")).not.toMatch(/flood/i);
   });
 });

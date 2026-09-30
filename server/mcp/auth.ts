@@ -27,7 +27,14 @@ import { logger } from "../utils/logger.js";
 export type McpAuthResult =
   | { status: "unconfigured" }
   | { status: "unauthorized" }
-  | { status: "ok"; organizationId: number | null };
+  /**
+   * `scopes` — what the key may read. A per-org `ak_` key carries its own
+   * scope list (the SAME keys authenticate `/api/mcp`, which checks them);
+   * this endpoint used to ignore it, so a key with no scopes could search
+   * leads and read deals here (audit of 60ebfd9). The static MCP_API_KEY is
+   * the operator's own configured key and reads everything ("all").
+   */
+  | { status: "ok"; organizationId: number | null; scopes: readonly string[] | "all" };
 
 /** Matches the public-API token format from server/services/apiKeys.ts. */
 const AK_TOKEN_RE = /^ak_(?:live|test)_[A-Za-z0-9_-]{16,}$/;
@@ -64,7 +71,11 @@ export async function resolveMcpAuth(
       if (row.expiresAt && row.expiresAt.getTime() < Date.now()) {
         return { status: "unauthorized" };
       }
-      return { status: "ok", organizationId: row.organizationId };
+      return {
+        status: "ok",
+        organizationId: row.organizationId,
+        scopes: Array.isArray(row.scopes) ? row.scopes.filter((s): s is string => typeof s === "string") : [],
+      };
     } catch (err) {
       // Never log the token. Lookup failure is treated as unauthorized.
       logger.error(
@@ -91,5 +102,6 @@ export async function resolveMcpAuth(
   return {
     status: "ok",
     organizationId: Number.isFinite(parsed) ? parsed : null,
+    scopes: "all",
   };
 }

@@ -443,6 +443,27 @@ describe("LeadScoringService", () => {
       expect(result.score).toBe(0);
     });
 
+    // The shape the broker actually produces is "Zone AE" + riskLevel. The
+    // cases above feed bare codes no source emits, which is how a
+    // `startsWith("A")` test on "Zone AE" stayed green while no real parcel
+    // ever scored as high flood risk (audit of 60ebfd9).
+    it("the broker's real shape: 'Zone AE' / high is high risk; 'Zone X' / low is minimal", async () => {
+      const ae = await (service as any).calcFloodZone(makeEnrichment({ floodData: { zone: "Zone AE", riskLevel: "high" } }), 10);
+      expect(ae.rawData.isHighRisk).toBe(true);
+      expect(ae.score).toBe(-20);
+      const x = await (service as any).calcFloodZone(makeEnrichment({ floodData: { zone: "Zone X", riskLevel: "low" } }), 10);
+      expect(x.score).toBe(12);
+    });
+
+    it("an unmapped point is neither high risk nor minimal", async () => {
+      const r = await (service as any).calcFloodZone(
+        makeEnrichment({ floodData: { status: "unmapped", zone: null, riskLevel: "unknown" } }),
+        10,
+      );
+      expect(r.score).toBe(0);
+      expect(r.rawData.isHighRisk).toBe(false);
+    });
+
     it("detects A, AH, AO, V, VE zones as high risk", async () => {
       for (const zone of ["A", "AH", "AO", "V", "VE"]) {
         const enrichment = makeEnrichment({ floodData: { zone } });

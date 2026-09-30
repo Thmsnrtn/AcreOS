@@ -81,8 +81,16 @@ export interface SendMessageInput {
   to: string;
   subject: string;
   body: string;
+  /** RFC 5322 Message-ID of the message replied to (Gmail threading headers). */
   inReplyTo?: string;
   threadId?: string;
+  /**
+   * The provider's own id of the message replied to. Graph threads a reply
+   * only through its reply endpoint: it refuses any custom internet header
+   * not prefixed `x-`, so an `In-Reply-To` header made every Outlook reply
+   * fail with a 400.
+   */
+  replyToMessageId?: string;
 }
 
 // ── Typed errors ────────────────────────────────────────────────────────────
@@ -474,9 +482,18 @@ async function graphSend(
     body: { contentType: "HTML", content: input.body },
     toRecipients: [{ emailAddress: { address: input.to } }],
   };
-  if (input.inReplyTo) {
-    // Best-effort threading header — Graph accepts standard internet headers.
-    message.internetMessageHeaders = [{ name: "In-Reply-To", value: input.inReplyTo }];
+  if (input.replyToMessageId) {
+    // A reply goes through Graph's reply endpoint, which threads it (and sets
+    // In-Reply-To/References itself). Graph refuses a non-`x-` custom header,
+    // so the header route 400'd every reply. The body is the message's own
+    // body — Graph rejects `comment` and `message.body` together.
+    const replyMessage = { body: message.body, toRecipients: message.toRecipients };
+    await authedFetch<void>(`${GRAPH_BASE}/messages/${encodeURIComponent(input.replyToMessageId)}/reply`, token, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: replyMessage }),
+    });
+    return { id: input.threadId ?? "" };
   }
   await authedFetch<void>(`${GRAPH_BASE}/sendMail`, token, {
     method: "POST",

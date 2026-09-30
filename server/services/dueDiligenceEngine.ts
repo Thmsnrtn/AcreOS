@@ -20,6 +20,7 @@ import { db } from "../db";
 import { properties } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { sampleParcelTerrain } from "./terrain";
+import { floodZoneFromNfhl } from "./data-source-broker";
 
 // ============================================
 // TYPES
@@ -271,7 +272,12 @@ export function getDDTemplateForBusinessType(
 
 async function checkFloodZone(lat: number, lng: number): Promise<FloodZoneResult> {
   try {
-    const url = `https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/28/query?geometry=${lng},${lat}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=FLD_ZONE,ZONE_SUBTY,STUDY_TYP&f=json`;
+    // The live NFHL host (`/gis/nfhl/` is a gateway that answers with an HTML
+    // error page), read through the one shared interpretation — this was the
+    // third FEMA caller, and it still reported "likely Zone X", risk low, when
+    // FEMA returned nothing (quality directive 2026-09-29, audit of 60ebfd9).
+    const geometry = encodeURIComponent(JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }));
+    const url = `https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28/query?geometry=${geometry}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=FLD_ZONE,ZONE_SUBTY,STUDY_TYP&returnGeometry=false&f=json`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
@@ -282,44 +288,39 @@ async function checkFloodZone(lat: number, lng: number): Promise<FloodZoneResult
     if (!resp.ok) throw new Error(`FEMA API ${resp.status}`);
 
     const data = await resp.json();
-    const features = data.features || [];
+    if (data?.error) throw new Error(String(data.error.message ?? "FEMA API error"));
+    const reading = floodZoneFromNfhl(data.features, new Date());
 
-    if (features.length === 0) {
+    if (reading.status === "unmapped" || reading.zone === null) {
       return {
         status: "done",
-        zone: "X",
-        zoneDescription: "Minimal flood hazard (not in FEMA database — likely Zone X)",
-        risk: "low",
+        zone: null,
+        zoneDescription:
+          "No FEMA flood zone is mapped at this point — this is not the same as minimal risk. Check the county's flood map.",
+        risk: "unknown",
         inFloodplain: false,
         floodInsuranceRequired: false,
       };
     }
 
-    const zone = features[0]?.attributes?.FLD_ZONE || "X";
-    const highRiskZones = ["A", "AE", "AH", "AO", "AR", "A99", "V", "VE"];
-    const moderateZones = ["B", "X shaded"];
-
-    const inFloodplain = highRiskZones.some((z) => zone.startsWith(z));
-    const isModerate = moderateZones.some((z) => zone.includes(z));
-
-    let risk: RiskLevel = "low";
+    const zone = reading.zone.replace(/^Zone\s+/i, "");
     let zoneDescription = "";
-
+    let risk: RiskLevel = reading.riskLevel;
     if (zone.startsWith("V")) {
       risk = "critical";
       zoneDescription = "Coastal High Hazard — storm wave action, highest flood risk";
     } else if (zone.startsWith("AE") || zone === "A") {
-      risk = "high";
       zoneDescription = "High-risk flood zone — 1% annual chance of flooding (100-year flood)";
-    } else if (zone.startsWith("A")) {
-      risk = "high";
+    } else if (reading.riskLevel === "high") {
       zoneDescription = "Special Flood Hazard Area — mandatory flood insurance if mortgaged";
-    } else if (isModerate) {
-      risk = "medium";
+    } else if (reading.riskLevel === "medium") {
       zoneDescription = "Moderate flood risk — 0.2% annual chance (500-year flood)";
+    } else if (reading.riskLevel === "unknown") {
+      zoneDescription = "Flood hazard undetermined by FEMA — check the county's flood map";
     } else {
       zoneDescription = "Minimal flood hazard area — low flood risk";
     }
+    const inFloodplain = reading.riskLevel === "high";
 
     return {
       status: "done",
@@ -1322,7 +1323,9 @@ function scoreChecks(checks: AutoDDReport["checks"]): { score: number; risk: Ris
     redFlags.push(`High flood risk — Zone ${checks.floodZone.zone}: mandatory flood insurance`);
   } else if (checks.floodZone.risk === "medium") {
     score -= 10; offerAdjustment -= 5;
-  } else if (checks.floodZone.zone) {
+  } else if (checks.floodZone.risk === "low" && checks.floodZone.zone) {
+    // Only a mapped, low-risk zone is a green flag — Zone D or an unmapped
+    // point is an open question, not a pass.
     greenFlags.push(`Low flood risk — Zone ${checks.floodZone.zone}`);
   }
 

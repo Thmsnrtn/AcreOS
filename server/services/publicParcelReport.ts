@@ -238,7 +238,9 @@ const LOCKED_SUBFACTORS: Record<PublicLcsDimensionKey, string[]> = {
 export function floodZoneSubScore(zoneRaw: unknown): number | null {
   if (typeof zoneRaw !== "string" || !zoneRaw.trim()) return null;
   const m = /\b(VE|V|AE|AH|AO|AR|A99|A|X500|X|B|C|D)\b/i.exec(
-    zoneRaw.toUpperCase().replace(/ZONE/g, " "),
+    // "SHADED X" is the 0.2%-annual-chance zone — score it as X500, the
+    // same normalisation landCredit applies.
+    zoneRaw.toUpperCase().replace(/ZONE/g, " ").replace(/SHADED\s+X/g, "X500"),
   );
   if (!m) return null;
   const zone = m[1].toUpperCase();

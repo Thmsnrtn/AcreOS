@@ -16,11 +16,13 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "./db";
 import {
   connectedMailboxes,
+  teamMembers,
   MAILBOX_OAUTH_PROVIDERS,
   type MailboxOAuthProvider,
 } from "@shared/schema";
 import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { normalizeRole } from "./middleware/roleGuard";
 import { getLinkedMailAccount } from "./services/mailbox/clerkMailbox";
 import {
   listMessages,
@@ -213,6 +215,29 @@ router.delete("/:id", async (req: AuthenticatedRequest, res: Response) => {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) return Errors.badRequest(res, "Invalid mailbox id");
 
+    // Disconnecting another member's mailbox is an admin act: the linking
+    // member, or an org owner/admin — not any member (audit of 60ebfd9).
+    const mailbox = await loadOrgMailbox(organizationId, id);
+    if (!mailbox) return Errors.notFound(res, "Mailbox");
+    const requester = getUserId(req);
+    if (mailbox.userId !== requester) {
+      const [member] = await db
+        .select({ role: teamMembers.role })
+        .from(teamMembers)
+        .where(
+          and(
+            eq(teamMembers.organizationId, organizationId),
+            eq(teamMembers.userId, requester),
+            eq(teamMembers.isActive, true),
+          ),
+        )
+        .limit(1);
+      const role = normalizeRole(member?.role ?? "");
+      if (role !== "owner" && role !== "admin") {
+        return Errors.forbidden(res, "Only the member who connected this mailbox, or an org owner or admin, can disconnect it.");
+      }
+    }
+
     const [row] = await db
       .update(connectedMailboxes)
       .set({ revokedAt: new Date(), status: "revoked" })
@@ -294,6 +319,7 @@ const sendSchema = z.object({
   body: z.string().min(1).max(200_000),
   inReplyTo: z.string().max(998).optional(),
   threadId: z.string().max(4096).optional(),
+  replyToMessageId: z.string().max(4096).optional(),
 });
 
 router.post("/:id/send", async (req: AuthenticatedRequest, res: Response) => {

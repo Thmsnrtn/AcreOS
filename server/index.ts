@@ -520,6 +520,7 @@ app.use("/mcp", mcpLimiter);
         return;
       }
       res.locals.mcpOrganizationId = auth.organizationId;
+      res.locals.mcpScopes = auth.scopes;
       next();
     } catch (e) {
       Errors.internal(res, e);
@@ -531,6 +532,7 @@ app.use("/mcp", mcpLimiter);
       const boundOrgId = res.locals.mcpOrganizationId as number | null;
       const mcpServer = createMcpServer({
         organizationId: boundOrgId ?? undefined,
+        scopes: res.locals.mcpScopes as readonly string[] | "all" | undefined,
       });
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
       await mcpServer.connect(transport);

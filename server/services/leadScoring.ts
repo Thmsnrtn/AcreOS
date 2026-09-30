@@ -524,12 +524,18 @@ export class LeadScoringService {
 
   private async calcFloodZone(enrichment: EnrichmentData, weight: number): Promise<ScoreFactorResult> {
     const floodZone = enrichment.floodData?.zone || enrichment.floodData?.floodZone || "unknown";
-    const isHighRisk = ["A", "AE", "AH", "AO", "V", "VE"].some(z => floodZone.toUpperCase().startsWith(z));
-    
+    // Read the reading's risk level. The zone label is "Zone AE", so the old
+    // `startsWith("A")` test never matched and no parcel ever scored as high
+    // flood risk; an unmapped point (no zone) is unknown, not minimal.
+    const risk = typeof enrichment.floodData?.riskLevel === "string" ? enrichment.floodData.riskLevel : null;
+    const bare = String(floodZone).toUpperCase().replace(/^ZONE\s+/, "");
+    const isHighRisk = risk ? risk === "high" : /^(A|V)(E|H|O|R|99|\d{1,2})?$/.test(bare);
+    const isMinimal = risk ? risk === "low" : bare === "X" || String(floodZone).toLowerCase() === "minimal";
+
     let scoreMultiplier = 0;
     if (isHighRisk) {
       scoreMultiplier = -0.5;
-    } else if (floodZone.toUpperCase().startsWith("X") || floodZone.toLowerCase() === "minimal") {
+    } else if (isMinimal) {
       scoreMultiplier = 0.3;
     }
     

@@ -148,3 +148,27 @@ describe("DEFECT-0126 — a source that answered but said nothing about the ques
     expect(a.type).toBe("Gravel");
   });
 });
+
+describe("flood: an unmapped point is not clean, and a mapped low-risk X is (audit of 60ebfd9)", () => {
+  it("FEMA answered 'unmapped' — a concern, not clean", async () => {
+    BROKER.answer = (kind) =>
+      kind === "flood_zone" ? { success: true, data: { status: "unmapped", zone: null, riskLevel: "unknown" } } : { success: false };
+    const e = await pods.researchEnvironmental(11, 5);
+    expect(e.clean).toBe(false);
+    expect((e.concerns ?? []).join(" ")).toMatch(/not mapped/i);
+  });
+
+  it("a mapped Zone X at low risk raises no flood concern (the label is 'Zone X', not 'X')", async () => {
+    BROKER.answer = (kind) =>
+      kind === "flood_zone" ? { success: true, data: { status: "mapped", zone: "Zone X", riskLevel: "low" } } : { success: false };
+    const e = await pods.researchEnvironmental(11, 5);
+    expect((e.concerns ?? []).some((c) => /flood/i.test(c))).toBe(false);
+  });
+
+  it("Zone AE is a concern", async () => {
+    BROKER.answer = (kind) =>
+      kind === "flood_zone" ? { success: true, data: { status: "mapped", zone: "Zone AE", riskLevel: "high" } } : { success: false };
+    const e = await pods.researchEnvironmental(11, 5);
+    expect((e.concerns ?? []).join(" ")).toMatch(/Zone AE/);
+  });
+});

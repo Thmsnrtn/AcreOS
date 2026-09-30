@@ -63,8 +63,21 @@ const EXTERNAL_ALLOW = new Set<string>([
   "calculate_amortization",
   "calculate_roi",
   "calculate_payment_schedule",
-  "retrieve_land_knowledge",
 ]);
+
+/**
+ * The four allowlisted intents with no role scope read org-wide context, so
+ * each names the read scopes a key must hold ALL of. "Any read scope" let a
+ * notes-only key read recent lead names through get_system_context (audit of
+ * 60ebfd9). `retrieve_land_knowledge` left the list in the same audit: with
+ * its flag on it calls a paid embeddings provider on AcreOS's key.
+ */
+const NULL_SCOPE_REQUIRES_ALL: Readonly<Record<string, readonly ApiScope[]>> = {
+  get_system_context: ["leads:read", "deals:read", "properties:read"],
+  get_dashboard_stats: ["leads:read", "deals:read", "properties:read"],
+  get_tasks: ["leads:read", "deals:read"],
+  recall_facts: ["leads:read", "deals:read", "properties:read"],
+};
 
 /** A role-Scope is read-only if it is null or ends in "_read". */
 function isReadOnlyScope(scope: Scope | null): boolean {
@@ -98,12 +111,13 @@ export function listExternalSafeIntents(): AppIntent[] {
  *   deals      → leads + deals read
  *   finance    → notes read
  *
- * A null role-Scope is NOT ungated here: org data read by an external agent
- * needs a read scope on the key. A key with no scopes calls nothing.
+ * A null role-Scope is NOT ungated here: such an intent names the read
+ * scopes it needs ALL of (NULL_SCOPE_REQUIRES_ALL); one it does not name is
+ * unsatisfiable. A key with no scopes calls nothing.
  */
 export function requiredApiScopesFor(intent: AppIntent): ApiScope[] {
   const scope = intent.requiredScope;
-  if (scope === null) return ["properties:read", "deals:read", "leads:read", "notes:read"];
+  if (scope === null) return [...(NULL_SCOPE_REQUIRES_ALL[intent.name] ?? [])];
 
   switch (scope) {
     case "deal_read":
@@ -138,5 +152,9 @@ export function keyMaySatisfyIntent(
   grantedScopes: readonly string[],
 ): boolean {
   const required = requiredApiScopesFor(intent);
-  return required.some((s) => grantedScopes.includes(s));
+  if (required.length === 0) return false;
+  // Null role-scope: every named read scope; otherwise any one of them.
+  return intent.requiredScope === null
+    ? required.every((s) => grantedScopes.includes(s))
+    : required.some((s) => grantedScopes.includes(s));
 }

@@ -59,3 +59,29 @@ describe("a send reports what the provider said", () => {
   });
 });
 
+describe("an Outlook reply threads through Graph's reply endpoint", () => {
+  it("POSTs to /messages/{id}/reply and never sends an In-Reply-To header Graph rejects", async () => {
+    const fetchSpy = vi.fn(async () => new Response(null, { status: 202 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    const { sendMessage } = await import("../../server/services/mailbox/mailboxClient");
+    const out = await sendMessage(
+      { userId: "user_1", provider: "outlook", emailAddress: "bo@land.co" },
+      { to: "seller@example.com", subject: "Re: land", body: "<p>Yes</p>", inReplyTo: "<abc@mail>", replyToMessageId: "AAMk=1" },
+    );
+    expect(out.outcome).toBe("accepted_by_provider");
+    const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toContain("/messages/AAMk%3D1/reply");
+    expect(String(init.body)).not.toContain("internetMessageHeaders");
+    expect(JSON.parse(String(init.body)).message.body.content).toBe("<p>Yes</p>");
+    vi.unstubAllGlobals();
+  });
+
+  it("a new Outlook message still goes through sendMail", async () => {
+    const fetchSpy = vi.fn(async () => new Response(null, { status: 202 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    const { sendMessage } = await import("../../server/services/mailbox/mailboxClient");
+    await sendMessage({ userId: "user_1", provider: "outlook", emailAddress: "bo@land.co" }, { to: "s@example.com", subject: "Hi", body: "<p>x</p>" });
+    expect(String((fetchSpy.mock.calls[0] as unknown as [string])[0])).toMatch(/\/sendMail$/);
+    vi.unstubAllGlobals();
+  });
+});

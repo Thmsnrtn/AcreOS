@@ -81,14 +81,14 @@ describe("resolveMcpAuth — static MCP_API_KEY path", () => {
     vi.stubEnv("MCP_API_KEY", STATIC_KEY);
     vi.stubEnv("MCP_ORG_ID", "17");
     const result = await resolveMcpAuth(`Bearer ${STATIC_KEY}`);
-    expect(result).toEqual({ status: "ok", organizationId: 17 });
+    expect(result).toEqual({ status: "ok", organizationId: 17, scopes: "all" });
   });
 
   it("accepts the right key with no MCP_ORG_ID → null binding", async () => {
     vi.stubEnv("MCP_API_KEY", STATIC_KEY);
     vi.stubEnv("MCP_ORG_ID", "");
     const result = await resolveMcpAuth(`Bearer ${STATIC_KEY}`);
-    expect(result).toEqual({ status: "ok", organizationId: null });
+    expect(result).toEqual({ status: "ok", organizationId: null, scopes: "all" });
   });
 
   it("rejects a wrong key", async () => {
@@ -119,9 +119,11 @@ describe("resolveMcpAuth — per-org api_keys path", () => {
       organizationId: 42,
       revokedAt: null,
       expiresAt: null,
+      scopes: ["leads:read"],
     });
     const result = await resolveMcpAuth(`Bearer ${TOKEN}`);
-    expect(result).toEqual({ status: "ok", organizationId: 42 });
+    // The key's scopes travel with the binding — /mcp checks them too.
+    expect(result).toEqual({ status: "ok", organizationId: 42, scopes: ["leads:read"] });
   });
 
   it("rejects an unknown key", async () => {
@@ -162,7 +164,7 @@ describe("MCP org binding — tools are forced to the authenticated org", () => 
   });
 
   it("reads from the BOUND org even when the caller smuggles another org id", async () => {
-    const server = createMcpServer({ organizationId: 7 });
+    const server = createMcpServer({ organizationId: 7, scopes: ["properties:read"] });
     const reg = getTool(server, "search_properties");
     // Caller attempts to read org 999 — the argument no longer exists in the
     // schema, and the handler must use the session binding regardless.
@@ -186,5 +188,27 @@ describe("MCP org binding — tools are forced to the authenticated org", () => 
     const reg = getTool(server, "get_flood_zone");
     const result = await reg.handler({ latitude: 35.1, longitude: -106.6 }, {});
     expect(result.isError).toBeFalsy();
+  });
+});
+
+describe("MCP /mcp honours the key's scopes (audit of 60ebfd9)", () => {
+  const getTool = (server: any, name: string) => (server as any)._registeredTools[name];
+
+  it("a key with no scopes cannot read leads, deals, properties or the summary", async () => {
+    const server = createMcpServer({ organizationId: 7, scopes: [] });
+    for (const name of ["search_properties", "get_property", "search_leads", "get_deals", "get_portfolio_summary"]) {
+      const result = await getTool(server, name).handler({ propertyId: 1, limit: 5 }, {});
+      expect(result.isError, name).toBe(true);
+      expect(result.content[0].text).toMatch(/lacks the scope/i);
+    }
+    expect(storage.getProperties).not.toHaveBeenCalled();
+  });
+
+  it("a leads-only key reads leads and nothing else", async () => {
+    const server = createMcpServer({ organizationId: 7, scopes: ["leads:read"] });
+    const deals = await getTool(server, "get_deals").handler({}, {});
+    expect(deals.isError).toBe(true);
+    const props = await getTool(server, "search_properties").handler({ limit: 5 }, {});
+    expect(props.isError).toBe(true);
   });
 });

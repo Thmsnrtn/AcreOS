@@ -477,10 +477,19 @@ class DueDiligencePodService {
 
         sourcesAnswered = [floodResult, wetlandsResult, envResult].filter((r) => r.success).length;
 
-        if (floodResult.success && floodResult.data?.zone) {
-          floodZone = floodResult.data.zone;
-          if (floodZone && !["X", "UNSHADED X"].includes(floodZone)) {
-            concerns.push(`Flood zone: ${floodZone}`);
+        // Read the reading's risk, not its label. The broker's zone string is
+        // "Zone X", which never matched the bare "X" this compared against;
+        // and an UNMAPPED point (zone null) is an open question, not clean
+        // (quality directive 2026-09-29, audit of 60ebfd9).
+        if (floodResult.success && floodResult.data) {
+          const flood = floodResult.data as { zone?: string | null; riskLevel?: string; status?: string };
+          if (flood.status === "unmapped" || !flood.zone) {
+            concerns.push("Flood zone: not mapped by FEMA at this point — check the county flood map");
+          } else {
+            floodZone = flood.zone;
+            if (flood.riskLevel !== "low") {
+              concerns.push(`Flood zone: ${flood.zone}${flood.riskLevel ? ` (${flood.riskLevel} risk)` : ""}`);
+            }
           }
         }
 

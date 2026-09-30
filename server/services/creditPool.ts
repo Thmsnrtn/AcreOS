@@ -176,21 +176,29 @@ async function fetchOrgTier(
   return { tier, isFounder: row.isFounder === true };
 }
 
+/** The ledger feature a pool-funded refund is written under (refundPoolDebit). */
+const POOL_REFUND_FEATURE = "refund";
+/** A refund of a debit paid from purchased credits — returned to the balance, not netted from the pool. */
+const PURCHASED_REFUND_FEATURE = "refund_purchased_credits";
+
 async function poolUsageThisMonth(organizationId: number): Promise<number> {
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const features = Object.values(POOL_FEATURE_FOR_ACTION);
   const uniqueFeatures = Array.from(new Set(features));
+  // Debits count up; refunds count DOWN. Refund rows (feature "refund") were
+  // outside this sum, so every refund — a failed send, a suppressed piece, a
+  // cancelled shipment — left the pool consumed (audit of 60ebfd9).
   const [agg] = await db
     .select({
-      usedAbsCents: sql<number>`coalesce(sum(abs(${financialLedger.amountCents})), 0)::int`,
+      usedAbsCents: sql<number>`greatest(coalesce(sum(case when ${financialLedger.feature} = ${POOL_REFUND_FEATURE} then -abs(${financialLedger.amountCents}) else abs(${financialLedger.amountCents}) end), 0), 0)::int`,
     })
     .from(financialLedger)
     .where(
       and(
         eq(financialLedger.organizationId, organizationId),
         eq(financialLedger.category, "opex_spent"),
-        inArray(financialLedger.feature, uniqueFeatures),
+        inArray(financialLedger.feature, [...uniqueFeatures, POOL_REFUND_FEATURE]),
         gte(financialLedger.postedAt, monthStart),
       ),
     );
@@ -328,7 +336,9 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
                ${feature}, ${provider ?? null}, ${args.externalEventId}, now(),
                ${`system:credit-pool:${args.action}`}, ${args.notes ?? null}
         WHERE (
-          SELECT coalesce(sum(abs(amount_cents)), 0)
+          -- Net of refunds, the same as poolUsageThisMonth: a refunded debit
+          -- gives the pool back.
+          SELECT greatest(coalesce(sum(case when feature = ${POOL_REFUND_FEATURE} then -abs(amount_cents) else abs(amount_cents) end), 0), 0)
           FROM financial_ledger
           WHERE organization_id = ${args.organizationId}
             AND category = 'opex_spent'
@@ -337,7 +347,7 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
             -- rejects ("cannot cast type record to text[]"), so the gate
             -- query THREW on every call and fail-closed refused every
             -- metered action (found 2026-07-11 full-app sweep).
-            AND feature IN (${sql.join(uniqueFeatures.map((f) => sql`${f}`), sql`, `)})
+            AND feature IN (${sql.join([...uniqueFeatures, POOL_REFUND_FEATURE].map((f) => sql`${f}`), sql`, `)})
             AND posted_at >= ${monthStart}
         ) < ${poolMonthlyForGate}
         ON CONFLICT (external_event_id) DO NOTHING
@@ -521,21 +531,55 @@ export async function refundPoolDebit(args: {
 }): Promise<void> {
   if (!Number.isFinite(args.amountCents) || args.amountCents <= 0) return;
   try {
-    await db
+    // Which purse paid the original? A debit the monthly pool could not cover
+    // was paid from PURCHASED credits (organizations.creditBalance) — its
+    // refund must return those credits, and must NOT also net the pool (it
+    // never drew on the pool's allowance). A pool-funded debit is refunded by
+    // netting the pool. Both used to be a row nothing read: the pool sum
+    // skipped feature "refund" and bought credits were never returned
+    // (audit of 60ebfd9).
+    const [original] = await db
+      .select({ amountCents: financialLedger.amountCents, postedBy: financialLedger.postedBy })
+      .from(financialLedger)
+      .where(
+        and(
+          eq(financialLedger.externalEventId, args.originalEventId),
+          eq(financialLedger.organizationId, args.organizationId),
+        ),
+      )
+      .limit(1);
+    const fromPurchased = Boolean(original?.postedBy?.endsWith(":purchased-overflow"));
+    const originalCents = Math.abs(Number(original?.amountCents));
+    // Never more than the original debit (when it can be read).
+    const refundCents = Number.isFinite(originalCents) && originalCents > 0
+      ? Math.min(Math.abs(args.amountCents), originalCents)
+      : Math.abs(args.amountCents);
+
+    const refunded = await db
       .insert(financialLedger)
       .values({
         organizationId: args.organizationId,
         bucket: "opex_available",
         category: "opex_spent",
-        amountCents: Math.abs(args.amountCents), // POSITIVE to reverse the debit
-        feature: "refund",
+        amountCents: refundCents, // POSITIVE to reverse the debit
+        feature: fromPurchased ? PURCHASED_REFUND_FEATURE : POOL_REFUND_FEATURE,
         provider: null,
         externalEventId: `${args.originalEventId}:refund`,
         postedAt: new Date(),
         postedBy: "system:credit-pool:refund",
         notes: args.reason,
       })
-      .onConflictDoNothing({ target: financialLedger.externalEventId });
+      .onConflictDoNothing({ target: financialLedger.externalEventId })
+      .returning({ id: financialLedger.id });
+
+    // Only on the first write of this refund — a replay returns no row.
+    if (fromPurchased && refunded.length > 0) {
+      const { creditService } = await import("./credits");
+      await creditService.addCredits(args.organizationId, refundCents, "refund", `Refund: ${args.reason}`, {
+        source: "credit-pool-refund",
+        externalEventId: `${args.originalEventId}:refund`,
+      });
+    }
   } catch (err) {
     logger.error("[credit-pool] refund failed", err instanceof Error ? err : undefined);
   }

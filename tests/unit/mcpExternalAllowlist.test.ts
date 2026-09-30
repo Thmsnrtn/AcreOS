@@ -65,7 +65,6 @@ describe("the external MCP surface over the real catalog", () => {
         "get_system_context",
         "get_tasks",
         "recall_facts",
-        "retrieve_land_knowledge",
       ].sort(),
     );
   });
@@ -79,5 +78,18 @@ describe("the external MCP surface over the real catalog", () => {
 
   it("a key with no scopes may call none of them", () => {
     for (const n of EXTERNAL) expect(keyMaySatisfyIntent(intentFor(n), [])).toBe(false);
+  });
+
+  it("an org-wide context read needs every read scope it touches — a notes-only key cannot read lead names", () => {
+    const notesOnly = ["notes:read"];
+    for (const n of ["get_system_context", "get_dashboard_stats", "get_tasks", "recall_facts"]) {
+      expect(keyMaySatisfyIntent(intentFor(n), notesOnly), n).toBe(false);
+    }
+    expect(keyMaySatisfyIntent(intentFor("get_system_context"), ["leads:read", "deals:read", "properties:read"])).toBe(true);
+    expect(keyMaySatisfyIntent(intentFor("get_notes"), notesOnly)).toBe(true);
+  });
+
+  it("an intent that can spend on a provider is not on the list", () => {
+    expect(EXTERNAL).not.toContain("retrieve_land_knowledge");
   });
 });
