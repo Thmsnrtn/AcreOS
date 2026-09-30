@@ -1739,8 +1739,12 @@ export function registerNoteRoutes(app: Express): void {
                 already.noteId === id &&
                 already.paymentType === data.paymentType &&
                 String(already.paymentDate).slice(0, 10) === String(data.paymentDate).slice(0, 10) &&
-                (data.paymentType === "nsf_reversal" ||
-                  (Number(already.principalCents) === data.principalCents &&
+                // A reversal's identity is WHICH payment it backs out: the same
+                // key naming a different original is a different reversal, not
+                // a retry (audit of 92bf405).
+                (data.paymentType === "nsf_reversal"
+                  ? already.originalPaymentId === (data.originalPaymentId ?? null)
+                  : (Number(already.principalCents) === data.principalCents &&
                     Number(already.interestCents) === data.interestCents &&
                     Number(already.escrowCents) === data.escrowCents &&
                     Number(already.lateFeeCents) === data.lateFeeCents &&
@@ -3346,6 +3350,23 @@ export function registerNoteRoutes(app: Express): void {
           dealId,
           noteId: note.id,
         });
+
+        // The close recorded this deal as a cash sale comp before any note
+        // existed (Close & Carry runs after the close). A carried deal is
+        // seller-financed — its contract total is not a cash price — so the
+        // label is retracted now (audit of e3debe0). Best-effort: the note is
+        // created either way, and a failure is logged, not swallowed.
+        try {
+          const { closedSaleDealKey } = await import("./services/marketNetworkContributor");
+          const { acreOSValuation } = await import("./services/acreOSValuation");
+          await acreOSValuation.retractTrainingTransaction(orgId, `deal:${closedSaleDealKey(orgId, dealId)}`);
+        } catch (retractErr) {
+          logger.warn("notes.from_deal training retraction failed", {
+            orgId,
+            dealId,
+            err: retractErr instanceof Error ? retractErr.message : String(retractErr),
+          });
+        }
 
         return res.status(201).json({ note, originatingDealId: dealId });
       } catch (err) {

@@ -6164,8 +6164,8 @@ Surfaced by lenses: quality directive 2026-09-29 (H4)
 Description: The activation event fired on deal creation; the real offer-sent transition did not emit it.
 Evidence: `server/routes-deals.ts`.
 Remediation: Recorded on the `offer_sent` transition, or at creation only for a deal created at `offer_sent`.
-Falsified: `tests/unit/dealEvidenceIsEvidence.test.ts` (source pin over both sites, red before).
-Resolving commits: quality-directive H4
+Falsified: `tests/unit/dealEvidenceIsEvidence.test.ts` (source pin over the create site, red before). Transitions into offer_sent are recorded on every stage-change path since DEFECT-0246.
+Resolving commits: quality-directive H4; H5
 
 ### DEFECT-0231
 Title: Entering escrow emitted contract_signed with no document
@@ -6196,8 +6196,8 @@ Surfaced by lenses: quality directive 2026-09-29 (H4)
 Description: A close sent `acceptedAmount` to `transaction_training` as "high" quality and to the market network regardless of deal type (an acquisition is what the investor paid), seller financing (a contract total), or sample lineage; a re-close contributed again and nothing could retract a wrong label.
 Evidence: `server/routes-deals.ts`; `server/services/marketNetworkContributor.ts`; `server/services/acreOSValuation.ts`.
 Remediation: `closedSaleEvidence` admits only a real cash disposition (not an acquisition, not seller-financed, not sample). The training row is keyed by the deal's anonymous `dealKey` (a re-close is a no-op insert), labelled "medium" (operator-entered, not a deed), and retracted (outlier, low) when the deal is reopened. The network dedupes on `dealKey`.
-Falsified: `tests/unit/dealEvidenceIsEvidence.test.ts`, `tests/unit/marketNetworkIsKAnonymous.test.ts` (red before).
-Resolving commits: quality-directive H4
+Falsified: `tests/unit/dealEvidenceIsEvidence.test.ts` (red before). `tests/unit/marketNetworkIsKAnonymous.test.ts` was updated to the new rule but was NOT red-checked against the prior code — the earlier "(red before)" on it was unverified and is withdrawn (audit of e3debe0). The seller-financing check, the Close & Carry retraction and the re-close restore were corrected afterwards (DEFECT-0245).
+Resolving commits: quality-directive H4; H5 (audit fixes)
 
 ### DEFECT-0234
 Title: Valuation comps read the whole state, sat at distance 0, matched empty ZIPs, and earned a proximity bonus
@@ -6219,6 +6219,180 @@ Description: Training rows are retracted on reopen; the anonymized `market_metri
 Evidence: `server/services/marketNetworkContributor.ts`.
 Remediation plan: Mark or remove the dealKey's network rows on reopen (a data change on a shared aggregate — decide with the founder).
 Resolving commits: —
+
+### DEFECT-0236
+Title: Onboarding advanced past a failed save, and "complete" reported success over failed steps
+Severity: P1
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H5)
+Description: Step 1 ran its writes under `Promise.allSettled` and advanced whatever they returned; `POST /api/onboarding/complete` answered `success: true` after the workspace, persona or sample-data writes had failed.
+Evidence: `client/src/pages/onboarding-v2.tsx`; `server/routes-onboarding.ts`.
+Remediation: A rejected write stops the step and names what did not save. `/complete` returns `success: false` with an `incomplete` list when any part failed (the onboarding is still marked complete, so the user is not trapped), and the client says "Setup finished with gaps".
+Falsified: `tests/unit/routes-onboarding.test.ts` (red before).
+Resolving commits: quality-directive H5
+
+### DEFECT-0237
+Title: Any member's personal persona change rewrote the organization's business type
+Severity: P1
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H5)
+Description: `PUT /api/persona` updated the org's `businessType` for whoever called it, so one member choosing a persona for themselves changed every member's doors' content.
+Evidence: `server/routes-persona.ts`.
+Remediation: Only the org owner (or an owner/admin role) moves the org; anyone else changes their own persona and the response says `organizationUpdated: false`.
+Falsified: `tests/unit/personaDoesNotMoveTheOrg.test.ts` (red before).
+Resolving commits: quality-directive H5
+
+### DEFECT-0238
+Title: A partial sample seed could never resume
+Severity: P2
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H5)
+Description: The seeder skipped when any sample marker existed, so a seed that failed half-way left a half-populated demo for good.
+Evidence: `server/services/onboarding/sampleSeeder.ts`.
+Remediation: Markers without `onboardingData.sampleDataLoaded === true` are a partial seed: it is cleared (sample lineage only) and seeded again, reported as `repaired`. Real rows are untouched.
+Falsified: `tests/unit/sampleSeeder.test.ts` (partial-seed repair and real-row cases, red before).
+Resolving commits: quality-directive H5
+
+### DEFECT-0239
+Title: Founder funnels divided mismatched populations
+Severity: P2
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H5)
+Description: The onboarding funnel's bars counted a 50-row, unwindowed list against a 30-day total, so a step could exceed signups. The activation funnel's denominator was every org ever, founder and system orgs included, and counted `first_mailer_sent` rows the mail queue had written before that event was corrected (DEFECT-0194).
+Evidence: `server/services/onboarding/firstValueInstrumentation.ts`; `client/src/pages/founder/onboarding-funnel.tsx`; `server/services/activation.ts`.
+Remediation: Step counts come from the same signup cohort as the total (`stepCompletedCounts`). The activation cohort is orgs whose window has closed, excluding founder and system orgs, and it excludes queue-written `first_mailer_sent` rows. A founder-run script removes those rows: `scripts/data/delete-queued-mail-first-mailer-rows.ts` (dry run by default; `--apply` exports, then deletes in a transaction).
+Falsified: `tests/unit/funnelCohortIsOneCohort.test.ts` (red before); `tests/unit/founderDataScripts.test.ts` (script).
+Resolving commits: quality-directive H5
+
+### DEFECT-0240
+Title: A workflow run was "completed" when a step never ran
+Severity: P1
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H5)
+Description: A run whose step was `unavailable` (no connected sending identity) or `blocked` ended with status `completed`, claiming work that did not happen.
+Evidence: `server/services/workflow-engine.ts`; `shared/schema.ts` (`WORKFLOW_RUN_STATUSES`).
+Remediation: Such a run ends `completed_with_gaps` with an error naming each step and its status. The run-success counts read `completed` only, so a gapped run is not counted as a success. (`status` is a text column; no migration.)
+Falsified: `tests/unit/workflowActionHonesty.test.ts`, `tests/unit/paxPauseWorkflowEngine.test.ts` (rewritten to the new truth, red before).
+Resolving commits: quality-directive H5
+
+### DEFECT-0241
+Title: An unauthenticated route served invented state land prices with a fresh timestamp
+Severity: P2
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H5)
+Description: `GET /api/market-intelligence/public/data` returned eight hard-coded price-per-acre figures stamped `generatedAt: now`. It had no caller.
+Evidence: `server/routes-market-intelligence.ts`.
+Remediation: Removed. There is no public market figure until one is computed from real, consented data.
+Falsified: `tests/unit/noHardcodedPublicMarketData.test.ts` (red before).
+Resolving commits: quality-directive H5
+
+### DEFECT-0242
+Title: Campaign mail refunded a piece the provider had accepted, and a retried send opened a second order
+Severity: P1
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H5)
+Description: In `POST /api/campaigns/:id/send-direct-mail`, a local write failing after the provider accepted a piece fell into the catch that records a failure and refunds — the piece prints, the customer is refunded, the campaign says it failed. The client minted a new Idempotency-Key per click, so a timed-out send clicked again created a second mailing order with new piece keys. (The directive's third point — activation reading the requested test mode — was already fixed at HEAD: it reads the provider's reported mode.)
+Evidence: `server/routes-campaigns.ts`; `client/src/hooks/use-campaigns.ts`.
+Remediation: A `providerAccepted` flag is set the moment the provider accepts; the catch logs an accepted piece's save failure and neither records a failure nor refunds. The send hook holds one key per send (`useOperationKey`).
+Falsified: `tests/unit/campaignMailAcceptedIsNotRefunded.test.ts` (source pins, red before).
+Resolving commits: quality-directive H5
+
+### DEFECT-0243
+Title: Today refreshes portfolio health inside every GET
+Severity: P2
+Status: OPEN
+Surfaced by lenses: quality directive 2026-09-29 (H5)
+Description: `GET /api/today` awaits `runPortfolioHealthJob(orgId)` before answering. Leads and properties are already on capped reads (DEFECT-0171); the per-request job is the remaining cost, and whether it matters at 10,000 records has not been measured.
+Evidence: `server/routes-today.ts`.
+Remediation plan: Measure on a deployed build first (the directive says so); then run the job on a schedule or throttle it per org, and filter the cash strip's money figures (DEFECT-0229) in the same change.
+Resolving commits: —
+
+### DEFECT-0244
+Title: A close reached by advance-stage, a bulk move or Pax is not recorded as a sale
+Severity: P2
+Status: OPEN
+Surfaced by lenses: independent audit of e3debe0
+Description: The close side effects (training row, market network, outcome snapshots) run in `PUT /api/deals/:id` only. A deal closed by the other stage-change paths is not contributed. This under-records; it asserts nothing false.
+Evidence: `server/routes-deals.ts`; `server/routes.ts`; `server/ai/tools.ts`.
+Remediation plan: Move the close block behind `recordDealTransitionEvidence` with its evidence rule.
+Resolving commits: —
+
+### DEFECT-0245
+Title: The seller-financing check read any note on the parcel; a carried deal stayed a cash sale; a re-close stayed retracted; an acquisition was the AVM's "actual sale price"
+Severity: P1
+Status: FIXED
+Surfaced by lenses: independent audit of e3debe0
+Description: `closedSaleEvidence` excluded a sale when any note existed on the property (the investor's own seller-financed purchase included), yet Close & Carry creates the note after the close, so a carried deal was recorded as a cash sale and never retracted. A reopened-then-reclosed deal hit `onConflictDoNothing` and stayed an outlier. The `avm_vs_actual` pairing labelled an acquisition's accepted amount `actualSalePrice`.
+Evidence: `server/services/marketNetworkContributor.ts`; `server/routes-notes.ts`; `server/services/acreOSValuation.ts`; `server/routes-deals.ts`.
+Remediation: Financed means a note carried from this deal, or a hand-entered note on the parcel with no originating deal. Close & Carry retracts the deal's training row. A keyed re-record restores the row with its corrected figures (the contributing org's own row only). AVM pairing is dispositions only.
+Falsified: `tests/unit/dealEvidenceIsEvidence.test.ts` (4 cases, red before).
+Resolving commits: quality-directive H5 (audit fixes)
+
+### DEFECT-0246
+Title: A stage transition's evidence was recorded on one path of seven
+Severity: P1
+Status: FIXED
+Surfaced by lenses: independent audit of e3debe0
+Description: Only `PUT /api/deals/:id` recorded `first_offer_made` on entering offer_sent and retracted a reopened sale. The stage PATCH, bulk-update, advance-stage (swipe), Pax `update_deal` and `draft_offer` did neither, and `POST /api/deals/bulk-stage-update` emitted no stage change at all.
+Evidence: `server/services/dealEvents.ts`; `server/routes-deals.ts`; `server/routes.ts`; `server/ai/tools.ts`.
+Remediation: `recordDealTransitionEvidence` sits beside every `emitDealStageChanged`; bulk-stage-update now emits both.
+Falsified: `tests/unit/dealTransitionEvidenceEverywhere.test.ts` — the population is every `emitDealStageChanged(` in `server/`; removing one pairing turns it red (checked).
+Resolving commits: quality-directive H5 (audit fixes)
+
+### DEFECT-0247
+Title: A "final" document counted as a signed contract
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of e3debe0
+Description: `contractSignedEvidence` admitted `status = 'final'` (finalized for sending, not signed) and sorted `signedAt DESC`, which Postgres orders NULL first.
+Evidence: `server/routes-deals.ts`.
+Remediation: A signature (`signedAt`) or status `signed`; ordered `desc nulls last`.
+Falsified: `tests/unit/dealEvidenceIsEvidence.test.ts` (source pin over the function body).
+Resolving commits: quality-directive H5 (audit fixes)
+
+### DEFECT-0248
+Title: A provider breaker could refuse every caller for ever
+Severity: P1
+Status: FIXED
+Surfaced by lenses: independent audit of 92bf405
+Description: A persisted `half_open` was loaded as `half_open` by a process that held no probe, so after a deploy mid-probe every lookup of every org was denied until the lost probe reported, which it never would. In-process, a probe whose caller threw past every exit was never reclaimed.
+Evidence: `server/services/providers/circuit-breaker.ts`.
+Remediation: A persisted half_open loads as open (its cooloff elapsed); a probe unresolved for a full cooloff is presumed lost and the next caller probes.
+Falsified: `tests/unit/circuitBreakerHalfOpen.test.ts` (2 cases, red before); `tests/unit/providerProbeIsHandedBack.test.ts` enumerates every exit between the gate and the vendor call (removing a release turns it red, checked).
+Resolving commits: quality-directive H5 (audit fixes)
+
+### DEFECT-0249
+Title: The finance page's "Record payment" failed every time, split in float in the browser, and would have recorded a retry twice
+Severity: P1
+Status: FIXED
+Surfaced by lenses: independent audit of 92bf405
+Description: `POST /api/payments` parsed JSON date strings with a schema wanting `Date` objects, so every submit answered 400 — silently, the modal had no error handler. Its principal/interest split came from the browser in float math, and its Idempotency-Key was minted per click and read by nothing.
+Evidence: `server/routes-finance.ts`; `client/src/hooks/use-payments.ts`; `client/src/pages/finance.tsx`.
+Remediation: The server loads the note (org-scoped), splits in integer cents with `splitPaymentCents` (the portal and autopay rule), refuses an amount above the payoff, and coerces dates. The key becomes the row's unique `transactionId` (`op:<org>:<key>`): a retry is answered with the recorded payment; the key reused for a different payment is 409. The hook holds one key per payment (note, amount, method). The modal shows its error.
+Falsified: `tests/unit/financePaymentIsRecordedOnce.test.ts` (red before).
+Resolving commits: quality-directive H5 (audit fixes)
+
+### DEFECT-0250
+Title: Payment keys covered the body, not the payment; a reversal replay ignored which payment it reversed
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 92bf405
+Description: The mobile quick-add and note modal keyed on a body without the note id (the same amount on another note shared a key); the NSF replay check skipped `originalPaymentId`, so one key naming a different original replayed as "already recorded".
+Evidence: `client/src/components/mobile/QuickAddSheet.tsx`; `client/src/components/note-record-payment-modal.tsx`; `server/routes-notes.ts`.
+Remediation: Keys include the note; a reversal replay must name the same original.
+Falsified: `tests/unit/noteReversalIdentity.test.ts` (red before); `tests/unit/financePaymentIsRecordedOnce.test.ts` enumerates every payment client.
+Resolving commits: quality-directive H5 (audit fixes)
+
+### DEFECT-0251
+Title: The chat's approve confirmation was a broken card; a deferral ended after 7 days whatever it said
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 92bf405
+Description: `approve_trigger` returned a `trigger_card` with no `trigger` (the card read undefined and would have offered to approve again). `defer_trigger` recorded `deferDays` and told the founder "deferred for 30 days"; the pending list expired every deferral at 7.
+Evidence: `server/services/founder-chat/tools/action.ts`; `server/services/finance/scaleUpTriggers.ts`.
+Remediation: The approval answers in text. A deferral lasts the days it recorded (7 when it named none).
+Falsified: `tests/unit/scaleUpTriggersReadRecurringMrr.test.ts` (red before).
+Resolving commits: quality-directive H5 (audit fixes)
 
 ### REFUTED AT HEAD, 2026-09-27
 
@@ -6256,10 +6430,10 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 15  | 15    |
-| FIXED  | 14  | 115 | 89  | 218   |
+| OPEN   | 0   | 0   | 17  | 17    |
+| FIXED  | 14  | 123 | 95  | 232   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **117** | **104** | **235** |
+| **Total** | **14** | **125** | **112** | **251** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
@@ -6288,6 +6462,8 @@ table above is the count of record; it is recounted from the entries.
 DEFECT-0186 through 0207 come from the 2026-09-29 quality directive and the
 independent audits of its slices (see
 `docs/audits/quality-directive-2026-09-29-reconciliation.md`, the queue).
+DEFECT-0236 through 0251 (2026-09-30) close the directive's H5 slice and the
+independent audits of `92bf405` and `e3debe0`; recounted from the entries.
 0203 records the audit of the first-mail slice; 0204–0207 are slice H2;
 0208–0213 the audit of H2 (0213 OPEN); 0214–0218 slice H3; 0219–0229 the
 audit of H3 (0225, 0227, 0229 OPEN); 0230–0235 slice H4 (0232, 0235 OPEN).

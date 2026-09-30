@@ -228,6 +228,37 @@ describe("seedSampleDataForOrg — idempotency", () => {
   });
 });
 
+describe("seedSampleDataForOrg — a partial seed can be finished (quality directive 2026-09-29)", () => {
+  it("a failure after the first write leaves markers but no completion flag; the retry repairs to the exact full set", async () => {
+    const { storage } = (await import("../../server/storage")) as unknown as {
+      storage: { createDeal: (d: Record<string, unknown>) => Promise<unknown> };
+    };
+    const realCreateDeal = storage.createDeal;
+    storage.createDeal = async () => {
+      throw new Error("connection reset");
+    };
+    await expect(seedSampleDataForOrg(String(ORG), "land_flipper")).rejects.toThrow();
+    expect(mem.leads.length).toBeGreaterThan(0); // a partial fixture was left
+    storage.createDeal = realCreateDeal;
+
+    const retry = await seedSampleDataForOrg(String(ORG), "land_flipper");
+    expect(retry).toMatchObject({ seeded: true, repaired: true });
+    // Exactly one full set — the partial rows were cleared, nothing duplicated.
+    const clean = buildSampleFixtures(ORG, "land_flipper");
+    expect(mem.leads.length).toBe(clean.leads.length);
+    expect(mem.properties.length).toBe(clean.properties.length);
+    expect(mem.orgs.get(ORG)?.onboardingData).toMatchObject({ sampleDataLoaded: true });
+  });
+
+  it("a real row the customer created is untouched by the repair", async () => {
+    mem.leads.push({ id: 999, organizationId: ORG, source: "referral", firstName: "Real" });
+    mem.leads.push({ id: 998, organizationId: ORG, source: SAMPLE_LEAD_SOURCE, firstName: "Partial" });
+    await seedSampleDataForOrg(String(ORG), "land_flipper");
+    expect(mem.leads.find((l) => l.id === 999)).toBeTruthy();
+    expect(mem.leads.find((l) => l.id === 998)).toBeUndefined();
+  });
+});
+
 describe("clearSampleDataForOrg — removes exactly what seeding created", () => {
   it("clears the full sample set and reports honest counts, leaving real rows untouched", async () => {
     // Real (non-sample) customer rows that must survive.
@@ -241,11 +272,15 @@ describe("clearSampleDataForOrg — removes exactly what seeding created", () =>
     const realProp = await (await import("../../server/storage")).storage.createProperty({
       organizationId: ORG,
       apn: "123-45-678",
+      state: "TX",
+      county: "Llano",
+      sizeAcres: "10",
       description: "A real customer parcel",
     });
     await (await import("../../server/storage")).storage.createDeal({
       organizationId: ORG,
       propertyId: realProp.id,
+      type: "acquisition",
       notes: "A real customer deal",
     });
 

@@ -1723,6 +1723,16 @@ export async function registerRoutes(
       // Perform the bulk update
       const idsToUpdate = dealsToUpdate.map(d => d.id);
       const updatedCount = await storage.bulkUpdateDeals(org.id, idsToUpdate, { status: newStage });
+
+      // A bulk stage move is N real transitions. This route emitted none —
+      // no deal.stage_changed for workflows, no offer made, no retraction
+      // of a reopened sale (audit of e3debe0). `dealsToUpdate` is the real
+      // pre-image of each row.
+      const { emitDealStageChanged, recordDealTransitionEvidence } = await import("./services/dealEvents");
+      for (const before of dealsToUpdate) {
+        emitDealStageChanged(org.id, before, { ...before, status: newStage });
+        recordDealTransitionEvidence(org.id, before, { ...before, status: newStage }, req.user?.id);
+      }
       
       // Save previous states for undo capability
       const previousStates = dealsToUpdate.map(d => ({

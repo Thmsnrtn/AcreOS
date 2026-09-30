@@ -925,6 +925,11 @@ export function registerCampaignRoutes(app: Express): void {
         // second touch.
         const pieceIdempotencyKey = `mailing-order:${mailingOrder.id}:lead:${lead.id}`;
 
+        // Set once the provider has ACCEPTED the piece. A bookkeeping write
+        // that fails after that point must not turn a mailed letter into a
+        // "failed" one: it was counted sent AND failed, and the failed count
+        // refunded a letter already in the post (quality directive 2026-09-29).
+        let providerAccepted = false;
         try {
           let result: any;
           if (pieceType.startsWith('postcard_')) {
@@ -963,6 +968,7 @@ export function registerCampaignRoutes(app: Express): void {
           // have degraded a 'live' request to Lob's test environment.
           sendResults.push({ leadId: lead.id, success: true, lobId: result.id, expectedDeliveryDate, isTest: result.isTestMode ?? isTestMode });
           lobJobIds.push(result.id);
+          providerAccepted = true;
 
           // Phase 3 Week 14 — Activation telemetry. First successfully-sent
           // direct-mail piece. Idempotent FIRST-occurrence — so a TEST send
@@ -1004,6 +1010,14 @@ export function registerCampaignRoutes(app: Express): void {
             expectedDeliveryDate,
           });
         } catch (err: any) {
+          if (providerAccepted) {
+            // The letter is mailed; only our record of it failed. Keep it
+            // sent (no refund) and say what is missing.
+            logger.error(`[Campaigns] Piece ${pieceIdempotencyKey} was accepted by the provider but its record failed to save`, {
+              metadata: { mailingOrderId: mailingOrder.id, leadId: lead.id, error: err instanceof Error ? err.message : String(err) },
+            });
+            continue;
+          }
           // A replay is NOT a failure. The outward-action boundary throws
           // MailAlreadySentError when a piece for this key was already printed
           // — recording that as `failed` would understate the sent count and,

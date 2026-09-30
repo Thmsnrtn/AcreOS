@@ -39,7 +39,7 @@ operation at scale.
 | "Sent" counted failed pieces; template rates counted pieceCount once per joined piece (×n); cohort spend ×n | results queries | **FIXED** — DEFECT-0195 |
 | An early Lob event (before provider-id write-back) was acknowledged and lost; `created` stamped `printedAt` | `lob-webhooks.ts` | **FIXED** — DEFECT-0196 |
 | Scan ≠ reply; no attributable return path; offline replies not recordable | QR goes to a constant public page | QUEUED — G0 follow-up (needs design-partner input on the reply channel) |
-| Campaign `POST /api/campaigns/:id/send-direct-mail`: provider-accepted piece refunded on a local write failure; a new order (and key) per click; activation uses the *requested* test mode | reachable from `/campaigns` | QUEUED — H5 |
+| Campaign `POST /api/campaigns/:id/send-direct-mail`: provider-accepted piece refunded on a local write failure; a new order (and key) per click; activation uses the *requested* test mode | reachable from `/campaigns` | **FIXED** — DEFECT-0242 (the test-mode point was already fixed at HEAD) |
 | Checklist "Pull your first county list" is a CSV import | `onboarding-checklist.ts` | **FIXED** — renamed "Import your county list" |
 | County coverage "covered" after a one-feature probe while redistribution stays `review-required` | `coverageLedger.ts`, `routes-county-coverage.ts` | QUEUED — county status vocabulary (endpoint / lookup / list-ready / rights-qualified) goes in with the Regrid list builder |
 
@@ -77,13 +77,13 @@ operation at scale.
 
 | Case | At HEAD | Status |
 |---|---|---|
-| Onboarding step 1 advances after `Promise.allSettled` failures; `/complete` returns success after persona/preference failures | `onboarding-v2.tsx:654-666`, `routes-onboarding.ts:92-147` | QUEUED — H5 |
-| Any member's *personal* persona change rewrites the org's business type | `routes-persona.ts:91-133` | QUEUED — H5 |
-| Sample seeder: a partial seed cannot resume (skips when any marker exists) | `sampleSeeder.ts:676-731`; pinned by `sampleSeeder.test.ts` | QUEUED — H5 |
-| Founder funnel bars divide a 50-row, unwindowed list by a 30-day total; the activation denominator is every org ever | `onboarding-funnel.tsx:187-207`, `activation.ts:99-114` | QUEUED — H5 |
-| Workflow run marked `completed` after an unavailable/blocked step | `workflow-engine.ts:2213-2260`; pinned by `workflowActionHonesty.test.ts:254-293` | QUEUED — H5 |
-| Today runs the portfolio health job inside every GET and reads all leads/properties | `routes-today.ts:548,611,1276` | QUEUED — H5 (measure first) |
-| `/api/market-intelligence/public/data` returns fixed state prices with a fresh timestamp; no caller | `routes-market-intelligence.ts:116-131` | QUEUED — H5 (delete) |
+| Onboarding step 1 advances after `Promise.allSettled` failures; `/complete` returns success after persona/preference failures | `onboarding-v2.tsx:654-666`, `routes-onboarding.ts:92-147` | **FIXED** — DEFECT-0236 |
+| Any member's *personal* persona change rewrites the org's business type | `routes-persona.ts:91-133` | **FIXED** — DEFECT-0237 |
+| Sample seeder: a partial seed cannot resume (skips when any marker exists) | `sampleSeeder.ts:676-731`; pinned by `sampleSeeder.test.ts` | **FIXED** — DEFECT-0238 |
+| Founder funnel bars divide a 50-row, unwindowed list by a 30-day total; the activation denominator is every org ever | `onboarding-funnel.tsx:187-207`, `activation.ts:99-114` | **FIXED** — DEFECT-0239 (founder script removes the queue-written rows) |
+| Workflow run marked `completed` after an unavailable/blocked step | `workflow-engine.ts:2213-2260`; pinned by `workflowActionHonesty.test.ts:254-293` | **FIXED** — DEFECT-0240 (`completed_with_gaps`) |
+| Today runs the portfolio health job inside every GET and reads all leads/properties | `routes-today.ts:548,611,1276` | OPEN — DEFECT-0243 (leads/properties already capped; the per-GET job waits on a measurement) |
+| `/api/market-intelligence/public/data` returns fixed state prices with a fresh timestamp; no caller | `routes-market-intelligence.ts:116-131` | **FIXED** — DEFECT-0241 (removed) |
 
 ## Independent audit of `6b730aa` (parcel layering) — folded into this slice
 
@@ -125,6 +125,19 @@ operation at scale.
 | Trigger card broken; studio triggers read an unwritten MRR | **FIXED** — DEFECT-0224 (two ladders: OPEN DEFECT-0225) |
 | Gauge vs gate; refund without original; overflow as pool usage | **FIXED** — DEFECT-0226 (two-transaction refund, month netting: OPEN DEFECT-0227) |
 | Draft/duplicate assignment fees; PDF and waterfall counted samples | **FIXED** — DEFECT-0228 (Today cash strip: OPEN DEFECT-0229, H5) |
+
+## Independent audits of `92bf405` (H3 fixes) and `e3debe0` (H4) — folded into the H5 change
+
+| Finding | Status |
+|---|---|
+| Seller-financing read any note on the parcel; Close & Carry left a cash-sale label; a re-close stayed retracted; an acquisition was paired as the AVM's actual sale | **FIXED** — DEFECT-0245 |
+| Offer and reopen evidence recorded on one stage-change path of seven; bulk-stage-update emitted nothing | **FIXED** — DEFECT-0246 (close side effects on the other paths: OPEN DEFECT-0244) |
+| A "final" document counted as signed; NULL-first ordering | **FIXED** — DEFECT-0247 |
+| A persisted half_open breaker refused everyone; a lost probe was never reclaimed | **FIXED** — DEFECT-0248 |
+| Finance-page "Record payment" 400'd every time, split in float, ignored its key | **FIXED** — DEFECT-0249 |
+| Payment keys without the note; reversal replay ignored its original | **FIXED** — DEFECT-0250 |
+| Approve-trigger card without a trigger; deferral days ignored | **FIXED** — DEFECT-0251 |
+| DEFECT-0233 claimed a network test was red-checked; it was not | Corrected in the registry |
 
 ## What remains outside any code change
 

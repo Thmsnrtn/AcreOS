@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import type { Campaign, InsertCampaign, CampaignOptimization } from "@shared/schema";
+import { useOperationKey } from "./use-operation-key";
 
 // Direct mail status response type
 export interface DirectMailStatus {
@@ -110,15 +111,21 @@ export function useMailEstimate() {
 
 export function useSendDirectMail() {
   const queryClient = useQueryClient();
+  // One send, once: `{ idempotent: true }` minted a new key per click, so a
+  // timed-out send clicked again opened a second mailing order — new piece
+  // keys, a second printing (quality directive 2026-09-29). The key is held
+  // across retries of the same send and settled once it succeeds.
+  const operationKey = useOperationKey();
   return useMutation({
     mutationFn: async (data: { campaignId: number; pieceType: string; leadIds: number[] }) => {
-      const res = await apiRequest("POST", `/api/campaigns/${data.campaignId}/send-direct-mail`, {
-        pieceType: data.pieceType,
-        leadIds: data.leadIds,
-      }, { idempotent: true });
+      const body = { pieceType: data.pieceType, leadIds: data.leadIds };
+      const res = await apiRequest("POST", `/api/campaigns/${data.campaignId}/send-direct-mail`, body, {
+        idempotencyKey: operationKey.keyFor({ campaignId: data.campaignId, ...body }),
+      });
       return res.json() as Promise<SendDirectMailResponse>;
     },
     onSuccess: (_data, variables) => {
+      operationKey.settle();
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
       queryClient.invalidateQueries({ queryKey: ['/api/organization'] });
       // Campaign attribution + response-trend reads change immediately on

@@ -2253,10 +2253,23 @@ class WorkflowEngine {
         run = await storage.updateWorkflowRun(run.id, { executionLog });
       }
 
+      // A run with a step that did not execute (unavailable / blocked) did
+      // not complete its work — it completed with gaps, and says which.
+      const gaps = executionLog.filter((e) => {
+        const st = (e as { status: string }).status;
+        return st === "unavailable" || st === "blocked";
+      });
       run = await storage.updateWorkflowRun(run.id, {
-        status: "completed",
+        status: gaps.length > 0 ? "completed_with_gaps" : "completed",
         executionLog,
         completedAt: new Date(),
+        ...(gaps.length > 0
+          ? {
+              error: `${gaps.length} step${gaps.length === 1 ? "" : "s"} did not run: ${gaps
+                .map((g) => `${g.actionId} (${(g as { status: string }).status})`)
+                .join(", ")}`,
+            }
+          : {}),
       });
     } catch (error: any) {
       run = await storage.updateWorkflowRun(run.id, {

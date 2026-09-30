@@ -19,6 +19,7 @@ import { deletePollutedMarketRows, findPollutedMonthlyRows, type MarketRow } fro
 import { exportAndDropPayoffQuotes } from "../../scripts/data/export-and-drop-payoff-quotes";
 import { deleteOrphanPhotoAndVisionRows, ORPHAN_TARGETS } from "../../scripts/data/delete-orphan-photo-and-vision-rows";
 import { readdirSync } from "node:fs";
+import { deleteQueuedMailFirstMailerRows } from "../../scripts/data/delete-queued-mail-first-mailer-rows";
 import { stripComments, REPO_SWEEP_TIMEOUT_MS } from "../helpers/stripComments";
 
 // It reads every server/shared/client file (the "nothing reads the table" check).
@@ -227,6 +228,29 @@ describe("#9d — photo and vision rows that point at nothing", () => {
     expect(deletes[0].params).toEqual([["p1", "p2"]]);
     const seq = r.calls.map((c) => c.sql.split(/\s+/)[0]);
     expect(seq.slice(4)).toEqual(["BEGIN", "DELETE", "COMMIT", "BEGIN", "DELETE", "COMMIT", "BEGIN", "DELETE", "COMMIT"]);
+  });
+});
+
+describe("quality directive 2026-09-29 — queued-mail first_mailer_sent rows", () => {
+  const found = [{ id: 3, organization_id: 7, event_name: "first_mailer_sent", event_value: { source: "outreach:mail:queue" }, occurred_at: "2026-09-01" }];
+  it("a dry run reads only the queue-sourced rows and writes nothing", async () => {
+    const r = recorder((sql) => (/SELECT/.test(sql) ? found : []));
+    const out = await deleteQueuedMailFirstMailerRows(r.client, { apply: false, outDir: mkdtempSync(join(tmpdir(), "qm-")) });
+    expect(out.rows).toHaveLength(1);
+    expect(r.writes()).toEqual([]);
+    expect(r.calls[0].params).toEqual(["outreach:mail:queue"]);
+  });
+  it("--apply exports first, then deletes only those ids and only that source, in one transaction", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "qm-"));
+    const r = recorder((sql) => (/SELECT/.test(sql) ? found : []));
+    const out = await deleteQueuedMailFirstMailerRows(r.client, { apply: true, outDir: dir });
+    expect(existsSync(out.exportPath!)).toBe(true);
+    expect(JSON.parse(readFileSync(out.exportPath!, "utf8"))).toHaveLength(1);
+    const del = r.writes();
+    expect(del).toHaveLength(1);
+    expect(del[0].sql).toMatch(/first_mailer_sent/);
+    expect(del[0].params).toEqual([[3], "outreach:mail:queue"]);
+    expect(r.calls.map((c) => c.sql.trim().split(/\s+/)[0])).toEqual(["SELECT", "BEGIN", "DELETE", "COMMIT"]);
   });
 });
 

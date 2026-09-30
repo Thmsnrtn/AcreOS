@@ -85,12 +85,17 @@ router.post("/complete", async (req: Request, res: Response) => {
       userName: user?.firstName || user?.email,
     };
 
+    // What did not save is reported, not swallowed (quality directive
+    // 2026-09-29): /complete answered `success: true` after any of these
+    // failed, and the wizard finished over a workspace that was not set up.
+    const incomplete: string[] = [];
     try {
       await storage.updateOrganization(org.id, {
         onboardingData: onboardingData as typeof org.onboardingData,
       });
     } catch (updateErr: any) {
       logger.warn("Non-fatal: failed to save onboarding data", { error: updateErr.message });
+      incomplete.push("workspace details");
     }
 
     // Safety-net persona + investorType reconcile. The client also PUTs
@@ -119,6 +124,7 @@ router.post("/complete", async (req: Request, res: Response) => {
           .where(eq(organizations.id, org.id));
       } catch (personaErr: any) {
         logger.warn("Non-fatal: failed to derive/persist persona+investorType", { error: personaErr.message });
+        incomplete.push("your role and business type");
       }
     }
 
@@ -140,11 +146,17 @@ router.post("/complete", async (req: Request, res: Response) => {
       } catch (seedErr: any) {
         // Sample data failure must not block completing onboarding.
         logger.warn("Non-fatal: sample data seeding failed", { error: seedErr?.message });
+        incomplete.push("sample data");
       }
     }
 
     await onboardingService.completeOnboarding(org.id);
-    res.json({ success: true, ...(sampleData ? { sampleData } : {}) });
+    res.json({
+      success: incomplete.length === 0,
+      completed: true,
+      ...(incomplete.length > 0 ? { incomplete } : {}),
+      ...(sampleData ? { sampleData } : {}),
+    });
   } catch (err) {
     Errors.badRequest(res, err instanceof Error ? err.message : "Bad request");
   }

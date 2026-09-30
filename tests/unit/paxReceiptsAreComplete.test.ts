@@ -169,7 +169,7 @@ vi.mock("../../server/services/comps", () => ({ getComparableProperties: vi.fn()
 vi.mock("../../server/services/data-source-broker", () => ({ DataSourceBroker: class {} }));
 vi.mock("../../server/services/propertyEnrichment", () => ({ propertyEnrichmentService: {} }));
 vi.mock("../../server/services/leadEvents", () => ({ emitLeadCreated: vi.fn(), emitLeadUpdated: vi.fn() }));
-vi.mock("../../server/services/dealEvents", () => ({ emitDealCreated: vi.fn(), emitDealStageChanged: vi.fn() }));
+vi.mock("../../server/services/dealEvents", () => ({ emitDealCreated: vi.fn(), emitDealStageChanged: vi.fn(), recordDealTransitionEvidence: vi.fn() }));
 vi.mock("../../server/services/propertyEvents", () => ({ emitPropertyCreated: vi.fn(), emitPropertyStatusChanged: vi.fn() }));
 // The permission ladder: an IDENTIFIED caller is held to the intent's scope
 // (paxToolScopeAndFcra.test.ts proves that gate); here the human holds it.

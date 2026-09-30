@@ -57,6 +57,8 @@ interface FunnelSummary {
   p90TimeToFirstValueSeconds: number | null;
   belowNinetySecondThreshold: number;
   abandonmentByStep: Record<string, number>;
+  /** Orgs in this window's cohort that completed each step. */
+  stepCompletedCounts?: Record<1 | 2 | 3 | 4 | 5, number>;
 }
 
 interface OrgFunnelRow {
@@ -185,17 +187,15 @@ export default function FounderOnboardingFunnelPage() {
   const funnelBars = useMemo(() => {
     if (!summary) return [];
     const totalSignups = summary.totalSignups;
-    // Step completion counts derived from the per-org rows.
-    const stepCounts = [1, 2, 3, 4, 5].map((step) => {
-      const completed = orgs.filter((o) => {
-        const ts = (o as any)[`step${step}CompletedAt`];
-        return ts != null;
-      }).length;
-      return { step, completed };
-    });
-    const fvCount = orgs.filter(
-      (o) => o.timeToFirstValueSeconds != null,
-    ).length;
+    // Every bar is the SAME cohort as the signups bar: the server counts
+    // steps and first value over the window's signups. (They were counted
+    // over the 50-row, unwindowed org list below and divided by a 30-day
+    // signup total.)
+    const stepCounts = ([1, 2, 3, 4, 5] as const).map((step) => ({
+      step,
+      completed: summary.stepCompletedCounts?.[step] ?? 0,
+    }));
+    const fvCount = summary.totalFirstValue;
     return [
       { label: "Signups", count: totalSignups, isTotal: true },
       ...stepCounts.map((s) => ({
@@ -205,7 +205,7 @@ export default function FounderOnboardingFunnelPage() {
       })),
       { label: "First Value", count: fvCount, isTotal: false, isGoal: true },
     ];
-  }, [summary, orgs]);
+  }, [summary]);
 
   const maxBar = useMemo(
     () => Math.max(1, ...funnelBars.map((b) => b.count)),

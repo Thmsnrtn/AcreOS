@@ -83,6 +83,19 @@ describe("ProviderCircuitBreaker — half-open probe state machine", () => {
     expect(await breaker.shouldAllow("regrid")).toEqual({ allowed: true, probe: true });
   });
 
+  it("a probe that never resolves is presumed lost after a full cooloff — the breaker does not refuse forever (audit of 92bf405)", async () => {
+    for (let i = 0; i < 3; i++) breaker.recordFailure("regrid");
+    t += COOLOFF_MS;
+    expect((await breaker.shouldAllow("regrid")).probe).toBe(true);
+    // The claimant threw past every exit: no success, failure or release.
+    t += COOLOFF_MS - 1;
+    expect(await breaker.shouldAllow("regrid")).toEqual({ allowed: false, probe: false });
+    t += 1;
+    expect(await breaker.shouldAllow("regrid")).toEqual({ allowed: true, probe: true });
+    // …and that new probe is itself exclusive.
+    expect(await breaker.shouldAllow("regrid")).toEqual({ allowed: false, probe: false });
+  });
+
   it("releaseProbe is a no-op unless half_open", async () => {
     breaker.releaseProbe("regrid");
     expect(breaker.snapshot("regrid").state).toBe("closed");
@@ -194,6 +207,24 @@ describe("ProviderCircuitBreaker — half-open probe state machine", () => {
       // And the persisted trip still graduates to a probe once cooloff passes.
       t = openedAt.getTime() + COOLOFF_MS;
       expect(await b.shouldAllow("regrid")).toEqual({ allowed: true, probe: true });
+    });
+
+    it("a persisted half_open is read as open — no process holds that probe after a deploy (audit of 92bf405)", async () => {
+      const openedAt = new Date(t - 20 * 60_000);
+      const { store } = makeFakeStore({
+        regrid: { state: "half_open", failures: 3, openedAt, lastFailureAt: openedAt },
+      });
+      const b = new ProviderCircuitBreaker({
+        failureThreshold: 3,
+        windowMs: WINDOW_MS,
+        cooloffMs: COOLOFF_MS,
+        now,
+        store,
+      });
+      // Loaded as half_open, every caller of every org was denied until the
+      // lost probe reported — which it never would.
+      expect(await b.shouldAllow("regrid")).toEqual({ allowed: true, probe: true });
+      expect(await b.shouldAllow("regrid")).toEqual({ allowed: false, probe: false });
     });
 
     it("a failed hydration degrades to closed (fail open)", async () => {

@@ -13,6 +13,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { activationEvents, type ActivationEvent } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
 
 interface RecordActivationEventArgs {
   orgId: number;
@@ -96,9 +97,19 @@ export async function getActivationFunnel(windowDays: 7 | 30 | 90): Promise<{
   totalOrgs: number;
   windowDays: number;
 }> {
+  // The cohort (quality directive 2026-09-29):
+  //  - only orgs whose window has CLOSED — an org created yesterday had no
+  //    chance to hit a 30-day milestone, and counted as a miss;
+  //  - not the founder's own or the system org, which are not customers;
+  //  - before 2026-09-29 the mail queue recorded first_mailer_sent (the
+  //    email/SMS milestone) with source "outreach:mail:queue"; those rows
+  //    are queued mail, not a sent email, and are left out of that event.
   const result = await db.execute(sql`
     WITH org_base AS (
       SELECT id, created_at FROM organizations
+      WHERE created_at <= now() - (${windowDays}::int * INTERVAL '1 day')
+        AND coalesce(is_founder, false) = false
+        AND id <> ${SYSTEM_ORG_ID}
     ),
     funnel AS (
       SELECT
@@ -107,6 +118,7 @@ export async function getActivationFunnel(windowDays: 7 | 30 | 90): Promise<{
       FROM activation_events ae
       JOIN org_base o ON o.id = ae.organization_id
       WHERE ae.occurred_at <= o.created_at + (${windowDays}::int * INTERVAL '1 day')
+        AND NOT (ae.event_name = 'first_mailer_sent' AND coalesce(ae.event_value->>'source', '') = 'outreach:mail:queue')
       GROUP BY ae.event_name
     ),
     totals AS (

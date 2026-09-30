@@ -338,6 +338,7 @@ describe("unpaused org — the same workflow runs every rail as before and leave
     expect(log[1].status).toBe("completed");
     expect(H.recordPaxEffect).toHaveBeenCalledTimes(1);
     expect(H.recordPaxEffect.mock.calls[0][0]).toMatchObject({ action: "workflow_send_notification" });
-    expect(run.status).toBe("completed");
+    // A blocked step is a gap, not completed work (quality directive 2026-09-29).
+    expect(run.status).toBe("completed_with_gaps");
   });
 });

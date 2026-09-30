@@ -65,6 +65,12 @@ async function firstSnapshotAtOrAbove(thresholdCents: number): Promise<string | 
   return row?.capturedAt ? row.capturedAt.toISOString() : null;
 }
 
+/** The days a deferral row asked for (founder chat records `deferDays`), else 7. */
+function deferDaysOf(after: unknown): number {
+  const n = (after as { deferDays?: unknown } | null)?.deferDays;
+  return typeof n === "number" && Number.isInteger(n) && n > 0 && n <= 60 ? n : 7;
+}
+
 export async function pendingScaleUpTriggers(): Promise<{
   items: Array<(typeof REVENUE_TRIGGER_LADDER)[number] & { status: "pending"; crossedAt: string | null }>;
   recurringMrrCents: number;
@@ -77,15 +83,15 @@ export async function pendingScaleUpTriggers(): Promise<{
   ]);
 
   const priorRows = await db
-    .select({ targetId: founderAudit.targetId, action: founderAudit.action, createdAt: founderAudit.createdAt })
+    .select({ targetId: founderAudit.targetId, action: founderAudit.action, createdAt: founderAudit.createdAt, after: founderAudit.after })
     .from(founderAudit)
     .where(eq(founderAudit.area, "scale_up"))
     .orderBy(desc(founderAudit.createdAt));
-  const decided = new Map<string, { status: "approved" | "deferred"; at: Date }>();
+  const decided = new Map<string, { status: "approved" | "deferred"; at: Date; deferDays: number }>();
   for (const r of priorRows) {
     if (!r.targetId || decided.has(r.targetId)) continue; // first row is most recent
-    if (r.action === "approve") decided.set(r.targetId, { status: "approved", at: r.createdAt });
-    else if (r.action === "defer") decided.set(r.targetId, { status: "deferred", at: r.createdAt });
+    if (r.action === "approve") decided.set(r.targetId, { status: "approved", at: r.createdAt, deferDays: 0 });
+    else if (r.action === "defer") decided.set(r.targetId, { status: "deferred", at: r.createdAt, deferDays: deferDaysOf(r.after) });
   }
 
   const now = Date.now();
@@ -93,8 +99,10 @@ export async function pendingScaleUpTriggers(): Promise<{
     if (recurringMrrCents < t.thresholdCents) return false;
     const d = decided.get(t.thresholdId);
     if (d?.status === "approved") return false;
-    // A deferral expires after 7 days.
-    if (d?.status === "deferred" && now - d.at.getTime() < 7 * 86_400_000) return false;
+    // A deferral lasts as long as the founder deferred it for — "defer for 30
+    // days" resurfaced after 7 because the expiry was hardcoded (audit of
+    // 92bf405). A deferral that named no length is 7 days.
+    if (d?.status === "deferred" && now - d.at.getTime() < d.deferDays * 86_400_000) return false;
     return true;
   });
   const items = await Promise.all(

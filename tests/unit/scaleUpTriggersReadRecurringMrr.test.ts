@@ -19,11 +19,12 @@ const S = vi.hoisted(() => ({
   revenue30d: 0,
   recurring: 0,
   snapshots: [] as Array<{ capturedAt: Date; mrrCents: number }>,
+  audit: [] as Array<{ targetId: string; action: string; createdAt: Date; after: unknown }>,
 }));
 
 function rows(t: unknown): unknown[] {
   if (t === financialLedger) return [{ total: S.revenue30d }];
-  if (t === founderAudit) return [];
+  if (t === founderAudit) return S.audit;
   if (t === mrrSnapshots) {
     // Only the $50 rung is crossed in the case that reads this, so every
     // fixture snapshot is at or above its threshold.
@@ -61,6 +62,7 @@ beforeEach(() => {
   S.revenue30d = 0;
   S.recurring = 0;
   S.snapshots = [];
+  S.audit = [];
 });
 
 describe("scale-up triggers read the run rate", () => {
@@ -82,6 +84,37 @@ describe("scale-up triggers read the run rate", () => {
     S.snapshots = [{ capturedAt: new Date("2026-08-03T00:00:00Z"), mrrCents: 5_200 }];
     const r2 = await request(await app()).get("/api/founder/finance/triggers/active");
     expect(r2.body.items[0].crossedAt).toBe("2026-08-03T00:00:00.000Z");
+  });
+});
+
+describe("a deferral lasts as long as it was deferred for (audit of 92bf405)", () => {
+  it("'defer for 30 days' keeps the rung hidden past day 7", async () => {
+    S.recurring = 6_000;
+    S.audit = [{ targetId: "mrr-50", action: "defer", createdAt: new Date(Date.now() - 10 * 86_400_000), after: { deferDays: 30 } }];
+    const r = await request(await app()).get("/api/founder/finance/triggers/active");
+    expect(r.body.items.map((i: { thresholdId: string }) => i.thresholdId)).not.toContain("mrr-50");
+  });
+
+  it("a deferral that named no length is 7 days", async () => {
+    S.recurring = 6_000;
+    S.audit = [{ targetId: "mrr-50", action: "defer", createdAt: new Date(Date.now() - 8 * 86_400_000), after: { action: "defer" } }];
+    const r = await request(await app()).get("/api/founder/finance/triggers/active");
+    expect(r.body.items.map((i: { thresholdId: string }) => i.thresholdId)).toContain("mrr-50");
+  });
+});
+
+describe("the chat's approve confirmation is not a card offering to approve again", () => {
+  it("approve_trigger returns a text confirmation, never a trigger_card without a trigger", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const { stripComments } = await import("../helpers/stripComments");
+    const src = stripComments(readFileSync(resolve(__dirname, "../../server/services/founder-chat/tools/action.ts"), "utf8"));
+    const start = src.indexOf('name: "approve_trigger"');
+    expect(start).toBeGreaterThan(0);
+    const body = src.slice(start, src.indexOf("registerTool(", start));
+    expect(body).toMatch(/type: "text"/);
+    // Any trigger_card this tool ever returns must carry `trigger`.
+    if (/type: "trigger_card"/.test(body)) expect(body).toMatch(/\btrigger:\s*\{/);
   });
 });
 

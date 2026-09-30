@@ -6577,7 +6577,11 @@ export type WorkflowAction = {
 // again by the workflow_delay_resume job once `resumeAt` passes. Before this,
 // `delay` slept in-process and silently capped at 60s, so a "wait 2 days" step
 // resumed after a minute and vanished entirely on restart.
-export const WORKFLOW_RUN_STATUSES = ["pending", "running", "waiting", "completed", "failed"] as const;
+// `completed_with_gaps`: the run reached its end, but at least one step did
+// not execute (no rail could run it — "unavailable" — or a rail refused it —
+// "blocked"). It was recorded "completed", claiming work that did not occur
+// (quality directive 2026-09-29).
+export const WORKFLOW_RUN_STATUSES = ["pending", "running", "waiting", "completed", "completed_with_gaps", "failed"] as const;
 export type WorkflowRunStatus = typeof WORKFLOW_RUN_STATUSES[number];
 
 /**

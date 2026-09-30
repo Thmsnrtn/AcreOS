@@ -290,7 +290,11 @@ describe("actions report success only when a real rail ran (behavioral)", () => 
     expect(log[1].actionId).toBe("a_notify");
     expect(log[1].status).toBe("completed");
     expect(createNotification).toHaveBeenCalledTimes(1);
-    expect(run.status).toBe("completed");
+    // …but the RUN did not complete its work: one step did not execute, and
+    // the run says so rather than reading "completed" (quality directive
+    // 2026-09-29).
+    expect(run.status).toBe("completed_with_gaps");
+    expect(String(run.error)).toContain("a_email (unavailable)");
   });
 
   it("run_agent_skill executes a RESOLVABLE skill through the registry", async () => {

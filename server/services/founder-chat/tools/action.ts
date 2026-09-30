@@ -51,9 +51,12 @@ registerTool({
       note: args.note ?? null,
     } as any);
     return {
+      // A confirmation, not a card: the trigger_card renders a pending trigger
+      // under `trigger` with [Approve] [Defer] — handed `approved` instead, it
+      // read an undefined trigger, and it would have offered to approve what
+      // was just approved (audit of 92bf405).
       artifact: {
-        type: "trigger_card",
-        approved: trigger,
+        type: "text",
         markdown: `Approved trigger \`${args.threshold_id}\`: ${trigger.action}.`,
       },
       verifyFn: async () => {

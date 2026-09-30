@@ -73,6 +73,8 @@ export interface BreakerOptions {
 
 interface InternalState extends BreakerSnapshot {
   hydrated: Promise<void> | true | null;
+  /** When THIS process claimed the half-open probe (epoch ms), else null. */
+  probeClaimedAt: number | null;
 }
 
 export class ProviderCircuitBreaker {
@@ -92,7 +94,7 @@ export class ProviderCircuitBreaker {
   }
 
   private blank(): InternalState {
-    return { state: "closed", failures: 0, openedAt: null, lastFailureAt: null, hydrated: null };
+    return { state: "closed", failures: 0, openedAt: null, lastFailureAt: null, hydrated: null, probeClaimedAt: null };
   }
 
   private getState(name: string): InternalState {
@@ -120,7 +122,14 @@ export class ProviderCircuitBreaker {
         .load(name)
         .then((row) => {
           if (row) {
-            s.state = row.state;
+            // A persisted half_open names a probe some process claimed — a
+            // process that may have died or deployed away mid-probe. This
+            // process holds no probe, so it reads the row as OPEN (its
+            // cooloff long elapsed) and the next caller claims a fresh one.
+            // Loaded as half_open it denied every caller of every org forever,
+            // because only the probe's own result could move it (audit of
+            // 92bf405).
+            s.state = row.state === "half_open" ? "open" : row.state;
             s.failures = row.failures;
             s.openedAt = row.openedAt ? row.openedAt.getTime() : null;
             s.lastFailureAt = row.lastFailureAt ? row.lastFailureAt.getTime() : null;
@@ -177,6 +186,7 @@ export class ProviderCircuitBreaker {
       if (now - openedAt >= this.cooloffMs) {
         // Cooloff elapsed — this caller claims the single half-open probe.
         s.state = "half_open";
+        s.probeClaimedAt = now;
         this.persist(name, s);
         logger.info(`Circuit breaker half-open for ${name} — sending probe`, {
           source: "CircuitBreaker",
@@ -187,7 +197,18 @@ export class ProviderCircuitBreaker {
     }
 
     // half_open with a probe already in flight — deny everyone else until
-    // the probe resolves (recordSuccess / recordFailure).
+    // the probe resolves (recordSuccess / recordFailure / releaseProbe). A
+    // probe that has neither resolved nor been handed back within a full
+    // cooloff is presumed lost (its caller threw past every exit), and this
+    // caller claims a fresh one rather than the breaker refusing forever.
+    if (s.probeClaimedAt == null || now - s.probeClaimedAt >= this.cooloffMs) {
+      s.probeClaimedAt = now;
+      this.persist(name, s);
+      logger.info(`Circuit breaker probe for ${name} presumed lost — sending a new probe`, {
+        source: "CircuitBreaker",
+      });
+      return { allowed: true, probe: true };
+    }
     return { allowed: false, probe: false };
   }
 
@@ -203,6 +224,7 @@ export class ProviderCircuitBreaker {
     const s = this.getState(name);
     if (s.state !== "half_open") return;
     s.state = "open";
+    s.probeClaimedAt = null;
     this.persist(name, s);
   }
 
@@ -213,6 +235,7 @@ export class ProviderCircuitBreaker {
     s.state = "closed";
     s.failures = 0;
     s.openedAt = null;
+    s.probeClaimedAt = null;
     if (wasNotClosed) {
       this.persist(name, s);
       logger.info(`Circuit breaker closed for ${name} (probe succeeded)`, {
@@ -231,6 +254,7 @@ export class ProviderCircuitBreaker {
       s.state = "open";
       s.openedAt = now;
       s.lastFailureAt = now;
+      s.probeClaimedAt = null;
       this.persist(name, s);
       logger.warn(`Circuit breaker re-tripped for ${name} (half-open probe failed)`, {
         source: "CircuitBreaker",

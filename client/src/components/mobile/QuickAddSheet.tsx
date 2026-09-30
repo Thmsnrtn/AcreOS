@@ -359,7 +359,9 @@ function PaymentForm({ onDone }: { onDone: () => void }) {
       // Held across retries of THIS payment — a fresh key per tap recorded a
       // timed-out payment twice.
       const res = await apiRequest("POST", `/api/notes/${noteId}/payments`, body, {
-        idempotencyKey: paymentKey.keyFor(body),
+        // The note is part of the operation: the same amount on another note
+        // is a different payment, not a retry.
+        idempotencyKey: paymentKey.keyFor({ noteId, ...body }),
       });
       return res.json();
     },

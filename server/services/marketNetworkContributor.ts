@@ -20,7 +20,7 @@
 
 import { db } from "../db";
 import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
-import { eq, and, isNull, count, sql, type SQL } from "drizzle-orm";
+import { eq, and, or, isNull, count, sql, type SQL } from "drizzle-orm";
 import { createHash } from "crypto";
 import { marketMetrics, agentMemory, properties, deals, organizations, notes } from "@shared/schema";
 import { SAMPLE_APN_PREFIX } from "./onboarding/sampleSeeder";
@@ -195,10 +195,25 @@ export async function closedSaleEvidence(
     return { ok: false, reason: "Not a sale: an acquisition price is what the investor paid, not a market sale price" };
   }
   if ((row.apn ?? "").startsWith(SAMPLE_APN_PREFIX)) return { ok: false, reason: "Sample data is not a sale" };
+  // Financed BY this sale: a note carried from this deal (Close & Carry sets
+  // originatingDealId, and runs after the close — so the carry route retracts
+  // what the close recorded), or a hand-entered note on the property with no
+  // originating deal, whose provenance is unknown and is excluded
+  // conservatively. A note carried from ANOTHER deal on the same parcel (the
+  // investor's own seller-financed purchase) says nothing about this sale's
+  // price (audit of e3debe0).
   const [financed] = await db
     .select({ id: notes.id })
     .from(notes)
-    .where(and(eq(notes.organizationId, orgId), eq(notes.propertyId, row.propertyId)))
+    .where(
+      and(
+        eq(notes.organizationId, orgId),
+        or(
+          eq(notes.originatingDealId, dealId),
+          and(eq(notes.propertyId, row.propertyId), isNull(notes.originatingDealId)),
+        ),
+      ),
+    )
     .limit(1);
   if (financed) return { ok: false, reason: "Seller-financed: the contract total is not a cash sale price" };
   if (!row.county || !row.state) return { ok: false, reason: "Deal property missing county/state" };

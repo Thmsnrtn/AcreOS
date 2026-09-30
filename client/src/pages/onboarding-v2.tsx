@@ -559,9 +559,17 @@ export default function OnboardingV2() {
         path: "fast",
       });
       if (!res.ok) throw new Error("Failed to complete onboarding");
-      return res.json();
+      return (await res.json()) as { success: boolean; incomplete?: string[] };
     },
-    onSuccess: (_data, destination) => {
+    onSuccess: (data, destination) => {
+      // Completed, but something did not save: say so rather than a silent
+      // "done" (the server used to answer success regardless).
+      if (data?.incomplete && data.incomplete.length > 0) {
+        toast({
+          title: "Setup finished with gaps",
+          description: `These didn't save and can be set in Settings: ${data.incomplete.join(", ")}.`,
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/organization"] });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
       queryClient.invalidateQueries({ queryKey: ["/api/me/needs-onboarding"] });
@@ -647,11 +655,14 @@ export default function OnboardingV2() {
       if (workspaceName && workspaceName !== orgData?.name) {
         await updateOrgMutation.mutateAsync(workspaceName);
       }
-      // Fire provision + persona in parallel — both are best-effort;
-      // /onboarding/complete will derive persona server-side as safety net.
+      // Provision, persona and the step save run in parallel. The step used
+      // to advance whatever they returned (allSettled never throws), so a
+      // failed save moved the user on with a workspace that was never set up
+      // (quality directive 2026-09-29). Each is safe to retry; a failure now
+      // keeps the user here and names what did not save.
       // The note-role fork is folded into resolvedPersona so originators +
       // servicers land on their own persona, not the generic note_investor.
-      await Promise.allSettled([
+      const results = await Promise.allSettled([
         provisionMutation.mutateAsync(businessType),
         personaMutation.mutateAsync({ persona: resolvedPersona, businessType }),
         completeStepMutation.mutateAsync({
@@ -663,6 +674,16 @@ export default function OnboardingV2() {
           },
         }),
       ]);
+      const labels = ["workspace setup", "your role", "this step"];
+      const failed = results.flatMap((r, i) => (r.status === "rejected" ? [labels[i]] : []));
+      if (failed.length > 0) {
+        toast({
+          variant: "destructive",
+          title: "Some of your setup didn't save",
+          description: `Couldn't save ${failed.join(" and ")}. Nothing else changed — try again.`,
+        });
+        return;
+      }
       advanceTo(1);
     } catch (error) {
       clientLogger.error("Error saving workspace step", error);

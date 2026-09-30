@@ -15,6 +15,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { deals, notes, transactionTraining } from "@shared/schema";
+import type { SQL } from "drizzle-orm";
 
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock("../../server/services/sophiePrivacyGuard", () => ({
@@ -32,12 +33,17 @@ const S = vi.hoisted(() => ({
   compCalls: [] as unknown[],
   compRows: [] as unknown[],
   inserted: [] as Array<{ values: Record<string, unknown>; conflict: unknown }>,
+  noteWhere: null as unknown,
 }));
 
 vi.mock("../../server/db", () => {
-  const chain = (rows: () => unknown[]) => {
+  const chain = (rows: () => unknown[], onWhere?: (w: unknown) => void) => {
     const c: Record<string, unknown> = {};
-    for (const m of ["innerJoin", "where", "limit", "orderBy"]) c[m] = () => c;
+    for (const m of ["innerJoin", "limit", "orderBy"]) c[m] = () => c;
+    c.where = (w: unknown) => {
+      onWhere?.(w);
+      return c;
+    };
     c.then = (f: (v: unknown) => unknown, r?: (e: unknown) => unknown) => Promise.resolve(rows()).then(f, r);
     return c;
   };
@@ -45,7 +51,10 @@ vi.mock("../../server/db", () => {
     db: {
       select: () => ({
         from: (t: unknown) =>
-          chain(() => (t === deals ? (S.dealRow ? [S.dealRow] : []) : t === notes ? S.noteRows : [])),
+          chain(
+            () => (t === deals ? (S.dealRow ? [S.dealRow] : []) : t === notes ? S.noteRows : []),
+            t === notes ? (w) => (S.noteWhere = w) : undefined,
+          ),
       }),
       query: {
         transactionTraining: {
@@ -58,6 +67,12 @@ vi.mock("../../server/db", () => {
       insert: (t: unknown) => ({
         values: (v: Record<string, unknown>) => ({
           onConflictDoNothing: (conflict: unknown) => ({
+            returning: async () => {
+              if (t === transactionTraining) S.inserted.push({ values: v, conflict });
+              return [{ id: 9 }];
+            },
+          }),
+          onConflictDoUpdate: (conflict: unknown) => ({
             returning: async () => {
               if (t === transactionTraining) S.inserted.push({ values: v, conflict });
               return [{ id: 9 }];
@@ -86,7 +101,14 @@ beforeEach(() => {
   S.compCalls = [];
   S.compRows = [];
   S.inserted = [];
+  S.noteWhere = null;
 });
+
+/** Render a captured drizzle predicate to SQL text + params (what Postgres would run). */
+async function renderWhere(w: unknown): Promise<{ sql: string; params: unknown[] }> {
+  const { PgDialect } = await import("drizzle-orm/pg-core");
+  return new PgDialect().sqlToQuery(w as SQL);
+}
 
 describe("only a real cash sale is market evidence", () => {
   it("a clean closed disposition qualifies, with a stable anonymous key", async () => {
@@ -106,6 +128,21 @@ describe("only a real cash sale is market evidence", () => {
     S.noteRows = [{ id: 1 }];
     const { closedSaleEvidence } = await import("../../server/services/marketNetworkContributor");
     expect(await closedSaleEvidence(3, 5)).toMatchObject({ ok: false, reason: expect.stringMatching(/Seller-financed/) });
+  });
+
+  it("the financing check reads the note carried FROM THIS DEAL, not any note ever written on the parcel (audit of e3debe0)", async () => {
+    const { closedSaleEvidence } = await import("../../server/services/marketNetworkContributor");
+    await closedSaleEvidence(3, 5);
+    expect(S.noteWhere).not.toBeNull();
+    const q = await renderWhere(S.noteWhere);
+    // A note originated by this deal (dealId 3) excludes the sale…
+    expect(q.sql).toMatch(/"originating_deal_id" = \$(\d+)/);
+    const idx = Number(q.sql.match(/"originating_deal_id" = \$(\d+)/)![1]) - 1;
+    expect(q.params[idx]).toBe(3);
+    // …and a property-level match only counts for a hand-entered note with no
+    // originating deal (the investor's own seller-financed PURCHASE of the
+    // parcel, carried from another deal, says nothing about this sale).
+    expect(q.sql).toMatch(/"property_id" = \$\d+ and "notes"\."originating_deal_id" is null/);
   });
 
   it("a sample fixture is not a sale", async () => {
@@ -135,6 +172,57 @@ describe("a closed sale is recorded once, and can be retracted", () => {
     );
     expect(S.inserted[0].values).toMatchObject({ transactionHash: "deal:abc", dataQuality: "medium", contributorOrgId: 5 });
     expect(S.inserted[0].conflict).toMatchObject({ target: transactionTraining.transactionHash });
+  });
+
+  it("a re-close after a reopen restores the retracted row with its corrected figures (audit of e3debe0)", async () => {
+    const { acreOSValuation } = await import("../../server/services/acreOSValuation");
+    await acreOSValuation.recordTransactionForTraining(
+      "5",
+      {
+        propertyId: "11",
+        salePrice: 64000,
+        saleDate: new Date("2026-09-20T00:00:00Z"),
+        acres: 20,
+        pricePerAcre: 3200,
+        location: { state: "TX", county: "Llano", zipCode: "", latitude: 0, longitude: 0 },
+        characteristics: {},
+        marketConditions: { quarterlyInterestRate: 0, localUnemploymentRate: 0, populationGrowth: 0, nearbyDevelopment: false },
+      },
+      "medium",
+      { dedupeKey: "deal:abc" },
+    );
+    const conflict = S.inserted[0].conflict as { set?: Record<string, unknown>; setWhere?: unknown };
+    expect(conflict.set).toMatchObject({ isOutlier: false, salePrice: "64000", pricePerAcre: "3200", dataQuality: "medium" });
+    // Only the contributing org's own keyed row is ever rewritten.
+    const q = await renderWhere(conflict.setWhere);
+    expect(q.sql).toMatch(/"contributor_org_id" = \$1/);
+    expect(q.params).toEqual([5]);
+  });
+});
+
+describe("a close that is not a sale does not stay a sale", () => {
+  it("Close & Carry retracts the cash-sale label the close recorded before the note existed", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const { stripComments } = await import("../helpers/stripComments");
+    const src = stripComments(readFileSync(resolve(__dirname, "../../server/routes-notes.ts"), "utf8"));
+    const start = src.indexOf('"/api/notes/from-deal/:dealId"');
+    expect(start).toBeGreaterThan(0);
+    const body = src.slice(start, src.indexOf('"/api/notes/from-deal/:dealId"', start + 10));
+    const created = body.indexOf("storage.createNote(");
+    expect(created).toBeGreaterThan(0);
+    expect(body.slice(created)).toMatch(/retractTrainingTransaction\(orgId, `deal:\$\{closedSaleDealKey\(orgId, dealId\)\}`\)/);
+  });
+
+  it("only a disposition's accepted amount is paired as the AVM's actual sale price", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const { stripComments } = await import("../helpers/stripComments");
+    const src = stripComments(readFileSync(resolve(__dirname, "../../server/routes-deals.ts"), "utf8"));
+    const at = src.indexOf('snapshotType: "avm_vs_actual"');
+    expect(at).toBeGreaterThan(0);
+    const guard = src.slice(Math.max(0, at - 400), at);
+    expect(guard).toMatch(/if \([^)]*deal\.type === "disposition"[^)]*\)\s*\{\s*pairOutcomeAsync\(\{\s*$/);
   });
 });
 
@@ -185,12 +273,28 @@ describe("the deal routes emit on evidence, not on a stage", () => {
     const { stripComments } = await import("../helpers/stripComments");
     const src = stripComments(readFileSync(resolve(__dirname, "../../server/routes-deals.ts"), "utf8"));
     const sites = [...src.matchAll(/eventName:\s*"first_offer_made"/g)].map((m) => m.index ?? 0);
-    expect(sites.length).toBe(2); // vacuity: both sites still exist
+    // Vacuity: the create site. A TRANSITION into offer_sent is recorded by
+    // recordDealTransitionEvidence on every stage-change path
+    // (dealTransitionEvidenceEverywhere.test.ts), not inline here.
+    expect(sites.length).toBe(1);
     for (const at of sites) {
       // The nearest guard above each site names the offer_sent state.
       const before = src.slice(Math.max(0, at - 900), at);
       expect(before).toMatch(/status\s*===\s*"offer_sent"/);
     }
+  });
+
+  it("a contract is signed evidence only when it carries a signature — 'final' is not signed (audit of e3debe0)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const { stripComments } = await import("../helpers/stripComments");
+    const src = stripComments(readFileSync(resolve(__dirname, "../../server/routes-deals.ts"), "utf8"));
+    const start = src.indexOf("async function contractSignedEvidence(");
+    expect(start).toBeGreaterThan(0);
+    const body = src.slice(start, src.indexOf("\n}\n", start));
+    expect(body).toMatch(/isNotNull\(generatedDocuments\.signedAt\)/); // vacuity: the predicate is here
+    expect(body).not.toMatch(/"final"/);
+    expect(body).toMatch(/desc nulls last/);
   });
 
   it("entering escrow asks for evidence before emitting contract_signed", async () => {

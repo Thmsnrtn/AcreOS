@@ -657,24 +657,42 @@ async function findSampleRows(id: number): Promise<{
 }
 
 /**
- * Seed the tailored sample set for an org's business type. Idempotent: if any
- * marker rows already exist (lead source="sample_data" or property apn
- * "SAMPLE-*"), returns `{ seeded: false }` with the CURRENT sample counts and
- * creates nothing.
+ * Seed the tailored sample set for an org's business type. Idempotent: if a
+ * COMPLETED sample set exists (marker rows AND the `sampleDataLoaded` flag
+ * this function sets as its last write), returns `{ seeded: false }` with the
+ * current counts and creates nothing.
+ *
+ * Resumable (quality directive 2026-09-29): the creates are sequential, so a
+ * failure after the first write left marker rows without the flag — and the
+ * old "any marker exists → skip" guard then refused every retry, leaving a
+ * partial fixture for good. Markers without the flag are now a partial seed:
+ * exactly the sample rows are cleared (clearSampleDataForOrg — marked rows
+ * only) and the full set is seeded again, reported as `repaired`.
  */
 export async function seedSampleDataForOrg(
   orgId: string,
   businessType: string,
   opts?: { userId?: string },
-): Promise<{ seeded: boolean; counts: Record<string, number> }> {
+): Promise<{ seeded: boolean; counts: Record<string, number>; repaired?: boolean }> {
   const id = toNumericOrgId(orgId);
-  const org = await storage.getOrganization(id);
+  let org = await storage.getOrganization(id);
   if (!org) {
     throw new Error("Organization not found");
   }
 
   const existing = await findSampleRows(id);
-  if (existing.leads > 0 || existing.properties > 0) {
+  const hasMarkers = existing.leads > 0 || existing.properties > 0;
+  const completed = (org.onboardingData as Record<string, unknown> | null)?.sampleDataLoaded === true;
+  let repaired = false;
+  if (hasMarkers && !completed) {
+    logger.warn("[sampleSeeder] Partial sample set found (seed did not finish) — clearing it and seeding again", {
+      metadata: { orgId: id, businessType, existing: { leads: existing.leads, properties: existing.properties } },
+    });
+    await clearSampleDataForOrg(orgId);
+    org = await storage.getOrganization(id);
+    if (!org) throw new Error("Organization not found");
+    repaired = true;
+  } else if (hasMarkers) {
     logger.info("[sampleSeeder] Sample data already present; skipping seed", {
       metadata: {
         orgId: id,
@@ -745,9 +763,9 @@ export async function seedSampleDataForOrg(
     notes: notesCreated,
   };
   logger.info("[sampleSeeder] Seeded sample data", {
-    metadata: { orgId: id, businessType, userId: opts?.userId, counts },
+    metadata: { orgId: id, businessType, userId: opts?.userId, counts, repaired },
   });
-  return { seeded: true, counts };
+  return { seeded: true, counts, ...(repaired ? { repaired } : {}) };
 }
 
 /**

@@ -269,7 +269,7 @@ export function NoteRecordPaymentModal({ open, onOpenChange, note }: Props) {
         body,
         // Held across retries of THIS payment (a new key per click recorded
         // a timed-out payment twice).
-        { idempotencyKey: operationKey.keyFor(body) },
+        { idempotencyKey: operationKey.keyFor({ noteId: note.id, ...body }) },
       );
       return res.json();
     },

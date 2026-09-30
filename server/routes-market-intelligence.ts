@@ -112,29 +112,10 @@ router.get('/county-report', async (req: Request, res: Response) => {
   }
 });
 
-// GET /public/data — public market data (no auth, SEO-friendly)
-router.get('/public/data', async (_req: Request, res: Response) => {
-  try {
-    const stateData = [
-      { state: 'TX', avgPricePerAcre: 3200, topCounties: ['Hudspeth', 'Culberson', 'Jeff Davis'], trend: 'rising' },
-      { state: 'NM', avgPricePerAcre: 1800, topCounties: ['Otero', 'Luna', 'Sierra'], trend: 'stable' },
-      { state: 'AZ', avgPricePerAcre: 4500, topCounties: ['Cochise', 'Graham', 'Greenlee'], trend: 'rising' },
-      { state: 'NV', avgPricePerAcre: 2100, topCounties: ['Nye', 'Elko', 'Humboldt'], trend: 'stable' },
-      { state: 'CO', avgPricePerAcre: 5600, topCounties: ['Costilla', 'Huerfano', 'Las Animas'], trend: 'rising' },
-      { state: 'FL', avgPricePerAcre: 8900, topCounties: ['Highlands', 'Hardee', 'DeSoto'], trend: 'rising' },
-      { state: 'CA', avgPricePerAcre: 7200, topCounties: ['Kern', 'Inyo', 'San Bernardino'], trend: 'stable' },
-      { state: 'OR', avgPricePerAcre: 3400, topCounties: ['Lake', 'Harney', 'Malheur'], trend: 'rising' },
-    ];
-
-    res.json({
-      title: 'Land Prices by State — AcreOS Market Intelligence',
-      generatedAt: new Date().toISOString(),
-      states: stateData,
-      cta: 'Get detailed reports and AI deal finding. Start Free →',
-    });
-  } catch (err) {
-    Errors.internal(res, err);
-  }
-});
+// GET /public/data was removed (quality directive 2026-09-29): it served
+// eight hard-coded state price-per-acre figures stamped with a fresh
+// `generatedAt`, unauthenticated, presented as market intelligence. It had no
+// caller. There is no public market figure until one is computed from real,
+// consented data (DEFECT-0155's cohort rules).
 
 export default router;

@@ -48,6 +48,12 @@ export interface FunnelSummary {
   p90TimeToFirstValueSeconds: number | null;
   belowNinetySecondThreshold: number;
   abandonmentByStep: Record<number, number>;
+  /**
+   * Orgs in THIS cohort (signed up in the window) that completed each step.
+   * The funnel page counted steps over a 50-row, unwindowed org list and
+   * divided by this window's signups (quality directive 2026-09-29).
+   */
+  stepCompletedCounts: Record<1 | 2 | 3 | 4 | 5, number>;
 }
 
 export interface OrgFunnelDetail {
@@ -392,6 +398,11 @@ export async function getFunnelSummary(
         onboardingFunnelMetrics.timeToFirstValueSeconds,
       abandonedAtStep: onboardingFunnelMetrics.abandonedAtStep,
       measuredDate: onboardingFunnelMetrics.measuredDate,
+      step1CompletedAt: onboardingFunnelMetrics.step1CompletedAt,
+      step2CompletedAt: onboardingFunnelMetrics.step2CompletedAt,
+      step3CompletedAt: onboardingFunnelMetrics.step3CompletedAt,
+      step4CompletedAt: onboardingFunnelMetrics.step4CompletedAt,
+      step5CompletedAt: onboardingFunnelMetrics.step5CompletedAt,
     })
     .from(onboardingFunnelMetrics)
     .where(gte(onboardingFunnelMetrics.signupAt, since));
@@ -428,10 +439,19 @@ export async function getFunnelSummary(
     }
   }
 
+  const stepCompletedCounts = {
+    1: latest.filter((r) => r.step1CompletedAt != null).length,
+    2: latest.filter((r) => r.step2CompletedAt != null).length,
+    3: latest.filter((r) => r.step3CompletedAt != null).length,
+    4: latest.filter((r) => r.step4CompletedAt != null).length,
+    5: latest.filter((r) => r.step5CompletedAt != null).length,
+  };
+
   return {
     windowDays,
     totalSignups,
     totalFirstValue,
+    stepCompletedCounts,
     firstValueRate,
     medianTimeToFirstValueSeconds: p50,
     p50TimeToFirstValueSeconds: p50,

@@ -189,6 +189,16 @@ describe("onboarding routes", () => {
       expect(h.storage.createDeal).not.toHaveBeenCalled();
     });
 
+    it("a part that did not save is reported — not answered with a bare success (quality directive 2026-09-29)", async () => {
+      h.seedSampleDataForOrg.mockRejectedValueOnce(new Error("seed failed"));
+      const res = await request(app)
+        .post("/api/onboarding/complete")
+        .send({ formData: { businessType: "subdivider", orgName: "Acme Lots" }, path: "fast" });
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ success: false, completed: true, incomplete: ["sample data"] });
+      expect(h.state.org.onboardingCompleted).toBe(true);
+    });
+
     it("does not seed when seedSampleData:false", async () => {
       const res = await request(app)
         .post("/api/onboarding/complete")

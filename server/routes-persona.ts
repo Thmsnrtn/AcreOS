@@ -12,11 +12,12 @@
  */
 
 import { Router, type Response } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "./db";
 import { users } from "@shared/models/auth";
-import { organizations } from "@shared/schema";
+import { organizations, teamMembers } from "@shared/schema";
+import { normalizeRole } from "./middleware/roleGuard";
 import {
   BUSINESS_TYPES,
   BUSINESS_TYPE_TO_PERSONA,
@@ -88,16 +89,33 @@ router.put("/", getOrCreateOrg, async (req: AuthenticatedRequest, res: Response)
       .set({ persona, updatedAt: new Date() })
       .where(eq(users.id, userId));
 
+    let organizationUpdated = false;
     // Reconcile the org's coarse type so the sidebar/detection follows the
     // user's choice. Best-effort: a sync miss must not fail the persona change
     // itself (the primary, user-initiated action), so we log and continue.
     try {
       const orgId = getOrganizationId(req);
+      // The persona is the member's own view; the business type is the
+      // ORGANIZATION's. Any member changing their personal persona rewrote
+      // the org's type for everyone (quality directive 2026-09-29). Only an
+      // owner or admin moves the org with them.
       const [org] = await db
-        .select({ onboardingData: organizations.onboardingData })
+        .select({ onboardingData: organizations.onboardingData, ownerId: organizations.ownerId })
         .from(organizations)
         .where(eq(organizations.id, orgId))
         .limit(1);
+      const [member] = await db
+        .select({ role: teamMembers.role })
+        .from(teamMembers)
+        .where(and(eq(teamMembers.organizationId, orgId), eq(teamMembers.userId, String(userId)), eq(teamMembers.isActive, true)))
+        .limit(1);
+      const role = normalizeRole(member?.role ?? "");
+      const mayMoveOrg = org?.ownerId === String(userId) || role === "owner" || role === "admin";
+      if (!mayMoveOrg) {
+        logger.info("Persona updated for the member only (not an org owner/admin)", { userId, persona });
+        res.json({ persona, organizationUpdated: false });
+        return;
+      }
       const currentBusinessType = (org?.onboardingData as { businessType?: BusinessType } | null)?.businessType;
 
       // Choose the businessType + investorType to write:
@@ -124,6 +142,7 @@ router.put("/", getOrCreateOrg, async (req: AuthenticatedRequest, res: Response)
           onboardingData: { ...(org?.onboardingData ?? {}), businessType: nextBusinessType },
         })
         .where(eq(organizations.id, orgId));
+      organizationUpdated = true;
     } catch (syncErr) {
       logger.warn("Persona→org reconcile failed (persona still saved)", {
         userId,
@@ -133,7 +152,7 @@ router.put("/", getOrCreateOrg, async (req: AuthenticatedRequest, res: Response)
     }
 
     logger.info("Persona updated", { userId, persona, businessType: explicitBusinessType ?? "(derived)" });
-    res.json({ persona });
+    res.json({ persona, organizationUpdated });
   } catch (error) {
     Errors.internal(res, error);
   }

@@ -320,8 +320,26 @@ class AcreOSValuationModel {
         // Its org, so it is this org's comp and nobody else's (ruling #11).
         contributorOrgId: Number.isInteger(Number(organizationId)) ? Number(organizationId) : null,
       })
-        // The same source recorded again (a re-closed deal) is not a second sale.
-        .onConflictDoNothing({ target: transactionTraining.transactionHash })
+        // The same source recorded again (a re-closed deal) is not a second
+        // sale — but it IS the current truth about that sale: a deal reopened
+        // (retracted) and closed again is restored with its corrected figures,
+        // not left an outlier forever (audit of e3debe0). Only the
+        // contributing org's own keyed row is ever rewritten; an unkeyed
+        // re-import still just dedupes.
+        .onConflictDoUpdate({
+          target: transactionTraining.transactionHash,
+          set: {
+            salePrice: String(transactionData.salePrice),
+            saleDate: transactionData.saleDate,
+            sizeAcres: String(transactionData.acres),
+            pricePerAcre: String(transactionData.pricePerAcre),
+            dataQuality,
+            isOutlier: false,
+          },
+          setWhere: opts.dedupeKey
+            ? eq(transactionTraining.contributorOrgId, Number(organizationId))
+            : sql`false`,
+        })
         .returning();
 
       return record ? String(record.id) : "";

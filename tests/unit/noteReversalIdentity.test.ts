@@ -206,6 +206,34 @@ describe("a retried payment is recorded once", () => {
     expect(S.inserted).toEqual([]);
   });
 
+  it("the same key naming a DIFFERENT original payment is a different reversal — refused (409), not replayed (audit of 92bf405)", async () => {
+    S.paymentSelects = [[{
+      id: "rev-1", noteId: "note-1", organizationId: 5, operationKey: "op-12", paymentType: "nsf_reversal", paymentDate: "2026-09-10",
+      originalPaymentId: "pay-A", principalCents: -30_000, interestCents: -12_000, escrowCents: 0, lateFeeCents: 0, unappliedCents: 0,
+    }]];
+    const r = res();
+    await (await handler())(
+      req({ paymentDate: "2026-09-10", paymentType: "nsf_reversal", originalPaymentId: "pay-B" }, { "idempotency-key": "op-12" }),
+      r,
+    );
+    expect(r.statusCode).toBe(409);
+    expect(S.inserted).toEqual([]);
+  });
+
+  it("the same key naming the SAME original is the retry — replayed", async () => {
+    S.paymentSelects = [[{
+      id: "rev-1", noteId: "note-1", organizationId: 5, operationKey: "op-13", paymentType: "nsf_reversal", paymentDate: "2026-09-10",
+      originalPaymentId: "pay-A", principalCents: -30_000, interestCents: -12_000, escrowCents: 0, lateFeeCents: 0, unappliedCents: 0,
+    }]];
+    const r = res();
+    await (await handler())(
+      req({ paymentDate: "2026-09-10", paymentType: "nsf_reversal", originalPaymentId: "pay-A" }, { "idempotency-key": "op-13" }),
+      r,
+    );
+    expect(r.statusCode).toBe(200);
+    expect(r.body).toMatchObject({ replayed: true, payment: { id: "rev-1" } });
+  });
+
   it("a first attempt stores its key on the row", async () => {
     S.paymentSelects = [[]];
     const r = res();

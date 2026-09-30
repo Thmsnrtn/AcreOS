@@ -1751,6 +1751,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
 
 function RecordPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose: () => void }) {
   const { mutate, isPending } = useRecordPayment();
+  const { toast } = useToast();
   const [amount, setAmount] = useState(note.monthlyPayment?.toString() || '');
   const [method, setMethod] = useState('ach');
 
@@ -1773,6 +1774,14 @@ function RecordPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
       status: 'completed',
     }, {
       onSuccess: onClose,
+      // A refused payment used to leave the dialog open with no word of why.
+      onError: (err: unknown) => {
+        toast({
+          title: "Payment not recorded",
+          description: err instanceof Error ? err.message : "Try again.",
+          variant: "destructive",
+        });
+      },
     });
   };
 
@@ -1855,13 +1864,16 @@ function RecordPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
 
             <dl className="bg-muted/50 rounded-card p-4 space-y-2">
               <div className="flex justify-between text-sm">
-                <dt className="text-muted-foreground">Principal</dt>
+                <dt className="text-muted-foreground">Principal (est.)</dt>
                 <dd className="font-mono tabular-nums">{usd(principalAmount)}</dd>
               </div>
               <div className="flex justify-between text-sm">
-                <dt className="text-muted-foreground">Interest</dt>
+                <dt className="text-muted-foreground">Interest (est.)</dt>
                 <dd className="font-mono tabular-nums">{usd(interestAmount)}</dd>
               </div>
+              <p className="text-xs text-muted-foreground">
+                The exact split is computed in cents from the note's balance when the payment is recorded.
+              </p>
               <div className="flex justify-between font-medium pt-2 border-t">
                 <dt>Total</dt>
                 <dd className="font-mono tabular-nums">{usd(Number(amount) || 0)}</dd>

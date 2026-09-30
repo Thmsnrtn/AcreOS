@@ -12,7 +12,7 @@ import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { checkUsageLimit } from "./services/usageLimits";
 import { db, withTransaction } from "./db";
 import { outcomeTelemetry, dueDiligenceItems, deals, contractAssignments, CONTRACT_ASSIGNMENT_STATUSES, generatedDocuments } from "@shared/schema";
-import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { and, eq, isNotNull, or, sql } from "drizzle-orm";
 import {
   STAGE_BENCHMARK_DAYS,
   DEFAULT_STAGE_BENCHMARK_DAYS,
@@ -35,7 +35,7 @@ import {
 // Wave B "Wire the engine": deal automations never ran because nothing emitted
 // deal.created / deal.stage_changed. Both emitters are fire-and-forget and
 // no-op unless the status genuinely changed — see services/dealEvents.ts.
-import { emitDealCreated, emitDealStageChanged } from "./services/dealEvents";
+import { emitDealCreated, emitDealStageChanged, recordDealTransitionEvidence } from "./services/dealEvents";
 // The deal-created perception event. createDeal suppresses its own publish for
 // transactional callers (a deal that may still roll back must not be announced),
 // so the route issues it once the transaction has committed.
@@ -64,10 +64,15 @@ async function contractSignedEvidence(
       and(
         eq(generatedDocuments.organizationId, orgId),
         eq(generatedDocuments.dealId, dealId),
-        or(isNotNull(generatedDocuments.signedAt), inArray(generatedDocuments.status, ["signed", "final"])),
+        // A document is evidence of a signature when it carries one. "final"
+        // means finalized for sending, not signed, and admitted every
+        // generated-but-unsigned contract (audit of e3debe0).
+        or(isNotNull(generatedDocuments.signedAt), eq(generatedDocuments.status, "signed")),
       ),
     )
-    .orderBy(desc(generatedDocuments.signedAt))
+    // The most recent signature first; Postgres sorts NULL first under a bare
+    // DESC, which put an undated "signed" row ahead of a dated one.
+    .orderBy(sql`${generatedDocuments.signedAt} desc nulls last`)
     .limit(1);
   if (doc) return { kind: "signed_document", documentId: doc.id, signedAt: doc.signedAt ?? null };
   if (attestedBy) return { kind: "operator_attested", attestedBy };
@@ -811,6 +816,9 @@ export function registerDealRoutes(app: Express): void {
       // previousData carries the honest prior stage. No-ops emit nothing: the
       // helper compares statuses and returns early when they match.
       emitDealStageChanged(org.id, existingDeal, deal);
+      // The transition's evidence: offer_sent → first offer made; leaving
+      // closed → the recorded sale is retracted (every stage-change path).
+      recordDealTransitionEvidence(org.id, existingDeal, deal, req.user?.id);
 
       // Audit Wave 1 (wholesaler beta→core) — deal.contract_signed. A deal
       // genuinely entering escrow (accepted → in_escrow, the only path in per
@@ -934,7 +942,11 @@ export function registerDealRoutes(app: Express): void {
           });
 
           // Pair the AVM snapshot with the actual sale price (closed_won only).
-          if (isFirstClose && deal.propertyId && acceptedAmount) {
+          // Only a DISPOSITION's accepted amount is a sale price; an
+          // acquisition's is what the investor paid, often a fraction of value
+          // by design, and labelling it actualSalePrice taught the AVM that
+          // land is worth what investors buy it for (audit of e3debe0).
+          if (isFirstClose && deal.propertyId && acceptedAmount && deal.type === "disposition") {
             pairOutcomeAsync({
               snapshotType: "avm_vs_actual",
               subjectType: "property",
@@ -1147,40 +1159,14 @@ export function registerDealRoutes(app: Express): void {
         }).catch(() => {});
       }
 
-      // A closed deal reopened: the sale it recorded is retracted from the
-      // valuation training corpus (marked an outlier, not deleted) so a wrong
-      // close stops being a comp. (quality directive 2026-09-29)
-      if (existingDeal.status === "closed" && deal.status !== "closed") {
-        void (async () => {
-          try {
-            const { closedSaleDealKey } = await import("./services/marketNetworkContributor");
-            const { acreOSValuation } = await import("./services/acreOSValuation");
-            await acreOSValuation.retractTrainingTransaction(org.id, `deal:${closedSaleDealKey(org.id, deal.id)}`);
-          } catch (err) {
-            logger.warn("[deal-reopen] training retraction failed", {
-              dealId: deal.id,
-              err: err instanceof Error ? err.message : String(err),
-            });
-          }
-        })();
-      }
-
       // Magnus §1 — offer-acceptance training snapshots. Decision is "offer
       // sent"; outcome is "accepted | countered | cancelled". The offer is
       // identified by the deal id since AcreOS doesn't have a separate
       // offers table — `offer_sent` status on the deal is the canonical
       // offer-sent event.
       if (validated.status === "offer_sent" && existingDeal.status !== "offer_sent") {
-        // The real offer-sent transition is the first-offer activation signal.
-        try {
-          const { recordActivationEventAsync } = await import("./services/activation");
-          recordActivationEventAsync({
-            orgId: org.id,
-            userId: req.user?.id,
-            eventName: "first_offer_made",
-            eventValue: { dealId: deal.id, offerAmount: deal.offerAmount },
-          });
-        } catch { /* non-fatal */ }
+        // (The first-offer activation signal is recorded by
+        // recordDealTransitionEvidence above, for every stage-change path.)
         try {
           const { recordSnapshotAsync } = await import("./services/mlSnapshots");
           recordSnapshotAsync({
@@ -2608,6 +2594,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       // form. It is the most common way a stage actually changes, so the
       // trigger has to fire from here too.
       emitDealStageChanged(org.id, existingDeal, deal);
+      recordDealTransitionEvidence(org.id, existingDeal, deal, req.user?.id);
 
       res.json(deal);
     } catch (err: any) {
@@ -2663,6 +2650,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       for (const before of beforeDeals) {
         if (!before) continue;
         emitDealStageChanged(org.id, before, { ...before, status: bulkStatus });
+        recordDealTransitionEvidence(org.id, before, { ...before, status: bulkStatus }, req.user?.id);
       }
 
       res.json({ updatedCount });
@@ -2861,6 +2849,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
 
       // Wave B — the swipe/advance path is a stage transition like any other.
       emitDealStageChanged(orgId, existingDeal, deal);
+      recordDealTransitionEvidence(orgId, existingDeal, deal, req.user?.id);
 
       const user = req.user;
       const userId = user?.id;
