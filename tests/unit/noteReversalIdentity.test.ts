@@ -154,6 +154,23 @@ describe("an NSF reversal backs out one real payment, once, exactly", () => {
     expect(String(r.body.message)).toMatch(/already been reversed/);
   });
 
+  it("an unapplied_apply moved no cash — it is not reversible as a bounced payment", async () => {
+    S.paymentSelects = [[{ ...ORIGINAL, paymentType: "unapplied_apply", principalCents: 30_000, unappliedCents: -30_000 }]];
+    const r = res();
+    await (await handler())(req({ paymentDate: "2026-09-10", paymentType: "nsf_reversal", originalPaymentId: "pay-orig" }), r);
+    expect(r.statusCode).toBe(400);
+    expect(S.inserted).toEqual([]);
+  });
+
+  it("a bounced partial whose held funds were already applied is refused — the ledger and balance would disagree", async () => {
+    S.note = { ...S.note!, unappliedBalanceCents: 0 };
+    S.paymentSelects = [[{ ...ORIGINAL, paymentType: "partial", principalCents: 0, interestCents: 0, unappliedCents: 20_000 }]];
+    const r = res();
+    await (await handler())(req({ paymentDate: "2026-09-10", paymentType: "nsf_reversal", originalPaymentId: "pay-orig" }), r);
+    expect(r.statusCode).toBe(400);
+    expect(String(r.body.message)).toMatch(/already applied/);
+  });
+
   it("with no amounts sent, the reversal is the original's exact negation", async () => {
     S.paymentSelects = [[ORIGINAL]];
     const r = res();
@@ -166,13 +183,27 @@ describe("an NSF reversal backs out one real payment, once, exactly", () => {
 
 describe("a retried payment is recorded once", () => {
   it("the same Idempotency-Key finds the recorded payment; the balance does not move again", async () => {
-    S.paymentSelects = [[{ id: "pay-1", noteId: "note-1", organizationId: 5, operationKey: "op-9" }]];
+    S.paymentSelects = [[{
+      id: "pay-1", noteId: "note-1", organizationId: 5, operationKey: "op-9", paymentType: "regular", paymentDate: "2026-09-10",
+      principalCents: 30_000, interestCents: 12_000, escrowCents: 0, lateFeeCents: 0, unappliedCents: 0,
+    }]];
     const r = res();
     await (await handler())(req({ paymentDate: "2026-09-10", principalCents: 30_000, interestCents: 12_000 }, { "idempotency-key": "op-9" }), r);
     expect(r.statusCode).toBe(200);
     expect(r.body).toMatchObject({ replayed: true, payment: { id: "pay-1" } });
     expect(S.inserted).toEqual([]);
     expect(S.noteUpdates).toEqual([]);
+  });
+
+  it("the same key with a different amount is refused (409) — nothing is recorded", async () => {
+    S.paymentSelects = [[{
+      id: "pay-1", noteId: "note-1", organizationId: 5, operationKey: "op-11", paymentType: "regular", paymentDate: "2026-09-10",
+      principalCents: 30_000, interestCents: 12_000, escrowCents: 0, lateFeeCents: 0, unappliedCents: 0,
+    }]];
+    const r = res();
+    await (await handler())(req({ paymentDate: "2026-09-10", principalCents: 35_000, interestCents: 12_000 }, { "idempotency-key": "op-11" }), r);
+    expect(r.statusCode).toBe(409);
+    expect(S.inserted).toEqual([]);
   });
 
   it("a first attempt stores its key on the row", async () => {

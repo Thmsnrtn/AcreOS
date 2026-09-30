@@ -103,14 +103,18 @@ export function createMcpServer(options: McpServerOptions = {}) {
    * Resolve the session's org binding — and the key's right to read this
    * kind of record — or produce a uniform refusal.
    */
-  const requireBoundOrg = (anyOfScopes: readonly string[]): number => {
+  const requireBoundOrg = (anyOfScopes: readonly string[], mode: "any" | "all" = "any"): number => {
     if (boundOrgId === undefined || boundOrgId === null) {
       throw new Error(
         "This MCP session is not bound to an organization. Authenticate with a per-org API key (ak_live_…) or set MCP_ORG_ID for the static key.",
       );
     }
-    if (grantedScopes !== "all" && !anyOfScopes.some((sc) => grantedScopes.includes(sc))) {
-      throw new Error(`This API key lacks the scope to read this data (needs one of: ${anyOfScopes.join(", ")}).`);
+    const granted = (sc: string) => grantedScopes === "all" || grantedScopes.includes(sc);
+    const ok = mode === "all" ? anyOfScopes.every(granted) : anyOfScopes.some(granted);
+    if (!ok) {
+      throw new Error(
+        `This API key lacks the scope to read this data (needs ${mode === "all" ? "all" : "one"} of: ${anyOfScopes.join(", ")}).`,
+      );
     }
     return boundOrgId;
   };
@@ -605,7 +609,9 @@ export function createMcpServer(options: McpServerOptions = {}) {
     {},
     async () => {
       try {
-        const organizationId = requireBoundOrg(["properties:read", "deals:read", "leads:read", "notes:read"]);
+        // Counts and pipeline value across every record kind: needs ALL four
+        // read scopes, not any one (audit of 0e54c75).
+        const organizationId = requireBoundOrg(["properties:read", "deals:read", "leads:read", "notes:read"], "all");
         const [org, leads, properties, deals, notes] = await Promise.all([
           storage.getOrganization(organizationId),
           storage.getLeads(organizationId),
@@ -788,6 +794,9 @@ if (process.argv[1]?.endsWith("mcp/index.ts") || process.argv[1]?.endsWith("mcp/
   const parsedOrgId = rawOrgId ? Number.parseInt(rawOrgId, 10) : Number.NaN;
   const server = createMcpServer({
     organizationId: Number.isFinite(parsedOrgId) ? parsedOrgId : undefined,
+    // stdio runs as the operator's own configured process (like the static
+    // MCP_API_KEY): it reads what MCP_ORG_ID binds, all of it.
+    scopes: "all",
   });
   const transport = new StdioServerTransport();
   server.connect(transport).then(() => {

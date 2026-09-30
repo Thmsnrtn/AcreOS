@@ -43,7 +43,7 @@ import type { InsertNote } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireRole } from "./middleware/roleGuard";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { encrypt as encryptField } from "./services/fieldEncryption";
 import { emitPaymentEvent } from "./services/workflow-engine";
@@ -1673,6 +1673,7 @@ export function registerNoteRoutes(app: Express): void {
           | { kind: "not_found" }
           | { kind: "bad_request"; message: string }
           | { kind: "replayed"; row: typeof notePayments.$inferSelect }
+          | { kind: "key_reused"; recordedPaymentId: string }
           | {
               kind: "posted";
               posted: PostedNotePayment;
@@ -1732,8 +1733,20 @@ export function registerNoteRoutes(app: Express): void {
               .where(and(eq(notePayments.organizationId, orgId), eq(notePayments.operationKey, operationKey)))
               .limit(1);
             if (already) {
-              if (already.noteId !== id) {
-                return { kind: "bad_request", message: "This Idempotency-Key was already used for a payment on another note." };
+              // A replay must be the SAME payment (an edited resubmission under
+              // the held key would otherwise read "already recorded").
+              const same =
+                already.noteId === id &&
+                already.paymentType === data.paymentType &&
+                String(already.paymentDate).slice(0, 10) === String(data.paymentDate).slice(0, 10) &&
+                (data.paymentType === "nsf_reversal" ||
+                  (Number(already.principalCents) === data.principalCents &&
+                    Number(already.interestCents) === data.interestCents &&
+                    Number(already.escrowCents) === data.escrowCents &&
+                    Number(already.lateFeeCents) === data.lateFeeCents &&
+                    Number(already.unappliedCents) === data.unappliedCents));
+              if (!same) {
+                return { kind: "key_reused", recordedPaymentId: already.id };
               }
               return { kind: "replayed", row: already };
             }
@@ -1785,8 +1798,14 @@ export function registerNoteRoutes(app: Express): void {
             if (!original) {
               return { kind: "bad_request", message: "originalPaymentId does not name a payment on this note" };
             }
-            if (original.paymentType === "nsf_reversal") {
-              return { kind: "bad_request", message: "A reversal cannot itself be reversed" };
+            // Only a payment that brought cash in can bounce. An
+            // unapplied_apply moved held funds, not cash; a reversal is not
+            // itself reversible.
+            if (!["regular", "partial", "extra_principal", "payoff"].includes(original.paymentType)) {
+              return {
+                kind: "bad_request",
+                message: `A ${original.paymentType} entry did not bring cash in, so it cannot be reversed as a bounced payment`,
+              };
             }
             const [priorReversal] = await tx
               .select({ id: notePayments.id })
@@ -1814,6 +1833,17 @@ export function registerNoteRoutes(app: Express): void {
             // No amounts sent: the reversal IS the original's negation — the
             // server derives it rather than trusting re-typed figures.
             if (bucketKeys.every((k) => data[k] === 0)) Object.assign(data, expected);
+            // A bounced partial whose held funds were already applied: taking
+            // them back would drive the unapplied balance below zero, and the
+            // balance write would clamp it — the ledger and the note would
+            // disagree. Reverse the application first (audit of 0e54c75).
+            if ((note.unappliedBalanceCents ?? 0) + expected.unappliedCents < 0) {
+              return {
+                kind: "bad_request",
+                message:
+                  "That payment's held funds were already applied to the note. Reverse the unapplied_apply entry first, then the bounced payment.",
+              };
+            }
             const mismatch = bucketKeys.filter((k) => data[k] !== expected[k]);
             if (mismatch.length > 0) {
               return {
@@ -2010,6 +2040,11 @@ export function registerNoteRoutes(app: Express): void {
         if (outcome.kind === "not_found") return Errors.notFound(res, "Note");
         if (outcome.kind === "bad_request") return Errors.badRequest(res, outcome.message);
         if (outcome.kind === "replayed") return res.json({ payment: outcome.row, replayed: true });
+        if (outcome.kind === "key_reused") {
+          return sendError(res, 409, "IDEMPOTENCY_KEY_REUSED", "This Idempotency-Key was already used for a different payment. Nothing was recorded.", {
+            recordedPaymentId: outcome.recordedPaymentId,
+          });
+        }
 
         // Both ledger writes are COMMITTED. Only now do we tell the workflow
         // engine. Fire-and-forget, never throws. If the transaction had rolled
@@ -2057,6 +2092,22 @@ export function registerNoteRoutes(app: Express): void {
           lateFeeAdvisory: outcome.lateFeeAdvisory,
         });
       } catch (err) {
+        // A concurrent request with the same Idempotency-Key committed first:
+        // the unique (org, operation_key) index rolled this one back. drizzle
+        // wraps the driver error, so the SQLSTATE is on `cause`.
+        const pgErr = err as { code?: string; cause?: { code?: string } } | null;
+        if ((pgErr?.code ?? pgErr?.cause?.code) === "23505") {
+          const rawKey = req.headers?.["idempotency-key"];
+          const key = typeof rawKey === "string" && rawKey.trim() ? rawKey.trim().slice(0, 200) : null;
+          if (key) {
+            const [winner] = await db
+              .select()
+              .from(notePayments)
+              .where(and(eq(notePayments.organizationId, getOrganizationId(req)), eq(notePayments.operationKey, key)))
+              .limit(1);
+            if (winner) return res.json({ payment: winner, replayed: true });
+          }
+        }
         // A throw here means the transaction rolled back: no ledger row, no
         // balance change, and — critically — no workflow event.
         logger.error("notes.recordPayment failed", err instanceof Error ? err : undefined);

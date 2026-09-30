@@ -37,7 +37,7 @@
  * a tenant payment button to this page.
  */
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Wallet, AlertTriangle, FileText, ShieldAlert, Clock, ScrollText } from "lucide-react";
@@ -71,7 +71,8 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useOrganization } from "@/hooks/use-organization";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, generateIdempotencyKey } from "@/lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
+import { useOperationKey } from "@/hooks/use-operation-key";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { Verbs } from "@/lib/labels";
 
@@ -905,12 +906,12 @@ function LedgerBody({ ledger }: { ledger: LedgerResponse }) {
  * Record a payment the landlord ALREADY received, allocated across every open
  * charge before anything is written.
  *
- * Why one POST per allocation line: `POST /api/leases/:id/payments` applies a
- * payment to the single oldest open charge. Posting the allocated amount for
- * each charge in oldest-first order lands exactly the split shown below, so
- * every month's balance is right and each ledger line explains itself. A
- * single lump POST would credit month one and leave month two showing a full
- * balance while the totals said the money arrived.
+ * One POST for the whole amount: `POST /api/leases/:id/payments` allocates a
+ * payment across every open charge atomically, by the same rule as the
+ * preview below (server/services/rental/paymentPosting.ts). This form used to
+ * post one request per allocation line — written when the server credited
+ * only the oldest charge — which made one payment several ledger rows and let
+ * a failure half-way record half of it (quality directive 2026-09-29).
  */
 function RecordPaymentForm({
   leaseId,
@@ -929,9 +930,9 @@ function RecordPaymentForm({
   const [acceptPartial, setAcceptPartial] = useState(false);
   const [postedLines, setPostedLines] = useState<number | null>(null);
   // One key per payment the operator is recording, held across retries of
-  // THAT payment (a lost response, a second click) and replaced once it is
-  // recorded — so the server records it exactly once.
-  const operationKey = useRef<string>(generateIdempotencyKey());
+  // THAT payment and replaced when the payment changes or is recorded — so
+  // the server records it exactly once (see useOperationKey).
+  const operationKey = useOperationKey();
 
   const amountCents = useMemo(() => {
     const t = amount.trim();
@@ -970,26 +971,25 @@ function RecordPaymentForm({
       // rule as the preview above. Posting one request per allocation line
       // made one payment several ledger rows, events and receipts, and a
       // failure half-way left half of it recorded.
+      const paymentBody = {
+        amountCents,
+        receivedAt,
+        method: method.trim() || undefined,
+        payorType,
+        acceptedDespitePartial: acceptPartial,
+      };
       const result = await apiPost<{
         replayed?: boolean;
         allocation?: { lines: unknown[]; unappliedCents: number };
-      }>(
-        `/api/leases/${leaseId}/payments`,
-        {
-          amountCents,
-          receivedAt,
-          method: method.trim() || undefined,
-          payorType,
-          acceptedDespitePartial: acceptPartial,
-        },
-        { "Idempotency-Key": operationKey.current },
-      );
+      }>(`/api/leases/${leaseId}/payments`, paymentBody, {
+        "Idempotency-Key": operationKey.keyFor({ leaseId, ...paymentBody }),
+      });
       const lines =
         (result.allocation?.lines.length ?? 0) + ((result.allocation?.unappliedCents ?? 0) > 0 ? 1 : 0);
       return { done: result.replayed ? null : lines, replayed: result.replayed === true };
     },
     onSuccess: (res) => {
-      operationKey.current = generateIdempotencyKey();
+      operationKey.settle();
       setPostedLines(res.done);
       setAmount("");
       setAcceptPartial(false);

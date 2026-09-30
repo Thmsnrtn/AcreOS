@@ -246,6 +246,8 @@ class ProviderRegistry {
               county,
             })
             .catch(() => {});
+          // A claimed half-open probe that made no vendor call is handed back.
+          if (gate.probe) this.breaker.releaseProbe(provider.name);
           return cached;
         }
       } catch (cacheErr) {
@@ -280,6 +282,7 @@ class ProviderRegistry {
           source: "ProviderRegistry",
           metadata: { need: costCents, have: creditBalance },
         });
+        if (gate.probe) this.breaker.releaseProbe(provider.name);
         continue;
       }
 

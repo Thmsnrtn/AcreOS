@@ -215,7 +215,8 @@ beforeEach(() => {
   state.deductCalls = 0;
   state.insertedValues = [];
   state.conflictTargets = [];
-  state.originalRow = null;
+  // The debit a refund reverses — pool-funded by default.
+  state.originalRow = { amountCents: -1_000, postedBy: "system:credit-pool:direct_mail" };
   state.refundReplay = false;
   state.addCreditsCalls = [];
 });
@@ -492,6 +493,14 @@ describe("refundPoolDebit — the refund returns credit to the purse that paid (
     await refundPoolDebit({ organizationId: 7, originalEventId: "mail:2", amountCents: 300, reason: "provider failed" });
     expect(state.insertedValues[0]).toMatchObject({ feature: "refund_purchased_credits", amountCents: 300 });
     expect(state.addCreditsCalls).toEqual([{ orgId: 7, cents: 300, type: "refund" }]);
+  });
+
+  it("a refund whose original debit cannot be found writes nothing (no unbounded netting)", async () => {
+    state.originalRow = null;
+    const { refundPoolDebit } = await importPool();
+    await refundPoolDebit({ organizationId: 7, originalEventId: "mail:ghost", amountCents: 500, reason: "?" });
+    expect(state.insertedValues).toEqual([]);
+    expect(state.addCreditsCalls).toEqual([]);
   });
 
   it("never refunds more than the original debit", async () => {

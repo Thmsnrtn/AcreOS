@@ -39,11 +39,14 @@ export function TriggerCardArtifact({
     setPending(kind);
     try {
       const tid = trigger.thresholdId ?? trigger.id;
-      const url =
-        kind === "approve"
-          ? `/api/founder/triggers/${encodeURIComponent(String(tid))}/approve`
-          : `/api/founder/triggers/${encodeURIComponent(String(tid))}/defer`;
-      await apiRequest("POST", url, kind === "defer" ? { days: 7 } : {});
+      // The one decision route (server/routes-finance-ledger.ts); approve and
+      // defer are its `action`. The card posted to /api/founder/triggers/*,
+      // which does not exist.
+      await apiRequest(
+        "POST",
+        `/api/founder/finance/triggers/${encodeURIComponent(String(tid))}/approve`,
+        { action: kind },
+      );
       setResolved(kind === "approve" ? "approved" : "deferred");
       toast({
         title: kind === "approve" ? "Trigger approved" : "Trigger deferred",

@@ -459,7 +459,9 @@ describe("POST /api/leases/:id/payments — emit happens after the transaction c
 
   it("a retry with the same Idempotency-Key finds the recorded payment — no second posting", async () => {
     dbMock.select.mockReturnValueOnce(chain([lease]));
-    dbMock.select.mockReturnValueOnce(chain([{ id: "rent-payment-uuid-1", leaseId: "lease-uuid-1", operationKey: "op-1" }]));
+    dbMock.select.mockReturnValueOnce(
+      chain([{ id: "rent-payment-uuid-1", leaseId: "lease-uuid-1", operationKey: "op-1", amountCents: 140_000, receivedAt: "2026-07-05" }]),
+    );
     dbMock.transaction.mockImplementation(async () => {
       throw new Error("must not post again");
     });
@@ -475,14 +477,32 @@ describe("POST /api/leases/:id/payments — emit happens after the transaction c
     dbMock.select.mockReturnValueOnce(chain([lease]));
     dbMock.select.mockReturnValueOnce(chain([])); // not yet recorded
     dbMock.transaction.mockImplementation(async () => {
-      throw Object.assign(new Error("duplicate key value violates unique constraint"), { code: "23505" });
+      // drizzle wraps the driver error: the SQLSTATE is on `cause`, not the error.
+      throw Object.assign(new Error("Failed query"), { cause: { code: "23505" } });
     });
-    dbMock.select.mockReturnValueOnce(chain([{ id: "rent-payment-uuid-9", leaseId: "lease-uuid-1", operationKey: "op-2" }]));
+    dbMock.select.mockReturnValueOnce(
+      chain([{ id: "rent-payment-uuid-9", leaseId: "lease-uuid-1", operationKey: "op-2", amountCents: 140_000, receivedAt: "2026-07-05" }]),
+    );
     const handler = captureRentPaymentHandler();
     const res = fakeRes();
     await handler({ ...req(), headers: { "idempotency-key": "op-2" } }, res);
     expect(res.statusCode).toBe(200);
     expect(res.body).toMatchObject({ replayed: true, payment: { id: "rent-payment-uuid-9" } });
+    expect(emitSpy).not.toHaveBeenCalled();
+  });
+
+  it("the same key with a DIFFERENT amount is refused (409), not answered 'already recorded'", async () => {
+    dbMock.select.mockReturnValueOnce(chain([lease]));
+    dbMock.select.mockReturnValueOnce(
+      chain([{ id: "rent-payment-uuid-1", leaseId: "lease-uuid-1", operationKey: "op-3", amountCents: 100_000, receivedAt: "2026-07-05" }]),
+    );
+    dbMock.transaction.mockImplementation(async () => {
+      throw new Error("must not post");
+    });
+    const handler = captureRentPaymentHandler();
+    const res = fakeRes();
+    await handler({ ...req(), headers: { "idempotency-key": "op-3" } }, res);
+    expect(res.statusCode).toBe(409);
     expect(emitSpy).not.toHaveBeenCalled();
   });
 

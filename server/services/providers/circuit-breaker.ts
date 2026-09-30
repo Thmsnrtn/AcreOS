@@ -191,6 +191,21 @@ export class ProviderCircuitBreaker {
     return { allowed: false, probe: false };
   }
 
+  /**
+   * The probe claimant made no call (it answered from cache, or skipped the
+   * provider for its own reason). Hand the probe back: the breaker returns to
+   * open with its cooloff already elapsed, so the next caller claims it.
+   * Without this, a claimed-but-unused probe left the breaker half_open —
+   * persisted — and every caller of every org was refused until a restart
+   * (independent audit of 0e54c75).
+   */
+  releaseProbe(name: string): void {
+    const s = this.getState(name);
+    if (s.state !== "half_open") return;
+    s.state = "open";
+    this.persist(name, s);
+  }
+
   /** Probe success (or any live success) closes the breaker. */
   recordSuccess(name: string): void {
     const s = this.getState(name);

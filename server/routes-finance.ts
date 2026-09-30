@@ -5,7 +5,7 @@ import { readAllDeals, readAllNotes, readAllPayments, readAllProperties } from "
 import { storage, db, calculateMonthlyPayment } from "./storage";
 import { z } from "zod";
 import { insertNoteSchema, insertPaymentSchema, paymentReminders, notes as notesTable, contractAssignments, deals as dealsTable, properties as propertiesTable } from "@shared/schema";
-import { eq, and, ne, sql, count } from "drizzle-orm";
+import { eq, and, sql, count } from "drizzle-orm";
 import { realDeal, realNote, realProperty } from "./services/onboarding/sampleFilters";
 import { isAuthenticated } from "./auth";
 import { Errors } from "./utils/errors";
@@ -1024,22 +1024,30 @@ export function registerFinanceRoutes(app: Express): void {
       // Wholesaler: assignment fees. These were the deals' ACCEPTED AMOUNT —
       // the contract price — labelled "Collected MTD": a $60,000 contract
       // read as a $60,000 fee. The fee is the recorded assignment fee on a
-      // contract_assignments row (non-cancelled); a closed deal with no
-      // recorded assignment contributes no fee rather than its price.
+      // SIGNED contract_assignments row — one per deal, the latest — the
+      // same rule the wholesaler dashboard uses; a draft is not a fee, and a
+      // closed deal with no signed assignment contributes no fee rather than
+      // its price.
       let assignmentFees = { mtdClosedFees: 0, pendingCount: 0, pendingFees: 0, avgFeePerClose: 0, closedCount: 0 };
       try {
         const deals = await readAllDeals(org.id, { realOnly: true });
         const dealById = new Map(deals.map((d) => [d.id, d]));
         const assignments = await db
-          .select({ dealId: contractAssignments.dealId, feeCents: contractAssignments.assignmentFeeCents, status: contractAssignments.status })
+          .select({ id: contractAssignments.id, dealId: contractAssignments.dealId, feeCents: contractAssignments.assignmentFeeCents })
           .from(contractAssignments)
-          .where(and(eq(contractAssignments.organizationId, org.id), ne(contractAssignments.status, "cancelled")));
+          .where(and(eq(contractAssignments.organizationId, org.id), eq(contractAssignments.status, "signed")));
+        // One signed assignment per deal: the latest (highest id).
+        const latestByDeal = new Map<number, (typeof assignments)[number]>();
+        for (const a of assignments) {
+          const prev = latestByDeal.get(a.dealId);
+          if (!prev || a.id > prev.id) latestByDeal.set(a.dealId, a);
+        }
         let closedFeesCents = 0;
         let closedMtdCents = 0;
         let closedCount = 0;
         let pendingCents = 0;
         let pendingCount = 0;
-        for (const a of assignments) {
+        for (const a of Array.from(latestByDeal.values())) {
           const d = dealById.get(a.dealId);
           if (!d) continue; // a sample deal, or a deal no longer on the book
           const fee = Number(a.feeCents ?? 0);

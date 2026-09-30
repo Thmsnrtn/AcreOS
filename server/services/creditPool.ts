@@ -200,6 +200,9 @@ async function poolUsageThisMonth(organizationId: number): Promise<number> {
         eq(financialLedger.category, "opex_spent"),
         inArray(financialLedger.feature, [...uniqueFeatures, POOL_REFUND_FEATURE]),
         gte(financialLedger.postedAt, monthStart),
+        // A debit paid from PURCHASED credits never drew on the monthly
+        // allowance, so it is not pool usage (its refund returns credits).
+        sql`coalesce(${financialLedger.postedBy}, '') NOT LIKE '%:purchased-overflow'`,
       ),
     );
   return agg?.usedAbsCents ?? 0;
@@ -348,6 +351,7 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
             -- query THREW on every call and fail-closed refused every
             -- metered action (found 2026-07-11 full-app sweep).
             AND feature IN (${sql.join([...uniqueFeatures, POOL_REFUND_FEATURE].map((f) => sql`${f}`), sql`, `)})
+            AND coalesce(posted_by, '') NOT LIKE '%:purchased-overflow'
             AND posted_at >= ${monthStart}
         ) < ${poolMonthlyForGate}
         ON CONFLICT (external_event_id) DO NOTHING
@@ -548,9 +552,18 @@ export async function refundPoolDebit(args: {
         ),
       )
       .limit(1);
-    const fromPurchased = Boolean(original?.postedBy?.endsWith(":purchased-overflow"));
-    const originalCents = Math.abs(Number(original?.amountCents));
-    // Never more than the original debit (when it can be read).
+    // A refund reverses a debit that exists. Without the original there is
+    // no bound on the amount and no purse to return it to, so nothing is
+    // written (audit of 0e54c75: an unfound original was netted unbounded).
+    if (!original) {
+      logger.warn("[credit-pool] refund skipped — original debit not found", {
+        metadata: { organizationId: args.organizationId, originalEventId: args.originalEventId },
+      });
+      return;
+    }
+    const fromPurchased = Boolean(original.postedBy?.endsWith(":purchased-overflow"));
+    const originalCents = Math.abs(Number(original.amountCents));
+    // Never more than the original debit.
     const refundCents = Number.isFinite(originalCents) && originalCents > 0
       ? Math.min(Math.abs(args.amountCents), originalCents)
       : Math.abs(args.amountCents);
@@ -591,16 +604,15 @@ export async function refundPoolDebit(args: {
  */
 export async function poolSnapshot(
   organizationId: number,
-): Promise<{ poolMonthly: number; remaining: number; tier: SubscriptionTier }> {
+): Promise<{ poolMonthly: number; used: number; remaining: number; tier: SubscriptionTier; isFounder: boolean }> {
   const { tier, isFounder } = await fetchOrgTier(organizationId);
   if (isFounder) {
-    return {
-      poolMonthly: TIER_LIMITS.enterprise.creditPool,
-      remaining: Number.POSITIVE_INFINITY,
-      tier,
-    };
+    // Founders never draw from the pool (poolDebit bypasses them).
+    const poolMonthly = TIER_LIMITS.enterprise.creditPool;
+    return { poolMonthly, used: 0, remaining: poolMonthly, tier, isFounder };
   }
   const poolMonthly = TIER_LIMITS[tier].creditPool;
+  // The SAME sum the gate enforces (refunds netted, every pool feature).
   const used = await poolUsageThisMonth(organizationId);
-  return { poolMonthly, remaining: Math.max(0, poolMonthly - used), tier };
+  return { poolMonthly, used, remaining: Math.max(0, poolMonthly - used), tier, isFounder };
 }

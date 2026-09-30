@@ -1163,13 +1163,21 @@ export function registerRentLedgerRoutes(app: Express): void {
           .limit(1);
         return row;
       };
+      // A replay must be the SAME payment. An operator who edits the amount
+      // after a lost response and resubmits under the held key would
+      // otherwise be told "already recorded" for an amount never recorded.
+      const sameIntent = (row: { leaseId: string; amountCents: number; receivedAt: string | Date }) =>
+        row.leaseId === lease.id &&
+        Number(row.amountCents) === parsed.data.amountCents &&
+        String(row.receivedAt).slice(0, 10) === String(parsed.data.receivedAt).slice(0, 10);
+      const replayOrConflict = (row: NonNullable<Awaited<ReturnType<typeof findRecorded>>>) =>
+        sameIntent(row)
+          ? res.json({ payment: row, replayed: true })
+          : sendError(res, 409, "IDEMPOTENCY_KEY_REUSED", "This Idempotency-Key was already used for a different payment. Nothing was recorded.", {
+              recordedPaymentId: row.id,
+            });
       const recorded = await findRecorded();
-      if (recorded) {
-        if (recorded.leaseId !== lease.id) {
-          return Errors.badRequest(res, "This Idempotency-Key was already used for a payment on another lease.");
-        }
-        return res.json({ payment: recorded, replayed: true });
-      }
+      if (recorded) return replayOrConflict(recorded);
 
       // Everything below — the charge read (FOR UPDATE), the payment row, the
       // allocation rows and every charge update — lands in one transaction or
@@ -1195,9 +1203,11 @@ export function registerRentLedgerRoutes(app: Express): void {
       } catch (err) {
         // A concurrent retry with the same key committed first: the unique
         // (org, operation_key) index rolled this one back. Answer with theirs.
-        if ((err as { code?: string } | null)?.code === "23505" && operationKey) {
+        // drizzle wraps the driver error; the SQLSTATE is on `cause`.
+        const e = err as { code?: string; cause?: { code?: string } } | null;
+        if ((e?.code ?? e?.cause?.code) === "23505" && operationKey) {
           const winner = await findRecorded();
-          if (winner) return res.json({ payment: winner, replayed: true });
+          if (winner) return replayOrConflict(winner);
         }
         // Imelda §2.5: "accepting partial rent after filing a notice to vacate
         // can void the notice and force me to start over." The refusal is

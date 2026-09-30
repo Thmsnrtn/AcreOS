@@ -29,10 +29,12 @@ export function registerPlatformFeatureRoutes(app: Express): void {
       const org = req.organization;
       const { generatePortfolioPdf } = await import("./services/reportPdfService");
 
-      // The downloadable portfolio report covers the WHOLE book (DEFECT-0170).
-      const notes = await readAllNotes(org.id);
-      const deals = await readAllDeals(org.id);
-      const properties = await readAllProperties(org.id);
+      // The downloadable portfolio report covers the WHOLE book (DEFECT-0170)
+      // — the REAL book: a report handed to a lender or partner must not
+      // count the "Try with sample data" fixture (quality directive 2026-09-29).
+      const notes = await readAllNotes(org.id, { realOnly: true });
+      const deals = await readAllDeals(org.id, { realOnly: true });
+      const properties = await readAllProperties(org.id, { realOnly: true });
 
       // Build summary data
       const totalNotes = notes.length;
@@ -77,7 +79,8 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   app.get("/api/finance/cash-flow-waterfall", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const notes = await readAllNotes(org.id);
+      // Real book only — a waterfall of sample notes is not the customer's cash.
+      const notes = await readAllNotes(org.id, { realOnly: true });
 
       if (notes.length === 0) {
         return res.json([]);
@@ -91,7 +94,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
       // monthly payment of each note in force that month (not pending, begun
       // by the month's end, not matured before it began). Servicing costs are
       // not recorded anywhere, so they stay 0 rather than being guessed.
-      const payments = await readAllPayments(org.id);
+      const payments = await readAllPayments(org.id, { realOnly: true });
       const months: Array<{ month: string; grossDue: number; collected: number; lateFees: number; servicingCosts: number; netCashFlow: number }> = [];
       const now = new Date();
 

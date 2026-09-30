@@ -91,7 +91,11 @@ describe("the summary reads the real book", () => {
 describe("a fee is a fee", () => {
   it("a closed $60,000 deal with a $5,000 recorded assignment fee is $5,000 of fees — not $60,000", async () => {
     W.deals = [{ id: 1, status: "closed", acceptedAmount: "60000", closingDate: new Date(), updatedAt: new Date() }];
-    W.assignments = [{ dealId: 1, feeCents: 500_000, status: "signed" }];
+    // The route asks for SIGNED rows only; two signed rows for one deal count once (the latest).
+    W.assignments = [
+      { id: 1, dealId: 1, feeCents: 300_000 },
+      { id: 2, dealId: 1, feeCents: 500_000 },
+    ];
     const r = await run();
     expect(r.body?.assignmentFees).toMatchObject({ mtdClosedFees: 5000, closedCount: 1, avgFeePerClose: 5000 });
     expect(r.body?.assignmentFees).not.toHaveProperty("mtdCollected");

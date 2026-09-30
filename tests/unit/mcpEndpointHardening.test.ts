@@ -204,6 +204,13 @@ describe("MCP /mcp honours the key's scopes (audit of 60ebfd9)", () => {
     expect(storage.getProperties).not.toHaveBeenCalled();
   });
 
+  it("the portfolio summary needs every read scope it counts — a notes-only key cannot read it", async () => {
+    const notesOnly = createMcpServer({ organizationId: 7, scopes: ["notes:read"] });
+    const r = await getTool(notesOnly, "get_portfolio_summary").handler({}, {});
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toMatch(/needs all of/);
+  });
+
   it("a leads-only key reads leads and nothing else", async () => {
     const server = createMcpServer({ organizationId: 7, scopes: ["leads:read"] });
     const deals = await getTool(server, "get_deals").handler({}, {});

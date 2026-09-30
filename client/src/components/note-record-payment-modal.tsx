@@ -36,6 +36,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { AcquiredNote, NotePaymentType } from "@/pages/note-detail";
 import { Verbs } from "@/lib/labels";
+import { useOperationKey } from "@/hooks/use-operation-key";
 
 interface Props {
   open: boolean;
@@ -220,6 +221,7 @@ export function NoteRecordPaymentModal({ open, onOpenChange, note }: Props) {
     note.status,
   ]);
 
+  const operationKey = useOperationKey();
   const submitMutation = useMutation({
     mutationFn: async () => {
       const body: Record<string, unknown> = {
@@ -265,11 +267,14 @@ export function NoteRecordPaymentModal({ open, onOpenChange, note }: Props) {
         "POST",
         `/api/notes/${note.id}/payments`,
         body,
-        { idempotent: true },
+        // Held across retries of THIS payment (a new key per click recorded
+        // a timed-out payment twice).
+        { idempotencyKey: operationKey.keyFor(body) },
       );
       return res.json();
     },
     onSuccess: () => {
+      operationKey.settle();
       toast({ title: "Payment recorded", description: `${typeMeta.label} logged.` });
       queryClient.invalidateQueries({ queryKey: ["/api/notes", note.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/notes", note.id, "payments"] });
@@ -465,7 +470,10 @@ export function NoteRecordPaymentModal({ open, onOpenChange, note }: Props) {
           {/* Preview totals — the "before you commit" panel. Visible
               whenever any input has a value so the operator can sanity-check
               the math before the irreversible submit. */}
-          {!preview.everythingZero && (
+          {/* A reversal's amounts come from the original payment on the
+              server; a preview built from the (hidden, zero) inputs would show
+              "no change" right before an irreversible reversal. */}
+          {!preview.everythingZero && paymentType !== "nsf_reversal" && (
             <div
               className="rounded-md border bg-muted/30 p-3 text-sm space-y-1.5"
               data-testid="record-payment-preview"

@@ -73,6 +73,21 @@ describe("ProviderCircuitBreaker — half-open probe state machine", () => {
     expect((await breaker.shouldAllow("regrid")).allowed).toBe(false);
   });
 
+  it("a probe claimed but not used is handed back — the next caller can probe (audit of 0e54c75)", async () => {
+    for (let i = 0; i < 3; i++) breaker.recordFailure("regrid");
+    t += COOLOFF_MS;
+    expect((await breaker.shouldAllow("regrid")).probe).toBe(true);
+    // the claimant answered from cache / skipped for credit — no vendor call
+    breaker.releaseProbe("regrid");
+    expect(breaker.snapshot("regrid").state).toBe("open");
+    expect(await breaker.shouldAllow("regrid")).toEqual({ allowed: true, probe: true });
+  });
+
+  it("releaseProbe is a no-op unless half_open", async () => {
+    breaker.releaseProbe("regrid");
+    expect(breaker.snapshot("regrid").state).toBe("closed");
+  });
+
   it("after cooloff, exactly one caller gets the probe; the next is denied", async () => {
     for (let i = 0; i < 3; i++) breaker.recordFailure("regrid");
     t += COOLOFF_MS;

@@ -38,7 +38,7 @@ import {
 } from "@shared/schema";
 import { TIER_LIMITS, type SubscriptionTier } from "./services/usageLimits";
 import { creditExamples, type CreditAction } from "@shared/billing/credit-weights";
-import { poolDebit, refundPoolDebit, poolRefusalDetails } from "./services/creditPool";
+import { poolDebit, refundPoolDebit, poolRefusalDetails, poolSnapshot } from "./services/creditPool";
 import {
   mailRouter,
   type MailPiece,
@@ -1535,35 +1535,21 @@ export function registerOutreachMailRoutes(app: Express): void {
     getOrCreateOrg,
     async (req: AuthenticatedRequest, res: Response) => {
       const org = getOrganization(req);
-      const tier = (org.subscriptionTier ?? "free") as SubscriptionTier;
-      const limits = TIER_LIMITS[tier] ?? TIER_LIMITS.free;
-      const creditPoolMonthly = limits.creditPool;
 
       try {
         const now = new Date();
         const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
         const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 
-        const [agg] = await db
-          .select({
-            usedAbsCents: sql<number>`coalesce(sum(abs(${financialLedger.amountCents})), 0)::int`,
-          })
-          .from(financialLedger)
-          .where(
-            and(
-              eq(financialLedger.organizationId, org.id),
-              eq(financialLedger.category, "opex_spent"),
-              inArray(financialLedger.feature, TRACKED_CATEGORIES),
-              gte(financialLedger.postedAt, monthStart),
-            ),
-          );
-
-        // 1 credit ≈ 1¢; treat sum of opex cents as credits used.
-        const creditPoolUsedThisMonth = agg?.usedAbsCents ?? 0;
-        const creditPoolRemainingThisMonth = Math.max(
-          0,
-          creditPoolMonthly - creditPoolUsedThisMonth,
-        );
+        // The gauge reads the SAME sum the debit gate enforces (poolSnapshot):
+        // it summed its own feature list — no data lookups, refunds added
+        // rather than netted — so it disagreed with the wall it predicts
+        // (audit of 0e54c75). 1 credit ≈ 1¢.
+        const snapshot = await poolSnapshot(org.id);
+        const tier = snapshot.tier;
+        const creditPoolMonthly = snapshot.poolMonthly;
+        const creditPoolUsedThisMonth = snapshot.used;
+        const creditPoolRemainingThisMonth = snapshot.remaining;
 
         const dayMs = 24 * 60 * 60 * 1000;
         const daysIntoMonth = Math.max(1, Math.floor((now.getTime() - monthStart.getTime()) / dayMs) + 1);

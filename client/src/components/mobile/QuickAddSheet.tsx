@@ -58,6 +58,7 @@ import { apiRequest, fetchJsonArray } from "@/lib/queryClient";
 import { contractRequest, contractQueryFn } from "@/lib/contractFetch";
 import { createLeadContract, listPropertiesContract } from "@shared/contracts";
 import { useToast } from "@/hooks/use-toast";
+import { useOperationKey } from "@/hooks/use-operation-key";
 import type { Persona } from "@shared/models/auth";
 
 interface QuickAddSheetProps {
@@ -341,6 +342,7 @@ function PaymentForm({ onDone }: { onDone: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteId]);
 
+  const paymentKey = useOperationKey();
   const mut = useMutation({
     mutationFn: async () => {
       // Mobile capture deliberately deposits to the "unapplied" bucket —
@@ -348,15 +350,21 @@ function PaymentForm({ onDone }: { onDone: () => void }) {
       // fee. This keeps the phone form to one number while honoring the
       // server's per-bucket cents schema.
       const cents = Math.round(Number(amount) * 100);
-      const res = await apiRequest("POST", `/api/notes/${noteId}/payments`, {
+      const body = {
         paymentDate: paidOn,
         unappliedCents: cents,
         paymentMethod: "other",
         notes: notesText.trim() || undefined,
-      }, { idempotent: true });
+      };
+      // Held across retries of THIS payment — a fresh key per tap recorded a
+      // timed-out payment twice.
+      const res = await apiRequest("POST", `/api/notes/${noteId}/payments`, body, {
+        idempotencyKey: paymentKey.keyFor(body),
+      });
       return res.json();
     },
     onSuccess: () => {
+      paymentKey.settle();
       qc.invalidateQueries({ queryKey: ["/api/notes"] });
       toast({
         title: "Payment logged",

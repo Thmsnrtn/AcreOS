@@ -200,12 +200,35 @@ registerTool({
   slashAliases: ["triggers"],
   async handler() {
     const t = await pendingScaleUpTriggers();
+    const usd = (cents: number) => `$${Math.round(cents / 100).toLocaleString("en-US")}`;
+    const next = t.items[0];
+    // The trigger_card renders ONE trigger (shared/founder-chat/artifacts.ts);
+    // this tool used to hand it a list under a key the card never read, so the
+    // card threw. The next pending rung is the decision in front of the
+    // founder; the rest follow once it is approved or deferred.
+    if (!next) {
+      return {
+        artifact: {
+          type: "text",
+          markdown: `No scale-up triggers pending. Recurring MRR ${usd(t.recurringMrrCents)} (30-day revenue ${usd(t.trailing30dRevenueCents)}).`,
+        },
+      };
+    }
     return {
       artifact: {
         type: "trigger_card",
-        items: t.items,
-        recurringMrrCents: t.recurringMrrCents,
-        trailing30dRevenueCents: t.trailing30dRevenueCents,
+        trigger: {
+          id: next.thresholdId,
+          thresholdId: next.thresholdId,
+          title: next.action,
+          rationale:
+            `Recurring MRR ${usd(t.recurringMrrCents)} is at or above ${usd(next.thresholdCents)}` +
+            (next.crossedAt ? ` (first recorded ${next.crossedAt.slice(0, 10)})` : "") +
+            `. Cost: ${usd(next.costOneTimeCents)} once + ${usd(next.costRecurringCents)}/mo.` +
+            (t.items.length > 1 ? ` ${t.items.length - 1} more pending.` : ""),
+          kind: "scale_up",
+        },
+        actions: ["approve", "defer"],
       },
     };
   },

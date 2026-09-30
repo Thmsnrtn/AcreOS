@@ -370,9 +370,15 @@ export function registerFounderStudioDialRoutes(app: Express) {
   app.get("/api/founder/studio/triggers", ...guards, async (_req, res: Response) => {
     try {
       const rows = await getSetting(KEY_TRIGGERS, DEFAULT_TRIGGERS);
-      // Best-effort MRR snapshot — pull from settings if any service has
-      // written it, otherwise return null so the UI shows "—".
-      const currentMrr = await getSetting<number | null>("revenue.mrr.current", null);
+      // Recurring MRR (dollars) from active subscriptions — the same source
+      // the scale-up triggers and the runway use. It read a setting
+      // ("revenue.mrr.current") that nothing writes, so this page always
+      // showed "—" and crossed nothing (audit of 0e54c75). Null only when the
+      // read itself fails.
+      const { liveMrrDetail } = await import("./services/finance/runwayModel");
+      const currentMrr = await liveMrrDetail()
+        .then((d) => d.cents / 100)
+        .catch(() => null);
       const thresholds = Array.isArray(rows) ? rows : DEFAULT_TRIGGERS;
       const crossed = currentMrr === null
         ? null
