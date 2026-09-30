@@ -11,8 +11,8 @@ import { leadScoringService } from "./services/leadScoring";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { checkUsageLimit } from "./services/usageLimits";
 import { db, withTransaction } from "./db";
-import { outcomeTelemetry, dueDiligenceItems, deals, contractAssignments, CONTRACT_ASSIGNMENT_STATUSES } from "@shared/schema";
-import { and, eq, sql } from "drizzle-orm";
+import { outcomeTelemetry, dueDiligenceItems, deals, contractAssignments, CONTRACT_ASSIGNMENT_STATUSES, generatedDocuments } from "@shared/schema";
+import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import {
   STAGE_BENCHMARK_DAYS,
   DEFAULT_STAGE_BENCHMARK_DAYS,
@@ -44,7 +44,35 @@ import { publishDealLifecycle } from "./services/dealLifecycleEvents";
 // assignment templates never ran because nothing emitted deal.contract_signed /
 // deal.assignment_pending. Both emitters are fire-and-forget and no-op unless the
 // status genuinely transitions — see services/wholesaleEvents.ts.
-import { emitContractSigned, emitAssignmentPending } from "./services/wholesaleEvents";
+import { emitContractSigned, emitAssignmentPending, type ContractSignedEvidence } from "./services/wholesaleEvents";
+
+/**
+ * The evidence that a deal's purchase agreement was signed: a signed document
+ * on the deal (a provider-completed e-sign receipt), else the operator's
+ * explicit attestation on this request, else none (quality directive
+ * 2026-09-29 — the stage alone is not evidence).
+ */
+async function contractSignedEvidence(
+  orgId: number,
+  dealId: number,
+  attestedBy: string | null,
+): Promise<ContractSignedEvidence | null> {
+  const [doc] = await db
+    .select({ id: generatedDocuments.id, signedAt: generatedDocuments.signedAt })
+    .from(generatedDocuments)
+    .where(
+      and(
+        eq(generatedDocuments.organizationId, orgId),
+        eq(generatedDocuments.dealId, dealId),
+        or(isNotNull(generatedDocuments.signedAt), inArray(generatedDocuments.status, ["signed", "final"])),
+      ),
+    )
+    .orderBy(desc(generatedDocuments.signedAt))
+    .limit(1);
+  if (doc) return { kind: "signed_document", documentId: doc.id, signedAt: doc.signedAt ?? null };
+  if (attestedBy) return { kind: "operator_attested", attestedBy };
+  return null;
+}
 
 // F-D39: small helper used by the due-diligence-item routes below to resolve
 // `(itemId, orgId) → item` only when the item's parent property belongs to
@@ -700,18 +728,21 @@ export function registerDealRoutes(app: Express): void {
         triggerDealEnrichmentAsync(org.id, deal.id, deal.propertyId);
       }
 
-      // Phase 3 Week 14 — Activation telemetry. A new deal row is the
-      // first-offer-made signal (offers and deals share a creation path
-      // in the v1 funnel; we re-fire on the offers table once it lands).
-      try {
-        const { recordActivationEventAsync } = await import("./services/activation");
-        recordActivationEventAsync({
-          orgId: org.id,
-          userId,
-          eventName: "first_offer_made",
-          eventValue: { dealId: deal.id, offerAmount: deal.offerAmount },
-        });
-      } catch { /* non-fatal */ }
+      // Activation telemetry — an offer is made when a deal is SENT as an
+      // offer, not when a deal row is created (quality directive 2026-09-29:
+      // creating any deal recorded first_offer_made). A deal created directly
+      // at offer_sent counts here; the transition below counts the rest.
+      if (deal.status === "offer_sent") {
+        try {
+          const { recordActivationEventAsync } = await import("./services/activation");
+          recordActivationEventAsync({
+            orgId: org.id,
+            userId,
+            eventName: "first_offer_made",
+            eventValue: { dealId: deal.id, offerAmount: deal.offerAmount },
+          });
+        } catch { /* non-fatal */ }
+      }
 
       res.status(201).json(deal);
     } catch (err) {
@@ -792,8 +823,13 @@ export function registerDealRoutes(app: Express): void {
           const property = deal.propertyId
             ? await storage.getProperty(org.id, deal.propertyId)
             : null;
+          // The operator may attest on this request that the agreement is
+          // signed (outside AcreOS); otherwise a signed document must exist.
+          const attested = (req.body as { contractSignedAttested?: unknown })?.contractSignedAttested === true;
+          const evidence = await contractSignedEvidence(org.id, deal.id, attested ? String(req.user?.id ?? "") || null : null);
           emitContractSigned(existingDeal.status, deal, {
             propertyAddress: property?.address ?? null,
+            evidence,
           });
         } catch (err) {
           logger.warn("deal.contract_signed emit failed (non-fatal)", {
@@ -910,51 +946,55 @@ export function registerDealRoutes(app: Express): void {
               outcomeAt: new Date(),
             });
 
-            // Feed the closed deal's REAL sale price into the valuation training
-            // corpus (transaction_training) — the arm's-length ground truth the
-            // weekly retrain + MAE-gated promotion flywheel trains on. Until now
-            // the actual only landed in mlSnapshots, which nothing trains from,
-            // so this proprietary signal (an on-platform closed price) was
-            // stranded and the moat could never learn from real deals. The row
-            // is anonymized by recordTransactionForTraining, deduped by
-            // transaction_hash, non-blocking, and marked high-quality because an
-            // on-platform close IS an arm's-length transaction.
+            // Feed a qualifying closed SALE into the valuation training corpus
+            // (transaction_training). Every close used to go in as "high"
+            // quality — acquisitions (what the investor paid), seller-financed
+            // contract totals, and sample fixtures included — with no dedupe
+            // (quality directive 2026-09-29). closedSaleEvidence admits only a
+            // real cash disposition; the row is keyed by the deal's anonymous
+            // dealKey (a re-close is not a second sale; a reopen retracts it)
+            // and labelled "medium": an operator-entered close is not a
+            // recorded deed price.
             void (async () => {
               try {
-                const prop = await storage.getProperty(org.id, deal.propertyId!);
-                const acres = prop?.sizeAcres != null ? Number(prop.sizeAcres) : 0;
-                if (prop?.state && prop?.county && Number.isFinite(acres) && acres > 0) {
-                  const { acreOSValuation } = await import("./services/acreOSValuation");
-                  await acreOSValuation.recordTransactionForTraining(
-                    String(org.id),
-                    {
-                      propertyId: String(deal.propertyId),
-                      salePrice: acceptedAmount,
-                      saleDate: new Date(),
-                      acres,
-                      pricePerAcre: acceptedAmount / acres,
-                      location: {
-                        state: prop.state,
-                        county: prop.county,
-                        zipCode: prop.zip ?? "",
-                        latitude: prop.latitude != null ? Number(prop.latitude) : 0,
-                        longitude: prop.longitude != null ? Number(prop.longitude) : 0,
-                      },
-                      characteristics: {
-                        zoning: prop.zoning ?? undefined,
-                        roadAccess: prop.roadAccess ?? undefined,
-                        topography: prop.terrain ?? undefined,
-                      },
-                      marketConditions: {
-                        quarterlyInterestRate: 0,
-                        localUnemploymentRate: 0,
-                        populationGrowth: 0,
-                        nearbyDevelopment: false,
-                      },
-                    },
-                    "high",
-                  );
+                const { closedSaleEvidence } = await import("./services/marketNetworkContributor");
+                const sale = await closedSaleEvidence(deal.id, org.id);
+                if (!sale.ok) {
+                  logger.info("[deal-close] not recorded as a sale comp", { dealId: deal.id, reason: sale.reason });
+                  return;
                 }
+                const prop = await storage.getProperty(org.id, sale.propertyId);
+                const { acreOSValuation } = await import("./services/acreOSValuation");
+                await acreOSValuation.recordTransactionForTraining(
+                  String(org.id),
+                  {
+                    propertyId: String(sale.propertyId),
+                    salePrice: sale.price,
+                    saleDate: sale.closingDate ?? new Date(),
+                    acres: sale.acres,
+                    pricePerAcre: sale.price / sale.acres,
+                    location: {
+                      state: sale.state,
+                      county: sale.county,
+                      zipCode: prop?.zip ?? "",
+                      latitude: prop?.latitude != null ? Number(prop.latitude) : 0,
+                      longitude: prop?.longitude != null ? Number(prop.longitude) : 0,
+                    },
+                    characteristics: {
+                      zoning: prop?.zoning ?? undefined,
+                      roadAccess: prop?.roadAccess ?? undefined,
+                      topography: prop?.terrain ?? undefined,
+                    },
+                    marketConditions: {
+                      quarterlyInterestRate: 0,
+                      localUnemploymentRate: 0,
+                      populationGrowth: 0,
+                      nearbyDevelopment: false,
+                    },
+                  },
+                  "medium",
+                  { dedupeKey: `deal:${sale.dealKey}` },
+                );
               } catch (err) {
                 logger.warn("[deal-close] recordTransactionForTraining failed", {
                   dealId: deal.id,
@@ -1107,12 +1147,40 @@ export function registerDealRoutes(app: Express): void {
         }).catch(() => {});
       }
 
+      // A closed deal reopened: the sale it recorded is retracted from the
+      // valuation training corpus (marked an outlier, not deleted) so a wrong
+      // close stops being a comp. (quality directive 2026-09-29)
+      if (existingDeal.status === "closed" && deal.status !== "closed") {
+        void (async () => {
+          try {
+            const { closedSaleDealKey } = await import("./services/marketNetworkContributor");
+            const { acreOSValuation } = await import("./services/acreOSValuation");
+            await acreOSValuation.retractTrainingTransaction(org.id, `deal:${closedSaleDealKey(org.id, deal.id)}`);
+          } catch (err) {
+            logger.warn("[deal-reopen] training retraction failed", {
+              dealId: deal.id,
+              err: err instanceof Error ? err.message : String(err),
+            });
+          }
+        })();
+      }
+
       // Magnus §1 — offer-acceptance training snapshots. Decision is "offer
       // sent"; outcome is "accepted | countered | cancelled". The offer is
       // identified by the deal id since AcreOS doesn't have a separate
       // offers table — `offer_sent` status on the deal is the canonical
       // offer-sent event.
       if (validated.status === "offer_sent" && existingDeal.status !== "offer_sent") {
+        // The real offer-sent transition is the first-offer activation signal.
+        try {
+          const { recordActivationEventAsync } = await import("./services/activation");
+          recordActivationEventAsync({
+            orgId: org.id,
+            userId: req.user?.id,
+            eventName: "first_offer_made",
+            eventValue: { dealId: deal.id, offerAmount: deal.offerAmount },
+          });
+        } catch { /* non-fatal */ }
         try {
           const { recordSnapshotAsync } = await import("./services/mlSnapshots");
           recordSnapshotAsync({

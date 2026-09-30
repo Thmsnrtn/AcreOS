@@ -26,6 +26,7 @@
 import { db } from "../db";
 import { dataSources, dataSourceCache, properties } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
+import { femaZoneCode, isSfhaCode } from "./data-source-broker";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA SIGNAL CATALOG
@@ -479,14 +480,21 @@ export function calculateOpportunityScore(inputs: Partial<OpportunityScoreInputs
   let physicalScore = 20; // Start at max, deduct for issues
 
   // Flood zone penalty
-  const floodZone = inputs.floodZone ?? "X";
-  if (floodZone === "AE" || floodZone === "VE") {
+  // Read by FEMA code. A missing zone defaulted to "X" (minimal risk) — an
+  // unknown flood status scored as a clean one (audit of 0e54c75).
+  const floodZone = femaZoneCode(inputs.floodZone);
+  if (!floodZone || floodZone === "D" || floodZone === "OPEN WATER") {
+    // Not known: no penalty, no "minimal risk" credit, no confidence gain.
+  } else if (floodZone === "AE" || floodZone === "VE" || floodZone.startsWith("V")) {
     physicalScore -= 12;
     flags.push({ type: "negative", signal: `FEMA Zone ${floodZone} (100-year flood)`, impact: "Major value reduction — flood insurance required, buildability limited" });
     confidence += 0.08;
-  } else if (floodZone === "A") {
+  } else if (isSfhaCode(floodZone)) {
     physicalScore -= 8;
-    flags.push({ type: "negative", signal: "FEMA Zone A (special flood hazard)", impact: "Significant flood risk — verify base flood elevation" });
+    flags.push({ type: "negative", signal: `FEMA Zone ${floodZone} (special flood hazard)`, impact: "Significant flood risk — verify base flood elevation" });
+  } else if (floodZone === "SHADED X" || floodZone === "X500" || floodZone === "B") {
+    physicalScore -= 3;
+    flags.push({ type: "negative", signal: `FEMA Zone ${floodZone} (0.2% annual chance)`, impact: "Moderate flood risk" });
   } else {
     flags.push({ type: "positive", signal: `FEMA Zone ${floodZone} (minimal flood risk)`, impact: "Minimal flood risk — no special insurance required" });
     confidence += 0.05;

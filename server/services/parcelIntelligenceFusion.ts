@@ -44,6 +44,7 @@ import { runAutoDueDiligence } from "./dueDiligenceEngine";
 import { recordParcelObservations } from "./data-cache/observation-log";
 import { buildCountyAgSnapshot, getCachedLandTrend } from "./usdaNassService";
 import { buildCountyOpportunityProfile, getKnownMigrationHotspots } from "./censusDataService";
+import { femaZoneCode, isSfhaCode } from "./data-source-broker";
 // NOTE: computeCountyOpportunityScore is intentionally NOT imported/used here.
 // It requires a live market feed; feeding it placeholder constants produced a
 // fabricated score (Quinn data-honesty lens, item 4). Re-introduce it only
@@ -421,7 +422,8 @@ function identifyDealKillers(
   }
 
   // Flood Zone AE — high-risk flood zone
-  if (dd.checks.floodZone.zone === "AE" || dd.checks.floodZone.zone === "VE") {
+  // Every Special Flood Hazard Area code, not only AE/VE (audit of 0e54c75).
+  if (isSfhaCode(femaZoneCode(dd.checks.floodZone.zone))) {
     flags.push({
       type: "flood_zone_ae",
       severity: "dealbreaker",

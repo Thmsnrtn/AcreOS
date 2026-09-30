@@ -6038,6 +6038,188 @@ is awaited (still non-fatal); an unresolved BYOK key re-runs the credit check.
 Falsified: `tests/unit/paidLookupDebitIdentity.test.ts` (red before).
 Resolving commits: quality-directive slice H3
 
+### DEFECT-0219
+Title: The note-payment clients sent a new Idempotency-Key per click, and a replay ignored an edited amount
+Severity: P1
+Status: FIXED
+Surfaced by lenses: independent audit of 0e54c75
+Description: The note modal and the mobile quick-add minted a key per request, so a user who saw a timeout and clicked again sent a new key and recorded the payment twice; the server key (0258) never engaged. A resubmission with an edited amount under a held key was answered "already recorded". The unique-violation race branch read `err.code`, but drizzle puts the SQLSTATE on `err.cause`.
+Evidence: `client/src/components/note-record-payment-modal.tsx`; `client/src/components/mobile/QuickAddSheet.tsx`; `server/routes-rent-ledger.ts`; `server/routes-notes.ts`.
+Remediation: `useOperationKey` holds one key per payment across retries and issues a new one when the payment changes or is recorded (note modal, quick-add, Rent Roll). A key reused for a different payment is refused 409 `IDEMPOTENCY_KEY_REUSED`. Both race branches read `cause.code`.
+Falsified: `tests/unit/useOperationKey.test.tsx`; `tests/unit/paymentWorkflowEvents.test.ts`, `tests/unit/noteReversalIdentity.test.ts` (409 and wrapped-error cases).
+Resolving commits: quality-directive H3 audit fixes
+
+### DEFECT-0220
+Title: A claimed half-open probe that made no vendor call jammed a provider's circuit breaker for every org
+Severity: P1
+Status: FIXED
+Surfaced by lenses: independent audit of 0e54c75
+Description: The provider registry took the half-open probe, then answered from cache or skipped the provider (the BYOK credit recheck) without recording success or failure; the breaker stayed half_open — persisted — and refused every caller until a restart.
+Evidence: `server/services/providers/provider-registry.ts`; `server/services/providers/circuit-breaker.ts`.
+Remediation: `releaseProbe` hands an unused probe back (open, cooloff already elapsed); both early exits call it.
+Falsified: `tests/unit/circuitBreakerHalfOpen.test.ts` (release cases).
+Resolving commits: quality-directive H3 audit fixes
+
+### DEFECT-0221
+Title: Flood labels read as bare codes in the AVM and three scorers
+Severity: P1
+Status: FIXED
+Surfaced by lenses: independent audit of 0e54c75
+Description: The AVM compared the broker's "Zone AE" with bare "AE", so no flood adjustment ever applied, and its ML flood feature looked for "high"/"partial" in the label and was always 0. `dataIntelligenceEngine` defaulted a missing zone to "X" (minimal risk); `parcelIntelligenceFusion` flagged only AE/VE; the feature-engineering job compared bare codes.
+Evidence: `server/services/acreOSValuation.ts`; `server/services/dataIntelligenceEngine.ts`; `server/services/parcelIntelligenceFusion.ts`; `server/jobs/featureEngineeringJob.ts`.
+Remediation: `femaZoneCode` / `isSfhaCode` (exported beside `floodZoneFromNfhl`) are the one reading; a missing zone scores nothing.
+Falsified: `tests/unit/dealEvidenceIsEvidence.test.ts` (AVM adjustment), `tests/unit/femaEmptyIsNotZoneX.test.ts` (helpers).
+Resolving commits: quality-directive H4
+
+### DEFECT-0222
+Title: An NSF reversal preview showed "no change"; reversals could target entries that moved no cash
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 0e54c75
+Description: With amounts derived server-side, the modal's preview read the hidden zero inputs. An unapplied_apply could be reversed as a bounced payment, and reversing a partial whose funds were already applied was clamped by the balance write, leaving the ledger and the note in disagreement.
+Evidence: `client/src/components/note-record-payment-modal.tsx`; `server/routes-notes.ts`.
+Remediation: No preview for a reversal. Only regular, partial, extra_principal and payoff entries are reversible; a reversal that would drive held funds negative is refused with the order to reverse the application first.
+Falsified: `tests/unit/noteReversalIdentity.test.ts` (red before).
+Resolving commits: quality-directive H3 audit fixes
+
+### DEFECT-0223
+Title: MCP: stdio refused every org tool; the /mcp portfolio summary needed any one scope
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 0e54c75
+Description: The stdio entry point passed no scopes, so every org tool refused. `get_portfolio_summary` on /mcp counted leads, properties, deals and notes for a key holding any one read scope.
+Evidence: `server/mcp/index.ts`.
+Remediation: stdio reads with "all" (operator's own process, like the static key); the summary needs all four read scopes.
+Falsified: `tests/unit/mcpEndpointHardening.test.ts`.
+Resolving commits: quality-directive H3 audit fixes
+
+### DEFECT-0224
+Title: The founder chat trigger card could not render or act, and the studio triggers page read an MRR nothing writes
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 0e54c75
+Description: The tool returned a list under a key the card never read (the card threw), and the card posted to `/api/founder/triggers/*`, which does not exist. `/api/founder/studio/triggers` read a `revenue.mrr.current` setting nothing writes, so it always showed "—".
+Evidence: `server/services/founder-chat/tools/inquiry.ts`; `client/src/components/founder-chat/artifacts/trigger_card.tsx`; `server/routes-founder-studio-dials.ts`.
+Remediation: The tool returns the next pending rung as a trigger card (or a text line when none is pending); the card posts to the real decision route; the studio page reads recurring MRR.
+Falsified: Source-level: typed artifact shape (`shared/founder-chat/artifacts.ts`) checked by `npm run check`.
+Resolving commits: quality-directive H3 audit fixes
+
+### DEFECT-0225
+Title: Two scale-up ladders: the finance triggers and the studio's editable dial
+Severity: P2
+Status: OPEN
+Surfaced by lenses: independent audit of 0e54c75
+Description: `scaleUpTriggers.ts` holds the fixed ladder the finance cockpit and founder chat read; `/founder/studio/triggers` holds an editable ladder with different rungs. Which one is canonical is a founder decision.
+Evidence: `server/services/finance/scaleUpTriggers.ts`; `server/routes-founder-studio-dials.ts`.
+Remediation plan: Founder picks one; the other reads it.
+Resolving commits: —
+
+### DEFECT-0226
+Title: The credits gauge disagreed with the debit gate; a refund could net without an original; overflow counted as pool usage
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 0e54c75
+Description: The outreach credits gauge summed its own feature list (no data lookups, refunds added, not netted); `poolSnapshot` had zero callers. A refund whose original debit was not found was netted unbounded. Debits paid from purchased credits counted toward pool usage, so a later pool refund could give nothing back.
+Evidence: `server/routes-outreach-mail.ts`; `server/services/creditPool.ts`.
+Remediation: The gauge reads `poolSnapshot` (the gate's own sum). A refund needs its original. Purchased-overflow debits are excluded from pool usage in both the reader and the gate.
+Falsified: `tests/unit/creditPoolFailClosed.test.ts` (original-not-found case). The SQL sums are source-level proof only (the suite mocks the database).
+Resolving commits: quality-directive H3 audit fixes
+
+### DEFECT-0227
+Title: A refund's ledger row and its purchased-credit return are two transactions; a refund nets the month it is posted
+Severity: P2
+Status: OPEN
+Surfaced by lenses: independent audit of 0e54c75
+Description: A crash between the refund row and `addCredits` returns nothing (a replay writes nothing). A refund posted in a later month nets that month's usage rather than the debit's.
+Evidence: `server/services/creditPool.ts` `refundPoolDebit`.
+Remediation plan: Take both writes in one transaction; net refunds against the original debit's month.
+Resolving commits: —
+
+### DEFECT-0228
+Title: Assignment fees counted drafts and several per deal; the portfolio PDF and waterfall counted the sample book
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 0e54c75
+Description: The finance summary counted every non-cancelled assignment (drafts included), several per deal. The downloadable portfolio report and the cash-flow waterfall read the whole book, sample fixture included.
+Evidence: `server/routes-finance.ts`; `server/routes-platform-features.ts`.
+Remediation: Signed assignments only, the latest per deal (the wholesaler dashboard's rule); the PDF and waterfall read the real book.
+Falsified: `tests/unit/financeSummaryIsTheRealBook.test.ts`.
+Resolving commits: quality-directive H3 audit fixes
+
+### DEFECT-0229
+Title: Today's cash strip counts the sample book
+Severity: P2
+Status: OPEN
+Surfaced by lenses: independent audit of 0e54c75
+Description: Today reads whole-book deals and notes for its money figures and its task cards; filtering the reads would also empty a demo workspace's cards.
+Evidence: `server/routes-today.ts` `buildActiveQueue`.
+Remediation plan: Filter the money figures only (with the Today refresh work, H5).
+Resolving commits: —
+
+### DEFECT-0230
+Title: Creating any deal recorded first_offer_made
+Severity: P1
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H4)
+Description: The activation event fired on deal creation; the real offer-sent transition did not emit it.
+Evidence: `server/routes-deals.ts`.
+Remediation: Recorded on the `offer_sent` transition, or at creation only for a deal created at `offer_sent`.
+Falsified: `tests/unit/dealEvidenceIsEvidence.test.ts` (source pin over both sites, red before).
+Resolving commits: quality-directive H4
+
+### DEFECT-0231
+Title: Entering escrow emitted contract_signed with no document
+Severity: P1
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H4)
+Description: `deal.contract_signed` fired on the stage change alone; the e-sign receipts on the deal were never consulted.
+Evidence: `server/routes-deals.ts`; `server/services/wholesaleEvents.ts`.
+Remediation: The event needs evidence: a signed document on the deal (`generated_documents.signedAt` / status signed) or the operator's explicit attestation (`contractSignedAttested` on the request). The payload names the evidence and dates the contract by the signature.
+Falsified: `tests/unit/wholesaleEvents.test.ts` (rewritten to the new truth), `tests/unit/dealEvidenceIsEvidence.test.ts`.
+Resolving commits: quality-directive H4
+
+### DEFECT-0232
+Title: No UI control for the contract-signed attestation
+Severity: P2
+Status: OPEN
+Surfaced by lenses: quality directive 2026-09-29 (H4)
+Description: The server accepts `contractSignedAttested`; the generic status selects do not send it, so a deal moved to escrow without an e-signed document emits no event (logged).
+Evidence: `server/routes-deals.ts`.
+Remediation plan: Add an attestation prompt where a deal is moved to in_escrow.
+Resolving commits: —
+
+### DEFECT-0233
+Title: Every close fed the valuation corpus and the market network, whatever it was
+Severity: P1
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H4)
+Description: A close sent `acceptedAmount` to `transaction_training` as "high" quality and to the market network regardless of deal type (an acquisition is what the investor paid), seller financing (a contract total), or sample lineage; a re-close contributed again and nothing could retract a wrong label.
+Evidence: `server/routes-deals.ts`; `server/services/marketNetworkContributor.ts`; `server/services/acreOSValuation.ts`.
+Remediation: `closedSaleEvidence` admits only a real cash disposition (not an acquisition, not seller-financed, not sample). The training row is keyed by the deal's anonymous `dealKey` (a re-close is a no-op insert), labelled "medium" (operator-entered, not a deed), and retracted (outlier, low) when the deal is reopened. The network dedupes on `dealKey`.
+Falsified: `tests/unit/dealEvidenceIsEvidence.test.ts`, `tests/unit/marketNetworkIsKAnonymous.test.ts` (red before).
+Resolving commits: quality-directive H4
+
+### DEFECT-0234
+Title: Valuation comps read the whole state, sat at distance 0, matched empty ZIPs, and earned a proximity bonus
+Severity: P1
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (H4)
+Description: Comps were queried by state only; each had `distance: 0` under a 50-mile filter; two empty ZIPs compared equal for +30 similarity; "nearest < 5 mi" added +15 confidence to every valuation.
+Evidence: `server/services/acreOSValuation.ts`; `client/src/pages/avm.tsx`.
+Remediation: Same-county sales first (the state only when the county has fewer than three); distance is null (not measured) and shown so; a ZIP match needs two known ZIPs; no proximity confidence without a measured distance.
+Falsified: `tests/unit/dealEvidenceIsEvidence.test.ts` (red before).
+Resolving commits: quality-directive H4
+
+### DEFECT-0235
+Title: A reopened deal's market-network contribution is not retracted
+Severity: P2
+Status: OPEN
+Surfaced by lenses: quality directive 2026-09-29 (H4)
+Description: Training rows are retracted on reopen; the anonymized `market_metrics` rows are not.
+Evidence: `server/services/marketNetworkContributor.ts`.
+Remediation plan: Mark or remove the dealKey's network rows on reopen (a data change on a shared aggregate — decide with the founder).
+Resolving commits: —
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -6074,10 +6256,10 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 10  | 10    |
-| FIXED  | 14  | 108 | 84  | 206   |
+| OPEN   | 0   | 0   | 15  | 15    |
+| FIXED  | 14  | 115 | 89  | 218   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **110** | **94** | **218** |
+| **Total** | **14** | **117** | **104** | **235** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
@@ -6107,7 +6289,8 @@ DEFECT-0186 through 0207 come from the 2026-09-29 quality directive and the
 independent audits of its slices (see
 `docs/audits/quality-directive-2026-09-29-reconciliation.md`, the queue).
 0203 records the audit of the first-mail slice; 0204–0207 are slice H2;
-0208–0213 the audit of H2 (0213 OPEN); 0214–0218 slice H3.
+0208–0213 the audit of H2 (0213 OPEN); 0214–0218 slice H3; 0219–0229 the
+audit of H3 (0225, 0227, 0229 OPEN); 0230–0235 slice H4 (0232, 0235 OPEN).
 
 ### Fixed Defects Summary
 

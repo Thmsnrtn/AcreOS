@@ -219,3 +219,14 @@ describe("independent audit of 60ebfd9 — the rest of the population", () => {
     expect(report.greenFlags.join(" ")).not.toMatch(/flood/i);
   });
 });
+
+describe("one reading of a FEMA label for every consumer (audit of 0e54c75)", () => {
+  it("femaZoneCode strips the 'Zone' prefix; isSfhaCode matches every SFHA code and nothing else", async () => {
+    const { femaZoneCode, isSfhaCode } = await import("../../server/services/data-source-broker");
+    expect(femaZoneCode("Zone AE")).toBe("AE");
+    expect(femaZoneCode("zone shaded x")).toBe("SHADED X");
+    expect(femaZoneCode(null)).toBe("");
+    for (const c of ["A", "AE", "AH", "AO", "AR", "A99", "A12", "V", "VE", "V3", "AR/AE"]) expect(isSfhaCode(c), c).toBe(true);
+    for (const c of ["X", "SHADED X", "X500", "B", "C", "D", "AREA NOT INCLUDED", "OPEN WATER", ""]) expect(isSfhaCode(c), c).toBe(false);
+  });
+});

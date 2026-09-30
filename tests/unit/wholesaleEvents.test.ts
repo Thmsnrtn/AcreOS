@@ -31,7 +31,13 @@ const deal = {
   closingDate: new Date("2026-09-15T00:00:00Z"),
 };
 
-const dealCtx = { propertyAddress: "1247 Cherokee Pl" };
+// Quality directive 2026-09-29: entering escrow is a stage change, not
+// evidence. The event now needs a signed document on the deal or the
+// operator's attestation; these cases carry an attestation.
+const dealCtx = {
+  propertyAddress: "1247 Cherokee Pl",
+  evidence: { kind: "operator_attested" as const, attestedBy: "user_1" },
+};
 
 const assignment = {
   id: 88,
@@ -66,6 +72,21 @@ describe("emitContractSigned", () => {
     expect(data.assignmentFee).toBeUndefined();
   });
 
+  it("entering escrow with NO signed document and no attestation does not emit", () => {
+    emitContractSigned("accepted", deal, { propertyAddress: "1247 Cherokee Pl", evidence: null });
+    expect(emitWholesaleDealEvent).not.toHaveBeenCalled();
+  });
+
+  it("a signed document dates the contract by its signature, and says which document", () => {
+    emitContractSigned("accepted", deal, {
+      propertyAddress: "1247 Cherokee Pl",
+      evidence: { kind: "signed_document", documentId: 77, signedAt: new Date("2026-08-28T15:00:00Z") },
+    });
+    const data = emitWholesaleDealEvent.mock.calls[0][3];
+    expect(data.contractDate).toBe("2026-08-28");
+    expect(data.evidence).toEqual({ kind: "signed_document", documentId: 77 });
+  });
+
   it("no-ops on in_escrow→in_escrow, non-escrow edits, and no pre-image", () => {
     emitContractSigned("in_escrow", deal, dealCtx); // already in escrow → no re-fire
     emitContractSigned("accepted", { ...deal, status: "closed" }, dealCtx); // different target
@@ -85,7 +106,7 @@ describe("emitContractSigned", () => {
   });
 
   it("passes a null propertyAddress through (never a fabricated address)", () => {
-    emitContractSigned("accepted", deal, { propertyAddress: null });
+    emitContractSigned("accepted", deal, { ...dealCtx, propertyAddress: null });
     const [, , , data] = emitWholesaleDealEvent.mock.calls[0];
     expect(data.propertyAddress).toBeNull();
   });

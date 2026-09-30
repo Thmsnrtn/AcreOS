@@ -69,8 +69,21 @@ export interface WholesaleDealEventRow {
  * nullable (properties.address is nullable) and passes through as its real value
  * or null — never a fabricated address.
  */
+/**
+ * What says the purchase agreement was signed (quality directive 2026-09-29).
+ * Moving a deal into escrow is a stage change, not evidence: the event used
+ * to fire on the stage alone. It now needs a signed document on the deal (a
+ * provider-completed e-sign receipt) or the operator's explicit attestation —
+ * the e-sign ceremony is not ours to run, but saying it happened is.
+ */
+export type ContractSignedEvidence =
+  | { kind: "signed_document"; documentId: number; signedAt: Date | null }
+  | { kind: "operator_attested"; attestedBy: string };
+
 export interface ContractSignedContext {
   propertyAddress: string | null;
+  /** Null = no evidence: the stage moves, the event does not fire. */
+  evidence: ContractSignedEvidence | null;
 }
 
 /** The slice of a contract_assignments row this emitter needs. Real columns only. */
@@ -126,6 +139,12 @@ export function emitContractSigned(
 ): void {
   try {
     if (beforeStatus === "in_escrow" || deal.status !== "in_escrow") return; // no genuine transition
+    if (!ctx.evidence) {
+      logger.info(`[wholesaleEvents] deal ${deal.id} entered escrow with no signed document or attestation — deal.contract_signed not emitted`);
+      return;
+    }
+    const signedDay =
+      ctx.evidence.kind === "signed_document" && ctx.evidence.signedAt ? isoDayOf(ctx.evidence.signedAt) : isoDay();
     emitWholesaleDealEvent(
       "deal.contract_signed",
       deal.organizationId,
@@ -135,7 +154,13 @@ export function emitContractSigned(
         propertyAddress: ctx.propertyAddress,
         contractPrice: num(deal.acceptedAmount), // the accepted purchase price
         closingDate: isoDayOf(deal.closingDate),
-        contractDate: isoDay(), // the transition IS happening now
+        // The signed document's date when there is one; an attestation is
+        // made now.
+        contractDate: signedDay,
+        evidence:
+          ctx.evidence.kind === "signed_document"
+            ? { kind: "signed_document", documentId: ctx.evidence.documentId }
+            : { kind: "operator_attested", attestedBy: ctx.evidence.attestedBy },
       },
     );
   } catch (err) {

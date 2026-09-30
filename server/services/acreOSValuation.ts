@@ -23,6 +23,10 @@ import { assertFeeSimpleOrThrow } from "../utils/landStatus";
  * enters a cross-org aggregate. A customer row written before 0256 cannot be
  * attributed, so it is used by nobody.
  */
+
+// Flood labels are read by code, not compared as strings (audit of 0e54c75).
+import { femaZoneCode, isSfhaCode } from "./data-source-broker";
+
 export const publicRecordTransaction = () =>
   sql`(${transactionTraining.transactionHash} NOT LIKE '%|%' AND ${transactionTraining.contributorOrgId} IS NULL)`;
 
@@ -90,8 +94,12 @@ async function gbmEstimatePricePerAcre(
     : characteristics.zoning?.toLowerCase().includes('residential') ? 2
     : 1;
 
-  const floodRisk = characteristics.floodZone?.toLowerCase().includes('high') ? 2
-    : characteristics.floodZone?.toLowerCase().includes('partial') ? 1
+  // 2 = Special Flood Hazard Area, 1 = moderate (shaded X / X500 / B), 0 =
+  // minimal or not known. Read from the zone code — the label never
+  // contained "high" or "partial", so this feature was always 0.
+  const floodCode = femaZoneCode(characteristics.floodZone);
+  const floodRisk = isSfhaCode(floodCode) ? 2
+    : floodCode === "SHADED X" || floodCode === "X500" || floodCode === "B" ? 1
     : 0;
 
   // REFUSE without a comparable price signal.
@@ -252,7 +260,8 @@ interface ValuationResult {
     propertyId: string;
     salePrice: number;
     pricePerAcre: number;
-    distance: number; // miles
+    /** Miles, when known. Null: the comp has no location to measure from. */
+    distance: number | null;
     similarity: number; // 0-100
   }[];
   marketAdjustments: {
@@ -273,6 +282,12 @@ class AcreOSValuationModel {
     // the heuristic quality score (which can't reach "high" without market
     // context a deal-close event doesn't carry) so those rows feed the retrain.
     dataQualityOverride?: "high" | "medium" | "low",
+    /**
+     * A stable, anonymous identity for the source (e.g. a closed deal's
+     * dealKey). When given it IS the transaction hash, so recording the same
+     * source twice is a no-op and a correction can find and retract it.
+     */
+    opts: { dedupeKey?: string } = {},
   ): Promise<string> {
     try {
       // transaction_training is intentionally anonymized — no organizationId,
@@ -283,7 +298,9 @@ class AcreOSValuationModel {
         ?? (qualityScore >= 75 ? "high" : qualityScore >= 50 ? "medium" : "low");
       // transaction_hash is a required unique key; derive a stable hash from
       // the anonymized fields so re-imports dedupe deterministically.
-      const transactionHash = `${transactionData.location.state}|${transactionData.location.county}|${transactionData.acres}|${transactionData.salePrice}|${transactionData.saleDate.toISOString()}`;
+      const transactionHash =
+        opts.dedupeKey ??
+        `${transactionData.location.state}|${transactionData.location.county}|${transactionData.acres}|${transactionData.salePrice}|${transactionData.saleDate.toISOString()}`;
       const [record] = await db.insert(transactionTraining).values({
         transactionHash,
         state: transactionData.location.state,
@@ -302,13 +319,31 @@ class AcreOSValuationModel {
         dataQuality,
         // Its org, so it is this org's comp and nobody else's (ruling #11).
         contributorOrgId: Number.isInteger(Number(organizationId)) ? Number(organizationId) : null,
-      }).returning();
+      })
+        // The same source recorded again (a re-closed deal) is not a second sale.
+        .onConflictDoNothing({ target: transactionTraining.transactionHash })
+        .returning();
 
-      return String(record.id);
+      return record ? String(record.id) : "";
     } catch (error) {
       logger.error('Failed to record transaction for training', error);
       throw error;
     }
+  }
+
+  /**
+   * Retract a label this org contributed (a closed deal reopened): it is
+   * marked an outlier at low quality, which removes it from comps and from
+   * the training read, without deleting the row. Only the contributing org's
+   * own row is touched.
+   */
+  async retractTrainingTransaction(organizationId: number, dedupeKey: string): Promise<boolean> {
+    const rows = await db
+      .update(transactionTraining)
+      .set({ isOutlier: true, dataQuality: "low" })
+      .where(and(eq(transactionTraining.transactionHash, dedupeKey), eq(transactionTraining.contributorOrgId, organizationId)))
+      .returning({ id: transactionTraining.id });
+    return rows.length > 0;
   }
 
   /**
@@ -793,7 +828,6 @@ Base your estimate on typical rural land market conditions in ${county} County, 
     organizationId: string,
     location: ValuationRequest['location'],
     acres: number,
-    maxDistance: number = 50, // miles
     maxResults: number = 10
   ): Promise<ValuationResult['comparables']> {
     try {
@@ -804,27 +838,44 @@ Base your estimate on typical rural land market conditions in ${county} County, 
       // location, and acreage lives in the `size_acres` column (returned as a
       // string by drizzle). It also carries no lat/long, so we scope comps by
       // state/county and acreage band rather than by geographic radius.
-      const transactions = await db.query.transactionTraining.findMany({
-        where: and(
-          // Public records and this org's own deals only (ruling #11).
-          compsVisibleTo(Number(organizationId)),
-          eq(transactionTraining.state, location.state),
-          gte(transactionTraining.saleDate, cutoffDate),
-          // Filter by similar acreage (50% to 200% of target)
-          between(transactionTraining.sizeAcres, String(acres * 0.5), String(acres * 2.0)),
-          // W3.2 comps discipline: assessor last-sale rows flagged as
-          // outliers or low-quality are not comps. (Ingest marks nominal-
-          // price transfers — the classic non-arm's-length signature — as
-          // outliers; see countyAssessorIngest.)
-          eq(transactionTraining.isOutlier, false),
-          sql`${transactionTraining.dataQuality} != 'low'`
-        ),
-        orderBy: [desc(transactionTraining.saleDate)],
-        limit: 100, // Get broader set for filtering
-      });
+      // Same-county sales first (quality directive 2026-09-29): the query
+      // read the whole STATE, so a 50-acre parcel in one county was priced off
+      // another county's sales. Only when the county has fewer than three is
+      // the rest of the state read, and those comps carry the lower
+      // same-state similarity.
+      const baseWhere = [
+        // Public records and this org's own deals only (ruling #11).
+        compsVisibleTo(Number(organizationId)),
+        eq(transactionTraining.state, location.state),
+        gte(transactionTraining.saleDate, cutoffDate),
+        // Filter by similar acreage (50% to 200% of target)
+        between(transactionTraining.sizeAcres, String(acres * 0.5), String(acres * 2.0)),
+        // W3.2 comps discipline: assessor last-sale rows flagged as
+        // outliers or low-quality are not comps. (Ingest marks nominal-
+        // price transfers — the classic non-arm's-length signature — as
+        // outliers; see countyAssessorIngest.)
+        eq(transactionTraining.isOutlier, false),
+        sql`${transactionTraining.dataQuality} != 'low'`,
+      ];
+      let transactions = location.county
+        ? await db.query.transactionTraining.findMany({
+            where: and(...baseWhere, eq(transactionTraining.county, location.county)),
+            orderBy: [desc(transactionTraining.saleDate)],
+            limit: 100,
+          })
+        : [];
+      if (transactions.length < 3) {
+        transactions = await db.query.transactionTraining.findMany({
+          where: and(...baseWhere),
+          orderBy: [desc(transactionTraining.saleDate)],
+          limit: 100, // Get broader set for filtering
+        });
+      }
 
-      // Without geo coordinates we cannot compute haversine distance; comps are
-      // ranked purely on county/state + acreage similarity.
+      // transaction_training carries no coordinates, so distance is NOT
+      // known — it is null, never 0. (It was 0, under a 50-mile filter, and
+      // read downstream as "every comp is on top of the parcel".) Comps are
+      // ranked on county/state + acreage similarity.
       const comparablesWithScores = transactions
         .map(t => {
           const compAcres = Number(t.sizeAcres);
@@ -839,11 +890,10 @@ Base your estimate on typical rural land market conditions in ${county} County, 
             propertyId: t.transactionHash,
             salePrice: Number(t.salePrice),
             pricePerAcre: Number(t.pricePerAcre),
-            distance: 0,
+            distance: null,
             similarity,
           };
         })
-        .filter(c => c.distance <= maxDistance)
         .sort((a, b) => b.similarity - a.similarity) // Sort by similarity
         .slice(0, maxResults);
 
@@ -903,8 +953,9 @@ Base your estimate on typical rural land market conditions in ${county} County, 
       similarity += 15;
     }
 
-    // Zip code proximity (30 points)
-    if (location1.zipCode === location2.zipCode) {
+    // Zip code proximity (30 points) — only for two KNOWN, equal ZIPs. Two
+    // empty ZIPs compared equal and awarded every comp +30.
+    if (location1.zipCode && location2.zipCode && location1.zipCode === location2.zipCode) {
       similarity += 30;
     }
 
@@ -989,13 +1040,14 @@ Base your estimate on typical rural land market conditions in ${county} County, 
     }
 
     // Flood zone adjustment
-    if (request.characteristics.floodZone === 'X') {
-      // No flood risk
+    const floodCode = femaZoneCode(request.characteristics.floodZone);
+    if (floodCode === "X") {
+      // Minimal flood hazard (unshaded X)
       adjustments.push({
         factor: 'No Flood Risk',
         adjustment: 5,
       });
-    } else if (request.characteristics.floodZone === 'A' || request.characteristics.floodZone === 'AE') {
+    } else if (isSfhaCode(floodCode)) {
       // High flood risk
       adjustments.push({
         factor: 'Flood Zone',
@@ -1098,7 +1150,7 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
    */
   private calculateConfidence(
     comparableCount: number,
-    nearestDistance: number,
+    nearestDistance: number | null,
     volatility: number
   ): number {
     let confidence = 50;
@@ -1106,10 +1158,13 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
     // More comparables = higher confidence (up to +30)
     confidence += Math.min(30, comparableCount * 3);
 
-    // Closer comparables = higher confidence (up to +15)
-    if (nearestDistance < 5) confidence += 15;
-    else if (nearestDistance < 15) confidence += 10;
-    else if (nearestDistance < 30) confidence += 5;
+    // Closer comparables = higher confidence (up to +15) — only when the
+    // distance is KNOWN. An unmeasured distance earned the full +15.
+    if (nearestDistance !== null) {
+      if (nearestDistance < 5) confidence += 15;
+      else if (nearestDistance < 15) confidence += 10;
+      else if (nearestDistance < 30) confidence += 5;
+    }
 
     // Lower volatility = higher confidence (up to +15)
     const volatilityScore = Math.max(0, (0.5 - volatility) * 30);

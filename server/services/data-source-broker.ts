@@ -391,6 +391,19 @@ export function parseSdaColumnRows(payload: unknown): Array<Record<string, strin
  *    vintage. The response carries no effective date, so there is no
  *    `lastUpdated` — only `retrievedAt`, named for what it is.
  */
+/**
+ * The bare FEMA code in a flood label ("Zone AE" → "AE", "Zone SHADED X" →
+ * "SHADED X"). Readers that compared the broker's label with bare codes
+ * never matched (audits of 60ebfd9 / 0e54c75).
+ */
+export function femaZoneCode(label: string | null | undefined): string {
+  return String(label ?? "").trim().toUpperCase().replace(/^ZONE\s+/, "");
+}
+/** A Special Flood Hazard Area code: A, AE, AH, AO, AR, A99, A1–A30, V, VE, V1–V30. */
+export function isSfhaCode(code: string): boolean {
+  return /^(A|V)(E|H|O|R|99|\d{1,2})?(\/.*)?$/.test(code);
+}
+
 export function floodZoneFromNfhl(
   features: unknown,
   retrievedAt: Date,
@@ -423,7 +436,7 @@ export function floodZoneFromNfhl(
   }
   // Special Flood Hazard Areas by code: A, AE, AH, AO, AR, A99, the legacy
   // numbered A1–A30 / V1–V30, V, VE, and combined codes such as "AR/AE".
-  const highRisk = /^(A|V)(E|H|O|R|99|\d{1,2})?(\/.*)?$/.test(rawZone);
+  const highRisk = isSfhaCode(rawZone);
   const subtype = typeof feature.ZONE_SUBTY === "string" ? feature.ZONE_SUBTY : null;
   const shadedX = rawZone === "X" && subtype !== null && /0\.2 PCT/i.test(subtype);
   let riskLevel: "low" | "medium" | "high" | "unknown";

@@ -274,7 +274,7 @@ function CompsMapTable({ comparables, pricePerAcre }: { comparables: any[]; pric
               <li key={i} className="px-4 py-3 text-xs" data-testid={`card-comp-${i}`}>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-muted-foreground tabular-nums">
-                    #{i + 1} · {c.distance?.toFixed(1) ?? '—'} mi away
+                    #{i + 1} · {c.distance != null ? `${c.distance.toFixed(1)} mi away` : "distance not measured"}
                   </span>
                   <span className="font-medium tabular-nums">{formatDollar(c.salePrice)}</span>
                 </div>
@@ -317,7 +317,7 @@ function CompsMapTable({ comparables, pricePerAcre }: { comparables: any[]; pric
                 return (
                   <tr key={i} className="border-b last:border-0">
                     <td className="px-4 py-2 text-muted-foreground tabular-nums">#{i + 1}</td>
-                    <td className="px-4 py-2 tabular-nums">{c.distance?.toFixed(1) ?? '—'} mi</td>
+                    <td className="px-4 py-2 tabular-nums">{c.distance != null ? `${c.distance.toFixed(1)} mi` : "—"}</td>
                     <td className="px-4 py-2 text-right font-medium tabular-nums">{formatDollar(c.salePrice)}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{formatDollar(c.pricePerAcre)}</td>
                     <td className={`px-4 py-2 text-right font-semibold tabular-nums ${diff >= 0 ? 'text-acr-pos' : 'text-acr-neg'}`}>
@@ -794,7 +794,7 @@ export default function AVMPage() {
                             <p className="font-medium text-sm">Comparable #{i + 1}</p>
                             <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                               <MapPin className="w-3 h-3" />
-                              {c.distance.toFixed(1)} miles away
+                              {c.distance != null ? `${c.distance.toFixed(1)} miles away` : "Same county or state — distance not measured"}
                             </p>
                           </div>
                           <div className="text-right">

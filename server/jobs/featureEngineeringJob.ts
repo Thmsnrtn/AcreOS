@@ -23,6 +23,7 @@ import { eq, and, desc, sql, gte } from "drizzle-orm";
 import { subDays } from "date-fns";
 import { logger } from "../utils/logger";
 import { publicRecordTransaction } from "../services/acreOSValuation";
+import { femaZoneCode, isSfhaCode } from "../services/data-source-broker";
 
 export const FEATURE_ENGINEERING_QUEUE_NAME = "feature-engineering";
 
@@ -82,12 +83,14 @@ function computeLocationFeatures(property: any): LocationFeatures {
   const distanceToMetroMiles = distanceToNearestMetro(lat, lng);
 
   // Simplified heuristic: flood risk from existing field or default
+  // By FEMA code — the stored label is "Zone AE", which never equalled "AE".
+  const floodCode = femaZoneCode(property.floodZone);
   const floodZoneRisk =
-    property.floodZone === "AE" || property.floodZone === "A"
+    isSfhaCode(floodCode)
       ? "high"
-      : property.floodZone === "X500"
+      : floodCode === "X500" || floodCode === "SHADED X" || floodCode === "B"
       ? "moderate"
-      : property.floodZone === "X"
+      : floodCode === "X" || floodCode === "C"
       ? "low"
       : "none";
 

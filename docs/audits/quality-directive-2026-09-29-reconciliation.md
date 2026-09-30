@@ -68,10 +68,10 @@ operation at scale.
 
 | Case | At HEAD | Status |
 |---|---|---|
-| Creating a deal records `first_offer_made`; the real offer-sent transition exists but does not emit it | `routes-deals.ts:703-713` vs `:1115` | QUEUED — H4 |
-| Entering escrow emits `contract.signed` with no document; e-sign receipts exist (`signatures`, `generated_documents.signedAt`) but are not linked | `routes-deals.ts:790-797`; pinned by `wholesaleEvents.test.ts:51` | QUEUED — H4 |
-| A close sends `acceptedAmount` as a high-quality sale to training and the market network regardless of deal type or sample lineage; no dedupe key, no retraction | `routes-deals.ts:907,928-956,1094` (consent + 5-operator floor already applied, DEFECT-0159) | QUEUED — H4 |
-| Valuation comps: state-only query, `distance: 0` under a 50-mile limit, +30 ZIP points for two empty ZIPs, +15 "nearest < 5 mi" on every valuation | `acreOSValuation.ts:810-846,907,1110` | QUEUED — H4 |
+| Creating a deal records `first_offer_made`; the real offer-sent transition exists but does not emit it | `routes-deals.ts:703-713` vs `:1115` | **FIXED** — DEFECT-0230 |
+| Entering escrow emits `contract.signed` with no document; e-sign receipts exist (`signatures`, `generated_documents.signedAt`) but are not linked | `routes-deals.ts:790-797`; pinned by `wholesaleEvents.test.ts:51` | **FIXED** — DEFECT-0231 (attestation UI: OPEN DEFECT-0232) |
+| A close sends `acceptedAmount` as a high-quality sale to training and the market network regardless of deal type or sample lineage; no dedupe key, no retraction | `routes-deals.ts:907,928-956,1094` (consent + 5-operator floor already applied, DEFECT-0159) | **FIXED** — DEFECT-0233 (network retraction: OPEN DEFECT-0235) |
+| Valuation comps: state-only query, `distance: 0` under a 50-mile limit, +30 ZIP points for two empty ZIPs, +15 "nearest < 5 mi" on every valuation | `acreOSValuation.ts:810-846,907,1110` | **FIXED** — DEFECT-0234 (and the AVM flood adjustment, DEFECT-0221) |
 
 ## Setup durability and founder operation (H5)
 
@@ -112,6 +112,19 @@ operation at scale.
 | Credit-pool refunds never returned credit (pool or purchased) | **FIXED** — DEFECT-0211 |
 | Printed letter collapsed paragraphs and read typed markup | **FIXED** — DEFECT-0212 |
 | Crash window between the mail debit and the shipment commit | OPEN — DEFECT-0213 |
+
+## Independent audit of `0e54c75` (H3) — folded into the H4 change
+
+| Finding | Status |
+|---|---|
+| Note-payment clients minted a key per click; edited resubmission replayed; wrapped 23505 unread | **FIXED** — DEFECT-0219 |
+| Unused half-open probe jammed a provider breaker | **FIXED** — DEFECT-0220 |
+| AVM flood adjustment never applied; three scorers read labels as codes | **FIXED** — DEFECT-0221 |
+| NSF preview "no change"; non-cash reversals; applied partials | **FIXED** — DEFECT-0222 |
+| stdio MCP refused; /mcp summary any-of | **FIXED** — DEFECT-0223 |
+| Trigger card broken; studio triggers read an unwritten MRR | **FIXED** — DEFECT-0224 (two ladders: OPEN DEFECT-0225) |
+| Gauge vs gate; refund without original; overflow as pool usage | **FIXED** — DEFECT-0226 (two-transaction refund, month netting: OPEN DEFECT-0227) |
+| Draft/duplicate assignment fees; PDF and waterfall counted samples | **FIXED** — DEFECT-0228 (Today cash strip: OPEN DEFECT-0229, H5) |
 
 ## What remains outside any code change
 
