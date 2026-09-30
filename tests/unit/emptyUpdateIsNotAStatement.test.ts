@@ -28,9 +28,11 @@
  *   browserAutomation   seeded with `{ status }` — SHORTHAND, so the seed
  *                       contains no `:` and a naive "does the seed have a
  *                       colon" test called it empty.
- *   voiceCallAI (×2)    guarded with `length > 0` wrapping the write, not
+ *   voiceCallAI         guarded with `length > 0` wrapping the write, not
  *                       `=== 0` returning early — the same property, the other
- *                       polarity.
+ *                       polarity. (There were two; the deal builder now writes
+ *                       through storage.updateDeal, whose SET always carries
+ *                       updatedAt — audit of 224a5c0 — so one remains here.)
  *
  * One real site remained: `governanceBrainV13.updatePolicy`. A scan that had
  * been trusted rather than hand-checked would have "fixed" three files that
@@ -117,7 +119,7 @@ describe("update builders with all-optional fields never emit an empty SET", () 
     expect(browser.some((s) => s.seeded), "shorthand seed `{ status }` not recognised").toBe(true);
 
     const voice = byFile("services/voiceCallAI.ts");
-    expect(voice.length, "voiceCallAI builders not found").toBeGreaterThanOrEqual(2);
+    expect(voice.length, "voiceCallAI builder not found").toBeGreaterThanOrEqual(1);
     expect(voice.every((s) => s.guarded), "`length > 0` guard not recognised").toBe(true);
   });
 

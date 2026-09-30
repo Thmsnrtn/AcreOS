@@ -655,32 +655,43 @@ export default function OnboardingV2() {
       if (workspaceName && workspaceName !== orgData?.name) {
         await updateOrgMutation.mutateAsync(workspaceName);
       }
-      // Provision, persona and the step save run in parallel. The step used
-      // to advance whatever they returned (allSettled never throws), so a
-      // failed save moved the user on with a workspace that was never set up
-      // (quality directive 2026-09-29). Each is safe to retry; a failure now
-      // keeps the user here and names what did not save.
+      // Provision, persona and the step save. The step used to advance
+      // whatever they returned (allSettled never throws), so a failed save
+      // moved the user on with a workspace that was never set up (quality
+      // directive 2026-09-29); a failure now keeps the user here and names
+      // what did not save. They run one after another, not in parallel: each
+      // read-modify-writes the org's onboarding data, and in parallel one
+      // could overwrite another's keys (audit of 224a5c0). Each is safe to
+      // re-send — provisioning skips template campaigns the org already has.
       // The note-role fork is folded into resolvedPersona so originators +
       // servicers land on their own persona, not the generic note_investor.
-      const results = await Promise.allSettled([
-        provisionMutation.mutateAsync(businessType),
-        personaMutation.mutateAsync({ persona: resolvedPersona, businessType }),
-        completeStepMutation.mutateAsync({
-          stepId: 0,
-          data: {
-            businessType,
-            organizationName: workspaceName,
-            ...(isNoteBusiness ? { noteRole, persona: resolvedPersona } : {}),
-          },
-        }),
-      ]);
+      const writes: Array<() => Promise<unknown>> = [
+        () => provisionMutation.mutateAsync(businessType),
+        () => personaMutation.mutateAsync({ persona: resolvedPersona, businessType }),
+        () =>
+          completeStepMutation.mutateAsync({
+            stepId: 0,
+            data: {
+              businessType,
+              organizationName: workspaceName,
+              ...(isNoteBusiness ? { noteRole, persona: resolvedPersona } : {}),
+            },
+          }),
+      ];
+      const results: PromiseSettledResult<unknown>[] = [];
+      for (const write of writes) {
+        results.push(await write().then(
+          (value) => ({ status: "fulfilled" as const, value }),
+          (reason) => ({ status: "rejected" as const, reason }),
+        ));
+      }
       const labels = ["workspace setup", "your role", "this step"];
       const failed = results.flatMap((r, i) => (r.status === "rejected" ? [labels[i]] : []));
       if (failed.length > 0) {
         toast({
           variant: "destructive",
           title: "Some of your setup didn't save",
-          description: `Couldn't save ${failed.join(" and ")}. Nothing else changed — try again.`,
+          description: `Couldn't save ${failed.join(" and ")}. What did save is kept — try again.`,
         });
         return;
       }

@@ -713,14 +713,10 @@ export async function runPostCloseAutomation(
 
     // Mark deal as closed in system. deals uses closingDate (timestamp), not
     // a closedDate string column.
-    await db
-      .update(deals)
-      .set({
-        status: "closed",
-        closingDate: deal.closingDate || new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(deals.id, dealId));
+    // Through the repository (org-scoped), where every status write records
+    // its transition evidence (audit of 224a5c0).
+    const { storage } = await import("../storage");
+    await storage.updateDeal(dealId, { status: "closed", closingDate: deal.closingDate || new Date() }, undefined, organizationId);
 
     result.portfolioEntryCreated = true;
 

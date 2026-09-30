@@ -675,7 +675,7 @@ export async function seedSampleDataForOrg(
   opts?: { userId?: string },
 ): Promise<{ seeded: boolean; counts: Record<string, number>; repaired?: boolean }> {
   const id = toNumericOrgId(orgId);
-  let org = await storage.getOrganization(id);
+  const org = await storage.getOrganization(id);
   if (!org) {
     throw new Error("Organization not found");
   }
@@ -683,16 +683,7 @@ export async function seedSampleDataForOrg(
   const existing = await findSampleRows(id);
   const hasMarkers = existing.leads > 0 || existing.properties > 0;
   const completed = (org.onboardingData as Record<string, unknown> | null)?.sampleDataLoaded === true;
-  let repaired = false;
-  if (hasMarkers && !completed) {
-    logger.warn("[sampleSeeder] Partial sample set found (seed did not finish) — clearing it and seeding again", {
-      metadata: { orgId: id, businessType, existing: { leads: existing.leads, properties: existing.properties } },
-    });
-    await clearSampleDataForOrg(orgId);
-    org = await storage.getOrganization(id);
-    if (!org) throw new Error("Organization not found");
-    repaired = true;
-  } else if (hasMarkers) {
+  if (hasMarkers && completed) {
     logger.info("[sampleSeeder] Sample data already present; skipping seed", {
       metadata: {
         orgId: id,
@@ -712,30 +703,82 @@ export async function seedSampleDataForOrg(
     };
   }
 
+  // Markers without the flag: a seed that did not finish — or a finished one
+  // whose flag was lost (a reset nulls onboardingData; concurrent onboarding
+  // writes can drop keys). Either way the seed RESUMES: each fixture row is
+  // matched to the sample row already there and only what is missing is
+  // created. Nothing is deleted, so no real row can be touched and a
+  // complete set is never duplicated (audit of 224a5c0: the earlier
+  // clear-and-reseed cascaded to every deal on a demo parcel, left
+  // soft-deleted sample leads listed, and duplicated sample notes).
+  const repaired = hasMarkers;
+  if (repaired) {
+    logger.warn("[sampleSeeder] Sample set without its completion flag — resuming (creating only what is missing)", {
+      metadata: { orgId: id, businessType, existing: { leads: existing.leads, properties: existing.properties } },
+    });
+  }
+
   const fixtures = buildSampleFixtures(id, businessType);
+  const [presentLeads, presentProperties] = await Promise.all([storage.getLeads(id), storage.getProperties(id)]);
+  const sampleLeadByEmail = new Map<string, { id: number }>();
+  for (const l of presentLeads as Array<{ id: number; email?: string | null; source?: string | null }>) {
+    if (isSampleLead(l) && l.email) sampleLeadByEmail.set(l.email, l);
+  }
+  const samplePropertyByApn = new Map<string, { id: number }>();
+  for (const p of presentProperties as Array<{ id: number; apn?: string | null }>) {
+    if (isSampleProperty(p) && p.apn) samplePropertyByApn.set(p.apn, p);
+  }
 
   // Create leads first; properties/deals/notes resolve their relations by
-  // index against the just-created rows so FKs are always valid.
+  // index against the created (or already present) rows so FKs are valid.
   const createdLeads: Array<{ id: number }> = [];
+  let leadsCreated = 0;
   for (const leadData of fixtures.leads) {
+    const present = leadData.email ? sampleLeadByEmail.get(leadData.email) : undefined;
+    if (present) {
+      createdLeads.push(present);
+      continue;
+    }
     createdLeads.push(await storage.createLead(leadData as any));
+    leadsCreated++;
   }
 
   const createdProperties: Array<{ id: number }> = [];
+  let propertiesCreated = 0;
   for (const propSpec of fixtures.properties) {
     const { sellerLeadIndex, ...propData } = propSpec;
+    const present = samplePropertyByApn.get(propData.apn);
+    if (present) {
+      createdProperties.push(present);
+      continue;
+    }
     const property = await storage.createProperty({
       ...propData,
       sellerId: sellerLeadIndex != null ? createdLeads[sellerLeadIndex]?.id : undefined,
     } as any);
     createdProperties.push(property);
+    propertiesCreated++;
   }
+
+  // Deals and notes already on a sample parcel, to match fixtures against.
+  const sampleParcelIds = new Set(createdProperties.map((p) => p.id));
+  const [presentDeals, presentNotes] = repaired
+    ? await Promise.all([storage.getDeals(id), storage.getNotes(id)])
+    : [[], []];
+  const dealsOnSampleParcels = (presentDeals as Array<{ propertyId?: number | null; notes?: string | null; type?: string | null }>)
+    .filter((d) => d.propertyId != null && sampleParcelIds.has(d.propertyId));
+  const notesOnSampleParcels = (presentNotes as Array<{ propertyId?: number | null; originalPrincipal?: string | null }>)
+    .filter((n) => n.propertyId != null && sampleParcelIds.has(n.propertyId));
 
   let dealsCreated = 0;
   for (const dealSpec of fixtures.deals) {
     const { propertyIndex, ...dealData } = dealSpec;
     const propertyId = propertyIndex != null ? createdProperties[propertyIndex]?.id : undefined;
     if (propertyIndex != null && propertyId == null) continue;
+    const already = dealsOnSampleParcels.some(
+      (d) => d.propertyId === propertyId && d.type === dealData.type && d.notes === dealData.notes,
+    );
+    if (already) continue;
     await storage.createDeal({ ...dealData, propertyId } as any);
     dealsCreated++;
   }
@@ -746,6 +789,10 @@ export async function seedSampleDataForOrg(
     const propertyId = propertyIndex != null ? createdProperties[propertyIndex]?.id : undefined;
     const borrowerId = borrowerLeadIndex != null ? createdLeads[borrowerLeadIndex]?.id : undefined;
     if (propertyIndex != null && propertyId == null) continue;
+    const already = notesOnSampleParcels.some(
+      (n) => n.propertyId === propertyId && String(n.originalPrincipal) === String(noteData.originalPrincipal),
+    );
+    if (already) continue;
     await storage.createNote({ ...noteData, propertyId, borrowerId } as any);
     notesCreated++;
   }
@@ -763,7 +810,7 @@ export async function seedSampleDataForOrg(
     notes: notesCreated,
   };
   logger.info("[sampleSeeder] Seeded sample data", {
-    metadata: { orgId: id, businessType, userId: opts?.userId, counts, repaired },
+    metadata: { orgId: id, businessType, userId: opts?.userId, counts, repaired, created: { leads: leadsCreated, properties: propertiesCreated } },
   });
   return { seeded: true, counts, ...(repaired ? { repaired } : {}) };
 }

@@ -185,6 +185,13 @@ export type PortalCheckoutSession = Pick<
  */
 export type PortalPaymentSource = "borrower_portal" | "stripe_webhook" | "payment_link";
 
+/**
+ * Every source a serviced-note payment can be posted from. `operator_recorded`
+ * is the lender recording money received outside a processor (a check, cash,
+ * a wire) from the finance page — POST /api/payments.
+ */
+export type ServicedPaymentSource = PortalPaymentSource | "operator_recorded";
+
 export interface PostBorrowerPortalCheckoutPaymentInput {
   /** Loaded and ownership-checked by the caller (session pin or webhook metadata). */
   note: Note;
@@ -256,6 +263,51 @@ export async function postBorrowerPortalCheckoutPayment(
       ? stripeSession.amount_total
       : decimalDollarsToCents(stripeSession.metadata?.paymentAmount ?? note.monthlyPayment);
 
+  return postServicedNotePayment({
+    note,
+    amountCents,
+    transactionId: stripeSession.id,
+    source,
+    paymentMethod: "card",
+    now,
+    sendReceipt: true,
+  });
+}
+
+export interface PostServicedNotePaymentInput {
+  /** Loaded, org-checked by the caller. */
+  note: Note;
+  amountCents: number;
+  /** The payment's identity — `payments.transaction_id` (unique). A repeat is a no-op. */
+  transactionId: string;
+  source: ServicedPaymentSource;
+  paymentMethod: string;
+  now?: Date;
+  /**
+   * The borrower receipt describes a charge on the lender's own processor;
+   * money the lender recorded by hand (a check, cash) gets no such receipt.
+   */
+  sendReceipt: boolean;
+}
+
+export type PostServicedNotePaymentResult = Exclude<PostBorrowerPortalCheckoutPaymentResult, { outcome: "refused" }>;
+
+/**
+ * THE posting rule for the serviced-note book (`notes` / `payments`): the
+ * late-fee rule, the integer-cents split, one idempotent row keyed by
+ * `transactionId`, the balance moved on the locked row, the installment and
+ * due date advanced only by a full installment, `payment.received` emitted
+ * once. The portal, the Stripe webhook, Payment Links and the operator's
+ * finance-page "Record payment" all post through it (audit of 224a5c0: the
+ * finance route lowered the balance and nothing else, so a recorded payment
+ * left the note overdue and autopay free to debit the same installment).
+ */
+export async function postServicedNotePayment(
+  input: PostServicedNotePaymentInput,
+): Promise<PostServicedNotePaymentResult> {
+  const { note, amountCents, transactionId, source, paymentMethod } = input;
+  const now = input.now ?? new Date();
+
   // ── Late fee — assessed, then paid only from money ABOVE the installment
   // (founder ruling 2026-09-29 #6, DEFECT-0099). A payment arriving after
   // grace on an installment not yet paid in full records that installment's
@@ -321,8 +373,8 @@ export async function postBorrowerPortalCheckoutPayment(
         lateFeeAmount: (lateFeeCents / 100).toString(),
         paymentDate,
         dueDate,
-        paymentMethod: "card",
-        transactionId: stripeSession.id,
+        paymentMethod,
+        transactionId,
         status: "completed",
       })
       .onConflictDoNothing({ target: payments.transactionId })
@@ -339,13 +391,13 @@ export async function postBorrowerPortalCheckoutPayment(
         .from(payments)
         .where(
           and(
-            eq(payments.transactionId, stripeSession.id),
+            eq(payments.transactionId, transactionId),
             eq(payments.organizationId, note.organizationId),
           ),
         );
       if (!existing) {
         throw new Error(
-          `payments.transaction_id ${stripeSession.id} is already recorded outside organization ${note.organizationId} — refusing to post or read it`,
+          `payments.transaction_id ${transactionId} is already recorded outside organization ${note.organizationId} — refusing to post or read it`,
         );
       }
       return { row: existing, created: false } as const;
@@ -446,7 +498,7 @@ export async function postBorrowerPortalCheckoutPayment(
   // Clear the pending-checkout slot only if it still names THIS session.
   // Clearing unconditionally would wipe the pointer to a newer session that
   // is still open (the one-slot confusion in the other direction).
-  if (note.pendingCheckoutSessionId === stripeSession.id) {
+  if (note.pendingCheckoutSessionId === transactionId) {
     notePatch.pendingCheckoutSessionId = null;
   }
 
@@ -471,7 +523,7 @@ export async function postBorrowerPortalCheckoutPayment(
     dueDate: note.nextPaymentDate ?? null,
     paymentDate,
     remainingBalanceCents,
-    paymentMethod: "card",
+    paymentMethod,
     source,
   });
 
@@ -482,7 +534,7 @@ export async function postBorrowerPortalCheckoutPayment(
         organizationId: note.organizationId,
         noteId: note.id,
         paymentId: payment.id,
-        transactionId: stripeSession.id,
+        transactionId,
         unappliedCents: split.residueCents,
         source,
       },
@@ -494,7 +546,7 @@ export async function postBorrowerPortalCheckoutPayment(
         entityType: "note",
         entityId: note.id,
         description:
-          `Borrower payment ${stripeSession.id} exceeded the payoff by $${excess}. ` +
+          `Borrower payment ${transactionId} exceeded the payoff by $${excess}. ` +
           `The excess is included in the recorded payment amount but was not applied to the note — refund it or apply it by hand.`,
       });
     } catch (err) {
@@ -520,7 +572,7 @@ export async function postBorrowerPortalCheckoutPayment(
     /* non-fatal */
   }
 
-  const receiptEmailed = await sendBorrowerPaymentReceipt(note, {
+  const receiptEmailed = input.sendReceipt && await sendBorrowerPaymentReceipt(note, {
     amountCents,
     remainingBalanceCents,
     nextPaymentDate,

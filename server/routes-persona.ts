@@ -12,12 +12,12 @@
  */
 
 import { Router, type Response } from "express";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "./db";
 import { users } from "@shared/models/auth";
-import { organizations, teamMembers } from "@shared/schema";
-import { normalizeRole } from "./middleware/roleGuard";
+import { organizations } from "@shared/schema";
+import { mayChangeOrganizationType } from "./middleware/roleGuard";
 import {
   BUSINESS_TYPES,
   BUSINESS_TYPE_TO_PERSONA,
@@ -104,13 +104,7 @@ router.put("/", getOrCreateOrg, async (req: AuthenticatedRequest, res: Response)
         .from(organizations)
         .where(eq(organizations.id, orgId))
         .limit(1);
-      const [member] = await db
-        .select({ role: teamMembers.role })
-        .from(teamMembers)
-        .where(and(eq(teamMembers.organizationId, orgId), eq(teamMembers.userId, String(userId)), eq(teamMembers.isActive, true)))
-        .limit(1);
-      const role = normalizeRole(member?.role ?? "");
-      const mayMoveOrg = org?.ownerId === String(userId) || role === "owner" || role === "admin";
+      const mayMoveOrg = await mayChangeOrganizationType(orgId, userId, org?.ownerId ?? null);
       if (!mayMoveOrg) {
         logger.info("Persona updated for the member only (not an org owner/admin)", { userId, persona });
         res.json({ persona, organizationUpdated: false });

@@ -775,6 +775,9 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
       : null;
   const { data: payments, isLoading: paymentsLoading } = usePayments(note.id);
   const [showRecordPayment, setShowRecordPayment] = useState(false);
+  // Held here, not in the modal: closing and reopening the modal to retry a
+  // timed-out payment must keep the same Idempotency-Key.
+  const recordPayment = useRecordPayment();
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDownloadingSchedule, setIsDownloadingSchedule] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
@@ -1740,6 +1743,7 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
         {showRecordPayment && (
           <RecordPaymentModal
             note={note}
+            recordPayment={recordPayment}
             onClose={() => setShowRecordPayment(false)}
           />
         )}
@@ -1749,8 +1753,16 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
   );
 }
 
-function RecordPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose: () => void }) {
-  const { mutate, isPending } = useRecordPayment();
+function RecordPaymentModal({
+  note,
+  recordPayment,
+  onClose,
+}: {
+  note: NoteWithDetails;
+  recordPayment: ReturnType<typeof useRecordPayment>;
+  onClose: () => void;
+}) {
+  const { mutate, isPending } = recordPayment;
   const { toast } = useToast();
   const [amount, setAmount] = useState(note.monthlyPayment?.toString() || '');
   const [method, setMethod] = useState('ach');
@@ -1758,20 +1770,16 @@ function RecordPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
   const interestRate = Number(note.interestRate || 0) / 100 / 12;
   const balance = Number(note.currentBalance || 0);
   
-  const interestAmount = balance * interestRate;
+  const interestAmount = Math.min(balance * interestRate, Number(amount) || 0);
   const principalAmount = Math.max(0, Number(amount) - interestAmount);
 
   const handleSubmit = () => {
+    // The server splits, dates and applies the late-fee rule; the preview
+    // below is an estimate.
     mutate({
-      organizationId: note.organizationId,
       noteId: note.id,
       amount: amount,
-      principalAmount: principalAmount.toFixed(2),
-      interestAmount: interestAmount.toFixed(2),
-      paymentDate: new Date(),
-      dueDate: note.nextPaymentDate || new Date(),
       paymentMethod: method,
-      status: 'completed',
     }, {
       onSuccess: onClose,
       // A refused payment used to leave the dialog open with no word of why.

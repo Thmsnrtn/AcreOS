@@ -60,6 +60,8 @@ let currentRows: Array<Record<string, unknown>> = [];
 /** Only the predicates issued by a SELECT, so the pre-read can be checked alone. */
 const preReads: Array<{ where: unknown }> = [];
 const insertedRows: Array<Record<string, any>> = [];
+/** Only the predicates issued by an UPDATE — the write itself must name the org. */
+const writeWheres: Array<{ where: unknown }> = [];
 
 vi.mock("../../server/db", () => ({
   db: {
@@ -75,7 +77,13 @@ vi.mock("../../server/db", () => ({
         where: vi.fn().mockImplementation((where: unknown) => {
           captured.push({ where });
           preReads.push({ where });
-          return { limit: vi.fn().mockResolvedValue(currentRows) };
+          // `.limit()` (the handlers' pre-reads) or awaited directly (the deal
+          // repository's pre-image read — a deal status write goes through
+          // storage.updateDeal since the audit of 224a5c0, and the REAL
+          // repository runs here, so its real predicate is what is checked).
+          const q: any = { limit: vi.fn().mockResolvedValue(currentRows) };
+          q.then = (f: (v: unknown) => unknown, r?: (e: unknown) => unknown) => Promise.resolve(currentRows).then(f, r);
+          return q;
         }),
       }),
     })),
@@ -83,6 +91,7 @@ vi.mock("../../server/db", () => ({
       set: vi.fn().mockReturnValue({
         where: vi.fn().mockImplementation((where: unknown) => {
           captured.push({ where });
+          writeWheres.push({ where });
           // Both shapes: awaited directly (legacy) or `.returning()`.
           const p: any = Promise.resolve(returningRows);
           p.returning = () => Promise.resolve(returningRows);
@@ -114,6 +123,9 @@ vi.mock("../../server/services/governanceBrainV13", () => ({
 vi.mock("../../server/services/eventMeshPublisher", () => ({
   eventMeshPublisher: { publish: vi.fn().mockResolvedValue(undefined) },
 }));
+// The repository's transition side effects are not what this suite measures.
+vi.mock("../../server/services/activation", () => ({ recordActivationEventAsync: vi.fn() }));
+vi.mock("../../server/services/dealEvents", () => ({ emitDealStageChanged: vi.fn() }));
 vi.mock("../../server/websocket", () => ({
   wsServer: { broadcastFounderEvent: vi.fn(), broadcast: vi.fn() },
 }));
@@ -166,6 +178,7 @@ beforeEach(() => {
   captured.length = 0;
   preReads.length = 0;
   insertedRows.length = 0;
+  writeWheres.length = 0;
   returningRows = [];
   currentRows = [{ status: "new" }];
 });
@@ -192,6 +205,13 @@ describe("executionEngine: caller-supplied ids are scoped to the executing org",
     // stopped reading predicates".
     expect(cols, `no columns readable in ${h.action}'s predicate`).toContain("id");
     expect(cols).toContain("organization_id");
+    // The WRITE's own predicate, apart from the pre-read — a union over every
+    // query stayed green with the org dropped from the write (checked by
+    // mutation, audit of 224a5c0).
+    expect(writeWheres.length, `${h.action} issued no UPDATE`).toBeGreaterThan(0);
+    const writeCols = writeWheres.flatMap((c) => columnsIn(c.where));
+    expect(writeCols).toContain("id");
+    expect(writeCols, `${h.action}'s write does not name the tenant`).toContain("organization_id");
   });
 
   it.each(ID_HANDLERS.filter((h) => h.action !== "complete_task"))(

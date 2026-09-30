@@ -9,7 +9,7 @@ import {
 } from "@shared/schema";
 import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../storage";
 import { logger } from "../utils/logger";
-import { publishDealLifecycle } from "../services/dealLifecycleEvents";
+import { publishDealLifecycle, recordDealTransitionEvidence } from "../services/dealLifecycleEvents";
 import { LIST_READ_CAP, capListRead } from "./listCap";
 
 import { ADMINISTRATIVE_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
@@ -122,6 +122,9 @@ export const dealRepo = {
       // never fails the mutation. Requires a real pre-image: without one we
       // can't honestly claim a from→to transition, so we publish nothing.
       if (before) publishDealLifecycle(updated.organizationId, before, updated);
+      // The transition's evidence (first offer made; a reopened sale
+      // retracted) — here, where every status write passes.
+      recordDealTransitionEvidence(updated.organizationId, before, updated);
 
       const triggerStatuses = new Set(["accepted", "under_contract", "in_escrow"]);
       if (triggerStatuses.has(updated.status ?? "")) {
@@ -181,9 +184,14 @@ export const dealRepo = {
   async bulkDeleteDeals(this: DatabaseStorage, orgId: number, ids: number[]): Promise<number> {
     // Task 223: Soft delete — set status='deleted' rather than hard-deleting
     if (ids.length === 0) return 0;
+    // A deleted closed deal is not a sale: its recorded comp is retracted.
+    const closedBefore = await db.select({ id: deals.id })
+      .from(deals)
+      .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids), eq(deals.status, "closed")));
     await db.update(deals)
       .set({ status: "deleted", updatedAt: new Date() })
       .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
+    for (const d of closedBefore) recordDealTransitionEvidence(orgId, { status: "closed" }, { id: d.id, status: "deleted" });
     return ids.length;
   },
 
@@ -218,6 +226,7 @@ export const dealRepo = {
     for (const before of beforeRows) {
       if (before.status === updates.status) continue; // no transition
       publishDealLifecycle(orgId, before, { ...before, ...updates, id: before.id });
+      recordDealTransitionEvidence(orgId, before, { ...before, ...updates, id: before.id });
     }
 
     return ids.length;

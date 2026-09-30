@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { storage, db } from "./storage";
+import { mayChangeOrganizationType, withoutOrgLevelKeys } from "./middleware/roleGuard";
 import { z } from "zod";
 import { eq, and, sql, desc, inArray } from "drizzle-orm";
 import { insertOrganizationSchema, leads, deals, properties, npsResponses, npsPromptQueue, organizations, type InsertTeamMember } from "@shared/schema";
@@ -973,11 +974,13 @@ export function registerOrganizationRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
       const { step, data, skipped } = parsed.data;
+      // The org's type and name are not a member's to set (audit of 224a5c0).
+      const mayMoveOrg = await mayChangeOrganizationType(org.id, req.user?.id, org.ownerId ?? null);
       
       const status = await onboardingService.updateOnboardingStep(
         org.id, 
         step, 
-        data || {},
+        mayMoveOrg ? data || {} : withoutOrgLevelKeys(data || {}),
         skipped || false
       );
       res.json(status);
@@ -999,12 +1002,13 @@ export function registerOrganizationRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
       const { stepId, data } = parsed.data;
+      const mayMoveOrg = await mayChangeOrganizationType(org.id, req.user?.id, org.ownerId ?? null);
       
       const skipped = data?.skipped === true;
       const status = await onboardingService.updateOnboardingStep(
         org.id, 
         stepId, 
-        data || {},
+        mayMoveOrg ? data || {} : withoutOrgLevelKeys(data || {}),
         skipped
       );
       res.json(status);
@@ -1030,9 +1034,15 @@ export function registerOrganizationRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
       const { businessType } = parsed.data;
+      // Provisioning writes the org's business type and creates its template
+      // campaigns — the owner's or an admin's call, not any member's (audit of
+      // 224a5c0). A member's onboarding continues; nothing is provisioned.
+      if (!(await mayChangeOrganizationType(org.id, req.user?.id, org.ownerId ?? null))) {
+        return res.json({ success: true, organizationUpdated: false, provisioned: { campaigns: 0, tags: [] } });
+      }
       
       const result = await onboardingService.provisionTemplates(org.id, businessType as BusinessType);
-      res.json(result);
+      res.json({ ...result, organizationUpdated: true });
     } catch (error: any) {
       Errors.internal(res, error);
     }

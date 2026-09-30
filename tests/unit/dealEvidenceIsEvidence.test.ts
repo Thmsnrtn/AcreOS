@@ -211,7 +211,13 @@ describe("a close that is not a sale does not stay a sale", () => {
     const body = src.slice(start, src.indexOf('"/api/notes/from-deal/:dealId"', start + 10));
     const created = body.indexOf("storage.createNote(");
     expect(created).toBeGreaterThan(0);
-    expect(body.slice(created)).toMatch(/retractTrainingTransaction\(orgId, `deal:\$\{closedSaleDealKey\(orgId, dealId\)\}`\)/);
+    expect(body.slice(created)).toMatch(/await retractCarriedDealSale\(orgId, dealId\)/);
+    // …and on the already-carried path, so a failed first retraction is retried (audit of 224a5c0).
+    const existing = body.indexOf("if (existing)");
+    expect(existing).toBeGreaterThan(0);
+    expect(body.slice(existing, existing + 400)).toMatch(/await retractCarriedDealSale\(orgId, dealId\)/);
+    const helper = src.slice(src.indexOf("async function retractCarriedDealSale("));
+    expect(helper.slice(0, 600)).toMatch(/retractTrainingTransaction\(orgId, `deal:\$\{closedSaleDealKey\(orgId, dealId\)\}`\)/);
   });
 
   it("only a disposition's accepted amount is paired as the AVM's actual sale price", async () => {

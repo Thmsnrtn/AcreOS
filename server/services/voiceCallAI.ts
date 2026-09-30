@@ -10,6 +10,7 @@ import {
   type InsertCallTranscript,
 } from "@shared/schema";
 import { eq, and, desc, gte, lte, sql, avg } from "drizzle-orm";
+import { isDealStatus, validateDealTransition } from "@shared/lifecycle/pipeline-status";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
@@ -669,21 +670,32 @@ Respond in JSON format:
       const [deal] = await db
         .select()
         .from(deals)
-        .where(eq(deals.id, transcript.dealId))
+        .where(and(eq(deals.id, transcript.dealId), eq(deals.organizationId, transcript.organizationId)))
         .limit(1);
 
       if (deal) {
         const updateData: Record<string, any> = {};
 
-        if (updates.dealUpdates.status) {
+        // A status read out of a call transcript must be a real, legal next
+        // stage — the same state machine every other writer is held to.
+        const proposedStatus = updates.dealUpdates.status;
+        const statusRefusal = proposedStatus
+          ? (isDealStatus(proposedStatus) && isDealStatus(deal.status ?? "")
+              ? validateDealTransition(deal.status as string, proposedStatus)
+              : `not a deal stage: ${proposedStatus}`)
+          : null;
+        if (proposedStatus && statusRefusal) {
+          logger.warn("[voice-call-ai] deal status from call not applied", { dealId: deal.id, reason: statusRefusal });
+        }
+        if (proposedStatus && !statusRefusal) {
           appliedUpdates.push({
             field: "deal.status",
             oldValue: deal.status,
-            newValue: updates.dealUpdates.status,
+            newValue: proposedStatus,
             appliedAt: now,
             automated: false,
           });
-          updateData.status = updates.dealUpdates.status;
+          updateData.status = proposedStatus;
         }
 
         if (updates.dealUpdates.notes) {
@@ -702,11 +714,10 @@ Respond in JSON format:
         }
 
         if (Object.keys(updateData).length > 0) {
-          updateData.updatedAt = new Date();
-          await db
-            .update(deals)
-            .set(updateData)
-            .where(eq(deals.id, transcript.dealId));
+          // Through the repository, where a status write records its
+          // transition evidence (audit of 224a5c0).
+          const { storage } = await import("../storage");
+          await storage.updateDeal(transcript.dealId, updateData, undefined, transcript.organizationId);
         }
       }
     }

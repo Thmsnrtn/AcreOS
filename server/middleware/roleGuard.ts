@@ -141,4 +141,38 @@ export const ownerGuard = requireRole(["owner"]);
 /** Read-only: all roles (including va + viewer) */
 export const anyRoleGuard = requireRole(["owner", "admin", "member", "viewer", "va"]);
 
+/**
+ * May this user change what the ORGANIZATION is — its business type, note
+ * role, investor type or name? Only its owner, or an active owner/admin
+ * member. A member's own persona is theirs; the org's type is everyone's
+ * (quality directive 2026-09-29, DEFECT-0237). Every writer of those fields
+ * asks this — the persona route, and the onboarding writers that accept them
+ * (audit of 224a5c0 found four that let any member move the org).
+ */
+export async function mayChangeOrganizationType(
+  orgId: number,
+  userId: string | number | null | undefined,
+  ownerId?: string | null,
+): Promise<boolean> {
+  if (userId == null || userId === "") return false;
+  if (ownerId != null && ownerId === String(userId)) return true;
+  const [member] = await db
+    .select({ role: teamMembers.role })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.organizationId, orgId), eq(teamMembers.userId, String(userId)), eq(teamMembers.isActive, true)))
+    .limit(1);
+  const role = normalizeRole(member?.role ?? "");
+  return role === "owner" || role === "admin";
+}
+
+/** The onboarding keys that describe the organization, not the member. */
+const ORG_LEVEL_ONBOARDING_KEYS = ["businessType", "noteRole", "investorType", "orgName"] as const;
+
+/** `data` without the organization-level keys (for a member who may not change them). */
+export function withoutOrgLevelKeys<T extends Record<string, unknown>>(data: T): Partial<T> {
+  const out: Record<string, unknown> = { ...data };
+  for (const k of ORG_LEVEL_ONBOARDING_KEYS) delete out[k];
+  return out as Partial<T>;
+}
+
 export { ROLE_RANK, normalizeRole };

@@ -6236,11 +6236,11 @@ Title: Any member's personal persona change rewrote the organization's business 
 Severity: P1
 Status: FIXED
 Surfaced by lenses: quality directive 2026-09-29 (H5)
-Description: `PUT /api/persona` updated the org's `businessType` for whoever called it, so one member choosing a persona for themselves changed every member's doors' content.
+Description: `PUT /api/me/persona` updated the org's `businessType` for whoever called it, so one member choosing a persona for themselves changed every member's doors' content.
 Evidence: `server/routes-persona.ts`.
-Remediation: Only the org owner (or an owner/admin role) moves the org; anyone else changes their own persona and the response says `organizationUpdated: false`.
+Remediation: Only the org owner (or an owner/admin role) moves the org; anyone else changes their own persona and the response says `organizationUpdated: false`. The rule was on this one route only — four onboarding writers still let any member move the org; see DEFECT-0255.
 Falsified: `tests/unit/personaDoesNotMoveTheOrg.test.ts` (red before).
-Resolving commits: quality-directive H5
+Resolving commits: quality-directive H5; H5 audit fixes
 
 ### DEFECT-0238
 Title: A partial sample seed could never resume
@@ -6249,9 +6249,9 @@ Status: FIXED
 Surfaced by lenses: quality directive 2026-09-29 (H5)
 Description: The seeder skipped when any sample marker existed, so a seed that failed half-way left a half-populated demo for good.
 Evidence: `server/services/onboarding/sampleSeeder.ts`.
-Remediation: Markers without `onboardingData.sampleDataLoaded === true` are a partial seed: it is cleared (sample lineage only) and seeded again, reported as `repaired`. Real rows are untouched.
-Falsified: `tests/unit/sampleSeeder.test.ts` (partial-seed repair and real-row cases, red before).
-Resolving commits: quality-directive H5
+Remediation: As first shipped, markers without the flag were cleared and seeded again — and the claim "real rows are untouched" was FALSE: the property delete cascaded to every deal on a demo parcel (the customer's own included), sample leads were never really cleared, sample notes were duplicated, and a finished set whose flag was lost was wiped and reseeded (audit of 224a5c0). It now RESUMES: each fixture row is matched to the sample row already there (lead email, `SAMPLE-` APN, the deal's parcel/type/notes, the note's parcel/principal) and only what is missing is created. Nothing is deleted.
+Falsified: `tests/unit/sampleSeeder.test.ts` (partial seed finished; nothing deleted; a flag-lost finished set not duplicated; a customer's deal on a demo parcel survives — red before).
+Resolving commits: quality-directive H5; H5 audit fixes
 
 ### DEFECT-0239
 Title: Founder funnels divided mismatched populations
@@ -6293,9 +6293,9 @@ Status: FIXED
 Surfaced by lenses: quality directive 2026-09-29 (H5)
 Description: In `POST /api/campaigns/:id/send-direct-mail`, a local write failing after the provider accepted a piece fell into the catch that records a failure and refunds — the piece prints, the customer is refunded, the campaign says it failed. The client minted a new Idempotency-Key per click, so a timed-out send clicked again created a second mailing order with new piece keys. (The directive's third point — activation reading the requested test mode — was already fixed at HEAD: it reads the provider's reported mode.)
 Evidence: `server/routes-campaigns.ts`; `client/src/hooks/use-campaigns.ts`.
-Remediation: A `providerAccepted` flag is set the moment the provider accepts; the catch logs an accepted piece's save failure and neither records a failure nor refunds. The send hook holds one key per send (`useOperationKey`).
+Remediation: A `providerAccepted` flag is set the moment the provider accepts; the catch logs an accepted piece's save failure and neither records a failure nor refunds. The send hook holds one key per send (`useOperationKey`) — but the response cache only answers after the first send finishes, so a retry during a long send still opened a second order; closed by DEFECT-0252.
 Falsified: `tests/unit/campaignMailAcceptedIsNotRefunded.test.ts` (source pins, red before).
-Resolving commits: quality-directive H5
+Resolving commits: quality-directive H5; H5 audit fixes
 
 ### DEFECT-0243
 Title: Today refreshes portfolio health inside every GET
@@ -6335,9 +6335,9 @@ Status: FIXED
 Surfaced by lenses: independent audit of e3debe0
 Description: Only `PUT /api/deals/:id` recorded `first_offer_made` on entering offer_sent and retracted a reopened sale. The stage PATCH, bulk-update, advance-stage (swipe), Pax `update_deal` and `draft_offer` did neither, and `POST /api/deals/bulk-stage-update` emitted no stage change at all.
 Evidence: `server/services/dealEvents.ts`; `server/routes-deals.ts`; `server/routes.ts`; `server/ai/tools.ts`.
-Remediation: `recordDealTransitionEvidence` sits beside every `emitDealStageChanged`; bulk-stage-update now emits both.
-Falsified: `tests/unit/dealTransitionEvidenceEverywhere.test.ts` — the population is every `emitDealStageChanged(` in `server/`; removing one pairing turns it red (checked).
-Resolving commits: quality-directive H5 (audit fixes)
+Remediation: As first shipped, `recordDealTransitionEvidence` sat beside every `emitDealStageChanged` — a population of EMITTERS, while the status is written by more paths than emit (the undo, `/api/bulk/deals/update`, workflow `update_record`, the agent's `advance_deal`, voice-call CRM updates, title closing, soft deletes). Since `closed` is terminal in the validated paths, the reopen retraction could only ever run on exactly those unpaired writers (audit of 224a5c0). It now runs in the deal repository (`updateDeal`, `bulkUpdateDeals`, the soft deletes), and every raw deals write outside `server/storage/` was routed through it; the bulk endpoint and voice updates are held to the state machine; the undo accepts only real stages.
+Falsified: `tests/unit/dealTransitionEvidenceEverywhere.test.ts` — the population is every `.update(<deals table>)` in `server/` (aliases included): none outside storage, and every repository method writing it records the evidence; plus behavioural repo tests (red before).
+Resolving commits: quality-directive H5 (audit fixes); H5 audit fixes
 
 ### DEFECT-0247
 Title: A "final" document counted as a signed contract
@@ -6369,7 +6369,7 @@ Surfaced by lenses: independent audit of 92bf405
 Description: `POST /api/payments` parsed JSON date strings with a schema wanting `Date` objects, so every submit answered 400 — silently, the modal had no error handler. Its principal/interest split came from the browser in float math, and its Idempotency-Key was minted per click and read by nothing.
 Evidence: `server/routes-finance.ts`; `client/src/hooks/use-payments.ts`; `client/src/pages/finance.tsx`.
 Remediation: The server loads the note (org-scoped), splits in integer cents with `splitPaymentCents` (the portal and autopay rule), refuses an amount above the payoff, and coerces dates. The key becomes the row's unique `transactionId` (`op:<org>:<key>`): a retry is answered with the recorded payment; the key reused for a different payment is 409. The hook holds one key per payment (note, amount, method). The modal shows its error.
-Falsified: `tests/unit/financePaymentIsRecordedOnce.test.ts` (red before).
+Falsified: `tests/unit/financePaymentIsRecordedOnce.test.ts` (red before). Once working, the route was a second-class writer — see DEFECT-0253.
 Resolving commits: quality-directive H5 (audit fixes)
 
 ### DEFECT-0250
@@ -6393,6 +6393,82 @@ Evidence: `server/services/founder-chat/tools/action.ts`; `server/services/finan
 Remediation: The approval answers in text. A deferral lasts the days it recorded (7 when it named none).
 Falsified: `tests/unit/scaleUpTriggersReadRecurringMrr.test.ts` (red before).
 Resolving commits: quality-directive H5 (audit fixes)
+
+### DEFECT-0252
+Title: A retry arriving while a campaign send was still printing opened a second mailing order
+Severity: P1
+Status: FIXED
+Surfaced by lenses: independent audit of 224a5c0
+Description: The Idempotency-Key middleware caches only a FINISHED response. The client gives up at 30s; a large send takes longer, so the retry arrived mid-send, missed the cache, debited credits again and opened a second mailing order with new piece keys — every piece the first had not reached yet printed twice.
+Evidence: `server/routes-campaigns.ts`; `server/middleware/idempotency.ts`.
+Remediation: `mailing_orders.operation_key` (migration 0259, unique per org) carries the key, and the order is opened as the send's claim BEFORE any credit moves. A duplicate collides and is answered 409 `SEND_ALREADY_STARTED` with the order in flight — nothing charged, nothing mailed. Insufficient credits after the claim mark the order failed.
+Falsified: `tests/unit/campaignSendIsClaimedOnce.test.ts` (route harness, red before).
+Resolving commits: H5 audit fixes
+
+### DEFECT-0253
+Title: The finance page's recorded payment lowered the balance and nothing else; any member could post one
+Severity: P1
+Status: FIXED
+Surfaced by lenses: independent audit of 224a5c0
+Description: Once `POST /api/payments` worked (DEFECT-0249) it was a second-class writer: `createPayment` lowered `currentBalance` only — the installment and due date never moved (the note stayed due; the due detector kept raising "overdue"; autopay, selecting on `nextPaymentDate`, could debit the same installment), no late-fee rule, no `payment.received`. It had no role guard. It passed the body's `transactionId`, fees and status through, and ignored a malformed key.
+Evidence: `server/routes-finance.ts`; `server/services/borrower/portalPaymentPosting.ts`; `client/src/pages/finance.tsx`.
+Remediation: The body of the portal posting rule is now `postServicedNotePayment` — the late-fee rule, the integer-cents split, one row per `transactionId`, the balance moved on the locked row, the installment and due date advanced by a full installment, `payment.received` once. The portal, webhook, Payment Links and the finance route (`source: operator_recorded`, no card receipt) all post through it. The route is owner/admin only, reads only `noteId`, `amount` and `paymentMethod`, and requires a well-formed key. The key is held above the modal, so close → reopen → retry keeps it.
+Falsified: `tests/unit/financePaymentIsRecordedOnce.test.ts`, `tests/unit/borrowerPortalPaymentPosting.test.ts` (operator posting advances the installment, applies the fee rule, emits once, sends no receipt).
+Resolving commits: H5 audit fixes
+
+### DEFECT-0254
+Title: The bulk deal endpoint set any status, and voice-call CRM updates wrote an AI-read status unchecked
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 224a5c0
+Description: `POST /api/bulk/deals/update` set any string as a deal status, around the state machine; `applyCRMUpdates` wrote a status read out of a call transcript, without an org predicate on the deal read (it has no caller today). The undo took an arbitrary `previousStage`.
+Evidence: `server/routes-bulk.ts`; `server/services/voiceCallAI.ts`; `server/routes.ts`.
+Remediation: The bulk endpoint validates the stage and each transition; voice updates apply only a legal next stage, org-scoped, through the repository; the undo accepts only real stages (it may move backwards — that is its purpose).
+Falsified: `tests/unit/dealTransitionEvidenceEverywhere.test.ts` (no raw deals writer outside storage).
+Resolving commits: H5 audit fixes
+
+### DEFECT-0255
+Title: Onboarding let any member rewrite what the organization is
+Severity: P1
+Status: FIXED
+Surfaced by lenses: independent audit of 224a5c0
+Description: DEFECT-0237's rule sat on the persona route only. `POST /api/onboarding/complete` (businessType → onboardingData and `investorType`), `/provision` (businessType + template campaigns), `PUT /step` / `POST /complete-step` (client data spread in) and `PATCH /progress` (raw body spread in) let any member move the org.
+Evidence: `server/routes-onboarding.ts`; `server/routes-organization.ts`; `server/middleware/roleGuard.ts`.
+Remediation: `mayChangeOrganizationType` (roleGuard) is the one rule; every writer asks it. For a member, org-level keys (businessType, noteRole, investorType, orgName) are dropped, `/provision` provisions nothing, and `/complete` still sets the member's own persona and says `organizationUpdated: false`.
+Falsified: `tests/unit/orgTypeWritersAskAuthority.test.ts` (every onboarding/persona write route, enumerated from source, asks — or is listed with its reason; red before); `tests/unit/routes-onboarding.test.ts` (member vs admin behaviour).
+Resolving commits: H5 audit fixes
+
+### DEFECT-0256
+Title: Retrying onboarding step 1 duplicated every template campaign; its writers raced
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 224a5c0
+Description: The step-1 toast said each write was "safe to retry" and "nothing else changed", but provisioning created every template campaign again on each retry, and the three writers ran in parallel, each read-modify-writing the org's onboarding data.
+Evidence: `server/services/onboarding.ts`; `client/src/pages/onboarding-v2.tsx`.
+Remediation: Provisioning skips a template campaign the org already has; the writers run in sequence; the toast says what did save is kept.
+Falsified: `tests/unit/routes-onboarding.test.ts` (a second provisioning creates nothing).
+Resolving commits: H5 audit fixes
+
+### DEFECT-0257
+Title: A failed Close & Carry retraction was never retried
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 224a5c0
+Description: A second carry returned `alreadyCarried` before the retraction, so a first retraction that failed left the carried deal a cash comp for good.
+Evidence: `server/routes-notes.ts`.
+Remediation: Both paths call the idempotent `retractCarriedDealSale`.
+Falsified: `tests/unit/dealEvidenceIsEvidence.test.ts` (source pin over both paths).
+Resolving commits: H5 audit fixes
+
+### DEFECT-0258
+Title: Residue from the audit of 224a5c0 not fixed in this change
+Severity: P2
+Status: OPEN
+Surfaced by lenses: independent audit of 224a5c0
+Description: (1) The close's training record is written asynchronously; a Close & Carry committed between its evidence read and its insert leaves a carried deal recorded (a narrow race). (2) A gapped workflow run (`completed_with_gaps`) and its error surface on no screen; in the stats it counts toward the total but neither success nor failure. (3) Excluding queue-written `first_mailer_sent` rows does not restore a real send the (org, event) unique index blocked earlier; those orgs read "not hit" until they send again. (4) "Clear sample data" still soft-deletes every deal on a sample parcel through the property cascade — a customer's own deal on a demo parcel included. (5) A presumed-lost breaker probe that reports late can briefly allow a third probe.
+Evidence: `server/routes-deals.ts`; `server/services/workflow-engine.ts`; `server/services/activation.ts`; `server/services/onboarding/sampleSeeder.ts`; `server/services/providers/circuit-breaker.ts`.
+Remediation plan: (1) record at the close inside the status write; (2) show gapped runs where runs are listed; (3) backfill from send logs (founder-run script); (4) sample lineage on deals and notes; (5) tag each probe claim.
+Resolving commits: —
 
 ### REFUTED AT HEAD, 2026-09-27
 
@@ -6430,10 +6506,10 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 17  | 17    |
-| FIXED  | 14  | 123 | 95  | 232   |
+| OPEN   | 0   | 0   | 18  | 18    |
+| FIXED  | 14  | 126 | 98  | 238   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **125** | **112** | **251** |
+| **Total** | **14** | **128** | **116** | **258** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
@@ -6464,6 +6540,9 @@ independent audits of its slices (see
 `docs/audits/quality-directive-2026-09-29-reconciliation.md`, the queue).
 DEFECT-0236 through 0251 (2026-09-30) close the directive's H5 slice and the
 independent audits of `92bf405` and `e3debe0`; recounted from the entries.
+DEFECT-0252 through 0258 (2026-09-30) come from the independent audit of
+`224a5c0`, which also corrected three of that commit's own claims (0238's
+"real rows untouched", 0246's population, 0237's reach); recounted.
 0203 records the audit of the first-mail slice; 0204–0207 are slice H2;
 0208–0213 the audit of H2 (0213 OPEN); 0214–0218 slice H3; 0219–0229 the
 audit of H3 (0225, 0227, 0229 OPEN); 0230–0235 slice H4 (0232, 0235 OPEN).

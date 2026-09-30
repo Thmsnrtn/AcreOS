@@ -155,11 +155,14 @@ const actionRegistry: Record<string, ActionExecutor> = {
       return fail(`${refusal}. Valid deal statuses: ${DEAL_STATUSES.join(", ")}.`);
     }
 
-    const advancedDeals = await db.update(deals)
-      .set({ status: String(newStage) })
-      .where(and(eq(deals.id, dealId), eq(deals.organizationId, ctx.orgId)))
-      .returning({ id: deals.id });
-    if (advancedDeals.length === 0) return fail(`Deal ${dealId} not found`);
+    // Through the repository, where every status write records its
+    // transition evidence (an agent moving a deal to offer_sent is an offer
+    // made; audit of 224a5c0), and as a stage change workflows can see.
+    const { storage } = await import("../storage");
+    const advanced = await storage.updateDeal(Number(dealId), { status: String(newStage) }, undefined, ctx.orgId);
+    if (!advanced) return fail(`Deal ${dealId} not found`);
+    const { emitDealStageChanged } = await import("./dealEvents");
+    emitDealStageChanged(ctx.orgId, { id: Number(dealId), status: currentDeal.status }, advanced);
 
     await logAgentAction(ctx, "deal_advanced", { dealId, newStage });
     wsServer.broadcast(`deal:${dealId}`, "deal_updated", { dealId, stage: newStage });

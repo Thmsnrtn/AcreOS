@@ -466,25 +466,27 @@ export class OnboardingService {
 
     let campaignsCreated = 0;
     let allTags: string[] = [];
+    // Safe to retry (audit of 224a5c0): onboarding re-sends this after a
+    // sibling write fails, and every retry used to create every template
+    // campaign again. A template the org already has, by name, is skipped.
+    const existingCampaignNames = new Set((await storage.getCampaigns(orgId)).map((c) => c.name));
+    const createTemplateCampaign = async (campaign: Parameters<typeof storage.createCampaign>[0]): Promise<boolean> => {
+      if (existingCampaignNames.has(campaign.name)) return false;
+      await storage.createCampaign(campaign);
+      existingCampaignNames.add(campaign.name);
+      return true;
+    };
 
     if (businessType === "land_flipper" || businessType === "hybrid") {
       for (const campaignTemplate of LAND_FLIPPER_TEMPLATES.campaigns) {
-        await storage.createCampaign({
-          organizationId: orgId,
-          ...campaignTemplate,
-        });
-        campaignsCreated++;
+        if (await createTemplateCampaign({ organizationId: orgId, ...campaignTemplate })) campaignsCreated++;
       }
       allTags = [...allTags, ...LAND_FLIPPER_TEMPLATES.defaultTags];
     }
 
     if (businessType === "note_investor" || businessType === "hybrid") {
       for (const campaignTemplate of NOTE_INVESTOR_TEMPLATES.campaigns) {
-        await storage.createCampaign({
-          organizationId: orgId,
-          ...campaignTemplate,
-        });
-        campaignsCreated++;
+        if (await createTemplateCampaign({ organizationId: orgId, ...campaignTemplate })) campaignsCreated++;
       }
       allTags = [...allTags, ...NOTE_INVESTOR_TEMPLATES.defaultTags];
 
@@ -499,16 +501,14 @@ export class OnboardingService {
 
     if (businessType === "residential_wholesaler") {
       for (const campaignTemplate of RESIDENTIAL_WHOLESALER_TEMPLATES.campaigns) {
-        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
-        campaignsCreated++;
+        if (await createTemplateCampaign({ organizationId: orgId, ...campaignTemplate })) campaignsCreated++;
       }
       allTags = [...allTags, ...RESIDENTIAL_WHOLESALER_TEMPLATES.defaultTags];
     }
 
     if (businessType === "fix_and_flip") {
       for (const campaignTemplate of FIX_AND_FLIP_TEMPLATES.campaigns) {
-        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
-        campaignsCreated++;
+        if (await createTemplateCampaign({ organizationId: orgId, ...campaignTemplate })) campaignsCreated++;
       }
       allTags = [...allTags, ...FIX_AND_FLIP_TEMPLATES.defaultTags];
       const settings = (org.settings as any) || {};
@@ -519,8 +519,7 @@ export class OnboardingService {
 
     if (businessType === "buy_and_hold") {
       for (const campaignTemplate of BUY_AND_HOLD_TEMPLATES.campaigns) {
-        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
-        campaignsCreated++;
+        if (await createTemplateCampaign({ organizationId: orgId, ...campaignTemplate })) campaignsCreated++;
       }
       allTags = [...allTags, ...BUY_AND_HOLD_TEMPLATES.defaultTags];
       const settings = (org.settings as any) || {};
@@ -531,8 +530,7 @@ export class OnboardingService {
 
     if (businessType === "commercial") {
       for (const campaignTemplate of COMMERCIAL_TEMPLATES.campaigns) {
-        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
-        campaignsCreated++;
+        if (await createTemplateCampaign({ organizationId: orgId, ...campaignTemplate })) campaignsCreated++;
       }
       allTags = [...allTags, ...COMMERCIAL_TEMPLATES.defaultTags];
       const settings = (org.settings as any) || {};
@@ -543,8 +541,7 @@ export class OnboardingService {
 
     if (businessType === "short_term_rental") {
       for (const campaignTemplate of SHORT_TERM_RENTAL_TEMPLATES.campaigns) {
-        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
-        campaignsCreated++;
+        if (await createTemplateCampaign({ organizationId: orgId, ...campaignTemplate })) campaignsCreated++;
       }
       allTags = [...allTags, ...SHORT_TERM_RENTAL_TEMPLATES.defaultTags];
       const settings = (org.settings as any) || {};
@@ -555,8 +552,7 @@ export class OnboardingService {
 
     if (businessType === "creative_finance") {
       for (const campaignTemplate of CREATIVE_FINANCE_TEMPLATES.campaigns) {
-        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
-        campaignsCreated++;
+        if (await createTemplateCampaign({ organizationId: orgId, ...campaignTemplate })) campaignsCreated++;
       }
       allTags = [...allTags, ...CREATIVE_FINANCE_TEMPLATES.defaultTags];
       const settings = (org.settings as any) || {};
@@ -569,24 +565,21 @@ export class OnboardingService {
     // developer → subdivider and both run the lots/permits/plats surface.
     if (businessType === "developer" || businessType === "subdivider") {
       for (const campaignTemplate of DEVELOPER_TEMPLATES.campaigns) {
-        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
-        campaignsCreated++;
+        if (await createTemplateCampaign({ organizationId: orgId, ...campaignTemplate })) campaignsCreated++;
       }
       allTags = [...allTags, ...DEVELOPER_TEMPLATES.defaultTags];
     }
 
     if (businessType === "tax_lien_deed") {
       for (const campaignTemplate of TAX_LIEN_DEED_TEMPLATES.campaigns) {
-        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
-        campaignsCreated++;
+        if (await createTemplateCampaign({ organizationId: orgId, ...campaignTemplate })) campaignsCreated++;
       }
       allTags = [...allTags, ...TAX_LIEN_DEED_TEMPLATES.defaultTags];
     }
 
     if (businessType === "multifamily") {
       for (const campaignTemplate of MULTIFAMILY_TEMPLATES.campaigns) {
-        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
-        campaignsCreated++;
+        if (await createTemplateCampaign({ organizationId: orgId, ...campaignTemplate })) campaignsCreated++;
       }
       allTags = [...allTags, ...MULTIFAMILY_TEMPLATES.defaultTags];
       const settings = (org.settings as any) || {};
@@ -597,8 +590,7 @@ export class OnboardingService {
 
     if (businessType === "mobile_home") {
       for (const campaignTemplate of MOBILE_HOME_TEMPLATES.campaigns) {
-        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
-        campaignsCreated++;
+        if (await createTemplateCampaign({ organizationId: orgId, ...campaignTemplate })) campaignsCreated++;
       }
       allTags = [...allTags, ...MOBILE_HOME_TEMPLATES.defaultTags];
       const settings = (org.settings as any) || {};
@@ -609,8 +601,7 @@ export class OnboardingService {
 
     if (businessType === "agent_investor") {
       for (const campaignTemplate of AGENT_INVESTOR_TEMPLATES.campaigns) {
-        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
-        campaignsCreated++;
+        if (await createTemplateCampaign({ organizationId: orgId, ...campaignTemplate })) campaignsCreated++;
       }
       allTags = [...allTags, ...AGENT_INVESTOR_TEMPLATES.defaultTags];
     }

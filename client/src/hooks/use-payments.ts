@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
-import type { Payment, InsertPayment } from "@shared/schema";
+import type { Payment } from "@shared/schema";
 import { useOperationKey } from "./use-operation-key";
 
 export function usePayments(noteId?: number) {
@@ -27,7 +27,7 @@ export function useRecordPayment() {
   // the body, whose paymentDate is a fresh timestamp on every click.
   const operationKey = useOperationKey();
   return useMutation({
-    mutationFn: async (data: InsertPayment) => {
+    mutationFn: async (data: { noteId: number; amount: string; paymentMethod: string }) => {
       const idempotencyKey = operationKey.keyFor({
         noteId: data.noteId,
         amount: String(data.amount),

@@ -1234,6 +1234,25 @@ function payoffResponseBody(result: AcquiredNotePayoffResult) {
 
 // ─── Route registration ──────────────────────────────────────────────────────
 
+/**
+ * A carried deal is seller-financed: the cash-sale label its close recorded in
+ * the valuation corpus is retracted. Idempotent; best-effort — the note stands
+ * either way, and a failure is logged, never swallowed silently.
+ */
+async function retractCarriedDealSale(orgId: number, dealId: number): Promise<void> {
+  try {
+    const { closedSaleDealKey } = await import("./services/marketNetworkContributor");
+    const { acreOSValuation } = await import("./services/acreOSValuation");
+    await acreOSValuation.retractTrainingTransaction(orgId, `deal:${closedSaleDealKey(orgId, dealId)}`);
+  } catch (err) {
+    logger.warn("notes.from_deal training retraction failed", {
+      orgId,
+      dealId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 export function registerNoteRoutes(app: Express): void {
   const ownerOrAdmin = requireRole(["owner", "admin"]);
 
@@ -3316,6 +3335,10 @@ export function registerNoteRoutes(app: Express): void {
           )
           .limit(1);
         if (existing) {
+          // Retract again: it is idempotent, and if the first carry's
+          // retraction failed this is the only path that would ever retry it
+          // (audit of 224a5c0).
+          await retractCarriedDealSale(orgId, dealId);
           return res.status(200).json({ note: existing, alreadyCarried: true });
         }
 
@@ -3354,19 +3377,8 @@ export function registerNoteRoutes(app: Express): void {
         // The close recorded this deal as a cash sale comp before any note
         // existed (Close & Carry runs after the close). A carried deal is
         // seller-financed — its contract total is not a cash price — so the
-        // label is retracted now (audit of e3debe0). Best-effort: the note is
-        // created either way, and a failure is logged, not swallowed.
-        try {
-          const { closedSaleDealKey } = await import("./services/marketNetworkContributor");
-          const { acreOSValuation } = await import("./services/acreOSValuation");
-          await acreOSValuation.retractTrainingTransaction(orgId, `deal:${closedSaleDealKey(orgId, dealId)}`);
-        } catch (retractErr) {
-          logger.warn("notes.from_deal training retraction failed", {
-            orgId,
-            dealId,
-            err: retractErr instanceof Error ? retractErr.message : String(retractErr),
-          });
-        }
+        // label is retracted now (audit of e3debe0).
+        await retractCarriedDealSale(orgId, dealId);
 
         return res.status(201).json({ note, originatingDealId: dealId });
       } catch (err) {

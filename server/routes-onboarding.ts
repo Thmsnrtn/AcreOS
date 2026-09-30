@@ -23,6 +23,7 @@ import {
   type NoteRole,
 } from "@shared/models/persona-mapping";
 import { Errors } from "./utils/errors";
+import { mayChangeOrganizationType, withoutOrgLevelKeys } from "./middleware/roleGuard";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 import { seedSampleDataForOrg } from "./services/onboarding/sampleSeeder";
 
@@ -74,11 +75,17 @@ router.post("/complete", async (req: Request, res: Response) => {
     // wrote `businessType: undefined`, which JSON-serialization dropped,
     // silently losing the org's persisted type).
     const existingData = (org.onboardingData as Record<string, unknown>) || {};
+    // What the ORGANIZATION is (type, note role, name) moves only for its
+    // owner or an owner/admin member (DEFECT-0237; audit of 224a5c0 — this
+    // route let any member who finished onboarding rewrite the org's type).
+    // A member still gets their own persona from their answer below.
+    const mayMoveOrg = await mayChangeOrganizationType(org.id, user?.id, org.ownerId ?? null);
+    const orgBusinessType = mayMoveOrg ? businessType : undefined;
     const onboardingData: Record<string, unknown> = {
       ...existingData,
-      ...(businessType ? { businessType } : {}),
-      ...(noteRole ? { noteRole } : {}),
-      ...(orgName ? { orgName } : {}),
+      ...(orgBusinessType ? { businessType: orgBusinessType } : {}),
+      ...(noteRole && mayMoveOrg ? { noteRole } : {}),
+      ...(orgName && mayMoveOrg ? { orgName } : {}),
       inviteEmails: Array.isArray(inviteEmails) ? inviteEmails : [],
       goals: Array.isArray(goals) ? goals : [],
       ...(body.path ? { path: body.path } : {}),
@@ -118,10 +125,12 @@ router.post("/complete", async (req: Request, res: Response) => {
           .update(users)
           .set({ persona, updatedAt: new Date() })
           .where(eq(users.id, user.id));
-        await db
-          .update(organizations)
-          .set({ investorType: BUSINESS_TYPE_TO_INVESTOR_TYPE[businessType] })
-          .where(eq(organizations.id, org.id));
+        if (mayMoveOrg) {
+          await db
+            .update(organizations)
+            .set({ investorType: BUSINESS_TYPE_TO_INVESTOR_TYPE[businessType] })
+            .where(eq(organizations.id, org.id));
+        }
       } catch (personaErr: any) {
         logger.warn("Non-fatal: failed to derive/persist persona+investorType", { error: personaErr.message });
         incomplete.push("your role and business type");
@@ -138,7 +147,7 @@ router.post("/complete", async (req: Request, res: Response) => {
     if (shouldSeed) {
       const storedBusinessType = existingData.businessType as string | undefined;
       const seedBusinessType =
-        businessType ?? (isBusinessType(storedBusinessType) ? storedBusinessType : "land_flipper");
+        orgBusinessType ?? (isBusinessType(storedBusinessType) ? storedBusinessType : "land_flipper");
       try {
         sampleData = await seedSampleDataForOrg(String(org.id), seedBusinessType, {
           userId: user?.id,
@@ -154,6 +163,7 @@ router.post("/complete", async (req: Request, res: Response) => {
     res.json({
       success: incomplete.length === 0,
       completed: true,
+      organizationUpdated: mayMoveOrg,
       ...(incomplete.length > 0 ? { incomplete } : {}),
       ...(sampleData ? { sampleData } : {}),
     });
@@ -364,7 +374,12 @@ router.post("/path-selected", async (req: Request, res: Response) => {
 router.patch("/progress", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const { step, ...stepData } = req.body;
+    const { step, ...rawStepData } = req.body;
+    // The organization's type and name are not a member's to set by
+    // spreading them into progress (audit of 224a5c0).
+    const stepData = (await mayChangeOrganizationType(org.id, req.user?.id, org.ownerId ?? null))
+      ? rawStepData
+      : withoutOrgLevelKeys(rawStepData);
     const { db } = await import("./db");
     const { organizations } = await import("@shared/schema");
     const { eq } = await import("drizzle-orm");

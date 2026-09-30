@@ -15,7 +15,8 @@ import { Router, type Response } from "express";
 import { attachPermissionContext } from "./utils/permissions";
 import { refuseUnpermittedAssignment } from "./utils/leadAssignmentGate";
 import { db } from "./db";
-import { leads, properties, deals, tasks } from "@shared/schema";
+import { storage } from "./storage";
+import { leads, properties, tasks, type InsertDeal } from "@shared/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { filterOutHeldIds } from "./services/legalHold";
 import { Errors } from "./utils/errors";
@@ -181,7 +182,21 @@ router.post("/deals/update", async (req: AuthenticatedRequest, res: Response) =>
     if (!updates || typeof updates !== "object") return Errors.badRequest(res, "updates must be an object");
 
     const allowedUpdates: Record<string, unknown> = {};
-    if (updates.status) allowedUpdates.status = updates.status;
+    // A status is held to the same state machine as every other deal writer
+    // (audit of 224a5c0: this set any string, closed deals included).
+    if (updates.status) {
+      const { isDealStatus, validateDealTransition } = await import("@shared/lifecycle/pipeline-status");
+      if (!isDealStatus(updates.status)) return Errors.badRequest(res, `Invalid deal status: ${String(updates.status)}`);
+      const current = await storage.getDealsByIds(orgId, parsedIds);
+      const blocked = current
+        .filter((d) => d.status !== updates.status)
+        .map((d) => ({ id: d.id, error: validateDealTransition(d.status, updates.status) }))
+        .filter((b): b is { id: number; error: string } => b.error !== null);
+      if (blocked.length > 0) {
+        return Errors.badRequest(res, `${blocked.length} deal(s) cannot move to "${updates.status}": ${blocked[0].error}`, { blocked });
+      }
+      allowedUpdates.status = updates.status;
+    }
     if (updates.assignedTo !== undefined) {
       if (updates.assignedTo !== null && updates.assignedTo !== "") {
         const ok = await assertUserIsOrgMember(String(updates.assignedTo), orgId);
@@ -195,14 +210,14 @@ router.post("/deals/update", async (req: AuthenticatedRequest, res: Response) =>
       return Errors.badRequest(res, "No valid updates provided");
     }
 
-    allowedUpdates.updatedAt = new Date();
-
-    await db.update(deals)
-      .set(allowedUpdates)
-      .where(and(
-        eq(deals.organizationId, orgId),
-        inArray(deals.id, parsedIds)
-      ));
+    // Through the repository, which records each transition's evidence and
+    // lifecycle event (and stamps updatedAt).
+    const before = allowedUpdates.status ? await storage.getDealsByIds(orgId, parsedIds) : [];
+    await storage.bulkUpdateDeals(orgId, parsedIds, allowedUpdates as Partial<InsertDeal>);
+    if (allowedUpdates.status) {
+      const { emitDealStageChanged } = await import("./services/dealEvents");
+      for (const b of before) emitDealStageChanged(orgId, b, { ...b, status: allowedUpdates.status as string });
+    }
 
     res.json({ success: true, updated: parsedIds.length });
   } catch (err) {

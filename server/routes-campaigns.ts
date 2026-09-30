@@ -21,7 +21,7 @@ const updateSequenceStepSchema = insertSequenceStepSchema.partial();
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requirePermission } from "./utils/permissions";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 import { logger } from "./utils/logger";
 import { checkUsageLimit } from "./services/usageLimits";
@@ -31,7 +31,7 @@ import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 import { idempotencyMiddleware } from "./middleware/idempotency";
 import { storage, db } from "./storage";
 import { eq, sql, and, gte, desc } from "drizzle-orm";
-import { leads, deals, properties, campaignResponses, campaignDeliveryEvents } from "@shared/schema";
+import { leads, deals, properties, campaignResponses, campaignDeliveryEvents, mailingOrders } from "@shared/schema";
 import { shouldSimulate, recordSimulatedAction } from "./utils/simulationMode";
 import { sendOrgSMS, orgHasConnectedSmsIdentity } from "./services/smsService";
 import { salutationName } from "@shared/parcel/ownerName";
@@ -842,23 +842,6 @@ export function registerCampaignRoutes(app: Express): void {
         });
       }
 
-      // Only deduct credits if NOT using org Lob credentials (BYOK)
-      let deductResult: any = true;
-      if (!usingOrgLobCredentials) {
-        deductResult = await creditService.deductCredits(
-          org.id,
-          costPerPiece * validLeads.length,
-          `Direct mail campaign: ${campaign.name} - ${validLeads.length} pieces`,
-          { campaignId, pieceType, recipientCount: validLeads.length }
-        );
-
-        if (!deductResult) {
-          return Errors.paymentRequired(res, "Insufficient credits");
-        }
-      } else {
-        logger.info(`Skipping credit deduction for org - using org Lob credentials`, { orgId: org.id });
-      }
-
       // Create return address snapshot from mail sender identity
       const returnAddressSnapshot = {
         companyName: mailSenderIdentity.companyName,
@@ -875,18 +858,78 @@ export function registerCampaignRoutes(app: Express): void {
 
       // Create mailing order record with pending status
       // creditsUsed is 0 when using org Lob credentials (BYOK)
-      const mailingOrder = await storage.createMailingOrder({
-        organizationId: org.id,
-        campaignId,
-        mailSenderIdentityId: mailSenderIdentity.id,
-        returnAddressSnapshot,
-        mailType,
-        totalPieces: validLeads.length,
-        costPerPiece: usingOrgLobCredentials ? 0 : costPerPiece,
-        totalCost: usingOrgLobCredentials ? 0 : (costPerPiece * validLeads.length),
-        creditsUsed: usingOrgLobCredentials ? 0 : (costPerPiece * validLeads.length),
-        status: 'pending',
-      });
+      //
+      // The order is also the send's CLAIM (audit of 224a5c0): it carries the
+      // client's Idempotency-Key under a unique (org, key) index and is opened
+      // BEFORE any credit moves. The response cache (idempotencyMiddleware)
+      // only answers a retry after the first send has finished — a retry that
+      // arrives while the first is still printing (the client gives up at
+      // 30s; a large send takes longer) used to open a second order with new
+      // piece keys, debit again, and print every remaining piece twice. Now
+      // that retry collides here and is answered with the order in flight.
+      const rawOpKey = req.headers?.["idempotency-key"];
+      const operationKey =
+        typeof rawOpKey === "string" && rawOpKey.trim() ? rawOpKey.trim().slice(0, 200) : null;
+      let mailingOrder: Awaited<ReturnType<typeof storage.createMailingOrder>>;
+      try {
+        mailingOrder = await storage.createMailingOrder({
+          organizationId: org.id,
+          campaignId,
+          mailSenderIdentityId: mailSenderIdentity.id,
+          returnAddressSnapshot,
+          mailType,
+          totalPieces: validLeads.length,
+          costPerPiece: usingOrgLobCredentials ? 0 : costPerPiece,
+          totalCost: usingOrgLobCredentials ? 0 : (costPerPiece * validLeads.length),
+          creditsUsed: usingOrgLobCredentials ? 0 : (costPerPiece * validLeads.length),
+          status: 'pending',
+          operationKey,
+        });
+      } catch (claimErr) {
+        const code = (claimErr as { code?: string; cause?: { code?: string } })?.code
+          ?? (claimErr as { cause?: { code?: string } })?.cause?.code;
+        if (!operationKey || code !== "23505") throw claimErr;
+        const [existing] = await db
+          .select({
+            id: mailingOrders.id,
+            status: mailingOrders.status,
+            totalPieces: mailingOrders.totalPieces,
+            sentPieces: mailingOrders.sentPieces,
+            failedPieces: mailingOrders.failedPieces,
+          })
+          .from(mailingOrders)
+          .where(and(eq(mailingOrders.organizationId, org.id), eq(mailingOrders.operationKey, operationKey)))
+          .limit(1);
+        return sendError(
+          res,
+          409,
+          "SEND_ALREADY_STARTED",
+          "This send was already started — nothing new was mailed or charged. Check the campaign's mailing history for its progress.",
+          { mailingOrder: existing ?? null },
+        );
+      }
+
+      // Only deduct credits if NOT using org Lob credentials (BYOK). After the
+      // claim, so a duplicate never reaches the debit.
+      let deductResult: any = true;
+      if (!usingOrgLobCredentials) {
+        deductResult = await creditService.deductCredits(
+          org.id,
+          costPerPiece * validLeads.length,
+          `Direct mail campaign: ${campaign.name} - ${validLeads.length} pieces`,
+          { campaignId, pieceType, recipientCount: validLeads.length, mailingOrderId: mailingOrder.id }
+        );
+
+        if (!deductResult) {
+          await storage.updateMailingOrder(mailingOrder.id, {
+            status: 'failed',
+            errorMessage: 'Insufficient credits — nothing was mailed',
+          }, org.id);
+          return Errors.paymentRequired(res, "Insufficient credits");
+        }
+      } else {
+        logger.info(`Skipping credit deduction for org - using org Lob credentials`, { orgId: org.id });
+      }
 
       // Update order status to in_progress when sending starts
       await storage.updateMailingOrder(mailingOrder.id, {

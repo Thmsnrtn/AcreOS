@@ -243,19 +243,39 @@ describe("seedSampleDataForOrg — a partial seed can be finished (quality direc
 
     const retry = await seedSampleDataForOrg(String(ORG), "land_flipper");
     expect(retry).toMatchObject({ seeded: true, repaired: true });
-    // Exactly one full set — the partial rows were cleared, nothing duplicated.
+    // Exactly one full set — the missing rows were created, nothing duplicated.
     const clean = buildSampleFixtures(ORG, "land_flipper");
     expect(mem.leads.length).toBe(clean.leads.length);
     expect(mem.properties.length).toBe(clean.properties.length);
     expect(mem.orgs.get(ORG)?.onboardingData).toMatchObject({ sampleDataLoaded: true });
   });
 
-  it("a real row the customer created is untouched by the repair", async () => {
+  it("the resume deletes nothing — a real row, and any row it cannot match, stay (audit of 224a5c0)", async () => {
     mem.leads.push({ id: 999, organizationId: ORG, source: "referral", firstName: "Real" });
     mem.leads.push({ id: 998, organizationId: ORG, source: SAMPLE_LEAD_SOURCE, firstName: "Partial" });
     await seedSampleDataForOrg(String(ORG), "land_flipper");
     expect(mem.leads.find((l) => l.id === 999)).toBeTruthy();
-    expect(mem.leads.find((l) => l.id === 998)).toBeUndefined();
+    expect(mem.leads.find((l) => l.id === 998)).toBeTruthy();
+  });
+
+  it("a finished set whose flag was lost (a reset nulls onboardingData) is not duplicated", async () => {
+    await seedSampleDataForOrg(String(ORG), "land_flipper");
+    const before = { leads: mem.leads.length, properties: mem.properties.length, deals: mem.deals.length, notes: mem.notes.length };
+    mem.orgs.set(ORG, { ...mem.orgs.get(ORG)!, onboardingData: null });
+    const again = await seedSampleDataForOrg(String(ORG), "land_flipper");
+    expect(again).toMatchObject({ seeded: true, repaired: true, counts: { deals: 0, notes: 0 } });
+    expect({ leads: mem.leads.length, properties: mem.properties.length, deals: mem.deals.length, notes: mem.notes.length }).toEqual(before);
+    expect(mem.orgs.get(ORG)?.onboardingData).toMatchObject({ sampleDataLoaded: true });
+  });
+
+  it("a deal the customer added to a demo parcel survives the resume", async () => {
+    await seedSampleDataForOrg(String(ORG), "land_flipper");
+    const demoParcel = mem.properties[0];
+    mem.deals.push({ id: 5000, organizationId: ORG, propertyId: demoParcel.id, type: "acquisition", notes: "My own offer on this parcel" });
+    mem.orgs.set(ORG, { ...mem.orgs.get(ORG)!, onboardingData: null });
+    await seedSampleDataForOrg(String(ORG), "land_flipper");
+    expect(mem.deals.find((d) => d.id === 5000)).toMatchObject({ notes: "My own offer on this parcel" });
+    expect((mem.deals.find((d) => d.id === 5000) as { status?: string }).status).not.toBe("deleted");
   });
 });
 

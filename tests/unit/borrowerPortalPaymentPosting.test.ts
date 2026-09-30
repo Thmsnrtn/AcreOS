@@ -166,6 +166,7 @@ vi.mock("../../server/services/notes/servicedLateFees", async (orig) => ({
 import { payments as paymentsTable, type Note } from "@shared/schema";
 import {
   postBorrowerPortalCheckoutPayment,
+  postServicedNotePayment,
   type PortalCheckoutSession,
 } from "../../server/services/borrower/portalPaymentPosting";
 
@@ -398,5 +399,32 @@ describe("an overpayment beyond the payoff is recorded, reported and disclosed",
     expect(out.outcome).toBe("posted");
     if (out.outcome === "posted") expect(out.unappliedCents).toBe(0);
     expect(state.activities).toHaveLength(0);
+  });
+});
+
+describe("an operator-recorded payment posts through the same rule (audit of 224a5c0)", () => {
+  beforeEach(resetState);
+
+  it("advances the installment and due date, applies the late-fee rule, emits payment.received — and sends no card receipt", async () => {
+    LAST_CONFLICT_ID.id = "op:7:key-0001";
+    const out = await postServicedNotePayment({
+      note: NOTE_ROW,
+      amountCents: 12_500,
+      transactionId: "op:7:key-0001",
+      source: "operator_recorded",
+      paymentMethod: "check",
+      now: NOW,
+      sendReceipt: false,
+    });
+    expect(out.outcome).toBe("posted");
+    const facts = ledgerFacts();
+    expect(facts.nextPaymentDate).toEqual(new Date("2026-10-01T00:00:00Z"));
+    expect(facts.scheduleStatuses).toEqual(["paid", "pending"]);
+    expect(FEES.assessCalls).toHaveLength(1);
+    expect(state.events).toHaveLength(1);
+    expect(state.events[0].data).toMatchObject({ source: "operator_recorded", paymentMethod: "check" });
+    expect(state.emails).toHaveLength(0);
+    const row = [...state.payments.values()][0];
+    expect(row).toMatchObject({ transactionId: "op:7:key-0001", paymentMethod: "check" });
   });
 });

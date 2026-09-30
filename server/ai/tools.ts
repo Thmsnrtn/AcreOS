@@ -43,7 +43,7 @@ import { emitLeadCreated, emitLeadUpdated } from "../services/leadEvents";
 // Same reasoning for deals + properties: a deal Pax creates (including the
 // offer-letter → pipeline bridge below) is a deal like any other, and a stage
 // Pax moves is a stage change like any other.
-import { emitDealCreated, emitDealStageChanged, recordDealTransitionEvidence } from "../services/dealEvents";
+import { emitDealCreated, emitDealStageChanged } from "../services/dealEvents";
 import { emitPropertyCreated, emitPropertyStatusChanged } from "../services/propertyEvents";
 
 // Tool parameter schemas (OpenAI function calling format)
@@ -1701,7 +1701,6 @@ export async function executeTool(
         // Wave B — deal.stage_changed. `dealBeforeUpdate` is the real
         // pre-image; when the tool didn't move `status` this emits nothing.
         emitDealStageChanged(org.id, dealBeforeUpdate, deal);
-        recordDealTransitionEvidence(org.id, dealBeforeUpdate, deal);
 
         invalidateContextCache(org.id);
         return { success: true, data: { message: "Deal updated successfully", deal, before: dealBefore, after: dealAfter } };
@@ -2601,7 +2600,6 @@ export async function executeTool(
             // silent when Pax drafts the offer. Fire-and-forget, no-ops when
             // the status did not actually move.
             emitDealStageChanged(org.id, deal, advanced);
-            recordDealTransitionEvidence(org.id, deal, advanced);
           } catch (advErr) {
             logger.warn("[draft_offer] deal advance to offer_sent failed (non-fatal)", {
               metadata: { dealId: deal.id, error: advErr instanceof Error ? advErr.message : String(advErr) },

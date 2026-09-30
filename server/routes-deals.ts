@@ -35,7 +35,7 @@ import {
 // Wave B "Wire the engine": deal automations never ran because nothing emitted
 // deal.created / deal.stage_changed. Both emitters are fire-and-forget and
 // no-op unless the status genuinely changed — see services/dealEvents.ts.
-import { emitDealCreated, emitDealStageChanged, recordDealTransitionEvidence } from "./services/dealEvents";
+import { emitDealCreated, emitDealStageChanged } from "./services/dealEvents";
 // The deal-created perception event. createDeal suppresses its own publish for
 // transactional callers (a deal that may still roll back must not be announced),
 // so the route issues it once the transaction has committed.
@@ -816,9 +816,6 @@ export function registerDealRoutes(app: Express): void {
       // previousData carries the honest prior stage. No-ops emit nothing: the
       // helper compares statuses and returns early when they match.
       emitDealStageChanged(org.id, existingDeal, deal);
-      // The transition's evidence: offer_sent → first offer made; leaving
-      // closed → the recorded sale is retracted (every stage-change path).
-      recordDealTransitionEvidence(org.id, existingDeal, deal, req.user?.id);
 
       // Audit Wave 1 (wholesaler beta→core) — deal.contract_signed. A deal
       // genuinely entering escrow (accepted → in_escrow, the only path in per
@@ -1165,8 +1162,8 @@ export function registerDealRoutes(app: Express): void {
       // offers table — `offer_sent` status on the deal is the canonical
       // offer-sent event.
       if (validated.status === "offer_sent" && existingDeal.status !== "offer_sent") {
-        // (The first-offer activation signal is recorded by
-        // recordDealTransitionEvidence above, for every stage-change path.)
+        // (The first-offer activation signal is recorded where the status is
+        // written — the deal repository's recordDealTransitionEvidence.)
         try {
           const { recordSnapshotAsync } = await import("./services/mlSnapshots");
           recordSnapshotAsync({
@@ -2594,7 +2591,6 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       // form. It is the most common way a stage actually changes, so the
       // trigger has to fire from here too.
       emitDealStageChanged(org.id, existingDeal, deal);
-      recordDealTransitionEvidence(org.id, existingDeal, deal, req.user?.id);
 
       res.json(deal);
     } catch (err: any) {
@@ -2650,7 +2646,6 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       for (const before of beforeDeals) {
         if (!before) continue;
         emitDealStageChanged(org.id, before, { ...before, status: bulkStatus });
-        recordDealTransitionEvidence(org.id, before, { ...before, status: bulkStatus }, req.user?.id);
       }
 
       res.json({ updatedCount });
@@ -2849,7 +2844,6 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
 
       // Wave B — the swipe/advance path is a stage transition like any other.
       emitDealStageChanged(orgId, existingDeal, deal);
-      recordDealTransitionEvidence(orgId, existingDeal, deal, req.user?.id);
 
       const user = req.user;
       const userId = user?.id;

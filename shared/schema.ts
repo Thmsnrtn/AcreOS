@@ -5453,12 +5453,20 @@ export const mailingOrders = pgTable("mailing_orders", {
   lobJobIds: jsonb("lob_job_ids").$type<string[]>(),
   
   errorMessage: text("error_message"),
+
+  // The client's Idempotency-Key for the send that opened this order
+  // (migration 0259). Claimed before any credit moves, so a retry of the SAME
+  // send — even one arriving while the first is still printing — finds this
+  // order instead of opening a second one. NULL for orders opened before.
+  operationKey: text("operation_key"),
   
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("mailing_orders_org_operation_uidx").on(table.organizationId, table.operationKey),
+]);
 
 export const insertMailingOrderSchema = createInsertSchema(mailingOrders).omit({
   id: true,

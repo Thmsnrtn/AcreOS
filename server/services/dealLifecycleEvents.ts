@@ -126,3 +126,55 @@ export function publishDealLifecycle(
     );
   }
 }
+
+/**
+ * The evidence a stage transition carries (quality directive 2026-09-29,
+ * audits of e3debe0 and 224a5c0). It was recorded by one route, then beside
+ * seven route-level emitters — while the undo, the bulk endpoint, workflows,
+ * the agent, voice-call CRM updates, title closing and soft deletes changed
+ * `deals.status` without it. It now runs where the status is written: the
+ * deal repository (`updateDeal`, `bulkUpdateDeals`, the soft deletes), which
+ * every status write goes through (pinned by
+ * dealTransitionEvidenceEverywhere.test.ts).
+ *
+ *  - entering offer_sent is the first-offer activation signal (deduped per
+ *    org by the activation table);
+ *  - leaving closed — reopened, or deleted — retracts the sale the close
+ *    recorded (marked an outlier, not deleted). A close is NOT recorded here:
+ *    what qualifies as a sale is decided by the close path's evidence rule.
+ *
+ * Fire-and-forget: never throws into the write.
+ */
+export function recordDealTransitionEvidence(
+  orgId: number,
+  before: { status?: string | null } | null | undefined,
+  after: { id: number; status?: string | null; offerAmount?: string | number | null },
+): void {
+  try {
+    if (!before || (before.status ?? null) === (after.status ?? null)) return;
+    const dealId = after.id;
+    const swallowed = (what: string) => (err: unknown) =>
+      logger.warn(`[dealLifecycleEvents] ${what} failed for deal ${dealId} (swallowed)`, err instanceof Error ? err : undefined);
+    if (after.status === "offer_sent") {
+      void import("./activation")
+        .then(({ recordActivationEventAsync }) =>
+          recordActivationEventAsync({
+            orgId,
+            userId: null,
+            eventName: "first_offer_made",
+            eventValue: { dealId, offerAmount: after.offerAmount ?? null },
+          }),
+        )
+        .catch(swallowed("first_offer_made"));
+    }
+    if (before.status === "closed") {
+      void (async () => {
+        const { closedSaleDealKey } = await import("./marketNetworkContributor");
+        const { acreOSValuation } = await import("./acreOSValuation");
+        await acreOSValuation.retractTrainingTransaction(orgId, `deal:${closedSaleDealKey(orgId, dealId)}`);
+      })().catch(swallowed("reopen retraction"));
+    }
+  } catch (err) {
+    logger.warn("[dealLifecycleEvents] transition evidence failed (swallowed)", err instanceof Error ? err : undefined);
+  }
+}

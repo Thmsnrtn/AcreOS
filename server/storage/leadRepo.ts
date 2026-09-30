@@ -321,8 +321,11 @@ export const leadRepo = {
     }
     const conditions = [eq(leads.id, id)];
     if (organizationId) conditions.push(eq(leads.organizationId, organizationId));
+    // `deletedAt` too: every list read filters on it, so a lead deleted with
+    // status alone kept appearing — the "clear sample data" leads included
+    // (audit of 224a5c0). The route's own delete already stamps both.
     await db.update(leads)
-      .set({ status: "deleted", updatedAt: new Date() })
+      .set({ status: "deleted", deletedAt: new Date(), updatedAt: new Date() })
       .where(and(...conditions));
   },
 

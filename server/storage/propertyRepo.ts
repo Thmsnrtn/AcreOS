@@ -8,6 +8,7 @@ import {
   type Property, type InsertProperty,
 } from "@shared/schema";
 import { assertNotUnderLegalHold } from "../services/legalHold";
+import { recordDealTransitionEvidence } from "../services/dealLifecycleEvents";
 import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../storage";
 import { LIST_READ_CAP, capListRead } from "./listCap";
 
@@ -131,9 +132,16 @@ export const propertyRepo = {
     // Soft-delete any deals tied to this property so they also disappear from list views
     const dealConditions: any[] = [eq(deals.propertyId, id)];
     if (organizationId) dealConditions.push(eq(deals.organizationId, organizationId));
+    // A deleted closed deal is not a sale: its recorded comp is retracted.
+    const closedBefore = await db.select({ id: deals.id, organizationId: deals.organizationId })
+      .from(deals)
+      .where(and(...dealConditions, eq(deals.status, "closed")));
     await db.update(deals)
       .set({ status: "deleted", updatedAt: new Date() })
       .where(and(...dealConditions));
+    for (const d of closedBefore) {
+      recordDealTransitionEvidence(d.organizationId, { status: "closed" }, { id: d.id, status: "deleted" });
+    }
   },
 
   async getPropertyCount(this: DatabaseStorage, orgId: number): Promise<number> {
@@ -159,9 +167,13 @@ export const propertyRepo = {
     await db.update(properties)
       .set({ status: "deleted", updatedAt: new Date() })
       .where(and(eq(properties.organizationId, orgId), inArray(properties.id, owned)));
+    const closedBefore = await db.select({ id: deals.id })
+      .from(deals)
+      .where(and(eq(deals.organizationId, orgId), inArray(deals.propertyId, owned), eq(deals.status, "closed")));
     await db.update(deals)
       .set({ status: "deleted", updatedAt: new Date() })
       .where(and(eq(deals.organizationId, orgId), inArray(deals.propertyId, owned)));
+    for (const d of closedBefore) recordDealTransitionEvidence(orgId, { status: "closed" }, { id: d.id, status: "deleted" });
     const { withdrawListingsForUnheldProperty } = await import("../services/listingWithdrawal");
     for (const id of owned) await withdrawListingsForUnheldProperty(orgId, id, "deleted");
     return owned.length;

@@ -81,6 +81,17 @@ vi.mock("../../server/db", () => ({
     })),
   },
 }));
+// A deal status write goes through the repository (audit of 224a5c0): the
+// patch it is handed is what is written.
+vi.mock("../../server/storage", () => ({
+  storage: {
+    updateDeal: vi.fn(async (_id: number, patch: Record<string, unknown>) => {
+      written.push(patch);
+      return returningRows[0] ? { ...returningRows[0], ...patch } : undefined;
+    }),
+  },
+}));
+vi.mock("../../server/services/dealEvents", () => ({ emitDealStageChanged: vi.fn() }));
 vi.mock("../../server/services/trustAuthorityEscalation", () => ({
   trustAuthorityEscalation: {
     isActionAllowed: vi.fn().mockReturnValue(true),
@@ -351,10 +362,16 @@ describe("the source no longer carries the value, and the readers share one list
     // "completed", agent runs are "restart_requested" — and a predicate that
     // read every `status:` key in the file would fail on those and teach the
     // next author to weaken it. So the scan is anchored on the table.
-    const writes = [...src.matchAll(/db\.update\((leads|deals)\)([\s\S]{0,600}?)\.where\(/g)];
+    // A deal write goes through the repository (storage.updateDeal), where its
+    // transition evidence is recorded (audit of 224a5c0); a lead write is
+    // still a direct update. Both shapes are in the population.
+    const writes = [
+      ...src.matchAll(/db\.update\((leads|deals)\)([\s\S]{0,600}?)\.where\(/g),
+      ...[...src.matchAll(/storage\.updateDeal\(([^;]*?)\);/g)].map((m) => [m[0], "deals", m[1]] as unknown as RegExpMatchArray),
+    ];
     expect(
       writes.length,
-      "no db.update(leads|deals) found in executionEngine — the scan is reading nothing",
+      "no lead/deal write found in executionEngine — the scan is reading nothing",
     ).toBeGreaterThanOrEqual(2);
 
     const vocab = new Set<string>([...LEAD_STATUSES, ...DEAL_STATUSES]);

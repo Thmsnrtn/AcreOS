@@ -1724,14 +1724,13 @@ export async function registerRoutes(
       const idsToUpdate = dealsToUpdate.map(d => d.id);
       const updatedCount = await storage.bulkUpdateDeals(org.id, idsToUpdate, { status: newStage });
 
-      // A bulk stage move is N real transitions. This route emitted none —
-      // no deal.stage_changed for workflows, no offer made, no retraction
-      // of a reopened sale (audit of e3debe0). `dealsToUpdate` is the real
-      // pre-image of each row.
-      const { emitDealStageChanged, recordDealTransitionEvidence } = await import("./services/dealEvents");
+      // A bulk stage move is N real transitions. This route emitted no
+      // deal.stage_changed for workflows (audit of e3debe0); `dealsToUpdate`
+      // is the real pre-image of each row. (The transition's evidence is
+      // recorded by the repository's bulkUpdateDeals.)
+      const { emitDealStageChanged } = await import("./services/dealEvents");
       for (const before of dealsToUpdate) {
         emitDealStageChanged(org.id, before, { ...before, status: newStage });
-        recordDealTransitionEvidence(org.id, before, { ...before, status: newStage }, req.user?.id);
       }
       
       // Save previous states for undo capability
@@ -1796,7 +1795,19 @@ export async function registerRoutes(
             errors.push({ id: state.id, error: "Deal not found" });
             continue;
           }
-          await storage.updateDeal(state.id, { status: state.previousStage }, undefined, org.id);
+          // The restored stage must be a real deal stage (this took any
+          // client string). An undo may move backwards — that is its purpose —
+          // so it is not held to the forward-only table; the repository
+          // records the transition's evidence (a closed deal un-done is a
+          // retracted sale) and workflows see the stage change.
+          const { isDealStatus } = await import("@shared/lifecycle/pipeline-status");
+          if (!isDealStatus(state.previousStage)) {
+            errors.push({ id: state.id, error: `Not a deal stage: ${String(state.previousStage)}` });
+            continue;
+          }
+          const restored = await storage.updateDeal(state.id, { status: state.previousStage }, undefined, org.id);
+          const { emitDealStageChanged } = await import("./services/dealEvents");
+          emitDealStageChanged(org.id, deal, restored);
           restoredCount++;
         } catch (err: any) {
           errors.push({ id: state.id, error: err.message || "Unknown error" });

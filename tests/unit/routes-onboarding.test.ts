@@ -36,12 +36,14 @@ const h = vi.hoisted(() => {
     createDeal: vi.fn(async (d: any) => ({ id: 1, ...d })),
     createNote: vi.fn(async (d: any) => ({ id: 1, ...d })),
     createCampaign: vi.fn(async (d: any) => ({ id: 1, ...d })),
+    getCampaigns: vi.fn(async (_orgId: number) => [] as Array<{ name: string }>),
     getLeads: vi.fn(async () => []),
     getProperties: vi.fn(async () => []),
     deleteLead: vi.fn(async () => undefined),
     deleteProperty: vi.fn(async () => undefined),
   };
   const dbUpdates: Array<{ table: unknown; values: any }> = [];
+  const memberRows: Array<{ role: string }> = [];
   const seedSampleDataForOrg = vi.fn(
     async (_orgId: string, _businessType: string, _opts?: { userId?: string }) => ({
       seeded: true,
@@ -49,7 +51,7 @@ const h = vi.hoisted(() => {
     }),
   );
   const clearSampleDataForOrg = vi.fn(async (_orgId: string) => ({ cleared: {} }));
-  return { state, storage, dbUpdates, seedSampleDataForOrg, clearSampleDataForOrg };
+  return { state, storage, dbUpdates, memberRows, seedSampleDataForOrg, clearSampleDataForOrg };
 });
 
 vi.mock("../../server/utils/logger", () => ({
@@ -60,6 +62,8 @@ vi.mock("../../server/storage", () => ({ storage: h.storage, db: {} }));
 
 vi.mock("../../server/db", () => ({
   db: {
+    // The team-member role read behind mayChangeOrganizationType.
+    select: () => ({ from: () => ({ where: () => ({ limit: async () => h.memberRows }) }) }),
     update: (table: unknown) => ({
       set: (values: any) => ({
         where: async () => {
@@ -95,6 +99,8 @@ function freshOrg(overrides: Record<string, unknown> = {}) {
     onboardingStep: 0,
     onboardingData: null,
     settings: {},
+    // The signed-in test user owns the org unless a test says otherwise.
+    ownerId: "user-1",
     ...overrides,
   };
 }
@@ -120,6 +126,7 @@ describe("onboarding routes", () => {
   beforeEach(() => {
     h.state.org = freshOrg();
     h.dbUpdates.length = 0;
+    h.memberRows.length = 0;
     vi.clearAllMocks();
   });
 
@@ -157,6 +164,18 @@ describe("onboarding routes", () => {
       expect(result.success).toBe(true);
       expect(result.provisioned.campaigns).toBeGreaterThan(0);
       expect(h.storage.createCampaign).toHaveBeenCalled();
+    });
+
+    it("provisioning again (a step-1 retry) creates no campaign twice (audit of 224a5c0)", async () => {
+      h.state.org = freshOrg();
+      await onboardingService.provisionTemplates(42, "subdivider");
+      const created = h.storage.createCampaign.mock.calls.map((c: any[]) => ({ name: c[0].name }));
+      expect(created.length).toBeGreaterThan(0);
+      h.storage.createCampaign.mockClear();
+      h.storage.getCampaigns.mockResolvedValueOnce(created);
+      const again = await onboardingService.provisionTemplates(42, "subdivider");
+      expect(h.storage.createCampaign).not.toHaveBeenCalled();
+      expect(again.provisioned.campaigns).toBe(0);
     });
   });
 
@@ -219,6 +238,39 @@ describe("onboarding routes", () => {
       expect(userUpdate?.values.persona).toBe("note_servicer");
       const orgUpdate = h.dbUpdates.find((u) => u.table === organizations);
       expect(orgUpdate?.values.investorType).toBe("notes");
+    });
+
+    it("a member who is not owner/admin sets their own persona — never the org's type or name (audit of 224a5c0)", async () => {
+      h.state.org = freshOrg({ ownerId: "owner-9", onboardingData: { businessType: "subdivider", orgName: "Kept" } });
+      h.memberRows.push({ role: "member" });
+      const res = await request(app)
+        .post("/api/onboarding/complete")
+        .send({ businessType: "note_investor", noteRole: "service", orgName: "Renamed" });
+      expect(res.status).toBe(200);
+      expect(res.body.organizationUpdated).toBe(false);
+      expect(h.state.org.onboardingData?.businessType).toBe("subdivider");
+      expect(h.state.org.onboardingData?.orgName).toBe("Kept");
+      expect(h.dbUpdates.find((u) => u.table === organizations)).toBeUndefined();
+      // Their own persona still follows their answer.
+      expect(h.dbUpdates.find((u) => u.table === users)?.values.persona).toBe("note_servicer");
+      // Sample data follows the ORG's type, not the member's pick.
+      expect(h.seedSampleDataForOrg).toHaveBeenCalledWith("42", "subdivider", { userId: "user-1" });
+    });
+
+    it("an admin member may move the org", async () => {
+      h.state.org = freshOrg({ ownerId: "owner-9" });
+      h.memberRows.push({ role: "admin" });
+      const res = await request(app).post("/api/onboarding/complete").send({ businessType: "note_investor" });
+      expect(res.body.organizationUpdated).toBe(true);
+      expect(h.state.org.onboardingData?.businessType).toBe("note_investor");
+    });
+
+    it("PATCH /progress drops the org-level keys for a member", async () => {
+      h.state.org = freshOrg({ ownerId: "owner-9", onboardingData: { businessType: "subdivider" } });
+      h.memberRows.push({ role: "member" });
+      await request(app).patch("/api/onboarding/progress").send({ step: 2, businessType: "note_investor", orgName: "X", goals: ["g"] });
+      const orgWrite = h.dbUpdates.find((u) => u.table === organizations);
+      expect(orgWrite?.values.onboardingData).toEqual({ businessType: "subdivider", goals: ["g"] });
     });
 
     it("re-run without an explicit businessType preserves the stored type and never touches persona", async () => {

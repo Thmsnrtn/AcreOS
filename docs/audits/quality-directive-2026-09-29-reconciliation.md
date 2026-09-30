@@ -139,6 +139,19 @@ operation at scale.
 | Approve-trigger card without a trigger; deferral days ignored | **FIXED** — DEFECT-0251 |
 | DEFECT-0233 claimed a network test was red-checked; it was not | Corrected in the registry |
 
+## Independent audit of `224a5c0` (H5) — folded into the follow-up change
+
+| Finding | Status |
+|---|---|
+| A retry during a long campaign send opened a second order | **FIXED** — DEFECT-0252 (claim before debit, migration 0259) |
+| The finance page's recorded payment moved the balance only; no role guard | **FIXED** — DEFECT-0253 (posts through the one serviced-note rule) |
+| Deal status evidence covered emitters, not writers; unvalidated bulk and voice status writes | **FIXED** — DEFECT-0246 (moved to the repository), DEFECT-0254 |
+| Four onboarding writers let any member move the org | **FIXED** — DEFECT-0255 |
+| The seed "repair" could delete real rows and duplicate a finished set | **FIXED** — DEFECT-0238 (now a no-delete resume) |
+| Step-1 retries duplicated template campaigns; writers raced | **FIXED** — DEFECT-0256 |
+| A failed Close & Carry retraction was never retried | **FIXED** — DEFECT-0257 |
+| Close/carry race, unsurfaced gapped runs, blocked first-mail backfill, clear-sample cascade, late probe report | OPEN — DEFECT-0258 |
+
 ## What remains outside any code change
 
 These need outside proof or a founder decision, as the directive's own limits section says:

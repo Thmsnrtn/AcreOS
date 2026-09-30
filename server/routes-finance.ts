@@ -4,13 +4,14 @@ import type { Express } from "express";
 import { readAllDeals, readAllNotes, readAllPayments, readAllProperties } from "./storage/wholeBookReads";
 import { storage, db, calculateMonthlyPayment } from "./storage";
 import { z } from "zod";
-import { insertNoteSchema, insertPaymentSchema, payments as paymentsTable, paymentReminders, notes as notesTable, contractAssignments, deals as dealsTable, properties as propertiesTable } from "@shared/schema";
+import { insertNoteSchema, paymentReminders, notes as notesTable, contractAssignments, deals as dealsTable, properties as propertiesTable } from "@shared/schema";
 import { eq, and, sql, count } from "drizzle-orm";
 import { realDeal, realNote, realProperty } from "./services/onboarding/sampleFilters";
 import { isAuthenticated } from "./auth";
 import { Errors, sendError } from "./utils/errors";
 // A declared permission that nothing enforces is not a permission.
 import { requirePermission } from "./utils/permissions";
+import { requireRole } from "./middleware/roleGuard";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
 import { usageLimitGate } from "./middleware/usageLimitGate";
@@ -1348,104 +1349,103 @@ export function registerFinanceRoutes(app: Express): void {
   });
 
   // POST /api/payments — record a payment against a note
-  api.post("/api/payments", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/payments", isAuthenticated, getOrCreateOrg, requireRole(["owner", "admin"]), async (req, res) => {
     try {
       const org = req.organization;
-      // One payment, once (audit of 92bf405). The client's Idempotency-Key
-      // was sent and ignored — no middleware on this route, and the hook
-      // minted a new key per click — so a timed-out "Record payment" clicked
-      // again recorded the payment twice and reduced the balance twice. The
-      // key now becomes the row's unique transactionId: a retry collides on
-      // it and is answered with the payment already recorded; the same key
-      // for a DIFFERENT payment is refused, nothing written.
+      // The lender recording money received outside a processor (a check,
+      // cash, a wire). It posts through THE serviced-note rule — the portal's,
+      // the webhook's, Payment Links' — so the installment and due date move,
+      // the late-fee rule applies, and payment.received fires (audit of
+      // 224a5c0: this route lowered the balance and nothing else, leaving the
+      // note overdue and autopay free to debit the same installment). Owner
+      // or admin only, as the acquired-note ledger is: a payment lowers a
+      // balance and can mark a note paid off.
+      //
+      // One payment, once: the Idempotency-Key is required and becomes the
+      // row's unique transactionId. A retry is answered with the payment
+      // already recorded; the key reused for a different payment is refused.
       const rawKey = req.headers?.["idempotency-key"];
-      const opKey = typeof rawKey === "string" && /^[A-Za-z0-9_-]{8,128}$/.test(rawKey) ? rawKey : null;
-      const transactionId = opKey ? `op:${org.id}:${opKey}` : undefined;
-      // The route never worked: JSON carries dates as strings and the insert
-      // schema wants Date objects, so every "Record payment" from the finance
-      // page answered 400 (audit of 92bf405). And the principal/interest split
-      // came from the browser in float math. The server now owns the split, in
-      // integer cents from the note's own balance and rate (splitPaymentCents,
-      // the portal and autopay rule), and refuses an amount above the payoff
-      // rather than inventing where the excess went.
-      const raw = (req.body ?? {}) as Record<string, unknown>;
-      const noteId = Number(raw.noteId);
-      if (!Number.isInteger(noteId) || noteId <= 0) {
-        return Errors.badRequest(res, "noteId is required");
+      if (typeof rawKey !== "string" || !/^[A-Za-z0-9_-]{8,128}$/.test(rawKey)) {
+        return Errors.badRequest(res, "An Idempotency-Key header (8-128 letters, digits, '-' or '_') is required to record a payment");
       }
+      const transactionId = `op:${org.id}:${rawKey}`;
+
+      // Only these fields are read from the body. The split, the fee, the
+      // status and the identity are the server's; the date is the day it is
+      // recorded (the late-fee rule measures from it).
+      const body = z
+        .object({
+          noteId: z.coerce.number().int().positive(),
+          amount: z.union([z.string(), z.number()]),
+          paymentMethod: z.enum(["ach", "card", "check", "cash", "wire", "other"]).default("other"),
+        })
+        .safeParse(req.body ?? {});
+      if (!body.success) return Errors.badRequest(res, "noteId, amount and a known paymentMethod are required");
+      const { noteId, paymentMethod } = body.data;
+
       const note = await storage.getNote(org.id, noteId);
       if (!note) return Errors.notFound(res, "Note");
       let amountCents: number;
       try {
-        amountCents = decimalDollarsToCents(raw.amount as string | number | null | undefined);
+        amountCents = decimalDollarsToCents(body.data.amount);
       } catch {
         return Errors.badRequest(res, "amount must be a dollar amount");
       }
       if (!(amountCents > 0)) return Errors.badRequest(res, "amount must be greater than zero");
-      const split = splitPaymentCents({
+      // More than the payoff is refused here rather than posted with an
+      // unapplied excess: the lender is recording money by hand and can
+      // record the right amount (the portal cannot un-send a card charge).
+      const guard = splitPaymentCents({
         paymentAmountCents: amountCents,
         currentBalanceCents: Math.max(0, decimalDollarsToCents(note.currentBalance)),
         annualRateBps: percentStringToBps(note.interestRate),
       });
-      if (split.residueCents > 0) {
+      if (guard.residueCents > 0) {
         return Errors.badRequest(res, "This amount is more than the note's payoff. Record the payoff amount, and return or apply the excess outside this form.", {
-          payoffCents: amountCents - split.residueCents,
+          payoffCents: amountCents - guard.residueCents,
         });
       }
-      const dollars = (cents: number) => (cents / 100).toFixed(2);
-      const asDate = (v: unknown, fallback: Date) => (v == null || v === "" ? fallback : new Date(String(v)));
-      const parsed = insertPaymentSchema.safeParse({
-        ...raw,
-        organizationId: org.id,
-        noteId,
-        amount: dollars(amountCents),
-        principalAmount: dollars(split.principalCents),
-        interestAmount: dollars(split.interestCents),
-        paymentDate: asDate(raw.paymentDate, new Date()),
-        dueDate: asDate(raw.dueDate, note.nextPaymentDate ? new Date(note.nextPaymentDate) : new Date()),
-        ...(transactionId ? { transactionId } : {}),
+
+      const { postServicedNotePayment } = await import("./services/borrower/portalPaymentPosting");
+      const result = await postServicedNotePayment({
+        note,
+        amountCents,
+        transactionId,
+        source: "operator_recorded",
+        paymentMethod,
+        sendReceipt: false,
       });
-      if (!parsed.success) {
-        return Errors.badRequest(res, "Invalid payment data");
-      }
-      let payment;
-      try {
-        payment = await storage.createPayment(parsed.data);
-      } catch (insertErr) {
-        const e = insertErr as { code?: string; cause?: { code?: string } };
-        if (!transactionId || (e?.code ?? e?.cause?.code) !== "23505") throw insertErr;
-        const [prior] = await db
-          .select()
-          .from(paymentsTable)
-          .where(and(eq(paymentsTable.organizationId, org.id), eq(paymentsTable.transactionId, transactionId)))
-          .limit(1);
-        const same =
-          prior &&
-          prior.noteId === parsed.data.noteId &&
-          Math.round(Number(prior.amount) * 100) === Math.round(Number(parsed.data.amount) * 100);
+
+      if (result.outcome === "already_recorded") {
+        const prior = result.payment;
+        const same = prior.noteId === noteId && decimalDollarsToCents(prior.amount) === amountCents;
         if (same) return res.json({ ...prior, replayed: true });
         return sendError(res, 409, "IDEMPOTENCY_KEY_REUSED", "This Idempotency-Key was already used for a different payment. Nothing was recorded.", {
-          recordedPaymentId: prior?.id ?? null,
+          recordedPaymentId: prior.id,
         });
       }
 
       try {
-        const user = req.user;
-        const userId = user?.id || user?.id;
         await storage.createAuditLogEntry({
           organizationId: org.id,
-          userId: userId?.toString() || null,
+          userId: req.user?.id?.toString() || null,
           action: "create",
           entityType: "payment",
-          entityId: payment.id,
-          changes: { after: parsed.data, fields: Object.keys(parsed.data) },
+          entityId: result.payment.id,
+          changes: { after: { noteId, amountCents, paymentMethod, installment: result.installment }, fields: ["noteId", "amount", "paymentMethod"] },
           ipAddress: req.ip || null,
           userAgent: req.headers["user-agent"] || null,
           metadata: {},
         });
       } catch (e) { /* non-fatal */ }
 
-      res.status(201).json(payment);
+      res.status(201).json({
+        ...result.payment,
+        installment: result.installment,
+        nextPaymentDate: result.nextPaymentDate,
+        remainingBalanceCents: result.remainingBalanceCents,
+        lateFeeCents: result.lateFeeCents,
+      });
     } catch (err: any) {
       Errors.internal(res, err);
     }
