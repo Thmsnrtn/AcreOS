@@ -164,7 +164,9 @@ export const CHECKLISTS_BY_BUSINESS_TYPE: Record<BusinessTypeId, ChecklistItemDe
     step("propertyLookup", "Look up your first parcel", PARCEL_AHA_DESCRIPTION),
     step(
       "import",
-      "Pull your first county list",
+      // Was "Pull your first county list": nothing pulls one — the task is a
+      // CSV import (quality directive 2026-09-29; readiness plan item 0.7).
+      "Import your county list",
       "Import a CSV of owners from your target county — your acquisition pipeline starts here",
     ),
     step(

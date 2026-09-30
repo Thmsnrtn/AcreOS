@@ -686,6 +686,9 @@ const WEDGE_LOOP_STEPS: Array<{
 }> = [
   { event: "org_created", label: "Signed up" },
   { event: "first_lead_added", label: "Lead in" },
+  // Queued can still be cancelled in the hold; "Mail out" is a provider
+  // accepting a live piece (mail flusher), "Email/SMS out" the campaign sends.
+  { event: "first_mail_queued", label: "Mail queued" },
   { event: "first_letter_sent", label: "Mail out" },
   { event: "first_mailer_sent", label: "Email/SMS out" },
   { event: "first_seller_response", label: "Seller responded", accent: "pos" },

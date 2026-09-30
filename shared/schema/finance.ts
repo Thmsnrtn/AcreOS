@@ -368,9 +368,14 @@ export const mailShipments = pgTable("mail_shipments", {
   // Verification is a READ-ONLY observer — it never blocks or un-sends.
   verifyStatus: text("verify_status"),
   verifyFindings: text("verify_findings"),
+  // The customer's ONE intent to mail this audience (migration 0257): the
+  // composer's Idempotency-Key, held across retries. A lost response followed
+  // by another click finds this row instead of debiting and queuing again.
+  operationKey: text("operation_key"),
 }, (table) => [
   index("mail_shipments_org_status_idx").on(table.organizationId, table.status),
   index("mail_shipments_leaves_at_idx").on(table.leavesAt),
+  uniqueIndex("mail_shipments_org_operation_uidx").on(table.organizationId, table.operationKey),
 ]);
 
 export type MailShipmentRow = typeof mailShipments.$inferSelect;
@@ -387,7 +392,8 @@ export const mailShipmentPieces = pgTable("mail_shipment_pieces", {
   city: text("city").notNull(),
   state: text("state").notNull(),
   zip: text("zip").notNull(),
-  // pending | printed | in_transit | delivered | returned | failed
+  // pending | sent | printed | in_transit | delivered | returned | failed |
+  // suppressed (the lead opted out or was removed during the hold — never sent)
   status: text("status").notNull().default("pending"),
   providerPieceId: text("provider_piece_id"),
   printedAt: timestamp("printed_at", { withTimezone: true }),

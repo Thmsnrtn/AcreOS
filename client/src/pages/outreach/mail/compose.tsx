@@ -54,7 +54,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { ApiError, apiRequest, generateIdempotencyKey } from "@/lib/queryClient";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import {
   type AudienceFilter,
@@ -92,10 +92,12 @@ const SPEED_OPTIONS: {
 export default function ComposeTab() {
   const { toast } = useToast();
 
-  // Audience selection
-  const [selectedListIds, setSelectedListIds] = useState<number[]>([]);
+  // Audience selection. Exact filters only: a marketing list records no
+  // members, so it cannot choose recipients (the server refuses one).
   const [statesText, setStatesText] = useState("");
   const [countiesText, setCountiesText] = useState("");
+  const [acreageMinText, setAcreageMinText] = useState("");
+  const [acreageMaxText, setAcreageMaxText] = useState("");
 
   // Piece + speed + copy
   const [pieceType, setPieceType] = useState<PieceType>("postcard_4x6");
@@ -109,16 +111,6 @@ export default function ComposeTab() {
   const [showDraftPanel, setShowDraftPanel] = useState(false);
   const [showDedupeWarn, setShowDedupeWarn] = useState(false);
   const [queuedShipment, setQueuedShipment] = useState<QueueResponse | null>(null);
-
-  // Marketing lists for the audience picker.
-  const lists = useQuery<{ id: number; name: string; totalRecords: number | null }[]>({
-    queryKey: ["/api/marketing-lists"],
-    queryFn: async () => {
-      const res = await apiRequest("GET", "/api/marketing-lists");
-      const data = await res.json();
-      return Array.isArray(data) ? data : data.lists ?? [];
-    },
-  });
 
   // Saved views (audience inputs) — keep optional; surface if present.
   const savedViews = useQuery<{ id: number; name: string }[]>({
@@ -163,28 +155,47 @@ export default function ComposeTab() {
       .split(/[,;]/)
       .map((s) => s.trim())
       .filter(Boolean);
+    const acres = (t: string) => {
+      const n = Number(t);
+      return t.trim() !== "" && Number.isFinite(n) && n >= 0 ? n : undefined;
+    };
     return {
-      leadListIds: selectedListIds.length > 0 ? selectedListIds : undefined,
       states: states.length > 0 ? states : undefined,
       counties: counties.length > 0 ? counties : undefined,
+      acreageMin: acres(acreageMinText),
+      acreageMax: acres(acreageMaxText),
     };
-  }, [selectedListIds, statesText, countiesText]);
+  }, [statesText, countiesText, acreageMinText, acreageMaxText]);
 
-  // Debounce the quote request so each keystroke doesn't fire a POST.
+  // Debounce the quote request so each keystroke doesn't fire a POST. The
+  // copy is part of what the investor confirms, so it is debounced with it.
   const [debouncedFilter, setDebouncedFilter] = useState(audienceFilter);
+  const [debouncedCopy, setDebouncedCopy] = useState(copy);
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedFilter(audienceFilter), 400);
+    const t = setTimeout(() => {
+      setDebouncedFilter(audienceFilter);
+      setDebouncedCopy(copy);
+    }, 400);
     return () => clearTimeout(t);
-  }, [audienceFilter]);
+  }, [audienceFilter, copy]);
 
   const hasAudience =
-    (debouncedFilter.leadListIds?.length ?? 0) > 0 ||
-    (debouncedFilter.states?.length ?? 0) > 0 ||
-    (debouncedFilter.counties?.length ?? 0) > 0;
+    (debouncedFilter.states?.length ?? 0) > 0 || (debouncedFilter.counties?.length ?? 0) > 0;
 
   const quote = useMailQuote(
-    hasAudience ? { audienceFilter: debouncedFilter, pieceType, speed } : null,
+    hasAudience
+      ? { audienceFilter: debouncedFilter, pieceType, speed, copy: debouncedCopy || undefined }
+      : null,
   );
+
+  // ONE key for the shipment being composed: a retry of it (after a lost
+  // response, a double click) reuses the key and the server answers with
+  // the shipment already queued. Composing something different is a new send.
+  const newOperationKey = () => generateIdempotencyKey();
+  const [operationKey, setOperationKey] = useState(newOperationKey);
+  useEffect(() => {
+    setOperationKey(newOperationKey());
+  }, [debouncedFilter, debouncedCopy, pieceType, speed]);
 
   const queueMutation = useQueueMailShipment();
   const cancelMutation = useCancelMailShipment();
@@ -204,16 +215,31 @@ export default function ComposeTab() {
         pieceType,
         speed,
         templateId: templateId ?? undefined,
-        copy: copy || undefined,
+        copy: debouncedCopy || undefined,
         label: label || undefined,
+        expectedAudienceDigest: quote.data.audienceDigest,
+        operationKey,
       });
       setQueuedShipment(result);
       setShowDedupeWarn(false);
+      setOperationKey(newOperationKey());
       toast({
-        title: "Queued",
-        description: `${result.quote.pieceCount} pieces queued. Leaves in ${result.holdWindowMinutes} minutes.`,
+        title: result.replayed ? "Already queued" : "Queued",
+        description: result.replayed
+          ? `This send was already queued (${result.quote.pieceCount} pieces) — nothing new was charged.`
+          : `${result.quote.pieceCount} pieces queued. Leaves in ${result.holdWindowMinutes} minutes.`,
       });
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        // The recipients changed after the investor reviewed the quote.
+        // Nothing was charged; show the new count and cost to confirm.
+        await quote.refetch();
+        toast({
+          title: "Recipients changed",
+          description: "Your audience changed since you reviewed it. Check the new count and cost, then send again.",
+        });
+        return;
+      }
       toast({
         title: "Couldn't queue mail",
         description: err instanceof Error ? err.message : "Unknown error",
@@ -260,55 +286,11 @@ export default function ComposeTab() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="audience-lists" className="mb-2 block">
-                  Lead lists
-                </Label>
-                {lists.isLoading ? (
-                  <div className="space-y-2" data-testid="lists-loading">
-                    <Skeleton className="h-9 w-full" />
-                    <Skeleton className="h-9 w-full" />
-                  </div>
-                ) : lists.error ? (
-                  <QueryErrorState error={lists.error as Error} onRetry={() => lists.refetch()} compact />
-                ) : (lists.data?.length ?? 0) === 0 ? (
-                  <p className="text-sm text-muted-foreground" data-testid="lists-empty">
-                    No lists yet. Import a CSV under Leads → Marketing lists.
-                  </p>
-                ) : (
-                  <div
-                    id="audience-lists"
-                    className="flex flex-wrap gap-2"
-                    role="group"
-                    aria-label="Lead list selection"
-                  >
-                    {lists.data!.map((l) => {
-                      const selected = selectedListIds.includes(l.id);
-                      return (
-                        <button
-                          key={l.id}
-                          type="button"
-                          onClick={() =>
-                            setSelectedListIds((prev) =>
-                              prev.includes(l.id) ? prev.filter((x) => x !== l.id) : [...prev, l.id],
-                            )
-                          }
-                          aria-pressed={selected}
-                          className={`px-3 py-1.5 rounded-full text-sm border focus:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors ${
-                            selected
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "bg-background hover:bg-muted border-border"
-                          }`}
-                          data-testid={`list-chip-${l.id}`}
-                        >
-                          {l.name}
-                          {l.totalRecords ? ` · ${l.totalRecords.toLocaleString()}` : ""}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+              <p className="text-sm text-muted-foreground" data-testid="audience-exact-note">
+                Mail goes to the leads in your CRM that match these filters — exactly those, and a
+                county needs its state. Marketing lists don&apos;t record their members yet, so they
+                can&apos;t pick recipients.
+              </p>
 
               {(savedViews.data?.length ?? 0) > 0 && (
                 <div>
@@ -324,6 +306,28 @@ export default function ComposeTab() {
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="audience-acres-min">Min acres</Label>
+                  <Input
+                    id="audience-acres-min"
+                    inputMode="decimal"
+                    value={acreageMinText}
+                    onChange={(e) => setAcreageMinText(e.target.value)}
+                    placeholder="e.g. 5"
+                    data-testid="input-acreage-min"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="audience-acres-max">Max acres</Label>
+                  <Input
+                    id="audience-acres-max"
+                    inputMode="decimal"
+                    value={acreageMaxText}
+                    onChange={(e) => setAcreageMaxText(e.target.value)}
+                    placeholder="e.g. 40"
+                    data-testid="input-acreage-max"
+                  />
+                </div>
                 <div>
                   <Label htmlFor="audience-states">States (2-letter, comma-separated)</Label>
                   <Input
@@ -579,7 +583,7 @@ export default function ComposeTab() {
           <CardContent className="space-y-3">
             {!hasAudience ? (
               <p className="text-sm text-muted-foreground" data-testid="summary-empty">
-                Pick a list or filter to see recipients + cost.
+                Enter a state (and counties, if you like) to see recipients + cost.
               </p>
             ) : quote.isLoading ? (
               <div className="space-y-2" data-testid="summary-loading">
@@ -730,8 +734,11 @@ export default function ComposeTab() {
           <div className="overflow-auto flex-1">
             <PreviewList
               audienceFilter={debouncedFilter}
-              copy={copy}
+              pieceType={pieceType}
+              speed={speed}
+              copy={debouncedCopy}
               show={showPreview}
+              expectedDigest={quote.data?.audienceDigest ?? null}
             />
           </div>
           <DialogFooter>
@@ -809,28 +816,50 @@ export default function ComposeTab() {
 
 // ── Preview list ────────────────────────────────────────────────────────────
 
+interface PreviewResponse {
+  audienceDigest: string;
+  total: number;
+  offset: number;
+  recipients: { leadId: number; name: string; addressLine1: string; city: string; state: string; zip: string }[];
+}
+
+/**
+ * Pages through the SAME recipient set the queue will write (same server
+ * resolver, same digest). It used to call a route that did not exist and
+ * swallow the failure behind a placeholder, so nobody could see who would be
+ * mailed.
+ */
 function PreviewList({
   audienceFilter,
+  pieceType,
+  speed,
   copy,
   show,
+  expectedDigest,
 }: {
   audienceFilter: AudienceFilter;
+  pieceType: PieceType;
+  speed: MailSpeed;
   copy: string;
   show: boolean;
+  expectedDigest: string | null;
 }) {
-  // Reuse the quote endpoint's recipient resolution. For now we render
-  // sample recipient slots; once /api/outreach/mail/preview lands in Round
-  // 4 it will return rendered per-piece HTML.
-  const preview = useQuery<{ recipients: { name: string; addressLine1: string; city: string; state: string; zip: string }[] }>({
-    queryKey: ["/api/outreach/mail/preview", audienceFilter],
+  const PAGE = 50;
+  const [offset, setOffset] = useState(0);
+  useEffect(() => setOffset(0), [audienceFilter, pieceType, copy]);
+  const preview = useQuery<PreviewResponse>({
+    queryKey: ["/api/outreach/mail/preview", audienceFilter, pieceType, speed, copy, offset],
     enabled: show,
     queryFn: async () => {
-      try {
-        const res = await apiRequest("POST", "/api/outreach/mail/preview", { audienceFilter });
-        return res.json();
-      } catch {
-        return { recipients: [] as { name: string; addressLine1: string; city: string; state: string; zip: string }[] };
-      }
+      const res = await apiRequest("POST", "/api/outreach/mail/preview", {
+        audienceFilter,
+        pieceType,
+        speed,
+        copy: copy || undefined,
+        offset,
+        limit: PAGE,
+      });
+      return res.json();
     },
     retry: false,
   });
@@ -847,27 +876,62 @@ function PreviewList({
     );
   }
 
-  if (!preview.data || preview.data.recipients.length === 0) {
+  if (preview.error) {
+    return <QueryErrorState error={preview.error as Error} onRetry={() => preview.refetch()} compact />;
+  }
+
+  if (!preview.data || preview.data.total === 0) {
     return (
-      <p className="text-sm text-muted-foreground p-4" data-testid="preview-stub">
-        Per-recipient previews land with the Round-4 preview pipeline. The audience filter currently
-        targets the matching leads in your CRM — the queue endpoint will resolve them at send time.
+      <p className="text-sm text-muted-foreground p-4" data-testid="preview-empty">
+        No leads match this audience.
       </p>
     );
   }
 
+  const { total, recipients } = preview.data;
+  const stale = expectedDigest !== null && preview.data.audienceDigest !== expectedDigest;
   return (
-    <ul className="divide-y" data-testid="preview-list">
-      {preview.data.recipients.map((r, i) => (
-        <li key={i} className="p-3">
-          <p className="font-medium">{r.name}</p>
-          <p className="text-xs text-muted-foreground">
-            {r.addressLine1}, {r.city}, {r.state} {r.zip}
-          </p>
-          {copy && <p className="text-sm mt-2 whitespace-pre-wrap">{renderMerge(copy, r)}</p>}
-        </li>
-      ))}
-    </ul>
+    <div>
+      {stale && (
+        <p className="text-sm text-acr-warn p-3" role="status" data-testid="preview-stale">
+          The recipients changed since the quote on screen — the quote will refresh before anything is sent.
+        </p>
+      )}
+      <p className="text-xs text-muted-foreground px-3 pt-2" data-testid="preview-range">
+        Showing {offset + 1}–{offset + recipients.length} of {total.toLocaleString()}
+      </p>
+      <ul className="divide-y" data-testid="preview-list">
+        {recipients.map((r) => (
+          <li key={r.leadId} className="p-3">
+            <p className="font-medium">{r.name}</p>
+            <p className="text-xs text-muted-foreground">
+              {r.addressLine1}, {r.city}, {r.state} {r.zip}
+            </p>
+            {copy && <p className="text-sm mt-2 whitespace-pre-wrap">{renderMerge(copy, r)}</p>}
+          </li>
+        ))}
+      </ul>
+      <div className="flex justify-between p-3">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={offset === 0}
+          onClick={() => setOffset(Math.max(0, offset - PAGE))}
+          data-testid="button-preview-prev"
+        >
+          Previous
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={offset + recipients.length >= total}
+          onClick={() => setOffset(offset + PAGE)}
+          data-testid="button-preview-next"
+        >
+          Next
+        </Button>
+      </div>
+    </div>
   );
 }
 

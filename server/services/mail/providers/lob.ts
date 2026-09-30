@@ -59,6 +59,11 @@ function lobApiKey(): string | null {
   return (isProd ? process.env.LOB_LIVE_API_KEY : process.env.LOB_TEST_API_KEY || process.env.LOB_LIVE_API_KEY) ?? null;
 }
 
+/** Whether a Lob acceptance is real mail: the key in use is a live key. */
+export function lobSendsLive(): boolean {
+  return (lobApiKey() ?? "").startsWith("live_");
+}
+
 export const lobAdapter: MailProvider = {
   name: "lob",
 

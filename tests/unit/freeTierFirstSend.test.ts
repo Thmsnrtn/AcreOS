@@ -35,6 +35,9 @@ const state = {
   txInserts: 0,
   /** per-piece QR stamp updates inside the queue transaction */
   txPieceUpdates: 0,
+  /** pieces another send committed between the pre-check and the queue transaction */
+  piecesUsedConcurrently: 0,
+  refunds: 0,
 };
 
 vi.mock("../../server/utils/logger", () => ({
@@ -72,15 +75,18 @@ vi.mock("../../server/db", () => {
       zip: "78643",
       lastContactedAt: null,
     }));
-  const chainFor = (table: unknown) => {
+  const chainFor = (table: unknown, fields: Record<string, unknown> | undefined, inTx: boolean) => {
     const rows =
       table === leads
         ? makeLeadRows()
         : table === mailShipments
-          ? [{ used: state.piecesUsed }]
+          ? fields && "used" in fields
+            ? [{ used: state.piecesUsed + (inTx ? state.piecesUsedConcurrently : 0) }]
+            : [] // no shipment already queued under this operation key
           : [];
     const chain: any = {
       where: () => chain,
+      orderBy: () => chain,
       limit: async () => rows,
       then: (res: any, rej: any) => Promise.resolve(rows).then(res, rej),
     };
@@ -88,9 +94,12 @@ vi.mock("../../server/db", () => {
   };
   return {
     db: {
-      select: () => ({ from: (table: unknown) => chainFor(table) }),
+      select: (fields?: Record<string, unknown>) => ({ from: (table: unknown) => chainFor(table, fields, false) }),
       transaction: async (cb: any) =>
         cb({
+          // The per-org advisory lock that serialises concurrent sends.
+          execute: async () => [],
+          select: (fields?: Record<string, unknown>) => ({ from: (table: unknown) => chainFor(table, fields, true) }),
           insert: () => ({
             values: (vals: any) => {
               state.txInserts += 1;
@@ -133,7 +142,9 @@ vi.mock("../../server/services/creditPool", () => ({
       overPool: false,
     };
   },
-  refundPoolDebit: async () => {},
+  refundPoolDebit: async () => {
+    state.refunds += 1;
+  },
   poolRefusalDetails: () => ({ reason: "pool_exhausted" }),
 }));
 
@@ -156,6 +167,16 @@ function makeApp() {
   return app;
 }
 
+/** Quote, then queue exactly what was quoted (the composer's contract). */
+async function queue() {
+  const app = makeApp();
+  const q = await request(app).post("/api/outreach/mail/quote").send(QUEUE_BODY);
+  return request(app)
+    .post("/api/outreach/mail/queue")
+    .set("Idempotency-Key", `op-${Math.random()}`)
+    .send({ ...QUEUE_BODY, expectedAudienceDigest: q.body.audienceDigest });
+}
+
 beforeEach(() => {
   state.orgTier = "free";
   state.isFounder = false;
@@ -164,11 +185,13 @@ beforeEach(() => {
   state.poolDebitCalls = 0;
   state.txInserts = 0;
   state.txPieceUpdates = 0;
+  state.piecesUsedConcurrently = 0;
+  state.refunds = 0;
 });
 
 describe("POST /api/outreach/mail/queue — free-tier first-send wedge (W2.1)", () => {
   it("lets a fresh free org queue a small first send", async () => {
-    const res = await request(makeApp()).post("/api/outreach/mail/queue").send(QUEUE_BODY);
+    const res = await queue();
     expect(res.status).toBe(201);
     expect(res.body.shipmentId).toBe(777);
     expect(state.poolDebitCalls).toBe(1);
@@ -176,7 +199,7 @@ describe("POST /api/outreach/mail/queue — free-tier first-send wedge (W2.1)", 
 
   it("refuses with free_send_spent once the lifetime allowance is used — no pool debit", async () => {
     state.piecesUsed = FREE_TIER_LIFETIME_PIECES;
-    const res = await request(makeApp()).post("/api/outreach/mail/queue").send(QUEUE_BODY);
+    const res = await queue();
     expect(res.status).toBe(429);
     expect(res.body.details?.reason).toBe("free_send_spent");
     expect(res.body.details?.upgradeUrl).toBe("/settings#billing");
@@ -187,7 +210,7 @@ describe("POST /api/outreach/mail/queue — free-tier first-send wedge (W2.1)", 
   it("refuses with free_send_cap when the audience exceeds the remaining allowance", async () => {
     state.piecesUsed = 2; // 3 remaining
     state.audienceSize = 4; // wants 4
-    const res = await request(makeApp()).post("/api/outreach/mail/queue").send(QUEUE_BODY);
+    const res = await queue();
     expect(res.status).toBe(429);
     expect(res.body.details?.reason).toBe("free_send_cap");
     expect(res.body.details?.remainingPieces).toBe(3);
@@ -199,15 +222,27 @@ describe("POST /api/outreach/mail/queue — free-tier first-send wedge (W2.1)", 
     state.orgTier = "starter";
     state.piecesUsed = 500;
     state.audienceSize = 40;
-    const res = await request(makeApp()).post("/api/outreach/mail/queue").send(QUEUE_BODY);
+    const res = await queue();
     expect(res.status).toBe(201);
     expect(state.poolDebitCalls).toBe(1);
+  });
+
+  it("two sends racing for the last of the allowance: the loser is refused and refunded (checked again under the lock)", async () => {
+    state.piecesUsed = 0; // the pre-check sees 5 left
+    state.piecesUsedConcurrently = 3; // …a concurrent send committed 3 before this one's transaction
+    state.audienceSize = 3; // 3 + 3 > 5
+    const res = await queue();
+    expect(res.status).toBe(429);
+    expect(res.body.details?.reason).toBe("free_send_cap");
+    expect(res.body.details?.remainingPieces).toBe(2);
+    expect(state.refunds).toBe(1);
+    expect(state.txInserts).toBe(0);
   });
 
   it("bypasses the cap for founder requests", async () => {
     state.isFounder = true;
     state.piecesUsed = 500;
-    const res = await request(makeApp()).post("/api/outreach/mail/queue").send(QUEUE_BODY);
+    const res = await queue();
     expect(res.status).toBe(201);
   });
 });

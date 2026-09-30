@@ -31,6 +31,8 @@ export interface ProviderQuoteAlt {
 }
 
 export interface QuoteResponse {
+  /** Identity of exactly this recipient set + piece type + copy; queue refuses a mismatch. */
+  audienceDigest: string;
   pieceCount: number;
   perPieceCents: number;
   totalCents: number;
@@ -43,6 +45,8 @@ export interface QuoteResponse {
 }
 
 export interface QueueResponse {
+  /** True when this was a retry of a send already queued — nothing new was charged. */
+  replayed?: boolean;
   shipmentId: number;
   leavesAt: string;
   holdWindowMinutes: number;
@@ -109,6 +113,8 @@ interface QuoteInput {
   audienceFilter: AudienceFilter;
   pieceType: PieceType;
   speed: MailSpeed;
+  /** Part of what the investor confirms (the quote's digest covers it). */
+  copy?: string;
 }
 
 export function useMailQuote(input: QuoteInput | null) {
@@ -129,14 +135,22 @@ interface QueueInput extends QuoteInput {
   templateId?: number;
   copy?: string;
   label?: string;
+  /** The digest of the quote the investor confirmed. */
+  expectedAudienceDigest: string;
+  /**
+   * ONE key per composed shipment, reused on every retry of it, so a lost
+   * response followed by another click finds the queued shipment instead of
+   * mailing (and charging) the audience twice.
+   */
+  operationKey: string;
 }
 
 export function useQueueMailShipment() {
   const qc = useQueryClient();
   return useMutation<QueueResponse, Error, QueueInput>({
-    mutationFn: async (input) => {
+    mutationFn: async ({ operationKey, ...input }) => {
       const res = await apiRequest("POST", "/api/outreach/mail/queue", input, {
-        idempotent: true,
+        idempotencyKey: operationKey,
       });
       return res.json();
     },

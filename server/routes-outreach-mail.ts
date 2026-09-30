@@ -17,11 +17,12 @@
  */
 
 import type { Express, Response } from "express";
+import { createHash } from "node:crypto";
 import { z } from "zod";
-import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization, getOrganizationId, getUserId } from "./types/request";
@@ -33,7 +34,6 @@ import {
   mailQrScanEvents,
   mailShipments,
   mailShipmentPieces,
-  marketingLists,
   type MailShipmentRow,
 } from "@shared/schema";
 import { TIER_LIMITS, type SubscriptionTier } from "./services/usageLimits";
@@ -68,8 +68,8 @@ const PIECE_TYPES = ["postcard_4x6", "postcard_6x9", "letter_10", "handwritten"]
 export const FREE_TIER_LIFETIME_PIECES = 5;
 
 /** Lifetime pieces a free org has already committed (cancelled excluded). */
-async function freeTierPiecesUsed(organizationId: number): Promise<number> {
-  const [agg] = await db
+async function freeTierPiecesUsed(organizationId: number, exec: Pick<typeof db, "select"> = db): Promise<number> {
+  const [agg] = await exec
     .select({
       used: sql<number>`coalesce(sum(${mailShipments.pieceCount}), 0)::int`,
     })
@@ -83,6 +83,18 @@ async function freeTierPiecesUsed(organizationId: number): Promise<number> {
   return agg?.used ?? 0;
 }
 const SPEEDS = ["next_day", "standard", "batch_3d", "batch_weekly", "eddm_geo"] as const;
+
+/**
+ * A piece a provider ACCEPTED — the only honest denominator for "sent" and
+ * for response rates. Pending, failed and suppressed pieces were never
+ * mailed; a returned piece was. (Quality directive 2026-09-29: "sent" counted
+ * every non-pending piece, failed ones included, and template rates summed
+ * the shipment's pieceCount once PER JOINED PIECE — a three-piece shipment
+ * read as nine sends.)
+ */
+const acceptedPiece = sql`${mailShipmentPieces.status} in ('sent','printed','in_transit','delivered','returned')`;
+/** One responding PIECE (a scan or a call), not one per scan: two scans by one person are one response. */
+const respondedPiece = sql`(coalesce(${mailShipmentPieces.qrScanCount}, 0) > 0 or coalesce(${mailShipmentPieces.inboundCallCount}, 0) > 0)`;
 
 // Recent-mail dedupe window (matches the composer warning copy).
 const DEDUPE_LOOKBACK_DAYS = 30;
@@ -118,6 +130,12 @@ const quoteSchema = z.object({
   audienceFilter: audienceFilterSchema,
   pieceType: z.enum(PIECE_TYPES),
   speed: z.enum(SPEEDS),
+  copy: z.string().max(8000).optional(),
+});
+
+const previewSchema = quoteSchema.extend({
+  offset: z.number().int().nonnegative().optional(),
+  limit: z.number().int().positive().max(200).optional(),
 });
 
 const queueSchema = z.object({
@@ -127,6 +145,8 @@ const queueSchema = z.object({
   templateId: z.number().int().positive().optional(),
   copy: z.string().max(8000).optional(),
   label: z.string().max(200).optional(),
+  // The digest of the quote the investor confirmed (see audienceDigest).
+  expectedAudienceDigest: z.string().min(1).max(64),
 });
 
 // ── Audience resolver ───────────────────────────────────────────────────────
@@ -143,32 +163,89 @@ interface Recipient {
 }
 
 /**
- * Resolves the audience filter to a deduped recipient set. Today this is a
- * simple intersection over the leads table; saved-views adapter is stubbed
- * (returns the source list unchanged) because the saved_views surface
- * doesn't yet expose a programmatic resolver. EDDM-only audiences bypass
- * this entirely — that path lands in Round 4.
+ * The audience cannot be honoured exactly, so nothing is quoted or queued.
+ * (Quality directive 2026-09-29, first-mail wedge.) Refusing is the rule; a
+ * broader audience than the investor chose is physical mail to people they
+ * did not pick, paid for from their pool.
+ */
+class AudienceRefusal extends Error {
+  constructor(
+    readonly code:
+      | "list_membership_unavailable"
+      | "saved_views_unavailable"
+      | "county_needs_state"
+      | "audience_too_large",
+    message: string,
+  ) {
+    super(message);
+    this.name = "AudienceRefusal";
+  }
+}
+
+/** Two sends raced for the last of the free allowance; this one lost. */
+class FreeTierRaceRefusal extends Error {
+  constructor(readonly remainingPieces: number) {
+    super("free allowance taken by a concurrent send");
+    this.name = "FreeTierRaceRefusal";
+  }
+}
+
+/** The most pieces one shipment may address. Past it the queue refuses — it never truncates. */
+const MAX_AUDIENCE = 50_000;
+
+const normCounty = (c: string) => c.trim().toLowerCase().replace(/\s+county$/i, "").replace(/\s+/g, " ");
+
+/**
+ * Resolves the audience filter to the exact recipient set, ordered by lead id
+ * so the same set always reads the same way.
+ *
+ * What it used to do: a selected marketing list contributed only its
+ * `filters.states` (a list with no states — or an unknown id — added no
+ * condition at all), and the counties and acreage the composer shows were
+ * ignored, so a "Hidalgo County list" mailed every eligible lead in Texas, and
+ * a stateless list mailed the whole CRM, silently capped at 50,000.
+ *
+ * Now every field of the filter either narrows the set exactly or refuses:
+ * marketing lists carry no member records (only import metadata), and saved
+ * views have no programmatic resolver, so both are refused rather than
+ * approximated; a county needs its state (a "Washington County" exists in 30
+ * states); more than MAX_AUDIENCE recipients is refused, never cut.
  */
 async function resolveAudience(
   organizationId: number,
   filter: z.infer<typeof audienceFilterSchema>,
 ): Promise<Recipient[]> {
+  if (filter.leadListIds && filter.leadListIds.length > 0) {
+    throw new AudienceRefusal(
+      "list_membership_unavailable",
+      "Marketing lists don't record which leads belong to them yet, so a list can't choose recipients. " +
+        "Filter by state, county and acreage instead.",
+    );
+  }
+  if (filter.savedViewIds && filter.savedViewIds.length > 0) {
+    throw new AudienceRefusal(
+      "saved_views_unavailable",
+      "Saved views can't choose mail recipients yet. Filter by state, county and acreage instead.",
+    );
+  }
+  const states = (filter.states ?? []).map((s) => s.trim().toUpperCase()).filter(Boolean);
+  const counties = Array.from(new Set((filter.counties ?? []).map(normCounty).filter(Boolean)));
+  if (counties.length > 0 && states.length === 0) {
+    throw new AudienceRefusal(
+      "county_needs_state",
+      "Add the state for those counties — the same county name exists in many states.",
+    );
+  }
+
   const conditions = [
     eq(leads.organizationId, organizationId),
     sql`${leads.deletedAt} IS NULL`,
     // SUPPRESSION. A seller who texts STOP has `doNotContact` and `optOutDate`
     // set by handleInboundOptKeyword, and the consent-revocation record written
     // alongside it names `direct_mail` among the revoked channels
-    // (smsService.ts, tcpaCompliance.ts). This door did not read either column,
-    // so the compose tab would quote, debit and queue a physical letter to
-    // someone the org's own audit trail says opted out of physical letters —
-    // and 30 minutes later the mail_flusher would hand it to Lob and it would
-    // be printed and delivered.
-    //
-    // This is deliberately the SAME rule preMailDedupe.ts already applies
-    // (`row.doNotContact === true || row.optOutDate` -> skip), so the two mail
-    // doors agree rather than inventing a third semantics. `IS NOT TRUE` rather
-    // than `= false` because the column is nullable.
+    // (smsService.ts, tcpaCompliance.ts). The same rule preMailDedupe.ts
+    // applies; the flusher re-checks it before the provider handoff, because
+    // a seller can opt out during the 30-minute hold.
     sql`${leads.doNotContact} IS NOT TRUE`,
     sql`${leads.optOutDate} IS NULL`,
     sql`${leads.address} IS NOT NULL`,
@@ -176,33 +253,14 @@ async function resolveAudience(
     sql`${leads.state} IS NOT NULL`,
     sql`${leads.zip} IS NOT NULL`,
   ];
-
-  if (filter.states && filter.states.length > 0) {
-    conditions.push(inArray(leads.state, filter.states));
+  if (states.length > 0) conditions.push(inArray(sql`upper(trim(${leads.state}))`, states));
+  if (counties.length > 0) {
+    conditions.push(
+      inArray(sql`lower(regexp_replace(trim(${leads.county}), '\s+county$', '', 'i'))`, counties),
+    );
   }
-
-  // marketingLists -> leads: we mirror the marketing list's stored filter
-  // (states / counties) onto the leads scan. This is the minimum to make
-  // the composer feel live; a fuller cross-table join lands when the
-  // mail-list ingest pipeline ships its members table.
-  if (filter.leadListIds && filter.leadListIds.length > 0) {
-    const lists = await db
-      .select()
-      .from(marketingLists)
-      .where(
-        and(
-          eq(marketingLists.organizationId, organizationId),
-          inArray(marketingLists.id, filter.leadListIds),
-        ),
-      );
-    const states = new Set<string>();
-    for (const l of lists) {
-      for (const s of l.filters?.states ?? []) states.add(s);
-    }
-    if (states.size > 0) {
-      conditions.push(inArray(leads.state, Array.from(states)));
-    }
-  }
+  if (filter.acreageMin !== undefined) conditions.push(gte(leads.acreage, String(filter.acreageMin)));
+  if (filter.acreageMax !== undefined) conditions.push(lte(leads.acreage, String(filter.acreageMax)));
 
   const rows = await db
     .select({
@@ -217,7 +275,15 @@ async function resolveAudience(
     })
     .from(leads)
     .where(and(...conditions))
-    .limit(50_000);
+    .orderBy(asc(leads.id))
+    .limit(MAX_AUDIENCE + 1);
+
+  if (rows.length > MAX_AUDIENCE) {
+    throw new AudienceRefusal(
+      "audience_too_large",
+      `More than ${MAX_AUDIENCE.toLocaleString()} leads match — narrow the audience; nothing was cut off silently.`,
+    );
+  }
 
   return rows.map((r) => ({
     leadId: r.id,
@@ -229,6 +295,25 @@ async function resolveAudience(
     zip: r.zip!,
     lastContactedAt: r.lastContactedAt,
   }));
+}
+
+/**
+ * The identity of what the investor confirmed: exactly these recipients at
+ * exactly these addresses, this piece type and this copy. Quote and preview
+ * return it; queue refuses (409) when the set it resolves no longer matches,
+ * so the count, the cost and the pieces written are always the same set.
+ */
+function audienceDigest(recipients: Recipient[], pieceType: string, copy: string | undefined): string {
+  const h = createHash("sha256");
+  h.update(`${pieceType}\n${copy ?? ""}\n`);
+  for (const r of recipients) {
+    h.update(`${r.leadId}|${r.firstName}|${r.lastName}|${r.addressLine1}|${r.city}|${r.state}|${r.zip}\n`);
+  }
+  return h.digest("hex").slice(0, 32);
+}
+
+function sendAudienceRefusal(res: Response, err: AudienceRefusal) {
+  return sendError(res, 422, err.code, err.message);
 }
 
 function recipientsToMailPieces(
@@ -251,6 +336,8 @@ function recipientsToMailPieces(
 // ── Quote helper (no shipment created) ──────────────────────────────────────
 
 interface QuotePayload {
+  /** What the investor is confirming; queue refuses if it no longer matches. */
+  audienceDigest: string;
   pieceCount: number;
   perPieceCents: number;
   totalCents: number;
@@ -264,11 +351,11 @@ interface QuotePayload {
 
 async function buildQuote(
   organizationId: number,
-  filter: z.infer<typeof audienceFilterSchema>,
+  recipients: Recipient[],
   pieceType: PieceType,
   speed: MailShipmentSpeed,
+  copy: string | undefined,
 ): Promise<QuotePayload> {
-  const recipients = await resolveAudience(organizationId, filter);
   const pieces = recipientsToMailPieces(recipients, pieceType);
 
   // Recent-mail dedupe warn signal (UX-only — caller decides to warn).
@@ -278,8 +365,10 @@ async function buildQuote(
   ).length;
   const recentlyMailedFraction = recipients.length > 0 ? recentlyMailedCount / recipients.length : 0;
 
+  const digest = audienceDigest(recipients, pieceType, copy);
   if (pieces.length === 0) {
     return {
+      audienceDigest: digest,
       pieceCount: 0,
       perPieceCents: 0,
       totalCents: 0,
@@ -339,6 +428,7 @@ async function buildQuote(
   const savedVsLobCents = Math.max(0, lobBaselineCents - totalCents);
 
   return {
+    audienceDigest: digest,
     pieceCount: pieces.length,
     perPieceCents,
     totalCents,
@@ -376,14 +466,52 @@ export function registerOutreachMailRoutes(app: Express): void {
       }
 
       try {
-        const quote = await buildQuote(
-          getOrganizationId(req),
-          parsed.data.audienceFilter,
-          parsed.data.pieceType,
-          parsed.data.speed,
-        );
+        const orgId = getOrganizationId(req);
+        const recipients = await resolveAudience(orgId, parsed.data.audienceFilter);
+        const quote = await buildQuote(orgId, recipients, parsed.data.pieceType, parsed.data.speed, parsed.data.copy);
         res.json(quote);
       } catch (err) {
+        if (err instanceof AudienceRefusal) return sendAudienceRefusal(res, err);
+        Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ── POST /api/outreach/mail/preview ──────────────────────────────────────
+  // The composer's "Preview all" called this route and it did not exist: the
+  // failure was caught and replaced by a placeholder, so nobody could see who
+  // would be mailed. It now pages through the SAME resolved set the queue
+  // will write, with the same digest, and the copy each piece will carry.
+  app.post(
+    "/api/outreach/mail/preview",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const parsed = previewSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.issues);
+      }
+      try {
+        const orgId = getOrganizationId(req);
+        const recipients = await resolveAudience(orgId, parsed.data.audienceFilter);
+        const offset = parsed.data.offset ?? 0;
+        const limit = parsed.data.limit ?? 50;
+        res.json({
+          audienceDigest: audienceDigest(recipients, parsed.data.pieceType, parsed.data.copy),
+          total: recipients.length,
+          offset,
+          recipients: recipients.slice(offset, offset + limit).map((r) => ({
+            leadId: r.leadId,
+            name: `${r.firstName} ${r.lastName}`.trim(),
+            addressLine1: r.addressLine1,
+            city: r.city,
+            state: r.state,
+            zip: r.zip,
+          })),
+          copy: parsed.data.copy ?? null,
+        });
+      } catch (err) {
+        if (err instanceof AudienceRefusal) return sendAudienceRefusal(res, err);
         Errors.internal(res, err);
       }
     },
@@ -402,15 +530,50 @@ export function registerOutreachMailRoutes(app: Express): void {
 
       const org = getOrganization(req);
       const userId = getUserId(req);
-      const { audienceFilter, pieceType, speed, templateId, copy, label } = parsed.data;
+      const { audienceFilter, pieceType, speed, templateId, copy, label, expectedAudienceDigest } = parsed.data;
+
+      // ONE customer intent = ONE shipment. The composer holds this key for
+      // the shipment it is composing and sends it again on a retry, so a
+      // response lost after commit followed by another click finds the
+      // shipment rather than debiting and queuing a second one. (It used to
+      // be ignored: the debit was keyed on Date.now().)
+      const rawKey = req.headers["idempotency-key"];
+      const operationKey = typeof rawKey === "string" ? rawKey.trim() : "";
+      if (!operationKey || operationKey.length > 200) {
+        return Errors.badRequest(res, "An Idempotency-Key header identifying this send is required");
+      }
 
       try {
+        const findExisting = async (exec: Pick<typeof db, "select"> = db) => {
+          const [row] = await exec
+            .select()
+            .from(mailShipments)
+            .where(and(eq(mailShipments.organizationId, org.id), eq(mailShipments.operationKey, operationKey)))
+            .limit(1);
+          return row;
+        };
+        const replayed = await findExisting();
+        if (replayed) {
+          return res.json(replayResponse(replayed));
+        }
+
+        // ONE audience read. The quote, the cap, the debit and the pieces
+        // written all come from this set (it used to be read twice, so the
+        // count charged and the pieces queued could differ).
         const recipients = await resolveAudience(org.id, audienceFilter);
         if (recipients.length === 0) {
           return Errors.badRequest(res, "No recipients match this audience filter");
         }
 
-        const quote = await buildQuote(org.id, audienceFilter, pieceType, speed);
+        const quote = await buildQuote(org.id, recipients, pieceType, speed, copy);
+        if (quote.audienceDigest !== expectedAudienceDigest) {
+          // The set changed between the quote the investor confirmed and now
+          // (a lead added, removed, opted out or re-addressed). Nothing is
+          // charged or queued; they re-confirm the new quote.
+          return sendError(res, 409, "audience_changed", "The recipients changed since you reviewed this quote. Review the new count and cost, then send.", {
+            quote,
+          });
+        }
 
         // W2.1 — free-tier lifetime cap. Checked BEFORE the pool debit so a
         // refusal never writes a ledger row. The refusal payload mirrors
@@ -461,7 +624,7 @@ export function registerOutreachMailRoutes(app: Express): void {
         // postcard_eddm; letters fall back to letter_presort). Per-piece
         // weight × count, rounded up.
         const poolAction: CreditAction = mailPoolActionFor(quote.provider, pieceType);
-        const mailDebitKey = `mail:queue:${org.id}:${Date.now()}:${recipients.length}`;
+        const mailDebitKey = `mail:queue:${org.id}:op:${operationKey}`;
         const mailDebit = await poolDebit({
           organizationId: org.id,
           action: poolAction,
@@ -476,11 +639,23 @@ export function registerOutreachMailRoutes(app: Express): void {
           return Errors.limitExceeded(res, poolRefusalDetails(poolAction, mailDebit));
         }
 
-        // Transaction: insert shipment header + per-piece rows.
-        let shipmentId: number;
+        // Transaction: insert shipment header + per-piece rows, serialised per
+        // org so two concurrent sends cannot both pass the free allowance or
+        // both write the same operation.
+        let shipmentId!: number;
         let qrCodesIssued = 0;
+        let replayOf: MailShipmentRow | undefined;
         try {
           const txResult = await db.transaction(async (tx) => {
+            await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`mail_queue:${org.id}`}))`);
+            const concurrent = await findExisting(tx);
+            if (concurrent) return { replay: concurrent };
+            if (!req.isFounder && orgTier === "free") {
+              const usedNow = await freeTierPiecesUsed(org.id, tx);
+              if (usedNow + quote.pieceCount > FREE_TIER_LIFETIME_PIECES) {
+                throw new FreeTierRaceRefusal(Math.max(0, FREE_TIER_LIFETIME_PIECES - usedNow));
+              }
+            }
             const [row] = await tx
               .insert(mailShipments)
               .values({
@@ -505,6 +680,7 @@ export function registerOutreachMailRoutes(app: Express): void {
                 // refund without the client round-tripping the key.
                 debitEventKey: mailDebitKey,
                 debitedCents: mailDebit.debitedCents,
+                operationKey,
               })
               .returning({ id: mailShipments.id });
 
@@ -554,7 +730,13 @@ export function registerOutreachMailRoutes(app: Express): void {
 
             return { shipmentId: row.id, pieceIds: inserted.map((p) => p.id) };
           });
-          shipmentId = txResult.shipmentId;
+          if ("replay" in txResult) {
+            // The same operation committed concurrently. Its debit is THIS
+            // debit (same key, idempotent), so nothing is refunded.
+            replayOf = txResult.replay;
+          } else {
+            shipmentId = txResult.shipmentId;
+          }
         } catch (txErr) {
           qrCodesIssued = 0;
           // Persist failure: refund the pool draw before re-throwing.
@@ -563,22 +745,38 @@ export function registerOutreachMailRoutes(app: Express): void {
               organizationId: org.id,
               originalEventId: mailDebitKey,
               amountCents: mailDebit.debitedCents,
-              reason: "Mail shipment persist failed",
+              reason: txErr instanceof FreeTierRaceRefusal ? "Free allowance taken by a concurrent send" : "Mail shipment persist failed",
+            });
+          }
+          if (txErr instanceof FreeTierRaceRefusal) {
+            return Errors.limitExceeded(res, {
+              reason: "free_send_cap",
+              resourceType: "free_first_send" as const,
+              capPieces: FREE_TIER_LIFETIME_PIECES,
+              remainingPieces: txErr.remainingPieces,
+              requestedPieces: quote.pieceCount,
+              upgradeUrl: "/settings#billing",
+              message: `Another send just used part of your free allowance — ${txErr.remainingPieces} letter(s) left.`,
             });
           }
           throw txErr;
         }
+        if (replayOf) {
+          return res.json(replayResponse(replayOf));
+        }
 
-        // Activation telemetry — first mailer queued is the wedge's magic
-        // moment precursor. Idempotent first-occurrence via the
-        // (org, eventName) unique index; the legacy campaigns path fires
-        // first_letter_sent, this is the modern queue path's marker.
+        // Activation telemetry — QUEUED, not sent. This used to record
+        // first_mailer_sent (the email/SMS event, shown to the founder as
+        // "Email/SMS out"), at queue time, for mail that can still be
+        // cancelled in the hold or fail at the provider. The physical first
+        // mail (first_letter_sent) is recorded by the flusher when a provider
+        // accepts a live piece.
         try {
           const { recordActivationEventAsync } = await import("./services/activation");
           recordActivationEventAsync({
             orgId: org.id,
             userId,
-            eventName: "first_mailer_sent",
+            eventName: "first_mail_queued",
             eventValue: { shipmentId, pieceCount: quote.pieceCount, pieceType, source: "outreach:mail:queue" },
           });
         } catch { /* non-fatal */ }
@@ -613,6 +811,7 @@ export function registerOutreachMailRoutes(app: Express): void {
           },
         });
       } catch (err) {
+        if (err instanceof AudienceRefusal) return sendAudienceRefusal(res, err);
         Errors.internal(res, err);
       }
     },
@@ -867,8 +1066,15 @@ export function registerOutreachMailRoutes(app: Express): void {
         // Sent / delivered / response sums from mail_shipment_pieces.
         const [pieceAgg] = await db
           .select({
-            sent: sql<number>`count(*) filter (where ${mailShipmentPieces.status} != 'pending')::int`,
+            sent: sql<number>`count(*) filter (where ${acceptedPiece})::int`,
+            failed: sql<number>`count(*) filter (where ${mailShipmentPieces.status} = 'failed')::int`,
+            suppressed: sql<number>`count(*) filter (where ${mailShipmentPieces.status} = 'suppressed')::int`,
             delivered: sql<number>`count(*) filter (where ${mailShipmentPieces.status} = 'delivered')::int`,
+            // Evidence it was delivered at some point — a piece delivered and
+            // later returned stays delivered here, and returned below.
+            everDelivered: sql<number>`count(*) filter (where ${mailShipmentPieces.deliveredAt} is not null)::int`,
+            returned: sql<number>`count(*) filter (where ${mailShipmentPieces.status} = 'returned')::int`,
+            piecesResponded: sql<number>`count(*) filter (where ${respondedPiece})::int`,
             qrScans: sql<number>`coalesce(sum(${mailShipmentPieces.qrScanCount}), 0)::int`,
             callsReceived: sql<number>`coalesce(sum(${mailShipmentPieces.inboundCallCount}), 0)::int`,
             // Measurement provenance (Wave B). Without these the client cannot
@@ -878,7 +1084,7 @@ export function registerOutreachMailRoutes(app: Express): void {
             deliveryEventsReceived: sql<number>`count(*) filter (where ${mailShipmentPieces.printedAt} is not null or ${mailShipmentPieces.inTransitAt} is not null or ${mailShipmentPieces.deliveredAt} is not null or ${mailShipmentPieces.returnedAt} is not null)::int`,
           })
           .from(mailShipmentPieces)
-          .where(eq(mailShipmentPieces.shipmentId, shipmentId));
+          .where(and(eq(mailShipmentPieces.shipmentId, shipmentId), eq(mailShipmentPieces.organizationId, orgId)));
 
         // callsAnswered — no call-status table yet; return 0.
         // TODO: once a call_status / call_log table tracks answered state,
@@ -908,8 +1114,15 @@ export function registerOutreachMailRoutes(app: Express): void {
         const safeDiv = (n: number, d: number): number => (d > 0 ? Math.round(n / d) : 0);
 
         res.json({
+          // Accepted by the provider. Failed and suppressed pieces were never mailed.
           sent,
+          failed: pieceAgg?.failed ?? 0,
+          suppressed: pieceAgg?.suppressed ?? 0,
           delivered,
+          everDelivered: pieceAgg?.everDelivered ?? 0,
+          returned: pieceAgg?.returned ?? 0,
+          // Pieces with at least one scan or call — a person, not an event count.
+          piecesResponded: pieceAgg?.piecesResponded ?? 0,
           qrScans,
           callsReceived,
           callsAnswered,
@@ -1050,8 +1263,8 @@ export function registerOutreachMailRoutes(app: Express): void {
           .select({
             templateId: mailShipments.templateId,
             campaigns: sql<number>`count(distinct ${mailShipments.id})::int`,
-            sends: sql<number>`coalesce(sum(${mailShipments.pieceCount}), 0)::int`,
-            responses: sql<number>`coalesce(sum(${mailShipmentPieces.qrScanCount}) + sum(${mailShipmentPieces.inboundCallCount}), 0)::int`,
+            sends: sql<number>`count(${mailShipmentPieces.id}) filter (where ${acceptedPiece})::int`,
+            responses: sql<number>`count(${mailShipmentPieces.id}) filter (where ${acceptedPiece} and ${respondedPiece})::int`,
             latestLabel: sql<string | null>`(array_agg(${mailShipments.label} order by ${mailShipments.queuedAt} desc))[1]`,
           })
           .from(mailShipments)
@@ -1094,8 +1307,8 @@ export function registerOutreachMailRoutes(app: Express): void {
           .select({
             templateId: mailShipments.templateId,
             shipments: sql<number>`count(distinct ${mailShipments.id})::int`,
-            totalSent: sql<number>`coalesce(sum(${mailShipments.pieceCount}), 0)::int`,
-            totalResponses: sql<number>`coalesce(sum(${mailShipmentPieces.qrScanCount}) + sum(${mailShipmentPieces.inboundCallCount}), 0)::int`,
+            totalSent: sql<number>`count(${mailShipmentPieces.id}) filter (where ${acceptedPiece})::int`,
+            totalResponses: sql<number>`count(${mailShipmentPieces.id}) filter (where ${acceptedPiece} and ${respondedPiece})::int`,
           })
           .from(mailShipments)
           .leftJoin(mailShipmentPieces, eq(mailShipmentPieces.shipmentId, mailShipments.id))
@@ -1140,11 +1353,16 @@ export function registerOutreachMailRoutes(app: Express): void {
           .select({
             month: sql<string>`to_char(date_trunc('month', ${mailShipments.queuedAt}), 'YYYY-MM')`,
             shipments: sql<number>`count(distinct ${mailShipments.id})::int`,
-            sent: sql<number>`coalesce(sum(${mailShipments.pieceCount}), 0)::int`,
+            // Per accepted PIECE — the join yields one row per piece, so a
+            // shipment-level sum here counted each shipment once per piece.
+            sent: sql<number>`count(${mailShipmentPieces.id}) filter (where ${acceptedPiece})::int`,
             delivered: sql<number>`count(${mailShipmentPieces.id}) filter (where ${mailShipmentPieces.status} = 'delivered')::int`,
             qrScans: sql<number>`coalesce(sum(${mailShipmentPieces.qrScanCount}), 0)::int`,
             calls: sql<number>`coalesce(sum(${mailShipmentPieces.inboundCallCount}), 0)::int`,
-            spendCents: sql<number>`coalesce(sum(${mailShipments.totalCents}), 0)::int`,
+            // Each piece carries its share of its shipment's locked total, so
+            // the sum is each shipment's total once. Cancelled shipments were
+            // refunded and spent nothing.
+            spendCents: sql<number>`coalesce(round(sum(${mailShipments.totalCents}::numeric / greatest(${mailShipments.pieceCount}, 1)) filter (where ${mailShipmentPieces.id} is not null and ${mailShipments.status} <> 'cancelled')), 0)::int`,
           })
           .from(mailShipments)
           .leftJoin(mailShipmentPieces, eq(mailShipmentPieces.shipmentId, mailShipments.id))
@@ -1477,6 +1695,31 @@ export function registerOutreachMailRoutes(app: Express): void {
       res.json({ poolSize, examples: creditExamples(poolSize) });
     },
   );
+}
+
+/**
+ * A retry of an operation already queued answers with the SAME shape as the
+ * original success, so the composer shows the one shipment that exists.
+ */
+function replayResponse(row: MailShipmentRow) {
+  return {
+    replayed: true,
+    shipmentId: row.id,
+    status: row.status,
+    leavesAt: row.leavesAt.toISOString(),
+    holdWindowMinutes: HOLD_WINDOW_MINUTES,
+    quote: {
+      pieceCount: row.pieceCount,
+      perPieceCents: row.perPieceCents,
+      totalCents: row.totalCents,
+      provider: row.provider ?? "—",
+      savedVsLobCents: row.savedVsLobCents,
+      deliveryEtaDays: row.deliveryEtaDays,
+      alternatives: [],
+      recentlyMailedCount: 0,
+      recentlyMailedFraction: 0,
+    },
+  };
 }
 
 function serializeShipment(s: MailShipmentRow) {

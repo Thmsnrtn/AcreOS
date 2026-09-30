@@ -20,9 +20,9 @@
  * any piece is sent, so refund-full-on-failure is honest.
  */
 
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { mailShipments, mailShipmentPieces, marketingSpend, organizations } from "@shared/schema";
+import { leads, mailShipments, mailShipmentPieces, marketingSpend, organizations } from "@shared/schema";
 import { MailRouter, PartialMailSendError, type MailShipment, type MailPiece, type MailShipmentSpeed } from "./router";
 import { qrRedirectUrl } from "./qrCodes";
 import { refundPoolDebit } from "../creditPool";
@@ -37,6 +37,8 @@ export interface FlushShipment {
   copySnapshot: string | null;
   debitEventKey: string | null;
   debitedCents: number | null;
+  /** Pieces the debit paid for — the denominator of every per-piece refund share. */
+  pieceCount?: number | null;
 }
 
 export interface FlushPiece {
@@ -130,12 +132,12 @@ export function buildRouterShipment(ship: FlushShipment, pieces: FlushPiece[]): 
 const router = new MailRouter();
 
 /** Refund the exact enqueue debit for a shipment that did not (fully) send. */
-async function refundShipment(ship: FlushShipment, reason: string): Promise<void> {
+async function refundShipment(ship: FlushShipment, reason: string, alreadyRefundedCents = 0): Promise<void> {
   if (!ship.debitEventKey || !ship.debitedCents || ship.debitedCents <= 0) return;
   await refundPoolDebit({
     organizationId: ship.organizationId,
     originalEventId: ship.debitEventKey,
-    amountCents: ship.debitedCents,
+    amountCents: ship.debitedCents - alreadyRefundedCents,
     reason,
   }).catch((err) =>
     logger.error("[mailFlusher] refund failed", err instanceof Error ? err : undefined, {
@@ -190,6 +192,67 @@ async function bookFreeSendAcquisitionCogs(ship: FlushShipment): Promise<void> {
   }
 }
 
+/** Share of the shipment's debit that `pieces` of it paid for. */
+function debitShareCents(ship: FlushShipment, pieces: number): number {
+  const total = ship.pieceCount && ship.pieceCount > 0 ? ship.pieceCount : null;
+  if (!ship.debitedCents || ship.debitedCents <= 0 || !total || pieces <= 0) return 0;
+  return Math.floor((ship.debitedCents * pieces) / total);
+}
+
+/**
+ * The hold exists so a send can be stopped. A seller who texts STOP (or is
+ * deleted) AFTER the queue and before the provider handoff must not be
+ * mailed: the queue's suppression check ran 30 minutes ago. Returns the
+ * pending pieces whose lead is now suppressed; a piece with no lead (legacy
+ * rows) is not second-guessed. Quality directive 2026-09-29.
+ */
+async function suppressedPieceIds(
+  ship: FlushShipment,
+  pieces: Array<{ id: number; leadId: number | null }>,
+): Promise<Set<number>> {
+  const leadIds = Array.from(new Set(pieces.map((p) => p.leadId).filter((x): x is number => x != null)));
+  if (leadIds.length === 0) return new Set();
+  const live = await db
+    .select({ id: leads.id })
+    .from(leads)
+    .where(
+      and(
+        eq(leads.organizationId, ship.organizationId),
+        inArray(leads.id, leadIds),
+        sql`${leads.deletedAt} IS NULL`,
+        sql`${leads.doNotContact} IS NOT TRUE`,
+        sql`${leads.optOutDate} IS NULL`,
+      ),
+    );
+  const mailable = new Set(live.map((l) => l.id));
+  return new Set(pieces.filter((p) => p.leadId != null && !mailable.has(p.leadId)).map((p) => p.id));
+}
+
+/**
+ * The org's first PHYSICAL mail: a provider accepted a live piece. Recorded
+ * here, from the provider's acceptance — not at queue time (the hold can be
+ * cancelled, the provider can refuse) and never for a test-key send. Only
+ * Lob and PostGrid distinguish live from test keys; any other provider's
+ * acceptance is not claimed as live.
+ */
+async function recordFirstLiveLetter(ship: FlushShipment, provider: string, acceptedPieces: number): Promise<void> {
+  if (acceptedPieces <= 0) return;
+  let live = false;
+  if (provider === "lob") live = (await import("./providers/lob")).lobSendsLive();
+  else if (provider === "postgrid") live = (process.env.POSTGRID_API_KEY ?? "").startsWith("live_");
+  if (!live) return;
+  try {
+    const { recordActivationEventAsync } = await import("../activation");
+    recordActivationEventAsync({
+      orgId: ship.organizationId,
+      eventName: "first_letter_sent",
+      eventValue: { shipmentId: ship.id, provider, acceptedPieces, source: "mail_flusher:provider_accepted" },
+    });
+  } catch {
+    /* telemetry never fails a sent shipment */
+  }
+}
+
 /**
  * Send one claimed shipment through the router; writeback or fail+refund.
  *
@@ -217,6 +280,7 @@ async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
       // Wave B audit fix: without this column the minted code never reached
       // the printed piece, so the public /r/:code scan path was unreachable.
       qrCode: mailShipmentPieces.qrCode,
+      leadId: mailShipmentPieces.leadId,
     })
     .from(mailShipmentPieces)
     .where(
@@ -227,6 +291,45 @@ async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
       ),
     )
     .orderBy(asc(mailShipmentPieces.id));
+
+  // ── 0. Suppression during the hold. ─────────────────────────────────────
+  let suppressedRefundCents = 0;
+  const suppressed = await suppressedPieceIds(ship, pieces as Array<{ id: number; leadId: number | null }>);
+  if (suppressed.size > 0) {
+    await db
+      .update(mailShipmentPieces)
+      .set({ status: "suppressed" })
+      .where(
+        and(
+          inArray(mailShipmentPieces.id, Array.from(suppressed)),
+          eq(mailShipmentPieces.organizationId, ship.organizationId),
+        ),
+      );
+    suppressedRefundCents = debitShareCents(ship, suppressed.size);
+    if (ship.debitEventKey && suppressedRefundCents > 0) {
+      await refundPoolDebit({
+        organizationId: ship.organizationId,
+        // Its own refund key: the refund ledger keeps ONE refund per event, and
+        // a later partial-send refund must not be swallowed by this one.
+        originalEventId: `${ship.debitEventKey}:suppressed`,
+        amountCents: suppressedRefundCents,
+        reason: `${suppressed.size} piece(s) not sent — the recipient opted out or was removed during the hold`,
+      }).catch((e) =>
+        logger.error("[mailFlusher] suppression refund failed", e instanceof Error ? e : undefined, {
+          metadata: { shipmentId: ship.id },
+        }),
+      );
+    }
+    logger.info(`[mailFlusher] shipment ${ship.id}: ${suppressed.size} piece(s) suppressed during the hold`);
+    for (let i = pieces.length - 1; i >= 0; i--) if (suppressed.has(pieces[i].id)) pieces.splice(i, 1);
+    if (pieces.length === 0) {
+      await db
+        .update(mailShipments)
+        .set({ status: "cancelled", cancelledAt: new Date(), cancellationReason: "every recipient opted out or was removed during the hold" })
+        .where(and(eq(mailShipments.id, ship.id), eq(mailShipments.organizationId, ship.organizationId)));
+      return "sent";
+    }
+  }
 
   if (pieces.length === 0) {
     // Nothing to send (already flushed / empty) — mark sent, no charge change.
@@ -244,6 +347,7 @@ async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
     route = await router.route(buildRouterShipment(ship, pieces as FlushPiece[]));
   } catch (err) {
     if (err instanceof PartialMailSendError) {
+      await recordFirstLiveLetter(ship, err.provider, err.accepted.length);
       return settlePartialShipment(ship, pieces, err);
     }
     const reason = err instanceof Error ? err.message : String(err);
@@ -260,7 +364,11 @@ async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
       .update(mailShipments)
       .set({ status: "failed", cancellationReason: reason.slice(0, 500) })
       .where(and(eq(mailShipments.id, ship.id), eq(mailShipments.organizationId, ship.organizationId)));
-    await refundShipment(ship, `mail send failed — refunded (never charge-without-send): ${reason.slice(0, 120)}`);
+    await refundShipment(
+      ship,
+      `mail send failed — refunded (never charge-without-send): ${reason.slice(0, 120)}`,
+      suppressedRefundCents,
+    );
     logger.warn(`[mailFlusher] shipment ${ship.id} FAILED + refunded: ${reason}`);
     return "failed";
   }
@@ -305,6 +413,7 @@ async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
     return "sent";
   }
   await bookFreeSendAcquisitionCogs(ship);
+  await recordFirstLiveLetter(ship, route.chosenProvider, sentPieces.length);
   logger.info(`[mailFlusher] sent shipment ${ship.id} (${pieces.length} pieces via ${route.chosenProvider})`);
   // CP3 of Jarvis Phase 1 (Verified Act-and-Confirm) — after a REAL send,
   // enqueue an independent READ-ONLY verification of the shipment's own
@@ -356,7 +465,8 @@ async function settlePartialShipment(
     .set({ status: "sent", sentAt: new Date(), provider: err.provider, cancellationReason: reason.slice(0, 500) })
     .where(and(eq(mailShipments.id, ship.id), eq(mailShipments.organizationId, ship.organizationId)));
   if (ship.debitEventKey && ship.debitedCents && ship.debitedCents > 0 && unsent > 0) {
-    const shareCents = Math.floor((ship.debitedCents * unsent) / pieces.length);
+    // Against the pieces the debit PAID for, not those left after suppression.
+    const shareCents = ship.pieceCount ? debitShareCents(ship, unsent) : Math.floor((ship.debitedCents * unsent) / pieces.length);
     await refundPoolDebit({
       organizationId: ship.organizationId,
       originalEventId: ship.debitEventKey,
@@ -414,7 +524,7 @@ export async function flushDueMailShipments(now: Date = new Date(), limit = 50):
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING id, organization_id, piece_type, speed, copy_snapshot, debit_event_key, debited_cents
+    RETURNING id, organization_id, piece_type, speed, copy_snapshot, debit_event_key, debited_cents, piece_count
   `);
   const rows: any[] = Array.isArray(claimed) ? claimed : ((claimed as { rows?: unknown[] })?.rows ?? []);
   let sent = 0;
@@ -428,6 +538,7 @@ export async function flushDueMailShipments(now: Date = new Date(), limit = 50):
       copySnapshot: r.copy_snapshot ?? null,
       debitEventKey: r.debit_event_key ?? null,
       debitedCents: r.debited_cents ?? null,
+      pieceCount: r.piece_count ?? null,
     };
     try {
       const outcome = await flushOne(ship);

@@ -229,6 +229,10 @@ END $mig0247$`,
   // 0256 — founder ruling 2026-09-29 #11 (DEFECT-0159): a customer deal in
   // transaction_training names its org, so it is a comp for that org only.
   `ALTER TABLE "transaction_training" ADD COLUMN IF NOT EXISTS "contributor_org_id" integer`,
+  // 0257 — one customer intent to mail = one shipment (outreach queue
+  // operation identity; quality directive 2026-09-29, first-mail wedge).
+  `ALTER TABLE "mail_shipments" ADD COLUMN IF NOT EXISTS "operation_key" text`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "mail_shipments_org_operation_uidx" ON "mail_shipments" ("organization_id", "operation_key")`,
   `CREATE INDEX IF NOT EXISTS "idx_organizations_pause_resume" ON "organizations" ("subscription_paused", "subscription_pause_ends_at")`,
   `ALTER TABLE "cancellation_surveys" ADD COLUMN IF NOT EXISTS "offered_pause" boolean DEFAULT false`,
   `ALTER TABLE "cancellation_surveys" ADD COLUMN IF NOT EXISTS "accepted_pause" boolean DEFAULT false`,

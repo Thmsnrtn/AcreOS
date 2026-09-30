@@ -406,7 +406,7 @@ export interface ApiRequestOptions {
   idempotencyKey?: string;
 }
 
-function generateIdempotencyKey(): string {
+export function generateIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }

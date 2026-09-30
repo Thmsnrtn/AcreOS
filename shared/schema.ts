@@ -4565,8 +4565,8 @@ export const ACTIVATION_EVENTS = [
   //
   // Notes on overlap:
   //   - first_mailer_sent is intentionally distinct from first_letter_sent:
-  //     `letter_sent` fires from the postcard/letter direct-mail path; the
-  //     new `mailer_sent` fires from the email/SMS campaign send path.
+  //     `letter_sent` fires when physical mail is accepted by a provider; the
+  //     `mailer_sent` fires from the email/SMS campaign send path only.
   //   - first_payment_recorded is distinct from first_payment_processed
   //     (Stripe subscription) and first_borrower_payment_received: this
   //     one fires the first time the user MANUALLY records a payment in
@@ -4583,6 +4583,12 @@ export const ACTIVATION_EVENTS = [
   "first_pax_question_asked",
   "first_mailer_sent",
   "first_payment_recorded",
+  // Quality directive 2026-09-29: queueing physical mail is not mailing it.
+  // The Outreach queue records first_mail_queued (it can still be cancelled
+  // in the hold or fail at the provider); the flusher records
+  // first_letter_sent when a provider accepts a LIVE piece. It used to record
+  // first_mailer_sent — the email/SMS event — at queue time.
+  "first_mail_queued",
   // Tier 2C (2026-06-10) — server-side funnel truth. These two were
   // previously CLIENT-emitted PostHog events (settings.tsx fired
   // trial_to_paid off the ?subscription=success redirect; use-onboarding
@@ -7482,7 +7488,7 @@ export const dueDiligenceDossiers = pgTable("due_diligence_dossiers", {
     zoning?: { current: string; unverified?: boolean; allowedUses?: string[]; restrictions?: string[]; overlays?: string[] };
     access?: { type: string; legal: boolean; unverified?: boolean; easements?: string[]; roadMaintenance?: string };
     comps?: { medianPrice?: number; pricePerAcre?: number; salesCount?: number; trend?: string };
-    owner?: { name: string; type: string; contactInfo?: string; motivationSignals?: string[] };
+    owner?: { name: string | null; type: string; contactInfo?: string; motivationSignals?: string[] };
   }>(),
   
   // Scores and recommendations

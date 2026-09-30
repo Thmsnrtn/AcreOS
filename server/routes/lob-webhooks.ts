@@ -45,7 +45,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { mailShipmentPieces } from "@shared/schema";
-import { Errors } from "../utils/errors";
+import { Errors, sendError } from "../utils/errors";
 import { logger } from "../utils/logger";
 
 /** Reject posts whose signed timestamp is older than this (replay guard). */
@@ -54,24 +54,27 @@ const MAX_SIGNATURE_AGE_MS = 5 * 60 * 1000;
 /** Monotonic piece lifecycle. A webhook may only move a piece up this list. */
 const STATUS_RANK: Record<string, number> = {
   pending: 0,
-  printed: 1,
-  in_transit: 2,
-  delivered: 3,
-  returned: 4,
-  failed: 4,
+  sent: 1,
+  printed: 2,
+  in_transit: 3,
+  delivered: 4,
+  returned: 5,
+  failed: 5,
 };
 
 /**
  * Lob event type → the piece state it proves.
  *
  * `re-routed` and `in_local_area` are genuine USPS scans but do not advance
- * beyond in_transit. `*.created` is Lob accepting the job, not USPS touching
- * paper — it maps to `printed` because that is what it means operationally
- * (the piece exists in the print queue), and `rendered_pdf` confirms it.
+ * beyond in_transit. `*.created` is Lob accepting the job and `rendered_pdf`
+ * is Lob rendering its proof — neither is paper. They used to stamp
+ * `printedAt` (quality directive 2026-09-29): a piece read as printed on the
+ * provider's acceptance alone. They now confirm acceptance (`sent`) and stamp
+ * nothing; `mailed` (handed to USPS) is the first physical evidence.
  */
 const EVENT_MAP: Record<string, { status: string; stamp: StampColumn | null }> = {
-  created: { status: "printed", stamp: "printedAt" },
-  rendered_pdf: { status: "printed", stamp: "printedAt" },
+  created: { status: "sent", stamp: null },
+  rendered_pdf: { status: "sent", stamp: null },
   mailed: { status: "in_transit", stamp: "inTransitAt" },
   in_transit: { status: "in_transit", stamp: "inTransitAt" },
   in_local_area: { status: "in_transit", stamp: null },
@@ -84,6 +87,9 @@ const EVENT_MAP: Record<string, { status: string; stamp: StampColumn | null }> =
 };
 
 type StampColumn = "printedAt" | "inTransitAt" | "deliveredAt" | "returnedAt";
+
+/** How long an unmatched event keeps being retried: the flusher's write-back window, generously. */
+const UNMATCHED_RETRY_WINDOW_MS = 2 * 60 * 60 * 1000;
 
 /** `postcard.processed_for_delivery` → `processed_for_delivery`. */
 function normalizeEventType(raw: unknown): string | null {
@@ -216,8 +222,22 @@ export function registerLobWebhookRoutes(app: Express): void {
         .limit(1);
 
       if (!piece) {
-        // Mail sent from another environment (test vs live keys) or before
-        // provider ids were written back. Ack — retrying will never match.
+        // Two very different cases share this branch. Lob can post the
+        // piece's first events BEFORE the flusher writes its provider id back
+        // (the flusher writes after the whole send returns) — acknowledging
+        // those lost them for good, though a retry minutes later WOULD match.
+        // Mail from another environment (test vs live keys) never matches.
+        // So a recent event is refused with a retryable 503 (Lob retries with
+        // backoff, bounded by its own policy), and only an old one is
+        // acknowledged as unknown.
+        const ageMs = Date.now() - occurredAt.getTime();
+        if (ageMs < UNMATCHED_RETRY_WINDOW_MS) {
+          logger.info("[lob-webhook] no piece yet for provider id — asking Lob to retry", {
+            metadata: { eventType },
+          });
+          res.setHeader("Retry-After", "120");
+          return sendError(res, 503, "piece_not_yet_recorded", "The piece's provider id is not recorded yet; retry.");
+        }
         logger.warn("[lob-webhook] no piece for provider id", {
           metadata: { eventType },
         });
