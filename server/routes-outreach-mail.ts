@@ -770,6 +770,13 @@ export function registerOutreachMailRoutes(app: Express): void {
 
             return { shipmentId: row.id, pieceIds: inserted.map((p) => p.id) };
           });
+          // A debit funded from purchased credits was taken inside the
+          // transaction, so its auto top-up waits for the commit (audit of
+          // 1694a0b) — now.
+          if (debitTaken()?.fundedBy === "purchased_credits" && !("replay" in txResult)) {
+            const { creditService } = await import("./services/credits");
+            creditService.afterDebitCommitted(org.id);
+          }
           if ("replay" in txResult) {
             // The same operation committed concurrently. Its debit is THIS
             // debit (same key, idempotent), so nothing is refunded.

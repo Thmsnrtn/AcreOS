@@ -13,6 +13,9 @@ import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Verbs } from "@/lib/labels";
+import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -102,6 +105,12 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
   const [isNegotiationOpen, setIsNegotiationOpen] = useState(false);
   const [pendingTemplateId, setPendingTemplateId] = useState<number | null>(null);
   const [pendingWireItemId, setPendingWireItemId] = useState<string | null>(null);
+  // Entering escrow records "contract signed" only with evidence: a signed
+  // document on the deal, or the operator's attestation that the agreement
+  // was signed outside AcreOS (DEFECT-0232 — the server accepted the
+  // attestation, and no screen could send it).
+  const [escrowPending, setEscrowPending] = useState(false);
+  const [escrowAttested, setEscrowAttested] = useState(false);
 
   // allow-no-invalidation: generated script lands in component-local state (setNegotiationScript)
   const negotiationMutation = useMutation({
@@ -262,7 +271,17 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
       });
       return;
     }
+    if (newStatus === "in_escrow") {
+      setEscrowAttested(false);
+      setEscrowPending(true);
+      return;
+    }
     updateDeal({ id: deal.id, status: newStatus });
+  };
+
+  const confirmEscrow = () => {
+    updateDeal({ id: deal.id, status: "in_escrow", ...(escrowAttested ? { contractSignedAttested: true } : {}) });
+    setEscrowPending(false);
   };
 
   const handleSaveAnalysis = (results: AnalysisResults) => {
@@ -1028,6 +1047,39 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
             </TabsContent>
           </Tabs>
         </div>
+        {/* Outside the tabs: the status select lives on Details, and an
+            inactive tab's content is unmounted — inside Checklist this
+            dialog never opened where the move was made (audit of the H6
+            change). */}
+          <Dialog open={escrowPending} onOpenChange={setEscrowPending}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Move to escrow</DialogTitle>
+                <DialogDescription>
+                  A signed document on this deal is recorded as the signed contract. If the purchase agreement was signed outside AcreOS, you can say so here — it is recorded as your attestation, not as a signature.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex items-start gap-2 py-2">
+                <Checkbox
+                  id="escrow-attest"
+                  checked={escrowAttested}
+                  onCheckedChange={(v) => setEscrowAttested(v === true)}
+                  data-testid="checkbox-contract-attested"
+                />
+                <Label htmlFor="escrow-attest" className="text-sm leading-snug">
+                  The purchase agreement is signed (outside AcreOS).
+                </Label>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEscrowPending(false)}>
+                  {Verbs.CANCEL}
+                </Button>
+                <Button type="button" onClick={confirmEscrow} disabled={isPending} data-testid="button-confirm-escrow">
+                  Move to escrow
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
     </>
   );
 }

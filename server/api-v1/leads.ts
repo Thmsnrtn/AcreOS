@@ -15,7 +15,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
-import { eq, and, lt, gt, desc, asc } from "drizzle-orm";
+import { eq, and, lt, gt, desc, asc, isNull } from "drizzle-orm";
 import { db } from "../db";
 import { leads, type Lead } from "@shared/schema";
 import { requireApiKey } from "../middleware/requireApiKey";
@@ -110,6 +110,8 @@ leadsV1Router.get(
         .where(
           and(
             eq(leads.organizationId, orgId),
+            // A lead the customer deleted is not in their book (DEFECT-0273).
+            isNull(leads.deletedAt),
             cursor
               ? direction === "f"
                 ? lt(leads.id, cursor.id)
@@ -179,7 +181,7 @@ leadsV1Router.get(
       const [row] = await db
         .select()
         .from(leads)
-        .where(and(eq(leads.id, id), eq(leads.organizationId, orgId)))
+        .where(and(eq(leads.id, id), eq(leads.organizationId, orgId), isNull(leads.deletedAt)))
         .limit(1);
       if (!row) return Errors.notFound(res, "Lead");
       sendEnvelope(req, res, serializeLead(row));
@@ -212,7 +214,7 @@ leadsV1Router.patch(
       const [updated] = await db
         .update(leads)
         .set({ ...patch, updatedAt: new Date() })
-        .where(and(eq(leads.id, id), eq(leads.organizationId, orgId)))
+        .where(and(eq(leads.id, id), eq(leads.organizationId, orgId), isNull(leads.deletedAt)))
         .returning();
       if (!updated) return Errors.notFound(res, "Lead");
 

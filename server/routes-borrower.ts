@@ -1,7 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { storage, db } from "./storage";
-import { eq, and, gte, desc } from "drizzle-orm";
+import { eq, and, gte, desc, inArray } from "drizzle-orm";
+import { achDebitAttempts } from "@shared/schema/ach-autopay";
 import { notes, notePayoffQuotes, type BorrowerSession, type NotePayoffQuote } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -34,6 +35,7 @@ import {
 import {
   postBorrowerPortalCheckoutPayment,
   emitBorrowerPaymentReceived,
+  servicedNoteTakesPayment,
 } from "./services/borrower/portalPaymentPosting";
 import {
   startAchMandateSetup,
@@ -65,6 +67,7 @@ import {
 } from "./services/customerMoneyRouting";
 import { isCategorySimulated } from "./utils/simulationMode";
 import {
+  ACH_IN_FLIGHT_STATUSES,
   assessServicedNoteLateFee,
   feeFromExcessCents,
   outstandingServicedLateFeesCents,
@@ -720,6 +723,31 @@ export function registerBorrowerRoutes(app: Express): void {
       }
       const note = noteResults[0];
       if (await refuseIfLenderServicingEnded(res, note.organizationId)) return;
+      // The same rule the lender's own "Record payment" follows, asked BEFORE
+      // a card is charged — once money has moved, the posting records it
+      // whatever the status. A paid-off, foreclosed or not-yet-originated
+      // loan takes no card payment here (audit of the fourth follow-up).
+      if (!servicedNoteTakesPayment(note.status)) {
+        return Errors.badRequest(res, "This loan is not taking payments online. Please contact your lender.", {
+          reason: "note_not_taking_payments",
+        });
+      }
+      // An autopay debit for this loan still settling is paying the
+      // installment; a card payment now would pay it twice (DEFECT-0265).
+      const [achInFlight] = await db
+        .select({ id: achDebitAttempts.id })
+        .from(achDebitAttempts)
+        .where(
+          and(
+            eq(achDebitAttempts.organizationId, note.organizationId),
+            eq(achDebitAttempts.noteId, note.id),
+            inArray(achDebitAttempts.status, ACH_IN_FLIGHT_STATUSES),
+          ),
+        )
+        .limit(1);
+      if (achInFlight) {
+        return sendError(res, 409, "ACH_DEBIT_IN_FLIGHT", "Your automatic bank payment for this loan is still processing. Please wait for it to settle before paying by card, so the installment is not paid twice.");
+      }
 
       const paymentAmount = amount ? Number(amount) : Number(note.monthlyPayment || 0);
       if (paymentAmount <= 0) {

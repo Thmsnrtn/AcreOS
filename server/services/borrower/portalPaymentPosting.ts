@@ -274,6 +274,20 @@ export async function postBorrowerPortalCheckoutPayment(
   });
 }
 
+/**
+ * Does a serviced note take a payment recorded by hand? Yes while it is being
+ * serviced — `active`, and `defaulted`, since money on a defaulted note is a
+ * cure, not a mistake (audit of 1694a0b: the old list refused it). No once it
+ * is finished (`paid_off`, `foreclosed`, `sold`) or before it is originated
+ * (`pending` — origination runs through the Reg-Z chokepoint first). `late`
+ * and `delinquent` are accepted for rows written before delinquency moved to
+ * its own column (`delinquencyStatus`).
+ */
+const SERVICED_NOTE_STATUSES_TAKING_PAYMENT: ReadonlySet<string> = new Set(["active", "defaulted", "late", "delinquent"]);
+export function servicedNoteTakesPayment(status: string | null | undefined): boolean {
+  return SERVICED_NOTE_STATUSES_TAKING_PAYMENT.has(String(status ?? ""));
+}
+
 export interface PostServicedNotePaymentInput {
   /** Loaded, org-checked by the caller. */
   note: Note;
@@ -428,7 +442,12 @@ export async function postServicedNotePayment(
       .update(notes)
       .set({
         currentBalance: (newBalanceCents / 100).toString(),
-        status: newBalanceCents <= 0 ? "paid_off" : "active",
+        // Paid down to zero → paid off. Otherwise a DEFAULTED note stays
+        // defaulted: a payment on it is money toward a cure, and whether the
+        // loan is reinstated is the lender's decision — silently flipping it
+        // to active re-armed autopay, reminders and the fee sweep (audit of
+        // the fourth follow-up).
+        status: newBalanceCents <= 0 ? "paid_off" : lockedNote.status === "defaulted" ? "defaulted" : "active",
         version: (lockedNote.version ?? 1) + 1,
         updatedAt: new Date(),
       })

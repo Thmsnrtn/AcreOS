@@ -183,6 +183,18 @@ describe("assessment — when grace passes on a missed installment", () => {
   });
 });
 
+describe("assessment — only on a note being serviced (audit of the fourth follow-up)", () => {
+  it.each(["defaulted", "paid_off", "foreclosed"])("a %s note accrues no monthly late fee, past grace or not", async (status) => {
+    const r = await assessServicedNoteLateFee(note({ status }), daysAfterDue(40));
+    expect(r.assessed).toBe(false);
+    expect(h.inserts).toEqual([]);
+  });
+
+  it("an active note past grace still does (the rule did not switch fees off)", async () => {
+    expect((await assessServicedNoteLateFee(note({ status: "active" }), daysAfterDue(11))).assessed).toBe(true);
+  });
+});
+
 describe("owed = assessed − collected", () => {
   it("counts only this note's ASSESSED rows (waived and reversed fees are not owed)", async () => {
     h.assessedCents = 5000;
@@ -258,6 +270,10 @@ describe("payoff good through a later date", () => {
   it("quotes the fee grace will pass on by that date", async () => {
     expect(await lateFeeDueByCents(note(), daysAfterDue(20))).toBe(2500);
     expect(h.inserts).toEqual([]); // a projection never records anything
+  });
+  it("…but not on a defaulted note, which the posting will never charge one (audit of the fourth follow-up)", async () => {
+    expect(await lateFeeDueByCents(note({ status: "defaulted" }), daysAfterDue(20))).toBe(0);
+    expect(await lateFeeDueByCents(note({ status: "active" }), daysAfterDue(20))).toBe(2500);
   });
   it("…but not one already assessed (it is in what is owed), nor one not yet due", async () => {
     expect(await lateFeeDueByCents(note(), daysAfterDue(5))).toBe(0);

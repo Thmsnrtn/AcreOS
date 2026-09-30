@@ -46,8 +46,15 @@ export function assertWritablePatch<T extends object>(patch: T, what: string): T
   // caller-supplied `organizationId` under a WHERE scoped to the old org
   // moved the row into another tenant (audits of 7cc7345 and 9ed61f4). One
   // rule — omitProtectedFields — at every repository write.
-  const cleaned = omitProtectedFields(patch as Record<string, unknown>) as T;
-  if (hasWritableValues(cleaned)) return cleaned;
+  const cleaned = omitProtectedFields(patch as Record<string, unknown>) as Record<string, unknown>;
+  // Except the server's own clock: an internal writer that stamps
+  // `updatedAt: new Date()` — alone, a touch — is a well-formed write, and
+  // stripping it turned the touch into this throw and left the row's
+  // freshness stale (audit of 1694a0b). Only a real Date survives; a JSON
+  // body cannot carry one, so a client still cannot set the column.
+  const stamp = (patch as Record<string, unknown>).updatedAt;
+  if (stamp instanceof Date) cleaned.updatedAt = stamp;
+  if (hasWritableValues(cleaned)) return cleaned as T;
   throw new Error(
     `Refusing to UPDATE ${what} with an empty patch: every value was undefined, ` +
       `which renders "set  where …" and is rejected by Postgres as a syntax error. ` +

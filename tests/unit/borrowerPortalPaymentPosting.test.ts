@@ -39,6 +39,9 @@ const state = vi.hoisted(() => ({
   nextId: 1,
   noteBalance: "10000.00",
   noteVersion: 1,
+  /** The locked note's status, and the status the posting wrote. */
+  noteStatus: "active",
+  statusWritten: undefined as string | undefined,
   updateNoteCalls: [] as Array<{ id: number; patch: Record<string, unknown>; orgId: number | undefined }>,
   emails: [] as Array<Record<string, unknown>>,
   activities: [] as Array<Record<string, unknown>>,
@@ -52,6 +55,8 @@ function resetState() {
   state.nextId = 1;
   state.noteBalance = "10000.00";
   state.noteVersion = 1;
+  state.noteStatus = "active";
+  state.statusWritten = undefined;
   state.updateNoteCalls.length = 0;
   state.emails.length = 0;
   state.activities.length = 0;
@@ -85,7 +90,7 @@ vi.mock("../../server/db", () => {
               const rows =
                 table === MOCK_TABLES.payments
                   ? [state.payments.get(LAST_CONFLICT_ID.id)!]
-                  : [{ ...NOTE_ROW, currentBalance: state.noteBalance, version: state.noteVersion }];
+                  : [{ ...NOTE_ROW, currentBalance: state.noteBalance, version: state.noteVersion, status: state.noteStatus }];
               return Promise.resolve(rows).then(ok, no);
             },
           };
@@ -99,6 +104,7 @@ vi.mock("../../server/db", () => {
           returning: async () => {
             state.noteBalance = vals.currentBalance;
             state.noteVersion = vals.version;
+            state.statusWritten = vals.status;
             return [{ id: NOTE_ROW.id }];
           },
         }),
@@ -324,6 +330,18 @@ describe("postBorrowerPortalCheckoutPayment — one rule for both writers", () =
     expect(state.events).toHaveLength(1);
     expect(state.events[0].data.source).toBe("stripe_webhook");
     expect(state.emails).toHaveLength(1);
+  });
+
+  it("a payment on a DEFAULTED note leaves it defaulted — reinstatement is the lender's call (audit of the fourth follow-up)", async () => {
+    state.noteStatus = "defaulted";
+    const result = await post("borrower_portal", session({ amount_total: 5000 }));
+    expect(result.outcome).toBe("posted");
+    expect(state.statusWritten).toBe("defaulted");
+  });
+
+  it("a payment on an active note keeps it active", async () => {
+    await post("borrower_portal", session({ amount_total: 5000 }));
+    expect(state.statusWritten).toBe("active");
   });
 
   it("(4) an unpaid session is refused before any write", async () => {

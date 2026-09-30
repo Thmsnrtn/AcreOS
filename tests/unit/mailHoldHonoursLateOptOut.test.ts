@@ -40,7 +40,7 @@ const S = vi.hoisted(() => ({
   optedOut: new Set<number>(),
   leadQueryOrg: undefined as unknown,
   ship: { status: "sending" } as Record<string, unknown>,
-  refunds: [] as Array<{ originalEventId: string; amountCents: number }>,
+  refunds: [] as Array<{ originalEventId: string; refundKey: string; amountCents: number }>,
   routed: [] as number[],
   route: null as null | ((n: number) => Promise<unknown>),
   events: [] as Array<{ eventName: string }>,
@@ -109,8 +109,15 @@ vi.mock("../../server/db", () => ({
   },
 }));
 vi.mock("../../server/services/creditPool", () => ({
-  refundPoolDebit: vi.fn(async (a: { originalEventId: string; amountCents: number }) => {
-    S.refunds.push({ originalEventId: a.originalEventId, amountCents: a.amountCents });
+  refundPoolDebit: vi.fn(async (a: { originalEventId: string; amountCents: number; refundKey?: string }) => {
+    // The ORIGINAL must be the debit's own key — refundPoolDebit looks it up
+    // and refunds nothing when it is absent (audit of 1694a0b: a suffixed
+    // original made every suppressed-piece refund a silent no-op).
+    S.refunds.push({
+      originalEventId: a.originalEventId,
+      refundKey: a.refundKey ?? `${a.originalEventId}:refund`,
+      amountCents: a.amountCents,
+    });
   }),
 }));
 vi.mock("../../server/services/activation", () => ({
@@ -170,7 +177,7 @@ describe("a STOP during the hold stops the piece", () => {
     await flushDueMailShipments();
     expect(S.routed).toEqual([2]);
     expect(S.pieces.map((p) => p.status)).toEqual(["sent", "suppressed", "sent"]);
-    expect(S.refunds).toEqual([{ originalEventId: "mail:1:suppressed", amountCents: 100 }]);
+    expect(S.refunds).toEqual([{ originalEventId: "mail:1", refundKey: "mail:1:suppressed:refund", amountCents: 100 }]);
     expect(S.leadQueryOrg).toBe(5); // the recheck reads THIS org's leads
   });
 
@@ -179,7 +186,7 @@ describe("a STOP during the hold stops the piece", () => {
     await flushDueMailShipments();
     expect(S.routed).toEqual([]);
     expect(S.ship.status).toBe("cancelled");
-    expect(S.refunds).toEqual([{ originalEventId: "mail:1:suppressed", amountCents: 300 }]);
+    expect(S.refunds).toEqual([{ originalEventId: "mail:1", refundKey: "mail:1:suppressed:refund", amountCents: 300 }]);
   });
 
   it("one suppressed, then the provider refuses everything: the two refunds add up to the debit — not more", async () => {
@@ -190,8 +197,8 @@ describe("a STOP during the hold stops the piece", () => {
     await flushDueMailShipments();
     const total = S.refunds.reduce((s, r) => s + r.amountCents, 0);
     expect(total).toBe(300);
-    expect(S.refunds).toContainEqual({ originalEventId: "mail:1:suppressed", amountCents: 100 });
-    expect(S.refunds).toContainEqual({ originalEventId: "mail:1", amountCents: 200 });
+    expect(S.refunds).toContainEqual({ originalEventId: "mail:1", refundKey: "mail:1:suppressed:refund", amountCents: 100 });
+    expect(S.refunds).toContainEqual({ originalEventId: "mail:1", refundKey: "mail:1:refund", amountCents: 200 });
   });
 
   it("no STOP: all three go out, nothing refunded", async () => {

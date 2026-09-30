@@ -5,7 +5,8 @@ import { readAllDeals, readAllNotes, readAllPayments, readAllProperties } from "
 import { storage, db, calculateMonthlyPayment } from "./storage";
 import { z } from "zod";
 import { insertNoteSchema, payments as paymentsTable, paymentReminders, notes as notesTable, contractAssignments, deals as dealsTable, properties as propertiesTable } from "@shared/schema";
-import { eq, and, sql, count } from "drizzle-orm";
+import { eq, and, sql, count, inArray } from "drizzle-orm";
+import { achDebitAttempts } from "@shared/schema/ach-autopay";
 import { realDeal, realNote, realProperty } from "./services/onboarding/sampleFilters";
 import { isAuthenticated } from "./auth";
 import { Errors, sendError } from "./utils/errors";
@@ -1419,9 +1420,32 @@ export function registerFinanceRoutes(app: Express): void {
       // Money is recorded against a note being serviced. A paid-off or
       // closed note takes no payment here — and no late fee is assessed on
       // it by the attempt (audit of 9ed61f4: the pre-guard assessment could
-      // create a fee on a paid-off note).
-      if (!["active", "late", "delinquent"].includes(String(note.status))) {
+      // create a fee on a paid-off note). A defaulted note does: that money
+      // is a cure (audit of 1694a0b).
+      const { servicedNoteTakesPayment } = await import("./services/borrower/portalPaymentPosting");
+      if (!servicedNoteTakesPayment(note.status)) {
         return Errors.badRequest(res, `This note is ${note.status}; it takes no payment here.`);
+      }
+      // An ACH debit for this note already in flight is paying the
+      // installment: recording money by hand now would advance it twice
+      // (DEFECT-0265). Record it once the debit settles, or after it fails.
+      const { ACH_IN_FLIGHT_STATUSES } = await import("./services/notes/servicedLateFees");
+      const [inFlight] = await db
+        .select({ id: achDebitAttempts.id, status: achDebitAttempts.status })
+        .from(achDebitAttempts)
+        .where(
+          and(
+            eq(achDebitAttempts.organizationId, org.id),
+            eq(achDebitAttempts.noteId, note.id),
+            inArray(achDebitAttempts.status, ACH_IN_FLIGHT_STATUSES),
+          ),
+        )
+        .limit(1);
+      if (inFlight) {
+        return sendError(res, 409, "ACH_DEBIT_IN_FLIGHT", "An autopay debit for this note is still processing. Record a payment once it settles (or fails), so the installment is not paid twice.", {
+          achAttemptId: inFlight.id,
+          achStatus: inFlight.status,
+        });
       }
       // More than the payoff is refused here rather than posted with an
       // unapplied excess: the lender is recording money by hand and can

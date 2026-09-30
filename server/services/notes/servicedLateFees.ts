@@ -44,10 +44,22 @@ import { lenderServicingPhase, orgsStillServiced } from "../borrower/servicingPh
 const DAY_MS = 24 * 60 * 60 * 1000;
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 const utcDayStart = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-/** An autopay debit that is still settling has not missed anything. */
-const ACH_IN_FLIGHT = ["created", "submitted", "processing"];
+/**
+ * An autopay debit that is still settling has not missed anything — and
+ * while one is, the processor is paying the installment, so nobody may record
+ * it again by hand (DEFECT-0265). The one list: the ACH reconciliation sweep
+ * and POST /api/payments read it from here.
+ */
+export const ACH_IN_FLIGHT_STATUSES: string[] = ["created", "submitted", "processing"];
 /** Notes the daily sweep evaluates: servicing, not accelerated or closed. */
 const SWEPT_NOTE_STATUSES = ["active", "late", "delinquent"];
+/**
+ * The sweep's status rule at every caller: an accelerated (defaulted),
+ * paid-off or foreclosed note accrues no monthly late fee. A caller that does
+ * not know the status is not second-guessed.
+ */
+const statusAccruesFees = (status: string | null | undefined) =>
+  status == null || SWEPT_NOTE_STATUSES.includes(status);
 const SWEEP_LIMIT = 5000;
 
 export type ServicedNoteForFees = Pick<
@@ -120,7 +132,7 @@ async function evaluateCurrentInstallment(note: ServicedNoteForFees, at: Date): 
         eq(achDebitAttempts.noteId, note.id),
         gte(achDebitAttempts.dueDate, dayStart),
         lt(achDebitAttempts.dueDate, dayEnd),
-        inArray(achDebitAttempts.status, ACH_IN_FLIGHT),
+        inArray(achDebitAttempts.status, ACH_IN_FLIGHT_STATUSES),
         lte(achDebitAttempts.createdAt, graceEnds),
       ),
     )
@@ -137,11 +149,16 @@ async function evaluateCurrentInstallment(note: ServicedNoteForFees, at: Date): 
  * payoff quote opened after that must not create a fee (ruling #3).
  */
 export async function assessServicedNoteLateFee(
-  note: ServicedNoteForFees,
+  note: ServicedNoteForFees & { status?: string | null },
   now: Date = new Date(),
   paymentId: string | null = null,
   servicingKnownActive = false,
 ): Promise<AssessmentOutcome> {
+  // A payment on a defaulted note used to assess one on the way in (audit of
+  // the fourth follow-up).
+  if (!statusAccruesFees(note.status)) {
+    return { assessed: false, alreadyExisted: false, feeCents: 0, reason: `note is ${note.status}` };
+  }
   if (!servicingKnownActive && (await lenderServicingPhase(note.organizationId, now)).phase === "ended") {
     return { assessed: false, alreadyExisted: false, feeCents: 0, reason: "lender servicing has ended" };
   }
@@ -187,7 +204,9 @@ export async function assessServicedNoteLateFee(
  * yet — for a payoff quote good through a later date. 0 when none is due by
  * then, or when it is already assessed (it is in what is owed).
  */
-export async function lateFeeDueByCents(note: ServicedNoteForFees, asOf: Date): Promise<number> {
+export async function lateFeeDueByCents(note: ServicedNoteForFees & { status?: string | null }, asOf: Date): Promise<number> {
+  // A payoff quote must not include a fee the posting will never assess.
+  if (!statusAccruesFees(note.status)) return 0;
   if ((await lenderServicingPhase(note.organizationId, asOf)).phase === "ended") return 0;
   const verdict = await evaluateCurrentInstallment(note, asOf);
   if (verdict.kind === "none") return 0;

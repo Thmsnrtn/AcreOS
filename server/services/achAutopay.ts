@@ -113,7 +113,7 @@ import {
 import { centsFromDecimal } from "@shared/finance/cents";
 import { logger } from "../utils/logger";
 import { splitPaymentCents } from "./notePaymentMath";
-import { assessServicedNoteLateFee } from "./notes/servicedLateFees";
+import { ACH_IN_FLIGHT_STATUSES, assessServicedNoteLateFee } from "./notes/servicedLateFees";
 import { addMonths } from "../utils/dateUtils";
 import { emitDurablePaymentEvent } from "./workflow-engine";
 import { isCategorySimulated } from "../utils/simulationMode";
@@ -1088,8 +1088,8 @@ const AUTOPAY_NOTE_COLUMNS = {
   nextPaymentDate: notes.nextPaymentDate,
 } as const;
 
-/** Statuses a reconciliation sweep must revisit. */
-const IN_FLIGHT_STATUSES = ["created", "submitted", "processing"];
+/** Statuses a reconciliation sweep must revisit (the one list — servicedLateFees). */
+const IN_FLIGHT_STATUSES = ACH_IN_FLIGHT_STATUSES;
 
 export const dbAchAutopayStore: AchAutopayStore = {
   async listAutopayDueNotes(through: Date): Promise<AutopayNote[]> {
@@ -1235,6 +1235,9 @@ export const dbAchAutopayStore: AchAutopayStore = {
         gracePeriodDays: note.gracePeriodDays,
         lateFee: note.lateFee,
         monthlyPayment: note.monthlyPayment,
+        // The sweep's status rule applies here too: an accelerated note
+        // accrues no monthly fee (audit of the fourth follow-up).
+        status: note.status,
       },
       settledAt,
     );
@@ -1301,7 +1304,10 @@ export const dbAchAutopayStore: AchAutopayStore = {
           .update(notes)
           .set({
             currentBalance: (remainingBalanceCents / 100).toString(),
-            status: remainingBalanceCents <= 0 ? "paid_off" : "active",
+            // A settlement on a note the lender has since accelerated leaves
+            // it defaulted; reinstatement is the lender's call (the same
+            // rule as postServicedNotePayment — audit of the fourth follow-up).
+            status: remainingBalanceCents <= 0 ? "paid_off" : locked.status === "defaulted" ? "defaulted" : "active",
             nextPaymentDate: nextDue,
             amortizationSchedule: updatedSchedule,
             version: (locked.version ?? 1) + 1,

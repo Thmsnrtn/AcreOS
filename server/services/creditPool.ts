@@ -190,7 +190,7 @@ const PURCHASED_REFUND_FEATURE = "refund_purchased_credits";
 /** A pool refund of a debit from a closed month — kept out of the monthly pool sum (DEFECT-0227). */
 const PRIOR_PERIOD_POOL_REFUND_FEATURE = "refund_prior_period";
 
-async function poolUsageThisMonth(organizationId: number): Promise<number> {
+async function poolUsageThisMonth(organizationId: number, tx: PrimaryDb = db): Promise<number> {
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const features = Object.values(POOL_FEATURE_FOR_ACTION);
@@ -198,7 +198,7 @@ async function poolUsageThisMonth(organizationId: number): Promise<number> {
   // Debits count up; refunds count DOWN. Refund rows (feature "refund") were
   // outside this sum, so every refund — a failed send, a suppressed piece, a
   // cancelled shipment — left the pool consumed (audit of 60ebfd9).
-  const [agg] = await db
+  const [agg] = await tx
     .select({
       usedAbsCents: sql<number>`greatest(coalesce(sum(case when ${financialLedger.feature} = ${POOL_REFUND_FEATURE} then -abs(${financialLedger.amountCents}) else abs(${financialLedger.amountCents}) end), 0), 0)::int`,
     })
@@ -395,7 +395,16 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
               action: args.action,
               externalEventId: args.externalEventId,
             }, { tx: args.tx })
-            .catch(() => null);
+            // Outside a transaction a failed overflow is a refusal. Inside
+            // one, the failed statement has aborted the caller's transaction:
+            // continuing would fail on the next statement with a misleading
+            // error, so the failure is the answer (audit of 1694a0b).
+            .catch((err: unknown) => {
+              if (args.tx) throw err;
+              return null;
+            });
+          // Inside the caller's transaction the purchased-credit auto top-up
+          // is the caller's to fire, after commit (see deductCredits).
           if (overflowTx) {
             const recorded = await q
               .insert(financialLedger)
@@ -463,7 +472,9 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
     }
 
     const poolMonthly = TIER_LIMITS[tier].creditPool;
-    const usedAfter = await poolUsageThisMonth(args.organizationId);
+    // On the caller's transaction when there is one: the row just written is
+    // not yet visible to the global connection (audit of 1694a0b).
+    const usedAfter = await poolUsageThisMonth(args.organizationId, q);
     const remaining = Math.max(0, poolMonthly - usedAfter);
     const overPool = usedAfter > poolMonthly;
 
@@ -541,9 +552,18 @@ export function poolRefusalDetails(action: CreditAction, debit: PoolDebitResult)
  */
 export async function refundPoolDebit(args: {
   organizationId: number;
+  /** The debit being reversed — its own externalEventId, exactly. */
   originalEventId: string;
   amountCents: number;
   reason: string;
+  /**
+   * This refund's own identity, when one debit is refunded in parts (the
+   * flusher refunds suppressed pieces, then failed ones). Defaults to
+   * `${originalEventId}:refund`. The suppressed-piece refund used to pass a
+   * SUFFIXED original id, which no debit has — so after the original-must-
+   * exist rule it refunded nothing (audit of 1694a0b).
+   */
+  refundKey?: string;
 }): Promise<void> {
   if (!Number.isFinite(args.amountCents) || args.amountCents <= 0) return;
   try {
@@ -579,10 +599,7 @@ export async function refundPoolDebit(args: {
     }
     const fromPurchased = Boolean(original.postedBy?.endsWith(":purchased-overflow"));
     const originalCents = Math.abs(Number(original.amountCents));
-    // Never more than the original debit.
-    const refundCents = Number.isFinite(originalCents) && originalCents > 0
-      ? Math.min(Math.abs(args.amountCents), originalCents)
-      : Math.abs(args.amountCents);
+    const refundKey = args.refundKey ?? `${args.originalEventId}:refund`;
 
     // A pool debit refunded in a LATER month does not net this month's
     // usage: the allowance it drew on belonged to a month that has closed, and
@@ -601,6 +618,30 @@ export async function refundPoolDebit(args: {
     // crash between two transactions used to leave the row (so a replay wrote
     // nothing) and no credits returned (DEFECT-0227).
     await withTransaction(async (tx) => {
+      // Never more than what is left of the original after its earlier
+      // refunds: one debit can be refunded in parts (a suppressed share, then
+      // a failure), and each part used to be capped at the whole original on
+      // its own. Read under a per-debit lock, so two parts refunded at once
+      // (the cancel route and the flusher) cannot each miss the other.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`pool_refund:${args.organizationId}:${args.originalEventId}`}))`);
+      const [prior] = await tx
+        .select({ refunded: sql<number>`coalesce(sum(abs(${financialLedger.amountCents})), 0)::int` })
+        .from(financialLedger)
+        .where(
+          and(
+            eq(financialLedger.organizationId, args.organizationId),
+            eq(financialLedger.postedBy, "system:credit-pool:refund"),
+            // starts_with, not LIKE: an event key may hold `_` or `%`.
+            sql`starts_with(${financialLedger.externalEventId}, ${`${args.originalEventId}:`})`,
+            sql`${financialLedger.externalEventId} <> ${refundKey}`,
+          ),
+        );
+      const remainingCents = Number.isFinite(originalCents) && originalCents > 0
+        ? Math.max(0, originalCents - Number(prior?.refunded ?? 0))
+        : Math.abs(args.amountCents);
+      const refundCents = Math.min(Math.abs(args.amountCents), remainingCents);
+      if (refundCents <= 0) return;
+
       const refunded = await tx
         .insert(financialLedger)
         .values({
@@ -610,7 +651,7 @@ export async function refundPoolDebit(args: {
           amountCents: refundCents, // POSITIVE to reverse the debit
           feature,
           provider: null,
-          externalEventId: `${args.originalEventId}:refund`,
+          externalEventId: refundKey,
           postedAt: now,
           postedBy: "system:credit-pool:refund",
           notes: args.reason,
@@ -626,7 +667,7 @@ export async function refundPoolDebit(args: {
           refundCents,
           "refund",
           `Refund: ${args.reason}`,
-          { source: "credit-pool-refund", externalEventId: `${args.originalEventId}:refund` },
+          { source: "credit-pool-refund", externalEventId: refundKey },
           { tx },
         );
       }

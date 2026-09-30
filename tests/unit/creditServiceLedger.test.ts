@@ -199,6 +199,26 @@ describe("deductCredits — the WHERE-guarded debit the overflow lane relies on"
   });
 });
 
+describe("deductCredits inside a caller's transaction (audit of 1694a0b)", () => {
+  it("does not fire the auto top-up before the caller commits — the caller fires it after", async () => {
+    const topUp = vi.spyOn(usageMeteringService, "executeAutoTopUp").mockResolvedValue(undefined as never);
+    // The debit runs on the caller's tx: reuse the harness tx through withTransaction's fn.
+    const { withTransaction } = await import("../../server/db");
+    await withTransaction(async (tx: unknown) => creditService.deductCredits(7, 300, "mail overflow", undefined, { tx: tx as never }));
+    expect(topUp).not.toHaveBeenCalled();
+    creditService.afterDebitCommitted(7);
+    expect(topUp).toHaveBeenCalledTimes(1);
+    topUp.mockRestore();
+  });
+
+  it("outside a transaction the deduction fires its own auto top-up", async () => {
+    const topUp = vi.spyOn(usageMeteringService, "executeAutoTopUp").mockResolvedValue(undefined as never);
+    await creditService.deductCredits(7, 300, "postcard overflow");
+    expect(topUp).toHaveBeenCalledTimes(1);
+    topUp.mockRestore();
+  });
+});
+
 describe("applyMonthlyAllowance — DEFECT-0007 double-grant lock", () => {
   it("grants once: balance bump + allowance row keyed to the current month", async () => {
     const row = await creditService.applyMonthlyAllowance(7, "free");

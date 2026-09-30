@@ -6154,12 +6154,13 @@ Resolving commits: quality-directive H3 audit fixes
 ### DEFECT-0229
 Title: Today's cash strip counts the sample book
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: independent audit of 0e54c75
 Description: Today reads whole-book deals and notes for its money figures and its task cards; filtering the reads would also empty a demo workspace's cards.
-Evidence: `server/routes-today.ts` `buildActiveQueue`.
-Remediation plan: Filter the money figures only (with the Today refresh work, H5).
-Resolving commits: —
+Evidence: `server/routes-today.ts` `buildActiveQueue`; `server/services/onboarding/sampleFilters.ts`.
+Remediation: The money figures only: active deals, active notes, the late count and the open-deals value history skip deals on a sample parcel (`samplePropertyIds`, this org's `SAMPLE-` APNs) and sample-lineage notes; the cash history reads `realPayment()` rows. The task cards still read the whole book, so a demo workspace keeps its cards. The receipts' payment total and the morning brief's "since your first close" read the real book too (found by the audit of this change).
+Falsified: `tests/unit/todayCashIsTheRealBook.test.ts` (3 cases, red before).
+Resolving commits: H6
 
 ### DEFECT-0230
 Title: Creating any deal recorded first_offer_made
@@ -6186,12 +6187,13 @@ Resolving commits: quality-directive H4
 ### DEFECT-0232
 Title: No UI control for the contract-signed attestation
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: quality directive 2026-09-29 (H4)
 Description: The server accepts `contractSignedAttested`; the generic status selects do not send it, so a deal moved to escrow without an e-signed document emits no event (logged).
-Evidence: `server/routes-deals.ts`.
-Remediation plan: Add an attestation prompt where a deal is moved to in_escrow.
-Resolving commits: —
+Evidence: `server/routes-deals.ts`; `client/src/components/deal-detail-content.tsx`.
+Remediation: Moving a deal to in_escrow on the deal page opens a confirmation (mounted outside the tabs — the first placement sat inside the Checklist tab, which is unmounted while the status select on Details is used, so the move silently did nothing; caught by the audit before commit) with an unchecked "The purchase agreement is signed (outside AcreOS)" box; the attestation is sent only when the operator checks it. Unchecked, the move still happens and no contract event is emitted (as before). Other paths to escrow do not ask: the kanban and bulk moves emit only on a signed document; `POST /api/deals/:id/advance-stage` and the command palette never consult the evidence at all (DEFECT-0276 (7)). Each under-records; none asserts anything false.
+Falsified: `tests/unit/dealEvidenceIsEvidence.test.ts` — the attestation pin (red before) and a placement pin that counts unclosed `<Tabs>`/`<TabsContent>` before the dialog (red on the first placement). Not a render test: the component needs ~20 hooks mocked.
+Resolving commits: H6
 
 ### DEFECT-0233
 Title: Every close fed the valuation corpus and the market network, whatever it was
@@ -6549,7 +6551,7 @@ Surfaced by lenses: independent audit of 7cc7345
 Description: (1) `requireRole` does not honour `organizations.ownerId`; an owner with no active `team_members` row would be refused — unverified against data, and widening a security middleware that deliberately requires an active row is a decision, not a fix. (2) `first_offer_made` now records no user, and a demo deal dragged to offer_sent counts as activation. (3) A recorded payment cannot be backdated; late fees measure from entry time. (4) Recording a payment while an ACH debit for the same installment is in flight advances the installment twice, unwarned. (5) The seeder's resume reads the 5,000-row capped lead/property lists; an org that imported more than that since seeding would get sample leads again; `counts` mixes matched and created. (6) `orgTypeWritersAskAuthority` checks that the rule is called, not that its answer is used.
 Evidence: `server/middleware/roleGuard.ts`; `server/services/dealLifecycleEvents.ts`; `server/routes-finance.ts`; `server/services/onboarding/sampleSeeder.ts`; `tests/unit/orgTypeWritersAskAuthority.test.ts`.
 Remediation plan: (1) measure orgs whose owner lacks an active row, then decide; (2) carry the actor through the repository write, and skip sample lineage; (3) an optional received date, bounded to the past; (4) refuse or warn while an ACH attempt is pending; (5) resume from a sample-lineage query, uncapped; (6) assert the gated write behaviourally per route.
-Resolving commits: —
+Resolving commits: H6 — (4) is FIXED on both paths that start a payment: `POST /api/payments` and the borrower's card checkout (`POST /api/borrower/payment`, before any charge) answer 409 `ACH_DEBIT_IN_FLIGHT` while an ACH attempt for the note is created/submitted/processing. One list, `ACH_IN_FLIGHT_STATUSES` (servicedLateFees), replaces the two copies. The check is check-then-post with no lock shared with attempt creation — a narrow window, recorded. The other ordering is open: autopay eligibility does not look for a card Checkout in progress (`pendingCheckoutSessionId`), so a debit started while the borrower is on the card page can still pay the installment twice. The legacy token paths (`/api/portal/:accessToken/*`, 410 after the sunset unless `BORROWER_PORTAL_SUNSET_DATE` extends it) carry neither check. `tests/unit/financePaymentIsRecordedOnce.test.ts`, `tests/unit/borrowerPortalWindDown.test.ts` (red before). (1), (2), (3), (5), (6) remain OPEN.
 
 ### DEFECT-0266
 Title: A lead deleted in bulk stayed listed, its Undo restored nothing, and a new rule stranded it
@@ -6578,7 +6580,7 @@ Title: A request body could move a task or a checklist into another tenant; the 
 Severity: P1
 Status: FIXED
 Surfaced by lenses: independent audit of 9ed61f4
-Description: `PUT /api/tasks/:id` spread `req.body` into `updateTask` (no org on the write); `PUT /api/due-diligence/:propertyId` passed `req.body` straight through (and could re-point `propertyId`). 62 repository writes spread a caller's patch; `withoutIdentityKeys` covered six and duplicated the existing `omitProtectedFields`.
+Description: `PUT /api/tasks/:id` spread `req.body` into `updateTask` (no org on the write); `PUT /api/due-diligence/:propertyId` passed `req.body` straight through (and could re-point `propertyId`). 66 repository writes spread a caller's patch (62 in the first count — corrected by the audit of 1694a0b); `withoutIdentityKeys` covered six and duplicated the existing `omitProtectedFields`.
 Evidence: `server/utils/updatePayload.ts`; `server/utils/patch.ts`; `server/storage/`; `server/routes-crm-extras.ts`; `server/routes-deals.ts`.
 Remediation: One rule, `omitProtectedFields`, at every repository write: every spread of a caller's patch goes through it, and `assertWritablePatch` applies it. `withoutIdentityKeys` is removed. The two routes strip and scope their writes.
 Falsified: `tests/unit/dealStatusWritersHoldTheStateMachine.test.ts` — the population is every `.set(…)` in `server/storage` (146 measured); putting back one raw spread turns it red (checked).
@@ -6591,7 +6593,7 @@ Status: FIXED
 Surfaced by lenses: independent audit of 9ed61f4
 Description: The payoff guard ran before the replay check, so the retry of a payoff that had posted saw balance 0 and was refused. The guard's fee assessment ran for any note status.
 Evidence: `server/routes-finance.ts`.
-Remediation: The replay (or 409) is answered first; a note that is not active, late or delinquent takes no payment and assesses nothing.
+Remediation: The replay (or 409) is answered first; a note that is not active, late or delinquent takes no payment and assesses nothing. (Corrected by DEFECT-0272: `defaulted` takes a payment too.)
 Falsified: `tests/unit/financePaymentIsRecordedOnce.test.ts` (2 cases, red before).
 Resolving commits: third audit fixes
 
@@ -6605,6 +6607,81 @@ Evidence: `server/routes-campaigns.ts`; `client/src/hooks/use-deals.ts`; `client
 Remediation: Refund only what was taken; the toast reports what moved; purge is gated in the UI (owner/admin) and the retention PATCH on the server; `update_record` refuses a type mismatch and a property delete by status.
 Falsified: `tests/unit/dealStatusWritersHoldTheStateMachine.test.ts` (type mismatch); the rest source-level.
 Resolving commits: third audit fixes
+
+### DEFECT-0271
+Title: A suppressed mail piece's refund reversed a debit that does not exist, so it refunded nothing
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 1694a0b
+Description: The flusher refunded a suppressed piece's share with `originalEventId: "<debit>:suppressed"`. After a refund began requiring its original debit to exist (audit of 0e54c75), no debit carried that key, so every suppressed-piece refund was logged as "original not found" and skipped — the customer paid for mail that was never sent. Separately, each partial refund was capped at the whole original on its own, so a suppressed refund followed by a failure refund could together exceed the debit.
+Evidence: `server/services/mail/mailFlusher.ts`; `server/services/creditPool.ts`.
+Remediation: `refundPoolDebit` takes the debit's own key plus an optional `refundKey` for the part being refunded (default `<debit>:refund`, unchanged for every other caller). The flusher refunds a suppressed share as `originalEventId: <debit>`, `refundKey: <debit>:suppressed:refund`. Each refund is capped at what is left of the original after its earlier refunds (`starts_with(<debit>:)`, posted by the refund writer, excluding its own key so a replay stays idempotent), read on the refund's transaction under a per-debit advisory lock so two parts refunded at once cannot each miss the other. Refunds already skipped before this fix are NOT repaid by it — DEFECT-0277.
+Falsified: `tests/unit/creditPoolFailClosed.test.ts` (4 cases) and `tests/unit/mailHoldHonoursLateOptOut.test.ts` (3 cases), red before. The mocks return fixed rows whatever the WHERE, so the cap query's predicates are pinned by reading, not by these tests.
+Resolving commits: fourth audit fixes
+
+### DEFECT-0272
+Title: A payment on a defaulted note was refused
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 1694a0b
+Description: The status guard added to `POST /api/payments` allowed `active`, `late` and `delinquent`. Notes are written `pending`, `active`, `paid_off`, `defaulted`, `foreclosed` (lateness lives in `delinquencyStatus`; the sample seeder also writes `delinquent`), so the guard refused a cure payment on a defaulted note.
+Evidence: `server/routes-finance.ts`; `server/services/borrower/portalPaymentPosting.ts`.
+Remediation: One predicate, `servicedNoteTakesPayment`: `active` and `defaulted` (plus the legacy `late`/`delinquent`) take a payment; `pending` (not yet originated), `paid_off`, `foreclosed` and `sold` do not. It is asked by the lender's "Record payment" and by the borrower's card checkout before the charge (which applied no status rule); once a card has been charged, the webhook posting records the money whatever the status. Accepting `defaulted` had two side effects the audit found, both fixed: a partial payment flipped the note to `active` (re-arming autopay, reminders and the fee sweep) — a defaulted note now stays defaulted until the lender says otherwise — and a payment assessed a monthly late fee on an accelerated note — `assessServicedNoteLateFee` now applies the sweep's status rule at every caller. A second audit found the ACH settlement doing both (a debit started while active, settling after acceleration, flipped the note back and asked the fee rule without a status) and the payoff quote projecting a fee the posting would never charge; both follow the same rule now. Still flipping `defaulted` → `active`: `noteRepo.createPayment`, reached only by the sunset legacy verify path.
+Falsified: `tests/unit/financePaymentIsRecordedOnce.test.ts`, `tests/unit/borrowerPortalWindDown.test.ts`, `tests/unit/borrowerPortalPaymentPosting.test.ts`, `tests/unit/servicedLateFeeLedger.test.ts`, `tests/unit/achSettlementKeepsDefault.test.ts` (each red before).
+Resolving commits: fourth audit fixes
+
+### DEFECT-0273
+Title: Lead readers that excluded deleted leads by status began reading them
+Severity: P2
+Status: OPEN
+Surfaced by lenses: independent audit of 1694a0b
+Description: Once a lead's soft delete became `deletedAt` (DEFECT-0266), a reader that excluded deleted leads only by `status` began including them. Fixed: both duplicate finders in `crmEnhancements` (one in raw SQL) and the dedupe scanner (proposed merging live leads into deleted ones); the stale-lead initiative; the aging list, 90-day archive sweep, response-time and funnel counts; Today's stale-lead cards and priority counts; the autopilot's lead signals; the public API's list, get and update; the plan-limit lead count. Deliberately UNFILTERED: the inbound-SMS match, so a STOP from a deleted lead's number still opts it out; and the duplicate checks that guard lead creation (the CSV import's parcel dedupe and `leadRepo.findDuplicateLeads`) — a STOP writes `doNotContact` onto the deleted row, and a re-import must not mint a fresh, contactable row for someone who revoked consent. (This change first filtered those two; the second audit caught it before commit, and a pin now holds the exception.) NOT yet walked: about 50 further files that read `leads` without naming `deletedAt`.
+Evidence: `server/services/leadDedupeScanner.ts`; `server/services/agentInitiativeEngine.ts`; `server/services/crmEnhancements.ts`; `server/routes-today.ts`; `server/services/autopilot/dealActions.ts`; `server/api-v1/leads.ts`; `server/services/usageLimits.ts`; the exception in `server/services/importExport.ts` and `server/storage/leadRepo.ts`.
+Remediation plan: Walk the remaining readers (or give the repo one live-lead predicate and route reads through it); widen `tests/unit/leadReadersSkipSoftDeleted.test.ts`, whose population is an explicit list, as each is fixed.
+Falsified (the fixed part): `tests/unit/leadReadersSkipSoftDeleted.test.ts` — 7 files, each red before; it reads builder statements under both aliases and raw `FROM leads`, and accepts only an IS NULL predicate (an `isNotNull` mutation turns it red); a statement's span ends at the next query, so a `Promise.all` sibling cannot lend it a predicate. The same file pins the exception: re-adding the filter to either duplicate check turns it red (checked). It does not see `db.query.leads.*`.
+Resolving commits: fourth audit fixes (partial)
+
+### DEFECT-0274
+Title: A purchased-credit debit inside the mail transaction fired its auto top-up before commit
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 1694a0b
+Description: `deductCredits` fired `executeAutoTopUp` right after the debit, also when it ran on the caller's transaction (DEFECT-0213): the top-up read the uncommitted balance and could charge a card for a debit that then rolled back. In the same path the pool's usage read after the insert ran on the global connection (which cannot see the row), and a failed overflow debit inside the transaction was swallowed and the next statement failed on the aborted transaction.
+Evidence: `server/services/credits.ts`; `server/services/creditPool.ts`; `server/routes-outreach-mail.ts`.
+Remediation: With a caller's transaction, `deductCredits` does not fire the top-up; the mail route calls `creditService.afterDebitCommitted` once the shipment commits, only for a debit funded from purchased credits. The usage read runs on the transaction. An overflow failure inside a transaction is rethrown to `poolDebit`'s own catch, so it is reported as `pool_debit_error` rather than `pool_exhausted` — it was already a refusal before; the change is the honest reason code (corrected by the audit of this change), and no test covers it.
+Falsified: `tests/unit/creditServiceLedger.test.ts`, `tests/unit/creditPoolFailClosed.test.ts`, `tests/unit/outreachMailQueueIsOneOperation.test.ts` (each red before).
+Resolving commits: fourth audit fixes
+
+### DEFECT-0275
+Title: Pax could create a deal already in escrow, closed or cancelled
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 1694a0b
+Description: `create_deal` accepted any status, so a model could create a deal at `closed` — skipping the transition rule, the contract attestation and the close evidence every other path to those stages goes through.
+Evidence: `server/ai/tools.ts`.
+Remediation: A deal is created at an opening stage — `OPENING_DEAL_STATUSES`, derived from the pipeline minus escrow; the tool refuses the rest and says to move it with `update_deal`. `POST /api/deals` still accepts any status at creation (the deal form defaults to negotiating; imports of historical deals may need a closed status) — see DEFECT-0276.
+Falsified: `tests/unit/paxReceiptsAreComplete.test.ts` (3 cases, red before).
+Resolving commits: fourth audit fixes
+
+### DEFECT-0276
+Title: Smaller residue of the audit of 1694a0b
+Severity: P2
+Status: OPEN
+Surfaced by lenses: independent audit of 1694a0b
+Description: (1) `POST /api/deals`, the CSV deal import (`server/services/importExport.ts`) and an admin route (`server/routes-admin.ts`) accept any status at creation, including `closed`, without the close evidence; `dealRepo.createDeal` enforces nothing, so `OPENING_DEAL_STATUSES` has one production caller (Pax). The rule belongs in the repository insert, with an explicit import-only opt-out. (2) A version race on a non-PUT deal route answers 500 rather than 409. (3) The storage spread gate sees a patch spread only when it is spread inline; a patch copied to a local first is outside what it reads. (4) `runPostCloseAutomation` in `titleChainService` has no caller. (5) `assertWritablePatch` stripped a server-set `updatedAt`, so a touch threw — FIXED here (a `Date` survives; a JSON body cannot carry one): `tests/unit/emptyPatchIsNotAnUpdate.test.ts`. (6) Several mocked tests in this change return fixed rows whatever the WHERE (the ACH in-flight and refund-cap tests), so their predicates are verified by reading, not by the tests. (7) `POST /api/deals/:id/advance-stage` and the command palette move a deal to in_escrow without consulting contract evidence — no event even when a signed document exists. (8) Today's new `samplePropertyIds` read is not wrapped like its neighbouring derivations: if it throws, Today answers 500.
+Evidence: `server/routes-deals.ts`; `server/storage/dealRepo.ts`; `tests/unit/dealStatusWritersHoldTheStateMachine.test.ts`; `server/services/titleChainService.ts`; `server/utils/patch.ts`.
+Remediation plan: (1) decide whether creation at a late stage is an import-only path; (2) give the repository's stale-version refusal (a plain `Error` today) its own type and answer 409 on every route that writes a deal; (3) follow a local to its spread, or ban the copy; (4) wire it behind the close evidence or delete it.
+Resolving commits: fourth audit fixes (5 only)
+
+### DEFECT-0277
+Title: Suppressed-piece refunds skipped before DEFECT-0271 were never repaid
+Severity: P2
+Status: OPEN
+Surfaced by lenses: independent audit of the fourth follow-up
+Description: From the day refunds began requiring their original debit to exist until DEFECT-0271, every suppressed mail piece's refund was logged "original debit not found" and skipped. Those customers paid for pieces that were never sent, and the fix does not reach back.
+Evidence: `server/services/mail/mailFlusher.ts`; `server/services/creditPool.ts`.
+Remediation plan: A founder-run script under `scripts/data/` (dry run by default, export before change, `--apply` to execute): find shipments with suppressed pieces and a debit key but no `<debit>:suppressed:refund` ledger row, and refund each share through `refundPoolDebit` (which picks the purse and caps the amount). It moves customer credit, so the founder runs it.
+Resolving commits: —
 
 ### REFUTED AT HEAD, 2026-09-27
 
@@ -6642,10 +6719,10 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 17  | 17    |
-| FIXED  | 14  | 130 | 107 | 251   |
+| OPEN   | 0   | 0   | 18  | 18    |
+| FIXED  | 14  | 130 | 113 | 257   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **132** | **124** | **270** |
+| **Total** | **14** | **132** | **131** | **277** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
@@ -6684,6 +6761,17 @@ DEFECT-0259 through 0265 come from the independent audit of `7cc7345`
 DEFECT-0266 through 0270 come from the independent audit of `9ed61f4`, which
 found a regression that commit introduced (0266) and withdrew 0264's lead
 half; 0213 and 0227 were closed in the same change; recounted.
+DEFECT-0271 through 0276 come from the independent audit of `1694a0b` (0271
+a refund that could never land; 0273 and 0276 OPEN); 0229, 0232 and part (4)
+of 0265 were closed in the same change (H6); 0268's count corrected to 66.
+The audit of that change, before commit, found the escrow dialog unreachable
+(0232), the side effects of accepting `defaulted` (0272), the borrower card
+path outside the new rules (0265, 0272), more lead readers (0273) and the
+unrepaid past refunds (0277, OPEN); all but 0277 fixed in the same commit.
+A second audit of those fixes found the ACH settlement still un-defaulting and
+fee-assessing an accelerated note, the payoff quote projecting that fee, and a
+consent regression the first round introduced (import dedupe stopped seeing a
+deleted lead's opt-out) — fixed and pinned in the same commit; recounted.
 0203 records the audit of the first-mail slice; 0204–0207 are slice H2;
 0208–0213 the audit of H2 (0213 OPEN); 0214–0218 slice H3; 0219–0229 the
 audit of H3 (0225, 0227, 0229 OPEN); 0230–0235 slice H4 (0232, 0235 OPEN).

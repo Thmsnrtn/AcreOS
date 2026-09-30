@@ -303,6 +303,39 @@ describe("the deal routes emit on evidence, not on a stage", () => {
     expect(body).toMatch(/desc nulls last/);
   });
 
+  it("the deal page can send the operator's attestation — only when the operator checks it (DEFECT-0232)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const { stripComments } = await import("../helpers/stripComments");
+    const src = stripComments(readFileSync(resolve(__dirname, "../../client/src/components/deal-detail-content.tsx"), "utf8"));
+    // A move to in_escrow goes through the dialog, not straight to the write.
+    expect(src).toMatch(/if \(newStatus === "in_escrow"\) \{[\s\S]{0,120}setEscrowPending\(true\);[\s\S]{0,20}return;/);
+    // The attestation is sent only when checked.
+    expect(src).toMatch(/\.\.\.\(escrowAttested \? \{ contractSignedAttested: true \} : \{\}\)/);
+    // Unchecked by default, and reset each time the dialog opens.
+    expect(src).toMatch(/const \[escrowAttested, setEscrowAttested\] = useState\(false\)/);
+    expect(src).toMatch(/setEscrowAttested\(false\);\s*setEscrowPending\(true\);/);
+  });
+
+  it("the escrow dialog is mounted outside the tabs — an inactive tab's content is unmounted (audit of the H6 change)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const { stripComments } = await import("../helpers/stripComments");
+    const src = stripComments(readFileSync(resolve(__dirname, "../../client/src/components/deal-detail-content.tsx"), "utf8"));
+    // The status select (Details tab) opens the dialog; placed inside another
+    // tab's content it never rendered where the move was made, and the move
+    // silently did nothing.
+    const at = src.indexOf("<Dialog open={escrowPending}");
+    expect(at, "the escrow dialog is gone").toBeGreaterThan(-1);
+    const before = src.slice(0, at);
+    const unclosed = (open: RegExp, close: RegExp) => (before.match(open) ?? []).length - (before.match(close) ?? []).length;
+    // Vacuity: the file still has tabs, and the select that opens the dialog.
+    expect((src.match(/<TabsContent\b/g) ?? []).length).toBeGreaterThan(2);
+    expect(src).toMatch(/onValueChange=\{handleStatusChange\}/);
+    expect(unclosed(/<TabsContent\b/g, /<\/TabsContent>/g), "the dialog sits inside a TabsContent").toBe(0);
+    expect(unclosed(/<Tabs\b/g, /<\/Tabs>/g), "the dialog sits inside the Tabs").toBe(0);
+  });
+
   it("entering escrow asks for evidence before emitting contract_signed", async () => {
     const { readFileSync } = await import("node:fs");
     const { resolve } = await import("node:path");

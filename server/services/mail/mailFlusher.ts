@@ -314,7 +314,10 @@ async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
         organizationId: ship.organizationId,
         // Its own refund key: the refund ledger keeps ONE refund per event, and
         // a later partial-send refund must not be swallowed by this one.
-        originalEventId: `${ship.debitEventKey}:suppressed`,
+        // The debit itself; this refund's own key keeps it apart from a
+        // later failure refund of the same shipment (audit of 1694a0b).
+        originalEventId: ship.debitEventKey,
+        refundKey: `${ship.debitEventKey}:suppressed:refund`,
         amountCents: suppressedRefundCents,
         reason: `${suppressed.size} piece(s) not sent — the recipient opted out or was removed during the hold`,
       }).catch((e) =>

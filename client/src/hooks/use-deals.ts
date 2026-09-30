@@ -139,7 +139,9 @@ export function useUpdateDeal() {
   // Optimistic deal update — primary use case is stage/status drag-and-drop
   // on the deals board, where instant feedback is critical. Backed by the
   // useOptimisticUpdate factory (client/src/lib/optimistic-mutation.ts).
-  return useOptimisticUpdate<{ id: number } & Partial<InsertDeal>, Deal>({
+  // `contractSignedAttested`: the operator's attestation, sent with a move to
+  // in_escrow, that the agreement was signed outside AcreOS (DEFECT-0232).
+  return useOptimisticUpdate<{ id: number; contractSignedAttested?: boolean } & Partial<InsertDeal>, Deal>({
     mutationFn: async ({ id, ...data }) => {
       const res = await apiRequest("PUT", `/api/deals/${id}`, data);
       return res.json();

@@ -167,7 +167,7 @@ export async function getDealActionsForOrg(organizationId: number, limit = 10): 
   try {
     const { db } = await import("../../db");
     const { leads } = await import("@shared/schema");
-    const { eq } = await import("drizzle-orm");
+    const { and, eq, sql } = await import("drizzle-orm");
     const rows = await db
       .select({
         id: leads.id,
@@ -180,7 +180,7 @@ export async function getDealActionsForOrg(organizationId: number, limit = 10): 
         taxDelinquent: leads.taxDelinquent,
       })
       .from(leads)
-      .where(eq(leads.organizationId, organizationId))
+      .where(and(eq(leads.organizationId, organizationId), sql`${leads.deletedAt} IS NULL`))
       .limit(1000);
     const signals: DealSignal[] = rows.map((r) => ({
       id: String(r.id),
@@ -231,13 +231,13 @@ export async function getDealCoachForOrg(organizationId: number, limit = 8): Pro
   try {
     const { db } = await import("../../db");
     const { leads } = await import("@shared/schema");
-    const { and, eq, inArray } = await import("drizzle-orm");
+    const { and, eq, inArray, sql } = await import("drizzle-orm");
     const ids = actions.map((a) => Number(a.dealId)).filter((n) => Number.isFinite(n));
     const rows = ids.length
       ? await db
           .select({ id: leads.id, firstName: leads.firstName, lastName: leads.lastName, email: leads.email })
           .from(leads)
-          .where(and(eq(leads.organizationId, organizationId), inArray(leads.id, ids)))
+          .where(and(eq(leads.organizationId, organizationId), inArray(leads.id, ids), sql`${leads.deletedAt} IS NULL`))
       : [];
     const nameById = new Map(
       rows.map((r) => {

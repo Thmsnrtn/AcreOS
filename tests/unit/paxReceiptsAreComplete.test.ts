@@ -290,6 +290,22 @@ describe("each executed member yields exactly one activity_log row with agentTyp
   });
 });
 
+describe("create_deal opens a deal — it does not skip to its end (audit of 1694a0b)", () => {
+  it.each(["in_escrow", "closed", "cancelled"])("refuses to create a deal at %s, and writes nothing", async (status) => {
+    const createDeal = (H.storage as unknown as { createDeal: ReturnType<typeof vi.fn> }).createDeal;
+    createDeal.mockClear();
+    const result = await executeTool("create_deal", { type: "acquisition", propertyId: 3, status }, org, { userId: "u-1", origin: "chat" });
+    expect(result.success).toBe(false);
+    expect(createDeal).not.toHaveBeenCalled();
+    expect(paxRows()).toHaveLength(0);
+  });
+
+  it("an opening stage is created", async () => {
+    const result = await executeTool("create_deal", { type: "acquisition", propertyId: 3, status: "offer_sent" }, org, { userId: "u-1", origin: "chat" });
+    expect(result.success).toBe(true);
+  });
+});
+
 describe("attribution and the one-tap-one-row rule", () => {
   it("update_lead_status writes its OWN receipt with the real before → after, and the hook does not add a second", async () => {
     await executeTool("update_lead_status", { lead_id: 42, status: "accepted" }, org, { userId: "u-1" });

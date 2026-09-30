@@ -1,6 +1,6 @@
 import { storage } from "../storage";
 import type { Organization } from "@shared/schema";
-import { DEAL_STATUSES, validateDealTransition, validateLeadTransition } from "@shared/lifecycle/pipeline-status";
+import { DEAL_STATUSES, OPENING_DEAL_STATUSES, validateDealTransition, validateLeadTransition } from "@shared/lifecycle/pipeline-status";
 import { getSystemContext, formatContextForAI, invalidateContextCache } from "../services/aiContextAggregator";
 import { lookupParcelByAPN } from "../services/parcel";
 import { generateOfferSuggestions, generateOfferLetter } from "../services/aiOfferService";
@@ -270,8 +270,8 @@ export const toolDefinitions = {
         offerAmount: { type: "number", description: "Offer amount in dollars" },
         status: { 
           type: "string",
-          enum: ["negotiating", "offer_sent", "countered", "accepted", "in_escrow", "closed", "cancelled"],
-          description: "Deal status (default: negotiating)"
+          enum: [...OPENING_DEAL_STATUSES],
+          description: "Opening stage (default: negotiating). A deal reaches escrow, close or cancellation by update_deal, which checks the transition."
         },
         notes: { type: "string", description: "Deal notes" }
       },
@@ -1670,6 +1670,17 @@ export async function executeTool(
       }
 
       case "create_deal": {
+        // A deal is BORN in an opening stage. Created straight at escrow,
+        // closed or cancelled it skipped the transition rule, the contract
+        // attestation and the close evidence every other path to those
+        // stages goes through (audit of 1694a0b).
+        const openingStages: readonly string[] = OPENING_DEAL_STATUSES;
+        if (args.status && !openingStages.includes(String(args.status))) {
+          return {
+            success: false,
+            error: `A new deal starts at ${openingStages.join(", ")}. Create it there, then move it to "${args.status}" with update_deal.`,
+          };
+        }
         const deal = await storage.createDeal({
           organizationId: org.id,
           type: args.type,

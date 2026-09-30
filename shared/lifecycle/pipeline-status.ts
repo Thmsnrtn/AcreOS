@@ -96,7 +96,10 @@ export const UNDER_CONTRACT_LEAD_STATUSES = ["under_contract", "closed"] as cons
  * was measured (2026-09-06, by walking every `db.update(leads|deals).set()`
  * and `.values()` in the repo rather than every filter):
  *
- *   leads.status  <- "deleted"   server/storage/leadRepo.ts (soft delete, ×2)
+ *   leads.status  <- "deleted"   server/storage/leadRepo.ts (soft delete, ×2 —
+ *                                until 2026-09-30; a lead's soft delete is now
+ *                                `deletedAt` and "deleted" survives only on
+ *                                legacy rows, which restore resets)
  *   deals.status  <- "deleted"   server/storage/dealRepo.ts, propertyRepo.ts
  *   leads.status  <- "archived"  server/services/crmEnhancements.ts (90-day sweep)
  *   leads.status  <- "active"    server/jobs/autonomousDealMachine.ts (see below)
@@ -205,6 +208,15 @@ export const ACTIVE_DEAL_STATUSES = DEAL_STATUSES.filter(
   (s): s is Exclude<DealStatus, "closed" | "cancelled"> =>
     !(TERMINAL_DEAL_STATUSES as readonly string[]).includes(s),
 );
+
+/**
+ * The stages a deal may be CREATED at: the pipeline minus escrow. Escrow
+ * needs contract evidence, close needs close evidence, and a cancelled deal
+ * is not created — a deal reaches those by a transition, which checks them
+ * (audit of 1694a0b: Pax created deals already closed). Derived, so a new
+ * pipeline stage is creatable unless it is escrow.
+ */
+export const OPENING_DEAL_STATUSES = ACTIVE_DEAL_STATUSES.filter((s) => s !== "in_escrow");
 
 /**
  * A LEGACY value that is not in DEAL_STATUSES and must never be written again.

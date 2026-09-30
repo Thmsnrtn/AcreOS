@@ -29,6 +29,7 @@
  */
 
 import { readAllDeals, readAllNotes } from "./storage/wholeBookReads";
+import { realPayment, samplePropertyIds } from "./services/onboarding/sampleFilters";
 import { Router, type Response } from "express";
 import { and, desc, eq, gt, gte, inArray, notInArray, sql } from "drizzle-orm";
 import { paxObservations, leads as leadsTable, deals as dealsTable, properties as propertiesTable, payments as paymentsTable, todayQueueState, paxSends, paxScheduledTaskRuns } from "@shared/schema";
@@ -385,6 +386,8 @@ async function gatherPaxPriorities(orgId: number, now: Date): Promise<DecisionIt
       .from(leadsTable)
       .where(and(
         eq(leadsTable.organizationId, orgId),
+        // A deleted lead is `deletedAt` (DEFECT-0266), not a status.
+        sql`${leadsTable.deletedAt} IS NULL`,
         // `converted` is not a lead status, so that term was inert; the
         // terminals are `closed` and `dead`. Spelled BARE inside raw SQL,
         // which is how it stayed invisible to a scan keyed on `leads.status`.
@@ -395,6 +398,8 @@ async function gatherPaxPriorities(orgId: number, now: Date): Promise<DecisionIt
       .from(leadsTable)
       .where(and(
         eq(leadsTable.organizationId, orgId),
+        // A deleted lead is `deletedAt` (DEFECT-0266), not a status.
+        sql`${leadsTable.deletedAt} IS NULL`,
         // `converted` is not a lead status, so that term was inert; the
         // terminals are `closed` and `dead`. Spelled BARE inside raw SQL,
         // which is how it stayed invisible to a scan keyed on `leads.status`.
@@ -555,7 +560,7 @@ async function gatherPaxNoticed(orgId: number, now: Date): Promise<DecisionItem[
       doNotContact: leadsTable.doNotContact,
     })
     .from(leadsTable)
-    .where(eq(leadsTable.organizationId, orgId));
+    .where(and(eq(leadsTable.organizationId, orgId), sql`${leadsTable.deletedAt} IS NULL`));
 
   allActiveLeads
     .filter((l) => {
@@ -713,7 +718,7 @@ async function gatherPaxSuggests(orgId: number, now: Date): Promise<DecisionItem
         email: leadsTable.email,
       })
       .from(leadsTable)
-      .where(eq(leadsTable.organizationId, orgId))
+      .where(and(eq(leadsTable.organizationId, orgId), sql`${leadsTable.deletedAt} IS NULL`))
       .orderBy(leadsTable.lastContactedAt)
       .limit(50);
 
@@ -1346,6 +1351,8 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
             eq(paymentsTable.organizationId, orgId),
             eq(paymentsTable.status, "completed"),
             gte(paymentsTable.processedAt, receiptsSince),
+            // A receipt is money that arrived; the sample book's is not.
+            realPayment(),
           )),
         db
           .select({ count: sql<number>`count(*)::int`, latestAt: sql<Date | null>`max(${paxScheduledTaskRuns.runAt})` })
@@ -1373,16 +1380,22 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
     }
 
     // ── Cash strip aggregates (mirrors today.tsx cashAggregates/pipeline) ──
-    const activeDeals = allDeals.filter((d) => !["closed", "cancelled"].includes(d.status));
+    // Money counts the real book only (DEFECT-0229): a demo workspace's
+    // sample deals and notes stay on the task cards, never in the dollars.
+    const sampleParcels = await samplePropertyIds(orgId);
+    const isReal = (x: { propertyId?: number | null }) => x.propertyId == null || !sampleParcels.has(x.propertyId);
+    const realDeals = allDeals.filter(isReal);
+    const realNotes = allNotes.filter(isReal);
+    const activeDeals = realDeals.filter((d) => !["closed", "cancelled"].includes(d.status));
     const pipelineValue = activeDeals.reduce(
       (sum, d) => sum + parseFloat(String((d as any).purchasePrice ?? (d as any).offerAmount ?? "0") || "0"),
       0,
     );
 
-    const activeNotes = allNotes.filter(
+    const activeNotes = realNotes.filter(
       (n) => n.status === "active" || n.status === "late" || n.status === "delinquent",
     );
-    const lateCount = allNotes.filter((n) => n.status === "late" || n.status === "delinquent").length;
+    const lateCount = realNotes.filter((n) => n.status === "late" || n.status === "delinquent").length;
     const within = (days: number) =>
       activeNotes.filter((n) => {
         if (!n.nextPaymentDate) return false;
@@ -1428,6 +1441,7 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
             eq(paymentsTable.organizationId, orgId),
             eq(paymentsTable.status, "completed"),
             gte(paymentsTable.paymentDate, since),
+            realPayment(),
           ),
         );
       const buckets = new Array<number>(SPARK_BUCKETS).fill(0);
@@ -1452,7 +1466,7 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
       try {
         return Array.from({ length: SPARK_BUCKETS }, (_, i) => {
           const end = bucketEnd(i);
-          return allDeals.reduce((sum, d: any) => {
+          return realDeals.reduce((sum, d: any) => {
             const created = d.createdAt ? new Date(d.createdAt) : null;
             if (!created || created > end) return sum;
             // Treat the deal as "active as of bucket end" if it wasn't already
@@ -1502,7 +1516,9 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
     const topCounter =
       paxPriorities.length > 0 ? paxPriorities[0].title : null;
     const netInflow30 = projected30; // 30-day projected note income
-    const firstClosePrefix = deriveFirstClosePrefix(allDeals, allProperties);
+    // The brief's "since your first close" is about the customer's book, not
+    // a sample parcel's deal.
+    const firstClosePrefix = deriveFirstClosePrefix(realDeals, allProperties);
     const persona = req.user?.persona as Persona | undefined;
     const briefInputs: BriefInputs = {
       paxReplies,

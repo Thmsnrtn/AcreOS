@@ -88,7 +88,7 @@ export class CreditService {
     opts: { tx?: PrimaryDb } = {},
   ): Promise<CreditTransaction | null> {
     if (await this.isFounder(organizationId)) {
-      const [transaction] = await db
+      const [transaction] = await (opts.tx ?? db)
         .insert(creditTransactions)
         .values({
           organizationId,
@@ -144,12 +144,24 @@ export class CreditService {
 
     // D2 (founder decision 2026-07-11): auto-top-up executes for real after a
     // deduction (outside the transaction — a top-up failure must never roll
-    // back the deduction). All guards live inside executeAutoTopUp.
+    // back the deduction). Inside a CALLER's transaction the deduction is not
+    // committed yet — the top-up would read the old balance, and could charge
+    // a card for a debit that then rolls back — so the caller fires it after
+    // commit (audit of 1694a0b).
+    if (!opts.tx) this.afterDebitCommitted(organizationId);
+
+    return result;
+  }
+
+  /**
+   * Run the post-deduction auto top-up. `deductCredits` does this itself; a
+   * caller that passed its own transaction calls it once that transaction
+   * has committed. All guards live inside executeAutoTopUp.
+   */
+  afterDebitCommitted(organizationId: number): void {
     usageMeteringService.executeAutoTopUp(organizationId).catch((err: unknown) => {
       logger.error("[credits] Auto-top-up execution failed", err instanceof Error ? err : undefined);
     });
-
-    return result;
   }
 
   async hasEnoughCredits(organizationId: number, requiredCents: number): Promise<boolean> {

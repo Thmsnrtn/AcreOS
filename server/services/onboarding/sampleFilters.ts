@@ -30,3 +30,19 @@ export const realNote = (): SQL =>
 /** A payment on a real note (sample payments hang off sample notes). */
 export const realPayment = (): SQL =>
   sql`NOT EXISTS (SELECT 1 FROM ${notes} JOIN ${properties} ON ${properties.id} = ${notes.propertyId} WHERE ${notes.id} = ${payments.noteId} AND ${properties.apn} LIKE ${SAMPLE_APN_LIKE})`;
+
+/**
+ * The org's sample-parcel ids — the JS-side companion of `realDeal` /
+ * `realNote`, for a surface that has already read the whole book for other
+ * reasons (Today's task cards must keep showing a demo workspace's items) and
+ * filters only its MONEY figures (DEFECT-0229). Same rule: a deal or note on a
+ * `SAMPLE-` parcel is sample lineage.
+ */
+export async function samplePropertyIds(orgId: number): Promise<Set<number>> {
+  const { db } = await import("../../db");
+  const rows = await db
+    .select({ id: properties.id })
+    .from(properties)
+    .where(sql`${properties.organizationId} = ${orgId} AND ${properties.apn} LIKE ${SAMPLE_APN_LIKE}`);
+  return new Set(rows.map((r) => r.id));
+}

@@ -51,6 +51,7 @@ const scanners: Record<string, Scanner> = {
         .from(leads)
         .where(and(
           eq(leads.organizationId, orgId),
+          sql`${leads.deletedAt} IS NULL`,
           eq(leads.status, "new"),
           lt(leads.createdAt, weekAgo),
         ))

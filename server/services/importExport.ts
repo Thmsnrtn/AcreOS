@@ -449,6 +449,10 @@ export async function importLeads(
     const existing = await db
       .select({ apn: leads.apn, state: leads.state, county: leads.county })
       .from(leads)
+      // Deleted leads COUNT here, deliberately: a STOP writes doNotContact
+      // onto the row even after it is deleted, and re-importing the list must
+      // not mint a fresh, contactable row for someone who revoked consent
+      // (audit of the fourth follow-up — DEFECT-0273's one exception).
       .where(and(eq(leads.organizationId, organizationId), inArray(sql`upper(regexp_replace(trim(${leads.apn}), '\\s+', ' ', 'g'))`, incomingApns.slice(i, i + 1000).map(apnMatchForm))));
     for (const r of existing) {
       if ((r.apn ?? "").trim()) existingParcels.add(r.state, r.county, r.apn ?? "");

@@ -1,6 +1,6 @@
 import { db } from "../storage";
 import { organizations, leads, properties, notes, campaigns, usageEvents } from "@shared/schema";
-import { eq, and, gte, count, sum, ne } from "drizzle-orm";
+import { eq, and, gte, count, sum, ne, sql } from "drizzle-orm";
 import { realLead, realNote, realProperty } from "./onboarding/sampleFilters";
 // Lens 3 (Pricing Coherence): tier limits live in shared/billing so the
 // pricing page, upgrade modal, and server gate can never drift. Re-exported
@@ -73,7 +73,8 @@ async function getLeadCount(organizationId: number): Promise<number> {
   const [result] = await db
     .select({ count: count() })
     .from(leads)
-    .where(and(eq(leads.organizationId, organizationId), realLead()));
+    // Nor a lead the customer deleted (DEFECT-0273).
+    .where(and(eq(leads.organizationId, organizationId), realLead(), sql`${leads.deletedAt} IS NULL`));
   return result?.count ?? 0;
 }
 

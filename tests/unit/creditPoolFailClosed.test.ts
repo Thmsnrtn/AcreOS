@@ -58,6 +58,10 @@ const state = {
   addCreditsCalls: [] as Array<{ orgId: number; cents: number; type: string }>,
   addCreditsInTx: [] as boolean[],
   transactions: 0,
+  /** Cents already refunded against the same original under OTHER refund keys. */
+  priorRefundedCents: 0,
+  /** What ran on the refund's transaction, in order ("lock", "prior-read"). */
+  txTrace: [] as string[],
 };
 
 function mockModules() {
@@ -69,6 +73,7 @@ function mockModules() {
       feature: "fl.feature",
       amountCents: "fl.amount",
       postedAt: "fl.posted_at",
+      postedBy: "fl.posted_by",
       externalEventId: "fl.external_event_id",
     },
     organizations: {
@@ -101,6 +106,8 @@ function mockModules() {
       let r: any[];
       if (projection && "id" in projection && Object.keys(projection).length === 1) {
         r = state.replayRowExists ? [{ id: 42 }] : [];
+      } else if (projection && "refunded" in projection) {
+        r = [{ refunded: state.priorRefundedCents }];
       } else if (projection && "postedBy" in projection) {
         r = state.originalRow ? [state.originalRow] : [];
       } else {
@@ -167,7 +174,15 @@ function mockModules() {
       // (DEFECT-0227): the tx handed in is recorded so the test can see it.
       withTransaction: async (fn: (tx: unknown) => Promise<unknown>) => {
         state.transactions += 1;
-        return fn(db);
+        const tx = {
+          ...db,
+          execute: async (_q: unknown) => (state.txTrace.push("lock"), { rows: [] }),
+          select: (projection?: Record<string, unknown>) => {
+            if (projection && "refunded" in projection) state.txTrace.push("prior-read");
+            return db.select(projection);
+          },
+        };
+        return fn(tx);
       },
     };
   });
@@ -231,6 +246,8 @@ beforeEach(() => {
   state.addCreditsCalls = [];
   state.addCreditsInTx = [];
   state.transactions = 0;
+  state.priorRefundedCents = 0;
+  state.txTrace = [];
 });
 
 describe("poolDebit — fail-CLOSED semantics (Tier 1I)", () => {
@@ -425,8 +442,15 @@ describe("poolDebit — inside the caller's transaction (DEFECT-0213)", () => {
   it("a debit given a transaction runs its gate insert on that transaction, not the global connection", async () => {
     const { poolDebit } = await importPool();
     const txCalls: unknown[] = [];
+    const txReads: unknown[] = [];
     const tx = {
       execute: (q: unknown) => (txCalls.push(q), Promise.resolve({ rows: [{ id: 77 }] })),
+      // The usage read after the insert runs on the same transaction — the
+      // row it just wrote is not visible to the global connection yet
+      // (audit of 1694a0b).
+      select: (projection: unknown) => (txReads.push(projection), {
+        from: () => ({ where: () => Promise.resolve([{ usedAbsCents: 0 }]) }),
+      }),
     };
     const before = state.insertCalls;
     const r = await poolDebit({
@@ -439,6 +463,7 @@ describe("poolDebit — inside the caller's transaction (DEFECT-0213)", () => {
     expect(r.allowed).toBe(true);
     expect(txCalls).toHaveLength(1);
     expect(state.insertCalls).toBe(before); // the global connection's gate never ran
+    expect(txReads).toHaveLength(1);
   });
 });
 
@@ -568,5 +593,43 @@ describe("refundPoolDebit — the refund returns credit to the purse that paid (
     const { refundPoolDebit } = await importPool();
     await refundPoolDebit({ organizationId: 7, originalEventId: "mail:4", amountCents: 300, reason: "retry" });
     expect(state.addCreditsCalls).toEqual([]);
+  });
+
+  it("a partial refund under its own key reverses the original debit, not a key no debit has (audit of 1694a0b)", async () => {
+    state.originalRow = { amountCents: -300, postedBy: "system:credit-pool:direct_mail", postedAt: new Date() };
+    const { refundPoolDebit } = await importPool();
+    await refundPoolDebit({
+      organizationId: 7,
+      originalEventId: "mail:9",
+      refundKey: "mail:9:suppressed:refund",
+      amountCents: 100,
+      reason: "suppressed",
+    });
+    expect(state.insertedValues).toHaveLength(1);
+    expect(state.insertedValues[0]).toMatchObject({ externalEventId: "mail:9:suppressed:refund", amountCents: 100 });
+  });
+
+  it("parts of one debit never refund more than the debit together", async () => {
+    state.originalRow = { amountCents: -300, postedBy: "system:credit-pool:direct_mail:purchased-overflow", postedAt: new Date() };
+    state.priorRefundedCents = 100; // the suppressed share, already refunded
+    const { refundPoolDebit } = await importPool();
+    await refundPoolDebit({ organizationId: 7, originalEventId: "mail:10", amountCents: 300, reason: "provider failed" });
+    expect(state.insertedValues[0]).toMatchObject({ externalEventId: "mail:10:refund", amountCents: 200 });
+    expect(state.addCreditsCalls).toEqual([{ orgId: 7, cents: 200, type: "refund" }]);
+  });
+
+  it("the earlier parts are read on the refund's own transaction, after a per-debit lock (audit of the fourth follow-up)", async () => {
+    state.originalRow = { amountCents: -300, postedBy: "system:credit-pool:direct_mail", postedAt: new Date() };
+    const { refundPoolDebit } = await importPool();
+    await refundPoolDebit({ organizationId: 7, originalEventId: "mail:12", refundKey: "mail:12:suppressed:refund", amountCents: 100, reason: "suppressed" });
+    expect(state.txTrace).toEqual(["lock", "prior-read"]);
+  });
+
+  it("an original already fully refunded writes nothing more", async () => {
+    state.originalRow = { amountCents: -300, postedBy: "system:credit-pool:direct_mail", postedAt: new Date() };
+    state.priorRefundedCents = 300;
+    const { refundPoolDebit } = await importPool();
+    await refundPoolDebit({ organizationId: 7, originalEventId: "mail:11", amountCents: 50, reason: "late" });
+    expect(state.insertedValues).toEqual([]);
   });
 });

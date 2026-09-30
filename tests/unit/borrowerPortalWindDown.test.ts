@@ -45,9 +45,13 @@ const NOTE_ROW = {
   autoPayEnabled: false,
   borrowerId: null,
   propertyId: null,
+  status: "active",
 };
+/** An ACH debit attempt still settling for the note (DEFECT-0265). */
+const ACH = { inFlight: false };
 
-vi.mock("../../server/storage", () => {
+vi.mock("../../server/storage", async () => {
+  const { achDebitAttempts } = await import("@shared/schema/ach-autopay");
   const storage = {
     getBorrowerSession: async () => SESSION,
     deleteBorrowerSession: async () => {},
@@ -61,12 +65,13 @@ vi.mock("../../server/storage", () => {
       return NOTE_ROW;
     },
   };
-  const makeStep: () => any = () => ({
-    from: () => makeStep(),
-    where: () => makeStep(),
-    orderBy: () => makeStep(),
-    limit: () => makeStep(),
-    then: (ok: any, no: any) => Promise.resolve([NOTE_ROW]).then(ok, no),
+  // The in-flight check reads achDebitAttempts; every other read is the note.
+  const makeStep: (rows?: () => unknown[]) => any = (rows = () => [NOTE_ROW]) => ({
+    from: (table: unknown) => makeStep(table === achDebitAttempts ? () => (ACH.inFlight ? [{ id: 9 }] : []) : rows),
+    where: () => makeStep(rows),
+    orderBy: () => makeStep(rows),
+    limit: () => makeStep(rows),
+    then: (ok: any, no: any) => Promise.resolve(rows()).then(ok, no),
   });
   return { storage, db: { select: () => makeStep() } };
 });
@@ -144,7 +149,31 @@ beforeEach(() => {
   h.checkoutCreates = 0;
   h.mandateStarts = 0;
   h.updateNote = [];
+  NOTE_ROW.status = "active";
+  ACH.inFlight = false;
   app = makeApp();
+});
+
+describe("a card payment is refused before the charge when the loan cannot take it (audit of the fourth follow-up)", () => {
+  it.each(["paid_off", "foreclosed", "pending"])("a %s loan: refused, no checkout created", async (status) => {
+    NOTE_ROW.status = status;
+    const res = await request(app).post("/api/borrower/payment").send({});
+    expect(res.status).toBe(400);
+    expect(h.checkoutCreates).toBe(0);
+  });
+
+  it("a defaulted loan takes a card payment — money toward a cure", async () => {
+    NOTE_ROW.status = "defaulted";
+    expect((await request(app).post("/api/borrower/payment").send({})).status).toBe(200);
+    expect(h.checkoutCreates).toBe(1);
+  });
+
+  it("an autopay debit still settling: refused (409), no checkout created (DEFECT-0265)", async () => {
+    ACH.inFlight = true;
+    const res = await request(app).post("/api/borrower/payment").send({});
+    expect(res.status).toBe(409);
+    expect(h.checkoutCreates).toBe(0);
+  });
 });
 
 describe("after the wind-down, the portal starts no new money movement", () => {

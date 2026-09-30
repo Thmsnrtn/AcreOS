@@ -431,6 +431,9 @@ export const leadRepo = {
     phone?: string;
     address?: string;
   }): Promise<Lead[]> {
+    // Deleted leads are duplicates too, deliberately: this guards import and
+    // lead creation, and a deleted row may carry a STOP's doNotContact — a
+    // fresh row would be contactable again (DEFECT-0273's one exception).
     const conditions: SQL[] = [eq(leads.organizationId, orgId)];
 
     const orConditions: SQL[] = [];

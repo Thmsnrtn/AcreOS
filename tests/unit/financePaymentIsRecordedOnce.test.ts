@@ -24,6 +24,8 @@ const S = vi.hoisted(() => ({
   noteStatus: "active",
   balance: "10000.00",
   paysDown: false,
+  /** An ACH debit attempt for the note still processing (DEFECT-0265). */
+  achInFlight: null as null | { id: number; status: string },
 }));
 
 vi.mock("../../server/services/notes/servicedLateFees", async (orig) => ({
@@ -35,7 +37,9 @@ vi.mock("../../server/services/notes/servicedLateFees", async (orig) => ({
 vi.mock("../../server/middleware/roleGuard", () => ({
   requireRole: (roles: string[]) => Object.assign((_q: unknown, _r: unknown, next: () => void) => next(), { roles }),
 }));
-vi.mock("../../server/services/borrower/portalPaymentPosting", () => ({
+vi.mock("../../server/services/borrower/portalPaymentPosting", async (orig) => ({
+  // The status predicate is the real one — it is what the route asks.
+  servicedNoteTakesPayment: (await orig<typeof import("../../server/services/borrower/portalPaymentPosting")>()).servicedNoteTakesPayment,
   postServicedNotePayment: async (input: Record<string, unknown>) => {
     const txn = input.transactionId as string;
     const prior = S.byTxn.get(txn);
@@ -53,7 +57,9 @@ vi.mock("../../server/services/borrower/portalPaymentPosting", () => ({
     return { outcome: "posted", payment, installment: "applied", nextPaymentDate: null, remainingBalanceCents: 0, lateFeeCents: 0 };
   },
 }));
-vi.mock("../../server/storage", () => ({
+vi.mock("../../server/storage", async () => {
+  const { achDebitAttempts } = await import("@shared/schema/ach-autopay");
+  return {
   storage: {
     getNote: async (orgId: number, id: number) =>
       orgId === 5 && id === 77
@@ -64,11 +70,13 @@ vi.mock("../../server/storage", () => ({
   calculateMonthlyPayment: () => 0,
   // The replay lookup reads the payment recorded under this request's
   // transactionId (org-scoped) before anything else runs.
+  // The ACH in-flight check reads achDebitAttempts the same way.
   db: {
     select: () => ({
-      from: () => ({
+      from: (table: unknown) => ({
         where: () => ({
           limit: async () => {
+            if (table === achDebitAttempts) return S.achInFlight ? [S.achInFlight] : [];
             const row = S.byTxn.get(S.lookupTxn);
             return row ? [row] : [];
           },
@@ -76,7 +84,8 @@ vi.mock("../../server/storage", () => ({
       }),
     }),
   },
-}));
+  };
+});
 
 type Handler = (req: unknown, res: unknown) => Promise<unknown>;
 async function registration(): Promise<unknown[]> {
@@ -125,6 +134,7 @@ beforeEach(() => {
   S.noteStatus = "active";
   S.balance = "10000.00";
   S.paysDown = false;
+  S.achInFlight = null;
 });
 
 describe("a recorded payment is a real posting", () => {
@@ -198,6 +208,34 @@ describe("a recorded payment is a real posting", () => {
     expect(r.statusCode).toBe(400);
     expect(S.assessed).toBe(0);
     expect(S.posted).toHaveLength(0);
+  });
+
+  it("a defaulted note takes a payment — that money is a cure (audit of 1694a0b)", async () => {
+    S.noteStatus = "defaulted";
+    const r = res();
+    await (await handler())(req(body("100.00"), "op-key-0202"), r);
+    expect(r.statusCode).toBe(201);
+    expect(S.posted).toHaveLength(1);
+  });
+
+  it("a note not yet originated, foreclosed or sold takes no payment here", async () => {
+    for (const [i, status] of ["pending", "foreclosed", "sold"].entries()) {
+      S.noteStatus = status;
+      const r = res();
+      await (await handler())(req(body("100.00"), `op-key-030${i}`), r);
+      expect(r.statusCode).toBe(400);
+    }
+    expect(S.posted).toHaveLength(0);
+  });
+
+  it("an autopay debit still in flight for the note refuses a hand-recorded payment (DEFECT-0265)", async () => {
+    S.achInFlight = { id: 31, status: "submitted" };
+    const r = res();
+    await (await handler())(req(body("100.00"), "op-key-0400"), r);
+    expect(r.statusCode).toBe(409);
+    expect(r.body).toMatchObject({ error: "ACH_DEBIT_IN_FLIGHT" });
+    expect(S.posted).toHaveLength(0);
+    expect(S.assessed).toBe(0);
   });
 
   it("another org's note is not found", async () => {

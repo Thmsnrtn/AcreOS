@@ -69,8 +69,11 @@ export async function findDuplicateClusters(
       // lead status — the comment above says the intent is "already terminal
       // states", and those are `closed` and `dead`. `deleted` stays: it is a
       // real administrative value the soft-delete writes.
+      // A soft-deleted lead is `deletedAt`, not a status (audit of 1694a0b):
+      // the status filter alone proposed merging a live lead into a deleted one.
       and(
         eq(leads.organizationId, organizationId),
+        sql`${leads.deletedAt} IS NULL`,
         notInArray(leads.status, [...TERMINAL_LEAD_STATUSES, ...ADMINISTRATIVE_LEAD_STATUSES]),
       ),
     )

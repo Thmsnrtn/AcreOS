@@ -14,7 +14,7 @@ export async function findDuplicateLeads(orgId: number): Promise<Array<{ ids: nu
   // By email
   const emailDups = await db.execute(sql`
     SELECT email, array_agg(id) as ids FROM leads
-    WHERE organization_id = ${orgId} AND email IS NOT NULL AND email != ''
+    WHERE organization_id = ${orgId} AND deleted_at IS NULL AND email IS NOT NULL AND email != ''
     GROUP BY email HAVING COUNT(*) > 1 LIMIT 20
   `);
   for (const row of (emailDups.rows || []) as any[]) {
@@ -24,7 +24,7 @@ export async function findDuplicateLeads(orgId: number): Promise<Array<{ ids: nu
   // By phone
   const phoneDups = await db.execute(sql`
     SELECT phone, array_agg(id) as ids FROM leads
-    WHERE organization_id = ${orgId} AND phone IS NOT NULL AND phone != ''
+    WHERE organization_id = ${orgId} AND deleted_at IS NULL AND phone IS NOT NULL AND phone != ''
     GROUP BY phone HAVING COUNT(*) > 1 LIMIT 20
   `);
   for (const row of (phoneDups.rows || []) as any[]) {
@@ -64,7 +64,7 @@ export async function calculateAvgResponseTime(orgId: number): Promise<{ avgHour
   // Simplified — track time from lead creation to first activity
   const recentLeads = await db.select()
     .from(leads)
-    .where(and(eq(leads.organizationId, orgId), sql`${leads.status} != 'new'`))
+    .where(and(eq(leads.organizationId, orgId), sql`${leads.deletedAt} IS NULL`, sql`${leads.status} != 'new'`))
     .orderBy(desc(leads.updatedAt))
     .limit(50);
 
@@ -90,6 +90,7 @@ export async function getAgingLeads(orgId: number, daysThreshold: number = 14): 
     .from(leads)
     .where(and(
       eq(leads.organizationId, orgId),
+      sql`${leads.deletedAt} IS NULL`,
       sql`${leads.status} IN ('new', 'contacted')`,
       sql`${leads.updatedAt} < ${cutoff}`,
     ))
@@ -104,6 +105,7 @@ export async function archiveStaleLeads(orgId: number, days: number = 90): Promi
     .set({ status: "archived", updatedAt: new Date() } as any)
     .where(and(
       eq(leads.organizationId, orgId),
+      sql`${leads.deletedAt} IS NULL`,
       sql`${leads.status} IN ('new', 'contacted')`,
       sql`${leads.updatedAt} < ${cutoff}`,
     ))
@@ -135,7 +137,7 @@ export async function getLeadFunnel(orgId: number): Promise<Record<string, numbe
   for (const status of statuses) {
     const [result] = await db.select({ count: count() })
       .from(leads)
-      .where(and(eq(leads.organizationId, orgId), eq(leads.status, status)));
+      .where(and(eq(leads.organizationId, orgId), sql`${leads.deletedAt} IS NULL`, eq(leads.status, status)));
     funnel[status] = result?.count || 0;
   }
 

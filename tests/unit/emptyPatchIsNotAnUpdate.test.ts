@@ -203,6 +203,14 @@ describe("the two helpers the guarded writes depend on", () => {
     expect(assertWritablePatch({ status: "queued", organizationId: 99, id: 3 }, "t.m")).toEqual({ status: "queued" });
   });
 
+  it("assertWritablePatch keeps the server's own updatedAt stamp — a touch is a write — but never a client's string (audit of 1694a0b)", () => {
+    const now = new Date("2026-09-30T12:00:00Z");
+    expect(assertWritablePatch({ updatedAt: now }, "t.m")).toEqual({ updatedAt: now });
+    expect(assertWritablePatch({ status: "queued", updatedAt: now }, "t.m")).toEqual({ status: "queued", updatedAt: now });
+    expect(assertWritablePatch({ status: "queued", updatedAt: "1999-01-01T00:00:00Z" }, "t.m")).toEqual({ status: "queued" });
+    expect(() => assertWritablePatch({ updatedAt: "1999-01-01T00:00:00Z" }, "t.m")).toThrow(/empty patch/i);
+  });
+
   it("assertWritablePatch throws — naming the write — on an empty patch", () => {
     expect(() => assertWritablePatch({}, "payments.updatePayment"))
       .toThrow(/payments\.updatePayment/);

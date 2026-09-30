@@ -69,7 +69,7 @@ operation at scale.
 | Case | At HEAD | Status |
 |---|---|---|
 | Creating a deal records `first_offer_made`; the real offer-sent transition exists but does not emit it | `routes-deals.ts:703-713` vs `:1115` | **FIXED** — DEFECT-0230 |
-| Entering escrow emits `contract.signed` with no document; e-sign receipts exist (`signatures`, `generated_documents.signedAt`) but are not linked | `routes-deals.ts:790-797`; pinned by `wholesaleEvents.test.ts:51` | **FIXED** — DEFECT-0231 (attestation UI: OPEN DEFECT-0232) |
+| Entering escrow emits `contract.signed` with no document; e-sign receipts exist (`signatures`, `generated_documents.signedAt`) but are not linked | `routes-deals.ts:790-797`; pinned by `wholesaleEvents.test.ts:51` | **FIXED** — DEFECT-0231 (attestation UI: **FIXED** DEFECT-0232, H6) |
 | A close sends `acceptedAmount` as a high-quality sale to training and the market network regardless of deal type or sample lineage; no dedupe key, no retraction | `routes-deals.ts:907,928-956,1094` (consent + 5-operator floor already applied, DEFECT-0159) | **FIXED** — DEFECT-0233 (network retraction: OPEN DEFECT-0235) |
 | Valuation comps: state-only query, `distance: 0` under a 50-mile limit, +30 ZIP points for two empty ZIPs, +15 "nearest < 5 mi" on every valuation | `acreOSValuation.ts:810-846,907,1110` | **FIXED** — DEFECT-0234 (and the AVM flood adjustment, DEFECT-0221) |
 
@@ -124,7 +124,7 @@ operation at scale.
 | stdio MCP refused; /mcp summary any-of | **FIXED** — DEFECT-0223 |
 | Trigger card broken; studio triggers read an unwritten MRR | **FIXED** — DEFECT-0224 (two ladders: OPEN DEFECT-0225) |
 | Gauge vs gate; refund without original; overflow as pool usage | **FIXED** — DEFECT-0226 (two-transaction refund, month netting: OPEN DEFECT-0227) |
-| Draft/duplicate assignment fees; PDF and waterfall counted samples | **FIXED** — DEFECT-0228 (Today cash strip: OPEN DEFECT-0229, H5) |
+| Draft/duplicate assignment fees; PDF and waterfall counted samples | **FIXED** — DEFECT-0228 (Today cash strip: **FIXED** DEFECT-0229, H6) |
 
 ## Independent audits of `92bf405` (H3 fixes) and `e3debe0` (H4) — folded into the H5 change
 
@@ -162,7 +162,7 @@ operation at scale.
 | Payoff guard ignored late fees owed | **FIXED** — DEFECT-0262 |
 | Members saw a Record payment button the server refuses | **FIXED** — DEFECT-0263 |
 | A deleted deal could be moved to any stage; the undo trusted the client | **FIXED** — DEFECT-0264 |
-| requireRole vs ownerId; offer attribution; backdating; ACH overlap; seeder cap; gate asserts the call not the answer | OPEN — DEFECT-0265 |
+| requireRole vs ownerId; offer attribution; backdating; ACH overlap; seeder cap; gate asserts the call not the answer | OPEN — DEFECT-0265 (ACH overlap **FIXED** in H6) |
 
 ## Independent audit of `9ed61f4` — folded into the third follow-up
 
@@ -174,6 +174,20 @@ operation at scale.
 | Payoff retry refused; fee assessed on a paid-off note | **FIXED** — DEFECT-0269 |
 | Founder refund, undo toast, purge gating, workflow type mismatch | **FIXED** — DEFECT-0270 |
 | (Also closed in this change) the mail debit crash window; the two-transaction refund and cross-month netting | **FIXED** — DEFECT-0213, DEFECT-0227 |
+
+## Independent audit of `1694a0b` — folded into the fourth follow-up (with H6)
+
+| Finding | Status |
+|---|---|
+| A suppressed piece's refund named a debit that does not exist, so it refunded nothing; partial refunds could together exceed the debit | **FIXED** — DEFECT-0271 |
+| A cure payment on a defaulted note was refused | **FIXED** — DEFECT-0272 (one `servicedNoteTakesPayment` predicate) |
+| Readers that excluded deleted leads by status began reading them | **FIXED for the worst readers** (merge proposals, Today, API, plan limit, autopilot; import and create dedupe deliberately still see deleted leads, for their opt-outs), ~50 files OPEN — DEFECT-0273 |
+| Auto top-up fired inside the caller's transaction; usage read off-transaction; overflow failure swallowed | **FIXED** — DEFECT-0274 |
+| Pax could create a deal at escrow/closed/cancelled | **FIXED** — DEFECT-0275 |
+| `POST /api/deals` late-stage creation; version race 500s; spread-gate local copies; dead `runPostCloseAutomation`; `assertWritablePatch` touch | OPEN — DEFECT-0276 (the touch **FIXED**) |
+| H6: attestation prompt (0232), Today cash strip (0229), ACH overlap (0265 part 4) | **FIXED** |
+| Audit of this change, before commit: escrow dialog unreachable from the Details tab; `defaulted` flipped to active and charged a monthly fee; borrower card checkout outside the status and ACH rules; more stale lead readers; refund-cap race | **FIXED** in the same commit |
+| Suppressed-piece refunds skipped before the fix are not repaid | OPEN — DEFECT-0277 (founder-run reconciliation script) |
 
 ## What remains outside any code change
 

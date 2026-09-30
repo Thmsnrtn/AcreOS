@@ -47,6 +47,10 @@ const S = vi.hoisted(() => ({
   failNextInsert: false,
   /** Hold each debit open this long, so concurrent requests really interleave. */
   debitDelayMs: 0,
+  /** The debit was funded from purchased credits (pool exhausted). */
+  fundedByPurchased: false,
+  /** Post-commit auto top-ups fired (audit of 1694a0b). */
+  topUps: 0,
 }));
 
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
@@ -139,12 +143,18 @@ vi.mock("../../server/services/creditPool", () => ({
     // As creditPool does: ON CONFLICT on the key — a replay debits nothing.
     const replay = S.ledgerKeys.has(a.externalEventId);
     S.ledgerKeys.add(a.externalEventId);
-    return { allowed: true, debitedCents: replay ? 0 : 300, remaining: 1000, poolMonthly: 2500, ledgerRowId: 1, overPool: false };
+    return {
+      allowed: true, debitedCents: replay ? 0 : 300, remaining: 1000, poolMonthly: 2500, ledgerRowId: 1, overPool: false,
+      ...(S.fundedByPurchased ? { fundedBy: "purchased_credits" as const } : {}),
+    };
   },
   refundPoolDebit: async (a: { originalEventId: string }) => {
     S.refunds.push(a.originalEventId);
   },
   poolRefusalDetails: () => ({ reason: "pool_exhausted" }),
+}));
+vi.mock("../../server/services/credits", () => ({
+  creditService: { afterDebitCommitted: () => void S.topUps++ },
 }));
 vi.mock("../../server/services/activation", () => ({
   recordActivationEventAsync: (e: { eventName: string }) => {
@@ -206,6 +216,8 @@ beforeEach(() => {
   S.ledgerKeys = new Set();
   S.failNextInsert = false;
   S.debitDelayMs = 0;
+  S.fundedByPurchased = false;
+  S.topUps = 0;
 });
 
 describe("the audience is exactly what the investor chose — or refused", () => {
@@ -354,6 +366,21 @@ describe("one confirmed set, one operation", () => {
     expect(S.debitKeys).toHaveLength(2);
     expect(S.debitKeys[0]).not.toBe(S.debitKeys[1]);
     expect(S.shipments[0].debitedCents).toBe(300);
+  });
+
+  it("a debit paid from purchased credits fires its auto top-up once the shipment commits — never for one that rolled back (audit of 1694a0b)", async () => {
+    const q = await quoted();
+    S.fundedByPurchased = true;
+    const send = (key: string) =>
+      request(app())
+        .post("/api/outreach/mail/queue")
+        .set("Idempotency-Key", key)
+        .send({ ...TX, expectedAudienceDigest: q.audienceDigest });
+    S.failNextInsert = true;
+    expect((await send("op-topup-fail")).status).toBe(500);
+    expect(S.topUps).toBe(0);
+    expect((await send("op-topup")).status).toBe(201);
+    expect(S.topUps).toBe(1);
   });
 
   it("two concurrent requests with the same key: one shipment, one debit, and it carries the real charge", async () => {

@@ -140,6 +140,8 @@ vi.mock("../../server/db", () => {
 // from it; this note owes $25 in assessed, unpaid fees.
 const FEES = vi.hoisted(() => ({ owedCents: 2500, dueByCents: 0, assessCalls: 0 }));
 vi.mock("../../server/services/notes/servicedLateFees", () => ({
+  // Read at module load by achAutopay and the borrower routes.
+  ACH_IN_FLIGHT_STATUSES: ["created", "submitted", "processing"],
   assessServicedNoteLateFee: async () => {
     FEES.assessCalls++;
     return { assessed: false, alreadyExisted: false, feeCents: 0, reason: "test" };
