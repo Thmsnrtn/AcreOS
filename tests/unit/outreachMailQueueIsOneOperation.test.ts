@@ -40,6 +40,12 @@ const S = vi.hoisted(() => ({
   events: [] as string[],
   locks: 0,
   orgTier: "starter",
+  /** Real ledger semantics: a debit key already written replays at 0 cents. */
+  ledgerKeys: new Set<string>(),
+  /** Make the next shipment insert throw (a DB failure after the debit). */
+  failNextInsert: false,
+  /** Hold each debit open this long, so concurrent requests really interleave. */
+  debitDelayMs: 0,
 }));
 
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
@@ -88,6 +94,8 @@ vi.mock("../../server/db", () => {
       return chain;
     },
   });
+  // The per-org advisory lock, for real: transactions run one at a time.
+  let lockChain: Promise<unknown> = Promise.resolve();
   const tx = {
     execute: async () => {
       S.locks++;
@@ -98,6 +106,10 @@ vi.mock("../../server/db", () => {
       values: (v: any) => ({
         returning: async () => {
           if (getTableName(table as never) === "mail_shipments") {
+            if (S.failNextInsert) {
+              S.failNextInsert = false;
+              throw new Error("connection reset during insert");
+            }
             const row = { id: 700 + S.shipments.length, status: "queued", queuedAt: new Date(), sentAt: null, cancelledAt: null, ...v };
             S.shipments.push(row);
             return [{ id: row.id }];
@@ -110,13 +122,22 @@ vi.mock("../../server/db", () => {
     }),
     update: () => ({ set: () => ({ where: async () => undefined }) }),
   };
-  return { db: { select, transaction: async (cb: any) => cb(tx) } };
+  const transaction = (cb: any) => {
+    const run = lockChain.then(() => cb(tx));
+    lockChain = run.catch(() => undefined);
+    return run;
+  };
+  return { db: { select, transaction } };
 });
 vi.mock("../../server/services/mail/router", () => ({ mailRouter: { quote: async () => [] } }));
 vi.mock("../../server/services/creditPool", () => ({
   poolDebit: async (a: { externalEventId: string }) => {
     S.debitKeys.push(a.externalEventId);
-    return { allowed: true, debitedCents: 300, remaining: 1000, poolMonthly: 2500, ledgerRowId: 1, overPool: false };
+    if (S.debitDelayMs) await new Promise((r) => setTimeout(r, S.debitDelayMs));
+    // As creditPool does: ON CONFLICT on the key — a replay debits nothing.
+    const replay = S.ledgerKeys.has(a.externalEventId);
+    S.ledgerKeys.add(a.externalEventId);
+    return { allowed: true, debitedCents: replay ? 0 : 300, remaining: 1000, poolMonthly: 2500, ledgerRowId: 1, overPool: false };
   },
   refundPoolDebit: async (a: { originalEventId: string }) => {
     S.refunds.push(a.originalEventId);
@@ -179,6 +200,9 @@ beforeEach(() => {
   S.events = [];
   S.locks = 0;
   S.orgTier = "starter";
+  S.ledgerKeys = new Set();
+  S.failNextInsert = false;
+  S.debitDelayMs = 0;
 });
 
 describe("the audience is exactly what the investor chose — or refused", () => {
@@ -198,12 +222,21 @@ describe("the audience is exactly what the investor chose — or refused", () =>
   it("a county narrows the set, case- and suffix-insensitively, within its state", async () => {
     await quoted({ audienceFilter: { states: ["tx"], counties: ["Hidalgo County", " hidalgo "] }, ...BASE });
     expect(S.leadWhere.sql).toMatch(/lower\(regexp_replace\(trim\("leads"\."county"\)/);
+    // The regex Postgres receives is \s+county$ — a template literal cooks a
+    // bare "\s" to "s", which left every "Hidalgo County" row out.
+    expect(S.leadWhere.sql).toContain("'\\s+county$'");
     expect(S.leadWhere.params).toContain("hidalgo");
     expect(S.leadWhere.params).toContain("TX");
   });
 
   it("a county without its state is refused (the same name exists in many states)", async () => {
     const r = await request(app()).post("/api/outreach/mail/quote").send({ audienceFilter: { counties: ["Washington"] }, ...BASE });
+    expect(r.status).toBe(422);
+    expect(r.body.error).toBe("county_needs_state");
+  });
+
+  it("counties across two states are refused (each county name was matched in both)", async () => {
+    const r = await request(app()).post("/api/outreach/mail/quote").send({ audienceFilter: { states: ["AR", "MO"], counties: ["Washington"] }, ...BASE });
     expect(r.status).toBe(422);
     expect(r.body.error).toBe("county_needs_state");
   });
@@ -291,9 +324,44 @@ describe("one confirmed set, one operation", () => {
       .post("/api/outreach/mail/queue")
       .set("Idempotency-Key", "op-key")
       .send({ ...TX, expectedAudienceDigest: q.audienceDigest });
-    expect(S.debitKeys).toEqual(["mail:queue:42:op:op-key"]);
+    expect(S.debitKeys).toHaveLength(1);
+    expect(S.debitKeys[0]).toMatch(/^mail:queue:42:op:op-key:[0-9a-f-]{36}$/);
     expect(S.shipments[0].operationKey).toBe("op-key");
     expect(S.locks).toBe(1); // the per-org lock that serialises concurrent sends
+  });
+
+  it("a retry after a failed save (same key) is charged — not replayed free", async () => {
+    const q = await quoted();
+    const send = () =>
+      request(app())
+        .post("/api/outreach/mail/queue")
+        .set("Idempotency-Key", "op-fail")
+        .send({ ...TX, expectedAudienceDigest: q.audienceDigest });
+    S.failNextInsert = true;
+    const first = await send();
+    expect(first.status).toBe(500);
+    expect(S.refunds).toHaveLength(1);
+    const second = await send();
+    expect(second.status).toBe(201);
+    // A fresh debit for the attempt that saved — the refunded one is not reused.
+    expect(S.debitKeys).toHaveLength(2);
+    expect(S.debitKeys[0]).not.toBe(S.debitKeys[1]);
+    expect(S.shipments[0].debitedCents).toBe(300);
+  });
+
+  it("two concurrent requests with the same key: one shipment, one debit, and it carries the real charge", async () => {
+    const q = await quoted();
+    const send = () =>
+      request(app())
+        .post("/api/outreach/mail/queue")
+        .set("Idempotency-Key", "op-race")
+        .send({ ...TX, expectedAudienceDigest: q.audienceDigest });
+    S.debitDelayMs = 30; // the first request is mid-debit when the second arrives
+    const [a, b] = await Promise.all([send(), send()]);
+    expect([a.status, b.status].sort()).toEqual([200, 201]);
+    expect(S.shipments).toHaveLength(1);
+    expect(S.debitKeys).toHaveLength(1);
+    expect(S.shipments[0].debitedCents).toBe(300);
   });
 
   it("a deliberate second send (new key) is a second shipment", async () => {
@@ -364,5 +432,16 @@ describe("the results measure accepted pieces and responding pieces", () => {
     const def = src.slice(src.indexOf("const acceptedPiece"), src.indexOf("const respondedPiece"));
     expect(def).toContain("'sent','printed','in_transit','delivered','returned'");
     for (const s of ["'pending'", "'failed'", "'suppressed'"]) expect(def).not.toContain(s);
+  });
+});
+
+describe("the legacy campaign mail route measures physical mail only when it was live", () => {
+  it("first_letter_sent is recorded under the OBSERVED send mode — a test send never fixes the first-mail date", () => {
+    const src = stripComments(readFileSync(resolve(__dirname, "../../server/routes-campaigns.ts"), "utf8"));
+    const at = src.indexOf('eventName: "first_letter_sent"');
+    expect(at).toBeGreaterThan(-1);
+    const before = src.slice(Math.max(0, at - 600), at);
+    expect(before).toContain("const sentLive = !(result.isTestMode ?? isTestMode);");
+    expect(before).toContain("if (sentLive) {");
   });
 });

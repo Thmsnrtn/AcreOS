@@ -927,9 +927,14 @@ describe("CP3 — buildMailShipmentVerifyCriteria (honest outreach criteria)", (
     expect(compliance.description).toContain("FREE tier");
     expect(compliance.description).toContain("FREE_TIER_LIFETIME_PIECES");
     expect(compliance.description).toContain("do not assume its value");
-    // Honest limits: dedupe is advisory, no suppression list on this path.
+    // Honest limits: dedupe is advisory. Suppression is now REAL on this path
+    // (audience resolution + the flusher's pre-handoff recheck, quality
+    // directive 2026-09-29) — the verifier must say so, and must not claim
+    // what the shipment cannot show (when an opt-out was recorded).
     expect(compliance.description).toContain("advisory UX only");
-    expect(compliance.description).toContain("NO suppression list");
+    expect(compliance.description).not.toContain("NO suppression list");
+    expect(compliance.description).toContain("Suppression IS applied twice");
+    expect(compliance.description).toContain("not checkable from this shipment");
     expect(compliance.check).toContain("status != 'cancelled'");
   });
 

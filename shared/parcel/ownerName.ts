@@ -51,3 +51,37 @@ export function splitOwnerName(raw: string): { firstName: string; lastName: stri
 export function salutationName(lead: { firstName?: string | null; lastName?: string | null }): string {
   return lead.firstName?.trim() || lead.lastName?.trim() || "";
 }
+
+/**
+ * The name to greet from a stored full name ("Ana Owner" -> "Ana"; an entity
+ * greets as itself: "SMITH FAMILY TRUST", never "SMITH").
+ */
+function greetingName(fullName: string | null | undefined): string {
+  const name = (fullName ?? "").trim().replace(/\s+/g, " ");
+  if (!name) return "";
+  if (isEntityOwnerName(name)) return name;
+  return name.split(" ")[0];
+}
+
+const escapeHtml = (t: string) =>
+  t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/**
+ * THE merge for mail copy — the composer's preview and the flusher's printed
+ * piece both call it, so what the preview shows is what is printed. The
+ * composer invites {firstName} / {city} / {state}; the flusher used to send
+ * the copy raw, so pieces were printed "Hi {firstName}" while the preview
+ * showed a name (quality directive 2026-09-29, audit of the G0 slice).
+ * `html` escapes the merged values for an HTML piece.
+ */
+export function mergeMailCopy(
+  copy: string,
+  r: { name: string | null | undefined; city: string | null | undefined; state: string | null | undefined },
+  opts: { html: boolean },
+): string {
+  const v = (t: string | null | undefined) => (opts.html ? escapeHtml(t ?? "") : (t ?? ""));
+  return copy
+    .replace(/\{firstName\}/g, v(greetingName(r.name)))
+    .replace(/\{city\}/g, v(r.city))
+    .replace(/\{state\}/g, v(r.state));
+}

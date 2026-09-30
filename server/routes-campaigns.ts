@@ -965,16 +965,22 @@ export function registerCampaignRoutes(app: Express): void {
           lobJobIds.push(result.id);
 
           // Phase 3 Week 14 — Activation telemetry. First successfully-sent
-          // direct-mail piece (postcard or letter). Idempotent FIRST-occurrence.
-          try {
-            const { recordActivationEventAsync } = await import("./services/activation");
-            recordActivationEventAsync({
-              orgId: org.id,
-              userId: null,
-              eventName: "first_letter_sent",
-              eventValue: { lobId: result.id, pieceType, isTestMode },
-            });
-          } catch { /* non-fatal */ }
+          // direct-mail piece. Idempotent FIRST-occurrence — so a TEST send
+          // recorded here fixed the org's first physical mail forever. Only
+          // the OBSERVED mode counts: the service can downgrade a live
+          // request to test (quality directive 2026-09-29).
+          const sentLive = !(result.isTestMode ?? isTestMode);
+          if (sentLive) {
+            try {
+              const { recordActivationEventAsync } = await import("./services/activation");
+              recordActivationEventAsync({
+                orgId: org.id,
+                userId: null,
+                eventName: "first_letter_sent",
+                eventValue: { lobId: result.id, pieceType, isTestMode: false, source: "campaigns:send-direct-mail" },
+              });
+            } catch { /* non-fatal */ }
+          }
 
           // Generate unique 8-char tracking code for attribution
           const trackingCode = crypto.randomBytes(4).toString("hex").toUpperCase();

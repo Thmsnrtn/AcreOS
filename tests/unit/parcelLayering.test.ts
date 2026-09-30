@@ -197,6 +197,13 @@ describe("comps: the org's own key, and one org's comps are not another's (audit
     expect(comps).toEqual([{ auth: "Bearer org-vault-key" }]);
   });
 
+  it("the registry path (a key, no org): scoped to the key — another customer's key at the same point is fetched again", async () => {
+    await regridProvider.lookup("comps", { type: "coordinates", latitude: 34, longitude: -101 }, { apiKeyOverride: "key-A" });
+    await regridProvider.lookup("comps", { type: "coordinates", latitude: 34, longitude: -101 }, { apiKeyOverride: "key-B" });
+    await regridProvider.lookup("comps", { type: "coordinates", latitude: 34, longitude: -101 }, { apiKeyOverride: "key-A" });
+    expect(comps.map((c) => c.auth)).toEqual(["Bearer key-A", "Bearer key-B"]);
+  });
+
   it("the same point for a second org is fetched for that org — not served from the first org's cache", async () => {
     await getComparableProperties(33, -100, 5, {}, 7);
     await getComparableProperties(33, -100, 5, {}, 8);

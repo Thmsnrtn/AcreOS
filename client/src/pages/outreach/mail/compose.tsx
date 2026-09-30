@@ -55,6 +55,7 @@ import {
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
 import { ApiError, apiRequest, generateIdempotencyKey } from "@/lib/queryClient";
+import { mergeMailCopy } from "@shared/parcel/ownerName";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import {
   type AudienceFilter,
@@ -220,9 +221,18 @@ export default function ComposeTab() {
         expectedAudienceDigest: quote.data.audienceDigest,
         operationKey,
       });
-      setQueuedShipment(result);
       setShowDedupeWarn(false);
       setOperationKey(newOperationKey());
+      if (result.replayed && result.status && result.status !== "queued") {
+        // A retry of a send already past the hold (cancelled, sending, sent):
+        // show what it IS, not a fresh 30-minute hold card.
+        toast({
+          title: "Already handled",
+          description: `This send was already ${result.status.replace(/_/g, " ")} — nothing new was queued or charged.`,
+        });
+        return;
+      }
+      setQueuedShipment(result);
       toast({
         title: result.replayed ? "Already queued" : "Queued",
         description: result.replayed
@@ -282,7 +292,7 @@ export default function ComposeTab() {
                 Audience
               </CardTitle>
               <CardDescription>
-                Pick lists, saved views, or filter directly. Recipient count + cost update live.
+                Filter your CRM leads directly. Recipient count + cost update live.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -476,7 +486,7 @@ export default function ComposeTab() {
             <CardHeader>
               <CardTitle>Copy</CardTitle>
               <CardDescription>
-                Free-text overrides the template. Use {"{firstName}"} / {"{city}"} for merge fields.
+                Free-text overrides the template. Use {"{firstName}"} / {"{city}"} / {"{state}"} for merge fields.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -657,7 +667,11 @@ export default function ComposeTab() {
                 !quote.data ||
                 quote.data.pieceCount === 0 ||
                 queueMutation.isPending ||
-                queuedShipment !== null
+                queuedShipment !== null ||
+                // The quote on screen must be for what was typed: Send within
+                // the debounce would queue the previous copy.
+                copy !== debouncedCopy ||
+                audienceFilter !== debouncedFilter
               }
               onClick={() => handleSend(false)}
               data-testid="button-send"
@@ -935,14 +949,9 @@ function PreviewList({
   );
 }
 
-function renderMerge(
-  copy: string,
-  recipient: { name: string; city: string; state: string },
-): string {
-  return copy
-    .replace(/\{firstName\}/g, recipient.name.split(" ")[0] ?? "")
-    .replace(/\{city\}/g, recipient.city)
-    .replace(/\{state\}/g, recipient.state);
+/** The flusher's own merge (shared), so the preview shows what is printed. */
+function renderMerge(copy: string, recipient: { name: string; city: string; state: string }): string {
+  return mergeMailCopy(copy, recipient, { html: false });
 }
 
 function formatUsd(cents: number): string {

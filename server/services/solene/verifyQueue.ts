@@ -807,9 +807,11 @@ export function buildMailShipmentVerifyCriteria(
         `SENT with the quote-locked piece_count=${f.pieceCount}` +
         `${f.provider ? ` via provider '${f.provider}'` : ""}. Confirm the ` +
         `persisted row reads status='sent' with sent_at set, and that the ` +
-        `count of mail_shipment_pieces rows for this shipment with ` +
-        `status='sent' equals piece_count=${f.pieceCount}. Flag any pieces ` +
-        `still 'pending' or 'failed' under a 'sent' shipment. HONEST LIMIT: ` +
+        `mail_shipment_pieces rows for this shipment ACCOUNT for ` +
+        `piece_count=${f.pieceCount}: 'sent' (or a later provider stage), ` +
+        `plus 'suppressed' (the lead opted out during the hold — never sent, ` +
+        `its share refunded) and 'failed' (refunded). Flag any piece still ` +
+        `'pending' under a 'sent' shipment, or a count that does not add up. HONEST LIMIT: ` +
         `physical delivery is a provider/USPS fact — only the recorded send ` +
         `state is checkable here.`,
       check:
@@ -859,9 +861,11 @@ export function buildMailShipmentVerifyCriteria(
             `debit (previous criterion). `) +
         `FURTHER HONEST LIMITS (state, do not assert): the recent-mail ` +
         `dedupe (>20% recently-mailed warning) is advisory UX only — never ` +
-        `an enforced gate — and NO suppression list is applied on the ` +
-        `outreach-mail path today; neither can be verified as a control ` +
-        `from DB state.`,
+        `an enforced gate. Suppression IS applied twice on this path (opted-out ` +
+        `and do-not-contact leads are excluded when the audience is resolved, ` +
+        `and re-checked by the flusher before the provider handoff, marking ` +
+        `such pieces 'suppressed'); whether a lead's opt-out was RECORDED in ` +
+        `time is not checkable from this shipment.`,
       check: isFree
         ? `SELECT coalesce(sum(piece_count), 0) FROM mail_shipments WHERE ` +
           `organization_id = ${f.organizationId} AND status != 'cancelled'; ` +

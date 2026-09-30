@@ -52,8 +52,8 @@ function app() {
   registerLobWebhookRoutes(a);
   return a;
 }
-function post(event: string, dateCreated: Date) {
-  const body = JSON.stringify({ event_type: { id: `letter.${event}` }, reference_id: "ltr_1", date_created: dateCreated.toISOString() });
+function post(event: string, dateCreated: Date | null) {
+  const body = JSON.stringify({ event_type: { id: `letter.${event}` }, reference_id: "ltr_1", ...(dateCreated ? { date_created: dateCreated.toISOString() } : {}) });
   const ts = String(Date.now());
   const sig = createHmac("sha256", SECRET).update(`${ts}.${body}`).digest("hex");
   return request(app())
@@ -93,6 +93,14 @@ describe("an event that beats the provider-id write-back is retried, not lost", 
 
   it("old + unmatched (another environment's mail): acknowledged, not retried forever", async () => {
     const r = await post("mailed", new Date(Date.now() - 3 * 60 * 60 * 1000));
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ applied: false, reason: "unknown_piece" });
+  });
+});
+
+describe("an undated unmatched event is not retried for ever", () => {
+  it("no readable date: acknowledged as unknown (its age cannot be known)", async () => {
+    const r = await post("mailed", null);
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ applied: false, reason: "unknown_piece" });
   });

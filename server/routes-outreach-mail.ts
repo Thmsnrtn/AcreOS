@@ -17,7 +17,7 @@
  */
 
 import type { Express, Response } from "express";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
@@ -67,17 +67,25 @@ const PIECE_TYPES = ["postcard_4x6", "postcard_6x9", "letter_10", "handwritten"]
 // widens WHO may queue, never HOW mail leaves the building.
 export const FREE_TIER_LIFETIME_PIECES = 5;
 
-/** Lifetime pieces a free org has already committed (cancelled excluded). */
+/**
+ * Lifetime pieces a free org has used: pieces of non-cancelled shipments,
+ * less those that were never mailed and were refunded (suppressed during the
+ * hold, or failed at the provider) — those give the allowance back, as a
+ * cancel does.
+ */
 async function freeTierPiecesUsed(organizationId: number, exec: Pick<typeof db, "select"> = db): Promise<number> {
   const [agg] = await exec
     .select({
-      used: sql<number>`coalesce(sum(${mailShipments.pieceCount}), 0)::int`,
+      used: sql<number>`count(${mailShipmentPieces.id})::int`,
     })
-    .from(mailShipments)
+    .from(mailShipmentPieces)
+    .innerJoin(mailShipments, eq(mailShipments.id, mailShipmentPieces.shipmentId))
     .where(
       and(
         eq(mailShipments.organizationId, organizationId),
+        eq(mailShipmentPieces.organizationId, organizationId),
         sql`${mailShipments.status} != 'cancelled'`,
+        sql`${mailShipmentPieces.status} not in ('suppressed', 'failed')`,
       ),
     );
   return agg?.used ?? 0;
@@ -182,6 +190,16 @@ class AudienceRefusal extends Error {
   }
 }
 
+type PoolDebitResult = Awaited<ReturnType<typeof poolDebit>>;
+
+/** The pool refused the debit inside the queue transaction. */
+class PoolRefusal extends Error {
+  constructor(readonly result: PoolDebitResult) {
+    super("pool refused the mail debit");
+    this.name = "PoolRefusal";
+  }
+}
+
 /** Two sends raced for the last of the free allowance; this one lost. */
 class FreeTierRaceRefusal extends Error {
   constructor(readonly remainingPieces: number) {
@@ -230,10 +248,14 @@ async function resolveAudience(
   }
   const states = (filter.states ?? []).map((s) => s.trim().toUpperCase()).filter(Boolean);
   const counties = Array.from(new Set((filter.counties ?? []).map(normCounty).filter(Boolean)));
-  if (counties.length > 0 && states.length === 0) {
+  if (counties.length > 0 && states.length !== 1) {
+    // One state per county send: with two states and two counties, every
+    // county name was matched in BOTH states (four counties, not two).
     throw new AudienceRefusal(
       "county_needs_state",
-      "Add the state for those counties — the same county name exists in many states.",
+      states.length === 0
+        ? "Add the state for those counties — the same county name exists in many states."
+        : "Filter counties within one state per send — the same county name exists in many states.",
     );
   }
 
@@ -256,7 +278,10 @@ async function resolveAudience(
   if (states.length > 0) conditions.push(inArray(sql`upper(trim(${leads.state}))`, states));
   if (counties.length > 0) {
     conditions.push(
-      inArray(sql`lower(regexp_replace(trim(${leads.county}), '\s+county$', '', 'i'))`, counties),
+      // "\\s" in source is "\s" in the SQL: a template literal cooks "\s" to "s",
+      // which silently matched "hidalgoXcounty"-style nonsense and left every
+      // county stored with a " County" suffix out of the audience.
+      inArray(sql`lower(regexp_replace(trim(${leads.county}), '\\s+county$', '', 'i'))`, counties),
     );
   }
   if (filter.acreageMin !== undefined) conditions.push(gte(leads.acreage, String(filter.acreageMin)));
@@ -624,20 +649,18 @@ export function registerOutreachMailRoutes(app: Express): void {
         // postcard_eddm; letters fall back to letter_presort). Per-piece
         // weight × count, rounded up.
         const poolAction: CreditAction = mailPoolActionFor(quote.provider, pieceType);
-        const mailDebitKey = `mail:queue:${org.id}:op:${operationKey}`;
-        const mailDebit = await poolDebit({
-          organizationId: org.id,
-          action: poolAction,
-          units: quote.pieceCount,
-          externalEventId: mailDebitKey,
-          notes: `Mail queue: ${pieceType} via ${quote.provider} (${quote.pieceCount} pieces)`,
-          isFounder: req.isFounder,
-        });
-
-        // Tier 1I — pool refusals are surfaced, never swallowed.
-        if (!mailDebit.allowed) {
-          return Errors.limitExceeded(res, poolRefusalDetails(poolAction, mailDebit));
-        }
+        // The debit is taken INSIDE the per-org lock, after the operation is
+        // known not to exist, under a key unique to THIS attempt. Keyed on the
+        // operation alone, a retry after a refunded persist failure replayed
+        // the refunded debit at 0 cents and queued mail no one paid for, and a
+        // concurrent duplicate could write the shipment with debitedCents 0
+        // against a real charge (independent audit of the G0 slice). The
+        // operation's idempotency is the lock + the unique operation key.
+        const mailDebitKey = `mail:queue:${org.id}:op:${operationKey}:${randomUUID()}`;
+        let mailDebit: PoolDebitResult | null = null;
+        // Assigned inside the transaction callback; read through this so the
+        // compiler does not narrow it to its initial null.
+        const debitTaken = () => mailDebit as PoolDebitResult | null;
 
         // Transaction: insert shipment header + per-piece rows, serialised per
         // org so two concurrent sends cannot both pass the free allowance or
@@ -656,6 +679,18 @@ export function registerOutreachMailRoutes(app: Express): void {
                 throw new FreeTierRaceRefusal(Math.max(0, FREE_TIER_LIFETIME_PIECES - usedNow));
               }
             }
+            // Lens 3 (Pricing Coherence) — debit the pool for the piece count
+            // BEFORE the shipment is written (the /credits/summary gauge
+            // aggregates these rows). Tier 1I — refusals surface, never swallowed.
+            mailDebit = await poolDebit({
+              organizationId: org.id,
+              action: poolAction,
+              units: quote.pieceCount,
+              externalEventId: mailDebitKey,
+              notes: `Mail queue: ${pieceType} via ${quote.provider} (${quote.pieceCount} pieces)`,
+              isFounder: req.isFounder,
+            });
+            if (!mailDebit.allowed) throw new PoolRefusal(mailDebit);
             const [row] = await tx
               .insert(mailShipments)
               .values({
@@ -740,11 +775,15 @@ export function registerOutreachMailRoutes(app: Express): void {
         } catch (txErr) {
           qrCodesIssued = 0;
           // Persist failure: refund the pool draw before re-throwing.
-          if (mailDebit.debitedCents > 0) {
+          if (txErr instanceof PoolRefusal) {
+            return Errors.limitExceeded(res, poolRefusalDetails(poolAction, txErr.result));
+          }
+          const taken = debitTaken();
+          if (taken && taken.debitedCents > 0) {
             await refundPoolDebit({
               organizationId: org.id,
               originalEventId: mailDebitKey,
-              amountCents: mailDebit.debitedCents,
+              amountCents: taken.debitedCents,
               reason: txErr instanceof FreeTierRaceRefusal ? "Free allowance taken by a concurrent send" : "Mail shipment persist failed",
             });
           }
@@ -802,9 +841,9 @@ export function registerOutreachMailRoutes(app: Express): void {
             callTrackingEnabled: trackingNumber !== null,
           },
           creditPool: {
-            debitedCents: mailDebit.debitedCents,
-            remaining: mailDebit.remaining,
-            poolMonthly: mailDebit.poolMonthly,
+            debitedCents: debitTaken()?.debitedCents ?? 0,
+            remaining: debitTaken()?.remaining ?? 0,
+            poolMonthly: debitTaken()?.poolMonthly ?? 0,
             // Pair the debit with the shipmentId so cancellations within the
             // 30-min hold window can refund this exact debit.
             shipmentDebitKey: mailDebitKey,
@@ -1110,7 +1149,9 @@ export function registerOutreachMailRoutes(app: Express): void {
         const dealsOpened = dealAgg?.opened ?? 0;
         const dealsClosed = dealAgg?.closed ?? 0;
 
-        const costCentsTotal = shipment.totalCents;
+        // What the ACCEPTED pieces cost: failed and suppressed pieces were
+        // refunded, so the locked shipment total overstated $/sent.
+        const costCentsTotal = shipment.perPieceCents * sent;
         const safeDiv = (n: number, d: number): number => (d > 0 ? Math.round(n / d) : 0);
 
         res.json({

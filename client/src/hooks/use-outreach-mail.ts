@@ -47,6 +47,8 @@ export interface QuoteResponse {
 export interface QueueResponse {
   /** True when this was a retry of a send already queued — nothing new was charged. */
   replayed?: boolean;
+  /** The shipment's current status on a replay (queued, cancelled, sending, sent…). */
+  status?: string;
   shipmentId: number;
   leavesAt: string;
   holdWindowMinutes: number;

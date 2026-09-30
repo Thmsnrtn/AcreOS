@@ -21,7 +21,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
-import { leads, mailShipments } from "@shared/schema";
+import { leads, mailShipments, mailShipmentPieces } from "@shared/schema";
 
 // ── Mutable state the mocks read (reset per test) ───────────────────────────
 const state = {
@@ -79,12 +79,13 @@ vi.mock("../../server/db", () => {
     const rows =
       table === leads
         ? makeLeadRows()
-        : table === mailShipments
-          ? fields && "used" in fields
-            ? [{ used: state.piecesUsed + (inTx ? state.piecesUsedConcurrently : 0) }]
-            : [] // no shipment already queued under this operation key
-          : [];
+        : table === mailShipmentPieces && fields && "used" in fields
+          ? [{ used: state.piecesUsed + (inTx ? state.piecesUsedConcurrently : 0) }]
+          : table === mailShipments
+            ? [] // no shipment already queued under this operation key
+            : [];
     const chain: any = {
+      innerJoin: () => chain,
       where: () => chain,
       orderBy: () => chain,
       limit: async () => rows,
@@ -227,7 +228,7 @@ describe("POST /api/outreach/mail/queue — free-tier first-send wedge (W2.1)", 
     expect(state.poolDebitCalls).toBe(1);
   });
 
-  it("two sends racing for the last of the allowance: the loser is refused and refunded (checked again under the lock)", async () => {
+  it("two sends racing for the last of the allowance: the loser is refused under the lock, before it is charged", async () => {
     state.piecesUsed = 0; // the pre-check sees 5 left
     state.piecesUsedConcurrently = 3; // …a concurrent send committed 3 before this one's transaction
     state.audienceSize = 3; // 3 + 3 > 5
@@ -235,7 +236,10 @@ describe("POST /api/outreach/mail/queue — free-tier first-send wedge (W2.1)", 
     expect(res.status).toBe(429);
     expect(res.body.details?.reason).toBe("free_send_cap");
     expect(res.body.details?.remainingPieces).toBe(2);
-    expect(state.refunds).toBe(1);
+    // The debit is taken inside the lock after the recount, so the loser is
+    // never charged (nothing to refund).
+    expect(state.poolDebitCalls).toBe(0);
+    expect(state.refunds).toBe(0);
     expect(state.txInserts).toBe(0);
   });
 

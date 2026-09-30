@@ -3,6 +3,7 @@
  * Uses Regrid API to find nearby parcels and calculate market value estimates
  */
 
+import { createHash } from 'node:crypto';
 import { storage } from '../storage';
 import { logger } from "../utils/logger";
 import { BoundedMap } from "../utils/boundedMap";
@@ -391,8 +392,16 @@ export async function getComparableProperties(
   // Scoped to the org (and whose key paid): Regrid comps are licensed data,
   // not redistributable. A coordinate-only key served one org's comps —
   // bought on its own key or AcreOS's licence — to any org for an hour.
-  const cacheKey = `${orgId ?? "anon"}:${source}:${getCacheKey(lat, lng, radiusMiles, filters)}`;
-  const cached = compsCache.get(cacheKey);
+  // With no org, a customer key is scoped by a fingerprint of itself (the
+  // registry path passes the key without the org); with neither, the result
+  // is not cached at all — licensed comps have no one to be scoped to.
+  const cacheScope = orgId
+    ? `org:${orgId}`
+    : apiKeyOverride
+      ? `key:${createHash("sha256").update(apiKeyOverride).digest("hex").slice(0, 16)}`
+      : null;
+  const cacheKey = `${cacheScope ?? "uncached"}:${source}:${getCacheKey(lat, lng, radiusMiles, filters)}`;
+  const cached = cacheScope ? compsCache.get(cacheKey) : undefined;
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     return { ...cached.data, credentialSource: source };
   }
@@ -541,7 +550,7 @@ export async function getComparableProperties(
         : "Limited sales data available. Market analysis may be less accurate.";
     }
 
-    compsCache.set(cacheKey, { data: result, timestamp: Date.now() });
+    if (cacheScope) compsCache.set(cacheKey, { data: result, timestamp: Date.now() });
 
     return result;
   } catch (error) {

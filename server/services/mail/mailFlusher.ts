@@ -27,6 +27,7 @@ import { MailRouter, PartialMailSendError, type MailShipment, type MailPiece, ty
 import { qrRedirectUrl } from "./qrCodes";
 import { refundPoolDebit } from "../creditPool";
 import { logger } from "../../utils/logger";
+import { mergeMailCopy } from "@shared/parcel/ownerName";
 
 /** Minimal shipment shape the flusher needs (raw claim row OR a mapped row). */
 export interface FlushShipment {
@@ -101,6 +102,8 @@ export function buildRouterShipment(ship: FlushShipment, pieces: FlushPiece[]): 
   const mailPieces: MailPiece[] = pieces.map((p) => {
     const [firstName, ...rest] = (p.recipientName ?? "").trim().split(/\s+/);
     const responseBlock = responseBlockHtml(p.qrCode);
+    // Per piece: the same merge the composer's preview renders.
+    const pieceCopy = mergeMailCopy(copy, { name: p.recipientName, city: p.city, state: p.state }, { html: true });
     return {
       recipient: {
         firstName: firstName || undefined,
@@ -113,8 +116,8 @@ export function buildRouterShipment(ship: FlushShipment, pieces: FlushPiece[]): 
       pieceType: ship.pieceType as MailPiece["pieceType"],
       pieceRef: `mail_piece:${p.id}`,
       vars: {
-        htmlContent: copy + responseBlock,
-        frontHtml: copy,
+        htmlContent: pieceCopy + responseBlock,
+        frontHtml: pieceCopy,
         backHtml: responseBlock,
       },
     };

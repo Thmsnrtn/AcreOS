@@ -139,6 +139,7 @@ export function readLobEvent(body: unknown): {
   providerPieceId: string | null;
   occurredAt: Date;
   expectedDeliveryAt: Date | null;
+  eventDated: boolean;
 } {
   const b = (body ?? {}) as Record<string, unknown>;
   const evt = (b.event_type ?? {}) as Record<string, unknown>;
@@ -162,6 +163,8 @@ export function readLobEvent(body: unknown): {
     eventType: normalizeEventType(evt.id ?? b.event_type),
     providerPieceId,
     occurredAt: parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : new Date(),
+    /** Whether the event carried a readable date (occurredAt is "now" otherwise). */
+    eventDated: Boolean(parsedDate && !Number.isNaN(parsedDate.getTime())),
     expectedDeliveryAt:
       parsedExpected && !Number.isNaN(parsedExpected.getTime()) ? parsedExpected : null,
   };
@@ -192,7 +195,7 @@ export function registerLobWebhookRoutes(app: Express): void {
     }
 
     try {
-      const { eventType, providerPieceId, occurredAt, expectedDeliveryAt } = readLobEvent(
+      const { eventType, providerPieceId, occurredAt, expectedDeliveryAt, eventDated } = readLobEvent(
         req.body,
       );
 
@@ -230,7 +233,9 @@ export function registerLobWebhookRoutes(app: Express): void {
         // So a recent event is refused with a retryable 503 (Lob retries with
         // backoff, bounded by its own policy), and only an old one is
         // acknowledged as unknown.
-        const ageMs = Date.now() - occurredAt.getTime();
+        // An event without a readable date is treated as old: "now" as its
+        // age would keep asking Lob to retry it for ever.
+        const ageMs = eventDated ? Date.now() - occurredAt.getTime() : Number.POSITIVE_INFINITY;
         if (ageMs < UNMATCHED_RETRY_WINDOW_MS) {
           logger.info("[lob-webhook] no piece yet for provider id — asking Lob to retry", {
             metadata: { eventType },
