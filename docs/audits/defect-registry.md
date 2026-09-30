@@ -5334,6 +5334,9 @@ Remediation: The parcel service takes `{ organizationId, regridApiKey }`
 and resolves the key in order: the key the caller already resolved, the
 org's own (vault, then legacy), the platform licence. The provider passes
 its key; every coordinate caller passes its org.
+(The comps path of the same provider still dropped the key — found by the
+independent audit, fixed as DEFECT-0198; the layer order itself was later
+made to depend on whose key it is — DEFECT-0200.)
 Falsified: `tests/unit/parcelLayering.test.ts` "an org's own Regrid key is
 the key that calls Regrid" — both the parcel service and the registry
 provider put the org's key in the Authorization header (RED before: the
@@ -5426,6 +5429,269 @@ replacement. The Regrid-backed list builder (readiness plan 1.2) is what
 earns a list-pulling claim back.
 Resolving commits: batch G
 
+### DEFECT-0191
+Title: The Outreach mail queue addressed a wider audience than the investor chose
+Severity: P1
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (seventh pass), reconciled at 6b730aa
+Description: `resolveAudience` turned a selected marketing list into its
+`filters.states` only. A "Hidalgo County" list therefore mailed every
+eligible Texas lead, and a list with no states (or an unknown id) added no
+condition, so it mailed the whole CRM. Marketing lists record no member
+rows, only import metadata. The composer's counties were ignored, and more
+than 50,000 matches were silently cut to 50,000. This is physical mail and
+pool spend for people the investor did not pick.
+Evidence: `server/routes-outreach-mail.ts` `resolveAudience`;
+`client/src/pages/outreach/mail/compose.tsx`.
+Remediation: Every field narrows exactly or refuses (422):
+- a list is refused (`list_membership_unavailable`), as are saved views;
+- counties filter on `leads.county` (case- and "County"-suffix-insensitive)
+  and need their state (`county_needs_state`);
+- acreage bounds filter on `leads.acreage`;
+- more than 50,000 matches is refused (`audience_too_large`), never cut.
+The composer drops the list chips, says why, and adds acreage.
+Falsified: `tests/unit/outreachMailQueueIsOneOperation.test.ts` "the
+audience is exactly what the investor chose — or refused" (red before).
+Resolving commits: quality-directive slice H1
+
+### DEFECT-0192
+Title: One click could queue and charge the same physical mail twice
+Severity: P1
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (seventh pass)
+Description:
+- The queue ignored the `Idempotency-Key` the composer sent and keyed its
+  pool debit on `Date.now()`. A response lost after commit, followed by
+  another click, debited and queued a second shipment.
+- The audience was read twice (once for the pieces, once in `buildQuote`),
+  so the count charged and the pieces written could differ.
+- The free allowance was checked outside the transaction, so two concurrent
+  sends could both pass it.
+Evidence: `server/routes-outreach-mail.ts` `POST /api/outreach/mail/queue`;
+`client/src/hooks/use-outreach-mail.ts`.
+Remediation:
+- One customer intent is one shipment. `mail_shipments.operation_key` is
+  unique per org (migration 0257 + mirror). The composer holds one key per
+  composed shipment and resends it on retry. A retry returns the shipment
+  already queued, with the same response shape, and no second debit. The
+  debit is keyed on the operation.
+- The audience is read once. The quote returns a digest of exactly those
+  recipients, addresses, piece type and copy. The queue refuses (409
+  `audience_changed`, with the new quote, nothing charged) when the set no
+  longer matches what the investor confirmed.
+- The insert runs under a per-org advisory lock that re-checks the free
+  allowance and the operation key; the loser is refunded.
+Falsified: `outreachMailQueueIsOneOperation.test.ts` "one confirmed set, one
+operation" (red before); `freeTierFirstSend.test.ts` concurrent-race case.
+Resolving commits: quality-directive slice H1
+
+### DEFECT-0193
+Title: A seller who texted STOP during the 30-minute hold was still mailed
+Severity: P1
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (seventh pass)
+Description: The queue excluded opted-out leads when it resolved the
+audience. The flusher then handed the stored piece addresses to the provider
+without reading the lead again, so an opt-out during the hold (the window
+that exists so a send can be stopped) was printed and delivered anyway.
+Evidence: `server/services/mail/mailFlusher.ts` `flushOne`.
+Remediation: Before the provider handoff, each pending piece's lead is
+re-read (org-scoped). A deleted, do-not-contact or opted-out lead's piece is
+marked `suppressed` and never sent. Only its share of the debit is refunded,
+under its own refund key, so a later partial-send refund is not swallowed
+and a total failure does not refund it twice. If every recipient is
+suppressed, the shipment is cancelled. Refund shares now use the debited
+piece count.
+Falsified: `tests/unit/mailHoldHonoursLateOptOut.test.ts` (red before).
+Resolving commits: quality-directive slice H1
+
+### DEFECT-0194
+Title: Queued mail was counted as "Email/SMS out"; physical first mail was never measured from the provider
+Severity: P2
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (seventh pass)
+Description: The Outreach queue recorded `first_mailer_sent`, the email/SMS
+campaign event, at queue time. That was for mail that can still be
+cancelled in the hold or refused by the provider. The founder wedge card
+showed it as "Email/SMS out".
+Evidence: `server/routes-outreach-mail.ts`; `shared/schema.ts` activation
+events; `client/src/pages/founder/onboarding-funnel.tsx`.
+Remediation:
+- The queue records `first_mail_queued`.
+- The flusher records `first_letter_sent` when a provider accepts a LIVE
+  piece: a Lob `live_` key, or a PostGrid `live_` key. It is never recorded
+  on a test key, and never claimed for providers that cannot say.
+- The wedge card shows queued and mailed as separate steps.
+Historical `first_mailer_sent` rows written by the queue carry `eventValue.source =
+"outreach:mail:queue"` and are identifiable; the funnel cohort work (H5)
+excludes them.
+Falsified: `outreachMailQueueIsOneOperation.test.ts` "what gets measured";
+`mailHoldHonoursLateOptOut.test.ts` live/test/nothing-accepted cases.
+Resolving commits: quality-directive slice H1
+
+### DEFECT-0195
+Title: Mail results counted failed pieces as sent and multiplied sends by piece count
+Severity: P2
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (seventh and eighth passes)
+Description: Four results queries had wrong denominators:
+- The funnel counted every non-pending piece as "sent", failed included.
+- Template and compare-template rates summed `mail_shipments.piece_count`
+  over a join to the pieces, so a three-piece shipment read as nine sends.
+  Responses summed scans plus calls, so one person scanning twice counted
+  twice.
+- The monthly cohort multiplied both sends and spend the same way.
+Evidence: `server/routes-outreach-mail.ts` results routes.
+Remediation: "Sent" is a provider-ACCEPTED piece (sent / printed /
+in_transit / delivered / returned). Failed and suppressed pieces are
+reported apart. `everDelivered` (evidence) is reported separately from
+current `delivered`, and `piecesResponded` counts responding pieces, not
+events. Spend counts each shipment's total once and excludes cancelled
+shipments.
+Falsified: `outreachMailQueueIsOneOperation.test.ts` "the results measure
+accepted pieces" (source pins over the four handlers; red before).
+Resolving commits: quality-directive slice H1
+
+### DEFECT-0196
+Title: An early Lob event was acknowledged and lost; Lob accepting a job was recorded as printed
+Severity: P2
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (eighth pass)
+Description: The flusher writes provider ids after the whole send returns,
+and Lob can post first events before that. The webhook answered an
+unmatched event with 200 `applied:false`, so Lob never retried and the stage
+was lost. `created` and `rendered_pdf` stamped `printedAt`, but neither is
+paper.
+Evidence: `server/routes/lob-webhooks.ts`.
+Remediation: A recent unmatched event (under 2 h) gets a retryable 503 with
+`Retry-After`. Lob retries under its own bounded policy. An old one (another
+environment's mail) is acknowledged. `created`/`rendered_pdf` confirm
+acceptance (`sent`) and stamp nothing; `mailed` is the first physical
+evidence. The status ranks gain `sent`.
+Falsified: `tests/unit/lobWebhookEarlyEventIsRetried.test.ts` (red before).
+Resolving commits: quality-directive slice H1
+
+### DEFECT-0197
+Title: The composer's "Preview all" called a route that did not exist
+Severity: P2
+Status: FIXED
+Surfaced by lenses: quality directive 2026-09-29 (seventh pass)
+Description: `PreviewList` posted to `/api/outreach/mail/preview`. No such
+route existed, and the failure was caught and replaced with a placeholder,
+so nobody could see who would be mailed.
+Evidence: `client/src/pages/outreach/mail/compose.tsx`.
+Remediation: `POST /api/outreach/mail/preview` pages through the same
+resolved set the queue writes, with the same digest. The panel pages, shows
+the rendered copy, and warns when the set changed since the quote.
+Falsified: `outreachMailQueueIsOneOperation.test.ts` "preview shows the set
+that will be mailed".
+Resolving commits: quality-directive slice H1
+
+### DEFECT-0198
+Title: Regrid comps dropped the customer's key and were shared across orgs
+Severity: P1
+Status: FIXED
+Surfaced by lenses: independent audit of 6b730aa (DEFECT-0186's own provider, comps path)
+Description:
+- The Regrid provider's `comps` case called `getComparableProperties`
+  without the key the registry resolved, so a BYOK customer was served on
+  AcreOS's key while the registry debited nothing.
+- `comps.ts` read only the legacy credential store, so a key connected in
+  the hub was ignored.
+- Comps were cached by coordinate for every org for an hour. One org's
+  licensed comps went to anyone at that point.
+Evidence: `server/services/providers/regrid-provider.ts`;
+`server/services/comps.ts`.
+Remediation: The registry's key is passed through, and comps resolve an
+org's key through the canonical vault resolver. The cache key includes the
+org and whose key paid.
+Falsified: `tests/unit/parcelLayering.test.ts` "comps: the org's own key…"
+(three cases, red before).
+Resolving commits: quality-directive slice H1
+
+### DEFECT-0199
+Title: The provider registry debited the list price for a lookup answered free
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 6b730aa
+Description: The debit and the cost telemetry used
+`provider.costPerLookupCents()` and ignored the `costCents` the provider
+reported for the lookup. When the Regrid provider answered from county data
+or a cache, it reported $0, yet the customer was charged 3¢ and the founder
+cost surface recorded 3¢.
+Evidence: `server/services/providers/provider-registry.ts`.
+Remediation: The registry charges the reported cost, capped at the list
+price the pre-check approved.
+Falsified: `tests/unit/registryChargesWhatTheLookupCost.test.ts` (red before).
+Resolving commits: quality-directive slice H1
+
+### DEFECT-0200
+Title: AcreOS's own Regrid licence was placed ahead of free county data on uncredited routes
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 6b730aa
+Description: Batch G ordered Regrid first whenever any key existed. The
+direct parcel routes debit no credit: drive mode, field scout, bulk fetch,
+Pax tools and due diligence. With the platform licence, every one of those
+lookups would have been a licensed call AcreOS paid for, even where the
+county publishes the parcel free. DEFECT-0186's "Regrid first" wording
+described that order.
+Evidence: `server/services/parcel.ts` `parcelLayerOrder`.
+Remediation: The order depends on whose key it is:
+- the org's own Regrid key: Regrid first;
+- AcreOS's platform licence: free county data first, then RapidAPI (BYOK),
+  then Regrid.
+The Regrid provider hands down a key as the org's only when the registry
+resolved it from the org's vault. Making the platform licence primary
+everywhere is a one-line change, once direct routes debit credit.
+Falsified: `parcelLayering.test.ts` "the layer order…" (platform-key case
+red before).
+Resolving commits: quality-directive slice H1
+
+### DEFECT-0201
+Title: Regrid facts entered the platform observation log; placeholder owner names survived
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of 6b730aa
+Description:
+- `cacheParcelResult` recorded every lookup's facts as parcel observations,
+  including proprietary Regrid facts. With no org they read as PLATFORM data
+  to the parcel biography, delta detector and county rollups, the same
+  redistribution DEFECT-0187 closed for snapshots.
+- The deal machine created leads named "Unknown" / "Owner". The dossier
+  reported owner "Unknown".
+- Entity and one-word owners (no first name, DEFECT-0189) were greeted
+  "Dear ," by `{{firstName}}` merges.
+Evidence: `server/services/parcel.ts`;
+`server/jobs/autonomousDealMachine.ts`;
+`server/services/dueDiligencePods.ts`;
+`server/services/leadIntelligenceEngine.ts`;
+`server/services/sequenceProcessor.ts`; `server/routes-campaigns.ts`.
+Remediation:
+- Proprietary facts are recorded only under the org that looked them up.
+- No owner means no lead; the dossier owner is null and shown as "Not on
+  record".
+- Merges greet with `salutationName` (first name, else the whole name).
+Resolving commits: quality-directive slice H1
+
+### DEFECT-0202
+Title: County GIS rows are cached globally regardless of each endpoint's redistribution review
+Severity: P2
+Status: OPEN
+Surfaced by lenses: independent audit of 6b730aa
+Description: `sharedSnapshotSources()` always treats `county_gis` as
+shareable. Each `county_gis_endpoints` row carries a `redistributable`
+posture that defaults to `review-required`, and the schema documents
+un-reviewed counties as live-passthrough only. The Regrid ETL and the
+loveland import also still write global rows. The reader filter hides them,
+but the writers do not refuse.
+Evidence: `server/storage/gisRepo.ts` `sharedSnapshotSources`;
+`server/services/etlHandlers.ts`.
+Remediation plan: Carry the endpoint's posture on the county lookup result
+and cache only reviewed counties globally. Make the ETL/import writers
+refuse non-shareable sources.
+Resolving commits: —
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -5462,10 +5728,10 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 8   | 8     |
-| FIXED  | 14  | 93  | 73  | 180   |
+| OPEN   | 0   | 0   | 9   | 9     |
+| FIXED  | 14  | 97  | 80  | 191   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **95** | **81** | **190** |
+| **Total** | **14** | **99** | **89** | **202** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as

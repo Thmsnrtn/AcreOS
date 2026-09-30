@@ -42,3 +42,12 @@ export function splitOwnerName(raw: string): { firstName: string; lastName: stri
   if (parts.length === 1) return { firstName: "", lastName: parts[0] };
   return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
 }
+
+/**
+ * The name a letter or message greets. An entity or single-word owner has no
+ * first name (splitOwnerName), and "Dear {{firstName}}," rendered "Dear ,";
+ * the whole name greets them instead ("Dear SMITH FAMILY TRUST,").
+ */
+export function salutationName(lead: { firstName?: string | null; lastName?: string | null }): string {
+  return lead.firstName?.trim() || lead.lastName?.trim() || "";
+}

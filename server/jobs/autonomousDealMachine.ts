@@ -52,6 +52,7 @@ import { emailService } from "../services/emailService";
 import { getRelevantMemories, formatMemoriesForContext } from "../services/atlasMemory";
 import { logger } from "../utils/logger";
 import { orgMayActFilter } from "../services/orgOperating";
+import { splitOwnerName } from "@shared/parcel/ownerName";
 
 export const AUTONOMOUS_DEAL_MACHINE_QUEUE = "autonomous-deal-machine";
 export const MORNING_BRIEFING_QUEUE = "morning-briefing-enhanced";
@@ -274,13 +275,15 @@ async function scoreNewDealsForOrg(
             )
             .limit(1);
 
-          if (existingLead.length === 0 && deal.apn) {
-            const ownerName = deal.ownerName || "Unknown Owner";
-            const [firstName, ...rest] = ownerName.split(" ");
+          // No owner name, no lead: this wrote first "Unknown", last "Owner",
+          // and a letter then greeted "Dear Unknown". The shared rule splits
+          // a real name; an entity keeps its whole name.
+          const owner = deal.ownerName?.trim() ? splitOwnerName(deal.ownerName) : null;
+          if (existingLead.length === 0 && deal.apn && owner?.lastName) {
             await db.insert(leads).values({
               organizationId,
-              firstName: firstName || "Unknown",
-              lastName: rest.join(" ") || "Owner",
+              firstName: owner.firstName,
+              lastName: owner.lastName,
               state: deal.state || "",
               sourceTrackingCode: apnTrackingCode,
               score: motivationResult.score,

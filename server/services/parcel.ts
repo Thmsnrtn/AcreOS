@@ -1,6 +1,6 @@
 /**
  * Parcel Boundary Service - layered lookup.
- * Order: PARCEL_LAYER_ORDER below (founder ruling 2026-09-29 #2).
+ * Order: parcelLayerOrder below (founder ruling 2026-09-29 #2).
  *
  * Cache freshness: 30 days
  */
@@ -24,19 +24,32 @@ import { readIntegrationCredentials } from "./integrationCredentials";
 import { sharedSnapshotSources } from "../storage/gisRepo";
 
 /**
- * Founder ruling 2026-09-29 #2 — parcel data from every source, layered:
- * Regrid is the primary parcel and owner layer once licensed (the org's own
- * key, or the platform licence), and free county data sits behind it. A layer
- * with no key is skipped, so until the licence exists nothing changes.
- * The shared snapshot cache sits in front of all of them, but only ever holds
- * rows its licence lets every org see (sharedSnapshotSources).
+ * Founder ruling 2026-09-29 #2 — parcel data from every source, layered, with
+ * Regrid the primary parcel and owner layer once licensed.
+ *
+ * WHOSE key decides where Regrid sits (independent audit of 6b730aa):
+ *  - The org's OWN Regrid key (BYOK): Regrid first. They connected it to get
+ *    Regrid's data, on their own account.
+ *  - AcreOS's platform licence: free county data first, Regrid behind it.
+ *    The direct parcel routes debit no credit, so a platform Regrid call on a
+ *    parcel the county publishes free would be AcreOS paying for data it had
+ *    for nothing — on every drive-mode capture and bulk fetch.
+ * A layer with no key is skipped, so until a key exists nothing changes. The
+ * one-line change to make the platform licence primary everywhere is this
+ * ordering. The shared snapshot cache sits in front of all of them, but only
+ * ever holds rows its licence lets every org see (sharedSnapshotSources).
  */
-const PARCEL_LAYER_ORDER = ["cache", "regrid", "county_gis", "rapidapi"] as const;
+type ParcelLayer = "cache" | "regrid" | "county_gis" | "rapidapi";
+const ORDER_OWN_REGRID_KEY: readonly ParcelLayer[] = ["cache", "regrid", "county_gis", "rapidapi"];
+const ORDER_PLATFORM_KEY: readonly ParcelLayer[] = ["cache", "county_gis", "rapidapi", "regrid"];
+function parcelLayerOrder(regrid: ResolvedRegridKey | null): readonly ParcelLayer[] {
+  return regrid?.source === "org" ? ORDER_OWN_REGRID_KEY : ORDER_PLATFORM_KEY;
+}
 
 export interface ParcelLookupOptions {
   /** The org asking — its own (BYOK) Regrid key is used before the platform's. */
   organizationId?: number;
-  /** A key already resolved by the caller (the provider registry's BYOK override). */
+  /** The org's own key, already resolved by the caller (the provider registry's BYOK override). Never the platform key. */
   regridApiKey?: string | null;
 }
 
@@ -49,8 +62,18 @@ function ownerOrNull(v: unknown): string | null {
 
 const REGRID_NOT_CONFIGURED = "Regrid API key not configured. Please add REGRID_API_KEY to secrets.";
 
-async function resolveRegridKey(opts?: ParcelLookupOptions): Promise<string | null> {
-  if (opts?.regridApiKey) return opts.regridApiKey;
+interface ResolvedRegridKey {
+  key: string;
+  /** "org" — the customer's own key (their account); "platform" — AcreOS's licence. */
+  source: "org" | "platform";
+}
+
+async function resolveRegridKey(opts?: ParcelLookupOptions): Promise<ResolvedRegridKey | null> {
+  const platform = process.env.REGRID_API_KEY || null;
+  // Only ever the org's own key: the Regrid provider hands one down solely
+  // when the registry resolved it from the org's BYOK vault (never the
+  // platform licence), so it is the org's by construction.
+  if (opts?.regridApiKey) return { key: opts.regridApiKey, source: "org" };
   if (opts?.organizationId) {
     try {
       const { resolveProviderCredential } = await import("./providers/resolveProviderCredential");
@@ -59,14 +82,14 @@ async function resolveRegridKey(opts?: ParcelLookupOptions): Promise<string | nu
         legacyProvider: "regrid",
         legacyField: "apiKey",
       });
-      if (own) return own;
+      if (own) return { key: own, source: "org" };
     } catch (error) {
       logger.warn("[Parcel] could not read the org's Regrid key; using the platform key", {
         metadata: { organizationId: opts.organizationId, error: error instanceof Error ? error.message : String(error) },
       });
     }
   }
-  return process.env.REGRID_API_KEY || null;
+  return platform ? { key: platform, source: "platform" } : null;
 }
 
 
@@ -685,7 +708,6 @@ function snapshotToResult(snapshot: {
  */
 async function cacheParcelResult(result: ParcelLookupResult, state: string, county: string, organizationId?: number): Promise<void> {
   if (!result.found || !result.parcel) return;
-  const snapshotSource = result.source === "regrid" || result.source === "rapidapi" ? result.source : "county_gis";
 
   // Iyari — the acorn: append every fact this lookup resolved as an immutable
   // observation BEFORE we overwrite the snapshot cache. Fire-and-forget; never
@@ -693,7 +715,13 @@ async function cacheParcelResult(result: ParcelLookupResult, state: string, coun
   // Tier 2A: widened to assessed/market value, tax status, and sale history —
   // the sale facts are recorded as DATED observations (observedAt = sale date)
   // so the tenure clock gains real historical depth, not platform-age depth.
-  if (result.parcel.apn && state && county) {
+  const snapshotSource = result.source === "regrid" || result.source === "rapidapi" ? result.source : "county_gis";
+  const shareable = sharedSnapshotSources().includes(snapshotSource);
+  // A proprietary fact recorded with no org reads as PLATFORM data to every
+  // org (parcel biography, delta detector, county rollups) — the same
+  // redistribution the snapshot gate closes. Recorded only under the org that
+  // looked it up (audit of 6b730aa); public county facts stay platform-wide.
+  if (result.parcel.apn && state && county && (shareable || organizationId)) {
     const d = result.parcel.data ?? ({} as NonNullable<ParcelLookupResult["parcel"]>["data"]);
     void recordProviderParcelFacts({
       apn: result.parcel.apn,
@@ -715,7 +743,7 @@ async function cacheParcelResult(result: ParcelLookupResult, state: string, coun
 
   // The snapshot is a GLOBAL cache: a row every org may read. Write one only
   // when the source's licence allows re-serving it to everyone.
-  if (!sharedSnapshotSources().includes(snapshotSource)) return;
+  if (!shareable) return;
 
   try {
     const saleDate = coerceSaleDate(result.parcel.data.lastSaleDate);
@@ -752,7 +780,7 @@ async function cacheParcelResult(result: ParcelLookupResult, state: string, coun
 }
 
 /**
- * Layered parcel lookup, in PARCEL_LAYER_ORDER. A layer that finds the parcel
+ * Layered parcel lookup, in parcelLayerOrder. A layer that finds the parcel
  * answers; one that misses, errors or has no key hands on to the next.
  */
 export async function lookupParcelByAPN(
@@ -771,8 +799,9 @@ export async function lookupParcelByAPN(
   }
   const orgId = opts.organizationId ?? organizationId;
   let lastMiss: ParcelLookupResult | null = null;
+  const regridKey = await resolveRegridKey({ ...opts, organizationId: orgId });
 
-  for (const layer of PARCEL_LAYER_ORDER) {
+  for (const layer of parcelLayerOrder(regridKey)) {
     if (layer === "cache") {
       if (!state || !county) continue;
       try {
@@ -800,9 +829,8 @@ export async function lookupParcelByAPN(
         logger.error("[ParcelCache] Cache lookup error", error);
       }
     } else if (layer === "regrid") {
-      const token = await resolveRegridKey({ ...opts, organizationId: orgId });
-      if (!token) continue;
-      const regridResult = await lookupFromRegrid(apn, stateCountyPath, token);
+      if (!regridKey) continue;
+      const regridResult = await lookupFromRegrid(apn, stateCountyPath, regridKey.key);
       if (regridResult.found) {
         logger.info("[Parcel] Found via Regrid");
         if (state && county) await cacheParcelResult(regridResult, state, county, orgId);
@@ -828,7 +856,7 @@ export async function lookupParcelByAPN(
     }
   }
 
-  return lastMiss ?? { found: false, error: (await resolveRegridKey({ ...opts, organizationId: orgId })) ? `Parcel not found for APN: ${apn}` : REGRID_NOT_CONFIGURED };
+  return lastMiss ?? { found: false, error: regridKey ? `Parcel not found for APN: ${apn}` : REGRID_NOT_CONFIGURED };
 }
 
 /**
@@ -1104,8 +1132,8 @@ async function lookupFromRegrid(
 }
 
 /**
- * Lookup parcel by coordinates, in PARCEL_LAYER_ORDER (no APN, so no cache
- * and no RapidAPI layer): Regrid when licensed, then the free statewide GIS.
+ * Lookup parcel by coordinates, in parcelLayerOrder (no APN, so no cache and
+ * no RapidAPI layer).
  */
 export async function lookupParcelByCoordinates(
   lat: number,
@@ -1113,13 +1141,11 @@ export async function lookupParcelByCoordinates(
   opts: ParcelLookupOptions = {},
 ): Promise<ParcelLookupResult> {
   let lastMiss: ParcelLookupResult | null = null;
-  let regridConfigured = false;
-  for (const layer of PARCEL_LAYER_ORDER) {
+  const regridKey = await resolveRegridKey(opts);
+  for (const layer of parcelLayerOrder(regridKey)) {
     if (layer === "regrid") {
-      const token = await resolveRegridKey(opts);
-      if (!token) continue;
-      regridConfigured = true;
-      const r = await lookupFromRegridByPoint(lat, lng, token);
+      if (!regridKey) continue;
+      const r = await lookupFromRegridByPoint(lat, lng, regridKey.key);
       if (r.found) return r;
       lastMiss = r;
     } else if (layer === "county_gis") {
@@ -1131,7 +1157,7 @@ export async function lookupParcelByCoordinates(
       }
     }
   }
-  return lastMiss ?? { found: false, error: regridConfigured ? "No parcel found at coordinates" : REGRID_NOT_CONFIGURED };
+  return lastMiss ?? { found: false, error: regridKey ? "No parcel found at coordinates" : REGRID_NOT_CONFIGURED };
 }
 
 async function lookupFromRegridByPoint(lat: number, lng: number, token: string): Promise<ParcelLookupResult> {

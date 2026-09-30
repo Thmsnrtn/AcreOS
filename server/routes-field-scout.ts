@@ -64,8 +64,9 @@ fieldScoutRouter.get('/properties/parcel-lookup', async (req: Request, res: Resp
       return Errors.badRequest(res, 'lat and lng must be valid numbers');
     }
 
-    // Real point lookup only — free statewide/county GIS intersection first,
-    // Regrid when a key is configured (server/services/parcel.ts). House rule:
+    // Real point lookup only — the parcel service's layer order: the org's own
+    // Regrid key first if it has one, otherwise free statewide/county GIS then
+    // the platform Regrid licence (server/services/parcel.ts). House rule:
     // NEVER fabricate parcel facts. When nothing resolves, say so honestly —
     // the client renders "No parcel found at this location" and the scout
     // enters details manually.

@@ -34,6 +34,7 @@ import { eq, sql, and, gte, desc } from "drizzle-orm";
 import { leads, deals, properties, campaignResponses, campaignDeliveryEvents } from "@shared/schema";
 import { shouldSimulate, recordSimulatedAction } from "./utils/simulationMode";
 import { sendOrgSMS, orgHasConnectedSmsIdentity } from "./services/smsService";
+import { salutationName } from "@shared/parcel/ownerName";
 
 export function registerCampaignRoutes(app: Express): void {
   const api = app;
@@ -2043,7 +2044,7 @@ export function registerCampaignRoutes(app: Express): void {
         try {
           // Simple template variable replacement
           let html = htmlTemplate
-            .replace(/\{\{firstName\}\}/g, lead!.firstName || "")
+            .replace(/\{\{firstName\}\}/g, salutationName(lead!))
             .replace(/\{\{lastName\}\}/g, lead!.lastName || "")
             .replace(/\{\{email\}\}/g, lead!.email || "")
             .replace(/\{\{county\}\}/g, (lead as any).county || "")
@@ -2288,7 +2289,7 @@ export function registerCampaignRoutes(app: Express): void {
 
         try {
           let body = messageBody
-            .replace(/\{\{firstName\}\}/g, lead!.firstName || "")
+            .replace(/\{\{firstName\}\}/g, salutationName(lead!))
             .replace(/\{\{lastName\}\}/g, lead!.lastName || "")
             .replace(/\{\{county\}\}/g, (lead as any).county || "");
 

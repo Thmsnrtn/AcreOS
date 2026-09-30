@@ -4,7 +4,6 @@
  */
 
 import { storage } from '../storage';
-import { readIntegrationCredentials } from './integrationCredentials';
 import { logger } from "../utils/logger";
 import { BoundedMap } from "../utils/boundedMap";
 
@@ -173,24 +172,22 @@ interface RegridCredentials {
 const compsCache = new BoundedMap<string, { data: CompsSearchResult; timestamp: number }>(2_000);
 const CACHE_TTL = 1000 * 60 * 60;
 
-async function getRegridCredentials(orgId?: number): Promise<RegridCredentials | null> {
+async function getRegridCredentials(orgId?: number, apiKeyOverride?: string): Promise<RegridCredentials | null> {
+  if (apiKeyOverride) return { apiKey: apiKeyOverride, source: 'organization' };
   if (orgId) {
     try {
-      const integration = await storage.getOrganizationIntegration(orgId, 'regrid');
-      
-      const decrypted = readIntegrationCredentials<{ apiKey?: string }>(
-        integration,
-        orgId,
-        'regrid (comps)',
-      );
-      if (integration && integration.isEnabled && decrypted) {
-        if (decrypted.apiKey) {
-          logger.info(`[CompsService] Using organization Regrid credentials for org ${orgId}`);
-          return {
-            apiKey: decrypted.apiKey,
-            source: 'organization',
-          };
-        }
+      // The canonical BYOK resolver — vault (connectors hub) then legacy. This
+      // read only the legacy store, so a key connected in the hub was ignored
+      // and the platform key spent (audit of 6b730aa).
+      const { resolveProviderCredential } = await import("./providers/resolveProviderCredential");
+      const own = await resolveProviderCredential(orgId, {
+        channel: "regrid",
+        legacyProvider: "regrid",
+        legacyField: "apiKey",
+      });
+      if (own) {
+        logger.info(`[CompsService] Using organization Regrid credentials for org ${orgId}`);
+        return { apiKey: own, source: 'organization' };
       }
     } catch (error) {
       logger.error(`[CompsService] Failed to get org Regrid credentials for org ${orgId}`, error);
@@ -365,7 +362,9 @@ export async function getComparableProperties(
   lng: number,
   radiusMiles: number = 5,
   filters: CompsFilters = {},
-  orgId?: number
+  orgId?: number,
+  /** A customer key the provider registry already resolved (BYOK). */
+  apiKeyOverride?: string,
 ): Promise<CompsSearchResult> {
   // Residential verticals never touch the land path (see fork note above).
   if (orgId) {
@@ -377,7 +376,7 @@ export async function getComparableProperties(
     }
   }
 
-  const credentials = await getRegridCredentials(orgId);
+  const credentials = await getRegridCredentials(orgId, apiKeyOverride);
   
   if (!credentials) {
     return {
@@ -389,7 +388,10 @@ export async function getComparableProperties(
   
   const { apiKey: token, source } = credentials;
 
-  const cacheKey = getCacheKey(lat, lng, radiusMiles, filters);
+  // Scoped to the org (and whose key paid): Regrid comps are licensed data,
+  // not redistributable. A coordinate-only key served one org's comps —
+  // bought on its own key or AcreOS's licence — to any org for an hour.
+  const cacheKey = `${orgId ?? "anon"}:${source}:${getCacheKey(lat, lng, radiusMiles, filters)}`;
   const cached = compsCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     return { ...cached.data, credentialSource: source };

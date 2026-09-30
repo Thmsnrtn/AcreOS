@@ -98,7 +98,7 @@ const CLAIMS: { claim: string; anchor: string }[] = [
     // hero.ctaSub — replaced the withdrawn "first county list inside 10
     // minutes" (readiness plan 2026-09-29 item 0.7); CSV import is real
     // (POST /api/leads/csv-import).
-    claim: "Bring your county list as a CSV and AcreOS maps it in.",
+    claim: "Bring your county list as a CSV — AcreOS reads the columns and skips owners you already have.",
     anchor: "Bring your county list as a CSV",
   },
   {
@@ -333,7 +333,7 @@ function buildSources(): Source[] {
       name: "CSV list import",
       ref: "server/routes-leads.ts POST /api/leads/csv-import",
       content: `
-        Bring your county list as a CSV and AcreOS maps it in — column
+        Bring your county list as a CSV — AcreOS reads the columns and skips owners you already have: column
         headers are auto-mapped, rows dedupe on state, county and APN, and
         rows with no usable owner name are refused per row. The earlier
         "first county list inside 10 minutes" target was withdrawn

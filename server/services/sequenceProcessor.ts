@@ -13,6 +13,7 @@ import {
   type ContactChannel,
 } from "./compliance/contactFrequency";
 import crypto from "crypto";
+import { salutationName } from "@shared/parcel/ownerName";
 import { logger } from '../utils/logger';
 import { getPaxControls, paxControlsRefusalMessage } from "./paxControls";
 import { recordPaxEffect } from "./paxReceipts";
@@ -531,7 +532,7 @@ export class SequenceProcessorService {
 
   personalizeContent(content: string, lead: Lead): string {
     return content
-      .replace(/\{\{firstName\}\}/g, lead.firstName || "")
+      .replace(/\{\{firstName\}\}/g, salutationName(lead))
       .replace(/\{\{lastName\}\}/g, lead.lastName || "")
       .replace(/\{\{email\}\}/g, lead.email || "")
       .replace(/\{\{phone\}\}/g, lead.phone || "")

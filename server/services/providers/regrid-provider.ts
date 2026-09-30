@@ -84,6 +84,11 @@ export const regridProvider: DataProvider = {
       throw new Error("Regrid API key not configured");
     }
 
+    // Only the customer's OWN key is handed down as theirs — the parcel
+    // service puts Regrid first for an org's own key, and behind free county
+    // data for AcreOS's platform licence.
+    const byokOpts = ctx?.apiKeyOverride ? { regridApiKey: ctx.apiKeyOverride } : {};
+
     let data: unknown;
     let confidence = 75;
     // lookupParcelByCoordinates/ByAPN fall back to free tiers (statewide/
@@ -96,7 +101,7 @@ export const regridProvider: DataProvider = {
       case "parcel_data": {
         if (input.type === "coordinates") {
           const { lookupParcelByCoordinates } = await import("../parcel");
-          const result = await lookupParcelByCoordinates(input.latitude, input.longitude, { regridApiKey: apiKey });
+          const result = await lookupParcelByCoordinates(input.latitude, input.longitude, byokOpts);
           data = result.parcel ?? null;
           confidence = result.found ? 85 : 20;
           answeredByFreeSource = result.found && result.source !== "regrid";
@@ -105,7 +110,7 @@ export const regridProvider: DataProvider = {
           // lookupParcelByAPN takes a combined "state/county" path, not
           // separate state/county arguments.
           const stateCountyPath = [input.state, input.county].filter(Boolean).join("/");
-          const result = await lookupParcelByAPN(input.apn, stateCountyPath, undefined, { regridApiKey: apiKey });
+          const result = await lookupParcelByAPN(input.apn, stateCountyPath, undefined, byokOpts);
           data = result.parcel ?? null;
           confidence = result.found ? 90 : 20;
           answeredByFreeSource = result.found && result.source !== "regrid";
@@ -122,7 +127,11 @@ export const regridProvider: DataProvider = {
             input.latitude,
             input.longitude,
             5, // radius miles
-            {}
+            {},
+            undefined,
+            // The registry resolved the customer's key; comps used to drop it
+            // and spend the platform key (audit of 6b730aa).
+            ctx?.apiKeyOverride,
           );
           data = result.comps ?? [];
           confidence = (result as any).success ? 80 : 30;
@@ -136,7 +145,7 @@ export const regridProvider: DataProvider = {
       case "valuation": {
         if (input.type === "coordinates") {
           const { lookupParcelByCoordinates } = await import("../parcel");
-          const result = await lookupParcelByCoordinates(input.latitude, input.longitude, { regridApiKey: apiKey });
+          const result = await lookupParcelByCoordinates(input.latitude, input.longitude, byokOpts);
           data = result.parcel?.data ?? null;
           confidence = result.found ? 80 : 20;
           answeredByFreeSource = result.found && result.source !== "regrid";

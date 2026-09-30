@@ -48,6 +48,7 @@ import { leads, countyMarkets } from "@shared/schema";
 import { eq, and, gte, desc, sql, isNull, ne } from "drizzle-orm";
 import { computeSellerMotivationScore } from "./sellerMotivationEngine";
 import { getCachedLandTrend, getCachedCountySnapshot } from "./usdaNassService";
+import { splitOwnerName } from "@shared/parcel/ownerName";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -303,7 +304,9 @@ function generateMessageHook(
    */
   offerPrice: number | null
 ): string {
-  const firstName = ownerName?.split(" ")[0] || "Property Owner";
+  // The shared owner-name rule: an entity ("SMITH FAMILY TRUST") has no
+  // first name, so it is greeted as "Property Owner", not "SMITH".
+  const firstName = (ownerName ? splitOwnerName(ownerName).firstName : "") || "Property Owner";
   // No price, no quote. The angle still works — it opens the conversation and
   // says the number comes after a look at the parcel, which is true.
   if (offerPrice === null) return hookWithoutPrice(firstName, county, state, angle, signals);

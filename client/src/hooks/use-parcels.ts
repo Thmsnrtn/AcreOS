@@ -22,7 +22,8 @@ interface ParcelData {
   };
   data: {
     regridId: string;
-    owner: string;
+    /** null when the source names no owner. */
+    owner: string | null;
     ownerAddress: string;
     taxAmount: string;
     lastUpdated: string;

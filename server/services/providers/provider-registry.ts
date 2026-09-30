@@ -278,6 +278,14 @@ class ProviderRegistry {
 
         this.recordSuccess(provider.name);
 
+        // What THIS lookup cost — the provider says so on its result. A
+        // provider that answered from a free source (the Regrid provider
+        // answering from county data, a provider cache hit) reports 0, and
+        // was debited the list price anyway (audit of 6b730aa). Never more
+        // than the list price the pre-check approved.
+        const chargedCents =
+          Number.isFinite(result.costCents) && result.costCents >= 0 ? Math.min(result.costCents, costCents) : costCents;
+
         // Provider-intelligence telemetry (non-blocking). A BYOK-served lookup
         // costs the PLATFORM nothing — record 0 so the founder cost surface
         // stays truthful (the customer paid their own vendor).
@@ -289,7 +297,7 @@ class ProviderRegistry {
             success: true,
             cached: false,
             latencyMs,
-            costCents: byokServed ? 0 : costCents,
+            costCents: byokServed ? 0 : chargedCents,
             organizationId,
             state,
             county,
@@ -302,8 +310,8 @@ class ProviderRegistry {
         // Debit the org credit pool only for a PAID, non-cached provider
         // success. Free providers (costCents=0), cached hits, and BYOK-served
         // lookups (customer paid their own vendor) debit 0.
-        if (!byokServed && costCents > 0 && organizationId && !finalResult.cached) {
-          this.debitPaidLookup(organizationId, category, provider.name, costCents, input).catch(
+        if (!byokServed && chargedCents > 0 && organizationId && !finalResult.cached) {
+          this.debitPaidLookup(organizationId, category, provider.name, chargedCents, input).catch(
             (debitErr) =>
               logger.warn(`Credit debit error (non-fatal)`, {
                 source: "ProviderRegistry",
@@ -317,7 +325,7 @@ class ProviderRegistry {
           metadata: {
             provider: provider.name,
             category,
-            costCents: byokServed ? 0 : costCents,
+            costCents: byokServed ? 0 : chargedCents,
             byokServed,
             latencyMs: finalResult.latencyMs,
             cached: false,

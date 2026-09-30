@@ -854,7 +854,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                       </AccordionTrigger>
                       <AccordionContent>
                         <div className="space-y-2 text-sm">
-                          <p><span className="font-medium">Owner:</span> {dossier.findings.owner.name}</p>
+                          <p><span className="font-medium">Owner:</span> {dossier.findings.owner.name ?? "Not on record"}</p>
                           <p><span className="font-medium">Type:</span> {dossier.findings.owner.type}</p>
                           {dossier.findings.owner.motivationSignals && dossier.findings.owner.motivationSignals.length > 0 && (
                             <div>

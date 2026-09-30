@@ -52,8 +52,10 @@ vi.mock("../../server/storage", () => ({
       return row;
     },
     getOrganizationIntegration: async () => null,
+    logApiUsage: async () => undefined,
   },
 }));
+vi.mock("../../server/services/residentialComps", () => ({ getOrgBusinessType: async () => "land_flipper" }));
 vi.mock("../../server/db", () => {
   const chain: Record<string, unknown> = {};
   chain.from = () => chain;
@@ -79,6 +81,7 @@ import {
 import { regridProvider } from "../../server/services/providers/regrid-provider";
 import { openDataProvider } from "../../server/services/providers/open-data-provider";
 import { sharedSnapshotSources } from "../../server/storage/gisRepo";
+import { getComparableProperties } from "../../server/services/comps";
 import { splitOwnerName } from "@shared/parcel/ownerName";
 
 const regridFeature = (props: Record<string, unknown> = {}) => ({
@@ -104,12 +107,30 @@ afterEach(() => {
 });
 
 describe("the layer order is declared once and walked", () => {
-  it("with a Regrid licence, Regrid answers before the county is asked", async () => {
-    h.countyEndpoint = { state: "TX", county: "Travis", isActive: true, endpointType: "arcgis_rest", baseUrl: "https://gis.example/q", apnField: "APN" };
-    const r = await lookupParcelByAPN("123-45", "tx/travis");
-    expect(r.found).toBe(true);
+  const COUNTY = { state: "TX", county: "Travis", isActive: true, endpointType: "arcgis_rest", baseUrl: "https://gis.example/q", apnField: "APN" };
+  const COUNTY_HIT = [{ attributes: { APN: "123-45", OWNER: "COUNTY RECORD OWNER" }, geometry: { rings: [[[0, 0], [0, 1], [1, 1], [0, 0]]] } }];
+
+  it("the org's OWN Regrid key: Regrid answers before the county is asked", async () => {
+    h.orgRegridKey = "org-own-key";
+    h.countyEndpoint = COUNTY;
+    h.countyFeatures = COUNTY_HIT;
+    const r = await lookupParcelByAPN("123-45", "tx/travis", 7);
     expect(r.source).toBe("regrid");
     expect(h.fetches.every((f) => f.url.includes("app.regrid.com"))).toBe(true);
+  });
+
+  it("AcreOS's platform licence: free county data first — no licensed call where the county answers", async () => {
+    h.countyEndpoint = COUNTY;
+    h.countyFeatures = COUNTY_HIT;
+    const r = await lookupParcelByAPN("123-45", "tx/travis", 7);
+    expect(r.source).toBe("county_gis");
+    expect(h.fetches.some((f) => f.url.includes("app.regrid.com"))).toBe(false);
+  });
+
+  it("…and the platform licence answers where the county does not", async () => {
+    const r = await lookupParcelByAPN("123-45", "tx/travis", 7);
+    expect(r.source).toBe("regrid");
+    expect(h.fetches.filter((f) => f.url.includes("app.regrid.com")).every((f) => f.auth === "Bearer platform-key")).toBe(true);
   });
 
   it("with no licence, the county layer answers and Regrid is never called", async () => {
@@ -146,6 +167,40 @@ describe("an org's own Regrid key is the key that calls Regrid", () => {
     const regridCalls = h.fetches.filter((f) => f.url.includes("app.regrid.com"));
     expect(regridCalls.length).toBeGreaterThanOrEqual(2);
     for (const c of regridCalls) expect(c.auth).toBe("Bearer byok-from-registry");
+  });
+});
+
+describe("comps: the org's own key, and one org's comps are not another's (audit of 6b730aa)", () => {
+  const comps: Array<{ auth: string | undefined }> = [];
+  beforeEach(() => {
+    comps.length = 0;
+    vi.stubGlobal("fetch", async (_url: string, init: { headers: Record<string, string> }) => {
+      comps.push({ auth: init.headers.Authorization });
+      // One parcel, so the result is complete and CACHED (an empty one is not).
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ results: [{ properties: { parcelnumb: "9", lat: 33, lon: -100, ll_gisacre: 10, county: "Llano", state2: "TX" } }] }),
+      };
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("the registry's BYOK key reaches the comps call (it used to fall back to the platform key)", async () => {
+    await regridProvider.lookup("comps", { type: "coordinates", latitude: 31, longitude: -98 }, { apiKeyOverride: "byok-comps" });
+    expect(comps).toEqual([{ auth: "Bearer byok-comps" }]);
+  });
+
+  it("an org's own key, read from the canonical vault resolver", async () => {
+    h.orgRegridKey = "org-vault-key";
+    await getComparableProperties(32, -99, 5, {}, 7);
+    expect(comps).toEqual([{ auth: "Bearer org-vault-key" }]);
+  });
+
+  it("the same point for a second org is fetched for that org — not served from the first org's cache", async () => {
+    await getComparableProperties(33, -100, 5, {}, 7);
+    await getComparableProperties(33, -100, 5, {}, 8);
+    expect(comps).toHaveLength(2);
   });
 });
 

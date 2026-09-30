@@ -110,7 +110,7 @@ interface CompsFindings {
 }
 
 interface OwnerFindings {
-  name: string;
+  name: string | null;
   type: string;
   contactInfo?: string;
   motivationSignals?: string[];
@@ -682,10 +682,11 @@ class DueDiligencePodService {
       .limit(1);
 
     const ownerFromParcel = property.parcelData?.owner;
-    let ownerName = ownerFromParcel || "Unknown";
-    let ownerType = "Individual";
+    // No owner on record is null — "Unknown" read downstream as a name.
+    const ownerName: string | null = ownerFromParcel?.trim() || null;
+    let ownerType = ownerName ? "Individual" : "Not on record";
 
-    if (ownerName.match(/LLC|INC|CORP|LP|LLP|TRUST|ESTATE|COMPANY|PARTNERS|HOLDINGS|PROPERTIES|INVESTMENTS/i)) {
+    if (ownerName?.match(/LLC|INC|CORP|LP|LLP|TRUST|ESTATE|COMPANY|PARTNERS|HOLDINGS|PROPERTIES|INVESTMENTS/i)) {
       ownerType = "Corporate";
       motivationSignals.push("Corporate ownership - may be portfolio sale");
     }
