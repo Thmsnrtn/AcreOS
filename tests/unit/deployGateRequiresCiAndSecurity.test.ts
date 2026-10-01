@@ -7,10 +7,10 @@
  * ci.yml, which nothing in deploy.yml waited on. GitHub cannot `needs:` a job
  * in another workflow, so deploy.yml CALLS ci.yml and the deploy job needs it.
  *
- * security.yml joins in W10.1b: it has been red on main since 2026-09-13, and
- * gating on it now would stop every deploy with no hotfix path. PENDING_GATES
- * records that, and the test refuses to let the pending entry rot: the moment
- * deploy.yml calls security.yml, it must be a REQUIRED gate.
+ * security.yml joined in W10.1b (2026-10-01), after its first green run (PR
+ * #318, d29ba51). Until then it sat in PENDING_GATES, red on main since
+ * 2026-09-13; the rot check — a pending gate that deploy.yml calls must be
+ * required — stays for the next gate that has to wait its turn.
  *
  * Parsed, not pattern-matched: a regex over the file reads comments, and this
  * file's history comments name `needs: test`.
@@ -35,11 +35,10 @@ const jobs = deploy.jobs ?? {};
 const REQUIRED_GATES: Record<string, string | null> = {
   test: null,
   ci: "./.github/workflows/ci.yml",
-};
-/** Gates that will be required once green — W10.1b. */
-const PENDING_GATES: Record<string, string> = {
   security: "./.github/workflows/security.yml",
 };
+/** Gates that will be required once green. Empty since W10.1b; the rot check below stays for the next one. */
+const PENDING_GATES: Record<string, string> = {};
 
 const RANK: Record<string, number> = { none: 0, read: 1, write: 2 };
 

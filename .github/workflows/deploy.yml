@@ -114,18 +114,28 @@ jobs:
   # one definition of each check, no copy to drift. The duplicated compute on a
   # main push is the price of a gate that reads the SHA it ships.
   #
-  # security.yml is NOT yet a gate, deliberately: it has been red on main since
-  # 2026-09-13 (npm audit: maplibre-gl critical, five highs; Trivy), so gating on
-  # it today would stop every deploy with no hotfix path. Wave W10.1b upgrades
-  # those dependencies and adds `security` here once it is green.
+  # security.yml joined in W10.1b (2026-10-01). It was red on main from
+  # 2026-09-13 (maplibre-gl critical, five highs, Trivy), so it could not gate
+  # until that was fixed; its first green run was PR #318's on d29ba51. Its
+  # jobs ask for security-events: write (SARIF upload) and actions: read
+  # (CodeQL), so the call grants exactly those — a called workflow cannot ask
+  # for more than its caller grants, or GitHub refuses the whole run.
   # Pinned by tests/unit/deployGateRequiresCiAndSecurity.test.ts.
   ci:
     name: CI (pre-deploy gate)
     uses: ./.github/workflows/ci.yml
 
+  security:
+    name: Security (pre-deploy gate)
+    uses: ./.github/workflows/security.yml
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
   deploy:
     name: Deploy to Fly.io
-    needs: [test, ci]
+    needs: [test, ci, security]
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -670,7 +680,7 @@ jobs:
   # This job pages ONCE, immediately, when the gate refuses a main push.
   notify-gate-failure:
     name: Page founder on pre-deploy gate failure
-    needs: [test, ci]
+    needs: [test, ci, security]
     if: failure()
     runs-on: ubuntu-latest
     steps:
