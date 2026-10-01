@@ -96,6 +96,42 @@ jobs:
           output: codeql-results
           upload: true
 
+      # The findings go to the code-scanning UI, which integration tokens
+      # cannot read ("403 Resource not accessible by integration") — so a red
+      # "CodeQL" PR check named "12 critical" with nothing anyone could open.
+      # A finding you cannot read is one you can neither fix nor assess
+      # (tests/unit/aGatingScanCanBeRead.test.ts makes the same rule for the
+      # Trivy gates). This prints the SARIF into the job log: counts by
+      # severity, then every critical and high result with rule and location.
+      - name: Print CodeQL findings (non-gating, for the job log)
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob, json, collections
+          def band(score):
+              if score is None: return "none"
+              s = float(score)
+              return "critical" if s >= 9 else "high" if s >= 7 else "medium" if s >= 4 else "low"
+          rows, counts = [], collections.Counter()
+          for path in glob.glob("codeql-results/*.sarif"):
+              for run in json.load(open(path)).get("runs", []):
+                  sev = {}
+                  tool = run.get("tool", {})
+                  for comp in [tool.get("driver", {})] + tool.get("extensions", []):
+                      for rule in comp.get("rules", []):
+                          sev[rule.get("id")] = (rule.get("properties") or {}).get("security-severity")
+                  for r in run.get("results", []):
+                      b = band(sev.get(r.get("ruleId")))
+                      counts[b] += 1
+                      if b in ("critical", "high"):
+                          loc = (r.get("locations") or [{}])[0].get("physicalLocation", {})
+                          where = f'{loc.get("artifactLocation", {}).get("uri", "?")}:{loc.get("region", {}).get("startLine", "?")}'
+                          rows.append((b, r.get("ruleId"), where))
+          print("CodeQL results by security severity:", dict(counts))
+          for b, rule, where in sorted(rows):
+              print(f"{b:9} {rule:45} {where}")
+          PY
+
   # ── 3. Trivy — container image vulnerability scan ──────────────────────────
   trivy-image:
     name: Trivy Container Scan
