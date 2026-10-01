@@ -13,8 +13,8 @@
  * The production wire-up lands when USPS BCG permitting trips at $1k MRR.
  * See routes-eddm.ts for the server side.
  *
- * Engine choice: Mapbox stays here (per Pillar 8.3) — EDDM benefits from
- * Mapbox's data pipeline. Other surfaces are migrating to MapLibre.
+ * Engine choice: Mapbox, as everywhere in the app — EDDM benefits from
+ * Mapbox's data pipeline.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -46,11 +46,9 @@ import {
   type EddmRouteFeature,
 } from "@/hooks/use-outreach-mail";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { mapboxToken } from "@/lib/map-engine";
 
-const MAPBOX_TOKEN =
-  (import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string | undefined) ||
-  ((typeof window !== "undefined" ? (window as any).__ENV__ : undefined)
-    ?.VITE_MAPBOX_ACCESS_TOKEN as string | undefined);
+const MAPBOX_TOKEN = mapboxToken();
 
 // Per Pillar 3 cost weights — 31¢/piece for EDDM postcards.
 const EDDM_PER_PIECE_CENTS = 31;

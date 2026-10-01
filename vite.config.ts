@@ -128,7 +128,7 @@ export default defineConfig({
           // Heavy libs used across many pages — keep grouped so 30+ pages
           // share one cached chunk instead of each carrying their own copy.
           if (/\/recharts\//.test(id)) return 'vendor-charts';
-          if (/\/(mapbox-gl|maplibre-gl)\//.test(id)) return 'vendor-map';
+          if (/\/mapbox-gl\//.test(id)) return 'vendor-map';
 
           // Heavy libs with a single consumer — DO NOT name them. Returning
           // undefined lets Vite co-locate the lib with its sole importer's

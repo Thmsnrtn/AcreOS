@@ -4126,8 +4126,15 @@ END $mig0247$`,
      VALUES ('Lob', 'signed', 'Direct mail delivery (letters + postcards)', CURRENT_DATE)
      ON CONFLICT (vendor_name) DO NOTHING`,
   `INSERT INTO "data_processing_agreements" (vendor_name, status, scope, signed_date)
-     VALUES ('Mapbox', 'signed', 'Map tiles + geocoding (legacy; replaceable via VITE_MAP_ENGINE=maplibre)', CURRENT_DATE)
+     VALUES ('Mapbox', 'signed', 'Map tiles + geocoding', CURRENT_DATE)
      ON CONFLICT (vendor_name) DO NOTHING`,
+  // 2026-10-01 — W10.1b removed the MapLibre preview engine; the seeded scope
+  // called Mapbox "legacy; replaceable via" an env flag that no longer exists,
+  // and GET /api/trust/sub-processors publishes it. Rewrite only that exact
+  // seeded text, so an operator's own edit to the row survives.
+  `UPDATE "data_processing_agreements" SET scope = 'Map tiles + geocoding'
+     WHERE vendor_name = 'Mapbox'
+       AND scope = 'Map tiles + geocoding (legacy; replaceable via VITE_MAP_ENGINE=maplibre)'`,
   `INSERT INTO "data_processing_agreements" (vendor_name, status, scope, signed_date)
      VALUES ('Regrid', 'signed', 'Parcel data fallback (cold once county_gis coverage is broad)', CURRENT_DATE)
      ON CONFLICT (vendor_name) DO NOTHING`,

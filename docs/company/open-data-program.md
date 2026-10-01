@@ -129,8 +129,10 @@ not guaranteed; a point is unambiguous). Bulk-ingest into
 The full recipe with costs/licensing is in `open-data-maps.md` §"Recommended
 map stack". Sequence:
 
-1. Complete the MapLibre Phase-2 renderer swap (seam exists in
-   `map-engine.ts`), pointing at **self-hosted Protomaps PMTiles on Cloudflare
+1. Build the MapLibre renderer (the half-wired preview toggle in
+   `map-engine.ts` was removed in W10.1b, 2026-10-01 — it never fully rendered
+   and its maplibre-gl 4.x held a critical advisory; start from maplibre-gl 6
+   with its worker bundled), pointing at **self-hosted Protomaps PMTiles on Cloudflare
    R2** (primary) + **OpenFreeMap** (fallback/dev) — removes the Stadia
    non-commercial problem and makes Mapbox optional rather than default. (~1
    day + R2 account; ~$5–15/mo)

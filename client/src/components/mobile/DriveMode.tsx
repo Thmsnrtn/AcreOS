@@ -6,7 +6,7 @@
  * component is the customer-facing surface for that flow.
  *
  * Layout (top → bottom, full-screen):
- *   1. Map view (lazy MapLibre) centered on the current GPS fix.
+ *   1. Map view (lazy-loaded) centered on the current GPS fix.
  *   2. Big "Save current location as lead" CTA (≥88pt touch target,
  *      haptic via navigator.vibrate(20) on tap).
  *   3. Camera capture button — opens the native phone camera via

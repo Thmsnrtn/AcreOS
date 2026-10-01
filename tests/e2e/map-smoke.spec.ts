@@ -1,22 +1,19 @@
 /**
  * Map smoke test — functional, not just visual.
  *
- * Exercises the property-map component end-to-end with both engines:
+ * Exercises the property-map component end-to-end on Mapbox GL, the one
+ * renderer (the MapLibre preview engine was removed in W10.1b; the
+ * .maplibregl-canvas probes below stay so a future renderer is detected):
  *
- *   - Map canvas renders (mapbox-gl-canvas / maplibre-gl-canvas)
+ *   - Map canvas renders (mapboxgl-canvas)
  *   - Style switcher cycles through all 3 styles without error
  *   - Pan / zoom mouse interactions don't throw
  *   - Measurement-mode toggle activates and clicks register
  *   - Layer toggle reveals the layer menu
  *
- * Default run exercises the current `VITE_MAP_ENGINE` value (mapbox by
- * default). To force the maplibre path:
+ * Run against a dev server with VITE_MAPBOX_ACCESS_TOKEN set:
  *
- *   VITE_MAP_ENGINE=maplibre npm run dev
  *   npx playwright test tests/e2e/map-smoke.spec.ts
- *
- * Or to verify BOTH engines in one CI run, parametrize via separate
- * deploys or temporarily fork the spec.
  *
  * The test relies on at least one property being seeded in the test
  * org so the map has something to render. If the org is empty, the

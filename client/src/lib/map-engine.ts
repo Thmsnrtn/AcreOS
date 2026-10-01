@@ -1,136 +1,37 @@
 /**
- * Rosy River B1 — Map engine configuration.
+ * Map engine configuration — Mapbox GL is the one renderer.
  *
- * This module is Phase 1 of the Mapbox → MapLibre migration. It does NOT
- * swap the renderer yet — that's Phase 2 (a focused PR against
- * client/src/components/property-map.tsx that needs browser verification
- * before merge).
- *
- * What this file gives us today:
- *   1. A single source of truth for which engine the app should use.
- *      Default = "mapbox" (existing behavior). Flip
- *      VITE_MAP_ENGINE=maplibre in .env.local or the Fly secret to
- *      preview the open-source path.
- *   2. Engine-agnostic style descriptors. Mapbox styles live behind
- *      mapbox:// URLs (require a token). MapLibre styles point at
- *      open-data tile servers (Stadia, OSM-based, or self-hosted).
- *   3. Static-map URL builders, so the offline-only fallback in
- *      property-map.tsx (lines 3241/3244 today) has a non-Mapbox path
- *      once Phase 2 lands.
- *
- * Phase 2 (not in this commit) is straightforward: import either mapbox-gl
- * or maplibre-gl based on getMapEngine(), and use STYLE_URLS[engine][style]
- * when constructing the Map. The two libraries share the same Map / Marker /
- * Popup / NavigationControl / GeoJSONSource constructors — maplibre-gl is a
- * permissive fork of mapbox-gl v1, so most call sites need no change.
+ * A MapLibre preview engine lived here behind VITE_MAP_ENGINE=maplibre until
+ * W10.1b (2026-10-01). It was removed rather than carried: no deployment set
+ * the flag; its Stadia styles were licensed non-commercial only; the single-
+ * property map and the terrain DEM were hardwired to mapbox:// sources, so the
+ * path never fully rendered; and maplibre-gl 4.x held the repo's one critical
+ * advisory, whose v6 fix ships a worker our build did not emit. A MapLibre
+ * renderer returns with the open-data program's self-hosted tiles
+ * (docs/company/open-data-program.md), built for production, not as a toggle.
  */
 
-export type MapEngine = "mapbox" | "maplibre";
 export type MapStyleName = "satellite" | "terrain" | "streets";
 
-/**
- * Resolves the effective map engine. Reads from Vite env at build time, or
- * window.__ENV__ for runtime injection (matches the MAPBOX_TOKEN pattern in
- * property-map.tsx:22). Falls back to "mapbox" so today's behavior is
- * unchanged.
- */
-export function getMapEngine(): MapEngine {
-  const fromEnv =
-    import.meta.env.VITE_MAP_ENGINE ||
-    (typeof window !== "undefined" ? (window as unknown as { __ENV__?: { VITE_MAP_ENGINE?: string } }).__ENV__?.VITE_MAP_ENGINE : undefined);
-  return fromEnv === "maplibre" ? "maplibre" : "mapbox";
-}
-
-/**
- * Style URL matrix. Mapbox URLs require a token; MapLibre URLs do not.
- *
- * ⚠️ License reality check (open-data-program.md, 2026-07-13): Stadia's
- * free tier is explicitly NON-COMMERCIAL ("development, evaluation, and
- * non-commercial use" — docs.stadiamaps.com/limits). These Stadia URLs are
- * acceptable only behind the VITE_MAP_ENGINE=maplibre preview flag with a
- * PAID Stadia key, never as an unkeyed production default. The Phase-2
- * renderer swap must land with self-hosted Protomaps PMTiles (or
- * OpenFreeMap as fallback) replacing these defaults — see
- * docs/company/open-data-program.md Phase 4.
- */
-export const STYLE_URLS: Record<MapEngine, Record<MapStyleName, string>> = {
-  mapbox: {
-    satellite: "mapbox://styles/mapbox/satellite-streets-v12",
-    terrain: "mapbox://styles/mapbox/outdoors-v12",
-    streets: "mapbox://styles/mapbox/streets-v12",
-  },
-  maplibre: {
-    // Stadia "Alidade Satellite" — vector overlay on Sentinel-2 imagery
-    satellite: stadiaUrl("alidade_satellite"),
-    // Stadia "Stamen Terrain" — topographic with hillshade
-    terrain: stadiaUrl("stamen_terrain"),
-    // Stadia "OSM Bright" — clean OSM streets
-    streets: stadiaUrl("osm_bright"),
-  },
+export const STYLE_URLS: Record<MapStyleName, string> = {
+  satellite: "mapbox://styles/mapbox/satellite-streets-v12",
+  terrain: "mapbox://styles/mapbox/outdoors-v12",
+  streets: "mapbox://styles/mapbox/streets-v12",
 };
 
-function stadiaUrl(style: string): string {
-  const key =
-    import.meta.env.VITE_STADIA_API_KEY ||
-    (typeof window !== "undefined" ? (window as unknown as { __ENV__?: { VITE_STADIA_API_KEY?: string } }).__ENV__?.VITE_STADIA_API_KEY : undefined);
-  const suffix = key ? `?api_key=${key}` : "";
-  return `https://tiles.stadiamaps.com/styles/${style}.json${suffix}`;
-}
-
 /**
- * True when the chosen engine is fully configured. Use this to drive the
- * "Map not available" empty state in property-map.tsx so it stops referring
- * to Mapbox specifically once Phase 2 lands.
+ * The Mapbox access token, from the Vite build env or window.__ENV__ (runtime
+ * injection). Empty when unconfigured.
  */
-export function isMapEngineConfigured(): boolean {
-  const engine = getMapEngine();
-  if (engine === "maplibre") {
-    // Tiles load without a key, but see the license note on STYLE_URLS —
-    // unkeyed Stadia is not a lawful production configuration.
-    return true;
-  }
-  const token =
+export function mapboxToken(): string {
+  return (
     import.meta.env.VITE_MAPBOX_ACCESS_TOKEN ||
-    (typeof window !== "undefined" ? (window as unknown as { __ENV__?: { VITE_MAPBOX_ACCESS_TOKEN?: string } }).__ENV__?.VITE_MAPBOX_ACCESS_TOKEN : undefined);
-  return Boolean(token);
+    (typeof window !== "undefined" ? (window as unknown as { __ENV__?: { VITE_MAPBOX_ACCESS_TOKEN?: string } }).__ENV__?.VITE_MAPBOX_ACCESS_TOKEN : undefined) ||
+    ""
+  );
 }
 
-/**
- * Static-map URL builder. Returns a snapshot image URL suitable for
- * report PDFs, social-share previews, and the offline fallback in
- * property-map.tsx. Mapbox uses its Static Images API; MapLibre has no
- * equivalent first-party service so the open-source path uses a public
- * OSM static-map service.
- */
-export function buildStaticMapUrl(opts: {
-  longitude: number;
-  latitude: number;
-  zoom: number;
-  width: number;
-  height: number;
-  style?: MapStyleName;
-  retina?: boolean;
-}): string {
-  const engine = getMapEngine();
-  const style = opts.style ?? "satellite";
-  const retina = opts.retina ?? true;
-
-  if (engine === "mapbox") {
-    const token =
-      import.meta.env.VITE_MAPBOX_ACCESS_TOKEN ||
-      (typeof window !== "undefined" ? (window as unknown as { __ENV__?: { VITE_MAPBOX_ACCESS_TOKEN?: string } }).__ENV__?.VITE_MAPBOX_ACCESS_TOKEN : "");
-    const styleId =
-      style === "satellite"
-        ? "satellite-streets-v12"
-        : style === "terrain"
-          ? "outdoors-v12"
-          : "streets-v12";
-    const r = retina ? "@2x" : "";
-    return `https://api.mapbox.com/styles/v1/mapbox/${styleId}/static/${opts.longitude},${opts.latitude},${opts.zoom}/${opts.width}x${opts.height}${r}?access_token=${token}`;
-  }
-
-  // Open-source path: OSM staticmap (third-party, free, attribution required
-  // in the rendered output).
-  const r = retina ? 2 : 1;
-  return `https://staticmap.openstreetmap.de/staticmap.php?center=${opts.latitude},${opts.longitude}&zoom=${opts.zoom}&size=${opts.width}x${opts.height}&scale=${r}&maptype=mapnik`;
+/** True when the map can render: Mapbox needs its access token. */
+export function isMapEngineConfigured(): boolean {
+  return Boolean(mapboxToken());
 }

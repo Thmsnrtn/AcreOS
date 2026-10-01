@@ -197,10 +197,16 @@ export function PaxArtifact({ artifactType, title, data, onDismiss }: PaxArtifac
   const handlePrint = () => {
     const win = window.open("", "_blank");
     if (!win) return;
-    win.document.write(`<html><head><title>${title}</title></head><body><pre style="font-family:sans-serif;font-size:12px;">${
-      typeof data === "string" ? data : JSON.stringify(data, null, 2)
-    }</pre></body></html>`);
-    win.document.close();
+    // DOM text, never an HTML string: the title and data are Pax output that
+    // can carry lead and customer text, and a blank window shares the app's
+    // origin, so markup written into it would run as the app.
+    const doc = win.document;
+    doc.title = title;
+    const pre = doc.createElement("pre");
+    pre.style.fontFamily = "sans-serif";
+    pre.style.fontSize = "12px";
+    pre.textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+    (doc.body ?? doc.documentElement).appendChild(pre);
     win.print();
   };
 
@@ -219,6 +225,7 @@ export function PaxArtifact({ artifactType, title, data, onDismiss }: PaxArtifac
         </span>
         <button
           onClick={() => setCollapsed((v) => !v)}
+          aria-label={collapsed ? "Expand" : "Collapse"}
           className="text-muted-foreground hover:text-foreground transition-colors"
         >
           {collapsed ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}

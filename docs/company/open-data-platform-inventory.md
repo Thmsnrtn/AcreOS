@@ -39,10 +39,9 @@ Renderer: `client/src/components/property-map.tsx` + engine config `client/src/l
 
 | Concern | Detail | Free/Paid | Key | file:line |
 |---|---|---|---|---|
-| Basemap engine | **Mapbox GL** default; MapLibre GL behind `VITE_MAP_ENGINE=maplibre` (migration Phase 1 — renderer swap not done) | Mapbox paid; MapLibre/Stadia free | `VITE_MAPBOX_ACCESS_TOKEN` (mapbox) / `VITE_STADIA_API_KEY` (optional) | `map-engine.ts:28-92`, `property-map.tsx:2-45` |
-| Mapbox styles | satellite-streets-v12, outdoors-v12, streets-v12; terrain-DEM `mapbox://mapbox.mapbox-terrain-dem-v1` | Paid | Mapbox token | `map-engine.ts:53-58`, `property-map.tsx:1009-1017` |
-| MapLibre styles | Stadia alidade_satellite / stamen_terrain / osm_bright | Free | Stadia (optional) | `map-engine.ts:59-75` |
-| Static map (PDF/fallback) | Mapbox Static Images API or `staticmap.openstreetmap.de` | Mixed | — | `map-engine.ts:101-132` |
+| Basemap engine | **Mapbox GL**, the one renderer (the MapLibre preview toggle was removed in W10.1b, 2026-10-01) | Mapbox paid | `VITE_MAPBOX_ACCESS_TOKEN` | `map-engine.ts`, `property-map.tsx` |
+| Mapbox styles | satellite-streets-v12, outdoors-v12, streets-v12; terrain-DEM `mapbox://mapbox.mapbox-terrain-dem-v1` | Paid | Mapbox token | `map-engine.ts` (`STYLE_URLS`), `property-map.tsx` |
+| Static map (PDF/fallback) | Mapbox Static Images API | Paid | Mapbox token | `property-map.tsx` (`StaticPropertyMap`) |
 
 Overlay layers (`LayerState`, `property-map.tsx:644-670`), all free federal/state GIS rasters:
 

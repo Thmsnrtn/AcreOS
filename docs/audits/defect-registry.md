@@ -6726,6 +6726,28 @@ Evidence: `scripts/ratchets/empty-on-failure.json`; `client/src/lib/fetch-honest
 Remediation plan: A census listing every client read whose failure path returns a value a caller renders as fact, triaged per site; then a parse-based gate (a read whose catch or not-ok branch yields a literal) with an annotated allowlist for error-body parses.
 Resolving commits: —
 
+### DEFECT-0282
+Title: Outside data reached the DOM as HTML — the map's comp popup and Pax's print window
+Severity: P1
+Status: FIXED
+Surfaced by lenses: roadmap wave W10.1b (making the Security gate green) and its independent audit
+Description: Two sinks handed data to the HTML parser. `property-map.tsx` built each comp marker's popup as an HTML string, interpolating `comp.address` and `comp.apn` — values from outside parcel data — into `Popup.setHTML`, which does not sanitize: markup in a county record ran in the operator's session. `pax-artifact.tsx`'s Print `document.write`-d the artifact's title and body — Pax output that carries lead and customer text — into a `window.open("")` window, which shares the app's origin. The audit found the second after the first was fixed and claimed as the class.
+Evidence: `client/src/components/property-map.tsx` (comp markers); `client/src/components/pax-artifact.tsx` (`handlePrint`).
+Remediation: Both build DOM text: the popup with `textContent` nodes and `setDOMContent`; the print window with `document.title` and a `<pre>`'s `textContent`. A census of the remaining sinks found every data-bearing `dangerouslySetInnerHTML` already behind `DOMPurify.sanitize`, and three constant ones (chart theme CSS, two JSON-LD blocks), now registered by file and count.
+Falsified: `tests/unit/noDataReachesTheDomAsHtml.test.ts` — parsed (comments never read) over every client source file, js included: each sink (`setHTML` and `["setHTML"]`; `innerHTML`/`outerHTML`/`srcdoc` under any assignment operator; `innerHTML`/`__html`/`srcdoc` object-literal keys, shorthand included, which covers JSX, `createElement` and spreads; `dangerouslySetInnerHTML` from a variable; `insertAdjacentHTML`; `createContextualFragment`; `document.write`/`writeln` on any `…document` or a local bound to one; `setAttribute("srcdoc")`; JSX `srcDoc`) receives only a constant or `DOMPurify.sanitize(...)`. Exemptions are keyed by file, enclosing function and shape, each held to its exact count; every file must parse without error. One canary per shape goes red with data hidden in it; eight green canaries stay green. Not covered, by choice: `Reflect.set`, `DOMParser` round-trips, `eval`/`new Function` and `javascript:` URLs (a different class). Red at the parent commit with exactly these two sinks.
+Resolving commits: W10.1b
+
+### DEFECT-0283
+Title: The Security gate had been red on main since 2026-09-13
+Severity: P1
+Status: FIXED
+Surfaced by lenses: roadmap wave W10.1a (why deploy could not yet wait on Security)
+Description: `security.yml` failed on every main run: npm audit found one critical (maplibre-gl 4.7.1, CVE-2026-85061, a bypass in its `DOM.sanitize`) and highs in multer, sharp, undici, fast-uri and brace-expansion; Trivy fs and image both reported maplibre-gl, three multer CVEs and sharp. Because it was red, the deploy could not wait on it, so production shipped SHAs that no security scan had passed.
+Evidence: the 2026-09-13 onward `Security Scanning` runs on main; `npm audit --json` at `a52ff84`.
+Remediation: `npm audit fix` within range (multer 2.4.0, undici 7.30.0, fast-uri 3.1.8, brace-expansion, ip-address, dompurify; vitest and @vitest/coverage-v8 aligned at 4.1.11); sharp 0.35.5. maplibre-gl was REMOVED rather than upgraded: it was a preview engine behind `VITE_MAP_ENGINE=maplibre` that no deployment set, whose Stadia styles were licensed non-commercial only, and whose single-property map and terrain DEM were hardwired to `mapbox://` sources, so it never fully rendered; its v6 fix also ships a module worker our build did not emit. Mapbox GL is the one renderer (`client/src/lib/map-engine.ts`); the open-data program's MapLibre renderer is to be built fresh on self-hosted tiles. The default map download fell from 2598 to 1796 KB and total JS from 10758 to 9958 KB; both bundle ceilings were lowered. Root `npm audit`: 0 vulnerabilities. `tests/e2e-intelligent` (devDependencies only, which Trivy fs does not report; no CI job runs it): the highs and the critical are fixed; @anthropic-ai/sdk and vitest moderates remain (fixes are 0.131 and vitest 5, both majors), plus an esbuild low (Windows dev server) held by tsx's and vite's ranges.
+Falsified: dependency advisories are gated by `security.yml` itself (npm audit on critical/high, Trivy fs and image). A second map engine returning is caught by the bundle budget (`scripts/bundle-budget.json`, blocking in `ci.yml`) only by size: a MapLibre-sized engine (~1 MB) breaks the 600 KB per-chunk target in its own chunk and the total ceiling's ~200 KB headroom, but a small one (Leaflet-class, ~150 KB) would pass both — no gate forbids a second engine as such. Trivy fs and the image scan cannot run in this container; their verdict is the first `Security Scanning` run on this branch's SHA, and the deploy gains the `security` gate only after it is green.
+Resolving commits: W10.1b
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -6763,9 +6785,9 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 19  | 19    |
-| FIXED  | 14  | 130 | 116 | 260   |
+| FIXED  | 14  | 132 | 116 | 262   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **132** | **135** | **281** |
+| **Total** | **14** | **134** | **135** | **283** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
@@ -6818,6 +6840,8 @@ deleted lead's opt-out) — fixed and pinned in the same commit; recounted.
 DEFECT-0278 and 0279 were found by roadmap wave W10.1 while taking the
 `empty-on-failure` ratchet to 0; 0280 and 0281 by the independent audit of that
 wave; recounted.
+DEFECT-0282 and 0283 come from roadmap wave W10.1b (the Security gate made
+green); recounted.
 0203 records the audit of the first-mail slice; 0204–0207 are slice H2;
 0208–0213 the audit of H2 (0213 OPEN); 0214–0218 slice H3; 0219–0229 the
 audit of H3 (0225, 0227, 0229 OPEN); 0230–0235 slice H4 (0232, 0235 OPEN).

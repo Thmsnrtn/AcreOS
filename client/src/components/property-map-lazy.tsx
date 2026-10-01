@@ -1,7 +1,7 @@
 /**
  * property-map-lazy — lazy-loaded re-export of property-map components.
  *
- * The underlying `property-map.tsx` imports MapLibre (~2.4 MB vendor chunk).
+ * The underlying `property-map.tsx` imports Mapbox GL (the ~1.8 MB vendor-map chunk).
  * Pages that don't always render a map (e.g. /properties, /maps) should
  * import from THIS file instead of `property-map.tsx` directly, so the
  * map vendor bundle only resolves when the component actually mounts.
@@ -41,7 +41,7 @@ function MapFallback({ className }: { className?: string }) {
   );
 }
 
-// Graceful degradation when the map ENGINE itself throws (MapLibre init failure,
+// Graceful degradation when the map ENGINE itself throws (GL init failure,
 // WebGL unavailable, vendor chunk error) — without this a map crash white-screens
 // the entire page via the app-level boundary. The surrounding page stays usable;
 // navigating away and back clears it (resetKey = location).

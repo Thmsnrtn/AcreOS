@@ -58,7 +58,7 @@ interface Props {
 
 /**
  * PersonaMapStrip — a single horizontal strip above the existing map
- * canvas that re-flavors the same MapLibre map for who's using it.
+ * canvas that re-flavors the same map for who's using it.
  *
  * The strip does NOT change the map canvas or remove existing modes
  * (per the customer-nav contract: five fixed doors, persona changes
