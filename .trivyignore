@@ -5,62 +5,64 @@
 # ignore it, so we keep the gate GREEN and document each exception here instead.
 # Review this file whenever the base image / npm is bumped.
 
-# ── CVE-2026-12151 — undici DoS via unbounded WebSocket-frame memory growth ──
-# Affected: undici 6.26.0 BUNDLED INSIDE THE npm CLI
-#   (/usr/local/lib/node_modules/npm/node_modules/undici) shipped in
-#   node:22.23.1-slim. Fixed in undici 6.27.0 / 7.28.0 / 8.5.0.
+# ── npm-bundled undici + brace-expansion: REMOVAL-TESTED 2026-10-01 (W10.1b) ──
+# The Security Scanning run on PR #318 (run 36894639288) read the image's
+# npm CLI bundle at undici 6.28.0 and brace-expansion 5.0.9 — past the
+# recorded re-review triggers of the prior entries CVE-2026-12151 (undici,
+# fixed 6.27.0), CVE-2026-14257 and CVE-2026-69152 (brace-expansion, fixed
+# 5.0.8). Ignored entries are invisible to falsification, so all three were
+# REMOVED; restore exactly a survivor if a later scan fires it.
+#
+# The same run found three NEWER CVEs on those same two bundled packages:
+#
+# ── CVE-2026-102276 / CVE-2026-102278 — brace-expansion DoS ─────────────────
+# (stack exhaustion / uncontrolled recursion from crafted brace patterns)
+# Affected: brace-expansion 5.0.9 BUNDLED INSIDE the npm CLI
+#   (/usr/local/lib/node_modules/npm/node_modules/brace-expansion), still
+#   present after the Dockerfile's `npm install -g npm@latest`.
+#   Fixed in 5.0.10 / 5.0.11 (and 3.0.8 / 2.1.6 / 1.1.20).
 # Assessment — EXPOSURE NIL:
-#   • This is npm's OWN vendored undici, NOT our application's. Our app's undici
-#     is pinned to ^7.28.0 (patched) via package.json `overrides`.
-#   • npm IS invoked at runtime, narrowly (corrected 2026-08-31): the daily
-#     immune job spawns `npm audit --json` (npmWatch.ts:273) and
-#     codebaseMonitor execs `npm outdated --json` — both talk only to the
-#     npm registry. The DoS requires an attacker-controlled WebSocket peer
-#     talking to undici, which neither invocation exposes.
-#   • The latest Node 22 LTS (22.23.1) still bundles this npm/undici, and npm
-#     vendors undici transitively (no clean version-pin fix); upgrading global
-#     npm in the image is unverifiable pre-build and churns the toolchain.
-# Re-review trigger: drop this line once a node:22-slim ships an npm whose
-# bundled undici is >= 6.27.0 (then the bump alone clears it).
-CVE-2026-12151
+#   • The APP's copies are patched: 5.0.12, 2.1.7 and 1.1.21 in
+#     package-lock.json (verified every instance 2026-10-01); `npm audit`
+#     (security.yml, critical/high) gates them independently of this file.
+#   • npm runs at runtime only as `npm audit --json` (runScheduledJobs.ts)
+#     and `npm outdated --json` (codebaseMonitor.ts) — fixed argv, no
+#     glob or brace pattern from any external input reaches npm.
+# Re-review trigger: drop both lines when `npm install -g npm@latest` pulls
+# a bundle with brace-expansion >= 5.0.11 (re-run the container scan after
+# any npm or base-image bump).
+CVE-2026-102276
+CVE-2026-102278
 
-# ── CVE-2026-14257 — brace-expansion ReDoS ──────────────────────────────────
-# Affected: brace-expansion 5.0.7 BUNDLED INSIDE the npm CLI installed by the
-#   Dockerfile's `npm install -g npm@latest` (the refresh that exists to chase
-#   exactly this class — npm's own bundle now trails its fix).
+# ── CVE-2026-19534 — undici DoS via an unrequested WebSocket subprotocol ────
+# Affected: undici 6.28.0 BUNDLED INSIDE the npm CLI (same bundle as above).
+#   Fixed in 6.28.1 / 7.29.1 / 8.10.2.
 # Assessment — EXPOSURE NIL:
-#   • The APP's copies are patched (1.1.18 / 2.1.4 / 5.0.9 in the lockfile;
-#     verified across every instance).
-#   • npm runs at runtime only as `npm audit` / `npm outdated` subprocesses
-#     against registry JSON; the ReDoS needs attacker-supplied glob/brace
-#     patterns, which those invocations never take from external input.
-# Re-review trigger: drop when `npm install -g npm@latest` pulls a bundle
-# with brace-expansion >= 5.0.8 (re-run the container scan after any npm or
-# base-image bump).
-CVE-2026-14257
+#   • The APP's undici is 7.30.0 (patched) in package-lock.json, pinned by
+#     the package.json `overrides`; `npm audit` gates it.
+#   • The DoS needs undici to open a WebSocket to an attacker's server. The
+#     two runtime npm subprocesses make plain HTTPS requests to the npm
+#     registry only; neither opens a WebSocket.
+# Re-review trigger: drop when the npm bundle's undici is >= 6.28.1.
+CVE-2026-19534
 
 # ── CVE-2026-69192 — ip-address parsing flaw ────────────────────────────────
-# Affected: ip-address 10.2.0 BUNDLED INSIDE the npm CLI (same global
-#   npm@latest as above). Fixed in 10.3.1.
+# Affected: ip-address 10.2.0 BUNDLED INSIDE the npm CLI (the global
+#   npm@latest the Dockerfile installs). Fixed in 10.3.1.
 # Assessment — EXPOSURE NIL:
 #   • The APP's ip-address is 10.7.0 (patched) in the lockfile.
 #   • Reachable only through npm's registry/proxy plumbing in the two
 #     runtime subprocess calls above; no attacker-controlled address strings
 #     flow into them.
-# Re-review trigger: same as CVE-2026-14257 — clears on npm's next bundle
-# refresh.
+# Re-review trigger: clears on npm's next bundle refresh (re-run the
+# container scan after any npm or base-image bump).
 CVE-2026-69192
-
-# ── CVE-2026-69152 — brace-expansion (second CVE on the same npm bundle) ────
-# Same vendored brace-expansion 5.0.7 inside the global npm CLI as
-# CVE-2026-14257 above; identical assessment and identical re-review
-# trigger (npm's next bundle refresh). App copies verified patched.
-CVE-2026-69152
 
 # ── CVE-2026-73566 — tar, npm-bundled copy ──────────────────────────────────
 # Affected: tar 7.5.19 INSIDE the npm CLI's vendored tree. The APP's tar is
 # 7.5.22 (>= the 7.5.21 fix) via the package.json override, verified in the
-# lockfile. Same npm-bundle disposition and re-review trigger as above.
+# lockfile. Same npm-bundle disposition as above; re-review on npm's next
+# bundle refresh.
 CVE-2026-73566
 
 # ── gh-binary Go-module CVEs: REMOVAL-TESTED at GH_VERSION v2.99.0 bump ────
