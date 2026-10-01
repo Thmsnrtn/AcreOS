@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clientLogger } from "@/lib/clientLogger";
+import { nullOn404 } from "@/lib/fetch-honesty";
 import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -55,12 +56,15 @@ async function fetchServerValue<T>(key: string): Promise<{ value: T } | null> {
       credentials: "include",
     });
     // 404 kept for rolling-deploy compat with servers predating `set:false`.
-    if (res.status === 404) return null;
-    if (!res.ok) return null;
-    const data = (await res.json()) as { key: string; value: T; set?: boolean };
+    // Any other failure throws to the catch below, which keeps the local
+    // value and says so — local state is canonical, nothing is shown as the
+    // server's (W10.1).
+    const data = await nullOn404<{ key: string; value: T; set?: boolean }>(res);
+    if (data === null) return null;
     if (data.set === false) return null; // unset on the server — keep local
     return { value: data.value };
-  } catch {
+  } catch (err) {
+    clientLogger.info(`[ui-state] could not read ${key}; local value kept`, err);
     return null;
   }
 }

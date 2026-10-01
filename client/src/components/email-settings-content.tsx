@@ -159,7 +159,7 @@ return (
 }
 
 export function EmailSettingsContent() {
-  const { isAvailable } = useProviderStatus();
+  const { isAvailable, known: providerKnown, failed: providerCheckFailed } = useProviderStatus();
   const mailReady = isAvailable('mail');
   const { user } = useAuth();
   const { toast } = useToast();
@@ -184,9 +184,16 @@ export function EmailSettingsContent() {
 
   const existingPlatformIdentity = identities.find((i) => i.type === "platform_alias");
 
-  const ProviderNotice = !mailReady ? (
+  // "Not configured" only once the server has said so; a failed read says it
+  // could not check, and a read in flight says nothing (W10.1).
+  const ProviderNotice = providerCheckFailed ? (
     <div className="p-3 mb-3 border rounded-md bg-acr-warn-soft text-acr-warn-soft-ink flex items-center gap-2">
-      <AlertCircle className="w-4 h-4" />
+      <AlertCircle className="w-4 h-4" aria-hidden="true" />
+      <span className="text-sm">Couldn't check the email provider right now. Sending stays off until it can be checked — reload to try again.</span>
+    </div>
+  ) : providerKnown && !mailReady ? (
+    <div className="p-3 mb-3 border rounded-md bg-acr-warn-soft text-acr-warn-soft-ink flex items-center gap-2">
+      <AlertCircle className="w-4 h-4" aria-hidden="true" />
       <span className="text-sm">Email provider not configured. Configure in Settings → Providers to enable sending.</span>
     </div>
   ) : null;

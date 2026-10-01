@@ -1101,7 +1101,7 @@ export default function PortfolioOptimizerPage() {
 
           {/* ── STRESS TEST ── */}
           <TabsContent value="stress-test" className="space-y-6">
-            <StressTestTab />
+            <StressTestTab totalValue={metrics?.totalValue} />
           </TabsContent>
 
           {/* ── CAPITAL STACK ── */}
@@ -1332,14 +1332,25 @@ const STRESS_SCENARIOS = [
   },
 ];
 
-function StressTestTab() {
+function StressTestTab({ totalValue: measured }: { totalValue: number | null | undefined }) {
   const [selectedScenario, setSelectedScenario] = useState(STRESS_SCENARIOS[0]);
-  const { data: portfolioData } = useQuery<{ simulation: any }>({
-    queryKey: ["/api/portfolio-optimizer/simulate"],
-    queryFn: () => fetch("/api/portfolio-optimizer/simulate").then(r => r.json()).catch(() => ({ simulation: null })),
-  });
 
-  const totalValue = portfolioData?.simulation?.totalPortfolioValue || 500000;
+  // The stress test applies a scenario to THIS portfolio's measured value —
+  // the page's own /metrics read (roadmap W10.1). It used to GET
+  // /api/portfolio-optimizer/simulate, a route that only exists as POST, so
+  // the read always failed and the tab stress-tested an invented $500,000.
+  const totalValue = Number(measured);
+  if (!(totalValue > 0)) {
+    return (
+      <EmptyState
+        icon={Activity}
+        headline="No portfolio value to stress-test yet"
+        subtitle="The stress test applies each scenario to your portfolio's measured value. Mark a property as owned with a value, and it appears here."
+        cta={{ label: "Go to Properties", href: "/properties", "data-testid": "stress-test-empty-properties" }}
+        testId="stress-test-empty"
+      />
+    );
+  }
   const stressedValue = totalValue * (1 + selectedScenario.priceImpact);
   const loss = totalValue - stressedValue;
   const lossPercent = Math.abs(selectedScenario.priceImpact * 100).toFixed(0);

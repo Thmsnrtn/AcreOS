@@ -82,7 +82,7 @@ lowered in the commit that earned it, never in a baseline-only commit.
 
 | Measure | Now | H0 exit | G1 | G2 | G3 |
 |---|---|---|---|---|---|
-| Production LOC (new `loc` ratchet — W10.1) | 873,238 | 860K | 780K | ≤650K | ≤600K |
+| Production LOC (`npm run measure:loc`: `server/`, `client/src/`, `shared/` .ts/.tsx, tests excluded) | 855,971 | 845K | 770K | ≤650K | ≤600K |
 | `table-count` | 727 | 710 | 620 | ≤500 | ≤450 |
 | `schema-monolith-tables` (0048) | 361 | 361 | ≤200 | ≤50 | 0 |
 | `run-scheduled-jobs-linecount` | 5,705 | 5,000 | ≤2,500 | ≤800 | ≤800 |
@@ -109,8 +109,13 @@ lowered in the commit that earned it, never in a baseline-only commit.
 - "org-fetch baseline sets" = the four in-file sets of
   `scripts/check-org-scoped-fetch.mjs` (133 + 55 + 104 + 67 = 359), separate
   from the route-widening register `scripts/org-scope-route-widening.json`.
-- The deletion ledger's LOC target never had a counting rule. W10.1 pins one
-  (tracked non-test `*.ts`/`*.tsx`), or the G2 LOC criterion is unprovable.
+- The deletion ledger's LOC target never had a counting rule. W10.1 pinned
+  one in `scripts/measure-loc.mjs`: `wc -l` over tracked `server/`,
+  `client/src/` and `shared/` .ts/.tsx, tests excluded — 855,971 at the
+  W10.1a commit. (A count over every tracked .ts/.tsx, scripts included, read
+  873,238.) It is a measurement until W10.8 merges, because H0's waves add
+  gate-tied surface; it becomes a down-only ratchet when the stop rule takes
+  effect.
 - `scripts/ratchets/reachability.json` holds `minima.pgTables = 600`; the
   table-drop batch that goes under it lowers the floor in the same commit.
 - Table drops are founder-applied (F2). The OD-8 program is complete; these are its successors. At ~25 tables per fortnightly batch,
@@ -213,7 +218,8 @@ the reconciliation queue.
 
 | Wave | Scope | Proof |
 |---|---|---|
-| **W10.1 Deploy gate and CI truth** [E] | `.github/workflows/deploy.yml` requires `ci.yml` and `security.yml` green on the SHA, plus `migrate.mjs --dry-run` (Phase 0.3; today it needs only `test`). `scripts/check-bundle-size.js` wired into `ci.yml`. A register of `continue-on-error` in the five workflows that use it (`borrower-cookie-e2e`, `customer-journey-audit`, `deploy`, `desktop-feel-audit`, `staging`): each made blocking or recorded as advisory with a reason. `console-in-server` 6 → 0, `empty-on-failure` 13 → 0. A `loc` ratchet. | `deploy.yml` runs only on `main` or by hand, so a scratch branch proves nothing: dispatch it by hand on a ref whose `ci.yml` or `security.yml` is red and record that no deploy step ran; plus a unit test that parses `deploy.yml` and fails if the gating `needs` is removed. |
+| **W10.1a Deploy gate and CI truth** [E] | `.github/workflows/deploy.yml` requires `ci.yml` (called as a reusable workflow) on the SHA it ships, alongside `test` (which already runs `migrate.mjs --dry-run` via `db:build-from-repo`). `scripts/check-bundle-size.js` blocking in `ci.yml` with down-only ceilings. A register of every `continue-on-error` (`docs/audits/ci-advisory-register.md`). `console-in-server` 6 → 0, `empty-on-failure` 13 → 0. A LOC counting rule (`npm run measure:loc`; a ratchet once the stop rule takes effect). | `deploy.yml` runs only on `main` or by hand, so a scratch branch proves nothing: dispatch it by hand on a ref whose `ci.yml` or `security.yml` is red and record that no deploy step ran; plus a unit test that parses `deploy.yml` and fails if the gating `needs` is removed. |
+| **W10.1b Security green, then a gate** [E; an image fix may need K-level access to the registry] | Upgrade the dependencies `npm audit` flags critical/high (maplibre-gl — a major version, behind the Map door; multer; sharp; undici; fast-uri; brace-expansion), clear the Trivy fs/image findings or record each in `.trivyignore` with a reason, then add `security` to `deploy`'s `needs` (`PENDING_GATES` in the test forces it the moment it is called). | Security Gate green on main for the SHA, then the same live dispatch proof. |
 | **W10.2 Live-lead reads and the scale ceiling** [E] | 0273: one live-lead predicate adopted by the ~50 reader files. Both pinned exceptions stay: the import/create duplicate checks and the inbound-SMS match still see deleted leads, so a STOP's opt-out survives deletion. 0169 paginated pickers. 0171 cursors or refusals in place of 5,000-row caps. 0243 Today from a snapshot. | A census ratchet whose population floor is the reader file count; fixtures over 5,000 rows. |
 | **W10.3 List builder v0 behind Map** [E; full coverage on K10] | Pick a county; filter acreage, owner type, years owned; count and cost before commit; save to the existing list model. Layered providers (ruling #2). County status vocabulary. | Refuse-not-fabricate tests; the wedge E2E list step; nav and sidebar tests unchanged. |
 | **W10.4 Deal state truth** [E; 0235 with F] | 0276: creation at a late stage goes through the state machine; typed 409 for a stale version; advance-stage reads contract evidence. 0244: advance-stage, bulk and Pax closes recorded by one close writer. 0258 (1): the close-evidence read and the training-row insert in one transaction. 0235: network retraction on reopen (a data change on a shared aggregate — founder decides). Owns `server/storage/dealRepo.ts`. | A census that every production writer of `deals.status` calls the canonical writer (law 2), one test per path. |
@@ -222,7 +228,7 @@ the reconciliation queue.
 | **W10.7 Founder consolidation and deletion I** [E, with F1] | Delete the five legacy redirect routes (`/founder/dashboard`, `/cockpit`, `/now`, `/today` → `/founder`; `/v13` → `/founder/bridge`); fold `command` into The Letter; keep `bridge` as the deep chat+telemetry tool CLAUDE.md names; move `/founder/onboarding-funnel` into a Letter section. Delete the `routes-kpis.ts` 501s. Wire or remove the "not yet live" workflow triggers — rewrite `workflowActionHonesty.test.ts` to the new truth, never delete it. `moduleOrphans` → 0. | `FOUNDER_ROUTE_BASELINE` ≤ 70; net LOC < 0. |
 | **W10.8 Polish on the wedge path** [E] | The §E bar on Today, the Map builder and import, Deals, the Outreach composer and Inbox. | axe output at 375 and 1440 px to files; mobile E2E; `lint:voice`; `lint:semantic-contrast`. |
 
-**Order:** W10.1 first (everything merges through its gate) · W10.2 before
+**Order:** W10.1a first (everything merges through its gate), W10.1b next · W10.2 before
 W10.3 (the builder writes leads) · W10.4, W10.5, W10.6 in parallel, with
 `server/ai/tools.ts` owned by W10.4 alone · W10.7 at any time · W10.8 after
 W10.3.
@@ -316,4 +322,4 @@ A polish claim that no test or gate pins is not claimed.
 
 | Date | Wave | Commit | Red-first tests | Gate outputs | Audit verdict |
 |---|---|---|---|---|---|
-| — | — | — | — | — | — |
+| 2026-10-01 | W10.1a Deploy gate and CI truth — deploy needs `test` + CI (called workflow; Security deferred to W10.1b because it is red on main); bundle budget blocking in CI with down-only ceilings; `continue-on-error` register incl. composite actions; `empty-on-failure` 13→0 and `console-in-server` 6→0; LOC counting rule (`npm run measure:loc`, 855,971 at this commit); DEFECT-0278–0280 fixed, 0281 opened | the W10.1a commit (see `git log`) | `deployGateRequiresCiAndSecurity`, `bundleBudgetIsDownOnly`, `ciAdvisoryRegister` (each mutation-checked), `quietHoursNeverOverwritesUnread`, `paxRailWatermarkMovesOnRead`, `locCountingRule` | `npm run check`, full vitest and `npm run build` exit 0 before commit (verifier-run, outputs redirected to files) | independent audit found 1 P0 (Security red on main → split into W10.1b) and 4 P2, all addressed before commit; live dispatch of `deploy.yml` on a red ref is owed after the merge to main; CI/ESLint/truth-engine/coverage have never run on this branch's SHA — the PR's CI run is that proof |

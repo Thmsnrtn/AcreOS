@@ -25,6 +25,7 @@
 // settles.
 
 import { clientLogger } from "./clientLogger";
+import { okOrThrow } from "./fetch-honesty";
 import { queryClient } from "./queryClient";
 import { toast } from "@/hooks/use-toast";
 
@@ -50,8 +51,9 @@ async function fetchServerSha(signal?: AbortSignal): Promise<string | null> {
       credentials: "omit",
       signal,
     });
-    if (!res.ok) return null;
-    const body = (await res.json()) as { sha?: string };
+    // A failed read throws to the catch: no SHA means "skip this check", and
+    // nothing is reloaded or claimed (W10.1).
+    const body = (await (await okOrThrow(res)).json()) as { sha?: string };
     return body?.sha ?? null;
   } catch {
     return null;

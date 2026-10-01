@@ -65,7 +65,7 @@ function loadEncryptionKey(): Buffer {
     if (process.env.NODE_ENV === "production") {
       throw new Error(
         "[fieldEncryption] FIELD_ENCRYPTION_KEY is required in production. " +
-        "Generate with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+        "Generate with: openssl rand -hex 32"
       );
     }
     // Ephemeral per-boot random key — never a shared constant. Generated once

@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useDynamicMapLayers, buildArcGISRasterTileUrl, isArcGISMapServerUrl, type MapLayer } from "@/hooks/use-dynamic-map-layers";
 import { clientLogger } from "@/lib/clientLogger";
+import { okOrThrow } from "@/lib/fetch-honesty";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { OverlayLegend } from "@/components/maps/OverlayLegend";
 import { getMapEngine, STYLE_URLS, isMapEngineConfigured, type MapStyleName } from "@/lib/map-engine";
@@ -3539,7 +3540,8 @@ export function SinglePropertyMap({
       // Fetch and display nearby parcels
       if (showNearbyParcels && state && county) {
         fetch(`/api/parcels/nearby?lat=${centroid.lat}&lng=${centroid.lng}&state=${state}&county=${encodeURIComponent(county)}&radius=0.25`)
-          .then(res => res.ok ? res.json() : null)
+          .then(okOrThrow)
+          .then(res => res.json())
           .then(data => {
             if (!data?.parcels || !mapInstance) return;
             const filtered = data.parcels.filter((p: NearbyParcel) => p.apn !== apn);
@@ -3572,7 +3574,7 @@ export function SinglePropertyMap({
               }, "property-fill");
             }
           })
-          .catch(() => {});
+          .catch((err) => clientLogger.warn("[property-map] nearby parcels unavailable; overlay not drawn", err));
       }
     };
 

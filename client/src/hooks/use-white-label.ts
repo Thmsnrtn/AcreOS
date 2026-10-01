@@ -11,6 +11,7 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
+import { nullOn404 } from "@/lib/fetch-honesty";
 
 interface WhiteLabelConfig {
   tenantId?: string;
@@ -100,12 +101,13 @@ export function useWhiteLabel() {
   const { data } = useQuery<{ config: WhiteLabelConfig | null }>({
     queryKey: ["/api/white-label/config"],
     enabled: hasSession,
-    queryFn: () =>
-      fetch("/api/white-label/config")
-        .then((r) => (r.ok ? r.json() : { config: null }))
-        .catch(() => ({ config: null })),
+    // 404 = no white-label config; any other failure is a query error. Either
+    // way the default branding stays — a failed read is not "no config" (W10.1).
+    queryFn: async () =>
+      (await nullOn404<{ config: WhiteLabelConfig | null }>(await fetch("/api/white-label/config"))) ?? { config: null },
     staleTime: 5 * 60 * 1000, // 5-minute cache
     retry: false,
+    meta: { backgroundRead: true },
   });
 
   const config = data?.config;

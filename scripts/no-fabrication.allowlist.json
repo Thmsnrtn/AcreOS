@@ -302,14 +302,14 @@
     },
     {
       "file": "client/src/components/property-map.tsx",
-      "line": 1947,
+      "line": 1948,
       "category": "jitter",
       "note": "Camera ZOOM variation in the cinematic flythrough \u2014 a viewing angle, not a measurement. Nothing about the parcel is derived from it.",
       "match": "zoom: 15.5 + Math.random() * 0.8,"
     },
     {
       "file": "client/src/components/property-map.tsx",
-      "line": 1948,
+      "line": 1949,
       "category": "jitter",
       "note": "Camera PITCH variation, same flythrough, same reasoning.",
       "match": "pitch: 55 + Math.random() * 15,"

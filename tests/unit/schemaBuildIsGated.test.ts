@@ -142,7 +142,10 @@ describe("the schema build is wired into CI", () => {
     expect(deployJobAt).toBeGreaterThan(testJobAt);
     expect(stepAt).toBeGreaterThan(testJobAt);
     expect(stepAt).toBeLessThan(deployJobAt);
-    expect(deploy).toMatch(/needs:\s*test/);
+    // `deploy` needs `test` — alongside the called CI and Security gates
+    // since W10.1 (tests/unit/deployGateRequiresCiAndSecurity.test.ts).
+    const deployNeeds = deploy.slice(deployJobAt).match(/needs:\s*(\[[^\]]*\]|\S+)/)?.[1] ?? "";
+    expect(deployNeeds).toMatch(/\btest\b/);
   });
 
   it("neither dead spelling can come back, anywhere under .github/", () => {

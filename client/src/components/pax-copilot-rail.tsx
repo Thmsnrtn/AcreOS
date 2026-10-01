@@ -3,6 +3,7 @@ import { useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { okOrThrow } from "@/lib/fetch-honesty";
+import { clientLogger } from "@/lib/clientLogger";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
@@ -482,11 +483,13 @@ export function PaxCopilotRail() {
   const { data: observationsData, refetch: refetchObs } = useQuery<{ observations: PaxObservation[] }>({
     queryKey: ["/api/pax/observations", { limit: 5 }],
     queryFn: async () => {
-      const res = await fetch("/api/pax/observations?limit=5", { credentials: "include" });
-      if (!res.ok) return { observations: [] };
+      // A failed read is a query error (logged, no toast — a background
+      // read), not a server-confirmed "no observations" (W10.1).
+      const res = await okOrThrow(await fetch("/api/pax/observations?limit=5", { credentials: "include" }));
       return res.json();
     },
     staleTime: 60 * 1000,
+    meta: { backgroundRead: true },
   });
   const [sseObservations, setSseObservations] = useState<PaxObservation[]>([]);
 
@@ -586,7 +589,8 @@ export function PaxCopilotRail() {
     if (!isOpen || sessionRestored || !activeConversationId || isLoadingHistory) return;
     setIsLoadingHistory(true);
     fetch(`/api/ai/conversations/${activeConversationId}/messages?limit=20`, { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : null))
+      .then(okOrThrow)
+      .then((r) => r.json())
       .then((data) => {
         if (!data?.messages?.length) {
           setSessionRestored(true);
@@ -613,7 +617,12 @@ export function PaxCopilotRail() {
         if (data.activeProjectId) setActiveProjectId(data.activeProjectId);
         setSessionRestored(true);
       })
-      .catch(() => setSessionRestored(true))
+      .catch((err) => {
+        // Not restoring is the safe fallback; it is logged, not shown as an
+        // empty history the server confirmed.
+        clientLogger.warn("[pax-rail] could not restore the conversation", err);
+        setSessionRestored(true);
+      })
       .finally(() => setIsLoadingHistory(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, activeConversationId, sessionRestored]);
@@ -622,16 +631,21 @@ export function PaxCopilotRail() {
   useEffect(() => {
     if (!isOpen) return;
     const since = localStorage.getItem("pax-last-seen") ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const readAt = new Date().toISOString();
     fetch(`/api/ai/scheduled-tasks/pending-results?since=${encodeURIComponent(since)}`, { credentials: "include" })
-      .then((r) => r.ok ? r.json() : [])
+      .then(okOrThrow)
+      .then((r) => r.json())
       .then((results: PendingTaskResult[]) => {
         if (results.length > 0) {
           setPendingResults(results);
           setShowResultsBanner(true);
         }
+        // Only a read that happened moves the watermark. It used to move on a
+        // failed read too, so results finished while the read failed were
+        // never shown (W10.1, empty-on-failure).
+        localStorage.setItem("pax-last-seen", readAt);
       })
       .catch(() => {});
-    localStorage.setItem("pax-last-seen", new Date().toISOString());
     // Fetch proactive nudges
     refetchNudges();
   }, [isOpen]);

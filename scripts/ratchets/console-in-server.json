@@ -1,6 +1,6 @@
 {
   "name": "console-in-server",
-  "description": "console.* in production server code bypasses the structured logger (server/utils/logger.ts) — no levels, no redaction, no transport. (server/utils/logger.ts itself and server/scripts/** operational tooling account for the baseline.)",
+  "description": "server/utils/logger.ts is excluded BY NAME because console is its transport (the five calls that write each structured line). Baseline 0 since roadmap W10.1 (2026-10-01): the only other match was a key-generation hint inside an error string, reworded. console.* in production server code bypasses the structured logger (server/utils/logger.ts) — no levels, no redaction, no transport. (server/scripts/** is operational tooling.)",
   "pattern": "console\\.(log|warn|error|info|debug|trace)\\(",
   "globs": [
     "server/**/*.ts"
@@ -8,9 +8,10 @@
   "exclude": [
     "**/*.test.ts",
     "**/*.spec.ts",
-    "server/scripts/**"
+    "server/scripts/**",
+    "server/utils/logger.ts"
   ],
-  "baselineCount": 6,
+  "baselineCount": 0,
   "direction": "down",
   "minima": {
     "files": 1100

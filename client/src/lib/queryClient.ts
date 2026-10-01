@@ -234,10 +234,20 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
-function handleQueryError(error: unknown): void {
+function handleQueryError(error: unknown, query?: { meta?: Record<string, unknown> }): void {
   const err = error instanceof Error ? error : new Error(String(error));
 
   if (isAuthError(err)) {
+    return;
+  }
+
+  // A BACKGROUND read (a polled badge, an ambient panel) that fails is an
+  // unknown, rendered as such where it lives — not an interruption. Without
+  // this, a badge polled every two minutes toasted every two minutes once its
+  // failure stopped being swallowed as "0" (roadmap W10.1). Opt in with
+  // `meta: { backgroundRead: true }`.
+  if (query?.meta?.backgroundRead === true) {
+    clientLogger.warn("[Query Error — background read]", err);
     return;
   }
 

@@ -1,0 +1,9 @@
+{
+  "description": "Bundle-size budget for scripts/check-bundle-size.js (roadmap W10.1). `targets` are the budgets the gate was written with; the bundle has never met them. `ceilings` are the measured sizes on 2026-10-01 (vendor-map 2598 KB, index 726 KB, total 10758 KB) plus ~2% headroom, so the gate can block in CI today: growth past a ceiling fails, and a ceiling more than 5% above what is measured fails too, until it is lowered. Ceilings only go DOWN — DEFECT-0027 (the schema chunk in the client bundle) is the first planned reduction. A chunk named here is keyed by its Vite name, without the content hash.",
+  "targets": { "maxChunkKB": 600, "maxTotalKB": 3000 },
+  "ceilings": {
+    "totalKB": 11000,
+    "chunks": { "vendor-map": 2650, "index": 745 }
+  },
+  "slackBeforeLoweringPct": 5
+}

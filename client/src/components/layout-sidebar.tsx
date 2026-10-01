@@ -194,12 +194,13 @@ function PaxNotificationBadge() {
   const { data: unreadData } = useQuery<{ count: number }>({
     queryKey: ["/api/pax/observations", "unread"],
     queryFn: async () => {
-      const res = await fetch("/api/pax/observations?unread=true", { credentials: "include" });
-      if (!res.ok) return { count: 0 };
+      // A failed read leaves the badge hidden (unknown), not a count of 0 (W10.1).
+      const res = await okOrThrow(await fetch("/api/pax/observations?unread=true", { credentials: "include" }));
       return res.json();
     },
     refetchInterval: 2 * 60 * 1000,
     staleTime: 60 * 1000,
+    meta: { backgroundRead: true },
   });
 
   const { data: observationsData, refetch: refetchObservations, isError: observationsFailed } = useQuery<{ observations: PaxObservation[] }>({

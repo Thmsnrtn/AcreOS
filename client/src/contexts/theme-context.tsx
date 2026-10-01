@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { clientLogger } from "@/lib/clientLogger";
+import { okOrThrow } from "@/lib/fetch-honesty";
 import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -136,11 +137,12 @@ const PATCH_DEBOUNCE_MS = 300;
 
 async function fetchServerPreferences(): Promise<Partial<ThemeConfig> | null> {
   try {
-    const res = await fetch(PREFERENCES_ENDPOINT, { credentials: "include" });
-    if (!res.ok) return null;
-    const data = (await res.json()) as Partial<ThemeConfig>;
-    return data;
-  } catch {
+    // A failed read throws to the catch, which keeps the local theme and says
+    // so — local state is canonical; nothing is shown as the server's (W10.1).
+    const res = await okOrThrow(await fetch(PREFERENCES_ENDPOINT, { credentials: "include" }));
+    return (await res.json()) as Partial<ThemeConfig>;
+  } catch (err) {
+    clientLogger.info("[theme] could not read saved preferences; local theme kept", err);
     return null;
   }
 }

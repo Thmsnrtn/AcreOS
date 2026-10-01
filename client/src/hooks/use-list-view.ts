@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clientLogger } from "@/lib/clientLogger";
+import { okOrThrow } from "@/lib/fetch-honesty";
 import { apiRequest } from "@/lib/queryClient";
 
 /**
@@ -67,11 +68,13 @@ let patchTimer: number | undefined;
 
 async function fetchServer(): Promise<ListViewMap | null> {
   try {
-    const res = await fetch(PREFERENCES_ENDPOINT, { credentials: "include" });
-    if (!res.ok) return null;
+    // A failed read throws to the catch, which keeps the local views and says
+    // so — local state is canonical; nothing is shown as the server's (W10.1).
+    const res = await okOrThrow(await fetch(PREFERENCES_ENDPOINT, { credentials: "include" }));
     const data = await res.json();
     return (data?.listViews ?? null) as ListViewMap | null;
-  } catch {
+  } catch (err) {
+    clientLogger.info("[list-view] could not read saved list views; local views kept", err);
     return null;
   }
 }

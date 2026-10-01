@@ -91,7 +91,7 @@ interface AIOfferGeneratorProps {
 export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("suggestions");
-  const { isAvailable } = useProviderStatus();
+  const { isAvailable, known: providerKnown, failed: providerCheckFailed } = useProviderStatus();
   const aiReady = isAvailable('ai');
   const [selectedOffer, setSelectedOffer] = useState<OfferSuggestion | null>(null);
   const [offerData, setOfferData] = useState<GenerateOfferResponse | null>(null);
@@ -277,14 +277,25 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
   }
 
   if (!aiReady) {
+    // "Not configured" only once the server has said so (W10.1).
+    const heading = providerCheckFailed
+      ? "Couldn't check the AI provider"
+      : providerKnown
+        ? "AI Provider Not Configured"
+        : "Checking the AI provider…";
+    const detail = providerCheckFailed
+      ? "Offer analysis stays off until it can be checked. Reload to try again."
+      : providerKnown
+        ? "Configure an AI provider in Settings → Providers to enable offer analysis."
+        : "One moment.";
     return (
       <Card data-testid="ai-offer-generator">
         <CardContent className="py-8">
           <div className="text-center">
             <AlertCircle className="w-12 h-12 mx-auto text-acr-warn mb-4" aria-hidden="true" />
-            <h3 className="font-medium mb-2">AI Provider Not Configured</h3>
+            <h3 className="font-medium mb-2">{heading}</h3>
             <p className="text-sm text-muted-foreground">
-              Configure an AI provider in Settings → Providers to enable offer analysis.
+              {detail}
             </p>
           </div>
         </CardContent>

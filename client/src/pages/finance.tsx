@@ -41,6 +41,7 @@ import "./today.css";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { QueryErrorState } from "@/components/query-error-state";
+import { okOrThrow } from "@/lib/fetch-honesty";
 import { PersonaFinanceHero } from "@/components/finance/PersonaFinanceHero";
 import { FinanceBook } from "@/components/finance/FinanceBook";
 import { usePersona, useTerm } from "@/hooks/use-persona";
@@ -1939,13 +1940,11 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
   // note. If the user skips, we still create the note but with status
   // "pending" so they can't accept payments — and the dashboard checklist
   // surfaces the unresolved tax-identity gap.
-  const { data: taxIdentity } = useQuery<{ captured: boolean; skipped: boolean }>({
+  const { data: taxIdentity, isError: taxIdentityUnknown } = useQuery<{ captured: boolean; skipped: boolean }>({
     queryKey: ["/api/organization/tax-identity"],
-    queryFn: async () => {
-      const res = await fetch("/api/organization/tax-identity", { credentials: "include" });
-      if (!res.ok) return { captured: false, skipped: false };
-      return res.json();
-    },
+    // A failed read is UNKNOWN, not "not captured" (roadmap W10.1). It used to
+    // read as not-captured and tell the user to add a tax identity they had.
+    queryFn: async () => (await okOrThrow(await fetch("/api/organization/tax-identity", { credentials: "include" }))).json(),
   });
   // Tax-identity flow: previously gated on a mid-save modal that
   // interrupted the user (2026-05-26 refactor removed it). The note
@@ -2009,6 +2008,16 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
     // rendered at the top of /finance + /money keeps the reminder
     // visible so it can be resolved at the user's pace.
     const taxMissing = !!(taxIdentity && !taxIdentity.captured);
+    if (taxIdentityUnknown) {
+      // Conservative: unconfirmed tax identity still saves as pending — but
+      // says it could not check, rather than that the identity is missing.
+      submitNote(data, { saveAsPending: true });
+      toast({
+        title: "Saved as pending",
+        description: "We couldn't confirm your tax identity just now, so this note was saved as pending. Reload and publish it once it can be checked.",
+      });
+      return;
+    }
     if (taxMissing) {
       submitNote(data, { saveAsPending: true });
       toast({

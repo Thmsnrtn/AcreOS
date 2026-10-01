@@ -106,9 +106,26 @@ jobs:
         env:
           SENTRY_SOURCEMAPS: skip
 
+  # ── Pre-deploy gate from the branch CI (roadmap W10.1a, readiness 0.3) ─────
+  # Until 2026-10-01 production needed only `test`: a SHA whose CI (ESLint,
+  # truth-engine audits, sitemap, coverage ratchet, bundle budget) was red
+  # still deployed, because it ran in another workflow nothing here waited on.
+  # A job cannot `needs:` a job in another workflow, so ci.yml is CALLED here —
+  # one definition of each check, no copy to drift. The duplicated compute on a
+  # main push is the price of a gate that reads the SHA it ships.
+  #
+  # security.yml is NOT yet a gate, deliberately: it has been red on main since
+  # 2026-09-13 (npm audit: maplibre-gl critical, five highs; Trivy), so gating on
+  # it today would stop every deploy with no hotfix path. Wave W10.1b upgrades
+  # those dependencies and adds `security` here once it is green.
+  # Pinned by tests/unit/deployGateRequiresCiAndSecurity.test.ts.
+  ci:
+    name: CI (pre-deploy gate)
+    uses: ./.github/workflows/ci.yml
+
   deploy:
     name: Deploy to Fly.io
-    needs: test
+    needs: [test, ci]
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -653,7 +670,7 @@ jobs:
   # This job pages ONCE, immediately, when the gate refuses a main push.
   notify-gate-failure:
     name: Page founder on pre-deploy gate failure
-    needs: test
+    needs: [test, ci]
     if: failure()
     runs-on: ubuntu-latest
     steps:

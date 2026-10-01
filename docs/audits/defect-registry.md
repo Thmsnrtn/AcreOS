@@ -6683,6 +6683,49 @@ Evidence: `server/services/mail/mailFlusher.ts`; `server/services/creditPool.ts`
 Remediation plan: A founder-run script under `scripts/data/` (dry run by default, export before change, `--apply` to execute): find shipments with suppressed pieces and a debit key but no `<debit>:suppressed:refund` ledger row, and refund each share through `refundPoolDebit` (which picks the purse and caps the amount). It moves customer credit, so the founder runs it.
 Resolving commits: —
 
+### DEFECT-0278
+Title: A failed read of quiet hours could switch them off
+Severity: P2
+Status: FIXED
+Surfaced by lenses: roadmap W10.1 (empty-on-failure ratchet to 0)
+Description: The quiet-hours card read the saved window with `res.ok ? res.json() : null` and kept its defaults on any failure. The defaults ("off") were then shown as the user's setting, and the first toggle PATCHed the whole default object over the window they had saved. Quiet hours suppress outbound contact, so a server blip could silently turn a compliance preference off.
+Evidence: `client/src/components/settings/notification-quiet-hours.tsx`.
+Remediation: The controls stay disabled until the saved window has been read; a failed read shows an alert with Retry; a read with nothing saved enables the defaults as the truth.
+Falsified: `tests/unit/quietHoursNeverOverwritesUnread.test.tsx` (2 cases, red before).
+Resolving commits: W10.1
+
+### DEFECT-0279
+Title: Pax task results finished during a failed read were never shown
+Severity: P2
+Status: FIXED
+Surfaced by lenses: roadmap W10.1 (empty-on-failure ratchet to 0)
+Description: When the rail opened it read pending task results since `pax-last-seen`, turned a failed read into `[]`, and advanced `pax-last-seen` regardless. Results that finished while the read failed fell behind the watermark and were never shown.
+Evidence: `client/src/components/pax-copilot-rail.tsx`.
+Remediation: The watermark is written only after a successful read. The rail's observations, the sidebar's unread badge, provider status, the nearby-parcels overlay, white-label config and the three local-first preference reads now go through `okOrThrow` / `nullOn404`: a failed read is a query error (background reads log instead of toasting, `meta.backgroundRead`) or an explicit, logged "keep the local value". Provider status gained `known` / `failed`, and the email settings and AI offer generator say "couldn't check" rather than "not configured" when it fails; the mail settings and command palette stay conservatively disabled until it is known. The `empty-on-failure` ratchet is at 0 — over the representation it reads (DEFECT-0281).
+Falsified: `tests/unit/paxRailWatermarkMovesOnRead.test.ts` (red before).
+Resolving commits: W10.1
+
+### DEFECT-0280
+Title: A failed tax-identity read said the identity was missing; a missing portfolio value was stress-tested as $500,000
+Severity: P2
+Status: FIXED
+Surfaced by lenses: independent audit of roadmap wave W10.1
+Description: Two reads of the same shape the `empty-on-failure` regex does not match. The note form read tax identity with `if (!res.ok) return { captured: false, … }`, so a server blip told the user to add a tax identity they had and saved the note as pending on that false basis. The portfolio stress test read its value with GET `/api/portfolio-optimizer/simulate` — a route that exists only as POST — so the read ALWAYS failed, `.catch(() => ({ simulation: null }))` swallowed it, and `|| 500000` stress-tested an invented $500,000 portfolio for every customer.
+Evidence: `client/src/pages/finance.tsx`; `client/src/pages/portfolio-optimizer.tsx`.
+Remediation: Tax identity: a failed read is unknown; the note still saves as pending (conservative) and says it could not check. Stress test: takes the value the page already measures (`/api/portfolio-optimizer/metrics` → `totalValue`) and shows an `EmptyState` when there is none — never a placeholder, and no read of its own.
+Falsified: `tests/unit/stressTestUsesMeasuredValue.test.ts` (source-level, red before). The tax-identity change is reviewed and typechecked; no dedicated test.
+Resolving commits: W10.1
+
+### DEFECT-0281
+Title: The empty-on-failure ratchet reads one representation of the defect
+Severity: P2
+Status: OPEN
+Surfaced by lenses: independent audit of roadmap wave W10.1
+Description: The ratchet is at 0 over its regex (a not-ok branch that returns an empty literal, in its `if` and ternary forms). The same defect — a failed read rendered as an answer — also takes the shapes `.catch(() => <empty>)`, `return false` / `{ x: false }`, and fallbacks applied after the read (`|| 500000`). A widened regex matches 96 client lines, most of them legitimate (parsing an error body, fire-and-forget telemetry), so widening the regex would be noise; the work is a semantic census of reads that turn failure into a fact. DEFECT-0280 fixed two found by hand; `client/src/hooks/use-is-founder.ts` (`return false` on failure — conservative, hides founder surfaces) is one to adjudicate.
+Evidence: `scripts/ratchets/empty-on-failure.json`; `client/src/lib/fetch-honesty.ts`.
+Remediation plan: A census listing every client read whose failure path returns a value a caller renders as fact, triaged per site; then a parse-based gate (a read whose catch or not-ok branch yields a literal) with an annotated allowlist for error-body parses.
+Resolving commits: —
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -6719,10 +6762,10 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 18  | 18    |
-| FIXED  | 14  | 130 | 113 | 257   |
+| OPEN   | 0   | 0   | 19  | 19    |
+| FIXED  | 14  | 130 | 116 | 260   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **132** | **131** | **277** |
+| **Total** | **14** | **132** | **135** | **281** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
@@ -6772,6 +6815,9 @@ A second audit of those fixes found the ACH settlement still un-defaulting and
 fee-assessing an accelerated note, the payoff quote projecting that fee, and a
 consent regression the first round introduced (import dedupe stopped seeing a
 deleted lead's opt-out) — fixed and pinned in the same commit; recounted.
+DEFECT-0278 and 0279 were found by roadmap wave W10.1 while taking the
+`empty-on-failure` ratchet to 0; 0280 and 0281 by the independent audit of that
+wave; recounted.
 0203 records the audit of the first-mail slice; 0204–0207 are slice H2;
 0208–0213 the audit of H2 (0213 OPEN); 0214–0218 slice H3; 0219–0229 the
 audit of H3 (0225, 0227, 0229 OPEN); 0230–0235 slice H4 (0232, 0235 OPEN).

@@ -9,6 +9,9 @@ on:
     # Run full security scan weekly (Sunday 00:00 UTC)
     - cron: "0 0 * * 0"
   workflow_dispatch:
+  # Callable so deploy.yml can gate on it (roadmap W10.1b, readiness 0.3) once
+  # it is green on main — see the note on deploy.yml's `ci` job.
+  workflow_call:
 
 jobs:
   # ── 1. npm audit — dependency vulnerability check ──────────────────────────

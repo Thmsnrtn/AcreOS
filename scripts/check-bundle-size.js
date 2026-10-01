@@ -67,13 +67,25 @@
  * Exit codes: 0 = PASS or documented SKIP · 1 = FAIL (including vacuous scan).
  */
 
-import { readdirSync, statSync, existsSync } from "node:fs";
+import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
 import { resolve, join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// ── Budgets (unchanged from the original gate) ────────────────────────────
-const MAX_SINGLE_CHUNK_KB = 600; // No single chunk > 600 KB
-const MAX_TOTAL_JS_KB = 3000; // Total JS < 3 MB
+// ── Budgets ───────────────────────────────────────────────────────────────
+// The targets are the original gate's budgets. The bundle has never met them,
+// so a gate that enforced only the targets could not block CI without
+// stopping every deploy — and an unwired gate is a file, not a gate. The
+// measured over-budget sizes are therefore CEILINGS in scripts/bundle-budget.json
+// (roadmap W10.1): growth past one fails, and a ceiling left more than
+// `slackBeforeLoweringPct` above the measured size fails until it is lowered.
+// Ceilings only go down; the targets stay the destination.
+const BUDGET = JSON.parse(readFileSync(new URL("./bundle-budget.json", import.meta.url), "utf8"));
+const MAX_SINGLE_CHUNK_KB = BUDGET.targets.maxChunkKB;
+const MAX_TOTAL_JS_KB = BUDGET.ceilings?.totalKB ?? BUDGET.targets.maxTotalKB;
+const CHUNK_CEILINGS_KB = BUDGET.ceilings?.chunks ?? {};
+const LOWERING_SLACK = 1 + (BUDGET.slackBeforeLoweringPct ?? 5) / 100;
+/** Vite names chunks `<name>-<8-char hash>.js`; a ceiling is keyed by <name>. */
+const chunkName = (file) => file.split("/").pop().replace(/-[A-Za-z0-9_-]{8}\.js$/, "");
 
 /**
  * VACUITY FLOOR, not a budget. Every number below counts BAD THINGS FOUND, so
@@ -320,13 +332,44 @@ if (totalBytes === 0) {
 // rounded to 0 and vanished from the total. Rounding is now presentational.
 const totalJSKB = Math.round(totalBytes / 1024);
 const violations = [];
+// A ceiling covers ONE chunk: the largest that carries its name. Vite reuses
+// names (several entry chunks are `index-*.js`), and a ceiling that covered
+// every same-named chunk would lift the small ones' 600 KB target to the big
+// one's ceiling — growth there would go unseen.
+const ceilingSeen = new Map(); // ceiling name -> the largest matching chunk
 for (const f of jsFiles) {
-  if (f.bytes > MAX_SINGLE_CHUNK_KB * 1024) {
-    violations.push(`${f.rel}: ${Math.round(f.bytes / 1024)} KB (limit: ${MAX_SINGLE_CHUNK_KB} KB)`);
+  const name = chunkName(f.rel);
+  if (CHUNK_CEILINGS_KB[name] == null) continue;
+  const prev = ceilingSeen.get(name);
+  if (!prev || f.bytes > prev.bytes) ceilingSeen.set(name, f);
+}
+for (const f of jsFiles) {
+  const name = chunkName(f.rel);
+  const ceiling = ceilingSeen.get(name) === f ? CHUNK_CEILINGS_KB[name] : undefined;
+  const limitKB = ceiling ?? MAX_SINGLE_CHUNK_KB;
+  if (f.bytes > limitKB * 1024) {
+    violations.push(
+      `${f.rel}: ${Math.round(f.bytes / 1024)} KB (limit: ${limitKB} KB${ceiling != null ? ", a ceiling in scripts/bundle-budget.json" : ""})`,
+    );
   }
 }
 if (totalBytes > MAX_TOTAL_JS_KB * 1024) {
   violations.push(`Total JS: ${totalJSKB} KB exceeds limit of ${MAX_TOTAL_JS_KB} KB`);
+}
+// Down-only: a ceiling must name a chunk that exists, sit above its target,
+// and not be left loose after the chunk shrinks — or it stops guarding.
+for (const [name, ceilingKB] of Object.entries(CHUNK_CEILINGS_KB)) {
+  const bytes = ceilingSeen.get(name)?.bytes;
+  if (bytes == null) {
+    violations.push(`ceiling '${name}' (${ceilingKB} KB) matches no chunk — remove it from scripts/bundle-budget.json`);
+  } else if (bytes <= MAX_SINGLE_CHUNK_KB * 1024) {
+    violations.push(`chunk '${name}' is within the ${MAX_SINGLE_CHUNK_KB} KB target — remove its ceiling from scripts/bundle-budget.json`);
+  } else if (ceilingKB * 1024 > bytes * LOWERING_SLACK) {
+    violations.push(`ceiling '${name}' is ${ceilingKB} KB but the chunk is ${Math.round(bytes / 1024)} KB — lower the ceiling`);
+  }
+}
+if (BUDGET.ceilings?.totalKB != null && BUDGET.ceilings.totalKB * 1024 > totalBytes * LOWERING_SLACK) {
+  violations.push(`total ceiling is ${BUDGET.ceilings.totalKB} KB but total JS is ${totalJSKB} KB — lower the ceiling`);
 }
 
 // The measured population prints on EVERY outcome. "0 violations" means
@@ -337,7 +380,7 @@ const population = [
   `js chunks measured: ${jsFiles.length}  (floor ${MIN_JS_FILES})`,
   `directories walked: ${dirsWalked}, entries seen: ${entriesSeen}, non-.js files: ${otherFiles}`,
   `total JS:     ${totalJSKB} KB  (limit ${MAX_TOTAL_JS_KB} KB)`,
-  `largest chunk: ${largest.rel} — ${Math.round(largest.bytes / 1024)} KB  (limit ${MAX_SINGLE_CHUNK_KB} KB)`,
+  `largest chunk: ${largest.rel} — ${Math.round(largest.bytes / 1024)} KB  (limit ${ceilingSeen.get(chunkName(largest.rel)) === largest ? CHUNK_CEILINGS_KB[chunkName(largest.rel)] : MAX_SINGLE_CHUNK_KB} KB)`,
 ];
 
 if (violations.length > 0) {

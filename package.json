@@ -64,6 +64,7 @@
     "test:scale": "playwright test tests/simulation/sim-scaling-operator.spec.ts",
     "test:a11y": "vitest run tests/unit/accessibility.test.ts",
     "test:bundle-size": "node scripts/check-bundle-size.js",
+    "measure:loc": "node scripts/measure-loc.mjs",
     "typecheck": "tsc --noEmit",
     "verify:registry": "node scripts/verify-registry.js",
     "verify:clean-deploy": "npm run build && echo 'Build verified'",

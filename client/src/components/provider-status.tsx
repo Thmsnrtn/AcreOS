@@ -1,3 +1,5 @@
+import { okOrThrow } from "@/lib/fetch-honesty";
+import { clientLogger } from "@/lib/clientLogger";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 
@@ -13,9 +15,11 @@ export function ProviderStatusBadges() {
   useEffect(() => {
     let mounted = true;
     fetch("/api/organization/providers", { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : null))
+      .then(okOrThrow)
+      .then((r) => r.json())
       .then((j) => mounted && setData(j))
-      .catch(() => {});
+      // Unknown renders nothing — no badge claims a provider is off (W10.1).
+      .catch((err) => clientLogger.warn("[provider-status] could not read provider status", err));
     return () => { mounted = false; };
   }, []);
 
