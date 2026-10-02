@@ -13,7 +13,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { REPO_SWEEP_TIMEOUT_MS, stripComments } from "../helpers/stripComments";
+import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 
 type Cond = { op: "eq"; col: { name: string }; val: unknown } | { op: "and"; c: Cond[] };
 const h = vi.hoisted(() => ({ rows: new Map<number, Record<string, unknown>>() }));
@@ -55,6 +56,7 @@ vi.mock("../../server/db", () => ({
 }));
 
 import { acknowledgeSystemAlert } from "../../server/services/alertAcknowledge";
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 beforeEach(() => {
   h.rows.clear();

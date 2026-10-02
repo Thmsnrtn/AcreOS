@@ -22,11 +22,13 @@
  * and statements; comments are stripped with the real scanner, so a comment
  * quoting an unscoped write does not count. Canaries pin each statement shape.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import { readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { stripComments } from "../helpers/stripComments";
 import baseline from "./orgScopedWrites.baseline.json";
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ls = (spec: string) =>
   execSync(`git ls-files ${spec}`).toString().trim().split("\n").filter(Boolean);

@@ -16,6 +16,7 @@
  * remaining whole-list read, so a new picker on the newest page fails here.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import express from "express";
 import request from "supertest";
 import { PgDialect } from "drizzle-orm/pg-core";
@@ -47,6 +48,7 @@ vi.mock("../../server/db", () => {
 });
 
 import { propertyRepo } from "../../server/storage/propertyRepo";
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const render = (w: unknown) => new PgDialect().sqlToQuery(w as SQL);
 const OPTS = { page: 1, pageSize: 25, sortBy: "createdAt", sortOrder: "desc" as const };

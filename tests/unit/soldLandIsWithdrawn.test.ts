@@ -9,6 +9,7 @@
  * transition unpublish uses.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import { getTableName } from "drizzle-orm";
 
 const h = vi.hoisted(() => ({
@@ -64,6 +65,7 @@ import { execSync } from "node:child_process";
 import { stripComments } from "../helpers/stripComments";
 import { withdrawnTargets } from "../../server/services/listingWithdrawal";
 import { propertyRepo } from "../../server/storage/propertyRepo";
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const live = () => ({
   id: 21,

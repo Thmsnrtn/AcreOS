@@ -22,10 +22,12 @@
  * String literals (prompts) are read; comments are stripped, so the record
  * of a removal does not trip it.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import { readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { stripComments } from "../helpers/stripComments";
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 /** An age input, a birth date, disability, SSI/SSDI or public-assistance income. */
 const FORBIDDEN_I =

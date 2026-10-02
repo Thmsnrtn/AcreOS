@@ -14,6 +14,7 @@
  * `uploadsWithStorageAreKept.test.ts` pins the configured side.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import express from "express";
 import request from "supertest";
 
@@ -137,6 +138,7 @@ import { readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 import { stripComments } from "../helpers/stripComments";
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = resolve(__dirname, "../..");
 type Verdict = "kept-in-store-or-refused" | "parsed-not-kept" | "stored-in-db";

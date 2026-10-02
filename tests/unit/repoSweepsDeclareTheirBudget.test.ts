@@ -88,7 +88,15 @@ function walkTests(dir: string, out: string[] = []): string[] {
  * are registered by name below instead of pretending to be derived.
  */
 function isRepoSweep(src: string): boolean {
-  return /\breaddirSync\s*\(/.test(src) || /\bglobSync\s*\(/.test(src);
+  return (
+    /\breaddirSync\s*\(/.test(src) ||
+    /\bglobSync\s*\(/.test(src) ||
+    // A third way to enumerate the tree: shell out to `git ls-files`. Missed
+    // until 2026-10-02, when soldLandIsWithdrawn.test.ts — 1,000+ server files
+    // read in one test — hit the default 30 s under CI load on PR #318 and the
+    // gate it is had no budget to spend. Five such sweeps were unseen.
+    /\b(?:execSync|execFileSync|spawnSync)\s*\(\s*[`'"]git\s+ls-files\b/.test(src)
+  );
 }
 
 /**
@@ -127,6 +135,8 @@ describe("every repo-wide sweep declares its budget", () => {
       // the stripper through a DYNAMIC import, so the old syntax-keyed predicate
       // never saw it. Named so the widening cannot silently narrow again.
       "tests/unit/transactionsAreRealTransactions.test.ts",
+      // Enumerates with `git ls-files`, the shape the predicate learned last.
+      "tests/unit/soldLandIsWithdrawn.test.ts",
       // Two more that walk a source root without touching the stripper at all —
       // the half of the population the old predicate could not express.
       "tests/unit/routeManifest.test.ts",
