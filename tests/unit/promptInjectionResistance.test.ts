@@ -14,7 +14,24 @@
  * post-validator intercepts it.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// validatePaxResponse records each caught leak with fire-and-forget DB writes
+// (recordRefusalPayload, recordPostvalidateViolation). Unmocked, those writes
+// fail against no database AFTER the file's tests finish, and their logger.warn
+// lands on a torn-down worker: main CI went red on 2026-10-02 with
+// "EnvironmentTeardownError: Closing rpc while onUserConsoleLog was pending",
+// every test passing. Same stubs as validatePaxResponse.test.ts.
+vi.mock("../../server/db", () => ({
+  db: {
+    insert: () => ({ values: async () => undefined }),
+    execute: async () => ({ rows: [] }),
+  },
+}));
+vi.mock("../../server/utils/logger", () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
 import { sanitizePrompt, USER_DATA_OPEN } from "../../server/utils/sanitizePrompt";
 import { validatePaxResponse } from "../../server/utils/validatePaxResponse";
 
