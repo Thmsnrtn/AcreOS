@@ -6748,6 +6748,17 @@ Remediation: `npm audit fix` within range (multer 2.4.0, undici 7.30.0, fast-uri
 Falsified: dependency advisories are gated by `security.yml` itself (npm audit on critical/high, Trivy fs and image). A second map engine returning is caught by the bundle budget (`scripts/bundle-budget.json`, blocking in `ci.yml`) only by size: a MapLibre-sized engine (~1 MB) breaks the 600 KB per-chunk target in its own chunk and the total ceiling's ~200 KB headroom, but a small one (Leaflet-class, ~150 KB) would pass both — no gate forbids a second engine as such. Trivy fs and the image scan cannot run in this container; their verdict came from the first `Security Scanning` run on PR #318 (run 36894639288): npm audit, Trivy fs and CodeQL green; the image scan found three HIGH CVEs on the npm CLI's OWN bundled brace-expansion 5.0.9 and undici 6.28.0 (still present after `npm install -g npm@latest`; the app's copies are 5.0.12/2.1.7/1.1.21 and 7.30.0). They are assessed in `.trivyignore` (nil exposure: npm runs at runtime only as fixed-argv `npm audit`/`npm outdated` against the registry), and the three older npm-bundle entries whose re-review triggers that scan showed had fired were removed so the next scan can falsify them. The deploy gains the `security` gate only after a green run.
 Resolving commits: W10.1b
 
+### DEFECT-0284
+Title: The npm-audit gate printed only counts and had no assessed-exception channel
+Severity: P2
+Status: FIXED
+Surfaced by lenses: the first main deploy gated on Security (d2f46b3, 2026-10-04)
+Description: A new braces advisory (GHSA-vfj7-8cjw-p6xm, no patched release; reached only through tailwindcss 3's dev-only build tooling) blocked the production deploy, correctly paging the founder. But the job's inline script printed only "high: 5" — never the package, advisory or scope — and npm audit had no counterpart to `.trivyignore`, so a build-time-only finding could be cleared only by a Tailwind 4 migration or by deleting the gate.
+Evidence: run 37165463413 (`npm Dependency Audit`); `.github/workflows/security.yml`.
+Remediation: `scripts/npm-audit-gate.mjs` prints every critical/high finding with its advisory and dev/PROD scope, and honours `security/npm-audit-accepted.json` only for advisories whose every installed copy is dev-only in package-lock.json, with a justification, a re-review trigger and an unexpired `reviewBy`; a stale entry fails. The braces advisory is accepted until 2026-11-15 (dev-only, build-time globs from our own config, pruned from the image, Trivy image clean).
+Falsified: `tests/unit/npmAuditGate.test.ts` — 12 cases, including an accepted advisory reaching a production package, a second production copy, a mixed advisory chain, expiry and staleness; each of the dev-only, any-copy, expiry and staleness checks was removed in turn and went red.
+Resolving commits: W10.1b follow-up
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -6785,9 +6796,9 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 19  | 19    |
-| FIXED  | 14  | 132 | 116 | 262   |
+| FIXED  | 14  | 132 | 117 | 263   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **134** | **135** | **283** |
+| **Total** | **14** | **134** | **136** | **284** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
@@ -6842,6 +6853,7 @@ DEFECT-0278 and 0279 were found by roadmap wave W10.1 while taking the
 wave; recounted.
 DEFECT-0282 and 0283 come from roadmap wave W10.1b (the Security gate made
 green); recounted.
+DEFECT-0284 came from the first deploy that gate blocked (2026-10-04).
 0203 records the audit of the first-mail slice; 0204–0207 are slice H2;
 0208–0213 the audit of H2 (0213 OPEN); 0214–0218 slice H3; 0219–0229 the
 audit of H3 (0225, 0227, 0229 OPEN); 0230–0235 slice H4 (0232, 0235 OPEN).
