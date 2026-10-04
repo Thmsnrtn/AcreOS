@@ -194,9 +194,11 @@ export const METRICS: readonly MetricSpec[] = [
   // The multifamily engine REUSES annual_noi, cap_rate, monthly_cash_flow and
   // gross_rent_multiplier — the quantities are the same ones a single rental
   // produces, and minting twins would break the cross-strategy comparison BI92
-  // asks for. It does NOT reuse `total_cost`: its denominator is a VALUATION,
-  // and a held building's market value is not what it cost. Only the three
-  // quantities below are genuinely new.
+  // asks for. The OPERATED-asset engine (`multifamily_noi`) does NOT emit
+  // `total_cost`: its denominator is a VALUATION, and a held building's market
+  // value is not what it cost. The ACQUISITION engine (`multifamily_acquisition`,
+  // V1) does, because there it IS what the purchase costs (price + closing +
+  // capex). Only the three quantities below are genuinely new.
   {
     id: "annual_operating_expense",
     label: "Annual operating expense",
@@ -230,6 +232,11 @@ export const METRICS: readonly MetricSpec[] = [
   { id: "stabilized_value", label: "Value at market cap rate", unit: "cents", higherIsBetter: true },
   { id: "gross_sellout", label: "Gross sell-out", unit: "cents", higherIsBetter: true },
   { id: "discount_to_face", label: "Discount to face", unit: "ratio", higherIsBetter: true },
+  // The most a CASH BUYER will pay (ARV on the buyer's rule, less the buyer's
+  // repairs). Not `max_allowable_offer`: in wholesaling "MAO" is the most YOU
+  // offer the seller, and a wholesaler who contracted at the buyer's price would
+  // earn nothing. V1 audit, 2026-10-04.
+  { id: "buyer_max_price", label: "Cash buyer's max price", unit: "cents", higherIsBetter: true },
 ] as const;
 
 // `days` was added to MetricUnit the moment it was needed rather than deferred.

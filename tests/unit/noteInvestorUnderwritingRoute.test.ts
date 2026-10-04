@@ -1,13 +1,13 @@
 /**
- * POST /api/buy-and-hold/underwrite — the buy-and-hold vertical's decision route.
+ * POST /api/note-underwriting/underwrite — the note investor vertical's decision route.
  *
  * Proves the route closes the loop with the right identity:
- *   - the rental_acquisition scenario is written first, under buy_and_hold;
+ *   - the note_acquisition scenario is written first, under note_investor;
  *   - the decision cites it, with the operator's own review date (or null when
  *     they chose "no set date");
- *   - the property is checked against the org (no tenant crossing);
- *   - an unanswered review date or a foreign decision kind is refused before
- *     anything is written.
+ *   - the collateral property is checked against the org (no tenant crossing);
+ *   - an unanswered review date, a foreign decision kind or inputs the engine
+ *     refuses are turned away before anything is written.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
@@ -38,13 +38,20 @@ vi.mock("../../server/db", () => ({
     }),
   },
 }));
-vi.mock("../../server/services/economics/scenarioStore", () => ({
-  recordScenario: vi.fn(async (_org: number, req: Record<string, unknown>) => {
-    h.calls.push("scenario");
-    h.scenarioReq = req;
-    return { id: 501, computedAt: new Date(0), body: { metrics: [], assumptions: [] } };
-  }),
-}));
+// Like the real store, compute before "inserting": a request the engine refuses
+// never reaches the write.
+vi.mock("../../server/services/economics/scenarioStore", async () => {
+  const { computeScenario } = await import("../../shared/economics/scenario");
+  const { ALL_ENGINES } = await import("../../server/services/economics/engines");
+  return {
+    recordScenario: vi.fn(async (_org: number, req: Parameters<typeof computeScenario>[0]) => {
+      const computed = computeScenario(req, ALL_ENGINES);
+      h.calls.push("scenario");
+      h.scenarioReq = req as unknown as Record<string, unknown>;
+      return { id: 501, computedAt: new Date(0), body: computed };
+    }),
+  };
+});
 vi.mock("../../server/services/decisions/decisionStore", () => ({
   recordDecision: vi.fn(async (...args: unknown[]) => {
     h.calls.push("decision");
@@ -53,7 +60,7 @@ vi.mock("../../server/services/decisions/decisionStore", () => ({
   }),
 }));
 
-const { default: router } = await import("../../server/routes-buy-and-hold-underwriting");
+const { default: router } = await import("../../server/routes-note-underwriting");
 
 function app() {
   const a = express();
@@ -63,16 +70,16 @@ function app() {
     req.user = { id: USER_ID };
     next();
   });
-  a.use("/api/buy-and-hold", router);
+  a.use("/api/note-underwriting", router);
   return a;
 }
 
 const body = {
   propertyId: 7,
-  inputs: { purchasePriceCents: 20_000_000, monthlyRentCents: 200_000, vacancyPct: 5, monthlyFixedExpensesCents: 50_000, managementPct: 8, reservesPct: 10 },
+  inputs: { unpaidPrincipalCents: 5_000_000, noteRatePct: 9, remainingTermMonths: 120, purchasePriceCents: 4_000_000 },
   kind: "acquire",
-  choice: "Buy and hold at $200,000",
-  rationale: "Cash flow clears our floor at this price.",
+  choice: "Buy the note at $40,000 for $50,000 unpaid balance",
+  rationale: "A 20% discount on a seasoned performing note clears our yield floor.",
   // Relative to now, so the fixture never becomes a past date the route refuses.
   reviewDueAt: new Date(Date.now() + 60 * 86_400_000).toISOString(),
 };
@@ -85,28 +92,35 @@ beforeEach(() => {
   h.decisionArgs = null;
 });
 
-describe("POST /api/buy-and-hold/underwrite", () => {
-  it("records the rental_acquisition scenario, then a buy_and_hold decision citing it", async () => {
-    const res = await request(app()).post("/api/buy-and-hold/underwrite").send(body);
+describe("POST /api/note-underwriting/underwrite", () => {
+  it("records the note_acquisition scenario, then a note_investor decision citing it", async () => {
+    const res = await request(app()).post("/api/note-underwriting/underwrite").send(body);
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ scenarioId: 501, decisionId: 901 });
     expect(h.calls).toEqual(["scenario", "decision"]);
-    expect(h.scenarioReq).toMatchObject({ engineId: "rental_acquisition", strategyPackId: "buy_and_hold", subjectId: 7 });
+    expect(h.scenarioReq).toMatchObject({ engineId: "note_acquisition", strategyPackId: "note_investor", subjectType: "property", subjectId: 7 });
     const [org, decision, , scenarioIds] = h.decisionArgs as [number, Record<string, unknown>, Date, number[]];
     expect(org).toBe(ORG_ID);
-    expect(decision).toMatchObject({ strategyPackId: "buy_and_hold", kind: "acquire", actorRef: USER_ID, subjectId: 7 });
+    expect(decision).toMatchObject({
+      strategyPackId: "note_investor",
+      kind: "acquire",
+      actorRef: USER_ID,
+      subjectType: "property",
+      subjectId: 7,
+      authority: "org_member:note_investor_underwrite",
+    });
     expect(decision.reviewDueAt).toEqual(new Date(body.reviewDueAt));
     expect(scenarioIds).toEqual([501]);
   });
 
   it("'no set date' is recorded as null — an answer, not a default", async () => {
-    await request(app()).post("/api/buy-and-hold/underwrite").send({ ...body, reviewDueAt: null });
+    await request(app()).post("/api/note-underwriting/underwrite").send({ ...body, reviewDueAt: null });
     expect((h.decisionArgs as [number, Record<string, unknown>])[1].reviewDueAt).toBeNull();
   });
 
   it("another org's property is not found, and nothing is written", async () => {
     h.rows = [];
-    const res = await request(app()).post("/api/buy-and-hold/underwrite").send(body);
+    const res = await request(app()).post("/api/note-underwriting/underwrite").send(body);
     expect(res.status).toBe(404);
     expect(h.calls).toEqual([]);
   });
@@ -115,7 +129,7 @@ describe("POST /api/buy-and-hold/underwrite", () => {
     // The 404 above proves only that an EMPTY result is a 404. This proves the
     // lookup would return empty for a foreign row: the rendered WHERE binds the
     // caller's org id, not the property id alone (the IDOR shape).
-    await request(app()).post("/api/buy-and-hold/underwrite").send(body);
+    await request(app()).post("/api/note-underwriting/underwrite").send(body);
     expect(h.where, "the route never queried the property").not.toBeNull();
     const q = new PgDialect().sqlToQuery(h.where as SQL);
     expect(q.sql).toMatch(/"organization_id" = \$\d/);
@@ -127,16 +141,25 @@ describe("POST /api/buy-and-hold/underwrite", () => {
 
   it("an unanswered review date is refused before anything is written", async () => {
     const { reviewDueAt: _omit, ...unanswered } = body;
-    const res = await request(app()).post("/api/buy-and-hold/underwrite").send(unanswered);
+    const res = await request(app()).post("/api/note-underwriting/underwrite").send(unanswered);
     expect(res.status).toBeGreaterThanOrEqual(400);
     expect(res.status).toBeLessThan(500);
     expect(h.calls).toEqual([]);
   });
 
   it("a decision kind this vertical's call cannot be is refused", async () => {
-    const res = await request(app()).post("/api/buy-and-hold/underwrite").send({ ...body, kind: "dispose" });
+    const res = await request(app()).post("/api/note-underwriting/underwrite").send({ ...body, kind: "dispose" });
     expect(res.status).toBeGreaterThanOrEqual(400);
     expect(res.status).toBeLessThan(500);
+    expect(h.calls).toEqual([]);
+  });
+
+  it("inputs the engine refuses are a 400 with its message, and nothing is written", async () => {
+    const res = await request(app())
+      .post("/api/note-underwriting/underwrite")
+      .send({ ...body, inputs: { ...body.inputs, noteRatePct: 45 } });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toMatch(/Note rate/);
     expect(h.calls).toEqual([]);
   });
 });

@@ -8,8 +8,11 @@
  * (dealUnderwriting, the blind-offer calculator, Pax's tools, among others)
  * carry their own, and converging them is separate work.
  *
- * `remainingBalanceCents` has no production caller until the note-acquisition
- * engine (V1) uses it for a balloon.
+ * `remainingBalanceCents` has no production caller. The note-acquisition engine
+ * (V1) deliberately walks its schedule month by month instead, because a
+ * secondary-market note's actual payment often differs from the level payment
+ * this function assumes; its tests use this function as the oracle the walk
+ * must agree with when the payment IS level.
  * PURE. Money is integer cents in and out; rates are PERCENTAGE POINTS (7.5 for
  * 7.5%), following the shared/economics/engineFields.ts convention.
  */

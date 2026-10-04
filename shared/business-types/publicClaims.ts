@@ -61,7 +61,7 @@ const OD5 =
 
 /**
  * The verticals whose public claim is lowered to `beta` (thirteen at OD-5,
- * eleven after the 2026-10-04 releases below).
+ * six after the 2026-10-04 releases below).
  *
  * `beta` is not a hedge chosen by feel: `MATURITY_REQUIRES` in `readiness.ts`
  * says `beta` demands evidenced `surfaced` and `core` demands `decided`. Every
@@ -79,19 +79,20 @@ const OD5 =
  * decision-memos/2026-10-04-vertical-program.md).
  * Released: `buy_and_hold`, 2026-10-04. Rentals → Underwrite a rental records a
  * `rental_acquisition` scenario and a decision under the buy_and_hold pack.
+ * Released, V1 (2026-10-04), each by its own engine and desk on the kit:
+ * `residential_wholesaler` (wholesale_assignment, Wholesale → Underwrite a
+ * deal), `multifamily` (multifamily_acquisition, Rentals → Underwrite a
+ * building), `developer` (development_proforma, Subdivision → Development
+ * pro-forma), `note_investor` (note_acquisition, Mortgage Notes → Underwrite a
+ * note), and `hybrid`, which is decided because both its parts are.
  */
 export const PUBLIC_CLAIM_DEMOTIONS: Partial<
   Record<BusinessTypeId, PublicClaimDemotion>
 > = {
-  note_investor: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  hybrid: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  residential_wholesaler: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
   short_term_rental: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
   commercial: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
   creative_finance: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  developer: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
   tax_lien_deed: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  multifamily: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
   mobile_home: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
   agent_investor: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
 };

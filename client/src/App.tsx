@@ -465,6 +465,10 @@ const TenantsPage = React.lazy(() => import("@/pages/tenants"));
 const LeasesPage = React.lazy(() => import("@/pages/leases"));
 const RentRollPage = React.lazy(() => import("@/pages/rent-roll"));
 const UnderwriteRentalPage = React.lazy(() => import("@/pages/rentals/underwrite-rental"));
+const UnderwriteMultifamilyPage = React.lazy(() => import("@/pages/rentals/underwrite-multifamily"));
+const UnderwriteWholesaleDealPage = React.lazy(() => import("@/pages/wholesale/underwrite-deal"));
+const DevelopmentProformaPage = React.lazy(() => import("@/pages/development/proforma"));
+const UnderwriteNotePage = React.lazy(() => import("@/pages/notes/underwrite-note"));
 const MaintenancePage = React.lazy(() => import("@/pages/maintenance"));
 // InvestorAnalyticsPage archived 2026-06-01 — no direct callers.
 const InspectionDetailPage = React.lazy(() => import("@/pages/inspection-detail"));
@@ -902,6 +906,15 @@ function Router() {
       <Route path="/rentals/underwrite">
         {() => <ProtectedRoute component={UnderwriteRentalPage} />}
       </Route>
+      <Route path="/rentals/underwrite-multifamily">
+        {() => <ProtectedRoute component={UnderwriteMultifamilyPage} />}
+      </Route>
+      <Route path="/wholesale/underwrite">
+        {() => <ProtectedRoute component={UnderwriteWholesaleDealPage} />}
+      </Route>
+      <Route path="/development/proforma">
+        {() => <ProtectedRoute component={DevelopmentProformaPage} />}
+      </Route>
       <Route path="/maintenance">
         {() => <ProtectedRoute component={MaintenancePage} />}
       </Route>
@@ -1003,6 +1016,10 @@ function Router() {
       </Route>
       <Route path="/notes/pipeline/:id">
         {() => <ProtectedRoute component={NoteAcquisitionDetailPage} />}
+      </Route>
+      {/* Before /notes/:id — the first match wins, and "underwrite" is not a note id. */}
+      <Route path="/notes/underwrite">
+        {() => <ProtectedRoute component={UnderwriteNotePage} />}
       </Route>
       <Route path="/notes/:id">
         {() => <ProtectedRoute component={NoteDetailPage} />}

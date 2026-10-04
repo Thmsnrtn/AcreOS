@@ -98,6 +98,13 @@ export function computeRentalAcquisition(i: RentalAcquisitionInputs): RentalAcqu
   ] as const) {
     if (v < 0 || v > 100) throw new RentalAcquisitionInputError(`${k} must be between 0 and 100`);
   }
+  // Loan terms with no down payment are ambiguous: dropping them would model
+  // all cash while the operator typed a loan (V1 audit). Ask instead.
+  if (i.downPaymentPct === null && (i.interestRatePct !== null || i.amortizationYears !== null)) {
+    throw new RentalAcquisitionInputError(
+      "Loan terms were entered without a down payment. Enter the down payment, or clear the loan terms for an all-cash purchase",
+    );
+  }
   const financed = i.downPaymentPct !== null && i.downPaymentPct < 100;
   if (i.downPaymentPct !== null && (i.downPaymentPct < 0 || i.downPaymentPct > 100)) {
     throw new RentalAcquisitionInputError("Down payment must be between 0% and 100%");

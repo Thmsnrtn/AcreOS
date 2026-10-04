@@ -84,7 +84,9 @@ export const multifamilyNoiEngine: EngineSpec = {
   id: "multifamily_noi",
   version: MULTIFAMILY_ENGINE_VERSION,
   label: "Operated asset (NOI, cap rate, DSCR)",
-  verticals: ["multifamily"],
+  // No `verticals` (V1, 2026-10-04): this values a building already operated —
+  // no price, closing, capex, financing or total_cost. The acquisition
+  // decision belongs to `multifamily_acquisition`.
   produces: [
     "annual_operating_expense",
     "annual_noi",

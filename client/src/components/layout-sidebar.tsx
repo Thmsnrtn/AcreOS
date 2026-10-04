@@ -516,6 +516,8 @@ const NAV_MODULES: NavModule[] = [
       { label: "Servicing book", icon: FileText, href: "/notes", description: "Acquired notes ledger" },
       { label: "Pipeline", icon: Layers, href: "/notes/pipeline", description: "Pre-book diligence — sourcing → BPO → diligence → offer → escrow" },
       { label: "Tax readiness", icon: Receipt, href: "/notes/tax-readiness", description: "Year-end interest totals and tax-form readiness (1099-INT withheld pending review)" },
+      // The vertical's decision desk (decision-memos/2026-10-04-vertical-program.md).
+      { label: "Underwrite a note", icon: Calculator, href: "/notes/underwrite", description: "Price a note and record your call", businessTypeOnly: ["note_investor", "hybrid"] },
     ],
   },
 
@@ -560,6 +562,8 @@ const NAV_MODULES: NavModule[] = [
       { label: "Earnest money", icon: Banknote, href: "/earnest-money", description: "EMD inspection-period timer + at-risk view" },
       { label: "Double-close", icon: GitBranch, href: "/double-close", description: "A→B + B→C linked transactions" },
       { label: "Assignment legality", icon: Scale, href: "/wholesaler-state-rules", description: "Per-state wholesaler-licensing rules" },
+      // The vertical's decision desk (decision-memos/2026-10-04-vertical-program.md).
+      { label: "Underwrite a deal", icon: Calculator, href: "/wholesale/underwrite", description: "Run the numbers and record your call", businessTypeOnly: ["residential_wholesaler"] },
     ],
   },
 
@@ -599,6 +603,7 @@ const NAV_MODULES: NavModule[] = [
       // The vertical's decision desk (decision-memos/2026-10-04-vertical-program.md).
       // A child behind the existing Rentals module, gated to its vertical — not a door.
       { label: "Underwrite a rental", icon: Calculator, href: "/rentals/underwrite", description: "Run the numbers and record your call", businessTypeOnly: ["buy_and_hold"] },
+      { label: "Underwrite a building", icon: Calculator, href: "/rentals/underwrite-multifamily", description: "Run the numbers and record your call", businessTypeOnly: ["multifamily"] },
     ],
   },
 
@@ -640,6 +645,8 @@ const NAV_MODULES: NavModule[] = [
       { label: "County timelines", icon: Calendar, href: "/county-timelines", description: "Subdivision approval lead times by county" },
       { label: "Lot pricing", icon: Ruler, href: "/lot-pricing", description: "Premium-rule grid for child lots (open from a parent parcel)" },
       { label: "CC&R templates", icon: FileText, href: "/ccr-templates", description: "Restrictive covenants + road maintenance + HOA bylaws" },
+      // The developer's go/no-go desk (decision-memos/2026-10-04-vertical-program.md).
+      { label: "Development pro-forma", icon: Calculator, href: "/development/proforma", description: "Run the go/no-go and record your call", businessTypeOnly: ["developer"] },
     ],
   },
 

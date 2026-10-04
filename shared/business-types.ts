@@ -117,7 +117,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tpl_delinquency_escalation",
       "tpl_note_setup",
     ],
-    spotlightModules: ["notes", "borrowers", "money", "letters"],
+    spotlightModules: ["notes", "borrowers", "money", "letters", "notes/underwrite"],
   },
   hybrid: {
     id: "hybrid",
@@ -131,7 +131,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tpl_payment_missed_dunning",
       "tpl_parcel_owner_changed_followup",
     ],
-    spotlightModules: ["parcels", "notes", "deals", "money"],
+    spotlightModules: ["parcels", "notes", "deals", "money", "notes/underwrite"],
   },
   fix_and_flip: {
     id: "fix_and_flip",
@@ -223,6 +223,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "earnest-money",
       "double-close",
       "wholesaler-state-rules",
+      "wholesale/underwrite",
     ],
     // 2026-08 audit Wave 1: corrected ["stripe"] → []. No wholesaler surface uses
     // Stripe — earnest-money and double-close are pure record tables, and the
@@ -475,7 +476,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // the Subdivision sidebar module gates businessTypeOnly
     // ["subdivider", "developer"] (persona-mapping collapses developer →
     // subdivider), so the lots/permits/plats model applies to them too.
-    spotlightModules: ["permits", "county-timelines", "lot-pricing", "ccr-templates"],
+    spotlightModules: ["permits", "county-timelines", "lot-pricing", "ccr-templates", "development/proforma"],
   },
   subdivider: {
     id: "subdivider",
@@ -600,7 +601,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tpl_lease_expiring",
       "tpl_multifamily_unit_turn",
     ],
-    spotlightModules: ["rent-roll", "tenants", "leases", "maintenance", "investor-analytics"],
+    spotlightModules: ["rent-roll", "tenants", "leases", "maintenance", "investor-analytics", "rentals/underwrite-multifamily"],
   },
   mobile_home: {
     id: "mobile_home",

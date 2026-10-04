@@ -110,7 +110,7 @@ const evidence: VerticalEvidence = measured;
  * founder decision — queued as OD-5). Lower this in the commit that earns it,
  * whichever way it is earned.
  */
-const MATURITY_OVERCLAIM_BASELINE = 11;
+const MATURITY_OVERCLAIM_BASELINE = 6;
 
 describe("the evidence scan is real (vacuity guards, first)", () => {
   it("found the workflow templates the engine defines", () => {

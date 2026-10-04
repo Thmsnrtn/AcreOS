@@ -28,6 +28,10 @@ import { flipMaoEngine } from "./flipMao";
 import { rentalReturnsEngine } from "./rentalReturns";
 import { multifamilyNoiEngine } from "./multifamilyNoi";
 import { rentalAcquisitionEngine } from "./rentalAcquisition";
+import { wholesaleAssignmentEngine } from "./wholesaleAssignment";
+import { multifamilyAcquisitionEngine } from "./multifamilyAcquisition";
+import { developmentProformaEngine } from "./developmentProforma";
+import { noteAcquisitionEngine } from "./noteAcquisition";
 
 export const ALL_ENGINES: readonly EngineSpec[] = [
   ...CORE_ENGINES,
@@ -36,4 +40,9 @@ export const ALL_ENGINES: readonly EngineSpec[] = [
   rentalReturnsEngine,
   multifamilyNoiEngine,
   rentalAcquisitionEngine,
+  // Vertical program V1 (decision-memos/2026-10-04-vertical-program.md).
+  wholesaleAssignmentEngine,
+  multifamilyAcquisitionEngine,
+  developmentProformaEngine,
+  noteAcquisitionEngine,
 ];

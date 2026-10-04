@@ -106,6 +106,9 @@ describe("computeRentalAcquisition — the honest edges", () => {
     expect(() => computeRentalAcquisition({ ...golden, amortizationYears: 41 })).toThrow(/Amortization/);
     expect(() => computeRentalAcquisition({ ...golden, amortizationYears: 29.5 })).toThrow(/Amortization/);
   });
+  it("loan terms typed without a down payment are refused, not silently dropped", () => {
+    expect(() => computeRentalAcquisition({ ...golden, downPaymentPct: null })).toThrow(/without a down payment/);
+  });
   it("100% down is all cash by the operator's own answer", () => {
     const o = computeRentalAcquisition({ ...golden, downPaymentPct: 100, interestRatePct: null, amortizationYears: null });
     expect(o.financed).toBe(false);
