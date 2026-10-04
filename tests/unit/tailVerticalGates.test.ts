@@ -325,13 +325,21 @@ describe("registry truth (shared/business-types.ts) — the five tail entries", 
   it("landlord-family siblings' spotlightModules are exactly the Rentals module children (real slugs)", () => {
     const block = sidebarSource().match(/id:\s*"landlord"[\s\S]*?children:\s*\[([\s\S]*?)\],\s*\n\s*\}/);
     expect(block).toBeTruthy();
-    const childSlugs = [...block![1].matchAll(/href:\s*"\/([^"]+)"/g)].map((m) => m[1]);
+    // The children a vertical can SEE: a child gated by its own
+    // businessTypeOnly (a vertical's decision desk, 2026-10-04) belongs to that
+    // vertical's spotlight, not its siblings'.
+    const children = [...block![1].matchAll(/\{[^{}]*href:\s*"\/([^"]+)"[^{}]*\}/g)].map((m) => ({
+      slug: m[1],
+      only: m[0].match(/businessTypeOnly:\s*\[([^\]]*)\]/)?.[1].match(/"([a-z_]+)"/g)?.map((x) => x.slice(1, -1)) ?? null,
+    }));
+    expect(children.length).toBeGreaterThanOrEqual(5);
+    const visibleTo = (bt: string) => children.filter((c) => c.only === null || c.only.includes(bt)).map((c) => c.slug);
     for (const bt of ["short_term_rental", "multifamily", "mobile_home"] as const) {
-      expect(getBusinessType(bt)!.spotlightModules, bt).toEqual(childSlugs);
+      expect(getBusinessType(bt)!.spotlightModules, bt).toEqual(visibleTo(bt));
     }
     // commercial = the same Rentals children plus the pipeline + inventory
     // surfaces its /today cluster leans on.
-    expect(getBusinessType("commercial")!.spotlightModules).toEqual([...childSlugs, "deals", "properties"]);
+    expect(getBusinessType("commercial")!.spotlightModules).toEqual([...visibleTo("commercial"), "deals", "properties"]);
   });
 
   it("every spotlightModules slug across all five entries resolves to a real routed surface", () => {

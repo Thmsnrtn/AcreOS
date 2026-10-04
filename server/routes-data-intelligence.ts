@@ -336,8 +336,19 @@ const commitSchema = z.object({
    * When the operator expects to know whether this landed. Explicitly nullable,
    * never defaulted: a manufactured date would make the outcome prompt nag
    * about every offer ever committed.
+   *
+   * REQUIRED, though nullable (2026-10-04). While it was optional, a client
+   * that forgot to ask, or sent `undefined`, recorded "never review" with no
+   * one having said so, and every land decision it recorded was ungradeable.
+   * Null is the operator's answer "no set date"; a missing key is refused.
    */
-  reviewDueAt: z.string().datetime().nullable().optional(),
+  reviewDueAt: z
+    .string()
+    .datetime()
+    .nullable()
+    .refine((d) => d === null || new Date(d).getTime() > Date.now(), {
+      message: "A review date must be in the future.",
+    }),
 });
 
 router.post("/blind-offer/commit", async (req: Request, res: Response) => {

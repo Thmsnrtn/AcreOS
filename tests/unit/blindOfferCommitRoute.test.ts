@@ -72,11 +72,15 @@ function app(orgOverride?: Record<string, unknown>) {
   return a;
 }
 
+/** The operator's answer to "when will you know?" — 30 days out. */
+const REVIEW_AT = new Date(Date.now() + 30 * 86_400_000).toISOString();
+
 const goodBody = {
   propertyId: OWN_PROPERTY,
   offerAmount: 40_000,
   salePrice: 100_000,
   tier: "standard" as const,
+  reviewDueAt: REVIEW_AT,
 };
 
 beforeEach(() => {
@@ -135,10 +139,18 @@ describe("it records a decision, with the scenario behind it", () => {
     expect(input.alternatives[0].reason).toMatch(/Not taken/);
   });
 
-  it("never manufactures a review date", async () => {
+  it("records the operator's review date, so Today asks how it went", async () => {
+    await request(app()).post("/api/data-intel/blind-offer/commit").send(goodBody);
+    const input = (recordDecision.mock.calls[0] as unknown as [number, any])[1];
+    expect(input.reviewDueAt).toBeInstanceOf(Date);
+    expect((input.reviewDueAt as Date).toISOString()).toBe(REVIEW_AT);
+  });
+
+  it("'no set date' is the operator's answer, recorded as null — never a manufactured date", async () => {
     // A made-up date would make the outcome prompt nag about every offer ever
     // committed, which is exactly what the prompt refuses to do.
-    await request(app()).post("/api/data-intel/blind-offer/commit").send(goodBody);
+    const res = await request(app()).post("/api/data-intel/blind-offer/commit").send({ ...goodBody, reviewDueAt: null });
+    expect(res.status).toBe(200);
     const input = (recordDecision.mock.calls[0] as unknown as [number, any])[1];
     expect(input.reviewDueAt).toBeNull();
   });
@@ -200,6 +212,24 @@ describe("it refuses what it must refuse", () => {
       body,
       "the parcel lookup does not name properties.organizationId",
     ).toContain("eq(properties.organizationId, org.id)");
+  });
+
+  it("refuses an UNANSWERED review question rather than reading it as 'never'", async () => {
+    // Until 2026-10-04 the key was optional, so a client that never asked
+    // recorded "never review" in silence and every land decision was
+    // ungradeable while this route looked fine.
+    const { reviewDueAt: _omitted, ...unanswered } = goodBody;
+    const res = await request(app()).post("/api/data-intel/blind-offer/commit").send(unanswered);
+    expect(res.status).toBe(422);
+    expect(recordDecision).not.toHaveBeenCalled();
+  });
+
+  it("refuses a review date in the past (it would be due the moment it was recorded)", async () => {
+    const res = await request(app())
+      .post("/api/data-intel/blind-offer/commit")
+      .send({ ...goodBody, reviewDueAt: new Date(Date.now() - 86_400_000).toISOString() });
+    expect(res.status).toBe(422);
+    expect(recordDecision).not.toHaveBeenCalled();
   });
 
   it("rejects a malformed body before touching the database", async () => {

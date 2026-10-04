@@ -464,6 +464,7 @@ const Contractor1099NecPage = React.lazy(() => import("@/pages/contractor-1099-n
 const TenantsPage = React.lazy(() => import("@/pages/tenants"));
 const LeasesPage = React.lazy(() => import("@/pages/leases"));
 const RentRollPage = React.lazy(() => import("@/pages/rent-roll"));
+const UnderwriteRentalPage = React.lazy(() => import("@/pages/rentals/underwrite-rental"));
 const MaintenancePage = React.lazy(() => import("@/pages/maintenance"));
 // InvestorAnalyticsPage archived 2026-06-01 — no direct callers.
 const InspectionDetailPage = React.lazy(() => import("@/pages/inspection-detail"));
@@ -897,6 +898,9 @@ function Router() {
       </Route>
       <Route path="/rent-roll">
         {() => <ProtectedRoute component={RentRollPage} />}
+      </Route>
+      <Route path="/rentals/underwrite">
+        {() => <ProtectedRoute component={UnderwriteRentalPage} />}
       </Route>
       <Route path="/maintenance">
         {() => <ProtectedRoute component={MaintenancePage} />}

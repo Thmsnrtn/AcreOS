@@ -6759,6 +6759,39 @@ Remediation: `scripts/npm-audit-gate.mjs` prints every critical/high finding wit
 Falsified: `tests/unit/npmAuditGate.test.ts` — 12 cases, including an accepted advisory reaching a production package, a second production copy, a mixed advisory chain, expiry and staleness; each of the dev-only, any-copy, expiry and staleness checks was removed in turn and went red.
 Resolving commits: W10.1b follow-up
 
+### DEFECT-0285
+Title: No land offer recorded by the blind-offer wizard could ever be graded
+Severity: P1
+Status: FIXED
+Surfaced by lenses: vertical program V0 (2026-10-04), while promoting land
+Description: The blind-offer commit route accepts a review date and records a land_deal scenario plus a land_flipper decision, so a gate reading only the server would call land gradeable. But the wizard sent `reviewDueAt: null` unconditionally, so no committed land offer was ever asked for its outcome on Today, and calibration could never learn from land. The defect lived in the caller, the half of the loop no server gate read.
+Evidence: `client/src/pages/blind-offer-wizard.tsx` (commitDecision).
+Remediation: The wizard now asks "When will you know how this went?" with the shared `ReviewDateChoice` (extracted from the flip analyzer, nothing pre-selected, "No set date" an equal answer) and cannot record until answered.
+Falsified: `tests/unit/clientNeverHardcodesNoReviewDate.test.ts`, a parsed scan of every client file for a `reviewDueAt` property whose value is the literal null, with canaries. It is red when the old line is restored.
+Resolving commits: V0
+
+### DEFECT-0286
+Title: An unanswered review question was recorded as "never review" by the land and flip decision routes
+Severity: P1
+Status: FIXED
+Surfaced by lenses: independent audit of the V0 wave (2026-10-04)
+Description: `POST /api/data-intel/blind-offer/commit` and `POST /api/flip-analyzer/offer` declared `reviewDueAt` optional, and the flip analyzer's "Save draft offer" button was enabled before the operator answered "When will you know?", sending null for an unanswered question. So a decision could be recorded as never-to-be-reviewed with nobody having chosen that, and the evidence gate called both verticals gradeable because it read only the call site (`input.reviewDueAt ? … : null`), never the schema that let the key be omitted. DEFECT-0285 fixed the wizard's literal null; this is the same hole one layer down.
+Evidence: `server/routes-data-intelligence.ts` (commitSchema), `server/routes-flip-analyzer.ts` (offerSchema), `client/src/pages/flip-analyzer.tsx` (draft button).
+Remediation: Both schemas now REQUIRE the key (nullable, future-dated); the kit's `underwriteBodySchema` matches. `reviewDueAtFromDays` no longer accepts `undefined`, so every caller must narrow an unanswered question before sending, and the flip draft button, the wizard and the workbench all refuse until it is answered. Evidence rule v2 marks every decision in a route file whose zod `reviewDueAt` is omittable (`.optional()`, `.nullish()`, `.default()`, `.catch()`, `.or()`, `z.preprocess`, or a `.partial()` over a schema naming it) as ungradeable.
+Falsified: `tests/unit/blindOfferCommitRoute.test.ts` and `tests/unit/flipAnalyzerOfferRequiresReview.test.ts` (an omitted key is 422 before anything is read or written; each red against its old optional schema); `tests/unit/verticalReadiness.test.ts` canary over all three omittable spellings, and restoring `.optional()` on the land schema turns the gradeability law red naming the file; `tests/unit/clientNeverHardcodesNoReviewDate.test.ts` now also forbids `undefined` and `void`.
+Resolving commits: V0
+
+### DEFECT-0287
+Title: At "Acquired" the outcome prompt asks for the cost to acquire, but the engines' `total_cost` includes rehab and holding
+Severity: P2
+Status: OPEN
+Surfaced by lenses: independent audit of the V0 wave (2026-10-04)
+Description: `OutcomePrompt` measures `total_cost` on the "Acquired" answer and asks "What did it actually cost to acquire?" with the hint "price, closing, anything you paid to take it down". `flip_mao` emits total cash in (purchase, rehab with contingency, holding, closing), `land_deal` its all-in cost, and the new `rental_acquisition` price + closing + rehab. An operator answering at the moment of acquisition reports a figure without the rehab, so the variance reads as a saving roughly the size of the rehab budget, and calibration learns that this operator overestimates cost. Pre-existing for flip; V0 adds a second engine with the same meaning — and buy-and-hold predicts no `profit`, so `total_cost` is the ONLY metric its outcomes can grade, which makes the mismatch its whole calibration signal whenever a rehab budget is entered.
+Evidence: `client/src/components/today/OutcomePrompt.tsx` (ANSWERS, acquired); `server/services/economics/engines/flipMao.ts`, `server/services/economics/engines/rentalAcquisition.ts`.
+Remediation: Founder-visible product choice, not taken here: either ask for the all-in figure (and ask it when the rehab is done, not at closing), or register a distinct `acquisition_cost` metric that the engines also emit and measure that at "Acquired".
+Falsified: none yet.
+Resolving commits: —
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -6795,10 +6828,10 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 19  | 19    |
-| FIXED  | 14  | 132 | 117 | 263   |
+| OPEN   | 0   | 0   | 20  | 20    |
+| FIXED  | 14  | 134 | 117 | 265   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **134** | **136** | **284** |
+| **Total** | **14** | **136** | **137** | **287** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as
@@ -6854,6 +6887,8 @@ wave; recounted.
 DEFECT-0282 and 0283 come from roadmap wave W10.1b (the Security gate made
 green); recounted.
 DEFECT-0284 came from the first deploy that gate blocked (2026-10-04).
+DEFECT-0285 came from the vertical program's V0 wave (2026-10-04); 0286
+(FIXED) and 0287 (OPEN) from the independent audit of that wave.
 0203 records the audit of the first-mail slice; 0204–0207 are slice H2;
 0208–0213 the audit of H2 (0213 OPEN); 0214–0218 slice H3; 0219–0229 the
 audit of H3 (0225, 0227, 0229 OPEN); 0230–0235 slice H4 (0232, 0235 OPEN).

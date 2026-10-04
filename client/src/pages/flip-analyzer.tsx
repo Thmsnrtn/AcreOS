@@ -63,6 +63,7 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ReviewDateChoice, reviewDueAtFromDays } from "@/components/decisions/ReviewDateChoice";
 import {
   Card,
   CardContent,
@@ -364,20 +365,6 @@ const RULE_FIELDS: Array<{
   { key: "targetProfitPct", label: "Target profit (% of ARV)", hint: "The minimum net you will accept.", kind: "percent" },
 ];
 
-/**
- * The review-date choices, deliberately few and fixed.
- *
- * Mirrors the founder plane's `checkInDays: 30 | 90` shape rather than a
- * free-form date picker: a picker is friction at the exact moment friction
- * makes someone skip the question, and the honest answers here are coarse
- * anyway. "No set date" carries equal weight — it is an answer, not a skip.
- */
-const REVIEW_CHOICES: ReadonlyArray<{ label: string; days: number | null }> = [
-  { label: "In 2 weeks", days: 14 },
-  { label: "In 30 days", days: 30 },
-  { label: "In 90 days", days: 90 },
-  { label: "No set date", days: null },
-];
 
 export default function FlipAnalyzerPage() {
   useDocumentTitle("Flip analyzer — MAO");
@@ -564,7 +551,8 @@ export default function FlipAnalyzerPage() {
       propertyId: number;
       offerCents: number;
       mao: MaoResponse;
-      reviewInDays: number | null | undefined;
+      /** Answered: a day count, or null for "no set date". */
+      reviewInDays: number | null;
     }) => {
       const res = await apiRequest("POST", "/api/flip-analyzer/offer", {
         propertyId: input.propertyId,
@@ -575,10 +563,7 @@ export default function FlipAnalyzerPage() {
         // When the operator expects to KNOW. Null when they said there is no
         // natural review date — an answer, not an omission. The server never
         // defaults this, so a decision with no date simply never prompts.
-        reviewDueAt:
-          input.reviewInDays === null || input.reviewInDays === undefined
-            ? null
-            : new Date(Date.now() + input.reviewInDays * 86_400_000).toISOString(),
+        reviewDueAt: reviewDueAtFromDays(input.reviewInDays),
       });
       return res.json() as Promise<OfferResponse>;
     },
@@ -1345,50 +1330,21 @@ export default function FlipAnalyzerPage() {
                   sends nothing, and no money moves through AcreOS — payment
                   happens between you and the seller at closing.
                 </p>
-                {/* WHEN WILL YOU KNOW?
-                    Asked here because this is the moment the operator actually
-                    knows the answer — they are looking at the offer and have a
-                    view on how long a seller takes. Nothing is pre-selected:
-                    the server refuses to invent a review date, and a chip
-                    selected by default would manufacture one on its behalf.
-                    "No set date" is a real, equally-weighted answer, not a
-                    skip — a decision with no date never prompts, which is
-                    correct for the many that have no natural one. */}
-                <fieldset className="mt-4">
-                  <legend className="text-sm font-medium">
-                    When will you know how this went?
-                  </legend>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    We'll ask you once, on Today, so what actually happened gets
-                    recorded while you still remember it.
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {REVIEW_CHOICES.map((c) => (
-                      <Button
-                        key={c.label}
-                        type="button"
-                        size="sm"
-                        variant={reviewInDays === c.days ? "secondary" : "outline"}
-                        aria-pressed={reviewInDays === c.days}
-                        onClick={() => setReviewInDays(c.days)}
-                        data-testid={`review-in-${c.days ?? "none"}`}
-                      >
-                        {c.label}
-                      </Button>
-                    ))}
-                  </div>
-                </fieldset>
+                {/* WHEN WILL YOU KNOW? Asked at the moment the operator actually
+                    knows — the shared control explains why nothing is pre-selected. */}
+                <ReviewDateChoice className="mt-4" value={reviewInDays} onChange={setReviewInDays} />
 
                 <Button
                   className="mt-3"
                   disabled={
                     propertyId === null ||
+                    reviewInDays === undefined ||
                     createDraftOffer.isPending ||
                     maoIsStale ||
                     (maoQuery.data.profitBasis === "operator_price" && !maoQuery.data.atOrBelowMao)
                   }
                   onClick={() => {
-                    if (propertyId === null || !maoQuery.data) return;
+                    if (propertyId === null || !maoQuery.data || reviewInDays === undefined) return;
                     createDraftOffer.mutate({
                       propertyId,
                       offerCents:
@@ -1413,6 +1369,10 @@ export default function FlipAnalyzerPage() {
                 {propertyId === null ? (
                   <p className="mt-2 text-sm text-muted-foreground">
                     A draft offer needs a property — pick one above.
+                  </p>
+                ) : reviewInDays === undefined ? (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Answer “When will you know how this went?” to save the draft.
                   </p>
                 ) : null}
               </div>

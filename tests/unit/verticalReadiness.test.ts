@@ -43,7 +43,16 @@ import {
   assertDemotionsValid,
   publicMaturityOf,
 } from "../../shared/business-types/publicClaims";
-import { measureVerticalEvidence } from "../support/verticalEvidence";
+import {
+  LEGACY_DECISION_ROUTE_OWNER,
+  analyzeRouteSource,
+  clientCalls,
+  creditVerticals,
+  endpointOf,
+  engineVerticals,
+  measureVerticalEvidence,
+  routeMounts,
+} from "../support/verticalEvidence";
 // This gate walks the source tree; its cost scales with the repo, and under the
 // coverage run it does not fit the suite’s 30s default. A killed gate reports
 // nothing about what it guards, so the budget is declared, not inherited.
@@ -87,7 +96,8 @@ function walk(rel: string): string[] {
  * measurement as an anchor independent of the demotion map, and a second copy
  * would have been two definitions of "what this repo can show" free to drift.
  */
-const evidence: VerticalEvidence = measureVerticalEvidence();
+const measured = measureVerticalEvidence();
+const evidence: VerticalEvidence = measured;
 
 /**
  * MEASURED 2026-08-17: 13 of 15 verticals declare `core` on evidence that does
@@ -100,7 +110,7 @@ const evidence: VerticalEvidence = measureVerticalEvidence();
  * founder decision — queued as OD-5). Lower this in the commit that earns it,
  * whichever way it is earned.
  */
-const MATURITY_OVERCLAIM_BASELINE = 13;
+const MATURITY_OVERCLAIM_BASELINE = 11;
 
 describe("the evidence scan is real (vacuity guards, first)", () => {
   it("found the workflow templates the engine defines", () => {
@@ -139,6 +149,15 @@ describe("readiness is a projection of evidence", () => {
     // The positive control. Without it, an overclaim count could be produced by
     // a projection that never awards anything.
     expect(readinessOf(BUSINESS_TYPES.fix_and_flip, evidence)).toBe("decided");
+  });
+
+  it("land_flipper reaches `decided` — the blind-offer commit is land's loop (rule v2)", () => {
+    // routes-data-intelligence.ts records a land_deal scenario and a decision
+    // under the land_flipper pack that cites it. Under the old file-ownership
+    // map it counted for nobody, because the wizard is reachable from the Map
+    // door by every persona. decision-memos/2026-10-04-vertical-program.md §3.
+    expect(readinessOf(BUSINESS_TYPES.land_flipper, evidence)).toBe("decided");
+    expect(measured.decidedBy.get("land_flipper")).toContain("server/routes-data-intelligence.ts");
   });
 
   it("subdivider reaches `decided` too — it records, even though it cannot be graded", () => {
@@ -410,3 +429,266 @@ describe("the tier ladder cannot be quietly reordered", () => {
     expect([...READINESS_TIERS]).toEqual(["declared", "surfaced", "underwritten", "decided"]);
   });
 });
+
+describe("evidence rule v2 — engine-owned decisions (2026-10-04)", () => {
+  const engines = engineVerticals();
+  const K = new Map<string, string>([["LAND_DEAL_ENGINE_ID", "land_deal"]]);
+  /** Real store imports, so the parser trusts the calls. */
+  const IMPORTS = `import { recordScenario } from "./services/economics/scenarioStore";
+import { recordDecision } from "./services/decisions/decisionStore";
+import { recordUnderwrittenDecision } from "./services/underwriting/verticalDecision";
+`;
+  const facts = (body: string) => analyzeRouteSource("server/routes-x.ts", IMPORTS + body, K);
+
+  it("vacuity: every route file is read, and the engine registry declares verticals", () => {
+    expect(measured.routeFilesRead).toBeGreaterThan(250);
+    const declaring = [...engines.values()].filter((e) => e.verticals.length > 0);
+    expect(declaring.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("every declared vertical is a registered business type", () => {
+    const bad = [...engines.entries()].flatMap(([id, e]) =>
+      e.verticals.filter((v) => !BUSINESS_TYPE_IDS.includes(v)).map((v) => `${id} → ${v}`),
+    );
+    expect(bad).toEqual([]);
+  });
+
+  it("canary: a decision is tied to the engine of the scenario it CITES", () => {
+    const f = facts(`router.post("/offer", async () => {
+      const s = await recordScenario(o, { engineId: "flip_mao", inputs: {} });
+      await recordDecision(o, { strategyPackId: "fix_and_flip", reviewDueAt: d ?? null }, new Date(), [s.id]);
+    });`);
+    expect(f.decisions).toEqual([{ pack: "fix_and_flip", citedEngineIds: ["flip_mao"], reviewHardNull: false, handlerPath: "/offer" }]);
+  });
+
+  it("canary: a scenario recorded by ANOTHER handler is not this decision's evidence", () => {
+    // The audit's cross-handler attack: handler A records multifamily_noi; handler
+    // B records land_deal and a multifamily decision. Per-file matching credited it.
+    const f = facts(`router.post("/a", async () => { const s = await recordScenario(o, { engineId: "multifamily_noi" }); });
+      router.post("/b", async () => {
+        const s = await recordScenario(o, { engineId: "land_deal" });
+        await recordDecision(o, { strategyPackId: "multifamily", reviewDueAt: d }, new Date(), [s.id]);
+      });`);
+    expect(f.decisions[0].citedEngineIds).toEqual(["land_deal"]);
+    const c = creditVerticals([{ file: "server/routes-x.ts", facts: f, reachable: [true] }], engines);
+    expect(c.deciding.has("multifamily")).toBe(false);
+  });
+
+  it("canary: an engine id given as an imported or `as const` constant resolves", () => {
+    expect(
+      facts(`import { LAND_DEAL_ENGINE_ID } from "@shared/calculators/landDeal";\nawait recordScenario(o, { engineId: LAND_DEAL_ENGINE_ID });`).scenarioEngineIds,
+    ).toEqual(["land_deal"]);
+    expect(
+      facts(`const { LAND_DEAL_ENGINE_ID } = await import("@shared/calculators/landDeal");\nawait recordScenario(o, { engineId: LAND_DEAL_ENGINE_ID });`).scenarioEngineIds,
+    ).toEqual(["land_deal"]);
+    // The same NAME, not imported, is some other value.
+    expect(facts(`await recordScenario(o, { engineId: LAND_DEAL_ENGINE_ID });`).scenarioEngineIds).toEqual([]);
+    expect(facts(`const E = "flip_mao" as const; await recordScenario(o, { engineId: E });`).scenarioEngineIds).toEqual(["flip_mao"]);
+  });
+
+  it("canary: a constant from an UNRELATED scope does not resolve", () => {
+    const f = facts(`function other() { const P = "fix_and_flip"; }
+      router.post("/x", async () => { await recordDecision(o, { strategyPackId: P, reviewDueAt: d }, new Date(), []); });`);
+    expect(f.decisions[0].pack).toBeNull();
+  });
+
+  it("canary: computed pack, uncited decision, and every spelling of 'never review' are seen for what they are", () => {
+    const f = facts(`router.post("/x", async () => {
+      const s = await recordScenario(o, { engineId: "flip_mao" });
+      await recordDecision(o, { strategyPackId: pack, reviewDueAt: null }, new Date(), [s.id]);
+      await recordDecision(o, { strategyPackId: "land_flipper", reviewDueAt: undefined });
+      await recordDecision(o, { strategyPackId: "land_flipper" }, new Date(), [s.id]);
+      const NONE = null;
+      await recordDecision(o, { strategyPackId: "land_flipper", reviewDueAt: NONE }, new Date(), [s.id]);
+      const reviewDueAt = d;
+      await recordDecision(o, { strategyPackId: "land_flipper", reviewDueAt }, new Date(), [s.id]);
+    });`);
+    expect(f.decisions.map((d) => [d.pack, d.citedEngineIds.length > 0, d.reviewHardNull])).toEqual([
+      [null, true, true],
+      ["land_flipper", false, true],
+      ["land_flipper", true, true],
+      ["land_flipper", true, true],
+      ["land_flipper", true, false],
+    ]);
+  });
+
+  it("canary: the kit's one-call shape carries engine, pack and review date", () => {
+    const f = facts(`router.post("/underwrite", async () => {
+      await recordUnderwrittenDecision(o, { engineId: "rental_acquisition", strategyPackId: "buy_and_hold", reviewDueAt: due });
+    });`);
+    expect(f.decisions[0]).toEqual({ pack: "buy_and_hold", citedEngineIds: ["rental_acquisition"], reviewHardNull: false, handlerPath: "/underwrite" });
+  });
+
+  it("canary: a local function named like the kit or the stores is not trusted", () => {
+    const f = analyzeRouteSource("server/routes-x.ts", `async function recordUnderwrittenDecision(o, x) {}
+      router.post("/u", async () => { await recordUnderwrittenDecision(o, { engineId: "rental_acquisition", strategyPackId: "buy_and_hold", reviewDueAt: d }); });`, K);
+    expect(f).toEqual({ scenarioEngineIds: [], decisions: [], optionalReviewSchema: false });
+  });
+
+  it("canary: an alias, a method, a late spread, a `let` and a shadowing parameter are not evidence", () => {
+    // Re-audit of V0 (2026-10-04): each of these was read as the real thing.
+    const alias = analyzeRouteSource(
+      "server/routes-x.ts",
+      `import { other as recordDecision } from "./services/decisions/decisionStore";
+       router.post("/a", async () => { await recordDecision(o, { strategyPackId: "fix_and_flip", reviewDueAt: d }, new Date(), []); });`,
+      K,
+    );
+    expect(alias.decisions).toEqual([]);
+
+    const method = facts(`router.post("/a", async () => { await svc.recordDecision(o, { strategyPackId: "fix_and_flip", reviewDueAt: d }, new Date(), []); });`);
+    expect(method.decisions).toEqual([]);
+
+    const spread = facts(`router.post("/a", async () => {
+      await recordUnderwrittenDecision(o, { engineId: "rental_acquisition", strategyPackId: "buy_and_hold", reviewDueAt: d, ...override });
+    });`);
+    expect(spread.decisions[0]).toMatchObject({ pack: null, citedEngineIds: [], reviewHardNull: true });
+
+    const early = facts(`router.post("/a", async () => {
+      await recordUnderwrittenDecision(o, { ...base, engineId: "rental_acquisition", strategyPackId: "buy_and_hold", reviewDueAt: d });
+    });`);
+    expect(early.decisions[0]).toMatchObject({ pack: "buy_and_hold", citedEngineIds: ["rental_acquisition"], reviewHardNull: false });
+
+    const mutable = facts(`router.post("/a", async () => {
+      let P = "fix_and_flip";
+      const s = await recordScenario(o, { engineId: "flip_mao" });
+      await recordDecision(o, { strategyPackId: P, reviewDueAt: d }, new Date(), [s.id]);
+    });`);
+    expect(mutable.decisions[0].pack).toBeNull();
+
+    const shadow = facts(`router.post("/a", async () => {
+      const s = await recordScenario(o, { engineId: "flip_mao" });
+      const later = async (s) => recordDecision(o, { strategyPackId: "fix_and_flip", reviewDueAt: d }, new Date(), [s.id]);
+    });`);
+    expect(shadow.decisions[0].citedEngineIds).toEqual([]);
+  });
+
+  it("canary: a comment naming the calls is not a call", () => {
+    expect(facts(`// recordScenario(o, { engineId: "flip_mao" }); recordDecision(o, { strategyPackId: "fix_and_flip" }, x, [1]);\nconst y = 1;`)).toEqual({ scenarioEngineIds: [], decisions: [], optionalReviewSchema: false });
+  });
+
+  it("reachability: mounts resolve, endpoints compose, and only a client CALL counts", () => {
+    const mounts = routeMounts(`import r from "./routes-x";\napp.use('/api/x', isAuthenticated, r);`);
+    expect(mounts.get("server/routes-x.ts")).toBe("/api/x");
+    expect(endpointOf("server/routes-x.ts", "/underwrite", mounts)).toBe("/api/x/underwrite");
+    expect(endpointOf("server/routes-y.ts", "/underwrite", mounts)).toBeNull();
+    // An absolute path proves nothing on its own: the file must be registered.
+    expect(endpointOf("server/routes-y.ts", "/api/y/offer", mounts)).toBeNull();
+    const registered = routeMounts(`import { registerY } from "./routes-y";\nregisterY(app);`);
+    expect(endpointOf("server/routes-y.ts", "/api/y/offer", registered)).toBe("/api/y/offer");
+    // Imported but never called: built and unwired.
+    expect(routeMounts(`import { registerY } from "./routes-y";\n`).has("server/routes-y.ts")).toBe(false);
+    expect(clientCalls("/api/x/underwrite", `apiRequest("POST", "/api/x/underwrite", b)`)).toBe(true);
+    expect(clientCalls("/api/p/:id/lock", "apiRequest(\"POST\", `/api/p/${id}/lock`)")).toBe(true);
+    expect(clientCalls("/api/x/underwrite", `apiRequest("POST", "/api/x/underwrite-all", b)`)).toBe(false);
+  });
+
+  it("an unreachable decision credits nothing", () => {
+    const f = facts(`router.post("/u", async () => { await recordUnderwrittenDecision(o, { engineId: "rental_acquisition", strategyPackId: "buy_and_hold", reviewDueAt: d }); });`);
+    expect(creditVerticals([{ file: "server/routes-x.ts", facts: f, reachable: [false] }], engines).deciding.size).toBe(0);
+    expect(creditVerticals([{ file: "server/routes-x.ts", facts: f, reachable: [true] }], engines).deciding.has("buy_and_hold")).toBe(true);
+  });
+
+  it("gradeability is universal: one route that never reviews makes the vertical ungradeable", () => {
+    const good = facts(`router.post("/a", async () => { await recordUnderwrittenDecision(o, { engineId: "rental_acquisition", strategyPackId: "buy_and_hold", reviewDueAt: d }); });`);
+    const bad = facts(`router.post("/b", async () => { await recordUnderwrittenDecision(o, { engineId: "rental_acquisition", strategyPackId: "buy_and_hold", reviewDueAt: null }); });`);
+    const c = creditVerticals(
+      [
+        { file: "server/routes-a.ts", facts: good, reachable: [true] },
+        { file: "server/routes-b.ts", facts: bad, reachable: [true] },
+      ],
+      engines,
+    );
+    expect(c.deciding.has("buy_and_hold")).toBe(true);
+    expect(c.gradeable.has("buy_and_hold")).toBe(false);
+    expect(c.ungradeable.get("buy_and_hold")).toEqual(["server/routes-b.ts"]);
+  });
+
+  it("canary: a route schema that lets the review date be OMITTED is ungradeable", () => {
+    const decide = `router.post("/a", async () => {
+        const s = await recordScenario(o, { engineId: "flip_mao" });
+        await recordDecision(o, { strategyPackId: "fix_and_flip", reviewDueAt: input.reviewDueAt ?? null }, new Date(), [s.id]);
+      });`;
+    for (const chain of [
+      "z.string().datetime().nullable().optional()",
+      "z.coerce.date().nullish()",
+      "z.string().nullable().default(null)",
+      "z.string().datetime().nullable().catch(null)",
+      "z.string().datetime().nullable().or(z.undefined())",
+      "z.preprocess((v) => v ?? null, z.string().nullable())",
+    ]) {
+      const f = facts(`const schema = z.object({ reviewDueAt: ${chain} });\n${decide}`);
+      expect(f.optionalReviewSchema, chain).toBe(true);
+      const c = creditVerticals([{ file: "server/routes-x.ts", facts: f, reachable: [true] }], engines);
+      expect(c.deciding.has("fix_and_flip"), chain).toBe(true);
+      expect(c.gradeable.has("fix_and_flip"), chain).toBe(false);
+    }
+    // A quoted key, and `.partial()` over a schema that names it, omit it too.
+    expect(facts(`const s = z.object({ "reviewDueAt": z.string().optional() });`).optionalReviewSchema).toBe(true);
+    expect(facts(`const base = z.object({ reviewDueAt: z.string().nullable() });\nconst s = base.partial();`).optionalReviewSchema).toBe(true);
+    expect(facts(`const rules = z.object({ feePct: z.number() }).partial();`).optionalReviewSchema).toBe(false);
+    const required = facts(`const schema = z.object({ reviewDueAt: z.coerce.date().nullable().refine((d) => d === null) });\n${decide}`);
+    expect(required.optionalReviewSchema).toBe(false);
+    expect(creditVerticals([{ file: "server/routes-x.ts", facts: required, reachable: [true] }], engines).gradeable.has("fix_and_flip")).toBe(true);
+  });
+
+  it("a composite is decided only when every part is, and underwritten likewise", () => {
+    const meta = BUSINESS_TYPES.hybrid;
+    const ev = (deciding: BusinessTypeId[], underwritten: BusinessTypeId[] = []): VerticalEvidence => ({
+      definedWorkflowTemplateIds: evidence.definedWorkflowTemplateIds,
+      underwrittenBusinessTypes: new Set(underwritten),
+      decidingBusinessTypes: new Set(deciding),
+    });
+    expect(readinessOf(meta, ev(["land_flipper"]))).toBe("surfaced");
+    expect(readinessOf(meta, ev(["land_flipper", "note_investor"]))).toBe("decided");
+    expect(readinessOf(meta, ev(["land_flipper"], ["note_investor"]))).toBe("underwritten");
+    // A composite cannot be decided on its own id — it has no loop of its own.
+    expect(readinessOf(meta, ev(["hybrid"]))).toBe("surfaced");
+  });
+
+  it("the legacy file-ownership map only shrinks, and holds no vertical the engine rule already earns", () => {
+    expect(Object.keys(LEGACY_DECISION_ROUTE_OWNER)).toEqual(["server/routes-lot-pricing.ts"]);
+    for (const [file, owner] of Object.entries(LEGACY_DECISION_ROUTE_OWNER)) {
+      const viaEngines = (measured.decidedBy.get(owner) ?? []).filter((f) => f !== file);
+      expect(viaEngines, `${owner} now decides through an engine — remove its legacy entry`).toEqual([]);
+    }
+  });
+});
+
+describe("a decided vertical is gradeable (the loop can close on reality)", () => {
+  /**
+   * Down-only. subdivider's lot-pricing lock records no scenario and hard-codes
+   * reviewDueAt: null, so none of its decisions is ever asked for an outcome.
+   * Wave V2 gives it both and removes it from here.
+   */
+  const NOT_YET_GRADEABLE: readonly BusinessTypeId[] = ["subdivider"];
+  const gradeable = measured.gradeableBusinessTypes;
+
+  it("vacuity: the gradeable set is real", () => {
+    expect(gradeable.has("fix_and_flip")).toBe(true);
+    expect(gradeable.has("land_flipper")).toBe(true);
+  });
+
+  it("every decided vertical takes a review date and predicts what an outcome measures", () => {
+    // A composite (hybrid) is never in decidingBusinessTypes itself — its tier
+    // is derived from its parts in readinessOf — so it needs no exclusion here.
+    const decided = BUSINESS_TYPE_IDS.filter((id) => evidence.decidingBusinessTypes.has(id));
+    // Universal, not existential: gradeableBusinessTypes already drops a vertical
+    // when ANY of its crediting decisions is ungradeable; the offending route
+    // files are named so the failure says where to look.
+    const ungradeable = decided
+      .filter((id) => !gradeable.has(id) && !NOT_YET_GRADEABLE.includes(id))
+      .map((id) => `${id}: ${(measured.ungradeable.get(id) ?? []).join(", ")}`);
+    expect(
+      ungradeable,
+      "a vertical decides but can never be graded: its route hard-codes reviewDueAt null, or " +
+        "its engine predicts neither total_cost nor profit (the metrics the outcome prompt measures).",
+    ).toEqual([]);
+  });
+
+  it("the exceptions list cannot rot", () => {
+    for (const id of NOT_YET_GRADEABLE) {
+      expect(gradeable.has(id), `${id} is gradeable now — remove it from NOT_YET_GRADEABLE`).toBe(false);
+    }
+  });
+});
+

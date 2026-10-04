@@ -133,10 +133,12 @@ const offerSchema = maoSchema.extend({
   /**
    * When the operator expects to know how this went.
    *
-   * Optional and nullable, with NO default. Omitting it means "no natural
-   * review date" — never "assume 30 days". A default here would manufacture a
-   * date the operator never chose and make the Today prompt nag about every
-   * offer ever drafted, which is how a prompt earns being ignored.
+   * Required and nullable, with NO default. Null means the operator answered
+   * "no natural review date" — never "assume 30 days". A default here would
+   * manufacture a date the operator never chose and make the Today prompt nag
+   * about every offer ever drafted, which is how a prompt earns being ignored.
+   * A MISSING key is refused (2026-10-04): an unanswered question is not the
+   * answer "never".
    *
    * A date in the past is refused rather than accepted: it would make the
    * decision due for an outcome the instant it was recorded, which is a
@@ -145,8 +147,7 @@ const offerSchema = maoSchema.extend({
   reviewDueAt: z.coerce
     .date()
     .nullable()
-    .optional()
-    .refine((d) => d == null || d.getTime() > Date.now(), {
+    .refine((d) => d === null || d.getTime() > Date.now(), {
       message: "A review date must be in the future.",
     }),
 });

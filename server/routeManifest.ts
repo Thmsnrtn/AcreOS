@@ -272,6 +272,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-rentals.ts", mountPath: null, kind: "register", export: "registerRentalRoutes" },
   { file: "routes-rosy-river.ts", mountPath: null, kind: "register", export: "registerRosyRiverRoutes" },
   { file: "routes-scenarios.ts", mountPath: "/api/scenarios", kind: "router", export: "default" },
+  { file: "routes-buy-and-hold-underwriting.ts", mountPath: "/api/buy-and-hold", kind: "router", export: "default" },
   { file: "routes-scp-v2.ts", mountPath: null, kind: "register", export: "registerSCPv2Routes" },
   { file: "routes-seller-intent.ts", mountPath: "/api/seller-intent", kind: "router", export: "default" },
   // Free-distribution: per-route server-rendered <head> for public pages.

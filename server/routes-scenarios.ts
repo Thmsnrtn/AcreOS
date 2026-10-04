@@ -2,6 +2,9 @@
  * Scenario HTTP surface — the economics layer (Master Audit BI12, BK24).
  *
  *   POST /api/scenarios                          — compute + persist a scenario
+ *   POST /api/scenarios/preview                  — compute a vertical
+ *                                                  underwriting scenario, persist
+ *                                                  nothing
  *   GET  /api/scenarios/engines                  — the deterministic engines and
  *                                                  the metrics each produces
  *   GET  /api/scenarios/:subjectType/:subjectId  — a subject's scenarios
@@ -38,6 +41,7 @@ import {
   type EngineSpec,
 } from "@shared/economics/scenario";
 import { ALL_ENGINES } from "./services/economics/engines";
+import { previewUnderwriting, underwritingInputsSchema } from "./services/underwriting/verticalDecision";
 
 const router = Router();
 
@@ -83,6 +87,29 @@ router.get("/engines", (_req: AuthenticatedRequest, res: Response) => {
       higherIsBetter: m.higherIsBetter,
     })),
   });
+});
+
+const previewSchema = z.object({
+  engineId: z.string().min(1).max(64),
+  inputs: underwritingInputsSchema,
+});
+
+/**
+ * Compute a vertical underwriting scenario WITHOUT persisting it — what the
+ * underwriting workbench shows while the operator types. Same registry and
+ * arithmetic as the recorded scenario (previewUnderwriting), so what they see
+ * is what a decision later freezes. Records nothing, decides nothing.
+ */
+router.post("/preview", (req: AuthenticatedRequest, res: Response) => {
+  try {
+    getOrganizationId(req);
+    const parsed = previewSchema.safeParse(req.body);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error);
+    res.json(previewUnderwriting(parsed.data.engineId, parsed.data.inputs));
+  } catch (err) {
+    if (err instanceof ScenarioEngineError) return Errors.badRequest(res, err.message);
+    Errors.internal(res, err);
+  }
 });
 
 // POST /api/scenarios

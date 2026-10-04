@@ -6,6 +6,7 @@ import { usd } from "@/lib/format";
 import { Verbs } from "@/lib/labels";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ReviewDateChoice, reviewDueAtFromDays } from "@/components/decisions/ReviewDateChoice";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -1011,6 +1012,13 @@ function StepLetter({ report, propertyId, onBack, onGoToComps }: StepLetterProps
   const [, setLocation] = useLocation();
   const [committing, setCommitting] = useState(false);
   const [committed, setCommitted] = useState<{ decisionSnapshotId: number } | null>(null);
+  /**
+   * When the operator expects to know whether the offer landed. `undefined`
+   * until answered — the decision cannot be recorded without an answer, and
+   * "No set date" is one. Until 2026-10-04 this was hard-coded null, so no land
+   * offer recorded here could ever be graded.
+   */
+  const [reviewInDays, setReviewInDays] = useState<number | null | undefined>(undefined);
   if (!report) {
     return (
       <EmptyState
@@ -1097,7 +1105,7 @@ Private Real Estate Investor`;
    * wizard showed three and the operator picked one.
    */
   async function commitDecision() {
-    if (!report || !propertyId) return;
+    if (!report || !propertyId || reviewInDays === undefined) return;
     setCommitting(true);
     try {
       const tiers = ["aggressive", "standard", "competitive"] as const;
@@ -1117,9 +1125,8 @@ Private Real Estate Investor`;
         salePrice: report.cashFlipScenario.salePrice,
         tier: chosen,
         alternatives,
-        // Not asked here, and not manufactured: a made-up review date would
-        // make the outcome prompt nag about every offer ever committed.
-        reviewDueAt: null,
+        // The operator's own answer (null = "no set date"), never a default.
+        reviewDueAt: reviewDueAtFromDays(reviewInDays),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data?.message ?? "The decision was not recorded");
@@ -1256,14 +1263,21 @@ Private Real Estate Investor`;
               Recorded. Decision #{committed.decisionSnapshotId}.
             </p>
           ) : propertyId ? (
-            <Button
-              onClick={commitDecision}
-              disabled={committing}
-              className="w-full min-h-11 pointer-fine:sm:min-h-9"
-              data-testid="blind-offer-commit"
-            >
-              {committing ? "Recording…" : "Record this decision"}
-            </Button>
+            <>
+              <ReviewDateChoice
+                value={reviewInDays}
+                onChange={setReviewInDays}
+                testIdPrefix="blind-offer-review-in"
+              />
+              <Button
+                onClick={commitDecision}
+                disabled={committing || reviewInDays === undefined}
+                className="w-full min-h-11 pointer-fine:sm:min-h-9"
+                data-testid="blind-offer-commit"
+              >
+                {committing ? "Recording…" : "Record this decision"}
+              </Button>
+            </>
           ) : (
             <p
               className="text-sm text-muted-foreground m-0"

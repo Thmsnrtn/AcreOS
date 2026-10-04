@@ -82,6 +82,14 @@ export interface VerticalEvidence {
   underwrittenBusinessTypes: ReadonlySet<BusinessTypeId>;
   /** Business types a production surface records a decision snapshot for. */
   decidingBusinessTypes: ReadonlySet<BusinessTypeId>;
+  /**
+   * Business types whose decision is GRADEABLE: the route takes a review date
+   * rather than hard-coding none, and the cited engine predicts `total_cost` or
+   * `profit` — the metrics the Today outcome prompt can measure. Not a tier:
+   * readiness measures what is recorded; this measures whether it can ever be
+   * checked against reality, and its own law lives in verticalReadiness.test.ts.
+   */
+  gradeableBusinessTypes?: ReadonlySet<BusinessTypeId>;
 }
 
 /**
@@ -97,13 +105,38 @@ const MATURITY_REQUIRES: Record<VerticalMaturity, ReadinessTier> = {
   roadmap: "declared",
 };
 
+/**
+ * Verticals with no decision of their own: their surfaces ARE their parts'.
+ *
+ * `hybrid` is land + notes — its spotlight modules are parcels, notes, deals,
+ * money, and every decision a hybrid operator makes is a land decision or a
+ * note decision. So it reaches a tier exactly when EVERY part has: a hybrid
+ * whose notes half cannot decide is not a vertical that decides. Founder
+ * ruling, decision-memos/2026-10-04-vertical-program.md §4.
+ */
+const COMPOSITE_VERTICALS: Partial<Record<BusinessTypeId, readonly BusinessTypeId[]>> = {
+  hybrid: ["land_flipper", "note_investor"],
+};
+
 /** Evidenced readiness for one vertical. Pure. */
 export function readinessOf(
   meta: BusinessTypeMeta,
   evidence: VerticalEvidence,
 ): ReadinessTier {
-  if (evidence.decidingBusinessTypes.has(meta.id)) return "decided";
-  if (evidence.underwrittenBusinessTypes.has(meta.id)) return "underwritten";
+  const parts = COMPOSITE_VERTICALS[meta.id];
+  if (parts && parts.length > 0) {
+    if (parts.every((p) => evidence.decidingBusinessTypes.has(p))) return "decided";
+    if (
+      parts.every(
+        (p) => evidence.underwrittenBusinessTypes.has(p) || evidence.decidingBusinessTypes.has(p),
+      )
+    ) {
+      return "underwritten";
+    }
+  } else {
+    if (evidence.decidingBusinessTypes.has(meta.id)) return "decided";
+    if (evidence.underwrittenBusinessTypes.has(meta.id)) return "underwritten";
+  }
 
   // A template id the engine does not define is a CLAIM, not a surface. Counting
   // it would let a vertical earn a tier by editing a string array.

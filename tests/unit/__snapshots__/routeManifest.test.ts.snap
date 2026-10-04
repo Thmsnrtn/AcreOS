@@ -39,6 +39,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-bookkeeping.ts",
   "routes-borrower.ts",
   "routes-bulk.ts",
+  "routes-buy-and-hold-underwriting.ts",
   "routes-buyer-analytics.ts",
   "routes-buyer-blasts.ts",
   "routes-buyer-network.ts",

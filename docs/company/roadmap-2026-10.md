@@ -233,6 +233,24 @@ W10.3 (the builder writes leads) · W10.4, W10.5, W10.6 in parallel, with
 `server/ai/tools.ts` owned by W10.4 alone · W10.7 at any time · W10.8 after
 W10.3.
 
+**The vertical program (V0–V2), founder directive 2026-10-04.** It runs ahead of
+W10.2–W10.8 (`decision-memos/2026-10-04-vertical-program.md`). A vertical is done
+when:
+- its core underwriting decision is computed by a deterministic, versioned
+  engine that declares the vertical;
+- that result is frozen as a scenario;
+- a decision under the vertical's strategy pack cites the scenario and carries an
+  operator-chosen review date;
+- the engine predicts `total_cost` or `profit`, so the outcome can be graded.
+
+Its BETA demotion goes in the same commit that earns it.
+
+| Wave | Verticals | Proof |
+|---|---|---|
+| **V0** | The evidence rule v2 (engine-owned decisions, composites, gradeability), the shared underwriting kit, land, buy-and-hold (the kit's reference vertical) | `verticalReadiness` reads engine declarations and route calls; the overclaim baseline drops by each vertical earned |
+| **V1** | Wholesaler, multifamily, developer, note investor → hybrid | Per engine: determinism and golden tests. Per route: the scenario and decision written under the vertical's pack. Per page: behind its existing module |
+| **V2** | Short-term rental, commercial, creative finance, tax lien / deed, mobile home / park, agent-investor; subdivider gradeable | As V1; subdivider's lot-pricing lock records a scenario and a review date |
+
 **Ready to fire the day a key lands:** **KA** (K1 + K2) the wedge E2E and the
 desktop suite blocking · **KB** (K7) Lob armed, first witnessed live piece ·
 **KC** (K10) Regrid provider, full-coverage lists · **KD** (K3) the restore drill, and a live proof of document storage
@@ -324,3 +342,4 @@ A polish claim that no test or gate pins is not claimed.
 |---|---|---|---|---|---|
 | 2026-10-01 | W10.1a Deploy gate and CI truth — deploy needs `test` + CI (called workflow; Security deferred to W10.1b because it is red on main); bundle budget blocking in CI with down-only ceilings; `continue-on-error` register incl. composite actions; `empty-on-failure` 13→0 and `console-in-server` 6→0; LOC counting rule (`npm run measure:loc`, 855,971 at this commit); DEFECT-0278–0280 fixed, 0281 opened | the W10.1a commit (see `git log`) | `deployGateRequiresCiAndSecurity`, `bundleBudgetIsDownOnly`, `ciAdvisoryRegister` (each mutation-checked), `quietHoursNeverOverwritesUnread`, `paxRailWatermarkMovesOnRead`, `locCountingRule` | `npm run check`, full vitest and `npm run build` exit 0 before commit (verifier-run, outputs redirected to files) | independent audit found 1 P0 (Security red on main → split into W10.1b) and 4 P2, all addressed before commit; live dispatch of `deploy.yml` on a red ref is owed after the merge to main; CI/ESLint/truth-engine/coverage have never run on this branch's SHA — the PR's CI run is that proof |
 | 2026-10-01 | W10.1b part 1, Security made green — outside data no longer reaches the DOM as HTML (DEFECT-0282: the map's comp popup and Pax's print window build DOM text; a parsed gate over every sink shape); dependency CVEs fixed (DEFECT-0283): `npm audit fix` in range, sharp 0.35.5, and the MapLibre preview engine removed with maplibre-gl (it never fully rendered; Mapbox GL is the one renderer) — root `npm audit` 0 vulnerabilities; default map download 2598 → 1796 KB, total JS 10758 → 9958 KB, both ceilings lowered; LOC 855,971 → 855,869 | the W10.1b commit (see `git log`) | `noDataReachesTheDomAsHtml` (red at the parent; a canary per sink shape), `bundleBudgetIsDownOnly` | `npm run check`, full vitest and `npm run build` exit 0 before commit (outputs redirected to files) | Trivy fs/image cannot run in this container (GitHub release and ghcr downloads refused), so the first `Security Scanning` run on the PR's SHA is the proof owed; part 2 — `security` in `deploy`'s `needs` — lands only after that run is green; `tests/e2e-intelligent` keeps three moderate (the SDK and vitest, both needing majors) and one low (esbuild, held by tsx/vite) dev-only advisories |
+| 2026-10-04 | V0 vertical program — evidence rule v2 (a decision counts for a vertical when it cites a scenario from an engine that DECLARES the vertical, under that vertical's pack; parsed with the TS compiler; hybrid = land + notes; a gradeability law); the underwriting kit (`recordUnderwrittenDecision`, `POST /api/scenarios/preview`, `UnderwritingWorkbench`, `ReviewDateChoice`); land released (blind-offer loop, now with a review date — DEFECT-0285; the land and flip routes now REQUIRE the review answer and the gate reads their schemas — DEFECT-0286; the acquisition-cost wording mismatch logged OPEN — DEFECT-0287); buy-and-hold released (new `rental_acquisition` engine: vacancy, management, reserves, financing, cash-on-cash, DSCR; Rentals → Underwrite a rental) | the V0 commit (see `git log`) | `verticalReadiness` (rule-v2 canaries, gradeability law), `verticalDecision`, `rentalAcquisitionEngine` (hand-computed golden case), `buyAndHoldUnderwritingRoute`, `underwritingWorkbench`, `clientNeverHardcodesNoReviewDate`, `blindOfferCommitRoute`, `flipAnalyzerOfferRequiresReview` | gates to files before commit | overclaims 13 → 11; subdivider decides but stays ungradeable until V2 (named, down-only exception) |

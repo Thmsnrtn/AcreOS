@@ -292,12 +292,17 @@ describe("the offer surface records reasoning the way the contract requires", ()
     // the client never pre-selects.
     expect(block).toMatch(/reviewDueAt:\s*parsed\.data\.reviewDueAt \?\? null/);
 
-    // The schema accepts it, with NO default — a 30-day fallback would
+    // The schema REQUIRES the answer, with NO default — a 30-day fallback would
     // manufacture a date the operator never chose and make the Today prompt
-    // nag about every offer ever drafted.
+    // nag about every offer ever drafted. REWRITTEN again 2026-10-04
+    // (DEFECT-0286): it pinned `.nullable().optional()`, and the optional key
+    // was itself the hole — an unanswered question recorded as "never". The
+    // invariant survives in its stronger form: null is accepted (an answer),
+    // omission is not.
     const src2 = read("server/routes-flip-analyzer.ts");
-    expect(src2).toMatch(/reviewDueAt: z\.coerce\s*\n?\s*\.date\(\)\s*\n?\s*\.nullable\(\)\s*\n?\s*\.optional\(\)/);
-    expect(src2).not.toMatch(/reviewDueAt[\s\S]{0,120}\.default\(/);
+    const chain = src2.slice(src2.indexOf("reviewDueAt: z.coerce"), src2.indexOf("A review date must be in the future"));
+    expect(chain, "the reviewDueAt schema moved").toMatch(/^reviewDueAt: z\.coerce\s*\.date\(\)\s*\.nullable\(\)\s*\.refine\(/);
+    expect(chain).not.toMatch(/\.(optional|nullish|default|catch)\(/);
     // A past date is refused: it would make the decision due the instant it was
     // recorded, which is a client bug rather than anything an operator meant.
     expect(src2).toMatch(/A review date must be in the future/);
@@ -311,14 +316,20 @@ describe("the offer surface records reasoning the way the contract requires", ()
     // Nothing is pre-selected: a chip selected by default would manufacture a
     // date on the server's behalf, defeating the refusal it is paired with.
     // "No set date" is a real, equally-weighted answer rather than a skip.
+    //
+    // Since 2026-10-04 the control is shared (components/decisions/
+    // ReviewDateChoice) so every vertical's desk asks the same question the
+    // same way; the analyzer must still own the unanswered state and use it.
     const page = read("client/src/pages/flip-analyzer.tsx");
     expect(page).toMatch(/useState<number \| null \| undefined>\(\s*undefined,?\s*\)/);
-    expect(page).toMatch(/label: "No set date", days: null/);
-    expect(page).toContain("reviewDueAt:");
+    expect(page).toMatch(/<ReviewDateChoice[^>]*value=\{reviewInDays\}/);
+    expect(page).toContain("reviewDueAt: reviewDueAtFromDays(");
+    const control = read("client/src/components/decisions/ReviewDateChoice.tsx");
+    expect(control).toMatch(/label: "No set date", days: null/);
     // The question is a labelled group, not six bare buttons.
-    expect(page).toMatch(/<fieldset/);
-    expect(page).toMatch(/<legend/);
-    expect(page).toMatch(/aria-pressed=/);
+    expect(control).toMatch(/<fieldset/);
+    expect(control).toMatch(/<legend/);
+    expect(control).toMatch(/aria-pressed=/);
   });
 
   it("can never fail the offer it is recording", () => {
