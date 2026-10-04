@@ -1,0 +1,11 @@
+{
+  "description": "Assessed npm-audit advisories, read by scripts/npm-audit-gate.mjs in security.yml. The npm-audit counterpart of .trivyignore. An entry is honoured only if every package the advisory reaches is dev-only in package-lock.json, it has a justification and a re-review trigger, its reviewBy date has not passed, and the advisory is still reported. A production dependency can never be accepted here.",
+  "accepted": [
+    {
+      "advisory": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+      "justification": "braces <=3.0.3: stack exhaustion on deeply nested brace patterns. No patched braces exists (3.0.3 is the latest release). It reaches us only through tailwindcss 3.4.19 and its file watchers (chokidar, micromatch, fast-glob), all devDependencies. They run at BUILD time and expand only the content globs in our own tailwind.config, never input from a user or the network. They are pruned from the production image (`npm prune --omit=dev` in the Dockerfile), and the Trivy image scan reports them clean. Exposure in production: nil. Assessed 2026-10-04, when it blocked the main deploy of d2f46b3.",
+      "reviewTrigger": "Drop this entry when a patched braces ships or when the client moves to tailwindcss 4 (npm audit's only offered fix, a major migration).",
+      "reviewBy": "2026-11-15"
+    }
+  ]
+}
