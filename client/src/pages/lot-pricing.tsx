@@ -7,6 +7,13 @@
  * subdivision, see the proposed asking-price grid, override any cell, and
  * lock the grid. Re-run when comps refresh. The base price comes from the
  * AVM on the parent's per-acre value."
+ *
+ * Locking is the subdivider's decision. The lock card asks for the sell-out
+ * economics (selling cost, months to sell out, the parent's cost basis when
+ * none is recorded, subdivision costs, carry) and "when will you know how this
+ * went?". The server runs the `subdivision_lot_sale` engine on the locked
+ * prices, freezes that as a scenario, and records the lock as a decision citing
+ * it, so Today can later ask what the lots actually sold for.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -28,6 +35,12 @@ import {
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { ReviewDateChoice, reviewDueAtFromDays } from "@/components/decisions/ReviewDateChoice";
+import {
+  computeSubdivisionLotSale,
+  SubdivisionLotSaleInputError,
+  type SubdivisionLotSaleOutputs,
+} from "@shared/calculators/subdivisionLotSale";
 
 interface Rule {
   attribute: string;
@@ -47,6 +60,55 @@ interface RulesResponse {
     lockedGrid: any | null;
     lockedAt: string | null;
   } | null;
+  /** The parent parcel's recorded purchase price, in cents; null when none is recorded. */
+  parentBasisCents: number | null;
+}
+
+interface LockResponse {
+  lockedGrid: Array<{ childParcelId: number; askingPriceCents: number }>;
+  lockedAt: string;
+  decisionSnapshotId: number | null;
+  scenarioId: number | null;
+  metrics: Array<{ id: string; value: number | null }> | null;
+}
+
+/** The sell-out economics the lock sends, all in cents / percentage points. */
+interface LockEconomics {
+  sellingCostPct: number;
+  monthsToSellOut: number;
+  parentBasisCents?: number;
+  surveyCents?: number;
+  platCents?: number;
+  permitsCents?: number;
+  improvementsCents?: number;
+  monthlyCarryCents?: number;
+}
+
+/** Optional cost lines the lock asks for, in dollars. */
+const COST_FIELDS = [
+  { key: "surveyCents", label: "Survey", hint: "Boundary and topo survey for the split." },
+  { key: "platCents", label: "Plat", hint: "Engineering, drafting and recording the plat." },
+  { key: "permitsCents", label: "Permits and approvals", hint: "County fees, perc tests, approvals." },
+  { key: "improvementsCents", label: "Improvements", hint: "Roads, utilities, clearing — whatever you build." },
+] as const;
+type CostKey = (typeof COST_FIELDS)[number]["key"];
+
+/** "" → undefined (not entered); a dollar figure → cents; anything else → NaN (the server refuses negatives). */
+function dollarsField(v: string): number | undefined {
+  const cleaned = v.replace(/[$,\s]/g, "");
+  if (cleaned === "") return undefined;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? Math.round(n * 100) : NaN;
+}
+
+function numberField(v: string): number | undefined {
+  if (v.trim() === "") return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function fmtRatio(r: number | null | undefined): string {
+  return r === null || r === undefined ? "—" : `${(r * 100).toFixed(1)}%`;
 }
 
 interface PreviewRow {
@@ -104,6 +166,21 @@ export default function LotPricingPage() {
     { attribute: "cul_de_sac", operator: "==", threshold: true, premiumPct: 0.05, label: "Cul-de-sac" },
     { attribute: "acres", operator: "<", threshold: 1.5, premiumPct: -0.10, label: "Sub-1.5 acre lot" },
   ]);
+
+  // The lock's sell-out economics. Nothing is pre-filled: every figure is the
+  // operator's, and an empty optional line is excluded and declared, not $0.
+  const [sellingCostPct, setSellingCostPct] = useState("");
+  const [monthsToSellOut, setMonthsToSellOut] = useState("");
+  const [parentBasisDollars, setParentBasisDollars] = useState("");
+  const [costs, setCosts] = useState<Record<CostKey, string>>({
+    surveyCents: "",
+    platCents: "",
+    permitsCents: "",
+    improvementsCents: "",
+  });
+  const [monthlyCarryDollars, setMonthlyCarryDollars] = useState("");
+  /** `undefined` until the operator answers; `null` is the answer "no set date". */
+  const [reviewInDays, setReviewInDays] = useState<number | null | undefined>(undefined);
 
   const existing = useQuery<RulesResponse>({
     queryKey: ["/api/parcels", parcelId, "pricing-rules"],
@@ -168,13 +245,39 @@ export default function LotPricingPage() {
     onError: (err: any) => toast({ title: "Preview failed", description: err.message, variant: "destructive" }),
   });
 
-  const lock = useMutation({
-    mutationFn: async () => {
+  const recordedBasisCents = existing.data?.parentBasisCents ?? null;
+
+  // What the operator has answered, parsed. `null` when a required answer is
+  // missing or any figure is not a number, so the lock stays disabled.
+  const economics = useMemo((): LockEconomics | null => {
+    const pct = numberField(sellingCostPct);
+    const months = numberField(monthsToSellOut);
+    if (pct === undefined || months === undefined || Number.isNaN(pct) || Number.isNaN(months)) return null;
+    const out: LockEconomics = { sellingCostPct: pct, monthsToSellOut: months };
+    if (recordedBasisCents === null) {
+      const basis = dollarsField(parentBasisDollars);
+      if (basis !== undefined) out.parentBasisCents = basis;
+    }
+    for (const f of COST_FIELDS) {
+      const v = dollarsField(costs[f.key]);
+      if (v !== undefined) out[f.key] = v;
+    }
+    const carry = dollarsField(monthlyCarryDollars);
+    if (carry !== undefined) out.monthlyCarryCents = carry;
+    return Object.values(out).some((v) => Number.isNaN(v)) ? null : out;
+  }, [sellingCostPct, monthsToSellOut, parentBasisDollars, costs, monthlyCarryDollars, recordedBasisCents]);
+
+  const lock = useMutation<LockResponse, Error, { economics: LockEconomics; reviewInDays: number | null }>({
+    mutationFn: async (vars) => {
       const res = await fetch(`/api/parcels/${parcelId}/pricing-rules/lock`, {
         method: "POST",
         credentials: "include",
         headers: csrfHeader(),
-        body: JSON.stringify({ overrides: {} }),
+        body: JSON.stringify({
+          overrides: {},
+          economics: vars.economics,
+          reviewDueAt: reviewDueAtFromDays(vars.reviewInDays),
+        }),
       });
       if (!res.ok) {
         const detail = await res.json().catch(() => ({}));
@@ -182,13 +285,42 @@ export default function LotPricingPage() {
       }
       return res.json();
     },
-    onSuccess: (r: any) => {
+    onSuccess: (r) => {
       toast({ title: "Grid locked", description: `${r.lockedGrid.length} list prices updated` });
       queryClient.invalidateQueries({ queryKey: ["/api/parcels", parcelId, "pricing-rules"] });
       queryClient.invalidateQueries({ queryKey: ["/api/parcels", parcelId, "subdivision"] });
     },
-    onError: (err: any) => toast({ title: "Lock failed", description: err.message, variant: "destructive" }),
+    onError: (err) => toast({ title: "Lock failed", description: err.message, variant: "destructive" }),
   });
+
+  // The same arithmetic the server freezes, run on the previewed grid so the
+  // operator sees what they are about to record. The lock recomputes it from
+  // the saved rules; this is a view, never sent.
+  const modelled = useMemo((): { out: SubdivisionLotSaleOutputs | null; error: string | null } => {
+    if (!preview.data || !economics) return { out: null, error: null };
+    try {
+      return {
+        out: computeSubdivisionLotSale({
+          lotPricesCents: preview.data.grid.map((g) => g.askingPriceCents),
+          sellingCostPct: economics.sellingCostPct,
+          monthsToSellOut: economics.monthsToSellOut,
+          parentBasisCents: economics.parentBasisCents ?? recordedBasisCents,
+          surveyCents: economics.surveyCents ?? null,
+          platCents: economics.platCents ?? null,
+          permitsCents: economics.permitsCents ?? null,
+          improvementsCents: economics.improvementsCents ?? null,
+          monthlyCarryCents: economics.monthlyCarryCents ?? null,
+        }),
+        error: null,
+      };
+    } catch (err) {
+      if (err instanceof SubdivisionLotSaleInputError) return { out: null, error: err.message };
+      throw err;
+    }
+  }, [preview.data, economics, recordedBasisCents]);
+
+  const basisKnown = recordedBasisCents !== null || economics?.parentBasisCents !== undefined;
+  const canLock = !!existing.data?.rules && economics !== null && basisKnown && reviewInDays !== undefined && !lock.isPending;
 
   if (!parcelId) {
     return (
@@ -345,9 +477,6 @@ export default function LotPricingPage() {
             <Button variant="outline" onClick={() => preview.mutate()} disabled={preview.isPending || !existing.data?.rules}>
               <Sparkles className="w-4 h-4 mr-1" aria-hidden="true" /> Preview grid
             </Button>
-            <Button variant="default" onClick={() => lock.mutate()} disabled={lock.isPending || !existing.data?.rules}>
-              <Lock className="w-4 h-4 mr-1" aria-hidden="true" /> Lock grid
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -392,6 +521,187 @@ export default function LotPricingPage() {
                 ))}
               </tbody>
             </table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Lock — the subdivider's decision */}
+      {existing.data?.rules && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Lock className="w-4 h-4" aria-hidden="true" /> Lock asking prices
+            </CardTitle>
+            <CardDescription className="max-w-2xl">
+              Locking sets every lot's list price from the saved rules and records it as a decision,
+              with what the project makes if the lots sell at those prices. It sends nothing,
+              contacts nobody and moves no money.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+              <div>
+                <Label className="text-xs" htmlFor="lock-selling-cost">Selling cost (% of each sale)</Label>
+                <Input
+                  id="lock-selling-cost"
+                  inputMode="decimal"
+                  value={sellingCostPct}
+                  onChange={(e) => setSellingCostPct(e.target.value)}
+                  className="h-9"
+                  aria-describedby="lock-selling-cost-hint"
+                />
+                <p id="lock-selling-cost-hint" className="text-xs text-muted-foreground mt-1">
+                  Commissions and closing costs you pay when a lot sells.
+                </p>
+              </div>
+              <div>
+                <Label className="text-xs" htmlFor="lock-months">Months to sell every lot</Label>
+                <Input
+                  id="lock-months"
+                  inputMode="numeric"
+                  value={monthsToSellOut}
+                  onChange={(e) => setMonthsToSellOut(e.target.value)}
+                  className="h-9"
+                  aria-describedby="lock-months-hint"
+                />
+                <p id="lock-months-hint" className="text-xs text-muted-foreground mt-1">
+                  From today until the last lot closes, in whole months.
+                </p>
+              </div>
+            </div>
+
+            <div className="max-w-xl">
+              {recordedBasisCents !== null ? (
+                <p className="text-sm">
+                  Parent parcel cost basis: <span className="font-medium">{fmtUsdCents(recordedBasisCents)}</span>
+                  <span className="text-muted-foreground"> — its recorded purchase price.</span>
+                </p>
+              ) : (
+                <div>
+                  <Label className="text-xs" htmlFor="lock-parent-basis">What did the parent parcel cost? ($)</Label>
+                  <Input
+                    id="lock-parent-basis"
+                    inputMode="decimal"
+                    value={parentBasisDollars}
+                    onChange={(e) => setParentBasisDollars(e.target.value)}
+                    className="h-9"
+                    aria-describedby="lock-parent-basis-hint"
+                  />
+                  <p id="lock-parent-basis-hint" className="text-xs text-muted-foreground mt-1">
+                    No purchase price is recorded for this parcel. The lock needs a cost basis: without
+                    it, total cost and profit cannot be predicted and the outcome could never be graded.
+                    What you enter here is used for this lock only; it is not saved to the parcel.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <p className="text-sm font-medium">Subdivision costs and carry (optional)</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
+                Leave a line blank if you have no figure. A blank line is left out of total cost and
+                recorded as not entered — never as $0.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl mt-3">
+                {COST_FIELDS.map((f) => (
+                  <div key={f.key}>
+                    <Label className="text-xs" htmlFor={`lock-${f.key}`}>{f.label} ($)</Label>
+                    <Input
+                      id={`lock-${f.key}`}
+                      inputMode="decimal"
+                      value={costs[f.key]}
+                      onChange={(e) => setCosts({ ...costs, [f.key]: e.target.value })}
+                      className="h-9"
+                      aria-describedby={`lock-${f.key}-hint`}
+                    />
+                    <p id={`lock-${f.key}-hint`} className="text-xs text-muted-foreground mt-1">{f.hint}</p>
+                  </div>
+                ))}
+                <div>
+                  <Label className="text-xs" htmlFor="lock-carry">Carry per month ($)</Label>
+                  <Input
+                    id="lock-carry"
+                    inputMode="decimal"
+                    value={monthlyCarryDollars}
+                    onChange={(e) => setMonthlyCarryDollars(e.target.value)}
+                    className="h-9"
+                    aria-describedby="lock-carry-hint"
+                  />
+                  <p id="lock-carry-hint" className="text-xs text-muted-foreground mt-1">
+                    Taxes, insurance and interest while lots are unsold.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {modelled.error && <p className="text-sm text-destructive" role="alert">{modelled.error}</p>}
+            {modelled.out && (
+              <div className="rounded-md border border-border p-3 max-w-xl">
+                <p className="text-xs text-muted-foreground mb-2">
+                  The result if every previewed lot sells at its asking price within{" "}
+                  {modelled.out.holdMonths} month(s). The lock recomputes this from your saved rules.
+                </p>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                  <dt className="text-muted-foreground">Gross sell-out</dt>
+                  <dd className="text-right">{fmtUsdCents(modelled.out.grossSelloutCents)}</dd>
+                  <dt className="text-muted-foreground">Net proceeds</dt>
+                  <dd className="text-right">{fmtUsdCents(modelled.out.netProceedsCents)}</dd>
+                  <dt className="text-muted-foreground">Total cost</dt>
+                  <dd className="text-right">{fmtUsdCents(modelled.out.totalCostCents)}</dd>
+                  <dt className="text-muted-foreground">Profit</dt>
+                  <dd className="text-right font-medium">{fmtUsdCents(modelled.out.profitCents)}</dd>
+                  <dt className="text-muted-foreground">Return on cost</dt>
+                  <dd className="text-right">{fmtRatio(modelled.out.roi)}</dd>
+                </dl>
+              </div>
+            )}
+            {!preview.data && (
+              <p className="text-xs text-muted-foreground">Preview the grid to see these figures before you lock.</p>
+            )}
+
+            <ReviewDateChoice value={reviewInDays} onChange={setReviewInDays} testIdPrefix="lot-lock-review-in" />
+
+            {!basisKnown && (
+              <p className="text-sm text-muted-foreground max-w-2xl">
+                Without the parent's cost basis this lock is recorded without a total cost or profit,
+                so when Today asks how it went there is nothing to compare the result with.
+              </p>
+            )}
+
+            <Button
+              onClick={() => {
+                if (!economics || reviewInDays === undefined) return;
+                lock.mutate({ economics, reviewInDays });
+              }}
+              disabled={!canLock}
+              data-testid="lot-lock-submit"
+            >
+              <Lock className="w-4 h-4 mr-1" aria-hidden="true" /> Lock grid and record decision
+            </Button>
+            {!canLock && !lock.isPending && (
+              <p className="text-xs text-muted-foreground">
+                Enter the selling cost, months to sell and the parent's cost basis, and answer when
+                you'll know how it went.
+              </p>
+            )}
+
+            {lock.data && (
+              <div className="rounded-md border border-border p-3 max-w-xl text-sm" role="status">
+                {lock.data.decisionSnapshotId !== null ? (
+                  <p>
+                    Locked {lock.data.lockedGrid.length} lot(s) and recorded the decision.
+                    {lock.data.metrics?.find((m) => m.id === "profit")?.value != null
+                      ? ` Recorded profit if the prices hold: ${fmtUsdCents(lock.data.metrics?.find((m) => m.id === "profit")?.value)}.`
+                      : " No profit was recorded because the parent's cost basis is unknown."}
+                  </p>
+                ) : (
+                  <p>
+                    Locked {lock.data.lockedGrid.length} lot(s). The list prices are set, but the decision
+                    could not be recorded.
+                  </p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

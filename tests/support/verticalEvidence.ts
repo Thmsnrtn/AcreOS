@@ -55,10 +55,9 @@
  * The law in verticalReadiness.test.ts is universal, not existential: every
  * crediting decision of a decided vertical must be gradeable.
  *
- * ONE legacy entry survives: `routes-lot-pricing.ts` decides for `subdivider`
- * without a scenario. It keeps subdivider `decided` (what it records is real
- * and reachable). It is NOT gradeable, which the law holds as a named,
- * down-only exception until wave V2.
+ * The legacy file-ownership map is EMPTY since V2: the last entry
+ * (`routes-lot-pricing.ts` → subdivider) left when the lot-price lock began
+ * recording a `subdivision_lot_sale` scenario with the operator's review date.
  *
  * The crediting itself is a PURE function (`creditVerticals`), so the tests can
  * feed it fixtures. The audit of V0 found the first draft could not be fed
@@ -89,7 +88,10 @@ function definedTemplateIds(): Set<string> {
  * the vertical. Do not add to this list — give the route an engine.
  */
 export const LEGACY_DECISION_ROUTE_OWNER: Readonly<Record<string, BusinessTypeId>> = {
-  "server/routes-lot-pricing.ts": "subdivider",
+  // EMPTIED in V2 (2026-10-04): the lot-pricing lock now records a
+  // `subdivision_lot_sale` scenario and cites it, so subdivider decides through
+  // its own engine like every other vertical. Kept, typed, so the down-only
+  // test can prove it stays empty.
 };
 
 export type EngineTable = Map<string, { verticals: BusinessTypeId[]; gradeable: boolean }>;

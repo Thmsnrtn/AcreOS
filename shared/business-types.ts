@@ -312,7 +312,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     ],
     // The real Rentals surfaces this businessType reaches (V1 gate; same
     // children as buy_and_hold in layout-sidebar.tsx).
-    spotlightModules: ["rent-roll", "tenants", "leases", "maintenance", "investor-analytics"],
+    spotlightModules: ["rent-roll", "tenants", "leases", "maintenance", "investor-analytics", "rentals/underwrite-str"],
   },
   commercial: {
     id: "commercial",
@@ -368,6 +368,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "leases",
       "maintenance",
       "investor-analytics",
+      "rentals/underwrite-commercial",
       "deals",
       "properties",
     ],
@@ -432,7 +433,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tpl_payment_missed_dunning",
       "tpl_balloon_approaching",
     ],
-    spotlightModules: ["deals", "finance", "dodd-frank", "regulatory-intel"],
+    spotlightModules: ["deals", "finance", "dodd-frank", "regulatory-intel", "creative-finance/underwrite"],
     // Serviced notes ride the same Stripe rails as the note vertical
     // (payment links / Stripe Connect in the /finance note drawer).
   },
@@ -531,7 +532,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tpl_tax_cert_redeemed_payoff",
       "tpl_parcel_tax_delinquent_watchlist",
     ],
-    spotlightModules: ["redemption-clock", "auction-worksheet", "state-rules", "quiet-title"],
+    spotlightModules: ["redemption-clock", "auction-worksheet", "state-rules", "quiet-title", "tax-liens/underwrite"],
   },
   multifamily: {
     id: "multifamily",
@@ -663,7 +664,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
       "tpl_lease_expiring",
       "tpl_mobile_home_lot_rent_receipt",
     ],
-    spotlightModules: ["rent-roll", "tenants", "leases", "maintenance", "investor-analytics"],
+    spotlightModules: ["rent-roll", "tenants", "leases", "maintenance", "investor-analytics", "rentals/underwrite-park"],
   },
   agent_investor: {
     id: "agent_investor",
@@ -711,7 +712,7 @@ export const BUSINESS_TYPES: Record<BusinessTypeId, BusinessTypeMeta> = {
     // The real land surfaces this operator uses (all routed; none hidden
     // for its org fingerprint): parcel map, parcel detail, seller-lead CRM,
     // deal pipeline, owner skip tracing.
-    spotlightModules: ["maps", "parcels", "leads", "deals", "skip-tracing"],
+    spotlightModules: ["maps", "parcels", "leads", "deals", "skip-tracing", "deals/underwrite-own"],
     // The land data plane this surface runs on (parcel data on /maps and
     // parcel detail) — same providers the land_flipper surface uses.
   },

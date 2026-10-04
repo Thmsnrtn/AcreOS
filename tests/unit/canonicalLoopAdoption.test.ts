@@ -77,10 +77,14 @@ const ADOPTING_SURFACES = [
     // the grid intact and destroys its explanation. The mirror image of the
     // note payoff path in MUST_NOT_ADOPT below, which already owns its own.
     //
-    // No scenario, deliberately: a per-lot price grid is not expressed in the
-    // shared metric vocabulary, and inventing a sixth engine to satisfy this
-    // list is exactly the failure an up-only count invites.
-    writes: ["recordDecision("],
+    // It once recorded no scenario, deliberately: a bare price grid has no
+    // total_cost or profit, and inventing an engine to satisfy this list is
+    // exactly the failure an up-only count invites. Wave V2 (2026-10-04) gave
+    // the lock the operator's sell-out economics, and the subdivider's own
+    // `subdivision_lot_sale` engine turns the LOCKED prices into the predicted
+    // sell-out, cost and profit the decision cites — a real prediction the
+    // outcome prompt can grade, not a scenario for the count.
+    writes: ["recordScenario(", "recordDecision("],
   },
 ] as const;
 

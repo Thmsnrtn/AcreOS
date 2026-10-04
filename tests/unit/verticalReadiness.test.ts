@@ -110,7 +110,7 @@ const evidence: VerticalEvidence = measured;
  * founder decision — queued as OD-5). Lower this in the commit that earns it,
  * whichever way it is earned.
  */
-const MATURITY_OVERCLAIM_BASELINE = 6;
+const MATURITY_OVERCLAIM_BASELINE = 0;
 
 describe("the evidence scan is real (vacuity guards, first)", () => {
   it("found the workflow templates the engine defines", () => {
@@ -160,13 +160,16 @@ describe("readiness is a projection of evidence", () => {
     expect(measured.decidedBy.get("land_flipper")).toContain("server/routes-data-intelligence.ts");
   });
 
-  it("subdivider reaches `decided` too — it records, even though it cannot be graded", () => {
-    // routes-lot-pricing.ts:351 records a decision. It hardcodes
-    // `reviewDueAt: null` (:419) so those decisions never enter the due sweep
-    // and can never be graded — a real defect, but a SEPARATE one. Readiness
-    // measures what is recorded, not what is gradeable; conflating them here
-    // would hide the grading defect inside a maturity number.
+  it("subdivider decides through its OWN engine now, and is gradeable", () => {
+    // REWRITTEN (not deleted) in V2. This pinned subdivider `decided` while its
+    // lot-pricing lock recorded no scenario and hard-coded reviewDueAt: null —
+    // decided by a legacy file-ownership entry, never gradeable. The lock now
+    // records a `subdivision_lot_sale` scenario, cites it, and carries the
+    // operator's review date, so it earns `decided` the same way every other
+    // vertical does, with no exception.
     expect(readinessOf(BUSINESS_TYPES.subdivider, evidence)).toBe("decided");
+    expect(measured.decidedBy.get("subdivider")).toContain("server/routes-lot-pricing.ts");
+    expect(measured.gradeableBusinessTypes.has("subdivider")).toBe(true);
   });
 
   it("a vertical with no templates and no modules is only `declared`", () => {
@@ -186,8 +189,11 @@ describe("readiness is a projection of evidence", () => {
 
   it("a declared template id the engine does not define earns nothing", () => {
     // The cheapest possible way to fake a tier is to add a string to an array.
+    // A fresh id: since V2 every REAL vertical decides, so a real id would be
+    // credited by its recorded decisions and prove nothing about templates.
     const fake = {
       ...BUSINESS_TYPES.commercial,
+      id: "not_a_registered_vertical" as BusinessTypeId,
       workflowTemplateIds: ["tpl_this_does_not_exist"],
       spotlightModules: [],
     };
@@ -646,7 +652,8 @@ import { recordUnderwrittenDecision } from "./services/underwriting/verticalDeci
   });
 
   it("the legacy file-ownership map only shrinks, and holds no vertical the engine rule already earns", () => {
-    expect(Object.keys(LEGACY_DECISION_ROUTE_OWNER)).toEqual(["server/routes-lot-pricing.ts"]);
+    // Emptied in V2; it may never grow again.
+    expect(Object.keys(LEGACY_DECISION_ROUTE_OWNER)).toEqual([]);
     for (const [file, owner] of Object.entries(LEGACY_DECISION_ROUTE_OWNER)) {
       const viaEngines = (measured.decidedBy.get(owner) ?? []).filter((f) => f !== file);
       expect(viaEngines, `${owner} now decides through an engine — remove its legacy entry`).toEqual([]);
@@ -656,16 +663,16 @@ import { recordUnderwrittenDecision } from "./services/underwriting/verticalDeci
 
 describe("a decided vertical is gradeable (the loop can close on reality)", () => {
   /**
-   * Down-only. subdivider's lot-pricing lock records no scenario and hard-codes
-   * reviewDueAt: null, so none of its decisions is ever asked for an outcome.
-   * Wave V2 gives it both and removes it from here.
+   * Down-only, and EMPTY since V2 (2026-10-04): subdivider, its last member,
+   * now records a scenario and a review date at the lot-price lock.
    */
-  const NOT_YET_GRADEABLE: readonly BusinessTypeId[] = ["subdivider"];
+  const NOT_YET_GRADEABLE: readonly BusinessTypeId[] = [];
   const gradeable = measured.gradeableBusinessTypes;
 
   it("vacuity: the gradeable set is real", () => {
     expect(gradeable.has("fix_and_flip")).toBe(true);
     expect(gradeable.has("land_flipper")).toBe(true);
+    expect(gradeable.has("subdivider")).toBe(true);
   });
 
   it("every decided vertical takes a review date and predicts what an outcome measures", () => {

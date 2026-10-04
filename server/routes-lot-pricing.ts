@@ -12,7 +12,10 @@
  *   GET  /api/parcels/:id/pricing-rules         — load rules for a parent
  *   PUT  /api/parcels/:id/pricing-rules         — upsert rules (single set/parent)
  *   POST /api/parcels/:id/pricing-rules/preview — compute proposed grid
- *   POST /api/parcels/:id/pricing-rules/lock    — freeze grid + write listPrice
+ *   POST /api/parcels/:id/pricing-rules/lock    — freeze grid + write listPrice,
+ *        then record the lock as a subdivider decision citing a
+ *        `subdivision_lot_sale` scenario (the predicted sell-out), with the
+ *        operator's own review date
  *
  * Per-child attributes the rules can match against come from the
  * subdivision_plan geojson (when available) and a small `pricing_facts`
@@ -37,6 +40,11 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { formatCents } from "@shared/finance/cents";
+import { ScenarioEngineError, type ScenarioAssumption } from "@shared/economics/scenario";
+import { lotPriceInputKey } from "@shared/calculators/subdivisionLotSale";
+import { recordScenario } from "./services/economics/scenarioStore";
+import { recordDecision } from "./services/decisions/decisionStore";
+import { previewUnderwriting } from "./services/underwriting/verticalDecision";
 
 const ruleSchema = z.object({
   attribute: z.string().min(1).max(64),
@@ -52,6 +60,59 @@ const upsertSchema = z.object({
   fixedPerAcreCents: z.coerce.number().int().nonnegative().nullable().optional(),
   rules: z.array(ruleSchema).default([]),
 });
+
+/**
+ * What a lock must carry besides the grid. The economics are the operator's
+ * answers the `subdivision_lot_sale` engine needs to turn the locked prices into
+ * a prediction; the engine itself refuses out-of-range values with its own
+ * reason, so they are only typed here.
+ *
+ * `reviewDueAt` is REQUIRED, though nullable: null is the answer "no set date",
+ * and a missing key is refused rather than read as "never review", which is how
+ * a decision loop stops closing. A past date would be due the instant it was
+ * recorded.
+ */
+const optionalAmount = z.number().finite().optional();
+const lockSchema = z.object({
+  // Operator overrides — { childParcelId: askingCents }.
+  overrides: z.record(z.string().regex(/^\d+$/), z.number().int().nonnegative()).default({}),
+  economics: z
+    .object({
+      sellingCostPct: z.number().finite(),
+      monthsToSellOut: z.number().finite(),
+      // Used only when the parent parcel has no recorded purchase price.
+      parentBasisCents: optionalAmount,
+      surveyCents: optionalAmount,
+      platCents: optionalAmount,
+      permitsCents: optionalAmount,
+      improvementsCents: optionalAmount,
+      monthlyCarryCents: optionalAmount,
+    })
+    .strict(),
+  reviewDueAt: z
+    .string()
+    .datetime()
+    .nullable()
+    .refine((d) => d === null || new Date(d).getTime() > Date.now(), {
+      message: "A review date must be in the future.",
+    }),
+});
+
+/**
+ * The parent parcel's recorded cost basis: its purchase price, in cents. Null
+ * when the parcel is not this org's or no purchase price is recorded — never a
+ * guessed figure. The same source the basis allocation and the pro-forma read
+ * (server/routes-lot-basis.ts).
+ */
+async function loadRecordedParentBasisCents(orgId: number, parentId: number): Promise<number | null> {
+  const [p] = await db
+    .select({ purchasePrice: properties.purchasePrice })
+    .from(properties)
+    .where(and(eq(properties.id, parentId), eq(properties.organizationId, orgId)));
+  if (!p || p.purchasePrice === null || p.purchasePrice === undefined) return null;
+  const dollars = parseFloat(p.purchasePrice);
+  return Number.isFinite(dollars) ? Math.round(dollars * 100) : null;
+}
 
 interface ChildFacts {
   id: number;
@@ -155,7 +216,11 @@ export function registerLotPricingRoutes(app: Express): void {
             eq(lotPricingRules.parentParcelId, parentId),
           ));
 
-        return res.json({ rules: r ?? null });
+        // The lock asks for the parent's cost basis only when none is recorded,
+        // so the page needs to know which case it is in.
+        const parentBasisCents = await loadRecordedParentBasisCents(orgId, parentId);
+
+        return res.json({ rules: r ?? null, parentBasisCents });
       } catch (err) {
         return Errors.internal(res, err);
       }
@@ -262,7 +327,8 @@ export function registerLotPricingRoutes(app: Express): void {
     },
   );
 
-  // POST /lock — freeze the computed grid and push asking prices to listPrice.
+  // POST /lock — freeze the computed grid, push asking prices to listPrice, and
+  // record the lock as a gradeable decision citing the sell-out it predicts.
   app.post(
     "/api/parcels/:id/pricing-rules/lock",
     isAuthenticated,
@@ -274,8 +340,12 @@ export function registerLotPricingRoutes(app: Express): void {
         const parentId = parseInt(req.params.id, 10);
         if (!Number.isFinite(parentId)) return Errors.badRequest(res, "Invalid parcel id");
 
-        // Allow operator-supplied overrides — { childParcelId: askingCents }.
-        const overrides = (req.body?.overrides ?? {}) as Record<string, number>;
+        // Validated before anything is read or written: a lock without its
+        // economics, or without an answer to "when will you know?", is refused.
+        const parsed = lockSchema.safeParse(req.body);
+        if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+        const body = parsed.data;
+        const overrides = body.overrides;
 
         const [rules] = await db
           .select()
@@ -303,12 +373,83 @@ export function registerLotPricingRoutes(app: Express): void {
           };
         });
 
+        // ── The parent's cost basis: recorded, typed at the lock, or unknown ──
+        // A recorded purchase price is the basis. Only when none is recorded may
+        // the operator type one here; a typed figure that disagrees with the
+        // recorded one is refused rather than silently ignored. When neither
+        // exists the lock is REFUSED (V2 audit, 2026-10-04): without a basis the
+        // engine cannot compute total cost or profit, so the decision could never
+        // be graded, while the evidence gate certifies subdivider as gradeable.
+        // Asking is the honest answer; no basis is ever invented.
+        const recordedBasisCents = await loadRecordedParentBasisCents(orgId, parentId);
+        const typedBasisCents = body.economics.parentBasisCents;
+        if (
+          recordedBasisCents !== null &&
+          typedBasisCents !== undefined &&
+          typedBasisCents !== recordedBasisCents
+        ) {
+          return Errors.badRequest(
+            res,
+            `The parent parcel already records a purchase price of ${formatCents(recordedBasisCents)}, ` +
+              `and the lock uses it. Change it on the parcel rather than typing a different basis here.`,
+          );
+        }
+        const parentBasisCents = recordedBasisCents ?? typedBasisCents;
+        if (parentBasisCents === undefined) {
+          return Errors.badRequest(
+            res,
+            "No purchase price is recorded for the parent parcel. Enter what it cost so the lock " +
+              "can predict total cost and profit; without them this decision could never be graded.",
+          );
+        }
+
+        // What the lock FREEZES is what the scenario computes on: every locked
+        // lot price (overrides included) plus the operator's own answers.
+        const scenarioInputs: Record<string, number> = {
+          sellingCostPct: body.economics.sellingCostPct,
+          monthsToSellOut: body.economics.monthsToSellOut,
+        };
+        for (const row of lockedGrid) scenarioInputs[lotPriceInputKey(row.childParcelId)] = row.askingPriceCents;
+        if (parentBasisCents !== undefined) scenarioInputs.parentBasisCents = parentBasisCents;
+        for (const k of ["surveyCents", "platCents", "permitsCents", "improvementsCents", "monthlyCarryCents"] as const) {
+          const v = body.economics[k];
+          if (v !== undefined) scenarioInputs[k] = v;
+        }
+        const scenarioAssumptions: ScenarioAssumption[] =
+          parentBasisCents === undefined
+            ? []
+            : [
+                {
+                  key: "parent_basis",
+                  value: parentBasisCents,
+                  unit: "cents",
+                  origin: "user" as const,
+                  basis:
+                    recordedBasisCents !== null
+                      ? `The purchase price recorded on the parent parcel: ${formatCents(parentBasisCents)}.`
+                      : `Typed at the lock (${formatCents(parentBasisCents)}); no purchase price is recorded on the parent parcel.`,
+                },
+              ];
+
+        // Dry run BEFORE the lock commits: inputs the engine refuses (no lots, a
+        // selling cost over 100%, a negative cost) are a 400 with the engine's
+        // reason, and no list price moves.
+        try {
+          previewUnderwriting("subdivision_lot_sale", scenarioInputs);
+        } catch (err) {
+          if (err instanceof ScenarioEngineError) return Errors.badRequest(res, err.message);
+          throw err;
+        }
+
         await db.transaction(async (tx) => {
           await tx.update(lotPricingRules).set({
             lockedGrid,
             lockedAt: new Date(),
             updatedAt: new Date(),
-          }).where(eq(lotPricingRules.id, rules.id));
+          }).where(and(
+            eq(lotPricingRules.id, rules.id),
+            eq(lotPricingRules.organizationId, orgId),
+          ));
 
           for (const row of lockedGrid) {
             await tx.update(properties).set({
@@ -321,7 +462,7 @@ export function registerLotPricingRoutes(app: Express): void {
           }
         });
 
-        // ── Canonical loop: this lock is a DECISION, and it was unrecorded ──
+        // ── Canonical loop: this lock is a DECISION, and it cites a SCENARIO ──
         //
         // The transaction above wrote every child lot's listPrice. That is the
         // asking price the market sees — the moment these numbers stop being a
@@ -332,8 +473,15 @@ export function registerLotPricingRoutes(app: Express): void {
         // updated, so editing the rules tomorrow leaves the grid intact and
         // destroys the explanation for it; the derived base-per-acre and the
         // engine version were never stored anywhere. That is exactly the state
-        // Decision Memory exists for, and the mirror image of the note-payoff
-        // path, which must NOT adopt because it already owns its own reasoning.
+        // Decision Memory exists for.
+        //
+        // The scenario is the PREDICTION: the `subdivision_lot_sale` engine run
+        // on the prices this lock froze — gross sell-out, net proceeds, and (when
+        // the parent's basis is known) total cost and profit. Those last two are
+        // what Today's outcome prompt measures when the operator reports the lots
+        // sold, so with the operator's own review date the lock is gradeable.
+        // Scenario first, then the decision that cites it; both under the
+        // subdivider pack.
         //
         // Recorded AFTER the transaction, deliberately. Recording first would
         // let a failed lock leave behind an immutable snapshot asserting a
@@ -343,83 +491,101 @@ export function registerLotPricingRoutes(app: Express): void {
         // operator's pricing must not fail because the reasoning could not be
         // written, and a null link says so honestly.
         let decisionSnapshotId: number | null = null;
+        let scenarioId: number | null = null;
+        let metrics: unknown[] | null = null;
         try {
-          const { recordDecision } = await import("./services/decisions/decisionStore");
           const overridden = lockedGrid.filter((r) => r.override);
           const totalAskingCents = lockedGrid.reduce((n, r) => n + r.askingPriceCents, 0);
 
-          const decision = await recordDecision(orgId, {
+          const scenario = await recordScenario(orgId, {
             subjectType: "property",
             subjectId: parentId,
-            // The closed DECISION_KINDS set already carries this: "price — set
-            // or change an asking/offer price". No new kind invented.
-            kind: "price",
-            choice:
-              `Lock asking prices on ${lockedGrid.length} lot(s) — ` +
-              `${formatCents(totalAskingCents)} total`,
-            rationale:
-              `Base ${formatCents(basePerAcre)}/acre from ${rules.basePriceSource}, ` +
-              `${(rules.rules ?? []).length} premium rule(s), ` +
-              `${overridden.length} operator override(s). ` +
-              `Each lot's listPrice was set from this grid.`,
-            actorType: "user",
-            actorRef: userId,
-            // The real authority: this route is reachable only behind
-            // isAuthenticated + getOrCreateOrg, and it prices the org's own
-            // parcels. Naming a generic "system" here would be false (BI72).
-            authority: "org_member:lot_pricing_lock",
-            // Lot pricing is the subdivider surface — that is the rule set
-            // that shaped this grid (BI91).
+            label: `Lot sell-out at locked prices — ${lockedGrid.length} lot(s)`,
+            engineId: "subdivision_lot_sale",
+            inputs: scenarioInputs,
+            assumptions: scenarioAssumptions,
             strategyPackId: "subdivider",
             strategyPackVersion: null,
-            assumptions: [
-              {
-                key: "base_per_acre_cents",
-                value: basePerAcre,
-                unit: "cents",
-                // A fixed $/acre is the operator's own number; an AVM-derived
-                // one is the platform's. Flattening the two would let a
-                // platform figure read later as what the customer believed.
-                origin: rules.basePriceSource === "fixed_per_acre" ? "user" : "derived",
-                basis: `basePriceSource=${rules.basePriceSource}`,
-              },
-              {
-                key: "engine_version",
-                value: LOT_PRICING_ENGINE_VERSION,
-                origin: "platform-default",
-                basis: "shared/subdivision/lotPricing.ts",
-              },
-              // The rule set VERBATIM. It lives in a mutable column, so a copy
-              // here is the only thing that survives the operator editing it.
-              ...(rules.rules ?? []).map((r, i) => ({
-                key: `rule_${i}`,
-                value: `${r.attribute} ${r.operator} ${String(r.threshold ?? "")} → ${r.premiumPct}`,
-                origin: "user" as const,
-                basis: r.label ?? "operator premium rule",
-              })),
-            ],
-            // An override IS the option not taken, and the rules-derived price
-            // is genuinely available — which makes these real alternatives
-            // rather than the empty list most decisions honestly carry.
-            alternatives: overridden.map((r) => {
-              const derived = computeLotPricingGrid(basePerAcre, facts, rules.rules ?? [])
-                .find((g) => g.childParcelId === r.childParcelId);
-              return {
-                choice:
-                  `Lot ${r.childParcelId} at the rules-derived ` +
-                  `${formatCents(derived?.askingPriceCents ?? r.basePriceCents)}`,
-                reason: `Operator priced it at ${formatCents(r.askingPriceCents)} instead`,
-              };
-            }),
-            // Deliberately null, and NOT an oversight. A review date is what
-            // later makes the loop ASK for an outcome, and the outcome
-            // vocabulary (acquired / sold / offer_accepted / offer_rejected /
-            // abandoned) is shaped for a single position resolving. A price set
-            // across N child lots resolves as "how many sold, at what", which
-            // none of those answers expresses. Asking a question whose answers
-            // do not fit is worse than not asking; see NEXT_UP.
-            reviewDueAt: null,
           });
+          scenarioId = scenario.id;
+          metrics = scenario.body.metrics;
+
+          const decision = await recordDecision(
+            orgId,
+            {
+              subjectType: "property",
+              subjectId: parentId,
+              // The closed DECISION_KINDS set already carries this: "price — set
+              // or change an asking/offer price". No new kind invented.
+              kind: "price",
+              choice:
+                `Lock asking prices on ${lockedGrid.length} lot(s) — ` +
+                `${formatCents(totalAskingCents)} total`,
+              rationale:
+                `Base ${formatCents(basePerAcre)}/acre from ${rules.basePriceSource}, ` +
+                `${(rules.rules ?? []).length} premium rule(s), ` +
+                `${overridden.length} operator override(s). ` +
+                `Each lot's listPrice was set from this grid.`,
+              actorType: "user",
+              actorRef: userId,
+              // The real authority: this route is reachable only behind
+              // isAuthenticated + getOrCreateOrg, and it prices the org's own
+              // parcels. Naming a generic "system" here would be false (BI72).
+              authority: "org_member:lot_pricing_lock",
+              // Lot pricing is the subdivider surface — that is the rule set
+              // that shaped this grid (BI91), and the pack its scenario was
+              // computed under.
+              strategyPackId: "subdivider",
+              strategyPackVersion: null,
+              assumptions: [
+                {
+                  key: "base_per_acre_cents",
+                  value: basePerAcre,
+                  unit: "cents",
+                  // A fixed $/acre is the operator's own number; an AVM-derived
+                  // one is the platform's. Flattening the two would let a
+                  // platform figure read later as what the customer believed.
+                  origin: rules.basePriceSource === "fixed_per_acre" ? "user" : "derived",
+                  basis: `basePriceSource=${rules.basePriceSource}`,
+                },
+                {
+                  key: "engine_version",
+                  value: LOT_PRICING_ENGINE_VERSION,
+                  origin: "platform-default",
+                  basis: "shared/subdivision/lotPricing.ts",
+                },
+                // The rule set VERBATIM. It lives in a mutable column, so a copy
+                // here is the only thing that survives the operator editing it.
+                ...(rules.rules ?? []).map((r, i) => ({
+                  key: `rule_${i}`,
+                  value: `${r.attribute} ${r.operator} ${String(r.threshold ?? "")} → ${r.premiumPct}`,
+                  origin: "user" as const,
+                  basis: r.label ?? "operator premium rule",
+                })),
+              ],
+              // An override IS the option not taken, and the rules-derived price
+              // is genuinely available — which makes these real alternatives
+              // rather than the empty list most decisions honestly carry.
+              alternatives: overridden.map((r) => {
+                const derived = computeLotPricingGrid(basePerAcre, facts, rules.rules ?? [])
+                  .find((g) => g.childParcelId === r.childParcelId);
+                return {
+                  choice:
+                    `Lot ${r.childParcelId} at the rules-derived ` +
+                    `${formatCents(derived?.askingPriceCents ?? r.basePriceCents)}`,
+                  reason: `Operator priced it at ${formatCents(r.askingPriceCents)} instead`,
+                };
+              }),
+              // The operator's answer to "when will you know how this went?".
+              // Null is the answer "no set date", never a default. When it
+              // arrives, Today asks; "sold" asks what the project actually
+              // made, which the scenario's `profit` predicted, and "still open"
+              // is the honest answer while lots remain unsold.
+              reviewDueAt: body.reviewDueAt ? new Date(body.reviewDueAt) : null,
+            },
+            new Date(),
+            [scenario.id],
+          );
           decisionSnapshotId = decision.id;
 
           await db
@@ -441,6 +607,8 @@ export function registerLotPricingRoutes(app: Express): void {
           lockedGrid,
           lockedAt: new Date().toISOString(),
           decisionSnapshotId,
+          scenarioId,
+          metrics,
         });
       } catch (err) {
         return Errors.internal(res, err);

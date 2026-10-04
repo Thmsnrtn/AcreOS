@@ -32,6 +32,13 @@ import { wholesaleAssignmentEngine } from "./wholesaleAssignment";
 import { multifamilyAcquisitionEngine } from "./multifamilyAcquisition";
 import { developmentProformaEngine } from "./developmentProforma";
 import { noteAcquisitionEngine } from "./noteAcquisition";
+import { strAcquisitionEngine } from "./strAcquisition";
+import { commercialAcquisitionEngine } from "./commercialAcquisition";
+import { parkAcquisitionEngine } from "./parkAcquisition";
+import { creativeWrapEngine } from "./creativeWrap";
+import { taxLienBidEngine } from "./taxLienBid";
+import { agentFlipEngine } from "./agentFlip";
+import { subdivisionLotSaleEngine } from "./subdivisionLotSale";
 
 export const ALL_ENGINES: readonly EngineSpec[] = [
   ...CORE_ENGINES,
@@ -45,4 +52,12 @@ export const ALL_ENGINES: readonly EngineSpec[] = [
   multifamilyAcquisitionEngine,
   developmentProformaEngine,
   noteAcquisitionEngine,
+  // Vertical program V2.
+  strAcquisitionEngine,
+  commercialAcquisitionEngine,
+  parkAcquisitionEngine,
+  creativeWrapEngine,
+  taxLienBidEngine,
+  agentFlipEngine,
+  subdivisionLotSaleEngine,
 ];

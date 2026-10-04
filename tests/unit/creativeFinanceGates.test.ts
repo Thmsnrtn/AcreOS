@@ -48,8 +48,15 @@ vi.mock("../../server/utils/logger", () => ({
 
 const CLIENT = path.resolve(__dirname, "../../client/src");
 
-/** The module's children — the single expectation the suite pins against. */
-const EXPECTED_CHILD_HREFS = ["/deals", "/finance", "/dodd-frank", "/regulatory-intel"];
+/** The four shipped seller-finance surfaces — the /today cluster links them. */
+const SURFACE_HREFS = ["/deals", "/finance", "/dodd-frank", "/regulatory-intel"];
+/**
+ * The module's children: the four surfaces plus the vertical's decision desk
+ * (V2, decision-memos/2026-10-04-vertical-program.md). The desk is a child of
+ * this module, not a /today cluster link — the cluster still names exactly the
+ * four surfaces.
+ */
+const EXPECTED_CHILD_HREFS = [...SURFACE_HREFS, "/creative-finance/underwrite"];
 
 function sidebarSource(): string {
   return fs.readFileSync(path.join(CLIENT, "components/layout-sidebar.tsx"), "utf-8");
@@ -100,7 +107,7 @@ describe("Creative finance nav module (layout-sidebar.tsx)", () => {
     expect([...gate![1].matchAll(/"([^"]+)"/g)]).toHaveLength(1);
   });
 
-  it("links exactly the four shipped seller-finance surfaces as children", () => {
+  it("links exactly the four shipped seller-finance surfaces, plus the decision desk, as children", () => {
     const children = block.match(/children:\s*\[([\s\S]*?)\],\s*\n\s*\}/);
     expect(children).toBeTruthy();
     const childHrefs = [...children![1].matchAll(/href:\s*"([^"]+)"/g)].map((m) => m[1]);
@@ -152,10 +159,10 @@ describe("/today creative-finance surfaces cluster", () => {
     expect(clusters.map((c) => c.id)).toContain("creative-finance");
   });
 
-  it("cluster links are the same four real routes as the nav module", () => {
+  it("cluster links are the same four real surfaces the nav module carries", () => {
     const clusters = resolveVerticalSurfaces({ businessType: "creative_finance", investorType: "land" });
     const cluster = clusters.find((c) => c.id === "creative-finance")!;
-    expect(cluster.links.map((l) => l.href)).toEqual(EXPECTED_CHILD_HREFS);
+    expect(cluster.links.map((l) => l.href)).toEqual(SURFACE_HREFS);
   });
 
   it("does not leak the cluster to other businessTypes", () => {

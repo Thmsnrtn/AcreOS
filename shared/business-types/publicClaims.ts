@@ -51,17 +51,13 @@ export interface PublicClaimDemotion {
   decidedOn: string;
 }
 
-const OD5 =
-  "OD-5 (2026-08-17): evidences `surfaced`, not `decided` — real spotlight " +
-  "modules and real workflow templates, but no production surface records a " +
-  "decision snapshot, so nothing here can be graded or calibrated. The " +
-  "registry keeps `core` because that describes the in-app experience; this " +
-  "is what a stranger is told before they can check. Remove this entry when " +
-  "the vertical closes the canonical loop — not when the copy feels stale.";
+// The OD-5 reason string (2026-08-17) that every entry below carried was
+// removed with the last entry in V2 (2026-10-04); git history holds it. A new
+// demotion writes its own dated reason.
 
 /**
  * The verticals whose public claim is lowered to `beta` (thirteen at OD-5,
- * six after the 2026-10-04 releases below).
+ * none after the 2026-10-04 releases below).
  *
  * `beta` is not a hedge chosen by feel: `MATURITY_REQUIRES` in `readiness.ts`
  * says `beta` demands evidenced `surfaced` and `core` demands `decided`. Every
@@ -85,16 +81,18 @@ const OD5 =
  * building), `developer` (development_proforma, Subdivision → Development
  * pro-forma), `note_investor` (note_acquisition, Mortgage Notes → Underwrite a
  * note), and `hybrid`, which is decided because both its parts are.
+ * Released, V2 (2026-10-04): `short_term_rental` (str_acquisition),
+ * `commercial` (commercial_acquisition), `mobile_home` (park_acquisition) —
+ * each a desk behind Rentals; `creative_finance` (creative_wrap, Creative
+ * finance → Underwrite a wrap); `tax_lien_deed` (tax_lien_bid, Tax-delinquent
+ * → Underwrite a lien); `agent_investor` (agent_flip, Deals → Underwrite for
+ * your own account). The map is now EMPTY: every vertical's public claim is
+ * evidenced. It stays, typed and validated, as the place a future demotion
+ * goes — down-only, dated, with its reason.
  */
 export const PUBLIC_CLAIM_DEMOTIONS: Partial<
   Record<BusinessTypeId, PublicClaimDemotion>
 > = {
-  short_term_rental: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  commercial: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  creative_finance: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  tax_lien_deed: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  mobile_home: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
-  agent_investor: { to: "beta", reason: OD5, decidedOn: "2026-08-17" },
 };
 
 const TIER_RANK: Record<VerticalMaturity, number> = {

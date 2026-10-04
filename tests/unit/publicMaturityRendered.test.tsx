@@ -26,7 +26,7 @@
  * been empty, so the tier gets exercised.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -137,12 +137,40 @@ describe("what a visitor is actually shown", () => {
     }
   });
 
-  it("every beta chip carries the visible qualifier, not a silent downgrade", () => {
+  it("every beta chip carries the visible qualifier, not a silent downgrade", async () => {
     // A demotion nobody can see is not a demotion. If the badge were dropped,
     // the tier split would still be "correct" and the page would still claim
     // more than it can show.
-    const { beta } = renderedTiers();
-    expect(beta.length).toBeGreaterThan(0);
+    //
+    // REWRITTEN 2026-10-04 (V2): the real demotion map is now EMPTY — every
+    // vertical evidences its claim — so the live page renders no beta chip and
+    // this check would read nothing. It now renders the real component against
+    // a map holding ONE demotion, so the qualifier is proven on a chip that
+    // exists, and the live page is separately asserted to show none.
+    expect(renderedTiers().beta).toEqual([]);
+    act(() => root?.unmount());
+    container?.remove();
+
+    vi.resetModules();
+    vi.doMock("../../shared/business-types/publicClaims", async (orig) => {
+      const real = await orig<typeof import("../../shared/business-types/publicClaims")>();
+      const demoted = { commercial: { to: "beta", reason: "test", decidedOn: "2026-10-04" } } as const;
+      return {
+        ...real,
+        PUBLIC_CLAIM_DEMOTIONS: demoted,
+        publicMaturityOf: (m: BusinessTypeMeta, d = demoted as never) => real.publicMaturityOf(m, d),
+      };
+    });
+    const { Positioning: Demoted } = await import("../../client/src/pages/landing/Positioning");
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => root!.render(<Demoted />));
+    const beta = Array.from(container.querySelectorAll('ul[aria-label="Investor types in beta"] li')).map((li) => li.textContent ?? "");
+    vi.doUnmock("../../shared/business-types/publicClaims");
+    vi.resetModules();
+    expect(beta).toHaveLength(1);
+    expect(beta[0]).toMatch(new RegExp(`^${BUSINESS_TYPES.commercial.label}`));
     for (const text of beta) {
       expect(text, `a beta chip rendered without its qualifier: "${text}"`).toMatch(/Beta$/);
     }

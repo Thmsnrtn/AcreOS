@@ -40,6 +40,12 @@ export interface EngineField {
   /** Inclusive bounds the form enforces before asking the server. */
   min?: number;
   max?: number;
+  /**
+   * A closed choice. The form renders these as labelled buttons — the operator
+   * picks a NAME, never types a code — and the wire carries the chosen value.
+   * Nothing is pre-selected: an unanswered choice is a missing input.
+   */
+  options?: readonly { value: number; label: string }[];
 }
 
 /** Convert one typed value to its wire form, or `undefined` when empty/invalid. */
@@ -48,6 +54,7 @@ function toWire(field: EngineField, typed: string): number | undefined {
   if (t === "") return undefined;
   const n = Number(t);
   if (!Number.isFinite(n)) return undefined;
+  if (field.options && !field.options.some((o) => o.value === n)) return undefined;
   if (field.min !== undefined && n < field.min) return undefined;
   if (field.max !== undefined && n > field.max) return undefined;
   if (field.unit === "cents") return Math.round(n * 100);

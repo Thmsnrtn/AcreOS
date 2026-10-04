@@ -27,13 +27,23 @@
  * is one sentence: **adopt where the reasoning would otherwise be LOST; never
  * where an equivalent versioned record already owns it.**
  *
- * NO SCENARIO IS RECORDED, AND THAT IS THE POINT OF THIS FILE AS MUCH AS THE
- * DECISION IS. A per-lot price grid is not expressed in the shared metric
- * vocabulary — it has no `total_cost`, no `profit`, no `cap_rate`. Adding a
- * sixth economics engine so this surface could produce a Scenario would be
- * optimising for the adoption count rather than for the customer, which is the
- * exact failure an up-only ratchet invites. The decision is recorded; the
- * scenario is honestly absent.
+ * WAVE V2 (2026-10-04) MADE THE LOCK GRADEABLE, and two invariants here were
+ * rewritten to the new truth rather than deleted. This file used to pin "no
+ * Scenario" and "reviewDueAt: null", for reasons that were right at the time:
+ * a bare price grid carries no `total_cost` or `profit`, and an outcome
+ * question whose answers do not fit is worse than none. What changed is that
+ * the lock now carries the operator's sell-out economics (selling cost, months
+ * to sell out, the parent's cost basis, subdivision costs, carry), and the
+ * subdivider's own engine — `subdivision_lot_sale`, declaring `subdivider` —
+ * turns the LOCKED prices into a predicted gross sell-out, total cost and
+ * profit. The outcome vocabulary's `sold` measures exactly that `profit`, and
+ * `still_open` is the honest answer while lots remain unsold. So the scenario
+ * is no longer invented to satisfy a count: it is the prediction the lock
+ * makes, and the operator's review date is the question it can now answer.
+ * The original invariants survive as: the scenario comes from the subdivider's
+ * OWN engine, predicts what an outcome measures, and the review date is the
+ * operator's answer, never hard-coded.
+ * (tests/unit/lotPricingLockRecordsScenario.test.ts proves the behaviour.)
  */
 
 import { describe, it, expect } from "vitest";
@@ -44,6 +54,7 @@ import {
   computeLotPricingGrid,
 } from "@shared/subdivision/lotPricing";
 import { DECISION_KINDS } from "@shared/decisions/snapshot";
+import { subdivisionLotSaleEngine } from "../../server/services/economics/engines/subdivisionLotSale";
 import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -129,28 +140,41 @@ describe("the lock records the reasoning it used to discard", () => {
   });
 });
 
-describe("what it deliberately does NOT do", () => {
-  it("records no Scenario", () => {
-    // A per-lot price grid carries none of the shared metrics. Adding a sixth
-    // engine so this surface could produce a Scenario would move the adoption
-    // ratchet without helping a customer, which is the failure the ratchet is
-    // supposed to detect rather than reward.
-    expect(
-      lockHandler.includes("recordScenario("),
-      "the lock now records a Scenario — a per-lot price grid has no total_cost, " +
-        "profit or cap_rate, so this can only mean an engine was invented to " +
-        "satisfy the adoption count",
-    ).toBe(false);
+describe("the lock is a gradeable prediction, not a bare price change", () => {
+  it("records a Scenario from the subdivider's OWN engine, and the decision cites it", () => {
+    // Formerly "records no Scenario": a bare grid had no total_cost or profit,
+    // and inventing an engine to move the adoption count would have rewarded
+    // the wrong thing. The invariant that survives is that the scenario is the
+    // subdivider's real prediction — from an engine that declares subdivider —
+    // and not some other vertical's arithmetic borrowed for the count.
+    expect(lockHandler).toMatch(/recordScenario\(orgId,\s*\{[\s\S]{0,400}engineId:\s*"subdivision_lot_sale"/);
+    expect(subdivisionLotSaleEngine.id).toBe("subdivision_lot_sale");
+    expect(subdivisionLotSaleEngine.verticals).toEqual(["subdivider"]);
+    expect(lockHandler).toMatch(/recordDecision\([\s\S]{0,4000}\[scenario\.id\]/);
+    const scen = lockHandler.indexOf("recordScenario(");
+    expect(scen, "the scenario must be written before the decision that cites it")
+      .toBeLessThan(lockHandler.indexOf("recordDecision("));
   });
 
-  it("sets no review date, and the reason still holds", () => {
-    // A review date is what later makes the loop ASK for an outcome. The
-    // outcome vocabulary is shaped for a single position resolving; a price set
-    // across N child lots resolves as "how many sold, at what", which none of
-    // those answers expresses. Asking a question whose answers do not fit is
-    // worse than not asking — so this stays null until the vocabulary can
-    // answer honestly, and this test fails if someone sets it without that.
-    expect(lockHandler).toMatch(/reviewDueAt:\s*null/);
+  it("the scenario predicts what the outcome prompt measures", () => {
+    // Formerly the reason for no review date: the outcome answers did not fit a
+    // price grid. They fit now because the prediction does — `sold` asks what
+    // the project actually made, which is `profit`, and the engine predicts it.
+    expect(subdivisionLotSaleEngine.produces).toEqual(expect.arrayContaining(["profit", "total_cost"]));
+    const prompt = fs.readFileSync(path.join(ROOT, "client/src/components/today/OutcomePrompt.tsx"), "utf8");
+    expect(prompt).toMatch(/kind:\s*"sold"[\s\S]{0,200}metricId:\s*"profit"/);
+  });
+
+  it("carries the operator's review date — never hard-coded to null", () => {
+    // Formerly "sets no review date". The rule that survives: the date is the
+    // operator's answer, refused when missing, never a constant.
+    expect(lockHandler).not.toMatch(/reviewDueAt:\s*null/);
+    expect(lockHandler).toMatch(/reviewDueAt:\s*body\.reviewDueAt \? new Date\(body\.reviewDueAt\) : null/);
+    // Required in the request schema: nullable ("no set date" is an answer)
+    // but never omittable.
+    const schema = route.slice(route.indexOf("const lockSchema"), route.indexOf("async function loadRecordedParentBasisCents"));
+    expect(schema).toMatch(/reviewDueAt:\s*z\s*\.string\(\)\s*\.datetime\(\)\s*\.nullable\(\)\s*\.refine\(/);
+    expect(schema).not.toMatch(/reviewDueAt:[^\n]*(optional|nullish|default)/);
   });
 });
 
@@ -163,9 +187,14 @@ describe("the record cannot outlive the act it describes", () => {
     // in the INSERT; here the link is a follow-up UPDATE, so it need not.
     const tx = lockHandler.indexOf("db.transaction(");
     const rec = lockHandler.indexOf("recordDecision(");
+    const scen = lockHandler.indexOf("recordScenario(");
     expect(tx, "the lock no longer runs in a transaction").toBeGreaterThan(-1);
     expect(rec, "recordDecision is gone").toBeGreaterThan(-1);
+    expect(scen, "recordScenario is gone").toBeGreaterThan(-1);
     expect(rec, "the decision is recorded BEFORE the lock commits").toBeGreaterThan(tx);
+    // The scenario is a record too: written before the lock commits, it would
+    // predict a sell-out at prices the market never saw.
+    expect(scen, "the scenario is recorded BEFORE the lock commits").toBeGreaterThan(tx);
   });
 
   it("failing to record does not fail the lock", () => {

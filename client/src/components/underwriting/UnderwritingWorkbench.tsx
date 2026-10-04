@@ -223,19 +223,64 @@ export function UnderwritingWorkbench({
               const invalid = (typed[f.key] ?? "").trim() !== "" && missing.includes(f.key);
               return (
                 <div key={f.key} className="space-y-1.5">
-                  <Label htmlFor={id}>
+                  <Label htmlFor={id} id={`${id}-label`}>
                     {f.label}
                     {f.optional ? <span className="text-muted-foreground font-normal"> (optional)</span> : null}
                   </Label>
-                  <Input
-                    id={id}
-                    inputMode="decimal"
-                    value={typed[f.key] ?? ""}
-                    onChange={(e) => setTyped((t) => ({ ...t, [f.key]: e.target.value }))}
-                    aria-invalid={invalid}
-                    aria-describedby={f.hint ? `${id}-hint` : undefined}
-                    data-testid={id}
-                  />
+                  {f.options ? (
+                    // The WAI-ARIA radio-group pattern: one Tab stop (the chosen
+                    // option, or the first while unanswered), arrow keys move and
+                    // choose. Nothing is pre-selected.
+                    <div
+                      id={id}
+                      role="radiogroup"
+                      aria-labelledby={`${id}-label`}
+                      aria-required={!f.optional}
+                      aria-describedby={f.hint ? `${id}-hint` : undefined}
+                      className="flex flex-wrap gap-2"
+                      data-testid={id}
+                    >
+                      {f.options.map((o, i, all) => {
+                        const on = typed[f.key] === String(o.value);
+                        const answered = all.some((x) => typed[f.key] === String(x.value));
+                        const choose = (v: number) => setTyped((t) => ({ ...t, [f.key]: String(v) }));
+                        return (
+                          <Button
+                            key={o.value}
+                            type="button"
+                            size="sm"
+                            role="radio"
+                            aria-checked={on}
+                            tabIndex={on || (!answered && i === 0) ? 0 : -1}
+                            variant={on ? "secondary" : "outline"}
+                            onClick={() => choose(o.value)}
+                            onKeyDown={(e) => {
+                              const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+                              if (step === 0) return;
+                              e.preventDefault();
+                              const next = all[(i + step + all.length) % all.length];
+                              choose(next.value);
+                              const group = e.currentTarget.parentElement;
+                              (group?.querySelector(`[data-testid="${id}-${next.value}"]`) as HTMLElement | null)?.focus();
+                            }}
+                            data-testid={`${id}-${o.value}`}
+                          >
+                            {o.label}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <Input
+                      id={id}
+                      inputMode="decimal"
+                      value={typed[f.key] ?? ""}
+                      onChange={(e) => setTyped((t) => ({ ...t, [f.key]: e.target.value }))}
+                      aria-invalid={invalid}
+                      aria-describedby={f.hint ? `${id}-hint` : undefined}
+                      data-testid={id}
+                    />
+                  )}
                   {f.hint ? (
                     <p id={`${id}-hint`} className="text-xs text-muted-foreground">
                       {f.hint}

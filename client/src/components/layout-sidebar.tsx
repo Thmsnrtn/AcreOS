@@ -480,6 +480,8 @@ const NAV_MODULES: NavModule[] = [
       // Leads folded in from the former top-level Leads door (2026-05-29):
       // leads feed the pipeline, so they live behind the Deals door.
       { label: "Leads", icon: ContactRound, href: "/leads", description: "Land seller leads CRM" },
+      // The agent-investor's own-account desk (decision-memos/2026-10-04-vertical-program.md).
+      { label: "Underwrite for your own account", icon: Calculator, href: "/deals/underwrite-own", description: "Run your own-account deal and record your call", businessTypeOnly: ["agent_investor"] },
     ],
     overflow: [
       // Marketplace entry removed 2026-07-07 (deletion ledger): the feature
@@ -539,6 +541,8 @@ const NAV_MODULES: NavModule[] = [
       { label: "Auction worksheet", icon: Gavel, href: "/auction-worksheet", description: "Pre-auction max-bid + day-of bid log" },
       { label: "State rules", icon: BookOpen, href: "/state-rules", description: "Per-state redemption math, statutes, notice procedures" },
       { label: "Quiet title", icon: Scale, href: "/quiet-title", description: "10-step post-deed legal workflow with deadline math" },
+      // The vertical's decision desk (decision-memos/2026-10-04-vertical-program.md).
+      { label: "Underwrite a lien", icon: Calculator, href: "/tax-liens/underwrite", description: "Price a certificate bid and record your call", businessTypeOnly: ["tax_lien_deed"] },
     ],
   },
 
@@ -604,6 +608,9 @@ const NAV_MODULES: NavModule[] = [
       // A child behind the existing Rentals module, gated to its vertical — not a door.
       { label: "Underwrite a rental", icon: Calculator, href: "/rentals/underwrite", description: "Run the numbers and record your call", businessTypeOnly: ["buy_and_hold"] },
       { label: "Underwrite a building", icon: Calculator, href: "/rentals/underwrite-multifamily", description: "Run the numbers and record your call", businessTypeOnly: ["multifamily"] },
+      { label: "Underwrite a short-term rental", icon: Calculator, href: "/rentals/underwrite-str", description: "Run the numbers and record your call", businessTypeOnly: ["short_term_rental"] },
+      { label: "Underwrite a commercial building", icon: Calculator, href: "/rentals/underwrite-commercial", description: "Run the numbers and record your call", businessTypeOnly: ["commercial"] },
+      { label: "Underwrite a park", icon: Calculator, href: "/rentals/underwrite-park", description: "Run the numbers and record your call", businessTypeOnly: ["mobile_home"] },
     ],
   },
 
@@ -677,6 +684,8 @@ const NAV_MODULES: NavModule[] = [
       { label: "Carried notes", icon: Banknote, href: "/finance", description: "Originated paper — book, ATR/Reg-Z gate, amortization schedules" },
       { label: "Dodd-Frank checker", icon: Scale, href: "/dodd-frank", description: "Reg-Z seller-financing exemption screen (informational, not legal advice)" },
       { label: "State rules", icon: BookOpen, href: "/regulatory-intel", description: "Per-state seller-financing risk, usury ceilings, contract-for-deed rules" },
+      // The vertical's decision desk (decision-memos/2026-10-04-vertical-program.md).
+      { label: "Underwrite a wrap", icon: Calculator, href: "/creative-finance/underwrite", description: "Run the numbers and record your call", businessTypeOnly: ["creative_finance"] },
     ],
   },
 

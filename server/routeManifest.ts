@@ -277,6 +277,12 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-multifamily-underwriting.ts", mountPath: "/api/multifamily", kind: "router", export: "default" },
   { file: "routes-developer-underwriting.ts", mountPath: "/api/development", kind: "router", export: "default" },
   { file: "routes-note-underwriting.ts", mountPath: "/api/note-underwriting", kind: "router", export: "default" },
+  { file: "routes-str-underwriting.ts", mountPath: "/api/str", kind: "router", export: "default" },
+  { file: "routes-commercial-underwriting.ts", mountPath: "/api/commercial-underwriting", kind: "router", export: "default" },
+  { file: "routes-park-underwriting.ts", mountPath: "/api/park-underwriting", kind: "router", export: "default" },
+  { file: "routes-creative-finance-underwriting.ts", mountPath: "/api/creative-finance", kind: "router", export: "default" },
+  { file: "routes-tax-lien-underwriting.ts", mountPath: "/api/tax-lien-underwriting", kind: "router", export: "default" },
+  { file: "routes-agent-investor-underwriting.ts", mountPath: "/api/agent-investor", kind: "router", export: "default" },
   { file: "routes-scp-v2.ts", mountPath: null, kind: "register", export: "registerSCPv2Routes" },
   { file: "routes-seller-intent.ts", mountPath: "/api/seller-intent", kind: "router", export: "default" },
   // Free-distribution: per-route server-rendered <head> for public pages.

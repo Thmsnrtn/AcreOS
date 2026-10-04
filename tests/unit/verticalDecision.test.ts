@@ -174,4 +174,13 @@ describe("engine field wiring", () => {
   it("an invalid or out-of-range value is reported, not coerced", () => {
     expect(wireInputs(fields, { priceCents: "abc", rate: "150" }).missing).toEqual(["priceCents", "rate"]);
   });
+
+  it("a choice field carries only one of its options, and an unanswered choice is missing", () => {
+    const choice: EngineField[] = [
+      { key: "rule", label: "Rule", unit: "count", options: [{ value: 1, label: "A" }, { value: 3, label: "C" }] },
+    ];
+    expect(wireInputs(choice, { rule: "3" })).toEqual({ inputs: { rule: 3 }, missing: [] });
+    expect(wireInputs(choice, { rule: "2" }).missing).toEqual(["rule"]);
+    expect(wireInputs(choice, {}).missing).toEqual(["rule"]);
+  });
 });

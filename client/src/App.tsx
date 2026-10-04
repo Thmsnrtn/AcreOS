@@ -469,6 +469,12 @@ const UnderwriteMultifamilyPage = React.lazy(() => import("@/pages/rentals/under
 const UnderwriteWholesaleDealPage = React.lazy(() => import("@/pages/wholesale/underwrite-deal"));
 const DevelopmentProformaPage = React.lazy(() => import("@/pages/development/proforma"));
 const UnderwriteNotePage = React.lazy(() => import("@/pages/notes/underwrite-note"));
+const UnderwriteStrPage = React.lazy(() => import("@/pages/rentals/underwrite-str"));
+const UnderwriteCommercialPage = React.lazy(() => import("@/pages/rentals/underwrite-commercial"));
+const UnderwriteParkPage = React.lazy(() => import("@/pages/rentals/underwrite-park"));
+const UnderwriteWrapPage = React.lazy(() => import("@/pages/creative-finance/underwrite-wrap"));
+const UnderwriteLienPage = React.lazy(() => import("@/pages/tax-liens/underwrite-lien"));
+const UnderwriteOwnDealPage = React.lazy(() => import("@/pages/deals/underwrite-own-deal"));
 const MaintenancePage = React.lazy(() => import("@/pages/maintenance"));
 // InvestorAnalyticsPage archived 2026-06-01 — no direct callers.
 const InspectionDetailPage = React.lazy(() => import("@/pages/inspection-detail"));
@@ -909,6 +915,21 @@ function Router() {
       <Route path="/rentals/underwrite-multifamily">
         {() => <ProtectedRoute component={UnderwriteMultifamilyPage} />}
       </Route>
+      <Route path="/rentals/underwrite-str">
+        {() => <ProtectedRoute component={UnderwriteStrPage} />}
+      </Route>
+      <Route path="/rentals/underwrite-commercial">
+        {() => <ProtectedRoute component={UnderwriteCommercialPage} />}
+      </Route>
+      <Route path="/rentals/underwrite-park">
+        {() => <ProtectedRoute component={UnderwriteParkPage} />}
+      </Route>
+      <Route path="/creative-finance/underwrite">
+        {() => <ProtectedRoute component={UnderwriteWrapPage} />}
+      </Route>
+      <Route path="/tax-liens/underwrite">
+        {() => <ProtectedRoute component={UnderwriteLienPage} />}
+      </Route>
       <Route path="/wholesale/underwrite">
         {() => <ProtectedRoute component={UnderwriteWholesaleDealPage} />}
       </Route>
@@ -948,6 +969,10 @@ function Router() {
           real discovery surface ships behind the Deals door. */}
       <Route path="/deals/discover">
         {() => <Redirect to="/deals" />}
+      </Route>
+      {/* Before /deals/:id — the first match wins, and "underwrite-own" is not a deal id. */}
+      <Route path="/deals/underwrite-own">
+        {() => <ProtectedRoute component={UnderwriteOwnDealPage} />}
       </Route>
       {/* P1-28 — shareable URLs for deal detail. */}
       <Route path="/deals/:id">

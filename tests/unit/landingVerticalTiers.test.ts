@@ -120,9 +120,11 @@ describe("DEMOTE_ON_LANDING — the only sanctioned public conservatism", () => 
     // The count shrinks as verticals close the loop (vertical program,
     // decision-memos/2026-10-04-vertical-program.md): 13 at OD-5; land and
     // buy-and-hold released 2026-10-04 (V0); wholesaler, multifamily,
-    // developer, note investor and hybrid the same day (V1).
+    // developer, note investor and hybrid the same day (V1); the last six
+    // (V2) leave it empty. The dated-reason check below then runs over nothing,
+    // which is correct: it guards the NEXT entry, not a current one.
     const entries = Object.entries(DEMOTE_ON_LANDING);
-    expect(entries).toHaveLength(6);
+    expect(entries).toHaveLength(0);
     for (const [id, d] of entries) {
       expect(d!.reason.trim().length, `${id} has an empty reason`).toBeGreaterThan(0);
       expect(d!.decidedOn, `${id} is undated`).toMatch(/^\d{4}-\d{2}-\d{2}$/);

@@ -711,6 +711,13 @@ In order:
   ROW the lock updates, so editing them afterwards leaves the grid and destroys
   its explanation. The exact mirror of the note-payoff path in `MUST_NOT_ADOPT`.
 
+  > **SUPERSEDED 2026-10-04 (vertical program V2).** The lock now records a
+  > `subdivision_lot_sale` scenario from the locked grid (gross sell-out, the
+  > parent's cost basis, selling and subdivision costs, carry → total cost and
+  > profit), cites it, carries the operator's review date, and refuses to lock
+  > without a cost basis. The paragraphs below are the history of why it did
+  > not, kept as the record.
+
   It records **no Scenario**, deliberately: a per-lot price grid carries no
   `total_cost`, `profit` or `cap_rate`, and adding a sixth engine so it could
   would be the ratchet-gaming move. A test asserts the absence.
