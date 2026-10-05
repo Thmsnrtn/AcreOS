@@ -1,5 +1,6 @@
 import { PageShell } from "@/components/page-shell";
 import { useNotes, useCreateNote, useDeleteNote } from "@/hooks/use-notes";
+import { useNoteBookFigures, type NoteBookFigures } from "@/hooks/use-note-book-figures";
 import { usePayments, useRecordPayment } from "@/hooks/use-payments";
 import { useLeads } from "@/hooks/use-leads";
 import { useUserPermissions } from "@/hooks/use-organization";
@@ -250,10 +251,11 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
     property: note.propertyId != null ? propertiesById?.get(note.propertyId) : undefined,
   }));
 
-  const activeNotes = enrichedNotes.filter(n => n.status === 'active');
-  const totalPortfolio = activeNotes.reduce((sum, n) => sum + Number(n.currentBalance || 0), 0);
-  const monthlyIncome = activeNotes.reduce((sum, n) => sum + Number(n.monthlyPayment || 0), 0);
-  const totalPrincipal = activeNotes.reduce((sum, n) => sum + Number(n.originalPrincipal || 0), 0);
+  // The headline figures are the whole book, counted in SQL — not sums over
+  // `notes`, which is the newest-5,000 table payload (W10.2b audit).
+  const { data: bookFigures, isError: bookFiguresError, error: bookFiguresErr, refetch: refetchBookFigures } = useNoteBookFigures();
+  const bookFigure = (pick: (f: NoteBookFigures) => string | number) =>
+    bookFigures ? pick(bookFigures) : bookFiguresError ? "—" : <Skeleton className="h-8 w-24" />;
 
   // Status / loan-health → semantic --acr-* tone (Tier 1 pattern).
   const getStatusColor = (status: string) => {
@@ -302,7 +304,7 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
               the entry point. For note_investor / wholesaler / flipper
               the hero is the entry point and the area chart is
               suppressed in favor of the persona-shaped representation. */}
-          <PersonaFinanceHero notes={enrichedNotes} />
+          <PersonaFinanceHero />
 
           {/* Portfolio Cash Flow Chart — kept for the default
               land_investor persona only. Note-investor sees the
@@ -442,7 +444,7 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Active Notes</p>
-                    <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-active-notes">{activeNotes.length}</p>
+                    <div className="text-2xl font-bold font-mono tabular-nums" data-testid="text-active-notes">{bookFigure((f) => f.activeCount)}</div>
                   </div>
                 </div>
               </CardContent>
@@ -456,9 +458,9 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Portfolio value</p>
-                    <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-portfolio-value">
-                      {usd(totalPortfolio)}
-                    </p>
+                    <div className="text-2xl font-bold font-mono tabular-nums" data-testid="text-portfolio-value">
+                      {bookFigure((f) => usd(f.totalOutstanding))}
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -472,9 +474,9 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Monthly income</p>
-                    <p className="text-2xl font-bold font-mono tabular-nums text-acr-pos" data-testid="text-monthly-income">
-                      {usd(monthlyIncome)}
-                    </p>
+                    <div className="text-2xl font-bold font-mono tabular-nums text-acr-pos" data-testid="text-monthly-income">
+                      {bookFigure((f) => usd(f.totalMonthly))}
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -488,9 +490,9 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Total originated</p>
-                    <p className="text-2xl font-bold font-mono tabular-nums" data-testid="text-total-principal">
-                      {usd(totalPrincipal)}
-                    </p>
+                    <div className="text-2xl font-bold font-mono tabular-nums" data-testid="text-total-principal">
+                      {bookFigure((f) => usd(f.totalFinanced))}
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -503,6 +505,18 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
               onRetry={() => refetchNotes()}
               title="Failed to load notes"
               compact
+            />
+          )}
+
+          {/* The cards above show "—" rather than a zero when the book's
+              figures could not be read; this says why and offers a retry. */}
+          {bookFiguresError && (
+            <QueryErrorState
+              error={bookFiguresErr instanceof Error ? bookFiguresErr : new Error(String(bookFiguresErr))}
+              onRetry={() => void refetchBookFigures()}
+              title="Couldn't load your note book's totals"
+              compact
+              testId="finance-book-figures-error"
             />
           )}
 

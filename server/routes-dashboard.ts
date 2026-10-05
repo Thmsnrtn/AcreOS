@@ -5,6 +5,14 @@ import { and, desc, eq, notInArray, sql } from "drizzle-orm";
 import { leads, deals, properties, payments, notes, activityLog, goals, insertGoalSchema } from "@shared/schema";
 import { gte, lte, count as sqlCount } from "drizzle-orm";
 import { liveLead } from "./storage/liveLeads";
+import {
+  closedDealsClosingSince,
+  dealPresence,
+  leadWeekOverWeek,
+  newestPendingOfferDeals,
+  oldestListedProperties,
+  staleFollowUpLeads,
+} from "./storage/wholeOrgReadsF";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { cacheResponse } from "./middleware/responseCache";
@@ -125,17 +133,31 @@ export function registerDashboardRoutes(app: Express): void {
     try {
       const org = req.organization;
       const now = new Date();
-      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
       const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       const twoMonthsAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
 
-      // Fetch data for analysis — run in parallel so we're not waiting
-      // on sequential round-trips to Postgres.
-      const [allLeads, allDeals, allProperties] = await Promise.all([
-        storage.getLeads(org.id),
-        storage.getDeals(org.id),
-        storage.getProperties(org.id),
+      // Every figure below is computed over the WHOLE book (DEFECT-0171):
+      // this read the newest 5,000 leads, deals and properties, so past that
+      // its counts, projections and "oldest listing" left out the oldest rows.
+      // Counts are SQL aggregates; the closed-deal windows read only closed
+      // deals closing inside the earliest window used; the action lists are
+      // ORDER BY + LIMIT in SQL. Run in parallel.
+      const quarterStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const closedWindowStart = new Date(Math.min(
+        twoMonthsAgo.getTime(),
+        quarterStart.getTime(),
+        monthStart.getTime(),
+        now.getTime() - 6 * 7 * 24 * 60 * 60 * 1000, // the 7-week trend's first bucket
+        now.getTime() - 6 * 24 * 60 * 60 * 1000, // the 7-day revenue trend's first day
+      ));
+      const [leadWeeks, closedDeals, presence, staleFollowUps, pendingOfferDeals, longestListed] = await Promise.all([
+        leadWeekOverWeek(org.id, now),
+        closedDealsClosingSince(org.id, closedWindowStart),
+        dealPresence(org.id),
+        staleFollowUpLeads(org.id, now, 3),
+        newestPendingOfferDeals(org.id, 2),
+        oldestListedProperties(org.id, 2),
       ]);
 
       // Calculate week-over-week anomalies
@@ -150,14 +172,8 @@ export function registerDashboardRoutes(app: Express): void {
       }> = [];
 
       // Leads that went cold this week vs last week
-      const coldLeadsThisWeek = allLeads.filter(l => 
-        l.nurturingStage === "cold" && 
-        l.updatedAt && new Date(l.updatedAt) >= oneWeekAgo
-      ).length;
-      const coldLeadsLastWeek = allLeads.filter(l => 
-        l.nurturingStage === "cold" && 
-        l.updatedAt && new Date(l.updatedAt) >= twoWeeksAgo && new Date(l.updatedAt) < oneWeekAgo
-      ).length;
+      const coldLeadsThisWeek = leadWeeks.coldThisWeek;
+      const coldLeadsLastWeek = leadWeeks.coldLastWeek;
       
       if (coldLeadsThisWeek !== coldLeadsLastWeek) {
         const percentChange = coldLeadsLastWeek === 0 
@@ -175,12 +191,8 @@ export function registerDashboardRoutes(app: Express): void {
       }
 
       // New leads this week vs last week
-      const newLeadsThisWeek = allLeads.filter(l => 
-        l.createdAt && new Date(l.createdAt) >= oneWeekAgo
-      ).length;
-      const newLeadsLastWeek = allLeads.filter(l => 
-        l.createdAt && new Date(l.createdAt) >= twoWeeksAgo && new Date(l.createdAt) < oneWeekAgo
-      ).length;
+      const newLeadsThisWeek = leadWeeks.newThisWeek;
+      const newLeadsLastWeek = leadWeeks.newLastWeek;
       
       if (newLeadsThisWeek !== newLeadsLastWeek && (newLeadsThisWeek > 0 || newLeadsLastWeek > 0)) {
         const percentChange = newLeadsLastWeek === 0 
@@ -198,10 +210,10 @@ export function registerDashboardRoutes(app: Express): void {
       }
 
       // Deal velocity (deals closed this month vs last month)
-      const dealsClosedThisMonth = allDeals.filter(d => 
+      const dealsClosedThisMonth = closedDeals.filter(d => 
         d.status === "closed" && d.closingDate && new Date(d.closingDate) >= oneMonthAgo
       ).length;
-      const dealsClosedLastMonth = allDeals.filter(d => 
+      const dealsClosedLastMonth = closedDeals.filter(d => 
         d.status === "closed" && d.closingDate && 
         new Date(d.closingDate) >= twoMonthsAgo && new Date(d.closingDate) < oneMonthAgo
       ).length;
@@ -234,20 +246,19 @@ export function registerDashboardRoutes(app: Express): void {
       }> = [];
 
       // Project deals for the quarter
-      const quarterStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
       const daysIntoQuarter = Math.max(1, Math.floor((now.getTime() - quarterStart.getTime()) / (24 * 60 * 60 * 1000)));
-      const dealsThisQuarter = allDeals.filter(d => 
+      const dealsThisQuarter = closedDeals.filter(d => 
         d.status === "closed" && d.closingDate && new Date(d.closingDate) >= quarterStart
       ).length;
       const daysInQuarter = 90;
       const projectedDeals = Math.round((dealsThisQuarter / daysIntoQuarter) * daysInQuarter);
       
-      if (dealsThisQuarter > 0 || allDeals.length > 0) {
+      if (dealsThisQuarter > 0 || presence.dealCount > 0) {
         const trendData = [];
         for (let i = 6; i >= 0; i--) {
           const weekStart = new Date(now.getTime() - i * 7 * 24 * 60 * 60 * 1000);
           const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
-          const dealsInWeek = allDeals.filter(d => 
+          const dealsInWeek = closedDeals.filter(d => 
             d.status === "closed" && d.closingDate && 
             new Date(d.closingDate) >= weekStart && new Date(d.closingDate) < weekEnd
           ).length;
@@ -267,20 +278,19 @@ export function registerDashboardRoutes(app: Express): void {
       }
 
       // Revenue projection for the month
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
       const daysIntoMonth = Math.max(1, now.getDate());
-      const revenueThisMonth = allDeals
+      const revenueThisMonth = closedDeals
         .filter(d => d.status === "closed" && d.closingDate && new Date(d.closingDate) >= monthStart)
         .reduce((sum, d) => sum + Number(d.acceptedAmount || d.offerAmount || 0), 0);
       const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
       const projectedRevenue = Math.round((revenueThisMonth / daysIntoMonth) * daysInMonth);
       
-      if (revenueThisMonth > 0 || allDeals.some(d => d.acceptedAmount || d.offerAmount)) {
+      if (revenueThisMonth > 0 || presence.anyWithAmount) {
         const trendData = [];
         for (let i = 6; i >= 0; i--) {
           const dayStart = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
           const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
-          const revenueOnDay = allDeals
+          const revenueOnDay = closedDeals
             .filter(d => d.status === "closed" && d.closingDate && 
               new Date(d.closingDate) >= dayStart && new Date(d.closingDate) < dayEnd)
             .reduce((sum, d) => sum + Number(d.acceptedAmount || d.offerAmount || 0), 0);
@@ -313,20 +323,9 @@ export function registerDashboardRoutes(app: Express): void {
         actionUrl: string;
       }> = [];
 
-      // Find leads that need follow-up (not contacted in 7+ days)
-      const staleLeads = allLeads
-        .filter(l => {
-          if (l.status === "closed" || l.status === "dead" || l.doNotContact) return false;
-          if (!l.lastContactedAt) return true;
-          const daysSinceContact = Math.floor((now.getTime() - new Date(l.lastContactedAt).getTime()) / (24 * 60 * 60 * 1000));
-          return daysSinceContact >= 7;
-        })
-        .sort((a, b) => {
-          const daysA = a.lastContactedAt ? Math.floor((now.getTime() - new Date(a.lastContactedAt).getTime()) / (24 * 60 * 60 * 1000)) : 999;
-          const daysB = b.lastContactedAt ? Math.floor((now.getTime() - new Date(b.lastContactedAt).getTime()) / (24 * 60 * 60 * 1000)) : 999;
-          return daysB - daysA;
-        })
-        .slice(0, 3);
+      // Find leads that need follow-up (not contacted in 7+ days): never
+      // contacted first, then the longest since contact — top 3 in SQL.
+      const staleLeads = staleFollowUps;
 
       for (const lead of staleLeads) {
         const daysSinceContact = lead.lastContactedAt 
@@ -348,12 +347,13 @@ export function registerDashboardRoutes(app: Express): void {
       }
 
       // Find deals that need attention (offer sent, waiting for response)
-      const pendingDeals = allDeals
-        .filter(d => d.status === "offer_sent" || d.status === "negotiating")
-        .slice(0, 2);
+      const pendingDeals = pendingOfferDeals;
 
       for (const deal of pendingDeals) {
-        const property = allProperties.find(p => p.id === deal.propertyId);
+        // By id, not found in the newest 5,000 properties (DEFECT-0171). A
+        // deleted property is not named, as before.
+        const found = deal.propertyId ? await storage.getProperty(org.id, deal.propertyId) : undefined;
+        const property = found && found.status !== "deleted" ? found : undefined;
         const propertyName = property?.address || `Property #${deal.propertyId}`;
         const daysSinceOffer = deal.offerDate 
           ? Math.floor((now.getTime() - new Date(deal.offerDate).getTime()) / (24 * 60 * 60 * 1000))
@@ -377,10 +377,7 @@ export function registerDashboardRoutes(app: Express): void {
       // TODO(tsc): properties has no dedicated `listDate` column; using
       // `updatedAt` (set when status flips to "listed") as the proxy for how
       // long a listing has been live.
-      const pendingProperties = allProperties
-        .filter(p => p.status === "listed" && p.updatedAt)
-        .sort((a, b) => new Date(a.updatedAt!).getTime() - new Date(b.updatedAt!).getTime())
-        .slice(0, 2);
+      const pendingProperties = longestListed;
 
       for (const property of pendingProperties) {
         const daysListed = property.updatedAt

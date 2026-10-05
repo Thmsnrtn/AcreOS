@@ -1,11 +1,17 @@
 import { db } from '../db';
-import { systemAlerts, organizations, leads, type Lead, type IrSeverity, coerceIrSeverity } from '@shared/schema';
-import { eq, and, gte, sql, ne, isNotNull } from 'drizzle-orm';
-import { storage } from '../storage';
+import { systemAlerts, organizations, type IrSeverity, coerceIrSeverity } from '@shared/schema';
+import { eq, and, gte, sql, ne, isNotNull, like } from 'drizzle-orm';
 import { logger } from "../utils/logger";
 import { getPaxControls } from "./paxControls";
+import {
+  agingLeadCount,
+  leadStageFigures,
+  mostUrgentAgingLeads,
+  newlyDelinquentNoteIds,
+  noteRiskTotals,
+  recentlyInactiveNoteTotals,
+} from "../storage/wholeOrgReadsG";
 
-import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 export interface AgingLead {
   id: number;
   firstName: string;
@@ -40,23 +46,18 @@ const alertRules: AlertRule[] = [
     description: 'Detects notes becoming inactive or defaulting that reduce MRR',
     severity: 'warning',
     check: async (orgId: number): Promise<AlertResult | null> => {
-      const notes = await storage.getNotes(orgId);
       const oneWeekAgo = new Date();
       oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-      
-      const recentlyInactiveNotes = notes.filter(n => {
-        if (n.status !== 'paid_off' && n.status !== 'defaulted') return false;
-        const updated = n.updatedAt ? new Date(n.updatedAt) : new Date();
-        return updated >= oneWeekAgo;
-      });
-      
-      if (recentlyInactiveNotes.length >= 2) {
-        const lostRevenue = recentlyInactiveNotes.reduce((sum, n) => sum + Number(n.monthlyPayment || 0), 0);
+      // Whole book in SQL (DEFECT-0171): the capped newest-5,000 list
+      // undercounted the notes that went inactive this week.
+      const { count: lostNotes, monthlyLost: lostRevenue } = await recentlyInactiveNoteTotals(orgId, oneWeekAgo);
+
+      if (lostNotes >= 2) {
         return {
           alertType: 'revenue_drop',
           title: 'Revenue Decline Detected',
-          message: `${recentlyInactiveNotes.length} notes became inactive this week, reducing monthly revenue by $${lostRevenue.toFixed(2)}.`,
-          metadata: { lostNotes: recentlyInactiveNotes.length, lostRevenue },
+          message: `${lostNotes} notes became inactive this week, reducing monthly revenue by $${lostRevenue.toFixed(2)}.`,
+          metadata: { lostNotes, lostRevenue },
         };
       }
       return null;
@@ -68,18 +69,14 @@ const alertRules: AlertRule[] = [
     description: 'More than 5 notes become delinquent in a day',
     severity: 'critical',
     check: async (orgId: number): Promise<AlertResult | null> => {
-      const notes = await storage.getNotes(orgId);
-      const recentDelinquent = notes.filter(n => {
-        if (!n.daysDelinquent || n.daysDelinquent === 0) return false;
-        return n.daysDelinquent <= 1;
-      });
-      
-      if (recentDelinquent.length >= 5) {
+      const noteIds = await newlyDelinquentNoteIds(orgId);
+
+      if (noteIds.length >= 5) {
         return {
           alertType: 'mass_delinquency',
           title: 'Multiple Notes Became Delinquent',
-          message: `${recentDelinquent.length} notes became delinquent today. Review and take action.`,
-          metadata: { noteIds: recentDelinquent.map(n => n.id), count: recentDelinquent.length },
+          message: `${noteIds.length} notes became delinquent today. Review and take action.`,
+          metadata: { noteIds, count: noteIds.length },
         };
       }
       return null;
@@ -112,21 +109,19 @@ const alertRules: AlertRule[] = [
     description: 'High volume of cold or dead leads indicating poor lead quality',
     severity: 'warning',
     check: async (orgId: number): Promise<AlertResult | null> => {
-      const leads = await storage.getLeads(orgId);
-      
-      if (leads.length < 10) return null;
-      
-      const coldOrDead = leads.filter(l => 
-        l.nurturingStage === 'cold' || l.nurturingStage === 'dead'
-      );
-      const coldDeadRate = (coldOrDead.length / leads.length) * 100;
-      
+      const { total: totalLeads, byStage } = await leadStageFigures(orgId);
+
+      if (totalLeads < 10) return null;
+
+      const coldOrDead = (byStage['cold'] ?? 0) + (byStage['dead'] ?? 0);
+      const coldDeadRate = (coldOrDead / totalLeads) * 100;
+
       if (coldDeadRate > 50) {
         return {
           alertType: 'conversion_drop',
           title: 'Lead Quality Issue',
-          message: `${coldDeadRate.toFixed(0)}% of leads (${coldOrDead.length}) are cold or dead. Consider improving lead sources or follow-up timing.`,
-          metadata: { totalLeads: leads.length, coldOrDead: coldOrDead.length, coldDeadRate },
+          message: `${coldDeadRate.toFixed(0)}% of leads (${coldOrDead}) are cold or dead. Consider improving lead sources or follow-up timing.`,
+          metadata: { totalLeads, coldOrDead, coldDeadRate },
         };
       }
       return null;
@@ -138,21 +133,16 @@ const alertRules: AlertRule[] = [
     description: 'Multiple notes at risk of default',
     severity: 'warning',
     check: async (orgId: number): Promise<AlertResult | null> => {
-      const notes = await storage.getNotes(orgId);
-      const activeNotes = notes.filter(n => n.status === 'active');
-      const seriouslyDelinquent = notes.filter(n => 
-        n.delinquencyStatus === 'seriously_delinquent' || n.delinquencyStatus === 'default_candidate'
-      );
-      
-      if (activeNotes.length > 0) {
-        const riskPercentage = (seriouslyDelinquent.length / activeNotes.length) * 100;
+      const { activeCount, atRiskCount, atRiskBalance: atRiskAmount } = await noteRiskTotals(orgId);
+
+      if (activeCount > 0) {
+        const riskPercentage = (atRiskCount / activeCount) * 100;
         if (riskPercentage > 10) {
-          const atRiskAmount = seriouslyDelinquent.reduce((sum, n) => sum + Number(n.currentBalance || 0), 0);
           return {
             alertType: 'high_churn_risk',
             title: 'High Portfolio Risk',
-            message: `${riskPercentage.toFixed(1)}% of notes (${seriouslyDelinquent.length}) are at serious risk. $${atRiskAmount.toFixed(2)} at risk.`,
-            metadata: { atRiskCount: seriouslyDelinquent.length, atRiskAmount, riskPercentage },
+            message: `${riskPercentage.toFixed(1)}% of notes (${atRiskCount}) are at serious risk. $${atRiskAmount.toFixed(2)} at risk.`,
+            metadata: { atRiskCount, atRiskAmount, riskPercentage },
           };
         }
       }
@@ -179,7 +169,7 @@ export class AlertingService {
     organizationId: number | null,
     severity: IrSeverity,
     alert: AlertResult
-  ): Promise<void> {
+  ): Promise<boolean> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
@@ -196,7 +186,7 @@ export class AlertingService {
       );
 
     if (existing.length > 0) {
-      return;
+      return false;
     }
 
     const [created] = await db.insert(systemAlerts).values({
@@ -236,6 +226,7 @@ export class AlertingService {
         });
       } catch {}
     }
+    return true;
   }
 
   async getAlerts(filters?: {
@@ -328,153 +319,152 @@ export class AlertingService {
     return { checked, alertsCreated };
   }
 
-  async checkLeadAging(organizationId: number): Promise<{ agingLeads: AgingLead[]; alertsCreated: number }> {
-    const allLeads = await storage.getLeads(organizationId);
-    const agingLeads: AgingLead[] = [];
+  /**
+   * Raise lead-aging alerts for at most AGING_ALERTS_PER_DAY leads a day — the
+   * most urgent, stalest first — and, when more qualify, ONE summary alert
+   * with the true count. The cap is per DAY, not per run: the nurturing job
+   * runs every 15 minutes, so a per-run cap of 50 was up to 4,800 a day
+   * (W10.2b re-audit). It used to raise one alert per aging lead (two queries
+   * each); over the whole book (DEFECT-0171) that is tens of thousands of
+   * alerts per org per night, which no one reads.
+   *
+   * `agingLeads` is the alerted top of the list, not the whole set;
+   * `agingTotal` is the whole-book count of aging leads.
+   */
+  async checkLeadAging(organizationId: number): Promise<{
+    agingLeads: AgingLead[];
+    agingTotal: number;
+    alertsCreated: number;
+  }> {
+    const now = new Date();
+    // Leads already alerted today are skipped in SQL, and whatever today's
+    // earlier runs raised is spent from the day's cap.
+    const { unresolvedIds: alertedToday, raisedToday } = await this.agingAlertsToday(organizationId);
+    const room = Math.max(0, AGING_ALERTS_PER_DAY - raisedToday);
+    const [top, pending, agingTotal] = await Promise.all([
+      room > 0 ? mostUrgentAgingLeads(organizationId, { limit: room, now, excludeIds: alertedToday }) : Promise.resolve([]),
+      agingLeadCount(organizationId, now, alertedToday),
+      agingLeadCount(organizationId, now),
+    ]);
+    const agingLeads = top.map((lead) => toAgingLead(lead, now.getTime()));
     let alertsCreated = 0;
 
-    const now = Date.now();
+    const severityMap: Record<AgingLead['urgency'], IrSeverity> = {
+      urgent: 'critical',
+      warning: 'warning',
+      info: 'info',
+    };
+    const titleMap = {
+      urgent: 'Hot Lead Going Cold',
+      warning: 'Warm Lead Needs Attention',
+      info: 'Lead Going Stale',
+    };
 
-    for (const lead of allLeads) {
-      // `converted` is not a lead status — the canonical end of the funnel
-      // is `closed`, which is already named beside it, so this third term
-      // was inert. Stated once, from the vocabulary.
-      if ((TERMINAL_LEAD_STATUSES as readonly string[]).includes(lead.status ?? '')) {
-        continue;
-      }
-
-      const lastContact = lead.lastContactedAt || lead.createdAt;
-      const daysSinceContact = lastContact
-        ? Math.floor((now - new Date(lastContact).getTime()) / (1000 * 60 * 60 * 24))
-        : 999;
-
-      const stage = lead.nurturingStage || 'new';
-      let urgency: 'urgent' | 'warning' | 'info' | null = null;
-
-      if (stage === 'hot' && daysSinceContact >= 3) {
-        urgency = 'urgent';
-      } else if (stage === 'warm' && daysSinceContact >= 7) {
-        urgency = 'warning';
-      } else if (daysSinceContact >= 14) {
-        urgency = 'info';
-      }
-
-      if (urgency) {
-        agingLeads.push({
-          id: lead.id,
-          firstName: lead.firstName,
-          lastName: lead.lastName || '',
-          nurturingStage: stage,
+    for (const lead of agingLeads) {
+      const name = `${lead.firstName} ${lead.lastName}`;
+      const created = await this.createAlert(organizationId, severityMap[lead.urgency], {
+        alertType: `lead_aging_${lead.id}`,
+        title: titleMap[lead.urgency],
+        message: `${name} (${lead.nurturingStage} lead) hasn't been contacted in ${lead.daysSinceContact} days. Score: ${lead.score ?? 'N/A'}.`,
+        metadata: {
+          leadId: lead.id,
+          leadName: name,
+          nurturingStage: lead.nurturingStage,
           score: lead.score,
-          lastContactedAt: lastContact ? new Date(lastContact) : null,
-          daysSinceContact,
-          urgency,
-        });
-
-        const alertType = `lead_aging_${lead.id}`;
-        const existingAlert = await this.getExistingLeadAgingAlert(organizationId, lead.id);
-        
-        if (!existingAlert) {
-          const severityMap: Record<'urgent' | 'warning' | 'info', IrSeverity> = {
-            urgent: 'critical',
-            warning: 'warning',
-            info: 'info',
-          };
-          const titleMap = {
-            urgent: 'Hot Lead Going Cold',
-            warning: 'Warm Lead Needs Attention',
-            info: 'Lead Going Stale',
-          };
-
-          await this.createAlert(organizationId, severityMap[urgency], {
-            alertType,
-            title: titleMap[urgency],
-            message: `${lead.firstName} ${lead.lastName || ''} (${stage} lead) hasn't been contacted in ${daysSinceContact} days. Score: ${lead.score ?? 'N/A'}.`,
-            metadata: {
-              leadId: lead.id,
-              leadName: `${lead.firstName} ${lead.lastName || ''}`,
-              nurturingStage: stage,
-              score: lead.score,
-              daysSinceContact,
-              lastContactedAt: lastContact,
-              urgency,
-            },
-          });
-          alertsCreated++;
-        }
-      }
+          daysSinceContact: lead.daysSinceContact,
+          lastContactedAt: lead.lastContactedAt,
+          urgency: lead.urgency,
+        },
+      });
+      if (created) alertsCreated++;
     }
 
-    return { agingLeads, alertsCreated };
+    // More leads qualify than today's cap alerts on: say so once, with the
+    // counted figure — never one card per lead, never an estimate.
+    const unalerted = pending - agingLeads.length;
+    if (unalerted > 0) {
+      const created = await this.createAlert(organizationId, 'warning', {
+        alertType: 'lead_aging_summary',
+        title: 'Leads Going Stale',
+        message:
+          `${agingTotal} leads are past their follow-up window (hot 3+ days, warm 7+ days, any 14+ days without contact). ` +
+          `Individual alerts cover the most urgent; ${unalerted} more have none today.`,
+        metadata: { agingTotal, alertedThisRun: agingLeads.length, unalerted, perDayCap: AGING_ALERTS_PER_DAY },
+      });
+      if (created) alertsCreated++;
+    }
+
+    return { agingLeads, agingTotal, alertsCreated };
   }
 
-  private async getExistingLeadAgingAlert(organizationId: number, leadId: number): Promise<boolean> {
+  /**
+   * Today's per-lead aging alerts: the ids of leads whose alert is still
+   * unresolved (not raised again), and how many were raised in any status
+   * (what the day's cap has spent).
+   */
+  private async agingAlertsToday(organizationId: number): Promise<{ unresolvedIds: number[]; raisedToday: number }> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const existing = await db
-      .select()
+    const rows = await db
+      .select({ alertType: systemAlerts.alertType, status: systemAlerts.status })
       .from(systemAlerts)
       .where(
         and(
           eq(systemAlerts.organizationId, organizationId),
-          eq(systemAlerts.alertType, `lead_aging_${leadId}`),
-          ne(systemAlerts.status, 'resolved'),
+          like(systemAlerts.alertType, 'lead_aging_%'),
           gte(systemAlerts.createdAt, today)
         )
       );
 
-    return existing.length > 0;
-  }
-
-  async getAgingLeads(organizationId: number): Promise<AgingLead[]> {
-    const allLeads = await storage.getLeads(organizationId);
-    const agingLeads: AgingLead[] = [];
-    const now = Date.now();
-
-    for (const lead of allLeads) {
-      // `converted` is not a lead status — the canonical end of the funnel
-      // is `closed`, which is already named beside it, so this third term
-      // was inert. Stated once, from the vocabulary.
-      if ((TERMINAL_LEAD_STATUSES as readonly string[]).includes(lead.status ?? '')) {
-        continue;
-      }
-
-      const lastContact = lead.lastContactedAt || lead.createdAt;
-      const daysSinceContact = lastContact
-        ? Math.floor((now - new Date(lastContact).getTime()) / (1000 * 60 * 60 * 24))
-        : 999;
-
-      const stage = lead.nurturingStage || 'new';
-      let urgency: 'urgent' | 'warning' | 'info' | null = null;
-
-      if (stage === 'hot' && daysSinceContact >= 3) {
-        urgency = 'urgent';
-      } else if (stage === 'warm' && daysSinceContact >= 7) {
-        urgency = 'warning';
-      } else if (daysSinceContact >= 14) {
-        urgency = 'info';
-      }
-
-      if (urgency) {
-        agingLeads.push({
-          id: lead.id,
-          firstName: lead.firstName,
-          lastName: lead.lastName || '',
-          nurturingStage: stage,
-          score: lead.score,
-          lastContactedAt: lastContact ? new Date(lastContact) : null,
-          daysSinceContact,
-          urgency,
-        });
-      }
+    const unresolvedIds: number[] = [];
+    let raisedToday = 0;
+    for (const r of rows) {
+      const m = /^lead_aging_(\d+)$/.exec(r.alertType ?? '');
+      if (!m) continue;
+      raisedToday++;
+      if (r.status !== 'resolved') unresolvedIds.push(Number(m[1]));
     }
-
-    return agingLeads.sort((a, b) => {
-      const urgencyOrder = { urgent: 0, warning: 1, info: 2 };
-      return urgencyOrder[a.urgency] - urgencyOrder[b.urgency];
-    });
+    return { unresolvedIds, raisedToday };
   }
+
+  /**
+   * The AGING_LIST_LIMIT most urgent aging leads (urgent, then warning, then
+   * info; stalest first within each), chosen in SQL, and the whole-book count
+   * of aging leads — the list is bounded, the total is not.
+   */
+  async getAgingLeads(organizationId: number): Promise<{ agingLeads: AgingLead[]; total: number }> {
+    const now = new Date();
+    const [top, total] = await Promise.all([
+      mostUrgentAgingLeads(organizationId, { limit: AGING_LIST_LIMIT, now }),
+      agingLeadCount(organizationId, now),
+    ]);
+    return { agingLeads: top.map((lead) => toAgingLead(lead, now.getTime())), total };
+  }
+}
+
+/** Per-day cap on individual lead-aging alerts; the rest get one summary. */
+const AGING_ALERTS_PER_DAY = 50;
+/** GET /api/leads/aging lists at most this many; X-Total-Count carries the rest. */
+const AGING_LIST_LIMIT = 100;
+
+function toAgingLead(
+  lead: Awaited<ReturnType<typeof mostUrgentAgingLeads>>[number],
+  now: number,
+): AgingLead {
+  const daysSinceContact = lead.lastTouch
+    ? Math.floor((now - new Date(lead.lastTouch).getTime()) / (1000 * 60 * 60 * 24))
+    : 999;
+  return {
+    id: lead.id,
+    firstName: lead.firstName,
+    lastName: lead.lastName || '',
+    nurturingStage: lead.nurturingStage,
+    score: lead.score,
+    lastContactedAt: lead.lastTouch ? new Date(lead.lastTouch) : null,
+    daysSinceContact,
+    urgency: lead.urgency,
+  };
 }
 
 export const alertingService = new AlertingService();

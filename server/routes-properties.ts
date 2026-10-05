@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { storage, db } from "./storage";
+import { propertiesMissingParcelBoundary } from "./storage/wholeOrgReadsF";
 import { z } from "zod";
 import { insertPropertySchema, landStatusSchema } from "@shared/schema";
 import { isAuthenticated } from "./auth";
@@ -109,6 +110,12 @@ const paginationQuerySchema = z.object({
   sellerIds: idList.optional(),
   excludeStatus: z.string().max(40).optional(),
 });
+
+/**
+ * Paid parcel lookups one POST /api/properties/fetch-all-parcels makes, in
+ * sequence. Small, like the skip-trace batch (100): a run is one request.
+ */
+const PARCEL_LOOKUPS_PER_RUN = 100;
 
 export function registerPropertyRoutes(app: Express): void {
   const api = app;
@@ -1140,25 +1147,44 @@ export function registerPropertyRoutes(app: Express): void {
       const { lookupParcelByAPN } = await import("./services/parcel");
       const org = req.organization;
       
-      // Get all properties missing parcel boundaries
-      const allProperties = await storage.getProperties(org.id);
-      const propertiesWithoutBoundaries = allProperties.filter(
-        p => !p.parcelBoundary && p.apn && p.state && p.county
-      );
+      // Every property missing a parcel boundary that can be looked up
+      // (APN, state and county present) — the whole book, filtered in SQL
+      // (DEFECT-0171). Filtering the newest 5,000 said "All properties
+      // already have parcel boundaries" while older ones had none.
+      // A run continues below the previous run's last property when the client
+      // sends it back; otherwise it starts from the newest.
+      const raw = req.body?.beforeId;
+      const beforeId = Number.isInteger(raw) && raw > 0 && raw <= 2_147_483_647 ? (raw as number) : undefined;
+      let { rows: batch, total: eligible } = await propertiesMissingParcelBoundary(org.id, PARCEL_LOOKUPS_PER_RUN, beforeId);
+      // Nothing left below the cursor (the last batch was exactly full, or a
+      // cursor from another session or org) while some are still eligible:
+      // start over from the newest in this same request, not a wasted click.
+      if (beforeId !== undefined && batch.length === 0 && eligible > 0) {
+        ({ rows: batch, total: eligible } = await propertiesMissingParcelBoundary(org.id, PARCEL_LOOKUPS_PER_RUN));
+      }
       
-      if (propertiesWithoutBoundaries.length === 0) {
+      if (eligible === 0) {
         return res.json({ 
           message: "All properties already have parcel boundaries",
           updated: 0,
-          failed: 0 
+          failed: 0,
+          processed: 0,
+          remaining: 0,
+          cap: PARCEL_LOOKUPS_PER_RUN,
+          nextBeforeId: null,
         });
       }
       
-      logger.info(`[BulkParcel] Fetching parcels for ${propertiesWithoutBoundaries.length} properties`);
+      // Each lookup is a paid Regrid call (possibly on the platform key), one
+      // after another. The capped list bounded this at 5,000 by accident; the
+      // whole book would make it unbounded. So a run looks up at most
+      // PARCEL_LOOKUPS_PER_RUN — the newest first — and says how many still
+      // have no boundary.
+      logger.info(`[BulkParcel] Fetching parcels for ${batch.length} of ${eligible} properties`);
       
       const results: Array<{ propertyId: number; apn: string; success: boolean; source?: string; error?: string }> = [];
       
-      for (const property of propertiesWithoutBoundaries) {
+      for (const property of batch) {
         try {
           const path = `/us/${property.state!.toLowerCase()}/${property.county!.toLowerCase().replace(/\s+/g, "-")}`;
           const result = await lookupParcelByAPN(property.apn, path, org.id);
@@ -1183,12 +1209,29 @@ export function registerPropertyRoutes(app: Express): void {
       
       const updated = results.filter(r => r.success).length;
       const failed = results.filter(r => !r.success).length;
+      // Still without a boundary across the whole book: everything this run
+      // did not reach, plus the lookups that failed.
+      const remaining = eligible - updated;
+      // A full batch may have older properties below it: hand back where to
+      // continue. A short batch reached the oldest; the next run starts over.
+      const nextBeforeId = batch.length === PARCEL_LOOKUPS_PER_RUN ? batch[batch.length - 1].id : null;
+      const stillMissing = `. ${remaining} ${remaining === 1 ? "property still has" : "properties still have"} no boundary`;
       
       res.json({
-        message: `Updated ${updated} properties with parcel data${failed > 0 ? `, ${failed} failed` : ''}`,
+        message:
+          `Updated ${updated} of ${results.length} properties with parcel data${failed > 0 ? `, ${failed} failed` : ''}` +
+          (remaining > 0
+            ? nextBeforeId != null
+              ? `${stillMissing} — run again to continue with older properties (at most ${PARCEL_LOOKUPS_PER_RUN} per run).`
+              : `${stillMissing} — this pass reached the oldest; the next run starts again from the newest.`
+            : ""),
         updated,
         failed,
-        results
+        results,
+        processed: results.length,
+        remaining,
+        cap: PARCEL_LOOKUPS_PER_RUN,
+        nextBeforeId,
       });
     } catch (err) {
       logger.error("Bulk fetch parcel error", err instanceof Error ? err : undefined);

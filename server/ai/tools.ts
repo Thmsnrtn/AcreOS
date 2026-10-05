@@ -1069,7 +1069,31 @@ export interface ExecuteToolOptions {
   scheduledTask?: { id: number; name: string } | null;
 }
 
-type ToolResult = { success: boolean; data?: any; error?: string };
+/**
+ * A list tool's place in the whole book (DEFECT-0171). The rows are filtered,
+ * ordered newest first and limited in SQL; `totalMatching` counts every row the
+ * same filter matches, so the model is told "returned of totalMatching" and
+ * never takes the length of a page for the size of the book.
+ */
+type ToolListPage = { returned: number; totalMatching: number; order: "newest first"; complete: boolean };
+type ToolResult = { success: boolean; data?: any; error?: string; page?: ToolListPage };
+
+/**
+ * The most rows a list tool returns when the model names no smaller limit —
+ * the same ceiling the capped getters had, but now with the whole-book count
+ * beside it (`page`), so a short page is never mistaken for the whole book.
+ */
+const MODEL_LIST_CEILING = 5000;
+const listLimit = (requested: unknown): number => {
+  const n = Math.floor(Number(requested));
+  return Number.isFinite(n) && n > 0 ? Math.min(n, MODEL_LIST_CEILING) : MODEL_LIST_CEILING;
+};
+const listPage = (returned: number, totalMatching: number): ToolListPage => ({
+  returned,
+  totalMatching,
+  order: "newest first",
+  complete: returned >= totalMatching,
+});
 
 const positiveInt = (v: unknown): number | null => {
   if (typeof v === "number" && Number.isInteger(v) && v > 0) return v;
@@ -1139,7 +1163,7 @@ export async function executeTool(
   args: Record<string, any>,
   org: Organization,
   options?: ExecuteToolOptions
-): Promise<{ success: boolean; data?: any; error?: string }> {
+): Promise<ToolResult> {
   try {
     // ── Witnessed-send kernel gate (2026-06-10, T0-1 elevation blueprint) ──
     // `_approved` used to be an ordinary tool arg, which meant (a) the MODEL
@@ -1338,18 +1362,16 @@ export async function executeTool(
     const outcome: ToolResult = await (async (): Promise<ToolResult> => {
     switch (toolName) {
       case "get_leads": {
-        const leads = await storage.getLeads(org.id);
-        let filtered = leads;
-        if (args.status) {
-          filtered = leads.filter(l => l.status === args.status);
-        }
-        if (args.type) {
-          filtered = filtered.filter(l => l.type === args.type);
-        }
-        if (args.limit) {
-          filtered = filtered.slice(0, args.limit);
-        }
-        return { success: true, data: filtered.map(l => ({
+        // Filtered, ordered and limited in SQL over the whole book
+        // (DEFECT-0171): filtering the newest 5000 could not find an older
+        // lead with the status asked for.
+        const { pageLeadsNewestFirst } = await import("../storage/wholeOrgReadsE");
+        const { rows: filtered, total } = await pageLeadsNewestFirst(
+          org.id,
+          { status: args.status || undefined, type: args.type || undefined },
+          listLimit(args.limit),
+        );
+        return { success: true, page: listPage(filtered.length, total), data: filtered.map(l => ({
           id: l.id,
           name: `${l.firstName} ${l.lastName}`,
           firstName: l.firstName,
@@ -1434,15 +1456,14 @@ export async function executeTool(
       }
       
       case "get_properties": {
-        const properties = await storage.getProperties(org.id);
-        let filtered = properties;
-        if (args.status) {
-          filtered = properties.filter(p => p.status === args.status);
-        }
-        if (args.limit) {
-          filtered = filtered.slice(0, args.limit);
-        }
-        return { success: true, data: filtered.map(p => ({
+        // Filtered, ordered and limited in SQL over the whole book (DEFECT-0171).
+        const { pagePropertiesNewestFirst } = await import("../storage/wholeOrgReadsE");
+        const { rows: filtered, total } = await pagePropertiesNewestFirst(
+          org.id,
+          { status: args.status || undefined },
+          listLimit(args.limit),
+        );
+        return { success: true, page: listPage(filtered.length, total), data: filtered.map(p => ({
           id: p.id,
           apn: p.apn,
           address: p.address,
@@ -1462,12 +1483,14 @@ export async function executeTool(
       }
       
       case "get_notes": {
-        const notes = await storage.getNotes(org.id);
-        let filtered = notes;
-        if (args.status) {
-          filtered = notes.filter(n => n.status === args.status);
-        }
-        return { success: true, data: filtered.map(n => ({
+        // Filtered, ordered and limited in SQL over the whole book (DEFECT-0171).
+        const { pageNotesNewestFirst } = await import("../storage/wholeOrgReadsE");
+        const { rows: filtered, total } = await pageNotesNewestFirst(
+          org.id,
+          { status: args.status || undefined },
+          listLimit(undefined),
+        );
+        return { success: true, page: listPage(filtered.length, total), data: filtered.map(n => ({
           id: n.id,
           propertyId: n.propertyId,
           borrowerId: n.borrowerId,
@@ -1655,12 +1678,14 @@ export async function executeTool(
 
       // Deal CRUD
       case "get_deals": {
-        const deals = await storage.getDeals(org.id);
-        let filtered = deals;
-        if (args.type) filtered = filtered.filter(d => d.type === args.type);
-        if (args.status) filtered = filtered.filter(d => d.status === args.status);
-        if (args.limit) filtered = filtered.slice(0, args.limit);
-        return { success: true, data: filtered.map(d => ({
+        // Filtered, ordered and limited in SQL over the whole book (DEFECT-0171).
+        const { pageDealsNewestFirst } = await import("../storage/wholeOrgReadsE");
+        const { rows: filtered, total } = await pageDealsNewestFirst(
+          org.id,
+          { type: args.type || undefined, status: args.status || undefined },
+          listLimit(args.limit),
+        );
+        return { success: true, page: listPage(filtered.length, total), data: filtered.map(d => ({
           id: d.id,
           type: d.type,
           status: d.status,
@@ -2695,17 +2720,12 @@ export async function executeTool(
           return { success: false, error: "Property is missing county or state information" };
         }
 
-        // Query all sold/listed properties in same county+state for this org as internal comps
-        const allProperties = await storage.getProperties(org.id);
+        // Every sold/listed/owned property with a price in the same
+        // county+state, read whole in SQL (DEFECT-0171) — the median was
+        // taken over whichever comps happened to be in the newest 5000.
+        const { internalCompCandidates } = await import("../storage/wholeOrgReadsE");
+        const comps = await internalCompCandidates(org.id, { id: property.id, county: property.county, state: property.state });
         const subjectAcres = Number(property.sizeAcres) || 0;
-
-        const comps = allProperties.filter(p => {
-          if (p.id === property.id) return false;
-          if (p.county !== property.county || p.state !== property.state) return false;
-          if (!["sold", "listed", "owned"].includes(p.status)) return false;
-          if (!p.listPrice && !p.soldPrice && !p.marketValue) return false;
-          return true;
-        });
 
         const compData = comps.map(p => {
           const price = Number(p.soldPrice || p.listPrice || p.marketValue || 0);
@@ -2763,19 +2783,18 @@ export async function executeTool(
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - daysSinceContact);
 
-        const allLeads = await storage.getLeads(org.id);
-        const staleLeads = allLeads.filter(lead => {
-          if (["closed", "dead"].includes(lead.status)) return false;
-          if (!lead.lastContactedAt && !lead.createdAt) return true;
-          const lastContact = lead.lastContactedAt || lead.createdAt || new Date();
-          return new Date(lastContact) < cutoffDate;
-        });
+        // Counted and ordered (stalest first) in SQL over the whole book
+        // (DEFECT-0171): this counted only the stale leads among the newest
+        // 5000, so the OLDEST — the stalest — were the ones left out.
+        const { staleLeadsPage } = await import("../storage/wholeOrgReadsE");
+        const { rows: staleLeads, total: staleCount } = await staleLeadsPage(org.id, cutoffDate, MODEL_LIST_CEILING);
 
         return {
           success: true,
           data: {
             daysSinceContact,
-            staleCount: staleLeads.length,
+            staleCount,
+            listed: staleLeads.length,
             staleLeads: staleLeads.map(l => ({
               id: l.id,
               name: `${l.firstName} ${l.lastName}`,
@@ -2788,8 +2807,8 @@ export async function executeTool(
                 (Date.now() - new Date(l.lastContactedAt || l.createdAt || new Date()).getTime()) / (1000 * 60 * 60 * 24)
               ),
             })).sort((a, b) => b.daysSinceContact - a.daysSinceContact),
-            message: staleLeads.length > 0
-              ? `Found ${staleLeads.length} leads with no contact in the last ${daysSinceContact} days.`
+            message: staleCount > 0
+              ? `Found ${staleCount} leads with no contact in the last ${daysSinceContact} days${staleLeads.length < staleCount ? ` (the ${staleLeads.length} stalest are listed)` : ""}.`
               : `All leads have been contacted within the last ${daysSinceContact} days.`,
           }
         };

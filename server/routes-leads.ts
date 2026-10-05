@@ -1,5 +1,6 @@
 import type { Express, Response } from "express";
 import { readPropertiesBySellerIds } from "./storage/wholeBookReads";
+import { focusLeadCandidates } from "./storage/wholeOrgReadsG";
 import { getOrganization, getUserId, type AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
 import { z } from "zod";
@@ -261,31 +262,34 @@ export function registerLeadRoutes(app: Express): void {
   // Focus List: Top 10 leads not contacted in last 24 hours
   api.get("/api/leads/focus", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const allLeads = await storage.getLeads(org.id);
+    // The focus list ranks EVERY live lead (DEFECT-0171). The score is
+    // computed here (leadNurturerService.calculateLeadScore), not stored, so
+    // no SQL ORDER BY can rank it; ranking the newest 5,000 hid an older lead
+    // that outscored all of them. SQL narrows to the leads the list can pick
+    // (not contacted in 24h) and reads only the scored columns; the full rows
+    // are read for the ten it shows. Ties keep the newest-first order.
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    
-    // Score all leads and filter those not contacted in 24h
-    const leadsWithScores = allLeads
-      .map(lead => {
+    const candidates = (await focusLeadCandidates(org.id, twentyFourHoursAgo)).sort(
+      (a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime() || b.id - a.id,
+    );
+
+    const top = candidates
+      .map((lead) => {
         const { score, factors } = leadNurturerService.calculateLeadScore(lead);
-        const stage = leadNurturerService.segmentLead(score);
-        return {
-          ...lead,
-          score,
-          scoreFactors: factors,
-          nurturingStage: stage,
-        };
+        return { id: lead.id, score, scoreFactors: factors, nurturingStage: leadNurturerService.segmentLead(score) };
       })
-      .filter(lead => {
-        // Exclude dead leads
-        if (lead.nurturingStage === "dead") return false;
-        // Include if never contacted or not contacted in last 24h
-        if (!lead.lastContactedAt) return true;
-        return new Date(lead.lastContactedAt) < twentyFourHoursAgo;
-      })
+      // Exclude dead leads
+      .filter((lead) => lead.nurturingStage !== "dead")
       .sort((a, b) => (b.score || 0) - (a.score || 0))
       .slice(0, 10);
-    
+
+    const rows = new Map((await storage.getLeadsByIds(org.id, top.map((t) => t.id))).map((l) => [l.id, l]));
+    const leadsWithScores = top.flatMap((t) => {
+      const lead = rows.get(t.id);
+      // Deleted between the two reads: drop it rather than show a stale row.
+      return lead ? [{ ...lead, score: t.score, scoreFactors: t.scoreFactors, nurturingStage: t.nurturingStage }] : [];
+    });
+
     res.json(leadsWithScores);
   });
 
@@ -298,7 +302,10 @@ export function registerLeadRoutes(app: Express): void {
 
   api.get("/api/leads/aging", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
-    const agingLeads = await alertingService.getAgingLeads(org.id);
+    // The most urgent aging leads (bounded, ranked in SQL); the body stays
+    // the array it always was, and the whole-book count rides in a header.
+    const { agingLeads, total } = await alertingService.getAgingLeads(org.id);
+    res.setHeader("X-Total-Count", String(total));
     res.json(agingLeads);
   });
 

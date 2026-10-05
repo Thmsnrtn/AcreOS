@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { usePersona } from "@/hooks/use-persona";
 import { usd } from "@/lib/format";
-import type { Note } from "@shared/schema";
+import { useNoteBookFigures } from "@/hooks/use-note-book-figures";
 import {
   DollarSign,
   Clock,
@@ -734,7 +734,7 @@ function TaxDelinquentWidgets() {
 // underserved note roles (originator, servicer) are personas derived from
 // the "note_investor" businessType and have no businessType of their own.
 // Each persona gets a genuinely distinct widget built from REAL data
-// (/api/notes, /api/leads, /api/properties) with honest-empty when the
+// (/api/notes/book-figures, /api/leads, /api/properties) with honest-empty when the
 // org has nothing yet. No persona shares another's mock. None of these
 // fabricate a number — empty means empty, with a purposeful CTA.
 
@@ -747,15 +747,10 @@ const PERSONA_WIDGET_LABELS: Record<PersonaWidgetKind, { title: string; icon: Re
   note_service: { title: "Servicing", icon: <ClipboardCheck className="w-4 h-4" /> },
 };
 
-function useNotes() {
-  return useQuery<Note[]>({
-    queryKey: ["/api/notes"],
-    queryFn: async () => {
-      const res = await okOrThrow(await fetch("/api/notes", { credentials: "include" }));
-      return listFrom<Note>(await res.json());
-    },
-  });
-}
+// The note widgets' figures are whole-book SQL aggregates
+// (useNoteBookFigures → GET /api/notes/book-figures). They were sums over
+// GET /api/notes — the capped newest-5,000 table list — so past 5,000 notes
+// every book-wide figure here silently left the oldest notes out (W10.2b).
 
 interface LeadLite { id: number; type?: string | null; status?: string | null }
 interface PropertyLite { id: number; status?: string | null; latitude?: unknown; longitude?: unknown }
@@ -890,7 +885,7 @@ function LandSourcingWidgets() {
 
 /** Portfolio-yield widget (note_investor) — the job is yield on owned paper. */
 function NoteInvestorWidgets() {
-  const { data: notes = [], isLoading, isError, error, refetch } = useNotes();
+  const { data: figures, isLoading, isError, error, refetch } = useNoteBookFigures();
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -899,7 +894,7 @@ function NoteInvestorWidgets() {
     );
   }
 
-  // An error branch BEFORE the empty state. `useNotes` used to swallow failure
+  // An error branch BEFORE the empty state. The notes read used to swallow failure
   // into `[]`, so an outage fell through to the panel below and told someone
   // with a full book to start from nothing.
   if (isError) {
@@ -914,9 +909,8 @@ function NoteInvestorWidgets() {
     );
   }
 
-
-  const active = notes.filter((n) => n.status === "active");
-  if (active.length === 0) {
+  if (!figures) return null; // settled without data: nothing honest to show
+  if (figures.activeCount === 0) {
     return (
       <EmptyState
         icon={TrendingUp}
@@ -929,16 +923,9 @@ function NoteInvestorWidgets() {
     );
   }
 
-  const outstanding = active.reduce((s, n) => s + Number(n.currentBalance || 0), 0);
-  const monthlyIncome = active.reduce((s, n) => s + Number(n.monthlyPayment || 0), 0);
+  const { activeCount, totalOutstanding: outstanding, totalMonthly: monthlyIncome } = figures;
   // Balance-weighted average rate — only from notes that carry a rate + balance.
-  let w = 0, acc = 0;
-  active.forEach((n) => {
-    const bal = Number(n.currentBalance || 0);
-    const rate = Number(n.interestRate || 0);
-    if (bal > 0 && rate > 0) { w += bal; acc += bal * rate; }
-  });
-  const wtdRate = w > 0 ? acc / w : null;
+  const wtdRate = figures.weightedRate;
 
   return (
     <motion.div
@@ -947,7 +934,7 @@ function NoteInvestorWidgets() {
       animate="visible"
       className="grid grid-cols-1 md:grid-cols-3 gap-4"
     >
-      <PersonaStat icon={Wallet} iconClass="text-acr-pos" label="Outstanding" value={usd(outstanding, { noCents: true })} sub={`${active.length} active note${active.length === 1 ? "" : "s"}`} mono />
+      <PersonaStat icon={Wallet} iconClass="text-acr-pos" label="Outstanding" value={usd(outstanding, { noCents: true })} sub={`${activeCount} active note${activeCount === 1 ? "" : "s"}`} mono />
       <PersonaStat icon={Banknote} iconClass="text-acr-accent" label="Monthly income" value={usd(monthlyIncome, { noCents: true })} sub="scheduled P&I this cycle" mono />
       <PersonaStat
         icon={Percent}
@@ -963,7 +950,7 @@ function NoteInvestorWidgets() {
 
 /** Origination widget (note_originator) — the job is CREATING paper. */
 function NoteOriginatorWidgets() {
-  const { data: notes = [], isLoading, isError, error, refetch } = useNotes();
+  const { data: figures, isLoading, isError, error, refetch } = useNoteBookFigures();
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -972,7 +959,7 @@ function NoteOriginatorWidgets() {
     );
   }
 
-  // An error branch BEFORE the empty state. `useNotes` used to swallow failure
+  // An error branch BEFORE the empty state. The notes read used to swallow failure
   // into `[]`, so an outage fell through to the panel below and told someone
   // with a full book to start from nothing.
   if (isError) {
@@ -987,9 +974,8 @@ function NoteOriginatorWidgets() {
     );
   }
 
-
-  const active = notes.filter((n) => n.status === "active");
-  if (active.length === 0) {
+  if (!figures) return null; // settled without data: nothing honest to show
+  if (figures.activeCount === 0) {
     return (
       <EmptyState
         icon={FileSignature}
@@ -1002,16 +988,10 @@ function NoteOriginatorWidgets() {
     );
   }
 
-  const financed = active.reduce((s, n) => s + Number(n.originalPrincipal || n.currentBalance || 0), 0);
+  const financed = figures.totalFinanced;
   // Average originated term + rate — only across notes that carry the field.
-  const termNotes = active.filter((n) => Number(n.termMonths || 0) > 0);
-  const avgTerm = termNotes.length > 0
-    ? Math.round(termNotes.reduce((s, n) => s + Number(n.termMonths || 0), 0) / termNotes.length)
-    : null;
-  const rateNotes = active.filter((n) => Number(n.interestRate || 0) > 0);
-  const avgRate = rateNotes.length > 0
-    ? rateNotes.reduce((s, n) => s + Number(n.interestRate || 0), 0) / rateNotes.length
-    : null;
+  const avgTerm = figures.averageTermMonths !== null ? Math.round(figures.averageTermMonths) : null;
+  const avgRate = figures.averageRate;
 
   return (
     <motion.div
@@ -1020,7 +1000,7 @@ function NoteOriginatorWidgets() {
       animate="visible"
       className="grid grid-cols-1 md:grid-cols-3 gap-4"
     >
-      <PersonaStat icon={FileSignature} iconClass="text-primary" label="Notes originated" value={String(active.length)} sub={`${usd(financed, { noCents: true })} financed`} />
+      <PersonaStat icon={FileSignature} iconClass="text-primary" label="Notes originated" value={String(figures.activeCount)} sub={`${usd(financed, { noCents: true })} financed`} />
       <PersonaStat
         icon={Percent}
         iconClass="text-acr-pos"
@@ -1042,7 +1022,7 @@ function NoteOriginatorWidgets() {
 
 /** Servicing widget (note_servicer) — the job is servicing notes for others. */
 function NoteServicerWidgets() {
-  const { data: notes = [], isLoading } = useNotes();
+  const { data: figures, isLoading, isError, error, refetch } = useNoteBookFigures();
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1051,8 +1031,21 @@ function NoteServicerWidgets() {
     );
   }
 
-  const active = notes.filter((n) => n.status === "active");
-  if (active.length === 0) {
+  // An error is not an empty serviced book.
+  if (isError) {
+    return (
+      <QueryErrorState
+        error={error instanceof Error ? error : new Error(String(error))}
+        onRetry={() => void refetch()}
+        title="Couldn't load your notes"
+        description="Your serviced book could not be read. This is not the same as servicing no notes."
+        testId="note-serv-error"
+      />
+    );
+  }
+
+  if (!figures) return null; // settled without data: nothing honest to show
+  if (figures.activeCount === 0) {
     return (
       <EmptyState
         icon={ClipboardCheck}
@@ -1066,18 +1059,8 @@ function NoteServicerWidgets() {
   }
 
   // Delinquent = anything not "current" on the delinquency ladder, OR a note
-  // whose nextPaymentDate is already in the past. Real fields only.
-  const now = Date.now();
-  const delinquent = active.filter((n) => {
-    if (n.delinquencyStatus && n.delinquencyStatus !== "current") return true;
-    if (n.nextPaymentDate) {
-      const days = Math.floor((now - new Date(n.nextPaymentDate as any).getTime()) / 86_400_000);
-      return days > 0;
-    }
-    return false;
-  }).length;
-  const monthlyFees = active.reduce((s, n) => s + Number(n.serviceFee || 0), 0);
-  const escrowed = active.filter((n) => n.taxEscrowEnabled).length;
+  // a whole day past its nextPaymentDate. Real fields only, counted server-side.
+  const { activeCount, delinquentCount: delinquent, totalServiceFees: monthlyFees, taxEscrowCount: escrowed } = figures;
 
   return (
     <motion.div
@@ -1086,7 +1069,7 @@ function NoteServicerWidgets() {
       animate="visible"
       className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
     >
-      <PersonaStat icon={ClipboardCheck} iconClass="text-primary" label="Serviced book" value={String(active.length)} sub="active notes serviced" />
+      <PersonaStat icon={ClipboardCheck} iconClass="text-primary" label="Serviced book" value={String(activeCount)} sub="active notes serviced" />
       <PersonaStat
         icon={AlertTriangle}
         iconClass={delinquent > 0 ? "text-acr-warn" : "text-acr-pos"}
@@ -1095,7 +1078,7 @@ function NoteServicerWidgets() {
         sub={delinquent > 0 ? "past due — needs outreach" : "all current"}
       />
       <PersonaStat icon={DollarSign} iconClass="text-acr-pos" label="Servicing fees" value={usd(monthlyFees, { noCents: true })} sub="monthly fee income" mono />
-      <PersonaStat icon={ShieldCheck} iconClass="text-acr-accent" label="Tax escrow" value={`${escrowed}/${active.length}`} sub="notes with escrow on" />
+      <PersonaStat icon={ShieldCheck} iconClass="text-acr-accent" label="Tax escrow" value={`${escrowed}/${activeCount}`} sub="notes with escrow on" />
     </motion.div>
   );
 }

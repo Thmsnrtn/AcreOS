@@ -215,7 +215,16 @@ const H = vi.hoisted(() => {
       : { success: false, source: "none", contacts: [], error: "No skip tracing provider configured." },
   );
 
-  return { CALLS, state, dbMock, storageMock, poolDebitMock, refundPoolDebitMock, traceState, traceMock };
+  // The batch selects its untraced leads in SQL over every live lead
+  // (server/storage/wholeOrgReadsF.ts, DEFECT-0171) — no longer through the
+  // capped storage.getLeads. Served here from the same leadsList (no trace
+  // rows exist in these tests, so every listed lead is untraced).
+  const untracedLeadBatchMock = vi.fn(async (_orgId: number, cap: number) => {
+    CALLS.push("wholeOrgReadsF.untracedLeadBatch");
+    return { batch: state.leadsList.slice(0, cap), untracedTotal: state.leadsList.length };
+  });
+
+  return { CALLS, state, dbMock, storageMock, poolDebitMock, refundPoolDebitMock, traceState, traceMock, untracedLeadBatchMock };
 });
 
 vi.mock("../../server/utils/logger", () => ({
@@ -223,6 +232,10 @@ vi.mock("../../server/utils/logger", () => ({
 }));
 vi.mock("../../server/db", () => ({ db: H.dbMock }));
 vi.mock("../../server/storage", () => ({ storage: H.storageMock, db: H.dbMock }));
+vi.mock("../../server/storage/wholeOrgReadsF", () => ({
+  untracedLeadBatch: (...args: any[]) => H.untracedLeadBatchMock(...(args as [number, number])),
+  skipTraceLeadCounts: vi.fn(async () => ({ totalLeads: 0, tracedCount: 0, foundCount: 0 })),
+}));
 vi.mock("../../server/auth", () => ({
   isAuthenticated: (_req: any, _res: any, next: any) => next(),
 }));
@@ -793,7 +806,9 @@ describe("POST /api/skip-tracing/batch — gates ONCE, one purpose stamped on ev
     expect(res.status).toBe(400);
     expect(res.body.details?.code).toBe("SKIP_TRACE_PURPOSE_REQUIRED");
     expect(res.body.message).toContain("1681b");
-    expect(H.storageMock.getLeads).not.toHaveBeenCalled(); // gate precedes selection
+    // The gate precedes selection: the untraced leads are never even read.
+    expect(H.untracedLeadBatchMock).not.toHaveBeenCalled();
+    expect(H.storageMock.getLeads).not.toHaveBeenCalled();
     expect(H.poolDebitMock).not.toHaveBeenCalled();
     expect(H.traceMock).not.toHaveBeenCalled();
     expect(H.storageMock.createSkipTrace).not.toHaveBeenCalled();
@@ -822,8 +837,10 @@ describe("POST /api/skip-tracing/batch — gates ONCE, one purpose stamped on ev
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ requested: 2, traced: 2, failed: 0 });
 
-    // Gate consulted exactly once for the whole batch…
+    // Gate consulted exactly once for the whole batch, before the leads are selected…
     expect(H.CALLS.filter((c) => c === "select:fcra_attestations")).toHaveLength(1);
+    expect(H.CALLS.indexOf("select:fcra_attestations")).toBeLessThan(H.CALLS.indexOf("wholeOrgReadsF.untracedLeadBatch"));
+    expect(H.untracedLeadBatchMock).toHaveBeenCalledWith(ORG_ID, 50, ["completed", "no_results"]);
 
     // …and its ONE claimed purpose is stamped on BOTH rows — never N silent
     // lookups under an attestation made for a different purpose.

@@ -1,10 +1,11 @@
 import { useState, useMemo, useId } from "react";
 import { usePropertiesByIds, usePropertiesBySellerIds } from "@/hooks/use-properties";
+import { useLeads, leadWalkCoverage, LEADS_FLAT_QUERY_KEY } from "@/hooks/use-leads";
 import DOMPurify from "isomorphic-dompurify";
 import { PageShell } from "@/components/page-shell";
 import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { ListSkeleton } from "@/components/list-skeleton";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryClient, apiRequest, fetchJsonArray, ApiError } from "@/lib/queryClient";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import { useToast } from "@/hooks/use-toast";
@@ -682,6 +683,75 @@ export function ContractChainSection({
   );
 }
 
+/**
+ * The leads the offers page picks from and values (DEFECT-0169).
+ *
+ * This read `fetchJsonArray('/api/leads')` — the first page of 25 — and
+ * treated it as the whole lead book: an operator could not pick the 26th
+ * newest lead for a batch, and an offer on an older lead showed no name.
+ * `useLeads()` walks the /api/leads/paginated cursor, but stops at its page
+ * ceiling (LEGACY_MAX_PAGES) — where "no next page" means "stopped", not
+ * "reached the end". So `complete` is true only when the walk holds the
+ * server's whole `total`; a walk that ended short reports `truncated` (rows
+ * shown, and the server's total when the pages carried one), and a failed
+ * page reports `error` with a `retry` instead of loading forever.
+ */
+export interface OfferLeads {
+  leads: Lead[] | undefined;
+  complete: boolean;
+  truncated: { shown: number; total: number | null } | null;
+  error: Error | null;
+  retry: () => void;
+}
+
+export function useOfferLeads(): OfferLeads {
+  const q = useLeads();
+  const client = useQueryClient();
+  // The flattened `data` drops each page's `total`; the raw pages keep it.
+  const coverage = leadWalkCoverage(client.getQueryData(LEADS_FLAT_QUERY_KEY));
+  const settled = q.isSuccess && !q.hasNextPage && !q.isFetchingNextPage;
+  const whole = !coverage.ceilingReached && (coverage.total === null || coverage.loaded >= coverage.total);
+  return {
+    leads: q.data as Lead[] | undefined,
+    complete: settled && whole,
+    truncated: settled && !whole ? { shown: coverage.loaded, total: coverage.total } : null,
+    error: q.isError ? (q.error instanceof Error ? q.error : new Error(String(q.error))) : null,
+    retry: () => void (q.isFetchNextPageError ? q.fetchNextPage() : q.refetch()),
+  };
+}
+
+/**
+ * What the lead picker says about the walk: a retryable error, or that the
+ * list is a prefix of the book (never an invented total — without one it
+ * says only how many are shown).
+ */
+export function OfferLeadsStatus({ state }: { state: OfferLeads }) {
+  if (state.error) {
+    return (
+      <QueryErrorState
+        compact
+        error={state.error}
+        onRetry={state.retry}
+        title="Couldn't load all your leads"
+        description="The lead list stopped partway. Retry to load the rest before picking leads for a batch."
+        testId="offer-leads-error"
+      />
+    );
+  }
+  if (state.truncated) {
+    const { shown, total } = state.truncated;
+    return (
+      <p role="status" className="text-xs text-muted-foreground mb-2" data-testid="offer-leads-truncated">
+        {total !== null
+          ? `Showing the first ${shown.toLocaleString()} of ${total.toLocaleString()} leads.`
+          : `Showing the first ${shown.toLocaleString()} leads.`}{" "}
+        Leads past these aren't listed here, so they can't be picked for this batch.
+      </p>
+    );
+  }
+  return null;
+}
+
 export default function OffersPage() {
   useDocumentTitle("Offer letters");
   const { toast } = useToast();
@@ -723,10 +793,10 @@ export default function OffersPage() {
     queryFn: () => fetchJsonArray<OfferTemplate>('/api/offer-templates'),
   });
 
-  const { data: leads } = useQuery<Lead[]>({
-    queryKey: ['/api/leads'],
-    queryFn: () => fetchJsonArray<Lead>('/api/leads'),
-  });
+  const offerLeads = useOfferLeads();
+  const { leads, complete: leadsComplete, truncated: leadsTruncated } = offerLeads;
+  // The walk has ended — whole, or a stated prefix of the book.
+  const leadsSettled = leadsComplete || leadsTruncated !== null;
 
 
   // Accepted deals feed the contract chain (Contracts tab). Fetched only when
@@ -757,7 +827,9 @@ export default function OffersPage() {
     ...(dealsQuery.data ?? []).map((d) => d.propertyId),
   ]);
   const properties = propertiesById ? [...propertiesById.values()] : undefined;
-  const { data: propertiesBySeller } = usePropertiesBySellerIds((leads ?? []).map((l) => l.id));
+  // Resolved once the lead walk is done, so the by-seller lookup runs once
+  // over the whole set instead of once per page as the cursor advances.
+  const { data: propertiesBySeller } = usePropertiesBySellerIds(leadsSettled ? (leads ?? []).map((l) => l.id) : []);
 
   // Mutations
   const createBatchMutation = useMutation({
@@ -1405,77 +1477,94 @@ export default function OffersPage() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <fieldset className="border-0 p-0 m-0">
-                      <legend className="sr-only">Choose leads to include in the batch</legend>
-                      <ul className="max-h-96 overflow-y-auto space-y-2 list-none p-0 m-0" aria-label={`${filteredLeads.length} candidate lead${filteredLeads.length === 1 ? "" : "s"}`}>
-                        {filteredLeads.length === 0 ? (
-                          <li className="text-center text-muted-foreground py-8 list-none">
-                            No leads available.
-                          </li>
-                        ) : (
-                          filteredLeads.map(lead => {
-                            const property = propertyMap.get(lead.id);
-                            const assessedValue = property?.assessedValue ? Number(property.assessedValue) : 0;
-                            const estimatedOffer = Math.round(assessedValue * (offerPercent / 100));
-                            const cbId = `batch-lead-${lead.id}`;
-                            const checked = selectedLeadIds.includes(lead.id);
-
-                            return (
-                              <li key={lead.id}>
-                                <label
-                                  htmlFor={cbId}
-                                  className={`flex items-center gap-3 p-3 rounded-card border cursor-pointer transition-colors ${
-                                    checked
-                                      ? "border-primary bg-primary/5"
-                                      : "border-border hover-elevate"
-                                  }`}
-                                  data-testid={`lead-select-${lead.id}`}
-                                >
-                                  <Checkbox
-                                    id={cbId}
-                                    checked={checked}
-                                    onCheckedChange={() => toggleLeadSelection(lead.id)}
-                                    data-testid={`checkbox-lead-${lead.id}`}
-                                    aria-label={`Include ${lead.firstName} ${lead.lastName} in batch`}
-                                  />
-                                  <div className="flex-1 min-w-0">
-                                    <div className="font-medium truncate">
-                                      {lead.firstName} {lead.lastName}
-                                    </div>
-                                    <div className="text-sm text-muted-foreground truncate">
-                                      {property?.address || "No property linked"}
-                                    </div>
-                                  </div>
-                                  <div className="text-right">
-                                    {assessedValue > 0 ? (
-                                      <>
-                                        <div className="text-xs text-muted-foreground tabular-nums">
-                                          Assessed: {usd(assessedValue)}
-                                        </div>
-                                        <div className="text-sm font-medium font-mono text-primary tabular-nums">
-                                          Offer: {usd(estimatedOffer)}
-                                        </div>
-                                      </>
-                                    ) : (
-                                      <span className="text-xs text-muted-foreground">No value</span>
-                                    )}
-                                  </div>
-                                </label>
+                    <OfferLeadsStatus state={offerLeads} />
+                    {!offerLeads.error && (
+                      <fieldset className="border-0 p-0 m-0">
+                        <legend className="sr-only">Choose leads to include in the batch</legend>
+                        <ul className="max-h-96 overflow-y-auto space-y-2 list-none p-0 m-0" aria-label={`${filteredLeads.length} candidate lead${filteredLeads.length === 1 ? "" : "s"}`}>
+                          {!leads ? (
+                            [0, 1, 2].map((i) => (
+                              <li key={`lead-skeleton-${i}`} className="list-none" aria-hidden="true">
+                                <Skeleton className="h-14 w-full" />
                               </li>
-                            );
-                          })
-                        )}
-                      </ul>
-                    </fieldset>
+                            ))
+                          ) : filteredLeads.length === 0 && leadsSettled ? (
+                            <li className="text-center text-muted-foreground py-8 list-none">
+                              No leads available.
+                            </li>
+                          ) : (
+                            filteredLeads.map(lead => {
+                              const property = propertyMap.get(lead.id);
+                              const assessedValue = property?.assessedValue ? Number(property.assessedValue) : 0;
+                              const estimatedOffer = Math.round(assessedValue * (offerPercent / 100));
+                              const cbId = `batch-lead-${lead.id}`;
+                              const checked = selectedLeadIds.includes(lead.id);
+
+                              return (
+                                <li key={lead.id}>
+                                  <label
+                                    htmlFor={cbId}
+                                    className={`flex items-center gap-3 p-3 rounded-card border cursor-pointer transition-colors ${
+                                      checked
+                                        ? "border-primary bg-primary/5"
+                                        : "border-border hover-elevate"
+                                    }`}
+                                    data-testid={`lead-select-${lead.id}`}
+                                  >
+                                    <Checkbox
+                                      id={cbId}
+                                      checked={checked}
+                                      onCheckedChange={() => toggleLeadSelection(lead.id)}
+                                      data-testid={`checkbox-lead-${lead.id}`}
+                                      aria-label={`Include ${lead.firstName} ${lead.lastName} in batch`}
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-medium truncate">
+                                        {lead.firstName} {lead.lastName}
+                                      </div>
+                                      <div className="text-sm text-muted-foreground truncate">
+                                        {property?.address || (propertiesBySeller ? "No property linked" : "Looking up property…")}
+                                      </div>
+                                    </div>
+                                    <div className="text-right">
+                                      {assessedValue > 0 ? (
+                                        <>
+                                          <div className="text-xs text-muted-foreground tabular-nums">
+                                            Assessed: {usd(assessedValue)}
+                                          </div>
+                                          <div className="text-sm font-medium font-mono text-primary tabular-nums">
+                                            Offer: {usd(estimatedOffer)}
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <span className="text-xs text-muted-foreground">{propertiesBySeller ? "No value" : "…"}</span>
+                                      )}
+                                    </div>
+                                  </label>
+                                </li>
+                              );
+                            })
+                          )}
+                        </ul>
+                      </fieldset>
+                    )}
 
                     <div className="flex items-center justify-between mt-4 pt-4 border-t">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => setSelectedLeadIds(filteredLeads.map(l => l.id))}
+                        disabled={!leadsSettled || offerLeads.error !== null}
                         data-testid="button-select-all-leads"
                       >
-                        Select all
+                        {/* A prefix of the book selects what it shows, and says so. */}
+                        {leadsComplete
+                          ? "Select all"
+                          : leadsTruncated
+                            ? `Select the ${filteredLeads.length.toLocaleString()} shown`
+                            : offerLeads.error
+                              ? "Select all"
+                              : "Loading leads…"}
                       </Button>
                       <Button
                         variant="ghost"

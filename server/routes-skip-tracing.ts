@@ -45,6 +45,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { createRateLimiter } from "./middleware/rateLimit";
 import type { Lead, SkipTrace } from "@shared/schema";
+import { skipTraceLeadCounts, untracedLeadBatch } from "./storage/wholeOrgReadsF";
 
 const router = Router();
 
@@ -86,6 +87,11 @@ export function finishedTraceLeadIds(traces: TraceMarkerRow[]): Set<number> {
  * Select the next batch of genuinely untraced leads. Because finished
  * traces persist a skip_traces row, consecutive calls advance through the
  * lead list instead of re-tracing the same first page.
+ *
+ * This is the reference model of the rule. The route runs it in SQL over
+ * every live lead (`untracedLeadBatch`, DEFECT-0171): run here over the
+ * capped newest-5,000 list it said "every lead already has a finished skip
+ * trace" while older leads had none.
  */
 export function selectUntracedLeads<L extends { id: number }>(
   leads: L[],
@@ -133,11 +139,24 @@ export function deriveSkipTraceStats(
     if (traced.has(l.id)) tracedCount++;
     if (found.has(l.id)) foundCount++;
   }
+  return skipTraceStatsFromCounts({ totalLeads: leads.length, tracedCount, foundCount }, configured);
+}
+
+/**
+ * The stats contract from the three counts. The route counts them in SQL
+ * over every live lead (`skipTraceLeadCounts`, DEFECT-0171) — the capped
+ * newest-5,000 list under-counted totalLeads and untracedCount.
+ */
+export function skipTraceStatsFromCounts(
+  counts: { totalLeads: number; tracedCount: number; foundCount: number },
+  configured: boolean,
+): SkipTraceStatsResponse {
+  const { totalLeads, tracedCount, foundCount } = counts;
   return {
     configured,
-    totalLeads: leads.length,
+    totalLeads,
     tracedCount,
-    untracedCount: leads.length - tracedCount,
+    untracedCount: totalLeads - tracedCount,
     foundCount,
     foundRate: tracedCount > 0 ? Math.round((foundCount / tracedCount) * 100) : null,
   };
@@ -458,11 +477,8 @@ router.post("/batch", skipTraceLimiter, async (req: AuthenticatedRequest, res: R
     // created below drop those leads out of the next selection, so each
     // batch run advances instead of re-tracing (and re-charging) the same
     // first page.
-    const [leads, traces] = await Promise.all([
-      storage.getLeads(orgId),
-      storage.getSkipTraces(orgId),
-    ]);
-    const { batch, untracedTotal } = selectUntracedLeads(leads, traces, capped);
+    // Selected and counted in SQL over every live lead (DEFECT-0171).
+    const { batch, untracedTotal } = await untracedLeadBatch(orgId, capped, [...FINISHED_TRACE_STATUSES]);
 
     if (batch.length === 0) {
       // Honest zero — nothing to trace, nothing debited.
@@ -563,11 +579,9 @@ router.post("/batch", skipTraceLimiter, async (req: AuthenticatedRequest, res: R
 router.get("/stats", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const orgId = getOrganizationId(req);
-    const [leads, traces] = await Promise.all([
-      storage.getLeads(orgId),
-      storage.getSkipTraces(orgId),
-    ]);
-    res.json(deriveSkipTraceStats(leads, traces, skipTracingService.isConfigured()));
+    // Counted in SQL over every live lead (DEFECT-0171).
+    const counts = await skipTraceLeadCounts(orgId, [...FINISHED_TRACE_STATUSES]);
+    res.json(skipTraceStatsFromCounts(counts, skipTracingService.isConfigured()));
   } catch (err: any) {
     Errors.internal(res, err);
   }

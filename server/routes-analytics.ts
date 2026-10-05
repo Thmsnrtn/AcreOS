@@ -12,6 +12,7 @@ import { getOrganization } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
+import { teamKpiFigures } from "./storage/wholeOrgReadsF";
 
 export function registerAnalyticsRoutes(app: Express): void {
   const api = app;
@@ -169,34 +170,26 @@ export function registerAnalyticsRoutes(app: Express): void {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(now.getDate() - 30);
 
-      const [deals, leads] = await Promise.all([
-        storage.getDeals(org.id),
-        storage.getLeads(org.id),
-      ]);
+      // Counted in SQL over the whole book (DEFECT-0171): this filtered the
+      // newest 5,000 deals and leads, so past that the 30-day counts and the
+      // close rate left out the oldest rows. W3.4: "won" was never a written
+      // deal status (the canonical terminal-success status is "closed").
+      // "Closed" in the window is the deal's last update (there is no
+      // closedAt column), falling back to its creation.
+      const f = await teamKpiFigures(org.id, thirtyDaysAgo);
 
-      // W3.4: "won" was never a written deal status — dead branch removed
-      // (the canonical terminal-success status is "closed").
-      const recentDeals = deals.filter((d: any) => {
-        const closed = d.closedAt || d.updatedAt || d.createdAt;
-        return closed && new Date(closed) >= thirtyDaysAgo && d.status === "closed";
-      });
-
-      const recentLeads = leads.filter((l: any) => {
-        const worked = l.updatedAt || l.createdAt;
-        return worked && new Date(worked) >= thirtyDaysAgo;
-      });
-
-      const totalRevenue = recentDeals.reduce((sum: number, d: any) => sum + (d.purchasePrice || d.salePrice || 0), 0);
-
-      const conversionRate = leads.length > 0
-        ? ((deals.filter((d: any) => d.status === "closed").length / leads.length) * 100).toFixed(1)
+      const conversionRate = f.totalLeads > 0
+        ? ((f.closedDeals / f.totalLeads) * 100).toFixed(1)
         : "0.0";
 
       const kpis = [
-        { label: "Deals Closed (30d)", value: String(recentDeals.length) },
+        { label: "Deals Closed (30d)", value: String(f.dealsClosedSince) },
         { label: "Avg Deal Cycle Time", value: "—" },
-        { label: "Leads Worked (30d)", value: String(recentLeads.length) },
-        { label: "Revenue Generated", value: new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(totalRevenue) },
+        { label: "Leads Worked (30d)", value: String(f.leadsWorkedSince) },
+        // Not derivable: this summed d.purchasePrice || d.salePrice, and deals
+        // have neither column, so it always read "$0" — an invented figure.
+        // No revenue is stated rather than a false zero.
+        { label: "Revenue Generated", value: "—" },
         { label: "Conversion Rate", value: `${conversionRate}%` },
         { label: "Avg Offer Accepted %", value: "—" },
       ];

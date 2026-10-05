@@ -1594,20 +1594,19 @@ export function registerCampaignRoutes(app: Express): void {
         return Errors.badRequest(res, "Direct mail service not configured");
       }
       
-      // Calculate recipient count from IDs if provided
-      let count = recipientCount || 0;
-      if (recipientIds && Array.isArray(recipientIds)) {
-        count = recipientIds.length;
-      } else if (campaignId) {
-        // Get leads matching campaign criteria
-        const campaign = await storage.getCampaign(org.id, campaignId);
-        if (campaign && campaign.targetCriteria) {
-          const leads = await storage.getLeads(org.id);
-          // Filter leads by campaign criteria (simplified)
-          count = leads.length;
-        }
+      // The recipients priced are the ones the caller names. A campaignId
+      // alone is refused: nothing resolves a campaign's targetCriteria to
+      // leads (the send mails the explicit leadIds picked), so the only
+      // count on hand was every live lead — presented as the campaign's
+      // recipients, with a credit verdict on it (W10.2b audit).
+      const count = recipientIds ? recipientIds.length : recipientCount || 0;
+
+      if (count <= 0 && campaignId) {
+        return Errors.badRequest(
+          res,
+          "A campaign estimate needs recipientIds or recipientCount — the campaign's targeting is not resolved to leads here, so its recipients cannot be counted.",
+        );
       }
-      
       if (count <= 0) {
         return Errors.badRequest(res, "Must specify recipientCount, recipientIds, or campaignId");
       }

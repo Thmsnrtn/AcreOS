@@ -19,6 +19,21 @@ import { z } from "zod";
 import { dataSourceBroker } from "../services/data-source-broker.js";
 import { propertyEnrichmentService } from "../services/propertyEnrichment.js";
 import { storage } from "../storage.js";
+import { activeNoteTotals, leadCountsByStatusAndType } from "../storage/bookAggregates.js";
+import {
+  dealTallies,
+  pageDealsNewestFirst,
+  pageLeadsNewestFirst,
+  pagePropertiesNewestFirst,
+  propertyTallies,
+} from "../storage/wholeOrgReadsE.js";
+
+/**
+ * A search tool's row limit: what the caller asked for (default 20), never more
+ * than the 5000 rows these tools could ever return. The "of N" beside it is the
+ * whole-book count, so a limited page is never read as the whole book.
+ */
+const mcpListLimit = (limit: number | undefined): number => Math.min(limit ?? 20, 5000);
 import { logger } from "../utils/logger.js";
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
@@ -489,12 +504,14 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ state, county, status, limit }) => {
       try {
         const organizationId = requireBoundOrg(["properties:read"]);
-        const all = await storage.getProperties(organizationId);
-        let filtered = all;
-        if (state) filtered = filtered.filter(p => p.state?.toUpperCase() === state.toUpperCase());
-        if (county) filtered = filtered.filter(p => p.county?.toLowerCase().includes(county.toLowerCase()));
-        if (status) filtered = filtered.filter(p => p.status === status);
-        const sliced = filtered.slice(0, limit ?? 20);
+        // Filtered, ordered newest first and limited in SQL; the "of N" is
+        // the whole-book count (DEFECT-0171) — it was the count among the
+        // newest 5000, and an older match could not be found at all.
+        const { rows: sliced, total } = await pagePropertiesNewestFirst(
+          organizationId,
+          { state: state || undefined, countyContains: county || undefined, status: status || undefined },
+          mcpListLimit(limit),
+        );
         return ok(sliced.map(p => ({
           id: p.id,
           address: p.address,
@@ -508,7 +525,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
           latitude: p.latitude,
           longitude: p.longitude,
           apn: p.apn,
-        })), `Found ${sliced.length} of ${filtered.length} matching properties:`);
+        })), `Found ${sliced.length} of ${total} matching properties:`);
       } catch (e: any) {
         return err(e.message);
       }
@@ -548,13 +565,14 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ state, county, minScore, status, limit }) => {
       try {
         const organizationId = requireBoundOrg(["leads:read"]);
-        const all = await storage.getLeads(organizationId);
-        let filtered: any[] = all;
-        if (state) filtered = filtered.filter((l: any) => l.state?.toUpperCase() === state.toUpperCase());
-        if (county) filtered = filtered.filter((l: any) => l.address?.toLowerCase().includes(county.toLowerCase()));
-        if (minScore !== undefined) filtered = filtered.filter((l: any) => (l.score ?? 0) >= minScore);
-        if (status) filtered = filtered.filter((l: any) => l.status === status);
-        const sliced = filtered.slice(0, limit ?? 20);
+        // Filtered, ordered newest first and limited in SQL over the whole
+        // live book (DEFECT-0171). `county` matches within the address, as it
+        // always has.
+        const { rows: sliced, total } = await pageLeadsNewestFirst(
+          organizationId,
+          { state: state || undefined, addressContains: county || undefined, minScore, status: status || undefined },
+          mcpListLimit(limit),
+        );
         return ok(sliced.map((l: any) => ({
           id: l.id,
           firstName: l.firstName,
@@ -565,7 +583,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
           score: l.score,
           status: l.status,
           createdAt: l.createdAt,
-        })), `Found ${sliced.length} of ${filtered.length} matching leads:`);
+        })), `Found ${sliced.length} of ${total} matching leads:`);
       } catch (e: any) {
         return err(e.message);
       }
@@ -583,9 +601,8 @@ export function createMcpServer(options: McpServerOptions = {}) {
     async ({ stage, limit }) => {
       try {
         const organizationId = requireBoundOrg(["deals:read"]);
-        const all = await storage.getDeals(organizationId);
-        let filtered = stage ? all.filter((d: any) => d.status === stage) : all;
-        const sliced = filtered.slice(0, limit ?? 20);
+        // Filtered, ordered newest first and limited in SQL (DEFECT-0171).
+        const { rows: sliced, total } = await pageDealsNewestFirst(organizationId, { status: stage || undefined }, mcpListLimit(limit));
         return ok(sliced.map((d: any) => ({
           id: d.id,
           type: d.type,
@@ -595,7 +612,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
           acceptedAmount: d.acceptedAmount,
           closingDate: d.closingDate,
           createdAt: d.createdAt,
-        })), `Found ${sliced.length} of ${filtered.length} deals:`);
+        })), `Found ${sliced.length} of ${total} deals:`);
       } catch (e: any) {
         return err(e.message);
       }
@@ -612,38 +629,35 @@ export function createMcpServer(options: McpServerOptions = {}) {
         // Counts and pipeline value across every record kind: needs ALL four
         // read scopes, not any one (audit of 0e54c75).
         const organizationId = requireBoundOrg(["properties:read", "deals:read", "leads:read", "notes:read"], "all");
+        // Every figure an SQL aggregate over the whole book (DEFECT-0171):
+        // these were counts and sums of the newest 5000 of each kind.
         const [org, leads, properties, deals, notes] = await Promise.all([
           storage.getOrganization(organizationId),
-          storage.getLeads(organizationId),
-          storage.getProperties(organizationId),
-          storage.getDeals(organizationId),
-          storage.getNotes(organizationId),
+          leadCountsByStatusAndType(organizationId),
+          propertyTallies(organizationId),
+          dealTallies(organizationId),
+          activeNoteTotals(organizationId),
         ]);
-
-        const activeNotes = notes.filter((n: any) => n.status === "active");
-        const monthlyCashflow = activeNotes.reduce((s: number, n: any) => s + Number(n.monthlyPayment ?? 0), 0);
-        const totalOutstanding = activeNotes.reduce((s: number, n: any) => s + Number(n.currentBalance ?? 0), 0);
-        const pipelineValue = deals.reduce((s: number, d: any) => s + Number(d.offerAmount ?? d.acceptedAmount ?? 0), 0);
 
         return ok({
           organization: { id: org?.id, name: (org as any)?.name },
           leads: {
-            total: leads.length,
-            byStatus: leads.reduce((acc: Record<string, number>, l) => { acc[l.status ?? "unknown"] = (acc[l.status ?? "unknown"] ?? 0) + 1; return acc; }, {}),
+            total: leads.totalLeads,
+            byStatus: leads.byStatus,
           },
           properties: {
-            total: properties.length,
-            byStatus: properties.reduce((acc: Record<string, number>, p) => { acc[p.status ?? "unknown"] = (acc[p.status ?? "unknown"] ?? 0) + 1; return acc; }, {}),
+            total: properties.total,
+            byStatus: properties.byStatus,
           },
           deals: {
-            total: deals.length,
-            pipelineValue,
-            byStatus: deals.reduce((acc: Record<string, number>, d) => { acc[d.status ?? "unknown"] = (acc[d.status ?? "unknown"] ?? 0) + 1; return acc; }, {}),
+            total: deals.total,
+            pipelineValue: deals.offerElseAcceptedSum,
+            byStatus: deals.byStatus,
           },
           finance: {
-            activeNotes: activeNotes.length,
-            monthlyCashflow,
-            totalOutstanding,
+            activeNotes: notes.activeNotesCount,
+            monthlyCashflow: notes.monthlyCashflow,
+            totalOutstanding: notes.totalOutstandingBalance,
           },
         }, "Portfolio summary:");
       } catch (e: any) {

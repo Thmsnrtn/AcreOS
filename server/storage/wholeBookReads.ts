@@ -16,6 +16,7 @@ import { db } from "../db";
 import { deals, leads, notes, payments, properties } from "@shared/schema";
 import { ADMINISTRATIVE_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 import { realDeal, realNote, realPayment, realProperty } from "../services/onboarding/sampleFilters";
+import { READ_ROW_CEILING, ReadCeilingError, type ReadPurpose } from "./readCeiling";
 
 /**
  * `realOnly`: leave out the "Try with sample data" book (DEFECT-0137's
@@ -26,48 +27,45 @@ import { realDeal, realNote, realPayment, realProperty } from "../services/onboa
  */
 export interface WholeBookOpts {
   realOnly?: boolean;
+  /**
+   * "export" words a past-the-ceiling refusal as an export ("contact support
+   * for a bulk export"); every other caller gets the neutral wording.
+   */
+  purpose?: ReadPurpose;
 }
 
 /** The page size readAllPages expects: a shorter page means the end. */
 export const WHOLE_BOOK_PAGE = 1000;
 const PAGE = WHOLE_BOOK_PAGE;
-/** Far above any real book; a larger one is refused, never cut short. */
-const EXPORT_ROW_CEILING = 250_000;
-
-class ExportTooLargeError extends Error {
-  /** 413: surfaced as-is by the error handler instead of a generic 500. */
-  readonly statusCode = 413;
-  constructor(kind: string) {
-    super(`This ${kind} export exceeds ${EXPORT_ROW_CEILING.toLocaleString()} rows — contact support for a bulk export; nothing was truncated.`);
-    this.name = "ExportTooLargeError";
-  }
-}
 
 /**
- * Page any id-keyed read to the end, refusing past the ceiling. Exported
- * for exports that read tables beyond the five below (data portability).
+ * Page any id-keyed read to the end, refusing past the ceiling
+ * (ReadCeilingError, a 413). Exported for reads of tables beyond the five
+ * below (data portability, the F/E groups); an export passes "export".
  */
 export async function readAllPages<T extends { id: number }>(
   kind: string,
   page: (afterId: number) => Promise<T[]>,
+  purpose: ReadPurpose = "read",
 ): Promise<T[]> {
   const out: T[] = [];
   let afterId = 0;
   for (;;) {
     const rows = await page(afterId);
     out.push(...rows);
-    if (out.length > EXPORT_ROW_CEILING) throw new ExportTooLargeError(kind);
+    if (out.length > READ_ROW_CEILING) throw new ReadCeilingError(kind, purpose);
     if (rows.length < PAGE) return out;
     afterId = rows[rows.length - 1].id;
   }
 }
 
-export function readAllLeads(orgId: number) {
+export function readAllLeads(orgId: number, opts: Pick<WholeBookOpts, "purpose"> = {}) {
   return readAllPages("leads", (afterId) =>
     db.select().from(leads)
       .where(and(eq(leads.organizationId, orgId), sql`${leads.deletedAt} IS NULL`, gt(leads.id, afterId)) as SQL)
       .orderBy(asc(leads.id))
       .limit(PAGE),
+    opts.purpose,
   );
 }
 
@@ -77,6 +75,7 @@ export function readAllProperties(orgId: number, opts: WholeBookOpts = {}) {
       .where(and(eq(properties.organizationId, orgId), sql`${properties.status} != 'deleted'`, gt(properties.id, afterId), opts.realOnly ? realProperty() : undefined) as SQL)
       .orderBy(asc(properties.id))
       .limit(PAGE),
+    opts.purpose,
   );
 }
 
@@ -93,6 +92,7 @@ export function readAllDeals(orgId: number, opts: WholeBookOpts = {}) {
       )
       .orderBy(asc(deals.id))
       .limit(PAGE),
+    opts.purpose,
   );
 }
 
@@ -102,6 +102,7 @@ export function readAllNotes(orgId: number, opts: WholeBookOpts = {}) {
       .where(and(eq(notes.organizationId, orgId), gt(notes.id, afterId), opts.realOnly ? realNote() : undefined) as SQL)
       .orderBy(asc(notes.id))
       .limit(PAGE),
+    opts.purpose,
   );
 }
 
@@ -116,6 +117,7 @@ export function readAllPayments(orgId: number, opts: WholeBookOpts = {}) {
       .where(and(eq(payments.organizationId, orgId), gt(payments.id, afterId), opts.realOnly ? realPayment() : undefined) as SQL)
       .orderBy(asc(payments.id))
       .limit(PAGE),
+    opts.purpose,
   );
 }
 

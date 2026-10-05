@@ -808,49 +808,42 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
     }
     await assertAiSpendAllowed(orgId); // audit F-16-1: respect the platform cost ceiling
 
-    const [leads, properties, notesData, pendingActions] = await Promise.all([
-      storage.getLeads(orgId),
-      storage.getProperties(orgId),
-      storage.getNotes(orgId),
+    // Every figure in the briefing is an SQL aggregate over the whole book
+    // (DEFECT-0171): these were counts and sums of the newest 5000 leads,
+    // properties and notes, handed to the model as the company's totals.
+    const now = new Date();
+    const oneDayAgo = new Date(now);
+    oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+    const { leadTallies, propertyTallies, noteTallies, NO_NOTES } = await import("../storage/wholeOrgReadsE");
+    const [leadT, propertyT, noteT, pendingActions] = await Promise.all([
+      leadTallies(orgId, oneDayAgo),
+      propertyTallies(orgId),
+      noteTallies(orgId, now),
       storage.getVaActions(orgId, { status: "proposed", limit: 100 })
     ]);
 
-    const newLeads = leads.filter(l => {
-      const createdAt = l.createdAt ? new Date(l.createdAt) : null;
-      if (!createdAt) return false;
-      const oneDayAgo = new Date();
-      oneDayAgo.setDate(oneDayAgo.getDate() - 1);
-      return createdAt > oneDayAgo;
-    }).length;
-
-    const activeNotes = notesData.filter(n => n.status === "active");
-    const overduePayments = activeNotes.filter(n => {
-      if (!n.nextPaymentDate) return false;
-      return new Date(n.nextPaymentDate) < new Date();
-    }).length;
-
-    const monthlyRevenue = activeNotes.reduce((sum, n) => sum + Number(n.monthlyPayment || 0), 0);
-    const activeDeals = properties.filter(p => 
-      ["under_contract", "due_diligence", "offer_sent"].includes(p.status)
-    ).length;
+    const newLeads = leadT.createdSince;
+    const activeNotes = noteT.byStatus["active"] ?? NO_NOTES;
+    const overduePayments = activeNotes.pastDue;
+    const monthlyRevenue = activeNotes.monthlyPayment;
+    const activeDeals = ["under_contract", "due_diligence", "offer_sent"]
+      .reduce((sum, s) => sum + (propertyT.byStatus[s] ?? 0), 0);
+    const activeLeads = leadT.total - (leadT.byStatus["closed"] ?? 0) - (leadT.byStatus["dead"] ?? 0);
 
     const briefingPrompt = `Generate a concise executive daily briefing for a real estate company. Here's the data:
 
 NEW LEADS (24h): ${newLeads}
-TOTAL ACTIVE LEADS: ${leads.filter(l => !["closed", "dead"].includes(l.status)).length}
+TOTAL ACTIVE LEADS: ${activeLeads}
 ACTIVE DEALS: ${activeDeals}
-PROPERTIES OWNED: ${properties.filter(p => p.status === "owned").length}
-LISTED FOR SALE: ${properties.filter(p => p.status === "listed").length}
-ACTIVE NOTES: ${activeNotes.length}
+PROPERTIES OWNED: ${propertyT.byStatus["owned"] ?? 0}
+LISTED FOR SALE: ${propertyT.byStatus["listed"] ?? 0}
+ACTIVE NOTES: ${activeNotes.count}
 MONTHLY CASHFLOW: $${monthlyRevenue.toFixed(2)}
 OVERDUE PAYMENTS: ${overduePayments}
 PENDING AGENT ACTIONS: ${pendingActions.length}
 
 Leads by status:
-${Object.entries(leads.reduce((acc, l) => {
-  acc[l.status] = (acc[l.status] || 0) + 1;
-  return acc;
-}, {} as Record<string, number>)).map(([status, count]) => `- ${status}: ${count}`).join('\n')}
+${Object.entries(leadT.byStatus).map(([status, count]) => `- ${status}: ${count}`).join('\n')}
 
 Generate a briefing with:
 1. A compelling title for today

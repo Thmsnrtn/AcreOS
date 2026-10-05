@@ -8,6 +8,7 @@ import { storage, db } from "../storage";
 import { deals, notes, payments } from "@shared/schema";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { activeNoteReviewFigures, dealsClosedBetween, openPipelineTotals } from "../storage/wholeOrgReadsG";
 
 interface MonthlyReviewData {
   orgId: number;
@@ -44,13 +45,11 @@ export async function generateMonthlyReview(orgId: number): Promise<MonthlyRevie
     const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
     const monthName = lastMonth.toLocaleDateString("en-US", { month: "long" });
 
-    // Get deals closed last month
-    const orgDeals = await storage.getDeals(orgId);
-    const closedLastMonth = orgDeals.filter((d) => {
-      if (d.status !== "closed" || !d.closingDate) return false;
-      const cd = new Date(d.closingDate);
-      return cd >= lastMonth && cd <= lastMonthEnd;
-    });
+    // Every figure below is over the whole book (DEFECT-0171): this email
+    // counted the capped newest-5,000 deal and note lists and mailed the
+    // result as the customer's month.
+    // Get deals closed last month (every one, newest first as before)
+    const closedLastMonth = await dealsClosedBetween(orgId, lastMonth, lastMonthEnd);
 
     const totalProfit = closedLastMonth.reduce((s, d) => {
       const accepted = parseFloat(d.acceptedAmount || "0");
@@ -80,19 +79,14 @@ export async function generateMonthlyReview(orgId: number): Promise<MonthlyRevie
     }
 
     // Pipeline
-    const pipeline = orgDeals.filter((d) => d.status !== "closed" && d.status !== "cancelled");
-    const pipelineValue = pipeline.reduce((s, d) => s + parseFloat(d.offerAmount || "0"), 0);
+    const { count: pipelineDeals, offerSum: pipelineValue } = await openPipelineTotals(orgId);
 
     // Notes
-    const orgNotes = await storage.getNotes(orgId);
-    const activeNotes = orgNotes.filter((n: any) => n.status === "active");
-    const monthlyIncome = activeNotes.reduce((s, n: any) => s + parseFloat(n.monthlyPayment || "0"), 0);
-    const currentNotes = activeNotes.filter((n: any) => n.delinquencyStatus === "current" || !n.delinquencyStatus);
-    const collectionRate = activeNotes.length > 0 ? (currentNotes.length / activeNotes.length) * 100 : 100;
-    const totalBalance = activeNotes.reduce((s, n: any) => s + parseFloat(n.currentBalance || "0"), 0);
-    const avgRate = activeNotes.length > 0
-      ? activeNotes.reduce((s, n: any) => s + parseFloat(n.interestRate || "0"), 0) / activeNotes.length
-      : 0;
+    const noteFigures = await activeNoteReviewFigures(orgId);
+    const activeNoteCount = noteFigures.activeCount;
+    const monthlyIncome = noteFigures.monthlyIncome;
+    const collectionRate = activeNoteCount > 0 ? (noteFigures.currentCount / activeNoteCount) * 100 : 100;
+    const avgRate = activeNoteCount > 0 ? noteFigures.interestRateSum / activeNoteCount : 0;
 
     // Freedom score (simplified)
     const monthlyExpenses = 5000; // default target
@@ -107,11 +101,11 @@ export async function generateMonthlyReview(orgId: number): Promise<MonthlyRevie
       dealsClosed: closedLastMonth.length,
       totalProfit,
       bestDeal,
-      pipelineDeals: pipeline.length,
+      pipelineDeals,
       pipelineValue,
 
       notesCollected: Math.round(monthlyIncome),
-      activeNotes: activeNotes.length,
+      activeNotes: activeNoteCount,
       collectionRate: Math.round(collectionRate),
       portfolioYield: Math.round(avgRate * 10) / 10,
 

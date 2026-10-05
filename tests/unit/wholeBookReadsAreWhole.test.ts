@@ -81,8 +81,14 @@ describe("DEFECT-0170 — exports and book-wide figures do not use the capped li
       allowed: 2,
       why: "the notes UI list stays capped newest-first; getPayments(org, noteId) is per-note (the org-wide ledger reads whole)",
     },
-    "server/routes-platform-features.ts": { allowed: 1, why: "personal-bests reads recent closes only" },
-    "server/routes-today.ts": { allowed: 2, why: "leads and properties stay capped on Today (no money figure; DEFECT-0171)" },
+    "server/routes-platform-features.ts": {
+      allowed: 0,
+      why: "personal-bests picks the latest closed deal in SQL over every deal (DEFECT-0171)",
+    },
+    "server/routes-today.ts": {
+      allowed: 0,
+      why: "Today's lead and property figures are SQL counts and ORDER BY + LIMIT picks over the whole book (DEFECT-0171)",
+    },
     "server/services/dataPortability.ts": { allowed: 0, why: "Settings → Download your data" },
   };
   for (const [file, { allowed, why }] of Object.entries(REGISTER)) {

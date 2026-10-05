@@ -52,8 +52,11 @@ vi.mock("../../server/storage", () => {
       Object.assign(org, updates);
       return org;
     },
-    async getLeads(orgId: number) {
-      return mem.leads.filter((l) => l.organizationId === orgId);
+    // The seeder reads sample rows BY MARKER (wholeOrgReadsG, mocked below),
+    // never out of the newest-5,000 capped lists (DEFECT-0171): in a grown
+    // book the sample rows are the OLDEST, which those lists drop.
+    async getLeads() {
+      throw new Error("capped getLeads read — sample rows must be read by marker");
     },
     async createLead(lead: Record<string, unknown>) {
       const row = { id: mem.nextId++, ...lead } as Row;
@@ -65,8 +68,8 @@ vi.mock("../../server/storage", () => {
         (l) => !(l.id === id && (orgId == null || l.organizationId === orgId)),
       );
     },
-    async getProperties(orgId: number) {
-      return mem.properties.filter((p) => p.organizationId === orgId);
+    async getProperties() {
+      throw new Error("capped getProperties read — sample rows must be read by marker");
     },
     async createProperty(property: Record<string, unknown>) {
       const row = { id: mem.nextId++, ...property } as Row;
@@ -83,16 +86,16 @@ vi.mock("../../server/storage", () => {
       mem.deals = mem.deals.filter((d) => d.propertyId !== id);
       mem.notes = mem.notes.filter((n) => n.propertyId !== id);
     },
-    async getDeals(orgId: number) {
-      return mem.deals.filter((d) => d.organizationId === orgId);
+    async getDeals() {
+      throw new Error("capped getDeals read — sample rows must be read by marker");
     },
     async createDeal(deal: Record<string, unknown>) {
       const row = { id: mem.nextId++, ...deal } as Row;
       mem.deals.push(row);
       return row;
     },
-    async getNotes(orgId: number) {
-      return mem.notes.filter((n) => n.organizationId === orgId);
+    async getNotes() {
+      throw new Error("capped getNotes read — sample rows must be read by marker");
     },
     async createNote(note: Record<string, unknown>) {
       const row = { id: mem.nextId++, ...note } as Row;
@@ -107,6 +110,27 @@ vi.mock("../../server/storage", () => {
   };
   return { storage };
 });
+
+// In-memory twins of the by-marker reads: same predicates as the SQL
+// (org, live/listed, marker), over every row.
+vi.mock("../../server/storage/wholeOrgReadsG", () => ({
+  async sampleLeadRows(orgId: number, source: string) {
+    return mem.leads.filter((l) => l.organizationId === orgId && l.source === source && l.deletedAt == null);
+  },
+  async samplePropertyRows(orgId: number, prefix: string) {
+    return mem.properties.filter(
+      (p) => p.organizationId === orgId && p.status !== "deleted" && String(p.apn ?? "").startsWith(prefix),
+    );
+  },
+  async dealsOnProperties(orgId: number, ids: number[]) {
+    return mem.deals.filter(
+      (d) => d.organizationId === orgId && d.status !== "deleted" && ids.includes(d.propertyId as number),
+    );
+  },
+  async notesOnProperties(orgId: number, ids: number[]) {
+    return mem.notes.filter((n) => n.organizationId === orgId && ids.includes(n.propertyId as number));
+  },
+}));
 
 import {
   seedSampleDataForOrg,

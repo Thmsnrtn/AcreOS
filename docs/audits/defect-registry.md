@@ -4623,7 +4623,7 @@ Resolving commits: this branch, round 3
 ### DEFECT-0169
 Title: Lead pickers and lookups read the first page of leads
 Severity: P2
-Status: OPEN
+Status: FIXED (W10.2b, 2026-10-05)
 Surfaced by lenses: DEFECT-0168 audit, 2026-09-28
 Description: The offers page (`client/src/pages/offers.tsx`) reads
 `fetchJsonArray('/api/leads')`, which is the first page of 25 rows. It
@@ -4635,7 +4635,20 @@ finance's borrower lookup is not affected.
 The leads route already takes `q`. The fix mirrors DEFECT-0168: a
 server-searched lead picker, by-id lookups, and a population register over
 every lead read shape.
-Resolving commits: —
+Remediation plan: DONE (W10.2b, 2026-10-05).
+- The offers page reads its leads through `useOfferLeads()`, which wraps the
+  `useLeads()` cursor walk; property lookups wait until the walk settles.
+- `complete` is true only when the walk reached the server's total. At the
+  hook's page ceiling the page says "Showing the first N of M leads" (or
+  "the first N" when M is unknown) and "Select all" reads "Select the N
+  shown". A failed page renders `QueryErrorState` with retry, and the walk
+  no longer re-fires a failing page forever.
+- The audit found the hook's real ceiling is 40 pages × 100 rows (the server
+  clamps `limit` at 100), i.e. 4,000 leads, not the 10,000 its comment says;
+  the page reports the count it actually loaded. Carried in DEFECT-0291.
+Falsified by: the DEFECT-0169 block in `tests/unit/wholeOrgReadsF.test.ts`
+(page-2 lead reached, ceiling with and without a total, failed page).
+Resolving commits: the W10.2b commit (see `git log`)
 ### DEFECT-0170
 Title: Exports and book-wide money figures silently dropped an org's oldest rows past 5000
 Severity: P1
@@ -4700,7 +4713,7 @@ Resolving commits: this branch, round 3
 ### DEFECT-0171
 Title: The remaining capped whole-org reads give wrong counts and skip old rows past 5000
 Severity: P2
-Status: OPEN
+Status: FIXED (W10.2b, 2026-10-05)
 Surfaced by lenses: DEFECT-0170 trace, 2026-09-28
 Description: About 45 more production callers of the capped getters compute
 a total or claim from the newest 5000 rows, or act only on those rows.
@@ -4739,7 +4752,73 @@ a total or claim from the newest 5000 rows, or act only on those rows.
   They use `readPropertiesBySellerIds` (`server/storage/wholeBookReads.ts`)
   or `getLead` / `getDeal` / `getNote`.
 - The full ranked list is in the trace recorded with DEFECT-0170.
-Resolving commits: —
+Remediation plan: DONE (W10.2b, 2026-10-05).
+- 75 production calls in 24 files were replaced, by three builders, with SQL
+  aggregates, ORDER BY/LIMIT reads, by-id reads or whole-book keyset reads
+  (`server/storage/wholeOrgReads{E,F,G}.ts`). Every statement names the org
+  inline and reads only live leads.
+- `tests/unit/cappedWholeOrgReadsCensus.test.ts` holds every production call
+  to the four getters, through ANY receiver (`x?.getLeads(`,
+  `x["getLeads"](`, `.call`, a destructured getter — every evasion the audit
+  tried has a canary), to a register. One entry remains: `GET /api/notes`,
+  the notes table's row payload.
+Audit follow-up, same day (an independent audit of the integrated wave):
+- Reading the whole book widened PAID lookups with it. The parcel backfill
+  (`POST /api/properties/fetch-all-parcels`) now looks up at most 100 per run,
+  newest first, and reports `remaining`; the list scrub validates at most
+  5,000 addresses per run, newest first, counts the rest — and any failed
+  lookup — `unvalidated` rather than valid, and no longer counts or bills an
+  "enrichment" that never ran.
+- The census exemption for `GET /api/notes` gave a false reason: the persona
+  map strips, the note dashboard widgets and Finance's own headline cards
+  summed that capped list into book-wide money figures. They now read
+  `GET /api/notes/book-figures` (SQL over every active note).
+- Per-request whole-book reads were bounded: the focus list reads only its
+  candidates' scoring columns and the top 10 full rows; `/api/leads/aging`
+  returns the 100 most urgent plus `X-Total-Count`; the nightly aging sweep
+  creates at most 50 alerts and one counted summary alert.
+- Skip-trace stats are one LEFT JOIN over a grouped subquery, not two
+  correlated EXISTS per lead.
+- The direct-mail estimate refuses a targeted campaign without
+  `recipientIds`/`recipientCount` instead of pricing every lead: no
+  criteria-to-leads matcher exists.
+- The 250,000-row refusal is one class (`server/storage/readCeiling.ts`),
+  worded "read" by default and "export" only for exporters, 413 throughout.
+- Raw `sql` Date binds now bind UTC ISO strings.
+- `server/services/priorityAction.ts` had no importers; it and the three
+  readers only it called were deleted.
+Second audit, same day (a fresh auditor over the fixes):
+- The parcel backfill's cap made it retry the same newest failures forever.
+  It now walks down the book with a `beforeId` cursor the client hands
+  back, and says when a pass has reached the oldest.
+- The aging cap was per RUN of a job that runs every 15 minutes (up to
+  4,800 alerts a day). It is now 50 per org per DAY.
+- Finance's persona hero (originator and servicer economics, escrow, the
+  12-month origination strip) still summed the capped list beside the now
+  whole-book headline. It reads SQL figures from the same endpoint, months
+  cut in the viewer's time zone.
+- The census counts every member REFERENCE (detached methods,
+  `Reflect.apply`, `!.`, annotated and parameter destructures), and the aging
+  test pins each cutoff to its branch, `<=`, and the ORDER BY.
+- A paused (offline) query no longer shows the map strips' error box.
+Third audit, same day:
+- The scrub still stored "invalid address" when NO source answered (an
+  outage, none configured — the broker answers with source id 0). That is
+  now `unvalidated`; only a real source finding no parcel is invalid. The
+  skill no longer advertises enrichment.
+- The backfill cursor is bounded to int4, keyed by org on the client, and a
+  cursor with nothing below it starts over from the newest in the same
+  request.
+- Finance's headline cards say why they show "—" and offer a retry.
+Falsified by: `cappedWholeOrgReadsCensus` (75 calls in 24 files red
+pre-fix), `wholeOrgReads{E,F,G}.test.ts`, `noteBookFigures(.test.ts,
+Widgets.test.tsx)`, `fetchAllParcelsBoundsPaidLookups`,
+`scrubLeadListBoundsPaidLookups`, `leadsFocusReadsCandidatesOnly`,
+`leadAgingAlertsAreBounded`, `readCeilingErrorIsNeutral`,
+`directMailEstimateNeverPricesTheWholeBook`,
+`personaFinanceHeroBookFigures` — each mutation-checked.
+Residue: DEFECT-0291.
+Resolving commits: the W10.2b commit (see `git log`)
 ### DEFECT-0172
 Title: The batch-offer agent skill priced offers from an invented $10,000 and offered every lead in the org
 Severity: P1
@@ -6824,6 +6903,44 @@ Evidence: the files named.
 Remediation plan: Read each against the lint's registers and either add the org predicate or record why it is safe; filter the calibration denominator to live leads in the same way.
 Resolving commits: —
 
+### DEFECT-0291
+Title: Residue of the capped-read walk (W10.2b) — figures, ceilings and costs outside its census
+Severity: P2
+Status: OPEN
+Surfaced by lenses: W10.2b builders and its independent audit (2026-10-05)
+Description: Found while closing DEFECT-0171, outside its population:
+(1) the map's `InventoryStrip` (`PersonaMapStrip.tsx`) counts status pips
+and "top spread" over the newest 100 properties (`maps.tsx`,
+`pageSize=100`) without saying so; (2) `useLeads` stops at 40 pages × 100
+rows = 4,000 leads (the server clamps `limit` at 100), not the 10,000 its
+comment states, and since its walk now stops on a failed page, consumers that
+ignore the error (the campaign recipient picker, Today, the document
+generator, Finance's borrower lookup) hold a silent prefix; (3) two
+concurrent backfill clicks pay twice for the same batch (no in-flight guard);
+(4) `skip_traces` has no `(organization_id, lead_id)` index, which both the
+stats join and the batch anti-join want; (5) inline caps the census cannot
+see: `getDeletedLeads` `.limit(5000)`, reflex health `.limit(5000)`, and the
+weekly digest's `getPayments` slice; and `GET /api/due-diligence` returns
+every property in one payload (no client consumer found); (6) the E/F/G and
+note-figure tests pin rendered SQL, not equivalence with the old JS over a
+real database — a docker-compose Postgres suite seeding >5,000 rows would;
+(7) the note heroes still wait on `/api/finance/portfolio-summary` and show
+a skeleton forever if it fails, and the daily aging summary alert keeps its
+first run's figures all day (the existing same-day dedupe); (8) builder questions: month-in-review's
+`closingDate <= lastMonthEnd` drops deals closed later that day,
+`checkDelinquencies` reports `buyerName: "Unknown"`, MCP `search_leads`
+matches county as a substring of the address, the overdue-note count
+includes non-active notes, and a stored numeric `'NaN'` now propagates
+through SQL sums where `num()` made it 0.
+Evidence: the files named.
+Remediation plan: (1) a status group-by, or label the counts; (2) correct
+the comment, decide the ceiling, and give each consumer the walk state;
+(3) a per-org in-flight guard; (4) a migration adding the index; (5) bring
+them into a census or register them, and page due diligence; (6) a
+docker-compose Postgres suite; (7) an error branch on the summary;
+(8) triage each.
+Resolving commits: —
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -6860,10 +6977,10 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 19  | 19    |
-| FIXED  | 14  | 136 | 119 | 269   |
+| OPEN   | 0   | 0   | 18  | 18    |
+| FIXED  | 14  | 136 | 121 | 271   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **138** | **138** | **290** |
+| **Total** | **14** | **138** | **139** | **291** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as

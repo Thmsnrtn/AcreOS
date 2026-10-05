@@ -2,6 +2,7 @@ import type { Express } from "express";
 // Book-wide figures read the WHOLE book, not the 5000-row capped lists
 // (DEFECT-0170): old notes are the ones most likely to be late.
 import { readAllDeals, readAllNotes, readAllPayments, readAllProperties } from "./storage/wholeBookReads";
+import { noteBookFigures } from "./storage/noteBookFigures";
 import { storage, db, calculateMonthlyPayment } from "./storage";
 import { z } from "zod";
 import { insertNoteSchema, payments as paymentsTable, paymentReminders, notes as notesTable, contractAssignments, deals as dealsTable, properties as propertiesTable } from "@shared/schema";
@@ -125,7 +126,21 @@ export function registerFinanceRoutes(app: Express): void {
     const notes = await storage.getNotes(org.id);
     res.json(notes);
   });
-  
+
+  // The note widgets' book-wide figures (outstanding, monthly, financed,
+  // weighted rate, most delinquent) over EVERY active note, plus the Finance
+  // hero's (origination book, escrow, yield) over the population it used, in
+  // SQL — they summed the capped list above (W10.2b audit). Before /:id.
+  api.get("/api/notes/book-figures", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res) => {
+    try {
+      // `tz` (the viewer's IANA zone) cuts the hero's 12-month origination
+      // strip in the months the viewer sees; unknown or absent → UTC.
+      res.json(await noteBookFigures(getOrganizationId(req), new Date(), req.query.tz));
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
   // STR-021: stateless amortization preview. Registered BEFORE /:id so
   // Express resolves the verb-style path to this handler.
   api.get("/api/notes/amortize", isAuthenticated, getOrCreateOrg, async (req, res) => {

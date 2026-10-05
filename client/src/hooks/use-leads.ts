@@ -18,6 +18,36 @@ const LEGACY_PAGE_SIZE = 250;
 // keeping the worst-case cache bounded.
 const LEGACY_MAX_PAGES = 40; // 40 * 250 = 10,000 leads
 
+/** The cache key useLeads() walks under (its raw `{ pages }` live here). */
+export const LEADS_FLAT_QUERY_KEY = [api.leads.list.path, "infinite-flat"] as const;
+
+/**
+ * How much of the book a useLeads() walk holds, read from its raw pages
+ * (the hook's `select` flattens them, dropping the server's `total`).
+ * `loaded` rows of `total` (null when the pages did not report one);
+ * `ceilingReached` when the walk stopped at LEGACY_MAX_PAGES with the
+ * server still reporting more — the list is then a prefix, not the book.
+ */
+export interface LeadWalkCoverage {
+  loaded: number;
+  total: number | null;
+  ceilingReached: boolean;
+}
+
+export function leadWalkCoverage(raw: unknown): LeadWalkCoverage {
+  if (Array.isArray(raw)) return { loaded: raw.length, total: null, ceilingReached: false };
+  const pages = (raw as { pages?: unknown[] } | undefined)?.pages;
+  if (!Array.isArray(pages) || pages.length === 0) return { loaded: 0, total: null, ceilingReached: false };
+  let loaded = 0;
+  for (const page of pages) {
+    const data = (page as { data?: unknown })?.data;
+    if (Array.isArray(data)) loaded += data.length;
+  }
+  const last = pages[pages.length - 1] as { total?: unknown; hasMore?: unknown } | undefined;
+  const total = typeof last?.total === "number" && Number.isFinite(last.total) ? last.total : null;
+  return { loaded, total, ceilingReached: pages.length >= LEGACY_MAX_PAGES && last?.hasMore === true };
+}
+
 export interface PaginatedLeadsResponse {
   data: any[];
   total: number;
@@ -85,7 +115,7 @@ export function useLeads() {
   // `invalidateQueries({queryKey: ["/api/leads"]})` calls still match
   // this key by react-query's default prefix semantics.
   const query = useInfiniteQuery({
-    queryKey: [api.leads.list.path, "infinite-flat"],
+    queryKey: LEADS_FLAT_QUERY_KEY,
     queryFn: async ({ pageParam }) => {
       const cursor = pageParam as string | undefined;
       const url = new URL(PAGINATED_URL, window.location.origin);
@@ -142,10 +172,14 @@ export function useLeads() {
   // whether another page is reachable; the count is only the LEGACY cap.
   const flatLength = Array.isArray(query.data) ? query.data.length : 0;
   React.useEffect(() => {
+    // Not after a failed page: hasNextPage stays true and isFetching drops
+    // back to false, so without this the effect re-fired the failing fetch
+    // forever and the caller never saw a settled error to offer a retry on.
     if (
       query.hasNextPage &&
       !query.isFetchingNextPage &&
       !query.isFetching &&
+      !query.isError &&
       flatLength < LEGACY_PAGE_SIZE * LEGACY_MAX_PAGES
     ) {
       void query.fetchNextPage();
@@ -156,6 +190,7 @@ export function useLeads() {
     query.hasNextPage,
     query.isFetchingNextPage,
     query.isFetching,
+    query.isError,
     flatLength,
     query.fetchNextPage,
   ]);

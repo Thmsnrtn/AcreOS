@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRef } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useOrganization } from "@/hooks/use-organization";
 
 interface ParcelLookupRequest {
   apn?: string;
@@ -101,15 +103,26 @@ interface BulkParcelResult {
   updated: number;
   failed: number;
   results: Array<{ propertyId: number; apn: string; success: boolean; source?: string; error?: string }>;
+  processed?: number;
+  remaining?: number;
+  cap?: number;
+  /** Where the next run continues; null once a pass has reached the oldest. */
+  nextBeforeId?: number | null;
 }
 
 export function useFetchAllParcels() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { data: org } = useOrganization();
+  // Each run looks up a bounded batch; the next click continues below it
+  // instead of retrying the same newest properties (W10.2b re-audit). The
+  // cursor belongs to the org it was issued for — switching orgs starts over.
+  const cursor = useRef<{ orgId: number | undefined; beforeId: number } | null>(null);
   
   return useMutation({
     mutationFn: async (): Promise<BulkParcelResult> => {
-      const res = await apiRequest("POST", "/api/properties/fetch-all-parcels", {});
+      const beforeId = cursor.current && cursor.current.orgId === org?.id ? cursor.current.beforeId : undefined;
+      const res = await apiRequest("POST", "/api/properties/fetch-all-parcels", beforeId ? { beforeId } : {});
       if (!res.ok) {
         const error = await res.json();
         throw new Error(error.message || "Failed to bulk fetch parcel data");
@@ -117,6 +130,7 @@ export function useFetchAllParcels() {
       return res.json();
     },
     onSuccess: (data) => {
+      cursor.current = data.nextBeforeId ? { orgId: org?.id, beforeId: data.nextBeforeId } : null;
       queryClient.invalidateQueries({ queryKey: ['/api/properties'] });
       toast({
         title: "Bulk parcel fetch complete",

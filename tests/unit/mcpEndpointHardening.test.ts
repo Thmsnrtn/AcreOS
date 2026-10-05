@@ -25,6 +25,22 @@ vi.mock("../../server/storage", () => ({
     getOrganization: vi.fn(async () => undefined),
   },
 }));
+// The org-scoped reads the tools make (DEFECT-0171: whole-book SQL, not the
+// capped storage lists) — what the org-binding assertions below watch.
+const whole = vi.hoisted(() => ({
+  pagePropertiesNewestFirst: vi.fn(async () => ({ rows: [], total: 0 })),
+  pageLeadsNewestFirst: vi.fn(async () => ({ rows: [], total: 0 })),
+  pageDealsNewestFirst: vi.fn(async () => ({ rows: [], total: 0 })),
+  propertyTallies: vi.fn(async () => ({ total: 0, createdSince: 0, byStatus: {}, totalAcres: 0, totalMarketValue: 0 })),
+  dealTallies: vi.fn(async () => ({
+    total: 0, createdSince: 0, byStatus: {}, byType: {}, offerSum: 0, offerElseAcceptedSum: 0, acceptedElseOfferSumByStatus: {},
+  })),
+}));
+vi.mock("../../server/storage/wholeOrgReadsE", () => whole);
+vi.mock("../../server/storage/bookAggregates", () => ({
+  leadCountsByStatusAndType: vi.fn(async () => ({ totalLeads: 0, byStatus: {}, byType: {} })),
+  activeNoteTotals: vi.fn(async () => ({ activeNotesCount: 0, totalOutstandingBalance: 0, monthlyCashflow: 0 })),
+}));
 vi.mock("../../server/services/data-source-broker", () => ({
   dataSourceBroker: { lookup: vi.fn(async () => ({ data: {}, source: { title: "mock" } })) },
 }));
@@ -49,7 +65,6 @@ vi.mock("../../server/db", () => ({
 import { verifySecret, hashApiKey } from "../../server/services/apiKeys";
 import { resolveMcpAuth } from "../../server/mcp/auth";
 import { createMcpServer } from "../../server/mcp/index";
-import { storage } from "../../server/storage";
 
 const STATIC_KEY = "test-mcp-static-key-0123456789abcdef";
 
@@ -170,8 +185,8 @@ describe("MCP org binding — tools are forced to the authenticated org", () => 
     // schema, and the handler must use the session binding regardless.
     const result = await reg.handler({ organizationId: 999, limit: 5 }, {});
     expect(result.isError).toBeFalsy();
-    expect(storage.getProperties).toHaveBeenCalledTimes(1);
-    expect(storage.getProperties).toHaveBeenCalledWith(7);
+    expect(whole.pagePropertiesNewestFirst).toHaveBeenCalledTimes(1);
+    expect(whole.pagePropertiesNewestFirst).toHaveBeenCalledWith(7, expect.anything(), 5);
   });
 
   it("refuses org-scoped tools when the session has no org binding", async () => {
@@ -180,7 +195,7 @@ describe("MCP org binding — tools are forced to the authenticated org", () => 
     const result = await reg.handler({ limit: 5 }, {});
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/not bound to an organization/i);
-    expect(storage.getProperties).not.toHaveBeenCalled();
+    expect(whole.pagePropertiesNewestFirst).not.toHaveBeenCalled();
   });
 
   it("public-data tools still work without an org binding", async () => {
@@ -201,7 +216,7 @@ describe("MCP /mcp honours the key's scopes (audit of 60ebfd9)", () => {
       expect(result.isError, name).toBe(true);
       expect(result.content[0].text).toMatch(/lacks the scope/i);
     }
-    expect(storage.getProperties).not.toHaveBeenCalled();
+    for (const reader of Object.values(whole)) expect(reader).not.toHaveBeenCalled();
   });
 
   it("the portfolio summary needs every read scope it counts — a notes-only key cannot read it", async () => {

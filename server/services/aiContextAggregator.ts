@@ -1,4 +1,15 @@
 import { storage } from "../storage";
+import {
+  dealTallies,
+  leadTallies,
+  listDealsNewestFirst,
+  listLeadsNewestFirst,
+  listNotesNewestFirst,
+  listPropertiesNewestFirst,
+  NO_NOTES,
+  noteTallies,
+  propertyTallies,
+} from "../storage/wholeOrgReadsE";
 
 export interface ModuleSnapshot {
   name: string;
@@ -36,6 +47,8 @@ export interface SystemContext {
 }
 
 const CACHE_TTL_MS = 60000;
+/** How many of the newest records each module lists for Pax. */
+const RECENT_ITEMS = 5;
 const contextCache = new Map<number, { context: SystemContext; fetchedAt: number }>();
 
 export async function getSystemContext(organizationId: number): Promise<SystemContext> {
@@ -57,46 +70,42 @@ async function buildSystemContext(organizationId: number): Promise<SystemContext
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  const [org, leads, properties, deals, notes, tasks, campaigns] = await Promise.all([
+  // The counts, sums and by-status maps are SQL aggregates over the whole
+  // book, and the "recent items" the five newest of the week in SQL
+  // (DEFECT-0171): every figure here was computed from the newest 5000 rows
+  // of each kind and handed to Pax as the customer's totals.
+  const [
+    org, leadT, propertyT, dealT, noteT,
+    recentLeads, recentProperties, recentDeals, recentActiveNotes,
+    tasks, campaigns,
+  ] = await Promise.all([
     storage.getOrganization(organizationId),
-    storage.getLeads(organizationId),
-    storage.getProperties(organizationId),
-    storage.getDeals(organizationId),
-    storage.getNotes(organizationId),
+    leadTallies(organizationId, weekAgo),
+    propertyTallies(organizationId, weekAgo),
+    dealTallies(organizationId, weekAgo),
+    noteTallies(organizationId, now),
+    listLeadsNewestFirst(organizationId, { createdAfter: weekAgo }, RECENT_ITEMS),
+    listPropertiesNewestFirst(organizationId, { createdAfter: weekAgo }, RECENT_ITEMS),
+    listDealsNewestFirst(organizationId, { createdAfter: weekAgo }, RECENT_ITEMS),
+    listNotesNewestFirst(organizationId, { status: "active" }, RECENT_ITEMS),
     storage.getTasks(organizationId),
     storage.getCampaigns(organizationId),
   ]);
 
-  const recentLeads = leads.filter(l => new Date(l.createdAt || 0) > weekAgo);
-  const recentProperties = properties.filter(p => new Date(p.createdAt || 0) > weekAgo);
-  const recentDeals = deals.filter(d => new Date(d.createdAt || 0) > weekAgo);
-
-  const activeNotes = notes.filter(n => n.status === "active");
-  const monthlyCashflow = activeNotes.reduce((sum, n) => sum + Number(n.monthlyPayment || 0), 0);
-  const totalOutstanding = activeNotes.reduce((sum, n) => sum + Number(n.currentBalance || 0), 0);
+  const activeNotes = noteT.byStatus["active"] ?? NO_NOTES;
+  const monthlyCashflow = activeNotes.monthlyPayment;
+  const totalOutstanding = activeNotes.currentBalance;
 
   const pendingTasks = tasks.filter(t => t.status === "pending" || t.status === "in_progress");
   const overdueTasks = pendingTasks.filter(t => t.dueDate && new Date(t.dueDate) < now);
 
-  const newLeads = leads.filter(l => l.status === "new");
-
-  const leadsByStatus: Record<string, number> = {};
-  leads.forEach(l => {
-    leadsByStatus[l.status] = (leadsByStatus[l.status] || 0) + 1;
-  });
-
-  const propertiesByStatus: Record<string, number> = {};
-  properties.forEach(p => {
-    propertiesByStatus[p.status] = (propertiesByStatus[p.status] || 0) + 1;
-  });
-
-  const dealsByStatus: Record<string, number> = {};
-  deals.forEach(d => {
-    dealsByStatus[d.status] = (dealsByStatus[d.status] || 0) + 1;
-  });
+  const newLeadsCount = leadT.byStatus["new"] ?? 0;
+  const leadsByStatus = leadT.byStatus;
+  const propertiesByStatus = propertyT.byStatus;
+  const dealsByStatus = dealT.byStatus;
 
   const quickActions: string[] = [];
-  if (newLeads.length > 0) quickActions.push(`Follow up with ${newLeads.length} new leads`);
+  if (newLeadsCount > 0) quickActions.push(`Follow up with ${newLeadsCount} new leads`);
   if (overdueTasks.length > 0) quickActions.push(`Complete ${overdueTasks.length} overdue tasks`);
   if (propertiesByStatus["prospect"] > 0) quickActions.push(`Research ${propertiesByStatus["prospect"]} prospect properties`);
 
@@ -107,15 +116,15 @@ async function buildSystemContext(organizationId: number): Promise<SystemContext
     modules: {
       leads: {
         name: "Leads (CRM)",
-        totalCount: leads.length,
-        recentCount: recentLeads.length,
+        totalCount: leadT.total,
+        recentCount: leadT.createdSince,
         keyStats: {
           byStatus: leadsByStatus,
-          newThisWeek: recentLeads.length,
-          sellers: leads.filter(l => l.type === "seller").length,
-          buyers: leads.filter(l => l.type === "buyer").length,
+          newThisWeek: leadT.createdSince,
+          sellers: leadT.byType["seller"] ?? 0,
+          buyers: leadT.byType["buyer"] ?? 0,
         },
-        recentItems: recentLeads.slice(0, 5).map(l => ({
+        recentItems: recentLeads.map(l => ({
           id: l.id,
           name: `${l.firstName} ${l.lastName}`,
           status: l.status,
@@ -124,16 +133,16 @@ async function buildSystemContext(organizationId: number): Promise<SystemContext
       },
       properties: {
         name: "Property Inventory",
-        totalCount: properties.length,
-        recentCount: recentProperties.length,
+        totalCount: propertyT.total,
+        recentCount: propertyT.createdSince,
         keyStats: {
           byStatus: propertiesByStatus,
-          totalAcres: properties.reduce((sum, p) => sum + Number(p.sizeAcres || 0), 0),
-          totalValue: properties.reduce((sum, p) => sum + Number(p.marketValue || 0), 0),
+          totalAcres: propertyT.totalAcres,
+          totalValue: propertyT.totalMarketValue,
           owned: propertiesByStatus["owned"] || 0,
           listed: propertiesByStatus["listed"] || 0,
         },
-        recentItems: recentProperties.slice(0, 5).map(p => ({
+        recentItems: recentProperties.map(p => ({
           id: p.id,
           address: p.address,
           county: p.county,
@@ -144,15 +153,15 @@ async function buildSystemContext(organizationId: number): Promise<SystemContext
       },
       deals: {
         name: "Deal Pipeline",
-        totalCount: deals.length,
-        recentCount: recentDeals.length,
+        totalCount: dealT.total,
+        recentCount: dealT.createdSince,
         keyStats: {
           byStatus: dealsByStatus,
-          acquisitions: deals.filter(d => d.type === "acquisition").length,
-          dispositions: deals.filter(d => d.type === "disposition").length,
-          totalPipelineValue: deals.reduce((sum, d) => sum + Number(d.offerAmount || 0), 0),
+          acquisitions: dealT.byType["acquisition"] ?? 0,
+          dispositions: dealT.byType["disposition"] ?? 0,
+          totalPipelineValue: dealT.offerSum,
         },
-        recentItems: recentDeals.slice(0, 5).map(d => ({
+        recentItems: recentDeals.map(d => ({
           id: d.id,
           propertyId: d.propertyId,
           status: d.status,
@@ -162,14 +171,14 @@ async function buildSystemContext(organizationId: number): Promise<SystemContext
       },
       notes: {
         name: "Seller Finance Notes",
-        totalCount: notes.length,
+        totalCount: noteT.total,
         recentCount: 0,
         keyStats: {
-          active: activeNotes.length,
-          totalPrincipal: notes.reduce((sum, n) => sum + Number(n.originalPrincipal || 0), 0),
+          active: activeNotes.count,
+          totalPrincipal: noteT.totalOriginalPrincipal,
           currentBalance: totalOutstanding,
         },
-        recentItems: activeNotes.slice(0, 5).map(n => ({
+        recentItems: recentActiveNotes.map(n => ({
           id: n.id,
           balance: n.currentBalance,
           payment: n.monthlyPayment,
@@ -211,7 +220,7 @@ async function buildSystemContext(organizationId: number): Promise<SystemContext
       },
       finance: {
         monthlyCashflow,
-        activeNotesCount: activeNotes.length,
+        activeNotesCount: activeNotes.count,
         totalOutstanding,
         upcomingPayments: 0,
       },
@@ -220,7 +229,7 @@ async function buildSystemContext(organizationId: number): Promise<SystemContext
       lowCreditBalance: false,
       overduePayments: 0,
       pendingTasks: pendingTasks.length,
-      newLeads: newLeads.length,
+      newLeads: newLeadsCount,
     },
     quickActions,
   };

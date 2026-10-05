@@ -687,7 +687,7 @@ export async function exportLeadsToCSV(
   organizationId: number,
   filters?: ExportFilters
 ): Promise<string> {
-  let leads = await readAllLeads(organizationId);
+  let leads = await readAllLeads(organizationId, { purpose: "export" });
 
   if (filters) {
     if (filters.status) {
@@ -757,7 +757,7 @@ export async function exportPropertiesToCSV(
   organizationId: number,
   filters?: ExportFilters
 ): Promise<string> {
-  let properties = await readAllProperties(organizationId);
+  let properties = await readAllProperties(organizationId, { purpose: "export" });
 
   if (filters) {
     if (filters.status) {
@@ -842,7 +842,7 @@ export async function exportDealsToCSV(
   organizationId: number,
   filters?: ExportFilters
 ): Promise<string> {
-  let deals = await readAllDeals(organizationId);
+  let deals = await readAllDeals(organizationId, { purpose: "export" });
 
   if (filters) {
     if (filters.status) {
@@ -906,7 +906,7 @@ export async function exportNotesToCSV(
   organizationId: number,
   filters?: ExportFilters
 ): Promise<string> {
-  let notes = await readAllNotes(organizationId);
+  let notes = await readAllNotes(organizationId, { purpose: "export" });
 
   if (filters) {
     if (filters.status) {
@@ -983,7 +983,7 @@ export async function getLeadsData(
   organizationId: number,
   filters?: ExportFilters
 ): Promise<any[]> {
-  let leads = await readAllLeads(organizationId);
+  let leads = await readAllLeads(organizationId, { purpose: "export" });
 
   if (filters) {
     if (filters.status) {
@@ -1009,7 +1009,7 @@ export async function getPropertiesData(
   organizationId: number,
   filters?: ExportFilters
 ): Promise<any[]> {
-  let properties = await readAllProperties(organizationId);
+  let properties = await readAllProperties(organizationId, { purpose: "export" });
 
   if (filters) {
     if (filters.status) {
@@ -1032,7 +1032,7 @@ export async function getDealsData(
   organizationId: number,
   filters?: ExportFilters
 ): Promise<any[]> {
-  let deals = await readAllDeals(organizationId);
+  let deals = await readAllDeals(organizationId, { purpose: "export" });
 
   if (filters) {
     if (filters.status) {
@@ -1058,7 +1058,7 @@ export async function getNotesData(
   organizationId: number,
   filters?: ExportFilters
 ): Promise<any[]> {
-  let notes = await readAllNotes(organizationId);
+  let notes = await readAllNotes(organizationId, { purpose: "export" });
 
   if (filters) {
     if (filters.status) {

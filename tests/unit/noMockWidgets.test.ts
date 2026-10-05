@@ -124,10 +124,14 @@ describe("every category resolves to a real org-scoped endpoint", () => {
       "/api/subdivider/dashboard",
       "/api/tax-certificates/dashboard/summary",
       "/api/properties",
-      "/api/notes",
       '"/api/leads"',
     ]) {
-      expect(widgetsSrc, `widgets must read ${endpoint}`).toContain(endpoint);
+      expect(stripComments(widgetsSrc), `widgets must read ${endpoint}`).toContain(endpoint);
     }
+    // The note widgets read the whole-book figures through their hook (W10.2b
+    // audit) — read in code, never satisfied by a comment naming the path.
+    expect(stripComments(widgetsSrc)).toMatch(/\buseNoteBookFigures\(\)/);
+    const hookSrc = stripComments(fs.readFileSync(path.resolve(__dirname, "../../client/src/hooks/use-note-book-figures.ts"), "utf-8"));
+    expect(hookSrc).toContain('"/api/notes/book-figures"');
   });
 });

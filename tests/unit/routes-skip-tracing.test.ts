@@ -98,12 +98,34 @@ const updateLeadMock = vi.fn(async (id: number, updates: any) => {
 
 vi.mock("../../server/storage", () => ({
   storage: {
-    getLeads: vi.fn(async () => LEADS),
+    // The capped newest-5,000 list is never the batch's or the stats' source.
+    getLeads: vi.fn(async () => {
+      throw new Error("skip tracing must not read the capped lead list (DEFECT-0171)");
+    }),
     getLead: vi.fn(async (_orgId: number, id: number) => LEADS.find((l) => l.id === id)),
     getSkipTraces: vi.fn(async () => TRACES),
     createSkipTrace: (...args: any[]) => createSkipTraceMock(...(args as [any])),
     updateLead: (...args: any[]) => updateLeadMock(...(args as [number, any])),
   },
+}));
+
+// The batch and stats run in SQL over every live lead (DEFECT-0171,
+// server/storage/wholeOrgReadsF.ts — its SQL is pinned in
+// wholeOrgReadsF.test.ts). Here the SQL is stood in for by the route's own
+// reference model over the in-memory rows, so these route tests keep proving
+// the contract the SQL implements.
+const untracedLeadBatchMock = vi.fn(async (_orgId: number, cap: number, _finished: readonly string[]) => {
+  const { selectUntracedLeads } = await import("../../server/routes-skip-tracing");
+  return selectUntracedLeads(LEADS, TRACES, cap);
+});
+const skipTraceLeadCountsMock = vi.fn(async (_orgId: number, _finished: readonly string[]) => {
+  const { deriveSkipTraceStats } = await import("../../server/routes-skip-tracing");
+  const { totalLeads, tracedCount, foundCount } = deriveSkipTraceStats(LEADS, TRACES, false);
+  return { totalLeads, tracedCount, foundCount };
+});
+vi.mock("../../server/storage/wholeOrgReadsF", () => ({
+  untracedLeadBatch: (...args: any[]) => untracedLeadBatchMock(...(args as [number, number, readonly string[]])),
+  skipTraceLeadCounts: (...args: any[]) => skipTraceLeadCountsMock(...(args as [number, readonly string[]])),
 }));
 
 const poolDebitMock = vi.fn(async ({ units }: { units: number }) => ({
@@ -302,6 +324,8 @@ describe("GET /api/skip-tracing/stats", () => {
     ];
     const res = await request(makeApp()).get("/api/skip-tracing/stats");
     expect(res.status).toBe(200);
+    // Counted for THIS org, with the finished-status set the route owns.
+    expect(skipTraceLeadCountsMock).toHaveBeenLastCalledWith(ORG_ID, ["completed", "no_results"]);
     expect(res.body).toEqual({
       configured: true,
       totalLeads: 3,
@@ -399,6 +423,9 @@ describe("POST /api/skip-tracing/batch", () => {
     const res = await request(makeApp()).post("/api/skip-tracing/batch").send(FCRA_BODY);
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ requested: 2, traced: 2, found: 2, failed: 0, untracedRemaining: 0 });
+    // Selected for THIS org, capped at the request's limit, with the
+    // finished-status set the route owns.
+    expect(untracedLeadBatchMock).toHaveBeenLastCalledWith(ORG_ID, 50, ["completed", "no_results"]);
 
     // The already-traced lead was never re-traced (no re-charge).
     const tracedNames = traceMock.mock.calls.map(([input]) => input.lastName);

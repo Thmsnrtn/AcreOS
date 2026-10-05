@@ -14,6 +14,14 @@
 import type { Request, Response } from 'express';
 import { db } from './db';
 import { storage } from './storage';
+import {
+  dealTallies,
+  leadTallies,
+  listDealsNewestFirst,
+  listLeadsNewestFirst,
+  listPropertiesNewestFirst,
+  propertyTallies,
+} from './storage/wholeOrgReadsE';
 import { organizationIntegrations, organizations } from '../shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { sendError } from "./utils/errors";
@@ -82,6 +90,16 @@ async function resolveOrgFromApiKey(bearerToken: string): Promise<number | null>
 
 type ToolParams = Record<string, any>;
 
+/**
+ * The list tools' row limit: the caller's (default 50), at most 200. An
+ * unreadable or non-positive limit returns no rows, as the old slice did for
+ * NaN and 0.
+ */
+function listLimit(limit: unknown): number {
+  const n = Math.min(Number(limit), 200);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 async function runTool(
   toolName: string,
   params: ToolParams,
@@ -89,30 +107,21 @@ async function runTool(
 ): Promise<unknown> {
   switch (toolName) {
     case 'get_leads': {
+      // Filtered, ordered newest first and limited in SQL over the whole live
+      // book (DEFECT-0171) — a status filter over the newest 5000 could not
+      // find an older lead.
       const { status, limit = 50 } = params;
-      let leads = await storage.getLeads(orgId);
-      if (status) {
-        leads = leads.filter((l) => l.status === status);
-      }
-      return leads.slice(0, Math.min(Number(limit), 200));
+      return listLeadsNewestFirst(orgId, { status: status || undefined }, listLimit(limit));
     }
 
     case 'get_properties': {
       const { status, limit = 50 } = params;
-      let props = await storage.getProperties(orgId);
-      if (status) {
-        props = props.filter((p) => p.status === status);
-      }
-      return props.slice(0, Math.min(Number(limit), 200));
+      return listPropertiesNewestFirst(orgId, { status: status || undefined }, listLimit(limit));
     }
 
     case 'get_deals': {
       const { stage, limit = 50 } = params;
-      let deals = await storage.getDeals(orgId);
-      if (stage) {
-        deals = deals.filter((d) => d.status === stage);
-      }
-      return deals.slice(0, Math.min(Number(limit), 200));
+      return listDealsNewestFirst(orgId, { status: stage || undefined }, listLimit(limit));
     }
 
     case 'get_market_prediction': {
@@ -135,27 +144,25 @@ async function runTool(
     }
 
     case 'get_portfolio_summary': {
+      // Every figure an SQL aggregate over the whole book (DEFECT-0171):
+      // these were counts and sums of the newest 5000 of each kind.
       const [leads, properties, deals] = await Promise.all([
-        storage.getLeads(orgId),
-        storage.getProperties(orgId),
-        storage.getDeals(orgId),
+        leadTallies(orgId),
+        propertyTallies(orgId),
+        dealTallies(orgId),
       ]);
-
-      const closedDeals = deals.filter((d) => d.status === 'closed');
-      const totalRevenue = closedDeals.reduce((sum, d) => {
-        const amount = parseFloat(d.acceptedAmount ?? d.offerAmount ?? '0');
-        return sum + (isNaN(amount) ? 0 : amount);
-      }, 0);
+      const sumOf = (byStatus: Record<string, number>, statuses: string[]) =>
+        statuses.reduce((sum, s) => sum + (byStatus[s] ?? 0), 0);
 
       return {
-        totalLeads: leads.length,
-        activeLeads: leads.filter((l) => !['closed', 'dead', 'converted'].includes(l.status ?? '')).length,
-        totalProperties: properties.length,
-        ownedProperties: properties.filter((p) => p.status === 'owned').length,
-        totalDeals: deals.length,
-        openDeals: deals.filter((d) => !['closed', 'cancelled'].includes(d.status ?? '')).length,
-        closedDeals: closedDeals.length,
-        totalRevenueUsd: totalRevenue,
+        totalLeads: leads.total,
+        activeLeads: leads.total - sumOf(leads.byStatus, ['closed', 'dead', 'converted']),
+        totalProperties: properties.total,
+        ownedProperties: properties.byStatus['owned'] ?? 0,
+        totalDeals: deals.total,
+        openDeals: deals.total - sumOf(deals.byStatus, ['closed', 'cancelled']),
+        closedDeals: deals.byStatus['closed'] ?? 0,
+        totalRevenueUsd: deals.acceptedElseOfferSumByStatus['closed'] ?? 0,
       };
     }
 

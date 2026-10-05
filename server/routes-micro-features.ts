@@ -16,6 +16,13 @@ import type { InsertLead } from "@shared/schema";
 import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { estimateClosingCosts } from "./services/closingCostEstimator";
+import {
+  dueDiligenceStatusRows,
+  propertiesNearPoint,
+  propertyCountsByCounty,
+  searchOrgParcels,
+  topPriorityFigures,
+} from "./storage/wholeOrgReadsF";
 
 export function registerMicroFeatureRoutes(app: Express): void {
 
@@ -136,9 +143,17 @@ export function registerMicroFeatureRoutes(app: Express): void {
           neighbors = nearby;
         }
       } catch {
-        // Parcel service may not have neighbor lookup — use property table fallback
-        const allProps = await storage.getProperties(org.id);
-        neighbors = allProps
+        // Parcel service may not have neighbor lookup — use property table fallback.
+        // Candidates come from a bounding box in SQL over every property
+        // (DEFECT-0171): the newest 5,000 missed an older neighbour.
+        const nearby = await propertiesNearPoint(
+          org.id,
+          Number(property.latitude),
+          Number(property.longitude),
+          0.5,
+          propertyId,
+        );
+        neighbors = nearby
           .filter((p) => {
             if (p.id === propertyId || !p.latitude || !p.longitude) return false;
             const dist = haversine(
@@ -314,28 +329,9 @@ export function registerMicroFeatureRoutes(app: Express): void {
       if (q.length < 2) {
         return Errors.badRequest(res, "Query must be at least 2 characters");
       }
-      const all = await storage.getProperties(org.id);
-      const needle = q.toLowerCase();
-      const results = all
-        .filter((p) => {
-          return (
-            (p.address && p.address.toLowerCase().includes(needle)) ||
-            (p.apn && p.apn.toLowerCase().includes(needle)) ||
-            (p.county && p.county.toLowerCase().includes(needle)) ||
-            (p.state && p.state.toLowerCase().includes(needle))
-          );
-        })
-        .slice(0, 50)
-        .map((p) => ({
-          id: p.id,
-          apn: p.apn,
-          address: p.address,
-          state: p.state,
-          county: p.county,
-          sizeAcres: p.sizeAcres,
-          latitude: p.latitude,
-          longitude: p.longitude,
-        }));
+      // Searched in SQL over every property, newest 50 matches (DEFECT-0171):
+      // filtering the newest 5,000 could not find an older parcel.
+      const results = await searchOrgParcels(org.id, q, 50);
       res.json({ results, count: results.length, query: q });
     } catch (error) {
       Errors.internal(res, error);
@@ -350,22 +346,10 @@ export function registerMicroFeatureRoutes(app: Express): void {
   app.get("/api/counties", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const props = await storage.getProperties(org.id);
-      const used = new Map<string, { state: string; county: string; propertyCount: number }>();
-      for (const p of props) {
-        if (!p.state || !p.county) continue;
-        const key = `${p.state}-${p.county}`;
-        const existing = used.get(key);
-        used.set(key, {
-          state: p.state,
-          county: p.county,
-          propertyCount: (existing?.propertyCount ?? 0) + 1,
-        });
-      }
-      res.json({
-        counties: Array.from(used.values()).sort((a, b) => b.propertyCount - a.propertyCount),
-        count: used.size,
-      });
+      // Counted in SQL over every property (DEFECT-0171): counting the newest
+      // 5,000 under-counted every county and dropped ones only old rows hold.
+      const counties = await propertyCountsByCounty(org.id);
+      res.json({ counties, count: counties.length });
     } catch (error) {
       Errors.internal(res, error);
     }
@@ -441,14 +425,16 @@ export function registerMicroFeatureRoutes(app: Express): void {
   app.get("/api/due-diligence", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const props = await storage.getProperties(org.id);
+      // Every property, not the newest 5,000 (DEFECT-0171): `count` is the
+      // listing's total.
+      const props = await dueDiligenceStatusRows(org.id);
       const perProperty: Array<{ propertyId: number; apn: string | null; itemCount: number; status: string }> = [];
       for (const p of props) {
         perProperty.push({
           propertyId: p.id,
           apn: p.apn ?? null,
           itemCount: 0,
-          status: (p as any).dueDiligenceStatus ?? "not_started",
+          status: p.dueDiligenceStatus ?? "not_started",
         });
       }
       res.json({ properties: perProperty, count: perProperty.length });
@@ -504,66 +490,58 @@ async function getTopPriority(orgId: number) {
   };
 
   try {
-    const leads = await storage.getLeads(orgId);
-    const deals = await storage.getDeals(orgId);
+    // Counted in SQL over the whole book (DEFECT-0171). This read the newest
+    // 5,000 leads, deals and notes, so past that the counts it quoted ("12
+    // sellers responded", "3 note payments overdue") left out the oldest rows.
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const f = await topPriorityFigures(orgId, sevenDaysAgo);
 
     // 1. Unread seller responses
-    const responded = leads.filter(
-      (l) => l.status === "responded" && l.type === "seller"
-    );
-    if (responded.length > 0) {
+    if (f.respondedSellers > 0) {
       return {
         action: "review_responses",
-        headline: `${responded.length} seller${responded.length !== 1 ? "s" : ""} responded to your campaign — review now`,
+        headline: `${f.respondedSellers} seller${f.respondedSellers !== 1 ? "s" : ""} responded to your campaign — review now`,
         entityType: "lead",
         ctaLabel: "Review Responses",
         ctaRoute: "/leads?status=responded",
       };
     }
 
-    // 2. Accepted deals with no closing checklist
-    const accepted = deals.filter((d) => d.status === "accepted" || d.status === "in_escrow");
-    if (accepted.length > 0) {
+    // 2. Accepted deals with no closing checklist (the newest one)
+    const accepted = f.newestAcceptedDeal;
+    if (accepted) {
       return {
         action: "close_deal",
-        headline: `Deal "${accepted[0].propertyId ? `#${accepted[0].id}` : accepted[0].id}" was accepted — start the closing process`,
+        headline: `Deal "${accepted.propertyId ? `#${accepted.id}` : accepted.id}" was accepted — start the closing process`,
         entityType: "deal",
-        entityId: accepted[0].id,
+        entityId: accepted.id,
         ctaLabel: "Start Closing",
-        ctaRoute: `/deals/${accepted[0].id}`,
+        ctaRoute: `/deals/${accepted.id}`,
       };
     }
 
     // 3. Leads with no campaign after 7+ days
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const stale = leads.filter(
-      (l) => l.status === "new" && l.createdAt && new Date(l.createdAt) < sevenDaysAgo
-    );
-    if (stale.length > 0) {
+    if (f.staleNewLeads > 0) {
       return {
         action: "create_campaign",
-        headline: `${stale.length} lead${stale.length !== 1 ? "s" : ""} haven't been contacted — create a campaign`,
+        headline: `${f.staleNewLeads} lead${f.staleNewLeads !== 1 ? "s" : ""} haven't been contacted — create a campaign`,
         ctaLabel: "Create Campaign",
         ctaRoute: "/campaigns?action=create",
       };
     }
 
-    // 4. Overdue note payments (check via notes)
-    try {
-      const notes = await storage.getNotes(orgId);
-      const overdue = notes.filter((n: any) => n.daysDelinquent > 0 || n.delinquencyStatus !== "current");
-      if (overdue.length > 0) {
-        return {
-          action: "review_delinquencies",
-          headline: `${overdue.length} note payment${overdue.length !== 1 ? "s" : ""} overdue — review delinquencies`,
-          ctaLabel: "Review Notes",
-          ctaRoute: "/finance",
-        };
-      }
-    } catch {}
+    // 4. Overdue note payments
+    if (f.overdueNotes > 0) {
+      return {
+        action: "review_delinquencies",
+        headline: `${f.overdueNotes} note payment${f.overdueNotes !== 1 ? "s" : ""} overdue — review delinquencies`,
+        ctaLabel: "Review Notes",
+        ctaRoute: "/finance",
+      };
+    }
 
     // 5. No leads at all
-    if (leads.length === 0) {
+    if (f.totalLeads === 0) {
       return {
         action: "import_leads",
         headline: "Import your first leads to get started",

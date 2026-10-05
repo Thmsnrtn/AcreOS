@@ -38,7 +38,7 @@ export async function generateFullExport(orgId: number): Promise<DataExport> {
   const page = <T extends { id: number }>(
     kind: string,
     read: (afterId: number) => Promise<T[]>,
-  ) => readAllPages(kind, read);
+  ) => readAllPages(kind, read, "export");
   const [orgLeads, orgDeals, orgProperties, orgNotes, orgCampaigns] = await Promise.all([
     page("leads", (a) => db.select().from(leadsIncludingDeleted).where(and(eq(leadsIncludingDeleted.organizationId, orgId), gt(leadsIncludingDeleted.id, a))).orderBy(asc(leadsIncludingDeleted.id)).limit(WHOLE_BOOK_PAGE)),
     page("deals", (a) => db.select().from(deals).where(and(eq(deals.organizationId, orgId), gt(deals.id, a))).orderBy(asc(deals.id)).limit(WHOLE_BOOK_PAGE)),

@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchJsonArray } from "@/lib/queryClient";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,8 +21,10 @@ import {
   PiggyBank,
   Layers,
 } from "lucide-react";
-import type { Note, Lead, Property } from "@shared/schema";
+import type { Property } from "@shared/schema";
 import { okOrThrow } from "@/lib/fetch-honesty";
+import { QueryErrorState } from "@/components/query-error-state";
+import { useNoteBookFigures } from "@/hooks/use-note-book-figures";
 
 /**
  * The org's lead count, from the server's `total` — the strips used to count
@@ -259,6 +260,24 @@ function ParcelToolsStrip({
   );
 }
 
+/** A note strip whose book figures could not be read — said so, with a retry; never an empty book. */
+function NoteFiguresError({ query }: { query: { error: unknown; refetch: () => unknown; isRefetching?: boolean } }) {
+  const error = query.error instanceof Error ? query.error : new Error(String(query.error ?? "Request failed"));
+  return (
+    <div className="px-4 md:px-6 py-3 border-b">
+      <QueryErrorState
+        compact
+        error={error}
+        onRetry={() => void query.refetch()}
+        isRetrying={query.isRefetching}
+        title="Couldn't load your note book"
+        description="Its figures could not be read. This is not the same as holding no notes."
+        testId="persona-map-notes-error"
+      />
+    </div>
+  );
+}
+
 // ── Portfolio yield (note_investor) ──────────────────────────────────────────
 
 /**
@@ -268,37 +287,18 @@ function ParcelToolsStrip({
  * fabricated yield) when there are no notes yet.
  */
 function PortfolioYieldStrip() {
-  const { data: notes = [] } = useQuery<Note[]>({
-    queryKey: ["/api/notes"],
-    queryFn: () => fetchJsonArray<Note>("/api/notes"),
-  });
+  // Whole-book figures from the server (W10.2b audit) — these were sums
+  // over /api/notes, the capped newest-5,000 table list. The weighted rate
+  // is balance-weighted over notes that carry a rate + balance; the server
+  // returns null rather than synthesize a yield for notes missing the field.
+  const figures = useNoteBookFigures();
+  // Only a failed read is an error; pending — loading, or paused offline
+  // (pending but not loading) — renders nothing until the figures land.
+  if (figures.isError) return <NoteFiguresError query={figures} />;
+  if (!figures.data) return null;
+  const { activeCount, totalOutstanding, weightedRate } = figures.data;
 
-  const activeNotes = useMemo(
-    () => notes.filter((n) => n.status === "active"),
-    [notes],
-  );
-  const totalOutstanding = useMemo(
-    () => activeNotes.reduce((s, n) => s + Number(n.currentBalance || 0), 0),
-    [activeNotes],
-  );
-  // Balance-weighted average rate — the single yield number a note investor
-  // looks at first. Only computed from notes that actually carry a rate +
-  // balance; we never synthesize a yield for notes missing the field.
-  const weightedRate = useMemo(() => {
-    let weight = 0;
-    let acc = 0;
-    activeNotes.forEach((n) => {
-      const bal = Number(n.currentBalance || 0);
-      const rate = Number(n.interestRate || 0);
-      if (bal > 0 && rate > 0) {
-        weight += bal;
-        acc += bal * rate;
-      }
-    });
-    return weight > 0 ? acc / weight : null;
-  }, [activeNotes]);
-
-  if (activeNotes.length === 0) {
+  if (activeCount === 0) {
     return (
       <div className="px-4 md:px-6 py-3 border-b bg-acr-brand-soft/30">
         <EmptyState
@@ -337,8 +337,8 @@ function PortfolioYieldStrip() {
       }
     >
       <span className="text-sm text-muted-foreground">
-        <span className="tabular-nums">{activeNotes.length}</span> note
-        {activeNotes.length === 1 ? "" : "s"}
+        <span className="tabular-nums">{activeCount}</span> note
+        {activeCount === 1 ? "" : "s"}
         {" · outstanding "}
         <span className="font-mono tabular-nums text-foreground font-medium">
           {usd(totalOutstanding, { noCents: true })}
@@ -371,26 +371,17 @@ function PortfolioYieldStrip() {
  * entrypoint when nothing's been originated yet.
  */
 function OriginationStrip() {
-  const { data: notes = [] } = useQuery<Note[]>({
-    queryKey: ["/api/notes"],
-    queryFn: () => fetchJsonArray<Note>("/api/notes"),
-  });
-
   // For an originator, the meaningful figures are the paper they've created:
-  // how many active notes, and the principal they originated. The deals that
-  // feed origination live on /deals — the real pipeline workspace — so we
-  // route there rather than invent a funnel here.
-  const originated = useMemo(
-    () => notes.filter((n) => n.status === "active").length,
-    [notes],
-  );
-  const totalFinanced = useMemo(
-    () =>
-      notes
-        .filter((n) => n.status === "active")
-        .reduce((s, n) => s + Number(n.originalPrincipal || n.currentBalance || 0), 0),
-    [notes],
-  );
+  // how many active notes, and the principal they originated — over the
+  // whole book, from the server (W10.2b audit). The deals that feed
+  // origination live on /deals — the real pipeline workspace — so we route
+  // there rather than invent a funnel here.
+  const figures = useNoteBookFigures();
+  // Only a failed read is an error; pending — loading, or paused offline
+  // (pending but not loading) — renders nothing until the figures land.
+  if (figures.isError) return <NoteFiguresError query={figures} />;
+  if (!figures.data) return null;
+  const { activeCount: originated, totalFinanced } = figures.data;
 
   if (originated === 0) {
     return (
@@ -465,43 +456,18 @@ function OriginationStrip() {
  * most-delinquent entry. Honest-empty with a serviced-book import entrypoint.
  */
 function ServicingStrip({ propertyLabel }: { propertyLabel: string }) {
-  const { data: notes = [] } = useQuery<Note[]>({
-    queryKey: ["/api/notes"],
-    queryFn: () => fetchJsonArray<Note>("/api/notes"),
-  });
-  const { data: leads = [] } = useQuery<Lead[]>({
-    queryKey: ["/api/leads"],
-    // /api/leads returns a paginated envelope ({ data: Lead[] }) — the default
-    // queryFn hands back raw JSON, which crashed every strip calling
-    // leads.filter(...) ("t.filter is not a function" -> ErrorBoundary on
-    // /maps, caught by the customer-surface journey monitor 2026-06-10).
-    queryFn: () => fetchJsonArray<Lead>("/api/leads"),
-  });
+  // The serviced-book count and the most-delinquent note over the WHOLE
+  // book, from the server (W10.2b audit): picked from the capped
+  // newest-5,000 list, the oldest — likeliest late — notes were never
+  // candidates, and the borrower's name was looked up in the first 25 leads.
+  const figures = useNoteBookFigures();
+  // Only a failed read is an error; pending — loading, or paused offline
+  // (pending but not loading) — renders nothing until the figures land.
+  if (figures.isError) return <NoteFiguresError query={figures} />;
+  if (!figures.data) return null;
+  const { activeCount, mostDelinquent: worstLate } = figures.data;
 
-  const activeNotes = useMemo(
-    () => notes.filter((n) => n.status === "active"),
-    [notes],
-  );
-  const worstLate = useMemo((): { note: Note; daysLate: number } | null => {
-    const now = Date.now();
-    let candidate: { note: Note; daysLate: number } | null = null;
-    activeNotes.forEach((n) => {
-      if (!n.nextPaymentDate) return;
-      const days = Math.floor(
-        (now - new Date(n.nextPaymentDate).getTime()) / (1000 * 60 * 60 * 24),
-      );
-      if (days <= 0) return;
-      if (!candidate || days > candidate.daysLate) {
-        candidate = { note: n, daysLate: days };
-      }
-    });
-    return candidate;
-  }, [activeNotes]);
-  const borrowerName = worstLate
-    ? leads.find((l) => l.id === worstLate.note.borrowerId)
-    : null;
-
-  if (activeNotes.length === 0) {
+  if (activeCount === 0) {
     return (
       <div className="px-4 md:px-6 py-3 border-b bg-acr-brand-soft/30">
         <EmptyState
@@ -559,7 +525,7 @@ function ServicingStrip({ propertyLabel }: { propertyLabel: string }) {
       }
     >
       <span className="text-sm text-muted-foreground hidden md:inline">
-        <span className="tabular-nums text-foreground font-medium">{activeNotes.length}</span>{" "}
+        <span className="tabular-nums text-foreground font-medium">{activeCount}</span>{" "}
         {propertyLabel.toLowerCase()} serviced
       </span>
       {worstLate ? (
@@ -571,9 +537,7 @@ function ServicingStrip({ propertyLabel }: { propertyLabel: string }) {
           <span className="text-sm truncate">
             Most delinquent:{" "}
             <span className="font-medium">
-              {borrowerName
-                ? `${borrowerName.firstName} ${borrowerName.lastName}`
-                : `Note #${worstLate.note.id}`}
+              {worstLate.borrowerName ?? `Note #${worstLate.id}`}
             </span>{" "}
             <span className="text-acr-neg font-mono tabular-nums">
               {worstLate.daysLate}d
@@ -583,7 +547,7 @@ function ServicingStrip({ propertyLabel }: { propertyLabel: string }) {
       ) : (
         <span className="flex items-center gap-1.5 text-sm text-acr-pos">
           <PiggyBank className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-          <span className="md:hidden tabular-nums">{activeNotes.length} serviced ·</span>
+          <span className="md:hidden tabular-nums">{activeCount} serviced ·</span>
           All current
         </span>
       )}

@@ -7,6 +7,7 @@ import { alertingService } from "./alerting";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { liveLead } from "../storage/liveLeads";
+import { leadStageFigures } from "../storage/wholeOrgReadsG";
 import { tracedLlmCall } from "./tracedLlmCall";
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
 import { getPaxControls, type PaxControlsState } from "./paxControls";
@@ -45,8 +46,18 @@ const STAGE_THRESHOLDS = {
   cold: 20,
 };
 
+/**
+ * The columns calculateLeadScore reads — all of them. The focus list reads
+ * just these over the whole book (wholeOrgReadsG.focusLeadCandidates); a new
+ * scoring input added here fails to compile there until that read selects it.
+ */
+export type LeadScoreInput = Pick<
+  Lead,
+  "lastContactedAt" | "createdAt" | "responses" | "emailOpens" | "emailClicks" | "source" | "status"
+>;
+
 export class LeadNurturerService {
-  calculateLeadScore(lead: Lead): { score: number; factors: ScoreFactors } {
+  calculateLeadScore(lead: LeadScoreInput): { score: number; factors: ScoreFactors } {
     const factors: ScoreFactors = {};
     let score = 50;
 
@@ -485,8 +496,10 @@ Respond in JSON format:
     leadsNeedingAttention: number;
     recentActivity: { type: string; count: number }[];
   }> {
-    const allLeads = await storage.getLeads(organizationId);
-    
+    // Whole-book SQL aggregate (DEFECT-0171): these were counted over the
+    // capped newest-5,000 lead list.
+    const figures = await leadStageFigures(organizationId, new Date());
+
     const byStage: Record<NurturingStage, number> = {
       hot: 0,
       warm: 0,
@@ -494,30 +507,15 @@ Respond in JSON format:
       dead: 0,
       new: 0,
     };
-
-    let totalScore = 0;
-    let scoredCount = 0;
-    let needingAttention = 0;
-
-    for (const lead of allLeads) {
-      const stage = (lead.nurturingStage || "new") as NurturingStage;
-      byStage[stage] = (byStage[stage] || 0) + 1;
-
-      if (lead.score !== null && lead.score !== undefined) {
-        totalScore += lead.score;
-        scoredCount++;
-      }
-
-      if (lead.nextFollowUpAt && new Date(lead.nextFollowUpAt) <= new Date()) {
-        needingAttention++;
-      }
+    for (const [stage, n] of Object.entries(figures.byStage)) {
+      byStage[stage as NurturingStage] = (byStage[stage as NurturingStage] || 0) + n;
     }
 
     return {
-      totalLeads: allLeads.length,
+      totalLeads: figures.total,
       byStage,
-      averageScore: scoredCount > 0 ? Math.round(totalScore / scoredCount) : 0,
-      leadsNeedingAttention: needingAttention,
+      averageScore: figures.scoredCount > 0 ? Math.round(figures.scoreSum / figures.scoredCount) : 0,
+      leadsNeedingAttention: figures.followUpDue,
       recentActivity: [],
     };
   }

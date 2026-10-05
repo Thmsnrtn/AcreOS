@@ -4,6 +4,7 @@ import { type InsertAgentMemory, type AgentMemory } from "@shared/schema";
 import { routeAITask, TaskComplexity, classifyTaskComplexity, MODEL_SIMPLE } from "./aiRouter";
 import { skillRegistry, type Skill, type SkillResult, type AgentContext as SkillAgentContext } from "./agent-skills";
 import { logger } from "../utils/logger";
+import { bookSummaryCounts, pastDueActiveNotes } from "../storage/wholeOrgReadsG";
 
 export type CoreAgentType = "research" | "deals" | "communications" | "operations";
 
@@ -902,8 +903,11 @@ export class OperationsAgent extends CoreAgent {
   }
 
   private async checkDelinquencies(context: AgentContext): Promise<AgentTaskResult> {
-    const notes = await storage.getNotes(context.organizationId);
     const today = new Date();
+    // Every active note a day or more past due, in SQL (DEFECT-0171) — the
+    // capped newest-5,000 list missed the oldest notes, the ones most likely
+    // to be delinquent. The loop below still grades each row as before.
+    const notes = await pastDueActiveNotes(context.organizationId, today);
     const delinquent: any[] = [];
 
     for (const note of notes) {
@@ -969,20 +973,16 @@ Provide:
   }
 
   private async runDigest(context: AgentContext): Promise<AgentTaskResult> {
-    const leads = await storage.getLeads(context.organizationId);
-    const properties = await storage.getProperties(context.organizationId);
-    const deals = await storage.getDeals(context.organizationId);
-
-    const activeLeads = leads.filter(l => l.status === "active" || l.status === "new").length;
-    const activeDeals = deals.filter(d => d.status !== "closed_won" && d.status !== "closed_lost").length;
+    // Whole-book counts in SQL (DEFECT-0171), not lengths of capped lists.
+    const { totalLeads, activeLeads, totalProperties, activeDeals } = await bookSummaryCounts(context.organizationId);
 
     return {
       success: true,
       data: {
         summary: {
-          totalLeads: leads.length,
+          totalLeads,
           activeLeads,
-          totalProperties: properties.length,
+          totalProperties,
           activeDeals,
         },
         generatedAt: new Date().toISOString(),

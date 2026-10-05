@@ -9,9 +9,10 @@
  *
  * IMPORTANT — behavior-preserving: the merge + ranking here mirror exactly the
  * client-side logic that previously lived in client/src/pages/today.tsx. We
- * call the SAME storage methods and services the original endpoints used
- * (storage.getLeads/getDeals/getProperties/getNotes/getTasks, portfolioHealth,
- * the paxObservations table) — no business logic is re-invented.
+ * read the same data the original endpoints used (deals, notes, tasks,
+ * portfolioHealth, the paxObservations table; leads and properties through
+ * whole-book SQL counts and top-N picks, DEFECT-0171) — no business logic is
+ * re-invented.
  *
  * Sources merged server-side:
  *   - Pax priorities    (mirrors /api/dashboard/today-priorities)
@@ -29,6 +30,7 @@
  */
 
 import { readAllDeals, readAllNotes } from "./storage/wholeBookReads";
+import { bookPresence, oldestListedProperties, stalledLeadCount, staleFollowUpLeads } from "./storage/wholeOrgReadsF";
 import { realPayment, samplePropertyIds } from "./services/onboarding/sampleFilters";
 import { Router, type Response } from "express";
 import { and, desc, eq, gt, gte, inArray, notInArray, sql } from "drizzle-orm";
@@ -776,26 +778,19 @@ async function gatherPaxSuggests(orgId: number, now: Date): Promise<DecisionItem
 async function gatherAiQueue(
   orgId: number,
   now: Date,
-  allLeads: Awaited<ReturnType<typeof storage.getLeads>>,
-  allDeals: Awaited<ReturnType<typeof storage.getDeals>>,
-  allProperties: Awaited<ReturnType<typeof storage.getProperties>>,
+  allDeals: Awaited<ReturnType<typeof readAllDeals>>,
 ): Promise<DecisionItem[]> {
   type Action = { id: string; priority: "high" | "medium" | "low"; title: string; description: string; actionLabel: string; actionUrl: string };
   const actions: Action[] = [];
 
-  const staleLeads = allLeads
-    .filter((l) => {
-      if (l.status === "closed" || l.status === "dead" || l.doNotContact) return false;
-      if (!l.lastContactedAt) return true;
-      const days = Math.floor((now.getTime() - new Date(l.lastContactedAt).getTime()) / DAY_MS);
-      return days >= 7;
-    })
-    .sort((a, b) => {
-      const da = a.lastContactedAt ? Math.floor((now.getTime() - new Date(a.lastContactedAt).getTime()) / DAY_MS) : 999;
-      const dbb = b.lastContactedAt ? Math.floor((now.getTime() - new Date(b.lastContactedAt).getTime()) / DAY_MS) : 999;
-      return dbb - da;
-    })
-    .slice(0, 3);
+  // The follow-up and stale-listing picks are ORDER BY + LIMIT over the whole
+  // book (DEFECT-0171): they ranked the newest 5,000 leads and properties, so
+  // the longest-uncontacted lead and the longest-listed parcel — the oldest
+  // rows — were exactly the ones they could not see.
+  const [staleLeads, pendingProperties] = await Promise.all([
+    staleFollowUpLeads(orgId, now, 3),
+    oldestListedProperties(orgId, 2),
+  ]);
 
   for (const lead of staleLeads) {
     const daysSinceContact = lead.lastContactedAt
@@ -818,11 +813,9 @@ async function gatherAiQueue(
     .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())
     .slice(0, 2);
   for (const deal of pendingDeals) {
-    // Properties stay on the capped list here; an older one is fetched by id
-    // rather than shown as "Property #N".
-    const property =
-      allProperties.find((p) => p.id === deal.propertyId) ??
-      (deal.propertyId ? await storage.getProperty(orgId, deal.propertyId) : undefined);
+    // The deal's property by id (DEFECT-0171); a deleted one is not named.
+    const found = deal.propertyId ? await storage.getProperty(orgId, deal.propertyId) : undefined;
+    const property = found && found.status !== "deleted" ? found : undefined;
     const propertyName = property?.address || `Property #${deal.propertyId}`;
     const daysSinceOffer = deal.offerDate
       ? Math.floor((now.getTime() - new Date(deal.offerDate).getTime()) / DAY_MS)
@@ -837,10 +830,6 @@ async function gatherAiQueue(
     });
   }
 
-  const pendingProperties = allProperties
-    .filter((p) => p.status === "listed" && p.updatedAt)
-    .sort((a, b) => new Date(a.updatedAt!).getTime() - new Date(b.updatedAt!).getTime())
-    .slice(0, 2);
   for (const property of pendingProperties) {
     const daysListed = property.updatedAt
       ? Math.floor((now.getTime() - new Date(property.updatedAt).getTime()) / DAY_MS)
@@ -889,9 +878,8 @@ async function gatherAiQueue(
 //
 // First-close prefix: when the org has at least one closed deal, prefix the
 // brief with "Since the {address-short} deal — " (Chesky's compounding-empathy
-// move). Source: the earliest deal with status === "closed" (or "won"), joined
-// in-memory to its property's address. No extra round-trip; the caller already
-// has allDeals + allProperties loaded.
+// move). Source: the earliest deal with status === "closed" (or "won"), and
+// its property's address looked up by id (one round-trip).
 interface BriefInputs {
   paxReplies: number;       // pax-noticed/suggests count (proxy for "sellers replied")
   topCounter: string | null; // best Pax-priority headline if present
@@ -925,14 +913,17 @@ interface FirstCloseDealLike {
 interface FirstClosePropertyLike {
   id: number;
   address?: string | null;
+  status?: string | null;
 }
 
 // Return the earliest closed deal's short property label, or null if none.
 // Prefers closingDate; falls back to updatedAt when closingDate is missing.
-function deriveFirstClosePrefix(
+// The property is looked up BY ID (DEFECT-0171): the first close is usually
+// the OLDEST deal, whose property the newest-5,000 list was the first to drop.
+async function deriveFirstClosePrefix(
   deals: FirstCloseDealLike[],
-  properties: FirstClosePropertyLike[],
-): string | null {
+  propertyById: (id: number) => Promise<FirstClosePropertyLike | undefined>,
+): Promise<string | null> {
   const closed = deals.filter(
     (d) => d.status === "closed" || d.status === "won",
   );
@@ -948,7 +939,7 @@ function deriveFirstClosePrefix(
   const first = closed[0];
   if (!first.propertyId) return null;
 
-  const prop = properties.find((p) => p.id === first.propertyId);
+  const prop = await propertyById(first.propertyId);
   const label = shortAddressLabel(prop?.address ?? null);
   if (!label) return null;
   return `Since the ${label} deal — `;
@@ -1121,10 +1112,8 @@ interface BuiltQueue {
     paxPriorities: DecisionItem[];
     tasks: Awaited<ReturnType<typeof storage.getTasks>>;
     activeAlerts: Awaited<ReturnType<typeof getActiveAlerts>>;
-    allLeads: Awaited<ReturnType<typeof storage.getLeads>>;
-    allDeals: Awaited<ReturnType<typeof storage.getDeals>>;
-    allProperties: Awaited<ReturnType<typeof storage.getProperties>>;
-    allNotes: Awaited<ReturnType<typeof storage.getNotes>>;
+    allDeals: Awaited<ReturnType<typeof readAllDeals>>;
+    allNotes: Awaited<ReturnType<typeof readAllNotes>>;
     taskItems: DecisionItem[];
     alertItems: DecisionItem[];
   };
@@ -1137,9 +1126,7 @@ async function buildActiveQueue(orgId: number, now: Date): Promise<BuiltQueue> {
     activeAlerts,
     paxNoticed,
     paxSuggests,
-    allLeads,
     allDeals,
-    allProperties,
     allNotes,
   ] = await Promise.all([
     gatherPaxPriorities(orgId, now),
@@ -1147,14 +1134,13 @@ async function buildActiveQueue(orgId: number, now: Date): Promise<BuiltQueue> {
     getActiveAlerts(orgId),
     gatherPaxNoticed(orgId, now),
     gatherPaxSuggests(orgId, now),
-    storage.getLeads(orgId),
     // Money figures (the cash strip, late notes, open-deal value) read the
     // WHOLE book (DEFECT-0170): the capped lists drop the OLDEST rows first —
-    // exactly the late notes and stuck deals. Leads and properties stay on the
-    // capped lists: neither feeds a money figure here, and a whole book per
-    // Today request is the wrong fix for them (DEFECT-0171).
+    // exactly the late notes and stuck deals. Leads and properties are not
+    // loaded at all: their figures are SQL counts and ORDER BY + LIMIT picks
+    // over the whole book (DEFECT-0171) — a whole lead book per Today
+    // request is the wrong fix.
     readAllDeals(orgId),
-    storage.getProperties(orgId),
     readAllNotes(orgId),
   ]);
 
@@ -1207,7 +1193,7 @@ async function buildActiveQueue(orgId: number, now: Date): Promise<BuiltQueue> {
     };
   });
 
-  const aiQueue = await gatherAiQueue(orgId, now, allLeads, allDeals, allProperties);
+  const aiQueue = await gatherAiQueue(orgId, now, allDeals);
 
   // One ranking function (Tier 3C): overdue → money-touching →
   // time-sensitive → routine; see compareQueueItems for the full contract.
@@ -1261,9 +1247,7 @@ async function buildActiveQueue(orgId: number, now: Date): Promise<BuiltQueue> {
       paxPriorities,
       tasks,
       activeAlerts,
-      allLeads,
       allDeals,
-      allProperties,
       allNotes,
       taskItems,
       alertItems,
@@ -1288,9 +1272,7 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
     const { items: queue, gathered } = await buildActiveQueue(orgId, now);
     const {
       paxPriorities,
-      allLeads,
       allDeals,
-      allProperties,
       allNotes,
       alertItems,
     } = gathered;
@@ -1490,11 +1472,13 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
     })();
 
     // pendingDecisionCount feeds the hero badge (mirrors today.tsx).
-    const stalledLeads = allLeads.filter((l) => {
-      if (["closed", "dead", "converted"].includes(l.status)) return false;
-      if (!l.lastContactedAt) return true;
-      return new Date(l.lastContactedAt) < daysAgo(14, now);
-    }).length;
+    // Leads are counted in SQL over the whole book (DEFECT-0171): this
+    // counted the newest 5,000, so the badge and the brief's stale-lead count
+    // left out the oldest leads — the ones most likely to be stalled.
+    const [stalledLeads, presence] = await Promise.all([
+      stalledLeadCount(orgId, daysAgo(14, now)),
+      bookPresence(orgId),
+    ]);
     const waitingCounters = allDeals.filter((d) => {
       if (d.status !== "offer_sent") return false;
       if (!d.offerDate) return false;
@@ -1507,7 +1491,7 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
     }).length;
     const pendingDecisionCount = stalledLeads + waitingCounters + stuckDeals;
 
-    const hasAnyData = allLeads.length > 0 || allProperties.length > 0 || allDeals.length > 0;
+    const hasAnyData = presence.hasLeads || presence.hasProperties || allDeals.length > 0;
 
     // ── MorningBrief: persona-typed one-liner above the queue ──────────────
     // Inputs come from the same gather we just did — no extra round-trips.
@@ -1518,7 +1502,10 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
     const netInflow30 = projected30; // 30-day projected note income
     // The brief's "since your first close" is about the customer's book, not
     // a sample parcel's deal.
-    const firstClosePrefix = deriveFirstClosePrefix(realDeals, allProperties);
+    const firstClosePrefix = await deriveFirstClosePrefix(realDeals, async (id) => {
+      const p = await storage.getProperty(orgId, id);
+      return p && p.status !== "deleted" ? p : undefined;
+    });
     const persona = req.user?.persona as Persona | undefined;
     const briefInputs: BriefInputs = {
       paxReplies,

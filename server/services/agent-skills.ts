@@ -807,13 +807,13 @@ const scrubLeadListInputSchema = z.object({
 const scrubLeadListSkill: Skill = {
   id: "scrubLeadList",
   name: "Scrub Lead List",
-  description: "Validates addresses, removes duplicates, and enriches parcel data for a marketing list",
+  description: "Validates addresses and removes duplicates for a marketing list (parcel enrichment is not available)",
   agentTypes: ["operations", "research"],
   inputSchema: scrubLeadListInputSchema,
   costEstimate: "medium",
   examples: [
     'scrubLeadList({ listId: 123 })',
-    'scrubLeadList({ listId: 456, options: { removeDuplicates: true, validateAddresses: true, enrichParcelData: true } })',
+    'scrubLeadList({ listId: 456, options: { removeDuplicates: true, validateAddresses: true } })',
   ],
   execute: async (params, context) => {
     try {
@@ -830,15 +830,30 @@ const scrubLeadListSkill: Skill = {
       }
 
       // TODO(tsc): marketing_lists has no leadIds column linking member leads.
-      // Until a list↔lead linkage exists, scrub across the org's leads.
-      const allLeads = await storage.getLeads(context.organizationId);
-      const listLeads = allLeads;
+      // Until a list↔lead linkage exists, scrub across the org's leads — ALL
+      // of them (DEFECT-0171): the capped newest-5,000 list left the oldest
+      // leads unscrubbed and wrote 5,000 to the list as its totalRecords.
+      const { readAllLeads } = await import("../storage/wholeBookReads");
+      // Newest first, as the capped list was: readAllLeads pages by id
+      // ascending, which would spend the validation cap on the same oldest
+      // leads every run and keep the oldest of each duplicate (W10.2b audit).
+      const listLeads = (await readAllLeads(context.organizationId)).sort(
+        (a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime() || b.id - a.id,
+      );
 
+      // Reading the whole book must not widen the paid-lookup exposure with it:
+      // address validation calls the data broker once per lead, so it is held
+      // to the newest SCRUB_VALIDATION_CAP addresses per run, and every lead
+      // past that — or whose lookup errored — is counted `unvalidated`, never
+      // valid (W10.2b audit).
+      const SCRUB_VALIDATION_CAP = 5000;
+      let lookups = 0;
       const stats = {
         total: listLeads.length,
         valid: 0,
         invalid: 0,
         duplicates: 0,
+        unvalidated: 0,
         enriched: 0,
       };
 
@@ -856,6 +871,11 @@ const scrubLeadListSkill: Skill = {
         seenKeys.add(dedupeKey);
 
         if (opts.validateAddresses && lead.address) {
+          if (lookups >= SCRUB_VALIDATION_CAP) {
+            stats.unvalidated++;
+            continue;
+          }
+          lookups++;
           try {
             const result = await dataSourceBroker.lookup("parcel_data", {
               address: lead.address,
@@ -866,22 +886,24 @@ const scrubLeadListSkill: Skill = {
             });
             
             if (!result.success) {
-              stats.invalid++;
+              // Invalid only when a real source answered and found no parcel.
+              // No source at all (an outage, none configured) answers with
+              // source id 0: the address was never checked, so it is neither
+              // valid nor invalid (W10.2b final audit).
+              if (result.source?.id > 0) stats.invalid++;
+              else stats.unvalidated++;
               continue;
             }
           } catch {
-            // Count as valid if lookup service fails
+            // The lookup failed: the address was not checked, so it is not valid.
+            stats.unvalidated++;
+            continue;
           }
         }
 
-        if (opts.enrichParcelData && lead.address && lead.state) {
-          try {
-            // Try to enrich with parcel lookup by address
-            stats.enriched++;
-          } catch {
-            // Continue even if enrichment fails
-          }
-        }
+        // enrichParcelData: no list-scrub enrichment exists. It used to count
+        // every addressed lead as "enriched" and bill 2 per lead for work that
+        // never ran; it now enriches — and counts — nothing.
 
         stats.valid++;
         validLeadIds.push(lead.id);
@@ -902,8 +924,11 @@ const scrubLeadListSkill: Skill = {
       return {
         success: true,
         data: stats,
-        message: `Scrubbed list: ${stats.valid} valid, ${stats.duplicates} duplicates removed, ${stats.invalid} invalid`,
-        costIncurred: stats.enriched * 2,
+        message:
+          `Scrubbed list: ${stats.valid} valid, ${stats.duplicates} duplicates removed, ${stats.invalid} invalid` +
+          (stats.unvalidated ? `, ${stats.unvalidated} not validated (the lookup failed, or the lead is older than the newest ${SCRUB_VALIDATION_CAP} addresses a scrub validates)` : "") +
+          (opts.enrichParcelData ? ". Parcel enrichment is not available for list scrubs." : ""),
+        costIncurred: 0,
       };
     } catch (error: any) {
       return { success: false, error: error.message || "Lead list scrubbing failed" };
@@ -2695,24 +2720,22 @@ const marketAnalysisSkill: Skill = {
       // Pull any existing county research from storage
       const existing = await storage.getCountyResearch(state.toUpperCase(), county);
 
-      // Pull properties in this county/state for internal data signals
-      const properties = await storage.getProperties(context.organizationId);
-      const countyProperties = properties.filter(
-        p => p.state?.toUpperCase() === state.toUpperCase() && p.county?.toLowerCase() === county.toLowerCase()
+      // Properties in this county/state for internal data signals — counted
+      // and averaged over the whole book in SQL (DEFECT-0171), not the newest
+      // 5,000 rows. The mean is over the properties that carry a market value.
+      const { countyPropertyFigures } = await import("../storage/wholeOrgReadsG");
+      const { count: countyPropertyCount, avgMarketValue } = await countyPropertyFigures(
+        context.organizationId,
+        state,
+        county,
       );
-
-      const avgMarketValue =
-        countyProperties.length > 0
-          ? countyProperties.reduce((sum, p) => sum + parseFloat(p.marketValue?.toString() || "0"), 0) /
-            countyProperties.filter(p => p.marketValue).length
-          : null;
 
       const { requireOpenAIClient } = await import("../utils/openaiClient");
       const openai = requireOpenAIClient();
 
       const prompt = `You are an expert real estate professional and market analyst. Provide a concise market analysis for land investing in ${county} County, ${state}.
 
-Internal data: ${countyProperties.length} properties tracked in this county${avgMarketValue ? `, average market value $${Math.round(avgMarketValue).toLocaleString()}` : ""}.
+Internal data: ${countyPropertyCount} properties tracked in this county${avgMarketValue ? `, average market value $${Math.round(avgMarketValue).toLocaleString()}` : ""}.
 ${existing?.marketNotes ? `Previous research notes: ${sanitizePromptInline(existing.marketNotes)}` : ""}
 
 Return a JSON object with:
@@ -2744,7 +2767,7 @@ Return a JSON object with:
         data: {
           state: state.toUpperCase(),
           county,
-          internalPropertyCount: countyProperties.length,
+          internalPropertyCount: countyPropertyCount,
           avgMarketValue: avgMarketValue ? Math.round(avgMarketValue) : null,
           ...analysis,
           generatedAt: new Date().toISOString(),

@@ -45,6 +45,11 @@ import { storage } from "../../storage";
 import { logger } from "../../utils/logger";
 import { addMonths } from "../../utils/dateUtils";
 
+// The marker reads load on use, not with this module: its constants are read
+// at load by the sample filters, which half the server imports — that chain
+// must not pull the SQL readers (and drizzle) in with it.
+const sampleReads = () => import("../../storage/wholeOrgReadsG");
+
 export const SAMPLE_LEAD_SOURCE = "sample_data" as const;
 export const SAMPLE_APN_PREFIX = "SAMPLE-" as const;
 
@@ -621,29 +626,29 @@ async function findSampleRows(id: number): Promise<{
   samplePropertyIds: number[];
   sampleLeadIds: number[];
 }> {
-  const [allLeads, allProperties] = await Promise.all([
-    storage.getLeads(id),
-    storage.getProperties(id),
+  // Read BY MARKER, not out of the newest 5,000 rows (DEFECT-0171): sample
+  // rows are created at onboarding, so in a grown book they are the OLDEST
+  // rows — exactly the ones the capped lists dropped, which left "clear sample
+  // data" unable to find what it was asked to remove.
+  const { dealsOnProperties, notesOnProperties, sampleLeadRows, samplePropertyRows } = await sampleReads();
+  const [sampleLeads, sampleProperties] = await Promise.all([
+    sampleLeadRows(id, SAMPLE_LEAD_SOURCE),
+    samplePropertyRows(id, SAMPLE_APN_PREFIX),
   ]);
-  const sampleLeadIds = allLeads.filter(isSampleLead).map((l: { id: number }) => l.id);
-  const samplePropertyIds = allProperties
+  const sampleLeadIds = sampleLeads.filter(isSampleLead).map((l: { id: number }) => l.id);
+  const samplePropertyIds = sampleProperties
     .filter(isSampleProperty)
     .map((p: { id: number }) => p.id);
 
   let deals = 0;
   let notes = 0;
   if (samplePropertyIds.length > 0) {
-    const idSet = new Set(samplePropertyIds);
-    const [allDeals, allNotes] = await Promise.all([
-      storage.getDeals(id),
-      storage.getNotes(id),
+    const [sampleDeals, sampleNotes] = await Promise.all([
+      dealsOnProperties(id, samplePropertyIds),
+      notesOnProperties(id, samplePropertyIds),
     ]);
-    deals = allDeals.filter(
-      (d: { propertyId?: number | null }) => d.propertyId != null && idSet.has(d.propertyId),
-    ).length;
-    notes = allNotes.filter(
-      (n: { propertyId?: number | null }) => n.propertyId != null && idSet.has(n.propertyId),
-    ).length;
+    deals = sampleDeals.length;
+    notes = sampleNotes.length;
   }
 
   return {
@@ -719,7 +724,11 @@ export async function seedSampleDataForOrg(
   }
 
   const fixtures = buildSampleFixtures(id, businessType);
-  const [presentLeads, presentProperties] = await Promise.all([storage.getLeads(id), storage.getProperties(id)]);
+  const { dealsOnProperties, notesOnProperties, sampleLeadRows, samplePropertyRows } = await sampleReads();
+  const [presentLeads, presentProperties] = await Promise.all([
+    sampleLeadRows(id, SAMPLE_LEAD_SOURCE),
+    samplePropertyRows(id, SAMPLE_APN_PREFIX),
+  ]);
   const sampleLeadByEmail = new Map<string, { id: number }>();
   for (const l of presentLeads as Array<{ id: number; email?: string | null; source?: string | null }>) {
     if (isSampleLead(l) && l.email) sampleLeadByEmail.set(l.email, l);
@@ -763,7 +772,7 @@ export async function seedSampleDataForOrg(
   // Deals and notes already on a sample parcel, to match fixtures against.
   const sampleParcelIds = new Set(createdProperties.map((p) => p.id));
   const [presentDeals, presentNotes] = repaired
-    ? await Promise.all([storage.getDeals(id), storage.getNotes(id)])
+    ? await Promise.all([dealsOnProperties(id, [...sampleParcelIds]), notesOnProperties(id, [...sampleParcelIds])])
     : [[], []];
   const dealsOnSampleParcels = (presentDeals as Array<{ propertyId?: number | null; type?: string | null }>)
     .filter((d) => d.propertyId != null && sampleParcelIds.has(d.propertyId));

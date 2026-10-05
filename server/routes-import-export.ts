@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { requireRole } from "./middleware/roleGuard";
 import { storage, db } from "./storage";
+import { tcpaLeadCounts } from "./storage/wholeOrgReadsF";
 import { z } from "zod";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { leads } from "@shared/schema";
@@ -740,17 +741,18 @@ export function registerImportExportRoutes(app: Express): void {
     try {
       const orgId = req.organization!.id;
       
-      const [noConsent, optedOut, allLeads] = await Promise.all([
+      // total and withConsent are counted in SQL over every live lead
+      // (DEFECT-0171): they counted the newest 5,000 while withoutConsent and
+      // optedOut read every row, so past 5,000 the parts outgrew the total.
+      const [noConsent, optedOut, counts] = await Promise.all([
         storage.getLeadsWithoutConsent(orgId),
         storage.getLeadsOptedOut(orgId),
-        storage.getLeads(orgId)
+        tcpaLeadCounts(orgId),
       ]);
       
-      const withConsent = allLeads.filter(l => l.tcpaConsent === true).length;
-      
       res.json({
-        total: allLeads.length,
-        withConsent,
+        total: counts.total,
+        withConsent: counts.withConsent,
         withoutConsent: noConsent.length,
         optedOut: optedOut.length
       });

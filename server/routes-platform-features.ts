@@ -13,6 +13,7 @@ import type { Express } from "express";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { storage, db } from "./storage";
+import { latestClosedDeal } from "./storage/wholeOrgReadsF";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { sql, eq, desc } from "drizzle-orm";
@@ -306,18 +307,16 @@ export function registerPlatformFeatureRoutes(app: Express): void {
       const org = req.organization;
       const { checkPersonalBests } = await import("./services/personalBests");
 
-      // Get latest closed deal to check bests
-      const deals = await storage.getDeals(org.id);
-      const closedDeals = deals
-        .filter(d => d.status === "closed")
-        .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
+      // The most recently updated closed deal, picked in SQL over the whole
+      // book (DEFECT-0171) — not the newest of the newest 5,000 deals, which
+      // missed an old deal closed recently.
+      const latest = await latestClosedDeal(org.id);
 
-      if (closedDeals.length === 0) {
+      if (!latest) {
         return res.json({ bests: [] });
       }
 
       // Check bests for the most recent deal
-      const latest = closedDeals[0];
       const profit = parseFloat(latest.acceptedAmount || "0") - parseFloat(latest.offerAmount || "0");
       const daysToClose = latest.closingDate && latest.offerDate
         ? Math.ceil((new Date(latest.closingDate).getTime() - new Date(latest.offerDate).getTime()) / 86400000)

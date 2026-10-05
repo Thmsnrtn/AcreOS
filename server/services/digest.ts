@@ -6,6 +6,7 @@ import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
 import { formatPaxTime, PAX_LABELS } from "@shared/pax-glossary";
 import { countPaxEffects } from "./paxReceiptsReader";
+import { delinquentNoteTotals, digestLeadFigures, leadStageFigures } from "../storage/wholeOrgReadsG";
 
 /** Absolute base for the digest's deep links (same source as dunning.ts). */
 const APP_URL = process.env.APP_URL || "https://app.acreos.io";
@@ -118,23 +119,13 @@ export class DigestService {
     const start = new Date();
     start.setDate(start.getDate() - 7);
 
-    const allLeads = await storage.getLeads(organizationId);
-    const newLeads = allLeads.filter(l => l.createdAt && new Date(l.createdAt) >= start);
-    
-    const segmentCounts: Record<string, number> = {};
-    for (const lead of allLeads) {
-      const stage = lead.nurturingStage || 'new';
-      segmentCounts[stage] = (segmentCounts[stage] || 0) + 1;
-    }
-
-    const sourceCounts: Record<string, number> = {};
-    for (const lead of newLeads) {
-      const source = lead.source || 'unknown';
-      sourceCounts[source] = (sourceCounts[source] || 0) + 1;
-    }
-    const topSources = Object.entries(sourceCounts)
-      .map(([source, count]) => ({ source, count }))
-      .sort((a, b) => b.count - a.count)
+    // Lead and note figures are whole-book SQL aggregates (DEFECT-0171): the
+    // digest counted the capped newest-5,000 lists and mailed the result as
+    // the customer's book.
+    const { byStage: segmentCounts } = await leadStageFigures(organizationId);
+    const leadFigures = await digestLeadFigures(organizationId, start);
+    const topSources = [...leadFigures.newBySource]
+      .sort((a, b) => b.count - a.count || a.source.localeCompare(b.source))
       .slice(0, 5);
 
     const allCampaigns = await storage.getCampaigns(organizationId);
@@ -148,12 +139,7 @@ export class DigestService {
       { sent: 0, delivered: 0, opened: 0, responded: 0 }
     );
 
-    const allNotes = await storage.getNotes(organizationId);
-    const delinquentNotes = allNotes.filter(n => (n.daysDelinquent || 0) > 0);
-    const atRiskAmount = delinquentNotes.reduce(
-      (sum, n) => sum + parseFloat(n.currentBalance || '0'),
-      0
-    );
+    const { count: delinquentNoteCount, atRiskBalance: atRiskAmount } = await delinquentNoteTotals(organizationId);
 
     const allPayments = await storage.getPayments(organizationId);
     const weekPayments = allPayments.filter(p => p.paymentDate && new Date(p.paymentDate) >= start);
@@ -196,15 +182,15 @@ export class DigestService {
     if (campaignStats.sent > 0 && campaignStats.opened / campaignStats.sent < 0.15) {
       recommendations.push('Your open rates are below average - try testing new subject lines');
     }
-    if (delinquentNotes.length > 0) {
-      recommendations.push(`${delinquentNotes.length} note(s) are delinquent - review and follow up`);
+    if (delinquentNoteCount > 0) {
+      recommendations.push(`${delinquentNoteCount} note(s) are delinquent - review and follow up`);
     }
 
     return {
       organizationId,
       period: { start, end },
       leads: {
-        new: newLeads.length,
+        new: leadFigures.newCount,
         bySegment: segmentCounts,
         topSources,
       },
@@ -216,11 +202,11 @@ export class DigestService {
       finance: {
         paymentsReceived: weekPayments.length,
         totalCollected,
-        delinquentNotes: delinquentNotes.length,
+        delinquentNotes: delinquentNoteCount,
         atRiskAmount,
       },
       agents: {
-        leadsProcessed: allLeads.filter(l => l.lastScoreAt && new Date(l.lastScoreAt) >= start).length,
+        leadsProcessed: leadFigures.scoredSince,
         campaignsOptimized: allCampaigns.filter(c => c.lastOptimizedAt && new Date(c.lastOptimizedAt) >= start).length,
         remindersScheduled: 0,
       },

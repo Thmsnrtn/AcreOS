@@ -48,11 +48,16 @@ vi.mock("../../server/db", () => ({
 
 vi.mock("../../server/storage", () => ({
   storage: {
-    getLeads: vi.fn(async () => []),
     getCampaigns: vi.fn(async () => []),
-    getNotes: vi.fn(async () => []),
     getPayments: vi.fn(async () => []),
   },
+}));
+// The digest's lead and note figures are whole-book SQL aggregates
+// (DEFECT-0171), not lengths of the capped getLeads/getNotes lists.
+vi.mock("../../server/storage/wholeOrgReadsG", () => ({
+  leadStageFigures: vi.fn(async () => ({ total: 0, byStage: {}, scoreSum: 0, scoredCount: 0, followUpDue: 0 })),
+  digestLeadFigures: vi.fn(async () => ({ newCount: 0, newBySource: [], scoredSince: 0 })),
+  delinquentNoteTotals: vi.fn(async () => ({ count: 0, atRiskBalance: 0 })),
 }));
 
 const sendEmailMock = vi.hoisted(() => vi.fn());

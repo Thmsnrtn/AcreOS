@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { QueryErrorState } from "@/components/query-error-state";
 import { usePersona, useTerm } from "@/hooks/use-persona";
+import { useNoteBookFigures, type NoteBookFigures } from "@/hooks/use-note-book-figures";
 import { usd } from "@/lib/format";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { SmallMultipleTwelveMonth, type MonthBreakdown } from "./SmallMultipleTwelveMonth";
@@ -15,7 +16,6 @@ import {
   computeInvestorMetrics,
 } from "./personaFinanceMetrics";
 import { OriginationVolumeStrip } from "./OriginationVolumeStrip";
-import type { Note } from "@shared/schema";
 import {
   TrendingUp,
   AlertTriangle,
@@ -99,15 +99,6 @@ interface LotEconomicsSummary {
   realizedCogsCents: number;
 }
 
-interface PersonaFinanceHeroProps {
-  /**
-   * The note rows the Finance page already loaded (full `notes.$inferSelect`).
-   * Passed in so the note-persona heroes can derive origination / servicing /
-   * portfolio economics client-side from real columns — no extra request.
-   */
-  notes?: Note[];
-}
-
 /**
  * PersonaFinanceHero — the persona-shaped top-of-Finance tile.
  *
@@ -136,8 +127,12 @@ interface PersonaFinanceHeroProps {
  *
  * Each figure traces to a real stored column or shows an honest empty state —
  * never a fabricated number (money-surface honesty contract).
+ *
+ * The three note heroes read the whole book (GET /api/notes/book-figures,
+ * SQL over every note) — never the Finance page's note list, which is the
+ * capped newest-5,000 table payload (W10.2b audit).
  */
-export function PersonaFinanceHero({ notes }: PersonaFinanceHeroProps) {
+export function PersonaFinanceHero() {
   const persona = usePersona();
   const propertyPluralLabel = useTerm("entity.property.plural");
 
@@ -189,11 +184,10 @@ export function PersonaFinanceHero({ notes }: PersonaFinanceHeroProps) {
     );
   }
 
-  const safeNotes = notes ?? [];
   const delinquentCount = summary.delinquentCount ?? 0;
 
   if (isOriginator) {
-    return <OriginatorHero notes={safeNotes} />;
+    return <OriginatorHero />;
   }
   if (isServicer) {
     // Real trailing-12-month collected total from the per-month payment breakdown
@@ -204,7 +198,6 @@ export function PersonaFinanceHero({ notes }: PersonaFinanceHeroProps) {
     );
     return (
       <ServicerHero
-        notes={safeNotes}
         collectedTrailing12={collectedTrailing12}
         delinquencyRate={summary.delinquencyRate ?? null}
       />
@@ -213,7 +206,6 @@ export function PersonaFinanceHero({ notes }: PersonaFinanceHeroProps) {
   if (isInvestor) {
     return (
       <InvestorHero
-        notes={safeNotes}
         summary={summary}
         delinquentCount={delinquentCount}
       />
@@ -398,9 +390,39 @@ function HeroLoadingSkeleton({ label }: { label: string }) {
   );
 }
 
+/**
+ * The note heroes' whole-book figures, or the state to render instead: an
+ * error with a retry when the read failed (never zeros), a skeleton while it
+ * is pending — loading or paused offline — (never an empty book).
+ */
+function useNoteHeroFigures(): { figures: NoteBookFigures; fallback?: never } | { figures?: never; fallback: ReactNode } {
+  const q = useNoteBookFigures();
+  if (q.isError) {
+    return {
+      fallback: (
+        <div className="mb-6">
+          <QueryErrorState
+            compact
+            error={q.error instanceof Error ? q.error : null}
+            onRetry={() => q.refetch()}
+            isRetrying={q.isRefetching}
+            title="Couldn't load your note book"
+            description="Its figures could not be read. This is not the same as holding no notes."
+            testId="note-hero-error"
+          />
+        </div>
+      ),
+    };
+  }
+  if (!q.data) return { fallback: <HeroLoadingSkeleton label="Loading your note book" /> };
+  return { figures: q.data };
+}
+
 // ── note_originator ──────────────────────────────────────────────────────
-function OriginatorHero({ notes }: { notes: Note[] }) {
-  const m = computeOriginatorMetrics(notes);
+function OriginatorHero() {
+  const { figures, fallback } = useNoteHeroFigures();
+  if (!figures) return <>{fallback}</>;
+  const m = computeOriginatorMetrics(figures);
   return (
     <HeroFrame
       eyebrow="Origination"
@@ -462,15 +484,15 @@ function OriginatorHero({ notes }: { notes: Note[] }) {
 
 // ── note_servicer ────────────────────────────────────────────────────────
 function ServicerHero({
-  notes,
   collectedTrailing12,
   delinquencyRate,
 }: {
-  notes: Note[];
   collectedTrailing12: number;
   delinquencyRate: number | null;
 }) {
-  const m = computeServicerMetrics(notes, collectedTrailing12, delinquencyRate);
+  const { figures, fallback } = useNoteHeroFigures();
+  if (!figures) return <>{fallback}</>;
+  const m = computeServicerMetrics(figures, collectedTrailing12, delinquencyRate);
   return (
     <HeroFrame
       eyebrow="Servicing book"
@@ -546,15 +568,15 @@ function ServicerHero({
 
 // ── note_investor ────────────────────────────────────────────────────────
 function InvestorHero({
-  notes,
   summary,
   delinquentCount,
 }: {
-  notes: Note[];
   summary: PortfolioSummary;
   delinquentCount: number;
 }) {
-  const m = computeInvestorMetrics(notes, delinquentCount);
+  const { figures, fallback } = useNoteHeroFigures();
+  if (!figures) return <>{fallback}</>;
+  const m = computeInvestorMetrics(figures, delinquentCount);
   const breakdown = summary.monthlyBreakdownByType || [];
   // Flat per-month delinquency strip at the current rate — we don't keep a
   // month-by-month delinquency history, so the strip indicates "where it
