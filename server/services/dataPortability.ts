@@ -4,7 +4,8 @@
  */
 
 import { db } from "../db";
-import { leads, deals, properties, notes, campaigns } from "@shared/schema";
+import { deals, properties, notes, campaigns } from "@shared/schema";
+import { leadsIncludingDeleted } from "../storage/liveLeads";
 import { and, asc, eq, gt } from "drizzle-orm";
 import { readAllPages, WHOLE_BOOK_PAGE } from "../storage/wholeBookReads";
 import { logger } from "../utils/logger";
@@ -39,7 +40,7 @@ export async function generateFullExport(orgId: number): Promise<DataExport> {
     read: (afterId: number) => Promise<T[]>,
   ) => readAllPages(kind, read);
   const [orgLeads, orgDeals, orgProperties, orgNotes, orgCampaigns] = await Promise.all([
-    page("leads", (a) => db.select().from(leads).where(and(eq(leads.organizationId, orgId), gt(leads.id, a))).orderBy(asc(leads.id)).limit(WHOLE_BOOK_PAGE)),
+    page("leads", (a) => db.select().from(leadsIncludingDeleted).where(and(eq(leadsIncludingDeleted.organizationId, orgId), gt(leadsIncludingDeleted.id, a))).orderBy(asc(leadsIncludingDeleted.id)).limit(WHOLE_BOOK_PAGE)),
     page("deals", (a) => db.select().from(deals).where(and(eq(deals.organizationId, orgId), gt(deals.id, a))).orderBy(asc(deals.id)).limit(WHOLE_BOOK_PAGE)),
     page("properties", (a) =>
       db.select().from(properties).where(and(eq(properties.organizationId, orgId), gt(properties.id, a))).orderBy(asc(properties.id)).limit(WHOLE_BOOK_PAGE),

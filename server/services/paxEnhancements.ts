@@ -6,6 +6,7 @@
 import { db } from "../db";
 import { properties, deals, leads, notes, campaigns, organizations } from "@shared/schema";
 import { eq, and, sql, count, desc } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 
 // Item 161: Property Q&A — gather all data about a property for Pax
 export async function gatherPropertyContext(propertyId: number, orgId: number): Promise<string> {
@@ -74,7 +75,7 @@ export async function gatherCountyContext(county: string, state: string, orgId: 
   // TODO(tsc): leads has no county column; approximate the county briefing
   // by matching the lead's state until a county field is added to leads.
   const [leadCount] = await db.select({ count: count() }).from(leads)
-    .where(and(eq(leads.organizationId, orgId), sql`LOWER(${leads.state}) = LOWER(${state})`));
+    .where(and(eq(leads.organizationId, orgId), liveLead(), sql`LOWER(${leads.state}) = LOWER(${state})`));
 
   return [
     `County: ${county}, ${state}`,
@@ -89,7 +90,7 @@ export async function gatherPortfolioContext(orgId: number): Promise<string> {
   const [propCount] = await db.select({ count: count() }).from(properties).where(eq(properties.organizationId, orgId));
   const [dealCount] = await db.select({ count: count() }).from(deals).where(eq(deals.organizationId, orgId));
   const [noteCount] = await db.select({ count: count() }).from(notes).where(eq(notes.organizationId, orgId));
-  const [leadCount] = await db.select({ count: count() }).from(leads).where(eq(leads.organizationId, orgId));
+  const [leadCount] = await db.select({ count: count() }).from(leads).where(and(eq(leads.organizationId, orgId), liveLead()));
 
   return [
     `Portfolio Overview:`,

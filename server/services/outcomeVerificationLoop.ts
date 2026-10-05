@@ -69,6 +69,7 @@
 import { db } from "../db";
 import { agentEvents, leads, deals, properties, organizations } from "@shared/schema";
 import { eq, and, or, sql, desc, gte, inArray } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 import { logger } from "../utils/logger";
 
 import {
@@ -251,7 +252,7 @@ class OutcomeVerificationLoop {
 
     try {
       const [lead] = await db.select().from(leads)
-        .where(and(eq(leads.id, leadId), eq(leads.organizationId, under.orgId)))
+        .where(and(eq(leads.id, leadId), eq(leads.organizationId, under.orgId), liveLead()))
         .limit(1);
       if (!lead) {
         return { ...base, outcome: "unverified", reason: `Lead ${leadId} not found in this organization` };

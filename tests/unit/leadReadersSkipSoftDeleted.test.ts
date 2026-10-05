@@ -67,6 +67,8 @@ describe("the one exception: duplicate checks that guard lead creation SEE delet
     const stmt = src.slice(at, src.indexOf(";", at));
     expect(stmt).toMatch(/eq\(leads\.organizationId, organizationId\)/); // vacuity
     expect(LIVE.test(stmt), "the parcel dedupe must count deleted leads (their opt-outs)").toBe(false);
+    expect(stmt).toMatch(/\.from\(leadsIncludingDeleted\)/);
+    expect(stmt).not.toMatch(/\bliveLead\(/);
   });
 
   it("leadRepo.findDuplicateLeads (import and create) reads deleted leads", () => {
@@ -74,8 +76,11 @@ describe("the one exception: duplicate checks that guard lead creation SEE delet
     const at = src.indexOf("async findDuplicateLeads(");
     expect(at, "findDuplicateLeads moved").toBeGreaterThan(-1);
     const body = src.slice(at, src.indexOf("async mergeLeads(", at));
-    expect(body).toMatch(/\.from\(leads\)/); // vacuity
+    // Since W10.2a the deliberate read is spelled with the deliberate name
+    // (server/storage/liveLeads.ts) — the intent is in the code, not a comment.
+    expect(body).toMatch(/\.from\(leadsIncludingDeleted\)/); // vacuity
     expect(LIVE.test(body), "findDuplicateLeads must count deleted leads (their opt-outs)").toBe(false);
+    expect(body, "findDuplicateLeads must count deleted leads (their opt-outs)").not.toMatch(/\bliveLead\(/);
   });
 });
 

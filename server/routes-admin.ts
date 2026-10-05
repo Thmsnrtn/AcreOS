@@ -3,6 +3,7 @@ import { maskAdAccountSecret } from "./services/founderAdAccountSecrets";
 import { storage, db } from "./storage";
 import { z } from "zod";
 import { eq, sql, and, desc, lt, inArray, or, count } from "drizzle-orm";
+import { liveLead } from "./storage/liveLeads";
 import {
   insertFeatureRequestSchema,
   SUBSCRIPTION_TIERS, payments, notes, deals, properties, leads, activityLog, organizations,
@@ -4205,7 +4206,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
           const matchedLeads = await db
             .select({ id: leads.id, updatedAt: leads.updatedAt, status: leads.status })
             .from(leads)
-            .where(and(eq(leads.organizationId, org.id), inArray(leads.id, leadIds)));
+            .where(and(eq(leads.organizationId, org.id), inArray(leads.id, leadIds), liveLead()));
 
           for (const lead of matchedLeads) {
             const piece = pieces.find(p => p.leadId === lead.id);

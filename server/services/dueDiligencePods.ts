@@ -11,6 +11,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { DataSourceBroker } from "./data-source-broker";
 import { logger } from "../utils/logger";
+import { liveLead } from "../storage/liveLeads";
 
 const dataSourceBroker = new DataSourceBroker();
 
@@ -685,7 +686,8 @@ class DueDiligencePodService {
       .where(
         and(
           eq(leads.organizationId, property.organizationId),
-          eq(leads.id, property.sellerId || 0)
+          eq(leads.id, property.sellerId || 0),
+          liveLead()
         )
       )
       .limit(1);

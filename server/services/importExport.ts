@@ -7,6 +7,7 @@ import {
   readAllProperties,
 } from "../storage/wholeBookReads";
 import { insertLeadSchema, insertPropertySchema, insertDealSchema, acquiredNotes, leads } from "@shared/schema";
+import { leadsIncludingDeleted } from "../storage/liveLeads";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { storage } from "../storage";
 import { db } from "../db";
@@ -448,7 +449,7 @@ export async function importLeads(
   for (let i = 0; i < incomingApns.length; i += 1000) {
     const existing = await db
       .select({ apn: leads.apn, state: leads.state, county: leads.county })
-      .from(leads)
+      .from(leadsIncludingDeleted)
       // Deleted leads COUNT here, deliberately: a STOP writes doNotContact
       // onto the row even after it is deleted, and re-importing the list must
       // not mint a fresh, contactable row for someone who revoked consent
@@ -1357,14 +1358,16 @@ export async function importNotesFromCSV(
         // One indexed lookup across the WHOLE book (DEFECT-0170). This loaded
         // the newest 5000 leads per row and matched in memory, so a borrower
         // whose lead was older became a DUPLICATE lead.
+        // Deliberately INCLUDES deleted leads (W10.2a audit): this dedupe guards
+        // creation, and a fresh row for a deleted borrower who had sent STOP
+        // would be contactable again — the same rule as the parcel dedupe.
         const [match] = await db
-          .select({ id: leads.id })
-          .from(leads)
+          .select({ id: leadsIncludingDeleted.id })
+          .from(leadsIncludingDeleted)
           .where(
             and(
-              eq(leads.organizationId, organizationId),
-              sql`${leads.deletedAt} IS NULL`,
-              sql`lower(${leads.email}) = ${borrowerEmail.toLowerCase()}`,
+              eq(leadsIncludingDeleted.organizationId, organizationId),
+              sql`lower(${leadsIncludingDeleted.email}) = ${borrowerEmail.toLowerCase()}`,
             ),
           )
           .limit(1);

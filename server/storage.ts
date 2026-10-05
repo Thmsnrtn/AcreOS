@@ -3,7 +3,7 @@ import { tallySubscriptionEvents } from "@shared/billing/subscriptionEventVocabu
 import { forOrg, unscopedForPlatformOps } from "./utils/orgScopedDb";
 import { addMonths } from "./utils/dateUtils";
 export { db };
-import { eq, and, desc, asc, sql, count, sum, arrayContains, gte, lte, lt, or, inArray, ne, ilike, type SQL } from "drizzle-orm";
+import { eq, and, desc, asc, sql, count, sum, arrayContains, gte, lte, lt, or, inArray, ne, ilike, isNull, type SQL } from "drizzle-orm";
 import {
   assertNotUnderLegalHold,
   filterOutHeldIds,
@@ -1117,7 +1117,7 @@ export class DatabaseStorage implements IStorage {
   
   // Dashboard Stats
   async getDashboardStats(orgId: number) {
-    const [leadCount] = await db.select({ count: count() }).from(leads).where(eq(leads.organizationId, orgId));
+    const [leadCount] = await db.select({ count: count() }).from(leads).where(and(eq(leads.organizationId, orgId), isNull(leads.deletedAt)));
     const [propertyCount] = await db.select({ count: count() }).from(properties)
       .where(and(eq(properties.organizationId, orgId), eq(properties.status, "owned")));
     const [noteCount] = await db.select({ count: count() }).from(notes)
@@ -1236,7 +1236,7 @@ export class DatabaseStorage implements IStorage {
       leadsConverted: sql<number>`COUNT(CASE WHEN ${leads.status} IN ('closed', 'accepted') THEN 1 END)`,
     })
     .from(leads)
-    .where(eq(leads.organizationId, orgId))
+    .where(and(eq(leads.organizationId, orgId), isNull(leads.deletedAt)))
     .groupBy(leads.assignedTo);
     
     return result.map(r => ({
@@ -1370,7 +1370,7 @@ export class DatabaseStorage implements IStorage {
           created_at,
           ROW_NUMBER() OVER (PARTITION BY assigned_to ORDER BY created_at DESC) as rn
         FROM leads
-        WHERE organization_id = ${orgId}
+        WHERE organization_id = ${orgId} AND deleted_at IS NULL
           AND last_contacted_at IS NOT NULL
           AND created_at IS NOT NULL
           AND last_contacted_at >= ${periodStart}

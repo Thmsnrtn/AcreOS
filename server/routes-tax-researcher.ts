@@ -26,6 +26,7 @@ const router = Router();
 import { z } from "zod";
 import { and, asc, desc as descOrder, eq, inArray, sql } from "drizzle-orm";
 import { db as drizzleDb } from "./db";
+import { liveLead } from "./storage/liveLeads";
 import {
   taxSaleListings,
   taxSaleAuctions,
@@ -999,6 +1000,7 @@ router.get('/county-summary', async (req: Request, res: Response) => {
         eq(leadsTbl.organizationId, org.id),
         eq(leadsTbl.state, state),
         orFn(isNullFn(leadsTbl.county), eq(leadsTbl.county, county)),
+        liveLead(),
       ));
 
     const [{ activeCerts = 0 } = {}] = await drizzleDb

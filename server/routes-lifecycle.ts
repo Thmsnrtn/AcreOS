@@ -12,6 +12,7 @@
 import type { Express, Response } from "express";
 import { z } from "zod";
 import { db } from "./db";
+import { leadsIncludingDeleted } from "./storage/liveLeads";
 import {
   npsMicroSurveys,
   preChurnRungs,
@@ -151,7 +152,7 @@ export function registerLifecycleRoutes(app: Express): void {
             organizationId: leads.organizationId,
             c: sql<string>`count(*)`,
           })
-          .from(leads)
+          .from(leadsIncludingDeleted)
           .where(gte(leads.createdAt, thirtyDaysAgo))
           .groupBy(leads.organizationId);
 
@@ -252,7 +253,7 @@ export function registerLifecycleRoutes(app: Express): void {
           // Most recent activity across the 3 surfaces.
           const [recentLead] = await db
             .select({ at: sql<string>`max(${leads.createdAt})` })
-            .from(leads)
+            .from(leadsIncludingDeleted)
             .where(eq(leads.organizationId, org.id));
           const [recentDeal] = await db
             .select({ at: sql<string>`max(${deals.createdAt})` })

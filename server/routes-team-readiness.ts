@@ -11,6 +11,7 @@ import type { Express } from "express";
 import { z } from "zod";
 import { and, asc, desc, eq, gte, sql, inArray } from "drizzle-orm";
 import { db, storage } from "./storage";
+import { liveLead } from "./storage/liveLeads";
 import {
   organizations,
   teamMembers,
@@ -657,6 +658,7 @@ async function getRepPerformance(orgId: number, since: Date): Promise<Array<{
         eq(leads.organizationId, orgId),
         gte(leads.createdAt, since),
         inArray(leads.assignedTo, memberIds),
+        liveLead(),
       ),
     )
     .groupBy(leads.assignedTo);
@@ -673,6 +675,7 @@ async function getRepPerformance(orgId: number, since: Date): Promise<Array<{
         eq(leads.organizationId, orgId),
         gte(leads.lastContactedAt, since),
         inArray(leads.assignedTo, memberIds),
+        liveLead(),
       ),
     )
     .groupBy(leads.assignedTo);

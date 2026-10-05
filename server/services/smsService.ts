@@ -39,6 +39,7 @@ import {
   activityLog,
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
+import { liveLead, leadsIncludingDeleted } from "../storage/liveLeads";
 import { logger } from "../utils/logger";
 import { wsServer } from "../websocket";
 import { commsRouter, type CommsRouter } from "./comms/router";
@@ -283,7 +284,7 @@ async function smsPurposeGate(input: SendOrgSmsInput): Promise<PurposeGateVerdic
         if (input.noteId === undefined) return refuse("a servicing text must name the note it services");
         const note = await storage.getNote(organizationId, input.noteId);
         if (!note) return refuse(`note ${input.noteId} not found in this organization`);
-        const borrower = note.borrowerId ? await storage.getLead(organizationId, note.borrowerId) : undefined;
+        const borrower = note.borrowerId ? await storage.getBorrowerLead(organizationId, note.borrowerId) : undefined;
         if (!borrower?.phone) return refuse(`note ${input.noteId} has no borrower phone on file`);
         if (last10Of(borrower.phone) !== last10) {
           return refuse(`destination is not the borrower of record on note ${input.noteId}`, borrower.id);
@@ -317,7 +318,10 @@ async function smsPurposeGate(input: SendOrgSmsInput): Promise<PurposeGateVerdic
           return refuse("recipient's latest text was an opt-out (STOP) — no reply may be sent");
         }
         const matches = await storage.findLeadsByPhoneLast10(organizationId, to);
-        const stopped = matches.find((l) => l.doNotContact);
+        // A STOP recorded on a since-deleted lead at this number still binds:
+        // consent follows the number (W10.2a audit).
+        const everyRowAtNumber = await storage.findLeadsByPhoneLast10(organizationId, to, { includeDeleted: true });
+        const stopped = everyRowAtNumber.find((l) => l.doNotContact);
         if (stopped) return refuse("recipient has revoked contact (STOP / do-not-contact)", stopped.id);
         const quiet = isWithinQuietHours(to, matches[0]?.timezone ?? null);
         if (quiet.blocked) return refuse(quiet.reason ?? "recipient quiet hours", matches[0]?.id);
@@ -426,7 +430,7 @@ export async function sendSMSToLead(
   const [lead] = await db
     .select()
     .from(leads)
-    .where(and(eq(leads.organizationId, organizationId), eq(leads.id, leadId)))
+    .where(and(eq(leads.organizationId, organizationId), eq(leads.id, leadId), liveLead()))
     .limit(1);
 
   if (!lead) return { success: false, error: "Lead not found" };
@@ -565,7 +569,7 @@ export async function handleIncomingSMS(
     const now = new Date();
     for (const lead of matchingLeads) {
       await db
-        .update(leads)
+        .update(leadsIncludingDeleted)
         .set({
           tcpaConsent: false,
           doNotContact: true, // suppress ALL channels — TCPA revocation is global
@@ -573,7 +577,7 @@ export async function handleIncomingSMS(
           optOutReason: `SMS STOP keyword: "${body.trim()}" (MessageSid ${messageSid})`,
           updatedAt: now,
         })
-        .where(and(eq(leads.id, lead.id), eq(leads.organizationId, organizationId)));
+        .where(and(eq(leadsIncludingDeleted.id, lead.id), eq(leadsIncludingDeleted.organizationId, organizationId)));
       await db
         .update(sequenceEnrollments)
         .set({ status: "cancelled", completedAt: now })
@@ -686,7 +690,13 @@ export async function handleIncomingSMS(
     });
   }
 
-  const allLeads = await db.select().from(leads).where(eq(leads.organizationId, organizationId));
+  // Deleted leads are matched deliberately (a reply from a deleted lead's number
+  // is still recorded, and consent follows the number), but a LIVE lead with the
+  // same number wins: ordering live rows first keeps a hidden row from capturing
+  // the conversation of a lead the operator can see (W10.2a).
+  const allLeads = (
+    await db.select().from(leadsIncludingDeleted).where(eq(leadsIncludingDeleted.organizationId, organizationId))
+  ).sort((a, b) => Number(a.deletedAt !== null) - Number(b.deletedAt !== null));
 
   const matchedLead = allLeads.find((l) => {
     const leadPhone = l.phone?.replace(/\D/g, "") || "";
@@ -815,7 +825,7 @@ export async function handleIncomingSMS(
       await db
         .update(leads)
         .set({ status: "responded", updatedAt: new Date() })
-        .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)));
+        .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId), liveLead()));
     } catch (err) {
       logger.warn(
         "[SMS] failed to mark lead responded (message stored fine)",

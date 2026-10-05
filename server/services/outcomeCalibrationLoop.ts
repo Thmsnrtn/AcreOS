@@ -17,6 +17,7 @@ import {
   sellerIntentPredictions,
 } from "@shared/schema";
 import { eq, and, gte, desc, sql, count } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 import { logger } from "../utils/logger";
 import { recordScoreOutcome, runWeeklyCalibration, type CalibrationResult } from "./modelCalibration";
 
@@ -259,7 +260,7 @@ export async function calibrateSellerIntent(orgId: number): Promise<SellerIntent
   for (const leadId of leadIds) {
     const [lead] = await db.select({ status: leads.status, lastContactedAt: leads.lastContactedAt })
       .from(leads)
-      .where(and(eq(leads.id, leadId), eq(leads.organizationId, orgId)))
+      .where(and(eq(leads.id, leadId), eq(leads.organizationId, orgId), liveLead()))
       .limit(1);
 
     // WAS `contacted || qualified || converted`. `converted` is not a lead

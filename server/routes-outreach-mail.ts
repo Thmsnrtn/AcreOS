@@ -27,6 +27,7 @@ import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization, getOrganizationId, getUserId } from "./types/request";
 import { db, type PrimaryDb } from "./db";
+import { liveLead } from "./storage/liveLeads";
 import {
   deals,
   financialLedger,
@@ -261,7 +262,6 @@ async function resolveAudience(
 
   const conditions = [
     eq(leads.organizationId, organizationId),
-    sql`${leads.deletedAt} IS NULL`,
     // SUPPRESSION. A seller who texts STOP has `doNotContact` and `optOutDate`
     // set by handleInboundOptKeyword, and the consent-revocation record written
     // alongside it names `direct_mail` among the revoked channels
@@ -299,7 +299,7 @@ async function resolveAudience(
       lastContactedAt: leads.lastContactedAt,
     })
     .from(leads)
-    .where(and(...conditions))
+    .where(and(liveLead(), ...conditions))
     .orderBy(asc(leads.id))
     .limit(MAX_AUDIENCE + 1);
 

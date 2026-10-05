@@ -401,7 +401,7 @@ export function registerDocumentRoutes(app: Express): void {
         
         let borrowerName = "Borrower";
         if (note.borrowerId) {
-          const borrower = await storage.getLead(org.id, note.borrowerId);
+          const borrower = await storage.getBorrowerLead(org.id, note.borrowerId);
           if (borrower) {
             borrowerName = `${borrower.firstName} ${borrower.lastName}`;
           }

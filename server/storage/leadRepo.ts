@@ -12,6 +12,7 @@ import {
 import { assertNotUnderLegalHold, filterOutHeldIds } from "../services/legalHold";
 import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../storage";
 import { LIST_READ_CAP, capListRead } from "./listCap";
+import { liveLead, leadsIncludingDeleted } from "./liveLeads";
 
 /** Refused merge: the two leads are different parcels (DEFECT-0161). */
 class LeadsAreDistinctParcelsError extends Error {
@@ -24,7 +25,7 @@ class LeadsAreDistinctParcelsError extends Error {
 export const leadRepo = {
   // Leads
   async getLeads(this: DatabaseStorage, orgId: number, filters?: { assignedTo?: number | null }): Promise<Lead[]> {
-    const conditions: any[] = [eq(leads.organizationId, orgId), sql`${leads.deletedAt} IS NULL`];
+    const conditions: any[] = [eq(leads.organizationId, orgId)];
     if (filters?.assignedTo === null) {
       conditions.push(sql`${leads.assignedTo} IS NULL`);
     } else if (filters?.assignedTo !== undefined) {
@@ -32,14 +33,14 @@ export const leadRepo = {
     }
     // Audit F-10-2: loud cap — truncation past the cap is logged, not silent.
     const rows = await db.select().from(leads)
-      .where(and(...conditions))
+      .where(and(...conditions, liveLead()))
       .orderBy(desc(leads.createdAt))
       .limit(LIST_READ_CAP + 1);
     return capListRead(rows, LIST_READ_CAP, "getLeads", orgId);
   },
 
   async getLeadsPaginated(this: DatabaseStorage, orgId: number, options: PaginationOptions, filters?: { assignedTo?: number | null; q?: string }): Promise<PaginatedResult<Lead>> {
-    const conditions: any[] = [eq(leads.organizationId, orgId), sql`${leads.deletedAt} IS NULL`];
+    const conditions: any[] = [eq(leads.organizationId, orgId)];
     if (filters?.assignedTo === null) {
       conditions.push(sql`${leads.assignedTo} IS NULL`);
     } else if (filters?.assignedTo !== undefined) {
@@ -76,8 +77,7 @@ export const leadRepo = {
       }
       conditions.push(or(...ors)!);
     }
-    const whereClause = and(...conditions);
-    const [{ count: total }] = await db.select({ count: count() }).from(leads).where(whereClause);
+    const [{ count: total }] = await db.select({ count: count() }).from(leads).where(and(...conditions, liveLead()));
     const totalNum = Number(total);
     const totalPages = Math.max(1, Math.ceil(totalNum / options.pageSize));
     const offset = (options.page - 1) * options.pageSize;
@@ -86,7 +86,7 @@ export const leadRepo = {
     const orderFn = options.sortOrder === "asc" ? asc : desc;
 
     const data = await db.select().from(leads)
-      .where(whereClause)
+      .where(and(...conditions, liveLead()))
       .orderBy(orderFn(sortColumn))
       .limit(options.pageSize)
       .offset(offset);
@@ -150,7 +150,6 @@ export const leadRepo = {
   ): Promise<PaginatedResult<Lead>> {
     const conditions: any[] = [
       eq(leads.organizationId, orgId),
-      sql`${leads.deletedAt} IS NULL`,
       leadRepo.stageConditionSql.call(this, stage),
     ];
     if (filters?.assignedTo === null) {
@@ -176,14 +175,13 @@ export const leadRepo = {
       if (phoneLike) ors.push(ilike(leads.phoneNormalized, phoneLike));
       conditions.push(or(...ors)!);
     }
-    const whereClause = and(...conditions);
-    const [{ count: total }] = await db.select({ count: count() }).from(leads).where(whereClause);
+    const [{ count: total }] = await db.select({ count: count() }).from(leads).where(and(...conditions, liveLead()));
     const totalNum = Number(total);
     const totalPages = Math.max(1, Math.ceil(totalNum / options.pageSize));
     const offset = (options.page - 1) * options.pageSize;
 
     const data = await db.select().from(leads)
-      .where(whereClause)
+      .where(and(...conditions, liveLead()))
       .orderBy(desc(leadRepo.computedScoreSql()), desc(leads.id))
       .limit(options.pageSize)
       .offset(offset);
@@ -202,7 +200,7 @@ export const leadRepo = {
     opts: { limit: number; cursor?: number; stage?: "hot" | "warm" | "cold" | "dead" },
     filters?: { assignedTo?: number | null },
   ): Promise<{ data: Lead[]; total: number; hasMore: boolean }> {
-    const conditions: any[] = [eq(leads.organizationId, orgId), sql`${leads.deletedAt} IS NULL`];
+    const conditions: any[] = [eq(leads.organizationId, orgId)];
     if (opts.stage) conditions.push(leadRepo.stageConditionSql.call(this, opts.stage));
     if (filters?.assignedTo === null) {
       conditions.push(sql`${leads.assignedTo} IS NULL`);
@@ -210,14 +208,14 @@ export const leadRepo = {
       conditions.push(eq(leads.assignedTo, filters.assignedTo));
     }
     const whereClause = and(...conditions);
-    const [{ count: total }] = await db.select({ count: count() }).from(leads).where(whereClause);
+    const [{ count: total }] = await db.select({ count: count() }).from(leads).where(and(whereClause, liveLead()));
 
     const pageConditions = opts.cursor
       ? and(whereClause, sql`${leads.id} < ${opts.cursor}`)
       : whereClause;
     // limit+1 so hasMore is exact without a second count at the cursor.
     const rows = await db.select().from(leads)
-      .where(pageConditions)
+      .where(and(pageConditions, liveLead()))
       .orderBy(desc(leads.id))
       .limit(opts.limit + 1);
 
@@ -230,7 +228,34 @@ export const leadRepo = {
 
   async getLead(this: DatabaseStorage, orgId: number, id: number): Promise<Lead | undefined> {
     const [lead] = await db.select().from(leads)
-      .where(and(eq(leads.organizationId, orgId), eq(leads.id, id)));
+      .where(and(eq(leads.organizationId, orgId), eq(leads.id, id), liveLead()));
+    return lead;
+  },
+
+  /**
+   * The borrower of record on a note (`notes.borrowerId` → leads), DELIBERATELY
+   * including a soft-deleted lead. Loan servicing — periodic statements,
+   * payment notices, servicing texts, the borrower portal — is an obligation to
+   * the borrower that a CRM soft delete does not end: when `getLead` became live
+   * (W10.2a, DEFECT-0273) a borrower whose lead had been deleted would otherwise
+   * have stopped receiving statements on a loan still being serviced. Use
+   * `getLead` for everything that is not servicing a note.
+   */
+  /**
+   * A party named on a LEGAL ARTIFACT — the seller or buyer on a deed, a
+   * closing statement, a contract — DELIBERATELY including a soft-deleted
+   * lead. A deed does not lose its grantor because the CRM row was deleted
+   * (W10.2a audit: the documents went out with blank party blocks).
+   */
+  async getPartyLead(this: DatabaseStorage, orgId: number, id: number): Promise<Lead | undefined> {
+    const [lead] = await db.select().from(leadsIncludingDeleted)
+      .where(and(eq(leadsIncludingDeleted.organizationId, orgId), eq(leadsIncludingDeleted.id, id)));
+    return lead;
+  },
+
+  async getBorrowerLead(this: DatabaseStorage, orgId: number, id: number): Promise<Lead | undefined> {
+    const [lead] = await db.select().from(leadsIncludingDeleted)
+      .where(and(eq(leadsIncludingDeleted.organizationId, orgId), eq(leadsIncludingDeleted.id, id)));
     return lead;
   },
 
@@ -259,10 +284,13 @@ export const leadRepo = {
       eq(leads.organizationId, orgId),
       like(leads.phoneNormalized, `%${last10}`),
     ];
-    if (!opts.includeDeleted) conditions.push(sql`${leads.deletedAt} IS NULL`);
-    const rows = await db.select().from(leads)
-      .where(and(...conditions))
-      .limit(LIST_READ_CAP);
+    const rows = opts.includeDeleted
+      ? await db.select().from(leadsIncludingDeleted)
+          .where(and(...conditions))
+          .limit(LIST_READ_CAP)
+      : await db.select().from(leads)
+          .where(and(...conditions, liveLead()))
+          .limit(LIST_READ_CAP);
     return rows.filter((l) => {
       const digits = (l.phoneNormalized ?? l.phone?.replace(/\D/g, "") ?? "");
       return digits.length >= 7 && digits.slice(-10) === last10;
@@ -306,7 +334,7 @@ export const leadRepo = {
     if (organizationId) conditions.push(eq(leads.organizationId, organizationId));
     const [updated] = await db.update(leads)
       .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
-      .where(and(...conditions))
+      .where(and(...conditions, liveLead()))
       .returning();
     return updated;
   },
@@ -327,7 +355,7 @@ export const leadRepo = {
     // data" leads included (audit of 224a5c0). The status is kept, as the
     // route's own delete keeps it, so a restore brings the lead back as it
     // was (audit of 9ed61f4).
-    await db.update(leads)
+    await db.update(leadsIncludingDeleted)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
       .where(and(...conditions));
   },
@@ -348,7 +376,7 @@ export const leadRepo = {
     if (ids.length === 0) return 0;
     const allowed = await filterOutHeldIds(orgId, "lead", ids);
     if (allowed.length === 0) return 0;
-    await db.update(leads)
+    await db.update(leadsIncludingDeleted)
       .set({ deletedAt: new Date(), deletedBy: _userId ?? null, updatedAt: new Date() })
       .where(and(eq(leads.organizationId, orgId), inArray(leads.id, allowed)));
     return allowed.length;
@@ -368,7 +396,7 @@ export const leadRepo = {
 
   // Lead Soft-Delete & Recovery methods
   async getDeletedLeads(this: DatabaseStorage, orgId: number): Promise<Lead[]> {
-    return await db.select().from(leads)
+    return await db.select().from(leadsIncludingDeleted)
       .where(and(
         eq(leads.organizationId, orgId),
         sql`${leads.deletedAt} IS NOT NULL`
@@ -382,7 +410,7 @@ export const leadRepo = {
     // A legacy row soft-deleted by status alone comes back as "new"; any
     // other status is the lead's own and is kept. The count is what matched,
     // not what was asked for (audit of 9ed61f4: it reported every id).
-    const restored = await db.update(leads)
+    const restored = await db.update(leadsIncludingDeleted)
       .set({
         deletedAt: null,
         deletedBy: null,
@@ -405,7 +433,7 @@ export const leadRepo = {
     // FRCP 37(e) targets — every held id is filtered out before DELETE.
     const allowed = await filterOutHeldIds(orgId, "lead", ids);
     if (allowed.length === 0) return 0;
-    await db.delete(leads)
+    await db.delete(leadsIncludingDeleted)
       .where(and(
         eq(leads.organizationId, orgId),
         inArray(leads.id, allowed),
@@ -469,7 +497,7 @@ export const leadRepo = {
 
     conditions.push(or(...orConditions)!);
 
-    return await db.select().from(leads)
+    return await db.select().from(leadsIncludingDeleted)
       .where(and(...conditions))
       .limit(20);
   },
@@ -553,6 +581,7 @@ export const leadRepo = {
         eq(leads.organizationId, orgId),
         sql`${leads.status} != 'dead'`,
         sql`${leads.status} != 'closed'`,
+        liveLead(),
         or(
           sql`${leads.lastScoreAt} IS NULL`,
           lte(leads.lastScoreAt, oneDayAgo)
@@ -569,7 +598,8 @@ export const leadRepo = {
         eq(leads.organizationId, orgId),
         sql`${leads.status} != 'dead'`,
         sql`${leads.status} != 'closed'`,
-        lte(leads.nextFollowUpAt, now)
+        lte(leads.nextFollowUpAt, now),
+        liveLead()
       ))
       .orderBy(leads.nextFollowUpAt)
       .limit(100);
@@ -609,7 +639,7 @@ export const leadRepo = {
         lastScoreAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(and(...conditions))
+      .where(and(...conditions, liveLead()))
       .returning();
     return updated;
   },

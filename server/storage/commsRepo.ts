@@ -5,6 +5,7 @@
 // `this` therefore refers to the full DatabaseStorage instance.
 
 import { and, count, desc, eq, gte, like } from "drizzle-orm";
+import { liveLead } from "./liveLeads";
 import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import { forOrg } from "../utils/orgScopedDb";
@@ -60,7 +61,7 @@ export const commsRepo = {
       .select({ body: messages.content, receivedAt: messages.createdAt })
       .from(messages)
       .innerJoin(conversations, eq(messages.conversationId, conversations.id))
-      .innerJoin(leads, eq(conversations.leadId, leads.id))
+      .innerJoin(leads, and(eq(conversations.leadId, leads.id), liveLead()))
       .where(
         and(
           eq(messages.organizationId, orgId),

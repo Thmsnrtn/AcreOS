@@ -13,6 +13,7 @@ import { checkUsageLimit } from "./services/usageLimits";
 import { onboardingService, type BusinessType } from "./services/onboarding";
 import { BUSINESS_TYPES } from "@shared/models/persona-mapping";
 import { SUBSCRIPTION_TIERS } from "@shared/schema";
+import { liveLead, leadsIncludingDeleted } from "./storage/liveLeads";
 import { activityLogger } from "./services/activityLogger";
 import { getAllUsageLimits, TIER_LIMITS, type SubscriptionTier } from "./services/usageLimits";
 import { getUserPermissionContext, getPermissionsForRole, ROLES, type UserPermissionContext } from "./utils/permissions";
@@ -1567,7 +1568,7 @@ export function registerOrganizationRoutes(app: Express): void {
           type: sql`'lead'` 
         })
           .from(leads)
-          .where(eq(leads.organizationId, org.id))
+          .where(and(eq(leads.organizationId, org.id), liveLead()))
           .orderBy(desc(leads.updatedAt))
           .limit(limit),
         db.select({ 
@@ -2055,7 +2056,7 @@ export function registerOrganizationRoutes(app: Express): void {
         if (shadow[0] && shadow[0].id !== invite.organizationId) {
           const shadowId = shadow[0].id;
           const counts = await Promise.all([
-            db.select().from(leads).where(eq(leads.organizationId, shadowId)).limit(1),
+            db.select().from(leadsIncludingDeleted).where(eq(leads.organizationId, shadowId)).limit(1),
             db.select().from(properties).where(eq(properties.organizationId, shadowId)).limit(1),
             db.select().from(deals).where(eq(deals.organizationId, shadowId)).limit(1),
             db.select().from(notes).where(eq(notes.organizationId, shadowId)).limit(1),

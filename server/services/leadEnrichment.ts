@@ -14,6 +14,7 @@
 import { db } from "../db";
 import { leads, properties, type Lead } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 
 interface EnrichmentData {
   emailValid?: boolean;
@@ -149,7 +150,7 @@ export function calculateContactCompleteness(lead: {
  */
 export async function enrichLead(organizationId: number, leadId: number): Promise<EnrichmentResult> {
   const [lead] = await db.select().from(leads)
-    .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)));
+    .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId), liveLead()));
 
   if (!lead) throw new Error(`Lead ${leadId} not found`);
 
@@ -206,7 +207,7 @@ export async function enrichLead(organizationId: number, leadId: number): Promis
 
   await db.update(leads)
     .set({ enrichmentData: newEnrichmentData, ...parcelCols, updatedAt: new Date() } as any)
-    .where(eq(leads.id, leadId));
+    .where(and(eq(leads.id, leadId), liveLead()));
 
   return {
     leadId,

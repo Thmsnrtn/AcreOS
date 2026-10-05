@@ -5,6 +5,7 @@ import { storage, db } from "./storage";
 import { z } from "zod";
 import { eq, sql, and, desc, lt, inArray, or } from "drizzle-orm";
 import { insertLeadSchema, leads, properties, deals } from "@shared/schema";
+import { leadsIncludingDeleted } from "./storage/liveLeads";
 import { LEAD_STATUSES, isLeadStatus, validateLeadTransition } from "@shared/lifecycle/pipeline-status";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -759,7 +760,7 @@ export function registerLeadRoutes(app: Express): void {
     // Soft delete: set deletedAt instead of hard deleting
     const user = req.user;
     const userId = user?.id || user?.id;
-    await db.update(leads).set({
+    await db.update(leadsIncludingDeleted).set({
       deletedAt: new Date(),
       deletedBy: userId || null,
     }).where(and(eq(leads.id, leadId), eq(leads.organizationId, org.id)));
@@ -787,7 +788,7 @@ export function registerLeadRoutes(app: Express): void {
     }
 
     // Find the lead even if soft-deleted
-    const [lead] = await db.select().from(leads).where(
+    const [lead] = await db.select().from(leadsIncludingDeleted).where(
       and(eq(leads.id, leadId), eq(leads.organizationId, org.id))
     ).limit(1);
     if (!lead) {
@@ -798,7 +799,7 @@ export function registerLeadRoutes(app: Express): void {
 
     // A legacy row soft-deleted by status alone comes back as "new" (audit
     // of 9ed61f4); any other status is the lead's own and is kept.
-    const [restored] = await db.update(leads).set({
+    const [restored] = await db.update(leadsIncludingDeleted).set({
       deletedAt: null,
       deletedBy: null,
       status: sql`case when ${leads.status} = 'deleted' then 'new' else ${leads.status} end`,
@@ -1483,7 +1484,7 @@ export function registerLeadRoutes(app: Express): void {
         if (incomingApns.length > 0) {
           const existing = await db
             .select({ apn: leads.apn, state: leads.state, county: leads.county })
-            .from(leads)
+            .from(leadsIncludingDeleted)
             .where(
               and(
                 eq(leads.organizationId, org.id),
@@ -1652,7 +1653,7 @@ export function registerLeadRoutes(app: Express): void {
       if (incomingApns.length > 0) {
         const existing = await db
           .select({ apn: leads.apn, state: leads.state, county: leads.county })
-          .from(leads)
+          .from(leadsIncludingDeleted)
           .where(and(
             eq(leads.organizationId, org.id),
             inArray(sql`upper(regexp_replace(trim(${leads.apn}), '\\s+', ' ', 'g'))`, incomingApns.map(apnMatchForm)),

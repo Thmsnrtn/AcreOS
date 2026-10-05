@@ -58,6 +58,7 @@ vi.mock("../../server/storage", async () => {
     updateBorrowerSessionAccess: async () => {},
     getOrganization: async (id: number) => ({ id, name: "Mesa Land", settings: {} }),
     getLead: async () => null,
+    getBorrowerLead: async () => null,
     getProperty: async () => null,
     getPayments: async () => [],
     updateNote: async (_id: number, patch: Record<string, unknown>) => {

@@ -3,6 +3,7 @@ import { db } from "../storage";
 import { leadEmails, leads, leadActivities, inboxMessages } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { liveLead, leadsIncludingDeleted } from "../storage/liveLeads";
 import { activityLogger } from "./activityLogger";
 import { wsServer } from "../websocket";
 
@@ -81,7 +82,7 @@ export async function processInboundEmail(payload: InboundEmailPayload): Promise
     const { leadId, hash } = parsed;
 
     // Look up the lead to get orgId for hash verification
-    const [lead] = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
+    const [lead] = await db.select().from(leadsIncludingDeleted).where(eq(leadsIncludingDeleted.id, leadId)).limit(1);
     if (!lead) {
       logger.warn("Inbound email for unknown lead", { leadId });
       return { success: false, error: "Lead not found" };
@@ -141,7 +142,7 @@ export async function processInboundEmail(payload: InboundEmailPayload): Promise
       status: "responded",
       updatedAt: new Date(),
     }).where(
-      and(eq(leads.id, leadId), eq(leads.organizationId, lead.organizationId))
+      and(eq(leads.id, leadId), eq(leads.organizationId, lead.organizationId), liveLead())
     );
 
     // TTFM companion metric — the org's first seller response. Idempotent

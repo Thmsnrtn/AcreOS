@@ -306,6 +306,11 @@ export async function attributeInbound(
     .where(
       and(
         eq(trackingNumberAssignments.id, row.id),
+        // The row the number resolved to, in the org it resolved to (a pooled
+        // number with no org stays matchable — `= NULL` would match nothing).
+        row.organizationId === null
+          ? isNull(trackingNumberAssignments.organizationId)
+          : eq(trackingNumberAssignments.organizationId, row.organizationId),
         or(
           isNull(trackingNumberAssignments.lastInboundAt),
           lt(trackingNumberAssignments.lastInboundAt, timestamp),

@@ -35,6 +35,8 @@ vi.mock("../../server/storage", () => ({
     getNote: vi.fn(async (org: number, id: number) => (org === 5 && id === 77 ? NOTE : undefined)),
     getPayments: vi.fn(async () => LEDGER),
     getLead: vi.fn(async () => ({ id: 9, firstName: "Bea", lastName: "Rowe" })),
+    // The servicing read (W10.2a): a note's borrower, deleted or not.
+    getBorrowerLead: vi.fn(async () => ({ id: 9, firstName: "Bea", lastName: "Rowe" })),
     createPayoffQuote: vi.fn(async () => {
       H.legacyWrites++;
       return { id: 1 };

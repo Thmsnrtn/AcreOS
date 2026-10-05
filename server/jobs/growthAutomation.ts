@@ -50,6 +50,7 @@ import {
   activityLog,
 } from "@shared/schema";
 import { eq, and, gte, lt, lte, desc, count, sql, not, isNull, ne } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 import { subDays, subHours, addDays, format, differenceInDays } from "date-fns";
 import { emailService } from "../services/emailService";
 import { PLAN_LIMITS } from "../services/planLimits";
@@ -160,7 +161,7 @@ async function runUpsellEngine(): Promise<{ sent: number }> {
 
     // Count actual usage
     const [leadCount, dealCount] = await Promise.all([
-      db.select({ c: count() }).from(leads).where(eq(leads.organizationId, org.id)),
+      db.select({ c: count() }).from(leads).where(and(eq(leads.organizationId, org.id), liveLead())),
       db.select({ c: count() }).from(deals).where(eq(deals.organizationId, org.id)),
     ]);
 
@@ -444,6 +445,7 @@ async function runEngagementReactivation(): Promise<{ sent: number }> {
     const [hotLeads, expiringDeals, activeNotes] = await Promise.all([
       db.select({ c: count() }).from(leads).where(and(
         eq(leads.organizationId, org.orgId),
+        liveLead(),
         sql`score >= 75`,
         // W3.4: "active" is never a written lead status — in-play means
         // not closed/dead (the old filter always counted zero hot leads).

@@ -322,6 +322,12 @@ const BASELINE_OFFENDERS = new Set([
 ]);
 
 const BASELINE_UNUSED_ORG = new Set([
+  // VERIFIED PARENT (2026-10-05, newly visible when rule 2 learned to read an id
+  // inside and()): the bid update is keyed by bidId + listing.id, and both were
+  // resolved a few lines above by a join that requires
+  // marketplaceListings.sellerOrganizationId = sellerOrgId. marketplace_bids has
+  // no seller-org column to name; the parent's scope is the scope.
+  "server/services/marketplace.ts::respondToBid",
   // ── RE-SEED 2026-08-17 (founder-approved, OD-3) ──────────────────────────
   // NOT new code and NOT newly broken. The extractor's body-finder landed on
   // the brace of an inline `): Promise<{ … }> {` return type, so these bodies
@@ -705,7 +711,6 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   "server/services/onboardingAutonomy.ts::sweepAndFireDueSteps",
   "server/services/propertyTaxService.ts::recordTaxPaymentFromEscrow",
   "server/services/recognitionWorker.ts::runRecognitionTick",
-  "server/services/sellerMotivationEngine.ts::rescoreLeadsForOrg",
   "server/services/smsService.ts::handleIncomingSMS",
   "server/services/smsService.ts::saveTwilioCredentials",
   "server/services/smsService.ts::sendSMSToLead",
@@ -769,7 +774,6 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   "server/services/solene/verifyQueue.ts::enqueueMailShipmentVerify",
   "server/services/solene/verifyQueue.ts::enqueueVerifyDispatch",
   "server/services/solene/verifyQueue.ts::recordVerifyOutcome",
-  "server/services/taxDelinquentPipeline.ts::addToOutreach",
   "server/services/territoryService.ts::saveTerritoriesStore",
   "server/services/titleChainService.ts::runPostCloseAutomation",
   "server/services/webhookDispatcher.ts::saveWebhookEndpoints",
@@ -1113,7 +1117,7 @@ function matchBrace(source, openIdx) {
  * population entirely, taking every query against them out of all three rules.
  * That is not hypothetical: it is the state this gate was in until 2026-09-04.
  */
-export const orgScopedTablesBySpelling = { organizationId: 0, orgId: 0, orgForeignKey: 0 };
+export const orgScopedTablesBySpelling = { organizationId: 0, orgId: 0, orgForeignKey: 0, alias: 0 };
 
 /**
  * A column of ANY NAME carrying a NOT NULL foreign key to organizations.id.
@@ -1140,6 +1144,7 @@ function collectOrgScopedTableIdents() {
   orgScopedTablesBySpelling.organizationId = 0;
   orgScopedTablesBySpelling.orgId = 0;
   orgScopedTablesBySpelling.orgForeignKey = 0;
+  orgScopedTablesBySpelling.alias = 0;
   const callRe = /\bexport\s+const\s+([A-Za-z0-9_]+)\s*=\s*pgTable\s*\(\s*["'`]([a-zA-Z0-9_]+)["'`]/g;
   for (const file of findSchemaFiles()) {
     const source = maskComments(readFileSync(file, "utf8"));
@@ -1183,7 +1188,32 @@ function collectOrgScopedTableIdents() {
       }
     }
   }
+  // ALIASES of an org-scoped table: `export const leadsIncludingDeleted = leads;`
+  // (server/storage/liveLeads.ts, DEFECT-0273). The same table under a name that
+  // states intent — and, until this arm, a name every rule here was blind to:
+  // a by-id read through the alias carried no table this gate recognised.
+  const aliasRe = /\bexport\s+const\s+([A-Za-z0-9_]+)\s*=\s*([A-Za-z0-9_]+)\s*;/g;
+  for (const file of findAliasFiles()) {
+    const source = maskComments(readFileSync(file, "utf8"));
+    let match;
+    while ((match = aliasRe.exec(source)) !== null) {
+      const [, alias, target] = match;
+      if (idents.has(target) && !idents.has(alias)) {
+        idents.set(alias, idents.get(target));
+        orgScopedTablesBySpelling.alias += 1;
+      }
+    }
+  }
   return idents;
+}
+
+/** Files that may declare a table alias: the storage layer. */
+function findAliasFiles() {
+  const dir = join(SERVER_DIR, "storage");
+  if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) return [];
+  return readdirSync(dir)
+    .filter((e) => e.endsWith(".ts") && !e.includes(".test."))
+    .map((e) => join(dir, e));
 }
 
 // ----------------------------------------------------------------------------
@@ -1713,6 +1743,9 @@ const LONE_ID_WHERE = /where\s*[(:]\s*eq\(\s*([A-Za-z0-9_]+)\s*\.\s*id\s*,[^)]*\
  */
 const HOISTED_LONE_ID = /(?:const|let)\s+([A-Za-z0-9_]+)\s*=\s*eq\(\s*([A-Za-z0-9_]+)\s*\.\s*id\s*,[^)]*\)\s*;/g;
 
+/** `where(and(` / `where: and(` — the and()'s own span is judged in loneIdPredicates. */
+const AND_ID_WHERE = /where\s*[(:]\s*and\(/g;
+
 /**
  * Sanctioned-root exemption for rule 2, added 2026-09-04 for the same reason
  * rule 3 got one on 2026-08-31 — and found the same way: writing a cross-org
@@ -1794,6 +1827,46 @@ function loneIdPredicates(methodText, orgScopedIdents) {
       continue;
     }
     hits.push(m[1]);
+  }
+  // THE id INSIDE an and(): `where(and(eq(t.id, x), liveLead()))`. Until
+  // 2026-10-05 only a LONE id predicate was read, so any second condition that
+  // was not the org — a soft-delete filter, a status — hid a by-id read with no
+  // organization from rule 2, while rule 3 skips id-anchored chains as rule 2's
+  // job. Found when the live-lead census (DEFECT-0273) wrapped dozens of by-id
+  // reads in and(…, liveLead()) and their rule-2 entries went "stale" with no
+  // org added. The whole and(…) span must name the organization.
+  AND_ID_WHERE.lastIndex = 0;
+  let a;
+  while ((a = AND_ID_WHERE.exec(methodText)) !== null) {
+    const open = a.index + a[0].length - 1;
+    const close = matchParen(methodText, open);
+    if (close === -1) continue;
+    const span = methodText.slice(open, close + 1);
+    if (/forOrg\(/.test(span)) continue;
+    for (const idm of span.matchAll(/\beq\(\s*([A-Za-z0-9_]+)\s*\.\s*id\s*,/g)) {
+      if (!orgScopedIdents.has(idm[1])) continue;
+      // The SAME table's tenant key, compared for EQUALITY: another table's org
+      // column, a bare `orgId` against some other column, or `ne(...)` does not
+      // scope this row (W10.2a audit). Role-named keys count:
+      // eq(marketplaceListings.sellerOrganizationId, …).
+      const sameTableKey = new RegExp(
+        String.raw`\beq\(\s*${idm[1]}\s*\.\s*\w*(?:[oO]rganizationId|[oO]rgId)\s*,`,
+      );
+      if (sameTableKey.test(span)) continue;
+      // The platform lane, pinned explicitly: isNull(<same table>.organizationId).
+      const platformLane = new RegExp(String.raw`\bisNull\(\s*${idm[1]}\s*\.\s*\w*(?:[oO]rganizationId|[oO]rgId)\s*\)`);
+      if (platformLane.test(span)) continue;
+      // A scoping HELPER handed the org: factLane(orgId), orgScope(org.id) —
+      // any call but a comparison, whose sole argument is the org.
+      // Named for what it does (…Lane, …Scope, …Org…), so a value conversion
+      // like String(orgId) is not mistaken for scoping.
+      if (/\b\w*(?:Lane|Scope|scope|Org|org)\w*\(\s*[\w.]*\b(?:orgId|organizationId)\s*\)/.test(span)) continue;
+      if (rootedInSanctionedHatch(methodText, a.index)) {
+        hatchExemptedLoneIds += 1;
+        continue;
+      }
+      hits.push(idm[1]);
+    }
   }
   HOISTED_LONE_ID.lastIndex = 0;
   let h;
@@ -1958,7 +2031,7 @@ const RULE3_BASELINE = new Set([
   "server/services/financial-ledger.ts::postRevenue::financialLedger",
   "server/services/form1098Batch.ts::collectAcquiredCandidates::notePayments",
   "server/services/form1098Batch.ts::collectOriginatedCandidates::payments",
-  "server/services/gdprService.ts::anonymizeUser::leads",
+  "server/services/gdprService.ts::anonymizeUser::leadsIncludingDeleted",
   "server/services/gdprService.ts::anonymizeUser::teamMembers",
   "server/services/lateFees/index.ts::assessLateFee::lateFeeAssessments",
   "server/services/lateFees/index.ts::assessLateFee::paymentApplications",
@@ -2511,7 +2584,8 @@ function main() {
     `[check-org-scoped-fetch] org-scoped tables: ${orgScopedIdents.size} ` +
       `(organizationId ${orgScopedTablesBySpelling.organizationId}, ` +
       `orgId ${orgScopedTablesBySpelling.orgId}, ` +
-      `org-FK-by-other-name ${orgScopedTablesBySpelling.orgForeignKey}); ` +
+      `org-FK-by-other-name ${orgScopedTablesBySpelling.orgForeignKey}, ` +
+      `alias ${orgScopedTablesBySpelling.alias}); ` +
       `scanned ${scannedMethods} storage + service methods across ${scannedFiles.length} files`,
   );
   console.log(

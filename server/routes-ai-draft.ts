@@ -30,6 +30,7 @@ import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "./db";
 import { inboxMessages, leads } from "@shared/schema";
+import { liveLead } from "./storage/liveLeads";
 import { PAX_CONTROLS_LABEL, PAX_PAUSE_COPY } from "@shared/pax-glossary";
 import { getPaxControls } from "./services/paxControls";
 import type { AuthenticatedRequest } from "./types/request";
@@ -115,7 +116,7 @@ router.post("/draft-reply", async (req: AuthenticatedRequest, res: Response) => 
           notes: leads.notes,
         })
         .from(leads)
-        .where(and(eq(leads.id, message.leadId), eq(leads.organizationId, orgId)))
+        .where(and(eq(leads.id, message.leadId), eq(leads.organizationId, orgId), liveLead()))
         .limit(1);
       if (lead) {
         leadContext = `\n\nLead context:\n- Name: ${lead.firstName ?? ""} ${lead.lastName ?? ""}\n- Stage: ${lead.status ?? "unknown"}${lead.notes ? `\n- Notes: ${String(lead.notes).slice(0, 400)}` : ""}`;

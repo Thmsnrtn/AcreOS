@@ -168,7 +168,23 @@ export class CommunicationsService {
   }
 
   async sendToLead(options: CommunicationOptions): Promise<CommunicationResult> {
-    const lead = await storage.getLead(options.organizationId, options.leadId);
+    // A servicing notice goes to the BORROWER OF RECORD on the note, even if
+    // that CRM lead was soft-deleted — the loan is still being serviced
+    // (W10.2a). Bound to the note here, so `servicing` cannot be used to reach
+    // an arbitrary deleted lead: the lead must be that note's borrower.
+    let lead: Awaited<ReturnType<typeof storage.getLead>>;
+    if (options.purpose === 'servicing') {
+      if (options.noteId === undefined) {
+        return { success: false, channel: 'none', error: 'A servicing message must name the note it services' };
+      }
+      const note = await storage.getNote(options.organizationId, options.noteId);
+      if (!note || note.borrowerId !== options.leadId) {
+        return { success: false, channel: 'none', error: 'The lead is not the borrower of record on this note' };
+      }
+      lead = await storage.getBorrowerLead(options.organizationId, options.leadId);
+    } else {
+      lead = await storage.getLead(options.organizationId, options.leadId);
+    }
     if (!lead) {
       return { success: false, channel: 'none', error: 'Lead not found' };
     }

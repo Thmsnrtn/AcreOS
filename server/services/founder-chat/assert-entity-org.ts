@@ -45,9 +45,10 @@
  * there is no "wrong org" for `fly_restart_machine`).
  */
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../../db";
 import { organizations, teamMembers, leads, properties, deals, notes } from "@shared/schema";
+import { liveLead } from "../../storage/liveLeads";
 import { logger } from "../../utils/logger";
 
 export type AtlasEntityType =
@@ -166,7 +167,7 @@ async function resolveEntityOrg(
       const [row] = await db
         .select({ orgId: leads.organizationId })
         .from(leads)
-        .where(eq(leads.id, id))
+        .where(and(eq(leads.id, id), liveLead()))
         .limit(1);
       return row?.orgId ?? null;
     }

@@ -17,6 +17,7 @@ import {
   churnRiskScores, activityLog,
 } from "@shared/schema";
 import { eq, and, gte, desc, count, sql } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 
 export interface CustomerHealth {
   orgId: number;
@@ -85,7 +86,7 @@ export async function getCustomerHealth(orgId: number): Promise<CustomerHealth |
     .where(eq(deals.organizationId, orgId));
   const [leadCount] = await db.select({ c: count() })
     .from(leads)
-    .where(eq(leads.organizationId, orgId));
+    .where(and(eq(leads.organizationId, orgId), liveLead()));
 
   const openTickets = Number(ticketCount?.c || 0);
   const totalDeals = Number(dealCount?.c || 0);

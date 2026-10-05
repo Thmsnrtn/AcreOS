@@ -969,7 +969,7 @@ This requires human investigation.`,
     try {
       const duplicateLeads = await db.execute(sql`
         SELECT email, COUNT(*) as count FROM leads 
-        WHERE organization_id = ${orgId} AND email IS NOT NULL AND email != ''
+        WHERE organization_id = ${orgId} AND deleted_at IS NULL AND email IS NOT NULL AND email != ''
         GROUP BY email HAVING COUNT(*) > 1
       `);
       const dupCount = (duplicateLeads.rows as any[])?.length || 0;

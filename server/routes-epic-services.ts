@@ -35,12 +35,13 @@ router.get("/seller-motivation/:leadId", async (req: Request, res: Response) => 
     const { db } = await import("./db");
     const { leads } = await import("@shared/schema");
     const { eq, and } = await import("drizzle-orm");
+    const { liveLead } = await import("./storage/liveLeads");
     const org = req.organization;
 
     const [lead] = await db
       .select()
       .from(leads)
-      .where(and(eq(leads.id, parseInt(req.params.leadId)), eq(leads.organizationId, org.id)))
+      .where(and(eq(leads.id, parseInt(req.params.leadId)), eq(leads.organizationId, org.id), liveLead()))
       .limit(1);
 
     if (!lead) return Errors.notFound(res, "Lead");

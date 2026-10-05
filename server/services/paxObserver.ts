@@ -20,6 +20,7 @@ import {
   paxCrossOrgLearnings
 } from "@shared/schema";
 import { eq, and, desc, gte, ne, sql, like, lt, lte } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 import { logger } from "../utils/logger";
 import { publishableCrossOrgLearnings } from "./paxLearning";
 
@@ -927,7 +928,7 @@ class PaxObserverService {
           createdAt: leads.createdAt,
         })
         .from(leads)
-        .where(eq(leads.organizationId, orgId));
+        .where(and(eq(leads.organizationId, orgId), liveLead()));
 
       const stale = allLeads.filter(l => {
         if (["closed", "dead"].includes(l.status)) return false;
@@ -1147,7 +1148,7 @@ class PaxObserverService {
           createdAt: leads.createdAt,
         })
         .from(leads)
-        .where(eq(leads.organizationId, orgId));
+        .where(and(eq(leads.organizationId, orgId), liveLead()));
 
       // Find properties with high market value linked to sellers
       const highValueProperties = await db

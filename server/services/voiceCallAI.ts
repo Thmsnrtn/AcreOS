@@ -10,6 +10,7 @@ import {
   type InsertCallTranscript,
 } from "@shared/schema";
 import { eq, and, desc, gte, lte, sql, avg } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 import { isDealStatus, validateDealTransition } from "@shared/lifecycle/pipeline-status";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
@@ -603,7 +604,7 @@ Respond in JSON format:
       const [lead] = await db
         .select()
         .from(leads)
-        .where(eq(leads.id, transcript.leadId))
+        .where(and(eq(leads.id, transcript.leadId), liveLead()))
         .limit(1);
 
       if (lead) {
@@ -653,7 +654,7 @@ Respond in JSON format:
           await db
             .update(leads)
             .set(updateData)
-            .where(eq(leads.id, transcript.leadId));
+            .where(and(eq(leads.id, transcript.leadId), liveLead()));
 
           await db.insert(leadActivities).values({
             leadId: transcript.leadId,

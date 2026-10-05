@@ -24,6 +24,7 @@ import {
 import { and, desc, eq, gte, isNotNull, lt, notInArray, sql } from 'drizzle-orm';
 import { jobQueueService } from "./jobQueue";
 import { logger } from "../utils/logger";
+import { liveLead } from "../storage/liveLeads";
 
 import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 const DECAY_PER_WEEK = 0.05; // 5% per week
@@ -59,7 +60,8 @@ export async function decayOrganizationLeads(orgId: number): Promise<{
         // nor `do_not_contact` is a lead status — opting out is a COLUMN
         // (`leads.optedOut`), not a status — so both terms were inert while
         // reading as protection. `dead`, which IS terminal, was missing.
-        notInArray(leads.status, [...TERMINAL_LEAD_STATUSES])
+        notInArray(leads.status, [...TERMINAL_LEAD_STATUSES]),
+        liveLead()
       )
     );
 
@@ -92,7 +94,7 @@ export async function decayOrganizationLeads(orgId: number): Promise<{
     await db
       .update(leads)
       .set({ score: newScore, updatedAt: now })
-      .where(eq(leads.id, lead.id));
+      .where(and(eq(leads.id, lead.id), liveLead()));
 
     // Record in history
     // TODO(tsc): lead_score_history has no free-text `reason` column; record the
@@ -138,7 +140,7 @@ export async function decayOrganizationLeads(orgId: number): Promise<{
 export async function applyScoreRecovery(leadId: number, interactionType: string): Promise<void> {
   const [lead] = await db.select({ score: leads.score, organizationId: leads.organizationId })
     .from(leads)
-    .where(eq(leads.id, leadId));
+    .where(and(eq(leads.id, leadId), liveLead()));
 
   if (!lead) return;
 
@@ -149,7 +151,7 @@ export async function applyScoreRecovery(leadId: number, interactionType: string
     score: newScore,
     lastContactedAt: new Date(),
     updatedAt: new Date(),
-  }).where(eq(leads.id, leadId));
+  }).where(and(eq(leads.id, leadId), liveLead()));
 
   // TODO(tsc): lead_score_history has no free-text `reason` column; record the
   // category in triggerSource ("manual" for interaction-driven recovery).
@@ -184,7 +186,7 @@ export async function processLeadScoreDecay(): Promise<void> {
     .from(leads)
     // Same correction as decayOrganizationLeads above: `lost` and
     // `do_not_contact` are not lead statuses, and `dead` was missing.
-    .where(notInArray(leads.status, [...TERMINAL_LEAD_STATUSES]));
+    .where(and(notInArray(leads.status, [...TERMINAL_LEAD_STATUSES]), liveLead()));
 
   for (const { organizationId } of orgRows) {
     if (!organizationId) continue;

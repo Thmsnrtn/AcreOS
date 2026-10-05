@@ -21,6 +21,7 @@
 import { db } from "../db";
 import { leads } from "@shared/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
+import { liveLead, leadsIncludingDeleted } from "../storage/liveLeads";
 import { normalizeParcelRef, parcelKey } from "@shared/parcel/parcelRef";
 import { splitOwnerName } from "@shared/parcel/ownerName";
 
@@ -312,12 +313,12 @@ export async function processTaxDelinquentImport(
   // leads has no apn/county columns; apn/county live in the notes JSON payload
   // on tax-delinquent leads. Pull existing flagged leads and decode the tuple.
   const existingTuples = await db
-    .select({ state: leads.state, notes: leads.notes })
-    .from(leads)
+    .select({ state: leadsIncludingDeleted.state, notes: leadsIncludingDeleted.notes })
+    .from(leadsIncludingDeleted)
     .where(
       and(
-        eq(leads.organizationId, orgId),
-        sql`${leads.tags} @> ${JSON.stringify([TAX_DELINQUENT_TAG])}::jsonb`,
+        eq(leadsIncludingDeleted.organizationId, orgId),
+        sql`${leadsIncludingDeleted.tags} @> ${JSON.stringify([TAX_DELINQUENT_TAG])}::jsonb`,
       )
     );
 
@@ -590,7 +591,7 @@ async function getLeads(opts: GetLeadsOpts): Promise<{ leads: DelinquentLeadRow[
   const rows = await db
     .select()
     .from(leads)
-    .where(and(...conditions))
+    .where(and(...conditions, liveLead()))
     .orderBy(sql`${leads.score} DESC NULLS LAST`)
     .limit(limit * 4) // pull extra so post-derive risk filter still has volume
     .offset(offset);
@@ -614,6 +615,7 @@ async function getLead(orgId: number, id: number): Promise<DelinquentLeadRow | n
     .where(and(
       eq(leads.id, id),
       eq(leads.organizationId, orgId),
+      liveLead(),
       sql`${leads.tags} @> ${JSON.stringify([TAX_DELINQUENT_TAG])}::jsonb`,
     ))
     .limit(1);
@@ -633,7 +635,7 @@ async function addToOutreach(id: number, orgId: number): Promise<AddToOutreachRe
   const [row] = await db
     .select()
     .from(leads)
-    .where(and(eq(leads.id, id), eq(leads.organizationId, orgId), sql`${leads.tags} @> ${JSON.stringify([TAX_DELINQUENT_TAG])}::jsonb`))
+    .where(and(eq(leads.id, id), eq(leads.organizationId, orgId), liveLead(), sql`${leads.tags} @> ${JSON.stringify([TAX_DELINQUENT_TAG])}::jsonb`))
     .limit(1);
   if (!row) throw new Error("Lead not found");
 
@@ -652,7 +654,7 @@ async function addToOutreach(id: number, orgId: number): Promise<AddToOutreachRe
   await db
     .update(leads)
     .set({ status: "contacted", updatedAt: new Date() })
-    .where(eq(leads.id, id));
+    .where(and(eq(leads.id, id), eq(leads.organizationId, orgId), liveLead()));
 
   return { success: true, leadId: id, status: "contacted", consentState };
 }

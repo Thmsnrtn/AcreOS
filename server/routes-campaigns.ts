@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { z } from "zod";
+import { liveLead } from "./storage/liveLeads";
 import crypto from "crypto";
 import {
   insertCampaignSchema, insertCampaignResponseSchema,
@@ -209,7 +210,7 @@ export function registerCampaignRoutes(app: Express): void {
     const dealsFromCampaign = await db.select({ count: sql<number>`count(*)::int` })
       .from(deals)
       .innerJoin(properties, eq(deals.propertyId, properties.id))
-      .innerJoin(leads, eq(properties.sellerId, leads.id))
+      .innerJoin(leads, and(eq(properties.sellerId, leads.id), liveLead()))
       .where(eq(leads.sourceCampaignId, campaignId));
     
     const dealCount = dealsFromCampaign[0]?.count || 0;

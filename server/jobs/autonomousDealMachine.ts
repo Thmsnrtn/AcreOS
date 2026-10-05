@@ -46,6 +46,7 @@ import {
   teamMembers,
 } from "@shared/schema";
 import { eq, and, desc, gte, lte, lt, sql, or, isNull, not } from "drizzle-orm";
+import { liveLead, leadsIncludingDeleted } from "../storage/liveLeads";
 import { subDays, addDays, format, differenceInDays } from "date-fns";
 import { computeSellerMotivationScore, getOptimalOutreachTiming } from "../services/sellerMotivationEngine";
 import { emailService } from "../services/emailService";
@@ -95,6 +96,7 @@ async function runAutoFollowUpEngine(
     .where(
       and(
         eq(leads.organizationId, organizationId),
+        liveLead(),
         // W3.4: "active" is never written to leads.status — in-play means
         // not closed/dead. The old filter matched zero rows, so the deal
         // machine never saw a single lead.
@@ -265,12 +267,12 @@ async function scoreNewDealsForOrg(
           // populate with the parcel APN so each scraped property maps to one lead.
           const apnTrackingCode = deal.apn ? `apn:${deal.apn}` : "";
           const existingLead = await db
-            .select({ id: leads.id })
-            .from(leads)
+            .select({ id: leadsIncludingDeleted.id })
+            .from(leadsIncludingDeleted)
             .where(
               and(
-                eq(leads.organizationId, organizationId),
-                eq(leads.sourceTrackingCode, apnTrackingCode)
+                eq(leadsIncludingDeleted.organizationId, organizationId),
+                eq(leadsIncludingDeleted.sourceTrackingCode, apnTrackingCode)
               )
             )
             .limit(1);
@@ -439,7 +441,7 @@ async function collectEnhancedBriefingData(
   const allActiveLeads = await db
     .select()
     .from(leads)
-    .where(and(eq(leads.organizationId, orgId), sql`${leads.status} NOT IN ('closed', 'dead')`))
+    .where(and(eq(leads.organizationId, orgId), liveLead(), sql`${leads.status} NOT IN ('closed', 'dead')`))
     .orderBy(desc(leads.score as any))
     .limit(500);
 

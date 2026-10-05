@@ -3,6 +3,7 @@
 
 import { db } from "../db";
 import { eq, and, lt, isNull, count, desc, gte, or, lte, sql, notInArray } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 import { realDeal, realLead } from "./onboarding/sampleFilters";
 import {
   organizations, leads, properties, deals, tasks,
@@ -50,6 +51,7 @@ async function generateNudgesForOrg(org: Organization): Promise<void> {
         lt(leads.updatedAt as any, staleCutoff),
         notInArray(leads.status, ["closed", "converted", "lost"]),
         realLead(),
+        liveLead(),
       ));
     const staleN = Number(staleCount ?? 0);
     if (staleN >= 3) {
@@ -141,6 +143,7 @@ async function generateNudgesForOrg(org: Organization): Promise<void> {
         eq(leads.organizationId, orgId),
         gte(leads.createdAt as any, thirtyDaysAgo),
         realLead(),
+        liveLead(),
       ));
     if (newLeads.length >= 5) {
       nudgesToInsert.push({

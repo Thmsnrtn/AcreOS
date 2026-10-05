@@ -28,6 +28,7 @@
  */
 
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 import { db } from "../db";
 import {
   parcelObservations,
@@ -323,6 +324,7 @@ export async function getPipelineParcels(
     .where(
       and(
         eq(leadsTable.organizationId, organizationId),
+        liveLead(),
         sql`${leadsTable.apn} IS NOT NULL`,
       ),
     );
@@ -613,7 +615,7 @@ export async function runParcelDeltaDetector(
   const leadOrgRows = await db
     .select({ organizationId: leadsTable.organizationId })
     .from(leadsTable)
-    .where(sql`${leadsTable.apn} IS NOT NULL`)
+    .where(and(liveLead(), sql`${leadsTable.apn} IS NOT NULL`))
     .groupBy(leadsTable.organizationId);
 
   const orgIds = Array.from(

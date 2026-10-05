@@ -312,7 +312,12 @@ const RULE_3_CHAIN_FLOOR = 300;
  *     agentActionExecutors — so the population of cross-org by-id writes to
  *     system_alerts shrank by one while becoming loud.
  */
-const HATCH_EXEMPTION_CEILING = 7;
+//
+//   2026-10-05: 7 → 8 with NO new hatch read. Rule 2 learned to read an id
+//   inside and() (DEFECT-0289), and acknowledgeSystemAlert above — already
+//   justified, written `where(and(eq(systemAlerts.id, …), eq(status, "new")))`
+//   — became visible to the count for the first time.
+const HATCH_EXEMPTION_CEILING = 8;
 
 /**
  * BOTH of Drizzle's query spellings reach rule 3.
@@ -817,6 +822,75 @@ describe("the tenancy lint covers the service layer", () => {
     expect(dirty.out).toMatch(/exempted as sanctioned-hatch roots: [1-9]/);
   });
 
+  it("rule 2 reads a by-id predicate INSIDE and(), not only a lone one (2026-10-05)", () => {
+    // The live-lead census wrapped dozens of by-id reads as
+    // and(eq(t.id, x), liveLead()); their rule-2 entries went "stale" with no
+    // organization added, because the rule matched only a LONE eq(t.id, …).
+    const fn = (where: string) =>
+      [
+        'import { db } from "../db";',
+        'import { properties } from "@shared/schema";',
+        'import { and, eq, isNull } from "drizzle-orm";',
+        "",
+        "export async function loadOwned(orgId: number, id: number) {",
+        `  const [row] = await db.select().from(properties).where(${where}).limit(1);`,
+        "  return { row, orgId };",
+        "}",
+        "",
+      ].join("\n");
+    const dirty = runOverFixture({
+      "shared/schema.ts": FIXTURE_SCHEMA,
+      "server/services/__and_id_canary__.ts": fn("and(eq(properties.id, id), isNull(properties.id))"),
+    });
+    expect(dirty.failed, "an id inside and() with no organization passed rule 2:\n" + dirty.out).toBe(true);
+    expect(dirty.out).toContain("loadOwned()");
+    const clean = runOverFixture({
+      "shared/schema.ts": FIXTURE_SCHEMA,
+      "server/services/__and_id_canary__.ts": fn("and(eq(properties.id, id), eq(properties.organizationId, orgId))"),
+    });
+    expect(clean.out, "a properly scoped and() tripped rule 2:\n" + clean.out).not.toContain("loadOwned()");
+    // ANOTHER table's org column, or a non-equality, does not scope this row.
+    for (const where of [
+      "and(eq(properties.id, id), eq(otherTable.organizationId, orgId))",
+      "and(eq(properties.id, id), ne(properties.organizationId, orgId))",
+      "and(eq(properties.id, id), eq(properties.state, String(orgId)))",
+    ]) {
+      const wrong = runOverFixture({
+        "shared/schema.ts": FIXTURE_SCHEMA,
+        "server/services/__and_id_canary__.ts": fn(where),
+      });
+      expect(wrong.failed, `${where} passed rule 2:\n` + wrong.out).toBe(true);
+      expect(wrong.out).toContain("loadOwned()");
+    }
+  });
+
+  it("an ALIAS of an org-scoped table is the same table to every rule (2026-10-05)", () => {
+    // `export const leadsIncludingDeleted = leads` (server/storage/liveLeads.ts)
+    // carried a table name the gate did not know, so a by-id read through it
+    // was invisible to rules 1–3.
+    const dirty = runOverFixture({
+      "shared/schema.ts": FIXTURE_SCHEMA,
+      "server/storage/__alias__.ts": [
+        'import { properties } from "@shared/schema";',
+        "export const propertiesIncludingArchived = properties;",
+        "",
+      ].join("\n"),
+      "server/services/__alias_canary__.ts": [
+        'import { db } from "../db";',
+        'import { propertiesIncludingArchived } from "../storage/__alias__";',
+        'import { eq } from "drizzle-orm";',
+        "",
+        "export async function loadViaAlias(orgId: number, id: number) {",
+        "  const [row] = await db.select().from(propertiesIncludingArchived).where(eq(propertiesIncludingArchived.id, id)).limit(1);",
+        "  return { row, orgId };",
+        "}",
+        "",
+      ].join("\n"),
+    });
+    expect(dirty.failed, "a by-id read through a table alias passed the gate:\n" + dirty.out).toBe(true);
+    expect(dirty.out).toContain("loadViaAlias()");
+  });
+
   it("reads a table keyed on org_id, not only organization_id", () => {
     // ── WHY THIS CANARY EXISTS ────────────────────────────────────────────
     // `collectOrgScopedTableIdents` — the front door that decides which tables
@@ -895,7 +969,7 @@ describe("the tenancy lint covers the service layer", () => {
     // leaves all three rules with it. Measured 2026-09-04: 364 / 40.
     const out = run();
     const m =
-      /org-scoped tables: (\d+) \(organizationId (\d+), orgId (\d+), org-FK-by-other-name (\d+)\)/.exec(
+      /org-scoped tables: (\d+) \(organizationId (\d+), orgId (\d+), org-FK-by-other-name (\d+), alias (\d+)\)/.exec(
         out,
       );
     expect(
@@ -904,7 +978,7 @@ describe("the tenancy lint covers the service layer", () => {
         "population is one number again and a dead tenant-key regex is " +
         "invisible. Re-point this, do not delete it:\n" + out,
     ).not.toBeNull();
-    const [, total, canonical, orgIdCount, orgFk] = m!.map(Number) as unknown as number[];
+    const [, total, canonical, orgIdCount, orgFk, aliases] = m!.map(Number) as unknown as number[];
     expect(
       canonical,
       "the `organization_id` tenant-key detector is reading far fewer tables " +
@@ -925,7 +999,10 @@ describe("the tenancy lint covers the service layer", () => {
         "the member set is small; the point is that the arm cannot reach zero " +
         "unnoticed.",
     ).toBeGreaterThan(2);
-    expect(total).toBe(canonical + orgIdCount + orgFk);
+    // Storage-layer aliases (leadsIncludingDeleted, 2026-10-05) are the same
+    // tables under a second name; they are counted, and only they close the sum.
+    expect(aliases).toBeGreaterThanOrEqual(1);
+    expect(total).toBe(canonical + orgIdCount + orgFk + aliases);
   });
 
   it("reads a tenant key named by ROLE, and ignores a nullable provenance FK", () => {
@@ -995,7 +1072,7 @@ describe("the tenancy lint covers the service layer", () => {
     ).not.toContain("readTheCrawlQueue()");
     // Vacuity, per spelling: exactly one table was recognised, by the FK arm.
     expect(res.out).toMatch(
-      /org-scoped tables: 1 \(organizationId 0, orgId 0, org-FK-by-other-name 1\)/,
+      /org-scoped tables: 1 \(organizationId 0, orgId 0, org-FK-by-other-name 1, alias 0\)/,
     );
   });
 

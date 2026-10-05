@@ -17,6 +17,7 @@ import {
 import { eq, and, desc, inArray, isNull } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
+import { liveLead } from "../storage/liveLeads";
 // Audit Wave 1 (residential_wholesaler beta→core): tpl_buyer_match_found never
 // ran because nothing emitted buyer.match_created. Fire it ONLY on the
 // fresh-insert branch below (never on the update-existing branch, or a re-run
@@ -121,7 +122,7 @@ export class BuyerMatchingAIService {
       const [own] = await db
         .select({ id: leads.id })
         .from(leads)
-        .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)))
+        .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId), liveLead()))
         .limit(1);
       if (!own) throw new BuyerMatchRefusal("That lead is not in this organization.");
     }
@@ -207,7 +208,8 @@ export class BuyerMatchingAIService {
     try {
       const [lead] = await db.select().from(leads).where(and(
         eq(leads.id, buyerProfile.leadId),
-        eq(leads.organizationId, organizationId)
+        eq(leads.organizationId, organizationId),
+        liveLead()
       ));
       if (!lead) return empty;
       const fullName = `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim();

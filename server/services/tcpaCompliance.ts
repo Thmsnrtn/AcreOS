@@ -1,7 +1,8 @@
 import { db } from "../db";
 import { storage } from "../storage";
-import { leads, activityLog } from "@shared/schema";
+import { activityLog } from "@shared/schema";
 import { eq, and, ilike } from "drizzle-orm";
+import { leadsIncludingDeleted } from "../storage/liveLeads";
 import type { Lead } from "@shared/schema";
 import { logger } from "../utils/logger";
 
@@ -347,7 +348,7 @@ async function applyOptKeywordToLead(
   const now = new Date();
   if (action === 'opt_out') {
     await db
-      .update(leads)
+      .update(leadsIncludingDeleted)
       .set({
         doNotContact: true,
         tcpaConsent: false,
@@ -355,7 +356,7 @@ async function applyOptKeywordToLead(
         optOutReason: `SMS STOP keyword: "${messageBody.trim()}" (${messageSid})`,
         updatedAt: now,
       })
-      .where(and(eq(leads.id, matched.id), eq(leads.organizationId, organizationId)));
+      .where(and(eq(leadsIncludingDeleted.id, matched.id), eq(leadsIncludingDeleted.organizationId, organizationId)));
 
     await db.insert(activityLog).values({
       organizationId,
@@ -380,9 +381,9 @@ async function applyOptKeywordToLead(
     logger.info(`[TCPA] Lead ${matched.id} opted OUT via STOP keyword "${messageBody.trim()}"`);
   } else {
     await db
-      .update(leads)
+      .update(leadsIncludingDeleted)
       .set({ doNotContact: false, tcpaConsent: true, consentDate: now, consentSource: 'sms_double_optin', updatedAt: now })
-      .where(and(eq(leads.id, matched.id), eq(leads.organizationId, organizationId)));
+      .where(and(eq(leadsIncludingDeleted.id, matched.id), eq(leadsIncludingDeleted.organizationId, organizationId)));
 
     await db.insert(activityLog).values({
       organizationId,

@@ -43,6 +43,7 @@ import {
   decisionsInboxItems,
 } from "@shared/schema";
 import { and, asc, desc, eq, isNull, lte, sql } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 import { logger } from "../utils/logger";
 
 export type StepKey =
@@ -326,7 +327,7 @@ async function handleStarterLeads(
   const [row] = await db
     .select({ c: sql<number>`count(*)::int` })
     .from(leads)
-    .where(eq(leads.organizationId, organizationId));
+    .where(and(eq(leads.organizationId, organizationId), liveLead()));
   const haveLeads = Number(row?.c ?? 0);
   return {
     intent: "starter_leads",
@@ -345,7 +346,7 @@ async function handleWeek1Checkin(
   const [leadRow] = await db
     .select({ c: sql<number>`count(*)::int` })
     .from(leads)
-    .where(eq(leads.organizationId, organizationId));
+    .where(and(eq(leads.organizationId, organizationId), liveLead()));
   const leadCount = Number(leadRow?.c ?? 0);
 
   const [dealRow] = await db
@@ -398,7 +399,7 @@ async function handleActivationVerdict(
   const [leadRow] = await db
     .select({ c: sql<number>`count(*)::int` })
     .from(leads)
-    .where(eq(leads.organizationId, organizationId));
+    .where(and(eq(leads.organizationId, organizationId), liveLead()));
   const leadCount = Number(leadRow?.c ?? 0);
 
   const [dealRow] = await db

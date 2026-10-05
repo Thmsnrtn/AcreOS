@@ -13,6 +13,7 @@ import {
   type Property,
 } from "@shared/schema";
 import { eq, and, desc, gte, sql, count, avg } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
@@ -118,7 +119,7 @@ export class SellerIntentPredictorService {
     propertyId?: number
   ): Promise<SellerIntentPrediction> {
     const [lead] = await db.select().from(leads)
-      .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)));
+      .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId), liveLead()));
 
     if (!lead) {
       throw new Error(`Lead ${leadId} not found`);
@@ -362,7 +363,7 @@ export class SellerIntentPredictorService {
     const questionTypes: string[] = [];
 
     const [lead] = await db.select().from(leads)
-      .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)));
+      .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId), liveLead()));
 
     if (!lead) {
       return { score: 50, indicators: [], responseRate: 0, questionTypes: [] };

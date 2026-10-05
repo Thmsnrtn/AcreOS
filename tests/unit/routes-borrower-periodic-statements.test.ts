@@ -72,6 +72,7 @@ vi.mock("../../server/storage", () => {
       settings: {},
     }),
     getLead: async () => null,
+    getBorrowerLead: async () => null,
   };
 
   // Drizzle chain mock. We route SELECTs by call order, not by inspecting

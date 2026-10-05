@@ -48,6 +48,7 @@
 // ---------------------------------------------------------------------------
 
 import { and, eq } from "drizzle-orm";
+import { leadsIncludingDeleted } from "../storage/liveLeads";
 import { db } from "../db";
 import { leads, organizations } from "@shared/schema";
 import { emitDurableNoteEvent } from "./workflow-engine";
@@ -124,10 +125,12 @@ async function resolveBorrower(
   organizationId: number,
   borrowerId: number,
 ): Promise<{ name: string; firstName: string; email: string | null } | null> {
+  // Servicing: the balloon notice goes to the borrower of record even if the
+  // CRM lead was soft-deleted — the loan is still being serviced (W10.2a).
   const [row] = await db
-    .select({ firstName: leads.firstName, lastName: leads.lastName, email: leads.email })
-    .from(leads)
-    .where(and(eq(leads.id, borrowerId), eq(leads.organizationId, organizationId)))
+    .select({ firstName: leadsIncludingDeleted.firstName, lastName: leadsIncludingDeleted.lastName, email: leadsIncludingDeleted.email })
+    .from(leadsIncludingDeleted)
+    .where(and(eq(leadsIncludingDeleted.id, borrowerId), eq(leadsIncludingDeleted.organizationId, organizationId)))
     .limit(1);
   if (!row) return null;
   return {

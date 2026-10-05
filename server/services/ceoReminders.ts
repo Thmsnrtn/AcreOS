@@ -12,9 +12,10 @@
 
 import { db } from "../db";
 import { systemMeta } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { addMonths } from "../utils/dateUtils";
 import { logger } from "../utils/logger";
+import { liveLead } from "../storage/liveLeads";
 
 interface CEOReminder {
   id: string;
@@ -362,7 +363,7 @@ export async function getContextForReminder(reminder: CEOReminder): Promise<stri
       case "lead": {
         const { leads } = await import("@shared/schema");
         const lead = await db.query.leads.findFirst({
-          where: eq(leads.id, reminder.entityId),
+          where: and(eq(leads.id, reminder.entityId), liveLead()),
         });
         if (!lead) return `Lead #${reminder.entityId}: not found`;
         // leads has no `name` column; compose from firstName/lastName.

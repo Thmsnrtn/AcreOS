@@ -6633,13 +6633,13 @@ Resolving commits: fourth audit fixes
 ### DEFECT-0273
 Title: Lead readers that excluded deleted leads by status began reading them
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: independent audit of 1694a0b
 Description: Once a lead's soft delete became `deletedAt` (DEFECT-0266), a reader that excluded deleted leads only by `status` began including them. Fixed: both duplicate finders in `crmEnhancements` (one in raw SQL) and the dedupe scanner (proposed merging live leads into deleted ones); the stale-lead initiative; the aging list, 90-day archive sweep, response-time and funnel counts; Today's stale-lead cards and priority counts; the autopilot's lead signals; the public API's list, get and update; the plan-limit lead count. Deliberately UNFILTERED: the inbound-SMS match, so a STOP from a deleted lead's number still opts it out; and the duplicate checks that guard lead creation (the CSV import's parcel dedupe and `leadRepo.findDuplicateLeads`) — a STOP writes `doNotContact` onto the deleted row, and a re-import must not mint a fresh, contactable row for someone who revoked consent. (This change first filtered those two; the second audit caught it before commit, and a pin now holds the exception.) NOT yet walked: about 50 further files that read `leads` without naming `deletedAt`.
 Evidence: `server/services/leadDedupeScanner.ts`; `server/services/agentInitiativeEngine.ts`; `server/services/crmEnhancements.ts`; `server/routes-today.ts`; `server/services/autopilot/dealActions.ts`; `server/api-v1/leads.ts`; `server/services/usageLimits.ts`; the exception in `server/services/importExport.ts` and `server/storage/leadRepo.ts`.
-Remediation plan: Walk the remaining readers (or give the repo one live-lead predicate and route reads through it); widen `tests/unit/leadReadersSkipSoftDeleted.test.ts`, whose population is an explicit list, as each is fixed.
-Falsified (the fixed part): `tests/unit/leadReadersSkipSoftDeleted.test.ts` — 7 files, each red before; it reads builder statements under both aliases and raw `FROM leads`, and accepts only an IS NULL predicate (an `isNotNull` mutation turns it red); a statement's span ends at the next query, so a `Promise.all` sibling cannot lend it a predicate. The same file pins the exception: re-adding the filter to either duplicate check turns it red (checked). It does not see `db.query.leads.*`.
-Resolving commits: fourth audit fixes (partial)
+Remediation: One live-lead predicate and one deliberate way around it (`server/storage/liveLeads.ts`: `liveLead()` and `leadsIncludingDeleted`, the same table under a name that states intent). All 195 unpredicated statements in 93 files were walked by four builders: ~165 made live, the rest switched to the deliberate name, and each file that uses it is on a reasoned register (consent and opt-out handling, creation dedupe, delete/restore/erasure writers, data export, legal filings, servicing, founder activity metrics). `getLead` is now live; loan servicing resolves a note's borrower through `getBorrowerLead`, which deliberately includes a soft-deleted lead, so statements and notices do not stop on a loan still being serviced. Inbound SMS prefers a live lead when a deleted one shares the number. The independent audit of the wave then found, and this commit fixes: the borrower-portal login and the servicing SEND (`communications.sendToLead`, now bound to the note's borrower of record) still used the live read; sequence emails, buyer blasts, campaign attribution and the inbox reached leads through INNER joins the census did not read (they are now in its population, live where they send, deliberate where they are a record of a past send); deeds, contracts and closing statements resolve their parties through `getPartyLead` (deliberate); the TCPA opt-out record, the note-import borrower dedupe and the inbound-reply STOP check include deleted rows; and the pre-mail dedupe reports ids that are not a live lead, so input = accepted + skipped.
+Falsified: `tests/unit/liveLeadReadsCensus.test.ts` — population every production file under server/ (≥100 reading `leads`), any import alias, `<ns>.leads`, the relational API and raw SQL inside `sql` templates; register with rot check; 11 canaries including an inner join (and a left join that is not read), the deliberate name under an import alias, the opposite filter, a sibling query in Promise.all, prose that says "from leads" and a comment naming the predicate. `tests/unit/borrowerServicingSurvivesLeadDelete.test.ts` (red when one servicing lookup reverts to getLead). `leadReadersSkipSoftDeleted.test.ts` re-anchored to the deliberate name, its two pinned exceptions intact.
+Resolving commits: fourth audit fixes (partial); W10.2a
 
 ### DEFECT-0274
 Title: A purchased-credit debit inside the mail transaction fired its auto top-up before commit
@@ -6792,6 +6792,38 @@ Remediation: The question was right and the metric was wrong, so the fix keeps w
 Falsified: `tests/unit/acquisitionCostIsWhatAcquiredMeasures.test.ts` — the prompt's measure is the shared one; the live registry's acquiring engines all predict it (exemptions named, rot-checked); five engines' values are pinned on inputs where the after-purchase costs are non-zero. Red against the old OutcomePrompt, and red when the rental engine reports its all-in total as acquisition cost.
 Resolving commits: vertical program follow-up (2026-10-05)
 
+### DEFECT-0288
+Title: Bulk lead delete hard-deleted rows, erasing each lead's opt-out
+Severity: P1
+Status: FIXED
+Surfaced by lenses: W10.2a live-lead census, builder B (2026-10-05)
+Description: `POST /api/bulk/leads/delete` ran `db.delete(leads)` over the selected ids while every other lead delete (the single delete, `storage.bulkDeleteLeads`) set `deletedAt`. The hard delete erased each lead's `doNotContact` and consent state with the row, so a later import or scrape could mint a fresh, contactable lead for someone who had revoked consent; and the Undo (`restoreLeads`) had nothing to restore.
+Evidence: `server/routes-bulk.ts` (`/leads/delete`).
+Remediation: The route calls `storage.bulkDeleteLeads(orgId, allowed, userId)`, the one soft-delete writer, after the same legal-hold filter.
+Falsified: `tests/unit/bulkLeadDeleteIsSoft.test.ts` — red against the previous route (a `db.delete` was issued), green now with the soft writer called with the org, the unheld ids and the user.
+Resolving commits: W10.2a
+
+### DEFECT-0289
+Title: The tenancy lint could not see a by-id read wrapped in and(), or a read through a table alias
+Severity: P1
+Status: FIXED
+Surfaced by lenses: W10.2a live-lead census, builder D (2026-10-05)
+Description: Rule 2 of `scripts/check-org-scoped-fetch.mjs` flagged only a LONE `where(eq(t.id, x))` in a unit that has an organization. Any second condition that was not the org — a soft-delete filter, a status — hid a by-id read with no organization, and rule 3 skips id-anchored chains as rule 2's job, so the read fell between the rules. Wrapping by-id reads as `and(eq(t.id, x), liveLead())` made their register entries go "stale" with no organization added. Separately, the gate collected table identifiers only from `pgTable(...)` declarations, so a read through `leadsIncludingDeleted` (an alias of `leads`) touched no table it recognised.
+Evidence: `scripts/check-org-scoped-fetch.mjs` (`LONE_ID_WHERE`, `collectOrgScopedTableIdents`).
+Remediation: Rule 2 now judges every id predicate inside a `where`'s `and(...)`: it passes only with an EQUALITY on the SAME table's tenant key (role-named keys count: `eq(marketplaceListings.sellerOrganizationId, …)`), an explicit platform lane (`isNull(<same table>.organizationId)`), or a scoping helper handed the org (`factLane(orgId)`; a value conversion such as `String(orgId)` does not count). Storage-layer aliases (`export const X = <org-scoped table>;`) are the same table to every rule and are counted as their own spelling in the population line. Seven reads became newly visible: four already scoped by role-named keys, two background-job/attribution updates gained an explicit org predicate, and one verified-parent update (`marketplace.respondToBid`) is registered with its reason. The unscoped-writes ratchet (`tests/unit/orgScopedWritesRatchet.test.ts`) had the same alias blind spot — the gdpr anonymizer's unscoped lead update read as fixed the day it was renamed — and resolves storage aliases too; four write baselines were lowered for genuine fixes, the gdpr one held. The sanctioned-hatch ceiling rose 7 → 8 with no new hatch read (an existing, justified one written with `and()` became countable). The stale entries were checked one by one before removal: two were genuine fixes, one a key rename to the alias.
+Falsified: canaries in `tests/unit/orgScopedFetchCoverage.test.ts`, each red with its arm disabled: an id inside `and()` with no organization fails, and so do another table's org column, a `ne(...)`, and a bare org value against a non-org column, while a correctly scoped `and()` passes; a by-id read through a storage alias fails.
+Resolving commits: W10.2a
+
+### DEFECT-0290
+Title: Tenancy and denominator questions raised by the live-lead walk, not yet triaged
+Severity: P2
+Status: OPEN
+Surfaced by lenses: W10.2a builders (2026-10-05)
+Description: Reported by the builders as out of their scope: (1) lead reads or updates without an org predicate in `leadQualification.ts` (~357, a hot-lead alert name lookup), `dealPatternCloning.ts` (~127), `leadNurturer.ts` (`scheduleFollowUp` and its update), `leadEnrichment.ts` (an update), `leadScoreDecay.ts` (`applyScoreRecovery`) and `voiceCallAI.ts` (605/654) — the tenancy lint passes them, so each is either a verified parent, a register entry, or a blind spot to find; (2) `outcomeCalibrationLoop.ts` now excludes deleted leads from the responders but not from the prediction denominator, so a deleted lead reads as "did not respond".
+Evidence: the files named.
+Remediation plan: Read each against the lint's registers and either add the org predicate or record why it is safe; filter the calibration denominator to live leads in the same way.
+Resolving commits: —
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -6829,9 +6861,9 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 19  | 19    |
-| FIXED  | 14  | 134 | 118 | 266   |
+| FIXED  | 14  | 136 | 119 | 269   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **136** | **137** | **287** |
+| **Total** | **14** | **138** | **138** | **290** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as

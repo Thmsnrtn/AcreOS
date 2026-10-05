@@ -101,7 +101,7 @@ export async function generatePromissoryNote(
 
   let borrower: Lead | undefined;
   if (note.borrowerId) {
-    borrower = await storage.getLead(organizationId, note.borrowerId);
+    borrower = await storage.getBorrowerLead(organizationId, note.borrowerId);
   }
 
   let property: Property | undefined;
@@ -268,12 +268,12 @@ export async function generateWarrantyDeed(
 
   let seller: Lead | undefined;
   if (property.sellerId) {
-    seller = await storage.getLead(organizationId, property.sellerId);
+    seller = await storage.getPartyLead(organizationId, property.sellerId);
   }
 
   let buyer: Lead | undefined;
   if (property.buyerId) {
-    buyer = await storage.getLead(organizationId, property.buyerId);
+    buyer = await storage.getPartyLead(organizationId, property.buyerId);
   }
 
   // Carla Mendoza fix (2026-05-27): pull state-specific warranty + granting
@@ -658,12 +658,12 @@ export async function generateSettlementStatement(
 
   let seller: Lead | undefined;
   if (property.sellerId) {
-    seller = await storage.getLead(organizationId, property.sellerId);
+    seller = await storage.getPartyLead(organizationId, property.sellerId);
   }
 
   let buyer: Lead | undefined;
   if (property.buyerId) {
-    buyer = await storage.getLead(organizationId, property.buyerId);
+    buyer = await storage.getPartyLead(organizationId, property.buyerId);
   }
 
   const doc = new jsPDF();

@@ -53,6 +53,7 @@ vi.mock("../../server/storage", () => {
     updateBorrowerSessionAccess: async () => {},
     getOrganization: async (id: number) => ({ id, name: "Acme Lender", settings: {} }),
     getLead: async () => null,
+    getBorrowerLead: async () => null,
     updateNote: vi.fn(async () => NOTE_ROW),
   };
   const makeStep: () => any = () => ({

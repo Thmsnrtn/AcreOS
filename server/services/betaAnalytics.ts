@@ -194,7 +194,7 @@ class BetaAnalyticsService {
         o.trial_started_at as "trialStartedAt",
         o.trial_ends_at as "trialEndsAt",
         (SELECT MAX(s.started_at) FROM user_sessions s WHERE s.org_id = o.id) as "lastActive",
-        (SELECT COUNT(*) FROM leads l WHERE l.organization_id = o.id) as "leadCount",
+        (SELECT COUNT(*) FROM leads l WHERE l.organization_id = o.id AND l.deleted_at IS NULL) as "leadCount",
         (SELECT COUNT(*) FROM deals d WHERE d.organization_id = o.id) as "dealCount",
         (SELECT COUNT(*) FROM notes n WHERE n.organization_id = o.id) as "noteCount"
       FROM organizations o

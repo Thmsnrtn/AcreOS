@@ -863,7 +863,7 @@ export class FinanceAgentService {
         try {
           let borrower: Lead | null = null;
           if (note.borrowerId) {
-            borrower = await storage.getLead(orgId, note.borrowerId) || null;
+            borrower = await storage.getBorrowerLead(orgId, note.borrowerId) || null;
           }
 
           const { statusChanged } = await this.detectDelinquency(note);
@@ -980,7 +980,7 @@ export class FinanceAgentService {
 
       let borrower: Lead | null = null;
       if (note.borrowerId) {
-        borrower = await storage.getLead(orgId, note.borrowerId) || null;
+        borrower = await storage.getBorrowerLead(orgId, note.borrowerId) || null;
       }
 
       const relativeDays = note.nextPaymentDate ? daysRelativeToDue(note.nextPaymentDate) : 0;

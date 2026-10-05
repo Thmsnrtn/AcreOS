@@ -499,7 +499,7 @@ export async function notifyStatementGenerated(
   let borrowerEmail: string | null = null;
   let borrowerFirstName: string | null = null;
   if (note.borrowerId) {
-    const borrower = await storage.getLead(note.organizationId, note.borrowerId);
+    const borrower = await storage.getBorrowerLead(note.organizationId, note.borrowerId);
     if (borrower) {
       borrowerEmail = borrower.email ?? null;
       borrowerFirstName = borrower.firstName ?? null;
@@ -548,7 +548,7 @@ export async function notifyStatementGenerated(
     organizationId: statement.organizationId,
     // BYO lane (founder decision 2026-07-17). The recipient here is the
     // CUSTOMER ORG'S BORROWER, resolved above via
-    // storage.getLead(note.organizationId, note.borrowerId), and the body
+    // storage.getBorrowerLead(note.organizationId, note.borrowerId), and the body
     // is branded "Sent by ${orgName}". That is counterparty mail by every
     // definition in the ruling — regulated lender correspondence, on the
     // lender's behalf, to the lender's borrower. It must ride the org's

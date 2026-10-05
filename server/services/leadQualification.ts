@@ -7,6 +7,7 @@ import {
   messages 
 } from "@shared/schema";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 import { generateWithAutoRouting, routeAITask, TaskComplexity } from "./aiRouter";
 
 // Migrated from direct OpenAI client to central aiRouter (P1-36).
@@ -353,7 +354,7 @@ export async function checkForHotLeads(organizationId: number): Promise<number[]
         const [lead] = await db
           .select()
           .from(leads)
-          .where(eq(leads.id, leadId))
+          .where(and(eq(leads.id, leadId), liveLead()))
           .limit(1);
         
         if (lead) {
@@ -384,7 +385,7 @@ export async function generateSuggestedResponse(
   const [lead] = await db
     .select()
     .from(leads)
-    .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)))
+    .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId), liveLead()))
     .limit(1);
   
   if (!lead) {

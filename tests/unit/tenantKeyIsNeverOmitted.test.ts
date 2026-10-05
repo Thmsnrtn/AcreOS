@@ -292,11 +292,13 @@ describe("the routes that were live", () => {
     // Anchor on the QUERY, not on `prop.sellerId)` — that substring also
     // appears in the `if (prop.sellerId)` guard a few lines above, and
     // anchoring there measured the wrong window entirely.
-    const reads = [...src.matchAll(/\.from\(leads\)[\s\S]{0,320}?\.limit\(1\)/g)].map((m) => m[0]);
+    // Since W10.2a these read the parties of record through the deliberate
+    // name (a deed keeps its grantor after a CRM delete); tenancy is unchanged.
+    const reads = [...src.matchAll(/\.from\((?:leads|leadsIncludingDeleted)\)[\s\S]{0,320}?\.limit\(1\)/g)].map((m) => m[0]);
     expect(reads.length, "the seller/buyer lead reads were not found").toBe(2);
     for (const read of reads) {
-      expect(read, "a lead read in the document context is not tenant-scoped").toContain(
-        "eq(leads.organizationId, prop.organizationId)",
+      expect(read, "a lead read in the document context is not tenant-scoped").toMatch(
+        /eq\((?:leads|leadsIncludingDeleted)\.organizationId, prop\.organizationId\)/,
       );
     }
   });

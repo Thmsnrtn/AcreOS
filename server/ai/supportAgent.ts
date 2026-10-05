@@ -15,6 +15,7 @@ import {
 } from "@shared/schema";
 import { gte, lte } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { liveLead } from "../storage/liveLeads";
 // The ONE reader of the org's Pax controls (AUTONOMY_SPEC.md §4.2) — stance
 // and pause in one call, failing CLOSED. The pause primitive is read through it.
 import { getPaxControls, paxControlsRefusalMessage, type PaxControlsState } from "../services/paxControls";
@@ -1588,7 +1589,7 @@ export async function executeSupportTool(
         if (check_type === "full" || check_type === "data_integrity") {
           const leadCount = await db.select({ count: sql<number>`count(*)` })
             .from(leads)
-            .where(eq(leads.organizationId, org.id));
+            .where(and(eq(leads.organizationId, org.id), liveLead()));
           const propertyCount = await db.select({ count: sql<number>`count(*)` })
             .from(properties)
             .where(eq(properties.organizationId, org.id));
@@ -1629,6 +1630,7 @@ export async function executeSupportTool(
             .from(leads)
             .where(and(
               eq(leads.organizationId, org.id),
+              liveLead(),
               or(eq(leads.firstName, ""), sql`${leads.firstName} IS NULL`)
             ));
           if (leadsWithNoName[0].count > 0) {
@@ -1688,7 +1690,7 @@ export async function executeSupportTool(
               sql`${tasks.entityId} IS NOT NULL`,
               sql`${tasks.entityType} IS NOT NULL`,
               sql`NOT EXISTS (
-                SELECT 1 FROM leads WHERE leads.id = ${tasks.entityId} AND ${tasks.entityType} = 'lead'
+                SELECT 1 FROM leads WHERE leads.id = ${tasks.entityId} AND leads.deleted_at IS NULL AND ${tasks.entityType} = 'lead'
                 UNION
                 SELECT 1 FROM properties WHERE properties.id = ${tasks.entityId} AND ${tasks.entityType} = 'property'
                 UNION
@@ -1771,7 +1773,7 @@ export async function executeSupportTool(
       
       case "get_account_summary": {
         const [leadCount] = await db.select({ count: sql<number>`count(*)` })
-          .from(leads).where(eq(leads.organizationId, org.id));
+          .from(leads).where(and(eq(leads.organizationId, org.id), liveLead()));
         const [propertyCount] = await db.select({ count: sql<number>`count(*)` })
           .from(properties).where(eq(properties.organizationId, org.id));
         const [dealCount] = await db.select({ count: sql<number>`count(*)` })
@@ -1846,7 +1848,7 @@ export async function executeSupportTool(
             
             // Gather data counts
             const [leadCount, propertyCount, dealCount] = await Promise.all([
-              db.select({ count: count() }).from(leads).where(eq(leads.organizationId, org.id)),
+              db.select({ count: count() }).from(leads).where(and(eq(leads.organizationId, org.id), liveLead())),
               db.select({ count: count() }).from(properties).where(eq(properties.organizationId, org.id)),
               db.select({ count: count() }).from(deals).where(eq(deals.organizationId, org.id))
             ]);
@@ -3108,7 +3110,7 @@ export async function executeSupportTool(
         
         // Get user's current state
         const [leadCount, propertyCount, dealCount] = await Promise.all([
-          db.select({ count: count() }).from(leads).where(eq(leads.organizationId, org.id)),
+          db.select({ count: count() }).from(leads).where(and(eq(leads.organizationId, org.id), liveLead())),
           db.select({ count: count() }).from(properties).where(eq(properties.organizationId, org.id)),
           db.select({ count: count() }).from(deals).where(eq(deals.organizationId, org.id))
         ]);
@@ -5630,7 +5632,7 @@ export async function gatherSystemContext(org: Organization): Promise<{
     
     // Get usage snapshot
     const [leadCount] = await db.select({ count: sql<number>`count(*)` })
-      .from(leads).where(eq(leads.organizationId, org.id));
+      .from(leads).where(and(eq(leads.organizationId, org.id), liveLead()));
     const [propertyCount] = await db.select({ count: sql<number>`count(*)` })
       .from(properties).where(eq(properties.organizationId, org.id));
     const [dealCount] = await db.select({ count: sql<number>`count(*)` })

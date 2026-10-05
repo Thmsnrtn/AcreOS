@@ -1,5 +1,6 @@
 import { db } from "../db";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 import {
   sequencePerformance,
   leads,
@@ -508,7 +509,8 @@ Respond in JSON:
     const leadRecords = await db.query.leads.findMany({
       where: and(
         eq(leads.organizationId, organizationId),
-        inArray(leads.id, leadIds)
+        inArray(leads.id, leadIds),
+        liveLead()
       ),
     });
 

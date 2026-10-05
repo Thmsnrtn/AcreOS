@@ -92,7 +92,7 @@ async function gatherAndAssemble(
   const org = await storage.getOrganization(orgId);
   if (!org) return { ok: false, notFound: "Organization" };
 
-  const seller = property.sellerId ? await storage.getLead(orgId, property.sellerId) : undefined;
+  const seller = property.sellerId ? await storage.getPartyLead(orgId, property.sellerId) : undefined;
 
   let assignment: {
     id: number;

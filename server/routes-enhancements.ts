@@ -80,7 +80,8 @@ export async function registerEnhancementRoutes(app: Express) {
       const { leads } = await import("@shared/schema");
       const { eq, and } = await import("drizzle-orm");
       const { db } = await import("./storage");
-      const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, parseInt(req.params.id)), eq(leads.organizationId, org.id)) });
+      const { liveLead } = await import("./storage/liveLeads");
+      const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, parseInt(req.params.id)), eq(leads.organizationId, org.id), liveLead()) });
       if (!lead) return Errors.notFound(res, "Lead");
       const { explainLeadScore } = await import("./services/crmEnhancements");
       res.json(explainLeadScore(lead));

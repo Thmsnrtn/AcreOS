@@ -647,7 +647,7 @@ async function sendBorrowerPaymentReceipt(
 ): Promise<boolean> {
   try {
     const borrower = note.borrowerId
-      ? await storage.getLead(note.organizationId, note.borrowerId)
+      ? await storage.getBorrowerLead(note.organizationId, note.borrowerId)
       : null;
     const borrowerEmail = borrower?.email;
     if (!borrowerEmail) return false;

@@ -849,6 +849,7 @@ export class WebhookHandlers {
           SELECT
             (SELECT COUNT(*)::int FROM leads
               WHERE organization_id = ${org.id}
+                AND deleted_at IS NULL
                 AND created_at > NOW() - INTERVAL '30 days') AS "leadsCreated30d",
             (SELECT COUNT(*)::int FROM properties
               WHERE organization_id = ${org.id}

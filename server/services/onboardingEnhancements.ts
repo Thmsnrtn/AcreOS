@@ -5,7 +5,8 @@
 
 import { db } from "../db";
 import { leads, organizations } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 
 // Item 1: Auto-detect investor type from email domain
 export function detectInvestorType(email: string): string {
@@ -19,7 +20,7 @@ export function detectInvestorType(email: string): string {
 
 // Item 2: Pre-populate sample leads
 export async function seedSampleLeads(orgId: number): Promise<number> {
-  const existing = await db.select({ id: leads.id }).from(leads).where(eq(leads.organizationId, orgId)).limit(1);
+  const existing = await db.select({ id: leads.id }).from(leads).where(and(eq(leads.organizationId, orgId), liveLead())).limit(1);
   if (existing.length > 0) return 0; // Already has leads
 
   const samples = [

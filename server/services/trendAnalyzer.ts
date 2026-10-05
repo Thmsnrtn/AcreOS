@@ -9,10 +9,11 @@
 
 import { db } from "../db";
 import {
-  organizations, leads, deals, supportTickets,
+  organizations, deals, supportTickets,
   agentActionLog, churnRiskScores,
 } from "@shared/schema";
 import { sql, gte, and, lte, count } from "drizzle-orm";
+import { leadsIncludingDeleted } from "../storage/liveLeads";
 
 export interface TrendResult {
   metric: string;
@@ -47,11 +48,11 @@ export async function getWeeklyTrends(): Promise<TrendResult[]> {
 
   // 2. New leads trend
   const [currentLeads] = await db.select({ c: count() })
-    .from(leads)
-    .where(gte(leads.createdAt, oneWeekAgo));
+    .from(leadsIncludingDeleted)
+    .where(gte(leadsIncludingDeleted.createdAt, oneWeekAgo));
   const [previousLeads] = await db.select({ c: count() })
-    .from(leads)
-    .where(and(gte(leads.createdAt, twoWeeksAgo), lte(leads.createdAt, oneWeekAgo)));
+    .from(leadsIncludingDeleted)
+    .where(and(gte(leadsIncludingDeleted.createdAt, twoWeeksAgo), lte(leadsIncludingDeleted.createdAt, oneWeekAgo)));
 
   trends.push(buildTrend("leads", "New Leads", Number(currentLeads.c), Number(previousLeads.c)));
 

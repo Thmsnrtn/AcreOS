@@ -17,6 +17,7 @@ import { registerHand } from "./registry";
 import { handError, type HandResult } from "./types";
 import { db } from "../../../db";
 import { leads } from "@shared/schema";
+import { liveLead } from "../../../storage/liveLeads";
 import { sendSMSToLead } from "../../smsService";
 import { logger } from "../../../utils/logger";
 
@@ -41,7 +42,7 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
     const [lead] = await db
       .select({ doNotContact: leads.doNotContact, tcpaConsent: leads.tcpaConsent })
       .from(leads)
-      .where(and(eq(leads.organizationId, organizationId), eq(leads.id, leadId)))
+      .where(and(eq(leads.organizationId, organizationId), eq(leads.id, leadId), liveLead()))
       .limit(1);
     if (!lead) {
       return { success: false, output: `send_sms: lead ${leadId} not found in org ${organizationId}.`, durationMs: Date.now() - started };

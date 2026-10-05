@@ -25,7 +25,8 @@ import {
   notes as financeNotes,
   taxSaleAuctions,
 } from '../../shared/schema';
-import { eq, count, sql, desc } from 'drizzle-orm';
+import { eq, and, count, sql, desc } from 'drizzle-orm';
+import { liveLead } from '../storage/liveLeads';
 
 export type InvestorType =
   | 'wholesaler'
@@ -298,7 +299,7 @@ class ContextProfileService {
       const [leadResult] = await db
         .select({ count: count() })
         .from(leads)
-        .where(eq(leads.organizationId, organizationId));
+        .where(and(eq(leads.organizationId, organizationId), liveLead()));
       signals.leadCount = Number(leadResult?.count || 0);
     } catch (_) {}
 

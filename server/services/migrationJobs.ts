@@ -31,6 +31,7 @@ import fs from "node:fs/promises";
 import zlib from "node:zlib";
 import { promisify } from "node:util";
 import { eq, and, asc, sql, getTableColumns } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 
 import { db } from "../db";
 import { storage } from "../storage";
@@ -579,7 +580,7 @@ async function runImportJob(job: ImportJob): Promise<void> {
         completedAt: new Date(),
         payloadBytes: null,
       })
-      .where(and(eq(importJobs.id, job.id), eq(importJobs.status, "running")));
+      .where(and(eq(importJobs.id, job.id), eq(importJobs.organizationId, job.organizationId), eq(importJobs.status, "running")));
   }
 }
 
@@ -695,7 +696,7 @@ async function processCommunicationsImport(
           const [match] = await db
             .select({ id: leads.id })
             .from(leads)
-            .where(and(eq(leads.organizationId, job.organizationId), eq(leads.email, email)))
+            .where(and(eq(leads.organizationId, job.organizationId), eq(leads.email, email), liveLead()))
             .limit(1);
           if (!match) throw new Error(`No lead found with email ${email}`);
           leadId = match.id;
@@ -801,7 +802,7 @@ async function processDocumentImport(
         const [lead] = await db
           .select({ id: leads.id })
           .from(leads)
-          .where(and(eq(leads.organizationId, job.organizationId), eq(leads.email, email)))
+          .where(and(eq(leads.organizationId, job.organizationId), eq(leads.email, email), liveLead()))
           .limit(1);
         if (!lead) throw new Error(`No lead with email ${email}`);
         // Persist in the org's document store, then record it (DEFECT-0143).
@@ -890,7 +891,7 @@ async function markImportComplete(
       completedAt: new Date(),
       payloadBytes: null,
     })
-    .where(and(eq(importJobs.id, job.id), eq(importJobs.status, "running")))
+    .where(and(eq(importJobs.id, job.id), eq(importJobs.organizationId, job.organizationId), eq(importJobs.status, "running")))
     .returning({ id: importJobs.id });
   if (completed.length === 0) {
     logger.warn("[migrationJobs] import finished after it stopped being 'running'; outcome not overwritten", { jobId: job.id });

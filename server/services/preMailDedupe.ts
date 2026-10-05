@@ -16,6 +16,7 @@
 import { db } from "../db";
 import { leads, properties, mailingOrderPieces, mailingOrders } from "@shared/schema";
 import { and, eq, inArray, gte, isNotNull, sql } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 import { logger } from "../utils/logger";
 
 export interface PreMailDedupeInput {
@@ -47,7 +48,10 @@ export interface PreMailDedupeResult {
   totals: {
     input: number;
     accepted: number;
+    /** Every input lead not accepted — includes `notALiveLead`, so input = accepted + skipped. */
     skipped: number;
+    /** Ids that are not a live lead of this org (soft-deleted, or not this org's). Counted in `skipped`. */
+    notALiveLead: number;
   };
 }
 
@@ -68,7 +72,7 @@ export async function runPreMailDedupe(
     return {
       acceptedLeads: [],
       skipped: { ownedParcel: [], recentlyMailed: [], returnedMail: [], doNotContact: [], missingAddress: [] },
-      totals: { input: 0, accepted: 0, skipped: 0 },
+      totals: { input: 0, accepted: 0, skipped: 0, notALiveLead: 0 },
     };
   }
 
@@ -86,7 +90,7 @@ export async function runPreMailDedupe(
       optOutDate: leads.optOutDate,
     })
     .from(leads)
-    .where(and(eq(leads.organizationId, organizationId), inArray(leads.id, leadIds)));
+    .where(and(eq(leads.organizationId, organizationId), inArray(leads.id, leadIds), liveLead()));
 
   const skippedDnc: DedupedLead[] = [];
   const skippedMissing: DedupedLead[] = [];
@@ -113,13 +117,17 @@ export async function runPreMailDedupe(
     survivors.push(dl);
   }
 
+  // Ids the live, org-scoped load did not return: soft-deleted since they were
+  // selected, or not this org's. Counted so input = accepted + skipped (W10.2a).
+  const notALiveLead = new Set(leadIds).size - candidateRows.length;
+
   if (survivors.length === 0) {
     const skipped =
-      skippedDnc.length + skippedMissing.length;
+      skippedDnc.length + skippedMissing.length + notALiveLead;
     return {
       acceptedLeads: [],
       skipped: { ownedParcel: [], recentlyMailed: [], returnedMail: [], doNotContact: skippedDnc, missingAddress: skippedMissing },
-      totals: { input: leadIds.length, accepted: 0, skipped },
+      totals: { input: leadIds.length, accepted: 0, skipped, notALiveLead },
     };
   }
 
@@ -214,7 +222,8 @@ export async function runPreMailDedupe(
     skippedRecent.length +
     skippedReturned.length +
     skippedDnc.length +
-    skippedMissing.length;
+    skippedMissing.length +
+    notALiveLead;
 
   return {
     acceptedLeads,
@@ -229,6 +238,7 @@ export async function runPreMailDedupe(
       input: leadIds.length,
       accepted: acceptedLeads.length,
       skipped: skippedTotal,
+      notALiveLead,
     },
   };
 }

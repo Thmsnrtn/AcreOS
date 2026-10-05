@@ -228,16 +228,17 @@ router.get("/checklist-status", async (req: Request, res: Response) => {
     // "Items complete by the user actually doing the work" — so the sample
     // book seeded by "Try with sample data" is not the work (DEFECT-0137).
     const { realLead, realProperty, realDeal } = await import("./services/onboarding/sampleFilters");
+    const { liveLead } = await import("./storage/liveLeads");
     const realLeadP = realLead();
     const notSampleProperty = realProperty();
     const dealNotOnSampleProperty = realDeal();
 
     const [leadResult, importResult, campaignResult, dealResult, notePaymentResult, propertyLookupResult, connectedServiceResult] = await Promise.all([
       // hasLead: org has >= 1 lead
-      db.select({ count: sql<number>`count(*)` }).from(leads).where(and(eq(leads.organizationId, orgId), realLeadP)).then(r => r[0]?.count > 0),
+      db.select({ count: sql<number>`count(*)` }).from(leads).where(and(eq(leads.organizationId, orgId), realLeadP, liveLead())).then(r => r[0]?.count > 0),
       // hasImport: any lead with source = 'csv_import' or 'import'
       db.select({ count: sql<number>`count(*)` }).from(leads).where(
-        sql`${leads.organizationId} = ${orgId} AND (${leads.source} = 'csv_import' OR ${leads.source} = 'import')`
+        sql`${leads.organizationId} = ${orgId} AND ${leads.deletedAt} IS NULL AND (${leads.source} = 'csv_import' OR ${leads.source} = 'import')`
       ).then(r => r[0]?.count > 0),
       // hasCampaign: org has >= 1 campaign OR queued a mail shipment. The
       // modern /outreach/mail/queue path (and the free-tier first send,

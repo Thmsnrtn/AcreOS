@@ -13,6 +13,7 @@ import {
 import { eq, and, desc } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
+import { liveLead } from "../storage/liveLeads";
 
 export interface PatternFingerprint {
   property: {
@@ -124,7 +125,7 @@ class DealPatternCloningService {
       const [sellerData] = await db
         .select()
         .from(leads)
-        .where(eq(leads.id, property.sellerId))
+        .where(and(eq(leads.id, property.sellerId), liveLead()))
         .limit(1);
       seller = sellerData;
     }

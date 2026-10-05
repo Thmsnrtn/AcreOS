@@ -18,6 +18,7 @@ import { db } from "./db";
 import { storage } from "./storage";
 import { leads, properties, tasks, type InsertDeal } from "@shared/schema";
 import { eq, and, inArray } from "drizzle-orm";
+import { liveLead } from "./storage/liveLeads";
 import { filterOutHeldIds } from "./services/legalHold";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
@@ -83,7 +84,8 @@ router.post("/leads/update", attachPermissionContext(), async (req: Authenticate
       .set(allowedUpdates)
       .where(and(
         eq(leads.organizationId, orgId),
-        inArray(leads.id, parsedIds)
+        inArray(leads.id, parsedIds),
+        liveLead(),
       ));
 
     res.json({ success: true, updated: parsedIds.length });
@@ -107,16 +109,16 @@ router.post("/leads/delete", attachPermissionContext(), async (req: Authenticate
     }
 
     // Phase 3 Week 11 — FRCP 37(e) legal-hold preservation. Drop held ids
-    // before bulk-DELETE; report skipped count back to the caller.
+    // before the delete; report skipped count back to the caller.
     const allowed = await filterOutHeldIds(orgId, "lead", parsedIds);
     const skipped = parsedIds.length - allowed.length;
 
+    // A SOFT delete, through the one writer every other lead delete uses
+    // (W10.2a). This route hard-deleted the rows — and with them each lead's
+    // doNotContact / opt-out, so a re-import could mint a fresh, contactable
+    // row for someone who had revoked consent, and the Undo restored nothing.
     if (allowed.length > 0) {
-      await db.delete(leads)
-        .where(and(
-          eq(leads.organizationId, orgId),
-          inArray(leads.id, allowed)
-        ));
+      await storage.bulkDeleteLeads(orgId, allowed, req.user?.id);
     }
 
     res.json({ success: true, deleted: allowed.length, skippedDueToLegalHold: skipped });

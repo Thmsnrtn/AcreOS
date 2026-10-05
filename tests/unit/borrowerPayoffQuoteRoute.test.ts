@@ -90,6 +90,8 @@ vi.mock("../../server/storage", () => {
     updateBorrowerSessionAccess: async () => {},
     getOrganization: async (id: number) => ({ id, name: "Acme Lender", settings: {} }),
     getLead: async () => ({ id: 9, firstName: "Bea", lastName: "Rowe", email: "borrower@example.com" }),
+    // The servicing read (W10.2a): a note's borrower, deleted or not.
+    getBorrowerLead: async () => ({ id: 9, firstName: "Bea", lastName: "Rowe", email: "borrower@example.com" }),
     getPayments: vi.fn(async () => LEDGER),
     updateNote: vi.fn(async () => NOTE_ROW),
   };

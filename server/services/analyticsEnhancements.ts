@@ -13,7 +13,7 @@ export async function getSignupFunnel(): Promise<Array<{ stage: string; count: n
   const [onboarded] = await db.select({ count: count() }).from(organizations)
     .where(sql`${organizations.onboardingCompleted} = true`);
   const [withLeads] = await db.select({ count: count() }).from(organizations)
-    .where(sql`EXISTS (SELECT 1 FROM leads WHERE leads.organization_id = ${organizations.id})`);
+    .where(sql`EXISTS (SELECT 1 FROM leads WHERE leads.organization_id = ${organizations.id} AND leads.deleted_at IS NULL)`);
   const [withDeals] = await db.select({ count: count() }).from(organizations)
     .where(sql`EXISTS (SELECT 1 FROM deals WHERE deals.organization_id = ${organizations.id})`);
 

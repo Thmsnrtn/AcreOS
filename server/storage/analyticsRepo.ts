@@ -16,6 +16,7 @@ import {
   payments,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { liveLead } from "./liveLeads";
 
 export const analyticsRepo = {
   // Analytics & Reporting
@@ -65,7 +66,7 @@ export const analyticsRepo = {
     
     const totalLeadsResult = await db.select({ count: count() })
       .from(leads)
-      .where(and(eq(leads.organizationId, orgId), gte(leads.createdAt, startDate)));
+      .where(and(eq(leads.organizationId, orgId), gte(leads.createdAt, startDate), liveLead()));
     const totalLeads = Number(totalLeadsResult[0]?.count || 0);
     
     const convertedLeadsResult = await db.select({ count: count() })
@@ -73,7 +74,8 @@ export const analyticsRepo = {
       .where(and(
         eq(leads.organizationId, orgId),
         eq(leads.status, 'closed'),
-        gte(leads.updatedAt, startDate)
+        gte(leads.updatedAt, startDate),
+        liveLead()
       ));
     const convertedLeads = Number(convertedLeadsResult[0]?.count || 0);
     const leadConversionRate = totalLeads > 0 ? (convertedLeads / totalLeads) * 100 : 0;
@@ -88,6 +90,7 @@ export const analyticsRepo = {
         eq(leads.organizationId, orgId),
         gte(leads.createdAt, prevStartDate),
         lt(leads.createdAt, startDate),
+        liveLead(),
       ));
     const prevTotalLeads = Number(prevTotalLeadsResult[0]?.count || 0);
     const prevConvertedResult = await db.select({ count: count() })
@@ -97,6 +100,7 @@ export const analyticsRepo = {
         eq(leads.status, 'closed'),
         gte(leads.updatedAt, prevStartDate),
         lt(leads.updatedAt, startDate),
+        liveLead(),
       ));
     const prevConverted = Number(prevConvertedResult[0]?.count || 0);
     const prevConversionRate = prevTotalLeads > 0 ? (prevConverted / prevTotalLeads) * 100 : undefined;
@@ -191,7 +195,7 @@ export const analyticsRepo = {
     
     const allLeadsResult = await db.select({ count: count() })
       .from(leads)
-      .where(eq(leads.organizationId, orgId));
+      .where(and(eq(leads.organizationId, orgId), liveLead()));
     const totalLeads = Number(allLeadsResult[0]?.count || 0);
     
     const newLeadsResult = await db.select({ count: count() })
@@ -199,7 +203,8 @@ export const analyticsRepo = {
       .where(and(
         eq(leads.organizationId, orgId),
         gte(leads.createdAt, startDate),
-        lte(leads.createdAt, endDate)
+        lte(leads.createdAt, endDate),
+        liveLead()
       ));
     const newLeads = Number(newLeadsResult[0]?.count || 0);
     
@@ -207,7 +212,8 @@ export const analyticsRepo = {
       .from(leads)
       .where(and(
         eq(leads.organizationId, orgId),
-        eq(leads.status, 'closed')
+        eq(leads.status, 'closed'),
+        liveLead()
       ));
     const convertedLeads = Number(convertedResult[0]?.count || 0);
     const conversionRate = totalLeads > 0 ? (convertedLeads / totalLeads) * 100 : 0;
@@ -217,7 +223,7 @@ export const analyticsRepo = {
       count: count(),
     })
       .from(leads)
-      .where(eq(leads.organizationId, orgId))
+      .where(and(eq(leads.organizationId, orgId), liveLead()))
       .groupBy(leads.source);
     
     const leadsBySource = sourceResults.map(r => ({
@@ -230,7 +236,7 @@ export const analyticsRepo = {
       count: count(),
     })
       .from(leads)
-      .where(eq(leads.organizationId, orgId))
+      .where(and(eq(leads.organizationId, orgId), liveLead()))
       .groupBy(leads.status);
     
     const leadsByStatus = statusResults.map(r => ({

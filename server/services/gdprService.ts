@@ -20,7 +20,6 @@
 import { db } from "../db";
 import {
   users,
-  leads,
   agentEvents,
   agentMemory,
   aiConversations,
@@ -34,6 +33,7 @@ import {
 } from "@shared/schema";
 import { eq, and, count, inArray } from "drizzle-orm";
 import crypto from "crypto";
+import { leadsIncludingDeleted } from "../storage/liveLeads";
 import { orgHasActiveHold, LegalHoldViolationError } from "./legalHold";
 
 /** Safety limit to prevent unbounded memory usage on very large accounts */
@@ -102,12 +102,12 @@ export async function exportUserData(userId: string): Promise<GdprExportData> {
     userLeads, userDeals, userTasks, userMessages, userTickets,
     leadCount, dealCount, taskCount, messageCount, ticketCount,
   ] = await Promise.all([
-    emptyIfNoTeam(db.select().from(leads).where(inArray(leads.assignedTo, teamMemberIds)).limit(MAX_EXPORT_RECORDS)),
+    emptyIfNoTeam(db.select().from(leadsIncludingDeleted).where(inArray(leadsIncludingDeleted.assignedTo, teamMemberIds)).limit(MAX_EXPORT_RECORDS)),
     emptyIfNoTeam(db.select().from(deals).where(inArray(deals.assignedTo, teamMemberIds)).limit(MAX_EXPORT_RECORDS)),
     emptyIfNoTeam(db.select().from(tasks).where(inArray(tasks.assignedTo, teamMemberIds)).limit(MAX_EXPORT_RECORDS)),
     db.select().from(teamMessages).where(eq(teamMessages.senderId, userId)).limit(MAX_EXPORT_RECORDS),
     db.select().from(supportTickets).where(eq(supportTickets.userId, userId)).limit(MAX_EXPORT_RECORDS),
-    emptyIfNoTeam(db.select({ count: count() }).from(leads).where(inArray(leads.assignedTo, teamMemberIds))),
+    emptyIfNoTeam(db.select({ count: count() }).from(leadsIncludingDeleted).where(inArray(leadsIncludingDeleted.assignedTo, teamMemberIds))),
     emptyIfNoTeam(db.select({ count: count() }).from(deals).where(inArray(deals.assignedTo, teamMemberIds))),
     emptyIfNoTeam(db.select({ count: count() }).from(tasks).where(inArray(tasks.assignedTo, teamMemberIds))),
     db.select({ count: count() }).from(teamMessages).where(eq(teamMessages.senderId, userId)),
@@ -206,16 +206,16 @@ export async function anonymizeUser(userId: string): Promise<DeletionReport> {
   // 6. Anonymize leads assigned to user (keep for business records but strip PII).
   // leads.assignedTo is a numeric teamMembers.id.
   const userLeads = teamMemberIds.length > 0
-    ? await db.select({ id: leads.id }).from(leads).where(inArray(leads.assignedTo, teamMemberIds))
+    ? await db.select({ id: leadsIncludingDeleted.id }).from(leadsIncludingDeleted).where(inArray(leadsIncludingDeleted.assignedTo, teamMemberIds))
     : [];
   for (const lead of userLeads) {
-    await db.update(leads).set({
+    await db.update(leadsIncludingDeleted).set({
       firstName: "[Deleted]",
       lastName: "[User]",
       email: `deleted-${lead.id}@gdpr-deleted.invalid`,
       phone: null,
       notes: null,
-    }).where(eq(leads.id, lead.id));
+    }).where(eq(leadsIncludingDeleted.id, lead.id));
   }
 
   // 7. Anonymize user account

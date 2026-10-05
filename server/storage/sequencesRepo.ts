@@ -6,6 +6,7 @@
 // DatabaseStorage instance.
 
 import { and, desc, eq, lte } from "drizzle-orm";
+import { liveLead } from "./liveLeads";
 import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import {
@@ -142,7 +143,7 @@ export const sequencesRepo = {
     })
       .from(sequenceEnrollments)
       .innerJoin(campaignSequences, eq(sequenceEnrollments.sequenceId, campaignSequences.id))
-      .innerJoin(leads, eq(sequenceEnrollments.leadId, leads.id))
+      .innerJoin(leads, and(eq(sequenceEnrollments.leadId, leads.id), liveLead()))
       .where(and(
         eq(campaignSequences.organizationId, orgId),
         eq(sequenceEnrollments.status, "active")
@@ -161,7 +162,7 @@ export const sequencesRepo = {
     })
       .from(sequenceEnrollments)
       .innerJoin(campaignSequences, eq(sequenceEnrollments.sequenceId, campaignSequences.id))
-      .innerJoin(leads, eq(sequenceEnrollments.leadId, leads.id))
+      .innerJoin(leads, and(eq(sequenceEnrollments.leadId, leads.id), liveLead()))
       .where(and(
         eq(sequenceEnrollments.status, "active"),
         eq(campaignSequences.isActive, true),

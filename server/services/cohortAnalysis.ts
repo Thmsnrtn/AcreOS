@@ -21,6 +21,7 @@ import {
   leadActivities,
 } from "@shared/schema";
 import { eq, and, gte, lte, sql, count, avg } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 
 import { CLOSED_DEAL_STATUSES, ENGAGED_LEAD_STATUSES, NEGOTIATING_LEAD_STATUSES, UNDER_CONTRACT_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 export type CohortSegment =
@@ -101,7 +102,7 @@ export async function buildCohortReport(
       campaignId: leads.campaignId,
     })
     .from(leads)
-    .where(whereDate);
+    .where(and(eq(leads.organizationId, orgId), whereDate, liveLead()));
 
   // TODO(tsc): the deals table links to properties (propertyId), not leads — there is no
   // leadId/closedAt/purchasePrice column, so deal-level close metrics can't be joined to

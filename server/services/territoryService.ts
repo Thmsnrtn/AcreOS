@@ -13,6 +13,7 @@
 import { db } from "../db";
 import { organizationIntegrations, teamMembers, leads } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 import { logger } from "../utils/logger";
 
 export interface Territory {
@@ -186,7 +187,7 @@ export async function autoAssignLeadToTerritory(
   await db
     .update(leads)
     .set({ assignedTo: teamMember.id, updatedAt: new Date() })
-    .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)));
+    .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId), liveLead()));
 
   logger.info(`[Territory] Lead ${leadId} auto-assigned to ${matched.teamMemberName || matched.teamMemberId} via territory "${matched.name}"`);
   return matched.teamMemberId;
@@ -202,7 +203,7 @@ export async function getTerritoryStats(
   const allLeads = await db
     .select({ assignedTo: leads.assignedTo })
     .from(leads)
-    .where(eq(leads.organizationId, organizationId));
+    .where(and(eq(leads.organizationId, organizationId), liveLead()));
 
   const countByMember: Record<string, number> = {};
   for (const l of allLeads) {

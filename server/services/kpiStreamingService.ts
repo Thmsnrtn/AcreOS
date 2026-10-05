@@ -20,6 +20,7 @@ import { wsServer as wss } from "../websocket";
 import { db } from "../db";
 import { leads, deals, notesReceivable, payments } from "@shared/schema";
 import { eq, and, count, sum, sql } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 
 import { ACTIVE_DEAL_STATUSES, CLOSED_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 export interface KpiUpdate {
@@ -50,7 +51,7 @@ async function getDashboardSnapshot(orgId: number) {
   const [leadCount] = await db
     .select({ count: count() })
     .from(leads)
-    .where(eq(leads.organizationId, orgId));
+    .where(and(eq(leads.organizationId, orgId), liveLead()));
 
   // Bound parameters built from the vocabulary — no status literal in SQL.
   const activeDealStatuses = sql.join(ACTIVE_DEAL_STATUSES.map((v) => sql`${v}`), sql`, `);

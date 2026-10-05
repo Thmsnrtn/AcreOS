@@ -20,6 +20,7 @@ import {
   properties,
 } from '../../shared/schema';
 import { and, eq, isNull, lt, lte, ne, notInArray } from 'drizzle-orm';
+import { liveLead } from '../storage/liveLeads';
 
 import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 const STALE_LEAD_DAYS = 90;
@@ -78,6 +79,7 @@ export async function runPortfolioHealthJob(orgId: number): Promise<void> {
     .where(
       and(
         eq(leads.organizationId, orgId),
+        liveLead(),
         // `converted` is not a lead status, so that predicate was always
         // true; the terminal states are `closed` and `dead`, and a closed
         // lead is not a stale one.

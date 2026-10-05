@@ -6,6 +6,7 @@ import { usageMeteringService } from "./credits";
 import { alertingService } from "./alerting";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
+import { liveLead } from "../storage/liveLeads";
 import { tracedLlmCall } from "./tracedLlmCall";
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
 import { getPaxControls, type PaxControlsState } from "./paxControls";
@@ -222,7 +223,7 @@ Respond in JSON format:
         nextFollowUpAt: date,
         updatedAt: new Date(),
       })
-      .where(eq(leads.id, leadId))
+      .where(and(eq(leads.id, leadId), liveLead()))
       .returning();
     return updated;
   }
@@ -264,7 +265,7 @@ Respond in JSON format:
       await db
         .update(leads)
         .set({ nurturingStage: stage, updatedAt: new Date() })
-        .where(and(eq(leads.id, lead.id), eq(leads.organizationId, lead.organizationId)));
+        .where(and(eq(leads.id, lead.id), eq(leads.organizationId, lead.organizationId), liveLead()));
 
       if (attribution) {
         const from = updated.nurturingStage ?? lead.nurturingStage ?? "new";
@@ -451,7 +452,7 @@ Respond in JSON format:
                   nextFollowUpAt: this.getNextFollowUpDate(lead.nurturingStage as NurturingStage),
                   updatedAt: new Date(),
                 })
-                .where(eq(leads.id, lead.id));
+                .where(and(eq(leads.id, lead.id), liveLead()));
             }
           } catch (err) {
             result.errors.push(`Failed to generate follow-up for lead ${lead.id}: ${err}`);

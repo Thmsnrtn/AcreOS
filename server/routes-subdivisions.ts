@@ -29,6 +29,7 @@ import { z } from "zod";
 import { and, eq, isNull, sql, asc } from "drizzle-orm";
 import { db } from "./db";
 import { properties, lotBasisAllocations, notes, leads } from "@shared/schema";
+import { liveLead } from "./storage/liveLeads";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -463,7 +464,7 @@ export function registerSubdivisionRoutes(app: Express): void {
               const [borrower] = await db
                 .select({ id: leads.id })
                 .from(leads)
-                .where(and(eq(leads.id, borrowerId), eq(leads.organizationId, orgId)));
+                .where(and(eq(leads.id, borrowerId), eq(leads.organizationId, orgId), liveLead()));
               if (!borrower) {
                 bridgeSkipReason = "buyer_not_in_org";
                 logger.warn("[lot→note bridge] skipped — buyer not in org", {

@@ -43,6 +43,7 @@ import {
 } from "@shared/schema";
 import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { liveLead } from "../storage/liveLeads";
 
 const TIER_LADDER: Record<string, string> = {
   free: "starter",
@@ -186,7 +187,7 @@ async function scoreOrg(org: {
     db
       .select({ c: sql<number>`count(*)::int` })
       .from(leads)
-      .where(and(eq(leads.organizationId, org.id), gte(leads.createdAt, thirtyDaysAgo))),
+      .where(and(eq(leads.organizationId, org.id), gte(leads.createdAt, thirtyDaysAgo), liveLead())),
     db
       .select({ c: sql<number>`count(*)::int` })
       .from(leads)
@@ -195,6 +196,7 @@ async function scoreOrg(org: {
           eq(leads.organizationId, org.id),
           gte(leads.createdAt, priorThirty),
           lt(leads.createdAt, thirtyDaysAgo),
+          liveLead(),
         ),
       ),
   ]);

@@ -95,6 +95,12 @@ vi.mock("../../storage", () => ({
       if (!row || row.organizationId !== orgId) return undefined;
       return row;
     },
+    // The servicing read (W10.2a): the note's borrower, deleted or not.
+    getBorrowerLead: async (orgId: number, id: number) => {
+      const row = LEADS.get(id);
+      if (!row || row.organizationId !== orgId) return undefined;
+      return row;
+    },
     getOrganization: async (id: number) => ({
       id,
       name: "Ridgeline Capital",

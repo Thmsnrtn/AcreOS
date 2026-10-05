@@ -11,6 +11,7 @@ import {
   InsertSystemAlert, SystemAlert, activityLog, apiUsageLogs
 } from "@shared/schema";
 import { eq, and, lt, desc, isNull, count, ne, gte, sql } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 import { healthCheckService, ServiceStatus } from "./healthCheck";
 import { getAllUsageLimits, ResourceType } from "./usageLimits";
 import { paxObserver } from "./paxObserver";
@@ -134,6 +135,7 @@ class ProactiveMonitorService {
         .from(leads)
         .where(and(
           eq(leads.organizationId, orgId),
+          liveLead(),
           isNull(leads.email),
           isNull(leads.phone)
         ));

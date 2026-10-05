@@ -25,6 +25,7 @@ import {
   type PaxConnectorInstance,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { liveLead } from "./liveLeads";
 import { assertWritablePatch } from "../utils/patch";
 
 export const paxRepo = {
@@ -209,7 +210,8 @@ export const paxRepo = {
         .from(leads)
         .where(and(
           eq(leads.organizationId, orgId),
-          or(ilike(leads.firstName, q), ilike(leads.lastName, q), ilike(leads.email, q))
+          or(ilike(leads.firstName, q), ilike(leads.lastName, q), ilike(leads.email, q)),
+          liveLead()
         ))
         .limit(limit);
       for (const r of leadRows) {

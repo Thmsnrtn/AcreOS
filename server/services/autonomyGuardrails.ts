@@ -21,6 +21,7 @@
 import { db } from "../db";
 import { eq, and } from "drizzle-orm";
 import { agentMemory } from "@shared/schema";
+import { liveLead } from "../storage/liveLeads";
 import { logger } from "../utils/logger";
 
 import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
@@ -108,7 +109,7 @@ export async function checkTcpaBeforeSend(
         status: leads.status,
       })
       .from(leads)
-      .where(and(eq(leads.id, leadId), eq(leads.organizationId, orgId)))
+      .where(and(eq(leads.id, leadId), eq(leads.organizationId, orgId), liveLead()))
       .limit(1);
 
     const lead = rows[0];

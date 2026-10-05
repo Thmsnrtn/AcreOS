@@ -11,6 +11,7 @@ import {
 import { orgHasActiveHold } from "../services/legalHold";
 import { recordDealTransitionEvidence } from "../services/dealLifecycleEvents";
 import type { DatabaseStorage } from "../storage";
+import { liveLead, leadsIncludingDeleted } from "./liveLeads";
 
 export const auditRepo = {
   // Audit Log (20.1)
@@ -103,7 +104,7 @@ export const auditRepo = {
   // for surgical, hold-aware deletion.
   async purgeOldLeads(this: DatabaseStorage, orgId: number, beforeDate: Date): Promise<number> {
     if (await orgHasActiveHold(orgId)) return 0;
-    const result = await db.delete(leads)
+    const result = await db.delete(leadsIncludingDeleted)
       .where(and(
         eq(leads.organizationId, orgId),
         lte(leads.createdAt, beforeDate),
@@ -165,18 +166,21 @@ export const auditRepo = {
         or(
           eq(leads.tcpaConsent, false),
           sql`${leads.tcpaConsent} IS NULL`
-        )
+        ),
+        liveLead()
       ))
       .orderBy(desc(leads.createdAt));
   },
 
   async getLeadsOptedOut(this: DatabaseStorage, orgId: number): Promise<Lead[]> {
-    return await db.select().from(leads)
+    // The TCPA opt-out RECORD includes leads deleted since they opted out: the
+    // opt-out still binds their number, and the record must show it (W10.2a audit).
+    return await db.select().from(leadsIncludingDeleted)
       .where(and(
-        eq(leads.organizationId, orgId),
-        eq(leads.doNotContact, true)
+        eq(leadsIncludingDeleted.organizationId, orgId),
+        eq(leadsIncludingDeleted.doNotContact, true),
       ))
-      .orderBy(desc(leads.optOutDate));
+      .orderBy(desc(leadsIncludingDeleted.optOutDate));
   },
 
   async updateLeadConsent(this: DatabaseStorage, leadId: number, consent: {
@@ -203,7 +207,7 @@ export const auditRepo = {
 
     const conditions = [eq(leads.id, leadId)];
     if (organizationId) conditions.push(eq(leads.organizationId, organizationId));
-    const [updated] = await db.update(leads)
+    const [updated] = await db.update(leadsIncludingDeleted)
       .set(updates)
       .where(and(...conditions))
       .returning();

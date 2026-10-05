@@ -49,6 +49,22 @@ const ORG_TABLES = (() => {
 
 const SERVER_FILES = ls("'server/*.ts' 'server/**/*.ts'").filter((f) => !/\.(test|spec)\.ts$/.test(f));
 
+/**
+ * Storage-layer ALIASES of an org table (`export const leadsIncludingDeleted =
+ * leads;`, W10.2a). The same table under a second name; without this a write
+ * through the alias left the population and read as a FIXED write — the gdpr
+ * anonymizer's unscoped lead update dropped to 0 the day it was renamed.
+ */
+const TABLE_ALIASES = (() => {
+  const out = new Map<string, string>();
+  for (const f of ls("'server/storage/*.ts'").filter((x) => !/\.(test|spec)\.ts$/.test(x))) {
+    for (const m of readFileSync(f, "utf8").matchAll(/\bexport\s+const\s+(\w+)\s*=\s*(\w+)\s*;/g)) {
+      if (ORG_TABLES.has(m[2])) out.set(m[1], m[2]);
+    }
+  }
+  return out;
+})();
+
 const ORG_TOKEN = /organizationId|orgId|organization_id|forOrg\(|unscopedForPlatformOps\(/;
 
 /**
@@ -80,8 +96,9 @@ function writeStatements(src: string): Array<{ kind: string; table: string; scop
   const out: Array<{ kind: string; table: string; scoped: boolean }> = [];
   let m: RegExpExecArray | null;
   while ((m = re.exec(code))) {
-    if (!ORG_TABLES.has(m[2])) continue;
-    out.push({ kind: m[1], table: m[2], scoped: ORG_TOKEN.test(predicateText(m[3], code)) });
+    const table = TABLE_ALIASES.get(m[2]) ?? m[2];
+    if (!ORG_TABLES.has(table)) continue;
+    out.push({ kind: m[1], table, scoped: ORG_TOKEN.test(predicateText(m[3], code)) });
   }
   return out;
 }

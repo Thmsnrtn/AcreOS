@@ -32,6 +32,7 @@ import { Router, type Response } from "express";
 import { ACTIVE_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 import { and, count, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "./db";
+import { liveLead } from "./storage/liveLeads";
 import {
   organizations,
   leads,
@@ -146,12 +147,12 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
         "organizations",
       ),
       safe(
-        db.select({ n: count() }).from(leads).where(sql`${leads.status} NOT IN ('dead','closed')`),
+        db.select({ n: count() }).from(leads).where(and(sql`${leads.status} NOT IN ('dead','closed')`, liveLead())),
         [{ n: 0 }] as Array<{ n: number }>,
         "leads-count",
       ),
       safe(
-        db.select({ createdAt: leads.createdAt }).from(leads).where(gte(leads.createdAt, t7)).limit(50_000),
+        db.select({ createdAt: leads.createdAt }).from(leads).where(and(gte(leads.createdAt, t7), liveLead())).limit(50_000),
         [] as Array<{ createdAt: Date | null }>,
         "leads-7d",
       ),

@@ -46,6 +46,7 @@
 import { db } from "../db";
 import { leads, countyMarkets } from "@shared/schema";
 import { eq, and, gte, desc, sql, isNull, ne } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 import { computeSellerMotivationScore } from "./sellerMotivationEngine";
 import { getCachedLandTrend, getCachedCountySnapshot } from "./usdaNassService";
 import { splitOwnerName } from "@shared/parcel/ownerName";
@@ -582,6 +583,7 @@ export async function batchScoreLeadsForOrg(
       eq(leads.organizationId, organizationId),
       ne((leads as any).status, "won"),
       ne((leads as any).status, "lost"),
+      liveLead(),
     ))
     .orderBy(desc(leads.createdAt))
     .limit(limit);

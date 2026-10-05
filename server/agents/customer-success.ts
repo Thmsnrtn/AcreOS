@@ -30,7 +30,7 @@ export class CustomerSuccessAgent extends BaseAgent {
 
     const result = await db.execute(sql`
       SELECT o.id, o.name, o.owner_id,
-        (SELECT COUNT(*) FROM leads l WHERE l.organization_id = o.id) as lead_count,
+        (SELECT COUNT(*) FROM leads l WHERE l.organization_id = o.id AND l.deleted_at IS NULL) as lead_count,
         (SELECT COUNT(*) FROM deals d WHERE d.organization_id = o.id) as deal_count
       FROM organizations o
       WHERE o.onboarding_completed = true
@@ -91,11 +91,11 @@ export class CustomerSuccessAgent extends BaseAgent {
 
     const result = await db.execute(sql`
       SELECT o.id, o.name, o.owner_id,
-        (SELECT COUNT(*) FROM leads l WHERE l.organization_id = o.id) as lead_count
+        (SELECT COUNT(*) FROM leads l WHERE l.organization_id = o.id AND l.deleted_at IS NULL) as lead_count
       FROM organizations o
       WHERE o.is_founder = false
         AND o.created_at < ${fiveDaysAgo}
-        AND (SELECT COUNT(*) FROM leads l WHERE l.organization_id = o.id) > 0
+        AND (SELECT COUNT(*) FROM leads l WHERE l.organization_id = o.id AND l.deleted_at IS NULL) > 0
         AND (SELECT COUNT(*) FROM campaigns c WHERE c.organization_id = o.id) = 0
         AND NOT EXISTS (
           SELECT 1 FROM founder_briefs fb
@@ -126,7 +126,7 @@ export class CustomerSuccessAgent extends BaseAgent {
 
     const result = await db.execute(sql`
       SELECT o.id, o.name, o.owner_id,
-        (SELECT COUNT(*) FROM leads l WHERE l.organization_id = o.id) as lead_count,
+        (SELECT COUNT(*) FROM leads l WHERE l.organization_id = o.id AND l.deleted_at IS NULL) as lead_count,
         (SELECT COUNT(*) FROM deals d WHERE d.organization_id = o.id) as deal_count,
         (SELECT COUNT(*) FROM notes n WHERE n.organization_id = o.id) as note_count,
         (SELECT MAX(s.started_at) FROM user_sessions s WHERE s.org_id = o.id) as last_active
@@ -166,7 +166,7 @@ export class CustomerSuccessAgent extends BaseAgent {
     // Check for milestone achievements: first deal, 100th lead, etc.
     const result = await db.execute(sql`
       SELECT o.id, o.name,
-        (SELECT COUNT(*) FROM leads l WHERE l.organization_id = o.id) as lead_count,
+        (SELECT COUNT(*) FROM leads l WHERE l.organization_id = o.id AND l.deleted_at IS NULL) as lead_count,
         (SELECT COUNT(*) FROM deals d WHERE d.organization_id = o.id) as deal_count
       FROM organizations o
       WHERE o.is_founder = false

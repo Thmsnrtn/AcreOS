@@ -10,6 +10,7 @@ import { Router, type Request, type Response } from "express";
 import { enrichLead, batchEnrichLeads, calculateContactCompleteness } from "./services/leadEnrichment";
 import { db } from "./db";
 import { leads } from "@shared/schema";
+import { liveLead } from "./storage/liveLeads";
 import { eq, and } from "drizzle-orm";
 import { Errors } from "./utils/errors";
 
@@ -64,7 +65,7 @@ router.get("/:id/completeness", async (req: Request, res: Response) => {
     const [lead] = await db
       .select()
       .from(leads)
-      .where(and(eq(leads.id, leadId), eq(leads.organizationId, org.id)))
+      .where(and(eq(leads.id, leadId), eq(leads.organizationId, org.id), liveLead()))
       .limit(1);
 
     if (!lead) return Errors.notFound(res, "Lead");

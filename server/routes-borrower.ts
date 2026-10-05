@@ -471,7 +471,7 @@ export function registerBorrowerRoutes(app: Express): void {
       
       // Verify borrower email - return same generic error if mismatch
       if (note.borrowerId) {
-        const borrower = await storage.getLead(note.organizationId, note.borrowerId);
+        const borrower = await storage.getBorrowerLead(note.organizationId, note.borrowerId);
         if (!borrower || borrower.email?.toLowerCase() !== email.toLowerCase()) {
           return Errors.notFound(res, "loan");
         }
@@ -518,7 +518,7 @@ export function registerBorrowerRoutes(app: Express): void {
       // Get borrower info
       let borrower = null;
       if (note.borrowerId) {
-        borrower = await storage.getLead(note.organizationId, note.borrowerId);
+        borrower = await storage.getBorrowerLead(note.organizationId, note.borrowerId);
       }
       
       // The portal is AcreOS-branded but AcreOS collects nothing here — the
@@ -578,7 +578,7 @@ export function registerBorrowerRoutes(app: Express): void {
           const note = await storage.getNoteByAccessToken(accessToken);
           if (!note) return { ok: false, reason: "not_found" };
           if (!note.borrowerId) return { ok: false, reason: "no_borrower" };
-          const borrower = await storage.getLead(
+          const borrower = await storage.getBorrowerLead(
             note.organizationId,
             note.borrowerId,
           );
@@ -671,7 +671,7 @@ export function registerBorrowerRoutes(app: Express): void {
       // Get borrower info
       let borrower = null;
       if (note.borrowerId) {
-        borrower = await storage.getLead(note.organizationId, note.borrowerId);
+        borrower = await storage.getBorrowerLead(note.organizationId, note.borrowerId);
       }
       
       res.json({
@@ -776,7 +776,7 @@ export function registerBorrowerRoutes(app: Express): void {
       let borrowerName = "Borrower";
       let borrowerEmail = session.email;
       if (note.borrowerId) {
-        const borrower = await storage.getLead(note.organizationId, note.borrowerId);
+        const borrower = await storage.getBorrowerLead(note.organizationId, note.borrowerId);
         if (borrower) {
           borrowerName = `${borrower.firstName} ${borrower.lastName}`;
           borrowerEmail = borrower.email || session.email;
@@ -869,7 +869,7 @@ export function registerBorrowerRoutes(app: Express): void {
       let borrowerName = "Borrower";
       let borrowerEmail = undefined;
       if (note.borrowerId) {
-        const borrower = await storage.getLead(note.organizationId, note.borrowerId);
+        const borrower = await storage.getBorrowerLead(note.organizationId, note.borrowerId);
         if (borrower) {
           borrowerName = `${borrower.firstName} ${borrower.lastName}`;
           borrowerEmail = borrower.email || undefined;
@@ -1575,7 +1575,7 @@ export function registerBorrowerRoutes(app: Express): void {
       
       // Verify borrower email for security
       if (note.borrowerId) {
-        const borrower = await storage.getLead(note.organizationId, note.borrowerId);
+        const borrower = await storage.getBorrowerLead(note.organizationId, note.borrowerId);
         if (!borrower || borrower.email?.toLowerCase() !== email?.toLowerCase()) {
           return Errors.forbidden(res, "We couldn't verify your access to this loan — check the email address on your payment reminder.");
         }
@@ -1665,7 +1665,7 @@ export function registerBorrowerRoutes(app: Express): void {
       }
 
       const borrower = note.borrowerId
-        ? await storage.getLead(note.organizationId, note.borrowerId)
+        ? await storage.getBorrowerLead(note.organizationId, note.borrowerId)
         : undefined;
       const borrowerLabel = borrower
         ? `${borrower.firstName ?? ""} ${borrower.lastName ?? ""}`.trim() || null
@@ -1825,7 +1825,7 @@ export function registerBorrowerRoutes(app: Express): void {
       // already done at session-mint time).
       let borrower = null;
       if (note.borrowerId) {
-        borrower = await storage.getLead(note.organizationId, note.borrowerId);
+        borrower = await storage.getBorrowerLead(note.organizationId, note.borrowerId);
       }
       if (!borrower) {
         return Errors.notFound(res, "Borrower");
@@ -2043,7 +2043,7 @@ export function registerBorrowerRoutes(app: Express): void {
           .where(eq(notes.id, session.noteId))
           .limit(1);
         if (note[0]?.borrowerId) {
-          const borrower = await storage.getLead(session.organizationId, note[0].borrowerId);
+          const borrower = await storage.getBorrowerLead(session.organizationId, note[0].borrowerId);
           if (borrower) {
             borrowerName = `${borrower.firstName ?? ""} ${borrower.lastName ?? ""}`.trim();
             borrowerAddress = [borrower.address, borrower.city, borrower.state, borrower.zip]

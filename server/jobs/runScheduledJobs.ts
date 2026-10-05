@@ -4969,10 +4969,10 @@ export async function runScheduledJobs(): Promise<void> {
           const {
             organizations: organizationsTbl,
             preChurnRungs,
-            leads,
             deals,
             notes: notesTable,
           } = await import("@shared/schema");
+          const { leadsIncludingDeleted } = await import("../storage/liveLeads");
           const { eq, sql: sqlOp } = await import("drizzle-orm");
           const RUNG_DAYS: Record<string, number> = {
             d5: 5, d10: 10, d14: 14, d21: 21, d30: 30,
@@ -4984,9 +4984,9 @@ export async function runScheduledJobs(): Promise<void> {
             if (org.subscriptionStatus !== "active") continue;
             try {
               const [recentLead] = await db
-                .select({ at: sqlOp<string>`max(${leads.createdAt})` })
-                .from(leads)
-                .where(eq(leads.organizationId, org.id));
+                .select({ at: sqlOp<string>`max(${leadsIncludingDeleted.createdAt})` })
+                .from(leadsIncludingDeleted)
+                .where(eq(leadsIncludingDeleted.organizationId, org.id));
               const [recentDeal] = await db
                 .select({ at: sqlOp<string>`max(${deals.createdAt})` })
                 .from(deals)

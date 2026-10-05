@@ -1557,7 +1557,7 @@ const processPayoffSkill: Skill = {
         return { success: false, error: "A payoff cannot be quoted for a past date" };
       }
 
-      const borrower = note.borrowerId ? await storage.getLead(note.organizationId, note.borrowerId) : undefined;
+      const borrower = note.borrowerId ? await storage.getBorrowerLead(note.organizationId, note.borrowerId) : undefined;
       const payerName = borrower ? `${borrower.firstName ?? ""} ${borrower.lastName ?? ""}`.trim() || null : null;
 
       const { quote, row } = await quoteServicedNotePayoff({

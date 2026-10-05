@@ -4,6 +4,7 @@ import { z } from "zod";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { insertTaskSchema, teamMembers, deals, leads, organizations } from "@shared/schema";
+import { liveLead } from "./storage/liveLeads";
 import { db } from "./db";
 import { eq, and, gte, lte, count, sql, desc } from "drizzle-orm";
 import { getOrganizationId, getUserId, type AuthenticatedRequest } from "./types/request";
@@ -422,7 +423,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const allLeads = await db
         .select()
         .from(leads)
-        .where(and(eq(leads.organizationId, orgId), gte(leads.createdAt, since)));
+        .where(and(eq(leads.organizationId, orgId), gte(leads.createdAt, since), liveLead()));
 
       const leaderboard = members.map((m) => {
         const memberDeals = allDeals.filter(
@@ -516,6 +517,7 @@ export function registerAnalyticsRoutes(app: Express): void {
         .where(
           and(
             eq(leads.organizationId, org.id),
+            liveLead(),
             gte(leads.createdAt, cutoff)
           )
         )
@@ -536,6 +538,7 @@ export function registerAnalyticsRoutes(app: Express): void {
         .where(
           and(
             eq(leads.organizationId, org.id),
+            liveLead(),
             gte(leads.createdAt, cutoff),
             sql`${leads.updatedAt} > ${leads.createdAt}`
           )
@@ -578,6 +581,7 @@ export function registerAnalyticsRoutes(app: Express): void {
         .where(
           and(
             eq(leads.organizationId, org.id),
+            liveLead(),
             gte(leads.createdAt, cutoff)
           )
         )

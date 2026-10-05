@@ -49,6 +49,7 @@ import { Router, type Response } from "express";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "./db";
+import { liveLead } from "./storage/liveLeads";
 import { users, type AutonomyPreferences } from "@shared/models/auth";
 import {
   activityLog,
@@ -245,7 +246,7 @@ async function readRunsOnItsOwn(orgId: number, startOfToday: Date, now: Date) {
       rescoredToday: sql<number>`count(*) filter (where ${leads.lastScoreAt} >= ${startOfToday})::int`,
     })
     .from(leads)
-    .where(eq(leads.organizationId, orgId));
+    .where(and(eq(leads.organizationId, orgId), liveLead()));
 
   // Borrower reminders prepared and parked for a tap.
   const [reminders] = await db

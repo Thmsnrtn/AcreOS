@@ -84,6 +84,7 @@ vi.mock("../../server/storage", () => {
     updateBorrowerSessionAccess: async (_token: string) => {},
     getOrganization: async (id: number) => ({ id, name: ORG_NAME, settings: {} }),
     getLead: async () => null,
+    getBorrowerLead: async () => null,
     updateNote: async () => undefined,
   };
 

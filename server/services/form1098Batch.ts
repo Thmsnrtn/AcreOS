@@ -48,7 +48,8 @@
  */
 
 import { db } from "../db";
-import { notes, organizations, payments, properties, leads } from "@shared/schema";
+import { notes, organizations, payments, properties } from "@shared/schema";
+import { leadsIncludingDeleted } from "../storage/liveLeads";
 import { acquiredNotes, notePayments } from "@shared/schema/notes-vertical";
 import { eq, inArray } from "drizzle-orm";
 import { jsPDF } from "jspdf";
@@ -1536,7 +1537,7 @@ interface BorrowerIdentity {
 async function loadBorrowers(ids: number[]): Promise<Map<number, BorrowerIdentity>> {
   const out = new Map<number, BorrowerIdentity>();
   if (ids.length === 0) return out;
-  const rows = await db.select().from(leads).where(inArray(leads.id, ids));
+  const rows = await db.select().from(leadsIncludingDeleted).where(inArray(leadsIncludingDeleted.id, ids));
   for (const l of rows) {
     out.set(l.id, {
       name: `${l.firstName ?? ""} ${l.lastName ?? ""}`.trim(),

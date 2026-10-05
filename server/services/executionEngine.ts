@@ -13,6 +13,7 @@
 
 import { db } from "../db";
 import { logger } from "../utils/logger";
+import { liveLead } from "../storage/liveLeads";
 import { wsServer } from "../websocket";
 import {
   leads, deals, properties, tasks, agentEvents,
@@ -87,7 +88,7 @@ const actionRegistry: Record<string, ActionExecutor> = {
     // which is the exact drift pipeline-status.ts was created to end.
     const [current] = await db.select({ status: leads.status })
       .from(leads)
-      .where(and(eq(leads.id, leadId), eq(leads.organizationId, ctx.orgId)))
+      .where(and(eq(leads.id, leadId), eq(leads.organizationId, ctx.orgId), liveLead()))
       .limit(1);
     if (!current) return fail(`Lead ${leadId} not found`);
 
@@ -100,7 +101,7 @@ const actionRegistry: Record<string, ActionExecutor> = {
 
     const updatedLeads = await db.update(leads)
       .set({ status: String(newStatus) })
-      .where(and(eq(leads.id, leadId), eq(leads.organizationId, ctx.orgId)))
+      .where(and(eq(leads.id, leadId), eq(leads.organizationId, ctx.orgId), liveLead()))
       .returning({ id: leads.id });
     if (updatedLeads.length === 0) return fail(`Lead ${leadId} not found`);
 

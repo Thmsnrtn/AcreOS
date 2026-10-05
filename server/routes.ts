@@ -4,6 +4,7 @@ import express from "express";
 import type { Server } from "http";
 import crypto from "crypto";
 import { storage, db } from "./storage";
+import { liveLead } from "./storage/liveLeads";
 
 // Auth imports
 import { clerkMiddleware, isAuthenticated, registerAuthRoutes, requireFounder } from "./auth";
@@ -2258,7 +2259,7 @@ export async function registerRoutes(
       }, {} as Record<string, number>);
 
       // Platform-wide usage stats
-      const [leadCount] = await db.select({ count: count() }).from(leads);
+      const [leadCount] = await db.select({ count: count() }).from(leads).where(liveLead());
       const [propertyCount] = await db.select({ count: count() }).from(properties);
       const [dealCount] = await db.select({ count: count() }).from(deals);
 

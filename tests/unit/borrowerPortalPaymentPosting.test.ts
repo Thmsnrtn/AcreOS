@@ -130,6 +130,8 @@ vi.mock("../../server/storage", () => ({
       return { ...NOTE_ROW, ...patch };
     }),
     getLead: vi.fn(async () => ({ id: 9, email: "borrower@example.com", firstName: "Bea", lastName: "Rowe" })),
+    // The servicing read (W10.2a): a note's borrower, deleted or not.
+    getBorrowerLead: vi.fn(async () => ({ id: 9, email: "borrower@example.com", firstName: "Bea", lastName: "Rowe" })),
     getOrganization: vi.fn(async () => ({ id: 7, name: "Acme Lender" })),
     logActivity: vi.fn(async (entry: Record<string, unknown>) => {
       state.activities.push(entry);

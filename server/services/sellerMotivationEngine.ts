@@ -42,6 +42,7 @@
 import { db } from "../db";
 import { leads, properties, deals, countyMarkets } from "@shared/schema";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 import { subDays, subYears, differenceInYears, differenceInDays } from "date-fns";
 import { logger } from "../utils/logger";
 
@@ -619,7 +620,7 @@ export async function rescoreLeadsForOrg(organizationId: number): Promise<{
   const orgLeads = await db
     .select()
     .from(leads)
-    .where(and(eq(leads.organizationId, organizationId), eq(leads.status, "active")))
+    .where(and(eq(leads.organizationId, organizationId), liveLead(), eq(leads.status, "active")))
     .limit(500);
 
   let processed = 0;
@@ -657,7 +658,7 @@ export async function rescoreLeadsForOrg(organizationId: number): Promise<{
           score: result.score,
           updatedAt: new Date(),
         })
-        .where(eq(leads.id, lead.id));
+        .where(and(eq(leads.id, lead.id), eq(leads.organizationId, organizationId), liveLead()));
 
       processed++;
       if (result.score >= 75) highMotivation++;

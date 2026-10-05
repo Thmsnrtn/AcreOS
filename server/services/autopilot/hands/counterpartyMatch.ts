@@ -15,12 +15,12 @@
 import { sql } from "drizzle-orm";
 import { db } from "../../../db";
 import {
-  leads,
   borrowerPaymentProfiles,
   borrowerSessions,
   autopayEnrollments,
   buyerReservations,
 } from "@shared/schema";
+import { leadsIncludingDeleted } from "../../../storage/liveLeads";
 
 /** Human-readable identification of the counterparty record an address hit. */
 export interface CounterpartyHit {
@@ -82,9 +82,9 @@ export async function counterpartyMatch(email: string): Promise<CounterpartyHit 
 
   const [lead, payProfile, session, autopay, reservation] = await Promise.all([
     db
-      .select({ id: leads.id, organizationId: leads.organizationId })
-      .from(leads)
-      .where(sql`lower(${leads.email}) = ${needle}`)
+      .select({ id: leadsIncludingDeleted.id, organizationId: leadsIncludingDeleted.organizationId })
+      .from(leadsIncludingDeleted)
+      .where(sql`lower(${leadsIncludingDeleted.email}) = ${needle}`)
       .limit(1),
     db
       .select({ id: borrowerPaymentProfiles.id, organizationId: borrowerPaymentProfiles.organizationId })

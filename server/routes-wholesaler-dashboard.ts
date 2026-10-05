@@ -25,6 +25,7 @@ import type { Express, Response } from "express";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import { deals, leads, buyerProfiles } from "@shared/schema";
+import { liveLead } from "./storage/liveLeads";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -140,7 +141,7 @@ export function registerWholesalerDashboardRoutes(app: Express): void {
         const [{ leadsCount = 0 } = {}] = await db
           .select({ leadsCount: sql<number>`COUNT(*)::int` })
           .from(leads)
-          .where(eq(leads.organizationId, orgId));
+          .where(and(eq(leads.organizationId, orgId), liveLead()));
 
         const dealCountsByStatus = await db
           .select({

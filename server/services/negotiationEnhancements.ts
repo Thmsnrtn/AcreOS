@@ -6,6 +6,7 @@
 import { db } from "../db";
 import { deals, offers, leads } from "@shared/schema";
 import { and, avg, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 
 import { ACTIVE_DEAL_STATUSES, ALL_FUNNEL_DEAL_STATUSES, CLOSED_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 // Item 71: Counter-offer templates
@@ -212,7 +213,7 @@ export async function getActiveOffers(orgId: number): Promise<any[]> {
 // Item 85: Quick offer from lead
 export async function quickOfferData(leadId: number, orgId: number): Promise<any> {
   const lead = await db.query.leads.findFirst({
-    where: and(eq(leads.id, leadId), eq(leads.organizationId, orgId)),
+    where: and(eq(leads.id, leadId), eq(leads.organizationId, orgId), liveLead()),
   });
   if (!lead) return null;
 

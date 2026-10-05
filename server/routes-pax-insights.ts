@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { db } from "./db";
+import { liveLead } from "./storage/liveLeads";
 import { storage } from "./storage";
 import { eq, and, asc, desc, gte, lte, gt, sql, inArray, isNull } from "drizzle-orm";
 import {
@@ -53,7 +54,7 @@ router.get("/greeting", async (req, res) => {
       const [recentLead] = await db
         .select({ state: leads.state })
         .from(leads)
-        .where(eq(leads.organizationId, org.id))
+        .where(and(eq(leads.organizationId, org.id), liveLead()))
         .orderBy(desc(leads.createdAt))
         .limit(1);
       if (recentLead?.state) {
@@ -145,7 +146,7 @@ router.get("/insights", async (req, res) => {
         doNotContact: leads.doNotContact,
       })
       .from(leads)
-      .where(eq(leads.organizationId, org.id));
+      .where(and(eq(leads.organizationId, org.id), liveLead()));
 
     const staleLeads = allActiveLeads
       .filter((l) => {
@@ -237,7 +238,7 @@ router.get("/insights", async (req, res) => {
         doNotContact: leads.doNotContact,
       })
       .from(leads)
-      .where(eq(leads.organizationId, org.id));
+      .where(and(eq(leads.organizationId, org.id), liveLead()));
 
     const motivatedLeads = fullLeads
       .filter((l) => {
@@ -319,7 +320,7 @@ router.get("/pax-suggestions", async (req, res) => {
         phone: leads.phone,
       })
       .from(leads)
-      .where(eq(leads.organizationId, org.id))
+      .where(and(eq(leads.organizationId, org.id), liveLead()))
       .orderBy(leads.lastContactedAt)
       .limit(50);
 

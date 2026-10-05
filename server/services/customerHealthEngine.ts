@@ -34,6 +34,7 @@ import {
 } from "@shared/schema";
 import { and, eq, gte, sql, desc } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { liveLead } from "../storage/liveLeads";
 
 const POINTS = {
   usageVelocity: 25,
@@ -105,7 +106,7 @@ async function scoreFeatureBreadth(orgId: number): Promise<{ pts: number; signal
   // Count distinct modules that have any data. Cap at 5 modules → full
   // points; 0 modules → zero points.
   const counts = await Promise.all([
-    db.select({ n: sql<number>`count(*)::int` }).from(leads).where(eq(leads.organizationId, orgId)),
+    db.select({ n: sql<number>`count(*)::int` }).from(leads).where(and(eq(leads.organizationId, orgId), liveLead())),
     db.select({ n: sql<number>`count(*)::int` }).from(properties).where(eq(properties.organizationId, orgId)),
     db.select({ n: sql<number>`count(*)::int` }).from(deals).where(eq(deals.organizationId, orgId)),
     db.select({ n: sql<number>`count(*)::int` }).from(notes).where(eq(notes.organizationId, orgId)),
@@ -145,7 +146,7 @@ async function scoreDataQuality(orgId: number): Promise<{ pts: number; signals: 
       complete: sql<number>`sum(case when ${leads.firstName} is not null and (${leads.email} is not null or ${leads.phone} is not null) then 1 else 0 end)::int`,
     })
     .from(leads)
-    .where(eq(leads.organizationId, orgId));
+    .where(and(eq(leads.organizationId, orgId), liveLead()));
   const total = Number(stats?.total ?? 0);
   const complete = Number(stats?.complete ?? 0);
   if (total === 0) {

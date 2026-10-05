@@ -15,6 +15,7 @@ import { generateWithAutoRouting } from "./aiRouter";
 
 // Migrated from direct OpenAI client to central aiRouter (P1-36).
 import { logger } from "../utils/logger";
+import { liveLead } from "../storage/liveLeads";
 
 type QualificationStatus = "pending" | "qualified" | "conditionally_qualified" | "not_qualified";
 type RiskLevel = "low" | "medium" | "high";
@@ -315,7 +316,7 @@ export class BuyerQualificationBotService {
     const identityVerified = false;
     if (profile.leadId) {
       const [lead] = await db.select().from(leads)
-        .where(and(eq(leads.id, profile.leadId), eq(leads.organizationId, profile.organizationId)));
+        .where(and(eq(leads.id, profile.leadId), eq(leads.organizationId, profile.organizationId), liveLead()));
       if (lead && lead.email && lead.phone) {
         notes.push("Email and phone on file (identity not verified)");
         score += 15;

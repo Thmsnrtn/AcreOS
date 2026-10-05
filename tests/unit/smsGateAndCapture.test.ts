@@ -89,6 +89,8 @@ vi.mock("../../server/storage", () => ({
     }),
     getNote: vi.fn(async (_orgId: number, id: number) => NOTES.get(id)),
     getLead: vi.fn(async (_orgId: number, id: number) => LEADS.find((l) => l.id === id)),
+    // The servicing read (W10.2a): a note's borrower, deleted or not.
+    getBorrowerLead: vi.fn(async (_orgId: number, id: number) => LEADS.find((l) => l.id === id)),
   },
 }));
 

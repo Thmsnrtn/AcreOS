@@ -41,6 +41,7 @@ import { count, sql, gte, and, eq, lt, inArray } from "drizzle-orm";
 import { METERED_TIERS, planLimitsFor } from "./planLimits";
 import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import { logger } from "../utils/logger";
+import { liveLead } from "../storage/liveLeads";
 
 /**
  * The five customer doors, as slugs. Derived from the canonical nav model
@@ -305,7 +306,7 @@ export async function computeLeadingIndicators(): Promise<LeadingIndicators> {
             added: sql<number>`count(*) FILTER (WHERE ${leads.createdAt} >= ${thirtyDaysAgo})::int`,
           })
           .from(leads)
-          .where(eq(leads.organizationId, org.id)),
+          .where(and(eq(leads.organizationId, org.id), liveLead())),
         db
           .select({
             total: count(),

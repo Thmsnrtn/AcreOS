@@ -6,6 +6,7 @@
 import { db } from "../db";
 import { deals, leads, campaigns, properties } from "@shared/schema";
 import { eq, and, gte, desc, sql, count } from "drizzle-orm";
+import { liveLead } from "../storage/liveLeads";
 import { logger } from "../utils/logger";
 
 // ── Throughput Analysis ─────────────────────────────────────────────
@@ -25,7 +26,7 @@ export async function analyzeThroughput(orgId: number, periodDays = 90): Promise
   const since = new Date(Date.now() - periodDays * 86400000);
 
   const [leadsResult] = await db.select({ cnt: count() }).from(leads)
-    .where(and(eq(leads.organizationId, orgId), gte(leads.createdAt, since)));
+    .where(and(eq(leads.organizationId, orgId), liveLead(), gte(leads.createdAt, since)));
 
   const [dealsCreated] = await db.select({ cnt: count() }).from(deals)
     .where(and(eq(deals.organizationId, orgId), gte(deals.createdAt, since)));
@@ -222,6 +223,7 @@ export async function computeAttributionROI(orgId: number): Promise<AttributionR
       0::numeric as revenue
     FROM leads l
     WHERE l.organization_id = ${orgId}
+      AND l.deleted_at IS NULL
       AND l.source IS NOT NULL
     GROUP BY l.source
     ORDER BY COUNT(DISTINCT l.id) DESC

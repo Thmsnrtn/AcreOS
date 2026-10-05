@@ -51,6 +51,7 @@ import {
 } from "@shared/schema";
 import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { liveLead } from "../storage/liveLeads";
 import { routeCriticalTask } from "./aiRouter";
 
 import { ACTIVE_DEAL_STATUSES, CLOSED_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
@@ -368,7 +369,7 @@ async function buildSummary(
           total: sql<number>`count(*)::int`,
         })
         .from(leads)
-        .where(eq(leads.organizationId, orgId)),
+        .where(and(eq(leads.organizationId, orgId), liveLead())),
       db
         .select({
           added: sql<number>`sum(case when created_at >= ${start} and created_at < ${end} then 1 else 0 end)::int`,

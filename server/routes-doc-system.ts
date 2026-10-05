@@ -7,6 +7,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
 import { deals, properties, leads, notes } from "@shared/schema";
+import { leadsIncludingDeleted } from "./storage/liveLeads";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { format as formatDate } from "date-fns";
 import { logger } from "./utils/logger";
@@ -107,8 +108,9 @@ async function resolveContextVariables(
         // org predicate makes the second step return nothing.
         const [seller] = await db
           .select()
-          .from(leads)
-          .where(and(eq(leads.id, prop.sellerId), eq(leads.organizationId, prop.organizationId)))
+          // A party on a legal document, deleted or not (W10.2a audit).
+          .from(leadsIncludingDeleted)
+          .where(and(eq(leadsIncludingDeleted.id, prop.sellerId), eq(leadsIncludingDeleted.organizationId, prop.organizationId)))
           .limit(1);
         if (seller) {
           ctx['seller_name'] = [seller.firstName, seller.lastName].filter(Boolean).join(' ');
@@ -124,8 +126,9 @@ async function resolveContextVariables(
         // Same shape, same fix as the seller read above.
         const [buyer] = await db
           .select()
-          .from(leads)
-          .where(and(eq(leads.id, prop.buyerId), eq(leads.organizationId, prop.organizationId)))
+          // A party on a legal document, deleted or not (W10.2a audit).
+          .from(leadsIncludingDeleted)
+          .where(and(eq(leadsIncludingDeleted.id, prop.buyerId), eq(leadsIncludingDeleted.organizationId, prop.organizationId)))
           .limit(1);
         if (buyer) {
           ctx['buyer_name'] = [buyer.firstName, buyer.lastName].filter(Boolean).join(' ');

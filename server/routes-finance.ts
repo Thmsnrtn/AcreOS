@@ -1556,7 +1556,7 @@ export function registerFinanceRoutes(app: Express): void {
       doc.moveDown();
 
       // Note terms
-      const borrower = note.borrowerId ? await storage.getLead(org.id, note.borrowerId) : null;
+      const borrower = note.borrowerId ? await storage.getBorrowerLead(org.id, note.borrowerId) : null;
       const borrowerLabel = borrower ? `${borrower.firstName} ${borrower.lastName}` : "N/A";
       doc.fontSize(10);
       doc.text(`Note ID: ${noteId}`);

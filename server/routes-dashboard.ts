@@ -4,6 +4,7 @@ import { z } from "zod";
 import { and, desc, eq, notInArray, sql } from "drizzle-orm";
 import { leads, deals, properties, payments, notes, activityLog, goals, insertGoalSchema } from "@shared/schema";
 import { gte, lte, count as sqlCount } from "drizzle-orm";
+import { liveLead } from "./storage/liveLeads";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { cacheResponse } from "./middleware/responseCache";
@@ -571,6 +572,7 @@ export function registerDashboardRoutes(app: Express): void {
           .from(leads)
           .where(and(
             eq(leads.organizationId, orgId),
+            liveLead(),
             // Same inert `converted` term as routes-today, same bare-SQL
             // spelling that hid it from the vocabulary scan.
             notInArray(leads.status, [...TERMINAL_LEAD_STATUSES]),
@@ -582,6 +584,7 @@ export function registerDashboardRoutes(app: Express): void {
           .from(leads)
           .where(and(
             eq(leads.organizationId, orgId),
+            liveLead(),
             // Same inert `converted` term as routes-today, same bare-SQL
             // spelling that hid it from the vocabulary scan.
             notInArray(leads.status, [...TERMINAL_LEAD_STATUSES]),

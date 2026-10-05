@@ -59,6 +59,8 @@ const H = vi.hoisted(() => ({
   storage: {
     getNote: vi.fn(async (_orgId: number, _noteId: number) => null as any),
     getLead: vi.fn(async () => null as any),
+    // The servicing read (W10.2a): a note's borrower, deleted or not.
+    getBorrowerLead: vi.fn(async () => null as any),
     updateNote: vi.fn(async () => undefined),
     recordReminderOutcome: vi.fn(
       async (_id: number, _outcome: { status: string; reason?: string | null; acceptedBy?: string | null }) =>
@@ -169,6 +171,7 @@ beforeEach(() => {
   H.getPaxControls.mockResolvedValue(controls());
   H.storage.getNote.mockResolvedValue(ACTIVE_NOTE);
   H.storage.getLead.mockResolvedValue(BORROWER);
+  H.storage.getBorrowerLead.mockResolvedValue(BORROWER);
   H.storage.findLadderReminder.mockResolvedValue(undefined);
 });
 

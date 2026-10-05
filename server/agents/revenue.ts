@@ -38,7 +38,7 @@ export class RevenueAgent extends BaseAgent {
     // Find users at >80% of any tier limit
     const orgs = await db.execute(sql`
       SELECT o.id, o.name, o.owner_id, o.subscription_tier,
-        (SELECT COUNT(*) FROM leads l WHERE l.organization_id = o.id) as lead_count,
+        (SELECT COUNT(*) FROM leads l WHERE l.organization_id = o.id AND l.deleted_at IS NULL) as lead_count,
         (SELECT COUNT(*) FROM properties p WHERE p.organization_id = o.id) as property_count,
         (SELECT COUNT(*) FROM notes n WHERE n.organization_id = o.id) as note_count
       FROM organizations o

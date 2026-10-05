@@ -27,6 +27,7 @@ import {
 import { eq, and, desc, gte, sql, count } from "drizzle-orm";
 import { DataSourceBroker } from "./data-source-broker";
 import { logger } from "../utils/logger";
+import { liveLead } from "../storage/liveLeads";
 
 import { ENGAGED_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 interface ScoreFactorResult {
@@ -87,7 +88,8 @@ export class LeadScoringService {
     const [lead] = await db.select().from(leads)
       .where(and(
         eq(leads.id, leadId),
-        eq(leads.organizationId, organizationId)
+        eq(leads.organizationId, organizationId),
+        liveLead()
       ));
     
     if (!lead) {
@@ -146,7 +148,7 @@ export class LeadScoringService {
         lastScoreAt: new Date(),
         nurturingStage: recommendation === "mail" ? "hot" : recommendation === "maybe" ? "warm" : "cold",
       })
-      .where(eq(leads.id, leadId));
+      .where(and(eq(leads.id, leadId), liveLead()));
     
     return {
       leadId,
@@ -719,7 +721,7 @@ export class LeadScoringService {
     // that route is what makes the guarantee hold for both.)
     const [ownedLead] = await db.select({ id: leads.id })
       .from(leads)
-      .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)))
+      .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId), liveLead()))
       .limit(1);
     if (!ownedLead) return;
 
