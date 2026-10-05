@@ -6,6 +6,7 @@ vi.mock("../../server/utils/logger", () => ({
 
 import {
   fetchGeo,
+  FetchGeoUrlRefused,
   GEO_USER_AGENT,
   __resetFetchGeoLimiters,
 } from "../../server/services/providers/fetchGeo";
@@ -90,6 +91,17 @@ describe("fetchGeo", () => {
     await expect(fetchGeo("https://10.0.0.1/internal")).rejects.toThrow(/SSRF/);
     await expect(fetchGeo("http://example.gov/x")).rejects.toThrow(/SSRF/); // non-https
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("a URL it will not fetch (SSRF-blocked, unparseable) is a typed FetchGeoUrlRefused — a caller can tell it from a failed request", async () => {
+    const spy = vi.spyOn(global, "fetch").mockResolvedValue(mockResponse(200));
+    for (const url of ["https://10.0.0.1/internal", "http://example.gov/x", "not a url"]) {
+      await expect(fetchGeo(url), url).rejects.toBeInstanceOf(FetchGeoUrlRefused);
+    }
+    expect(spy).not.toHaveBeenCalled();
+    // A request that was sent and failed is NOT that type.
+    spy.mockRejectedValue(new TypeError("fetch failed"));
+    await expect(fetchGeo("https://example.gov/x", { retries: 0, ratePerSec: 1000 })).rejects.not.toBeInstanceOf(FetchGeoUrlRefused);
   });
 
   it("rate-limits per host: a tight budget slows concurrent calls", async () => {

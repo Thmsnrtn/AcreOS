@@ -138,7 +138,7 @@ export async function seedAcreosBrandProfile(): Promise<BrandProfile> {
       },
     },
     founderVoiceSamples: [
-      "Pull lists, run comps, send mail, draft replies, and track every deal through closing. Whether you flip land, buy notes, rehab houses, wholesale contracts, subdivide, or buy-and-hold — AcreOS does the busy work so the operator only handles judgment calls.",
+      "Run comps, send mail, draft replies, and track every deal through closing. Whether you flip land, buy notes, rehab houses, wholesale contracts, subdivide, or buy-and-hold — AcreOS does the busy work so the operator only handles judgment calls.",
       "Three steps. Most happens on its own. Define the buy-box. AcreOS does the busy work. Operator makes the calls.",
       "Replies drafted within sixty seconds of an inbound message, queued for review before send.",
     ],

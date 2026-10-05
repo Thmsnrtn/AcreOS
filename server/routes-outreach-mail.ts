@@ -19,7 +19,7 @@
 import type { Express, Response } from "express";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, lte, sql, type SQL } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors, sendError } from "./utils/errors";
@@ -35,6 +35,8 @@ import {
   mailQrScanEvents,
   mailShipments,
   mailShipmentPieces,
+  marketingListMembers,
+  marketingLists,
   type MailShipmentRow,
 } from "@shared/schema";
 import { TIER_LIMITS, type SubscriptionTier } from "./services/usageLimits";
@@ -180,6 +182,7 @@ interface Recipient {
 class AudienceRefusal extends Error {
   constructor(
     readonly code:
+      | "list_not_found"
       | "list_membership_unavailable"
       | "saved_views_unavailable"
       | "county_needs_state"
@@ -215,6 +218,40 @@ const MAX_AUDIENCE = 50_000;
 const normCounty = (c: string) => c.trim().toLowerCase().replace(/\s+county$/i, "").replace(/\s+/g, " ");
 
 /**
+ * How a chosen list's members fared against the composer's audience rules:
+ * each live member lands in exactly one of included / optedOut /
+ * noMailingAddress / outsideFilters, so the excluded are COUNTED, by reason,
+ * never silently dropped.
+ */
+interface ListMemberAccounting {
+  lists: number;
+  members: number;
+  included: number;
+  excluded: { optedOut: number; noMailingAddress: number; outsideFilters: number };
+  /** One plain sentence the composer can show as-is. */
+  message: string;
+}
+
+interface Audience {
+  recipients: Recipient[];
+  /** Null when no list was chosen. */
+  listMembers: ListMemberAccounting | null;
+}
+
+function listMemberMessage(a: Omit<ListMemberAccounting, "message">): string {
+  const out = a.members - a.included;
+  if (a.members === 0) return "The chosen list has no current leads on it.";
+  if (out === 0) return `All ${a.members.toLocaleString()} list members can be mailed.`;
+  const why: string[] = [];
+  // County-list leads carry the PARCEL's address (property_address), not a
+  // mailing address — no mailing address is ever invented for them.
+  if (a.excluded.noMailingAddress) why.push(`${a.excluded.noMailingAddress.toLocaleString()} have no mailing address yet (skip-trace them first)`);
+  if (a.excluded.optedOut) why.push(`${a.excluded.optedOut.toLocaleString()} opted out`);
+  if (a.excluded.outsideFilters) why.push(`${a.excluded.outsideFilters.toLocaleString()} are outside the state, county or acreage you chose`);
+  return `${out.toLocaleString()} of ${a.members.toLocaleString()} list members can't be mailed: ${why.join(", ")}.`;
+}
+
+/**
  * Resolves the audience filter to the exact recipient set, ordered by lead id
  * so the same set always reads the same way.
  *
@@ -225,28 +262,25 @@ const normCounty = (c: string) => c.trim().toLowerCase().replace(/\s+county$/i, 
  * a stateless list mailed the whole CRM, silently capped at 50,000.
  *
  * Now every field of the filter either narrows the set exactly or refuses:
- * marketing lists carry no member records (only import metadata), and saved
- * views have no programmatic resolver, so both are refused rather than
- * approximated; a county needs its state (a "Washington County" exists in 30
- * states); more than MAX_AUDIENCE recipients is refused, never cut.
+ * a list narrows to its recorded MEMBERS (marketing_list_members, W10.3) —
+ * a list that is not this org's, or that records no members (imported before
+ * lists kept them), is refused rather than approximated, and the members the
+ * rules below exclude are counted by reason (ListMemberAccounting); saved
+ * views have no programmatic resolver, so they are refused; a county needs
+ * its state (a "Washington County" exists in 30 states); more than
+ * MAX_AUDIENCE recipients is refused, never cut.
  */
 async function resolveAudience(
   organizationId: number,
   filter: z.infer<typeof audienceFilterSchema>,
-): Promise<Recipient[]> {
-  if (filter.leadListIds && filter.leadListIds.length > 0) {
-    throw new AudienceRefusal(
-      "list_membership_unavailable",
-      "Marketing lists don't record which leads belong to them yet, so a list can't choose recipients. " +
-        "Filter by state, county and acreage instead.",
-    );
-  }
+): Promise<Audience> {
   if (filter.savedViewIds && filter.savedViewIds.length > 0) {
     throw new AudienceRefusal(
       "saved_views_unavailable",
       "Saved views can't choose mail recipients yet. Filter by state, county and acreage instead.",
     );
   }
+  const listIds = Array.from(new Set(filter.leadListIds ?? []));
   const states = (filter.states ?? []).map((s) => s.trim().toUpperCase()).filter(Boolean);
   const counties = Array.from(new Set((filter.counties ?? []).map(normCounty).filter(Boolean)));
   if (counties.length > 0 && states.length !== 1) {
@@ -260,32 +294,68 @@ async function resolveAudience(
     );
   }
 
-  const conditions = [
-    eq(leads.organizationId, organizationId),
-    // SUPPRESSION. A seller who texts STOP has `doNotContact` and `optOutDate`
-    // set by handleInboundOptKeyword, and the consent-revocation record written
-    // alongside it names `direct_mail` among the revoked channels
-    // (smsService.ts, tcpaCompliance.ts). The same rule preMailDedupe.ts
-    // applies; the flusher re-checks it before the provider handoff, because
-    // a seller can opt out during the 30-minute hold.
-    sql`${leads.doNotContact} IS NOT TRUE`,
-    sql`${leads.optOutDate} IS NULL`,
+  let isListMember: SQL | null = null;
+  if (listIds.length > 0) {
+    const owned = await db
+      .select({ id: marketingLists.id, source: marketingLists.source })
+      .from(marketingLists)
+      .where(and(eq(marketingLists.organizationId, organizationId), inArray(marketingLists.id, listIds)));
+    if (owned.length !== listIds.length) {
+      throw new AudienceRefusal("list_not_found", "That list isn't one of your lists, so it can't choose recipients.");
+    }
+    // A county list's members ARE the list; any other list counts only if it
+    // records members. One that records none (imported before lists kept
+    // their members) cannot say who is on it — refused, never approximated.
+    // Asked PER LIST: one list's members never answer for another's.
+    const recorded = await db
+      .select({ listId: marketingListMembers.listId })
+      .from(marketingListMembers)
+      .where(and(eq(marketingListMembers.organizationId, organizationId), inArray(marketingListMembers.listId, listIds)))
+      .groupBy(marketingListMembers.listId);
+    const withMembers = new Set(recorded.map((r) => r.listId));
+    if (owned.some((l) => l.source !== "county_records" && !withMembers.has(l.id))) {
+      throw new AudienceRefusal(
+        "list_membership_unavailable",
+        "That list doesn't record which leads are on it (it was imported before lists kept their members), so it can't choose recipients. " +
+          "Filter by state, county and acreage instead.",
+      );
+    }
+    isListMember = sql`${leads.id} in (select ${marketingListMembers.leadId} from ${marketingListMembers} where ${marketingListMembers.organizationId} = ${organizationId} and ${inArray(marketingListMembers.listId, listIds)})`;
+  }
+
+  // SUPPRESSION. A seller who texts STOP has `doNotContact` and `optOutDate`
+  // set by handleInboundOptKeyword, and the consent-revocation record written
+  // alongside it names `direct_mail` among the revoked channels
+  // (smsService.ts, tcpaCompliance.ts). The same rule preMailDedupe.ts
+  // applies; the flusher re-checks it before the provider handoff, because
+  // a seller can opt out during the 30-minute hold.
+  const contactable = [sql`${leads.doNotContact} IS NOT TRUE`, sql`${leads.optOutDate} IS NULL`];
+  const mailingAddress = [
     sql`${leads.address} IS NOT NULL`,
     sql`${leads.city} IS NOT NULL`,
     sql`${leads.state} IS NOT NULL`,
     sql`${leads.zip} IS NOT NULL`,
   ];
-  if (states.length > 0) conditions.push(inArray(sql`upper(trim(${leads.state}))`, states));
+  const narrowing: SQL[] = [];
+  if (states.length > 0) narrowing.push(inArray(sql`upper(trim(${leads.state}))`, states));
   if (counties.length > 0) {
-    conditions.push(
+    narrowing.push(
       // "\\s" in source is "\s" in the SQL: a template literal cooks "\s" to "s",
       // which silently matched "hidalgoXcounty"-style nonsense and left every
       // county stored with a " County" suffix out of the audience.
       inArray(sql`lower(regexp_replace(trim(${leads.county}), '\\s+county$', '', 'i'))`, counties),
     );
   }
-  if (filter.acreageMin !== undefined) conditions.push(gte(leads.acreage, String(filter.acreageMin)));
-  if (filter.acreageMax !== undefined) conditions.push(lte(leads.acreage, String(filter.acreageMax)));
+  if (filter.acreageMin !== undefined) narrowing.push(gte(leads.acreage, String(filter.acreageMin)));
+  if (filter.acreageMax !== undefined) narrowing.push(lte(leads.acreage, String(filter.acreageMax)));
+
+  const conditions = [
+    eq(leads.organizationId, organizationId),
+    ...(isListMember ? [isListMember] : []),
+    ...contactable,
+    ...mailingAddress,
+    ...narrowing,
+  ];
 
   const rows = await db
     .select({
@@ -310,16 +380,49 @@ async function resolveAudience(
     );
   }
 
-  return rows.map((r) => ({
-    leadId: r.id,
-    firstName: r.firstName,
-    lastName: r.lastName,
-    addressLine1: r.address!,
-    city: r.city!,
-    state: r.state!,
-    zip: r.zip!,
-    lastContactedAt: r.lastContactedAt,
-  }));
+  let listMembers: ListMemberAccounting | null = null;
+  if (isListMember) {
+    // The same rules, as mutually exclusive buckets in order: opted out, then
+    // no mailing address, then outside the chosen filters; the rest are
+    // included. One statement, so the buckets sum to the member count.
+    const optedOut = sql`(${leads.doNotContact} IS TRUE OR ${leads.optOutDate} IS NOT NULL)`;
+    const noAddress = sql`(${leads.address} IS NULL OR ${leads.city} IS NULL OR ${leads.state} IS NULL OR ${leads.zip} IS NULL)`;
+    const inFilters = narrowing.length > 0 ? and(...narrowing)! : sql`true`;
+    const [agg] = await db
+      .select({
+        members: sql<number>`count(*)::int`,
+        optedOut: sql<number>`(count(*) filter (where ${optedOut}))::int`,
+        noMailingAddress: sql<number>`(count(*) filter (where not ${optedOut} and ${noAddress}))::int`,
+        included: sql<number>`(count(*) filter (where not ${optedOut} and not ${noAddress} and ${inFilters}))::int`,
+      })
+      .from(leads)
+      .where(and(eq(leads.organizationId, organizationId), isListMember, liveLead()));
+    const members = Number(agg?.members ?? 0);
+    const optedOutN = Number(agg?.optedOut ?? 0);
+    const noAddressN = Number(agg?.noMailingAddress ?? 0);
+    const included = Number(agg?.included ?? 0);
+    const base = {
+      lists: listIds.length,
+      members,
+      included,
+      excluded: { optedOut: optedOutN, noMailingAddress: noAddressN, outsideFilters: members - optedOutN - noAddressN - included },
+    };
+    listMembers = { ...base, message: listMemberMessage(base) };
+  }
+
+  return {
+    recipients: rows.map((r) => ({
+      leadId: r.id,
+      firstName: r.firstName,
+      lastName: r.lastName,
+      addressLine1: r.address!,
+      city: r.city!,
+      state: r.state!,
+      zip: r.zip!,
+      lastContactedAt: r.lastContactedAt,
+    })),
+    listMembers,
+  };
 }
 
 /**
@@ -492,9 +595,9 @@ export function registerOutreachMailRoutes(app: Express): void {
 
       try {
         const orgId = getOrganizationId(req);
-        const recipients = await resolveAudience(orgId, parsed.data.audienceFilter);
+        const { recipients, listMembers } = await resolveAudience(orgId, parsed.data.audienceFilter);
         const quote = await buildQuote(orgId, recipients, parsed.data.pieceType, parsed.data.speed, parsed.data.copy);
-        res.json(quote);
+        res.json({ ...quote, listMembers });
       } catch (err) {
         if (err instanceof AudienceRefusal) return sendAudienceRefusal(res, err);
         Errors.internal(res, err);
@@ -518,7 +621,7 @@ export function registerOutreachMailRoutes(app: Express): void {
       }
       try {
         const orgId = getOrganizationId(req);
-        const recipients = await resolveAudience(orgId, parsed.data.audienceFilter);
+        const { recipients, listMembers } = await resolveAudience(orgId, parsed.data.audienceFilter);
         const offset = parsed.data.offset ?? 0;
         const limit = parsed.data.limit ?? 50;
         res.json({
@@ -534,6 +637,7 @@ export function registerOutreachMailRoutes(app: Express): void {
             zip: r.zip,
           })),
           copy: parsed.data.copy ?? null,
+          listMembers,
         });
       } catch (err) {
         if (err instanceof AudienceRefusal) return sendAudienceRefusal(res, err);
@@ -585,8 +689,9 @@ export function registerOutreachMailRoutes(app: Express): void {
         // ONE audience read. The quote, the cap, the debit and the pieces
         // written all come from this set (it used to be read twice, so the
         // count charged and the pieces queued could differ).
-        const recipients = await resolveAudience(org.id, audienceFilter);
+        const { recipients, listMembers } = await resolveAudience(org.id, audienceFilter);
         if (recipients.length === 0) {
+          if (listMembers) return Errors.badRequest(res, `No one on that list can be mailed. ${listMembers.message}`, { listMembers });
           return Errors.badRequest(res, "No recipients match this audience filter");
         }
 
@@ -836,6 +941,7 @@ export function registerOutreachMailRoutes(app: Express): void {
           leavesAt: leavesAt.toISOString(),
           holdWindowMinutes: HOLD_WINDOW_MINUTES,
           quote,
+          listMembers,
           // Honest instrumentation report — the composer shows what will
           // actually be measured, so a later zero can be read as "nobody
           // scanned" rather than "we never looked".

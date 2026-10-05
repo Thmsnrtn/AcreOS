@@ -15,6 +15,10 @@ const h = vi.hoisted(() => ({
   props: [] as Array<Record<string, unknown>>,
   estimate: null as number | null,
   filters: null as Record<string, unknown> | null,
+  /** What readListMembership answers for the source list (W10.3 member lists). */
+  membership: { memberList: false, leads: [] as Array<Record<string, unknown>> },
+  membershipReads: [] as Array<{ org: number; list: unknown }>,
+  wholeBookReads: 0,
 }));
 
 vi.mock("../../server/storage", () => ({
@@ -33,8 +37,17 @@ vi.mock("../../server/storage", () => ({
   },
 }));
 vi.mock("../../server/storage/wholeBookReads", () => ({
-  readAllLeads: async () => h.leads,
+  readAllLeads: async () => {
+    h.wholeBookReads++;
+    return h.leads;
+  },
   readPropertiesBySellerIds: async () => h.props,
+}));
+vi.mock("../../server/storage/listBuilderRepo", () => ({
+  readListMembership: async (org: number, list: unknown) => {
+    h.membershipReads.push({ org, list });
+    return h.membership;
+  },
 }));
 vi.mock("../../server/services/comps", () => ({
   getPropertyComps: async () => ({ marketAnalysis: { estimatedValue: h.estimate } }),
@@ -73,6 +86,9 @@ beforeEach(() => {
   h.props = [];
   h.estimate = null;
   h.filters = null;
+  h.membership = { memberList: false, leads: [] };
+  h.membershipReads = [];
+  h.wholeBookReads = 0;
 });
 
 describe("DEFECT-0172 — no invented price", () => {
@@ -129,3 +145,31 @@ describe("DEFECT-0172 — only the list's members", () => {
     expect(h.created).toHaveLength(1);
   });
 });
+
+describe("W10.3 — a list that records its members offers exactly those members", () => {
+  it("offers the list's members — not the book — and does not re-filter them by the list's stored filters", async () => {
+    // A county list stores owner-type / years-owned filters no lead record can
+    // answer; filtering its members by them would offer nobody. Its members
+    // ARE the list.
+    h.filters = { states: ["TX"], ownerType: ["trust"], yearsOwned: 10 };
+    h.membership = { memberList: true, leads: [lead(2)] };
+    h.leads = [lead(1), lead(2)]; // lead 1 is in the book but NOT on the list
+    h.props = [prop(1), prop(2)];
+    h.estimate = 40_000;
+    await run();
+    expect(h.created.map((o) => o.leadId)).toEqual([2]);
+    expect(h.wholeBookReads).toBe(0);
+    expect(h.membershipReads).toEqual([{ org: 7, list: expect.objectContaining({ id: 9 }) }]);
+  });
+
+  it("a member list whose members are all gone offers nobody — never the whole book", async () => {
+    h.membership = { memberList: true, leads: [] };
+    h.leads = [lead(1)];
+    h.props = [prop(1)];
+    h.estimate = 40_000;
+    await run();
+    expect(h.created).toHaveLength(0);
+    expect(h.wholeBookReads).toBe(0);
+  });
+});
+

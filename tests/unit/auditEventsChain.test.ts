@@ -20,6 +20,7 @@ vi.mock("../../server/db", () => ({ db: {} }));
 import {
   GENESIS_PREV_HASH,
   canonicalAuditEventPayload,
+  chainAndInsertAuditEvent,
   computeEventRowHash,
   type AuditEventHashable,
 } from "../../server/utils/auditEventsChain";
@@ -97,5 +98,37 @@ describe("audit_events chain — row_hash linkage", () => {
     const recomputed = computeEventRowHash(prev, tampered);
 
     expect(recomputed).not.toBe(original);
+  });
+});
+
+describe("audit_events chain — inside the caller's transaction", () => {
+  it("reads the previous hash AND inserts through the executor it is given (the global db, an empty mock here, is never touched)", async () => {
+    const used: string[] = [];
+    const tx = {
+      select: () => {
+        used.push("select");
+        const chain: Record<string, unknown> = {
+          from: () => chain,
+          where: () => chain,
+          orderBy: () => chain,
+          limit: async () => [{ rowHash: "prev-hash-in-tx" }],
+        };
+        return chain;
+      },
+      insert: () => ({
+        values: (v: Record<string, unknown>) => ({
+          returning: async () => {
+            used.push("insert");
+            return [v];
+          },
+        }),
+      }),
+    };
+    const row = await chainAndInsertAuditEvent(
+      { action: "county_endpoint.licence_set", targetType: "county_endpoint", targetId: "41" },
+      tx as never,
+    );
+    expect(used).toEqual(["select", "insert"]);
+    expect(row.prevHash).toBe("prev-hash-in-tx");
   });
 });

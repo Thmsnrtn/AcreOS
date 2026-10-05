@@ -5,8 +5,11 @@
  * What each case replaced (all at POST /api/outreach/mail/queue unless named):
  *  1. A selected marketing list contributed only its `filters.states` — a
  *     "Hidalgo County" list mailed every eligible Texas lead, a list with no
- *     states (or an unknown id) mailed the whole CRM. Lists record no members,
- *     so a list is now REFUSED, never approximated.
+ *     states (or an unknown id) mailed the whole CRM. A list now chooses
+ *     EXACTLY its recorded members (marketing_list_members, W10.3), through
+ *     the composer's unchanged audience rules, and says how many members
+ *     those rules excluded and why; a list that records no members, or is
+ *     not this org's, is still REFUSED, never approximated.
  *  2. Counties were ignored. They now narrow the set — and need their state.
  *  3. 50,000+ matches were silently cut to 50,000. Now refused.
  *  4. The audience was read twice (queue, then quote), so the count charged and
@@ -51,6 +54,15 @@ const S = vi.hoisted(() => ({
   fundedByPurchased: false,
   /** Post-commit auto top-ups fired (audit of 1694a0b). */
   topUps: 0,
+  /** marketing_lists rows the org owns (the ownership read). */
+  lists: [] as Array<Record<string, unknown>>,
+  /** marketing_list_members rows (the "does it record members" read). */
+  memberRows: [] as Array<Record<string, unknown>>,
+  /** The list-member accounting aggregate over leads. */
+  listAgg: null as null | Record<string, number>,
+  listAggWhere: { sql: "", params: [] as unknown[] },
+  listAggFields: "",
+  tableReads: [] as string[],
 }));
 
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
@@ -75,6 +87,14 @@ vi.mock("../../server/db", () => {
       const name = getTableName(table as never);
       let where: { sql: string; params: unknown[] } = { sql: "", params: [] };
       const rows = () => {
+        S.tableReads.push(name);
+        if (name === "leads" && fields && "members" in fields) {
+          S.listAggWhere = where;
+          S.listAggFields = dialect.sqlToQuery((fields as Record<string, SQL>).noMailingAddress).sql;
+          return S.listAgg ? [S.listAgg] : [];
+        }
+        if (name === "marketing_lists") return S.lists;
+        if (name === "marketing_list_members") return S.memberRows;
         if (name === "leads") {
           S.leadReads++;
           S.leadWhere = where;
@@ -93,6 +113,7 @@ vi.mock("../../server/db", () => {
           return chain;
         },
         orderBy: () => chain,
+        groupBy: () => chain,
         limit: async () => rows(),
         then: (res: any, rej: any) => Promise.resolve(rows()).then(res, rej),
       };
@@ -218,20 +239,118 @@ beforeEach(() => {
   S.debitDelayMs = 0;
   S.fundedByPurchased = false;
   S.topUps = 0;
+  S.lists = [];
+  S.memberRows = [];
+  S.listAgg = null;
+  S.listAggWhere = { sql: "", params: [] };
+  S.listAggFields = "";
+  S.tableReads = [];
 });
 
 describe("the audience is exactly what the investor chose — or refused", () => {
-  it("a marketing list is refused: it records no members, so it cannot choose recipients", async () => {
+  it("a list that is not this org's is refused — nothing about anyone's leads is read", async () => {
     for (const path of ["/api/outreach/mail/quote", "/api/outreach/mail/queue"]) {
       const r = await request(app())
         .post(path)
         .set("Idempotency-Key", "op-list")
         .send({ audienceFilter: { leadListIds: [9] }, ...BASE, expectedAudienceDigest: "x" });
       expect(r.status, path).toBe(422);
-      expect(r.body.error).toBe("list_membership_unavailable");
+      expect(r.body.error).toBe("list_not_found");
     }
+    expect(S.tableReads).not.toContain("leads");
     expect(S.debitKeys).toEqual([]);
     expect(S.pieces).toBe(0);
+  });
+
+  it("a list that records no members (an import from before lists kept them) is refused, never approximated", async () => {
+    S.lists = [{ id: 9, source: "propstream" }];
+    S.memberRows = [];
+    for (const path of ["/api/outreach/mail/quote", "/api/outreach/mail/queue"]) {
+      const r = await request(app())
+        .post(path)
+        .set("Idempotency-Key", "op-list-2")
+        .send({ audienceFilter: { leadListIds: [9] }, ...BASE, expectedAudienceDigest: "x" });
+      expect(r.status, path).toBe(422);
+      expect(r.body.error).toBe("list_membership_unavailable");
+      expect(r.body.message).toMatch(/doesn't record which leads/);
+    }
+    expect(S.tableReads).not.toContain("leads");
+    expect(S.pieces).toBe(0);
+  });
+
+  it("EVERY chosen list must record its members: a county list beside a legacy list with none is refused, not mailed as the county list alone", async () => {
+    // W10.3 second audit, finding 6: the check read "does ANY chosen list
+    // record a member" — the county list's rows answered for the legacy list
+    // too, and the legacy list silently contributed nobody.
+    S.lists = [{ id: 9, source: "county_records" }, { id: 10, source: "propstream" }];
+    S.memberRows = [{ listId: 9 }];
+    for (const path of ["/api/outreach/mail/quote", "/api/outreach/mail/queue"]) {
+      const r = await request(app())
+        .post(path)
+        .set("Idempotency-Key", "op-list-3")
+        .send({ audienceFilter: { leadListIds: [9, 10] }, ...BASE, expectedAudienceDigest: "x" });
+      expect(r.status, path).toBe(422);
+      expect(r.body.error).toBe("list_membership_unavailable");
+    }
+    expect(S.tableReads).not.toContain("leads");
+    expect(S.pieces).toBe(0);
+  });
+
+  it("two lists that each record members are an audience", async () => {
+    S.lists = [{ id: 9, source: "county_records" }, { id: 10, source: "propstream" }];
+    S.memberRows = [{ listId: 9 }, { listId: 10 }];
+    S.listAgg = { members: 10, optedOut: 1, noMailingAddress: 6, included: 3 };
+    const q = await quoted({ audienceFilter: { leadListIds: [9, 10] }, ...BASE });
+    expect(q.pieceCount).toBe(3);
+  });
+
+  it("a list with members chooses EXACTLY its members, through the composer's unchanged rules", async () => {
+    S.lists = [{ id: 9, source: "county_records" }];
+    S.memberRows = [{ listId: 9 }];
+    S.listAgg = { members: 10, optedOut: 1, noMailingAddress: 6, included: 3 };
+    const q = await quoted({ audienceFilter: { leadListIds: [9] }, ...BASE });
+    expect(q.pieceCount).toBe(3);
+
+    // The recipients read: org-bound membership, AND every existing rule.
+    expect(S.leadWhere.sql).toMatch(/"marketing_list_members"\."organization_id" = \$\d+/);
+    expect(S.leadWhere.sql).toMatch(/"marketing_list_members"\."list_id" in \(\$\d+\)/);
+    for (const rule of ['"leads"."do_not_contact" is not true', '"leads"."opt_out_date" is null', '"leads"."address" is not null', '"leads"."zip" is not null', '"leads"."deleted_at" is null']) {
+      expect(S.leadWhere.sql.toLowerCase(), rule).toContain(rule);
+    }
+    const orgParams = [...S.leadWhere.sql.matchAll(/"organization_id" = \$(\d+)/g)].map((m) => S.leadWhere.params[Number(m[1]) - 1]);
+    expect(orgParams.length).toBeGreaterThanOrEqual(2);
+    expect(orgParams.every((p) => p === 42)).toBe(true);
+    expect(S.leadWhere.params).toContain(9);
+
+    // The accounting read is over the same members, live, in this org.
+    expect(S.listAggWhere.sql).toMatch(/"marketing_list_members"\."list_id" in/);
+    expect(S.listAggWhere.sql).toMatch(/"leads"\."deleted_at" is null/);
+    expect(S.listAggFields).toMatch(/"leads"\."address" is null/i);
+  });
+
+  it("says how many list members were excluded and why — never a silent drop", async () => {
+    S.lists = [{ id: 9, source: "county_records" }];
+    S.memberRows = [{ id: 1 }];
+    S.listAgg = { members: 10, optedOut: 1, noMailingAddress: 6, included: 3 };
+    for (const path of ["/api/outreach/mail/quote", "/api/outreach/mail/preview"]) {
+      const r = await request(app()).post(path).send({ audienceFilter: { leadListIds: [9], states: ["TX"] }, ...BASE });
+      expect(r.status, path).toBe(200);
+      expect(r.body.listMembers, path).toEqual({
+        lists: 1,
+        members: 10,
+        included: 3,
+        excluded: { optedOut: 1, noMailingAddress: 6, outsideFilters: 0 },
+        message: expect.stringMatching(/7 of 10 list members can't be mailed: 6 have no mailing address yet \(skip-trace them first\), 1 opted out/),
+      });
+    }
+  });
+
+  it("without a list, nothing changes: no list reads and no list accounting", async () => {
+    const r = await request(app()).post("/api/outreach/mail/quote").send(TX);
+    expect(r.status).toBe(200);
+    expect(r.body.listMembers).toBeNull();
+    expect(S.tableReads).not.toContain("marketing_lists");
+    expect(S.tableReads).not.toContain("marketing_list_members");
   });
 
   it("a county narrows the set, case- and suffix-insensitively, within its state", async () => {

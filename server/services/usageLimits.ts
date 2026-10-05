@@ -69,13 +69,27 @@ async function getOrganizationTierAndFounderStatus(organizationId: number): Prom
 // sample data" seeds (on by default at onboarding): the free tier allows 3
 // properties and 2 notes, and the sample book alone reached both, so a new
 // free org was at its limit before adding anything (DEFECT-0147).
-async function getLeadCount(organizationId: number): Promise<number> {
-  const [result] = await db
+/** Anything that can run a select: the global db, or a transaction's own connection. */
+type CountExecutor = Pick<typeof db, "select">;
+
+/**
+ * The org's leads as the PLAN counts them — the one predicate behind
+ * checkUsageLimit(…, "leads") — read through `exec`. A caller already inside
+ * a transaction passes its `tx`, so the count rides that connection instead
+ * of taking a second one from the pool while the first is held (W10.3: the
+ * list-builder save re-counts under its advisory lock).
+ */
+export async function countPlanLeads(exec: CountExecutor, organizationId: number): Promise<number> {
+  const [result] = await exec
     .select({ count: count() })
     .from(leads)
     // Nor a lead the customer deleted (DEFECT-0273).
     .where(and(eq(leads.organizationId, organizationId), realLead(), sql`${leads.deletedAt} IS NULL`));
   return result?.count ?? 0;
+}
+
+function getLeadCount(organizationId: number): Promise<number> {
+  return countPlanLeads(db, organizationId);
 }
 
 async function getPropertyCount(organizationId: number): Promise<number> {
@@ -138,6 +152,21 @@ async function getMonthlyAiRequestCount(organizationId: number): Promise<number>
 
 export interface UsageLimitOptions {
   isFounder?: boolean;
+}
+
+/**
+ * The org's plan limit for a resource (null = unlimited) — the same limit
+ * checkUsageLimit applies, without counting anything. For a caller that
+ * counts the resource itself, e.g. inside its own transaction (countPlanLeads).
+ */
+export async function usageLimitFor(
+  organizationId: number,
+  resourceType: ResourceType,
+  options: UsageLimitOptions = {},
+): Promise<number | null> {
+  const { tier, isFounder: orgIsFounder } = await getOrganizationTierAndFounderStatus(organizationId);
+  const isFounder = options.isFounder ?? orgIsFounder;
+  return (isFounder ? FOUNDER_TIER_LIMITS : TIER_LIMITS[tier])[resourceType];
 }
 
 export async function checkUsageLimit(

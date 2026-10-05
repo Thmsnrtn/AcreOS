@@ -247,6 +247,7 @@ import { registerFounderPulseRoutes } from "./routes-founder-pulse";
 import { registerFounderCoverageRoutes } from "./routes-founder-coverage";
 import { registerFounderPaidDataEvalRoutes } from "./routes-founder-paid-data-eval";
 import { registerCountyCoverageRoutes } from "./routes-county-coverage";
+import { registerListBuilderRoutes } from "./routes-list-builder";
 import { registerFounderCostRoutes } from "./routes-founder-cost";
 import { registerFounderAuditRoutes } from "./routes-founder-audit";
 import { registerFounderLifeCockpitRoutes } from "./routes-founder-life-cockpit";
@@ -2623,6 +2624,9 @@ export async function registerRoutes(
   // Customer county-coverage request — /api/county-coverage/* — the "request
   // this county" CTA (maps surface) that demand-drives discovery-on-miss.
   registerCountyCoverageRoutes(app);
+  // List builder v0 — /api/list-builder/* — count, preview and save a mailing
+  // list from a county's public parcel records (behind the Map door; W10.3).
+  registerListBuilderRoutes(app);
   // Cost summary — /api/founder/cost-summary. Consolidated cost view for
   // the /founder/cost screen (AI spend + infra + per-org breakdown).
   registerFounderCostRoutes(app);

@@ -27,6 +27,11 @@
   "allowlist": [
     {
       "kind": "export",
+      "id": "shared/geo/countyStatus.ts::COUNTY_STATUS_COPY",
+      "reason": "TEST-INTROSPECTION SEAM (same category as PAX_FIXED_RULES). The county status vocabulary's label + sentence table: production reads it only through this module's own projections (countyLiveSourceCopy for a live source, countyQueueStatusCopy for a queued one), which the coverage route and the list builder both call. W10.3 second audit, finding 4, moved both consumers onto countyLiveSourceCopy so a source reviewed and declined ('no') stops reading 'not reviewed yet'. It stays exported so countyStatusVocabulary.test.ts can pin that every status in COUNTY_LIST_STATUSES has a label and a full sentence, and that each projection answers in exactly these words. REVOCATION: if a client or server module imports it directly again, this entry is unnecessary; remove it."
+    },
+    {
+      "kind": "export",
       "id": "shared/pax-glossary.ts::PAX_FIXED_RULES",
       "reason": "TEST-INTROSPECTION SEAM (same category as redemptionDeadlineFromAnchor). The constant is composed into three other glossary exports inside this module, so it has no external PRODUCTION consumer by construction. It is exported so paxControlsPage.test.ts can pin the cadences the page prints against the jobs that actually run them ('every 15 min' for lead scoring, 'every 30 min' for borrower reminders, '8 am-9 pm' for texts) \u2014 a number the customer reads must be checkable against the registry that produces it. REVOCATION: if a client or server module imports it directly, this entry is unnecessary; remove it."
     },

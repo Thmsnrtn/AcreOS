@@ -11,6 +11,7 @@
  * Deep-link a tab with ?tab=<value> (e.g. ?tab=ai-spend) so the command palette
  * and bookmarks can land directly on a sub-view.
  */
+import { useId, useState } from "react";
 import { useSearch } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -22,11 +23,17 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
 import { EmptyState } from "@/components/empty-state";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest, ApiError, INLINE_ERROR_STATUSES_META } from "@/lib/queryClient";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { staggerContainer, staggerItem } from "@/lib/animations";
 import { formatRelative } from "@/lib/format";
-import { RefreshCw, Radio, ShieldAlert, Activity, HardDrive, ScanSearch, Scale } from "lucide-react";
+import { RefreshCw, Radio, ShieldAlert, Activity, HardDrive, ScanSearch, Scale, CheckCircle2 } from "lucide-react";
 
 import { CostContent } from "@/pages/founder/cost";
 import { AiCostsContent } from "@/pages/founder/ai-costs";
@@ -134,7 +141,22 @@ function DataPlaneTileSkeleton() {
   );
 }
 
+/**
+ * The Data plane tab: the six health checks, then the county licence review
+ * (W10.3) — a deep panel inside this existing instrument, no route of its own.
+ * The review renders whatever state the checks are in: it reads its own
+ * endpoint and must not vanish because the health snapshot failed.
+ */
 export function DataPlaneContent() {
+  return (
+    <>
+      <DataPlaneChecks />
+      <CountyLicenceReviewSection />
+    </>
+  );
+}
+
+function DataPlaneChecks() {
   const query = useQuery<DataPlaneResponse>({
     queryKey: DATA_PLANE_KEY,
     staleTime: 60_000,
@@ -602,6 +624,262 @@ function OutreachStopLossCard() {
             Resume is unavailable while the spend ledger is unreadable — resuming would mean spending
             blind. Outreach stays paused until the ledger read recovers.
           </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── County licence review (W10.3 audit fix 3) ───────────────────────────────
+// Every county_gis_endpoints row defaults to redistributable='review-required',
+// which makes its county VIEW-ONLY in the customer list builder: counted and
+// previewed, never saved into an org's leads. Saving is a founder licensing
+// decision (Beatrice rule, shared/schema/parcel-data.ts) — this is where it is
+// made, one source at a time, with the reason on the record. Nothing here
+// decides a posture; it records the founder's.
+//
+// THE WHOLE EFFECT of 'yes' / 'attribution' on an ACTIVE per-county row is two
+// things, and the copy says both: the list builder lets customers save that
+// county's records into their own CRMs, AND public parcel report pages persist
+// and publish the county's assessor attributes (server/services/
+// publicParcelReport.ts countyRedistribution). Both read only active rows, and
+// neither reads a statewide ('*') row — so a decision there changes nothing
+// until a matching per-county source is active.
+
+export const COUNTY_ENDPOINTS_REVIEW_URL = "/api/founder/county-endpoints?status=review-required";
+const COUNTY_ENDPOINTS_REVIEW_KEY = [COUNTY_ENDPOINTS_REVIEW_URL];
+const LICENCE_NOTE_MIN = 10;
+const LICENCE_NOTE_MAX = 1000;
+
+type LicencePosture = "yes" | "attribution" | "no" | "review-required";
+
+const LICENCE_ATTRIBUTION_MAX = 500;
+
+const LICENCE_POSTURES: ReadonlyArray<{ value: LicencePosture; label: string; effect: string }> = [
+  {
+    value: "yes",
+    label: "Redistributable",
+    effect: "customers can save this county's records into their own CRMs, and public parcel report pages publish its assessor attributes",
+  },
+  {
+    value: "attribution",
+    label: "Redistributable with attribution",
+    effect: "the same — saved into customers' CRMs and published in public parcel reports — with the credit line below shown",
+  },
+  { value: "no", label: "No redistribution", effect: "count and preview only; never saved into a CRM or published in a public parcel report" },
+  { value: "review-required", label: "Still under review", effect: "count and preview only, note recorded" },
+];
+
+interface CountyEndpointForReview {
+  id: number;
+  state: string;
+  county: string;
+  baseUrl: string;
+  redistributable: string;
+  /** The credit line on record for this source, if any. */
+  attribution?: string | null;
+  isActive: boolean;
+}
+
+interface CountyEndpointsReviewResponse {
+  endpoints: CountyEndpointForReview[];
+  total: number;
+}
+
+function CountyLicenceRow({ endpoint }: { endpoint: CountyEndpointForReview }) {
+  const qc = useQueryClient();
+  const baseId = useId();
+  const noteId = `${baseId}-note`;
+  const attributionId = `${baseId}-attribution`;
+  const [posture, setPosture] = useState<LicencePosture | "">("");
+  const [note, setNote] = useState("");
+  const [attribution, setAttribution] = useState(endpoint.attribution ?? "");
+  const trimmed = note.trim();
+  const noteOk = trimmed.length >= LICENCE_NOTE_MIN && trimmed.length <= LICENCE_NOTE_MAX;
+  const attributionLine = attribution.trim();
+  // 'attribution' is reuse ONLY with a credit line — the server refuses it without one.
+  const attributionOk = posture !== "attribution" || attributionLine.length > 0;
+
+  const record = useMutation<
+    { id: number; redistributable: string },
+    unknown,
+    { redistributable: LicencePosture; note: string; attribution?: string }
+  >({
+    // Refusals are shown on this row in the server's words, not as a toast.
+    meta: { [INLINE_ERROR_STATUSES_META]: [400, 422] },
+    mutationFn: async (body) => {
+      const res = await apiRequest("PATCH", `/api/founder/county-endpoints/${endpoint.id}/licence`, body);
+      return (await res.json()) as { id: number; redistributable: string };
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: COUNTY_ENDPOINTS_REVIEW_KEY });
+    },
+  });
+
+  const errorMessage =
+    record.error instanceof ApiError
+      ? (record.error.body?.message ?? record.error.message)
+      : record.error instanceof Error
+        ? record.error.message
+        : null;
+
+  return (
+    <li className="space-y-3 rounded-card border p-3" data-testid={`licence-row-${endpoint.id}`}>
+      <div className="space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium">
+            {endpoint.county}, {endpoint.state}
+          </span>
+          <Badge variant="secondary">{LICENSE_CLASSIFICATION_LABEL[endpoint.redistributable] ?? endpoint.redistributable}</Badge>
+          <Badge variant="outline">{endpoint.isActive ? "Active" : "Inactive"}</Badge>
+        </div>
+        <p className="break-all font-mono text-xs text-muted-foreground">{endpoint.baseUrl}</p>
+      </div>
+
+      <fieldset className="space-y-2">
+        <legend className="text-xs font-medium">Licence decision</legend>
+        <RadioGroup value={posture} onValueChange={(v) => setPosture(v as LicencePosture)} className="gap-1.5">
+          {LICENCE_POSTURES.map((p) => {
+            const id = `${baseId}-${p.value}`;
+            return (
+              <div key={p.value} className="flex min-h-11 items-center gap-2 pointer-fine:sm:min-h-8">
+                <RadioGroupItem id={id} value={p.value} data-testid={`licence-${endpoint.id}-option-${p.value}`} />
+                <Label htmlFor={id} className="text-sm font-normal">
+                  {p.label} <span className="text-muted-foreground">— {p.effect}</span>
+                </Label>
+              </div>
+            );
+          })}
+        </RadioGroup>
+      </fieldset>
+
+      {posture === "attribution" && (
+        <div className="space-y-1.5">
+          <Label htmlFor={attributionId} className="text-xs font-medium">
+            Attribution line (the credit customers and public reports must show)
+          </Label>
+          <Input
+            id={attributionId}
+            value={attribution}
+            onChange={(e) => setAttribution(e.target.value)}
+            maxLength={LICENCE_ATTRIBUTION_MAX}
+            placeholder="e.g. Parcel data: Coconino County Assessor"
+            data-testid={`licence-${endpoint.id}-attribution`}
+          />
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        <Label htmlFor={noteId} className="text-xs font-medium">
+          Review note (why — at least {LICENCE_NOTE_MIN} characters)
+        </Label>
+        <Textarea
+          id={noteId}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          maxLength={LICENCE_NOTE_MAX}
+          rows={2}
+          placeholder="e.g. Terms of use §4 permit commercial reuse with a credit line."
+          data-testid={`licence-${endpoint.id}-note`}
+        />
+      </div>
+
+      <Button
+        type="button"
+        size="sm"
+        disabled={!posture || !noteOk || !attributionOk || record.isPending}
+        onClick={() =>
+          posture &&
+          record.mutate({
+            redistributable: posture,
+            note: trimmed,
+            ...(posture === "attribution" && attributionLine ? { attribution: attributionLine } : {}),
+          })
+        }
+        className="min-h-11 pointer-fine:sm:min-h-9"
+        data-testid={`licence-${endpoint.id}-save`}
+      >
+        {record.isPending ? "Recording…" : "Record decision"}
+      </Button>
+
+      {record.isError && (
+        <Alert variant="destructive" data-testid={`licence-${endpoint.id}-error`}>
+          <AlertDescription>{errorMessage ?? "The decision wasn't recorded."}</AlertDescription>
+        </Alert>
+      )}
+      {record.isSuccess && (
+        <p className="flex items-center gap-1.5 text-sm text-muted-foreground" role="status" data-testid={`licence-${endpoint.id}-recorded`}>
+          <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+          Recorded as {LICENSE_CLASSIFICATION_LABEL[record.data.redistributable] ?? record.data.redistributable}.
+        </p>
+      )}
+    </li>
+  );
+}
+
+export function CountyLicenceReviewSection() {
+  const query = useQuery<CountyEndpointsReviewResponse>({
+    queryKey: COUNTY_ENDPOINTS_REVIEW_KEY,
+    queryFn: async () => {
+      const res = await apiRequest("GET", COUNTY_ENDPOINTS_REVIEW_URL);
+      return (await res.json()) as CountyEndpointsReviewResponse;
+    },
+    staleTime: 30_000,
+  });
+
+  return (
+    <Card className="mt-4" data-testid="county-licence-review">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Scale className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          County licence review
+        </CardTitle>
+        <CardDescription data-testid="licence-review-effect">
+          County sources awaiting your licence decision. Until one is marked redistributable, customers can count and
+          preview that county's parcels in the list builder but can't save them. Marking a source redistributable does
+          two things: customers can save its records into their own CRMs, and public parcel report pages persist and
+          publish its assessor attributes. Both read only active per-county sources — a decision on an inactive source
+          takes effect only once it is active, and a statewide (*) source is used by neither.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {query.isLoading ? (
+          <div className="space-y-2" data-testid="licence-review-loading" aria-busy="true">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-24 w-full" />
+            ))}
+          </div>
+        ) : query.isError || !query.data ? (
+          <QueryErrorState
+            compact
+            error={query.error instanceof Error ? query.error : null}
+            onRetry={() => void query.refetch()}
+            isRetrying={query.isFetching}
+            title="Couldn't load sources awaiting review"
+            description="Nothing is assumed about their licences — the review list just couldn't be read."
+            testId="licence-review-error"
+          />
+        ) : query.data.endpoints.length === 0 ? (
+          <EmptyState
+            icon={CheckCircle2}
+            headline="Nothing awaiting review"
+            subtitle="Every county source has a licence decision on record."
+            cta={{ label: "Check again", onClick: () => void query.refetch(), "data-testid": "button-licence-review-refresh" }}
+            testId="licence-review-empty"
+          />
+        ) : (
+          <div className="space-y-2">
+            <ul className="space-y-3">
+              {query.data.endpoints.map((e) => (
+                <CountyLicenceRow key={e.id} endpoint={e} />
+              ))}
+            </ul>
+            {query.data.total > query.data.endpoints.length && (
+              <p className="text-xs text-muted-foreground" data-testid="licence-review-bounded">
+                Showing the newest {query.data.endpoints.length} of {query.data.total} awaiting review.
+              </p>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>

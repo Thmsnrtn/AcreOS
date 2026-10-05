@@ -16,18 +16,98 @@
  * and guessing would be another invention.
  */
 
-const ENTITY_WORDS = new Set([
-  "LLC", "L.L.C.", "INC", "INC.", "CORP", "CORP.", "CORPORATION", "CO", "CO.", "COMPANY",
-  "LP", "L.P.", "LLP", "LTD", "LTD.", "TRUST", "TRUSTEE", "TRUSTEES", "TR", "ESTATE", "EST",
-  "HOLDINGS", "PARTNERS", "PARTNERSHIP", "ASSOCIATION", "ASSN", "FOUNDATION", "BANK",
-  "CHURCH", "MINISTRIES", "COUNTY", "CITY", "STATE", "TOWNSHIP", "DISTRICT", "AUTHORITY",
-  "HEIRS", "PROPERTIES", "INVESTMENTS", "VENTURES", "GROUP", "ENTERPRISES", "FARMS", "RANCH",
+/**
+ * An owner name as comparable words: upper-cased, "," and "&" as separators,
+ * each word's trailing punctuation dropped and its dots removed — so
+ * "LLC.", "L.L.C", "L.L.C." and "LLC" are one token, as are "TR." and "TR".
+ */
+function ownerWords(raw: string): string[] {
+  return raw
+    .toUpperCase()
+    .replace(/[,&]/g, " ")
+    .split(/\s+/)
+    .map((w) => w.replace(/[.,;:]+$/, "").replace(/\./g, ""))
+    .filter(Boolean);
+}
+
+const ESTATE_WORDS = new Set(["ESTATE", "EST", "HEIRS"]);
+const TRUST_WORDS = new Set([
+  "TRUST", "TRUSTEE", "TRUSTEES", "TR", "TRS", "TTEE", "TTEES", "CO-TRUSTEE", "CO-TRUSTEES",
 ]);
+const BUSINESS_OR_GOVERNMENT_WORDS = new Set([
+  "LLC", "INC", "CORP", "CORPORATION", "CO", "COMPANY", "LP", "LLP", "LTD", "BANK", "HOLDINGS",
+  "PARTNERS", "PARTNERSHIP", "ASSOCIATION", "ASSN", "FOUNDATION", "CHURCH", "MINISTRIES", "COUNTY",
+  "CITY", "STATE", "TOWNSHIP", "DISTRICT", "AUTHORITY", "PROPERTIES", "INVESTMENTS", "VENTURES",
+  "GROUP", "ENTERPRISES",
+  // Government and institutions (W10.3 audit).
+  "USA", "DEPT", "DEPARTMENT", "BOROUGH", "UNIVERSITY", "SCHOOL", "COMMISSION",
+]);
+/**
+ * Multi-word government owners. Matched as whole words in sequence, so
+ * "TOWN OF FAIRVIEW" is a government and "JOHN TOWNSEND" is a person.
+ */
+const GOVERNMENT_PHRASES = [
+  "UNITED STATES", "TOWN OF", "VILLAGE OF", "COUNTY OF", "STATE OF", "CITY OF", "BOARD OF",
+];
+/** Words that make an owner something other than a person, with no type of their own. */
+const OTHER_NON_PERSON_WORDS = new Set(["FARMS", "RANCH"]);
+
+function hasPhrase(words: string[], phrases: string[]): boolean {
+  const text = ` ${words.join(" ")} `;
+  return phrases.some((p) => text.includes(` ${p} `));
+}
+
+function isBusinessOrGovernment(words: string[]): boolean {
+  return words.some((w) => BUSINESS_OR_GOVERNMENT_WORDS.has(w)) || hasPhrase(words, GOVERNMENT_PHRASES);
+}
+
+/** True when the words read as an organisation, government, trust or estate — not a person. */
+function isNonPersonWords(words: string[]): boolean {
+  return (
+    isBusinessOrGovernment(words) ||
+    words.some((w) => ESTATE_WORDS.has(w) || TRUST_WORDS.has(w) || OTHER_NON_PERSON_WORDS.has(w))
+  );
+}
 
 /** True when an owner name reads as an organisation or trust, not a person. */
 function isEntityOwnerName(raw: string): boolean {
-  const words = raw.toUpperCase().replace(/[,&]/g, " ").split(/\s+/).filter(Boolean);
-  return words.some((w) => ENTITY_WORDS.has(w)) || /\bET\s+AL\b/i.test(raw);
+  return isNonPersonWords(ownerWords(raw)) || /\bET\s+AL\b/i.test(raw);
+}
+
+/**
+ * The four owner types a county list can filter on (W10.3 list builder).
+ * County parcel layers carry one owner-name string and no owner-type column,
+ * so the type is READ from the name by `classifyOwnerType` below.
+ */
+export const OWNER_TYPES = ["individual", "entity", "trust", "estate"] as const;
+export type OwnerType = (typeof OWNER_TYPES)[number];
+
+// The classifier only ever subdivides what isNonPersonWords already calls a
+// non-person — the SAME word lists splitOwnerName reads — so a name it types
+// as trust/estate/entity is exactly a name splitOwnerName gives no first
+// name: the two rules cannot disagree about whether an owner is a person.
+// Business and government words win over trust/estate ("FIRST TRUST CO" is a
+// company, "REAL ESTATE HOLDINGS LLC" is a company); estate wins over trust
+// ("ESTATE OF … TRUSTEE" is an estate).
+
+/**
+ * The owner type a county owner-name string reads as, or null when there is
+ * no name to read (an empty owner field is unknown — never "individual").
+ *
+ * "SMITH JOHN ET AL" is several people, so it is an individual owner even
+ * though splitOwnerName (correctly) gives it no first name.
+ */
+export function classifyOwnerType(raw: string | null | undefined): OwnerType | null {
+  const name = (raw ?? "").trim().replace(/\s+/g, " ");
+  if (!name) return null;
+  const words = ownerWords(name);
+  if (words.length === 0) return null;
+  const has = (set: Set<string>) => words.some((w) => set.has(w));
+  if (!isNonPersonWords(words)) return "individual";
+  if (isBusinessOrGovernment(words)) return "entity";
+  if (has(ESTATE_WORDS)) return "estate";
+  if (has(TRUST_WORDS)) return "trust";
+  return "entity";
 }
 
 export function splitOwnerName(raw: string): { firstName: string; lastName: string } {

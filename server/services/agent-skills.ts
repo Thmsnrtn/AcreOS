@@ -677,23 +677,40 @@ const generateBatchOffersSkill: Skill = {
         : null;
 
       // The list's MEMBERS, not every lead in the org (DEFECT-0172): this took
-      // all leads whenever a source list existed, ignoring its filters. A
-      // list is defined by `filters`; a lead is a member only when its record
-      // (and its property's) SUPPORTS every filter set — a filter the record
-      // cannot answer excludes it rather than letting it through. Read whole,
-      // not the newest 5000.
+      // all leads whenever a source list existed, ignoring its filters.
+      //
+      // A list that RECORDS its members (marketing_list_members — a county
+      // list from the list builder, W10.3) is exactly those members: its live
+      // member leads, org-bound, and nothing else. Its stored filters are not
+      // re-applied — they describe how the county was queried (owner type,
+      // years owned), which no lead record can answer, so re-filtering would
+      // offer nobody.
+      //
+      // A legacy list records only `filters`; a lead is a member only when
+      // its record (and its property's) SUPPORTS every filter set — a filter
+      // the record cannot answer excludes it rather than letting it through.
+      // Read whole, not the newest 5000.
       const { readAllLeads, readPropertiesBySellerIds } = await import("../storage/wholeBookReads");
-      const unprocessed = marketingList
-        ? (await readAllLeads(context.organizationId)).filter((l) => !processedLeadIds.has(l.id))
-        : [];
+      const { readListMembership } = await import("../storage/listBuilderRepo");
+      const membership = marketingList
+        ? await readListMembership(context.organizationId, { id: marketingList.id, source: marketingList.source ?? null })
+        : null;
+      const candidates = !marketingList
+        ? []
+        : membership?.memberList
+          ? membership.leads
+          : await readAllLeads(context.organizationId);
+      const unprocessed = candidates.filter((l) => !processedLeadIds.has(l.id));
       const sellerProperties = await readPropertiesBySellerIds(
         context.organizationId,
         unprocessed.map((l) => l.id),
       );
       const propertyBySeller = new Map(sellerProperties.map((p) => [p.sellerId, p]));
-      const batchLeads = marketingList
-        ? unprocessed.filter((l) => leadMatchesListFilters(l, propertyBySeller.get(l.id), marketingList.filters ?? null))
-        : [];
+      const batchLeads = !marketingList
+        ? []
+        : membership?.memberList
+          ? unprocessed
+          : unprocessed.filter((l) => leadMatchesListFilters(l, propertyBySeller.get(l.id), marketingList.filters ?? null));
 
       const pricing = {
         cashPercentage: pricingOverrides?.cashPercentage ?? 25,
@@ -829,15 +846,21 @@ const scrubLeadListSkill: Skill = {
         return { success: false, error: "Marketing list not found" };
       }
 
-      // TODO(tsc): marketing_lists has no leadIds column linking member leads.
-      // Until a list↔lead linkage exists, scrub across the org's leads — ALL
-      // of them (DEFECT-0171): the capped newest-5,000 list left the oldest
-      // leads unscrubbed and wrote 5,000 to the list as its totalRecords.
+      // WHICH LEADS. A list that records its members (marketing_list_members
+      // — a county list from the list builder, W10.3) is scrubbed over exactly
+      // its live member leads, org-bound. A legacy list records no members
+      // (only import metadata), so it is still scrubbed across the org's
+      // leads — ALL of them (DEFECT-0171): the capped newest-5,000 list left
+      // the oldest leads unscrubbed and wrote 5,000 to the list as its
+      // totalRecords.
       const { readAllLeads } = await import("../storage/wholeBookReads");
+      const { readListMembership } = await import("../storage/listBuilderRepo");
+      const membership = await readListMembership(context.organizationId, { id: list.id, source: list.source ?? null });
+      const scope = membership.memberList ? membership.leads : await readAllLeads(context.organizationId);
       // Newest first, as the capped list was: readAllLeads pages by id
       // ascending, which would spend the validation cap on the same oldest
       // leads every run and keep the oldest of each duplicate (W10.2b audit).
-      const listLeads = (await readAllLeads(context.organizationId)).sort(
+      const listLeads = [...scope].sort(
         (a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime() || b.id - a.id,
       );
 
@@ -909,8 +932,10 @@ const scrubLeadListSkill: Skill = {
         validLeadIds.push(lead.id);
       }
 
-      // marketing_lists has no leadIds/stats columns; persist the scrub results
-      // into the discrete record-count columns and mark processedAt.
+      // marketing_lists has no stats column; persist the scrub results into
+      // the discrete record-count columns and mark processedAt. (Membership
+      // is not rewritten from the scrub: an invalid or unvalidated address
+      // does not remove a lead from the list it is on.)
       void validLeadIds;
       await storage.updateMarketingList(context.organizationId, listId, {
         status: "scrubbed",

@@ -290,8 +290,19 @@ function handleQueryError(error: unknown, query?: { meta?: Record<string, unknow
   clientLogger.error("[Query Error]", err);
 }
 
-function handleMutationError(error: unknown): void {
+function handleMutationError(
+  error: unknown,
+  _variables?: unknown,
+  _context?: unknown,
+  mutation?: { meta?: Record<string, unknown> },
+): void {
   const err = error instanceof Error ? error : new Error(String(error));
+
+  // The caller renders this refusal inline (see INLINE_ERROR_STATUSES_META).
+  if (isInlineHandledError(error, mutation?.meta)) {
+    clientLogger.warn("[Mutation Error — rendered inline]", err);
+    return;
+  }
 
   if (isAuthError(err)) {
     toast({
@@ -414,6 +425,31 @@ export async function fetchJsonArray<T>(url: string): Promise<T[]> {
 export interface ApiRequestOptions {
   idempotent?: boolean;
   idempotencyKey?: string;
+  /**
+   * Per-request timeout (ms) for a call KNOWN to be slow on a good day — e.g.
+   * the list builder reading a county's own GIS service page by page. Omit it
+   * and the request gets the default REQUEST_TIMEOUT_MS ceiling, unchanged.
+   */
+  timeoutMs?: number;
+}
+
+/**
+ * Mutation `meta` key: HTTP statuses the calling component renders INLINE
+ * (a refusal in the server's own words beside the control that caused it).
+ * The global mutation-error toast stays silent for those statuses — a toast
+ * repeating the inline message is noise, and one saying something DIFFERENT
+ * is a contradiction. Every other failure (network, 5xx, any status not
+ * listed) still toasts.
+ *
+ *   useMutation({ ..., meta: { [INLINE_ERROR_STATUSES_META]: [400, 409] } })
+ */
+export const INLINE_ERROR_STATUSES_META = "inlineErrorStatuses";
+
+/** True when `meta` says this error's status is rendered inline by the caller. */
+export function isInlineHandledError(error: unknown, meta: Record<string, unknown> | undefined): boolean {
+  const statuses = meta?.[INLINE_ERROR_STATUSES_META];
+  if (!Array.isArray(statuses) || !(error instanceof ApiError)) return false;
+  return statuses.includes(error.status);
 }
 
 export function generateIdempotencyKey(): string {
@@ -459,7 +495,7 @@ async function doApiFetch(
     // single biggest cause of the "indefinite spinner" UX symptom in
     // the 2026-05-01 audit. AbortSignal.timeout throws a TimeoutError
     // which the existing retry logic + error toasts handle cleanly.
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(options?.timeoutMs ?? REQUEST_TIMEOUT_MS),
   });
 }
 

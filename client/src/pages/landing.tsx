@@ -61,7 +61,7 @@ import "./landing/landing.css";
  * (shared/pax-glossary.ts is the customer-facing wording of the same rule).
  */
 const PAGE_DESCRIPTION =
-  "AcreOS is the operating system for property investors — deepest in land: land flippers, note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords. Pull lists, run comps, send mail, draft replies, and track every deal through closing — Pax does the work and every message waits for your tap.";
+  "AcreOS is the operating system for property investors — deepest in land: land flippers, note investors, fix-and-flippers, wholesalers, subdividers, tax-delinquent buyers, and buy-and-hold landlords. Run comps, send mail, draft replies, and track every deal through closing — Pax does the work and every message waits for your tap.";
 
 export default function LandingPage() {
   // Title is intentionally NOT set here — index.html ships the canonical

@@ -8,10 +8,10 @@ import {
 } from "../storage/wholeBookReads";
 import { insertLeadSchema, insertPropertySchema, insertDealSchema, acquiredNotes, leads } from "@shared/schema";
 import { leadsIncludingDeleted } from "../storage/liveLeads";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { storage } from "../storage";
 import { db } from "../db";
-import { apnMatchForm, createParcelDedupeIndex } from "./leads/parcelDedupe";
+import { apnMatchesAny, createParcelDedupeIndex } from "./leads/parcelDedupe";
 // Wave B "Wire the engine" — CSV/bulk imports are a lead-creation path, so
 // they must fire lead.created just like the single-create route does.
 import { emitLeadCreated, emitLeadCreatedDurably } from "./leadEvents";
@@ -454,7 +454,7 @@ export async function importLeads(
       // onto the row even after it is deleted, and re-importing the list must
       // not mint a fresh, contactable row for someone who revoked consent
       // (audit of the fourth follow-up — DEFECT-0273's one exception).
-      .where(and(eq(leads.organizationId, organizationId), inArray(sql`upper(regexp_replace(trim(${leads.apn}), '\\s+', ' ', 'g'))`, incomingApns.slice(i, i + 1000).map(apnMatchForm))));
+      .where(and(eq(leads.organizationId, organizationId), apnMatchesAny(leads.apn, incomingApns.slice(i, i + 1000))));
     for (const r of existing) {
       if ((r.apn ?? "").trim()) existingParcels.add(r.state, r.county, r.apn ?? "");
     }

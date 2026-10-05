@@ -77,15 +77,24 @@ describe("RequestCountyCTA — failure is reported as failure (DEFECT-0113)", ()
 
 describe("coverage status — a resolved row with no live endpoint is not coverage (DEFECT-0113)", () => {
   it("the status resolver never reports `covered` from a queue row", async () => {
+    // W10.3 moved the mapping into the shared county vocabulary
+    // (shared/geo/countyStatus.ts); the invariant is unchanged: only a live
+    // endpoint is coverage, and a queue row — resolved or not — never is.
+    const { countyQueueStatusCopy } = await import("../../shared/geo/countyStatus");
+    for (const status of ["pending", "in_progress", "failed", "resolved", "exhausted", "anything-else"]) {
+      for (const attempts of [0, 3]) {
+        expect(["covered", "view_only"], `${status}/${attempts}`).not.toContain(countyQueueStatusCopy({ status, attempts }).status);
+      }
+    }
+    expect(countyQueueStatusCopy({ status: "resolved", attempts: 1 }).status).toBe("unavailable");
+    // …and the route maps queue rows through the shared copy (which uses it),
+    // not a local table.
     const { readFileSync } = await import("node:fs");
     const { resolve } = await import("node:path");
     const { stripComments } = await import("../helpers/stripComments");
     const src = stripComments(readFileSync(resolve(__dirname, "../../server/routes-county-coverage.ts"), "utf8"));
-    const at = src.indexOf("const statusMap");
-    expect(at, "vacuity: status map not found").toBeGreaterThan(-1);
-    const body = src.slice(at, src.indexOf("return {", at) + 400);
-    // Only the active-endpoint branch above may say covered.
-    expect(body).not.toMatch(/resolved:\s*\{\s*status:\s*"covered"/);
-    expect(body).not.toMatch(/covered:\s*q\.status === "resolved"/);
+    expect(src).toMatch(/countyQueueStatusCopy\(q\)/);
+    expect(src).not.toMatch(/resolved:\s*\{\s*status:\s*"covered"/);
+    expect(src).not.toMatch(/covered:\s*q\.status === "resolved"/);
   });
 });

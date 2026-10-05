@@ -8,6 +8,12 @@
  * exercises the REAL production surfaces end to end:
  *
  *   1. The Today door renders for the seeded customer.
+ *   1b. LIST (W10.3): from the Map door, the county list builder counts a
+ *      county's matching parcels and saves them as a list. The browser path
+ *      is real; the /api/list-builder/* answers are contract fixtures —
+ *      the server reads county GIS over https only and refuses loopback at
+ *      fetch time (server/services/providers/fetchGeo.ts), so CI cannot
+ *      stand up a fake county. The server path is proven by its HTTP tests.
  *   2. An SMS campaign is created via the real API (CSRF double-submit).
  *   3. The campaign is SENT through /api/campaigns/:id/send-sms — the full
  *      TCPA consent + quiet-hours pre-filter and upfront credit debit run
@@ -176,6 +182,78 @@ test.describe("wedge journey (lead → mail → reply → offer)", () => {
       // ── 1. Lead in: the Today door renders for the authed customer ──────
       await test.step("Today door renders", async () => {
         await expectRouteRenders(page, "/today");
+      });
+
+      // ── 1b. List: build a county list from the Map door (W10.3) ─────────
+      await test.step("list builder counts, then saves, from the Map door", async () => {
+        // Distinctive figures: the UI must render the server's numbers, never
+        // compute its own.
+        const PREVIEW = {
+          count: 1387,
+          sample: [{ apn: "202-15-007", owner: "MESA HOLDINGS LLC", acres: 4.75, address: "1 Vulture Mine Rd" }],
+          // The five parts sum to the count (212 + 1175 + 0 + 0 + 0 = 1387).
+          alreadyLeads: 212,
+          newLeads: 1175,
+          suppressedDeleted: 0,
+          skippedNoApn: 0,
+          skippedDuplicateApn: 0,
+          attribution: null,
+          cost: { pullCredits: 0, source: "Maricopa County Assessor (public GIS)", mailEstimate: null },
+          saveable: true,
+          saveRefusal: null,
+          maxPerList: 2500,
+          tooLarge: false,
+          status: "covered",
+        };
+        let committed: Record<string, unknown> | undefined;
+        await page.route("**/api/list-builder/counties**", (route) =>
+          route.fulfill({
+            json: {
+              counties: [
+                {
+                  state: "AZ",
+                  county: "Maricopa",
+                  status: "covered",
+                  label: "Covered",
+                  message: "Public parcel records are live for this county.",
+                  filters: { acreage: true, ownerType: true, yearsOwned: true },
+                },
+              ],
+            },
+          }),
+        );
+        await page.route("**/api/list-builder/lists**", (route) => route.fulfill({ json: { lists: [] } }));
+        await page.route("**/api/list-builder/preview", (route) => route.fulfill({ json: PREVIEW }));
+        await page.route("**/api/list-builder/commit", async (route) => {
+          committed = route.request().postDataJSON();
+          await route.fulfill({
+            status: 200,
+            json: { listId: 41, created: 1175, linkedExisting: 212, total: 1387, suppressedDeleted: 0, skippedNoApn: 0, skippedDuplicateApn: 0 },
+          });
+        });
+
+        await expectRouteRenders(page, "/maps");
+        await page.getByTestId("button-open-list-builder").first().click();
+        await expect(page.getByTestId("list-builder-sheet")).toBeVisible();
+        await page.getByTestId("select-list-state").click();
+        await page.getByRole("option", { name: "Arizona" }).click();
+        await page.getByTestId("county-option-Maricopa").click();
+        await page.getByTestId("input-acreage-min").fill("2");
+        await page.getByTestId("button-list-count").click();
+
+        await expect(page.getByTestId("preview-count")).toContainText("1,387");
+        await expect(page.getByTestId("preview-already-leads")).toContainText("212");
+        await expect(page.getByTestId("preview-new-leads")).toContainText("1,175");
+        await expect(page.getByTestId("preview-sample-row")).toHaveCount(1);
+
+        await page.getByTestId("input-list-name").fill("Maricopa 2+ acres (e2e)");
+        await page.getByTestId("button-list-save").click();
+        await expect(page.getByTestId("commit-success")).toBeVisible();
+        await expect(page.getByTestId("link-saved-list-leads")).toHaveAttribute("href", /listId=41\b/);
+        // The save re-runs the count server-side against what was shown.
+        expect(committed).toMatchObject({ state: "AZ", county: "Maricopa", acreageMin: 2, expectedCount: 1387 });
+
+        await page.unrouteAll({ behavior: "ignoreErrors" });
       });
 
       // ── 2. Mail out: create + send the SMS campaign (simulated Twilio) ──

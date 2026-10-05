@@ -42,6 +42,18 @@ export interface QuoteResponse {
   alternatives: ProviderQuoteAlt[];
   recentlyMailedCount: number;
   recentlyMailedFraction: number;
+  /** How a chosen saved list's members were counted; null when no list was chosen. */
+  listMembers?: ListMemberAccounting | null;
+}
+
+/** The server's accounting of a saved list's members (routes-outreach-mail.ts). */
+export interface ListMemberAccounting {
+  lists: number;
+  members: number;
+  included: number;
+  excluded: { optedOut: number; noMailingAddress: number; outsideFilters: number };
+  /** One plain sentence, shown as-is. */
+  message: string;
 }
 
 export interface QueueResponse {

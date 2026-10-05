@@ -23,11 +23,16 @@ const H = vi.hoisted(() => ({
   notFound: new Set<string>(),
   noSource: new Set<string>(),
   update: undefined as Record<string, unknown> | undefined,
+  /** Members of list 4 (a county list); list 3 records none (a legacy list). */
+  members: [] as Array<{ id: number; address: string | null; city: string | null; state: string | null; createdAt: Date }>,
+  wholeBookReads: 0,
 }));
 
 vi.mock("../../server/storage", () => ({
   storage: {
-    getMarketingListById: vi.fn(async (org: number, id: number) => (org === 5 && id === 3 ? { id: 3 } : undefined)),
+    getMarketingListById: vi.fn(async (org: number, id: number) =>
+      org === 5 && id === 3 ? { id: 3, source: "propstream" } : org === 5 && id === 4 ? { id: 4, source: "county_records" } : undefined,
+    ),
     updateMarketingList: vi.fn(async (_o: number, _id: number, patch: Record<string, unknown>) => {
       H.update = patch;
       return patch;
@@ -35,7 +40,15 @@ vi.mock("../../server/storage", () => ({
   },
 }));
 vi.mock("../../server/storage/wholeBookReads", () => ({
-  readAllLeads: vi.fn(async (org: number) => (org === 5 ? H.leads : [])),
+  readAllLeads: vi.fn(async (org: number) => {
+    H.wholeBookReads++;
+    return org === 5 ? H.leads : [];
+  }),
+}));
+vi.mock("../../server/storage/listBuilderRepo", () => ({
+  readListMembership: vi.fn(async (org: number, list: { id: number; source: string | null }) =>
+    org === 5 && list.id === 4 ? { memberList: true, leads: H.members } : { memberList: false, leads: [] },
+  ),
 }));
 vi.mock("../../server/services/data-source-broker", () => ({
   dataSourceBroker: {
@@ -61,6 +74,8 @@ beforeEach(() => {
   H.notFound = new Set();
   H.noSource = new Set();
   H.update = undefined;
+  H.members = [];
+  H.wholeBookReads = 0;
 });
 
 // readAllLeads pages by id ascending; a higher id is a newer lead here.
@@ -118,5 +133,24 @@ describe("scrubLeadList", () => {
     expect(r.data.enriched).toBe(0);
     expect(r.costIncurred).toBe(0);
     expect(r.message).toMatch(/enrichment is not available/);
+  });
+
+  it("W10.3: a list that records its members scrubs exactly those members — not the book", async () => {
+    H.leads = Array.from({ length: 50 }, (_, i) => lead(i + 1));
+    H.members = [lead(7), lead(9), { ...lead(11), address: "7 Main St" }];
+    const r = await skillRegistry.getSkillById("scrubLeadList")!.execute({ listId: 4 }, { organizationId: 5 });
+    expect(r.success).toBe(true);
+    expect(H.wholeBookReads).toBe(0);
+    expect(r.data).toMatchObject({ total: 3, valid: 2, duplicates: 1 });
+    expect(H.looked.sort()).toEqual(["7 Main St", "9 Main St"]);
+    expect(H.update).toMatchObject({ totalRecords: 3, validRecords: 2, duplicatesRemoved: 1 });
+  });
+
+  it("W10.3: the validation cap still holds for a member list (newest first)", async () => {
+    H.members = Array.from({ length: 5003 }, (_, i) => lead(i + 1));
+    const r = await skillRegistry.getSkillById("scrubLeadList")!.execute({ listId: 4 }, { organizationId: 5 });
+    expect(H.lookups).toBe(5000);
+    expect(H.looked[0]).toBe("5003 Main St");
+    expect(r.data).toMatchObject({ total: 5003, valid: 5000, unvalidated: 3 });
   });
 });

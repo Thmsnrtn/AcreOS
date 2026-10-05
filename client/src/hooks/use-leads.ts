@@ -5,6 +5,7 @@ import { apiRequest, STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
+import { okOrThrow } from "@/lib/fetch-honesty";
 
 // Page size used when walking /api/leads/paginated to build the legacy
 // flat-list cache. Larger pages = fewer round-trips but bigger per-fetch
@@ -56,11 +57,81 @@ export interface PaginatedLeadsResponse {
   totalPages: number;
 }
 
+// W10.3 — the members of ONE saved list (`/leads?listId=`). The contract puts
+// the `listId` filter on the cursor endpoint, so a list view walks that
+// endpoint (bounded) and pages it client-side. A list larger than the walk is
+// an error, never a silently truncated prefix shown as the whole list.
+export const LIST_MEMBERS_URL = "/api/leads/paginated";
+const LIST_WALK_PAGE_SIZE = 100;
+const LIST_WALK_MAX_PAGES = 100; // 10,000 members
+
+export interface ListMembersWalk {
+  data: any[];
+  total: number;
+}
+
+export async function fetchListMembers(listId: number): Promise<ListMembersWalk> {
+  const data: any[] = [];
+  let cursor: string | null = null;
+  let total = 0;
+  for (let i = 0; i < LIST_WALK_MAX_PAGES; i++) {
+    const url = new URL(LIST_MEMBERS_URL, window.location.origin);
+    url.searchParams.set("listId", String(listId));
+    url.searchParams.set("limit", String(LIST_WALK_PAGE_SIZE));
+    if (cursor) url.searchParams.set("cursor", cursor);
+    const res = await okOrThrow(await fetch(url.toString(), { credentials: "include" }));
+    const body = (await res.json()) as { data?: unknown; nextCursor?: string | null; hasMore?: boolean; total?: number };
+    if (!Array.isArray(body.data)) throw new Error("Expected { data: [...] } from the list members read");
+    data.push(...body.data);
+    if (typeof body.total === "number") total = body.total;
+    if (!body.hasMore || !body.nextCursor) return { data, total };
+    cursor = body.nextCursor;
+  }
+  throw new Error(`This list has more members than the leads view can show (${total}).`);
+}
+
+/**
+ * Mirrors the server's `q` match (leadRepo): name, email, address, city, state,
+ * zip, phone digits — plus the two fields a COUNTY-RECORDS lead actually
+ * carries: the parcel's propertyAddress and its apn. A list built from county
+ * records usually has no email, phone, or mailing address, so without these a
+ * search inside the list finds nothing in exactly the list it is for.
+ */
+function leadMatchesSearch(lead: any, q: string): boolean {
+  const needle = q.toLowerCase();
+  const fields = [lead?.firstName, lead?.lastName, lead?.email, lead?.address, lead?.city, lead?.state, lead?.zip,
+    lead?.propertyAddress, lead?.apn,
+    `${lead?.firstName ?? ""} ${lead?.lastName ?? ""}`];
+  if (fields.some((f) => typeof f === "string" && f.toLowerCase().includes(needle))) return true;
+  const digits = q.replace(/\D/g, "");
+  return digits.length >= 3 && typeof lead?.phoneNormalized === "string" && lead.phoneNormalized.includes(digits);
+}
+
+export function pageOfListMembers(
+  walk: ListMembersWalk,
+  params: { page: number; pageSize: number; q?: string },
+): PaginatedLeadsResponse {
+  const q = params.q?.trim();
+  const rows = q ? walk.data.filter((l) => leadMatchesSearch(l, q)) : walk.data;
+  const total = q ? rows.length : walk.total;
+  const start = (params.page - 1) * params.pageSize;
+  return {
+    data: rows.slice(start, start + params.pageSize),
+    total,
+    page: params.page,
+    pageSize: params.pageSize,
+    totalPages: Math.max(1, Math.ceil(total / params.pageSize)),
+  };
+}
+
 /**
  * Fetch leads with server-side pagination.
  * Returns { data, total, page, pageSize, totalPages }.
+ *
+ * With `listId`, the rows are the members of that saved list (W10.3).
  */
-export function useLeadsPaginated(params: { page: number; pageSize: number; sortBy?: string; sortOrder?: string; stage?: string; assignedTo?: string; q?: string }) {
+export function useLeadsPaginated(params: { page: number; pageSize: number; sortBy?: string; sortOrder?: string; stage?: string; assignedTo?: string; q?: string; listId?: number | null }) {
+  const listId = params.listId ?? null;
   const queryParams = new URLSearchParams();
   queryParams.set("page", String(params.page));
   queryParams.set("pageSize", String(params.pageSize));
@@ -71,16 +142,33 @@ export function useLeadsPaginated(params: { page: number; pageSize: number; sort
   if (params.q && params.q.trim()) queryParams.set("q", params.q.trim());
   const url = `${api.leads.list.path}?${queryParams.toString()}`;
 
-  return useQuery<PaginatedLeadsResponse>({
-    queryKey: [api.leads.list.path, "paginated", params.page, params.pageSize, params.sortBy, params.sortOrder, params.stage, params.assignedTo, params.q],
+  const { page, pageSize, q } = params;
+  const selectListPage = React.useCallback(
+    (raw: unknown): PaginatedLeadsResponse =>
+      listId !== null ? pageOfListMembers(raw as ListMembersWalk, { page, pageSize, q }) : (raw as PaginatedLeadsResponse),
+    [listId, page, pageSize, q],
+  );
+
+  return useQuery<unknown, Error, PaginatedLeadsResponse>({
+    queryKey:
+      listId !== null
+        ? [api.leads.list.path, "list-members", listId]
+        : [api.leads.list.path, "paginated", params.page, params.pageSize, params.sortBy, params.sortOrder, params.stage, params.assignedTo, params.q],
     queryFn: async () => {
+      if (listId !== null) return fetchListMembers(listId);
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch leads");
       return res.json();
     },
+    select: selectListPage,
     staleTime: STALE_TIMES.short,
     gcTime: CACHE_TIMES.medium,
-    placeholderData: keepPreviousData,
+    // Keep the previous page on screen only between pages of the SAME book
+    // view. Another view's rows (the whole book, another list) are never a
+    // placeholder for a list's members — `select` would page them as if they
+    // were. A list view pages client-side under one key, so needs none.
+    placeholderData: (prev: unknown, prevQuery: { queryKey: readonly unknown[] } | undefined) =>
+      listId === null && prevQuery?.queryKey[1] === "paginated" ? keepPreviousData(prev) : undefined,
   });
 }
 

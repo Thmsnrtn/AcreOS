@@ -13,6 +13,7 @@
  * /api/leads/import/tax-delinquent (server/routes-leads.ts) and importLeads
  * (server/services/importExport.ts).
  */
+import { inArray, sql, type AnyColumn, type SQL } from "drizzle-orm";
 import { normalizeParcelRef, parcelKey } from "@shared/parcel/parcelRef";
 
 export interface ParcelDedupeIndex {
@@ -24,6 +25,40 @@ const norm = (v: string | null | undefined): string => (v ?? "").trim().replace(
 
 /** The form an APN is compared in, on both sides — also what the DB pre-filter matches. */
 export const apnMatchForm = (apn: string | null | undefined): string => norm(apn);
+
+/**
+ * Every character ECMAScript's `\s` matches — WhiteSpace + LineTerminator,
+ * exactly the set String.prototype.trim strips — as a regex bracket
+ * expression that Postgres (ARE) and JavaScript read identically. Postgres's
+ * own `\s` and `trim()` are narrower (trim() strips only spaces), so the
+ * set is spelled out rather than borrowed.
+ */
+const APN_WHITESPACE_CLASS =
+  "[\\t\\n\\v\\f\\r \\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]";
+
+/**
+ * `apnMatchForm`, in SQL, for a stored APN column: every whitespace run
+ * collapsed to one space, the ends trimmed, upper-cased. Equal to apnMatchForm
+ * for every whitespace variant (verified against Postgres 16, W10.3 second
+ * audit) — the old `upper(regexp_replace(trim(apn), '\s+', ' ', 'g'))` was
+ * not: trim() strips only spaces, so a deleted, opted-out lead stored as
+ * "\t123" never matched an incoming "123" and a fresh contactable lead was
+ * minted for that parcel. Upper-casing agrees for ASCII; Postgres's upper()
+ * does not do JavaScript's full Unicode case mapping (e.g. "ß"), which no
+ * APN format uses.
+ */
+function apnMatchSql(apn: AnyColumn | SQL): SQL {
+  return sql`upper(btrim(regexp_replace(${apn}, ${`${APN_WHITESPACE_CLASS}+`}, ' ', 'g'), ' '))`;
+}
+
+/**
+ * The dedupe PRE-FILTER: rows whose stored APN, normalised in SQL, is one of
+ * these APNs normalised in JS. Both sides of the comparison come from here,
+ * so they cannot drift apart. The identity itself is still decided in JS.
+ */
+export function apnMatchesAny(apn: AnyColumn | SQL, apns: ReadonlyArray<string | null | undefined>): SQL {
+  return inArray(apnMatchSql(apn), Array.from(new Set(apns.map(apnMatchForm))));
+}
 
 export function createParcelDedupeIndex(): ParcelDedupeIndex {
   const full = new Set<string>();

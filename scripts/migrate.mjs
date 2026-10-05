@@ -242,6 +242,16 @@ END $mig0247$`,
   // 0259 — one campaign send = one mailing order (audit of 224a5c0).
   `ALTER TABLE "mailing_orders" ADD COLUMN IF NOT EXISTS "operation_key" text`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "mailing_orders_org_operation_uidx" ON "mailing_orders" ("organization_id", "operation_key")`,
+  // 0260 — which leads a marketing list holds (W10.3 list builder).
+  `CREATE TABLE IF NOT EXISTS "marketing_list_members" (
+     "id" serial PRIMARY KEY,
+     "organization_id" integer NOT NULL REFERENCES "organizations"("id"),
+     "list_id" integer NOT NULL REFERENCES "marketing_lists"("id") ON DELETE CASCADE,
+     "lead_id" integer NOT NULL REFERENCES "leads"("id") ON DELETE CASCADE,
+     "created_at" timestamp NOT NULL DEFAULT now()
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "marketing_list_members_list_lead_uidx" ON "marketing_list_members" ("list_id", "lead_id")`,
+  `CREATE INDEX IF NOT EXISTS "marketing_list_members_org_list_idx" ON "marketing_list_members" ("organization_id", "list_id")`,
   `CREATE INDEX IF NOT EXISTS "idx_organizations_pause_resume" ON "organizations" ("subscription_paused", "subscription_pause_ends_at")`,
   `ALTER TABLE "cancellation_surveys" ADD COLUMN IF NOT EXISTS "offered_pause" boolean DEFAULT false`,
   `ALTER TABLE "cancellation_surveys" ADD COLUMN IF NOT EXISTS "accepted_pause" boolean DEFAULT false`,

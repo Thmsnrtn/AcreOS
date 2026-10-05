@@ -7,6 +7,8 @@ import "./today.css";
 import { PaxContextButton } from "@/components/pax-context-button";
 import { ListPagination, usePagination } from "@/components/list-pagination";
 import { useLeads, useLeadsPaginated, useCreateLead, useUpdateLead, useDeleteLead, useRescoreLead } from "@/hooks/use-leads";
+import { listIdFromSearch } from "@/hooks/use-list-builder";
+import { ListScopeBanner } from "@/components/maps/ListScopeBanner";
 import { useScrollRestoration } from "@/hooks/use-scroll-restoration";
 import { PropertyCombobox } from "@/components/property-combobox";
 import { useTeamMembers, useUserPermissions, getRoleBadgeStyle, getRoleLabel } from "@/hooks/use-organization";
@@ -665,10 +667,16 @@ export default function LeadsPage({ embedded = false }: { embedded?: boolean }) 
   // other's heavy data hooks — the desktop body alone instantiates
   // ~20 hooks that would otherwise mount on mobile for no reason.
   const { isMobile } = useIsMobile();
-  const wantsDesktop =
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("desktop") === "1";
-  if (isMobile && !wantsDesktop) {
+  // Read through the router, not window.location: a one-off read of the URL
+  // never re-renders this branch, so "Show all leads" (which drops ?listId=)
+  // left a phone stranded on the desktop body (W10.3 audit fix 16).
+  const search = useSearch();
+  const wantsDesktop = new URLSearchParams(search).get("desktop") === "1";
+  // W10.3 — a saved list's leads (`?listId=`) are read by the desktop body,
+  // which honours the filter; the mobile card list walks the whole book and
+  // would show every lead under a list link.
+  const listScoped = listIdFromSearch(search) !== null;
+  if (isMobile && !wantsDesktop && !listScoped) {
     return (
       <PageShell embedded={embedded}>
         <MobileLeadList />
@@ -694,6 +702,8 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
   const queryFromUrl = urlParams.get("q") || "";
   const assigneeFromUrl = urlParams.get("assignee") || "all";
   const actionFromUrl = urlParams.get("action");
+  // W10.3 — `/leads?listId=<id>`: the members of one saved county list.
+  const listIdFromUrl = listIdFromSearch(searchString);
   
   const [isCreateOpen, setIsCreateOpen] = useState(actionFromUrl === "new");
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
@@ -831,11 +841,13 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
 
   // P1-28 — URL-sync active filters so /leads?stage=hot&q=foo round-trips
   // through the lead-detail route without losing state on back.
-  const updateLeadsUrl = (overrides: { stage?: string; q?: string; assignee?: string }) => {
+  const updateLeadsUrl = (overrides: { stage?: string; q?: string; assignee?: string; listId?: number | null }) => {
     const params = new URLSearchParams();
     const stage = overrides.stage ?? stageFilter;
     const q = overrides.q ?? search;
     const assignee = overrides.assignee ?? assigneeFilter;
+    const listId = overrides.listId !== undefined ? overrides.listId : listIdFromUrl;
+    if (listId !== null) params.set("listId", String(listId));
     if (stage && stage !== "all") params.set("stage", stage);
     if (q) params.set("q", q);
     if (assignee && assignee !== "all") params.set("assignee", assignee);
@@ -1034,11 +1046,16 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
   useEffect(() => {
     setCurrentPage(1);
   }, [deferredSearch]);
+  // Same for switching into, out of, or between saved lists (W10.3).
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [listIdFromUrl]);
 
   const { data: leadsResponse, isLoading, error, refetch } = useLeadsPaginated({
     page: currentPage,
     pageSize,
     q: deferredSearch || undefined,
+    listId: listIdFromUrl,
   });
   const leads = leadsResponse?.data;
   const serverTotal = leadsResponse?.total ?? 0;
@@ -1136,6 +1153,15 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
 
   return (
     <PageShell label={leadsLabel} embedded={embedded}>
+          {listIdFromUrl !== null && (
+            <ListScopeBanner
+              listId={listIdFromUrl}
+              onClear={() => {
+                setCurrentPage(1);
+                updateLeadsUrl({ listId: null });
+              }}
+            />
+          )}
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             {error && (

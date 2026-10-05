@@ -232,10 +232,10 @@ export default function CountyLandingPage() {
             Automate this across your {content.stateName} buy-box
           </h2>
           <p className="text-base leading-relaxed text-muted-foreground">
-            AcreOS runs flood, soil, elevation, and wetlands checks on every
-            parcel from free government data — so a {placeName} list pull arrives
-            already screened on the diligence that kills resale. You only reach
-            for paid data providers once your deal volume earns it.
+            AcreOS can read a {placeName} parcel's flood zone, soils,
+            elevation, and wetlands from free government data — the diligence
+            that kills resale, checked parcel by parcel before you spend on it.
+            You only reach for paid data providers once your deal volume earns it.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 mt-5">
             <Button asChild size="lg" data-testid="button-county-cta-primary">

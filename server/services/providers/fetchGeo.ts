@@ -23,7 +23,10 @@
  */
 
 import { checkOperatorUrl } from "./ssrf-guard";
+import { FetchGeoUrlRefused } from "./fetchGeoErrors";
 import { logger } from "../../utils/logger";
+
+export { FetchGeoUrlRefused };
 
 /**
  * Contactable User-Agent. Public-data source admins who see traffic they don't
@@ -198,7 +201,7 @@ export async function fetchGeo(url: string, opts: FetchGeoOptions = {}): Promise
   try {
     parsed = new URL(url);
   } catch {
-    throw new Error(`fetchGeo: invalid URL`);
+    throw new FetchGeoUrlRefused(`fetchGeo: invalid URL`);
   }
 
   // SSRF guard: refuse private/loopback/link-local/metadata + non-https.
@@ -207,7 +210,7 @@ export async function fetchGeo(url: string, opts: FetchGeoOptions = {}): Promise
   if (!skipSsrfCheck) {
     const ssrf = checkOperatorUrl(url);
     if (!ssrf.ok) {
-      throw new Error(`fetchGeo: SSRF guard blocked URL: ${ssrf.reason}`);
+      throw new FetchGeoUrlRefused(`fetchGeo: SSRF guard blocked URL: ${ssrf.reason}`);
     }
   }
 

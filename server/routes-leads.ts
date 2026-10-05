@@ -5,7 +5,7 @@ import { getOrganization, getUserId, type AuthenticatedRequest } from "./types/r
 import { storage, db } from "./storage";
 import { z } from "zod";
 import { eq, sql, and, desc, lt, inArray, or } from "drizzle-orm";
-import { insertLeadSchema, leads, properties, deals } from "@shared/schema";
+import { insertLeadSchema, leads, properties, deals, type Lead } from "@shared/schema";
 import { leadsIncludingDeleted } from "./storage/liveLeads";
 import { LEAD_STATUSES, isLeadStatus, validateLeadTransition } from "@shared/lifecycle/pipeline-status";
 import { isAuthenticated } from "./auth";
@@ -38,7 +38,8 @@ import { createLeadContract } from "@shared/contracts";
 import { emitLeadCreated, emitLeadUpdated, safeEmitLeadEvent } from "./services/leadEvents";
 import { validateResponse } from "./utils/contractResponse";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
-import { apnMatchForm, createParcelDedupeIndex } from "./services/leads/parcelDedupe";
+import { apnMatchesAny, createParcelDedupeIndex } from "./services/leads/parcelDedupe";
+import { listMemberLeadsCursor, orgHasMarketingList } from "./storage/listBuilderRepo";
 import { splitOwnerName } from "@shared/parcel/ownerName";
 
 // Partial update schema for PUT endpoints
@@ -230,11 +231,27 @@ export function registerLeadRoutes(app: Express): void {
       ? (stage as "hot" | "warm" | "cold" | "dead")
       : undefined;
     const cursorId = cursor ? Number(cursor) : undefined;
-    const result = await storage.getLeadsCursor(
-      org.id,
-      { limit, cursor: Number.isFinite(cursorId) ? cursorId : undefined, stage: stageFilter },
-      sqlAssignedTo !== undefined ? { assignedTo: sqlAssignedTo } : undefined,
-    );
+    const pageOpts = { limit, cursor: Number.isFinite(cursorId) ? cursorId : undefined };
+    const assignedFilter = sqlAssignedTo !== undefined ? { assignedTo: sqlAssignedTo } : undefined;
+
+    // W10.3 — `listId` narrows the page to one of THIS org's marketing lists
+    // (its members). Another org's list, or an unparseable id, is not found —
+    // never silently ignored, which would show the whole book as the list.
+    let result: { data: Lead[]; total: number; hasMore: boolean };
+    if (req.query.listId !== undefined) {
+      const listId = Number(req.query.listId);
+      if (!Number.isInteger(listId) || listId <= 0 || !(await orgHasMarketingList(org.id, listId))) {
+        return Errors.notFound(res, "Marketing list");
+      }
+      result = await listMemberLeadsCursor(
+        org.id,
+        listId,
+        { ...pageOpts, stageCondition: stageFilter ? storage.stageConditionSql(stageFilter) : undefined },
+        assignedFilter,
+      );
+    } else {
+      result = await storage.getLeadsCursor(org.id, { ...pageOpts, stage: stageFilter }, assignedFilter);
+    }
 
     const paginatedLeads = result.data.map(lead => {
       const { score, factors } = leadNurturerService.calculateLeadScore(lead);
@@ -1497,7 +1514,7 @@ export function registerLeadRoutes(app: Express): void {
                 eq(leads.organizationId, org.id),
                 // Matched in the same form the index compares in: an existing
                 // "abc-1" is the same parcel as an incoming "ABC-1".
-                inArray(sql`upper(regexp_replace(trim(${leads.apn}), '\\s+', ' ', 'g'))`, incomingApns.map(apnMatchForm)),
+                apnMatchesAny(leads.apn, incomingApns),
               ),
             );
           for (const r of existing) {
@@ -1663,7 +1680,7 @@ export function registerLeadRoutes(app: Express): void {
           .from(leadsIncludingDeleted)
           .where(and(
             eq(leads.organizationId, org.id),
-            inArray(sql`upper(regexp_replace(trim(${leads.apn}), '\\s+', ' ', 'g'))`, incomingApns.map(apnMatchForm)),
+            apnMatchesAny(leads.apn, incomingApns),
           ));
         for (const r of existing) if ((r.apn ?? "").trim()) existingParcels.add(r.state, r.county, r.apn ?? "");
       }

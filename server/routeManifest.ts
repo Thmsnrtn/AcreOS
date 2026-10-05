@@ -106,6 +106,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-core-ai.ts", mountPath: null, kind: "register", export: "registerCoreAIRoutes" },
   { file: "routes-cost-optimizer.ts", mountPath: null, kind: "register", export: "registerCostOptimizerRoutes" },
   { file: "routes-county-coverage.ts", mountPath: null, kind: "register", export: "registerCountyCoverageRoutes" },
+  { file: "routes-list-builder.ts", mountPath: null, kind: "register", export: "registerListBuilderRoutes" },
   { file: "routes-county-timelines.ts", mountPath: null, kind: "register", export: "registerCountyTimelineRoutes" },
   { file: "routes-crm-extras.ts", mountPath: null, kind: "register", export: "registerCRMExtrasRoutes" },
   { file: "routes-customer-audit.ts", mountPath: null, kind: "register", export: "registerCustomerAuditRoutes" },

@@ -50,6 +50,7 @@ import {
   Loader2,
   HelpCircle,
   Flame,
+  ListPlus,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -72,6 +73,7 @@ import { usePersona } from "@/hooks/use-persona";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { RequestCountyCTA } from "@/components/maps/RequestCountyCTA";
 import { MarketHeatPanel } from "@/components/maps/MarketHeatPanel";
+import { ListBuilderSheet } from "@/components/maps/ListBuilderSheet";
 import {
   RadarChart,
   Radar,
@@ -1092,6 +1094,9 @@ export default function MapsPage() {
   // RAFE (Tahoe Wave-2): "See a sample" — guarantees a first lookup never
   // returns empty by running a REAL enrichment on a curated data-rich parcel.
   const [samplePreviewOpen, setSamplePreviewOpen] = useState(false);
+  // W10.3 — list builder from county records, inside the Map door (a sheet,
+  // never a route or nav entry).
+  const [listBuilderOpen, setListBuilderOpen] = useState(false);
   const headerSearchId = useId();
   const mobileSearchId = useId();
   const sheetStatusId = useId();
@@ -1441,6 +1446,19 @@ export default function MapsPage() {
             </SelectContent>
           </Select>
 
+          {/* W10.3 — Build a list from a county's public records */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setListBuilderOpen(true)}
+            aria-label="Build a list from county records"
+            data-testid="button-open-list-builder"
+            className="gap-1.5 shrink-0 min-h-11 min-w-11 sm:min-w-0 pointer-fine:sm:min-h-9 pointer-fine:sm:h-7 text-xs px-2.5"
+          >
+            <ListPlus className="w-4 h-4 sm:w-3.5 sm:h-3.5" aria-hidden="true" />
+            <span className="hidden sm:inline">Build a list</span>
+          </Button>
+
           {/* Filters drawer */}
           <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
             <SheetTrigger asChild>
@@ -1682,6 +1700,15 @@ export default function MapsPage() {
                           Go to inventory
                         </Link>
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setListBuilderOpen(true)}
+                        data-testid="button-empty-build-list"
+                      >
+                        <ListPlus className="w-4 h-4 mr-2" aria-hidden="true" />
+                        Build a list
+                      </Button>
                     </div>
                     {/* Krieger: turn a coverage dead-end into a coverage
                         signal. If the customer's county isn't covered yet,
@@ -1771,6 +1798,8 @@ export default function MapsPage() {
         open={samplePreviewOpen}
         onOpenChange={setSamplePreviewOpen}
       />
+
+      <ListBuilderSheet open={listBuilderOpen} onOpenChange={setListBuilderOpen} />
     </PageShell>
   );
 }

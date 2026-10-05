@@ -34,6 +34,11 @@ import {
 } from "@shared/schema";
 import { and, eq, sql, desc } from "drizzle-orm";
 import {
+  countyLiveSourceCopy,
+  countyQueueStatusCopy,
+  type CountyListStatus,
+} from "@shared/geo/countyStatus";
+import {
   enqueueCountyForDiscovery,
   normalizeState,
   normalizeCounty,
@@ -45,15 +50,23 @@ const requestSchema = z.object({
 });
 
 /**
- * Resolve the live coverage/discovery status for a normalized (state, county).
- * Shared by POST (the response) and GET (status polling).
+ * Resolve the live coverage/discovery status for a normalized (state, county),
+ * in the one county vocabulary (shared/geo/countyStatus.ts) the list builder
+ * also speaks. Shared by POST (the response) and GET (status polling).
+ *
+ * An active endpoint is `covered` only when its licence permits saving
+ * records ('yes' / 'attribution'); an unreviewed one is `view_only` — still a
+ * live source (`covered: true` below means "parcel lookups answer here"), but
+ * not one whose records may be saved. The old union also named a `pending`
+ * status that no branch ever returned; it is gone.
  */
 async function resolveStatus(
   state: string,
   county: string,
 ): Promise<{
   covered: boolean;
-  status: "covered" | "discovering" | "queued" | "pending" | "unavailable" | "none";
+  status: CountyListStatus;
+  label: string;
   queueId: number | null;
   demandCount: number | null;
   message: string;
@@ -61,7 +74,7 @@ async function resolveStatus(
   const reader = await dbForReads("county-coverage.status");
 
   const active = await reader
-    .select({ id: countyGisEndpoints.id })
+    .select({ id: countyGisEndpoints.id, redistributable: countyGisEndpoints.redistributable })
     .from(countyGisEndpoints)
     .where(
       and(
@@ -69,16 +82,17 @@ async function resolveStatus(
         sql`lower(regexp_replace(${countyGisEndpoints.county}, ' county$', '', 'i')) = ${county}`,
         eq(countyGisEndpoints.isActive, true),
       ),
-    )
-    .limit(1);
+    );
 
   if (active.length > 0) {
+    // Any saveable row makes the county covered; otherwise it is view-only —
+    // "terms not reviewed yet", or, when every source was reviewed and
+    // declined ('no'), saying so (countyLiveSourceCopy).
     return {
       covered: true,
-      status: "covered",
+      ...countyLiveSourceCopy(active.map((e) => e.redistributable)),
       queueId: null,
       demandCount: null,
-      message: "This county already has free parcel coverage.",
     };
   }
 
@@ -86,6 +100,7 @@ async function resolveStatus(
     .select({
       id: countyDiscoveryQueue.id,
       status: countyDiscoveryQueue.status,
+      attempts: countyDiscoveryQueue.attempts,
       demandCount: countyDiscoveryQueue.demandCount,
     })
     .from(countyDiscoveryQueue)
@@ -97,38 +112,19 @@ async function resolveStatus(
     )
     .limit(1);
 
-  if (queued.length === 0) {
-    return {
-      covered: false,
-      status: "none",
-      queueId: null,
-      demandCount: null,
-      message: "Not yet requested.",
-    };
-  }
-
-  const q = queued[0];
-  const statusMap: Record<string, { status: any; message: string }> = {
-    pending: { status: "discovering", message: "We're searching for a free parcel source for this county." },
-    in_progress: { status: "discovering", message: "We're searching for a free parcel source for this county." },
-    failed: { status: "discovering", message: "We're still working on coverage for this county." },
-    // Reached only when NO endpoint is active (checked above), so a
-    // `resolved` row here is coverage that went dark — not coverage
-    // (DEFECT-0113). Re-requesting re-opens discovery.
-    resolved: { status: "unavailable", message: "This county's parcel source is no longer responding. Request it again to re-open the search." },
-    exhausted: { status: "unavailable", message: "No free parcel source is currently available for this county." },
-  };
-  const mapped = statusMap[q.status] ?? {
-    status: "queued" as const,
-    message: "Your request is queued for discovery.",
-  };
-
+  const q = queued[0] ?? null;
+  // Reached only when NO endpoint is active, so a `resolved` queue row is
+  // coverage that went dark — not coverage (DEFECT-0113). The shared copy says
+  // so, and that re-requesting re-opens discovery — the same words the list
+  // builder shows.
+  const { status, label, message } = countyQueueStatusCopy(q);
   return {
     covered: false,
-    status: mapped.status,
-    queueId: q.id,
-    demandCount: q.demandCount,
-    message: mapped.message,
+    status,
+    label,
+    queueId: q?.id ?? null,
+    demandCount: q?.demandCount ?? null,
+    message,
   };
 }
 

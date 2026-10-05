@@ -14275,6 +14275,11 @@ export * from "./schema/outcomes";
 // for want of anywhere else for it to point.
 export * from "./schema/opportunity";
 
+// Which leads a marketing list holds (W10.3 list builder, migration 0260). A
+// list carried only import metadata until this table, so nothing could say who
+// was on it.
+export * from "./schema/marketing-list-members";
+
 // VA task management and the org's SOP library (BLOCKERS B9, founder ruling
 // 2026-08-13). The persistence layer `services/vaManagement.ts` declared as two
 // unused string constants — `VA_TASKS_KEY` / `SOP_LIBRARY_KEY` — and never

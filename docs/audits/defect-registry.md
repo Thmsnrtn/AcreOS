@@ -6941,6 +6941,78 @@ docker-compose Postgres suite; (7) an error branch on the summary;
 (8) triage each.
 Resolving commits: —
 
+### DEFECT-0292
+Title: The county list builder can count every seeded county and save none — a founder licensing decision
+Severity: P2
+Status: OPEN
+Surfaced by lenses: W10.3 builder K (2026-10-05)
+Description: W10.3 ships the list builder behind the Map door. It counts a
+county's matching parcels exactly from the county's public GIS and saves a
+list only where the source's `county_gis_endpoints.redistributable` is
+`yes` or `attribution` (the Beatrice rule: un-reviewed counties are
+live pass-through only). All 62 seeded sources (52 counties, 10 statewide)
+default to `review-required`, so every county is `view_only` today: the
+builder previews and refuses to save. Whether an org may save a
+review-required county's public records into its OWN CRM (not redistribute
+them) is a licensing judgement the code does not make. Also found:
+- Only Harris and Travis map an acreage field; no seed maps a sale date, so
+  "years owned" is unanswerable everywhere for now (the builder disables it
+  with the reason).
+- There is no single per-piece mail price: `send-direct-mail` debits
+  `DIRECT_MAIL_COSTS` (0 on the org's own Lob key) while the outreach queue
+  debits credit-pool weights for the provider its router picks — so the
+  builder shows no mail estimate (`mailEstimate: null`) rather than a guess.
+- County records carry the parcel's address, not the owner's mailing
+  address, so a saved county list's leads cannot be mailed until they have
+  one (a skip trace). The composer now takes a saved list as its audience and
+  says, from the server's count, how many members it cannot mail and why.
+- A residual race: only list-builder saves take the per-org advisory lock,
+  so a CSV / tax-delinquent import or `POST /api/leads` committing at the same
+  moment as a save is neither blocked nor seen — the org can overshoot its
+  plan lead limit by the concurrent writer's batch, and a parcel can be
+  created twice across the two writers. Closing it needs every lead writer
+  to take the same per-org lock.
+Shipped with W10.3 so the decision has a place to land: the founder's
+licence review (`/founder/admin/costs` → Data plane: per source, yes / attribution
+/ no / review-required with a required note, recorded in the hash-chained
+audit trail before the row changes). Until a source is marked, its county
+stays count-only.
+Evidence: `server/services/listBuilder/countyListBuilder.ts`,
+`server/services/parcel.ts` (`seedCountyGisEndpoints`),
+`shared/schema/parcel-data.ts` (Beatrice rule), `server/services/directMail.ts`,
+`server/routes-founder-coverage.ts`.
+Remediation plan: the founder reviews county licences (per source in the
+Data plane, or one ruling on per-org persistence of public records); map
+acreage and sale-date fields on the seeded sources; one per-piece mail price;
+a skip-trace step from a saved list; one per-org lock taken by every lead
+writer.
+Resolving commits: —
+
+### DEFECT-0293
+Title: Import dedupe compared APNs with trim(), so an opted-out deleted lead could be minted again
+Severity: P2
+Status: FIXED (W10.3, 2026-10-05)
+Surfaced by lenses: W10.3 second audit (2026-10-05)
+Description: Creation dedupe matches a new parcel against every lead of the
+org, deleted ones included, so a re-import cannot mint a contactable row for
+someone who opted out. The SQL side normalized the stored APN with `trim()`,
+which strips spaces only; the JS side (`apnMatchForm`) strips all
+whitespace. A deleted, opted-out lead stored as `"\t123"` did not match an
+incoming `"123"`, and a fresh contactable lead was created. The same SQL sat
+in the CSV import, the tax-delinquent import, `importLeads` and the new list
+builder.
+Remediation plan: DONE. One helper, `apnMatchesAny`
+(`server/services/leads/parcelDedupe.ts`), renders the SQL form whose
+character class is JS `\s` exactly; all four sites use it. Checked on a real
+Postgres 16: 0 mismatches over 103 whitespace samples, where the old
+expression mismatched 76 of 106. Upper-casing agrees for ASCII only
+(Postgres `upper()` and JS differ on ~110 non-ASCII code points that APN
+formats do not use) — documented in the code.
+Falsified by: `tests/unit/apnMatchSqlEquivalence.test.ts` (the class equals
+JS `\s` on every BMP code point; a population scan finds no hand-rolled
+`.apn` whitespace normalization in server SQL).
+Resolving commits: the W10.3 commit (see `git log`)
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -6977,10 +7049,10 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 18  | 18    |
-| FIXED  | 14  | 136 | 121 | 271   |
+| OPEN   | 0   | 0   | 19  | 19    |
+| FIXED  | 14  | 136 | 122 | 272   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **138** | **139** | **291** |
+| **Total** | **14** | **138** | **141** | **293** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as

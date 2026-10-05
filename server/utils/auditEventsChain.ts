@@ -104,8 +104,11 @@ export function computeEventRowHash(prevHash: string, row: AuditEventHashable): 
  * Look up the most-recent chained row (global, max seq) and return its
  * row_hash. Returns GENESIS_PREV_HASH if there is no chained predecessor.
  */
-export async function getPrevHashForEvents(): Promise<string> {
-  const [prev] = await db
+/** The global db, or a transaction's own connection — anything that can select and insert. */
+export type AuditEventsExecutor = Pick<typeof db, "select" | "insert">;
+
+export async function getPrevHashForEvents(exec: AuditEventsExecutor = db): Promise<string> {
+  const [prev] = await exec
     .select({ rowHash: auditEvents.rowHash })
     .from(auditEvents)
     .where(isNotNull(auditEvents.rowHash))
@@ -135,6 +138,11 @@ export async function chainAndInsertAuditEvent(
     id?: string;
     createdAt?: Date;
   },
+  /**
+   * Pass a transaction to make the audit row part of the change it records:
+   * both commit, or neither does. Defaults to the global db.
+   */
+  exec: AuditEventsExecutor = db,
 ): Promise<AuditEvent> {
   const id = entry.id ?? randomUUID();
   const createdAt = entry.createdAt ?? new Date();
@@ -153,10 +161,10 @@ export async function chainAndInsertAuditEvent(
     createdAt,
   };
 
-  const prevHash = await getPrevHashForEvents();
+  const prevHash = await getPrevHashForEvents(exec);
   const rowHash = computeEventRowHash(prevHash, hashable);
 
-  const [created] = await db
+  const [created] = await exec
     .insert(auditEvents)
     .values({
       id,

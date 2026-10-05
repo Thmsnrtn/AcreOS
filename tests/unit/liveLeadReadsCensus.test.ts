@@ -64,6 +64,8 @@ const INCLUDING_DELETED: Readonly<Record<string, string>> = {
     "The founder-only platform week-over-week New Leads trend counts leads created that week; a lead deleted later was still created.",
   "server/storage/auditRepo.ts":
     "The retention purge must reach soft-deleted dead leads, and a consent/opt-out write must land on a deleted row too (its only caller checks the lead is live first, so consent cannot be GRANTED to a deleted lead). The TCPA opt-out record lists deleted leads too: their opt-out still binds the number.",
+  "server/storage/listBuilderRepo.ts":
+    "The county list builder's (state, county, APN) parcel dedupe guards creation: a parcel whose only lead was deleted (and may carry an opt-out) is suppressed, never linked or re-created.",
   "server/storage/leadRepo.ts":
     "The soft-delete, restore, trash-list and erasure writers address deleted rows by definition; the inbound-SMS phone match (includeDeleted) must reach them so a STOP still opts out; findDuplicateLeads guards creation so a re-import cannot mint a contactable row for someone who revoked consent.",
 };

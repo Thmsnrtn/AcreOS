@@ -30,7 +30,7 @@ vi.mock("../../server/storage", () => {
 });
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 
-import { checkUsageLimit } from "../../server/services/usageLimits";
+import { checkUsageLimit, countPlanLeads } from "../../server/services/usageLimits";
 
 describe("DEFECT-0147 — plan limits exclude the sample book", () => {
   for (const [resource, table] of [["leads", "leads"], ["properties", "properties"], ["notes", "notes"]] as const) {
@@ -54,5 +54,35 @@ describe("DEFECT-0183 audit — a deleted property frees its plan slot", () => {
     const r = new PgDialect().sqlToQuery(q[0].where as SQL);
     expect(r.sql).toMatch(/"properties"\."status" <> \$/);
     expect(r.params).toContain("deleted");
+  });
+});
+
+describe("countPlanLeads — the plan's lead counter, through the executor it is given (W10.3 second audit)", () => {
+  it("reads through THAT executor (a transaction), with exactly the predicate checkUsageLimit counts", async () => {
+    h.wheres.length = 0;
+    await checkUsageLimit(7, "leads");
+    const viaCheck = h.wheres.filter((w) => w.table === "leads");
+    expect(viaCheck.length, "vacuity").toBe(1);
+
+    const seen: Array<{ table: string; where: unknown }> = [];
+    const tx = {
+      select: () => {
+        let table = "";
+        const q: Record<string, unknown> = {};
+        q.from = (t: unknown) => ((table = getTableName(t as never)), q);
+        q.where = (w: unknown) => (seen.push({ table, where: w }), Promise.resolve([{ count: 41 }]));
+        return q;
+      },
+    };
+    h.wheres.length = 0;
+    expect(await countPlanLeads(tx as never, 7)).toBe(41);
+    expect(h.wheres, "the global db must not be touched").toEqual([]);
+    expect(seen.map((s) => s.table)).toEqual(["leads"]);
+    const d = new PgDialect();
+    const a = d.sqlToQuery(viaCheck[0].where as SQL);
+    const b = d.sqlToQuery(seen[0].where as SQL);
+    expect(b.sql).toBe(a.sql);
+    expect(b.params).toEqual(a.params);
+    expect(b.sql).toMatch(/"leads"\."deleted_at" IS NULL/);
   });
 });

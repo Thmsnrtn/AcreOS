@@ -46,6 +46,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useListBuilderLists } from "@/hooks/use-list-builder";
 import {
   Sheet,
   SheetContent,
@@ -93,8 +95,10 @@ const SPEED_OPTIONS: {
 export default function ComposeTab() {
   const { toast } = useToast();
 
-  // Audience selection. Exact filters only: a marketing list records no
-  // members, so it cannot choose recipients (the server refuses one).
+  // Audience selection. A saved county list (W10.3) records its members, so
+  // it can choose recipients; the filters below narrow whatever is chosen.
+  const [listId, setListId] = useState<number | null>(null);
+  const savedLists = useListBuilderLists();
   const [statesText, setStatesText] = useState("");
   const [countiesText, setCountiesText] = useState("");
   const [acreageMinText, setAcreageMinText] = useState("");
@@ -161,12 +165,13 @@ export default function ComposeTab() {
       return t.trim() !== "" && Number.isFinite(n) && n >= 0 ? n : undefined;
     };
     return {
+      leadListIds: listId !== null ? [listId] : undefined,
       states: states.length > 0 ? states : undefined,
       counties: counties.length > 0 ? counties : undefined,
       acreageMin: acres(acreageMinText),
       acreageMax: acres(acreageMaxText),
     };
-  }, [statesText, countiesText, acreageMinText, acreageMaxText]);
+  }, [listId, statesText, countiesText, acreageMinText, acreageMaxText]);
 
   // Debounce the quote request so each keystroke doesn't fire a POST. The
   // copy is part of what the investor confirms, so it is debounced with it.
@@ -181,7 +186,9 @@ export default function ComposeTab() {
   }, [audienceFilter, copy]);
 
   const hasAudience =
-    (debouncedFilter.states?.length ?? 0) > 0 || (debouncedFilter.counties?.length ?? 0) > 0;
+    (debouncedFilter.leadListIds?.length ?? 0) > 0 ||
+    (debouncedFilter.states?.length ?? 0) > 0 ||
+    (debouncedFilter.counties?.length ?? 0) > 0;
 
   const quote = useMailQuote(
     hasAudience
@@ -298,9 +305,48 @@ export default function ComposeTab() {
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground" data-testid="audience-exact-note">
                 Mail goes to the leads in your CRM that match these filters — exactly those, and a
-                county needs its state. Marketing lists don&apos;t record their members yet, so they
-                can&apos;t pick recipients.
+                county needs its state. A saved county list picks its own members; the filters
+                narrow them further.
               </p>
+
+              <div>
+                <Label htmlFor="audience-saved-list">Saved list</Label>
+                <Select
+                  value={listId === null ? "none" : String(listId)}
+                  onValueChange={(v) => setListId(v === "none" ? null : Number(v))}
+                  disabled={!savedLists.data || savedLists.data.lists.length === 0}
+                >
+                  <SelectTrigger id="audience-saved-list" data-testid="select-saved-list">
+                    <SelectValue placeholder="No saved list" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No saved list — use the filters</SelectItem>
+                    {(savedLists.data?.lists ?? []).map((l) => (
+                      <SelectItem key={l.id} value={String(l.id)}>
+                        {l.name} · {l.county}, {l.state} · {l.total.toLocaleString()}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {savedLists.data &&
+                  typeof savedLists.data.total === "number" &&
+                  savedLists.data.total > savedLists.data.lists.length && (
+                    <p className="mt-1 text-xs text-muted-foreground" data-testid="saved-lists-bounded">
+                      Showing your newest {savedLists.data.lists.length.toLocaleString()} of{" "}
+                      {savedLists.data.total.toLocaleString()} lists.
+                    </p>
+                  )}
+                {savedLists.isError && (
+                  <p className="mt-1 text-xs text-muted-foreground" data-testid="saved-lists-error">
+                    Your saved lists couldn&apos;t be loaded; the filters still work.
+                  </p>
+                )}
+                {quote.data?.listMembers && (
+                  <p className="mt-2 text-sm" role="status" data-testid="audience-list-members">
+                    {quote.data.listMembers.message}
+                  </p>
+                )}
+              </div>
 
               {(savedViews.data?.length ?? 0) > 0 && (
                 <div>
