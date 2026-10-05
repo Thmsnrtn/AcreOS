@@ -51,7 +51,7 @@
  * is how the land wizard's decisions were ungradeable while its route looked
  * fine. A schema in ANOTHER file (the kit's) is outside this static check; the
  * kit's own tests and each route's behavioural test hold it. And it needs the
- * cited engine to predict `total_cost` or `profit`.
+ * cited engine to predict a metric an outcome answer measures (MEASURED_OUTCOME_METRIC_IDS: `acquisition_cost` at "Acquired", `profit` at "Sold").
  * The law in verticalReadiness.test.ts is universal, not existential: every
  * crediting decision of a decided vertical must be gradeable.
  *
@@ -72,6 +72,10 @@ import { type BusinessTypeId } from "../../shared/business-types";
 import { type VerticalEvidence } from "../../shared/business-types/readiness";
 import { ALL_ENGINES } from "../../server/services/economics/engines";
 import { stripComments } from "../helpers/stripComments";
+import { OUTCOME_MEASURES } from "../../shared/outcomes/outcomeMeasures";
+
+/** The metrics Today's outcome answers measure — derived from the definition the prompt renders. */
+const MEASURED_OUTCOME_METRIC_IDS: readonly string[] = Object.values(OUTCOME_MEASURES).map((m) => m.metricId);
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (p: string): string => fs.readFileSync(path.join(ROOT, p), "utf8");
@@ -102,7 +106,9 @@ export function engineVerticals(): EngineTable {
   for (const e of ALL_ENGINES) {
     out.set(e.id, {
       verticals: [...(e.verticals ?? [])],
-      gradeable: e.produces.includes("total_cost") || e.produces.includes("profit"),
+      // Gradeable = predicts a metric an outcome answer actually MEASURES (the
+      // shared definition Today's prompt asks from), not a hand-kept pair.
+      gradeable: e.produces.some((m) => MEASURED_OUTCOME_METRIC_IDS.includes(m)),
     });
   }
   return out;

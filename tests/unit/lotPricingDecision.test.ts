@@ -55,6 +55,7 @@ import {
 } from "@shared/subdivision/lotPricing";
 import { DECISION_KINDS } from "@shared/decisions/snapshot";
 import { subdivisionLotSaleEngine } from "../../server/services/economics/engines/subdivisionLotSale";
+import { OUTCOME_MEASURES } from "../../shared/outcomes/outcomeMeasures";
 import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -161,8 +162,10 @@ describe("the lock is a gradeable prediction, not a bare price change", () => {
     // price grid. They fit now because the prediction does — `sold` asks what
     // the project actually made, which is `profit`, and the engine predicts it.
     expect(subdivisionLotSaleEngine.produces).toEqual(expect.arrayContaining(["profit", "total_cost"]));
+    // The ids live in the shared definition the card renders (DEFECT-0287).
     const prompt = fs.readFileSync(path.join(ROOT, "client/src/components/today/OutcomePrompt.tsx"), "utf8");
-    expect(prompt).toMatch(/kind:\s*"sold"[\s\S]{0,200}metricId:\s*"profit"/);
+    expect(prompt).toMatch(/kind:\s*"sold"[\s\S]{0,200}measures:\s*OUTCOME_MEASURES\.sold/);
+    expect(OUTCOME_MEASURES.sold.metricId).toBe("profit");
   });
 
   it("carries the operator's review date — never hard-coded to null", () => {

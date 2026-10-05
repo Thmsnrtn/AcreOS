@@ -61,7 +61,7 @@ export const noteAcquisitionEngine: EngineSpec = {
   version: NOTE_ACQUISITION_ENGINE_VERSION,
   label: "Note acquisition (yield if it pays as agreed, discount to face)",
   verticals: ["note_investor"],
-  produces: ["total_cost", "discount_to_face", "irr", "profit", "hold_months", "payoff_total"],
+  produces: ["total_cost", "acquisition_cost", "discount_to_face", "irr", "profit", "hold_months", "payoff_total"],
 
   compute(inputs) {
     const normalised = {
@@ -139,6 +139,8 @@ export const noteAcquisitionEngine: EngineSpec = {
       assumptions,
       metrics: [
         metric("total_cost", out.totalCostCents),
+        // What it costs to TAKE IT DOWN (price + closing/due diligence) — what Today asks at "Acquired".
+        metric("acquisition_cost", normalised.purchasePriceCents + (normalised.closingCostsCents ?? 0)),
         metric("discount_to_face", out.discountToFace),
         metric("irr", out.irr),
         metric("profit", out.profitCents),

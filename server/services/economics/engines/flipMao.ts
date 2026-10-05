@@ -50,7 +50,7 @@ export const flipMaoEngine: EngineSpec = {
   produces: [
     "max_allowable_offer",
     "rehab_with_contingency",
-    "total_cost",
+    "total_cost", "acquisition_cost",
     "profit",
     "roi",
   ],
@@ -110,6 +110,9 @@ export const flipMaoEngine: EngineSpec = {
         metric("max_allowable_offer", r.maoCents),
         metric("rehab_with_contingency", r.rehabWithContingencyCents),
         metric("total_cost", r.totalCashInCents),
+        // What it costs to TAKE IT DOWN (price used + purchase closing; rehab
+        // and holding come after) — what Today asks at "Acquired".
+        metric("acquisition_cost", r.priceUsedCents + r.purchaseClosingCents),
         // netProfitCents is NULL when holding cost is unknown — carried through
         // as null rather than zeroed. That is the whole reason this engine
         // wraps computeMao and not the legacy 70%-rule function.

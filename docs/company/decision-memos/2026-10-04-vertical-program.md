@@ -62,7 +62,7 @@ NOI); three of them are never called from production.
    the review-date answer rather than hard-coding none. Null ("no set date") is
    an answer; an omitted key is refused, because an optional key let the land
    wizard record "never" without anyone choosing it. Its engine must predict
-   `total_cost` or `profit`, the metrics the outcome prompt can measure. The
+   `acquisition_cost` or `profit`, the metrics the outcome prompt measures (`shared/outcomes/outcomeMeasures.ts`; `total_cost` until DEFECT-0287). The
    law is universal over the decisions that CREDIT a vertical: one ungradeable
    crediting route makes the vertical ungradeable. Decisions that credit
    nothing are outside it — the offer-letter batch (no scenario) and the

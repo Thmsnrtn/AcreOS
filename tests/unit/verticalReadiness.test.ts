@@ -688,7 +688,7 @@ describe("a decided vertical is gradeable (the loop can close on reality)", () =
     expect(
       ungradeable,
       "a vertical decides but can never be graded: its route hard-codes reviewDueAt null, or " +
-        "its engine predicts neither total_cost nor profit (the metrics the outcome prompt measures).",
+        "its engine predicts neither acquisition_cost nor profit (MEASURED_OUTCOME_METRIC_IDS — what the outcome prompt measures).",
     ).toEqual([]);
   });
 

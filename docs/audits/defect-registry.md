@@ -6784,13 +6784,13 @@ Resolving commits: V0
 ### DEFECT-0287
 Title: At "Acquired" the outcome prompt asks for the cost to acquire, but the engines' `total_cost` includes rehab and holding
 Severity: P2
-Status: OPEN
+Status: FIXED
 Surfaced by lenses: independent audit of the V0 wave (2026-10-04)
 Description: `OutcomePrompt` measures `total_cost` on the "Acquired" answer and asks "What did it actually cost to acquire?" with the hint "price, closing, anything you paid to take it down". `flip_mao` emits total cash in (purchase, rehab with contingency, holding, closing), `land_deal` its all-in cost, and the new `rental_acquisition` price + closing + rehab. An operator answering at the moment of acquisition reports a figure without the rehab, so the variance reads as a saving roughly the size of the rehab budget, and calibration learns that this operator overestimates cost. Pre-existing for flip; V0 adds a second engine with the same meaning — and buy-and-hold predicts no `profit`, so `total_cost` is the ONLY metric its outcomes can grade, which makes the mismatch its whole calibration signal whenever a rehab budget is entered.
 Evidence: `client/src/components/today/OutcomePrompt.tsx` (ANSWERS, acquired); `server/services/economics/engines/flipMao.ts`, `server/services/economics/engines/rentalAcquisition.ts`.
-Remediation: Founder-visible product choice, not taken here: either ask for the all-in figure (and ask it when the rehab is done, not at closing), or register a distinct `acquisition_cost` metric that the engines also emit and measure that at "Acquired".
-Falsified: none yet.
-Resolving commits: —
+Remediation: The question was right and the metric was wrong, so the fix keeps what the operator is asked and changes what it is compared with. A registered `acquisition_cost` metric (price + purchase closing, net of any closing credit; excludes rehab, holding, carry, capex, furnishing) is predicted by every vertical engine whose decision can end in "Acquired" (wholesale and the subdivision lot lock are named exemptions: neither takes title). The answers' measures live in one shared definition, `shared/outcomes/outcomeMeasures.ts`, which OutcomePrompt renders and the evidence gate grades by (`MEASURED_OUTCOME_METRIC_IDS`), so buy-and-hold's gradeability no longer rests on the mis-compared `total_cost`. A decision recorded before this predicts no `acquisition_cost` and is not asked for a number at "Acquired" rather than being compared with a forecast of something else.
+Falsified: `tests/unit/acquisitionCostIsWhatAcquiredMeasures.test.ts` — the prompt's measure is the shared one; the live registry's acquiring engines all predict it (exemptions named, rot-checked); five engines' values are pinned on inputs where the after-purchase costs are non-zero. Red against the old OutcomePrompt, and red when the rental engine reports its all-in total as acquisition cost.
+Resolving commits: vertical program follow-up (2026-10-05)
 
 ### REFUTED AT HEAD, 2026-09-27
 
@@ -6828,8 +6828,8 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 20  | 20    |
-| FIXED  | 14  | 134 | 117 | 265   |
+| OPEN   | 0   | 0   | 19  | 19    |
+| FIXED  | 14  | 134 | 118 | 266   |
 | DEFERRED | 0 | 2   | 0   | 2     |
 | **Total** | **14** | **136** | **137** | **287** |
 
@@ -6888,7 +6888,7 @@ DEFECT-0282 and 0283 come from roadmap wave W10.1b (the Security gate made
 green); recounted.
 DEFECT-0284 came from the first deploy that gate blocked (2026-10-04).
 DEFECT-0285 came from the vertical program's V0 wave (2026-10-04); 0286
-(FIXED) and 0287 (OPEN) from the independent audit of that wave.
+(FIXED) and 0287 (FIXED 2026-10-05) from the independent audit of that wave.
 0203 records the audit of the first-mail slice; 0204–0207 are slice H2;
 0208–0213 the audit of H2 (0213 OPEN); 0214–0218 slice H3; 0219–0229 the
 audit of H3 (0225, 0227, 0229 OPEN); 0230–0235 slice H4 (0232, 0235 OPEN).

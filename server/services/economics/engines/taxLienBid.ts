@@ -66,7 +66,7 @@ export const taxLienBidEngine: EngineSpec = {
   version: TAX_LIEN_BID_ENGINE_VERSION,
   label: "Tax-lien certificate bid (return if the owner redeems at a chosen month, simple interest)",
   verticals: ["tax_lien_deed"],
-  produces: ["total_cost", "profit", "roi", "irr", "annualized_return", "hold_months"],
+  produces: ["total_cost", "acquisition_cost", "profit", "roi", "irr", "annualized_return", "hold_months"],
 
   compute(inputs) {
     const normalised = {
@@ -115,6 +115,8 @@ export const taxLienBidEngine: EngineSpec = {
       assumptions,
       metrics: [
         metric("total_cost", out.totalCostCents),
+        // What it costs to TAKE IT DOWN (face + premium + fees) — what Today asks at "Acquired".
+        metric("acquisition_cost", normalised.faceAmountCents + normalised.premiumCents + (normalised.acquisitionCostsCents ?? 0)),
         metric("profit", out.profitCents),
         metric("roi", out.roi),
         metric("irr", out.irr),

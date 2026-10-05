@@ -55,7 +55,7 @@ export const creativeWrapEngine: EngineSpec = {
   version: CREATIVE_WRAP_ENGINE_VERSION,
   label: "Creative-finance wrap (payment spread, balance spread, return if the buyer pays to the payoff month)",
   verticals: ["creative_finance"],
-  produces: ["cash_required", "total_cost", "monthly_cash_flow", "profit", "irr", "hold_months"],
+  produces: ["cash_required", "total_cost", "acquisition_cost", "monthly_cash_flow", "profit", "irr", "hold_months"],
 
   compute(inputs) {
     const normalised = {
@@ -148,6 +148,8 @@ export const creativeWrapEngine: EngineSpec = {
       metrics: [
         metric("cash_required", out.outlayCents),
         metric("total_cost", out.outlayCents),
+        // What it costs to TAKE IT DOWN (cash to seller + closing; repairs come after) — what Today asks at "Acquired".
+        metric("acquisition_cost", normalised.cashToSellerCents + (normalised.closingCostsCents ?? 0)),
         metric("monthly_cash_flow", out.monthlySpreadCents),
         metric("profit", out.profitCents),
         metric("irr", out.irr),

@@ -34,7 +34,7 @@ export const developmentProformaEngine: EngineSpec = {
   label: "Land development pro-forma (sell-out, profit, IRR)",
   verticals: ["developer"],
   produces: [
-    "total_cost",
+    "total_cost", "acquisition_cost",
     "gross_sellout",
     "net_proceeds",
     "profit",
@@ -88,6 +88,8 @@ export const developmentProformaEngine: EngineSpec = {
       assumptions,
       metrics: [
         metric("total_cost", out.totalCostCents),
+        // What it costs to TAKE IT DOWN (the land; entitlement, improvements and carry come after) — what Today asks at "Acquired".
+        metric("acquisition_cost", normalised.landCostCents),
         metric("gross_sellout", out.grossSelloutCents),
         metric("net_proceeds", out.netProceedsCents),
         metric("profit", out.profitCents),

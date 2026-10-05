@@ -47,6 +47,7 @@
  */
 
 import { useState } from "react";
+import { OUTCOME_MEASURES } from "@shared/outcomes/outcomeMeasures";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -132,21 +133,15 @@ const ANSWERS: readonly Answer[] = [
     kind: "acquired",
     label: "Acquired",
     summary: "The purchase closed.",
-    measures: {
-      metricId: "total_cost",
-      question: "What did it actually cost to acquire?",
-      hint: "All-in: price, closing, anything you paid to take it down.",
-    },
+    // acquisition_cost, not total_cost: the question asks for price + closing,
+    // and total_cost includes rehab (DEFECT-0287, shared/outcomes/outcomeMeasures.ts).
+    measures: OUTCOME_MEASURES.acquired,
   },
   {
     kind: "sold",
     label: "Sold",
     summary: "The position was exited.",
-    measures: {
-      metricId: "profit",
-      question: "What did you actually make?",
-      hint: "Net of everything. A loss is fine — enter it with a minus sign.",
-    },
+    measures: OUTCOME_MEASURES.sold,
   },
   { kind: "abandoned", label: "Walked away", summary: "Pursued, then dropped without a transaction." },
   // NEVER measurable: an unresolved position has no realised number.

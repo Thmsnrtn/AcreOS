@@ -237,6 +237,12 @@ export const METRICS: readonly MetricSpec[] = [
   // offer the seller, and a wholesaler who contracted at the buyer's price would
   // earn nothing. V1 audit, 2026-10-04.
   { id: "buyer_max_price", label: "Cash buyer's max price", unit: "cents", higherIsBetter: true },
+  // What it costs to TAKE A POSITION DOWN: price + purchase closing (net of any
+  // credit received at closing). Excludes rehab, holding, carry, capex and
+  // furnishing — everything spent AFTER the purchase. It is what Today asks at
+  // "Acquired" (DEFECT-0287): comparing that answer with `total_cost`, which
+  // includes rehab, read every acquisition as under budget by the rehab.
+  { id: "acquisition_cost", label: "Cost to acquire", unit: "cents", higherIsBetter: false },
 ] as const;
 
 // `days` was added to MetricUnit the moment it was needed rather than deferred.
@@ -351,6 +357,7 @@ export const CORE_ENGINES: readonly EngineSpec[] = [
     verticals: ["land_flipper"],
     produces: [
       "total_cost",
+      "acquisition_cost",
       "net_proceeds",
       "profit",
       "roi",
@@ -377,6 +384,8 @@ export const CORE_ENGINES: readonly EngineSpec[] = [
         normalisedInputs: { ...calcInputs },
         metrics: [
           metric("total_cost", out.totalCostInCents),
+          // Purchase + closing at buy; holding and marketing come after.
+          metric("acquisition_cost", calcInputs.purchaseCents + calcInputs.closingAtBuyCents),
           metric("net_proceeds", out.netProceedsCents),
           metric("profit", out.profitCents),
           metric("roi", out.roi),

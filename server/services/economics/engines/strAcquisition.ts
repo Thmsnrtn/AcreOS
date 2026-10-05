@@ -51,7 +51,7 @@ export const strAcquisitionEngine: EngineSpec = {
   label: "Short-term rental acquisition (nightly revenue, turnovers, NOI, cash flow, DSCR)",
   verticals: ["short_term_rental"],
   produces: [
-    "total_cost",
+    "total_cost", "acquisition_cost",
     "cash_required",
     "effective_gross_income",
     "annual_operating_expense",
@@ -153,6 +153,8 @@ export const strAcquisitionEngine: EngineSpec = {
       assumptions,
       metrics: [
         metric("total_cost", out.totalCostCents),
+        // What it costs to TAKE IT DOWN (price + closing; furnishing comes after) — what Today asks at "Acquired".
+        metric("acquisition_cost", normalised.purchasePriceCents + (normalised.closingCostsCents ?? 0)),
         metric("cash_required", out.cashRequiredCents),
         metric("effective_gross_income", out.effectiveGrossIncomeCents),
         metric("annual_operating_expense", out.annualOperatingExpenseCents),

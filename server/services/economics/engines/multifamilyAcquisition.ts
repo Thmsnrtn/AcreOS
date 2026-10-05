@@ -41,7 +41,7 @@ export const multifamilyAcquisitionEngine: EngineSpec = {
   label: "Multifamily acquisition (per-unit NOI, cash flow, DSCR, value at market cap)",
   verticals: ["multifamily"],
   produces: [
-    "total_cost",
+    "total_cost", "acquisition_cost",
     "cash_required",
     "effective_gross_income",
     "annual_operating_expense",
@@ -147,6 +147,8 @@ export const multifamilyAcquisitionEngine: EngineSpec = {
       assumptions,
       metrics: [
         metric("total_cost", out.totalCostCents),
+        // What it costs to TAKE IT DOWN (price + closing; capex comes after) — what Today asks at "Acquired".
+        metric("acquisition_cost", normalised.purchasePriceCents + (normalised.closingCostsCents ?? 0)),
         metric("cash_required", out.cashRequiredCents),
         metric("effective_gross_income", out.effectiveGrossIncomeCents),
         metric("annual_operating_expense", out.annualOperatingExpenseCents),

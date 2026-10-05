@@ -37,7 +37,7 @@ export const rentalAcquisitionEngine: EngineSpec = {
   label: "Buy-and-hold acquisition (NOI, cash flow, cash-on-cash, DSCR)",
   verticals: ["buy_and_hold"],
   produces: [
-    "total_cost",
+    "total_cost", "acquisition_cost",
     "cash_required",
     "effective_gross_income",
     "annual_operating_expense",
@@ -110,6 +110,8 @@ export const rentalAcquisitionEngine: EngineSpec = {
       assumptions,
       metrics: [
         metric("total_cost", out.totalCostCents),
+        // What it costs to TAKE IT DOWN (price + closing; rehab comes after) — what Today asks at "Acquired".
+        metric("acquisition_cost", normalised.purchasePriceCents + (normalised.closingCostsCents ?? 0)),
         metric("cash_required", out.cashRequiredCents),
         metric("effective_gross_income", out.effectiveGrossIncomeCents),
         metric("annual_operating_expense", out.annualOperatingExpenseCents),

@@ -36,7 +36,7 @@ export const agentFlipEngine: EngineSpec = {
   version: AGENT_FLIP_ENGINE_VERSION,
   label: "Agent-investor flip (own-account purchase with buy-side and listing commission)",
   verticals: ["agent_investor"],
-  produces: ["total_cost", "net_proceeds", "profit", "roi", "annualized_return", "hold_months"],
+  produces: ["total_cost", "acquisition_cost", "net_proceeds", "profit", "roi", "annualized_return", "hold_months"],
 
   compute(inputs) {
     const normalised = {
@@ -96,6 +96,8 @@ export const agentFlipEngine: EngineSpec = {
       assumptions,
       metrics: [
         metric("total_cost", out.totalCostCents),
+        // What it costs to TAKE IT DOWN (price + purchase closing − the buy-side commission credited at closing) — what Today asks at "Acquired".
+        metric("acquisition_cost", normalised.purchasePriceCents + (normalised.purchaseClosingCostsCents ?? 0) - out.buySideCreditCents),
         metric("net_proceeds", out.netProceedsCents),
         metric("profit", out.profitCents),
         metric("roi", out.roi),

@@ -24,6 +24,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { stripComments } from "../helpers/stripComments";
+import { OUTCOME_MEASURES } from "../../shared/outcomes/outcomeMeasures";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -506,10 +507,15 @@ describe("the customer is finally ASKED — and the asking is honest", () => {
     }
     // And the metrics asked for must be ones the deciding engine PREDICTED, so
     // the variance is a genuine comparison rather than two unrelated numbers.
-    expect(code).toMatch(/metricId: "total_cost"/);
-    expect(code).toMatch(/metricId: "profit"/);
+    // REWRITTEN 2026-10-05 (DEFECT-0287): the ids moved into the shared
+    // definition the card renders, and "acquired" now measures
+    // acquisition_cost — what its question asks — instead of total_cost.
+    expect(code).toMatch(/measures:\s*OUTCOME_MEASURES\.acquired/);
+    expect(code).toMatch(/measures:\s*OUTCOME_MEASURES\.sold/);
+    expect(OUTCOME_MEASURES.acquired.metricId).toBe("acquisition_cost");
+    expect(OUTCOME_MEASURES.sold.metricId).toBe("profit");
     const flip = read("server/services/economics/engines/flipMao.ts");
-    expect(flip).toContain('"total_cost"');
+    expect(flip).toContain('"acquisition_cost"');
     expect(flip).toContain('"profit"');
   });
 

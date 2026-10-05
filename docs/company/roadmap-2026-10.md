@@ -241,7 +241,7 @@ when:
 - that result is frozen as a scenario;
 - a decision under the vertical's strategy pack cites the scenario and carries an
   operator-chosen review date;
-- the engine predicts `total_cost` or `profit`, so the outcome can be graded.
+- the engine predicts `acquisition_cost` or `profit` (what the outcome prompt measures, `shared/outcomes/outcomeMeasures.ts`), so the outcome can be graded.
 
 Its BETA demotion goes in the same commit that earns it.
 
