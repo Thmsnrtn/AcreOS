@@ -176,7 +176,7 @@ jobs:
       # (d2a0b607, from that run's own setup log — the repo's release tags
       # were not resolvable from this environment to pick one by name).
       - name: Print Trivy findings table (non-gating, for the job log)
-        uses: aquasecurity/trivy-action@d2a0b60797ff03db6132bd4e2b293f9b37081297 # last-green master, 2026-08-31
+        uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e # last-green master, 2026-08-31
         with:
           image-ref: "acreos:scan-${{ github.sha }}"
           format: "table"
@@ -187,7 +187,7 @@ jobs:
           skip-setup-trivy: false
 
       - name: Run Trivy vulnerability scanner (image)
-        uses: aquasecurity/trivy-action@d2a0b60797ff03db6132bd4e2b293f9b37081297 # last-green master, 2026-08-31
+        uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e # last-green master, 2026-08-31
         with:
           image-ref: "acreos:scan-${{ github.sha }}"
           format: "sarif"
@@ -238,7 +238,7 @@ jobs:
       # gating step. A table narrower than the gate would print "no findings"
       # on a red job and be worse than no table at all.
       - name: Print Trivy fs findings table (non-gating, for the job log)
-        uses: aquasecurity/trivy-action@d2a0b60797ff03db6132bd4e2b293f9b37081297 # last-green master, 2026-08-31
+        uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e # last-green master, 2026-08-31
         with:
           scan-type: "fs"
           scan-ref: "."
@@ -249,7 +249,7 @@ jobs:
           skip-setup-trivy: false
 
       - name: Run Trivy filesystem scanner
-        uses: aquasecurity/trivy-action@d2a0b60797ff03db6132bd4e2b293f9b37081297 # last-green master, 2026-08-31
+        uses: aquasecurity/trivy-action@c03d123cb480c08c69b054af418ea5e69fe6e57e # last-green master, 2026-08-31
         with:
           scan-type: "fs"
           scan-ref: "."
