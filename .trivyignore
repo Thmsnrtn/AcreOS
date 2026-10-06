@@ -95,3 +95,18 @@ CVE-2026-56864
 # same version, same nil exposure: gh performs no Go-module fetching and
 # no sumdb verification at runtime. Same re-review trigger.
 CVE-2026-56865
+
+# ── CVE-2026-97058 — sprintf-js DoS via unbounded precision specifiers ──────
+# (GHSA-hp3w-g68c-fv3c) Affected: sprintf-js 1.0.3, reached in production only
+#   through mammoth -> argparse 1.0.10 -> sprintf-js. No patched sprintf-js
+#   exists (npm audit: "fix available: none"; Trivy status: affected).
+# Assessment — EXPOSURE NIL (2026-10-06):
+#   • argparse is required ONLY by mammoth's command-line entry point
+#     (node_modules/mammoth/bin/mammoth). mammoth's library code (lib/),
+#     which server/ai/executive.ts imports to read .docx text, never loads
+#     argparse, so sprintf-js is never loaded by the server process.
+#   • Even through the CLI, the format strings are argparse's own help
+#     templates, never input from a user or the network.
+# Re-review trigger: drop when a patched sprintf-js ships, or when mammoth
+# stops depending on argparse 1.x (re-run `npm audit` after any mammoth bump).
+CVE-2026-97058
