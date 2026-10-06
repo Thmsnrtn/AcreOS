@@ -51,21 +51,29 @@ async function seedUserOrg(
   slug: string,
   orgExtra: Record<string, unknown> = {},
 ): Promise<SeededIdentity> {
-  const { rows: u } = await c.query(
+  // Insert-if-missing, then a plain UPDATE (an upsert's `DO UPDATE SET` reads
+  // as a table named "set" to the raw-SQL column gate).
+  await c.query(
     `INSERT INTO users (clerk_user_id, email, first_name, last_name, persona, ai_disclosed_at, ai_disclosure_version)
      VALUES ($1,$2,$3,$4,'land_investor',now(),$5)
-     ON CONFLICT (clerk_user_id) DO UPDATE SET email=EXCLUDED.email, ai_disclosed_at=EXCLUDED.ai_disclosed_at,
-       ai_disclosure_version=EXCLUDED.ai_disclosure_version
-     RETURNING id`,
+     ON CONFLICT (clerk_user_id) DO NOTHING`,
     [clerkId, email, first, last, AI_DISCLOSURE_VERSION],
   );
+  const { rows: u } = await c.query(
+    `UPDATE users SET email = $2, ai_disclosed_at = now(), ai_disclosure_version = $3
+      WHERE clerk_user_id = $1 RETURNING id`,
+    [clerkId, email, AI_DISCLOSURE_VERSION],
+  );
   const userId: string = u[0].id;
-  const { rows: o } = await c.query(
+  await c.query(
     `INSERT INTO organizations (name, slug, owner_id, onboarding_completed)
      VALUES ($1,$2,$3,true)
-     ON CONFLICT (slug) DO UPDATE SET owner_id=EXCLUDED.owner_id
-     RETURNING id`,
+     ON CONFLICT (slug) DO NOTHING`,
     [orgName, slug, userId],
+  );
+  const { rows: o } = await c.query(
+    `UPDATE organizations SET owner_id = $2 WHERE slug = $1 RETURNING id`,
+    [slug, userId],
   );
   const orgId: number = o[0].id;
   await c.query(
@@ -129,12 +137,15 @@ export async function seedCustomerUser(slug: string, email?: string): Promise<{ 
   const clerkId = `e2e_persona_${clean}`;
   const addr = email ?? `${clean}@customer.sim.test`;
   return withDb(async (c) => {
-    const { rows } = await c.query(
+    await c.query(
       `INSERT INTO users (clerk_user_id, email, first_name, last_name, persona, ai_disclosed_at, ai_disclosure_version, tos_accepted_at, privacy_accepted_at)
        VALUES ($1,$2,$3,'Customer','land_investor',now(),$4,now(),now())
-       ON CONFLICT (clerk_user_id) DO UPDATE SET email=EXCLUDED.email
-       RETURNING id`,
+       ON CONFLICT (clerk_user_id) DO NOTHING`,
       [clerkId, addr, clean.slice(0, 20), AI_DISCLOSURE_VERSION],
+    );
+    const { rows } = await c.query(
+      `UPDATE users SET email = $2 WHERE clerk_user_id = $1 RETURNING id`,
+      [clerkId, addr],
     );
     return { userId: rows[0].id, clerkId, email: addr };
   });

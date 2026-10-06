@@ -350,7 +350,7 @@ export interface WorldContact {
   other: Array<{ host: string; path?: string; outcome: string; role: string }>;
 }
 function formField(body: string, key: string): string {
-  const m = new RegExp(`(?:^|&|\\n)${key.replace(/\./g, "\\.")}=([^&\\n]*)`).exec(body);
+  const m = new RegExp(`(?:^|&|\\n)${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=([^&\\n]*)`).exec(body);
   if (!m) return "";
   try { return decodeURIComponent(m[1].replace(/\+/g, " ")); } catch { return m[1]; }
 }

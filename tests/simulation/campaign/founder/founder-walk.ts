@@ -74,7 +74,7 @@ async function main() {
       const words = text.split(/\s+/).filter(Boolean).length;
       const jargon: Record<string, number> = {};
       for (const term of JARGON) {
-        const n = (text.match(new RegExp(`\\b${term.replace(/[-_]/g, "[-_ ]")}s?\\b`, "gi")) ?? []).length;
+        const n = (text.match(new RegExp(`\\b${term.split(/[-_]/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[-_ ]")}s?\\b`, "gi")) ?? []).length;
         if (n) jargon[term] = n;
       }
       const base = `${door.key}-${vp.key}`;
