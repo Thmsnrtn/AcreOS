@@ -16,12 +16,13 @@
  * questions are answered by a human/agent reading the saved text — this
  * script records the evidence, it does not grade it.
  */
+import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const BASE = process.env.SIM_BASE_URL ?? "http://localhost:5187";
-const OUT = join(process.env.FOUNDER_SIM_OUT ?? "/tmp/founder-sim-out", "walk", process.argv[2] ?? "now");
+const OUT = join(process.env.FOUNDER_SIM_OUT ?? fileURLToPath(new URL("../../reports/founder-sim", import.meta.url)), "walk", process.argv[2] ?? "now");
 mkdirSync(OUT, { recursive: true });
 
 const DOORS = [

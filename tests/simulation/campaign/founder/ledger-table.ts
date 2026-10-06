@@ -14,10 +14,11 @@
  * The fixes below are the authors' reading of the code at the cited lines; the
  * outcomes and minutes come only from the ledger rows.
  */
+import { fileURLToPath } from "node:url";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const OUT = process.env.FOUNDER_SIM_OUT ?? "/tmp/founder-sim-out";
+const OUT = process.env.FOUNDER_SIM_OUT ?? fileURLToPath(new URL("../../reports/founder-sim", import.meta.url));
 interface Row { scenario: string; event: string; outcome: string; founderMinutes: number; evidence: string; vacuity: string; at: string }
 
 const rows = new Map<string, Row>();
@@ -52,7 +53,7 @@ const FIX: Array<[RegExp, string]> = [
 const fixFor = (e: string) => FIX.find(([re]) => re.test(e))?.[1] ?? "";
 
 const ordered = [...rows.values()].sort((a, b) => a.scenario.localeCompare(b.scenario, undefined, { numeric: true }));
-const esc = (s: string) => s.replace(/\|/g, "\\|").replace(/\n/g, " ");
+const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\n/g, " ");
 let md = "# Founder-side autonomy ledger\n\n";
 md += `Generated ${new Date().toISOString()} from ${rows.size} events (last row per scenario × event).\n\n`;
 md += "| Scenario | Business event | Outcome | Founder min | Evidence (abridged) | Smallest change → HANDLED / stays with founder |\n|---|---|---|---|---|---|\n";

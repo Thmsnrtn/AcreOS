@@ -15,13 +15,15 @@
  * Time: `ageWorld(h)` subtracts h hours from every timestamp column in the
  * sim DB (simdb.sql) so JS Date.now() and SQL now() stay real and agree.
  */
+import { fileURLToPath } from "node:url";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
 import { SimClient } from "../client";
 
 export const SERVER_ROOT = process.env.SERVER_ROOT ?? "/tmp/acreos-prodlike";
-export const OUT = process.env.FOUNDER_SIM_OUT ?? "/tmp/founder-sim-out";
+// Default output goes to the gitignored reports dir, never a shared temp dir.
+export const OUT = process.env.FOUNDER_SIM_OUT ?? fileURLToPath(new URL("../../reports/founder-sim", import.meta.url));
 export const STANDIN_DIR = process.env.STANDIN_DIR ?? join(OUT, "standin");
 export const EGRESS_LOG = process.env.WORLD_EGRESS_LOG ?? join(OUT, "egress.jsonl");
 export const EGRESS_RULES = process.env.WORLD_EGRESS_RULES ?? join(OUT, "egress-rules.json");
