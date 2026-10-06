@@ -35,6 +35,7 @@
  * Orgs: two FRESH tenants provisioned by ./common (never the persona orgs other
  * sims use). Forged rows are deleted at the end.
  */
+import { randomBytes } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -92,7 +93,7 @@ function enumerate(): Route[] {
 }
 
 const camel = (s: string) => s.replace(/_([a-z0-9])/g, (_m, c) => c.toUpperCase());
-const MARK = "wps" + Math.random().toString(36).slice(2, 9);
+const MARK = "wps" + randomBytes(4).toString("hex");
 const SKIP_COLS = new Set(["id", "organization_id", "created_at", "updated_at", "deleted_at", "created_by", "updated_by"]);
 
 function bodyFor(route: Route, meta: any): Record<string, unknown> | undefined {
@@ -149,7 +150,7 @@ async function withRetry(f: () => Promise<any>): Promise<any> {
 }
 function send(org: Org, route: Route, path: string, body: unknown) {
   const c = org.client;
-  const h = { headers: { "idempotency-key": `wps-${Math.random().toString(36).slice(2)}-${Date.now()}` } };
+  const h = { headers: { "idempotency-key": `wps-${randomBytes(8).toString("hex")}-${Date.now()}` } };
   return withRetry(() => (route.verb === "DELETE" ? c.delete(path, h) : c.call(route.verb, path, body, h)));
 }
 

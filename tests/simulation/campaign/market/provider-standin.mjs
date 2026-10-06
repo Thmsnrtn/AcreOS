@@ -28,6 +28,8 @@ const LOG = path.join(DIR, "provider-calls.jsonl");
 const log = (o) => fs.appendFileSync(LOG, JSON.stringify({ ts: new Date().toISOString(), ...o }) + "\n");
 const rules = () => { try { return JSON.parse(fs.readFileSync(path.join(DIR, "provider-rules.json"), "utf8")); } catch { return {}; } };
 const id = (p) => p + crypto.randomBytes(8).toString("hex");
+// Nothing a caller sent is reflected unescaped.
+const esc = (v) => String(v ?? "").replace(/[<>&'"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" })[c]);
 
 function xml(res, status, action, inner) {
   res.writeHead(status, { "content-type": "text/xml" });
@@ -35,7 +37,7 @@ function xml(res, status, action, inner) {
 }
 function sesError(res, code, message) {
   res.writeHead(400, { "content-type": "text/xml" });
-  res.end(`<ErrorResponse xmlns="http://ses.amazonaws.com/doc/2010-12-01/"><Error><Type>Sender</Type><Code>${code}</Code><Message>${message}</Message></Error><RequestId>${id("r")}</RequestId></ErrorResponse>`);
+  res.end(`<ErrorResponse xmlns="http://ses.amazonaws.com/doc/2010-12-01/"><Error><Type>Sender</Type><Code>${esc(code)}</Code><Message>${esc(message)}</Message></Error><RequestId>${id("r")}</RequestId></ErrorResponse>`);
 }
 function json(res, status, o) { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(o)); }
 
@@ -121,5 +123,5 @@ http.createServer(async (req, res) => {
   if (action === "GetIdentityVerificationAttributes") return xml(res, 200, action, `<GetIdentityVerificationAttributesResult><VerificationAttributes/></GetIdentityVerificationAttributesResult>`);
   log({ rail: "aws-other", op: req.method + " " + p, action: action ?? null });
   res.writeHead(404, { "content-type": "text/xml" });
-  res.end(`<Error><Code>NotImplementedByStandin</Code><Message>${action ?? p}</Message></Error>`);
+  res.end(`<Error><Code>NotImplementedByStandin</Code><Message>${esc(action ?? p)}</Message></Error>`);
 }).listen(PORT, "127.0.0.1", () => console.log(`provider stand-in on :${PORT}, dir ${DIR}`));

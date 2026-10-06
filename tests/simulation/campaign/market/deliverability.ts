@@ -32,7 +32,7 @@
 import crypto from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { q, one, provisionOrg, msg, jsonl, writeJson, postTwilioSms, ensureDefaultE2eUser, DB_LABEL, type Org, type Resp } from "./common";
+import { q, one, provisionOrg, msg, jsonl, writeJson, postTwilioSms, ensureDefaultE2eUser, DB_LABEL, type Org, type Resp, reEsc } from "./common";
 import { recordFinding, recordMetric, recordSkip } from "../ledger";
 
 // A stand-in AWS key id, assembled at runtime so no key-shaped literal sits in source.
@@ -120,7 +120,7 @@ async function main() {
     await o.client.patch(`/api/leads/${r.body.id}/consent`, { tcpaConsent: true, consentSource: "web_form_optin" });
     leads.push({ key: `L${i}`, id: r.body.id, phone, email, addr, signal: SIGNALS[i] });
   }
-  const orgSel = { number, companyRe: new RegExp(`^Deliv ${o.orgId} `) };
+  const orgSel = { number, companyRe: new RegExp(`^Deliv ${reEsc(String(o.orgId))} `) };
 
   // ── email identity: try every path a customer could find, stop at the first that delivers ──
   const emailPaths: Array<{ path: string; status: number; delivered: boolean; note?: string }> = [];

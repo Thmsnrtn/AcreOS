@@ -226,3 +226,6 @@ export function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<
   });
 }
 export { SimClient, type Resp };
+
+/** Escape a value for literal use inside a RegExp. */
+export const reEsc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

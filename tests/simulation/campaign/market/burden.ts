@@ -31,7 +31,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { q, writeJson, RUBRIC_MINUTES, type BurdenClass } from "./common";
+import { q, writeJson, RUBRIC_MINUTES, type BurdenClass, reEsc } from "./common";
 import { TIER_PRICES_CENTS } from "../../../../shared/billing/tier-pricing";
 import { FIXED_COST_INPUTS_USD_MONTHLY } from "../../../../shared/schema";
 
@@ -43,7 +43,7 @@ const L = (f: string) => (existsSync(f) ? readFileSync(f, "utf8").split("\n").fi
 
 // arrival curves, read from the cohort source (single source of truth)
 const src = readFileSync(join(HERE, "cohort-90-days.ts"), "utf8");
-const arr = (name: string): number[] => { const m = new RegExp(`export const ${name} = (\\[[^\\]]*\\])`).exec(src); if (!m) throw new Error(`cohort-90-days.ts no longer exports ${name}`); return JSON.parse(m[1]); };
+const arr = (name: string): number[] => { const m = new RegExp(`export const ${reEsc(name)} = (\\[[^\\]]*\\])`).exec(src); if (!m) throw new Error(`cohort-90-days.ts no longer exports ${name}`); return JSON.parse(m[1]); };
 const CURVES: Record<number, number[]> = { 3: arr("ARRIVAL_3"), 10: arr("ARRIVAL_10"), 25: arr("ARRIVAL_25") };
 
 const orgs: any[] = JSON.parse(readFileSync(join(COHORT, "cohort-orgs.json"), "utf8"));
@@ -129,7 +129,7 @@ const ledger = await q(`SELECT organization_id AS org, category, count(*)::int n
 const tel = await q(`SELECT organization_id AS org, count(*)::int n, coalesce(sum(estimated_cost_cents),0)::float cents FROM ai_telemetry_events WHERE organization_id = ANY($1) GROUP BY 1`, [ids]);
 const debits = await q(`SELECT organization_id AS org, coalesce(sum(abs(amount_cents)),0)::int cents FROM credit_transactions WHERE organization_id = ANY($1) AND type='debit' GROUP BY 1`, [ids]);
 const topups = L(join(COHORT, "cohort-topups.jsonl"));
-const lobPieces = (o: any) => prov.filter((x) => x.rail === "lob" && /POST/.test(x.op) && new RegExp(`^(Market|Main) ${o.n}( |$)`).test(String(x.fromName ?? ""))).length;
+const lobPieces = (o: any) => prov.filter((x) => x.rail === "lob" && /POST/.test(x.op) && new RegExp(`^(Market|Main) ${reEsc(String(o.n))}( |$)`).test(String(x.fromName ?? ""))).length;
 const MONTHS = 3; // 13 tenure weeks
 const perOrg = orgs.map((o) => {
   const tierPrice = (TIER_PRICES_CENTS as any)[o.tier]?.priceMonthlyCents ?? null;

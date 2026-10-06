@@ -38,8 +38,7 @@ import crypto from "node:crypto";
 import { transformSync } from "esbuild";
 import {
   OUT, DB_LABEL, q, one, count, provisionOrg, msg, jsonl, writeJson, burden, classifyResponse, rnd, reseed, pick,
-  ensureDefaultE2eUser, postTwilioSms, standinCalls, SimClient, giveOwnIp, type Org, type Resp, type BurdenClass,
-} from "./common";
+  ensureDefaultE2eUser, postTwilioSms, standinCalls, SimClient, giveOwnIp, type Org, type Resp, type BurdenClass, reEsc } from "./common";
 import { personaTestUserId } from "../../../../server/auth/testAuth";
 import { PAX_QUESTIONS } from "./pax-questions";
 import { recordFinding, recordMetric, recordSkip } from "../ledger";
@@ -389,7 +388,7 @@ async function mailTouch(c: Ctx) {
   const before = provCount(), cb = await credit(c);
   const r = await act(c, "POST campaigns/send-direct-mail", c.org.client.post(`/api/campaigns/${camp.body.id}/send-direct-mail`, { pieceType: "postcard_4x6", leadIds: targets.map((l) => l.id) }, { headers: { "idempotency-key": `mkt-dm-${c.org.orgId}-${c.week}-${camp.body.id}` } }));
   await new Promise((res) => setTimeout(res, 1500));
-  const mine = new RegExp(`^(Market|Main) ${c.spec.n}( |$)`);
+  const mine = new RegExp(`^(Market|Main) ${reEsc(String(c.spec.n))}( |$)`);
   const pieces = provSince(before).filter((x) => x.rail === "lob" && /POST/.test(x.op) && mine.test(String(x.fromName ?? "")));
   const charged = cb - (await credit(c));
   c.charged.mail += charged;
