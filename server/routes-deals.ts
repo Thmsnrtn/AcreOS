@@ -1735,7 +1735,12 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     try {
       const org = req.organization;
       const propertyId = Number(req.params.propertyId);
+      // Same ownership gate as the PUT below: a property that is not this
+      // org's is a 404, and no checklist is read or created for it.
+      const property = await storage.getProperty(org.id, propertyId);
+      if (!property) return Errors.notFound(res, "Property");
       const checklist = await storage.getOrCreateDueDiligenceChecklist(org.id, propertyId);
+      if (!checklist) return Errors.notFound(res, "Property");
       res.json(checklist);
     } catch (error: any) {
       logger.error("Get due diligence checklist error", error instanceof Error ? error : undefined);
@@ -1753,7 +1758,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       // wrote into that foreign org's row.
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) return Errors.notFound(res, "Property");
-      const existing = await storage.getDueDiligenceChecklist(propertyId);
+      const existing = await storage.getDueDiligenceChecklist(org.id, propertyId);
       if (!existing) {
         return Errors.notFound(res, "Checklist");
       }

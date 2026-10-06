@@ -132,14 +132,25 @@ export const acquisitionRepo = {
   },
 
   // Due Diligence Checklists (Enhanced)
-  async getDueDiligenceChecklist(this: DatabaseStorage, propertyId: number) {
+  // The checklist is read by (organization, property), never by property alone:
+  // a property id is caller-supplied, and a row belonging to another org must
+  // not be returned just because it hangs off the same id.
+  async getDueDiligenceChecklist(this: DatabaseStorage, orgId: number, propertyId: number) {
     const [checklist] = await db.select().from(dueDiligenceChecklists)
-      .where(eq(dueDiligenceChecklists.propertyId, propertyId));
+      .where(and(
+        eq(dueDiligenceChecklists.organizationId, orgId),
+        eq(dueDiligenceChecklists.propertyId, propertyId),
+      ));
     return checklist;
   },
 
+  // Returns undefined unless the property belongs to `orgId`. Get-or-create
+  // must never create (or return) a checklist on another org's property —
+  // the row it would create would be served to that property's real owner.
   async getOrCreateDueDiligenceChecklist(this: DatabaseStorage, orgId: number, propertyId: number) {
-    const existing = await this.getDueDiligenceChecklist(propertyId);
+    const property = await this.getProperty(orgId, propertyId);
+    if (!property) return undefined;
+    const existing = await this.getDueDiligenceChecklist(orgId, propertyId);
     if (existing) return existing;
 
     const defaultItems = [
