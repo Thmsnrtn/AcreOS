@@ -242,6 +242,43 @@ END $mig0247$`,
   // 0259 — one campaign send = one mailing order (audit of 224a5c0).
   `ALTER TABLE "mailing_orders" ADD COLUMN IF NOT EXISTS "operation_key" text`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "mailing_orders_org_operation_uidx" ON "mailing_orders" ("organization_id", "operation_key")`,
+  // 0262 — payments.transaction_id is a full UNIQUE constraint, so
+  // INSERT … ON CONFLICT (transaction_id) resolves (the 0023 partial index is
+  // inferred only when a statement repeats its predicate, and the payment
+  // writers name the column alone). NULLs stay distinct. Replaces the partial
+  // index, no-ops when the constraint exists, and stops with a count rather
+  // than deleting rows if non-null duplicates are found. Mirrors
+  // migrations/0262_payments_transaction_id_constraint.sql.
+  `DO $mig0262$
+DECLARE
+  dupes bigint;
+BEGIN
+  IF EXISTS (
+    SELECT 1
+      FROM pg_constraint
+     WHERE conrelid = 'public.payments'::regclass
+       AND conname = 'payments_transaction_id_unique'
+       AND contype = 'u'
+  ) THEN
+    RETURN;
+  END IF;
+
+  SELECT count(*) INTO dupes
+    FROM (
+      SELECT transaction_id
+        FROM "payments"
+       WHERE transaction_id IS NOT NULL
+       GROUP BY transaction_id
+      HAVING count(*) > 1
+    ) d;
+  IF dupes > 0 THEN
+    RAISE EXCEPTION 'payments.transaction_id has % non-null value(s) recorded more than once; the unique constraint cannot be added until they are resolved by hand', dupes;
+  END IF;
+
+  DROP INDEX IF EXISTS "payments_transaction_id_unique";
+  ALTER TABLE "payments" ADD CONSTRAINT "payments_transaction_id_unique" UNIQUE ("transaction_id");
+END
+$mig0262$`,
   `CREATE INDEX IF NOT EXISTS "idx_organizations_pause_resume" ON "organizations" ("subscription_paused", "subscription_pause_ends_at")`,
   `ALTER TABLE "cancellation_surveys" ADD COLUMN IF NOT EXISTS "offered_pause" boolean DEFAULT false`,
   `ALTER TABLE "cancellation_surveys" ADD COLUMN IF NOT EXISTS "accepted_pause" boolean DEFAULT false`,
