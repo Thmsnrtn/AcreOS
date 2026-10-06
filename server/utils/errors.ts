@@ -137,6 +137,82 @@ export function sendError(
  * response. Status codes are unchanged; only the human-readable
  * `message` is rewritten.
  */
+type LimitDetails = Record<string, unknown>;
+
+const RATE_LIMIT_MESSAGE =
+  "You're sending requests faster than the system can handle. Wait a few seconds and try again.";
+
+const GENERIC_LIMIT_MESSAGE =
+  "You've reached a usage limit for this action. Check Settings → Billing for your plan's limits and how to raise them.";
+
+function asLimitDetails(details: unknown): LimitDetails | null {
+  return details && typeof details === "object" && !Array.isArray(details) ? (details as LimitDetails) : null;
+}
+
+/** A pure rate limit: the caller told us when to come back. */
+function isRateLimitDetails(details: unknown): boolean {
+  const d = asLimitDetails(details);
+  if (!d) return false;
+  return (
+    typeof d.retryAfter === "number" ||
+    typeof d.retryAfterSeconds === "number" ||
+    typeof d.reset === "number"
+  );
+}
+
+/**
+ * Exported for tests. The customer-facing sentence for a 429, derived from
+ * what the caller says was hit:
+ *   - an explicit `message` (or a plain string) wins — the caller knows best;
+ *   - a plan cap (`resourceType` + a limit) names the resource and the plan,
+ *     and says upgrading raises it;
+ *   - a credit shortfall (`needed`, or reason `insufficient_credits` /
+ *     `pool_exhausted`) says credits ran out and where to buy more;
+ *   - a rate limit (`retryAfter*`) keeps the "slow down" voice;
+ *   - anything else names it as a usage limit and points to billing, rather
+ *     than claiming a rate limit nobody measured.
+ */
+export function limitExceededMessage(details: unknown): string {
+  if (typeof details === "string" && details.trim()) return details.trim();
+  const d = asLimitDetails(details);
+  if (!d) return GENERIC_LIMIT_MESSAGE;
+  if (typeof d.message === "string" && d.message.trim()) return d.message.trim();
+
+  const reason = typeof d.reason === "string" ? d.reason : undefined;
+  if (
+    typeof d.needed === "number" ||
+    reason === "insufficient_credits" ||
+    reason === "pool_exhausted" ||
+    d.resourceType === "credit_pool"
+  ) {
+    const needed = typeof d.needed === "number" ? ` — this needs ${d.needed}¢` : "";
+    return (
+      `You don't have enough AcreOS credits for this${needed}. ` +
+      "Buy a credit pack on the Usage page to continue, or add your own provider key in Settings → Your provider keys where one applies."
+    );
+  }
+
+  if (typeof d.resourceType === "string") {
+    const resource = d.resourceType.replace(/_/g, " ");
+    const limit = typeof d.currentLimit === "number" ? d.currentLimit : typeof d.limit === "number" ? d.limit : null;
+    const tier = typeof d.currentTier === "string" ? d.currentTier : typeof d.tier === "string" ? d.tier : null;
+    const plan = tier ? `your ${tier} plan's` : "your plan's";
+    return (
+      `You've reached ${plan} limit for ${resource}${limit !== null ? ` (${limit})` : ""}. ` +
+      "Upgrade your plan in Settings → Billing to raise it."
+    );
+  }
+
+  if (isRateLimitDetails(details)) {
+    const secs = typeof d.retryAfterSeconds === "number" ? d.retryAfterSeconds : typeof d.retryAfter === "number" ? d.retryAfter : null;
+    return secs !== null && secs > 5
+      ? `You're sending requests faster than this allows. Wait ${Math.ceil(secs)} seconds and try again.`
+      : RATE_LIMIT_MESSAGE;
+  }
+
+  return GENERIC_LIMIT_MESSAGE;
+}
+
 export const Errors = {
   notFound(res: Response, entity: string, opts?: ErrorOptions): void {
     const message = `We couldn't find that ${entity} — it may have been deleted, archived, or moved between organizations.`;
@@ -237,14 +313,21 @@ export const Errors = {
     sendError(res, 410, "GONE", message, undefined, buildDocsUrl(opts));
   },
 
+  /**
+   * 429 for every kind of limit — a rate limit, a plan cap, a credit
+   * shortfall, a daily budget. The message says WHICH limit was hit and how to
+   * get past it (see `limitExceededMessage`); it used to be the rate-limit
+   * sentence for all of them, so a customer out of credits or at a plan cap
+   * was told to "wait a few seconds", which never works.
+   */
   limitExceeded(res: Response, details: unknown, opts?: ErrorOptions): void {
     sendError(
       res,
       429,
       "LIMIT_EXCEEDED",
-      "You're sending requests faster than the system can handle. Wait a few seconds and try again.",
+      limitExceededMessage(details),
       details,
-      buildDocsUrl(opts) ?? "/help/article/rate-limit",
+      buildDocsUrl(opts) ?? (isRateLimitDetails(details) ? "/help/article/rate-limit" : undefined),
     );
   },
 
