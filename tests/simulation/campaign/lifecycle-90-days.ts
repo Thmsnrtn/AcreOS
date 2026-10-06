@@ -101,8 +101,6 @@ function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
 function msg(r: Resp): string {
   return (r.body?.message ?? r.body?.error ?? r.text ?? "").toString().slice(0, 240);
 }
-const cents = (v: unknown) => Math.round(Number(v ?? 0) * 100);
-const dollars = (c: number) => (c / 100).toFixed(2);
 
 // deterministic PRNG so two runs build the same list
 let seed = 90;

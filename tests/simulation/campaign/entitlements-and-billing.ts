@@ -806,7 +806,7 @@ async function scenarioCredits() {
  */
 async function resetExportBucket(label: string): Promise<string> {
   const bucketKey = "erl:export-user:export:ip:127.0.0.1";
-  let cleared = "not attempted";
+  let cleared: string;
   try {
     const { default: Redis } = await import("ioredis");
     const redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", { lazyConnect: true, maxRetriesPerRequest: 1 });

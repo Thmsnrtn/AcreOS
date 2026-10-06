@@ -11,9 +11,10 @@
  *   SIM_ENV_FILE=... SIM_BASE_URL=http://localhost:5000 npx tsx tests/simulation/campaign/infrastructure-chaos.ts
  */
 import { execSync, spawn } from "node:child_process";
-import { openSync } from "node:fs";
+import { openSync, statSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { SimClient, concurrently, percentile } from "./client";
-import { recordFinding, recordMetric, recordSkip } from "./ledger";
+import { outDir, recordFinding, recordMetric, recordSkip } from "./ledger";
 
 const SIM = "infra-chaos";
 const c = new SimClient("land-operator-desktop");
@@ -159,8 +160,22 @@ async function main() {
         sh(`kill -KILL ${pid}`);
       }
       // Restart the app for the sims that follow.
-      const log = openSync(process.env.SIM_SERVER_LOG ?? "/tmp/acreos-server-restart.log", "a");
-      const startArgs = process.env.SIM_START_SCRIPT ? [process.env.SIM_START_SCRIPT] : ["-c", `source ${ENV_FILE} && exec node dist/index.cjs`];
+      // The restart log lives in this campaign's own output directory, never a
+      // predictable path in the shared temp dir (CodeQL js/insecure-temporary-file).
+      const log = openSync(join(outDir(), "server-restart.log"), "a");
+      // The operator-supplied paths are checked to be existing regular files and
+      // passed as ARGUMENTS, never spliced into a shell string
+      // (CodeQL js/indirect-command-line-injection).
+      const startScript = process.env.SIM_START_SCRIPT;
+      const assertFile = (p: string) => {
+        if (!isAbsolute(p) || !statSync(p, { throwIfNoEntry: false })?.isFile()) throw new Error(`not an absolute path to a regular file: ${p}`);
+        return p;
+      };
+      const startArgs = startScript
+        ? [assertFile(startScript)]
+        // The env file may name a different PORT than the instance under test;
+        // the port comes from SIM_BASE_URL, validated as digits, passed as an argument.
+        : ["-c", 'source "$1" && PORT="$2" exec node dist/index.cjs', "bash", assertFile(ENV_FILE), /^\d{2,5}$/.test(port) ? port : "5000"];
       const child = spawn("bash", startArgs, { detached: true, stdio: ["ignore", log, log] });
       child.unref();
       let up = false;

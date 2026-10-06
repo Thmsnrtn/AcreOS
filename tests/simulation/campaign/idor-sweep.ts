@@ -125,11 +125,12 @@ function enumerateRoutes(): { routes: Route[]; windows: Map<string, string> } {
 function buildVarToTable(): Record<string, string> {
   const map: Record<string, string> = {};
   const scan = (dir: string) => {
-    for (const f of fs.readdirSync(dir)) {
-      const fp = path.join(dir, f);
-      const st = fs.statSync(fp);
-      if (st.isDirectory()) scan(fp);
-      else if (/\.ts$/.test(f)) {
+    // Dirent types come with the listing, so nothing is checked and then used
+    // separately (CodeQL js/file-system-race).
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fp = path.join(dir, e.name);
+      if (e.isDirectory()) scan(fp);
+      else if (e.isFile() && /\.ts$/.test(e.name)) {
         const s = fs.readFileSync(fp, "utf8");
         for (const m of s.matchAll(/export const (\w+)\s*=\s*pgTable\(\s*["'`]([a-zA-Z0-9_]+)["'`]/g)) {
           map[m[1]] = m[2];
