@@ -33,6 +33,7 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { format } from "date-fns";
+import { calendarDateFromInput, calendarDateToInput, formatCalendarDate } from "@/lib/calendar-date";
 import { useToast } from "@/hooks/use-toast";
 import { Verbs } from "@/lib/labels";
 
@@ -1239,8 +1240,11 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
                 <div className="flex items-center gap-3">
                   <Calendar className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
                   <div>
-                    <p className="text-sm text-muted-foreground">Scheduled date</p>
-                    <p className="font-medium">{format(new Date(campaign.scheduledDate), 'PPP')}</p>
+                    <p className="text-sm text-muted-foreground">Planned send date</p>
+                    <p className="font-medium">{formatCalendarDate(campaign.scheduledDate)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      A reminder for you — AcreOS does not send automatically on this date.
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -1411,17 +1415,18 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="schedule-date">Schedule</Label>
+          <Label htmlFor="schedule-date">Planned send date (optional)</Label>
           <Input
             id="schedule-date"
             type="date"
-            value={(() => {
-              const d = form.watch("scheduledDate");
-              return d instanceof Date && !isNaN(d.getTime()) ? format(d, 'yyyy-MM-dd') : '';
-            })()}
-            onChange={(e) => form.setValue("scheduledDate", e.target.value ? new Date(e.target.value) : undefined as any)}
+            aria-describedby="schedule-date-help"
+            value={calendarDateToInput(form.watch("scheduledDate"))}
+            onChange={(e) => form.setValue("scheduledDate", calendarDateFromInput(e.target.value) ?? null)}
             data-testid="input-schedule-date"
           />
+          <p id="schedule-date-help" className="text-xs text-muted-foreground">
+            For your planning only. Campaigns are not sent automatically on this date — send it when you're ready.
+          </p>
         </div>
       </div>
 
