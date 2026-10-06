@@ -19,7 +19,7 @@
  *   - model DOWN: rules → fail:500 then hang; what the customer sees and how long.
  * Every answer's correctness needs a judge → "needs oracle" (the question list).
  */
-import { readFileSync, existsSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { q, one, provisionOrg, msg, jsonl, writeJson, standinRules, DB_LABEL, STANDIN_DIR } from "./common";
 import { PAX_QUESTIONS, INJECTION_NOTE } from "./pax-questions";

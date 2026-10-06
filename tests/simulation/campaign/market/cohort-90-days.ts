@@ -37,11 +37,11 @@ import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
 import { transformSync } from "esbuild";
 import {
-  OUT, DB_LABEL, q, one, count, provisionOrg, msg, jsonl, writeJson, burden, classifyResponse, rnd, reseed, pick,
+  DB_LABEL, q, one, count, provisionOrg, msg, jsonl, writeJson, burden, classifyResponse, rnd, reseed, pick,
   ensureDefaultE2eUser, postTwilioSms, standinCalls, SimClient, giveOwnIp, type Org, type Resp, type BurdenClass, reEsc } from "./common";
 import { personaTestUserId } from "../../../../server/auth/testAuth";
 import { PAX_QUESTIONS } from "./pax-questions";
-import { recordFinding, recordMetric, recordSkip } from "../ledger";
+import { recordMetric, recordSkip } from "../ledger";
 
 const SIM = "market-cohort";
 const HERE = dirname(fileURLToPath(import.meta.url));

@@ -172,7 +172,7 @@ async function s7() {
   const m = k.marks();
   // A realistic early-business world: one stalled signup, one paying customer
   // with two support tickets, one paying customer whose card fails.
-  const stall = await k.signUpCustomer("vac-stall");
+  await k.signUpCustomer("vac-stall");
   const sup = await k.signUpCustomer("vac-support");
   await k.q(`update organizations set subscription_tier='pro', subscription_status='active', stripe_customer_id='cus_sim_vacsup' where id=$1`, [sup.org.id]);
   const t1 = await sup.client.post("/api/support/tickets", { subject: "Refund please", description: "Please refund my $40 add-on, I didn't use it.", category: "billing" });

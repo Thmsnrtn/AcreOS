@@ -36,7 +36,7 @@
  * sims use). Forged rows are deleted at the end.
  */
 import { randomBytes } from "node:crypto";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire } from "node:module";

@@ -26,8 +26,8 @@ import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { transformSync } from "esbuild";
-import { OUT, q, one, count, provisionOrg, msg, jsonl, writeJson, burden, rnd, reseed, type Org } from "./common";
-import { recordFinding, recordMetric, recordSkip } from "../ledger";
+import { OUT, q, count, provisionOrg, msg, jsonl, writeJson, burden, rnd, reseed, type Org } from "./common";
+import { recordMetric, recordSkip } from "../ledger";
 
 const SIM = "market-csv-imports";
 const HERE = dirname(fileURLToPath(import.meta.url));

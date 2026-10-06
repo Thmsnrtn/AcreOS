@@ -32,7 +32,7 @@
 import crypto from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { q, one, provisionOrg, msg, jsonl, writeJson, postTwilioSms, ensureDefaultE2eUser, DB_LABEL, type Org, type Resp, reEsc } from "./common";
+import { q, one, provisionOrg, msg, writeJson, postTwilioSms, ensureDefaultE2eUser, DB_LABEL, type Org, type Resp, reEsc } from "./common";
 import { recordFinding, recordMetric, recordSkip } from "../ledger";
 
 // A stand-in AWS key id, assembled at runtime so no key-shaped literal sits in source.
@@ -146,7 +146,7 @@ async function main() {
       return p;
     }, "no client caller for this route; DNS bypassed");
   }
-  if (!emailOk) emailOk = await tryEmail("API-only /api/integrations/aws_ses", () => o.client.post("/api/integrations/aws_ses", { apiKey: STANDIN_KEY_ID, settings: { accessKeyId: STANDIN_KEY_ID, secretAccessKey: "standin-secret", region: "us-east-1", fromEmail: `deals@deliv${o.orgId}.example.org` } }), "no UI form for aws_ses");
+  if (!emailOk) await tryEmail("API-only /api/integrations/aws_ses", () => o.client.post("/api/integrations/aws_ses", { apiKey: STANDIN_KEY_ID, settings: { accessKeyId: STANDIN_KEY_ID, secretAccessKey: "standin-secret", region: "us-east-1", fromEmail: `deals@deliv${o.orgId}.example.org` } }), "no UI form for aws_ses");
   steps.emailPaths = emailPaths;
 
   // ── legacy-configured control org for the inbound-SMS detector ──
