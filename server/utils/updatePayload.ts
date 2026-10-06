@@ -13,6 +13,7 @@
  */
 
 import {
+  isCopyableBodyKey,
   stripServerOwnedFields,
   type ServerOwnedRequestField,
 } from "@shared/contracts/serverOwnedFields";
@@ -39,11 +40,12 @@ export function omitProtectedFields<T extends Record<string, unknown>>(
   if (body === null || typeof body !== "object" || Array.isArray(body)) {
     return {};
   }
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(body as Record<string, unknown>)) {
-    if (!PROTECTED_FIELDS.has(key)) out[key] = value;
-  }
-  return out as Partial<T>;
+  // fromEntries defines own data properties; it never assigns through a setter.
+  return Object.fromEntries(
+    Object.entries(body as Record<string, unknown>).filter(
+      ([key]) => isCopyableBodyKey(key) && !PROTECTED_FIELDS.has(key),
+    ),
+  ) as Partial<T>;
 }
 
 /**

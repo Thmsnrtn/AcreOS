@@ -41,6 +41,18 @@ export type ServerOwnedRequestField = (typeof SERVER_OWNED_REQUEST_FIELDS)[numbe
 const SERVER_OWNED = new Set<string>(SERVER_OWNED_REQUEST_FIELDS);
 
 /**
+ * Keys a copy loop must never assign: writing them changes the copy's
+ * prototype rather than adding a field. A JSON body can carry them as own
+ * keys (`JSON.parse` creates `__proto__` as an ordinary property).
+ */
+const PROTOTYPE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+/** True for a key a request-body copy may carry over. */
+export function isCopyableBodyKey(key: string): boolean {
+  return !PROTOTYPE_KEYS.has(key);
+}
+
+/**
  * Shallow copy of `body` without any server-owned field (and without any of
  * `extra`, for a table with further server-owned columns of its own). A
  * non-object input yields an empty object.
@@ -50,10 +62,10 @@ export function stripServerOwnedFields(
   extra: readonly string[] = [],
 ): Record<string, unknown> {
   if (body === null || typeof body !== "object" || Array.isArray(body)) return {};
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(body as Record<string, unknown>)) {
-    if (SERVER_OWNED.has(key) || extra.includes(key)) continue;
-    out[key] = value;
-  }
-  return out;
+  // fromEntries defines own data properties; it never assigns through a setter.
+  return Object.fromEntries(
+    Object.entries(body as Record<string, unknown>).filter(
+      ([key]) => isCopyableBodyKey(key) && !SERVER_OWNED.has(key) && !extra.includes(key),
+    ),
+  );
 }
