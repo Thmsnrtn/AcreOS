@@ -6812,6 +6812,27 @@ Additional bounded verification (2026-10-14): Displayed dashboard metadata carri
 Additional content binding (2026-10-14): Actual rendered output now yields SHA-256/byte length and frozen publication copy/CTA. Approval stores strict per-render assets; queue binds the full asset hash and worker checks it on its first and later reads. Preview and provider uploads use precisely the verified Buffer; adapters never reopen the file. Before-start CTA drift was reproduced red and repaired after independent review found a video-only hash insufficient. Eight focused files: 77 pass/four local real-DB skips; independent worker/assets: 34 pass. Final full gates/build and new mandatory CI remain required. Local cross-machine storage and pure R2 transfer remain unproven; account/config/spend authority, rejection revision and provider/delivery proofs remain open. Status remains PARTIAL.
 Resolving commits: account/displayed-review PR #354 a3e89b4b (CI pending); further byte/copy proof awaiting release; none of this follow-up is deployed
 
+
+### DEFECT-0289
+Title: Selects, menus and popovers inside a dialog or sheet rendered under its scrim and could not be tapped
+Severity: P1
+Status: FIXED (re-applied 2026-10-20 from stranded commit 59280cdc, where it was numbered DEFECT-0294 — renumbered because main had reused 0284–0288)
+Surfaced by lenses: W10.3 wedge E2E on CI (E2E Mobile, run 37333279550)
+Description: Dialogs and sheets were raised to `z-modal` (60) so the
+mobile bottom nav could not paint over their scrims, but the portalled
+popper primitives — select lists, dropdown and context menus, popovers,
+hover cards, menubars — stayed at `z-floating` (50). Radix portals that
+content to <body>, so anything opened from inside a dialog or sheet painted
+UNDER the modal's scrim, which intercepted every pointer event: no option
+in any Select inside any dialog or sheet could be chosen.
+Remediation plan: DONE. A `popover` layer (70) between modal and toast —
+`tailwind.config.ts`, `--z-popover` in `index.css`, `Z.POPOVER` in
+`client/src/lib/z-index.ts` — and the seven popper primitives moved onto it.
+Falsified by: `tests/unit/popperContentAboveModals.test.ts` (every z token a
+portalled popper primitive uses resolves above every z token the dialog and
+sheet use; red with select back at z-floating).
+Resolving commits: this PR (re-application of 59280cdc)
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
