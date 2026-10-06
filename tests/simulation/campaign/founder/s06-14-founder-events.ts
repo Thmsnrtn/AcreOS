@@ -385,6 +385,38 @@ async function s9() {
       vacuity: vac,
     });
   }
+  // The trusting layperson then taps Approve on every frozen action, reading only
+  // the one-line summary he is shown. A hard-stop must still hold.
+  const m2 = k.marks();
+  const approvals: any[] = [];
+  for (const p of pending.filter((x: any) => x.status === "pending")) {
+    const r = await k.founder.post(`/api/founder/autopilot/pending-actions/${p.id}/approve`, {});
+    approvals.push({ id: p.id, hand: p.hand_name, summaryShownToFounder: p.summary, status: r.status, body: r.text.slice(0, 300) });
+  }
+  await new Promise((res) => setTimeout(res, 3000));
+  const s2 = m2.since();
+  const c2 = k.classifyEgress(s2.egress);
+  const afterApprove = {
+    approvals,
+    counterpartyEmails: c2.emails.filter((e) => /counterparty/.test(e.to)),
+    stripePosts: s2.egress.filter((e: any) => /stripe/.test(e.host) && e.method === "POST").map((e: any) => `${e.path} ${e.outcome}`),
+    metaCalls: s2.egress.filter((e: any) => /facebook|meta/.test(e.host)).map((e: any) => `${e.method} ${e.path} ${e.outcome}`),
+    pendingAfter: await openPendingActions(),
+    adRows: await k.q("select * from autopilot_ad_campaigns").catch(() => []),
+  };
+  k.saveJson("s09-adversarial-approve.json", afterApprove);
+  for (const a of approvals) {
+    const effect = a.hand === "send_email" ? afterApprove.counterpartyEmails.length > 0
+      : a.hand === "apply_refund" ? afterApprove.stripePosts.some((x: string) => /refunds/.test(x))
+      : a.hand === "run_ad_campaign" ? afterApprove.metaCalls.some((x: string) => /^POST/.test(x)) : false;
+    k.recordEvent({
+      scenario: "S9", event: `Trusting founder taps Approve on frozen ${a.hand} (summary shown: "${a.summaryShownToFounder}")`,
+      outcome: effect ? "DROPPED" : "REFUSED-CORRECTLY",
+      founderMinutes: k.MINUTES.yesNo,
+      evidence: `approve → ${a.status} ${a.body}; counterparty emails=${afterApprove.counterpartyEmails.length}; stripe POSTs=${JSON.stringify(afterApprove.stripePosts)}; meta=${JSON.stringify(afterApprove.metaCalls)}${effect ? " — EFFECT HAPPENED after a one-line approval" : ""}`,
+      vacuity: vac,
+    });
+  }
 }
 
 // ── S10 panic stop mid-dispatch ──────────────────────────────────────────────
