@@ -2197,7 +2197,7 @@ export function registerCampaignRoutes(app: Express): void {
               purchaseUrl: "/usage",
               message:
                 `Not enough credits to email ${dedupedLeads.length} recipient(s) — this send needs ` +
-                `${totalCost}¢. Buy a credit pack on the Usage page, or connect your own email ` +
+                `${totalCost}¢. Buy a credit pack in Settings → Usage & Credits, or connect your own email ` +
                 `sending account, and send again.`,
             },
             { docsSlug: "limit-email-credits" },
@@ -2479,7 +2479,7 @@ export function registerCampaignRoutes(app: Express): void {
               purchaseUrl: "/usage",
               message:
                 `Not enough credits to text ${dedupedLeads.length} recipient(s) — this send needs ` +
-                `${totalCost}¢. Buy a credit pack on the Usage page and send again.`,
+                `${totalCost}¢. Buy a credit pack in Settings → Usage & Credits and send again.`,
             },
             { docsSlug: "limit-sms-credits" },
           );

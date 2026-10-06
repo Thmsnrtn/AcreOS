@@ -121,22 +121,6 @@ export function sendError(
   res.status(statusCode).json(body);
 }
 
-/**
- * Standardized error helpers — use `Errors.notFound(res, "Lead")` etc.
- * in route handlers instead of raw `res.status(X).json(...)`.
- *
- * Every helper accepts an optional final `opts: { docsSlug }` arg. When
- * set, the response body includes `docsUrl: /help/article/<slug>` so the
- * client can render a "Learn why" link in the failure toast.
- */
-/**
- * Voice pattern: every default copy line uses AcreOS's client-toast
- * voice — "Couldn't X — what's still true / what to try". Mirrors the
- * tone the front-end toast handler uses so users get one coherent
- * experience whether the failure surfaces in the UI or in a raw API
- * response. Status codes are unchanged; only the human-readable
- * `message` is rewritten.
- */
 type LimitDetails = Record<string, unknown>;
 
 const RATE_LIMIT_MESSAGE =
@@ -161,7 +145,7 @@ function isRateLimitDetails(details: unknown): boolean {
 }
 
 /**
- * Exported for tests. The customer-facing sentence for a 429, derived from
+ * The customer-facing sentence for a 429, derived from
  * what the caller says was hit:
  *   - an explicit `message` (or a plain string) wins — the caller knows best;
  *   - a plan cap (`resourceType` + a limit) names the resource and the plan,
@@ -172,7 +156,7 @@ function isRateLimitDetails(details: unknown): boolean {
  *   - anything else names it as a usage limit and points to billing, rather
  *     than claiming a rate limit nobody measured.
  */
-export function limitExceededMessage(details: unknown): string {
+function limitExceededMessage(details: unknown): string {
   if (typeof details === "string" && details.trim()) return details.trim();
   const d = asLimitDetails(details);
   if (!d) return GENERIC_LIMIT_MESSAGE;
@@ -188,7 +172,7 @@ export function limitExceededMessage(details: unknown): string {
     const needed = typeof d.needed === "number" ? ` — this needs ${d.needed}¢` : "";
     return (
       `You don't have enough AcreOS credits for this${needed}. ` +
-      "Buy a credit pack on the Usage page to continue, or add your own provider key in Settings → Your provider keys where one applies."
+      "Buy a credit pack in Settings → Usage & Credits to continue, or add your own provider key in Settings → Your provider keys where one applies."
     );
   }
 
@@ -213,6 +197,22 @@ export function limitExceededMessage(details: unknown): string {
   return GENERIC_LIMIT_MESSAGE;
 }
 
+/**
+ * Standardized error helpers — use `Errors.notFound(res, "Lead")` etc.
+ * in route handlers instead of raw `res.status(X).json(...)`.
+ *
+ * Every helper accepts an optional final `opts: { docsSlug }` arg. When
+ * set, the response body includes `docsUrl: /help/article/<slug>` so the
+ * client can render a "Learn why" link in the failure toast.
+ */
+/**
+ * Voice pattern: every default copy line uses AcreOS's client-toast
+ * voice — "Couldn't X — what's still true / what to try". Mirrors the
+ * tone the front-end toast handler uses so users get one coherent
+ * experience whether the failure surfaces in the UI or in a raw API
+ * response. Status codes are unchanged; only the human-readable
+ * `message` is rewritten.
+ */
 export const Errors = {
   notFound(res: Response, entity: string, opts?: ErrorOptions): void {
     const message = `We couldn't find that ${entity} — it may have been deleted, archived, or moved between organizations.`;
