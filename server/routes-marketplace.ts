@@ -149,12 +149,18 @@ router.get('/listings/:id/bids', asyncHandler(async (req: Request, res: Response
   try {
     const org = req.organization;
     const listingId = parseInt(req.params.id);
-    // Task #2: IDOR prevention — only sellers can see all bids (org is seller or buyer)
+    // Only the listing's seller reads every bid; any other org reads only the
+    // bids it placed itself. A visible (public) listing is not a licence to
+    // read competitors' bid amounts, terms and identities.
     const listing = await marketplaceService.getListing(listingId, org.id);
     if (!listing) {
-      return sendError(res, 404, "NOT_FOUND", 'Listing not found');
+      return Errors.notFound(res, "Listing");
     }
-    const bids = await marketplaceService.getBidsForListing(listingId);
+    const allBids = await marketplaceService.getBidsForListing(listingId);
+    const isSeller = listing.listing.sellerOrganizationId === org.id;
+    const bids = isSeller
+      ? allBids
+      : allBids.filter((b) => b.bid.bidderOrganizationId === org.id);
     res.json({ bids });
   } catch (error: any) {
     Errors.internal(res, error);
