@@ -7013,6 +7013,28 @@ JS `\s` on every BMP code point; a population scan finds no hand-rolled
 `.apn` whitespace normalization in server SQL).
 Resolving commits: the W10.3 commit (see `git log`)
 
+### DEFECT-0294
+Title: Selects, menus and popovers inside a dialog or sheet rendered under its scrim and could not be tapped
+Severity: P1
+Status: FIXED (W10.3 follow-up, 2026-10-05)
+Surfaced by lenses: W10.3 wedge E2E on CI (E2E Mobile, run 37333279550)
+Description: Dialogs and sheets were raised to `z-modal` (60) so the
+mobile bottom nav could not paint over their scrims, but the portalled
+popper primitives — select lists, dropdown and context menus, popovers,
+hover cards, menubars — stayed at `z-floating` (50). Radix portals that
+content to <body>, so anything opened from inside a dialog or sheet painted
+UNDER the modal's scrim, which intercepted every pointer event: no option
+in any Select inside any dialog or sheet could be chosen. The list
+builder's state picker was where CI caught it ("command-backdrop
+intercepts pointer events").
+Remediation plan: DONE. A `popover` layer (70) between modal and toast —
+`tailwind.config.ts`, `--z-popover` in `index.css`, `Z.POPOVER` in
+`client/src/lib/z-index.ts` — and the seven popper primitives moved onto it.
+Falsified by: `tests/unit/popperContentAboveModals.test.ts` (every z token a
+portalled popper primitive uses resolves above every z token the dialog and
+sheet use; red with select back at z-floating), and the wedge E2E list step.
+Resolving commits: the W10.3 CI follow-up commit (see `git log`)
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -7050,9 +7072,9 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 19  | 19    |
-| FIXED  | 14  | 136 | 122 | 272   |
+| FIXED  | 14  | 137 | 122 | 273   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **138** | **141** | **293** |
+| **Total** | **14** | **139** | **141** | **294** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as

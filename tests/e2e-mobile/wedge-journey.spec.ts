@@ -232,7 +232,14 @@ test.describe("wedge journey (lead → mail → reply → offer)", () => {
           });
         });
 
-        await expectRouteRenders(page, "/maps");
+        // The Today step's client-side redirect can land after this goto and
+        // interrupt it ("navigation … interrupted by another navigation to
+        // /today", seen in CI): navigate until the Map door is what rendered.
+        await expect(async () => {
+          await page.goto("/maps", { waitUntil: "domcontentloaded" });
+          await expect(page).toHaveURL(/\/maps(?:$|[?#])/);
+          await expect(page.getByTestId("button-open-list-builder").first()).toBeVisible();
+        }).toPass({ timeout: 45_000 });
         await page.getByTestId("button-open-list-builder").first().click();
         await expect(page.getByTestId("list-builder-sheet")).toBeVisible();
         await page.getByTestId("select-list-state").click();

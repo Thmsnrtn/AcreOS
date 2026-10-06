@@ -52,6 +52,7 @@
   --z-slot-tray: 49;    /* floating conversation tray slot               */
   --z-floating:  50;    /* FAB, bottom nav, base dialogs/sheets, PWA prompt*/
   --z-modal:     60;    /* modal scrim, command palette, escalated sheets*/
+  --z-popover:   70;    /* popper content: select, menus, popovers, tooltips (above the modals they open from) */
   --z-toast:     100;   /* toasts / transient banners above modals       */
   --z-offline:   110;   /* offline indicator above toasts                */
   --z-tour:      9990;  /* product tour scrim                            */

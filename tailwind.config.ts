@@ -90,6 +90,7 @@ export default {
         "slot-tray": "49",  // floating conversation tray slot
         floating: "50",     // FAB, bottom nav, base dialogs/sheets, PWA prompt
         modal: "60",        // modal scrim, command palette, new-item menu, escalated dialogs/sheets
+        popover: "70",      // popper content (select, menus, popovers, tooltips) — they open FROM inside modals
         toast: "100",       // toasts / transient banners above modals
         offline: "110",     // offline indicator above toasts
         tour: "9990",       // product tour scrim
