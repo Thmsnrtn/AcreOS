@@ -242,6 +242,32 @@ END $mig0247$`,
   // 0259 — one campaign send = one mailing order (audit of 224a5c0).
   `ALTER TABLE "mailing_orders" ADD COLUMN IF NOT EXISTS "operation_key" text`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "mailing_orders_org_operation_uidx" ON "mailing_orders" ("organization_id", "operation_key")`,
+  // 0260 — payments.transaction_id becomes a FULL unique constraint. 0023's
+  // partial index (WHERE transaction_id IS NOT NULL) cannot be inferred by the
+  // bare `ON CONFLICT (transaction_id)` every payments writer uses, so a
+  // migration-built database refused every payment insert. NULLs stay
+  // distinct (manual payments). Same name drizzle gives `.unique()`, so a
+  // push-built and a migration-built database end identical. Mirrors
+  // migrations/0260_payments_transaction_id_full_unique.sql.
+  `DO $mig0260$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_index i
+      JOIN pg_class c ON c.oid = i.indexrelid
+     WHERE i.indrelid = 'public.payments'::regclass
+       AND c.relname = 'payments_transaction_id_unique'
+       AND NOT EXISTS (SELECT 1 FROM pg_constraint k WHERE k.conindid = i.indexrelid AND k.contype IN ('u', 'p'))
+  ) THEN
+    DROP INDEX "payments_transaction_id_unique";
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'public.payments'::regclass
+       AND conname = 'payments_transaction_id_unique'
+  ) THEN
+    ALTER TABLE "payments" ADD CONSTRAINT "payments_transaction_id_unique" UNIQUE ("transaction_id");
+  END IF;
+END $mig0260$`,
   `CREATE INDEX IF NOT EXISTS "idx_organizations_pause_resume" ON "organizations" ("subscription_paused", "subscription_pause_ends_at")`,
   `ALTER TABLE "cancellation_surveys" ADD COLUMN IF NOT EXISTS "offered_pause" boolean DEFAULT false`,
   `ALTER TABLE "cancellation_surveys" ADD COLUMN IF NOT EXISTS "accepted_pause" boolean DEFAULT false`,

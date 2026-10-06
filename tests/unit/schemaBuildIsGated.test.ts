@@ -181,12 +181,15 @@ describe("the script it calls is not decorative", () => {
     expect(pkg.scripts[NPM_SCRIPT]).toContain(BUILD_SCRIPT);
   });
 
-  it("runs all four phases, in order, and each one can fail the job", () => {
+  it("runs all five phases, in order, and each one can fail the job", () => {
     const phases = [
       { what: "migrations/*.sql", match: /psql .*-f "\$f"/ },
       { what: "the release_command", match: /if ! node scripts\/migrate\.mjs;/ },
       { what: "--dry-run", match: /if ! node scripts\/migrate\.mjs --dry-run;/ },
       { what: "the column mirror", match: new RegExp(`if ! npx tsx ${MIRROR.replace(/\//g, "\\/")};`) },
+      // 0260: a column can exist and its write still fail — the built schema
+      // must accept a real payment post (payments.transaction_id conflict target).
+      { what: "the payment-insert check", match: /if ! npx tsx tests\/db\/paymentsInsertOnBuiltSchema\.ts;/ },
     ];
     let cursor = -1;
     for (const p of phases) {
@@ -198,7 +201,7 @@ describe("the script it calls is not decorative", () => {
     }
     // Each gated phase exits non-zero. `set -e` is deliberately NOT used (the
     // base layer tolerates per-statement errors), so the exits must be explicit.
-    expect((sh.match(/exit 1/g) ?? []).length).toBeGreaterThanOrEqual(4);
+    expect((sh.match(/exit 1/g) ?? []).length).toBeGreaterThanOrEqual(5);
   });
 
   it("refuses to run without a database rather than passing", () => {
