@@ -4,7 +4,7 @@
 // DatabaseStorage.prototype at construction time; `this` refers to the full
 // DatabaseStorage instance.
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import { forOrg } from "../utils/orgScopedDb";
@@ -126,9 +126,18 @@ export const aiRepo = {
     await db.delete(aiConversations).where(and(...conditions));
   },
 
-  async getAiMessages(this: DatabaseStorage, conversationId: number) {
+  // ai_messages carries no organization column; the conversation is the
+  // owner, so the read is constrained to a conversation of this organization
+  // in the same statement.
+  async getAiMessages(this: DatabaseStorage, organizationId: number, conversationId: number) {
+    const orgConversation = db.select({ id: aiConversations.id })
+      .from(aiConversations)
+      .where(and(eq(aiConversations.id, conversationId), eq(aiConversations.organizationId, organizationId)));
     return await db.select().from(aiMessages)
-      .where(eq(aiMessages.conversationId, conversationId))
+      .where(and(
+        eq(aiMessages.conversationId, conversationId),
+        inArray(aiMessages.conversationId, orgConversation),
+      ))
       .orderBy(aiMessages.createdAt);
   },
 

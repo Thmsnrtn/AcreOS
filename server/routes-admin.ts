@@ -163,8 +163,8 @@ export function registerAdminRoutes(app: Express): void {
         return Errors.notFound(res, "Case");
       }
 
-      const messages = await storage.getSupportMessages(caseId);
-      const actions = await storage.getSupportActions(caseId);
+      const messages = await storage.getSupportMessages(org.id, caseId);
+      const actions = await storage.getSupportActions(org.id, caseId);
 
       res.json({ case: supportCase, messages, actions });
     } catch (err: any) {
@@ -221,7 +221,7 @@ export function registerAdminRoutes(app: Express): void {
       }
 
       const { supportBrainService } = await import("./services/supportBrain");
-      await supportBrainService.rateSatisfaction(caseId, rating);
+      await supportBrainService.rateSatisfaction(org.id, caseId, rating);
 
       res.json({ success: true, message: "Thank you for your feedback!" });
     } catch (err: any) {
@@ -242,7 +242,7 @@ export function registerAdminRoutes(app: Express): void {
       }
 
       const { supportBrainService } = await import("./services/supportBrain");
-      await supportBrainService.resolveCase(caseId, "Resolved by user", "user");
+      await supportBrainService.resolveCase(org.id, caseId, "Resolved by user", "user");
 
       res.json({ success: true });
     } catch (err: any) {
@@ -321,7 +321,7 @@ export function registerAdminRoutes(app: Express): void {
       });
 
       if (resolve) {
-        await storage.updateSupportCase(caseId, {
+        await storage.updateSupportCase(supportCase.organizationId, caseId, {
           status: "resolved",
           resolvedAt: new Date(),
           resolutionSummary: message,
@@ -329,7 +329,7 @@ export function registerAdminRoutes(app: Express): void {
           assignedTo: user.id,
         });
       } else {
-        await storage.updateSupportCase(caseId, {
+        await storage.updateSupportCase(supportCase.organizationId, caseId, {
           status: "awaiting_user",
           assignedTo: user.id,
         });
@@ -388,7 +388,7 @@ export function registerAdminRoutes(app: Express): void {
       const noteId = parseInt(req.params.noteId);
       const note = await storage.getNote(org.id, noteId);
       if (!note) return Errors.notFound(res, "Note");
-      const msgs = await storage.getBorrowerMessages(noteId);
+      const msgs = await storage.getBorrowerMessages(org.id, noteId);
       // Mark borrower messages as read since lender is viewing them
       await storage.markBorrowerMessagesRead(noteId, "borrower");
       res.json(msgs);
@@ -930,7 +930,7 @@ export function registerAdminRoutes(app: Express): void {
   api.put("/api/admin/alerts/:id/resolve", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const alertId = Number(req.params.id);
-      const updated = await storage.resolveAlert(alertId);
+      const updated = await storage.resolveAlertForPlatformOps(alertId);
       res.json(updated);
     } catch (err: any) {
       logger.error("Resolve alert error", err);

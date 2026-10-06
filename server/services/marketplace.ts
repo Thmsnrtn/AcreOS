@@ -475,6 +475,16 @@ export class MarketplaceService {
         .where(and(
           eq(marketplaceBids.id, bidId),
           eq(marketplaceBids.listingId, listing.id),
+          // The write itself requires the listing to be the caller's.
+          inArray(
+            marketplaceBids.listingId,
+            tx.select({ id: marketplaceListings.id })
+              .from(marketplaceListings)
+              .where(and(
+                eq(marketplaceListings.id, listing.id),
+                eq(marketplaceListings.sellerOrganizationId, sellerOrgId),
+              )),
+          ),
         ));
 
       // If accepted, update listing status and create deal room

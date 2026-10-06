@@ -131,7 +131,7 @@ export class SequenceProcessorService {
           logger.error("[sequence-processor] Failed to process enrollment, marking as failed and continuing", enrollErr, { metadata: { enrollmentId: enrollment.id } });
           // Mark individual enrollment as failed so it isn't retried indefinitely
           try {
-            await storage.updateSequenceEnrollment(enrollment.id, { status: "failed" });
+            await storage.updateSequenceEnrollment(enrollment.sequence.organizationId, enrollment.id, { status: "failed" });
           } catch { /* best effort */ }
         }
         maxProcessedId = Math.max(maxProcessedId, enrollment.id);
@@ -154,19 +154,22 @@ export class SequenceProcessorService {
 
   async processEnrollment(enrollment: EnrollmentWithDetails) {
     try {
+      // The enrollment's own sequence (joined by getEnrollmentsDueForProcessing)
+      // names the organization every step below runs within.
+      const orgId = enrollment.sequence.organizationId;
       const tcpaCheck = checkTcpaConsentFromLead(enrollment.lead);
       if (tcpaCheck.blocked) {
-        await storage.pauseEnrollment(enrollment.id, `TCPA blocked: ${tcpaCheck.reason}`);
+        await storage.pauseEnrollment(orgId, enrollment.id, `TCPA blocked: ${tcpaCheck.reason}`);
         logger.info("[sequence-processor] Pausing enrollment", { metadata: { enrollmentId: enrollment.id, reason: tcpaCheck.reason } });
         return;
       }
 
-      const steps = await storage.getSequenceSteps(enrollment.sequenceId);
+      const steps = await storage.getSequenceSteps(orgId, enrollment.sequenceId);
       const nextStepNumber = enrollment.currentStep + 1;
       const nextStep = steps.find(s => s.stepNumber === nextStepNumber);
 
       if (!nextStep) {
-        await storage.completeEnrollment(enrollment.id);
+        await storage.completeEnrollment(orgId, enrollment.id);
         logger.info("[sequence-processor] Enrollment completed (no more steps)", { metadata: { enrollmentId: enrollment.id } });
         return;
       }
@@ -180,12 +183,12 @@ export class SequenceProcessorService {
           const nextScheduledAt = new Date();
           nextScheduledAt.setDate(nextScheduledAt.getDate() + furtherStep.delayDays);
           
-          await storage.updateSequenceEnrollment(enrollment.id, {
+          await storage.updateSequenceEnrollment(orgId, enrollment.id, {
             currentStep: nextStepNumber,
             nextStepScheduledAt: nextScheduledAt,
           });
         } else {
-          await storage.completeEnrollment(enrollment.id);
+          await storage.completeEnrollment(orgId, enrollment.id);
         }
         return;
       }
@@ -201,7 +204,7 @@ export class SequenceProcessorService {
         // silently losing a touch. The reason is recorded, not swallowed.
         if (outcome.status === "deferred") {
           const retryAt = this.clampRetryAt(outcome.retryAt);
-          await storage.updateSequenceEnrollment(enrollment.id, {
+          await storage.updateSequenceEnrollment(orgId, enrollment.id, {
             nextStepScheduledAt: retryAt,
           });
           logger.info("[sequence-processor] Step deferred — will retry", {
@@ -221,7 +224,7 @@ export class SequenceProcessorService {
           const nextScheduledAt = new Date();
           nextScheduledAt.setDate(nextScheduledAt.getDate() + furtherStep.delayDays);
 
-          await storage.updateSequenceEnrollment(enrollment.id, {
+          await storage.updateSequenceEnrollment(orgId, enrollment.id, {
             currentStep: nextStepNumber,
             // Only stamp lastStepSentAt when something was ACTUALLY sent.
             // A skipped/failed step must not look like a delivered one.
@@ -229,7 +232,7 @@ export class SequenceProcessorService {
             nextStepScheduledAt: nextScheduledAt,
           });
         } else {
-          await storage.completeEnrollment(enrollment.id);
+          await storage.completeEnrollment(orgId, enrollment.id);
           logger.info("[sequence-processor] Enrollment completed", { metadata: { enrollmentId: enrollment.id } });
         }
       } else {
@@ -238,12 +241,12 @@ export class SequenceProcessorService {
           const nextScheduledAt = new Date();
           nextScheduledAt.setDate(nextScheduledAt.getDate() + furtherStep.delayDays);
           
-          await storage.updateSequenceEnrollment(enrollment.id, {
+          await storage.updateSequenceEnrollment(orgId, enrollment.id, {
             currentStep: nextStepNumber,
             nextStepScheduledAt: nextScheduledAt,
           });
         } else {
-          await storage.completeEnrollment(enrollment.id);
+          await storage.completeEnrollment(orgId, enrollment.id);
         }
       }
     } catch (error) {
@@ -272,7 +275,7 @@ export class SequenceProcessorService {
           step.conditionDays || 3
         );
         if (hasResponded) {
-          await storage.pauseEnrollment(enrollment.id, "Lead responded - pausing sequence");
+          await storage.pauseEnrollment(enrollment.sequence.organizationId, enrollment.id, "Lead responded - pausing sequence");
           return false;
         }
         return hasResponded;
@@ -731,13 +734,13 @@ export class SequenceProcessorService {
     }
   }
 
-  async pauseEnrollmentOnResponse(leadId: number) {
+  async pauseEnrollmentOnResponse(orgId: number, leadId: number) {
     try {
-      const enrollments = await storage.getLeadEnrollments(leadId);
+      const enrollments = await storage.getLeadEnrollments(orgId, leadId);
       const activeEnrollments = enrollments.filter(e => e.status === "active");
       
       for (const enrollment of activeEnrollments) {
-        await storage.pauseEnrollment(enrollment.id, "Lead responded");
+        await storage.pauseEnrollment(orgId, enrollment.id, "Lead responded");
         logger.info("[sequence-processor] Paused enrollment due to lead response", { metadata: { enrollmentId: enrollment.id } });
       }
     } catch (error) {

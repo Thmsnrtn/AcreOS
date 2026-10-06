@@ -101,7 +101,7 @@ router.get("/:propertyId/price", isAuthenticated, getOrCreateOrg, async (req: Au
   try {
     const propertyId = await gatePropertyParam(req, res);
     if (propertyId === null) return;
-    const pricing = await dispositionOptimizerService.calculateOptimalPrice(propertyId);
+    const pricing = await dispositionOptimizerService.calculateOptimalPrice(getOrganizationId(req), propertyId);
     res.json({ pricing });
   } catch (err) {
     logger.error("disposition.price failed", err instanceof Error ? err : undefined);
@@ -114,7 +114,7 @@ router.get("/:propertyId/channels", isAuthenticated, getOrCreateOrg, async (req:
   try {
     const propertyId = await gatePropertyParam(req, res);
     if (propertyId === null) return;
-    const channels = await dispositionOptimizerService.recommendChannels(propertyId);
+    const channels = await dispositionOptimizerService.recommendChannels(getOrganizationId(req), propertyId);
     res.json({ channels });
   } catch (err) {
     logger.error("disposition.channels failed", err instanceof Error ? err : undefined);
@@ -127,7 +127,7 @@ router.get("/:propertyId/timing", isAuthenticated, getOrCreateOrg, async (req: A
   try {
     const propertyId = await gatePropertyParam(req, res);
     if (propertyId === null) return;
-    const timing = await dispositionOptimizerService.analyzeTimingFactors(propertyId);
+    const timing = await dispositionOptimizerService.analyzeTimingFactors(getOrganizationId(req), propertyId);
     res.json({ timing });
   } catch (err) {
     logger.error("disposition.timing failed", err instanceof Error ? err : undefined);

@@ -404,7 +404,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       // previously any org's seller communications were readable by leadId.
       const lead = await storage.getLead(org.id, leadId);
       if (!lead) return Errors.notFound(res, "Lead");
-      const comms = await storage.getSellerCommunicationsByLead(leadId);
+      const comms = await storage.getSellerCommunicationsByLead(org.id, leadId);
       res.json(comms);
     } catch (error: any) {
       logger.error("Get seller communications by lead error", error);
@@ -464,7 +464,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       // 2026-06-10 (T0-2 sweep): verify the property belongs to this org.
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) return Errors.notFound(res, "Property");
-      const postings = await storage.getAdPostingsByProperty(propertyId);
+      const postings = await storage.getAdPostingsByProperty(org.id, propertyId);
       res.json(postings);
     } catch (error: any) {
       logger.error("Get ad postings by property error", error);
@@ -553,7 +553,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const leadId = parseInt(req.params.leadId);
-      const prequal = await storage.getBuyerPrequalificationByLead(leadId);
+      const prequal = await storage.getBuyerPrequalificationByLead(org.id, leadId);
       // 2026-06-10 (T0-2 sweep): 404 on cross-tenant prequalification —
       // never confirm another org's record exists.
       if (!prequal || prequal.organizationId !== org.id) {
@@ -727,7 +727,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       // 2026-06-10 (T0-2 sweep): verify the note belongs to this org.
       const note = await storage.getNote(org.id, noteId);
       if (!note) return Errors.notFound(res, "Note");
-      const enrollments = await storage.getCollectionEnrollmentsByNote(noteId);
+      const enrollments = await storage.getCollectionEnrollmentsByNote(org.id, noteId);
       res.json(enrollments);
     } catch (error: any) {
       logger.error("Get collection enrollments by note error", error);

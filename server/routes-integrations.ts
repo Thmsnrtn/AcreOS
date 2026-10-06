@@ -964,7 +964,7 @@ export function registerIntegrationRoutes(app: Express): void {
       
       const testsWithVariants = await Promise.all(
         tests.map(async (test) => {
-          const variants = await storage.getAbTestVariants(test.id);
+          const variants = await storage.getAbTestVariants(org.id, test.id);
           return { ...test, variants };
         })
       );
@@ -1025,7 +1025,7 @@ export function registerIntegrationRoutes(app: Express): void {
       }
       
       // Check if campaign already has an active test
-      const existingTest = await storage.getAbTestByCampaign(campaignId);
+      const existingTest = await storage.getAbTestByCampaign(org.id, campaignId);
       if (existingTest && existingTest.status !== "completed") {
         return Errors.badRequest(res, "Campaign already has an active A/B test");
       }
@@ -1091,7 +1091,7 @@ export function registerIntegrationRoutes(app: Express): void {
       }
       
       // Update test status to running
-      const updatedTest = await storage.updateAbTest(testId, {
+      const updatedTest = await storage.updateAbTest(org.id, testId, {
         status: "running",
         startedAt: new Date(),
       });
@@ -1155,7 +1155,7 @@ export function registerIntegrationRoutes(app: Express): void {
             );
             const confidence = getConfidenceLevel(zScore);
             
-            await storage.updateAbTestVariant(variant.id, {
+            await storage.updateAbTestVariant(org.id, variant.id, {
               responseRate: String(variant.sent ? ((variant.responded || 0) / variant.sent * 100).toFixed(2) : 0),
               confidenceLevel: String(confidence * 100),
             });
@@ -1164,14 +1164,14 @@ export function registerIntegrationRoutes(app: Express): void {
       }
       
       // Update test as completed
-      const updatedTest = await storage.updateAbTest(testId, {
+      const updatedTest = await storage.updateAbTest(org.id, testId, {
         status: "completed",
         completedAt: new Date(),
         winnerId,
       });
       
       // Get updated variants
-      const updatedVariants = await storage.getAbTestVariants(testId);
+      const updatedVariants = await storage.getAbTestVariants(org.id, testId);
       
       res.json({ ...updatedTest, variants: updatedVariants });
     } catch (err: any) {
@@ -1211,7 +1211,7 @@ export function registerIntegrationRoutes(app: Express): void {
         if (converted !== undefined) updates.conversionRate = String((converted / currentSent * 100).toFixed(2));
       }
       
-      const updatedVariant = await storage.updateAbTestVariant(variantId, updates);
+      const updatedVariant = await storage.updateAbTestVariant(org.id, variantId, updates);
       res.json(updatedVariant);
     } catch (err: any) {
       Errors.internal(res, err);
@@ -1264,7 +1264,7 @@ export function registerIntegrationRoutes(app: Express): void {
         return Errors.notFound(res, "A/B test");
       }
       
-      await storage.deleteAbTest(testId);
+      await storage.deleteAbTest(org.id, testId);
       res.json({ success: true });
     } catch (err: any) {
       Errors.internal(res, err);

@@ -31,10 +31,10 @@ const H = vi.hoisted(() => ({
   recordPaxEffect: vi.fn(async (_effect: PaxEffect) => ({ written: true })),
   insertValues: vi.fn(async (_row: any) => undefined),
   sendEmail: vi.fn(async (_opts: any) => ({ success: true, messageId: "m1" })),
-  getSequenceSteps: vi.fn(async (_sequenceId: number) => [] as any[]),
-  updateSequenceEnrollment: vi.fn(async (_id: number, _updates: any) => undefined),
-  completeEnrollment: vi.fn(async (_id: number) => undefined),
-  pauseEnrollment: vi.fn(async (_id: number, _reason: string) => undefined),
+  getSequenceSteps: vi.fn(async (_orgId: number, _sequenceId: number) => [] as any[]),
+  updateSequenceEnrollment: vi.fn(async (_orgId: number, _id: number, _updates: any) => undefined),
+  completeEnrollment: vi.fn(async (_orgId: number, _id: number) => undefined),
+  pauseEnrollment: vi.fn(async (_orgId: number, _id: number, _reason: string) => undefined),
   frequencyGateForLead: vi.fn(async (_orgId: number, _leadId: number) => ({ allowed: true }) as any),
 }));
 
@@ -112,7 +112,7 @@ const STEP_1 = {
   conditionDays: null,
 } as any;
 
-function enrollment(id = 11, leadId = 42) {
+function enrollment(id = 11, leadId = 42, leadOrgId = ORG_ID) {
   return {
     id,
     sequenceId: 3,
@@ -123,7 +123,7 @@ function enrollment(id = 11, leadId = 42) {
     sequence: { id: 3, organizationId: ORG_ID, name: "seller-drip" },
     lead: {
       id: leadId,
-      organizationId: ORG_ID,
+      organizationId: leadOrgId,
       email: `lead${leadId}@example.com`,
       firstName: "Dana",
       campaignId: 5,
@@ -185,13 +185,19 @@ describe("paused org — sequence steps are deferred as deferred_paused, never s
   it("through processEnrollment the step is NOT consumed: rescheduled to the pause expiry, currentStep unchanged", async () => {
     H.getPaxControls.mockResolvedValue(controls({ paused: true, pausedUntil: PAUSED_UNTIL }));
 
-    await sequenceProcessorService.processEnrollment(enrollment());
+    // The lead row carries a DIFFERENT organization from the sequence, so the
+    // assertion below can only pass if the write is scoped by the sequence.
+    const LEAD_ORG = ORG_ID + 1000;
+    await sequenceProcessorService.processEnrollment(enrollment(11, 42, LEAD_ORG));
 
     expect(H.sendEmail).not.toHaveBeenCalled();
     expect(H.completeEnrollment).not.toHaveBeenCalled();
     expect(H.pauseEnrollment).not.toHaveBeenCalled();
     expect(H.updateSequenceEnrollment).toHaveBeenCalledTimes(1);
-    const [id, updates] = H.updateSequenceEnrollment.mock.calls[0];
+    const [orgId, id, updates] = H.updateSequenceEnrollment.mock.calls[0];
+    // The write is made within the organization of the enrollment's SEQUENCE.
+    expect(orgId).toBe(ORG_ID);
+    expect(orgId).not.toBe(LEAD_ORG);
     expect(id).toBe(11);
     expect(updates.nextStepScheduledAt).toEqual(PAUSED_UNTIL);
     expect(updates).not.toHaveProperty("currentStep");
@@ -251,7 +257,7 @@ describe("resume still meters — thirty steps deferred by a pause go through th
     expect(H.sendEmail).not.toHaveBeenCalled();
     expect(H.insertValues.mock.calls.filter((c) => c[0].status === "deferred_paused")).toHaveLength(30);
     expect(H.updateSequenceEnrollment).toHaveBeenCalledTimes(30);
-    for (const [, updates] of H.updateSequenceEnrollment.mock.calls) {
+    for (const [, , updates] of H.updateSequenceEnrollment.mock.calls) {
       expect(updates.nextStepScheduledAt).toEqual(PAUSED_UNTIL);
       expect(updates).not.toHaveProperty("currentStep");
     }
@@ -273,12 +279,12 @@ describe("resume still meters — thirty steps deferred by a pause go through th
     expect(H.sendEmail).toHaveBeenCalledTimes(CAP);
     // Every enrollment was rescheduled; the sent ones advanced, the capped ones did not.
     expect(H.updateSequenceEnrollment).toHaveBeenCalledTimes(30);
-    const advanced = H.updateSequenceEnrollment.mock.calls.filter(([, u]) => u.currentStep === 1);
-    const deferred = H.updateSequenceEnrollment.mock.calls.filter(([, u]) => !("currentStep" in u));
+    const advanced = H.updateSequenceEnrollment.mock.calls.filter(([, , u]) => u.currentStep === 1);
+    const deferred = H.updateSequenceEnrollment.mock.calls.filter(([, , u]) => !("currentStep" in u));
     expect(advanced).toHaveLength(CAP);
     expect(deferred).toHaveLength(30 - CAP);
-    for (const [, u] of deferred) expect(u.nextStepScheduledAt).toEqual(NEXT_ELIGIBLE);
-    for (const [, u] of advanced) expect(u.lastStepSentAt).toBeInstanceOf(Date);
+    for (const [, , u] of deferred) expect(u.nextStepScheduledAt).toEqual(NEXT_ELIGIBLE);
+    for (const [, , u] of advanced) expect(u.lastStepSentAt).toBeInstanceOf(Date);
     // Nothing was completed, paused or failed by the burst.
     expect(H.completeEnrollment).not.toHaveBeenCalled();
     expect(H.pauseEnrollment).not.toHaveBeenCalled();

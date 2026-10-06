@@ -149,9 +149,9 @@ export const vaEngineRepo = {
     return comm;
   },
 
-  async getSellerCommunicationsByLead(this: DatabaseStorage, leadId: number): Promise<SellerCommunication[]> {
+  async getSellerCommunicationsByLead(this: DatabaseStorage, orgId: number, leadId: number): Promise<SellerCommunication[]> {
     return await db.select().from(sellerCommunications)
-      .where(eq(sellerCommunications.leadId, leadId))
+      .where(and(eq(sellerCommunications.leadId, leadId), eq(sellerCommunications.organizationId, orgId)))
       .orderBy(desc(sellerCommunications.createdAt));
   },
 
@@ -160,12 +160,10 @@ export const vaEngineRepo = {
     return created;
   },
 
-  async updateSellerCommunication(this: DatabaseStorage, id: number, updates: Partial<InsertSellerCommunication>, organizationId?: number): Promise<SellerCommunication> {
-    const conditions = [eq(sellerCommunications.id, id)];
-    if (organizationId) conditions.push(eq(sellerCommunications.organizationId, organizationId));
+  async updateSellerCommunication(this: DatabaseStorage, orgId: number, id: number, updates: Partial<InsertSellerCommunication>): Promise<SellerCommunication> {
     const [updated] = await db.update(sellerCommunications)
       .set(assertWritablePatch(updates, "seller_communications.updateSellerCommunication"))
-      .where(and(...conditions))
+      .where(and(eq(sellerCommunications.id, id), eq(sellerCommunications.organizationId, orgId)))
       .returning();
     return updated;
   },
@@ -182,9 +180,9 @@ export const vaEngineRepo = {
     return posting;
   },
 
-  async getAdPostingsByProperty(this: DatabaseStorage, propertyId: number): Promise<AdPosting[]> {
+  async getAdPostingsByProperty(this: DatabaseStorage, orgId: number, propertyId: number): Promise<AdPosting[]> {
     return await db.select().from(adPostings)
-      .where(eq(adPostings.propertyId, propertyId))
+      .where(and(eq(adPostings.propertyId, propertyId), eq(adPostings.organizationId, orgId)))
       .orderBy(desc(adPostings.createdAt));
   },
 
@@ -217,9 +215,9 @@ export const vaEngineRepo = {
     return prequal;
   },
 
-  async getBuyerPrequalificationByLead(this: DatabaseStorage, leadId: number): Promise<BuyerPrequalification | undefined> {
+  async getBuyerPrequalificationByLead(this: DatabaseStorage, orgId: number, leadId: number): Promise<BuyerPrequalification | undefined> {
     const [prequal] = await db.select().from(buyerPrequalifications)
-      .where(eq(buyerPrequalifications.leadId, leadId))
+      .where(and(eq(buyerPrequalifications.leadId, leadId), eq(buyerPrequalifications.organizationId, orgId)))
       .orderBy(desc(buyerPrequalifications.createdAt))
       .limit(1);
     return prequal;
@@ -302,15 +300,15 @@ export const vaEngineRepo = {
     return enrollment;
   },
 
-  async getCollectionEnrollmentsByNote(this: DatabaseStorage, noteId: number): Promise<CollectionEnrollment[]> {
+  async getCollectionEnrollmentsByNote(this: DatabaseStorage, orgId: number, noteId: number): Promise<CollectionEnrollment[]> {
     return await db.select().from(collectionEnrollments)
-      .where(eq(collectionEnrollments.noteId, noteId))
+      .where(and(eq(collectionEnrollments.noteId, noteId), eq(collectionEnrollments.organizationId, orgId)))
       .orderBy(desc(collectionEnrollments.createdAt));
   },
 
-  async getCollectionEnrollmentsBySequence(this: DatabaseStorage, sequenceId: number): Promise<CollectionEnrollment[]> {
+  async getCollectionEnrollmentsBySequence(this: DatabaseStorage, orgId: number, sequenceId: number): Promise<CollectionEnrollment[]> {
     return await db.select().from(collectionEnrollments)
-      .where(eq(collectionEnrollments.sequenceId, sequenceId))
+      .where(and(eq(collectionEnrollments.sequenceId, sequenceId), eq(collectionEnrollments.organizationId, orgId)))
       .orderBy(desc(collectionEnrollments.createdAt));
   },
 

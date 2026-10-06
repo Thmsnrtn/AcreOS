@@ -1074,7 +1074,7 @@ export function registerDocSystemRoutes(app: Express): void {
         return Errors.notFound(res, "Document");
       }
 
-      const signatures = await storage.getDocumentSignatures(documentId);
+      const signatures = await storage.getDocumentSignatures(org.id, documentId);
       res.json(signatures);
     } catch (error: any) {
       logger.error("Get document signatures error", error instanceof Error ? error : undefined);
@@ -1109,7 +1109,7 @@ export function registerDocSystemRoutes(app: Express): void {
         return Errors.notFound(res, "Document");
       }
 
-      const signatures = await storage.getDocumentSignatures(documentId);
+      const signatures = await storage.getDocumentSignatures(org.id, documentId);
       const currentContentHash = document.content
         ? crypto.createHash("sha256").update(document.content).digest("hex")
         : null;

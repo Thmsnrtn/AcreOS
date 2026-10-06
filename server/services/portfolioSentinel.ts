@@ -123,7 +123,7 @@ class PortfolioSentinelService {
     const [property] = await db
       .select()
       .from(properties)
-      .where(eq(properties.id, propertyId))
+      .where(and(eq(properties.id, propertyId), eq(properties.organizationId, organizationId)))
       .limit(1);
 
     if (!property) return false;
@@ -187,7 +187,7 @@ class PortfolioSentinelService {
     const [property] = await db
       .select()
       .from(properties)
-      .where(eq(properties.id, propertyId))
+      .where(and(eq(properties.id, propertyId), eq(properties.organizationId, organizationId)))
       .limit(1);
 
     if (!property || !property.county || !property.state) return false;
@@ -246,7 +246,7 @@ class PortfolioSentinelService {
     const [property] = await db
       .select()
       .from(properties)
-      .where(eq(properties.id, propertyId))
+      .where(and(eq(properties.id, propertyId), eq(properties.organizationId, organizationId)))
       .limit(1);
 
     if (!property || !property.county || !property.state) return false;

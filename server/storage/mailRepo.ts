@@ -4,7 +4,7 @@
 // refactor. Methods are merged into DatabaseStorage.prototype at construction
 // time; `this` refers to the full DatabaseStorage instance.
 
-import { and, count, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import { forOrg } from "../utils/orgScopedDb";
@@ -328,10 +328,18 @@ export const mailRepo = {
   },
 
   // Mailing Order Pieces
-  async getMailingOrderPieces(this: DatabaseStorage, orderId: number): Promise<MailingOrderPiece[]> {
+  // mailing_order_pieces carries no organization column; the read is
+  // constrained to an order of this organization in the same statement.
+  async getMailingOrderPieces(this: DatabaseStorage, organizationId: number, orderId: number): Promise<MailingOrderPiece[]> {
+    const orgOrder = db.select({ id: mailingOrders.id })
+      .from(mailingOrders)
+      .where(and(eq(mailingOrders.id, orderId), eq(mailingOrders.organizationId, organizationId)));
     return await db.select()
       .from(mailingOrderPieces)
-      .where(eq(mailingOrderPieces.mailingOrderId, orderId))
+      .where(and(
+        eq(mailingOrderPieces.mailingOrderId, orderId),
+        inArray(mailingOrderPieces.mailingOrderId, orgOrder),
+      ))
       .orderBy(desc(mailingOrderPieces.createdAt));
   },
 
