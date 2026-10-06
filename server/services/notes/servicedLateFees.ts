@@ -27,6 +27,24 @@
  * When the note states no grace period there is no fee (an invented term is
  * money taken under a clause the note does not contain), and when the
  * lender's servicing wind-down is over AcreOS assesses nothing (ruling #3).
+ *
+ * EVERY missed installment (DEFECT-0185, W10.5). Batch F evaluated only the
+ * installment at `next_payment_date`, so a borrower three behind carried one
+ * fee. An evaluation now walks the installments from `next_payment_date` on,
+ * by the note's own schedule (`installmentCoverage.ts`: first payment date +
+ * term, calendar months), assessing each one grace has passed on that is not
+ * paid in full — at most MAX_ASSESSMENTS_PER_RUN new ones per run, the rest
+ * reported and picked up by the next run (already-assessed installments are
+ * skipped, so the walk always progresses). One installment is one calendar
+ * month: an assessment already recorded in that month, under any day, is that
+ * installment's fee — never a second. When the schedule cannot be determined
+ * (the stored date is off the note's schedule, no first date or term), only
+ * the installment the note does state is evaluated, and the outcome says why.
+ * The walk is sound only while posting writers advance `next_payment_date`
+ * by the installments they cover: `postServicedNotePayment` (portal card,
+ * webhook, Payment Links, the finance page's manual record — DEFECT-0253)
+ * applies the shared coverage rule; ACH settlement advances one installment
+ * per debit (one installment is what it debits).
  */
 import { and, asc, eq, gte, inArray, isNull, lt, lte, sql } from "drizzle-orm";
 import { lateFeeAssessments } from "@shared/schema/reg-z";
@@ -37,13 +55,24 @@ import { db } from "../../db";
 import { logger } from "../../utils/logger";
 import { shouldAssessLateFee } from "../lateFees";
 import { decimalDollarsToCents } from "../notePaymentMath";
-import { addMonths } from "../../utils/dateUtils";
 import { unscopedForPlatformOps } from "../../utils/orgScopedDb";
 import { lenderServicingPhase, orgsStillServiced } from "../borrower/servicingPhase";
+import {
+  MAX_ASSESSMENTS_PER_RUN,
+  addMonthsUtc,
+  daysPastDue,
+  isoDay,
+  resolveInstallmentSchedule,
+  utcMonthWindow,
+} from "./installmentCoverage";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 const utcDayStart = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+/**
+ * The connection a read runs on: the module's `db`, or the posting's
+ * transaction — so what is owed is read under the note's row lock.
+ */
+type Executor = Pick<typeof db, "select">;
 /**
  * An autopay debit that is still settling has not missed anything — and
  * while one is, the processor is paying the installment, so nobody may record
@@ -65,13 +94,30 @@ const SWEEP_LIMIT = 5000;
 export type ServicedNoteForFees = Pick<
   Note,
   "id" | "organizationId" | "nextPaymentDate" | "gracePeriodDays" | "lateFee" | "monthlyPayment"
->;
+> &
+  // The note's schedule. Without them only the installment at
+  // `nextPaymentDate` is evaluated (the ACH settlement passes the debit's own
+  // due date and nothing else).
+  Partial<Pick<Note, "firstPaymentDate" | "termMonths" | "createdAt">>;
 
 export interface AssessmentOutcome {
+  /** At least one installment's fee was newly recorded. */
   assessed: boolean;
+  /** Nothing new was recorded, and at least one past-grace installment already carried its fee. */
   alreadyExisted: boolean;
+  /** Cents newly assessed by this evaluation. */
   feeCents: number;
   reason: string;
+  /** Installments whose fee this evaluation recorded. */
+  installmentsAssessed: number;
+  /** Past-grace installments that already carried their fee. */
+  installmentsAlreadyAssessed: number;
+  /** Past-grace installments NOT evaluated because the run hit its cap — the next run takes them. */
+  deferredInstallments: number;
+  /** How far the evaluation walked: the note's schedule, or only the installment it states. */
+  walk: "schedule" | "current_only";
+  /** Why the walk stopped at the current installment, when it did. */
+  walkRefusedReason?: string;
 }
 
 type InstallmentVerdict =
@@ -79,42 +125,78 @@ type InstallmentVerdict =
   | { kind: "fee"; dueDate: Date; feeCents: number; justification: string };
 
 /**
- * Would the note's CURRENT installment (its next payment date) carry a fee as
- * of `at`? Grace passed, not paid in full, and no autopay debit initiated
- * within grace still settling. Reads only; never writes.
+ * Completed money credited toward the installment due in `dueDate`'s month:
+ * payments posted against it (reversals carry negative amounts and net out).
+ * A payment is posted against the installment that was next when it arrived,
+ * and every installment has its own calendar month.
  */
-async function evaluateCurrentInstallment(note: ServicedNoteForFees, at: Date): Promise<InstallmentVerdict> {
-  const grace = noteGracePeriodDays(note.gracePeriodDays);
-  const configuredLateFeeCents = decimalDollarsToCents(note.lateFee);
-  if (grace === null) return { kind: "none", reason: "note states no grace period" };
-  if (configuredLateFeeCents <= 0) return { kind: "none", reason: "note has no late fee" };
-  if (!note.nextPaymentDate) return { kind: "none", reason: "note has no installment due" };
-  const dueDate = new Date(note.nextPaymentDate);
-  const dayStart = utcDayStart(dueDate);
-  const dayEnd = new Date(dayStart.getTime() + DAY_MS);
-
-  // What was paid toward THIS installment: completed payments posted against
-  // this due date (reversals carry negative amounts and net out).
-  const [credited] = await db
+export async function creditedToInstallmentCents(
+  organizationId: number,
+  noteId: number,
+  dueDate: Date,
+  executor: Executor = db,
+): Promise<number> {
+  const { start, end } = utcMonthWindow(dueDate);
+  const [credited] = await executor
     .select({ cents: sql<string>`COALESCE(SUM(ROUND(${payments.amount} * 100)), 0)` })
     .from(payments)
     .where(
       and(
-        eq(payments.organizationId, note.organizationId),
-        eq(payments.noteId, note.id),
+        eq(payments.organizationId, organizationId),
+        eq(payments.noteId, noteId),
         eq(payments.status, "completed"),
-        gte(payments.dueDate, dayStart),
-        lt(payments.dueDate, dayEnd),
+        gte(payments.dueDate, start),
+        lt(payments.dueDate, end),
       ),
     );
+  return Number(credited?.cents ?? 0) || 0;
+}
+
+/**
+ * Is an assessment already recorded for the installment due in `dueDate`'s
+ * month — under any day of it, any status (a waived fee is not re-assessed)?
+ * The table's unique key is the exact day; a writer that stepped the due
+ * date off the note's schedule (the 31st → the 28th) names the same
+ * installment by another day, and that must not become a second fee.
+ */
+async function installmentAlreadyAssessed(note: ServicedNoteForFees, dueDate: Date): Promise<boolean> {
+  const { start, end } = utcMonthWindow(dueDate);
+  const [existing] = await db
+    .select({ id: lateFeeAssessments.id })
+    .from(lateFeeAssessments)
+    .where(
+      and(
+        eq(lateFeeAssessments.organizationId, note.organizationId),
+        eq(lateFeeAssessments.loanType, "note"),
+        eq(lateFeeAssessments.loanId, String(note.id)),
+        gte(lateFeeAssessments.periodStart, isoDay(start)),
+        lt(lateFeeAssessments.periodStart, isoDay(end)),
+      ),
+    )
+    .limit(1);
+  return Boolean(existing);
+}
+
+/**
+ * Would the installment due on `dueDate` carry a fee as of `at`? Grace
+ * passed, not paid in full, and no autopay debit initiated within grace still
+ * settling. Reads only; never writes.
+ */
+async function evaluateInstallment(note: ServicedNoteForFees, dueDate: Date, at: Date): Promise<InstallmentVerdict> {
+  const grace = noteGracePeriodDays(note.gracePeriodDays);
+  const configuredLateFeeCents = decimalDollarsToCents(note.lateFee);
+  if (grace === null) return { kind: "none", reason: "note states no grace period" };
+  if (configuredLateFeeCents <= 0) return { kind: "none", reason: "note has no late fee" };
+  const dayStart = utcDayStart(dueDate);
+  const dayEnd = new Date(dayStart.getTime() + DAY_MS);
 
   const decision = shouldAssessLateFee({
     periodStart: dueDate,
-    periodEnd: addMonths(dueDate, 1),
+    periodEnd: addMonthsUtc(dueDate, 1),
     dueDate,
     gracePeriodDays: grace,
     periodicPaymentAmountCents: decimalDollarsToCents(note.monthlyPayment),
-    amountCreditedToCycleCents: Number(credited?.cents ?? 0),
+    amountCreditedToCycleCents: await creditedToInstallmentCents(note.organizationId, note.id, dueDate),
     evaluationDate: at,
     configuredLateFeeCents,
   });
@@ -143,10 +225,172 @@ async function evaluateCurrentInstallment(note: ServicedNoteForFees, at: Date): 
 }
 
 /**
- * Assess the fee for the note's CURRENT installment (its next payment date)
- * if grace has passed and the installment is not paid in full. Idempotent.
- * Nothing is assessed once the lender's servicing wind-down is over — a
- * payoff quote opened after that must not create a fee (ruling #3).
+ * The installments an evaluation may consider, oldest first, from the one at
+ * `next_payment_date`. On the note's schedule: every installment to the end
+ * of the term. Off it: only the one the note states.
+ */
+/**
+ * The installments to evaluate: the current one, then — on a known schedule —
+ * each later one — only when the current installment itself came due WHILE
+ * AcreOS HELD THE NOTE (on or after `createdAt`). An unrecorded payment is not
+ * a missed one: a note imported with a stale `next_payment_date`, or one whose
+ * start in AcreOS is unknown, gets only the current installment evaluated (as
+ * before the walk existed),
+ * never a fee for every month AcreOS did not observe — those fees reach the
+ * borrower's statement and payoff quote (refuse-not-fabricate; W10.5).
+ */
+function candidateInstallments(note: ServicedNoteForFees):
+  | { walk: "schedule"; dueDates: Date[] }
+  | { walk: "current_only"; dueDates: Date[]; reason: string } {
+  const current = new Date(note.nextPaymentDate as Date);
+  const sched = resolveInstallmentSchedule(note);
+  if (sched.kind !== "grid") return { walk: "current_only", dueDates: [current], reason: sched.reason };
+  const heldSince = note.createdAt ? new Date(note.createdAt) : null;
+  if (!heldSince || Number.isNaN(heldSince.getTime())) {
+    return { walk: "current_only", dueDates: [current], reason: "when AcreOS began servicing the note is unknown" };
+  }
+  // The current installment came due BEFORE AcreOS held the note: the date is
+  // the import's, not one AcreOS advanced, so payments AcreOS never saw may
+  // have covered it — and a payment recorded now is applied to that backlog,
+  // so every month after it would read as unpaid (W10.5 audit). Only the
+  // current installment, as before the walk existed.
+  // By UTC calendar day: a note entered at 15:00 with its first payment due
+  // that day (midnight) is held "since" that installment, not after it.
+  if (isoDay(current) < isoDay(heldSince)) {
+    return {
+      walk: "current_only",
+      dueDates: [current],
+      reason: "the next due date predates AcreOS holding the note (an imported date)",
+    };
+  }
+  const dueDates = [current];
+  for (let i = sched.currentIndex + 1; i < sched.termMonths; i++) dueDates.push(addMonthsUtc(sched.first, i));
+  return { walk: "schedule", dueDates };
+}
+
+interface WalkResult {
+  outcome: AssessmentOutcome;
+  /** Fees that would be owed by `at` and are not recorded yet (for a projection). */
+  unrecorded: InstallmentVerdict[];
+}
+
+/**
+ * Walk the installments from `next_payment_date` through `at`. With
+ * `record`, each fee found is inserted (idempotent per installment); without,
+ * nothing is written and the fees that WOULD be assessed are returned.
+ */
+async function walkInstallments(
+  note: ServicedNoteForFees,
+  at: Date,
+  record: { paymentId: string | null } | null,
+): Promise<WalkResult> {
+  const outcome: AssessmentOutcome = {
+    assessed: false,
+    alreadyExisted: false,
+    feeCents: 0,
+    reason: "",
+    installmentsAssessed: 0,
+    installmentsAlreadyAssessed: 0,
+    deferredInstallments: 0,
+    walk: "current_only",
+  };
+  const unrecorded: InstallmentVerdict[] = [];
+  const grace = noteGracePeriodDays(note.gracePeriodDays);
+  // The note's own terms first: no grace stated, no fee configured, or no
+  // installment due means no fee on any installment — the walk never starts.
+  const none = (reason: string): WalkResult => ({ outcome: { ...outcome, reason }, unrecorded });
+  if (grace === null) return none("note states no grace period");
+  if (decimalDollarsToCents(note.lateFee) <= 0) return none("note has no late fee");
+  if (!note.nextPaymentDate) return none("note has no installment due");
+
+  const candidates = candidateInstallments(note);
+  outcome.walk = candidates.walk;
+  if (candidates.walk === "current_only") outcome.walkRefusedReason = candidates.reason;
+
+  const reasons: string[] = [];
+  for (let n = 0; n < candidates.dueDates.length; n++) {
+    const dueDate = candidates.dueDates[n];
+    // Later installments are later still: the first one inside grace ends the walk.
+    if (daysPastDue(dueDate, at) <= grace) {
+      if (n === 0) reasons.push(`installment due ${isoDay(dueDate)} is within its ${grace}-day grace period`);
+      break;
+    }
+    if (record && outcome.installmentsAssessed >= MAX_ASSESSMENTS_PER_RUN) {
+      // Bounded, and said out loud: the rest are counted, never dropped.
+      outcome.deferredInstallments = candidates.dueDates.slice(n).filter((d) => daysPastDue(d, at) > grace).length;
+      logger.warn("[servicedLateFees] per-run assessment cap reached; the remaining installments are evaluated next run", {
+        organizationId: note.organizationId,
+        noteId: note.id,
+        cap: MAX_ASSESSMENTS_PER_RUN,
+        deferredInstallments: outcome.deferredInstallments,
+        nextUnevaluatedDueDate: isoDay(dueDate),
+      });
+      break;
+    }
+    if (await installmentAlreadyAssessed(note, dueDate)) {
+      outcome.installmentsAlreadyAssessed++;
+      continue;
+    }
+    const verdict = await evaluateInstallment(note, dueDate, at);
+    if (verdict.kind === "none") {
+      reasons.push(verdict.reason);
+      continue;
+    }
+    if (!record) {
+      unrecorded.push(verdict);
+      continue;
+    }
+    const inserted = await db
+      .insert(lateFeeAssessments)
+      .values({
+        organizationId: note.organizationId,
+        loanId: String(note.id),
+        loanType: "note",
+        periodStart: isoDay(dueDate),
+        periodEnd: isoDay(addMonthsUtc(dueDate, 1)),
+        paymentId: record.paymentId,
+        feeAmountCents: verdict.feeCents,
+        justification: verdict.justification,
+        status: "assessed",
+      })
+      .onConflictDoNothing()
+      .returning({ id: lateFeeAssessments.id });
+    reasons.push(verdict.justification);
+    if (inserted.length > 0) {
+      outcome.installmentsAssessed++;
+      outcome.feeCents += verdict.feeCents;
+      logger.info("[servicedLateFees] fee assessed", {
+        organizationId: note.organizationId,
+        noteId: note.id,
+        periodStart: isoDay(dueDate),
+        feeCents: verdict.feeCents,
+      });
+    } else {
+      outcome.installmentsAlreadyAssessed++;
+    }
+  }
+  if (candidates.walk === "current_only" && note.firstPaymentDate !== undefined) {
+    logger.info("[servicedLateFees] only the stated installment evaluated", {
+      organizationId: note.organizationId,
+      noteId: note.id,
+      reason: candidates.reason,
+    });
+  }
+  outcome.assessed = outcome.installmentsAssessed > 0;
+  outcome.alreadyExisted = !outcome.assessed && outcome.installmentsAlreadyAssessed > 0;
+  outcome.reason =
+    reasons.length <= 1
+      ? reasons[0] ?? "no installment is past its grace period"
+      : `${outcome.installmentsAssessed} installment fee(s) assessed, ${outcome.installmentsAlreadyAssessed} already on record: ${reasons.join(" | ")}`;
+  return { outcome, unrecorded };
+}
+
+/**
+ * Assess the fee for every installment from the note's next payment date on
+ * that grace has passed on and that is not paid in full — by the note's own
+ * schedule, at most MAX_ASSESSMENTS_PER_RUN new ones per call. Idempotent per
+ * installment. Nothing is assessed once the lender's servicing wind-down is
+ * over — a payoff quote opened after that must not create a fee (ruling #3).
  */
 export async function assessServicedNoteLateFee(
   note: ServicedNoteForFees & { status?: string | null },
@@ -154,80 +398,74 @@ export async function assessServicedNoteLateFee(
   paymentId: string | null = null,
   servicingKnownActive = false,
 ): Promise<AssessmentOutcome> {
+  const refused = (reason: string): AssessmentOutcome => ({
+    assessed: false,
+    alreadyExisted: false,
+    feeCents: 0,
+    reason,
+    installmentsAssessed: 0,
+    installmentsAlreadyAssessed: 0,
+    deferredInstallments: 0,
+    walk: "current_only",
+  });
   // A payment on a defaulted note used to assess one on the way in (audit of
   // the fourth follow-up).
-  if (!statusAccruesFees(note.status)) {
-    return { assessed: false, alreadyExisted: false, feeCents: 0, reason: `note is ${note.status}` };
-  }
+  if (!statusAccruesFees(note.status)) return refused(`note is ${note.status}`);
   if (!servicingKnownActive && (await lenderServicingPhase(note.organizationId, now)).phase === "ended") {
-    return { assessed: false, alreadyExisted: false, feeCents: 0, reason: "lender servicing has ended" };
+    return refused("lender servicing has ended");
   }
-  const verdict = await evaluateCurrentInstallment(note, now);
-  if (verdict.kind === "none") {
-    return { assessed: false, alreadyExisted: false, feeCents: 0, reason: verdict.reason };
-  }
-  const { dueDate } = verdict;
+  return (await walkInstallments(note, now, { paymentId })).outcome;
+}
 
-  const inserted = await db
-    .insert(lateFeeAssessments)
-    .values({
-      organizationId: note.organizationId,
-      loanId: String(note.id),
-      loanType: "note",
-      periodStart: isoDay(dueDate),
-      periodEnd: isoDay(addMonths(dueDate, 1)),
-      paymentId,
-      feeAmountCents: verdict.feeCents,
-      justification: verdict.justification,
-      status: "assessed",
-    })
-    .onConflictDoNothing()
-    .returning({ id: lateFeeAssessments.id });
-  if (inserted.length > 0) {
-    logger.info("[servicedLateFees] fee assessed", {
-      organizationId: note.organizationId,
-      noteId: note.id,
-      periodStart: isoDay(dueDate),
-      feeCents: verdict.feeCents,
-    });
+/** Rounds of the capped walk a caller that must see EVERY fee runs (24 each): 600 installments, past any note's term. */
+const FULL_WALK_ROUNDS = 25;
+
+/**
+ * Assess every installment due, not just one capped run's worth. The cap (24)
+ * bounds the daily sweep; a payment posting, the payment preview and today's
+ * payoff quote must not stop there — a catch-up that covers the deferred
+ * installments would advance the date past them and their fees would never
+ * be assessed, and a preview or quote would understate what posting assesses
+ * (W10.5 audits). Stops as soon as a run defers nothing.
+ */
+export async function assessEveryInstallmentDue(
+  note: ServicedNoteForFees & { status?: string | null },
+  now: Date,
+  // Callers pass the assessor they import, so a run is the same call they
+  // would otherwise make — one capped run, repeated while it defers.
+  assess: (n: ServicedNoteForFees & { status?: string | null }, at: Date) => Promise<Pick<AssessmentOutcome, "deferredInstallments">> = assessServicedNoteLateFee,
+): Promise<void> {
+  for (let round = 0; round < FULL_WALK_ROUNDS; round++) {
+    const outcome = await assess(note, now);
+    if (!outcome?.deferredInstallments) return;
   }
-  return {
-    assessed: inserted.length > 0,
-    alreadyExisted: inserted.length === 0,
-    feeCents: verdict.feeCents,
-    reason: verdict.justification,
-  };
 }
 
 /**
- * The fee the CURRENT installment will carry by `asOf` that is not recorded
- * yet — for a payoff quote good through a later date. 0 when none is due by
- * then, or when it is already assessed (it is in what is owed).
+ * The fees the note's installments will carry by `asOf` that are not
+ * recorded yet — for a payoff quote good through a later date. 0 when none
+ * is due by then; an installment already assessed is in what is owed.
  */
 export async function lateFeeDueByCents(note: ServicedNoteForFees & { status?: string | null }, asOf: Date): Promise<number> {
   // A payoff quote must not include a fee the posting will never assess.
   if (!statusAccruesFees(note.status)) return 0;
   if ((await lenderServicingPhase(note.organizationId, asOf)).phase === "ended") return 0;
-  const verdict = await evaluateCurrentInstallment(note, asOf);
-  if (verdict.kind === "none") return 0;
-  const [existing] = await db
-    .select({ id: lateFeeAssessments.id })
-    .from(lateFeeAssessments)
-    .where(
-      and(
-        eq(lateFeeAssessments.organizationId, note.organizationId),
-        eq(lateFeeAssessments.loanType, "note"),
-        eq(lateFeeAssessments.loanId, String(note.id)),
-        eq(lateFeeAssessments.periodStart, isoDay(verdict.dueDate)),
-      ),
-    )
-    .limit(1);
-  return existing ? 0 : verdict.feeCents;
+  const { unrecorded } = await walkInstallments(note, asOf, null);
+  return unrecorded.reduce((sum, v) => sum + (v.kind === "fee" ? v.feeCents : 0), 0);
 }
 
-/** Late fees the borrower owes on this note: assessed minus collected, never negative. */
-export async function outstandingServicedLateFeesCents(organizationId: number, noteId: number): Promise<number> {
-  const [assessed] = await db
+/**
+ * Late fees the borrower owes on this note: assessed minus collected, never
+ * negative. A posting passes its transaction, AFTER locking the note row, so
+ * two concurrent payments cannot each collect the same fee (DEFECT-0185):
+ * the second reads, under the lock, the fee the first committed.
+ */
+export async function outstandingServicedLateFeesCents(
+  organizationId: number,
+  noteId: number,
+  executor: Executor = db,
+): Promise<number> {
+  const [assessed] = await executor
     .select({ cents: sql<string>`COALESCE(SUM(${lateFeeAssessments.feeAmountCents}), 0)` })
     .from(lateFeeAssessments)
     .where(
@@ -238,7 +476,7 @@ export async function outstandingServicedLateFeesCents(organizationId: number, n
         eq(lateFeeAssessments.status, "assessed"),
       ),
     );
-  const rows = await db
+  const rows = await executor
     .select({
       amount: payments.amount,
       principalAmount: payments.principalAmount,
@@ -297,17 +535,29 @@ export interface LateFeePassResult {
   assessed: number;
   alreadyAssessed: number;
   errors: number;
+  /** Installment fees recorded across all notes (a note three behind counts three). */
+  installmentsAssessed: number;
+  /** Past-grace installments left for the next run by the per-note cap — counted, never dropped. */
+  deferredInstallments: number;
 }
 
 /**
  * The daily pass: every serviced note (active, late or delinquent — not
  * defaulted, whose installments acceleration ended) whose installment is past
- * due is evaluated, and a fee is recorded where grace has passed on an unpaid
- * installment. Lenders whose 90-day servicing wind-down is over are skipped —
+ * due is evaluated, and a fee is recorded for each installment grace has
+ * passed on that is unpaid (bounded per note per run; the remainder is
+ * counted in `deferredInstallments` and taken by the next run). Lenders whose 90-day servicing wind-down is over are skipped —
  * AcreOS no longer services their loans (ruling #3).
  */
 export async function runServicedLateFeeAssessmentPass(now: Date = new Date()): Promise<LateFeePassResult> {
-  const result: LateFeePassResult = { scanned: 0, assessed: 0, alreadyAssessed: 0, errors: 0 };
+  const result: LateFeePassResult = {
+    scanned: 0,
+    assessed: 0,
+    alreadyAssessed: 0,
+    errors: 0,
+    installmentsAssessed: 0,
+    deferredInstallments: 0,
+  };
   const serviced = new Set(await orgsStillServiced(now));
   // PLATFORM SWEEP, said out loud: a scheduled job reads every
   // organization's active notes and writes each fee under that note's org.
@@ -321,6 +571,11 @@ export async function runServicedLateFeeAssessmentPass(now: Date = new Date()): 
       gracePeriodDays: notes.gracePeriodDays,
       lateFee: notes.lateFee,
       monthlyPayment: notes.monthlyPayment,
+      // The note's schedule — what lets the walk reach every missed installment.
+      firstPaymentDate: notes.firstPaymentDate,
+      termMonths: notes.termMonths,
+      // When AcreOS began holding the note: the walk never reaches before it.
+      createdAt: notes.createdAt,
     })
     .from(notes)
     .where(and(inArray(notes.status, SWEPT_NOTE_STATUSES), isNull(notes.deletedAt), lt(notes.nextPaymentDate, now)))
@@ -338,6 +593,8 @@ export async function runServicedLateFeeAssessmentPass(now: Date = new Date()): 
       const r = await assessServicedNoteLateFee(note, now, null, true);
       if (r.assessed) result.assessed++;
       else if (r.alreadyExisted) result.alreadyAssessed++;
+      result.installmentsAssessed += r.installmentsAssessed;
+      result.deferredInstallments += r.deferredInstallments;
     } catch (err) {
       result.errors++;
       logger.error("[servicedLateFees] assessment failed", err instanceof Error ? err : undefined, {
@@ -345,6 +602,12 @@ export async function runServicedLateFeeAssessmentPass(now: Date = new Date()): 
         noteId: note.id,
       });
     }
+  }
+  if (result.deferredInstallments > 0) {
+    logger.warn("[servicedLateFees] sweep left past-grace installments for the next run (per-note cap)", {
+      deferredInstallments: result.deferredInstallments,
+      cap: MAX_ASSESSMENTS_PER_RUN,
+    });
   }
   return result;
 }

@@ -41,18 +41,24 @@ import { noteGracePeriodDays } from "@shared/notes/delinquency";
 import { storage } from "../../storage";
 import { withTransaction } from "../../db";
 import { logger } from "../../utils/logger";
-import { addMonths } from "../../utils/dateUtils";
 import { emitPaymentEvent } from "../workflow-engine";
 import {
   splitPaymentCents,
+  splitPayoffCents,
   decimalDollarsToCents,
   percentStringToBps,
 } from "../notePaymentMath";
 import {
+  assessEveryInstallmentDue,
   assessServicedNoteLateFee,
-  feeFromExcessCents,
+  creditedToInstallmentCents,
   outstandingServicedLateFeesCents,
 } from "../notes/servicedLateFees";
+import {
+  allocateServicedPayment,
+  countInstallmentsDue,
+  nextDueDateAfterCoverage,
+} from "../notes/installmentCoverage";
 
 // ─────────────────────────────────────────────────────────────────────
 // Workflow payment events (Wave B — "wire the engine")
@@ -204,10 +210,12 @@ export interface PostBorrowerPortalCheckoutPaymentInput {
 /**
  * What happened to the installment the payment was applied against.
  *
- *  - `applied`         — the amount covered the scheduled payment; the next
- *                        pending schedule row is `paid` and the due date moved
- *                        one month.
- *  - `partial`         — the amount was LESS than `notes.monthly_payment`. The
+ *  - `applied`         — the amount (with any earlier partial toward the
+ *                        current installment) covered at least one scheduled
+ *                        payment; that many pending schedule rows are `paid`
+ *                        and the due date moved that many installments
+ *                        (DEFECT-0185: a lump that funds three advances three).
+ *  - `partial`         — the amount covered no whole installment. The
  *                        balance and ledger are updated (the money is real) but
  *                        the installment stays `pending` and the due date does
  *                        not move: a $50 payment against a $100 installment does
@@ -230,6 +238,11 @@ export type PostBorrowerPortalCheckoutPaymentResult =
       /** Money received beyond the payoff and applied to nothing (DEFECT-0098). */
       unappliedCents: number;
       installment: InstallmentOutcome;
+      /**
+       * Installments the payment (with any earlier partial toward the current
+       * one) fully covered — what the due date advanced by. 0 when `partial`.
+       */
+      installmentsCovered: number;
       /** The note's due date AFTER this payment — unchanged when `partial`. */
       nextPaymentDate: Date | null;
       receiptEmailed: boolean;
@@ -309,9 +322,10 @@ export type PostServicedNotePaymentResult = Exclude<PostBorrowerPortalCheckoutPa
 /**
  * THE posting rule for the serviced-note book (`notes` / `payments`): the
  * late-fee rule, the integer-cents split, one idempotent row keyed by
- * `transactionId`, the balance moved on the locked row, the installment and
- * due date advanced only by a full installment, `payment.received` emitted
- * once. The portal, the Stripe webhook, Payment Links and the operator's
+ * `transactionId`, the balance moved on the locked row, the installments and
+ * due date advanced by the installments the money fully covered (the shared
+ * coverage rule, `notes/installmentCoverage.ts` — DEFECT-0185), fees owed
+ * read under the note's row lock, `payment.received` emitted once. The portal, the Stripe webhook, Payment Links and the operator's
  * finance-page "Record payment" all post through it (audit of 224a5c0: the
  * finance route lowered the balance and nothing else, so a recorded payment
  * left the note overdue and autopay free to debit the same installment).
@@ -322,59 +336,88 @@ export async function postServicedNotePayment(
   const { note, amountCents, transactionId, source, paymentMethod } = input;
   const now = input.now ?? new Date();
 
-  // ── Late fee — assessed, then paid only from money ABOVE the installment
-  // (founder ruling 2026-09-29 #6, DEFECT-0099). A payment arriving after
-  // grace on an installment not yet paid in full records that installment's
-  // fee as ASSESSED (idempotent — the daily job may already have). What this
-  // payment COLLECTS toward fees is only what exceeds the scheduled
-  // installment, up to what is owed; the installment is covered first, so a
-  // fee never makes a payment short (§1026.36(c)(2)). This used to write the
-  // day-count fee as "collected" while the whole amount went to principal
-  // and interest — a collection no money made.
+  // ── Late fees ASSESSED first (founder ruling 2026-09-29 #6, DEFECT-0099;
+  // every missed installment, DEFECT-0185). A payment arriving after grace on
+  // installments not yet paid in full records each one's fee as ASSESSED
+  // (idempotent per installment — the daily job may already have), BEFORE
+  // the payment covers them: an installment paid late is still late.
   const paymentDate = now;
-  const dueDate = note.nextPaymentDate ?? now;
-  const scheduledCents =
-    note.monthlyPayment != null ? decimalDollarsToCents(note.monthlyPayment) : null;
-  await assessServicedNoteLateFee(note, now);
+  // Every installment due — not one capped run's worth: a catch-up that
+  // covers deferred installments must not advance past their fees (W10.5).
+  await assessEveryInstallmentDue(note, now, assessServicedNoteLateFee);
   if (noteGracePeriodDays(note.gracePeriodDays) === null && decimalDollarsToCents(note.lateFee) > 0) {
     logger.info("note_late_fee_skipped_grace_unstated", {
       metadata: { noteId: note.id, organizationId: note.organizationId, configuredLateFeeCents: decimalDollarsToCents(note.lateFee) },
     });
   }
-  const lateFeeCents = feeFromExcessCents({
-    amountCents,
-    scheduledCents,
-    outstandingFeeCents: await outstandingServicedLateFeesCents(note.organizationId, note.id),
-  });
 
-  // ── Split — integer cents, exact decimal→cents conversion ───────────
-  // `decimalDollarsToCents` / `percentStringToBps` replace the earlier
-  // `Math.round(Number(x) * 100)`: identical for two-decimal balances and
-  // whole-bp rates, exact (rather than float-rounded) for anything finer.
-  // What went to fees is not split into principal and interest.
-  const currentBalanceCents = decimalDollarsToCents(note.currentBalance);
-  const annualRateBps = percentStringToBps(note.interestRate);
-  const split = splitPaymentCents({
-    paymentAmountCents: amountCents - lateFeeCents,
-    currentBalanceCents,
-    annualRateBps,
-  });
-  // `split.residueCents` is money the borrower sent beyond the payoff. It is
-  // NOT invented into principal or interest, and it is not silently dropped
-  // either (DEFECT-0098): the payment row keeps the full amount, and after
-  // commit the lender gets an activity entry naming the unapplied excess, the
-  // borrower's receipt says so, and the result carries it. Returning or
-  // applying it is the lender's call — moving customer money is not ours.
+  // ── One transaction, on the LOCKED note ─────────────────────────────
+  // Everything that depends on where the note stands is read AFTER
+  // `SELECT … FOR UPDATE` on the note row (DEFECT-0185): the installment due,
+  // the credit already toward it, and the fees owed. Two concurrent,
+  // different payments serialize on that lock, and the second reads — READ
+  // COMMITTED, a fresh statement after the lock — the payment, the fee
+  // collected and the due date the first committed. Reading owed before the
+  // transaction let both collect the same fee (the floor at 0 hid it), and
+  // advancing from the caller's snapshot let both "advance" to the same date.
+  //
+  // INSERT … ON CONFLICT (transaction_id) DO NOTHING RETURNING *: if the
+  // conflict fires (returned []), the other writer already posted this
+  // payment and we return its row without touching the note — no second
+  // mutation, no error to the borrower, no second receipt. Every note query
+  // carries the org: `noteId` is trusted from the caller, but the tenant
+  // predicate is the invariant every read of `notes` in this repo carries.
+  const posted = await withTransaction(async (tx) => {
+    const [lockedNote] = await tx
+      .select()
+      .from(notes)
+      .where(and(eq(notes.id, note.id), eq(notes.organizationId, note.organizationId)))
+      .for("update");
+    if (!lockedNote) {
+      // The note vanished between the caller's read and the lock. Throwing
+      // posts nothing; Stripe will redeliver the webhook.
+      throw new Error(`Note ${note.id} not found under organization ${note.organizationId} at posting time`);
+    }
+    // The locked row is the truth; the caller's snapshot only fills a field
+    // the row did not carry.
+    const current: Note = { ...note, ...lockedNote };
+    const dueDate: Date | null = current.nextPaymentDate ? new Date(current.nextPaymentDate) : null;
+    const scheduledCents =
+      current.monthlyPayment != null ? decimalDollarsToCents(current.monthlyPayment) : null;
 
-  // ── Idempotent write ────────────────────────────────────────────────
-  // INSERT … ON CONFLICT (transaction_id) DO NOTHING RETURNING * inside one
-  // transaction. If the conflict fires (returned []), the other writer
-  // already posted this session and we return its row without touching the
-  // balance — no second mutation, no error to the borrower, no second
-  // receipt. Both note queries carry the org: `noteId` is trusted from the
-  // caller, but the tenant predicate is the invariant every read of `notes`
-  // in this repo carries.
-  const idempotentResult = await withTransaction(async (tx) => {
+    // ── The ONE coverage rule (installmentCoverage.ts): the installments due
+    // first, then fees owed from money beyond them, then principal; the due
+    // date advances by the installments fully covered.
+    const allocation = allocateServicedPayment({
+      amountCents,
+      scheduledCents,
+      priorCreditCents: dueDate
+        ? await creditedToInstallmentCents(note.organizationId, note.id, dueDate, tx)
+        : 0,
+      installmentsDue: countInstallmentsDue(current, now),
+      outstandingFeeCents: await outstandingServicedLateFeesCents(note.organizationId, note.id, tx),
+      payoffCents: splitPayoffCents(
+        Math.max(0, decimalDollarsToCents(lockedNote.currentBalance)),
+        percentStringToBps(current.interestRate),
+      ),
+    });
+    const lateFeeCents = allocation.lateFeeCents;
+
+    // ── Split — integer cents, exact decimal→cents conversion ───────────
+    // What went to fees is not split into principal and interest.
+    // `split.residueCents` is money the borrower sent beyond the payoff. It is
+    // NOT invented into principal or interest, and it is not silently dropped
+    // either (DEFECT-0098): the payment row keeps the full amount, and after
+    // commit the lender gets an activity entry naming the unapplied excess,
+    // the borrower's receipt says so, and the result carries it. Returning or
+    // applying it is the lender's call — moving customer money is not ours.
+    const lockedBalanceCents = decimalDollarsToCents(lockedNote.currentBalance);
+    const split = splitPaymentCents({
+      paymentAmountCents: amountCents - lateFeeCents,
+      currentBalanceCents: Math.max(0, lockedBalanceCents),
+      annualRateBps: percentStringToBps(current.interestRate),
+    });
+
     const inserted = await tx
       .insert(payments)
       .values({
@@ -386,7 +429,8 @@ export async function postServicedNotePayment(
         feeAmount: "0",
         lateFeeAmount: (lateFeeCents / 100).toString(),
         paymentDate,
-        dueDate,
+        // Posted against the installment that was next when it arrived.
+        dueDate: dueDate ?? now,
         paymentMethod,
         transactionId,
         status: "completed",
@@ -414,30 +458,13 @@ export async function postServicedNotePayment(
           `payments.transaction_id ${transactionId} is already recorded outside organization ${note.organizationId} — refusing to post or read it`,
         );
       }
-      return { row: existing, created: false } as const;
+      return { created: false, row: existing } as const;
     }
 
     const [row] = inserted;
-
-    const [lockedNote] = await tx
-      .select()
-      .from(notes)
-      .where(and(eq(notes.id, note.id), eq(notes.organizationId, note.organizationId)))
-      .for("update");
-    if (!lockedNote) {
-      // The note vanished between the caller's read and the lock. Committing
-      // the payment row with no balance movement would be a ledger that
-      // disagrees with itself; throwing rolls the row back and Stripe will
-      // redeliver the webhook.
-      throw new Error(`Note ${note.id} not found under organization ${note.organizationId} at posting time`);
-    }
     // The balance the borrower is told, and the event carries, is the one
-    // the LOCKED row produced — not the caller's pre-lock snapshot, which a
-    // concurrent posting may have moved.
-    const newBalanceCents = Math.max(
-      0,
-      decimalDollarsToCents(lockedNote.currentBalance) - split.principalCents,
-    );
+    // the LOCKED row produced — not the caller's pre-lock snapshot.
+    const newBalanceCents = Math.max(0, lockedBalanceCents - split.principalCents);
     const updated = await tx
       .update(notes)
       .set({
@@ -463,69 +490,77 @@ export async function postServicedNotePayment(
       throw new Error(`Optimistic lock conflict on note ${note.id} — concurrent update detected`);
     }
 
-    return { row, created: true, remainingBalanceCents: newBalanceCents } as const;
+    // ── Installments — advanced by what the money covered, in the SAME
+    // transaction, from the locked row's due date. A partial (nothing fully
+    // covered) leaves the installment pending and the due date put: a $50
+    // payment against a $100 installment does not mean nothing is due.
+    const schedule = current.amortizationSchedule || [];
+    let installment: InstallmentOutcome;
+    let nextPaymentDate: Date | null = dueDate;
+    const notePatch: {
+      amortizationSchedule?: typeof schedule;
+      nextPaymentDate?: Date;
+      pendingCheckoutSessionId?: null;
+      pendingCheckoutOpenedAt?: null;
+    } = {};
+    const covered = allocation.installmentsCovered;
+    if (covered <= 0) {
+      installment = "partial";
+      logger.info("borrower_portal_partial_payment_installment_left_pending", {
+        metadata: { noteId: note.id, organizationId: note.organizationId, amountCents, scheduledCents, source },
+      });
+    } else {
+      const pendingToMark = new Set(
+        schedule.filter((s) => s.status === "pending").slice(0, covered).map((s) => s.paymentNumber),
+      );
+      if (pendingToMark.size > 0) {
+        notePatch.amortizationSchedule = schedule.map((s) =>
+          pendingToMark.has(s.paymentNumber) ? { ...s, status: "paid" } : s,
+        );
+        installment = "applied";
+      } else {
+        installment = "no_schedule_row";
+      }
+      nextPaymentDate = nextDueDateAfterCoverage(current, covered, now);
+      if (nextPaymentDate) notePatch.nextPaymentDate = nextPaymentDate;
+      if (covered > 1) {
+        logger.info("serviced_note_payment_covered_several_installments", {
+          metadata: { noteId: note.id, organizationId: note.organizationId, installmentsCovered: covered, source },
+        });
+      }
+    }
+    // Clear the pending-checkout slot only if it still names THIS session —
+    // read from the LOCKED row: the caller's copy can predate a newer session
+    // that is still open, and clearing that pointer would lift the autopay
+    // hold while the borrower can still pay it (W10.5 audit).
+    if (lockedNote.pendingCheckoutSessionId === transactionId) {
+      notePatch.pendingCheckoutSessionId = null;
+      notePatch.pendingCheckoutOpenedAt = null;
+    }
+    if (Object.keys(notePatch).length > 0) {
+      await storage.updateNote(note.id, notePatch, note.organizationId, tx);
+    }
+
+    return {
+      created: true,
+      row,
+      remainingBalanceCents: newBalanceCents,
+      split,
+      lateFeeCents,
+      scheduledCents,
+      installment,
+      nextPaymentDate,
+      installmentsCovered: covered,
+      dueDate,
+    } as const;
   });
 
-  if (!idempotentResult.created) {
-    return { outcome: "already_recorded", payment: idempotentResult.row };
+  if (!posted.created) {
+    return { outcome: "already_recorded", payment: posted.row };
   }
 
-  const payment = idempotentResult.row;
-  const remainingBalanceCents = idempotentResult.remainingBalanceCents;
-
-  // ── Installment rule ────────────────────────────────────────────────
-  // `notes.monthly_payment` is NOT NULL in the schema; the null branch exists
-  // for fixtures and legacy rows and applies the pre-existing behaviour
-  // (the event's `isPartial` is null there — no verdict is invented).
-  const isPartial = scheduledCents !== null && amountCents < scheduledCents;
-
-  const schedule = note.amortizationSchedule || [];
-  const nextPendingPayment = schedule.find((s) => s.status === "pending");
-
-  let installment: InstallmentOutcome;
-  let nextPaymentDate: Date | null = note.nextPaymentDate ?? null;
-  const notePatch: {
-    amortizationSchedule?: typeof schedule;
-    nextPaymentDate?: Date;
-    pendingCheckoutSessionId?: null;
-  } = {};
-
-  if (isPartial) {
-    installment = "partial";
-    logger.info("borrower_portal_partial_payment_installment_left_pending", {
-      metadata: {
-        noteId: note.id,
-        organizationId: note.organizationId,
-        amountCents,
-        scheduledCents,
-        source,
-      },
-    });
-  } else {
-    if (nextPendingPayment) {
-      notePatch.amortizationSchedule = schedule.map((s) =>
-        s.paymentNumber === nextPendingPayment.paymentNumber ? { ...s, status: "paid" } : s,
-      );
-      installment = "applied";
-    } else {
-      installment = "no_schedule_row";
-    }
-    nextPaymentDate = addMonths(new Date(note.nextPaymentDate || now), 1);
-    notePatch.nextPaymentDate = nextPaymentDate;
-  }
-
-  // Clear the pending-checkout slot only if it still names THIS session.
-  // Clearing unconditionally would wipe the pointer to a newer session that
-  // is still open (the one-slot confusion in the other direction).
-  if (note.pendingCheckoutSessionId === transactionId) {
-    notePatch.pendingCheckoutSessionId = null;
-  }
-
-  // Non-financial fields, safe outside the payment transaction. Skipped when
-  // there is nothing to write (a partial payment with no slot to clear).
-  if (Object.keys(notePatch).length > 0) {
-    await storage.updateNote(note.id, notePatch, note.organizationId);
-  }
+  const payment = posted.row;
+  const { remainingBalanceCents, split, lateFeeCents, scheduledCents, installment, nextPaymentDate } = posted;
 
   // ── Post-commit effects — exactly once, on the winning writer ───────
   emitBorrowerPaymentReceived({
@@ -537,9 +572,10 @@ export async function postServicedNotePayment(
     interestCents: split.interestCents,
     lateFeeCents,
     scheduledPaymentCents: scheduledCents,
-    // The stored schedule date, NOT the `?? now` fallback used for the
-    // late-fee math — a missing due date stays null in the event.
-    dueDate: note.nextPaymentDate ?? null,
+    // The locked row's stored due date (the installment this payment was
+    // posted against), NOT the `?? now` fallback on the row — a missing due
+    // date stays null in the event.
+    dueDate: posted.dueDate,
     paymentDate,
     remainingBalanceCents,
     paymentMethod,
@@ -610,6 +646,7 @@ export async function postServicedNotePayment(
     remainingBalanceCents,
     unappliedCents: split.residueCents,
     installment,
+    installmentsCovered: posted.installmentsCovered,
     nextPaymentDate,
     receiptEmailed,
   };

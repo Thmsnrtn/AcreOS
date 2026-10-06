@@ -16,7 +16,7 @@
 import { Router, type Response } from "express";
 import { type AuthenticatedRequest, getOrganization, getClerkAuth } from "./types/request";
 import { isFounderIdentity } from "./services/founder";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { stampTraceContext } from "./utils/queueTraceContext";
 import { generateTrialBalance } from "./services/trialBalance";
@@ -309,13 +309,10 @@ router.post("/1099-batch", requireQualified1099Output(), async (req: Authenticat
  */
 function sendTaxIdentityError(res: Response, err: unknown): boolean {
   if (!(err instanceof TaxIdentityError)) return false;
-  res.status(422).json({
-    error: "tax_identity_missing",
-    message: err.message,
+  sendError(res, 422, "tax_identity_missing", err.message, {
     code: err.code,
     orgId: err.orgId,
     noteId: err.noteId,
-    statusCode: 422,
   });
   return true;
 }
@@ -475,11 +472,15 @@ router.post("/investor-statements", async (req: AuthenticatedRequest, res: Respo
     // surfaces the variance and the operator can't accidentally ship a
     // misstatement. PDFs are intentionally empty on the failure path.
     if (result.reconciliation && !result.reconciliation.ok) {
-      return res.status(422).json({
-        error: "reconciliation_failed",
-        message: `Per-LP sums don't reconcile on ${result.reconciliation.variances.length} note(s). Fix splits or post missing payments, then retry.`,
-        ...result,
-      });
+      // The batch result (reconciliation variances included) rides in
+      // `details`; the tax-readiness page reads it from there.
+      return sendError(
+        res,
+        422,
+        "reconciliation_failed",
+        `Per-LP sums don't reconcile on ${result.reconciliation.variances.length} note(s). Fix splits or post missing payments, then retry.`,
+        result,
+      );
     }
     res.json(result);
   } catch (err) {

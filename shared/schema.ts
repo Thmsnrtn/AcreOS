@@ -1004,7 +1004,7 @@ export const notes = pgTable("notes", {
   downPaymentReceived: boolean("down_payment_received").default(false),
   
   // Payment method info (for automation)
-  paymentMethod: text("payment_method"), // ach_actum, ach_authorize, card_stripe, card_authorize, manual
+  paymentMethod: text("payment_method"), // ach_authorize, card_stripe, card_authorize, manual (rows saved before 2026-07-29 may hold "ach_actum", a deleted rail — nothing debits through this column)
   paymentAccountId: text("payment_account_id"), // Reference to stored payment method (primary)
   autoPayEnabled: boolean("auto_pay_enabled").default(false),
 
@@ -1012,7 +1012,7 @@ export const notes = pgTable("notes", {
   // If primary payment fails, system tries fallback accounts in order
   fallbackPaymentAccounts: jsonb("fallback_payment_accounts").$type<{
     profileId: string;
-    method: "ach_actum" | "ach_authorize" | "card_stripe" | "card_authorize";
+    method: "ach_authorize" | "card_stripe" | "card_authorize"; // "ach_actum" (deleted rail) no longer accepted
     last4?: string;
     bankName?: string;
     order: number; // 1 = first fallback, 2 = second, etc.
@@ -1035,6 +1035,9 @@ export const notes = pgTable("notes", {
   
   // Pending checkout session ID for webhook verification
   pendingCheckoutSessionId: text("pending_checkout_session_id"),
+  // When that slot was written (0261): the autopay hold's bound. Written and
+  // cleared with the slot; NOT updated_at, which routine writers refresh.
+  pendingCheckoutOpenedAt: timestamp("pending_checkout_opened_at"),
   
   // Delinquency tracking
   lastReminderSentAt: timestamp("last_reminder_sent_at"),

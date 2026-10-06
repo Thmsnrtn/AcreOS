@@ -273,13 +273,13 @@ export function registerPublicSignRoutes(app: Express): void {
         .orderBy(desc(signingConsentAudit.consentedAt))
         .limit(1);
       if (!consentRow) {
-        return res.status(412).json({
-          error: "ESIGN_CONSENT_REQUIRED",
-          message:
-            "E-SIGN Act §101(c) consent has not been captured for this signer + document. " +
+        return sendError(
+          res,
+          412,
+          "ESIGN_CONSENT_REQUIRED",
+          "E-SIGN Act §101(c) consent has not been captured for this signer + document. " +
             "The signing UI must present the five required disclosures before submitting a signature.",
-          statusCode: 412,
-        });
+        );
       }
 
       await storage.createSignature({

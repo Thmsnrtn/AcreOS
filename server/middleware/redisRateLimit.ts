@@ -22,6 +22,7 @@
 import type { Response, NextFunction } from "express";
 import type { AuthenticatedRequest } from "../types/request";
 import { logger } from "../utils/logger";
+import { sendError } from "../utils/errors";
 
 /**
  * Loosely-typed request used by rate-limit middleware.
@@ -174,12 +175,16 @@ export function createOrgRateLimit(redisClient: any) {
         res.setHeader("X-RateLimit-Remaining", 0);
         res.setHeader("X-RateLimit-Reset", Math.floor(minuteResult.resetAt.getTime() / 1000));
         res.setHeader("Retry-After", Math.ceil((minuteResult.resetAt.getTime() - Date.now()) / 1000));
-        return res.status(429).json({
-          error: "rate_limit_exceeded",
-          message: `Too many requests. Limit: ${limits.perMinute}/minute for ${tier} tier.`,
-          retryAfter: Math.ceil((minuteResult.resetAt.getTime() - Date.now()) / 1000),
-          upgradeUrl: "/settings/billing",
-        });
+        return sendError(
+          res,
+          429,
+          "rate_limit_exceeded",
+          `Too many requests. Limit: ${limits.perMinute}/minute for ${tier} tier.`,
+          {
+            retryAfter: Math.ceil((minuteResult.resetAt.getTime() - Date.now()) / 1000),
+            upgradeUrl: "/settings/billing",
+          },
+        );
       }
 
       // Check per-hour limit
@@ -190,9 +195,7 @@ export function createOrgRateLimit(redisClient: any) {
       });
 
       if (!hourResult.allowed) {
-        return res.status(429).json({
-          error: "hourly_rate_limit_exceeded",
-          message: `Hourly limit of ${limits.perHour} requests reached.`,
+        return sendError(res, 429, "hourly_rate_limit_exceeded", `Hourly limit of ${limits.perHour} requests reached.`, {
           retryAfter: Math.ceil((hourResult.resetAt.getTime() - Date.now()) / 1000),
         });
       }
@@ -232,11 +235,13 @@ export function createApiKeyRateLimit(redisClient: any) {
     });
 
     if (!minuteResult.allowed) {
-      return res.status(429).json({
-        error: "api_rate_limit_exceeded",
-        message: `API key rate limit exceeded. Max: ${limits.perMinute} requests/minute.`,
-        docs: "https://docs.acreos.io/api/rate-limits",
-      });
+      return sendError(
+        res,
+        429,
+        "api_rate_limit_exceeded",
+        `API key rate limit exceeded. Max: ${limits.perMinute} requests/minute.`,
+        { docs: "https://docs.acreos.io/api/rate-limits" },
+      );
     }
 
     const dayResult = await checkRateLimit(redisClient, `apikey:${apiKey.substring(0, 20)}`, {
@@ -246,10 +251,7 @@ export function createApiKeyRateLimit(redisClient: any) {
     });
 
     if (!dayResult.allowed) {
-      return res.status(429).json({
-        error: "daily_api_limit_exceeded",
-        message: `Daily API limit of ${limits.perDay} requests reached.`,
-      });
+      return sendError(res, 429, "daily_api_limit_exceeded", `Daily API limit of ${limits.perDay} requests reached.`);
     }
 
     res.setHeader("X-RateLimit-Limit", limits.perMinute);
@@ -291,9 +293,7 @@ export function createAIRateLimit(redisClient: any) {
     });
 
     if (!result.allowed) {
-      return res.status(429).json({
-        error: "ai_rate_limit_exceeded",
-        message: `AI request limit of ${maxAIPerHour}/hour reached for ${tier} tier.`,
+      return sendError(res, 429, "ai_rate_limit_exceeded", `AI request limit of ${maxAIPerHour}/hour reached for ${tier} tier.`, {
         suggestion: "Upgrade your plan for higher AI limits.",
         upgradeUrl: "/settings/billing",
       });
@@ -328,10 +328,7 @@ export function createIpRateLimit(
     });
 
     if (!minuteResult.allowed) {
-      return res.status(429).json({
-        error: "too_many_requests",
-        message: "Too many requests from this IP address. Please slow down.",
-      });
+      return sendError(res, 429, "too_many_requests", "Too many requests from this IP address. Please slow down.");
     }
 
     const hourResult = await checkRateLimit(redisClient, `ip:${ip}`, {
@@ -341,10 +338,7 @@ export function createIpRateLimit(
     });
 
     if (!hourResult.allowed) {
-      return res.status(429).json({
-        error: "too_many_requests",
-        message: "Hourly request limit exceeded for this IP address.",
-      });
+      return sendError(res, 429, "too_many_requests", "Hourly request limit exceeded for this IP address.");
     }
 
     return next();
@@ -368,7 +362,7 @@ export function createWebhookRateLimit(redisClient: any) {
 
     if (!result.allowed) {
       logger.warn("Webhook flood detected — throttled", { organizationId: orgId });
-      return res.status(429).json({ error: "webhook_rate_limited" });
+      return sendError(res, 429, "webhook_rate_limited", "Too many webhook deliveries for this organization. Retry after a minute.");
     }
 
     return next();

@@ -67,9 +67,9 @@ interface BatchResponse {
 
 interface TaxIdentityError {
   error: "tax_identity_missing";
-  code: string;
   message: string;
-  noteId?: string;
+  /** DEFECT-0050: the standard error shape carries the blocker's fields here. */
+  details?: { code?: string; noteId?: string };
 }
 
 /** DEFECT-0101 — the server withholds 1099-INT output until the direction is reviewed. */
@@ -216,8 +216,8 @@ export default function NotesTaxReadinessPage() {
             <div>
               <p className="font-semibold">Tax identity blockers — fix before generating</p>
               <p className="text-sm text-muted-foreground mt-1">{blockerError.message}</p>
-              {blockerError.noteId && (
-                <p className="text-xs text-muted-foreground mt-1.5 font-mono">Note: {blockerError.noteId}</p>
+              {blockerError.details?.noteId && (
+                <p className="text-xs text-muted-foreground mt-1.5 font-mono">Note: {blockerError.details.noteId}</p>
               )}
               <p className="text-xs text-muted-foreground mt-3">
                 Add the missing TIN via <span className="font-mono">PATCH /api/notes/{"<id>"}</span>{" "}
@@ -449,7 +449,12 @@ function InvestorStatementsSection({ taxYear }: { taxYear: number }) {
       // but treat this as a structured non-error response so the UI can
       // render the per-note variance table.
       if (res.status === 422 && json?.error === "reconciliation_failed") {
-        return { ...json, __refused: true } as InvestorBatchResponse & { __refused: true; message?: string };
+        // DEFECT-0050: the refused batch (variances included) is the error
+        // body's `details`; the human text stays in `message`.
+        return { ...json.details, message: json.message, __refused: true } as InvestorBatchResponse & {
+          __refused: true;
+          message?: string;
+        };
       }
       if (!res.ok) {
         throw new Error(json?.message || "Generate failed");

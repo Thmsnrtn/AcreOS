@@ -32,6 +32,8 @@ vi.mock("../../server/services/notes/servicedLateFees", async (orig) => ({
   ...(await orig<typeof import("../../server/services/notes/servicedLateFees")>()),
   assessServicedNoteLateFee: async () => void S.assessed++,
   outstandingServicedLateFeesCents: async () => S.owedFeeCents,
+  // The guard previews the posting's coverage rule; no earlier partial here.
+  creditedToInstallmentCents: async () => 0,
 }));
 
 vi.mock("../../server/middleware/roleGuard", () => ({

@@ -826,8 +826,7 @@ export function registerCampaignRoutes(app: Express): void {
       const validLeads = validLeadsRaw.filter(l => acceptedIds.has(l!.id));
 
       if (validLeads.length === 0) {
-        return res.status(409).json({
-          error: "All recipients were filtered by the pre-mail dedupe scanner",
+        return Errors.conflict(res, "All recipients were filtered by the pre-mail dedupe scanner", {
           dedupe: {
             input: dedupe.totals.input,
             accepted: 0,

@@ -30,7 +30,7 @@ import type { Request, Response, NextFunction } from "express";
 import { db } from "../db";
 import { teamMembers } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
-import { sendError } from "../utils/errors";
+import { Errors, sendError } from "../utils/errors";
 
 export type OrgRole = "owner" | "admin" | "member" | "viewer" | "va";
 
@@ -98,9 +98,7 @@ export function requireRole(allowedRoles: OrgRole[] | OrgRole, ...rest: OrgRole[
         );
 
       if (!member) {
-        return res
-          .status(403)
-          .json({ message: "Not a member of this organization" });
+        return sendError(res, 403, "FORBIDDEN", "Not a member of this organization");
       }
 
       const userRole = normalizeRole(member.role);
@@ -113,7 +111,8 @@ export function requireRole(allowedRoles: OrgRole[] | OrgRole, ...rest: OrgRole[
       (req as Request & { userRole?: OrgRole }).userRole = userRole;
       next();
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      // Errors.internal logs the cause and never echoes it in production.
+      Errors.internal(res, err);
     }
   };
 }

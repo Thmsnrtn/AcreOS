@@ -620,8 +620,11 @@ function WorksheetEditor({ listing, onClose }: { listing: Listing; onClose: () =
         }),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Save failed" }));
-        throw new Error(typeof err.error === "string" ? err.error : "Save failed");
+        const err = await res.json().catch(() => ({ message: "Save failed" }));
+        // DEFECT-0050: show the human `message`, never the machine `error` code.
+        throw new Error(
+          typeof err.message === "string" ? err.message : typeof err.error === "string" ? err.error : "Save failed",
+        );
       }
       return res.json();
     },

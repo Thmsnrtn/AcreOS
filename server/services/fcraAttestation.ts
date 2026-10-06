@@ -23,7 +23,7 @@ import { db } from "../db";
 import { fcraAttestations, tenantScreenings } from "@shared/schema";
 import { and, eq, desc } from "drizzle-orm";
 import { logger } from "../utils/logger";
-import { Errors } from "../utils/errors";
+import { Errors, sendError } from "../utils/errors";
 
 export const CURRENT_FCRA_ATTESTATION_VERSION = "2026-05-08-v1";
 const ATTESTATION_TTL_DAYS = 365;
@@ -329,11 +329,7 @@ export function respondFcraRefusal(res: import("express").Response, err: unknown
     return true;
   }
   if (err instanceof FcraAttestationStaleError) {
-    res.status(403).json({
-      error: "FCRA_ATTESTATION_REQUIRED",
-      message: err.message,
-      statusCode: 403,
-    });
+    sendError(res, 403, "FCRA_ATTESTATION_REQUIRED", err.message);
     return true;
   }
   return false;

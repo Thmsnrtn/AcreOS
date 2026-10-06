@@ -63,7 +63,7 @@ const overrideSchema = z.object({
 router.post("/override", async (req: Request, res: Response) => {
   const parsed = overrideSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ error: "Invalid input", details: parsed.error.flatten() });
+    return Errors.badRequest(res, "Invalid input", parsed.error.flatten());
   }
   const { agentCodename, actionCategory, tier, override } = parsed.data;
   try {

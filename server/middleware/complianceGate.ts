@@ -28,7 +28,7 @@
  */
 import type { Request, Response, NextFunction } from "express";
 import { logger } from "../utils/logger";
-import { Errors } from "../utils/errors";
+import { Errors, sendError } from "../utils/errors";
 
 export interface ComplianceWarning {
   type: "dodd_frank" | "usury" | "tcpa";
@@ -100,11 +100,16 @@ export function complianceGate(checkType: "note" | "deal") {
 
     // ── 3. DECIDE ───────────────────────────────────────────────────────────
     if (isStrictMode && warnings.some((w) => w.severity === "violation")) {
-      return res.status(422).json({
-        message: "Compliance violation detected. Operation blocked in strict mode.",
-        warnings,
-        overrideInstructions: "Set X-Compliance-Override header with founder approval token to proceed.",
-      });
+      return sendError(
+        res,
+        422,
+        "COMPLIANCE_VIOLATION",
+        "Compliance violation detected. Operation blocked in strict mode.",
+        {
+          warnings,
+          overrideInstructions: "Set X-Compliance-Override header with founder approval token to proceed.",
+        },
+      );
     }
 
     (req as Request & { complianceWarnings?: ComplianceWarning[] }).complianceWarnings = warnings;

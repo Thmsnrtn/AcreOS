@@ -105,7 +105,7 @@ describe("subscriptionPauseGate — a live pause blocks mutations", () => {
       expect(res.body).toMatchObject({
         error: "subscription_paused",
         statusCode: 402,
-        subscriptionPauseEndsAt: FUTURE,
+        details: { subscriptionPauseEndsAt: FUTURE },
       });
       // The copy must point at the resume path, not just refuse.
       expect(res.body.message).toContain("Resume");
@@ -118,7 +118,7 @@ describe("subscriptionPauseGate — a live pause blocks mutations", () => {
     });
     expect(next).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(402);
-    expect(res.body.subscriptionPauseEndsAt).toBeNull();
+    expect(res.body.details.subscriptionPauseEndsAt).toBeNull();
   });
 
   it("an ELAPSED pause window passes — lazy resume before the worker flips the flag", () => {

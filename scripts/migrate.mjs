@@ -252,6 +252,8 @@ END $mig0247$`,
    )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "marketing_list_members_list_lead_uidx" ON "marketing_list_members" ("list_id", "lead_id")`,
   `CREATE INDEX IF NOT EXISTS "marketing_list_members_org_list_idx" ON "marketing_list_members" ("organization_id", "list_id")`,
+  // 0261 — when the borrower's card Checkout slot was opened (the autopay hold's own bound).
+  `ALTER TABLE "notes" ADD COLUMN IF NOT EXISTS "pending_checkout_opened_at" timestamp`,
   `CREATE INDEX IF NOT EXISTS "idx_organizations_pause_resume" ON "organizations" ("subscription_paused", "subscription_pause_ends_at")`,
   `ALTER TABLE "cancellation_surveys" ADD COLUMN IF NOT EXISTS "offered_pause" boolean DEFAULT false`,
   `ALTER TABLE "cancellation_surveys" ADD COLUMN IF NOT EXISTS "accepted_pause" boolean DEFAULT false`,

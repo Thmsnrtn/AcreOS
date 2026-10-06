@@ -104,6 +104,23 @@ export function splitPaymentCents(input: SplitPaymentInput): SplitPaymentResult 
   };
 }
 
+/**
+ * What pays a serviced note off under `splitPaymentCents`: the balance plus
+ * the one month of interest that split accrues. Any amount up to this is
+ * principal and interest; anything beyond it is residue. The coverage rule
+ * caps the installment demand here, so a payoff on a note several
+ * installments behind still reaches the fees owed (W10.5).
+ */
+export function splitPayoffCents(currentBalanceCents: number, annualRateBps: number): number {
+  const balance = Math.max(0, currentBalanceCents);
+  const s = splitPaymentCents({
+    paymentAmountCents: balance + Math.round((balance * Math.max(0, annualRateBps)) / (10_000 * 12)),
+    currentBalanceCents: balance,
+    annualRateBps: Math.max(0, annualRateBps),
+  });
+  return s.principalCents + s.interestCents;
+}
+
 // ---------------------------------------------------------------------------
 // Late fee — REMOVED 2026-09-29 (founder ruling #6, DEFECT-0099).
 // `computeAppliedLateFeeCents` computed a fee from days late at payment time,

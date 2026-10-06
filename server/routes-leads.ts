@@ -24,7 +24,7 @@ import { requirePermission } from "./utils/permissions";
 import { usageMeteringService, creditService } from "./services/credits";
 import { parseCSV, importLeads, exportLeadsToCSV, getExpectedColumns, type ExportFilters } from "./services/importExport";
 import { logger } from "./utils/logger";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 // ONE owner for the assigned-leads rule. It was hand-copied into five places
 // and missing from four write paths — see server/utils/assignedLeadGate.ts.
 import {
@@ -411,13 +411,18 @@ export function registerLeadRoutes(app: Express): void {
       
       const usageCheck = await checkUsageLimit(org.id, "leads");
       if (!usageCheck.allowed) {
-        return res.status(429).json({
-          message: `Lead limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan to add more leads.`,
-          current: usageCheck.current,
-          limit: usageCheck.limit,
-          resourceType: usageCheck.resourceType,
-          tier: usageCheck.tier,
-        });
+        return sendError(
+          res,
+          429,
+          "LIMIT_EXCEEDED",
+          `Lead limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan to add more leads.`,
+          {
+            current: usageCheck.current,
+            limit: usageCheck.limit,
+            resourceType: usageCheck.resourceType,
+            tier: usageCheck.tier,
+          },
+        );
       }
       
       // T3-3E Phase 3 — contract request validation. `leadCreateRequestSchema`
@@ -1333,10 +1338,7 @@ export function registerLeadRoutes(app: Express): void {
     );
 
     if (usageResult.insufficientCredits) {
-      return res.status(402).json({
-        message: "Insufficient credits for AI follow-up generation",
-        error: "INSUFFICIENT_CREDITS",
-      });
+      return sendError(res, 402, "INSUFFICIENT_CREDITS", "Insufficient credits for AI follow-up generation");
     }
 
     const followUp = await leadNurturerService.generateFollowUp(lead);
@@ -1390,13 +1392,19 @@ export function registerLeadRoutes(app: Express): void {
       if (usageCheck.limit !== null) {
         const wouldExceed = usageCheck.current + csvData.length > usageCheck.limit;
         if (wouldExceed) {
-          return res.status(429).json({
-            message: `Import would exceed your plan limit of ${usageCheck.limit} leads (current: ${usageCheck.current}, importing: ${csvData.length}). Upgrade your plan to import more leads.`,
-            current: usageCheck.current,
-            importing: csvData.length,
-            limit: usageCheck.limit,
-            tier: usageCheck.tier,
-          });
+          return sendError(
+            res,
+            429,
+            "LIMIT_EXCEEDED",
+            `Import would exceed your plan limit of ${usageCheck.limit} leads (current: ${usageCheck.current}, importing: ${csvData.length}). Upgrade your plan to import more leads.`,
+            {
+              current: usageCheck.current,
+              importing: csvData.length,
+              limit: usageCheck.limit,
+              resourceType: usageCheck.resourceType,
+              tier: usageCheck.tier,
+            },
+          );
         }
       }
       
@@ -1653,12 +1661,19 @@ export function registerLeadRoutes(app: Express): void {
       if (usageCheck.limit !== null) {
         const wouldExceed = usageCheck.current + mappedData.length > usageCheck.limit;
         if (wouldExceed) {
-          return res.status(429).json({
-            message: `Import would exceed your plan limit of ${usageCheck.limit} leads`,
-            current: usageCheck.current,
-            importing: mappedData.length,
-            limit: usageCheck.limit,
-          });
+          return sendError(
+            res,
+            429,
+            "LIMIT_EXCEEDED",
+            `Import would exceed your plan limit of ${usageCheck.limit} leads`,
+            {
+              current: usageCheck.current,
+              importing: mappedData.length,
+              limit: usageCheck.limit,
+              resourceType: usageCheck.resourceType,
+              tier: usageCheck.tier,
+            },
+          );
         }
       }
 

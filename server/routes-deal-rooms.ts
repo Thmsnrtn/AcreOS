@@ -228,11 +228,7 @@ router.post('/:id/documents', asyncHandler(async (req: AuthenticatedRequest, res
       await validateUrl(fileUrl);
     } catch (urlError: any) {
       if (urlError instanceof SSRFBlockedError) {
-        return res.status(422).json({
-          error: "ssrf_blocked",
-          message: urlError.message,
-          statusCode: 422,
-        });
+        return sendError(res, 422, "ssrf_blocked", urlError.message);
       }
       return Errors.badRequest(res, `Invalid file URL: ${urlError.message}`);
     }

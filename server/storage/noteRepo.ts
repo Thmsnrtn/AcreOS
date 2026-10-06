@@ -176,7 +176,20 @@ export const noteRepo = {
     return newNote;
   },
 
-  async updateNote(this: DatabaseStorage, id: number, updates: Partial<InsertNote>, organizationId?: number): Promise<Note> {
+  /**
+   * `executor`: the connection to write on — a posting passes its
+   * transaction so the installment advance commits with the payment row and
+   * the balance, on the note row it holds locked (DEFECT-0185). Written after
+   * the commit, two concurrent postings each advanced from the same stale
+   * due date.
+   */
+  async updateNote(
+    this: DatabaseStorage,
+    id: number,
+    updates: Partial<InsertNote>,
+    organizationId?: number,
+    executor: Pick<typeof db, "select" | "update"> = db,
+  ): Promise<Note> {
     const conditions = [eq(notes.id, id)];
     if (organizationId) conditions.push(eq(notes.organizationId, organizationId));
 
@@ -187,7 +200,7 @@ export const noteRepo = {
     // DB CHECK constraint. This produces a clean, actionable error instead of
     // a Postgres 23514 violation.
     if (updates.status === "active") {
-      const [existing] = await db
+      const [existing] = await executor
         .select({
           atrDeterminationCompleted: notes.atrDeterminationCompleted,
           atrExemptionCode: notes.atrExemptionCode,
@@ -231,7 +244,7 @@ export const noteRepo = {
       atrExemptionCode: updates.atrExemptionCode as typeof notes.$inferInsert["atrExemptionCode"],
       updatedAt: new Date(),
     };
-    const [updated] = await db.update(notes)
+    const [updated] = await executor.update(notes)
       .set(setValues)
       .where(and(...conditions))
       .returning();

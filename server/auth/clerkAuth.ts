@@ -213,7 +213,7 @@ async function hydrateUser(req: any, res: any, next: any) {
   }
 
   if (!userId) {
-    return res.status(401).json({ error: "Unauthorized", message: "No valid session" });
+    return sendError(res, 401, "Unauthorized", "No valid session");
   }
 
   try {
@@ -329,7 +329,7 @@ export const isAuthenticated: RequestHandler = (req: any, res, next) => {
   }
 
   // No CLERK_JWT_KEY configured and no cookies at all — no auth possible.
-  return res.status(401).json({ error: "Unauthorized", message: "No valid session" });
+  return sendError(res, 401, "Unauthorized", "No valid session");
 };
 
 /**

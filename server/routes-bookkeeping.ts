@@ -15,7 +15,7 @@ import {
   getPortfolioAnnualSummary,
   TaxIdentityError,
 } from "./services/bookkeeping";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { requireQualified1099Output } from "./services/form1099Refusal";
 
 const router = Router();
@@ -65,10 +65,8 @@ router.get("/1099", requireQualified1099Output(), async (req: Request, res: Resp
   } catch (err: any) {
     if (err instanceof TaxIdentityError) {
       // 422: caller can act on this — capture the missing TIN(s) and retry.
-      return res.status(422).json({
-        error: "tax_identity_missing",
+      return sendError(res, 422, "tax_identity_missing", err.message, {
         code: err.code,
-        message: err.message,
         orgId: err.orgId,
         noteId: err.noteId,
       });

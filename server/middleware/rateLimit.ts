@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { getRedisClient } from "../utils/redis";
 import { getClientIp } from "../utils/clientIp";
 import { logger } from "../utils/logger";
+import { sendError } from "../utils/errors";
 import { e2eTestAuthEnabled } from "../auth/testAuth";
 
 // ── Rate Limit Hit Monitoring ────────────────────────────────────────────────
@@ -239,12 +240,13 @@ export function createRateLimiter(
         res.setHeader("Retry-After", result.retryAfterSeconds.toString());
         recordRateLimitHit(key, req.path);
 
-        return res.status(429).json({
-          error: "rate_limit_exceeded",
-          message: `Rate limit exceeded. Maximum ${config.maxRequests} requests per ${Math.round(config.windowMs / 1000)} seconds allowed.`,
-          retryAfter: result.retryAfterSeconds,
-          statusCode: 429,
-        });
+        return sendError(
+          res,
+          429,
+          "rate_limit_exceeded",
+          `Rate limit exceeded. Maximum ${config.maxRequests} requests per ${Math.round(config.windowMs / 1000)} seconds allowed.`,
+          { retryAfter: result.retryAfterSeconds },
+        );
       }
 
       next();

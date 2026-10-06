@@ -12,6 +12,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const S = vi.hoisted(() => ({
   lockedStatus: "defaulted",
   statusWritten: undefined as string | undefined,
+  /** Overrides on the locked note row (its schedule terms). */
+  locked: {} as Record<string, unknown>,
+  nextWritten: undefined as Date | undefined,
   assessedWith: [] as Array<Record<string, unknown>>,
 }));
 
@@ -33,7 +36,7 @@ vi.mock("../../server/db", () => {
     select: () => ({
       from: () => ({
         where: () => ({
-          for: async () => [{ id: 42, currentBalance: "10000.00", nextPaymentDate: new Date("2026-09-01T00:00:00Z"), amortizationSchedule: [], version: 3, status: S.lockedStatus }],
+          for: async () => [{ id: 42, currentBalance: "10000.00", nextPaymentDate: new Date("2026-09-01T00:00:00Z"), amortizationSchedule: [], version: 3, status: S.lockedStatus, ...S.locked }],
         }),
       }),
     }),
@@ -42,6 +45,7 @@ vi.mock("../../server/db", () => {
         where: () => ({
           returning: async () => {
             S.statusWritten = v.status as string;
+            S.nextWritten = v.nextPaymentDate as Date;
             return [{ id: 42 }];
           },
         }),
@@ -75,12 +79,14 @@ beforeEach(() => {
   S.lockedStatus = "defaulted";
   S.statusWritten = undefined;
   S.assessedWith = [];
+  S.locked = {};
+  S.nextWritten = undefined;
 });
 
-async function settle() {
+async function settle(attempt: Partial<typeof ATTEMPT> = {}) {
   return dbAchAutopayStore.postSettlement({
     note: NOTE as never,
-    attempt: ATTEMPT as never,
+    attempt: { ...ATTEMPT, ...attempt } as never,
     paymentIntentId: "pi_1",
     settledAt: new Date("2026-09-20T00:00:00Z"),
   });
@@ -102,5 +108,40 @@ describe("an ACH settlement on a note accelerated since the debit started", () =
     S.lockedStatus = "active";
     await settle();
     expect(S.statusWritten).toBe("active");
+  });
+});
+
+describe("the settlement steps the note's OWN schedule (W10.5: one coverage rule for every writer)", () => {
+  it("a note due on the 31st returns to the 31st after February", async () => {
+    S.lockedStatus = "active";
+    S.locked = {
+      firstPaymentDate: new Date("2026-01-31T00:00:00Z"),
+      termMonths: 24,
+      nextPaymentDate: new Date("2026-02-28T00:00:00Z"), // installment 2, clamped to February's end
+    };
+    await settle({ dueDate: new Date("2026-02-28T00:00:00Z") });
+    expect(S.nextWritten?.toISOString()).toBe("2026-03-31T00:00:00.000Z");
+  });
+
+  it("a debit for an installment the note already moved past posts, but does not advance the date again", async () => {
+    // A card payment covered Sep 1 while the debit settled: the note is on Oct 1.
+    S.lockedStatus = "active";
+    S.locked = { nextPaymentDate: new Date("2026-10-01T00:00:00Z") };
+    const r = await settle();
+    expect(r.created).toBe(true);
+    expect(S.nextWritten?.toISOString().slice(0, 10)).toBe("2026-10-01");
+  });
+
+  it("the same installment with a different time of day (a lender's edit) still advances — identity is the UTC day", async () => {
+    S.lockedStatus = "active";
+    S.locked = { nextPaymentDate: new Date("2026-09-01T17:30:00Z") };
+    await settle();
+    expect(S.nextWritten?.toISOString().slice(0, 10)).toBe("2026-10-01");
+  });
+
+  it("a note with no recorded schedule still steps one month from its due date", async () => {
+    S.lockedStatus = "active";
+    await settle();
+    expect(S.nextWritten?.toISOString().slice(0, 10)).toBe("2026-10-01");
   });
 });

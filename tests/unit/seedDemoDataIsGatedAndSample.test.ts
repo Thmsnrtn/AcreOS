@@ -85,7 +85,8 @@ describe("seed-demo-data is not a member's button", () => {
     H.role = role;
     const res = await request(app).post("/api/seed-demo-data").send({});
     expect(res.status).toBe(403);
-    expect(res.body.requiredPermission).toBe("canImportData");
+    expect(res.body.error).toBe("FORBIDDEN");
+    expect(res.body.details.requiredPermission).toBe("canImportData");
     expect(H.properties).toEqual([]);
     expect(H.deals).toEqual([]);
     expect(H.leads + H.notes).toBe(0);

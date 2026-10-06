@@ -119,8 +119,10 @@ describe("createRateLimiter", () => {
       expect(res.status).toHaveBeenCalledWith(429);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
+          error: "rate_limit_exceeded",
           message: expect.stringContaining("Rate limit exceeded"),
-          retryAfter: expect.any(Number),
+          statusCode: 429,
+          details: { retryAfter: expect.any(Number) },
         })
       );
     });
@@ -197,7 +199,7 @@ describe("createRateLimiter", () => {
 
       const headerSeconds = parseInt(headers["Retry-After"], 10);
       const jsonCall = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      expect(jsonCall.retryAfter).toBe(headerSeconds);
+      expect(jsonCall.details.retryAfter).toBe(headerSeconds);
     });
 
     it("includes X-RateLimit-Reset header alongside Retry-After", async () => {

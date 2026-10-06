@@ -161,7 +161,8 @@ const unknownTextColumn = () =>
 /** `notes.fallbackPaymentAccounts` — `$type<{...}[]>()` on the jsonb column. */
 export type NoteFallbackPaymentAccount = {
   profileId: string;
-  method: "ach_actum" | "ach_authorize" | "card_stripe" | "card_authorize";
+  /** "ach_actum" is gone: the Actum rail was deleted 2026-07-29. */
+  method: "ach_authorize" | "card_stripe" | "card_authorize";
   last4?: string;
   bankName?: string;
   /** 1 = first fallback, 2 = second, etc. */
@@ -287,6 +288,7 @@ export const insertNoteSchema = z.object({
 
   accessToken: z.string().nullable().optional(),
   pendingCheckoutSessionId: z.string().nullable().optional(),
+  pendingCheckoutOpenedAt: z.coerce.date().nullable().optional(),
 
   // Delinquency tracking
   lastReminderSentAt: z.date().nullable().optional(),

@@ -107,7 +107,7 @@ export function registerFounderStudioRoutes(app: Express) {
         // F-D21: validRange violations return 422 so the UI can show a real
         // rejection message instead of pretending the save succeeded.
         if (err instanceof SettingsValidationError) {
-          return res.status(422).json({ error: "VALIDATION_FAILED", message });
+          return sendError(res, 422, "VALIDATION_FAILED", message);
         }
         sendError(res, 400, "BAD_REQUEST", message);
       }

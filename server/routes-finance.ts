@@ -23,7 +23,7 @@ import { exportNotesToCSV, type ExportFilters } from "./services/importExport";
 import { checkUsury } from "./services/usury";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
-import { splitPaymentCents, decimalDollarsToCents, percentStringToBps } from "./services/notePaymentMath";
+import { splitPaymentCents, splitPayoffCents, decimalDollarsToCents, percentStringToBps } from "./services/notePaymentMath";
 import {
   persistAtrDetermination,
   attestorUserIdToInt,
@@ -83,7 +83,10 @@ const updateNoteSchema = z.object({
   autoPayEnabled: z.boolean().optional(),
   fallbackPaymentAccounts: z.array(z.object({
     profileId: z.string(),
-    method: z.enum(["ach_actum", "ach_authorize", "card_stripe", "card_authorize"]),
+    // No "ach_actum": the Actum rail was deleted 2026-07-29 and is not accepted
+    // as new configuration. (A row saved before then may still hold it; nothing
+    // debits through this list.)
+    method: z.enum(["ach_authorize", "card_stripe", "card_authorize"]),
     last4: z.string().optional(),
     bankName: z.string().optional(),
     order: z.number(),
@@ -1471,15 +1474,31 @@ export function registerFinanceRoutes(app: Express): void {
       // refused as "more than the payoff", and the suggested lower amount
       // left the note open by the fee (audit of 7cc7345). Assessing first is
       // what the posting does anyway (idempotent; the daily job would too).
-      const { assessServicedNoteLateFee, outstandingServicedLateFeesCents, feeFromExcessCents } = await import(
+      // The guard previews with the SAME coverage rule the posting applies
+      // (installmentCoverage.allocateServicedPayment): on a note several
+      // installments behind, the money covers every installment due before a
+      // cent goes to fees. The one-installment preview it used to run let an
+      // amount pass here and then post with an unapplied excess (W10.5).
+      const { assessEveryInstallmentDue, assessServicedNoteLateFee, outstandingServicedLateFeesCents, creditedToInstallmentCents } = await import(
         "./services/notes/servicedLateFees"
       );
-      await assessServicedNoteLateFee(note, new Date());
-      const feeCents = feeFromExcessCents({
+      const { allocateServicedPayment, countInstallmentsDue } = await import("./services/notes/installmentCoverage");
+      const previewAt = new Date();
+      // Every installment due, as the posting will (not one capped run).
+      await assessEveryInstallmentDue(note, previewAt, assessServicedNoteLateFee);
+      const feeCents = allocateServicedPayment({
         amountCents,
         scheduledCents: note.monthlyPayment != null ? decimalDollarsToCents(note.monthlyPayment) : null,
+        priorCreditCents: note.nextPaymentDate
+          ? await creditedToInstallmentCents(org.id, note.id, new Date(note.nextPaymentDate))
+          : 0,
+        installmentsDue: countInstallmentsDue(note, previewAt),
         outstandingFeeCents: await outstandingServicedLateFeesCents(org.id, note.id),
-      });
+        payoffCents: splitPayoffCents(
+          Math.max(0, decimalDollarsToCents(note.currentBalance)),
+          percentStringToBps(note.interestRate),
+        ),
+      }).lateFeeCents;
       const guard = splitPaymentCents({
         paymentAmountCents: amountCents - feeCents,
         currentBalanceCents: Math.max(0, decimalDollarsToCents(note.currentBalance)),

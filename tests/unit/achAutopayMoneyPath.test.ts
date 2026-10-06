@@ -73,6 +73,9 @@ function makeNote(overrides: Partial<AutopayNote> = {}): AutopayNote {
     lateFee: "50.00",
     gracePeriodDays: 10,
     nextPaymentDate: DUE,
+    // No card Checkout open (W10.5: autopay holds while one may be paying).
+    pendingCheckoutSessionId: null,
+    pendingCheckoutOpenedAt: null,
     ...overrides,
   };
 }
@@ -106,6 +109,7 @@ function makeMandate(overrides: Partial<AchMandate> = {}): AchMandate {
     scheduleDescription: "monthly, on the 1st of each month",
     status: "active",
     confirmedAt: new Date("2026-07-20T00:05:00.000Z"),
+    authorizationChallengeId: null,
     revokedAt: null,
     revokedReason: null,
     createdAt: new Date("2026-07-20T00:00:00.000Z"),

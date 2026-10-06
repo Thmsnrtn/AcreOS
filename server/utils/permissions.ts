@@ -326,11 +326,13 @@ export function requirePermission(permission: keyof RolePermissions) {
 
     if (!context.permissions[permission]) {
       const permissionLabel = permission.replace(/([A-Z])/g, " $1").toLowerCase();
-      return res.status(403).json({ 
-        message: `You don't have permission to ${permissionLabel}. Contact your organization admin for access.`,
-        requiredPermission: permission,
-        userRole: context.role,
-      });
+      return sendError(
+        res,
+        403,
+        "FORBIDDEN",
+        `You don't have permission to ${permissionLabel}. Contact your organization admin for access.`,
+        { requiredPermission: permission, userRole: context.role },
+      );
     }
 
     next();
@@ -354,8 +356,7 @@ export function requireAdminOrAbove() {
     req.permissionContext = context;
 
     if (!isAdminOrAbove(context.role)) {
-      return res.status(403).json({ 
-        message: "This action requires admin or owner privileges.",
+      return sendError(res, 403, "FORBIDDEN", "This action requires admin or owner privileges.", {
         userRole: context.role,
       });
     }
@@ -381,8 +382,7 @@ export function requireOwner() {
     req.permissionContext = context;
 
     if (!isOwner(context.role)) {
-      return res.status(403).json({ 
-        message: "This action requires owner privileges.",
+      return sendError(res, 403, "FORBIDDEN", "This action requires owner privileges.", {
         userRole: context.role,
       });
     }

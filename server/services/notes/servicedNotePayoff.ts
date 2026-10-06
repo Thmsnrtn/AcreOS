@@ -26,7 +26,12 @@ import {
   type PayoffQuote,
 } from "../notePaymentMath";
 import { dayInZone } from "../form1098Batch";
-import { assessServicedNoteLateFee, lateFeeDueByCents, outstandingServicedLateFeesCents } from "./servicedLateFees";
+import {
+  assessEveryInstallmentDue,
+  assessServicedNoteLateFee,
+  lateFeeDueByCents,
+  outstandingServicedLateFeesCents,
+} from "./servicedLateFees";
 
 export async function quoteServicedNotePayoff(args: {
   note: Note;
@@ -62,7 +67,8 @@ export async function quoteServicedNotePayoff(args: {
   // will pass on BY the good-through date is quoted too — paying the quoted
   // total on that date must pay the note off, and posting would assess it.
   const now = new Date();
-  await assessServicedNoteLateFee(note, now);
+  // Every installment due, as a posting of this quote will (not one capped run).
+  await assessEveryInstallmentDue(note, now, assessServicedNoteLateFee);
   const lateFeesOwedCents =
     (await outstandingServicedLateFeesCents(note.organizationId, note.id)) +
     (payoffDate.getTime() > now.getTime() ? await lateFeeDueByCents(note, payoffDate) : 0);

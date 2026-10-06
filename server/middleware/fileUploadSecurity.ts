@@ -137,9 +137,7 @@ export function validateFileMiddleware(
       const detected = detectMimeFromBuffer(file.buffer);
 
       if (!detected) {
-        return res
-          .status(400)
-          .json({ message: `Unable to determine file type for: ${file.originalname}` });
+        return sendError(res, 400, "BAD_REQUEST", `Unable to determine file type for: ${file.originalname}`);
       }
 
       const allowed =

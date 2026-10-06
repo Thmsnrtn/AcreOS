@@ -115,6 +115,7 @@ import { logger } from "../utils/logger";
 import { splitPaymentCents } from "./notePaymentMath";
 import { ACH_IN_FLIGHT_STATUSES, assessServicedNoteLateFee } from "./notes/servicedLateFees";
 import { addMonths } from "../utils/dateUtils";
+import { isoDay, nextDueDateAfterCoverage } from "./notes/installmentCoverage";
 import { emitDurablePaymentEvent } from "./workflow-engine";
 import { isCategorySimulated } from "../utils/simulationMode";
 import { lenderServicingPhase, type ServicingPhase } from "./borrower/servicingPhase";
@@ -249,7 +250,75 @@ export type AchRefusalReason =
   | "max_attempts_exhausted"
   | "retry_not_due"
   | "already_attempted"
-  | "lender_servicing_ended";
+  | "lender_servicing_ended"
+  | "card_checkout_in_progress"
+  | "mandate_rail_unsupported";
+
+// ───────────────────────────────────────────────────────────────────────────
+// Card Checkout in progress — the other ordering of DEFECT-0265 (4)
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * How long a Stripe Checkout session can be paid. `buildBorrowerCardCheckoutParams`
+ * sets no `expires_at`, so Stripe's default applies: 24 hours.
+ */
+const CARD_CHECKOUT_SESSION_LIFETIME_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How long Stripe keeps re-delivering an event whose webhook failed (live mode:
+ * up to three days). A session completed in its last minute can still be
+ * waiting to post for this long.
+ */
+const PROCESSOR_WEBHOOK_RETRY_MS = 3 * 24 * 60 * 60 * 1000;
+
+/** A Checkout slot younger than this may still name money that is moving. */
+const CARD_CHECKOUT_HOLD_MS = CARD_CHECKOUT_SESSION_LIFETIME_MS + PROCESSOR_WEBHOOK_RETRY_MS;
+
+export type CardCheckoutHold =
+  | { state: "none" }
+  /** The slot is older than any session that could still pay — or predates its own timestamp. */
+  | { state: "stale"; sessionId: string; openedAt: Date | null }
+  | { state: "held"; sessionId: string; message: string };
+
+/**
+ * Is the borrower possibly paying this installment by card right now?
+ *
+ * `notes.pending_checkout_session_id` is written when the borrower opens
+ * Checkout (routes-borrower.ts) and cleared only when THAT session's payment
+ * posts (portalPaymentPosting). An abandoned Checkout is never cleared, so the
+ * slot is bounded by its OWN timestamp, `pending_checkout_opened_at` (0261),
+ * written and cleared with it. Once that is older than the session's 24h life
+ * plus Stripe's 3-day webhook retry, the slot cannot name a session that is
+ * still open or still waiting to post, and the debit may proceed.
+ *
+ * Not `updated_at`: the dunning job and the reminder sender refresh it daily
+ * on a past-due note, so a bound read from it never expired and one abandoned
+ * Checkout stopped autopay for good (W10.5 audit). A slot written before 0261
+ * carries no timestamp and is treated as it was before the hold existed — not
+ * held, and logged — so no slot can block forever. A stamp in the future
+ * cannot be bounded, and holds until it is past.
+ */
+function cardCheckoutHold(
+  note: Pick<AutopayNote, "id" | "pendingCheckoutSessionId" | "pendingCheckoutOpenedAt">,
+  now: Date,
+): CardCheckoutHold {
+  const sessionId = note.pendingCheckoutSessionId;
+  if (sessionId === null || sessionId === undefined || sessionId === "") return { state: "none" };
+  const opened =
+    note.pendingCheckoutOpenedAt instanceof Date && Number.isFinite(note.pendingCheckoutOpenedAt.getTime())
+      ? note.pendingCheckoutOpenedAt
+      : null;
+  if (!opened) return { state: "stale", sessionId, openedAt: null };
+  const elapsedMs = now.getTime() - opened.getTime();
+  if (elapsedMs < CARD_CHECKOUT_HOLD_MS) {
+    return {
+      state: "held",
+      sessionId,
+      message: `The borrower opened a card Checkout (${sessionId}) for note ${note.id} at ${opened.toISOString()}. No ACH debit while it may still be paid or posting — unless it posts first, the hold lifts at ${new Date(opened.getTime() + CARD_CHECKOUT_HOLD_MS).toISOString()}.`,
+    };
+  }
+  return { state: "stale", sessionId, openedAt: opened };
+}
 
 export interface EligibilityInput {
   note: AutopayNote;
@@ -286,6 +355,11 @@ export function evaluateDebitEligibility(input: EligibilityInput): EligibilityRe
   if (note.nextPaymentDate.getTime() > now.getTime()) {
     return { eligible: false, reason: "not_yet_due", message: `Note ${note.id} is not due until ${note.nextPaymentDate.toISOString()}.` };
   }
+  // ── A card payment for this installment may be in progress. ───────────
+  const checkout = cardCheckoutHold(note, now);
+  if (checkout.state === "held") {
+    return { eligible: false, reason: "card_checkout_in_progress", message: checkout.message };
+  }
   // ── Authorization. Never debit without a stored, active mandate. ──────
   if (!mandate) {
     return { eligible: false, reason: "no_mandate", message: `No stored ACH authorization for note ${note.id}. Refusing to debit.` };
@@ -295,6 +369,16 @@ export function evaluateDebitEligibility(input: EligibilityInput): EligibilityRe
   }
   if (mandate.status !== "active") {
     return { eligible: false, reason: "mandate_not_active", message: `ACH authorization for note ${note.id} is ${mandate.status}. Refusing to debit.` };
+  }
+  // The rail is stored text. This engine debits only through ACH_RAIL; a row
+  // on any other rail (the Actum rail was deleted 2026-07-29) is refused with
+  // its name — never sent to Stripe as if it were a Stripe mandate.
+  if (mandate.rail !== ACH_RAIL) {
+    return {
+      eligible: false,
+      reason: "mandate_rail_unsupported",
+      message: `ACH authorization ${mandate.id} for note ${note.id} is on the "${mandate.rail}" rail, which AcreOS no longer debits through (only ${ACH_RAIL}). Refusing — the borrower must authorize autopay again.`,
+    };
   }
   if (amountCents <= 0) {
     return { eligible: false, reason: "amount_not_positive", message: `Computed debit amount for note ${note.id} is ${amountCents} cents.` };
@@ -424,6 +508,10 @@ export interface AutopayNote {
   lateFee: string | null;
   gracePeriodDays: number | null;
   nextPaymentDate: Date | null;
+  /** The card Checkout the borrower last opened; null once it posted. */
+  pendingCheckoutSessionId: string | null;
+  /** When that slot was written (0261) — the hold's bound (see `cardCheckoutHold`). */
+  pendingCheckoutOpenedAt: Date | null;
 }
 
 export interface ClaimAttemptInput {
@@ -691,6 +779,15 @@ export async function submitDebitForNote(
   }
 
   const lastAttempt = priorAttempts[priorAttempts.length - 1] ?? null;
+  const checkout = cardCheckoutHold(note, now);
+  if (checkout.state === "stale") {
+    logger.info("[achAutopay] card Checkout slot is past any session's life (or predates its timestamp) — not holding the debit", {
+      noteId: note.id,
+      periodKey,
+      sessionId: checkout.sessionId,
+      openedAt: checkout.openedAt ? checkout.openedAt.toISOString() : null,
+    });
+  }
   const eligibility = evaluateDebitEligibility({
     note,
     mandate,
@@ -1086,6 +1183,8 @@ const AUTOPAY_NOTE_COLUMNS = {
   lateFee: notes.lateFee,
   gracePeriodDays: notes.gracePeriodDays,
   nextPaymentDate: notes.nextPaymentDate,
+  pendingCheckoutSessionId: notes.pendingCheckoutSessionId,
+  pendingCheckoutOpenedAt: notes.pendingCheckoutOpenedAt,
 } as const;
 
 /** Statuses a reconciliation sweep must revisit (the one list — servicedLateFees). */
@@ -1291,11 +1390,35 @@ export const dbAchAutopayStore: AchAutopayStore = {
       if (locked) {
         const lockedBalanceCents = centsFromDecimal(locked.currentBalance);
         remainingBalanceCents = Math.max(0, lockedBalanceCents - split.principalCents);
-        const nextDue = locked.nextPaymentDate
-          ? addMonths(new Date(locked.nextPaymentDate), 1)
-          : addMonths(settledAt, 1);
+        // One debit is one installment. The step is the note's OWN schedule
+        // (the shared coverage rule every posting writer uses): stepping a
+        // month from the current date moved a note due on the 31st to the
+        // 28th after February, off its grid (W10.5).
+        //
+        // And only if the note is STILL on the installment this debit paid:
+        // a card payment or Payment Link that covered it while the debit was
+        // settling already advanced the date, and stepping again would mark
+        // an installment nobody paid as paid (W10.5 audit). The money posts
+        // either way; the schedule moves only for the installment it paid.
+        // Installment identity by UTC calendar day, as the rest of the
+        // ledger reads it: a lender's edit that kept the day but changed the
+        // time must not leave a settled debit unadvanced (and every later
+        // cycle refusing "already attempted").
+        const stillOnThisInstallment =
+          !locked.nextPaymentDate || isoDay(new Date(locked.nextPaymentDate)) === isoDay(new Date(dueDate));
+        if (!stillOnThisInstallment) {
+          logger.warn("[achAutopay] settlement for an installment the note has already moved past — posted, due date left as is", {
+            noteId: note.id,
+            attemptId: attempt.id,
+            debitDueDate: new Date(dueDate).toISOString(),
+            noteNextPaymentDate: new Date(locked.nextPaymentDate as Date).toISOString(),
+          });
+        }
+        const nextDue = stillOnThisInstallment
+          ? (nextDueDateAfterCoverage(locked, 1, settledAt) ?? addMonths(settledAt, 1))
+          : locked.nextPaymentDate;
         const schedule = locked.amortizationSchedule ?? [];
-        const nextPending = schedule.find((s) => s.status === "pending");
+        const nextPending = stillOnThisInstallment ? schedule.find((s) => s.status === "pending") : undefined;
         const updatedSchedule = nextPending
           ? schedule.map((s) => (s.paymentNumber === nextPending.paymentNumber ? { ...s, status: "paid" } : s))
           : schedule;

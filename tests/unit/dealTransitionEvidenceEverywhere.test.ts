@@ -176,17 +176,20 @@ describe("the repository records the evidence on a real transition", () => {
     // `closed` is terminal; the one path that reopens a deal is the bulk
     // undo's backward move (audit of 9ed61f4).
     await dealRepo.updateDeal.call({} as never, 9, { status: "negotiating" }, undefined, 5, { backwardUndo: true });
-    await new Promise((r) => setTimeout(r, 20));
-    expect(H.retracted).toEqual([[5, "deal:key-5-9"]]);
+    // The reopen hook is fire-and-forget through dynamic imports: wait for its
+    // EFFECT, not a fixed 20ms (which a loaded full-suite run outlasted).
+    await vi.waitFor(() => expect(H.retracted).toEqual([[5, "deal:key-5-9"]]), { timeout: 5_000 });
     // …and its commission (an unpaid one removed, a paid one flagged — W10.4 audit finding 2).
-    expect(H.commissionRetracted).toEqual([[5, 9, "Deal left closed (now negotiating)"]]);
+    await vi.waitFor(() => expect(H.commissionRetracted).toEqual([[5, 9, "Deal left closed (now negotiating)"]]), { timeout: 5_000 });
 
     H.committed = false;
     H.before = { status: "negotiating", propertyId: 3 };
     H.after = { id: 9, organizationId: 5, status: "offer_sent", offerAmount: "12000", propertyId: 3 };
     await dealRepo.updateDeal.call({} as never, 9, { status: "offer_sent" }, undefined, 5);
-    await new Promise((r) => setTimeout(r, 20));
-    expect(H.activation).toEqual([expect.objectContaining({ orgId: 5, eventName: "first_offer_made", eventValue: { dealId: 9, offerAmount: "12000" } })]);
+    await vi.waitFor(
+      () => expect(H.activation).toEqual([expect.objectContaining({ orgId: 5, eventName: "first_offer_made", eventValue: { dealId: 9, offerAmount: "12000" } })]),
+      { timeout: 5_000 },
+    );
   });
 
   it("the repository refuses a move the state machine forbids — every writer passes here (audit of 9ed61f4)", async () => {

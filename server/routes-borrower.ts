@@ -807,7 +807,7 @@ export function registerBorrowerRoutes(app: Express): void {
       const stripeSession = await stripe.checkout.sessions.create(params, options);
 
       // Store the checkout session ID on the note for webhook verification
-      await storage.updateNote(note.id, { pendingCheckoutSessionId: stripeSession.id }, note.organizationId);
+      await storage.updateNote(note.id, { pendingCheckoutSessionId: stripeSession.id, pendingCheckoutOpenedAt: new Date() }, note.organizationId);
 
       res.json({ url: stripeSession.url, sessionId: stripeSession.id, collectedBy: org?.name || null });
     } catch (err) {
@@ -899,7 +899,7 @@ export function registerBorrowerRoutes(app: Express): void {
       const session = await stripe.checkout.sessions.create(params, options);
 
       // Store the checkout session ID on the note for webhook verification
-      await storage.updateNote(note.id, { pendingCheckoutSessionId: session.id }, note.organizationId);
+      await storage.updateNote(note.id, { pendingCheckoutSessionId: session.id, pendingCheckoutOpenedAt: new Date() }, note.organizationId);
 
       res.json({ url: session.url, sessionId: session.id, collectedBy: org?.name || null });
     } catch (err) {

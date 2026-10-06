@@ -15,7 +15,7 @@ import type { SubscriptionTier } from "./services/usageLimits";
 import { aiLimiter } from "./middleware/rateLimit";
 import { paxChatGuard } from "./middleware/expensiveEndpointGuard";
 import { requirePaxDisclosure } from "./middleware/requirePaxDisclosure";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { createUploadMiddleware } from "./middleware/fileUploadSecurity";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
@@ -250,13 +250,21 @@ export function registerAIRoutes(app: Express): void {
       step = "usage_limit";
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
-        return res.status(429).json({
-          message: `Monthly Pax message limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan for more headroom.`,
-          current: usageCheck.current,
-          limit: usageCheck.limit,
-          resourceType: usageCheck.resourceType,
-          tier: usageCheck.tier,
-        });
+        // DEFECT-0050: the house 429 shape. LIMIT_EXCEEDED is the code the
+        // client's upgrade toast branches on (queryClient.throwIfResNotOk);
+        // the counts ride in details, where formatUpgradeUpsell reads them.
+        return sendError(
+          res,
+          429,
+          "LIMIT_EXCEEDED",
+          `Monthly Pax message limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan for more headroom.`,
+          {
+            current: usageCheck.current,
+            limit: usageCheck.limit,
+            resourceType: usageCheck.resourceType,
+            tier: usageCheck.tier,
+          },
+        );
       }
 
       step = "credit_check";
@@ -276,8 +284,7 @@ export function registerAIRoutes(app: Express): void {
         const hasCredits = byokMode || await creditService.hasEnoughCredits(org.id, aiChatCost);
         if (!hasCredits) {
           const balance = await creditService.getBalance(org.id).catch(() => 0);
-          return res.status(402).json({
-            error: "Insufficient credits",
+          return sendError(res, 402, "INSUFFICIENT_CREDITS", "Insufficient credits", {
             required: aiChatCost / 100,
             balance: balance / 100,
           });
@@ -309,13 +316,13 @@ export function registerAIRoutes(app: Express): void {
           promptText: message,
         });
         if (!guard.allowed) {
-          return res.status(403).json({
-            error: "ConstitutionalRefusal",
-            message:
-              "This request was refused by the constitutional pre-call check.",
-            immutableNumber: guard.immutableNumber,
-            reasoning: guard.reasoning,
-          });
+          return sendError(
+            res,
+            403,
+            "ConstitutionalRefusal",
+            "This request was refused by the constitutional pre-call check.",
+            { immutableNumber: guard.immutableNumber, reasoning: guard.reasoning },
+          );
         }
       } catch (err) {
         logger.warn(
@@ -355,12 +362,13 @@ export function registerAIRoutes(app: Express): void {
     } catch (error: any) {
       if (error instanceof ProviderCreditError) {
         logger.error(`[AI Chat] provider out of credits at step=${step}`, error);
-        return res.status(402).json({
-          error: "provider_credits_insufficient",
-          message:
-            "The AI provider is temporarily out of credits. We've been notified — please try again shortly.",
-          details: { affordableTokens: error.affordableTokens },
-        });
+        return sendError(
+          res,
+          402,
+          "provider_credits_insufficient",
+          "The AI provider is temporarily out of credits. We've been notified — please try again shortly.",
+          { affordableTokens: error.affordableTokens },
+        );
       }
       if (error instanceof PaxAiPausedError) {
         // Daily AI cost ceiling exhausted (2026-07 cost audit) — friendly
@@ -439,13 +447,21 @@ export function registerAIRoutes(app: Express): void {
       step = "usage_limit";
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
-        return res.status(429).json({
-          message: `Monthly Pax message limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan for more headroom.`,
-          current: usageCheck.current,
-          limit: usageCheck.limit,
-          resourceType: usageCheck.resourceType,
-          tier: usageCheck.tier,
-        });
+        // DEFECT-0050: the house 429 shape. LIMIT_EXCEEDED is the code the
+        // client's upgrade toast branches on (queryClient.throwIfResNotOk);
+        // the counts ride in details, where formatUpgradeUpsell reads them.
+        return sendError(
+          res,
+          429,
+          "LIMIT_EXCEEDED",
+          `Monthly Pax message limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan for more headroom.`,
+          {
+            current: usageCheck.current,
+            limit: usageCheck.limit,
+            resourceType: usageCheck.resourceType,
+            tier: usageCheck.tier,
+          },
+        );
       }
 
       step = "credit_check";
@@ -462,8 +478,7 @@ export function registerAIRoutes(app: Express): void {
         const hasCredits = byokMode || await creditService.hasEnoughCredits(org.id, aiChatCost);
         if (!hasCredits) {
           const balance = await creditService.getBalance(org.id).catch(() => 0);
-          return res.status(402).json({
-            error: "Insufficient credits",
+          return sendError(res, 402, "INSUFFICIENT_CREDITS", "Insufficient credits", {
             required: aiChatCost / 100,
             balance: balance / 100,
           });

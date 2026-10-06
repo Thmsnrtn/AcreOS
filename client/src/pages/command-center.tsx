@@ -551,7 +551,9 @@ export default function CommandCenterPage() {
               ?? "You've used this month's included Pax turns. Add your own AI key in Settings → Your provider keys to keep chatting without limits.",
           );
         }
-        throw new Error(errorData.error || `Request failed with status ${response.status}`);
+        // DEFECT-0050: error bodies are { error: CODE, message: text } — show
+        // the human text, never the machine code (e.g. LIMIT_EXCEEDED).
+        throw new Error(errorData.message || errorData.error || `Request failed with status ${response.status}`);
       }
 
       const reader = response.body?.getReader();

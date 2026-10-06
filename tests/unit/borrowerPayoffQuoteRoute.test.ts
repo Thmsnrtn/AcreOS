@@ -148,6 +148,10 @@ vi.mock("../../server/services/notes/servicedLateFees", () => ({
     FEES.assessCalls++;
     return { assessed: false, alreadyExisted: false, feeCents: 0, reason: "test" };
   },
+  // Every installment due: one run of the injected assessor here (none defers).
+  assessEveryInstallmentDue: async (note: unknown, at: Date, assess: (n: unknown, a: Date) => Promise<unknown>) => {
+    await assess(note, at);
+  },
   outstandingServicedLateFeesCents: async () => FEES.owedCents,
   lateFeeDueByCents: async () => FEES.dueByCents,
   feeFromExcessCents: () => 0,

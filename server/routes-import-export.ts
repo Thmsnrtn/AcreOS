@@ -834,9 +834,7 @@ export function registerImportExportRoutes(app: Express): void {
       const userId = user?.id || user?.id;
       const parsed = exportEverythingSchema.safeParse(req.body ?? {});
       if (!parsed.success) {
-        return res
-          .status(422)
-          .json({ message: "Invalid export params", details: parsed.error.flatten() });
+        return sendError(res, 422, "VALIDATION_FAILED", "Invalid export params", parsed.error.flatten());
       }
       const job = await createExportJob({
         organizationId: org.id,
@@ -889,9 +887,7 @@ export function registerImportExportRoutes(app: Express): void {
         const job = await getExportJob(org.id, id);
         if (!job) return Errors.notFound(res, "Job");
         if (job.status !== "completed") {
-          return res
-            .status(409)
-            .json({ message: `Job is ${job.status}; download is only available when completed` });
+          return Errors.conflict(res, `Job is ${job.status}; download is only available when completed`);
         }
         const buf = await readExportArchive(id, org.id);
         if (!buf) return sendError(res, 410, "GONE", "Archive expired or unavailable");

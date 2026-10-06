@@ -182,11 +182,15 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
               country: candidateCountry || null,
             },
           });
-          return res.status(403).json({
-            error: "SANCTIONS_BLOCK",
-            message: block.message,
-            statusCode: 403,
-          });
+          // Every matched branch of checkSignup sets `message`; the fallback is
+          // the same approved copy (sanctionsList.checkOfacSdn), never blank.
+          return sendError(
+            res,
+            403,
+            "SANCTIONS_BLOCK",
+            block.message ??
+              "We're unable to create this account. If you believe this is in error, please contact support@acreos.io.",
+          );
         }
       } catch (err) {
         // Sanctions module unavailable: log + continue (fail open).

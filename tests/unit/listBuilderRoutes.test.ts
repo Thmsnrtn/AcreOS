@@ -604,7 +604,8 @@ describe("POST /api/list-builder/commit", () => {
   it.each(["u-viewer", "u-va", "u-member"])("PERMISSION: %s may not save a county list (canImportData) — nothing read, nothing written", async (user) => {
     const r = await request(app).post("/api/list-builder/commit").set("x-user", user).send(COMMIT);
     expect(r.status).toBe(403);
-    expect(r.body.requiredPermission).toBe("canImportData");
+    expect(r.body.error).toBe("FORBIDDEN");
+    expect(r.body.details.requiredPermission).toBe("canImportData");
     expect(H.urls).toEqual([]);
     expect(H.inserts).toEqual([]);
     expect(H.transactions).toBe(0);

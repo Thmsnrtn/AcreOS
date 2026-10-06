@@ -41,6 +41,8 @@ const state = vi.hoisted(() => ({
   noteVersion: 1,
   /** The locked note's status, and the status the posting wrote. */
   noteStatus: "active",
+  /** The slot as the LOCKED row holds it (undefined: the fixture's own). */
+  lockedCheckoutSessionId: undefined as string | null | undefined,
   statusWritten: undefined as string | undefined,
   updateNoteCalls: [] as Array<{ id: number; patch: Record<string, unknown>; orgId: number | undefined }>,
   emails: [] as Array<Record<string, unknown>>,
@@ -56,6 +58,7 @@ function resetState() {
   state.noteBalance = "10000.00";
   state.noteVersion = 1;
   state.noteStatus = "active";
+  state.lockedCheckoutSessionId = undefined;
   state.statusWritten = undefined;
   state.updateNoteCalls.length = 0;
   state.emails.length = 0;
@@ -90,7 +93,13 @@ vi.mock("../../server/db", () => {
               const rows =
                 table === MOCK_TABLES.payments
                   ? [state.payments.get(LAST_CONFLICT_ID.id)!]
-                  : [{ ...NOTE_ROW, currentBalance: state.noteBalance, version: state.noteVersion, status: state.noteStatus }];
+                  : [{
+                      ...NOTE_ROW,
+                      currentBalance: state.noteBalance,
+                      version: state.noteVersion,
+                      status: state.noteStatus,
+                      ...(state.lockedCheckoutSessionId !== undefined ? { pendingCheckoutSessionId: state.lockedCheckoutSessionId } : {}),
+                    }];
               return Promise.resolve(rows).then(ok, no);
             },
           };
@@ -301,8 +310,10 @@ describe("postBorrowerPortalCheckoutPayment — one rule for both writers", () =
     expect(patch).not.toHaveProperty("amortizationSchedule");
     expect(patch).not.toHaveProperty("nextPaymentDate");
     expect(result.nextPaymentDate).toEqual(NOTE_ROW.nextPaymentDate);
-    // The pending-checkout slot naming THIS session is still cleared.
+    // The pending-checkout slot naming THIS session is still cleared — with
+    // its timestamp, so the autopay hold's bound goes with it.
     expect(patch).toHaveProperty("pendingCheckoutSessionId", null);
+    expect(patch).toHaveProperty("pendingCheckoutOpenedAt", null);
     // The workflow event says so.
     expect(state.events).toHaveLength(1);
     expect(state.events[0].data.isPartial).toBe(true);
@@ -364,11 +375,16 @@ describe("postBorrowerPortalCheckoutPayment — one rule for both writers", () =
     expect(state.payments.size).toBe(0);
   });
 
-  it("does not clear a pending-checkout slot that names a NEWER session", async () => {
-    const olderNote = { ...NOTE_ROW, pendingCheckoutSessionId: "cs_newer" } as Note;
+  it("does not clear a pending-checkout slot that names a NEWER session — as the LOCKED row holds it", async () => {
+    // The caller's copy is stale (it still names cs_1); the row, read under
+    // the lock, names the newer session the borrower opened since. Clearing
+    // on the stale copy would lift the autopay hold on a session that can
+    // still be paid (W10.5 audit).
+    const staleCopy = { ...NOTE_ROW, pendingCheckoutSessionId: "cs_1" } as Note;
+    state.lockedCheckoutSessionId = "cs_newer";
     LAST_CONFLICT_ID.id = "cs_1";
     await postBorrowerPortalCheckoutPayment({
-      note: olderNote,
+      note: staleCopy,
       stripeSession: session(),
       source: "stripe_webhook",
       now: NOW,

@@ -649,7 +649,18 @@ Re-verified 2026-09-28:
   left, since echoing `err.message` there can leak internals.
 Remaining: raw bodies whose `error` is a machine code (clients branch on some,
 e.g. `limit_exceeded`) and multi-field bodies. Each needs per-site review.
-Resolving commits: this branch, round 3 (partial)
+W10.5: 72 coded and multi-field 4xx bodies (plus four on split lines the
+ratchet cannot see) moved to the standard shape — every machine code a client
+branches on stays in `error`, extra fields under `details`, status codes
+unchanged; client readers updated where they took `.error` as text (command
+center, auction worksheet) or read fields that moved (tax readiness). The
+inline usage-limit 429s now carry `LIMIT_EXCEEDED`, so the upgrade toast fires
+for them as it does for the gate. `res-status-raw` 356 → 284. Remaining: 5xx
+bodies echoing `err.message` (billing ×4, DSAR ×2), external-contract bodies
+(MCP, JSON-RPC, Meta's plain-text handshake), `routes-finance.ts` (8), and
+raw writes split across lines, which the ratchet's one-line pattern does not
+read. Test: codedErrorBodiesAreStandard.
+Resolving commits: this branch, round 3 and W10.5 (partial)
 
 ### DEFECT-0051
 Title: Migration sequence number collisions (12 duplicate ordinals)
@@ -5372,7 +5383,7 @@ Resolving commits: this branch, round 3
 ### DEFECT-0185
 Title: Late fees: later missed installments, manual postings and concurrency
 Severity: P2
-Status: OPEN
+Status: FIXED (W10.5, 2026-10-06)
 Surfaced by lenses: independent audit of batch F (DEFECT-0099), 2026-09-29
 Description: Residue the audit found that the batch-F fix deliberately did
 not close, each because closing it risks recording a fee no rule supports:
@@ -5394,7 +5405,28 @@ Remediation plan: Advance `next_payment_date` on manual postings (an
 installment-coverage rule shared with the portal writers), then evaluate
 every installment through today; read owed inside the posting transaction.
 Progress (2026-09-30): the first precondition is gone — the finance page's "Record payment" now posts through the serviced-note rule, which advances `next_payment_date` (DEFECT-0253). Walking every installment through today, and reading owed inside the posting transaction, remain.
-Resolving commits: —
+Resolution (W10.5): every installment past grace and unpaid is assessed
+from `next_payment_date` along the note's own schedule
+(`server/services/notes/installmentCoverage.ts` — first payment date + i
+calendar months, month-end clamped, always from the anchor), at most 24 per
+run with the rest reported and taken up next run, one fee per installment
+month. The walk runs only when the current installment itself came due while
+AcreOS held the note (`createdAt`): an imported, stale next date, an unknown
+start or an off-schedule date evaluates the current installment only, saying
+why — an unrecorded payment is never assessed as a missed one. A posting runs
+the capped walk to completion before it covers anything, so a catch-up never
+advances past installments whose fees were deferred. Owed is read inside the posting transaction
+under a row lock on the note. One coverage rule (`allocateServicedPayment`)
+serves every posting writer: installments due first (capped at the payoff,
+so a payoff on a note behind still reaches the fees), then fees, then
+principal; the due date advances by the installments covered, in the same
+transaction; ACH settlement steps the same schedule; the finance page's
+payoff guard previews the same rule. Tests: servicedLateFeesEveryInstallment
+(six cents-exact schedules against a reference model),
+servicedInstallmentCoverage (5,000 seeded inputs), achSettlementKeepsDefault.
+Residue: DEFECT-0296; the partial carry-over and the payoff quote, both older
+than this fix, are DEFECT-0297.
+Resolving commits: the W10.5 commit (see `git log`)
 
 ### DEFECT-0186
 Title: A customer's own Regrid key was dropped; AcreOS's licensed key billed instead
@@ -6642,7 +6674,20 @@ Surfaced by lenses: independent audit of 7cc7345
 Description: (1) `requireRole` does not honour `organizations.ownerId`; an owner with no active `team_members` row would be refused — unverified against data, and widening a security middleware that deliberately requires an active row is a decision, not a fix. (2) `first_offer_made` now records no user, and a demo deal dragged to offer_sent counts as activation. (3) A recorded payment cannot be backdated; late fees measure from entry time. (4) Recording a payment while an ACH debit for the same installment is in flight advances the installment twice, unwarned. (5) The seeder's resume reads the 5,000-row capped lead/property lists; an org that imported more than that since seeding would get sample leads again; `counts` mixes matched and created. (6) `orgTypeWritersAskAuthority` checks that the rule is called, not that its answer is used.
 Evidence: `server/middleware/roleGuard.ts`; `server/services/dealLifecycleEvents.ts`; `server/routes-finance.ts`; `server/services/onboarding/sampleSeeder.ts`; `tests/unit/orgTypeWritersAskAuthority.test.ts`.
 Remediation plan: (1) measure orgs whose owner lacks an active row, then decide; (2) carry the actor through the repository write, and skip sample lineage; (3) an optional received date, bounded to the past; (4) refuse or warn while an ACH attempt is pending; (5) resume from a sample-lineage query, uncapped; (6) assert the gated write behaviourally per route.
-Resolving commits: H6 — (4) is FIXED on both paths that start a payment: `POST /api/payments` and the borrower's card checkout (`POST /api/borrower/payment`, before any charge) answer 409 `ACH_DEBIT_IN_FLIGHT` while an ACH attempt for the note is created/submitted/processing. One list, `ACH_IN_FLIGHT_STATUSES` (servicedLateFees), replaces the two copies. The check is check-then-post with no lock shared with attempt creation — a narrow window, recorded. The other ordering is open: autopay eligibility does not look for a card Checkout in progress (`pendingCheckoutSessionId`), so a debit started while the borrower is on the card page can still pay the installment twice. The legacy token paths (`/api/portal/:accessToken/*`, 410 after the sunset unless `BORROWER_PORTAL_SUNSET_DATE` extends it) carry neither check. `tests/unit/financePaymentIsRecordedOnce.test.ts`, `tests/unit/borrowerPortalWindDown.test.ts` (red before). (1), (2), (3), (5), (6) remain OPEN.
+Resolving commits: H6 — (4) is FIXED on both paths that start a payment: `POST /api/payments` and the borrower's card checkout (`POST /api/borrower/payment`, before any charge) answer 409 `ACH_DEBIT_IN_FLIGHT` while an ACH attempt for the note is created/submitted/processing. One list, `ACH_IN_FLIGHT_STATUSES` (servicedLateFees), replaces the two copies. The check is check-then-post with no lock shared with attempt creation — a narrow window, recorded. The other ordering is open: autopay eligibility does not look for a card Checkout in progress (`pendingCheckoutSessionId`), so a debit started while the borrower is on the card page can still pay the installment twice. The legacy token paths (`/api/portal/:accessToken/*`, 410 after the sunset unless `BORROWER_PORTAL_SUNSET_DATE` extends it) carry neither check. `tests/unit/financePaymentIsRecordedOnce.test.ts`, `tests/unit/borrowerPortalWindDown.test.ts` (red before). (1), (2), (3), (5), (6) remain OPEN. W10.5: the other
+ordering is closed — autopay refuses to debit while a card Checkout may be
+paying the installment (`card_checkout_in_progress`), for the session's 24h
+life plus Stripe's 72h webhook retry, bounded by the slot's OWN timestamp
+(`notes.pending_checkout_opened_at`, 0261, written and cleared with it). The
+first draft bounded it by `updated_at`, which the dunning job refreshes daily
+on a past-due note, so one abandoned Checkout stopped autopay for good (the W10.5
+audit); a slot written before 0261 is not held, as before the hold existed.
+Posting clears the slot against the locked row; an ACH settlement for an
+installment the note already moved past posts without advancing the date
+again (autopayHoldsForCardCheckout, achSettlementKeepsDefault). Autopay also refuses a
+mandate on any rail but the live one (`mandate_rail_unsupported`), and
+`ach_actum` is no longer an accepted autopay method (the Actum rail was
+deleted 2026-07-29).
 
 ### DEFECT-0266
 Title: A lead deleted in bulk stayed listed, its Undo restored nothing, and a new rule stranded it
@@ -6787,11 +6832,21 @@ Resolving commits: fourth audit fixes (5); the W10.4 commit (see `git log`)
 ### DEFECT-0277
 Title: Suppressed-piece refunds skipped before DEFECT-0271 were never repaid
 Severity: P2
-Status: OPEN
+Status: OPEN — repair script ready; the founder runs it
 Surfaced by lenses: independent audit of the fourth follow-up
 Description: From the day refunds began requiring their original debit to exist until DEFECT-0271, every suppressed mail piece's refund was logged "original debit not found" and skipped. Those customers paid for pieces that were never sent, and the fix does not reach back.
 Evidence: `server/services/mail/mailFlusher.ts`; `server/services/creditPool.ts`.
 Remediation plan: A founder-run script under `scripts/data/` (dry run by default, export before change, `--apply` to execute): find shipments with suppressed pieces and a debit key but no `<debit>:suppressed:refund` ledger row, and refund each share through `refundPoolDebit` (which picks the purse and caps the amount). It moves customer credit, so the founder runs it.
+Progress (W10.5): `scripts/data/refund-suppressed-mail-pieces.ts` — dry run
+by default (a READ ONLY transaction); `--apply` exports the plan and the
+affected orgs' credit balances and verifies the export before refunding.
+Each share (the flusher's floor(debited × suppressed / pieces)) goes through
+`refundPoolDebit` keyed `<debit>:suppressed:refund`, so a re-run refunds
+nothing twice, and each refund is read back from the ledger, never assumed.
+The plan names the refunds whose original debit was a CLOSED month's pool
+usage: those are a ledger record with no credit returned (DEFECT-0227's
+existing behaviour), and the founder sees that count before `--apply`. Not
+wired to any route or job. Test: refundSuppressedMailPieces.
 Resolving commits: —
 
 ### DEFECT-0278
@@ -7130,6 +7185,81 @@ per-deal lock and evidence read in the network contribution and retract it
 on Carry; move the offer_acceptance pairing into the transition hook.
 Resolving commits: —
 
+### DEFECT-0296
+Title: W10.5 residue — money paths the wave did not reach
+Severity: P2
+Status: OPEN
+Surfaced by lenses: W10.5 builders (2026-10-06)
+Description: (1) Moved to DEFECT-0297 (it is a P1). (2) `splitPaymentCents`
+charges one month's interest however many installments a payment covers. (3) The
+one-fee-per-installment-month check is application code; two assessors on
+different days of one month can both insert (a per-(loan, month) constraint
+needs a migration). (4) A note AcreOS holds but whose lender records payments
+elsewhere still accrues a fee per month past grace while held; whether such a
+note should be marked "not serviced here" is a founder decision. (5) Fixed in
+W10.5: the posting, the payment preview and today's payoff quote all assess
+every installment due (`assessEveryInstallmentDue`), not one capped run. (6) The sunset legacy-token
+portal writer (`routes-borrower.ts`, `createPayment`) still advances one month
+for any amount. (7) The autopay checkout hold reads the note at cycle start
+with no lock (a Checkout opened between the read and the claim is not seen),
+and an abandoned Checkout delays a debit up to four days from when it was
+opened — possibly past a short grace — with no word to the borrower why.
+Nothing clears a slot on `checkout.session.expired`, and the sunset
+legacy-token card writer sets the slot but its posting never clears it (the
+hold still lifts by the slot's own stamp). (8) `ACH_MANDATE_RAILS` still
+lists `actum`, and `POST /api/notes` and `PATCH /api/notes/:id` still accept
+`ach_actum` in their free-form payment fields (`paymentMethod` is free text; no
+money moves on them). (9)
+`founderDataScripts.test.ts` recognises writes only as SQL keywords; a script
+that writes through a server function (the refund script) reads as read-only
+to it. (10) The raw-body ratchet reads one line, so a `res` / `.status(` split
+across lines is unseen.
+Evidence: the files named.
+Remediation plan: per item; (4) to the founder.
+Resolving commits: —
+
+### DEFECT-0297
+Title: Serviced-note installment credit and payoff — money the rules lose
+Severity: P1
+Status: DEFERRED
+Surfaced by lenses: independent audit of W10.5 (2026-10-06); both shapes are older than W10.5
+Description: (1) Partial carry-over is lost. Credit toward an installment is
+read by the calendar-month window of `payments.due_date`, and a payment row
+carries the due date of the installment that was next when it arrived. Money
+a payment applies beyond the installments it fully covers (toward a
+partly-funded next one) is credited to nothing: $100 due monthly, Jan and Feb
+due, payments of $150 (Feb 20), $50 (Feb 25) and $100 (Mar 1) leave March
+unpaid, and the Mar 12 sweep assesses a fee on $300 paid for three
+installments — every month until the borrower pays an extra installment. A
+lender's due-day edit that lands two installments in one month lets one
+payment's money count for both (a cent can advance an installment). (2) The
+payoff QUOTE (`servicedNotePayoff.ts`) accrues per-diem interest since the
+last interest posting; the posting (`splitPaymentCents`) charges exactly one
+month. On a note more than about a month behind, the exact quote posts with
+an "unapplied overpayment" (the lender loses the accrued interest, and the
+borrower's receipt says they overpaid), and the finance page refuses the
+exact quote as "more than the payoff".
+Evidence: `server/services/notes/servicedLateFees.ts` `creditedToInstallmentCents`;
+`server/services/borrower/portalPaymentPosting.ts`; `server/services/notePaymentMath.ts`
+`splitPaymentCents`; `server/services/notes/servicedNotePayoff.ts`. The W10.5
+reference model (`servicedLateFeesEveryInstallment.test.ts`) pins (1) as
+today's rule, marked so.
+Remediation plan: an installment ledger — each payment row records the cents
+it applied to installments (refund and ACH-return reversals the negative of
+theirs), and the credit toward the current installment is the running total
+since the first installment AcreOS recorded less the installments advanced
+since; one interest rule (per diem since the last posting) shared by the
+quote and the posting. A lender policy call rides on (1): carry a partial
+forward, or hold it in suspense.
+Resolving commits: DEFERRED — both shapes predate W10.5 (the month-window
+credit and the one-month split are batch-F and earlier), and the W10.5 commit
+does not widen either. The fix is structural: a migration adding the
+per-payment installment amount, every payment writer and reversal writer (card,
+Payment Link, manual, ACH settlement, refund reversal, ACH return) carrying
+it, one interest rule for quote and posting, and a lender policy call
+(carry-forward or suspense) on (1). It is the NEXT wave, W10.5b, not a parked
+item.
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -7167,9 +7297,9 @@ not implemented against.
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
 | OPEN   | 0   | 0   | 18  | 18    |
-| FIXED  | 14  | 137 | 124 | 275   |
-| DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **139** | **142** | **295** |
+| FIXED  | 14  | 137 | 125 | 276   |
+| DEFERRED | 0 | 3   | 0   | 3     |
+| **Total** | **14** | **140** | **143** | **297** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as

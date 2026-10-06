@@ -5,7 +5,7 @@
  * a real `pg` client in production and a recording double in tests, plus
  * the one flag convention — nothing mutates without `--apply`.
  */
-import { writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -26,11 +26,18 @@ export function parseFlags(argv: string[]): ScriptFlags {
   };
 }
 
-/** Write rows to a JSON file before anything deletes them. Returns the path. */
+/**
+ * Write rows to a JSON file before anything deletes or changes them. Returns
+ * the path. NEVER overwrites: a second run the same day (the default folder is
+ * dated) writes `<name>.2.json`, `.3`… — the first run's export is the
+ * record of the state BEFORE the change, and a re-run would otherwise replace
+ * it with the state after (W10.5 audit).
+ */
 export function exportRows(outDir: string, name: string, rows: unknown[]): string {
   mkdirSync(outDir, { recursive: true });
-  const path = join(outDir, `${name}.json`);
-  writeFileSync(path, JSON.stringify(rows, null, 2) + "\n");
+  let path = join(outDir, `${name}.json`);
+  for (let n = 2; existsSync(path); n++) path = join(outDir, `${name}.${n}.json`);
+  writeFileSync(path, JSON.stringify(rows, null, 2) + "\n", { flag: "wx" });
   return path;
 }
 

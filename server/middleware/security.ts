@@ -206,11 +206,7 @@ export function requestTimeout(req: Request, res: Response, next: NextFunction) 
         duration: Date.now() - startTime,
         timeoutMs,
       });
-      res.status(504).json({
-        error: "Gateway Timeout",
-        message: "Request took too long to process",
-        statusCode: 504,
-      });
+      sendError(res, 504, "Gateway Timeout", "Request took too long to process");
     }
   }, timeoutMs);
 

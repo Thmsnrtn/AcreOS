@@ -9,9 +9,9 @@
     "**/*.test.ts",
     "**/*.spec.ts"
   ],
-  "baselineCount": 356,
+  "baselineCount": 284,
   "direction": "down",
-  "lastBumpNote": "357 -> 356 on 2026-09-28 (DEFECT-0166): the deal-room NDA route's `res.status(201).json(...)` went with the fabricated signed-document row it announced; the route now returns an unsigned draft with res.json. PRIOR NOTE — 2026-09-28 DEFECT-0050 second pass: 366 -> 357. Nine 4xx single-key bodies whose value is an error-message expression (err.message, message) now go through sendError. 5xx expression bodies were deliberately left: echoing err.message on a 5xx can leak internals, and those belong in Errors.internal per site.",
+  "lastBumpNote": "356 -> 284 on 2026-10-06 (DEFECT-0050 coded-body pass, wave W10.5): 72 raw error bodies whose `error` was a machine code, or that carried extra top-level fields, now go through sendError/Errors.* with the code preserved in `error` and the extra fields under `details` (usage-limit 429s now carry LIMIT_EXCEEDED, which the client upgrade toast branches on). Client readers updated in the same change: notes-tax-readiness (details.noteId, reconciliation in details), auction-worksheet and command-center (message before error). Static-text 5xx in the standard shape converted byte-for-byte; 5xx bodies echoing err.message left except roleGuard (now Errors.internal). Pinned by tests/unit/codedErrorBodiesAreStandard.test.ts. PRIOR NOTE — 357 -> 356 on 2026-09-28 (DEFECT-0166): the deal-room NDA route's `res.status(201).json(...)` went with the fabricated signed-document row it announced; the route now returns an unsigned draft with res.json. PRIOR NOTE — 2026-09-28 DEFECT-0050 second pass: 366 -> 357. Nine 4xx single-key bodies whose value is an error-message expression (err.message, message) now go through sendError. 5xx expression bodies were deliberately left: echoing err.message on a 5xx can leak internals, and those belong in Errors.internal per site.",
   "minima": {
     "files": 1100
   },

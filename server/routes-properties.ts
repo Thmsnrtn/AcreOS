@@ -10,7 +10,7 @@ import { usageMeteringService, creditService } from "./services/credits";
 import { parseCSV, importProperties, exportPropertiesToCSV, getExpectedColumns, type ExportFilters } from "./services/importExport";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { recordParcelObservations } from "./services/data-cache/observation-log";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 // A declared permission that nothing enforces is not a permission.
 import { requirePermission } from "./utils/permissions";
 import { logger } from "./utils/logger";
@@ -315,13 +315,18 @@ export function registerPropertyRoutes(app: Express): void {
       
       const usageCheck = await checkUsageLimit(org.id, "properties");
       if (!usageCheck.allowed) {
-        return res.status(429).json({
-          message: `Property limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan to add more properties.`,
-          current: usageCheck.current,
-          limit: usageCheck.limit,
-          resourceType: usageCheck.resourceType,
-          tier: usageCheck.tier,
-        });
+        return sendError(
+          res,
+          429,
+          "LIMIT_EXCEEDED",
+          `Property limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan to add more properties.`,
+          {
+            current: usageCheck.current,
+            limit: usageCheck.limit,
+            resourceType: usageCheck.resourceType,
+            tier: usageCheck.tier,
+          },
+        );
       }
       
       const numericFields = ["sizeAcres", "assessedValue", "marketValue", "purchasePrice", "listPrice", "soldPrice"];
@@ -735,13 +740,19 @@ export function registerPropertyRoutes(app: Express): void {
       if (usageCheck.limit !== null) {
         const wouldExceed = usageCheck.current + csvData.length > usageCheck.limit;
         if (wouldExceed) {
-          return res.status(429).json({
-            message: `Import would exceed your plan limit of ${usageCheck.limit} properties (current: ${usageCheck.current}, importing: ${csvData.length}). Upgrade your plan to import more properties.`,
-            current: usageCheck.current,
-            importing: csvData.length,
-            limit: usageCheck.limit,
-            tier: usageCheck.tier,
-          });
+          return sendError(
+            res,
+            429,
+            "LIMIT_EXCEEDED",
+            `Import would exceed your plan limit of ${usageCheck.limit} properties (current: ${usageCheck.current}, importing: ${csvData.length}). Upgrade your plan to import more properties.`,
+            {
+              current: usageCheck.current,
+              importing: csvData.length,
+              limit: usageCheck.limit,
+              resourceType: usageCheck.resourceType,
+              tier: usageCheck.tier,
+            },
+          );
         }
       }
       
@@ -838,8 +849,7 @@ export function registerPropertyRoutes(app: Express): void {
         const hasCredits = await creditService.hasEnoughCredits(org.id, compsCost);
         if (!hasCredits) {
           const balance = await creditService.getBalance(org.id);
-          return res.status(402).json({
-            error: "Insufficient credits",
+          return sendError(res, 402, "INSUFFICIENT_CREDITS", "Insufficient credits", {
             required: compsCost / 100,
             balance: balance / 100,
           });
@@ -947,8 +957,7 @@ export function registerPropertyRoutes(app: Express): void {
         const hasCredits = await creditService.hasEnoughCredits(org.id, compsCost);
         if (!hasCredits) {
           const balance = await creditService.getBalance(org.id);
-          return res.status(402).json({
-            error: "Insufficient credits",
+          return sendError(res, 402, "INSUFFICIENT_CREDITS", "Insufficient credits", {
             required: compsCost / 100,
             balance: balance / 100,
           });

@@ -508,11 +508,7 @@ app.use("/mcp", mcpLimiter);
       const auth = await resolveMcpAuth(provided);
       if (auth.status === "unconfigured") {
         // Not configured — block all access until a key is set.
-        res.status(503).json({
-          error: "service_unavailable",
-          message: "MCP endpoint not configured. Set MCP_API_KEY.",
-          statusCode: 503,
-        });
+        sendError(res, 503, "service_unavailable", "MCP endpoint not configured. Set MCP_API_KEY.");
         return;
       }
       if (auth.status !== "ok") {

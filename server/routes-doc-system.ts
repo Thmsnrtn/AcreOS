@@ -11,7 +11,7 @@ import { leadsIncludingDeleted } from "./storage/liveLeads";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { format as formatDate } from "date-fns";
 import { logger } from "./utils/logger";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 import {
   checkDisclosure,
   buildDisclosureMissingPayload,
@@ -828,24 +828,18 @@ export function registerDocSystemRoutes(app: Express): void {
         const { checkAssignmentCompliance } = await import("./routes-wholesaler-rules");
         const result = await checkAssignmentCompliance(mergedVars.state);
         if (result.blocked) {
-          return res.status(409).json({
-            error: "wholesaler_compliance_blocked",
-            message: result.summary,
+          return sendError(res, 409, "wholesaler_compliance_blocked", result.summary, {
             recommendation: result.recommendation,
             citation: result.citation,
             attorneyReviewed: result.attorneyReviewed,
-            statusCode: 409,
           });
         }
         if (result.warn && !ackComplianceWarning) {
-          return res.status(409).json({
-            error: "wholesaler_compliance_warn",
-            message: result.summary,
+          return sendError(res, 409, "wholesaler_compliance_warn", result.summary, {
             recommendation: result.recommendation,
             citation: result.citation,
             attorneyReviewed: result.attorneyReviewed,
             actionRequired: "set ackComplianceWarning=true in the request to acknowledge and proceed",
-            statusCode: 409,
           });
         }
       }

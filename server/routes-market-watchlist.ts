@@ -16,7 +16,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { marketWatchlistService } from "./services/marketWatchlist";
 import { z } from "zod";
-import { sendError } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 
 const router = Router();
 
@@ -46,8 +46,8 @@ router.post("/", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const entry = await marketWatchlistService.addToWatchlist(org.id, String(user.id), data);
     res.status(201).json(entry);
   } catch (err: any) {
-    if (err.issues) return res.status(400).json({ message: "Validation failed", errors: err.issues });
-    res.status(500).json({ message: err.message });
+    if (err.issues) return Errors.badRequest(res, "Validation failed", err.issues);
+    Errors.internal(res, err);
   }
 });
 

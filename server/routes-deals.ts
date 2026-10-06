@@ -21,7 +21,7 @@ import {
 } from "./services/dealAggregates";
 import { checkUsury } from "./services/usury";
 import { logger } from "./utils/logger";
-import { Errors } from "./utils/errors";
+import { Errors, sendError } from "./utils/errors";
 // W10.4 item 6: the repository's typed refusals (stale write → 409, refused
 // transition / creation → 400) are answered by ONE mapper on every deal write.
 import { sendDealWriteError } from "./utils/dealWriteErrors";
@@ -1253,7 +1253,7 @@ export function registerDealRoutes(app: Express): void {
       const dealCreditService = new CreditService();
       const hasCredits = await dealCreditService.hasEnoughCredits(org.id, 2);
       if (!hasCredits) {
-        return res.status(402).json({ error: "Insufficient credits", message: "Purchase credits to use AI deal analysis." });
+        return sendError(res, 402, "INSUFFICIENT_CREDITS", "Purchase credits to use AI deal analysis.");
       }
 
       const property = await storage.getProperty(org.id, propertyId);

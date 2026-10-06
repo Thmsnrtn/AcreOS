@@ -31,6 +31,7 @@ import type { Request, Response, NextFunction } from "express";
 import { db } from "../db";
 import { signupSignals } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { sendError } from "../utils/errors";
 import { ipBucket } from "./authPathLimits";
 
 /**
@@ -371,11 +372,7 @@ export async function requireCaptchaIfEnabled(
   const token = body.captchaToken;
   const verified = await verifyCaptchaToken(token);
   if (verified === false) {
-    res.status(400).json({
-      error: "CAPTCHA_REQUIRED",
-      message: "Please complete the verification challenge to continue.",
-      statusCode: 400,
-    });
+    sendError(res, 400, "CAPTCHA_REQUIRED", "Please complete the verification challenge to continue.");
     return;
   }
   next();
