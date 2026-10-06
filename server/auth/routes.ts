@@ -12,6 +12,7 @@ import { auditFromRequest, AuditActions } from "../utils/auditLog";
 import { recordSignupSignals, computeReqIpBucket } from "../middleware/botSignals";
 import { createRateLimiter } from "../middleware/rateLimit";
 import { ipBucket } from "../middleware/authPathLimits";
+import { toAuthUserView } from "@shared/accountViews";
 
 // Process-local set of userIds that have already emitted an auth.login
 // audit event. Cleared on process restart, which is acceptable: the audit
@@ -41,7 +42,9 @@ export function registerAuthRoutes(app: Express): void {
         metadata: { isFounder },
       });
     }
-    res.json(isFounder ? { ...user, isFounder: true } : user);
+    // An explicit allowlist (shared/accountViews.ts): identity and the
+    // preferences the client renders, not the whole account row.
+    res.json(toAuthUserView(user, isFounder));
   });
 
   // Founder-only existence probe. Returns 200 with { isFounder: true } for

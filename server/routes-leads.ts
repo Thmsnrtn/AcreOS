@@ -39,8 +39,14 @@ import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fil
 import { apnMatchForm, createParcelDedupeIndex } from "./services/leads/parcelDedupe";
 import { splitOwnerName } from "@shared/parcel/ownerName";
 
-// Partial update schema for PUT endpoints
-const updateLeadSchema = insertLeadSchema.partial();
+// Partial update schema for PUT endpoints. The soft-delete fields are server-
+// owned: a lead is deleted and restored only through the dedicated paths
+// (DELETE /api/leads/:id, PATCH /api/leads/:id/restore, and the repository's
+// deleteLead / bulkDeleteLeads / restoreLeads), never by an edit, so a client-supplied `deletedAt`/`deletedBy` is dropped here (zod
+// strips keys a schema does not declare). insertLeadSchema already omits id,
+// organizationId and the timestamps. Pinned by
+// tests/unit/leadCreateServerFields.test.ts.
+const updateLeadSchema = insertLeadSchema.omit({ deletedAt: true, deletedBy: true }).partial();
 
 // Task #Phase5: Zod schemas for bulk operations (mirrors bulkIdsSchema in routes-properties.ts)
 const bulkLeadIdsSchema = z.object({
@@ -396,11 +402,13 @@ export function registerLeadRoutes(app: Express): void {
       }
       
       // T3-3E Phase 3 — contract request validation. `leadCreateRequestSchema`
-      // is `insertLeadSchema.passthrough()`, so this is the canonical insert
-      // parse PLUS the transport-only extras the handler reads later
-      // (latitude/longitude for enrichment, consentText/pageUrl for the TCPA
-      // evidence chain). organizationId is attached from the authed org, not
-      // the wire body. On failure → 422 via Errors.validationFailed.
+      // is `insertLeadSchema.passthrough()` followed by a strip of every
+      // server-owned field, so this is the canonical insert parse PLUS the
+      // transport-only extras the handler reads later (latitude/longitude for
+      // enrichment, consentText/pageUrl for the TCPA evidence chain), and
+      // never an id, tenant key, timestamp or soft-delete field.
+      // organizationId is attached from the authed org, not the wire body.
+      // On failure → 422 via Errors.validationFailed.
       const parsedBody = createLeadContract.requestSchema.safeParse(req.body);
       if (!parsedBody.success) {
         return Errors.validationFailed(res, parsedBody.error.issues);

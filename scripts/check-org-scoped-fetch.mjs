@@ -168,7 +168,6 @@ const BASELINE_OFFENDERS = new Set([
   "server/storage/vaEngineRepo.ts::getCollectionEnrollmentsByNote",
   "server/storage/vaEngineRepo.ts::getCollectionEnrollmentsBySequence",
   "server/storage/documentsRepo.ts::getDocumentSignatures",
-  "server/storage/acquisitionRepo.ts::getDueDiligenceChecklist",
   "server/storage/agentWorkflowsRepo.ts::getDueScheduledTasks",
   "server/storage/supportOpsRepo.ts::getEscalatedCases",
   "server/storage/growthConfigRepo.ts::getFieldScoutPhotosByLead",

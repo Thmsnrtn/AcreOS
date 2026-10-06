@@ -10,9 +10,8 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { registerWellKnownRoutes } from "./routes-well-known";
 import { createServer } from "http";
-import { WebhookHandlers } from "./webhookHandlers";
-import { recordStripeWebhookFailure, metricsHandler } from "./metrics";
-import { notifyOnCall } from "./services/oncall";
+import { mountStripeWebhook } from "./stripeWebhookRoute";
+import { metricsHandler } from "./metrics";
 import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./utils/logger";
 import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
 import { terminalErrorHandler } from "./middleware/terminalErrorHandler";
@@ -28,7 +27,7 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createLimiterStore } from "./middleware/limiterRedisStore";
 import { getClientIp } from "./utils/clientIp";
 import { createHash } from "node:crypto";
-import { Errors, sendError } from "./utils/errors";
+import { Errors } from "./utils/errors";
 import { initSentry, Sentry } from "./utils/sentry";
 import { validateEnv } from "./utils/validateEnv";
 
@@ -219,47 +218,8 @@ app.use(corsMiddleware);
 app.use(requestTimeout);
 app.use(sanitizeQueryParams);
 
-app.post(
-  '/api/stripe/webhook',
-  express.raw({ type: 'application/json' }),
-  async (req, res) => {
-    const signature = req.headers['stripe-signature'];
-
-    if (!signature) {
-      return sendError(res, 400, "BAD_REQUEST", 'Missing stripe-signature');
-    }
-
-    try {
-      const sig = Array.isArray(signature) ? signature[0] : signature;
-
-      if (!Buffer.isBuffer(req.body)) {
-        log('STRIPE WEBHOOK ERROR: req.body is not a Buffer', 'stripe');
-        return sendError(res, 500, "INTERNAL_ERROR", 'Webhook processing error');
-      }
-
-      await WebhookHandlers.processWebhook(req.body as Buffer, sig);
-
-      res.status(200).json({ received: true });
-    } catch (error: any) {
-      log(`Webhook error: ${error.message}`, 'stripe');
-      // A failed webhook can mean a customer was charged but not provisioned —
-      // a true production P0. Record the metric and page on-call. Fire-and-forget
-      // so a slow alert delivery never holds the HTTP response (Stripe retries
-      // on non-2xx regardless).
-      recordStripeWebhookFailure();
-      void notifyOnCall(
-        "P0",
-        "Stripe webhook processing failed",
-        `A Stripe webhook failed to process and returned non-2xx (Stripe will retry).\n` +
-          `A customer may have been charged but not provisioned.\n\nError: ${error?.message ?? "unknown"}`,
-        { source: "stripe_webhook" },
-      ).catch((notifyErr) => {
-        logger.error("[StripeWebhook] notifyOnCall failed", notifyErr);
-      });
-      sendError(res, 400, "BAD_REQUEST", 'Webhook processing error');
-    }
-  }
-);
+// Stripe webhook: raw body, mounted before express.json — see stripeWebhookRoute.ts.
+mountStripeWebhook(app);
 
 // Task #204: enforce request body size limits to prevent payload-based DoS
 app.use(

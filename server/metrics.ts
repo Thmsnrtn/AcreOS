@@ -145,13 +145,26 @@ export const jobDurationSeconds = new Histogram({
 
 // ── Stripe ──────────────────────────────────────────────────────────────────
 // Counted independently of `httpRequestsTotal{status="5xx",route="/api/stripe/webhook"}`
-// because some webhook failures are processed-but-failed (the route returns
-// 400 due to a bad signature, but Stripe will retry — we want a separate
-// alarm channel).
+// because a processing failure answers 400 (Stripe retries any non-2xx) —
+// we want a separate alarm channel. Deliveries that do not verify are counted
+// apart, on their own counter: they say nothing about a customer, so they
+// must not drive the critical alert.
 
 export const stripeWebhookFailedTotal = new Counter({
   name: "acreos_stripe_webhook_failed_total",
-  help: "Stripe webhook deliveries that failed signature verification or threw inside the processor. Drives the StripeWebhookFailing alert in docs/slo-monitoring.md.",
+  help: "Stripe webhook deliveries that could not be processed after (or for want of) signature verification. Drives the StripeWebhookFailing alert in docs/slo-monitoring.md.",
+  registers: [registry],
+});
+
+export const stripeWebhookVerifiedTotal = new Counter({
+  name: "acreos_stripe_webhook_verified_total",
+  help: "Stripe webhook deliveries whose signature verified (processed or not). Read with the rejected counter: rejections with no verified delivery for hours points at a wrong or rotated endpoint secret.",
+  registers: [registry],
+});
+
+export const stripeWebhookSignatureRejectedTotal = new Counter({
+  name: "acreos_stripe_webhook_signature_rejected_total",
+  help: "Deliveries to the Stripe webhook that carried no signature or one that did not verify. Informational; never pages.",
   registers: [registry],
 });
 
@@ -205,6 +218,16 @@ export function recordJobRun(
 /** Record a Stripe webhook failure. Called from the webhook route's catch block. */
 export function recordStripeWebhookFailure(): void {
   stripeWebhookFailedTotal.inc();
+}
+
+/** Record a Stripe webhook delivery whose signature verified. */
+export function recordStripeWebhookVerified(): void {
+  stripeWebhookVerifiedTotal.inc();
+}
+
+/** Record a delivery to the Stripe webhook that did not verify. */
+export function recordStripeWebhookSignatureRejected(): void {
+  stripeWebhookSignatureRejectedTotal.inc();
 }
 
 // ── Internal helpers ────────────────────────────────────────────────────────

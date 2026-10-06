@@ -17,17 +17,29 @@ import { z } from "zod";
 // Client-safe: this contract reaches the browser through contracts/index.ts,
 // so it composes the plain-zod lead schema rather than the drizzle-zod one.
 // Same accept-set, pinned by clientFormSchemasMatchDrizzle.test.ts.
-import { insertLeadSchema } from "../forms/lead";
+import { insertLeadSchema, type InsertLeadInput } from "../forms/lead";
 import type { ApiContract } from "./index";
+import { stripServerOwnedFields } from "./serverOwnedFields";
+
+/**
+ * Lead columns the server owns beyond the shared list: the scoring timestamp
+ * and the STORED generated `phoneNormalized` (migration 0051), which Postgres
+ * refuses to accept an explicit value for.
+ */
+const LEAD_SERVER_OWNED_EXTRAS = ["lastScoreAt", "phoneNormalized"] as const;
+
+/** What the create handler receives: the lead fields plus transport extras. */
+export type LeadCreateBody = Omit<InsertLeadInput, "deletedAt" | "deletedBy"> & {
+  [transportExtra: string]: unknown;
+};
 
 /**
  * Request body for POST /api/leads.
  *
- * Composes the canonical `insertLeadSchema` (which already omits id /
+ * Composes the canonical `insertLeadSchema` (which omits id /
  * organizationId / timestamps / the generated phoneNormalized column and
  * tightens `email` to an email-or-null). The handler attaches
- * `organizationId` from the authenticated org, so the wire body must NOT
- * carry it — `insertLeadSchema` already omits it.
+ * `organizationId` from the authenticated org.
  *
  * `.passthrough()` is deliberate: the live handler accepts a handful of
  * transport-only extras the lead table never persists (latitude/longitude
@@ -35,8 +47,18 @@ import type { ApiContract } from "./index";
  * the TCPA evidence chain). Stripping them here would silently drop the
  * consent audit row, so we let them ride through and let the handler pick
  * what it needs.
+ *
+ * But a schema that keeps unknown keys keeps EVERY unknown key — including
+ * the columns `insertLeadSchema` omits precisely because the server owns
+ * them. So the passthrough is followed by a strip: the parsed body never
+ * carries the primary key, the tenant key, the lifecycle timestamps or the
+ * soft-delete fields (`serverOwnedFields.ts`), nor the lead's own generated
+ * columns. Server-owned fields are set by the server, never the request.
+ * Pinned by tests/unit/requestSchemasNeverCarryServerFields.test.ts.
  */
-export const leadCreateRequestSchema = insertLeadSchema.passthrough();
+export const leadCreateRequestSchema = insertLeadSchema
+  .passthrough()
+  .transform((body): LeadCreateBody => stripServerOwnedFields(body, LEAD_SERVER_OWNED_EXTRAS) as LeadCreateBody);
 
 /**
  * Response body for POST /api/leads (HTTP 201).

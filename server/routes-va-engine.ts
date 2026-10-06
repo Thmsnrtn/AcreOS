@@ -10,7 +10,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
-import { omitProtectedFields } from "./utils/updatePayload";
+import { omitProtectedFields, omitServerOwnedFields } from "./utils/updatePayload";
 import { getOrganizationId } from "./types/request";
 import * as vaManagement from "./services/vaManagement";
 
@@ -918,7 +918,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const reservation = await storage.createBuyerReservation({
-        ...req.body,
+        ...omitServerOwnedFields(req.body),
         organizationId: org.id,
       });
       res.status(201).json(reservation);
@@ -1005,7 +1005,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const checklist = await storage.createEscrowChecklist({
-        ...req.body,
+        ...omitServerOwnedFields(req.body),
         organizationId: org.id,
       });
       res.status(201).json(checklist);
@@ -1092,7 +1092,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const packet = await storage.createClosingPacket({
-        ...req.body,
+        ...omitServerOwnedFields(req.body),
         organizationId: org.id,
       });
       res.status(201).json(packet);
@@ -1190,7 +1190,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const enrollment = await storage.createAutopayEnrollment({
-        ...req.body,
+        ...omitServerOwnedFields(req.body),
         organizationId: org.id,
       });
       res.status(201).json(enrollment);
@@ -1331,7 +1331,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const escalation = await storage.createDelinquencyEscalation({
-        ...req.body,
+        ...omitServerOwnedFields(req.body),
         organizationId: org.id,
       });
       res.status(201).json(escalation);
@@ -1414,7 +1414,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const assignment = await storage.createDDAssignment({
-        ...req.body,
+        ...omitServerOwnedFields(req.body),
         organizationId: org.id,
       });
       res.status(201).json(assignment);
@@ -1501,7 +1501,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const report = await storage.createSwotReport({
-        ...req.body,
+        ...omitServerOwnedFields(req.body),
         organizationId: org.id,
       });
       res.status(201).json(report);
@@ -1573,7 +1573,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const memo = await storage.createGoNogoMemo({
-        ...req.body,
+        ...omitServerOwnedFields(req.body),
         organizationId: org.id,
       });
       res.status(201).json(memo);

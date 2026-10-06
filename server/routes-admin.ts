@@ -39,6 +39,7 @@ import { isFounderIdentity } from "./services/founder";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 import { Errors, sendError } from "./utils/errors";
+import { omitProtectedFields } from "./utils/updatePayload";
 import { getUserId, getOrganization, getClerkAuth, type AuthenticatedRequest } from "./types/request";
 
 import { sanitizePromptInline } from "./utils/sanitizePrompt";
@@ -2717,7 +2718,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const id = parseInt(req.params.id);
       const [updated] = await db.update(aiModelConfigs)
-        .set({ ...req.body, updatedAt: new Date() })
+        .set({ ...omitProtectedFields(req.body), updatedAt: new Date() })
         .where(eq(aiModelConfigs.id, id))
         .returning();
       const { invalidateDbModelCache } = await import('./services/aiRouter');

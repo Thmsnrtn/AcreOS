@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { DealTransitionRefusedError } from "./storage/dealRepo";
-import { omitProtectedFields } from "./utils/updatePayload";
+import { omitProtectedFields, omitServerOwnedFields } from "./utils/updatePayload";
 import { fraudGateRefusal, sealWireAttestation, stampWireConfirmation, withdrawWireConfirmation } from "./services/closingEvidence";
 import { storage } from "./storage";
 import { z } from "zod";
@@ -1735,6 +1735,13 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     try {
       const org = req.organization;
       const propertyId = Number(req.params.propertyId);
+      if (!Number.isSafeInteger(propertyId) || propertyId <= 0) {
+        return Errors.badRequest(res, "propertyId must be a positive integer");
+      }
+      // The same guard as the PUT below: a checklist is read (or started)
+      // only on a property this organization holds.
+      const property = await storage.getProperty(org.id, propertyId);
+      if (!property) return Errors.notFound(res, "Property");
       const checklist = await storage.getOrCreateDueDiligenceChecklist(org.id, propertyId);
       res.json(checklist);
     } catch (error: any) {
@@ -1747,13 +1754,14 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     try {
       const org = req.organization;
       const propertyId = Number(req.params.propertyId);
+      if (!Number.isSafeInteger(propertyId) || propertyId <= 0) return Errors.badRequest(res, "propertyId must be a positive integer");
       // F-D39: verify property ownership before touching its checklist. Previously
       // getDueDiligenceChecklist(propertyId) returned any org's checklist as long
       // as the propertyId existed, and the subsequent updateChecklist(existing.id)
       // wrote into that foreign org's row.
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) return Errors.notFound(res, "Property");
-      const existing = await storage.getDueDiligenceChecklist(propertyId);
+      const existing = await storage.getDueDiligenceChecklist(org.id, propertyId);
       if (!existing) {
         return Errors.notFound(res, "Checklist");
       }
@@ -2411,7 +2419,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     try {
       const org = req.organization;
       const template = await storage.createChecklistTemplate({
-        ...req.body,
+        ...omitServerOwnedFields(req.body),
         organizationId: org.id,
       });
       res.status(201).json(template);

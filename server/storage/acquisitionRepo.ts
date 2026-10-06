@@ -132,14 +132,16 @@ export const acquisitionRepo = {
   },
 
   // Due Diligence Checklists (Enhanced)
-  async getDueDiligenceChecklist(this: DatabaseStorage, propertyId: number) {
+  // The organization is part of the read, not a check the caller is trusted
+  // to have made: a checklist belongs to the org that holds the property.
+  async getDueDiligenceChecklist(this: DatabaseStorage, orgId: number, propertyId: number) {
     const [checklist] = await db.select().from(dueDiligenceChecklists)
-      .where(eq(dueDiligenceChecklists.propertyId, propertyId));
+      .where(and(eq(dueDiligenceChecklists.organizationId, orgId), eq(dueDiligenceChecklists.propertyId, propertyId)));
     return checklist;
   },
 
   async getOrCreateDueDiligenceChecklist(this: DatabaseStorage, orgId: number, propertyId: number) {
-    const existing = await this.getDueDiligenceChecklist(propertyId);
+    const existing = await this.getDueDiligenceChecklist(orgId, propertyId);
     if (existing) return existing;
 
     const defaultItems = [

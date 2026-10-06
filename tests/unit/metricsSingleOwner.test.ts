@@ -156,7 +156,7 @@ describe("exposition validity", () => {
   });
 
   it("renders the production business counters the alerts scrape", () => {
-    // Incremented at server/index.ts's stripe webhook catch block — drives
+    // Incremented at server/stripeWebhookRoute.ts's catch block — drives
     // the StripeWebhookFailing alert in docs/slo-monitoring.md.
     expect(body).toContain("# TYPE acreos_stripe_webhook_failed_total counter");
     expect(body).toMatch(/^acreos_stripe_webhook_failed_total 1$/m);
