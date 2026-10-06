@@ -134,6 +134,12 @@ async function expectRouteRenders(page: Page, path: string) {
 }
 
 test.describe("wedge journey (lead → mail → reply → offer)", () => {
+  // The production build registers /sw.js, which serves /api fetches itself;
+  // page.route never sees a request a service worker makes, so the list
+  // step's fixtures were bypassed and the real (unseeded) server answered.
+  // Nothing in this journey depends on the service worker.
+  test.use({ serviceWorkers: "block" });
+
   test("runs end to end on the test-auth path", async ({ page, baseURL }) => {
     test.skip(!process.env.DATABASE_URL, "requires DATABASE_URL (CI service / local PG)");
     test.skip(
@@ -244,6 +250,10 @@ test.describe("wedge journey (lead → mail → reply → offer)", () => {
         await expect(page.getByTestId("list-builder-sheet")).toBeVisible();
         await page.getByTestId("select-list-state").click();
         await page.getByRole("option", { name: "Arizona" }).click();
+        // The fixture's county list — not the real server's empty one, not an error.
+        await expect(page.getByTestId("county-options")).toBeVisible();
+        await expect(page.getByTestId("counties-empty")).toHaveCount(0);
+        await expect(page.getByTestId("counties-error")).toHaveCount(0);
         await page.getByTestId("county-option-Maricopa").click();
         await page.getByTestId("input-acreage-min").fill("2");
         await page.getByTestId("button-list-count").click();
