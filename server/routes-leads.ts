@@ -51,6 +51,25 @@ const bulkLeadUpdateSchema = z.object({
   updates: updateLeadSchema,
 });
 
+/**
+ * Why a bulk lead update may not touch consent, or null when it may.
+ */
+function bulkConsentRefusal(updates: Record<string, unknown>): string | null {
+  if (updates.tcpaConsent === true) {
+    return "TCPA consent cannot be granted in bulk. Record consent per lead, with its evidence, from the lead's consent panel.";
+  }
+  if (updates.consentSource != null && updates.consentSource !== "") {
+    return `A consent source ("${String(updates.consentSource)}") cannot be applied in bulk — a purchased or vendor list is not express written consent.`;
+  }
+  if (updates.consentDate != null) {
+    return "A consent date cannot be applied in bulk. Record consent per lead.";
+  }
+  if (updates.doNotContact === false || updates.optOutDate === null || updates.optOutReason === null) {
+    return "An opt-out cannot be lifted in bulk. A lead who opted out re-subscribes themselves (START / UNSTOP) or is updated one at a time.";
+  }
+  return null;
+}
+
 // Zod schemas for lead operations
 const checkDuplicatesSchema = z.object({
   firstName: z.string().optional(),
@@ -892,6 +911,16 @@ export function registerLeadRoutes(app: Express): void {
       // Without this a restricted VA could push every lead in the org to
       // "deleted" status through an arbitrary id array.
       if (refuseBulkLeadWrite(req as AuthenticatedRequest, res)) return;
+
+      // TCPA: consent is per-lead evidence, never a list attribute. A bulk
+      // write may CLEAR consent (always safe) but may not grant it, stamp a
+      // consent source or date onto a whole list (a purchased "list_vendor"
+      // list is not prior express written consent), or lift an opt-out the
+      // lead themselves recorded. Consent is granted one lead at a time through
+      // PATCH /api/leads/:id/consent or lead creation, which capture the
+      // evidence. Checked before any write, so a refusal changes nothing.
+      const consentRefusal = bulkConsentRefusal(updates as Record<string, unknown>);
+      if (consentRefusal) return Errors.badRequest(res, consentRefusal);
 
       // Wave B — snapshot the BEFORE rows once. They serve both the W3.4
       // transition gate below and the per-lead workflow-event diff after the
