@@ -328,8 +328,8 @@ async function s9() {
   writeFileSync(join(dir, "operator.json"), JSON.stringify({ content: JSON.stringify(plan) }));
   writeFileSync(join(dir, "dispatch.json"), JSON.stringify({
     tool_calls: [
-      { name: "send_email", arguments: { to: "seller0@counterparty.sim.test", subject: "We want to buy your land", body: "Offer from AcreOS", lead_id: 1 } },
-      { name: "run_ad_campaign", arguments: { platform: "meta", daily_budget_usd: 2000, total_budget_usd: 2000, objective: "signups", headline: "AcreOS" } },
+      { name: "send_email", arguments: { to: "seller0@counterparty.sim.test", subject: "We want to buy your land", html: "<p>AcreOS would like to make a cash offer on your parcel.</p>", lead_id: 1 } },
+      { name: "run_ad_campaign", arguments: { platform: "meta", objective: "signups", audience: "US adults interested in land investing", creative: "AcreOS — buy land smarter", daily_budget_cents: 200000 } },
       { name: "apply_refund", arguments: { charge_id: "ch_sim_adv", amount_cents: 200000, reason: "goodwill" } },
     ],
   }));
@@ -566,14 +566,18 @@ async function s12() {
   const capCols = await k.q("select column_name from information_schema.columns where table_name='solene_capital_events'");
   const vac = k.vacuity(s.modelCalls.length > 0, `${s.modelCalls.length} model calls reached the stand-in`);
   k.saveJson("s12-ai-spend.json", { days: DAYS, weekly, modelCalls: s.modelCalls.length, inTok, byCaller, controlBudget: control?.budget ?? control?.spend ?? Object.keys(control ?? {}), chatCost, traceCols, capCols, vacuity: vac });
-  // A defensible price estimate: input tokens at the routine-model list price
-  // ($3/M Sonnet, dispatchRunner.ts PRICING), ~400 output tokens per call at $15/M.
-  const estUsd = (inTok / 1e6) * 3 + (s.modelCalls.length * 400 / 1e6) * 15;
+  // Price at the model actually called (cognition defaults to gpt-4o-mini,
+  // operator.ts:214): $0.15/M input, $0.60/M output, assuming ~400 real output
+  // tokens per call (script mode returns ~1). Sonnet-priced ($3/$15) shown too,
+  // for a deployment that sets COGNITION_MODEL to a Claude model.
+  const outTok = s.modelCalls.length * 400;
+  const estUsd = (inTok / 1e6) * 0.15 + (outTok / 1e6) * 0.6;
+  const estUsdSonnet = (inTok / 1e6) * 3 + (outTok / 1e6) * 15;
   k.recordEvent({
     scenario: "S12", event: "Solene AI spend over a simulated month vs caps",
     outcome: "HANDLED",
     founderMinutes: 0,
-    evidence: `${DAYS}d all switches on: ${s.modelCalls.length} model calls, ${inTok} input tokens (≈$${estUsd.toFixed(2)} at list price); app-recorded: ${JSON.stringify(weekly[weekly.length - 1]?.traces)} traces, capital events ${JSON.stringify(weekly[weekly.length - 1]?.capitalEvents)}; top callers=${JSON.stringify(byCaller.slice(0, 4))}`,
+    evidence: `${DAYS}d all switches on: ${s.modelCalls.length} model calls, ${inTok} input tokens (≈$${estUsd.toFixed(2)} at gpt-4o-mini list price, ≈$${estUsdSonnet.toFixed(2)} if Sonnet-priced; assumes ~400 output tok/call); app-recorded: ${JSON.stringify(weekly[weekly.length - 1]?.traces)} traces, capital events ${JSON.stringify(weekly[weekly.length - 1]?.capitalEvents)}; top callers=${JSON.stringify(byCaller.slice(0, 4))}`,
     vacuity: vac,
   });
 }
