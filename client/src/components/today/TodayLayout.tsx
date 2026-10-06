@@ -19,8 +19,10 @@
  * It does NOT invent new data surfaces or trigger its own fetch — every lede
  * composes the aggregates Today already pulled from /api/today (cash strip +
  * pipeline) into a small "lede" strip rendered above the Decision Queue. When
- * a datum a persona would want isn't on hand, the lede shows an honest empty
- * framing — never a fabricated number. Generic stays the default, so no
+ * the book is genuinely empty (a real zero), the lede shows an honest empty
+ * framing; when a figure could not be read at all (null), it says the figures
+ * are unavailable and claims nothing about the book — never a fabricated
+ * number, and never an empty book it did not read. Generic stays the default, so no
  * vertical is ever worse off than before.
  */
 
@@ -43,6 +45,7 @@ import {
 } from "lucide-react";
 import type { Persona } from "@shared/models/auth";
 import { usd, plural } from "@/lib/format";
+import { cashUnavailableCopy } from "./CashStrip";
 
 // The aggregates Today already has in hand (from /api/today). Every lede reads
 // these — none of them triggers its own fetch.
@@ -50,11 +53,23 @@ import { usd, plural } from "@/lib/format";
 //   • lateCount         — notes currently late or delinquent
 //   • openDealsCount    — active (non-closed/cancelled) parcel deals in pipeline
 //   • openDealsValue    — total value of those active deals
+// Each is `null` when the server could not compute it (the sample/real split
+// could not be read — `unavailableReason` says why). Null is UNKNOWN, not
+// zero: a lede that needs a null figure renders UnavailableLede, which claims
+// nothing about the book — never "$0 due", "Every note current", "No deals in
+// flight yet" or "queue is clear". A non-null 0 is a real zero and keeps the
+// honest empty copy.
 export interface TodayLedeData {
-  pendingPayments30: number;
-  lateCount: number;
-  openDealsCount: number;
-  openDealsValue: number;
+  pendingPayments30: number | null;
+  lateCount: number | null;
+  openDealsCount: number | null;
+  openDealsValue: number | null;
+  unavailableReason?: string | null;
+}
+
+/** True when the optional value clause (" · $X on the table") can be shown. */
+function hasValue(v: number | null): v is number {
+  return v !== null && v > 0;
 }
 
 export interface TodayLayout {
@@ -132,12 +147,51 @@ function LedeShell({
   );
 }
 
+// The lede for a persona whose figures could not be read. It names no number
+// and makes no claim about the book (not empty, not clear, not current) — it
+// says the figures are unavailable, why, and where to look directly.
+function UnavailableLede({
+  testId,
+  icon,
+  subject,
+  reason,
+  cta,
+}: {
+  testId: string;
+  icon: JSX.Element;
+  subject: string;
+  reason: string | null | undefined;
+  cta: { href: string; label: string };
+}) {
+  return (
+    <LedeShell
+      testId={testId}
+      accent="brand"
+      icon={icon}
+      title={<>{subject} unavailable right now</>}
+      detail={cashUnavailableCopy(reason)}
+      cta={{ ...cta, emphasised: false }}
+    />
+  );
+}
+
 // ── land_investor: sourcing / offer / closing momentum ───────────────────────
 // Land investors source raw/vacant land, underwrite, offer, and close. Today
 // leads with deal momentum: how many parcels are live in the pipeline and what
 // they're worth. Honest empty when nothing's in flight — a hunt prompt, never a
 // fabricated count.
 function LandInvestorLede({ data }: { data: TodayLedeData }) {
+  if (data.openDealsCount === null) {
+    return (
+      <UnavailableLede
+        testId="today-lede-land_investor"
+        icon={<Target className="w-4 h-4 text-acr-brand" aria-hidden="true" />}
+        subject="Pipeline figures"
+        reason={data.unavailableReason}
+        cta={{ href: "/deals", label: "Open the pipeline" }}
+      />
+    );
+  }
   const hasPipeline = data.openDealsCount > 0;
   return (
     <LedeShell
@@ -148,7 +202,7 @@ function LandInvestorLede({ data }: { data: TodayLedeData }) {
         hasPipeline ? (
           <>
             {plural(data.openDealsCount, "deal")} in flight
-            {data.openDealsValue > 0 && (
+            {hasValue(data.openDealsValue) && (
               <> · {usd(data.openDealsValue, { noCents: true })} on the table</>
             )}
           </>
@@ -174,6 +228,17 @@ function LandInvestorLede({ data }: { data: TodayLedeData }) {
 // Note investors BUY existing seller-financed notes for yield. Today leads with
 // the tape on the book they OWN: payments due this month + any notes behind.
 function NoteInvestorLede({ data }: { data: TodayLedeData }) {
+  if (data.pendingPayments30 === null || data.lateCount === null) {
+    return (
+      <UnavailableLede
+        testId="today-lede-note_investor"
+        icon={<Coins className="w-4 h-4 text-acr-brand" aria-hidden="true" />}
+        subject="Book figures"
+        reason={data.unavailableReason}
+        cta={{ href: "/money", label: "Open the book" }}
+      />
+    );
+  }
   const hasLate = data.lateCount > 0;
   return (
     <LedeShell
@@ -207,6 +272,17 @@ function NoteInvestorLede({ data }: { data: TodayLedeData }) {
 // openDealsCount honestly counts deals in the pipeline that can be structured
 // into a note; the CTA routes to the note-origination pipeline, not the book.
 function NoteOriginatorLede({ data }: { data: TodayLedeData }) {
+  if (data.openDealsCount === null) {
+    return (
+      <UnavailableLede
+        testId="today-lede-note_originator"
+        icon={<HandCoins className="w-4 h-4 text-acr-brand" aria-hidden="true" />}
+        subject="Origination pipeline figures"
+        reason={data.unavailableReason}
+        cta={{ href: "/notes/pipeline", label: "Open origination pipeline" }}
+      />
+    );
+  }
   const hasPipeline = data.openDealsCount > 0;
   return (
     <LedeShell
@@ -242,6 +318,17 @@ function NoteOriginatorLede({ data }: { data: TodayLedeData }) {
 // frame fee income honestly ("fee income tracks the book you service") rather
 // than invent a dollar figure.
 function NoteServicerLede({ data }: { data: TodayLedeData }) {
+  if (data.pendingPayments30 === null || data.lateCount === null) {
+    return (
+      <UnavailableLede
+        testId="today-lede-note_servicer"
+        icon={<ClipboardList className="w-4 h-4 text-acr-brand" aria-hidden="true" />}
+        subject="Servicing figures"
+        reason={data.unavailableReason}
+        cta={{ href: "/money", label: "Open servicing queue" }}
+      />
+    );
+  }
   const hasLate = data.lateCount > 0;
   const hasBook = data.pendingPayments30 > 0 || data.lateCount > 0;
   return (
@@ -296,6 +383,17 @@ function TaxLienLede({ data: _data }: { data: TodayLedeData }) {
 // fee — speed and a ready buyers list are everything. Leads with contracts in
 // flight; honest empty is a "lock one up" prompt.
 function WholesalerLede({ data }: { data: TodayLedeData }) {
+  if (data.openDealsCount === null) {
+    return (
+      <UnavailableLede
+        testId="today-lede-wholesaler"
+        icon={<Repeat className="w-4 h-4 text-acr-brand" aria-hidden="true" />}
+        subject="Contract figures"
+        reason={data.unavailableReason}
+        cta={{ href: "/deals", label: "Open assignments" }}
+      />
+    );
+  }
   const hasPipeline = data.openDealsCount > 0;
   return (
     <LedeShell
@@ -306,7 +404,7 @@ function WholesalerLede({ data }: { data: TodayLedeData }) {
         hasPipeline ? (
           <>
             {plural(data.openDealsCount, "contract")} to assign
-            {data.openDealsValue > 0 && <> · {usd(data.openDealsValue, { noCents: true })} in spread</>}
+            {hasValue(data.openDealsValue) && <> · {usd(data.openDealsValue, { noCents: true })} in spread</>}
           </>
         ) : (
           "No contracts to assign yet"
@@ -327,6 +425,17 @@ function WholesalerLede({ data }: { data: TodayLedeData }) {
 // the job is moving projects through entitlement and selling lots. Leads with
 // active projects.
 function SubdividerLede({ data }: { data: TodayLedeData }) {
+  if (data.openDealsCount === null) {
+    return (
+      <UnavailableLede
+        testId="today-lede-subdivider"
+        icon={<Layers className="w-4 h-4 text-acr-brand" aria-hidden="true" />}
+        subject="Project figures"
+        reason={data.unavailableReason}
+        cta={{ href: "/deals", label: "Open projects" }}
+      />
+    );
+  }
   const hasProjects = data.openDealsCount > 0;
   return (
     <LedeShell
@@ -337,7 +446,7 @@ function SubdividerLede({ data }: { data: TodayLedeData }) {
         hasProjects ? (
           <>
             {plural(data.openDealsCount, "project")} in progress
-            {data.openDealsValue > 0 && <> · {usd(data.openDealsValue, { noCents: true })} in lot value</>}
+            {hasValue(data.openDealsValue) && <> · {usd(data.openDealsValue, { noCents: true })} in lot value</>}
           </>
         ) : (
           "No subdivision projects yet"
@@ -357,6 +466,17 @@ function SubdividerLede({ data }: { data: TodayLedeData }) {
 // Fix-and-flippers buy distressed, rehab, and resell — holding cost is the
 // enemy, so the lede leads with active flips and pushes one forward.
 function FixFlipperLede({ data }: { data: TodayLedeData }) {
+  if (data.openDealsCount === null) {
+    return (
+      <UnavailableLede
+        testId="today-lede-fix_flipper"
+        icon={<Hammer className="w-4 h-4 text-acr-brand" aria-hidden="true" />}
+        subject="Flip figures"
+        reason={data.unavailableReason}
+        cta={{ href: "/deals", label: "Open flips" }}
+      />
+    );
+  }
   const hasFlips = data.openDealsCount > 0;
   return (
     <LedeShell
@@ -367,7 +487,7 @@ function FixFlipperLede({ data }: { data: TodayLedeData }) {
         hasFlips ? (
           <>
             {plural(data.openDealsCount, "flip")} in progress
-            {data.openDealsValue > 0 && <> · {usd(data.openDealsValue, { noCents: true })} at work</>}
+            {hasValue(data.openDealsValue) && <> · {usd(data.openDealsValue, { noCents: true })} at work</>}
           </>
         ) : (
           "No flips in progress yet"
@@ -388,6 +508,17 @@ function FixFlipperLede({ data }: { data: TodayLedeData }) {
 // only carry the acquisition pipeline, so the lede leads with acquisitions in
 // flight (honest empty otherwise) and points at the portfolio.
 function LandlordLede({ data }: { data: TodayLedeData }) {
+  if (data.openDealsCount === null) {
+    return (
+      <UnavailableLede
+        testId="today-lede-landlord"
+        icon={<Home className="w-4 h-4 text-acr-brand" aria-hidden="true" />}
+        subject="Acquisition figures"
+        reason={data.unavailableReason}
+        cta={{ href: "/deals", label: "Open acquisitions" }}
+      />
+    );
+  }
   const hasPipeline = data.openDealsCount > 0;
   return (
     <LedeShell
@@ -398,7 +529,7 @@ function LandlordLede({ data }: { data: TodayLedeData }) {
         hasPipeline ? (
           <>
             {plural(data.openDealsCount, "acquisition")} in flight
-            {data.openDealsValue > 0 && <> · {usd(data.openDealsValue, { noCents: true })} to add</>}
+            {hasValue(data.openDealsValue) && <> · {usd(data.openDealsValue, { noCents: true })} to add</>}
           </>
         ) : (
           "No acquisitions in flight"

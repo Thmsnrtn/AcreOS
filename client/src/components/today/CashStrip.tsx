@@ -8,13 +8,47 @@ import { DollarSign, TrendingUp, Banknote, ArrowRight } from "lucide-react";
 import { usd, dollarsCompact } from "@/lib/format";
 import { KpiSparkline } from "./KpiSparkline";
 
+// Each figure is `null` when the server could not compute it — today, when
+// the sample-parcel read fails and the real book cannot be split from the
+// onboarding sample (server/routes-today.ts `cash.unavailableReason`). A null
+// figure is UNKNOWN, not zero: it renders as an explicit unavailable state,
+// never "0 active" or "$0". A non-null 0 is a real zero and renders as one.
 interface CashStripProps {
   isLoading: boolean;
-  cashOnHand: number; // dollars; aggregate 30/60/90 projection floor
-  openDealsValue: number; // dollars (pipeline value)
-  openDealsCount: number;
-  pendingPayments30: number; // dollars projected next 30d
-  lateCount: number;
+  cashOnHand: number | null; // dollars; aggregate 30/60/90 projection floor
+  openDealsValue: number | null; // dollars (pipeline value)
+  openDealsCount: number | null;
+  pendingPayments30: number | null; // dollars projected next 30d
+  lateCount: number | null;
+  /** Why the figures above are null, when they are (machine code from the server). */
+  unavailableReason?: string | null;
+}
+
+/**
+ * Plain-language copy for `cash.unavailableReason`. The server sends a code;
+ * the customer reads a sentence. Unknown codes (and a null reason over null
+ * figures) get the generic sentence — the raw code is never shown.
+ */
+export function cashUnavailableCopy(reason: string | null | undefined): string {
+  if (reason === "sample_parcels_unreadable") {
+    return "Your book couldn't be read just now: sample parcels couldn't be told apart from your own, so these figures are withheld rather than guessed.";
+  }
+  return "These figures couldn't be read just now, so they're withheld rather than guessed.";
+}
+
+/**
+ * The visible "—" for a figure that could not be read, with an accessible
+ * name that says so. `data-cash-figure-state` lets a test (or a reviewer)
+ * tell an unread figure from a real zero, which also renders "—" for the
+ * money tiles.
+ */
+function UnavailableFigure({ figure, label, reason }: { figure: string; label: string; reason: string }) {
+  return (
+    <span data-cash-figure={figure} data-cash-figure-state="unavailable" title={reason}>
+      <span aria-hidden="true">—</span>
+      <span className="sr-only">{label} unavailable</span>
+    </span>
+  );
 }
 
 // 90-day per-KPI history arrives on /api/today.cash.*History. CashStrip pulls
@@ -60,6 +94,7 @@ export function CashStrip({
   openDealsCount,
   pendingPayments30,
   lateCount,
+  unavailableReason = null,
 }: CashStripProps) {
   // Shares cache with today.tsx — no extra request.
   const { data: today } = useQuery<CashHistoryPayload>({
@@ -69,6 +104,13 @@ export function CashStrip({
   const cashHistory = today?.cash?.cashHistory ?? [];
   const openDealsHistory = today?.cash?.openDealsValueHistory ?? [];
   const pendingHistory = today?.cash?.pendingPayments30History ?? [];
+  const anyUnavailable =
+    cashOnHand === null ||
+    openDealsValue === null ||
+    openDealsCount === null ||
+    pendingPayments30 === null ||
+    lateCount === null;
+  const reasonCopy = cashUnavailableCopy(unavailableReason);
 
   if (isLoading) {
     // Shaped, not a block. This stood in for a three-column KPI card — icon,
@@ -119,7 +161,13 @@ export function CashStrip({
               </p>
               <div className="flex items-baseline justify-between gap-2">
                 <p className="text-lg font-semibold tabular-nums">
-                  {cashOnHand > 0 ? usd(cashOnHand, { noCents: true }) : "—"}
+                  {cashOnHand === null ? (
+                    <UnavailableFigure figure="cashOnHand" label="Cash position" reason={reasonCopy} />
+                  ) : cashOnHand > 0 ? (
+                    usd(cashOnHand, { noCents: true })
+                  ) : (
+                    "—"
+                  )}
                 </p>
                 <KpiSparkline
                   data={cashHistory}
@@ -141,7 +189,13 @@ export function CashStrip({
               </p>
               <div className="flex items-baseline justify-between gap-2">
                 <p className="text-lg font-semibold tabular-nums">
-                  {openDealsValue > 0 ? dollarsCompact(openDealsValue * 100) : "—"}
+                  {openDealsValue === null ? (
+                    <UnavailableFigure figure="openDealsValue" label="Open deals value" reason={reasonCopy} />
+                  ) : openDealsValue > 0 ? (
+                    dollarsCompact(openDealsValue * 100)
+                  ) : (
+                    "—"
+                  )}
                 </p>
                 <KpiSparkline
                   data={openDealsHistory}
@@ -149,7 +203,13 @@ export function CashStrip({
                 />
               </div>
               <p className="text-caption text-muted-foreground tabular-nums">
-                {openDealsCount} active
+                {openDealsCount === null ? (
+                  <span data-cash-figure="openDealsCount" data-cash-figure-state="unavailable" title={reasonCopy}>
+                    count unavailable
+                  </span>
+                ) : (
+                  <>{openDealsCount} active</>
+                )}
               </p>
             </div>
           </div>
@@ -165,7 +225,13 @@ export function CashStrip({
               </p>
               <div className="flex items-baseline justify-between gap-2">
                 <p className="text-lg font-semibold tabular-nums">
-                  {pendingPayments30 > 0 ? usd(pendingPayments30, { noCents: true }) : "—"}
+                  {pendingPayments30 === null ? (
+                    <UnavailableFigure figure="pendingPayments30" label="Pending payments" reason={reasonCopy} />
+                  ) : pendingPayments30 > 0 ? (
+                    usd(pendingPayments30, { noCents: true })
+                  ) : (
+                    "—"
+                  )}
                 </p>
                 <KpiSparkline
                   data={pendingHistory}
@@ -174,7 +240,7 @@ export function CashStrip({
               </div>
               <p className="text-caption text-muted-foreground tabular-nums inline-flex items-center gap-1">
                 next 30 days
-                {lateCount > 0 && (
+                {lateCount !== null && lateCount > 0 && (
                   <Badge
                     variant="secondary"
                     className="bg-acr-neg-soft text-acr-neg-soft-ink text-micro py-0 px-1.5 tabular-nums"
@@ -185,6 +251,15 @@ export function CashStrip({
               </p>
             </div>
           </div>
+          {anyUnavailable && (
+            <p
+              role="status"
+              data-testid="cash-strip-unavailable"
+              className="sm:col-span-3 text-caption text-muted-foreground"
+            >
+              {reasonCopy}
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

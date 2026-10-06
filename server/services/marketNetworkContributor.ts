@@ -18,7 +18,7 @@
  * comps for all orgs.
  */
 
-import { db } from "../db";
+import { db, withTransaction, type PrimaryDb } from "../db";
 import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
 import { eq, and, or, isNull, count, sql, type SQL } from "drizzle-orm";
 import { createHash } from "crypto";
@@ -81,10 +81,11 @@ function quarterOf(date: Date): string {
 /** Read staging list from agentMemory for a county. Returns parsed array. */
 async function getStagingEntries(
   county: string,
-  state: string
+  state: string,
+  executor: Pick<PrimaryDb, "select"> = db,
 ): Promise<Array<Record<string, any>>> {
   const key = `staging_${county}_${state}`;
-  const rows = await db
+  const rows = await executor
     .select({ value: agentMemory.value })
     .from(agentMemory)
     .where(
@@ -104,26 +105,31 @@ async function getStagingEntries(
 async function setStagingEntries(
   county: string,
   state: string,
-  entries: Array<Record<string, any>>
+  entries: Array<Record<string, any>>,
+  executor: Pick<PrimaryDb, "delete" | "insert"> = db,
 ): Promise<void> {
   const key = `staging_${county}_${state}`;
 
   // Delete existing staging row(s) for this county+state
-  await db
+  await executor
     .delete(agentMemory)
     .where(
       and(
+        // Staging rows are platform rows, written under SYSTEM_ORG_ID only.
+        eq(agentMemory.organizationId, SYSTEM_ORG_ID),
         eq(agentMemory.agentType, "market_network"),
         eq(agentMemory.key, key)
       )
     );
 
-  await db.insert(agentMemory).values({
+  await executor.insert(agentMemory).values({
     organizationId: SYSTEM_ORG_ID,
     agentType: "market_network",
     memoryType: "fact",
     key,
-    value: { entries },
+    // The county and state ride with the list, so a withdrawal that finds an
+    // entry by its dealKey knows which lock to take (W10.4 re-audit).
+    value: { entries, county, state },
     confidence: "1.0",
   });
 }
@@ -155,9 +161,17 @@ export function closedSaleDealKey(orgId: number, dealId: number): string {
   return createHash("sha256").update(`closed-sale:${orgId}:${dealId}`).digest("hex").slice(0, 32);
 }
 
+/**
+ * @param executor  The connection to read through. The close's training write
+ *                  passes its transaction (dealClose.recordClosedSaleTraining),
+ *                  so the evidence it inserts on is read under the same
+ *                  per-deal lock Close & Carry's retraction takes — the read
+ *                  and the write it justifies are one decision (DEFECT-0258).
+ */
 export async function closedSaleEvidence(
   dealId: number,
   orgId: number,
+  executor: Pick<typeof db, "select"> = db,
 ): Promise<
   | {
       ok: true;
@@ -172,7 +186,7 @@ export async function closedSaleEvidence(
     }
   | { ok: false; reason: string }
 > {
-  const [row] = await db
+  const [row] = await executor
     .select({
       type: deals.type,
       status: deals.status,
@@ -202,7 +216,7 @@ export async function closedSaleEvidence(
   // conservatively. A note carried from ANOTHER deal on the same parcel (the
   // investor's own seller-financed purchase) says nothing about this sale's
   // price (audit of e3debe0).
-  const [financed] = await db
+  const [financed] = await executor
     .select({ id: notes.id })
     .from(notes)
     .where(
@@ -233,6 +247,80 @@ export async function closedSaleEvidence(
   };
 }
 
+const stagingLockKey = (county: string, state: string) => `market_network_staging:${county}:${state}`;
+
+async function dealIsClosedNow(executor: Pick<PrimaryDb, "select">, orgId: number, dealId: number): Promise<boolean> {
+  const [now] = await executor
+    .select({ status: deals.status })
+    .from(deals)
+    .where(and(eq(deals.id, dealId), eq(deals.organizationId, orgId)))
+    .limit(1);
+  return now?.status === "closed";
+}
+
+/**
+ * A deal LEFT `closed` (dealClose.recordDealReopen): its staged — not yet
+ * pooled — network entry is withdrawn, under the county lock a contribution
+ * takes, iff the deal is not closed again by then. A staged entry is still
+ * ours: nothing has been published from it.
+ *
+ * The entry is found by its dealKey, not by where the deal is now: a purged
+ * deal has no row to read, and a property edited since the close names a
+ * different county (W10.4 re-audit). The county and state come from the
+ * staging row itself — its value since W10.4, its key (`staging_<county>_<ST>`)
+ * for a list written before — never from the deal.
+ *
+ * A row already flushed into the global `market_metrics` pool is NOT touched
+ * here: changing a shared cross-customer aggregate is DEFECT-0235's founder
+ * decision. It is reported as `pooled` so the caller logs it.
+ */
+export async function withdrawStagedNetworkContribution(
+  orgId: number,
+  dealId: number,
+): Promise<"withdrawn" | "pooled" | "none"> {
+  const dealKey = closedSaleDealKey(orgId, dealId);
+  const holding = await db
+    .select({ key: agentMemory.key, value: agentMemory.value })
+    .from(agentMemory)
+    .where(
+      and(
+        eq(agentMemory.organizationId, SYSTEM_ORG_ID),
+        eq(agentMemory.agentType, "market_network"),
+        sql`${agentMemory.value}->'entries' @> ${JSON.stringify([{ dealKey }])}::jsonb`,
+      ),
+    );
+  const places = new Map<string, { county: string; state: string }>();
+  for (const row of holding) {
+    const v = row.value as { county?: unknown; state?: unknown };
+    // A state code has no underscore, so the key's LAST segment is the state.
+    const fromKey = /^staging_(.+)_([^_]+)$/.exec(row.key);
+    const county = typeof v.county === "string" ? v.county : fromKey?.[1];
+    const state = typeof v.state === "string" ? v.state : fromKey?.[2];
+    if (county && state) places.set(stagingLockKey(county, state), { county, state });
+  }
+  let withdrawn = false;
+  for (const { county, state } of places.values()) {
+    const outcome = await withTransaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${stagingLockKey(county, state)}))`);
+      if (await dealIsClosedNow(tx, orgId, dealId)) return "closed" as const;
+      const staged = await getStagingEntries(county, state, tx);
+      const kept = staged.filter((e) => (e as { dealKey?: unknown }).dealKey !== dealKey);
+      if (kept.length === staged.length) return "absent" as const;
+      await setStagingEntries(county, state, kept, tx);
+      return "withdrawn" as const;
+    });
+    if (outcome === "closed") return "none"; // closed again since: the entry stands
+    if (outcome === "withdrawn") withdrawn = true;
+  }
+  if (withdrawn) return "withdrawn";
+  if (await dealIsClosedNow(db, orgId, dealId)) return "none";
+  const [pooled] = await db
+    .select({ n: count() })
+    .from(marketMetrics)
+    .where(and(isNull(marketMetrics.organizationId), sql`${marketMetrics.economicData}->>'dealKey' = ${dealKey}`));
+  return Number(pooled?.n ?? 0) > 0 ? "pooled" : "none";
+}
+
 export async function contributeClosedDealToNetwork(
   dealId: number,
   orgId: number
@@ -250,132 +338,149 @@ export async function contributeClosedDealToNetwork(
 
     const { county, state, zoning, closingDate, acres, price, dealKey } = evidence;
 
-    // A deal already contributed (closed, reopened, closed again) is not a
-    // second sale.
-    const [already] = await db
-      .select({ n: count() })
-      .from(marketMetrics)
-      .where(and(isNull(marketMetrics.organizationId), sql`${marketMetrics.economicData}->>'dealKey' = ${dealKey}`));
-    const stagedAlready = (await getStagingEntries(county, state)).some(
-      (e) => (e as { dealKey?: unknown }).dealKey === dealKey,
-    );
-    if (Number(already?.n ?? 0) > 0 || stagedAlready) {
-      return { contributed: false, reason: "Deal already contributed" };
-    }
+    // The staging list is ONE agent_memory row per county+state, rewritten
+    // whole (delete + insert): two closes in the same county racing — a bulk
+    // close runs N hooks at once — each read it before either wrote and one
+    // contribution was lost, or both crossed the cohort threshold and the
+    // staged entries were flushed twice. The dedupe read, the cohort count and
+    // the write run in ONE transaction under a per-county lock.
+    return await withTransaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${stagingLockKey(county, state)}))`);
 
-    const pricePerAcre = roundPricePerAcre(price / acres);
-
-    // 2. Build anonymized entry — no APN, no lead names, no org ID
-    const entry = {
-      contributor: contributorTag(orgId),
-      acreageBucket: bucketAcreage(acres),
-      pricePerAcre,          // Rounded to nearest $500
-      zoningCategory: zoning ?? "unknown",
-      saleQuarter: quarterOf(closingDate ?? new Date()),
-      contributedAt: new Date().toISOString(),
-      dealKey,
-      // Operator-entered at close — not a recorded deed price.
-      evidence: "operator_entered_close",
-    };
-
-    // 3. Check existing global pool contribution count for this county
-    const countResult = await db
-      .select({ n: count() })
-      .from(marketMetrics)
-      .where(
-        and(
-          isNull(marketMetrics.organizationId),
-          eq(marketMetrics.county, county),
-          eq(marketMetrics.state, state),
-          sql`${marketMetrics.dataSources}::text LIKE '%network_aggregate%'`
-        )
-      );
-
-    const existingGlobalCount = Number(countResult[0]?.n ?? 0);
-
-    // Also check staging entries
-    const stagingEntries = await getStagingEntries(county, state);
-    const totalAfterThis = existingGlobalCount + stagingEntries.length + 1;
-
-    if (totalAfterThis >= MIN_COHORT_SIZE) {
-      // 4. Write to global marketMetrics pool (organizationId: null)
-      await db.insert(marketMetrics).values({
-        organizationId: null, // ← global pool marker
-        county,
-        state,
-        metricDate: new Date(),
-        periodType: "transaction",
-        averagePricePerAcre: String(pricePerAcre),
-        medianPricePerAcre: String(pricePerAcre),
-        salesVolume: 1,
-        dataSources: [
-          {
-            sourceId: 0,
-            sourceName: "network_aggregate",
-            fetchedAt: new Date().toISOString(),
-          },
-        ],
-        economicData: {
-          contributor: entry.contributor,
-          acreageBucket: entry.acreageBucket,
-          zoningCategory: entry.zoningCategory,
-          saleQuarter: entry.saleQuarter,
-          dealKey: entry.dealKey,
-          evidence: entry.evidence,
-        } as any,
-      });
-
-      // If this was the threshold-breaking contribution, also flush staged entries
-      if (stagingEntries.length > 0) {
-        for (const staged of stagingEntries) {
-          await db.insert(marketMetrics).values({
-            organizationId: null,
-            county,
-            state,
-            metricDate: new Date(staged.contributedAt ?? Date.now()),
-            periodType: "transaction",
-            averagePricePerAcre: String(staged.pricePerAcre),
-            medianPricePerAcre: String(staged.pricePerAcre),
-            salesVolume: 1,
-            dataSources: [
-              {
-                sourceId: 0,
-                sourceName: "network_aggregate",
-                fetchedAt: new Date().toISOString(),
-              },
-            ],
-            economicData: {
-              contributor: staged.contributor ?? null,
-              acreageBucket: staged.acreageBucket,
-              zoningCategory: staged.zoningCategory,
-              saleQuarter: staged.saleQuarter,
-              dealKey: staged.dealKey ?? null,
-              evidence: staged.evidence ?? null,
-            } as any,
-          });
-        }
-        // Clear staging for this county
-        await setStagingEntries(county, state, []);
+      // The close hook is fire-and-forget: a bulk undo may have reopened the
+      // deal before it ran. Decided on the status NOW, under the lock a reopen's
+      // withdrawal also takes — so a sale reversed in time never enters the pool.
+      if (!(await dealIsClosedNow(tx, orgId, dealId))) {
+        return { contributed: false, reason: "Deal is not closed" };
       }
 
-      logger.info(`[marketNetworkContributor] Contributed to global pool for ${county}, ${state} — ` +
-          `total now ${totalAfterThis} (flushed ${stagingEntries.length} staged)`);
-      return {
-        contributed: true,
-        reason: `Contributed to global pool for ${county}, ${state}`,
-      };
-    } else {
-      // 5. Below threshold — stage the entry
-      stagingEntries.push(entry);
-      await setStagingEntries(county, state, stagingEntries);
+      // A deal already contributed (closed, reopened, closed again) is not a
+      // second sale.
+      const [already] = await tx
+        .select({ n: count() })
+        .from(marketMetrics)
+        .where(and(isNull(marketMetrics.organizationId), sql`${marketMetrics.economicData}->>'dealKey' = ${dealKey}`));
+      const stagedAlready = (await getStagingEntries(county, state, tx)).some(
+        (e) => (e as { dealKey?: unknown }).dealKey === dealKey,
+      );
+      if (Number(already?.n ?? 0) > 0 || stagedAlready) {
+        return { contributed: false, reason: "Deal already contributed" };
+      }
 
-      logger.info(`[marketNetworkContributor] Staged contribution for ${county}, ${state} — ` +
-          `${stagingEntries.length}/${MIN_COHORT_SIZE} entries (privacy threshold not yet met)`);
-      return {
-        contributed: false,
-        reason: `Staged for ${county}, ${state} (${stagingEntries.length}/${MIN_COHORT_SIZE} privacy threshold)`,
+      const pricePerAcre = roundPricePerAcre(price / acres);
+
+      // 2. Build anonymized entry — no APN, no lead names, no org ID
+      const entry = {
+        contributor: contributorTag(orgId),
+        acreageBucket: bucketAcreage(acres),
+        pricePerAcre,          // Rounded to nearest $500
+        zoningCategory: zoning ?? "unknown",
+        saleQuarter: quarterOf(closingDate ?? new Date()),
+        contributedAt: new Date().toISOString(),
+        dealKey,
+        // Operator-entered at close — not a recorded deed price.
+        evidence: "operator_entered_close",
       };
-    }
+
+      // 3. Check existing global pool contribution count for this county
+      const countResult = await tx
+        .select({ n: count() })
+        .from(marketMetrics)
+        .where(
+          and(
+            isNull(marketMetrics.organizationId),
+            eq(marketMetrics.county, county),
+            eq(marketMetrics.state, state),
+            sql`${marketMetrics.dataSources}::text LIKE '%network_aggregate%'`
+          )
+        );
+
+      const existingGlobalCount = Number(countResult[0]?.n ?? 0);
+
+      // Also check staging entries
+      const stagingEntries = await getStagingEntries(county, state, tx);
+      const totalAfterThis = existingGlobalCount + stagingEntries.length + 1;
+
+      if (totalAfterThis >= MIN_COHORT_SIZE) {
+        // 4. Write to global marketMetrics pool (organizationId: null)
+        await tx.insert(marketMetrics).values({
+          organizationId: null, // ← global pool marker
+          county,
+          state,
+          metricDate: new Date(),
+          periodType: "transaction",
+          averagePricePerAcre: String(pricePerAcre),
+          medianPricePerAcre: String(pricePerAcre),
+          salesVolume: 1,
+          dataSources: [
+            {
+              sourceId: 0,
+              sourceName: "network_aggregate",
+              fetchedAt: new Date().toISOString(),
+            },
+          ],
+          economicData: {
+            contributor: entry.contributor,
+            acreageBucket: entry.acreageBucket,
+            zoningCategory: entry.zoningCategory,
+            saleQuarter: entry.saleQuarter,
+            dealKey: entry.dealKey,
+            evidence: entry.evidence,
+          } as any,
+        });
+
+        // If this was the threshold-breaking contribution, also flush staged entries
+        if (stagingEntries.length > 0) {
+          for (const staged of stagingEntries) {
+            await tx.insert(marketMetrics).values({
+              organizationId: null,
+              county,
+              state,
+              metricDate: new Date(staged.contributedAt ?? Date.now()),
+              periodType: "transaction",
+              averagePricePerAcre: String(staged.pricePerAcre),
+              medianPricePerAcre: String(staged.pricePerAcre),
+              salesVolume: 1,
+              dataSources: [
+                {
+                  sourceId: 0,
+                  sourceName: "network_aggregate",
+                  fetchedAt: new Date().toISOString(),
+                },
+              ],
+              economicData: {
+                contributor: staged.contributor ?? null,
+                acreageBucket: staged.acreageBucket,
+                zoningCategory: staged.zoningCategory,
+                saleQuarter: staged.saleQuarter,
+                dealKey: staged.dealKey ?? null,
+                evidence: staged.evidence ?? null,
+              } as any,
+            });
+          }
+          // Clear staging for this county
+          await setStagingEntries(county, state, [], tx);
+        }
+
+        logger.info(`[marketNetworkContributor] Contributed to global pool for ${county}, ${state} — ` +
+            `total now ${totalAfterThis} (flushed ${stagingEntries.length} staged)`);
+        return {
+          contributed: true,
+          reason: `Contributed to global pool for ${county}, ${state}`,
+        };
+      } else {
+        // 5. Below threshold — stage the entry
+        stagingEntries.push(entry);
+        await setStagingEntries(county, state, stagingEntries, tx);
+
+        logger.info(`[marketNetworkContributor] Staged contribution for ${county}, ${state} — ` +
+            `${stagingEntries.length}/${MIN_COHORT_SIZE} entries (privacy threshold not yet met)`);
+        return {
+          contributed: false,
+          reason: `Staged for ${county}, ${state} (${stagingEntries.length}/${MIN_COHORT_SIZE} privacy threshold)`,
+        };
+      }
+    });
   } catch (err: any) {
     logger.error("[marketNetworkContributor] contributeClosedDealToNetwork error", err);
     return { contributed: false, reason: `Error: ${err.message}` };

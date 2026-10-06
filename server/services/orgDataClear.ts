@@ -120,7 +120,12 @@ export function buildVictimSubquery(
   return parts.length > 0 ? parts.join(" UNION ") : null;
 }
 
-async function loadBlockingEdges(): Promise<FkEdge[]> {
+/**
+ * Every NO ACTION / RESTRICT foreign key in the live schema. Also read by the
+ * retention purge (auditRepo.purgeOldDeals), which keeps a deal any of them
+ * references rather than cascading it away.
+ */
+export async function loadBlockingEdges(): Promise<FkEdge[]> {
   const result = await db.execute(sql`
     SELECT tc.table_name  AS child,
            kcu.column_name AS child_col,

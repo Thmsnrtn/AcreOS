@@ -243,6 +243,11 @@ describe("and nothing goes back to hand-rolling it", () => {
       why: "YAML, not TypeScript. The canonical stripper is a TS parser and cannot read a workflow file; this is the one shared copy the three workflow gates use.",
     },
     {
+      file: "tests/unit/dealWritersCensus.test.ts",
+      fn: "stripSqlComments",
+      why: "SQL, not TypeScript: it blanks `/* */` and `--` comments inside the SQL TEXT the census has already extracted from parsed string and template literals (the TS comments were never read — the census is a parse). A quote-aware scan, so a `--` inside a SQL string is data.",
+    },
+    {
       file: "scripts/lint-css-hover.mjs",
       fn: "maskCssComments",
       why: "CSS, not TypeScript. The canonical stripper is a TS parser and cannot read a stylesheet; CSS has no line comments and no regex literals, so the class of bug this gate exists for does not arise there.",

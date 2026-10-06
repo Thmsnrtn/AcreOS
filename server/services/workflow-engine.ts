@@ -2810,9 +2810,22 @@ class WorkflowEngine {
       case "property":
         await storage.updateProperty(entityId, updates, context.organizationId);
         break;
-      case "deal":
-        await storage.updateDeal(entityId, updates, undefined, context.organizationId);
+      case "deal": {
+        // The repository decides again at the write: a deal another writer
+        // moved after the check above is a stale write (nothing written), and
+        // the run log must say the action FAILED and why — never "updated".
+        const { DealTransitionRefusedError, StaleDealWriteError } = await import("../storage/dealRepo");
+        try {
+          await storage.updateDeal(entityId, updates, undefined, context.organizationId);
+        } catch (err) {
+          if (err instanceof StaleDealWriteError) {
+            throw new Error(`update_record refused: deal ${entityId} changed while this workflow was writing it — nothing was written`);
+          }
+          if (err instanceof DealTransitionRefusedError) throw new Error(`update_record refused: ${err.refusal}`);
+          throw err;
+        }
         break;
+      }
       default:
         throw new Error(`Unknown entity type: ${entityType}`);
     }

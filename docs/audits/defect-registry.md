@@ -6396,12 +6396,19 @@ Resolving commits: —
 ### DEFECT-0244
 Title: A close reached by advance-stage, a bulk move or Pax is not recorded as a sale
 Severity: P2
-Status: OPEN
+Status: FIXED (W10.4, 2026-10-06)
 Surfaced by lenses: independent audit of e3debe0
 Description: The close side effects (training row, market network, outcome snapshots) run in `PUT /api/deals/:id` only. A deal closed by the other stage-change paths is not contributed. This under-records; it asserts nothing false.
 Evidence: `server/routes-deals.ts`; `server/routes.ts`; `server/ai/tools.ts`.
 Remediation plan: Move the close block behind `recordDealTransitionEvidence` with its evidence rule.
-Resolving commits: —
+Remediation plan: DONE (W10.4). Every close side effect moved out of
+`PUT /api/deals/:id` into one service, `recordDealClose`
+(`server/services/dealClose.ts`), which the repository runs on every real
+transition into closed or cancelled — PUT, advance-stage, PATCH /stage, the
+bulk moves, Pax, autopilot, workflows and voice alike — once per committed
+transition, never on a refused or stale write. A census pins that the close
+effects live only there and that only the repository calls it.
+Resolving commits: the W10.4 commit (see `git log`)
 
 ### DEFECT-0245
 Title: The seller-financing check read any note on the parcel; a carried deal stayed a cash sale; a re-close stayed retracted; an acquisition was the AVM's "actual sale price"
@@ -6554,6 +6561,11 @@ Surfaced by lenses: independent audit of 224a5c0
 Description: (1) The close's training record is written asynchronously; a Close & Carry committed between its evidence read and its insert leaves a carried deal recorded (a narrow race). (2) A gapped workflow run (`completed_with_gaps`) and its error surface on no screen; in the stats it counts toward the total but neither success nor failure. (3) Excluding queue-written `first_mailer_sent` rows does not restore a real send the (org, event) unique index blocked earlier; those orgs read "not hit" until they send again. (4) "Clear sample data" still soft-deletes every deal on a sample parcel through the property cascade — a customer's own deal on a demo parcel included. (5) A presumed-lost breaker probe that reports late can briefly allow a third probe.
 Evidence: `server/routes-deals.ts`; `server/services/workflow-engine.ts`; `server/services/activation.ts`; `server/services/onboarding/sampleSeeder.ts`; `server/services/providers/circuit-breaker.ts`.
 Remediation plan: (1) record at the close inside the status write; (2) show gapped runs where runs are listed; (3) backfill from send logs (founder-run script); (4) sample lineage on deals and notes; (5) tag each probe claim.
+Progress (W10.4): (1) FIXED — the close's evidence read and its training
+insert run in one transaction under a per-deal advisory lock that Close &
+Carry's retraction also takes; a late insert can no longer un-retract a
+carried deal (only a re-close that re-reads evidence under the lock may),
+pinned by `closeTrainingRowRace`. (2)–(5) remain open.
 Resolving commits: —
 
 ### DEFECT-0259
@@ -6745,12 +6757,32 @@ Resolving commits: fourth audit fixes
 ### DEFECT-0276
 Title: Smaller residue of the audit of 1694a0b
 Severity: P2
-Status: OPEN
+Status: FIXED (W10.4, 2026-10-06)
 Surfaced by lenses: independent audit of 1694a0b
 Description: (1) `POST /api/deals`, the CSV deal import (`server/services/importExport.ts`) and an admin route (`server/routes-admin.ts`) accept any status at creation, including `closed`, without the close evidence; `dealRepo.createDeal` enforces nothing, so `OPENING_DEAL_STATUSES` has one production caller (Pax). The rule belongs in the repository insert, with an explicit import-only opt-out. (2) A version race on a non-PUT deal route answers 500 rather than 409. (3) The storage spread gate sees a patch spread only when it is spread inline; a patch copied to a local first is outside what it reads. (4) `runPostCloseAutomation` in `titleChainService` has no caller. (5) `assertWritablePatch` stripped a server-set `updatedAt`, so a touch threw — FIXED here (a `Date` survives; a JSON body cannot carry one): `tests/unit/emptyPatchIsNotAnUpdate.test.ts`. (6) Several mocked tests in this change return fixed rows whatever the WHERE (the ACH in-flight and refund-cap tests), so their predicates are verified by reading, not by the tests. (7) `POST /api/deals/:id/advance-stage` and the command palette move a deal to in_escrow without consulting contract evidence — no event even when a signed document exists. (8) Today's new `samplePropertyIds` read is not wrapped like its neighbouring derivations: if it throws, Today answers 500.
 Evidence: `server/routes-deals.ts`; `server/storage/dealRepo.ts`; `tests/unit/dealStatusWritersHoldTheStateMachine.test.ts`; `server/services/titleChainService.ts`; `server/utils/patch.ts`.
 Remediation plan: (1) decide whether creation at a late stage is an import-only path; (2) give the repository's stale-version refusal (a plain `Error` today) its own type and answer 409 on every route that writes a deal; (3) follow a local to its spread, or ban the copy; (4) wire it behind the close evidence or delete it.
-Resolving commits: fourth audit fixes (5 only)
+Remediation plan: DONE (W10.4, 2026-10-06).
+(1) `dealRepo.createDeal(deal, tx?, { creation })` refuses a non-opening
+status by default (`DealCreationRefusedError`, 400 naming the allowed
+statuses); "import" and "sample" accept only `DEAL_STATUSES` members and
+never run close effects. (2) `updateDeal` writes with `status = <pre-read>`
+in its WHERE; a row that moved underneath throws `StaleDealWriteError`, and
+every deal-writing route answers it 409 through one mapper
+(`server/utils/dealWriteErrors.ts`, `Errors.conflict`); advance-stage no
+longer answers 500. (3) The storage spread gate parses and follows a value
+through locals, chains, reassignment, rest-destructure, `Object.assign` and
+callbacks (14 canaries). (4) `runPostCloseAutomation` deleted — no caller,
+and it reported actions it never performed. (7) advance-stage emits
+`deal.contract_signed` exactly when a signed document exists (one emitter,
+`emitContractSignedIfEvidenced`). (8) Today's sample-parcel read is wrapped:
+on failure the split-dependent figures are `null` with a reason, never 0 and
+never a 500 (client renders "unavailable"). (6) carried to DEFECT-0295.
+Falsified by: `oneCloseWriter`, `dealWriteConflicts`,
+`dealCreationOpeningStatus`, `dealWritersCensus`,
+`dealStatusWritersHoldTheStateMachine` (spread gate),
+`todaySampleReadFailureIsUnavailable`, `todayCashUnavailableIsNotZero`.
+Resolving commits: fourth audit fixes (5); the W10.4 commit (see `git log`)
 
 ### DEFECT-0277
 Title: Suppressed-piece refunds skipped before DEFECT-0271 were never repaid
@@ -7035,6 +7067,69 @@ portalled popper primitive uses resolves above every z token the dialog and
 sheet use; red with select back at z-floating), and the wedge E2E list step.
 Resolving commits: the W10.3 CI follow-up commit (see `git log`)
 
+### DEFECT-0295
+Title: W10.4 residue — demo deals counted as real, and tests that cannot see their predicates
+Severity: P2
+Status: OPEN
+Surfaced by lenses: W10.4 builders (2026-10-06)
+Description: (1) The admin seed-demo route (`server/routes-admin.ts`) is
+gated to owners/admins, and its parcels and (since the W10.4 re-audit) its
+leads carry the sample markers; members still see the button and get a
+refusal toast. (2) Carried from DEFECT-0276 (6):
+several mocked tests return fixed rows whatever the WHERE (the ACH in-flight
+and refund-cap tests), so their predicates are verified by reading, not by
+the tests — the WHERE-evaluating fake added in W10.4
+(`tests/helpers/fakeDealsDb.ts`) is the pattern to port. (3) The close
+effects are now fire-and-forget on every path; PUT used to await the team
+event and lead-scoring conversion before answering. (4) A reopened deal's
+market-network contribution already FLUSHED into the shared pool is still
+not retracted (DEFECT-0235, founder); since the W10.4 re-audit a
+contribution is decided on the deal's status under the county lock and a
+reopen withdraws a still-STAGED entry, so a quick undo no longer publishes.
+(5) The network contribution reads `closedSaleEvidence` outside the
+per-deal lock and Close & Carry never retracts it, so a carried,
+seller-financed price can still land in the shared pool — DEFECT-0258 (1)'s
+shape on a second output, pre-existing. (6) The `offer_acceptance` snapshot
+(accepted / countered / declined-on-cancel) still runs only in
+`PUT /api/deals/:id`; a cancel by Kanban, bulk, Pax or autopilot never pairs
+it. (7) Only the WON side of re-entry is
+de-duplicated: close → undo → cancel records both a "won" and a "lost"
+calibration and snapshot for one deal, and a deal closed before W10.4
+through a non-PUT path has no `deal_won` row, so its first re-close after an
+undo runs the once-per-deal effects once. (8) Behaviour change to note:
+every exit from `closed` — including deleting a closed deal, but not a
+retention purge — now removes its unpaid commission or flags a paid one for
+review (the flag shows on the commissions page and clears on a re-close).
+(9) From the W10.4 re-audit, not fixed: the deal-writer census attributes a
+`router.route("/a").put(…)` or const-path registration to no handler (it
+fails safe, under the non-route register); its "maps" check accepts a
+mapper in dead code; `scripts/founder-autonomy/seed-cohort.ts` inserts
+deals with non-vocabulary statuses outside the server population
+(simulation-only). Settings → Clear data hard-deletes closed deals without
+retracting their training rows or owed commissions (pre-existing). (The
+retention purge no longer fails on a referenced deal: it reads every NO
+ACTION child of `deals` from the live catalog, deletes only unreferenced
+deals and reports how many it kept.) (10) From the third W10.4 audit, not
+fixed: the purge reads only DIRECT blocking children of `deals`, so a future
+NO ACTION key into a CASCADE child (e.g. `title_orders`) would fail its
+batch; `orgDataClear.loadBlockingEdges` reads `information_schema`, whose
+`constraint_column_usage` shows only tables the current role owns and
+cross-joins a multi-column key (`pg_constraint` with `unnest(conkey,
+confkey)` is the fix, and it serves Clear data too); `keptLinked` is counted
+in a second statement, so a deal closed meanwhile is reported as kept for a
+reference. Legacy staging rows may be duplicated per key (no unique index;
+`getStagingEntries` reads one). The spread gate still misses destructuring
+ASSIGNMENT, holders assigned after declaration or nested, `Object.assign(p,
+...[u])`, `reduce` callbacks and a HOF-wrapped top-level entry, and flags a
+nested function that shadows a tainted name; `.set` also matches `Map.set`.
+None of these shapes exists in server/ today.
+Evidence: the files named.
+Remediation plan: port the WHERE-evaluating fake to the money tests;
+decide whether any close effect must complete before the response; take the
+per-deal lock and evidence read in the network contribution and retract it
+on Carry; move the offer_acceptance pairing into the transition hook.
+Resolving commits: —
+
 ### REFUTED AT HEAD, 2026-09-27
 
 The research report ("AcreOS at full maturity", pinned at `a2dc971`) was
@@ -7071,10 +7166,10 @@ not implemented against.
 
 | Status | P0 | P1 | P2 | Total |
 |--------|-----|-----|-----|-------|
-| OPEN   | 0   | 0   | 19  | 19    |
-| FIXED  | 14  | 137 | 122 | 273   |
+| OPEN   | 0   | 0   | 18  | 18    |
+| FIXED  | 14  | 137 | 124 | 275   |
 | DEFERRED | 0 | 2   | 0   | 2     |
-| **Total** | **14** | **139** | **141** | **294** |
+| **Total** | **14** | **139** | **142** | **295** |
 
 Recounted from the entries themselves on 2026-09-28 (184 `### DEFECT-` blocks
 by their Status and Severity lines; DEFECT-0063 PARTIALLY FIXED is counted as

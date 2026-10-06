@@ -287,7 +287,18 @@ class AcreOSValuationModel {
      * dealKey). When given it IS the transaction hash, so recording the same
      * source twice is a no-op and a correction can find and retract it.
      */
-    opts: { dedupeKey?: string } = {},
+    opts: {
+      dedupeKey?: string;
+      /** Run the INSERT on this transaction (the close's locked evidence+insert tx). */
+      tx?: Pick<typeof db, "insert">;
+      /**
+       * ONLY dealClose's locked path sets this: the evidence was re-read in
+       * this same transaction under the per-deal training lock and the sale
+       * qualifies NOW, so a retracted row (a reopen, then a genuine re-close)
+       * is reaffirmed live. Every other insert never un-retracts.
+       */
+      reaffirmUnderLock?: boolean;
+    } = {},
   ): Promise<string> {
     try {
       // transaction_training is intentionally anonymized — no organizationId,
@@ -301,7 +312,7 @@ class AcreOSValuationModel {
       const transactionHash =
         opts.dedupeKey ??
         `${transactionData.location.state}|${transactionData.location.county}|${transactionData.acres}|${transactionData.salePrice}|${transactionData.saleDate.toISOString()}`;
-      const [record] = await db.insert(transactionTraining).values({
+      const [record] = await (opts.tx ?? db).insert(transactionTraining).values({
         transactionHash,
         state: transactionData.location.state,
         county: transactionData.location.county,
@@ -320,12 +331,19 @@ class AcreOSValuationModel {
         // Its org, so it is this org's comp and nobody else's (ruling #11).
         contributorOrgId: Number.isInteger(Number(organizationId)) ? Number(organizationId) : null,
       })
-        // The same source recorded again (a re-closed deal) is not a second
-        // sale — but it IS the current truth about that sale: a deal reopened
-        // (retracted) and closed again is restored with its corrected figures,
-        // not left an outlier forever (audit of e3debe0). Only the
-        // contributing org's own keyed row is ever rewritten; an unkeyed
-        // re-import still just dedupes.
+        // The same source recorded again is not a second sale, but a live
+        // (un-retracted) keyed row takes the current figures. A RETRACTED row
+        // is not un-retracted by an ordinary insert (DEFECT-0258 (1), W10.4):
+        // a retraction is a finding that the close was not a cash sale (Close
+        // & Carry) or is no longer one (reopen / delete), and an insert whose
+        // evidence was read before that finding used to land after it with
+        // `isOutlier: false` and restore a seller-financed contract total as a
+        // comp. The one exception is `reaffirmUnderLock`: dealClose re-read
+        // the evidence in this transaction, under the per-deal lock every
+        // retraction also takes, and it qualifies now — a reopened deal
+        // genuinely closed again gets its comp back with its current figures
+        // (audit of e3debe0). Only the contributing org's own keyed row is
+        // ever rewritten; an unkeyed re-import still just dedupes.
         .onConflictDoUpdate({
           target: transactionTraining.transactionHash,
           set: {
@@ -334,11 +352,17 @@ class AcreOSValuationModel {
             sizeAcres: String(transactionData.acres),
             pricePerAcre: String(transactionData.pricePerAcre),
             dataQuality,
-            isOutlier: false,
+            ...(opts.dedupeKey && opts.reaffirmUnderLock === true ? { isOutlier: false } : {}),
           },
-          setWhere: opts.dedupeKey
-            ? eq(transactionTraining.contributorOrgId, Number(organizationId))
-            : sql`false`,
+          setWhere: !opts.dedupeKey
+            ? sql`false`
+            : opts.reaffirmUnderLock === true
+              ? eq(transactionTraining.contributorOrgId, Number(organizationId))
+              : and(
+                  eq(transactionTraining.contributorOrgId, Number(organizationId)),
+                  // NULL (a legacy row) is not a retraction; only `true` is.
+                  sql`${transactionTraining.isOutlier} is not true`,
+                ),
         })
         .returning();
 
@@ -355,8 +379,13 @@ class AcreOSValuationModel {
    * the training read, without deleting the row. Only the contributing org's
    * own row is touched.
    */
-  async retractTrainingTransaction(organizationId: number, dedupeKey: string): Promise<boolean> {
-    const rows = await db
+  async retractTrainingTransaction(
+    organizationId: number,
+    dedupeKey: string,
+    /** The locked transaction (dealClose.retractClosedSaleTraining) to write on. */
+    tx: Pick<typeof db, "update"> = db,
+  ): Promise<boolean> {
+    const rows = await tx
       .update(transactionTraining)
       .set({ isOutlier: true, dataQuality: "low" })
       .where(and(eq(transactionTraining.transactionHash, dedupeKey), eq(transactionTraining.contributorOrgId, organizationId)))

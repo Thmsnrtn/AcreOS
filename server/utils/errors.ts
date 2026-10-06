@@ -219,6 +219,17 @@ export const Errors = {
     );
   },
 
+  /**
+   * 409 — the write lost a race: the row changed between the read the
+   * request was decided on and the write that would have applied it (a
+   * conditional UPDATE matched zero rows). Nothing was written; the caller
+   * reloads and decides again. Distinct from 400 (the request was wrong) —
+   * the same request may well succeed against the current state.
+   */
+  conflict(res: Response, message: string, details?: unknown, opts?: ErrorOptions): void {
+    sendError(res, 409, "CONFLICT", message, details, buildDocsUrl(opts));
+  },
+
   forbidden(res: Response, message?: string, opts?: ErrorOptions): void {
     const finalMessage =
       message && message.length > 0

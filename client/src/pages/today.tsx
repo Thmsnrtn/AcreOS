@@ -56,12 +56,16 @@ interface TodayPayload {
   // to real rows (pax_sends, completed payments, successful scheduled-task
   // runs). Empty → render nothing.
   receipts?: ReceiptItem[];
+  // Each figure is null when the server could not compute it (the real book
+  // could not be split from the sample parcels); unavailableReason names why.
+  // Null is passed through to the strip and the lede — never coerced to 0.
   cash: {
-    cashOnHand: number;
-    openDealsValue: number;
-    openDealsCount: number;
-    pendingPayments30: number;
-    lateCount: number;
+    cashOnHand: number | null;
+    openDealsValue: number | null;
+    openDealsCount: number | null;
+    pendingPayments30: number | null;
+    lateCount: number | null;
+    unavailableReason?: string | null;
   };
   activity: unknown[];
   meta: {
@@ -778,10 +782,11 @@ export default function TodayPage() {
       {!showEmptyState && !todayError && todayLayout.Lede && (
         <todayLayout.Lede
           data={{
-            pendingPayments30: cash?.pendingPayments30 ?? 0,
-            lateCount: cash?.lateCount ?? 0,
-            openDealsCount: cash?.openDealsCount ?? 0,
-            openDealsValue: cash?.openDealsValue ?? 0,
+            pendingPayments30: cash?.pendingPayments30 ?? null,
+            lateCount: cash?.lateCount ?? null,
+            openDealsCount: cash?.openDealsCount ?? null,
+            openDealsValue: cash?.openDealsValue ?? null,
+            unavailableReason: cash?.unavailableReason ?? null,
           }}
         />
       )}
@@ -805,11 +810,12 @@ export default function TodayPage() {
       {!showEmptyState && !todayError && (
         <CashStrip
           isLoading={todayLoading}
-          cashOnHand={cash?.cashOnHand ?? 0}
-          openDealsValue={cash?.openDealsValue ?? 0}
-          openDealsCount={cash?.openDealsCount ?? 0}
-          pendingPayments30={cash?.pendingPayments30 ?? 0}
-          lateCount={cash?.lateCount ?? 0}
+          cashOnHand={cash?.cashOnHand ?? null}
+          openDealsValue={cash?.openDealsValue ?? null}
+          openDealsCount={cash?.openDealsCount ?? null}
+          pendingPayments30={cash?.pendingPayments30 ?? null}
+          lateCount={cash?.lateCount ?? null}
+          unavailableReason={cash?.unavailableReason ?? null}
         />
       )}
 

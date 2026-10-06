@@ -927,7 +927,7 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
           bidDate: new Date(),
           updatedAt: new Date(),
         })
-        .where(eq(taxSaleListings.id, id));
+        .where(and(eq(taxSaleListings.id, id), eq(taxSaleListings.organizationId, org.id)));
 
       // The handoff. The bid log above is already committed, so a refusal here
       // never loses the operator's record of the win — it comes back as
@@ -958,7 +958,7 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
       await drizzleDb
         .update(taxSaleListings)
         .set({ status: "lost", updatedAt: new Date() })
-        .where(eq(taxSaleListings.id, id));
+        .where(and(eq(taxSaleListings.id, id), eq(taxSaleListings.organizationId, org.id)));
     }
 
     res.status(201).json({ entry, certificate });

@@ -475,7 +475,11 @@ function RetentionPoliciesPanel() {
       queryClient.invalidateQueries();
       toast({
         title: "Data purged",
-        description: `${data.purgedCount} ${data.dataType} records have been deleted.`,
+        description:
+          `${data.purgedCount} ${data.dataType} records have been deleted.` +
+          (data.keptCount > 0
+            ? ` ${data.keptCount} were kept because documents, checklists or other records still reference them.`
+            : ""),
       });
     },
     onError: (err: unknown) => {

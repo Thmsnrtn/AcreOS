@@ -77,6 +77,8 @@ interface CommissionRecord {
   totalOwedCents: number;
   paidCents: number;
   status: "owed" | "partial" | "paid";
+  /** Set when the deal left `closed` after payments were made: a person decides. */
+  reviewFlag?: { reason: string; flaggedAt: string };
 }
 
 interface AgentSummary {
@@ -535,6 +537,12 @@ export default function CommissionsPage({ intro }: { intro?: ReactNode } = {}) {
                               <TableCell className="tabular-nums">{money(r.paidCents)}</TableCell>
                               <TableCell>
                                 <StatusBadge status={r.status} />
+                                {r.reviewFlag && (
+                                  <span className="mt-1 block" data-testid={`commission-review-${r.id}`}>
+                                    <CanonicalStatusBadge status="warning" label="Needs review" />
+                                    <span className="mt-0.5 block text-xs text-muted-foreground">{r.reviewFlag.reason}</span>
+                                  </span>
+                                )}
                               </TableCell>
                             </TableRow>
                           );

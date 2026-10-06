@@ -695,14 +695,20 @@ export function registerImportExportRoutes(app: Express): void {
       
       const date = new Date(beforeDate);
       let purgedCount = 0;
+      // Closed deals that documents, checklists or the close's own records
+      // still reference are kept, never cascaded away, and said so.
+      let keptCount: number | undefined;
       
       switch (dataType) {
         case "leads":
           purgedCount = await storage.purgeOldLeads(orgId, date);
           break;
-        case "closedDeals":
-          purgedCount = await storage.purgeOldDeals(orgId, date, "closed");
+        case "closedDeals": {
+          const r = await storage.purgeOldDeals(orgId, date, "closed");
+          purgedCount = r.purged;
+          keptCount = r.keptLinked;
           break;
+        }
         case "auditLogs":
           purgedCount = await storage.purgeOldAuditLogs(orgId, date);
           break;
@@ -723,13 +729,14 @@ export function registerImportExportRoutes(app: Express): void {
         changes: null,
         metadata: {
           beforeDate: beforeDate,
-          purgedCount
+          purgedCount,
+          ...(keptCount !== undefined ? { keptCount } : {}),
         },
         ipAddress: clientIpOrNull(req),
         userAgent: req.headers["user-agent"],
       });
       
-      res.json({ purgedCount, dataType, beforeDate });
+      res.json({ purgedCount, dataType, beforeDate, ...(keptCount !== undefined ? { keptCount } : {}) });
     } catch (error: any) {
       logger.error("Purge data error", error);
       Errors.internal(res, error);

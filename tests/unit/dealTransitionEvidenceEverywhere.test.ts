@@ -25,6 +25,9 @@ const H = vi.hoisted(() => ({
   retracted: [] as Array<[number, string]>,
   before: null as null | { status: string; propertyId: number | null },
   after: null as null | Record<string, unknown>,
+  /** Set once the UPDATE has run: later reads see the committed row (`after`). */
+  committed: false,
+  commissionRetracted: [] as unknown[][],
 }));
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock("../../server/services/eventMeshPublisher", () => ({
@@ -43,6 +46,9 @@ vi.mock("../../server/services/acreOSValuation", () => ({
 vi.mock("../../server/services/marketNetworkContributor", () => ({
   closedSaleDealKey: (o: number, d: number) => `key-${o}-${d}`,
 }));
+vi.mock("../../server/services/commissionService", () => ({
+  retractDealCommission: async (...a: unknown[]) => (H.commissionRetracted.push(a), { removed: 1, flagged: 0 }),
+}));
 vi.mock("../../server/db", () => {
   const chain = (rows: () => unknown[]) => {
     const c: Record<string, unknown> = {};
@@ -50,12 +56,16 @@ vi.mock("../../server/db", () => {
     c.then = (f: (v: unknown) => unknown, r?: (e: unknown) => unknown) => Promise.resolve(rows()).then(f, r);
     return c;
   };
-  return {
-    db: {
-      select: () => chain(() => (H.before ? [H.before] : [])),
-      update: () => chain(() => (H.after ? [H.after] : [])),
-    },
+  const db = {
+    // The reopen retraction re-reads the deal's CURRENT status under its lock
+    // (W10.4 audit finding 5), so a read after the write sees the write.
+    select: () => chain(() => (H.committed && H.after ? [H.after] : H.before ? [H.before] : [])),
+    update: () => chain(() => ((H.committed = true), H.after ? [H.after] : [])),
+    // The reopen retraction runs under the per-deal training lock
+    // (dealClose.withDealTrainingLock, W10.4): a transaction + advisory lock.
+    execute: async () => [],
   };
+  return { db, withTransaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(db) };
 });
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -117,6 +127,8 @@ beforeEach(() => {
   H.retracted = [];
   H.before = null;
   H.after = null;
+  H.committed = false;
+  H.commissionRetracted = [];
 });
 
 describe("every deal status write passes the repository, which records the evidence", () => {
@@ -166,7 +178,10 @@ describe("the repository records the evidence on a real transition", () => {
     await dealRepo.updateDeal.call({} as never, 9, { status: "negotiating" }, undefined, 5, { backwardUndo: true });
     await new Promise((r) => setTimeout(r, 20));
     expect(H.retracted).toEqual([[5, "deal:key-5-9"]]);
+    // …and its commission (an unpaid one removed, a paid one flagged — W10.4 audit finding 2).
+    expect(H.commissionRetracted).toEqual([[5, 9, "Deal left closed (now negotiating)"]]);
 
+    H.committed = false;
     H.before = { status: "negotiating", propertyId: 3 };
     H.after = { id: 9, organizationId: 5, status: "offer_sent", offerAmount: "12000", propertyId: 3 };
     await dealRepo.updateDeal.call({} as never, 9, { status: "offer_sent" }, undefined, 5);

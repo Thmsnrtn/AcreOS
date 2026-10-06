@@ -227,10 +227,10 @@ export interface IStorage {
   getDeals(orgId: number): Promise<Deal[]>;
   getDeal(orgId: number, id: number): Promise<Deal | undefined>;
   getDealsByIds(orgId: number, ids: number[]): Promise<Deal[]>;
-  createDeal(deal: InsertDeal & { organizationId: number }): Promise<Deal>;
-  updateDeal(id: number, updates: Partial<InsertDeal>, expectedUpdatedAt?: Date, organizationId?: number, opts?: { backwardUndo?: boolean }): Promise<Deal>;
+  createDeal(deal: InsertDeal & { organizationId: number }, tx?: import("./db").PrimaryDb, opts?: { creation?: import("./storage/dealRepo").DealCreationKind }): Promise<Deal>;
+  updateDeal(id: number, updates: Partial<InsertDeal>, expectedUpdatedAt?: Date, organizationId?: number, opts?: { backwardUndo?: boolean; context?: import("./services/dealClose").DealWriteContext }): Promise<Deal>;
   bulkDeleteDeals(orgId: number, ids: number[]): Promise<number>;
-  bulkUpdateDeals(orgId: number, ids: number[], updates: Partial<InsertDeal>): Promise<number>;
+  bulkUpdateDeals(orgId: number, ids: number[], updates: Partial<InsertDeal>, opts?: { context?: import("./services/dealClose").DealWriteContext }): Promise<number>;
   
   // Paginated Deals
   getDealsPaginated(orgId: number, options: PaginationOptions, filters?: { book?: "client" | "own_investment" }): Promise<PaginatedResult<Deal>>;
@@ -647,7 +647,7 @@ export interface IStorage {
 
   // Data Retention (20.3)
   purgeOldLeads(orgId: number, beforeDate: Date): Promise<number>;
-  purgeOldDeals(orgId: number, beforeDate: Date, status: string): Promise<number>;
+  purgeOldDeals(orgId: number, beforeDate: Date, status: string): Promise<{ purged: number; keptLinked: number }>;
   purgeOldAuditLogs(orgId: number, beforeDate: Date): Promise<number>;
   purgeOldCommunications(orgId: number, beforeDate: Date): Promise<number>;
 

@@ -8,6 +8,7 @@ import {
 } from "../storage/wholeBookReads";
 import { insertLeadSchema, insertPropertySchema, insertDealSchema, acquiredNotes, leads } from "@shared/schema";
 import { leadsIncludingDeleted } from "../storage/liveLeads";
+import { DEAL_STATUSES, isDealStatus, type DealStatus } from "@shared/lifecycle/pipeline-status";
 import { and, eq, sql } from "drizzle-orm";
 import { storage } from "../storage";
 import { db } from "../db";
@@ -248,6 +249,23 @@ const propertyImportSchema = insertPropertySchema.extend({
   sizeAcres: z.string().min(1, "Size is required").or(z.number()),
 });
 
+/**
+ * A deal row's status, read honestly (DEFECT-0276 (1)). An empty cell is no
+ * status — the row takes the schema default, exactly as a create with no
+ * status does. Anything else must BE a deal status: case, surrounding
+ * whitespace and a space or hyphen for the underscore are forgiven ("In
+ * Escrow" is in_escrow), but a word the vocabulary does not contain ("Won",
+ * "closing", "pending") is refused and counted against the row. It used to be
+ * written as-is, and an empty one silently became "negotiating".
+ */
+function readImportedDealStatus(raw: string | null | undefined): { status: DealStatus | undefined } | { refusal: string } {
+  const trimmed = (raw ?? "").trim();
+  if (trimmed === "") return { status: undefined };
+  const normalized = trimmed.toLowerCase().replace(/[\s-]+/g, "_");
+  if (isDealStatus(normalized)) return { status: normalized };
+  return { refusal: `Unknown deal status "${trimmed}" — expected one of: ${DEAL_STATUSES.join(", ")}` };
+}
+
 const dealImportSchema = insertDealSchema.extend({
   propertyId: z.number().or(z.string().transform((v) => parseInt(v, 10))),
   type: z.string().min(1, "Type is required"),
@@ -319,6 +337,8 @@ function validateRow(
   } else if (entityType === "deals") {
     if (!row.propertyId) errors.push("Property ID is required");
     if (!row.type) errors.push("Type is required");
+    const status = readImportedDealStatus(row.status);
+    if ("refusal" in status) errors.push(status.refusal);
   }
 
   return { valid: errors.length === 0, errors };
@@ -625,16 +645,25 @@ export async function importDeals(
         throw new Error("Invalid property ID");
       }
 
+      const status = readImportedDealStatus(row.status);
+      if ("refusal" in status) {
+        throw new Error(status.refusal);
+      }
+
       const property = await storage.getProperty(organizationId, propertyId);
       if (!property) {
         throw new Error("Property not found or doesn't belong to this organization");
       }
 
+      // An import carries history: a row may already be closed or in escrow
+      // (any real deal status — the repository still refuses anything else),
+      // and an imported close runs no close effects. No status → the schema
+      // default.
       const createdDeal = await storage.createDeal({
         organizationId,
         propertyId,
         type: row.type || "acquisition",
-        status: row.status || "negotiating",
+        ...(status.status ? { status: status.status } : {}),
         offerAmount: row.offerAmount || null,
         counterAmount: row.counterAmount || null,
         acceptedAmount: row.acceptedAmount || null,
@@ -642,7 +671,7 @@ export async function importDeals(
         titleCompany: row.titleCompany || null,
         escrowNumber: row.escrowNumber || null,
         notes: row.notes || null,
-      });
+      }, undefined, { creation: "import" });
 
       result.successCount++;
       if (options.durableEvents) await emitDealCreatedDurably(organizationId, createdDeal);

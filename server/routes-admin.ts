@@ -40,6 +40,8 @@ import { isFounderIdentity } from "./services/founder";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 import { Errors, sendError } from "./utils/errors";
+import { sendDealWriteError } from "./utils/dealWriteErrors";
+import { SAMPLE_APN_PREFIX, SAMPLE_LEAD_SOURCE } from "./services/onboarding/sampleSeeder";
 import { getUserId, getOrganization, getClerkAuth, type AuthenticatedRequest } from "./types/request";
 
 import { sanitizePromptInline } from "./utils/sanitizePrompt";
@@ -537,7 +539,15 @@ export function registerAdminRoutes(app: Express): void {
   // DEMO DATA SEEDING
   // ============================================
   
-  api.post("/api/seed-demo-data", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // Gated (W10.4 audit finding 10): this writes leads, properties, closed and
+  // in-escrow deals and notes into the org's workspace in one call, and any
+  // member — even a viewer — could call it. Bulk record creation is what
+  // `canImportData` governs (owner + admin; the Settings Developer Tools panel
+  // is its one caller). Its parcels carry the SAMPLE- APN marker, so every
+  // money surface, milestone and close effect treats them as the sample book
+  // (onboarding/sampleFilters.ts) — they were real-format APNs counted as the
+  // customer's own closed deals.
+  api.post("/api/seed-demo-data", isAuthenticated, getOrCreateOrg, requirePermission("canImportData"), async (req, res) => {
     try {
       const org = req.organization;
       
@@ -558,18 +568,21 @@ export function registerAdminRoutes(app: Express): void {
         // intermediate so the org id reaches the DB write.
         // TODO(tsc): storage.ts IStorage decl for createLead should be
         // `InsertLead & { organizationId: number }` to match leadRepo impl.
-        const leadInput: InsertLead & { organizationId: number } = { ...lead, organizationId: org.id };
+        // Sample-marked like the parcels (W10.4 re-audit, finding 11): a demo
+        // lead with a real channel ("tax_list", "facebook") was counted as the
+        // customer's own pipeline and survived the sample clear.
+        const leadInput: InsertLead & { organizationId: number } = { ...lead, source: SAMPLE_LEAD_SOURCE, organizationId: org.id };
         const created = await storage.createLead(leadInput);
         createdLeads.push(created);
       }
       
       // Sample properties
       const demoProperties = [
-        { apn: "123-45-678", county: "Cochise", state: "AZ", sizeAcres: "5.2", status: "owned", purchasePrice: "8500", marketValue: "15000", description: "Beautiful 5+ acre parcel with mountain views near Willcox" },
-        { apn: "234-56-789", county: "Mohave", state: "AZ", sizeAcres: "2.5", status: "listed", purchasePrice: "3200", listPrice: "7900", marketValue: "7500", description: "2.5 acre lot in Golden Valley with road access" },
-        { apn: "345-67-890", county: "Luna", state: "NM", sizeAcres: "10.0", status: "owned", purchasePrice: "5000", marketValue: "12000", description: "10 acres of open desert land near Deming" },
-        { apn: "456-78-901", county: "Navajo", state: "AZ", sizeAcres: "1.25", status: "prospect", assessedValue: "4500", marketValue: "6000", description: "1.25 acre residential lot in Show Low area" },
-        { apn: "567-89-012", county: "Pinal", state: "AZ", sizeAcres: "40.0", status: "under_contract", purchasePrice: "28000", marketValue: "55000", description: "40 acre ranch parcel with well and power nearby" },
+        { apn: `${SAMPLE_APN_PREFIX}123-45-678`, county: "Cochise", state: "AZ", sizeAcres: "5.2", status: "owned", purchasePrice: "8500", marketValue: "15000", description: "Beautiful 5+ acre parcel with mountain views near Willcox" },
+        { apn: `${SAMPLE_APN_PREFIX}234-56-789`, county: "Mohave", state: "AZ", sizeAcres: "2.5", status: "listed", purchasePrice: "3200", listPrice: "7900", marketValue: "7500", description: "2.5 acre lot in Golden Valley with road access" },
+        { apn: `${SAMPLE_APN_PREFIX}345-67-890`, county: "Luna", state: "NM", sizeAcres: "10.0", status: "owned", purchasePrice: "5000", marketValue: "12000", description: "10 acres of open desert land near Deming" },
+        { apn: `${SAMPLE_APN_PREFIX}456-78-901`, county: "Navajo", state: "AZ", sizeAcres: "1.25", status: "prospect", assessedValue: "4500", marketValue: "6000", description: "1.25 acre residential lot in Show Low area" },
+        { apn: `${SAMPLE_APN_PREFIX}567-89-012`, county: "Pinal", state: "AZ", sizeAcres: "40.0", status: "under_contract", purchasePrice: "28000", marketValue: "55000", description: "40 acre ranch parcel with well and power nearby" },
       ];
       
       const createdProperties = [];
@@ -594,7 +607,9 @@ export function registerAdminRoutes(app: Express): void {
       for (const deal of demoDeals) {
         if (deal.propertyId == null) continue;
         const dealInput: InsertDeal & { organizationId: number } = { ...deal, propertyId: deal.propertyId, organizationId: org.id };
-        await storage.createDeal(dealInput);
+        // Demo fixtures, not observed sales: a "sample" creation may be born
+        // closed or in escrow (any real deal status), and no close effects run.
+        await storage.createDeal(dealInput, undefined, { creation: "sample" });
       }
       
       // Sample notes (seller financing)
@@ -649,7 +664,15 @@ export function registerAdminRoutes(app: Express): void {
           atrExemptionCode: "business_purpose",
         } as any);
       }
-      
+
+      // The rows carry the sample markers, so the org now HAS a sample set:
+      // flag it as complete, as the onboarding seeder does last. Without the
+      // flag a later "Try with sample data" read these rows as a seed that
+      // never finished and layered its own fixtures on top (W10.4 re-audit 2).
+      const fresh = await storage.getOrganization(org.id);
+      const onboardingData = { ...(fresh?.onboardingData ?? {}), sampleDataLoaded: true };
+      await storage.updateOrganization(org.id, { onboardingData });
+
       res.json({ 
         success: true, 
         message: "Demo data created successfully",
@@ -661,6 +684,7 @@ export function registerAdminRoutes(app: Express): void {
         }
       });
     } catch (err: any) {
+      if (sendDealWriteError(res, err)) return;
       logger.error("Seed error", err);
       Errors.internal(res, err);
     }

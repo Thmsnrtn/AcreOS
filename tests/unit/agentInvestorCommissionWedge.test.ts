@@ -29,6 +29,7 @@ import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
 import { getBusinessType } from "../../shared/business-types";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 const SERVER = path.join(ROOT, "server");
@@ -134,7 +135,14 @@ describe("the customer commission page gates + stays honest", () => {
 });
 
 describe("deal-close auto-record — correct signature + honesty gate", () => {
-  const deals = read("server/routes-deals.ts");
+  // The close seam moved out of PUT /api/deals/:id into the ONE close writer
+  // the deal repository calls on every transition into `closed` (W10.4,
+  // server/services/dealClose.ts recordDealClose) — same call, same gate, now
+  // reached by every writer rather than one route. REWRITTEN to the new
+  // location, not deleted: the invariant (argument order + config gate) is
+  // unchanged. oneCloseWriter.test.ts pins that PUT no longer runs it itself.
+  // Comments stripped: the file's own doc names the call it pins.
+  const deals = stripComments(read("server/services/dealClose.ts"));
   const service = read("server/services/commissionService.ts");
 
   it("the service signature is (orgId, teamMemberId, dealId, salePriceCents)", () => {
@@ -145,24 +153,24 @@ describe("deal-close auto-record — correct signature + honesty gate", () => {
   });
 
   it("the close seam calls recordDealCommission with args in the signature order (guards the swapped-arg bug)", () => {
-    // org.id → teamMemberId(deal.assignedTo) → dealId(deal.id) → salePriceCents(cents).
-    // The prior bug passed (org.id, dealId, agentId, amount) — assignedTo MUST
+    // orgId → teamMemberId(deal.assignedTo) → dealId(deal.id) → salePriceCents(cents).
+    // The prior bug passed (orgId, dealId, agentId, amount) — assignedTo MUST
     // come before deal.id here or the record is booked against the wrong ids.
     const call = deals.match(
-      /recordDealCommission\(\s*org\.id\s*,\s*deal\.assignedTo!?\s*,\s*deal\.id\s*,\s*Math\.round\([^)]*\*\s*100\)/,
+      /recordDealCommission\(\s*orgId\s*,\s*deal\.assignedTo!?\s*,\s*deal\.id\s*,\s*Math\.round\([^)]*\*\s*100\)/,
     );
-    expect(call, "recordDealCommission must be called with (org.id, deal.assignedTo, deal.id, cents)").toBeTruthy();
+    expect(call, "recordDealCommission must be called with (orgId, deal.assignedTo, deal.id, cents)").toBeTruthy();
   });
 
   it("records ONLY when an explicit config exists — skips silently otherwise (never fabricate)", () => {
     // The honesty gate: hasCommissionConfig must be checked and short-circuit
     // BEFORE recordDealCommission runs.
-    const gateIdx = deals.indexOf("hasCommissionConfig(org.id)");
+    const gateIdx = deals.indexOf("hasCommissionConfig(orgId)");
     const recordIdx = deals.indexOf("recordDealCommission(\n");
     expect(gateIdx, "hasCommissionConfig gate must be present").toBeGreaterThan(-1);
     expect(recordIdx, "recordDealCommission call must be present").toBeGreaterThan(-1);
     expect(gateIdx).toBeLessThan(recordIdx);
-    expect(deals).toMatch(/hasCommissionConfig\(org\.id\)\)\)\s*return;/);
+    expect(deals).toMatch(/hasCommissionConfig\(orgId\)\)\)\s*return;/);
     // hasCommissionConfig only returns true for a real saved config row.
     expect(service).toContain("export async function hasCommissionConfig");
     expect(service).toMatch(/provider,\s*"commission_config"/);

@@ -50,8 +50,8 @@ import { addMonths } from "../../utils/dateUtils";
 // must not pull the SQL readers (and drizzle) in with it.
 const sampleReads = () => import("../../storage/wholeOrgReadsG");
 
-export const SAMPLE_LEAD_SOURCE = "sample_data" as const;
-export const SAMPLE_APN_PREFIX = "SAMPLE-" as const;
+import { SAMPLE_APN_PREFIX, SAMPLE_LEAD_SOURCE } from "./sampleMarkers";
+export { SAMPLE_APN_PREFIX, SAMPLE_LEAD_SOURCE };
 
 // ───────────────────────────────────────────────────────────────────────────
 // Fixture shapes (properties/notes reference related rows by INDEX so we
@@ -792,7 +792,10 @@ export async function seedSampleDataForOrg(
       (d) => d.propertyId === propertyId && d.type === dealData.type,
     );
     if (already) continue;
-    await storage.createDeal({ ...dealData, propertyId } as any);
+    // The sample book shows a closed and an in-escrow deal: a "sample"
+    // creation may be born at any real deal status, and runs no close effects
+    // (a fixture is not an observed sale).
+    await storage.createDeal({ ...dealData, propertyId } as any, undefined, { creation: "sample" });
     dealsCreated++;
   }
 

@@ -30,10 +30,6 @@
  *   - Environmental covenants (Superfund proximity)
  */
 
-import { db } from "../db";
-import { deals, properties, backgroundJobs } from "@shared/schema";
-import { eq, and, desc, gte } from "drizzle-orm";
-import { logger } from "../utils/logger";
 
 // ---------------------------------------------------------------------------
 // Title Chain Models
@@ -675,90 +671,11 @@ export async function checkCountyRecordingStatus(
   return { recorded: false };
 }
 
-// ---------------------------------------------------------------------------
-// Post-Close Automation
-// Expert principle: After closing, automate ALL the admin work
-// ---------------------------------------------------------------------------
-
-export interface PostCloseAutomationResult {
-  portfolioEntryCreated: boolean;
-  bookkeepingEntryCreated: boolean;
-  sellerMovedToPastSellers: boolean;
-  dealDocumentsArchived: boolean;
-  performanceReportGenerated: boolean;
-  thirtyOneCrossExchangeAlerts: number; // 1031 exchange leads identified
-}
-
-export async function runPostCloseAutomation(
-  dealId: number,
-  organizationId: number
-): Promise<PostCloseAutomationResult> {
-  const result: PostCloseAutomationResult = {
-    portfolioEntryCreated: false,
-    bookkeepingEntryCreated: false,
-    sellerMovedToPastSellers: false,
-    dealDocumentsArchived: false,
-    performanceReportGenerated: false,
-    thirtyOneCrossExchangeAlerts: 0,
-  };
-
-  try {
-    const [deal] = await db
-      .select()
-      .from(deals)
-      .where(and(eq(deals.id, dealId), eq(deals.organizationId, organizationId)))
-      .limit(1);
-
-    if (!deal) return result;
-
-    // Mark deal as closed in system. deals uses closingDate (timestamp), not
-    // a closedDate string column.
-    // Through the repository (org-scoped), where every status write records
-    // its transition evidence (audit of 224a5c0).
-    // The state machine applies here too (audit of 9ed61f4): only a deal in
-    // escrow is closed by a recorded title; any other stage (a deleted deal
-    // included) is left for the operator, and nothing downstream runs.
-    if (deal.status !== "closed") {
-      const { validateDealTransition } = await import("@shared/lifecycle/pipeline-status");
-      const refusal = validateDealTransition(deal.status, "closed");
-      if (refusal) {
-        logger.warn("[titleChain] post-close automation skipped — deal is not at a stage that closes", {
-          metadata: { dealId, organizationId, status: deal.status, refusal },
-        });
-        return result;
-      }
-      const { storage } = await import("../storage");
-      await storage.updateDeal(dealId, { status: "closed", closingDate: deal.closingDate || new Date() }, undefined, organizationId);
-    }
-
-    result.portfolioEntryCreated = true;
-
-    // Log bookkeeping entry. purchase/list prices live on the related property,
-    // not the deal row.
-    const dealProperty = await db.query.properties.findFirst({
-      where: eq(properties.id, deal.propertyId),
-    });
-    const purchasePrice = parseFloat(dealProperty?.purchasePrice || "0");
-    const salePrice = parseFloat(dealProperty?.listPrice || "0");
-    const profit = salePrice - purchasePrice;
-
-    logger.info(`[PostClose] Deal ${dealId} closed. Purchase: $${purchasePrice}, Sale: $${salePrice}, Profit: $${profit}`);
-    result.bookkeepingEntryCreated = true;
-
-    // Generate performance metrics
-    const roiPercent =
-      purchasePrice > 0 ? ((profit / purchasePrice) * 100).toFixed(1) : "N/A";
-
-    logger.info(`[PostClose] Deal ${dealId} performance: ${roiPercent}% ROI`);
-    result.performanceReportGenerated = true;
-    result.dealDocumentsArchived = true;
-    result.sellerMovedToPastSellers = true;
-  } catch (err: any) {
-    logger.error(`[PostClose] Automation failed for deal ${dealId}`, err);
-  }
-
-  return result;
-}
+// Post-close automation lived here until W10.4 (DEFECT-0276 (4)): it had no
+// caller, and it reported a portfolio entry, a bookkeeping entry, archived
+// documents and a moved seller that it never created — only log lines. The
+// close's real effects run in ONE place now, server/services/dealClose.ts,
+// reached by every transition into closed through the deal repository.
 
 // Export functions
 export default {
@@ -766,5 +683,4 @@ export default {
   parseScheduleBException,
   getClosingChecklistReference,
   checkCountyRecordingStatus,
-  runPostCloseAutomation,
 };

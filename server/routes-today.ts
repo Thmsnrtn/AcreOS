@@ -884,11 +884,12 @@ interface BriefInputs {
   paxReplies: number;       // pax-noticed/suggests count (proxy for "sellers replied")
   topCounter: string | null; // best Pax-priority headline if present
   curbSaves: number;         // portfolio alerts touched today
-  lateNotes: number;
+  // null = unavailable: the real book could not be told from the sample one.
+  lateNotes: number | null;
   postedOvernight: number;   // completed payment rows in the last 24h (real rows)
-  netInflow30: number;       // projected 30-day net (from cash strip)
+  netInflow30: number | null; // projected 30-day net (from cash strip)
   staleLeads: number;
-  pipelineValue: number;
+  pipelineValue: number | null;
   firstClosePrefix?: string | null; // e.g. "Since the 4218 Cactus deal — "
 }
 
@@ -967,6 +968,14 @@ function composeBrief(persona: Persona | undefined, inputs: BriefInputs): string
   // another.
   const counterInline = topCounter ? ` — ${topCounter}` : "";
   const prefix = firstClosePrefix ?? "";
+  // The book's money and late count are null when the real book could not be
+  // told from the sample one. A template that would print one of them gives
+  // way to the signals alone — no number is better than a wrong one.
+  const signalsOnly = `${paxReplies} Pax signal${paxReplies === 1 ? "" : "s"} overnight${counterInline}. ${curbSaves} you almost lost yesterday, saved.`;
+  const book =
+    lateNotes === null || netInflow30 === null || pipelineValue === null
+      ? null
+      : { lateNotes, netInflow30, pipelineValue };
 
   const body = (() => {
   switch (persona) {
@@ -977,24 +986,29 @@ function composeBrief(persona: Persona | undefined, inputs: BriefInputs): string
     case "note_investor":
       // Note investors have a tape that hits Tuesday morning.
       // Verbs: "wobbled", "tape clears".
-      return `${lateNotes} note${lateNotes === 1 ? "" : "s"} wobbled overnight${counterInline} — the tape still clears ${money(netInflow30)} this month.`;
+      if (!book) return signalsOnly;
+      return `${book.lateNotes} note${book.lateNotes === 1 ? "" : "s"} wobbled overnight${counterInline} — the tape still clears ${money(book.netInflow30)} this month.`;
     case "note_originator":
       // Originators draw new paper; their verb is "underwrote / funded".
-      return `${lateNotes} note${lateNotes === 1 ? "" : "s"} slipped overnight${counterInline} — funded paper still pencils ${money(netInflow30)} this month.`;
+      if (!book) return signalsOnly;
+      return `${book.lateNotes} note${book.lateNotes === 1 ? "" : "s"} slipped overnight${counterInline} — funded paper still pencils ${money(book.netInflow30)} this month.`;
     case "note_servicer":
       // Servicers process payments; their verb is "posted".
       // "{n} posted" is a COUNT of completed payment rows in the last 24h —
       // never "Pax posted the rest" (Pax posts nothing; spec §6).
-      return `${lateNotes} payment${lateNotes === 1 ? "" : "s"} didn't post overnight${counterInline} — ${postedOvernight} posted, ${money(netInflow30)} cleared this month.`;
+      if (!book) return signalsOnly;
+      return `${book.lateNotes} payment${book.lateNotes === 1 ? "" : "s"} didn't post overnight${counterInline} — ${postedOvernight} posted, ${money(book.netInflow30)} cleared this month.`;
     case "land_investor":
       // Land investors hunt parcels; their verb is "surfaced".
       return `Pax surfaced ${paxReplies} parcel${paxReplies === 1 ? "" : "s"} overnight${counterInline}. ${staleLeads} gone quiet, still warm.`;
     case "fix_flipper":
       // Flippers run jobs; their verb is "swung" (as in swinging hammers / jobs in flight).
-      return `${paxReplies} project update${paxReplies === 1 ? "" : "s"} swung in overnight${counterInline} — ${money(pipelineValue)} on the table this week.`;
+      if (!book) return signalsOnly;
+      return `${paxReplies} project update${paxReplies === 1 ? "" : "s"} swung in overnight${counterInline} — ${money(book.pipelineValue)} on the table this week.`;
     case "landlord":
       // Landlords collect rent; verb is "landed".
-      return `${lateNotes} rent${lateNotes === 1 ? "" : "s"} hadn't landed by 6am${counterInline} — ${money(netInflow30)} still pacing for the month.`;
+      if (!book) return signalsOnly;
+      return `${book.lateNotes} rent${book.lateNotes === 1 ? "" : "s"} hadn't landed by 6am${counterInline} — ${money(book.netInflow30)} still pacing for the month.`;
     case "subdivider":
       // Subdividers split parcels; verb is "splits".
       return `${paxReplies} new split candidate${paxReplies === 1 ? "" : "s"} from Pax overnight${counterInline}. ${curbSaves} parcel${curbSaves === 1 ? "" : "s"} you almost let cool, kept warm.`;
@@ -1003,10 +1017,11 @@ function composeBrief(persona: Persona | undefined, inputs: BriefInputs): string
       return `${paxReplies} delinquency${paxReplies === 1 ? "" : "s"} ticked over overnight${counterInline} — ${staleLeads} you'd lose to the redemption window, still in reach.`;
     default:
       // Neutral fallback if persona is missing or unrecognized.
-      if (paxReplies + curbSaves + lateNotes === 0) {
+      // "Quiet" is a claim about the late notes too, so it needs the book.
+      if (book && paxReplies + curbSaves + book.lateNotes === 0) {
         return "Quiet morning — nothing urgent from Pax. Good time to plan the next move.";
       }
-      return `${paxReplies} Pax signal${paxReplies === 1 ? "" : "s"} overnight${counterInline}. ${curbSaves} you almost lost yesterday, saved.`;
+      return signalsOnly;
   }
   })();
 
@@ -1364,31 +1379,51 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
     // ── Cash strip aggregates (mirrors today.tsx cashAggregates/pipeline) ──
     // Money counts the real book only (DEFECT-0229): a demo workspace's
     // sample deals and notes stay on the task cards, never in the dollars.
-    const sampleParcels = await samplePropertyIds(orgId);
-    const isReal = (x: { propertyId?: number | null }) => x.propertyId == null || !sampleParcels.has(x.propertyId);
-    const realDeals = allDeals.filter(isReal);
-    const realNotes = allNotes.filter(isReal);
-    const activeDeals = realDeals.filter((d) => !["closed", "cancelled"].includes(d.status));
-    const pipelineValue = activeDeals.reduce(
+    //
+    // Wrapped like its neighbours (DEFECT-0276 (8)): which parcels are sample
+    // is what separates the real book from the demo one, so when that read
+    // fails the book is UNKNOWN — not "everything is real" (the sample rows
+    // would be counted as the customer's money) and not a 500 (the queue and
+    // the brief's other facts are still true). Every figure that depends on
+    // the split is answered null — unavailable — and the brief leaves the
+    // money out rather than printing a number nobody can stand behind.
+    let sampleParcels: Set<number> | null = null;
+    try {
+      sampleParcels = await samplePropertyIds(orgId);
+    } catch (e) {
+      logger.warn("Today: sample-parcel read failed — real-book money figures unavailable", {
+        orgId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+    const realBook = sampleParcels === null ? null : (() => {
+      const sample = sampleParcels;
+      const isReal = (x: { propertyId?: number | null }) => x.propertyId == null || !sample.has(x.propertyId);
+      return { deals: allDeals.filter(isReal), notes: allNotes.filter(isReal) };
+    })();
+    const realDeals = realBook?.deals ?? null;
+    const realNotes = realBook?.notes ?? null;
+    const activeDeals = realDeals?.filter((d) => !["closed", "cancelled"].includes(d.status)) ?? null;
+    const pipelineValue = activeDeals?.reduce(
       (sum, d) => sum + parseFloat(String((d as any).purchasePrice ?? (d as any).offerAmount ?? "0") || "0"),
       0,
-    );
+    ) ?? null;
 
-    const activeNotes = realNotes.filter(
+    const activeNotes = realNotes?.filter(
       (n) => n.status === "active" || n.status === "late" || n.status === "delinquent",
-    );
-    const lateCount = realNotes.filter((n) => n.status === "late" || n.status === "delinquent").length;
-    const within = (days: number) =>
-      activeNotes.filter((n) => {
+    ) ?? null;
+    const lateCount = realNotes?.filter((n) => n.status === "late" || n.status === "delinquent").length ?? null;
+    const within = (notes: NonNullable<typeof activeNotes>, days: number) =>
+      notes.filter((n) => {
         if (!n.nextPaymentDate) return false;
         const diff = (new Date(n.nextPaymentDate).getTime() - now.getTime()) / DAY_MS;
         return diff >= 0 && diff <= days;
       });
-    const sumPayments = (arr: typeof activeNotes) =>
+    const sumPayments = (arr: NonNullable<typeof activeNotes>) =>
       arr.reduce((s, n) => s + parseFloat(String(n.monthlyPayment ?? "0") || "0"), 0);
 
-    const projected30 = sumPayments(within(30));
-    const projected90 = sumPayments(within(90));
+    const projected30 = activeNotes ? sumPayments(within(activeNotes, 30)) : null;
+    const projected90 = activeNotes ? sumPayments(within(activeNotes, 90)) : null;
 
     // ── Honest 90-day histories for KPI sparklines ─────────────────────────
     // We bucket by ~7-day windows over the last 90 days (≈ 13 buckets).
@@ -1445,6 +1480,8 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
     }
 
     const openDealsValueHistory: number[] = (() => {
+      // No real book, no history of it — an empty series, never the demo's.
+      if (!realDeals) return [];
       try {
         return Array.from({ length: SPARK_BUCKETS }, (_, i) => {
           const end = bucketEnd(i);
@@ -1502,10 +1539,12 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
     const netInflow30 = projected30; // 30-day projected note income
     // The brief's "since your first close" is about the customer's book, not
     // a sample parcel's deal.
-    const firstClosePrefix = await deriveFirstClosePrefix(realDeals, async (id) => {
-      const p = await storage.getProperty(orgId, id);
-      return p && p.status !== "deleted" ? p : undefined;
-    });
+    const firstClosePrefix = realDeals
+      ? await deriveFirstClosePrefix(realDeals, async (id) => {
+          const p = await storage.getProperty(orgId, id);
+          return p && p.status !== "deleted" ? p : undefined;
+        })
+      : null;
     const persona = req.user?.persona as Persona | undefined;
     const briefInputs: BriefInputs = {
       paxReplies,
@@ -1521,7 +1560,10 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
     // Try Pax-composed first (feature-flagged); fall back to the static template.
     // composeBriefWithPax returns null when the flag is off, on error, or on
     // empty response — never throws, so the route is unconditionally safe.
-    const composed = hasAnyData
+    // Pax composes only from a complete set of facts: with the real book
+    // unknown it would be handed nulls and asked for a sentence, so the static
+    // template (which leaves the money out) answers instead.
+    const composed = hasAnyData && realBook
       ? await composeBriefWithPax(persona, briefInputs, orgId)
       : null;
     const brief: string | null = hasAnyData
@@ -1536,7 +1578,7 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
       cash: {
         cashOnHand: projected90,
         openDealsValue: pipelineValue,
-        openDealsCount: activeDeals.length,
+        openDealsCount: activeDeals?.length ?? null,
         pendingPayments30: projected30,
         lateCount,
         // 90-day weekly history. Empty arrays where we can't derive honestly
@@ -1545,6 +1587,9 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
         openDealsValueHistory,
         pendingPayments30History: [] as number[],
         lateCountHistory: [] as number[],
+        // Why the figures above are null, when they are: the sample/real
+        // split could not be read, so none of them is known.
+        unavailableReason: realBook ? null : "sample_parcels_unreadable",
       },
       // Activity intentionally not merged (see file header) — kept for shape parity.
       activity: [],

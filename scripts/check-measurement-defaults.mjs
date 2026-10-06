@@ -271,7 +271,7 @@ const BASELINE = new Set([
   "server/routes-campaigns.ts::otherRate * 1.10",
   "server/routes-campaigns.ts::second.responseRate * 1.10",
   "server/routes-data-intelligence.ts::acres * 1.5",
-  "server/routes-deals.ts::populationGrowth: 0",
+  "server/services/dealClose.ts::populationGrowth: 0", // moved with the close block from routes-deals.ts (W10.4); same pre-existing default
   "server/services/acreOSValuation.ts::estimatedValue * 1.5",
   "server/services/blindOfferCalculator.ts::acres * 1.1",
   "server/services/blindOfferCalculator.ts::cashFlip.roi * 1.5",

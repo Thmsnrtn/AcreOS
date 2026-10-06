@@ -23,6 +23,7 @@ import {
   getCommissionRecords,
   getAgentCommissionSummaries,
   recordDealCommission,
+  CommissionAlreadyPaidError,
   recordCommissionPayment,
   generateCommissionStatement,
   getSplitConfigSummary,
@@ -2325,10 +2326,12 @@ export function registerOrganizationRoutes(app: Express): void {
         teamMemberId,
         dealId,
         salePriceCents,
-        closedAt ? new Date(closedAt) : undefined
+        closedAt ? new Date(closedAt) : undefined,
+        { refuseIfPaid: true },
       );
       res.status(201).json(record);
     } catch (err: any) {
+      if (err instanceof CommissionAlreadyPaidError) return Errors.conflict(res, err.message, { recordId: err.recordId });
       Errors.internal(res, err);
     }
   });

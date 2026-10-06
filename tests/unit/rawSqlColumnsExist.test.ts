@@ -88,7 +88,14 @@ const MAX_GHOSTS = 0;
 // it is not newly unread code, it is newly READ code this gate cannot resolve.
 // 70 → 69 (2026-09-29, ruling #11): that query is gone — sophiePrivacyGuard's
 // k-anonymity check and purge were rewritten, consent now read at publication.
-const MAX_UNRESOLVED = 69;
+// 69 → 71 (2026-10-06, W10.4): two FIXTURES, not code — the deal-writer
+// census's canaries `DELETE FROM ${ident(table)} WHERE organization_id = …`
+// and `UPDATE ${deals} SET property_id = NULL, status = …` (in
+// tests/unit/dealWritersCensus.test.ts). Their table is an interpolation by
+// design: they prove that census reads an unresolvable or interpolated table.
+// No production template was added to the unresolved set (measured with a
+// per-template probe the same day).
+const MAX_UNRESOLVED = 71;
 const MIN_TEMPLATES = 800;
 const MIN_WITH_COLUMNS = 150;
 

@@ -92,12 +92,23 @@ function predicateText(statement: string, code: string): string {
 /** Every UPDATE/DELETE statement on an org-scoped table, and whether it names the org. */
 function writeStatements(src: string): Array<{ kind: string; table: string; scoped: boolean }> {
   const code = stripComments(src);
-  const re = /\b(?:db|tx|trx|trans|client)\s*\.\s*(update|delete)\s*\(\s*(\w+)\s*\)([\s\S]*?);/g;
+  // ANY receiver, not a list of names: an `executor.update(table)` (a helper
+  // that takes the connection as a parameter) was outside a db|tx|… list, so
+  // two unscoped writes left the count by being RENAMED, and their baselines
+  // were lowered as if fixed (W10.4 re-audit 3). The table argument must be an
+  // org-scoped schema table, which keeps `hash.update(data)` and
+  // `map.delete(key)` out.
+  const re = /\.\s*(update|delete)\s*\(\s*(\w+)\s*\)([\s\S]*?);/g;
   const out: Array<{ kind: string; table: string; scoped: boolean }> = [];
   let m: RegExpExecArray | null;
   while ((m = re.exec(code))) {
     const table = TABLE_ALIASES.get(m[2]) ?? m[2];
     if (!ORG_TABLES.has(table)) continue;
+    // A write through `unscopedForPlatformOps(reason)` DECLARES itself a
+    // platform operation (server/utils/orgScopedDb.ts) — the same escape
+    // hatch, with its reason, that the tenancy lint honours.
+    const stmtStart = Math.max(code.lastIndexOf(";", m.index), code.lastIndexOf("{", m.index));
+    if (/\bunscopedForPlatformOps\s*\(/.test(code.slice(stmtStart + 1, m.index))) continue;
     out.push({ kind: m[1], table, scoped: ORG_TOKEN.test(predicateText(m[3], code)) });
   }
   return out;
@@ -138,10 +149,20 @@ describe("the detector (canaries)", () => {
       false,
     ],
     ["a whole clause in one variable", "const clause = eq(deals.propertyId, pid);\nawait db.update(deals).set({ a: 1 }).where(clause);", false],
+    // W10.4 re-audit 3: the receiver is any name — renaming the connection is not a fix.
+    ["a write through a connection PARAMETER", "await executor.update(deals).set({ a: 1 }).where(eq(deals.id, id));", false],
+    ["a write through this.db", "await this.db.delete(deals).where(eq(deals.id, id));", false],
   ])("sees %s", (_l, src, scoped) => {
     const w = withTables(src as string);
     expect(w).toHaveLength(1);
     expect(w[0].scoped).toBe(scoped);
+  });
+  it("honours the declared platform-ops escape hatch, and only it", () => {
+    expect(withTables('await unscopedForPlatformOps("reason").update(deals).set({ a: 1 }).where(eq(deals.id, id));')).toEqual([]);
+    expect(withTables('const p = unscopedForPlatformOps("reason");\nawait db.update(deals).set({ a: 1 }).where(eq(deals.id, id));')).toHaveLength(1);
+  });
+  it("does not read a same-named method on something that is not a table", () => {
+    expect(withTables("hash.update(data); cache.delete(key);")).toEqual([]);
   });
   it("ignores a write quoted in a comment", () => {
     expect(withTables("// was: await db.delete(deals).where(inArray(deals.propertyId, ids));\nconst x = 1;")).toEqual([]);

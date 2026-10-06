@@ -160,7 +160,23 @@ const actionRegistry: Record<string, ActionExecutor> = {
     // transition evidence (an agent moving a deal to offer_sent is an offer
     // made; audit of 224a5c0), and as a stage change workflows can see.
     const { storage } = await import("../storage");
-    const advanced = await storage.updateDeal(Number(dealId), { status: String(newStage) }, undefined, ctx.orgId);
+    const { DealTransitionRefusedError, StaleDealWriteError } = await import("../storage/dealRepo");
+    let advanced: Awaited<ReturnType<typeof storage.updateDeal>>;
+    try {
+      advanced = await storage.updateDeal(Number(dealId), { status: String(newStage) }, undefined, ctx.orgId);
+    } catch (err) {
+      // The repository decides again at the write. A deal another writer
+      // moved after the read above is a stale write (nothing written); a
+      // refusal is the state machine's. Either way the deal did NOT advance,
+      // and the result says so by name — never "Deal advanced".
+      if (err instanceof StaleDealWriteError) {
+        return fail(`Deal ${dealId} changed while advancing (moved by another writer) — nothing was written; re-read it before deciding again.`);
+      }
+      if (err instanceof DealTransitionRefusedError) {
+        return fail(`${err.refusal}. Valid deal statuses: ${DEAL_STATUSES.join(", ")}.`);
+      }
+      throw err;
+    }
     if (!advanced) return fail(`Deal ${dealId} not found`);
     const { emitDealStageChanged } = await import("./dealEvents");
     emitDealStageChanged(ctx.orgId, { id: Number(dealId), status: currentDeal.status }, advanced);

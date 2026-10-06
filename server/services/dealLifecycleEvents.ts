@@ -128,6 +128,13 @@ export function publishDealLifecycle(
 }
 
 /**
+ * The `after.status` a retention purge reports (auditRepo.purgeOldDeals):
+ * the deal is gone because it aged out, not because the sale was undone —
+ * the commission owed on it stands (dealClose.recordDealReopen).
+ */
+export const DEAL_PURGED = "purged";
+
+/**
  * The evidence a stage transition carries (quality directive 2026-09-29,
  * audits of e3debe0 and 224a5c0). It was recorded by one route, then beside
  * seven route-level emitters — while the undo, the bulk endpoint, workflows,
@@ -140,8 +147,11 @@ export function publishDealLifecycle(
  *  - entering offer_sent is the first-offer activation signal (deduped per
  *    org by the activation table);
  *  - leaving closed — reopened, or deleted — retracts the sale the close
- *    recorded (marked an outlier, not deleted). A close is NOT recorded here:
- *    what qualifies as a sale is decided by the close path's evidence rule.
+ *    recorded (marked an outlier, not deleted) and its commission
+ *    (dealClose.recordDealReopen). A close is NOT recorded here:
+ *    the close's consequences are dealClose.recordDealClose, called by the
+ *    same repository hook (W10.4), and what qualifies as a sale is decided by
+ *    its evidence rule.
  *
  * Fire-and-forget: never throws into the write.
  */
@@ -168,11 +178,13 @@ export function recordDealTransitionEvidence(
         .catch(swallowed("first_offer_made"));
     }
     if (before.status === "closed") {
-      void (async () => {
-        const { closedSaleDealKey } = await import("./marketNetworkContributor");
-        const { acreOSValuation } = await import("./acreOSValuation");
-        await acreOSValuation.retractTrainingTransaction(orgId, `deal:${closedSaleDealKey(orgId, dealId)}`);
-      })().catch(swallowed("reopen retraction"));
+      // The close's reversible money effects are reversed: the training row
+      // (under the per-deal lock the close's insert also takes, DEFECT-0258
+      // (1), and only if the deal is not closed again by then) and the
+      // commission (an unpaid record removed, a paid one flagged for review).
+      void import("./dealClose")
+        .then(({ recordDealReopen }) => recordDealReopen(orgId, dealId, after.status ?? null))
+        .catch(swallowed("reopen retraction"));
     }
   } catch (err) {
     logger.warn("[dealLifecycleEvents] transition evidence failed (swallowed)", err instanceof Error ? err : undefined);

@@ -21,6 +21,7 @@ import { eq, and, inArray } from "drizzle-orm";
 import { liveLead } from "./storage/liveLeads";
 import { filterOutHeldIds } from "./services/legalHold";
 import { Errors } from "./utils/errors";
+import { sendDealWriteError } from "./utils/dealWriteErrors";
 import { logger } from "./utils/logger";
 import { assertUserIsOrgMember } from "./utils/orgScope";
 import type { AuthenticatedRequest } from "./types/request";
@@ -215,7 +216,9 @@ router.post("/deals/update", async (req: AuthenticatedRequest, res: Response) =>
     // Through the repository, which records each transition's evidence and
     // lifecycle event (and stamps updatedAt).
     const before = allowedUpdates.status ? await storage.getDealsByIds(orgId, parsedIds) : [];
-    await storage.bulkUpdateDeals(orgId, parsedIds, allowedUpdates as Partial<InsertDeal>);
+    await storage.bulkUpdateDeals(orgId, parsedIds, allowedUpdates as Partial<InsertDeal>, {
+      context: { userId: req.user?.id ? String(req.user.id) : null },
+    });
     if (allowedUpdates.status) {
       const { emitDealStageChanged } = await import("./services/dealEvents");
       for (const b of before) emitDealStageChanged(orgId, b, { ...b, status: allowedUpdates.status as string });
@@ -223,6 +226,10 @@ router.post("/deals/update", async (req: AuthenticatedRequest, res: Response) =>
 
     res.json({ success: true, updated: parsedIds.length });
   } catch (err) {
+    // The repository's refusal (a move the state machine forbids, or a deal
+    // that moved between the check above and the write) is a 400 / 409,
+    // not a server fault.
+    if (sendDealWriteError(res, err)) return;
     logger.error("bulk.deals.update failed", err instanceof Error ? err : undefined);
     Errors.internal(res, err);
   }

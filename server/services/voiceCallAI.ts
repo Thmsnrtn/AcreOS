@@ -718,7 +718,24 @@ Respond in JSON format:
           // Through the repository, where a status write records its
           // transition evidence (audit of 224a5c0).
           const { storage } = await import("../storage");
-          await storage.updateDeal(transcript.dealId, updateData, undefined, transcript.organizationId);
+          const { DealTransitionRefusedError, StaleDealWriteError } = await import("../storage/dealRepo");
+          try {
+            await storage.updateDeal(transcript.dealId, updateData, undefined, transcript.organizationId);
+          } catch (err) {
+            // The repository decides again at the write. A deal another writer
+            // moved after the read above (stale — nothing written) or a move
+            // it refuses means NONE of this call's deal updates were applied:
+            // they come off the applied list rather than being recorded as
+            // done, and the call's other updates still stand.
+            if (!(err instanceof StaleDealWriteError) && !(err instanceof DealTransitionRefusedError)) throw err;
+            logger.warn("[voice-call-ai] deal updates from call not applied", {
+              dealId: transcript.dealId,
+              reason: err.message,
+            });
+            for (let i = appliedUpdates.length - 1; i >= 0; i--) {
+              if (appliedUpdates[i].field.startsWith("deal.")) appliedUpdates.splice(i, 1);
+            }
+          }
         }
       }
     }

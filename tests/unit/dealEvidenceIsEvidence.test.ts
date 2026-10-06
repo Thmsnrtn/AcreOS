@@ -174,7 +174,16 @@ describe("a closed sale is recorded once, and can be retracted", () => {
     expect(S.inserted[0].conflict).toMatchObject({ target: transactionTraining.transactionHash });
   });
 
-  it("a re-close after a reopen restores the retracted row with its corrected figures (audit of e3debe0)", async () => {
+  // REWRITTEN (W10.4, DEFECT-0258 (1)) — not deleted. This pinned that a
+  // keyed insert's conflict UPDATE set `isOutlier: false`, so a reopened deal
+  // closed again was restored. The same clause let a close whose evidence was
+  // read BEFORE Close & Carry created the note land AFTER the carry's
+  // retraction and restore a seller-financed contract total as a cash comp.
+  // The invariant kept: a keyed re-insert rewrites only the contributing
+  // org's own row with its current figures. The new truth: never a RETRACTED
+  // row — a retraction is final against any insert (closeTrainingRowRace
+  // proves the ordering through the per-deal lock).
+  it("a keyed re-insert updates only the org's own LIVE row — it never un-retracts (DEFECT-0258)", async () => {
     const { acreOSValuation } = await import("../../server/services/acreOSValuation");
     await acreOSValuation.recordTransactionForTraining(
       "5",
@@ -192,10 +201,43 @@ describe("a closed sale is recorded once, and can be retracted", () => {
       { dedupeKey: "deal:abc" },
     );
     const conflict = S.inserted[0].conflict as { set?: Record<string, unknown>; setWhere?: unknown };
-    expect(conflict.set).toMatchObject({ isOutlier: false, salePrice: "64000", pricePerAcre: "3200", dataQuality: "medium" });
-    // Only the contributing org's own keyed row is ever rewritten.
+    expect(conflict.set).toMatchObject({ salePrice: "64000", pricePerAcre: "3200", dataQuality: "medium" });
+    // The insert never writes the retraction flag back.
+    expect(conflict.set).not.toHaveProperty("isOutlier");
+    // Only the contributing org's own keyed row, and only while not retracted.
     const q = await renderWhere(conflict.setWhere);
     expect(q.sql).toMatch(/"contributor_org_id" = \$1/);
+    expect(q.sql).toMatch(/"is_outlier" is not true/);
+    expect(q.params).toEqual([5]);
+  });
+
+  // The one exception (W10.4 follow-up): dealClose's locked path re-read the
+  // evidence in the same transaction under the per-deal lock every retraction
+  // takes, and passes `reaffirmUnderLock` — a reopened deal genuinely closed
+  // again is restored with its corrected figures (audit of e3debe0's intent,
+  // kept). closeTrainingRowRace.test.ts proves the end-to-end ordering.
+  it("only the locked re-close (reaffirmUnderLock) may restore a retracted row — the org's own row only", async () => {
+    const { acreOSValuation } = await import("../../server/services/acreOSValuation");
+    await acreOSValuation.recordTransactionForTraining(
+      "5",
+      {
+        propertyId: "11",
+        salePrice: 64000,
+        saleDate: new Date("2026-09-20T00:00:00Z"),
+        acres: 20,
+        pricePerAcre: 3200,
+        location: { state: "TX", county: "Llano", zipCode: "", latitude: 0, longitude: 0 },
+        characteristics: {},
+        marketConditions: { quarterlyInterestRate: 0, localUnemploymentRate: 0, populationGrowth: 0, nearbyDevelopment: false },
+      },
+      "medium",
+      { dedupeKey: "deal:abc", reaffirmUnderLock: true },
+    );
+    const conflict = S.inserted[0].conflict as { set?: Record<string, unknown>; setWhere?: unknown };
+    expect(conflict.set).toMatchObject({ isOutlier: false, salePrice: "64000", dataQuality: "medium" });
+    const q = await renderWhere(conflict.setWhere);
+    expect(q.sql).toMatch(/"contributor_org_id" = \$1/);
+    expect(q.sql).not.toMatch(/is_outlier/);
     expect(q.params).toEqual([5]);
   });
 });
@@ -216,15 +258,23 @@ describe("a close that is not a sale does not stay a sale", () => {
     const existing = body.indexOf("if (existing)");
     expect(existing).toBeGreaterThan(0);
     expect(body.slice(existing, existing + 400)).toMatch(/await retractCarriedDealSale\(orgId, dealId\)/);
+    // The retraction goes through the per-deal training lock the close's
+    // insert also takes (W10.4, DEFECT-0258 (1)) — and retracts the same key
+    // the close records under.
     const helper = src.slice(src.indexOf("async function retractCarriedDealSale("));
-    expect(helper.slice(0, 600)).toMatch(/retractTrainingTransaction\(orgId, `deal:\$\{closedSaleDealKey\(orgId, dealId\)\}`\)/);
+    expect(helper.slice(0, 600)).toMatch(/await retractClosedSaleTraining\(orgId, dealId\)/);
+    const close = stripComments(readFileSync(resolve(__dirname, "../../server/services/dealClose.ts"), "utf8"));
+    const retract = close.slice(close.indexOf("export async function retractClosedSaleTraining("));
+    expect(retract.slice(0, 600)).toMatch(/withDealTrainingLock\(orgId, dealId,/);
+    expect(retract.slice(0, 600)).toMatch(/retractTrainingTransaction\(orgId, `deal:\$\{closedSaleDealKey\(orgId, dealId\)\}`, tx\)/);
   });
 
   it("only a disposition's accepted amount is paired as the AVM's actual sale price", async () => {
     const { readFileSync } = await import("node:fs");
     const { resolve } = await import("node:path");
     const { stripComments } = await import("../helpers/stripComments");
-    const src = stripComments(readFileSync(resolve(__dirname, "../../server/routes-deals.ts"), "utf8"));
+    // The close's consequences live in the ONE close writer now (W10.4).
+    const src = stripComments(readFileSync(resolve(__dirname, "../../server/services/dealClose.ts"), "utf8"));
     const at = src.indexOf('snapshotType: "avm_vs_actual"');
     expect(at).toBeGreaterThan(0);
     const guard = src.slice(Math.max(0, at - 400), at);
@@ -294,7 +344,8 @@ describe("the deal routes emit on evidence, not on a stage", () => {
     const { readFileSync } = await import("node:fs");
     const { resolve } = await import("node:path");
     const { stripComments } = await import("../helpers/stripComments");
-    const src = stripComments(readFileSync(resolve(__dirname, "../../server/routes-deals.ts"), "utf8"));
+    // Moved with the emit into the close writer (W10.4 item 2).
+    const src = stripComments(readFileSync(resolve(__dirname, "../../server/services/dealClose.ts"), "utf8"));
     const start = src.indexOf("async function contractSignedEvidence(");
     expect(start).toBeGreaterThan(0);
     const body = src.slice(start, src.indexOf("\n}\n", start));
@@ -340,8 +391,11 @@ describe("the deal routes emit on evidence, not on a stage", () => {
     const { readFileSync } = await import("node:fs");
     const { resolve } = await import("node:path");
     const { stripComments } = await import("../helpers/stripComments");
-    const src = stripComments(readFileSync(resolve(__dirname, "../../server/routes-deals.ts"), "utf8"));
-    const call = src.indexOf("emitContractSigned(existingDeal.status");
+    // One emitter for every path (W10.4 item 2): the repository hook's
+    // emitContractSignedIfEvidenced. oneCloseWriter.test.ts proves it fires
+    // through updateDeal; this pins the evidence read precedes the emit.
+    const src = stripComments(readFileSync(resolve(__dirname, "../../server/services/dealClose.ts"), "utf8"));
+    const call = src.indexOf("emitContractSigned(opts.from");
     expect(call).toBeGreaterThan(0);
     expect(src.slice(Math.max(0, call - 600), call)).toMatch(/await contractSignedEvidence\(/);
     expect(src.slice(call, call + 300)).toMatch(/evidence,/);

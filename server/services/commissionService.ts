@@ -13,7 +13,7 @@
  * entryType='commission_owed' / 'commission_paid'.
  */
 
-import { db } from "../db";
+import { db, withTransaction, type PrimaryDb } from "../db";
 import {
   organizationIntegrations,
   teamMembers,
@@ -61,6 +61,13 @@ export interface CommissionRecord {
   status: "owed" | "partial" | "paid";
   createdAt: Date;
   updatedAt: Date;
+  /**
+   * Set when the deal LEFT `closed` (an undo, a delete) after money had
+   * already been paid on this record. A paid commission is never removed or
+   * reset by a reopen — a person decides what happens to money that moved.
+   * Absent on every record that needs no review.
+   */
+  reviewFlag?: { reason: string; flaggedAt: string };
   // Net-of-split economics — present ONLY when the org has saved a split config
   // (hasSplitConfig) at record time. Absent on records booked before the split
   // config existed, so every field is optional and readers must treat absence
@@ -187,7 +194,7 @@ export async function saveCommissionConfig(
     await db
       .update(organizationIntegrations)
       .set({ credentials, updatedAt: new Date() })
-      .where(eq(organizationIntegrations.id, existing.id));
+      .where(and(eq(organizationIntegrations.id, existing.id), eq(organizationIntegrations.organizationId, organizationId)));
   } else {
     await db.insert(organizationIntegrations).values({
       organizationId,
@@ -279,7 +286,7 @@ export async function saveSplitConfig(
     await db
       .update(organizationIntegrations)
       .set({ credentials, updatedAt: new Date() })
-      .where(eq(organizationIntegrations.id, existing.id));
+      .where(and(eq(organizationIntegrations.id, existing.id), eq(organizationIntegrations.organizationId, organizationId)));
   } else {
     await db.insert(organizationIntegrations).values({
       organizationId,
@@ -294,10 +301,29 @@ export async function saveSplitConfig(
 // Commission records storage (also JSON blob — no dedicated table)
 // ---------------------------------------------------------------------------
 
+/**
+ * The commission store is ONE row per org holding every record (a JSON blob),
+ * so every write is a read-modify-write of the whole list. Two writers that
+ * each read it before either wrote — a bulk close runs N close hooks at once —
+ * kept only the last list: N closes, one commission. Every writer runs inside
+ * this per-org lock and reads THROUGH it, so the read, the tier count derived
+ * from it and the write are one decision.
+ */
+async function withCommissionStoreLock<T>(
+  organizationId: number,
+  fn: (tx: PrimaryDb) => Promise<T>,
+): Promise<T> {
+  return withTransaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`commission_records:${organizationId}`}))`);
+    return fn(tx);
+  });
+}
+
 async function getCommissionRecordsStore(
-  organizationId: number
+  organizationId: number,
+  executor: Pick<PrimaryDb, "select"> = db,
 ): Promise<CommissionRecord[]> {
-  const [row] = await db
+  const [row] = await executor
     .select()
     .from(organizationIntegrations)
     .where(
@@ -329,9 +355,10 @@ async function getCommissionRecordsStore(
 
 async function saveCommissionRecordsStore(
   organizationId: number,
-  records: CommissionRecord[]
+  records: CommissionRecord[],
+  executor: Pick<PrimaryDb, "select" | "insert" | "update"> = db,
 ): Promise<void> {
-  const [existing] = await db
+  const [existing] = await executor
     .select()
     .from(organizationIntegrations)
     .where(
@@ -345,12 +372,12 @@ async function saveCommissionRecordsStore(
   const credentials = { encrypted: JSON.stringify({ records }) };
 
   if (existing) {
-    await db
+    await executor
       .update(organizationIntegrations)
       .set({ credentials, updatedAt: new Date() })
-      .where(eq(organizationIntegrations.id, existing.id));
+      .where(and(eq(organizationIntegrations.id, existing.id), eq(organizationIntegrations.organizationId, organizationId)));
   } else {
-    await db.insert(organizationIntegrations).values({
+    await executor.insert(organizationIntegrations).values({
       organizationId,
       provider: "commission_records",
       isEnabled: true,
@@ -367,102 +394,209 @@ async function saveCommissionRecordsStore(
  * Record a new commission when a deal closes.
  * Call this from the deal "closed" status transition handler.
  */
+/**
+ * A manual commission entry for a deal whose commission has already been
+ * (partly) paid. The record is never replaced (money moved), so the request
+ * is refused, not answered with the existing record as if it were new.
+ */
+export class CommissionAlreadyPaidError extends Error {
+  constructor(
+    readonly dealId: number,
+    readonly recordId: string,
+  ) {
+    super(`Deal ${dealId} already has a commission with payments recorded (${recordId}); it is kept, not replaced.`);
+    this.name = "CommissionAlreadyPaidError";
+  }
+}
+
 export async function recordDealCommission(
   organizationId: number,
   teamMemberId: number,
   dealId: number,
   salePriceCents: number,
-  closedAt: Date = new Date()
-): Promise<CommissionRecord> {
+  closedAt: Date = new Date(),
+  opts: { onlyIfDealClosed?: boolean; refuseIfPaid?: boolean } = {},
+): Promise<CommissionRecord | null> {
   const config = await getCommissionConfig(organizationId);
-  const records = await getCommissionRecordsStore(organizationId);
-
-  // Count deals closed by this agent in the current tracking period
-  const periodStart = getPeriodStart(config.trackingPeriod, closedAt);
-  const periodEnd = closedAt;
-  const priorDealsInPeriod = records.filter(
-    (r) =>
-      r.teamMemberId === teamMemberId &&
-      r.dealClosedAt >= periodStart &&
-      r.dealClosedAt <= periodEnd &&
-      r.dealId !== dealId
-  ).length;
-
-  const tier = resolveCommissionTier(config, priorDealsInPeriod);
-  const commissionAmountCents = Math.round(
-    (salePriceCents * tier.ratePercent) / 100
-  );
-  const flatBonusCents = config.baseFlatAmount ?? 0;
-  const totalOwedCents = commissionAmountCents + flatBonusCents;
-
-  // Net-of-split — ONLY when the org has explicitly saved a split config.
-  // hasSplitConfig is the honest gate (same shape as hasCommissionConfig): with
-  // no saved split we leave the record's split fields absent (unchanged
-  // behaviour), because applying a split the operator never configured would
-  // fabricate an agent net. The split is computed on the GROSS COMMISSION (the %
-  // of sale price), not on totalOwedCents — the flat bonus is an internal
-  // broker→agent bonus, not GCI to be split — so nothing is double-counted.
-  let splitFields: Partial<CommissionRecord> = {};
-  const splitConfig = (await hasSplitConfig(organizationId))
-    ? await getSplitConfig(organizationId)
-    : null;
-  if (splitConfig) {
-    // Company dollar the broker has already retained THIS YEAR for this agent —
-    // the cap runs off it. Summed from prior records' persisted splitBrokerCents.
-    const closedYear = closedAt.getFullYear();
-    const agentYtdCompanyDollarCents = records
-      .filter(
-        (r) =>
-          r.teamMemberId === teamMemberId &&
-          r.dealId !== dealId &&
-          r.dealClosedAt.getFullYear() === closedYear &&
-          typeof r.splitBrokerCents === "number"
-      )
-      .reduce((sum, r) => sum + (r.splitBrokerCents ?? 0), 0);
-
-    const split = computeCommissionSplit({
-      grossCommissionCents: commissionAmountCents,
-      config: splitConfig,
-      agentYtdCompanyDollarCents,
-    });
-    if (split.applicable && split.agentNetCents != null) {
-      splitFields = {
-        splitApplied: true,
-        splitAgentNetCents: split.agentNetCents,
-        splitBrokerCents: split.brokerCents ?? 0,
-        splitFranchiseFeeCents: split.franchiseFeeCents ?? 0,
-        splitTransactionFeeCents: split.transactionFeeCents ?? 0,
-        splitCappedThisDeal: split.cappedThisDeal,
-      };
+  // Configuration is read BEFORE the lock, never inside it: the lock body holds
+  // a pool connection, and a read on the global `db` there needs a second one.
+  // A bulk close of N ≥ pool-size deals parks every connection on this lock
+  // and the holder then waits forever for a sixth (W10.4 re-audit, finding 1).
+  const splitConfig = (await hasSplitConfig(organizationId)) ? await getSplitConfig(organizationId) : null;
+  // The read, the tier count and the write under ONE per-org lock (a bulk
+  // close records N commissions at once; see withCommissionStoreLock).
+  return withCommissionStoreLock(organizationId, async (tx) => {
+    // The close hook is fire-and-forget: by the time it runs, an undo may have
+    // reopened the deal. Its commission is decided on the deal's status NOW.
+    if (opts.onlyIfDealClosed) {
+      const [now] = await tx
+        .select({ status: deals.status })
+        .from(deals)
+        .where(and(eq(deals.id, dealId), eq(deals.organizationId, organizationId)))
+        .limit(1);
+      if (now?.status !== "closed") {
+        logger.info(`[Commission] deal ${dealId} is no longer closed — no commission recorded`);
+        return null;
+      }
     }
-  }
+    const records = await getCommissionRecordsStore(organizationId, tx);
 
-  const record: CommissionRecord = {
-    id: `comm_${dealId}_${teamMemberId}_${Date.now()}`,
-    organizationId,
-    teamMemberId,
-    dealId,
-    dealClosedAt: closedAt,
-    salePrice: salePriceCents,
-    commissionRatePercent: tier.ratePercent,
-    commissionAmountCents,
-    flatBonusCents,
-    totalOwedCents,
-    paidCents: 0,
-    status: "owed",
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    ...splitFields,
-  };
+    // Money already paid on this deal's record is never replaced: a re-close
+    // (closed → undo → closed) would otherwise reset paidCents to 0 and
+    // re-derive an "owed" figure over a commission that was settled.
+    const paidAlready = records.find((r) => r.dealId === dealId && r.paidCents > 0);
+    if (paidAlready) {
+      if (opts.refuseIfPaid) throw new CommissionAlreadyPaidError(dealId, paidAlready.id);
+      logger.info(`[Commission] deal ${dealId} already has a commission with payments (${paidAlready.id}) — kept, not replaced`);
+      if (!paidAlready.reviewFlag) return paidAlready;
+      // The deal is closed again: the "left closed" review flag no longer
+      // describes it. Cleared, not left to go stale on a settled commission.
+      const { reviewFlag: _cleared, ...cleared } = paidAlready;
+      const reclosed: CommissionRecord = { ...cleared, updatedAt: new Date() };
+      await saveCommissionRecordsStore(
+        organizationId,
+        records.map((r) => (r.id === paidAlready.id ? reclosed : r)),
+        tx,
+      );
+      return reclosed;
+    }
 
-  // Remove any existing record for this deal (idempotent)
-  const filtered = records.filter((r) => r.dealId !== dealId);
-  filtered.push(record);
-  await saveCommissionRecordsStore(organizationId, filtered);
+    // Count deals closed by this agent in the current tracking period
+    const periodStart = getPeriodStart(config.trackingPeriod, closedAt);
+    const periodEnd = closedAt;
+    const priorDealsInPeriod = records.filter(
+      (r) =>
+        r.teamMemberId === teamMemberId &&
+        r.dealClosedAt >= periodStart &&
+        r.dealClosedAt <= periodEnd &&
+        r.dealId !== dealId
+    ).length;
 
-  logger.info(`[Commission] Recorded $${(totalOwedCents / 100).toFixed(2)} commission for team member ${teamMemberId} on deal ${dealId} (${tier.label} tier @ ${tier.ratePercent}%)`);
+    const tier = resolveCommissionTier(config, priorDealsInPeriod);
+    const commissionAmountCents = Math.round(
+      (salePriceCents * tier.ratePercent) / 100
+    );
+    const flatBonusCents = config.baseFlatAmount ?? 0;
+    const totalOwedCents = commissionAmountCents + flatBonusCents;
 
-  return record;
+    // Net-of-split — ONLY when the org has explicitly saved a split config.
+    // hasSplitConfig is the honest gate (same shape as hasCommissionConfig): with
+    // no saved split we leave the record's split fields absent (unchanged
+    // behaviour), because applying a split the operator never configured would
+    // fabricate an agent net. The split is computed on the GROSS COMMISSION (the %
+    // of sale price), not on totalOwedCents — the flat bonus is an internal
+    // broker→agent bonus, not GCI to be split — so nothing is double-counted.
+    let splitFields: Partial<CommissionRecord> = {};
+    if (splitConfig) {
+      // Company dollar the broker has already retained THIS YEAR for this agent —
+      // the cap runs off it. Summed from prior records' persisted splitBrokerCents.
+      const closedYear = closedAt.getFullYear();
+      const agentYtdCompanyDollarCents = records
+        .filter(
+          (r) =>
+            r.teamMemberId === teamMemberId &&
+            r.dealId !== dealId &&
+            r.dealClosedAt.getFullYear() === closedYear &&
+            typeof r.splitBrokerCents === "number"
+        )
+        .reduce((sum, r) => sum + (r.splitBrokerCents ?? 0), 0);
+
+      const split = computeCommissionSplit({
+        grossCommissionCents: commissionAmountCents,
+        config: splitConfig,
+        agentYtdCompanyDollarCents,
+      });
+      if (split.applicable && split.agentNetCents != null) {
+        splitFields = {
+          splitApplied: true,
+          splitAgentNetCents: split.agentNetCents,
+          splitBrokerCents: split.brokerCents ?? 0,
+          splitFranchiseFeeCents: split.franchiseFeeCents ?? 0,
+          splitTransactionFeeCents: split.transactionFeeCents ?? 0,
+          splitCappedThisDeal: split.cappedThisDeal,
+        };
+      }
+    }
+
+    const record: CommissionRecord = {
+      id: `comm_${dealId}_${teamMemberId}_${Date.now()}`,
+      organizationId,
+      teamMemberId,
+      dealId,
+      dealClosedAt: closedAt,
+      salePrice: salePriceCents,
+      commissionRatePercent: tier.ratePercent,
+      commissionAmountCents,
+      flatBonusCents,
+      totalOwedCents,
+      paidCents: 0,
+      status: "owed",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...splitFields,
+    };
+
+    // Remove any existing (unpaid) record for this deal (idempotent)
+    const filtered = records.filter((r) => r.dealId !== dealId);
+    filtered.push(record);
+    await saveCommissionRecordsStore(organizationId, filtered, tx);
+
+    logger.info(`[Commission] Recorded $${(totalOwedCents / 100).toFixed(2)} commission for team member ${teamMemberId} on deal ${dealId} (${tier.label} tier @ ${tier.ratePercent}%)`);
+
+    return record;
+  });
+}
+
+/**
+ * A deal LEFT `closed` (the bulk undo's backward move, a delete): the
+ * commission its close recorded is reversed where it can be.
+ *
+ *  - an unpaid record (paidCents 0) is removed — nothing moved, and an
+ *    "owed" figure for a deal that is not closed is a commission nobody
+ *    earned; the removal is logged with its amount and reason;
+ *  - a record with ANY payment is never removed or reset — it is kept and
+ *    flagged for review (`reviewFlag`), because money moved and a person
+ *    decides what happens to it.
+ *
+ * Decided on the deal's status NOW, under the store lock: a close that landed
+ * again after the undo (close → undo → close in quick succession) keeps its
+ * commission.
+ */
+export async function retractDealCommission(
+  organizationId: number,
+  dealId: number,
+  reason: string,
+): Promise<{ removed: number; flagged: number }> {
+  return withCommissionStoreLock(organizationId, async (tx) => {
+    const [now] = await tx
+      .select({ status: deals.status })
+      .from(deals)
+      .where(and(eq(deals.id, dealId), eq(deals.organizationId, organizationId)))
+      .limit(1);
+    if (now?.status === "closed") return { removed: 0, flagged: 0 };
+    const records = await getCommissionRecordsStore(organizationId, tx);
+    const mine = records.filter((r) => r.dealId === dealId);
+    if (mine.length === 0) return { removed: 0, flagged: 0 };
+    let removed = 0;
+    let flagged = 0;
+    const kept: CommissionRecord[] = [];
+    for (const r of records) {
+      if (r.dealId !== dealId) {
+        kept.push(r);
+      } else if (r.paidCents > 0) {
+        flagged++;
+        kept.push({ ...r, reviewFlag: { reason, flaggedAt: new Date().toISOString() }, updatedAt: new Date() });
+      } else {
+        removed++;
+        logger.info(`[Commission] removed unpaid commission ${r.id} ($${(r.totalOwedCents / 100).toFixed(2)} owed) on deal ${dealId}: ${reason}`);
+      }
+    }
+    await saveCommissionRecordsStore(organizationId, kept, tx);
+    if (flagged > 0) {
+      logger.warn(`[Commission] deal ${dealId} left closed with ${flagged} paid commission record(s) — kept and flagged for review: ${reason}`);
+    }
+    return { removed, flagged };
+  });
 }
 
 /**
@@ -473,26 +607,28 @@ export async function recordCommissionPayment(
   commissionId: string,
   paidCents: number
 ): Promise<CommissionRecord> {
-  const records = await getCommissionRecordsStore(organizationId);
-  const idx = records.findIndex((r) => r.id === commissionId);
-  if (idx < 0) throw new Error(`Commission record not found: ${commissionId}`);
+  return withCommissionStoreLock(organizationId, async (tx) => {
+    const records = await getCommissionRecordsStore(organizationId, tx);
+    const idx = records.findIndex((r) => r.id === commissionId);
+    if (idx < 0) throw new Error(`Commission record not found: ${commissionId}`);
 
-  const rec = records[idx];
-  const newPaid = rec.paidCents + paidCents;
-  records[idx] = {
-    ...rec,
-    paidCents: newPaid,
-    status:
-      newPaid >= rec.totalOwedCents
-        ? "paid"
-        : newPaid > 0
-        ? "partial"
-        : "owed",
-    updatedAt: new Date(),
-  };
+    const rec = records[idx];
+    const newPaid = rec.paidCents + paidCents;
+    records[idx] = {
+      ...rec,
+      paidCents: newPaid,
+      status:
+        newPaid >= rec.totalOwedCents
+          ? "paid"
+          : newPaid > 0
+          ? "partial"
+          : "owed",
+      updatedAt: new Date(),
+    };
 
-  await saveCommissionRecordsStore(organizationId, records);
-  return records[idx];
+    await saveCommissionRecordsStore(organizationId, records, tx);
+    return records[idx];
+  });
 }
 
 // ---------------------------------------------------------------------------

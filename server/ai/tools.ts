@@ -1,6 +1,28 @@
 import { storage } from "../storage";
 import type { Organization } from "@shared/schema";
 import { DEAL_STATUSES, OPENING_DEAL_STATUSES, validateDealTransition, validateLeadTransition } from "@shared/lifecycle/pipeline-status";
+import { DealCreationRefusedError, DealTransitionRefusedError, StaleDealWriteError } from "../storage/dealRepo";
+
+/**
+ * The deal repository's typed refusals, as the words Pax hands back (W10.4).
+ * The repository is the last line every deal write passes — a creation at a
+ * stage a deal is not born at, a move the state machine forbids, or a write
+ * that lost a race to another writer (nothing was written). Any of them means
+ * the effect did NOT happen, so the tool answers `success: false` with why,
+ * and no receipt is written for it. Anything else is not a refusal (null).
+ */
+function dealWriteRefusal(err: unknown): string | null {
+  if (err instanceof StaleDealWriteError) {
+    return `Deal ${err.dealId} changed while this was being saved (someone else moved it), so nothing was written. Re-read the deal and decide again.`;
+  }
+  if (err instanceof DealTransitionRefusedError) {
+    return `${err.refusal}. Nothing was written. Valid deal stages: ${DEAL_STATUSES.join(", ")}.`;
+  }
+  if (err instanceof DealCreationRefusedError) {
+    return `A deal can't be created at "${err.status}" — it starts at ${err.allowed.join(", ")}. Nothing was created.`;
+  }
+  return null;
+}
 import { getSystemContext, formatContextForAI, invalidateContextCache } from "../services/aiContextAggregator";
 import { lookupParcelByAPN } from "../services/parcel";
 import { generateOfferSuggestions, generateOfferLetter } from "../services/aiOfferService";
@@ -1706,14 +1728,21 @@ export async function executeTool(
             error: `A new deal starts at ${openingStages.join(", ")}. Create it there, then move it to "${args.status}" with update_deal.`,
           };
         }
-        const deal = await storage.createDeal({
-          organizationId: org.id,
-          type: args.type,
-          propertyId: args.propertyId,
-          offerAmount: args.offerAmount ? String(args.offerAmount) : null,
-          status: args.status || "negotiating",
-          notes: args.notes || null,
-        });
+        let deal: Awaited<ReturnType<typeof storage.createDeal>>;
+        try {
+          deal = await storage.createDeal({
+            organizationId: org.id,
+            type: args.type,
+            propertyId: args.propertyId,
+            offerAmount: args.offerAmount ? String(args.offerAmount) : null,
+            status: args.status || "negotiating",
+            notes: args.notes || null,
+          }, undefined, { creation: "opening" });
+        } catch (err) {
+          const refusal = dealWriteRefusal(err);
+          if (refusal) return { success: false, error: refusal };
+          throw err;
+        }
         // Wave B — deal.created. Fire-and-forget; never fails the tool.
         emitDealCreated(org.id, deal);
 
@@ -1745,7 +1774,19 @@ export async function executeTool(
           dealAfter[key] = dealUpdates[key];
         }
 
-        const deal = await storage.updateDeal(args.deal_id, dealUpdates, undefined, org.id);
+        let deal: Awaited<ReturnType<typeof storage.updateDeal>>;
+        try {
+          // The acting user rides along to the repository's close hook
+          // (first_deal_closed) — null when there is none, never guessed.
+          deal = await storage.updateDeal(args.deal_id, dealUpdates, undefined, org.id, { context: { userId: options?.userId ?? null } });
+        } catch (err) {
+          // The check above read the deal; the repository decides again at
+          // the write. A deal that moved in between is a stale write — nothing
+          // was written, and Pax must not report the move.
+          const refusal = dealWriteRefusal(err);
+          if (refusal) return { success: false, error: refusal };
+          throw err;
+        }
 
         // Wave B — deal.stage_changed. `dealBeforeUpdate` is the real
         // pre-image; when the tool didn't move `status` this emits nothing.
@@ -2060,6 +2101,9 @@ export async function executeTool(
         // open deal if one exists, else create one in offer_sent. Non-blocking
         // — pipeline bookkeeping must never fail the letter itself.
         let pipelineDealId: number | null = null;
+        // Why the pipeline deal was NOT created, when it was not — the letter
+        // stands either way, but the result never implies a deal it lacks.
+        let pipelineDealError: string | null = null;
         if (result.success) {
           try {
             const { db: dbInstance } = await import("../db");
@@ -2084,7 +2128,7 @@ export async function executeTool(
                 status: "offer_sent",
                 offerAmount: String(args.offer_amount),
                 notes: `Auto-created from generated offer letter (${args.buyer_name}, $${args.offer_amount}).`,
-              } as any);
+              } as any, undefined, { creation: "opening" });
               pipelineDealId = newDeal.id;
 
               // Wave B — the offer→deal bridge is a real deal-creation path
@@ -2095,6 +2139,7 @@ export async function executeTool(
               invalidateContextCache(org.id);
             }
           } catch (dealErr) {
+            pipelineDealError = dealWriteRefusal(dealErr) ?? "The offer could not be added to the Deals pipeline.";
             logger.warn("[generate_offer_letter] pipeline deal upsert failed (non-fatal)", {
               metadata: { propertyId: property.id, error: dealErr instanceof Error ? dealErr.message : String(dealErr) },
             });
@@ -2103,7 +2148,7 @@ export async function executeTool(
 
         return { 
           success: result.success, 
-          data: result.success ? { letter: result.letter, subject: result.subject, dealId: pipelineDealId } : undefined,
+          data: result.success ? { letter: result.letter, subject: result.subject, dealId: pipelineDealId, pipelineDealError } : undefined,
           error: result.error 
         };
       }
@@ -2639,9 +2684,13 @@ export async function executeTool(
         // offer_sent (a legal state-machine transition) with the drafted
         // amount, so the pipeline reflects the offer without manual re-entry.
         // Any other status is left alone — never fight the state machine.
+        // What happened to the stage, reported as it happened: null when no
+        // advance was attempted, else whether it applied and, if not, why.
+        let stageAdvance: { to: "offer_sent"; applied: boolean; reason?: string } | null = null;
         if (deal.status === "negotiating") {
           try {
-            const advanced = await storage.updateDeal(deal.id, { status: "offer_sent", offerAmount: String(args.offerAmount) } as any, undefined, org.id);
+            const advanced = await storage.updateDeal(deal.id, { status: "offer_sent", offerAmount: String(args.offerAmount) } as any, undefined, org.id, { context: { userId: options?.userId ?? null } });
+            stageAdvance = { to: "offer_sent", applied: true };
             // 2026-07-29 Wave B completeness audit: this is the "offer bridge"
             // the wave claimed to cover and did not — a negotiating → offer_sent
             // transition is a stage change like any other, and a workflow on
@@ -2650,6 +2699,7 @@ export async function executeTool(
             // the status did not actually move.
             emitDealStageChanged(org.id, deal, advanced);
           } catch (advErr) {
+            stageAdvance = { to: "offer_sent", applied: false, reason: dealWriteRefusal(advErr) ?? "The deal could not be moved to offer_sent." };
             logger.warn("[draft_offer] deal advance to offer_sent failed (non-fatal)", {
               metadata: { dealId: deal.id, error: advErr instanceof Error ? advErr.message : String(advErr) },
             });
@@ -2667,6 +2717,7 @@ export async function executeTool(
             offerAmount: args.offerAmount,
             closingDays,
             contingencies,
+            stageAdvance,
           }
         };
       }

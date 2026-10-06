@@ -9,7 +9,7 @@ import {
   type Lead,
 } from "@shared/schema";
 import { orgHasActiveHold } from "../services/legalHold";
-import { recordDealTransitionEvidence } from "../services/dealLifecycleEvents";
+import { DEAL_PURGED, recordDealTransitionEvidence } from "../services/dealLifecycleEvents";
 import type { DatabaseStorage } from "../storage";
 import { liveLead, leadsIncludingDeleted } from "./liveLeads";
 
@@ -114,19 +114,49 @@ export const auditRepo = {
     return result.length;
   },
 
-  async purgeOldDeals(this: DatabaseStorage, orgId: number, beforeDate: Date, status: string): Promise<number> {
-    if (await orgHasActiveHold(orgId)) return 0;
-    const result = await db.delete(deals)
-      .where(and(
-        eq(deals.organizationId, orgId),
-        lte(deals.createdAt, beforeDate),
-        eq(deals.status, status)
-      ))
+  /**
+   * The retention purge of an org's deals of one status created before a date.
+   *
+   * Only a deal NOTHING references is removed. Thirteen-odd tables point at
+   * deals with ON DELETE NO ACTION — signed contracts (generated_documents),
+   * the close's own deal_won outcome and pattern fingerprint, checklists,
+   * closing packets, transcripts — and a retention rule has no business
+   * cascading those away (customer-data deletion beyond the rule is a
+   * founder decision). A deal one of them references is KEPT and counted, so
+   * the purge neither fails with 23503 on the first linked deal (W10.4
+   * re-audit) nor reports a purge it did not do. The referencing tables are
+   * read from the live catalog (orgDataClear.loadBlockingEdges), never from a
+   * list here that a new child table would silently outgrow; one DELETE
+   * statement, so a deal reopened under it is re-checked and survives.
+   */
+  async purgeOldDeals(
+    this: DatabaseStorage,
+    orgId: number,
+    beforeDate: Date,
+    status: string,
+  ): Promise<{ purged: number; keptLinked: number }> {
+    if (await orgHasActiveHold(orgId)) return { purged: 0, keptLinked: 0 };
+    const { loadBlockingEdges } = await import("../services/orgDataClear");
+    const children = (await loadBlockingEdges()).filter((e) => e.parent === "deals" && e.parentCol === "id");
+    const unreferenced = children.map(
+      (c) =>
+        // The child is aliased, so a future self-reference (deals → deals)
+        // still correlates with the OUTER deal row.
+        sql`NOT EXISTS (SELECT 1 FROM ${sql.identifier(c.child)} AS "blocking_child" WHERE "blocking_child".${sql.identifier(c.childCol)} = ${deals.id})`,
+    );
+    const result = await db
+      .delete(deals)
+      .where(and(eq(deals.organizationId, orgId), lte(deals.createdAt, beforeDate), eq(deals.status, status), ...unreferenced))
       .returning({ id: deals.id });
+    const [kept] = await db
+      .select({ n: count() })
+      .from(deals)
+      .where(and(eq(deals.organizationId, orgId), lte(deals.createdAt, beforeDate), eq(deals.status, status)));
     // A purged closed deal is not a sale: the comp its close recorded is
-    // retracted, as for any deal leaving closed (audit of 7cc7345).
-    for (const d of result) recordDealTransitionEvidence(orgId, { status }, { id: d.id, status: "deleted" });
-    return result.length;
+    // retracted, as for any deal leaving closed (audit of 7cc7345). Its owed
+    // commission stands — aging out is not an undone sale (DEAL_PURGED).
+    for (const d of result) recordDealTransitionEvidence(orgId, { status }, { id: d.id, status: DEAL_PURGED });
+    return { purged: result.length, keptLinked: Number(kept?.n ?? 0) };
   },
 
   async purgeOldAuditLogs(this: DatabaseStorage, orgId: number, beforeDate: Date): Promise<number> {

@@ -323,6 +323,7 @@ import { registerPlatformFeatureRoutes } from "./routes-platform-features";
 
 import { logger } from "./utils/logger";
 import { Errors, sendError } from "./utils/errors";
+import { dealWriteErrorCode, sendDealWriteError } from "./utils/dealWriteErrors";
 import { organizations, leads, properties, deals, npsResponses, feedbackSubmissions, churnRiskScores } from "@shared/schema";
 import { monthlyRevenueCentsFor } from "@shared/billing/tier-pricing";
 import { eq, and, desc, sql, count, sum, gte, avg } from "drizzle-orm";
@@ -1749,7 +1750,11 @@ export async function registerRoutes(
       
       // Perform the bulk update
       const idsToUpdate = dealsToUpdate.map(d => d.id);
-      const updatedCount = await storage.bulkUpdateDeals(org.id, idsToUpdate, { status: newStage });
+      // The acting user travels to the close hook (a close made here is a
+      // close like any other; its effects record who made it).
+      const updatedCount = await storage.bulkUpdateDeals(org.id, idsToUpdate, { status: newStage }, {
+        context: { userId: req.user?.id ? String(req.user.id) : null },
+      });
 
       // A bulk stage move is N real transitions. This route emitted no
       // deal.stage_changed for workflows (audit of e3debe0); `dealsToUpdate`
@@ -1789,6 +1794,10 @@ export async function registerRoutes(
         undoAvailable: true,
       });
     } catch (error: any) {
+      // A move the repository refused (the state machine, or a deal that
+      // moved under the batch) is the repository's answer — 400 / 409 — not
+      // a server fault.
+      if (sendDealWriteError(res, error)) return;
       logger.error("Bulk stage update deals error", error instanceof Error ? error : undefined);
       Errors.internal(res, error);
     }
@@ -1835,7 +1844,7 @@ export async function registerRoutes(
 
       // Restore each deal to its previous state
       let restoredCount = 0;
-      const errors: Array<{ id: number; error: string }> = [];
+      const errors: Array<{ id: number; error: string; code?: string }> = [];
       
       for (const state of previousStates) {
         try {
@@ -1859,12 +1868,20 @@ export async function registerRoutes(
             errors.push({ id: state.id, error: `Not a deal stage: ${String(state.previousStage)}` });
             continue;
           }
-          const restored = await storage.updateDeal(state.id, { status: state.previousStage }, undefined, org.id, { backwardUndo: true });
+          const restored = await storage.updateDeal(state.id, { status: state.previousStage }, undefined, org.id, {
+            backwardUndo: true,
+            context: { userId: req.user?.id ? String(req.user.id) : null },
+          });
           const { emitDealStageChanged } = await import("./services/dealEvents");
           emitDealStageChanged(org.id, deal, restored);
           restoredCount++;
         } catch (err: any) {
-          errors.push({ id: state.id, error: err.message || "Unknown error" });
+          // A per-deal refusal stays per-deal (the undo answers 207 with
+          // each one), but it is named for what it is: a deal that moved
+          // since the bulk move (nothing written — reload) or a move the
+          // state machine refused.
+          const code = dealWriteErrorCode(err) ?? undefined;
+          errors.push({ id: state.id, error: err.message || "Unknown error", ...(code ? { code } : {}) });
         }
       }
       
@@ -1897,6 +1914,7 @@ export async function registerRoutes(
         restoredCount,
       });
     } catch (error: any) {
+      if (sendDealWriteError(res, error)) return;
       logger.error("Bulk stage undo error", error instanceof Error ? error : undefined);
       Errors.internal(res, error);
     }

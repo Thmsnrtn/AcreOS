@@ -21,8 +21,8 @@ vi.mock("../utils/logger", () => ({
 const SELECT_QUEUE: any[][] = [];
 const INSERT_RETURNING: any[][] = [];
 const UPDATE_RETURNING: any[][] = [];
-vi.mock("../db", () => ({
-  db: {
+vi.mock("../db", () => {
+  const db: Record<string, unknown> = {
     select: (_p?: unknown) => ({
       from: (_t: unknown) => ({
         where: (_w: unknown) => Promise.resolve(SELECT_QUEUE.shift() ?? []),
@@ -42,8 +42,12 @@ vi.mock("../db", () => ({
         },
       }),
     }),
-  },
-}));
+  };
+  // A bulk status write is one transaction (W10.4 item 5: every row moves
+  // only while it still has the status the state machine checked).
+  db.transaction = (fn: (tx: unknown) => Promise<unknown>) => fn(db);
+  return { db };
+});
 
 // Real dealLifecycleEvents seam; only the mesh publisher underneath is mocked.
 const PUBLISHES: Array<{ method: string; orgId: number; payload: any }> = [];
@@ -153,6 +157,11 @@ describe("dealRepo.bulkUpdateDeals → per-deal events (kanban bulk stage move)"
     SELECT_QUEUE.push([
       { id: 1, status: "negotiating", acceptedAmount: null, offerAmount: null },
       { id: 2, status: "offer_sent", acceptedAmount: null, offerAmount: null }, // already there
+    ]);
+    // The guarded UPDATE matches both rows (each still has the status read above).
+    UPDATE_RETURNING.push([
+      { id: 1, organizationId: 42, status: "offer_sent" },
+      { id: 2, organizationId: 42, status: "offer_sent" },
     ]);
     const n = await dealRepo.bulkUpdateDeals.call(storageThis, 42, [1, 2], { status: "offer_sent" });
     expect(n).toBe(2);

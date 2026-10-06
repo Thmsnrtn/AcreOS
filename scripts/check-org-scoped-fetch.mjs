@@ -723,9 +723,6 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   "server/services/autonomousDecisionExecutor.ts::processInboxItem",
   "server/services/autopilot/hands/registry.ts::executeHandWitnessed",
   "server/services/byok/key-vault.ts::getByokCredential",
-  "server/services/commissionService.ts::saveCommissionConfig",
-  "server/services/commissionService.ts::saveCommissionRecordsStore",
-  "server/services/commissionService.ts::saveSplitConfig",
   "server/services/comms/tracking-pool.ts::assignTrackingNumberForMailShipment",
   "server/services/dealFeedEngine.ts::getTodaysFeed",
   "server/services/dealHandoffService.ts::saveHandoffsStore",
@@ -775,7 +772,6 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   "server/services/solene/verifyQueue.ts::enqueueVerifyDispatch",
   "server/services/solene/verifyQueue.ts::recordVerifyOutcome",
   "server/services/territoryService.ts::saveTerritoriesStore",
-  "server/services/titleChainService.ts::runPostCloseAutomation",
   "server/services/webhookDispatcher.ts::saveWebhookEndpoints",
 ]);
 

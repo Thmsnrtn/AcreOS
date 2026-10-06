@@ -125,7 +125,8 @@ const ADOPTING_SURFACE_BASELINE = 5;
  * says *not until a real link exists*, and each entry names the missing column.
  *
  * THE DEAL CLOSE IS THE STANDING EXAMPLE, and it is the most tempting surface
- * in the repo. `PUT /api/deals/:id` transitioning to `closed` writes
+ * in the repo. A deal transitioning to `closed` (any writer — the close's
+ * consequences run in services/dealClose.ts since W10.4) carries
  * `acceptedAmount` — a REALISED sale price, already fed to the valuation
  * training corpus as arm's-length ground truth. That is exactly the realised
  * number unit 27 went looking for and did not find, because it searched the
@@ -149,12 +150,26 @@ const ADOPTING_SURFACE_BASELINE = 5;
  * adopt. A refusal that cannot notice its own reason disappearing is just a
  * hardcoded no.
  */
+// W10.4: the close's consequences moved out of PUT /api/deals/:id into the ONE
+// close writer the deal repository calls on every transition into `closed`
+// (server/services/dealClose.ts). That file is now where a close would record
+// an outcome, so it is the surface held blocked; PUT stays in the population
+// because it still writes the realised acceptedAmount.
 const BLOCKED_ON_A_REAL_LINK = [
   {
-    file: "server/routes-deals.ts",
-    what: "a deal closing, which writes a realised acceptedAmount",
+    file: "server/services/dealClose.ts",
+    what: "a deal closing (the one close writer), whose acceptedAmount is the realised price",
     missing: "deals has no decisionSnapshotId and no offerId; offers has no dealId",
     /** Columns whose ARRIVAL means the block is over. */
+    unblockedBy: [
+      { table: "deals", column: "decisionSnapshotId" },
+      { table: "offers", column: "dealId" },
+    ],
+  },
+  {
+    file: "server/routes-deals.ts",
+    what: "PUT /api/deals/:id, which writes a realised acceptedAmount",
+    missing: "deals has no decisionSnapshotId and no offerId; offers has no dealId",
     unblockedBy: [
       { table: "deals", column: "decisionSnapshotId" },
       { table: "offers", column: "dealId" },

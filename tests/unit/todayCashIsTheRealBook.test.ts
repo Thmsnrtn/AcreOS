@@ -39,19 +39,22 @@ describe("Today's money is the real book", () => {
 
   it("every cash figure reads the filtered sets, and the payment history reads real payments", () => {
     const src = stripComments(readFileSync(resolve(__dirname, "../../server/routes-today.ts"), "utf8"));
-    const at = src.indexOf("const sampleParcels = await samplePropertyIds(orgId);");
+    // W10.4 / DEFECT-0276 (8): the read is wrapped, and on failure the
+    // split-dependent figures are null (todaySampleReadFailureIsUnavailable).
+    const at = src.indexOf("sampleParcels = await samplePropertyIds(orgId);");
     expect(at).toBeGreaterThan(0);
     const tail = src.slice(at, src.indexOf("res.json({", at));
-    expect(tail).toMatch(/const activeDeals = realDeals\.filter/);
-    expect(tail).toMatch(/const activeNotes = realNotes\.filter/);
-    expect(tail).toMatch(/const lateCount = realNotes\.filter/);
+    expect(tail).toMatch(/const activeDeals = realDeals\?\.filter/);
+    expect(tail).toMatch(/const activeNotes = realNotes\?\.filter/);
+    expect(tail).toMatch(/const lateCount = realNotes\?\.filter/);
     expect(tail).toMatch(/return realDeals\.reduce/); // the open-deals sparkline
     expect(tail).toMatch(/gte\(paymentsTable\.paymentDate, since\),\s*realPayment\(\)/);
     // The filtered sets are the unfiltered book minus sample lineage. (Task
     // counts further down — stuck deals, waiting counters — still read the
     // whole book on purpose: a demo's tasks are tasks, not money.)
-    expect(tail).toMatch(/const realDeals = allDeals\.filter\(isReal\)/);
-    expect(tail).toMatch(/const realNotes = allNotes\.filter\(isReal\)/);
+    expect(tail).toMatch(/deals: allDeals\.filter\(isReal\), notes: allNotes\.filter\(isReal\)/);
+    expect(tail).toMatch(/const realDeals = realBook\?\.deals \?\? null/);
+    expect(tail).toMatch(/const realNotes = realBook\?\.notes \?\? null/);
     // The morning brief's first-close claim reads the real deals (audit of
     // the fourth follow-up — it read the whole book).
     expect(tail).toMatch(/deriveFirstClosePrefix\(realDeals,/);

@@ -1241,9 +1241,12 @@ function payoffResponseBody(result: AcquiredNotePayoffResult) {
  */
 async function retractCarriedDealSale(orgId: number, dealId: number): Promise<void> {
   try {
-    const { closedSaleDealKey } = await import("./services/marketNetworkContributor");
-    const { acreOSValuation } = await import("./services/acreOSValuation");
-    await acreOSValuation.retractTrainingTransaction(orgId, `deal:${closedSaleDealKey(orgId, dealId)}`);
+    // Under the per-deal training advisory lock the close's evidence read +
+    // insert also take (DEFECT-0258 (1), W10.4): the two serialize, so a close
+    // whose evidence predates this note can no longer land its insert after
+    // this retraction, and a retracted row is never un-retracted.
+    const { retractClosedSaleTraining } = await import("./services/dealClose");
+    await retractClosedSaleTraining(orgId, dealId);
   } catch (err) {
     logger.warn("notes.from_deal training retraction failed", {
       orgId,

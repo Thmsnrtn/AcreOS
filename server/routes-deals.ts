@@ -1,5 +1,4 @@
 import type { Express } from "express";
-import { DealTransitionRefusedError } from "./storage/dealRepo";
 import { omitProtectedFields } from "./utils/updatePayload";
 import { fraudGateRefusal, sealWireAttestation, stampWireConfirmation, withdrawWireConfirmation } from "./services/closingEvidence";
 import { storage } from "./storage";
@@ -9,12 +8,11 @@ import { insertDealSchema } from "@shared/schema";
 import type { DueDiligenceChecklistItem, InsertDeal } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
-import { leadScoringService } from "./services/leadScoring";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { checkUsageLimit } from "./services/usageLimits";
 import { db, withTransaction } from "./db";
-import { outcomeTelemetry, dueDiligenceItems, deals, contractAssignments, CONTRACT_ASSIGNMENT_STATUSES, generatedDocuments } from "@shared/schema";
-import { and, eq, isNotNull, or, sql } from "drizzle-orm";
+import { dueDiligenceItems, deals, contractAssignments, CONTRACT_ASSIGNMENT_STATUSES } from "@shared/schema";
+import { and, eq, sql } from "drizzle-orm";
 import {
   STAGE_BENCHMARK_DAYS,
   DEFAULT_STAGE_BENCHMARK_DAYS,
@@ -24,6 +22,9 @@ import {
 import { checkUsury } from "./services/usury";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+// W10.4 item 6: the repository's typed refusals (stale write → 409, refused
+// transition / creation → 400) are answered by ONE mapper on every deal write.
+import { sendDealWriteError } from "./utils/dealWriteErrors";
 // A declared permission that nothing enforces is not a permission.
 import { requirePermission } from "./utils/permissions";
 import { type AuthenticatedRequest, getOrganization, getOrganizationId } from "./types/request";
@@ -46,40 +47,12 @@ import { publishDealLifecycle } from "./services/dealLifecycleEvents";
 // assignment templates never ran because nothing emitted deal.contract_signed /
 // deal.assignment_pending. Both emitters are fire-and-forget and no-op unless the
 // status genuinely transitions — see services/wholesaleEvents.ts.
-import { emitContractSigned, emitAssignmentPending, type ContractSignedEvidence } from "./services/wholesaleEvents";
+import { emitAssignmentPending } from "./services/wholesaleEvents";
 
-/**
- * The evidence that a deal's purchase agreement was signed: a signed document
- * on the deal (a provider-completed e-sign receipt), else the operator's
- * explicit attestation on this request, else none (quality directive
- * 2026-09-29 — the stage alone is not evidence).
- */
-async function contractSignedEvidence(
-  orgId: number,
-  dealId: number,
-  attestedBy: string | null,
-): Promise<ContractSignedEvidence | null> {
-  const [doc] = await db
-    .select({ id: generatedDocuments.id, signedAt: generatedDocuments.signedAt })
-    .from(generatedDocuments)
-    .where(
-      and(
-        eq(generatedDocuments.organizationId, orgId),
-        eq(generatedDocuments.dealId, dealId),
-        // A document is evidence of a signature when it carries one. "final"
-        // means finalized for sending, not signed, and admitted every
-        // generated-but-unsigned contract (audit of e3debe0).
-        or(isNotNull(generatedDocuments.signedAt), eq(generatedDocuments.status, "signed")),
-      ),
-    )
-    // The most recent signature first; Postgres sorts NULL first under a bare
-    // DESC, which put an undated "signed" row ahead of a dated one.
-    .orderBy(sql`${generatedDocuments.signedAt} desc nulls last`)
-    .limit(1);
-  if (doc) return { kind: "signed_document", documentId: doc.id, signedAt: doc.signedAt ?? null };
-  if (attestedBy) return { kind: "operator_attested", attestedBy };
-  return null;
-}
+// The contract-signed evidence rule and the deal.contract_signed emit moved to
+// services/dealClose.ts (emitContractSignedIfEvidenced), triggered by the deal
+// repository on EVERY entry into in_escrow — PUT passes the operator's
+// attestation through updateDeal's context (W10.4 item 2).
 
 // F-D39: small helper used by the due-diligence-item routes below to resolve
 // `(itemId, orgId) → item` only when the item's parent property belongs to
@@ -707,7 +680,10 @@ export function registerDealRoutes(app: Express): void {
       //     route and every org.
       const deal = await withTransaction(async (tx) => {
         // insertDealSchema strips organizationId; the repo write requires it.
-        const newDeal = await storage.createDeal({ ...input, organizationId: org.id }, tx);
+        // An "opening" creation (the default): the repository refuses a deal
+        // born closed, in escrow, or at a word the vocabulary does not hold
+        // (W10.4 item 4) — answered 400 naming the allowed statuses below.
+        const newDeal = await storage.createDeal({ ...input, organizationId: org.id }, tx, { creation: "opening" });
         await storage.createAuditLogEntry({
           organizationId: org.id,
           userId,
@@ -760,6 +736,7 @@ export function registerDealRoutes(app: Express): void {
           err.issues.map((e) => ({ field: e.path?.join?.(".") || "", message: e.message })),
         );
       }
+      if (sendDealWriteError(res, err)) return;
       return Errors.internal(res, err as Error);
     }
   });
@@ -812,75 +789,23 @@ export function registerDealRoutes(app: Express): void {
         }
       }
 
-      const deal = await storage.updateDeal(dealId, validated, undefined, org.id);
+      // The acting user and, on a move into escrow, the operator's
+      // attestation ride into the repository's transition hook — which runs
+      // the contract-signed emit and every close consequence for EVERY writer
+      // (W10.4 items 1–2: services/dealClose.ts). This route used to run them
+      // itself, so a deal closed any other way had none of them.
+      const actingUserId = req.user?.id ? String(req.user.id) : null;
+      const deal = await storage.updateDeal(dealId, validated, undefined, org.id, {
+        context: {
+          userId: actingUserId,
+          contractSignedAttested: (req.body as { contractSignedAttested?: unknown })?.contractSignedAttested === true,
+        },
+      });
 
       // Wave B — deal.stage_changed. `existingDeal` is the real pre-image, so
       // previousData carries the honest prior stage. No-ops emit nothing: the
       // helper compares statuses and returns early when they match.
       emitDealStageChanged(org.id, existingDeal, deal);
-
-      // Audit Wave 1 (wholesaler beta→core) — deal.contract_signed. A deal
-      // genuinely entering escrow (accepted → in_escrow, the only path in per
-      // DEAL_STATUS_TRANSITIONS) is a signed purchase agreement. Resolve the
-      // property for the honest address, then fire. The whole block is wrapped so
-      // a property-lookup failure never fails the deal write that just committed;
-      // the emitter itself also no-ops unless the transition is genuine.
-      if (existingDeal.status !== "in_escrow" && deal.status === "in_escrow") {
-        try {
-          const property = deal.propertyId
-            ? await storage.getProperty(org.id, deal.propertyId)
-            : null;
-          // The operator may attest on this request that the agreement is
-          // signed (outside AcreOS); otherwise a signed document must exist.
-          const attested = (req.body as { contractSignedAttested?: unknown })?.contractSignedAttested === true;
-          const evidence = await contractSignedEvidence(org.id, deal.id, attested ? String(req.user?.id ?? "") || null : null);
-          emitContractSigned(existingDeal.status, deal, {
-            propertyAddress: property?.address ?? null,
-            evidence,
-          });
-        } catch (err) {
-          logger.warn("deal.contract_signed emit failed (non-fatal)", {
-            metadata: { dealId, error: err instanceof Error ? err.message : String(err) },
-          });
-        }
-      }
-
-      // Outcome loop (S2c): a deal reaching a terminal status feeds the LCS
-      // calibration loop automatically. This was previously reachable only
-      // through the manual /api/ml/record-outcome route, so in practice no
-      // closed deal ever recorded an outcome. Fire-and-forget — calibration
-      // must never block or fail the customer's update.
-      const terminalOutcome =
-        validated.status && validated.status !== existingDeal.status
-          ? validated.status === "closed"
-            ? ("won" as const)
-            : validated.status === "dead" || validated.status === "cancelled"
-              ? ("lost" as const)
-              : null
-          : null;
-      if (terminalOutcome) {
-        import("./services/outcomeCalibrationLoop")
-          .then(({ onDealClosed }) => onDealClosed(org.id, dealId, terminalOutcome))
-          .catch((err) =>
-            logger.warn("Deal outcome calibration hook failed (non-fatal)", {
-              metadata: { dealId, error: err instanceof Error ? err.message : String(err) },
-            }),
-          );
-      }
-      // Referral: a WON deal no longer rewards (market-match terms,
-      // founder decision 2026-09-01 — the reward gates on PAID conversion
-      // + a 30-day retention hold, because deal_won alone is gameable at
-      // real reward sizes). The won deal remains the natural share moment,
-      // logged for the future in-product share prompt.
-      if (terminalOutcome === "won") {
-        import("./services/referralReward")
-          .then(({ recordReferralShareMoment }) => recordReferralShareMoment(org.id))
-          .catch((err) =>
-            logger.warn("Referral share-moment hook failed (non-fatal)", {
-              metadata: { dealId, error: err instanceof Error ? err.message : String(err) },
-            }),
-          );
-      }
 
       const user = req.user;
       const userId = user?.id || user?.id;
@@ -901,262 +826,11 @@ export function registerDealRoutes(app: Express): void {
         triggerDealEnrichmentAsync(org.id, deal.id, deal.propertyId);
       }
       
-      // Magnus §1 — ML training snapshots on deal close / cancel.
-      // `closed` is treated as closed_won; `cancelled` is treated as
-      // closed_lost. Both fire the deal_outcome snapshot. closed_won also
-      // pairs the AVM-vs-actual snapshot if the property had a recent AVM.
-      const isFirstClose = validated.status === "closed" && existingDeal.status !== "closed";
-      const isFirstCancel = validated.status === "cancelled" && existingDeal.status !== "cancelled";
-      if (isFirstClose || isFirstCancel) {
-        try {
-          const { recordSnapshotAsync, pairOutcomeAsync } = await import("./services/mlSnapshots");
-          const wonOrLost = isFirstClose ? "closed_won" : "closed_lost";
-          const acceptedAmount = deal.acceptedAmount ? parseFloat(String(deal.acceptedAmount)) : null;
-          const offerAmount = deal.offerAmount ? parseFloat(String(deal.offerAmount)) : null;
-
-          recordSnapshotAsync({
-            snapshotType: "deal_outcome",
-            subjectType: "deal",
-            subjectId: String(deal.id),
-            orgId: org.id,
-            // Decision was made when the offer was sent / deal entered the
-            // pipeline; we don't have that timestamp readily available so
-            // use createdAt as the closest proxy.
-            decisionAt: deal.createdAt ? new Date(deal.createdAt as any) : new Date(),
-            outcomeAt: new Date(),
-            features: {
-              dealType: deal.type,
-              propertyId: deal.propertyId,
-              offerAmount,
-              analysisResults: deal.analysisResults ?? null,
-              // TODO(tsc): deals has no sequenceId column; telemetry feature
-              // left null until/if a sequence linkage is added.
-              sequenceId: null,
-            },
-            labels: {
-              outcome: wonOrLost,
-              acceptedAmount,
-              status: validated.status,
-            },
-          });
-
-          // Pair the AVM snapshot with the actual sale price (closed_won only).
-          // Only a DISPOSITION's accepted amount is a sale price; an
-          // acquisition's is what the investor paid, often a fraction of value
-          // by design, and labelling it actualSalePrice taught the AVM that
-          // land is worth what investors buy it for (audit of e3debe0).
-          if (isFirstClose && deal.propertyId && acceptedAmount && deal.type === "disposition") {
-            pairOutcomeAsync({
-              snapshotType: "avm_vs_actual",
-              subjectType: "property",
-              subjectId: String(deal.propertyId),
-              outcomeLabels: {
-                actualSalePrice: acceptedAmount,
-                dealId: deal.id,
-              },
-              outcomeAt: new Date(),
-            });
-
-            // Feed a qualifying closed SALE into the valuation training corpus
-            // (transaction_training). Every close used to go in as "high"
-            // quality — acquisitions (what the investor paid), seller-financed
-            // contract totals, and sample fixtures included — with no dedupe
-            // (quality directive 2026-09-29). closedSaleEvidence admits only a
-            // real cash disposition; the row is keyed by the deal's anonymous
-            // dealKey (a re-close is not a second sale; a reopen retracts it)
-            // and labelled "medium": an operator-entered close is not a
-            // recorded deed price.
-            void (async () => {
-              try {
-                const { closedSaleEvidence } = await import("./services/marketNetworkContributor");
-                const sale = await closedSaleEvidence(deal.id, org.id);
-                if (!sale.ok) {
-                  logger.info("[deal-close] not recorded as a sale comp", { dealId: deal.id, reason: sale.reason });
-                  return;
-                }
-                const prop = await storage.getProperty(org.id, sale.propertyId);
-                const { acreOSValuation } = await import("./services/acreOSValuation");
-                await acreOSValuation.recordTransactionForTraining(
-                  String(org.id),
-                  {
-                    propertyId: String(sale.propertyId),
-                    salePrice: sale.price,
-                    saleDate: sale.closingDate ?? new Date(),
-                    acres: sale.acres,
-                    pricePerAcre: sale.price / sale.acres,
-                    location: {
-                      state: sale.state,
-                      county: sale.county,
-                      zipCode: prop?.zip ?? "",
-                      latitude: prop?.latitude != null ? Number(prop.latitude) : 0,
-                      longitude: prop?.longitude != null ? Number(prop.longitude) : 0,
-                    },
-                    characteristics: {
-                      zoning: prop?.zoning ?? undefined,
-                      roadAccess: prop?.roadAccess ?? undefined,
-                      topography: prop?.terrain ?? undefined,
-                    },
-                    marketConditions: {
-                      quarterlyInterestRate: 0,
-                      localUnemploymentRate: 0,
-                      populationGrowth: 0,
-                      nearbyDevelopment: false,
-                    },
-                  },
-                  "medium",
-                  { dedupeKey: `deal:${sale.dealKey}` },
-                );
-              } catch (err) {
-                logger.warn("[deal-close] recordTransactionForTraining failed", {
-                  dealId: deal.id,
-                  err: err instanceof Error ? err.message : String(err),
-                });
-              }
-            })();
-          }
-
-          // Pair the lead-conversion snapshot — closed = converted, cancelled = dismissed.
-          // Look up the property's leadId so we can pair on the right subject.
-          try {
-            const property = deal.propertyId
-              ? await storage.getProperty(org.id, deal.propertyId)
-              : null;
-            if (property && property.sellerId) {
-              pairOutcomeAsync({
-                snapshotType: "lead_conversion",
-                subjectType: "lead",
-                subjectId: String(property.sellerId),
-                outcomeLabels: {
-                  outcome: isFirstClose ? "converted" : "dismissed",
-                  dealId: deal.id,
-                  acceptedAmount,
-                },
-                outcomeAt: new Date(),
-              });
-            }
-          } catch { /* non-fatal */ }
-        } catch { /* non-fatal */ }
-      }
-
-      // Track conversion when deal is closed (for lead scoring feedback loop)
-      if (validated.status === "closed" && existingDeal.status !== "closed") {
-        // Phase 5 §5 Part D (team readiness) — fire deal_closed Slack/Teams
-        // event. Non-blocking so a misconfigured webhook can never wedge
-        // the deal-close path.
-        try {
-          const { dispatchTeamEvent } = await import("./services/teamWebhookDispatcher");
-          await dispatchTeamEvent(org.id, "deal_closed", {
-            title: "Deal closed",
-            body: `Deal #${deal.id} closed${deal.acceptedAmount ? ` at $${Number(deal.acceptedAmount).toLocaleString()}` : ""}.`,
-            context: {
-              dealId: deal.id,
-              acceptedAmount: deal.acceptedAmount,
-              dealType: deal.type,
-            },
-          });
-        } catch { /* non-fatal */ }
-
-        // Wave 2 pass C — auto-record the closing agent's commission
-        // (agent_investor commission wedge). Fire-and-forget, consistent with
-        // the other close-seam side effects: it must NEVER fail the close.
-        // HONESTY GATE: record ONLY when (a) the deal has an assigned agent and
-        // (b) the org has EXPLICITLY saved a commission tier config. When no
-        // config exists we skip silently — recording against DEFAULT_CONFIG
-        // would fabricate a commission the operator never set up. Correct
-        // signature: recordDealCommission(orgId, teamMemberId, dealId,
-        // salePriceCents) — teamMemberId is the deal's assigned agent.
-        if (deal.assignedTo != null) {
-          const saleAmount = deal.acceptedAmount ? parseFloat(String(deal.acceptedAmount)) : 0;
-          if (Number.isFinite(saleAmount) && saleAmount > 0) {
-            void (async () => {
-              try {
-                const { hasCommissionConfig, recordDealCommission } = await import("./services/commissionService");
-                // STAGE 1 (migration 0226) — client vs own book: an
-                // 'own_investment' deal is the agent's OWN P&L, never a brokerage
-                // commission. Skip it the same way we skip an unconfigured org —
-                // recording a commission on the operator's own buy/sell would
-                // fabricate a number with no client behind it. NULL book = client
-                // (what a deal always was), so only the explicit own_investment
-                // tag short-circuits here.
-                if (deal.dealBook === "own_investment") return;
-                if (!(await hasCommissionConfig(org.id))) return; // no config → skip, never fabricate
-                await recordDealCommission(
-                  org.id,
-                  deal.assignedTo!,
-                  deal.id,
-                  Math.round(saleAmount * 100),
-                );
-              } catch (err) {
-                logger.warn("[deal-close] commission auto-record failed", {
-                  dealId: deal.id,
-                  err: err instanceof Error ? err.message : String(err),
-                });
-              }
-            })();
-          }
-        }
-
-        try {
-          // Get the property to find associated lead
-          const property = await storage.getProperty(org.id, deal.propertyId);
-          if (property && property.sellerId) {
-            const dealValue = deal.acceptedAmount ? parseFloat(String(deal.acceptedAmount)) : undefined;
-            await leadScoringService.recordConversion(property.sellerId, org.id, "deal_closed", {
-              dealValue,
-              profitMargin: deal.analysisResults?.netProfit,
-            });
-          }
-        } catch (conversionErr) {
-          logger.error("Failed to record conversion", conversionErr instanceof Error ? conversionErr : undefined);
-        }
-
-        // Phase 3 Week 14 — Activation telemetry. First closed deal is a
-        // major activation milestone (lead → close conversion).
-        try {
-          const userIdForEvent = req.user?.id || req.user?.id;
-          const { recordActivationEventAsync } = await import("./services/activation");
-          recordActivationEventAsync({
-            orgId: org.id,
-            userId: userIdForEvent,
-            eventName: "first_deal_closed",
-            eventValue: { dealId: deal.id, acceptedAmount: deal.acceptedAmount },
-          });
-        } catch { /* non-fatal */ }
-
-        // Write outcome telemetry for the feedback loop (non-blocking)
-        db.insert(outcomeTelemetry).values({
-          organizationId: org.id,
-          outcomeType: "deal_won",
-          outcome: {
-            success: true,
-            value: deal.acceptedAmount ? parseFloat(String(deal.acceptedAmount)) : undefined,
-            details: { dealType: deal.type, stage: deal.status },
-          },
-          contributingFactors: {
-            offerAmount: deal.offerAmount ? parseFloat(String(deal.offerAmount)) : undefined,
-            sequenceUsed: undefined, // TODO(tsc): deals has no sequenceId column
-            marketConditions: deal.analysisResults ?? undefined,
-          },
-          relatedDealId: deal.id,
-          relatedPropertyId: deal.propertyId ?? undefined,
-        }).catch(() => {});
-
-        // Fire Pillar 3 market signal contribution (non-blocking)
-        import("./services/marketNetworkContributor").then(({ contributeClosedDealToNetwork }) => {
-          contributeClosedDealToNetwork(deal.id, org.id).catch((err: unknown) => {
-            logger.error("Market signal contribution failed", { error: err instanceof Error ? err.message : String(err) });
-          });
-        }).catch((err: unknown) => {
-          logger.error("Failed to load marketNetworkContributor", { error: err instanceof Error ? err.message : String(err) });
-        });
-
-        // Auto-fingerprint closed deal for pattern cloning (non-blocking)
-        import("./services/dealPatternCloning").then(({ dealPatternCloningService }) => {
-          dealPatternCloningService.recordPatternFromClosedDeal(org.id, deal.id).catch((err) => {
-            logger.error("deal pattern fingerprint failed", { error: err instanceof Error ? err.message : String(err) });
-          });
-        }).catch(() => {});
-      }
+      // The close / cancel consequences (calibration, deal_outcome +
+      // avm_vs_actual + lead_conversion snapshots, the training row, team
+      // event, commission, conversion, first_deal_closed, outcome telemetry,
+      // market network, pattern fingerprint) run in the repository's hook:
+      // services/dealClose.ts recordDealClose — once, for every writer.
 
       // Magnus §1 — offer-acceptance training snapshots. Decision is "offer
       // sent"; outcome is "accepted | countered | cancelled". The offer is
@@ -1238,16 +912,10 @@ export function registerDealRoutes(app: Express): void {
       if (err instanceof z.ZodError) {
         return Errors.badRequest(res, "Validation failed", err.issues.map(e => ({ field: e.path.join('.'), message: e.message })));
       }
-      // Task 219: surface optimistic-lock conflicts as 409 Conflict
-      if (err instanceof Error && err.message.includes("modified by another request")) {
-        return Errors.badRequest(res, err.message);
-      }
-      // The repository's state machine refused the move: the deal changed
-      // stage between this route's check and the write (audit of 9ed61f4).
-      if (err instanceof DealTransitionRefusedError) {
-        return Errors.badRequest(res, err.refusal);
-      }
-      throw err;
+      // The deal moved between this route's read and the write (409), or the
+      // repository's state machine refused it (400) — audit of 9ed61f4, W10.4.
+      if (sendDealWriteError(res, err)) return;
+      return Errors.internal(res, err);
     }
   });
 
@@ -1338,6 +1006,7 @@ export function registerDealRoutes(app: Express): void {
         enrichmentResult,
       });
     } catch (err) {
+      if (sendDealWriteError(res, err)) return;
       logger.error("Manual deal enrichment failed", { dealId: req.params.id, error: String(err) });
       Errors.internal(res, err instanceof Error ? err : new Error("Enrichment failed"));
     }
@@ -2594,7 +2263,9 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         }
       }
 
-      const deal = await storage.updateDeal(dealId, { status: stage }, undefined, org.id);
+      const deal = await storage.updateDeal(dealId, { status: stage }, undefined, org.id, {
+        context: { userId: req.user?.id ? String(req.user.id) : null },
+      });
       if (!deal) return Errors.notFound(res, "Deal");
 
       // Wave B — this is the Kanban drag / keyboard-move path (client
@@ -2604,8 +2275,9 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       emitDealStageChanged(org.id, existingDeal, deal);
 
       res.json(deal);
-    } catch (err: any) {
-      Errors.badRequest(res, err.message || "Failed to update stage");
+    } catch (err) {
+      if (sendDealWriteError(res, err)) return;
+      Errors.internal(res, err);
     }
   });
 
@@ -2620,6 +2292,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       const deletedCount = await storage.bulkDeleteDeals(org.id, ids);
       res.json({ deletedCount });
     } catch (err: any) {
+      if (sendDealWriteError(res, err)) return;
       Errors.internal(res, err instanceof Error ? err : new Error("Failed to bulk delete deals"));
     }
   });
@@ -2664,7 +2337,9 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         }
       }
 
-      const updatedCount = await storage.bulkUpdateDeals(org.id, ids, updates);
+      const updatedCount = await storage.bulkUpdateDeals(org.id, ids, updates, {
+        context: { userId: req.user?.id ? String(req.user.id) : null },
+      });
 
       for (const before of beforeDeals) {
         if (!before) continue;
@@ -2673,6 +2348,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
 
       res.json({ updatedCount });
     } catch (err: any) {
+      if (sendDealWriteError(res, err)) return;
       Errors.internal(res, err instanceof Error ? err : new Error("Failed to bulk update deals"));
     }
   });
@@ -2863,7 +2539,13 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         return Errors.badRequest(res, `No forward stage available from ${currentStatus}`);
       }
 
-      const deal = await storage.updateDeal(dealId, { status: nextStatus }, undefined, orgId);
+      // The repository's hook runs whatever this transition carries: the
+      // close's consequences on in_escrow → closed, and deal.contract_signed
+      // on accepted → in_escrow exactly when a signed document exists (no
+      // attestation can be made by a swipe) — W10.4 items 1–2.
+      const deal = await storage.updateDeal(dealId, { status: nextStatus }, undefined, orgId, {
+        context: { userId: req.user?.id ? String(req.user.id) : null },
+      });
 
       // Wave B — the swipe/advance path is a stage transition like any other.
       emitDealStageChanged(orgId, existingDeal, deal);
@@ -2884,6 +2566,9 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       logger.info("Deal advanced via swipe gesture", { dealId, orgId, from: currentStatus, to: nextStatus });
       res.json({ deal, previousStatus: currentStatus, nextStatus });
     } catch (err) {
+      // A racing write moved the deal first (409) or the state machine
+      // refused (400) — not a 500.
+      if (sendDealWriteError(res, err)) return;
       return Errors.internal(res, err as Error);
     }
   });
@@ -2968,6 +2653,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         notice: RECORD_ONLY_NOTICE,
       });
     } catch (err) {
+      if (sendDealWriteError(res, err)) return;
       Errors.internal(res, err);
     }
   });
