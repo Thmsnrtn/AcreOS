@@ -29,8 +29,8 @@
  * ── WHAT BREAKS IF IT DRIFTS ────────────────────────────────────────────────
  * The server still validates with the real drizzle-zod `insertLeadSchema`
  * (`shared/schema.ts`): `server/routes-leads.ts` parses creates through
- * `leadCreateRequestSchema` (= `insertLeadSchema.passthrough()`,
- * `shared/contracts/leads.ts`) and updates through `insertLeadSchema.partial()`;
+ * `leadCreateRequestSchema` (= `insertLeadSchema.passthrough()` minus the
+ * server-owned keys, `shared/contracts/leads.ts`) and updates through `insertLeadSchema.partial()`;
  * `server/services/import.ts` and `importExport.ts` extend it for CSV import.
  * This file is the CLIENT's mirror of that contract. If the two drift:
  *   - a field this schema wrongly marks optional → the form submits without it

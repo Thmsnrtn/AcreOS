@@ -35,8 +35,33 @@ import type { ApiContract } from "./index";
  * the TCPA evidence chain). Stripping them here would silently drop the
  * consent audit row, so we let them ride through and let the handler pick
  * what it needs.
+ *
+ * BUT `.passthrough()` also re-admits every key `insertLeadSchema` omits —
+ * an unknown key to the object is just an extra. A body carrying `id` reached
+ * the insert, so a caller could choose a lead's primary key, and an id planted
+ * ahead of the shared `leads_id_seq` later collides with the sequence and
+ * fails lead creation for every tenant. So the server-owned keys are stripped
+ * after the parse: the primary key, the tenant key (attached from the
+ * authenticated org), the server timestamps, and the generated column.
+ * `leadServerOwnedKeys` below is that list; the contract ratchet
+ * (`contractsOmitServerOwnedKeys.test.ts`) checks it against the table.
  */
-export const leadCreateRequestSchema = insertLeadSchema.passthrough();
+const leadServerOwnedKeys = [
+  "id",
+  "organizationId",
+  "createdAt",
+  "updatedAt",
+  "lastScoreAt",
+  "phoneNormalized",
+] as const;
+
+export const leadCreateRequestSchema = insertLeadSchema
+  .passthrough()
+  .transform((body) => {
+    const out: Record<string, unknown> = { ...body };
+    for (const key of leadServerOwnedKeys) delete out[key];
+    return out as typeof body;
+  });
 
 /**
  * Response body for POST /api/leads (HTTP 201).

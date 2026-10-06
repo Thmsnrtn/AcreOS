@@ -396,8 +396,9 @@ export function registerLeadRoutes(app: Express): void {
       }
       
       // T3-3E Phase 3 — contract request validation. `leadCreateRequestSchema`
-      // is `insertLeadSchema.passthrough()`, so this is the canonical insert
-      // parse PLUS the transport-only extras the handler reads later
+      // is `insertLeadSchema.passthrough()` with the server-owned keys (id,
+      // organizationId, timestamps, generated columns) stripped, so this is the
+      // canonical insert parse PLUS the transport-only extras the handler reads later
       // (latitude/longitude for enrichment, consentText/pageUrl for the TCPA
       // evidence chain). organizationId is attached from the authed org, not
       // the wire body. On failure → 422 via Errors.validationFailed.
