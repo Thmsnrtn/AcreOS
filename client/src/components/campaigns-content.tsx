@@ -619,7 +619,7 @@ export function CampaignsContent() {
         <TabsList>
           <TabsTrigger value="all">All campaigns</TabsTrigger>
           <TabsTrigger value="active">Active</TabsTrigger>
-          <TabsTrigger value="scheduled">Scheduled</TabsTrigger>
+          <TabsTrigger value="scheduled">Planned</TabsTrigger>
           <TabsTrigger value="completed">Completed</TabsTrigger>
         </TabsList>
 
@@ -639,9 +639,15 @@ export function CampaignsContent() {
             onCreateNew={() => setIsCreateOpen(true)}
           />
         </TabsContent>
+        {/* Nothing sends a campaign on its planned date, so this tab is
+            "Planned", not "Scheduled": campaigns with a planned date that have
+            not gone out yet (plus any legacy 'scheduled' status rows). */}
         <TabsContent value="scheduled" className="mt-4">
           <CampaignList 
-            campaigns={campaigns?.filter(c => c.status === 'scheduled') || []} 
+            campaigns={campaigns?.filter(c =>
+              c.status === 'scheduled' ||
+              (!!c.scheduledDate && c.status !== 'sent' && c.status !== 'completed')
+            ) || []}
             isLoading={isLoading}
             onSelect={setSelectedCampaign}
             onCreateNew={() => setIsCreateOpen(true)}
