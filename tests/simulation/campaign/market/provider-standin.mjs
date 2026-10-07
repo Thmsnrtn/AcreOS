@@ -16,6 +16,16 @@
 //   { "bounce": ["addr@x"], "complaint": ["addr@y"], "smsFail": ["+1520..."] }
 // A "bounce" address makes SES answer MessageRejected; the bounce NOTIFICATION
 // itself is not produced here (it arrives via SNS in production — see README).
+//
+// Real failure modes (driven by the market twin, tests/simulation/twin/providers.ts):
+//   "smsCodes":   { "+1520...": 30007 }  Twilio error per recipient — 21610
+//                 unsubscribed, 30003 unreachable, 30005 unknown, 30006
+//                 landline, 30007 carrier-filtered, 30034 unregistered 10DLC;
+//   "a2pUnregistered": ["+1520..."]      sender numbers whose traffic is blocked (30034);
+//   "lobReject":  ["101 N Main St"]      recipient address lines Lob refuses (422);
+//   "sesThrottleEvery": 50               every Nth SES send answers Throttling;
+//   "stripeDecline": ["cus_..."]         Stripe customers whose charge is declined;
+//   "metaReject": true                   Meta ad creation answers an ad-review rejection.
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -39,6 +49,15 @@ function sesError(res, code, message) {
   res.writeHead(400, { "content-type": "text/xml" });
   res.end(`<ErrorResponse xmlns="http://ses.amazonaws.com/doc/2010-12-01/"><Error><Type>Sender</Type><Code>${esc(code)}</Code><Message>${esc(message)}</Message></Error><RequestId>${id("r")}</RequestId></ErrorResponse>`);
 }
+const TWILIO_MESSAGES = {
+  21610: "Attempt to send to unsubscribed recipient",
+  30003: "Unreachable destination handset",
+  30005: "Unknown destination handset",
+  30006: "Landline or unreachable carrier",
+  30007: "Message filtered by carrier",
+  30034: "Message from an unregistered number (A2P 10DLC)",
+};
+let sesCount = 0;
 function json(res, status, o) { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(o)); }
 
 function parseRaw(b64) {
@@ -65,8 +84,10 @@ http.createServer(async (req, res) => {
     const form = Object.fromEntries(new URLSearchParams(raw));
     if (/\/Messages\.json$/.test(p) && req.method === "POST") {
       const fail = (r.smsFail || []).includes(form.To);
-      log({ rail: "twilio", op: "message", to: form.To, from: form.From, body: form.Body, fail });
-      if (fail) return json(res, 400, { code: 21610, message: "Attempt to send to unsubscribed recipient", status: 400 });
+      const blocked = (r.a2pUnregistered || []).includes(form.From);
+      const code = blocked ? 30034 : (r.smsCodes || {})[form.To] ?? (fail ? 21610 : null);
+      log({ rail: "twilio", op: "message", to: form.To, from: form.From, body: form.Body, fail: code != null, code });
+      if (code != null) return json(res, 400, { code, message: TWILIO_MESSAGES[code] ?? "Message failed", status: 400, more_info: `https://www.twilio.com/docs/errors/${code}` });
       return json(res, 201, { sid: id("SM"), status: "queued", to: form.To, from: form.From, body: form.Body, price: null, num_segments: String(Math.max(1, Math.ceil((form.Body || "").length / 153))) });
     }
     log({ rail: "twilio", op: req.method + " " + p });
@@ -91,9 +112,28 @@ http.createServer(async (req, res) => {
     let body = {};
     try { body = raw ? JSON.parse(raw) : Object.fromEntries(new URLSearchParams(raw)); } catch { body = Object.fromEntries(new URLSearchParams(raw)); }
     const kind = p.split("/")[3] || "?";
+    const line1 = body.to?.address_line1 ?? body["to[address_line1]"] ?? null;
+    if (req.method === "POST" && line1 && (r.lobReject || []).includes(String(line1))) {
+      log({ rail: "lob", op: req.method + " " + kind, toAddress: line1, rejected: true });
+      return json(res, 422, { error: { message: "address is undeliverable", status_code: 422, code: "failed_deliverability_strictness" } });
+    }
     log({ rail: "lob", op: req.method + " " + kind, to: body.to?.name ?? body["to[name]"] ?? null, toAddress: body.to?.address_line1 ?? body["to[address_line1]"] ?? null, toCity: body.to?.address_city ?? body["to[address_city]"] ?? null, toZip: body.to?.address_zip ?? body["to[address_zip]"] ?? null, fromName: body.from?.company ?? body.from?.name ?? body["from[company]"] ?? body["from[name]"] ?? null, backHasOptOut: /stop|opt.?out|unsubscribe|remove/i.test(String(body.back ?? body.file ?? "")) });
     if (req.method === "POST") return json(res, 200, { id: (kind === "letters" ? "ltr_" : "psc_") + crypto.randomBytes(8).toString("hex"), object: kind.replace(/s$/, ""), expected_delivery_date: new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10), price: kind === "letters" ? "1.20" : "0.75", url: "http://127.0.0.1/lob-proof.pdf" });
     return json(res, 200, { data: [], object: "list", count: 0 });
+  }
+  // ── Stripe (form-encoded REST) ──
+  if (p.startsWith("/stripe/")) {
+    const form = Object.fromEntries(new URLSearchParams(raw));
+    const declined = form.customer && (r.stripeDecline || []).includes(form.customer);
+    log({ rail: "stripe", op: req.method + " " + p.replace(/^\/stripe/, ""), customer: form.customer ?? null, amount: form.amount ?? null, account: req.headers["stripe-account"] ?? null, declined: !!declined });
+    if (declined) return json(res, 402, { error: { type: "card_error", code: "card_declined", decline_code: "insufficient_funds", message: "Your card has insufficient funds." } });
+    return json(res, 200, { id: id(p.includes("refund") ? "re_" : "ch_"), object: p.includes("refund") ? "refund" : "charge", status: "succeeded", amount: Number(form.amount ?? 0) });
+  }
+  // ── Meta Graph (ads) ──
+  if (p.startsWith("/meta/")) {
+    log({ rail: "meta", op: req.method + " " + p.replace(/^\/meta/, ""), rejected: !!r.metaReject });
+    if (r.metaReject && req.method === "POST") return json(res, 400, { error: { message: "Ad rejected: does not comply with advertising policies", type: "OAuthException", code: 1487390, error_subcode: 1487390 } });
+    return json(res, 200, { id: id("act_") });
   }
   // ── AWS Query protocol (SES v1) ──
   const form = Object.fromEntries(new URLSearchParams(raw));
@@ -115,6 +155,12 @@ http.createServer(async (req, res) => {
       for (const [k, v] of Object.entries(form)) if (/^ReplyToAddresses/.test(k)) headers["reply-to"] = v;
     }
     const bounced = to.some((t) => (r.bounce || []).includes(t.replace(/.*</, "").replace(/>.*/, "")));
+    sesCount++;
+    if (r.sesThrottleEvery && sesCount % Number(r.sesThrottleEvery) === 0) {
+      log({ rail: "ses", op: action, from, to, subject, throttled: true });
+      res.writeHead(400, { "content-type": "text/xml" });
+      return res.end(`<ErrorResponse><Error><Type>Sender</Type><Code>Throttling</Code><Message>Maximum sending rate exceeded.</Message></Error><RequestId>${id("r")}</RequestId></ErrorResponse>`);
+    }
     log({ rail: "ses", op: action, from, to, subject, headers, html: (html || "").slice(0, 20000), bounced });
     if (bounced) return sesError(res, "MessageRejected", "Address blacklisted (stand-in bounce)");
     return xml(res, 200, action, `<${action}Result><MessageId>${id("ses-")}</MessageId></${action}Result>`);

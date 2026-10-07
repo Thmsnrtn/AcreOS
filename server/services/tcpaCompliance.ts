@@ -367,6 +367,16 @@ const NL_OPT_OUT_PATTERNS: RegExp[] = [
   /\bdnc\b/,
   /\bleave\s+(me|us)\s+alone\b/,
   /\bwrong\s+(number|person|guy|lady)\b/,
+  // Found by the market twin's generated replies (2026-10-07):
+  /\bcease\s+(all\s+)?(contact|communications?)\b/,
+  // Identity denials — "wrong number" by another wording; whoever this is
+  // never consented, and a deceased owner's number may be reassigned.
+  /^not\s+me\b/,
+  /^this\s+(isn'?t|is\s+not)\s+[a-z]+$/,
+  /\bnever\s+heard\s+of\b/,
+  /\b(passed\s+away|is\s+deceased|has\s+died)\b/,
+  /\bi\s+(don'?t|do\s+not)\s+own\s+(any|this|that|the)\s+(land|property|lot|parcel|acres?)\b/,
+  /\bnew\s+number\b/,
 ];
 
 /** A clause that is nothing but a STOP keyword plus politeness ("stop please", "STOP!!"). */

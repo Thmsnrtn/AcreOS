@@ -10,7 +10,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const PORT = Number(process.env.PROVIDER_PORT || 7831);
 const DIR = process.env.PROVIDER_DIR || "/tmp";
-const MAP = { "api.twilio.com": "twilio", "api.lob.com": "lob", "api.sendgrid.com": "sendgrid" };
+const MAP = { "api.twilio.com": "twilio", "api.lob.com": "lob", "api.sendgrid.com": "sendgrid", "api.stripe.com": "stripe", "graph.facebook.com": "meta" };
 // Model hosts some code paths reach without honouring a *_BASE_URL env: sent to the
 // MODEL stand-in (never a real provider). Counted in outbound-hosts.jsonl as "redirected".
 const STANDIN_PORT = Number(process.env.STANDIN_PORT || 7830);

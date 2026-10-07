@@ -86,6 +86,18 @@ const OPT_OUTS = [
   "I revoke consent",
   // Ambiguous, decided as OPT-OUT (prefer the false positive):
   "Don't call me after 5", // limiting contact is a partial revocation
+  // Found by the market twin's generated replies (tests/simulation/twin,
+  // 2026-10-07) — wordings no one had tuned the detector against:
+  "Cease all contact",
+  "Please cease all communication immediately",
+  // Identity denials: the same reasoning as "wrong number" — whoever this is
+  // never consented.
+  "Not me, wrong #",
+  "This isn't John",
+  "Never heard of Maria",
+  "John passed away last year",
+  "I don't own any land",
+  "new number, who is this",
 ];
 
 const NOT_OPT_OUTS = [
@@ -99,6 +111,8 @@ const NOT_OPT_OUTS = [
   "The road ends at the creek",
   "Send me the contract",
   "Who is this?",
+  "This isn't a good time, call me next week",
+  "I don't own the mineral rights, just the surface",
   // Ambiguous, decided as NOT an opt-out (a price/terms answer far more often
   // than a revocation; the operator sees it in the inbox):
   "Not interested",
