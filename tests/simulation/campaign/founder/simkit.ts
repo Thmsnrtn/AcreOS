@@ -520,12 +520,23 @@ export async function founderOneTimeSetup(opts: { levels?: string[] } = {}) {
     const r = await founder.post(`/api/founder/autopilot/domains/${d}/level`, { level: "execute_gated", reason: "founder one-time setup: let it act inside the gates" });
     if (r.status !== 200) throw new Error(`setup level ${d} → ${r.status} ${r.text.slice(0, 200)}`);
   }
-  const g1 = await founder.post("/api/founder/autopilot/witness-grants", { granteeId: "solene", domains: ["support"], maxCostUsd: 1, maxActions: 500, expiresInDays: 30, note: "support replies and system emails to our own customers" });
-  const g2 = await founder.post("/api/founder/autopilot/witness-grants", { granteeId: "solene", domains: ["finance"], maxCostUsd: 50, maxActions: 20, expiresInDays: 30, allowMoney: true, note: "refunds up to $50" });
-  if (g1.status !== 200 || g2.status !== 200) throw new Error(`setup grants → ${g1.status}/${g2.status} ${g1.text.slice(0, 120)} ${g2.text.slice(0, 120)}`);
+  const grants = await issueFounderGrants();
   const s = await srv<any>("services/autopilot/settings.ts");
   s.__resetSettingsCacheForTest?.();
-  return { grants: [g1.body?.grant?.id, g2.body?.grant?.id] };
+  return { grants };
+}
+
+/**
+ * The two bounded WitnessGrants (30 days each; a founder renews them monthly).
+ * Grants name the hands and the drafting roles they cover (witnessGrant.ts
+ * DELEGABLE_HANDS): Support's ticket replies + Retention's system mail, and
+ * Support's refunds of a ticket's own purchase.
+ */
+export async function issueFounderGrants(): Promise<Array<number | undefined>> {
+  const g1 = await founder.post("/api/founder/autopilot/witness-grants", { granteeId: "solene", domains: ["support"], hands: ["reply_support_ticket", "send_email"], sourceRoles: ["support", "retention"], maxCostUsd: 1, maxActions: 500, expiresInDays: 30, note: "support replies and system emails to our own customers" });
+  const g2 = await founder.post("/api/founder/autopilot/witness-grants", { granteeId: "solene", domains: ["finance"], hands: ["apply_refund"], sourceRoles: ["support"], maxCostUsd: 50, maxActions: 20, expiresInDays: 30, allowMoney: true, note: "refunds up to $50" });
+  if (g1.status !== 200 || g2.status !== 200) throw new Error(`setup grants → ${g1.status}/${g2.status} ${g1.text.slice(0, 300)} ${g2.text.slice(0, 300)}`);
+  return [g1.body?.grant?.id, g2.body?.grant?.id];
 }
 
 /** Wait (wall clock) until the worker has drained every queued/running dispatch. */

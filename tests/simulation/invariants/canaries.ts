@@ -44,7 +44,7 @@ export const CANARIES: Record<string, Canary> = {
     ],
   },
   "every-number-has-a-source": {
-    clean: [{ ...base(1), screens: [{ surface: "letter", texts: ["Good morning. 3 trials, $49 MRR, as of 2026."], sourcedNumbers: [3, 49] }] }],
+    clean: [{ ...base(1), screens: [{ surface: "letter", texts: ["Good morning. 3 trials, $49 MRR, as of 2026.", "Panic stop recorded: stage2-2273-17914 (ticket #41)."], sourcedNumbers: [3, 49] }] }],
     violating: [
       { ...base(2), screens: [{ surface: "letter", texts: ["Customers love us — 98% satisfaction."], sourcedNumbers: [3, 49] }] },
       { ...base(3), screens: [{ surface: "pax", texts: ["Your list will return about $12,400 this quarter."], sourcedNumbers: [] }] },

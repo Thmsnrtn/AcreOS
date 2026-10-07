@@ -24,6 +24,7 @@
 //   "a2pUnregistered": ["+1520..."]      sender numbers whose traffic is blocked (30034);
 //   "lobReject":  ["101 N Main St"]      recipient address lines Lob refuses (422);
 //   "sesThrottleEvery": 50               every Nth SES send answers Throttling;
+//   "sesDown": true                      SES answers 503 ServiceUnavailable (an outage);
 //   "stripeDecline": ["cus_..."]         Stripe customers whose charge is declined;
 //   "metaReject": true                   Meta ad creation answers an ad-review rejection.
 import http from "node:http";
@@ -156,6 +157,11 @@ http.createServer(async (req, res) => {
     }
     const bounced = to.some((t) => (r.bounce || []).includes(t.replace(/.*</, "").replace(/>.*/, "")));
     sesCount++;
+    if (r.sesDown) {
+      log({ rail: "ses", op: action, from, to, subject, down: true });
+      res.writeHead(503, { "content-type": "text/xml" });
+      return res.end(`<ErrorResponse><Error><Type>Receiver</Type><Code>ServiceUnavailable</Code><Message>Service unavailable (stand-in outage)</Message></Error><RequestId>${id("r")}</RequestId></ErrorResponse>`);
+    }
     if (r.sesThrottleEvery && sesCount % Number(r.sesThrottleEvery) === 0) {
       log({ rail: "ses", op: action, from, to, subject, throttled: true });
       res.writeHead(400, { "content-type": "text/xml" });

@@ -104,7 +104,8 @@ function ensureMock() {
           // SES SendRawEmail carries base64 MIME — decode headers for the ledger.
           const m = /RawMessage\.Data=([^&]+)/.exec(raw);
           if (m) { try { preview = Buffer.from(decodeURIComponent(m[1]), "base64").toString("utf8"); } catch { /* keep */ } }
-          record({ via: "mock-provider", host, path: req.url, method: req.method, outcome: "mock-200", bodyPreview: preview.slice(0, 2500) });
+          // stripeAccount: the connected account a Stripe call ran on (absent = the platform account).
+          record({ via: "mock-provider", host, path: req.url, method: req.method, outcome: "mock-200", stripeAccount: req.headers["stripe-account"] ?? null, bodyPreview: preview.slice(0, 2500) });
           const a = mockAnswer(host, req.url, raw);
           res.writeHead(a.status, { "content-type": a.type });
           res.end(a.body);

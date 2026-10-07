@@ -180,6 +180,14 @@ export interface FounderBrief {
    * can never contradict the headline.
    */
   needsYouCount: number;
+  /**
+   * The three operands of needsYouCount — the "N questions … plus M sends
+   * frozen" the needed-line says. Carried so every number that line states
+   * has a field (simulation invariant every-number-has-a-source).
+   */
+  needsYouParts: { asks: number; queuedDecisions: number; frozenSends: number };
+  /** This week's witnessed-send counters the Word recites; null when unread. */
+  witnessedSends: FounderBriefInputs["frozenSends"];
   /** The single hero decision, if one exists. Most days this is null. */
   decision: FounderDecisionCard | null;
   vitalSign: {
@@ -196,6 +204,13 @@ export interface FounderBrief {
     mrrWowPct: number | null;
     /** Wedge throughput (7d): outreach sent, replies in, offers made. null when unreadable. */
     wedge: { outreachSent7d: number; replies7d: number; offers7d: number } | null;
+    /**
+     * Dispatches completed in the last 24h — the count "Overnight I completed
+     * N tasks" states. Carried here so the number the founder reads has a
+     * field (the simulation's every-number-has-a-source invariant found the
+     * sentence saying 4 while nothing he could open said 4).
+     */
+    tasksCompleted24h: number;
     /** 5xx rate over the last 24h (percent). null when no traffic recorded. */
     errorRatePct: number | null;
     /** Deployed version (short SHA). null when unknown. */
@@ -511,6 +526,8 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
     neededLine,
     isFounderNeeded,
     needsYouCount,
+    needsYouParts: { asks: asksCount, queuedDecisions: queueCount, frozenSends: sendsCount },
+    witnessedSends: inp.frozenSends ?? null,
     decision,
     vitalSign: {
       mrr: inp.pulse.mrr,
@@ -518,6 +535,7 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
       weeklySpendUsd: inp.pulse.weeklySpendUsd,
       envelopeStatus: inp.pulse.envelopeStatus,
       uptimePct: inp.pulse.uptimePct,
+      tasksCompleted24h: inp.pulse.dispatchesCompletedLast24h,
       runwayWeeks: inp.runwayWeeks ?? null,
       mrrWowPct: inp.mrrWowPct ?? null,
       wedge: inp.wedge ?? null,

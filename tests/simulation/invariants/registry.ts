@@ -39,7 +39,9 @@ export interface Invariant {
 
 const lc = (s: string | null | undefined) => String(s ?? "").trim().toLowerCase();
 const digits = (s: string) => s.replace(/\D/g, "").slice(-10);
-const NUM = /(?<![\w.])-?\$?\d[\d,]*(?:\.\d+)?%?/g;
+// A number token — not one glued into an identifier ("stage2-2273", "#41",
+// "pi_3x") or a version, which name a record rather than claim a quantity.
+const NUM = /(?<![\w.#\-])-?\$?\d[\d,]*(?:\.\d+)?%?(?![\w\-])/g;
 function numbersIn(text: string): number[] {
   const out: number[] = [];
   for (const m of text.match(NUM) ?? []) {

@@ -71,6 +71,7 @@ export const PARAMS = {
   churnPerValueEvent: assume(-0.15, "relative hazard change per interested reply or deal that month (floored)", "customers who see results stay"),
   ticketPerFriction: assume({ refusal_no_next_step: 0.35, refusal_with_next_step: 0.05, error_5xx: 0.5, silent_noop: 0.4, compliance_event: 0.8, manual_request: 0.9 }, "chance a friction event becomes a support ticket", "a refusal that names its fix rarely becomes a ticket"),
   activationMilestones: assume({ import: 0.92, firstSend: 0.75, firstReply: 0.6, firstDeal: 0.18 }, "chance a new customer reaches each milestone in 30 days", "drives the activation metric; firstReply also depends on the response model"),
+  refundRequestPerCustomerWeek: assume(0.03, "chance per active customer-week of asking to refund a purchase", "roughly one refund request per customer per 8 months"),
   aiQuestionsPerActiveCustomerWeek: assume(3, "Pax questions per active customer-week", "light usage"),
 } as const;
 
