@@ -25,14 +25,16 @@ import path from "node:path";
 import { stripCommentsPreservingLines } from "../../scripts/lib/strip-comments.mjs";
 import { PLACES, getPaxProductFacts } from "../../server/services/paxProductFacts";
 import {
-  FINANCE_PLACES,
-  FINANCE_TAB_LABELS,
   OTHER_PLACES,
   PLACE_TEXT,
-  SETTINGS_SECTIONS,
   SETTINGS_TAB_LABELS,
+  placeDirectory,
   type PlaceEvidence,
 } from "../../server/services/paxPlaces";
+const DIR = placeDirectory();
+const FINANCE_TAB_LABELS = DIR.financeTabs;
+const SETTINGS_SECTIONS = DIR.sections;
+const FINANCE_PLACES = DIR.finance;
 import { quoteOutboundSend } from "../../server/services/sendPricing";
 import { CSV_IMPORT_MAX_ROWS_PER_FILE, BULK_EXPORT_DAILY_CAP } from "@shared/product-limits";
 

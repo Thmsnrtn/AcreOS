@@ -29,7 +29,7 @@ export const SETTINGS_TAB_LABELS = {
 export type SettingsTab = keyof typeof SETTINGS_TAB_LABELS;
 
 /** The Finance door's tabs (client/src/pages/money.tsx). */
-export const FINANCE_TAB_LABELS = {
+const FINANCE_TAB_LABELS = {
   notes: "Notes",
   portfolio: "Portfolio",
   optimizer: "Optimizer",
@@ -37,14 +37,14 @@ export const FINANCE_TAB_LABELS = {
 } as const;
 export type FinanceTab = keyof typeof FINANCE_TAB_LABELS;
 
-export const ARROW = " → ";
+const ARROW = " → ";
 
 /** "Settings -> <Tab label>[ -> <section>...]" */
-export function settingsPlace(tab: SettingsTab, ...sections: string[]): string {
+function settingsPlace(tab: SettingsTab, ...sections: string[]): string {
   return ["Settings", SETTINGS_TAB_LABELS[tab], ...sections].join(ARROW);
 }
 
-export function financePlace(tab: FinanceTab, ...sections: string[]): string {
+function financePlace(tab: FinanceTab, ...sections: string[]): string {
   return ["Finance", FINANCE_TAB_LABELS[tab], ...sections].join(ARROW);
 }
 
@@ -65,7 +65,7 @@ export interface SettingsSection {
 const SETTINGS_PAGE = "client/src/pages/settings.tsx";
 
 /** Named sections inside Settings. `evidence` pins each to the page that renders it. */
-export const SETTINGS_SECTIONS = {
+const SETTINGS_SECTIONS = {
   returnAddress: {
     tab: "notifications",
     section: "Mail Settings",
@@ -121,13 +121,13 @@ export const SETTINGS_SECTIONS = {
 } as const satisfies Record<string, SettingsSection>;
 export type SettingsSectionKey = keyof typeof SETTINGS_SECTIONS;
 
-export function sectionPlace(key: SettingsSectionKey): string {
+function sectionPlace(key: SettingsSectionKey): string {
   const s: SettingsSection = SETTINGS_SECTIONS[key];
   return settingsPlace(s.tab, s.section);
 }
 
 /** Finance-door places. */
-export const FINANCE_PLACES = {
+const FINANCE_PLACES = {
   recordPayment: {
     tab: "notes",
     control: "Record payment",
@@ -159,7 +159,7 @@ export const OTHER_PLACES = {
   },
 } as const satisfies Record<string, { text: string; evidence: PlaceEvidence[] }>;
 
-export function recordPaymentPlace(): string {
+function recordPaymentPlace(): string {
   return financePlace(FINANCE_PLACES.recordPayment.tab, "open the note", FINANCE_PLACES.recordPayment.control);
 }
 
@@ -175,3 +175,25 @@ export const PLACE_TEXT = {
   teamRoles: settingsPlace("organization"),
   recordPayment: recordPaymentPlace(),
 } as const;
+
+/**
+ * The directory of every named place: tabs, sections (with the visible text
+ * and the source markers that pin each to the client), and the Finance
+ * payment control. Pax's navigation facts list `places` from it; the places
+ * test reads `evidence` from it.
+ */
+export function placeDirectory() {
+  return {
+    settingsTabs: SETTINGS_TAB_LABELS,
+    financeTabs: FINANCE_TAB_LABELS,
+    sections: Object.fromEntries(
+      (Object.keys(SETTINGS_SECTIONS) as SettingsSectionKey[]).map((k) => [
+        k,
+        { place: sectionPlace(k), section: SETTINGS_SECTIONS[k].section, evidence: SETTINGS_SECTIONS[k].evidence as readonly PlaceEvidence[] },
+      ]),
+    ),
+    finance: {
+      recordPayment: { place: recordPaymentPlace(), evidence: FINANCE_PLACES.recordPayment.evidence as readonly PlaceEvidence[] },
+    },
+  };
+}

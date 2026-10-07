@@ -31,7 +31,7 @@ import {
 import { CSV_IMPORT_MAX_ROWS_PER_REQUEST } from "@shared/leads/csvImportMapping";
 import { byokTierAllows } from "@shared/billing/byok-tiers";
 import type { Tier } from "@shared/billing/tier-pricing";
-import { OTHER_PLACES, PLACE_TEXT, SETTINGS_TAB_LABELS } from "./paxPlaces";
+import { OTHER_PLACES, PLACE_TEXT, SETTINGS_TAB_LABELS, placeDirectory } from "./paxPlaces";
 import { CAMPAIGN_SEND_PRICE_CREDITS, DIRECT_MAIL_COSTS, creditsToDollars } from "./sendPricing";
 
 type ProductFactTopic =
@@ -206,7 +206,17 @@ export async function getPaxProductFacts(topic?: string | null): Promise<Record<
     };
   }
   if (want("roles")) facts.team = await roleFacts();
-  if (want("navigation")) facts.navigation = { doors: CUSTOMER_DOORS, topBar: TOP_BAR, activity: PLACES.activity.steps };
+  if (want("navigation")) {
+    const dir = placeDirectory();
+    facts.navigation = {
+      doors: CUSTOMER_DOORS,
+      topBar: TOP_BAR,
+      activity: PLACES.activity.steps,
+      settingsTabs: Object.values(dir.settingsTabs),
+      financeTabs: Object.values(dir.financeTabs),
+      settingsPlaces: Object.fromEntries(Object.entries(dir.sections).map(([k, v]) => [k, v.place])),
+    };
+  }
   if (want("sending")) {
     const smsTiers = tiersAllowing("twilio");
     facts.sending = {
