@@ -19,7 +19,11 @@
  *   - paxPlaces: SETTINGS_SECTIONS.returnAddress.section → "Mail": red
  *     ("every section marker is on the page it names").
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+// The server-tree walk below reads every production file.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 import fs from "node:fs";
 import path from "node:path";
 import { stripCommentsPreservingLines } from "../../scripts/lib/strip-comments.mjs";
