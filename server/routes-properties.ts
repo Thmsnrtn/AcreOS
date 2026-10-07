@@ -25,7 +25,8 @@ import { readIntegrationCredentials } from "./services/integrationCredentials";
 
 // Partial update schema for PUT endpoints.
 // insertPropertySchema already omits organizationId, so no further omit needed.
-const updatePropertySchema = insertPropertySchema.partial();
+// deletedAt/deletedBy belong to the delete/restore paths, not a generic edit.
+const updatePropertySchema = insertPropertySchema.partial().omit({ deletedAt: true, deletedBy: true });
 
 // Zod schema for comps search
 const compsSearchSchema = z.object({

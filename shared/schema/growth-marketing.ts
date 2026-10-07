@@ -9,7 +9,7 @@
  */
 import { sql } from "drizzle-orm";
 import { boolean, integer, jsonb, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
+import { createInsertSchema } from "../db/createInsertSchema";
 import { z } from "zod";
 
 

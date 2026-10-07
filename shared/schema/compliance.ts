@@ -21,7 +21,7 @@ import {
   index,
   primaryKey,
 } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
+import { createInsertSchema } from "../db/createInsertSchema";
 import { z } from "zod";
 import {
   organizations,

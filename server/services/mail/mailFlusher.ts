@@ -27,6 +27,7 @@ import { MailRouter, PartialMailSendError, type MailShipment, type MailPiece, ty
 import { qrRedirectUrl } from "./qrCodes";
 import { refundPoolDebit } from "../creditPool";
 import { logger } from "../../utils/logger";
+import { leadNotOptedOutSql } from "../leadContactability";
 import { mergeMailCopy } from "@shared/parcel/ownerName";
 
 /** Minimal shipment shape the flusher needs (raw claim row OR a mapped row). */
@@ -223,8 +224,7 @@ async function suppressedPieceIds(
         eq(leads.organizationId, ship.organizationId),
         inArray(leads.id, leadIds),
         sql`${leads.deletedAt} IS NULL`,
-        sql`${leads.doNotContact} IS NOT TRUE`,
-        sql`${leads.optOutDate} IS NULL`,
+        leadNotOptedOutSql(),
       ),
     );
   const mailable = new Set(live.map((l) => l.id));

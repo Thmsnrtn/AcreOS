@@ -19,6 +19,7 @@ import { db } from "../../../db";
 import { leads } from "@shared/schema";
 import { sendSMSToLead } from "../../smsService";
 import { logger } from "../../../utils/logger";
+import { leadHasOptedOut } from "../../leadContactability";
 
 const NAME = "send_sms";
 
@@ -39,14 +40,14 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
 
     // Consent gate (defense in depth — the witnessed tap is the primary gate).
     const [lead] = await db
-      .select({ doNotContact: leads.doNotContact, tcpaConsent: leads.tcpaConsent })
+      .select({ doNotContact: leads.doNotContact, optOutDate: leads.optOutDate, tcpaConsent: leads.tcpaConsent })
       .from(leads)
       .where(and(eq(leads.organizationId, organizationId), eq(leads.id, leadId)))
       .limit(1);
     if (!lead) {
       return { success: false, output: `send_sms: lead ${leadId} not found in org ${organizationId}.`, durationMs: Date.now() - started };
     }
-    if (lead.doNotContact === true || lead.tcpaConsent === false) {
+    if (leadHasOptedOut(lead) || lead.tcpaConsent === false) {
       logger.info(`[autopilot/hands] send_sms refused — no TCPA consent for lead ${leadId}`);
       return { success: false, output: `send_sms: lead ${leadId} has not consented to SMS (doNotContact / no TCPA consent); not sending.`, durationMs: Date.now() - started };
     }

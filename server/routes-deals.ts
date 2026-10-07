@@ -93,7 +93,8 @@ async function getDueDiligenceItemOrgScoped(itemId: number, orgId: number) {
 }
 
 // Partial update schema for PUT endpoints
-const updateDealSchema = insertDealSchema.partial();
+// deletedAt/deletedBy belong to the delete/restore paths, not a generic edit.
+const updateDealSchema = insertDealSchema.partial().omit({ deletedAt: true, deletedBy: true });
 
 // Task 211: Offer amount validation constants
 const MIN_OFFER_AMOUNT = 0;         // exclusive lower bound

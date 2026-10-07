@@ -1,8 +1,11 @@
 // Audit log + data retention + TCPA compliance.
 // Extracted from the god-class server/storage.ts.
 
-import { and, desc, eq, sql, count, gte, lte, or } from "drizzle-orm";
+import { and, desc, eq, sql, count, gte, lte, or, type SQL } from "drizzle-orm";
+import { leadNotOptedOutSql } from "../services/leadContactability";
+import { DEFAULT_GRANT_SOURCE, stampConsentForUpdate } from "../services/consentStamp";
 import { db, type PrimaryDb } from "../db";
+import { assertWritablePatch } from "../utils/patch";
 import {
   auditLog, leads, deals, leadActivities,
   type AuditLogEntry, type InsertAuditLog,
@@ -174,7 +177,7 @@ export const auditRepo = {
     return await db.select().from(leads)
       .where(and(
         eq(leads.organizationId, orgId),
-        eq(leads.doNotContact, true)
+        sql`NOT ${leadNotOptedOutSql()}`
       ))
       .orderBy(desc(leads.optOutDate));
   },
@@ -188,15 +191,26 @@ export const auditRepo = {
       tcpaConsent: consent.tcpaConsent,
       updatedAt: new Date(),
     };
+    let stamp: Record<string, SQL> = {};
 
     if (consent.tcpaConsent) {
-      updates.consentDate = new Date();
-      updates.consentSource = consent.consentSource || "manual";
+      // Through the one consent stamp (consentStamp.ts): the date is the
+      // server's, the source is vocabulary-checked ("manual" and other free
+      // text become the default), and re-granting an already-consented lead
+      // keeps the ORIGINAL date and source. This used to overwrite both on
+      // every grant, with whatever string the client sent.
+      const { consentDate, consentSource } = stampConsentForUpdate(
+        { tcpaConsent: true, consentSource: consent.consentSource },
+        DEFAULT_GRANT_SOURCE,
+      );
+      stamp = { consentDate: consentDate!, consentSource: consentSource! };
       updates.optOutDate = null;
       updates.optOutReason = null;
       updates.doNotContact = false;
     } else {
-      updates.optOutDate = new Date();
+      // The FIRST opt-out date is kept (a second revocation does not move
+      // the moment the person first said stop).
+      stamp = { optOutDate: sql`COALESCE(${leads.optOutDate}, now())` };
       updates.optOutReason = consent.optOutReason;
       updates.doNotContact = true;
     }
@@ -204,7 +218,7 @@ export const auditRepo = {
     const conditions = [eq(leads.id, leadId)];
     if (organizationId) conditions.push(eq(leads.organizationId, organizationId));
     const [updated] = await db.update(leads)
-      .set(updates)
+      .set(assertWritablePatch({ ...updates, ...stamp }, "leads.updateLeadConsent"))
       .where(and(...conditions))
       .returning();
     return updated;

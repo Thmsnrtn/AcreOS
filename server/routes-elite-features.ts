@@ -37,6 +37,8 @@ import { properties, notes, organizations, generatedDocuments, organizationInteg
 import { eq, and } from "drizzle-orm";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { annualInterestReportContract, projectAnnualInterestReport } from "@shared/contracts";
+import { validateResponse } from "./utils/contractResponse";
 
 const auth = [isAuthenticated, getOrCreateOrg];
 
@@ -579,7 +581,15 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const org = req.organization;
       const taxYear = parseInt(req.query.year as string) || new Date().getFullYear() - 1;
       const report = await bookkeeping.generateAnnualInterestReport(org.id, taxYear);
-      res.json(report);
+      // Same projection as GET /api/bookkeeping/annual-report: the raw report
+      // carries borrower address, email and tax-ID ciphertext.
+      res.json(
+        validateResponse(
+          annualInterestReportContract.responseSchema,
+          projectAnnualInterestReport(report),
+          "GET /api/bookkeeping/annual-interest-report",
+        ),
+      );
     } catch (err: any) {
       Errors.internal(res, err);
     }

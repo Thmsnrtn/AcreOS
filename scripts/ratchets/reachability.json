@@ -5,13 +5,13 @@
   "direction": "down",
   "description": "REACHABILITY ratchet. `tsc`, the test suite and every existing lint gate check TYPES and BEHAVIOUR; nothing checked whether a thing is REACHED. CLAUDE.md names 'built but unwired' as this repo's single most common defect, and every instance (services/lateFees, services/respa/earlyIntervention, calculateFlipAnalysis, taxSaleAuctions/taxSaleListings, achMandateSetup/achAutopayRun, rental_units.kind='pad', routes-contract-chain.ts, the rent-roll importer's unitKind arg) shipped GREEN and was found hours later by a manual audit. This converts that recurring audit into CI. Every count is strictly down-only, and raising one requires explicit founder/Iris-CTO sign-off (see lastBumpNote for the exceptions actually invoked): exports in server/services|jobs with no production call site; pgTables with no writer; pgTables with no reader; routes-*.ts never mounted; exports the gate cannot assert on because their module is dynamically imported in a way that hides which exports are touched; and service/job files nothing imports at all. Family 1 is TWO rules, split 2026-08-20: `unreachedExports` is the accusation (nothing anywhere references the symbol) and `internalOnlyExports` is the narrower complaint (exported, but used only inside its own module \u2014 drop the keyword, keep the code). They are baselined apart because merged, the second buried the first four to one. The count of families is deliberately not stated here \u2014 it said 'four' for as long as there were four, and would have said it forever. THE CHEAPEST WAY TO SATISFY THIS GATE IS DELETION \u2014 the north star is a smaller codebase, and every reduction must be locked in by the commit that earned it (a stale-high baseline FAILS, same as `as-any`).",
   "baselines": {
-    "unreachedExports": 423,
+    "unreachedExports": 421,
     "internalOnlyExports": 1237,
     "tablesNoWriter": 57,
     "tablesNoReader": 66,
     "unregisteredRoutes": 4,
     "opaqueExports": 19,
-    "moduleOrphans": 34,
+    "moduleOrphans": 33,
     "unreachedExportsShared": 54,
     "internalOnlyExportsShared": 426,
     "moduleOrphansShared": 1,
@@ -25,6 +25,7 @@
   },
   "minimaNote": "VACUITY FLOORS, not ratchets. Every baseline above counts BAD THINGS FOUND, so a scan that stops seeing files finds zero and reports six reassuring PASS lines \u2014 this repo has already been bitten by exactly that (a block-comment stripper that mispaired and blanked the very lines a scan was counting). These floor the SCAN POPULATIONS the run prints, and the gate exits nonzero if any drops below or is missing entirely. Seeded 2026-08-16 at roughly 75-80% of live (productionFiles 2520, exportFiles 917, pgTables 758, routeCandidateFiles 277) so that a broken walk/extension-filter/regex trips them while ordinary deletion \u2014 the north star of this gate \u2014 does not. If a real deletion wave takes a population under its floor, lower the floor in the same commit and name the wave; do NOT raise a floor to silence anything, and do NOT delete a key (a missing floor FAILS, by design, so an unfloored population cannot exist). A --root fixture run must supply its own --ratchet with fixture-sized minima.",
   "allowlist": [
+    {"kind": "export", "id": "shared/db/createInsertSchema.ts::USER_ENTERED_DATE_COLUMNS", "reason": "TEST-INTROSPECTION SEAM (same category as PAX_FIXED_RULES). The allowlist is consumed inside its own module by createInsertSchema, which every table's insert schema is built with, so it has no external PRODUCTION consumer by construction. It is exported so insertSchemasAcceptIsoDates.test.ts can prove, over every table, that a date column accepts a client string IF AND ONLY IF it is listed here, and that no entry is stale. REVOCATION: if a client or server module imports it directly, remove this entry."},
     {
       "kind": "export",
       "id": "shared/pax-glossary.ts::PAX_FIXED_RULES",

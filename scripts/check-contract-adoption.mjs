@@ -36,7 +36,7 @@ const SERVER_DIR = join(REPO_ROOT, "server");
 // Current number of server/routes-*.ts files importing from @shared/contracts.
 // Raise this (and only this) when a new route adopts a contract. Lowering it
 // requires Iris-CTO sign-off — adoption is not allowed to regress.
-const BASELINE = 2;
+const BASELINE = 4;
 
 const NAME = "contract-adoption";
 

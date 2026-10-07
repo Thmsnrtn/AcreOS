@@ -77,8 +77,10 @@ const ROOT = path.resolve(__dirname, "../..");
  * 111 -> 110 (DEFECT-0173): listing unpublish now passes the org to
  * updatePropertyListing.
  * 110 -> 109 (DEFECT-0173 audit): the listing PUT passes the org too.
+ * 107 -> 106: mergeLeads passes the org to updateLead (money/compliance
+ * honesty wave — the merge now carries opt-outs across).
  */
-const OMISSION_BASELINE = 107;
+const OMISSION_BASELINE = 106;
 
 /**
  * Call sites whose enclosing function never names an organization, so nothing

@@ -30,11 +30,18 @@ import { usageMeteringService, creditService } from "./services/credits";
 import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 import { idempotencyMiddleware } from "./middleware/idempotency";
 import { storage, db } from "./storage";
-import { eq, sql, and, gte, desc } from "drizzle-orm";
-import { leads, deals, properties, campaignResponses, campaignDeliveryEvents, mailingOrders } from "@shared/schema";
+import { eq, sql, and, gte, desc, notInArray } from "drizzle-orm";
+import type { PrimaryDb } from "./db";
+import { leads, deals, properties, campaignResponses, campaignDeliveryEvents, mailingOrders, mailingOrderPieces } from "@shared/schema";
 import { shouldSimulate, recordSimulatedAction } from "./utils/simulationMode";
 import { sendOrgSMS, orgHasConnectedSmsIdentity } from "./services/smsService";
 import { salutationName } from "@shared/parcel/ownerName";
+import { leadHasOptedOut } from "./services/leadContactability";
+
+// Delivery-event statuses that record a send which did NOT happen. They are on
+// the timeline for the operator, but they are not deliveries, so they never
+// block a retry as "already sent".
+const NOT_DELIVERED_STATUSES = ["failed", "skipped", "deferred"] as const;
 
 export function registerCampaignRoutes(app: Express): void {
   const api = app;
@@ -748,7 +755,10 @@ export function registerCampaignRoutes(app: Express): void {
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
       }
-      const { pieceType, leadIds } = parsed.data;
+      const { pieceType } = parsed.data;
+      // De-duplicated before anything is counted: a repeated id was charged
+      // and printed twice.
+      const leadIds = Array.from(new Set(parsed.data.leadIds));
 
       const { directMailService, DIRECT_MAIL_COSTS, MailAlreadySentError } = await import("./services/directMail");
       
@@ -762,6 +772,31 @@ export function registerCampaignRoutes(app: Express): void {
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign || campaign.type !== 'direct_mail') {
         return Errors.badRequest(res, "Invalid campaign or not a direct mail campaign");
+      }
+
+      // Refuse rather than print a placeholder. A campaign with no content was
+      // mailed as "Special Offer!" (postcard front) or "Letter content"
+      // (letter), and a postcard with no subject carried "We are interested in
+      // your property." on its back — text the customer never wrote, on
+      // physical mail, paid for and undeletable once printed. Nothing is
+      // claimed or charged before this check.
+      const mailContent = (campaign.content ?? "").trim();
+      const mailMessage = (campaign.subject ?? "").trim();
+      if (!mailContent) {
+        return Errors.badRequest(
+          res,
+          "This campaign has no content, so there is nothing to print. AcreOS will not mail placeholder " +
+            "text — add the letter or postcard content to the campaign and send again.",
+          { campaignId: campaign.id },
+        );
+      }
+      if (pieceType.startsWith('postcard_') && !mailMessage) {
+        return Errors.badRequest(
+          res,
+          "This postcard has no subject, which is the message printed on its back. AcreOS will not print a " +
+            "default message — add a subject to the campaign and send again.",
+          { campaignId: campaign.id },
+        );
       }
 
       if (!leadIds || leadIds.length === 0) {
@@ -980,7 +1015,9 @@ export function registerCampaignRoutes(app: Express): void {
       // Actually send the mail pieces via Lob
       const sendResults: Array<{ leadId: number; success: boolean; lobId?: string; expectedDeliveryDate?: Date; error?: string; isTest?: boolean }> = [];
       const lobJobIds: string[] = [];
+      let refundedCents = 0;
       
+      try {
       for (const lead of validLeads) {
         const recipientName = `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || 'Property Owner';
         
@@ -1005,8 +1042,8 @@ export function registerCampaignRoutes(app: Express): void {
             const size = pieceType.replace('postcard_', '') as '4x6' | '6x9' | '6x11';
             result = await directMailService.sendPostcard({
               size,
-              front: campaign.content || '<html><body><h1>Special Offer!</h1></body></html>',
-              back: `<html><body><p>Dear ${lead.firstName || 'Property Owner'},</p><p>${campaign.subject || 'We are interested in your property.'}</p></body></html>`,
+              front: mailContent,
+              back: `<html><body><p>Dear ${lead.firstName || 'Property Owner'},</p><p>${mailMessage}</p></body></html>`,
               to: {
                 name: recipientName,
                 addressLine1: lead.address!,
@@ -1019,7 +1056,7 @@ export function registerCampaignRoutes(app: Express): void {
             }, mailMode, org.id);
           } else {
             result = await directMailService.sendLetter({
-              file: campaign.content || '<html><body><p>Letter content</p></body></html>',
+              file: mailContent,
               to: {
                 name: recipientName,
                 addressLine1: lead.address!,
@@ -1101,21 +1138,53 @@ export function registerCampaignRoutes(app: Express): void {
             continue;
           }
 
-          sendResults.push({ leadId: lead.id, success: false, error: err.message });
-
-          // Create mailing order piece record for failed send
-          await storage.createMailingOrderPiece({
-            mailingOrderId: mailingOrder.id,
-            leadId: lead.id,
-            recipientName,
-            recipientAddressLine1: lead.address!,
-            recipientCity: lead.city!,
-            recipientState: lead.state!,
-            recipientZipCode: lead.zip!,
-            status: 'failed',
-            errorMessage: err.message,
+          // Record the failed piece AND return its upfront charge in one
+          // transaction. The refund used to be one batch credit after the loop,
+          // after the order was closed out — so a failure in between (closing
+          // the order, recording usage) kept the charge for every refused piece.
+          await db.transaction(async (rawTx) => {
+            const tx = rawTx as unknown as PrimaryDb;
+            await tx.insert(mailingOrderPieces).values({
+              mailingOrderId: mailingOrder.id,
+              leadId: lead.id,
+              recipientName,
+              recipientAddressLine1: lead.address!,
+              recipientCity: lead.city!,
+              recipientState: lead.state!,
+              recipientZipCode: lead.zip!,
+              status: 'failed',
+              errorMessage: err.message,
+            });
+            if (debited) {
+              await creditService.addCredits(
+                org.id,
+                costPerPiece,
+                'refund',
+                `Refund: direct mail piece to lead ${lead.id} was not sent (${campaign.name})`,
+                { campaignId, pieceType, mailingOrderId: mailingOrder.id, leadId: lead.id },
+                { tx },
+              );
+            }
           });
+          if (debited) refundedCents += costPerPiece;
+          // Pushed only once the failure is recorded and refunded, so
+          // sendResults.length is the count of SETTLED pieces (see below).
+          sendResults.push({ leadId: lead.id, success: false, error: err.message });
         }
+      }
+      } catch (loopErr) {
+        // The loop died part-way (a failed piece's record/refund transaction
+        // threw). Every piece not yet settled — sent, already-sent or refunded
+        // — was charged upfront for an attempt that never finished.
+        const unsettled = validLeads.length - sendResults.length;
+        if (debited && unsettled > 0) {
+          await creditService
+            .addCredits(org.id, unsettled * costPerPiece, 'refund',
+              `Refund: ${unsettled} direct mail piece(s) not attempted — the send stopped part-way (${campaign.name})`,
+              { campaignId, pieceType, mailingOrderId: mailingOrder.id, unsettled })
+            .catch((e) => logger.error('[Campaigns] refund after an interrupted mail send did not post', e instanceof Error ? e : undefined));
+        }
+        throw loopErr;
       }
 
       const successCount = sendResults.filter(r => r.success).length;
@@ -1143,17 +1212,8 @@ export function registerCampaignRoutes(app: Express): void {
           );
         }
 
-        // Refund credits for failed sends
-        if (failCount > 0) {
-          const refundAmount = costPerPiece * failCount;
-          await creditService.addCredits(
-            org.id,
-            refundAmount,
-            'refund',
-            `Refund for ${failCount} failed direct mail pieces in campaign: ${campaign.name}`,
-            { campaignId, pieceType, failedCount: failCount, mailingOrderId: mailingOrder.id }
-          );
-        }
+        // Failed pieces were refunded one by one, each in the transaction
+        // that recorded it (see the send loop) — nothing is owed here.
       } else {
         logger.info(`Skipping usage recording for org - using org Lob credentials (BYOK)`, { orgId: org.id });
       }
@@ -1177,10 +1237,10 @@ export function registerCampaignRoutes(app: Express): void {
         piecesQueued: successCount,
         piecesFailed: failCount,
         totalCost: (costPerPiece * successCount) / 100,
-        refunded: failCount > 0 ? (costPerPiece * failCount) / 100 : 0,
+        refunded: refundedCents / 100,
         message: actuallyTestMode
           ? `${successCount} test mail pieces queued (no physical mail was printed)${failCount > 0 ? `, ${failCount} failed` : ''}`
-          : `${successCount} mail pieces sent${failCount > 0 ? `, ${failCount} failed (refunded)` : ''}`,
+          : `${successCount} mail pieces sent${failCount > 0 ? `, ${failCount} failed${refundedCents > 0 ? ' (refunded)' : ''}` : ''}`,
         warning: identityWarning,
         details: sendResults,
         // Lens 36 / Tom Hsiao — surface what the pre-mail dedupe scanner did
@@ -2013,11 +2073,16 @@ export function registerCampaignRoutes(app: Express): void {
 
   // POST /api/campaigns/:id/send-email — send email campaign to selected leads
   // DEFECT-0047: Upfront atomic credit deduction + per-recipient dedup
-  api.post("/api/campaigns/:id/send-email", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // idempotencyMiddleware, as on the SMS and direct-mail siblings: a replayed
+  // request must not send (and charge) the batch twice.
+  api.post("/api/campaigns/:id/send-email", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {
       const org = req.organization;
       const campaignId = parseInt(req.params.id);
-      const { leadIds } = req.body as { leadIds: number[] };
+      // De-duplicated BEFORE anything is counted: a repeated id used to be
+      // charged twice and then skipped by the in-loop dedup without a refund.
+      const rawLeadIds = (req.body as { leadIds?: unknown }).leadIds;
+      const leadIds = Array.isArray(rawLeadIds) ? Array.from(new Set(rawLeadIds as number[])) : [];
 
       if (!leadIds || leadIds.length === 0) {
         return Errors.badRequest(res, "No recipients specified");
@@ -2039,37 +2104,53 @@ export function registerCampaignRoutes(app: Express): void {
         return Errors.badRequest(res, "No recipients with valid email addresses");
       }
 
+      // Opt-out is part of the audience, not a send-time accident. The SMS
+      // path drops these through the TCPA gate and direct mail through the
+      // pre-mail scanner; this path filtered on "has an email" alone, so a
+      // lead marked do-not-contact received the campaign. Same rule as the
+      // scanner (leadHasOptedOut), and the address suppression list
+      // (bounces, complaints, unsubscribes) is applied here too so a
+      // suppressed address is neither attempted nor charged.
+      const optedOut = validLeads.filter(l => leadHasOptedOut(l!));
+      const notOptedOut = validLeads.filter(l => !leadHasOptedOut(l!));
+      const { filterSuppressed } = await import("./services/emailSuppressions");
+      const suppression = await filterSuppressed(notOptedOut.map(l => l!.email!));
+      const suppressedAddresses = new Set(suppression.suppressed);
+      const audience = notOptedOut.filter(l => !suppressedAddresses.has(l!.email!.trim().toLowerCase()));
+      const excluded = {
+        doNotContact: optedOut.length,
+        suppressed: notOptedOut.length - audience.length,
+      };
+
+      if (audience.length === 0) {
+        return Errors.badRequest(
+          res,
+          `No recipients can be emailed: ${excluded.doNotContact} opted out (do not contact), ` +
+            `${excluded.suppressed} on the email suppression list.`,
+          { excluded },
+        );
+      }
+
       // DEFECT-0047: Per-recipient dedup — check which leads already received
-      // this campaign (via campaign_delivery_events) and skip them
+      // this campaign (via campaign_delivery_events) and skip them. A row
+      // recording that a send did NOT happen (failed) is not a delivery, so it
+      // does not block the retry that the failure's refund paid for.
       const existingDeliveries = await db
         .select({ leadId: campaignDeliveryEvents.leadId })
         .from(campaignDeliveryEvents)
         .where(
           and(
             eq(campaignDeliveryEvents.campaignId, campaignId),
-            eq(campaignDeliveryEvents.channel, "email")
+            eq(campaignDeliveryEvents.channel, "email"),
+            notInArray(campaignDeliveryEvents.status, [...NOT_DELIVERED_STATUSES])
           )
         );
       const alreadySentLeadIds = new Set(existingDeliveries.map(d => d.leadId));
-      const dedupedLeads = validLeads.filter(l => !alreadySentLeadIds.has(l!.id));
-      const skippedDuplicates = validLeads.length - dedupedLeads.length;
+      const dedupedLeads = audience.filter(l => !alreadySentLeadIds.has(l!.id));
+      const skippedDuplicates = audience.length - dedupedLeads.length;
 
       if (dedupedLeads.length === 0) {
         return Errors.badRequest(res, "All recipients have already been sent this campaign");
-      }
-
-      // DEFECT-0047: Deduct credits UPFRONT atomically to prevent TOCTOU race.
-      // deductCredits uses WHERE balance >= amount, so it's atomic check+deduct.
-      const costPerEmail = 1; // 1 cent per email
-      const totalCost = dedupedLeads.length * costPerEmail;
-
-      if (!req.isFounder) {
-        const deductResult = await creditService.deductCredits(
-          org.id, totalCost, `Campaign email send: ${campaign.name} (${dedupedLeads.length} recipients)`
-        );
-        if (!deductResult) {
-          return Errors.limitExceeded(res, { needed: totalCost, action: "email_send" }, { docsSlug: "limit-email-credits" });
-        }
       }
 
       const { emailService } = await import("./services/emailService");
@@ -2121,25 +2202,89 @@ export function registerCampaignRoutes(app: Express): void {
       // Already-HTML bodies pass through; a plain-text body is wrapped once.
       const htmlTemplate = /<[a-z][\s\S]*>/i.test(body) ? body : `<p>${body}</p>`;
 
+      // DEFECT-0047: Deduct credits UPFRONT atomically to prevent TOCTOU race.
+      // deductCredits uses WHERE balance >= amount, so it's atomic check+deduct.
+      // Taken only AFTER the subject/content refusals above: those return
+      // without sending anything, and used to return with the charge kept.
+      const costPerEmail = 1; // 1 cent per email
+      const totalCost = dedupedLeads.length * costPerEmail;
+      // What the debit ACTUALLY took, not what we expected it to: the founder
+      // bypass debits 0 and must never be refunded a charge it did not pay
+      // (same rule as the direct-mail path).
+      let debited = false;
+
+      if (!req.isFounder) {
+        const deductResult = await creditService.deductCredits(
+          org.id, totalCost, `Campaign email send: ${campaign.name} (${dedupedLeads.length} recipients)`
+        );
+        if (!deductResult) {
+          return Errors.limitExceeded(res, { needed: totalCost, action: "email_send" }, { docsSlug: "limit-email-credits" });
+        }
+        debited = Number(deductResult.amountCents ?? 0) !== 0;
+      }
+
       // Send emails with rate limiting. Track in-memory to catch any
       // within-execution duplicates (e.g. duplicate leadIds in input).
       const sentInExecution = new Set<number>();
-      const results = { sent: 0, failed: 0, errors: [] as string[] };
+      const results = { sent: 0, failed: 0, refundedCents: 0, errors: [] as string[] };
 
+      // A recipient that was charged and not sent: record the outcome and
+      // return its charge in ONE transaction, so neither can exist without the
+      // other (a crash between them used to keep the money for a failed send,
+      // or — the batch refund ran after the loop — keep it for every failure
+      // in a batch that died part-way).
+      const recordFailure = async (leadId: number, reason: string, errorType?: string) => {
+        results.failed++;
+        results.errors.push(`lead ${leadId}: ${reason}`);
+        await db.transaction(async (rawTx) => {
+          const tx = rawTx as unknown as PrimaryDb;
+          await tx.insert(campaignDeliveryEvents).values({
+            campaignId,
+            leadId,
+            channel: "email",
+            status: "failed",
+            sentAt: null,
+            statusUpdatedAt: new Date(),
+            metadata: { reason, errorType: errorType ?? null },
+          });
+          if (debited) {
+            await creditService.addCredits(
+              org.id, costPerEmail, "refund",
+              `Refund: campaign email to lead ${leadId} was not sent (${campaign.name})`,
+              { campaignId, leadId, channel: "email" },
+              { tx },
+            );
+          }
+        });
+        if (debited) results.refundedCents += costPerEmail;
+      };
+
+      // Recipients whose charge is settled: sent (kept) or failed (refunded
+      // with its record). If the loop dies part-way, everyone NOT settled was
+      // charged for an attempt that never finished — they are refunded before
+      // the error propagates.
+      let settled = 0;
+      try {
       for (const lead of dedupedLeads) {
         // In-memory dedup for this execution
         if (sentInExecution.has(lead!.id)) continue;
+        sentInExecution.add(lead!.id);
 
+        // Simple template variable replacement
+        const html = htmlTemplate
+          .replace(/\{\{firstName\}\}/g, salutationName(lead!))
+          .replace(/\{\{lastName\}\}/g, lead!.lastName || "")
+          .replace(/\{\{email\}\}/g, lead!.email || "")
+          .replace(/\{\{county\}\}/g, (lead as any).county || "")
+          .replace(/\{\{state\}\}/g, (lead as any).state || "");
+
+        // The transport REPORTS failure by returning `{ success: false }` (no
+        // connected identity, warm-up cap, suppressed address, provider
+        // rejection) — it does not throw. This awaited the call and ignored the
+        // result, so every one of those was counted, recorded and billed as sent.
+        let sendResult: { success: boolean; error?: string; errorType?: string };
         try {
-          // Simple template variable replacement
-          let html = htmlTemplate
-            .replace(/\{\{firstName\}\}/g, salutationName(lead!))
-            .replace(/\{\{lastName\}\}/g, lead!.lastName || "")
-            .replace(/\{\{email\}\}/g, lead!.email || "")
-            .replace(/\{\{county\}\}/g, (lead as any).county || "")
-            .replace(/\{\{state\}\}/g, (lead as any).state || "");
-
-          await emailService.sendEmail({
+          sendResult = await emailService.sendEmail({
             to: lead!.email!,
             subject,
             html,
@@ -2148,19 +2293,30 @@ export function registerCampaignRoutes(app: Express): void {
             // Deal mail: campaign send to a customer's lead — org identity required.
             purpose: 'counterparty',
           });
-          results.sent++;
-          sentInExecution.add(lead!.id);
+        } catch (err: any) {
+          sendResult = { success: false, error: err?.message ?? String(err) };
+        }
 
-          // Record delivery event for future dedup
+        if (!sendResult.success) {
+          await recordFailure(lead!.id, sendResult.error ?? "send failed", sendResult.errorType);
+          settled++;
+          continue;
+        }
+
+        results.sent++;
+        settled++;
+        // Record delivery event for future dedup. Its OWN try/catch: the email
+        // already went out, so a failed bookkeeping insert must not turn a sent
+        // message into a refunded one (same hardening as the SMS path).
+        try {
           await db.insert(campaignDeliveryEvents).values({
             campaignId,
             leadId: lead!.id,
             channel: "email",
             status: "sent",
           });
-        } catch (err: any) {
-          results.failed++;
-          results.errors.push(`${lead!.email}: ${err.message}`);
+        } catch (insErr) {
+          logger.warn(`[campaigns] delivery-event insert failed after a sent email (lead ${lead!.id}, campaign ${campaignId}): ${String(insErr)}`);
         }
 
         // Rate limit: 5 emails per second
@@ -2168,23 +2324,33 @@ export function registerCampaignRoutes(app: Express): void {
           await new Promise(r => setTimeout(r, 200));
         }
       }
+      } catch (loopErr) {
+        const unsettled = dedupedLeads.length - settled;
+        if (debited && unsettled > 0) {
+          await creditService
+            .addCredits(
+              org.id, unsettled * costPerEmail, "refund",
+              `Refund: ${unsettled} campaign email(s) not attempted — the send stopped part-way (${campaign.name})`,
+              { campaignId, channel: "email", unsettled },
+            )
+            .catch((e) => logger.error("[campaigns] refund after an interrupted email send did not post", e instanceof Error ? e : undefined));
+        }
+        throw loopErr;
+      }
 
-      // DEFECT-0047: Refund credits for failed sends
-      if (!req.isFounder && results.failed > 0) {
-        const refundAmount = results.failed * costPerEmail;
-        await creditService.addCredits(
-          org.id, refundAmount, "refund",
-          `Refund for ${results.failed} failed email(s) in campaign: ${campaign.name}`
-        );
-        logger.info(`[campaigns] Refunded ${refundAmount}¢ for ${results.failed} failed email sends in campaign ${campaignId}`);
+      if (results.refundedCents > 0) {
+        logger.info(`[campaigns] Refunded ${results.refundedCents}¢ for ${results.failed} failed email sends in campaign ${campaignId}`);
       }
 
       // Update campaign stats. Note: the campaigns table has no sentCount
       // column (sent_count lives on campaign_variants), so only status is set
       // — matching prior runtime behavior where the sentCount spread was a no-op.
-      await storage.updateCampaign(campaignId, {
-        status: "sent",
-      }, org.id);
+      // A batch in which nothing was delivered did not send the campaign.
+      if (results.sent > 0) {
+        await storage.updateCampaign(campaignId, {
+          status: "sent",
+        }, org.id);
+      }
 
       // Lenore §1 — value-event telemetry. First mailer sent via email
       // channel (distinct from first_letter_sent which is postcard).
@@ -2202,10 +2368,12 @@ export function registerCampaignRoutes(app: Express): void {
       }
 
       res.json({
-        success: true,
+        success: results.sent > 0,
         sent: results.sent,
         failed: results.failed,
         skippedDuplicates,
+        excluded,
+        refunded: results.refundedCents,
         total: validLeads.length,
         errors: results.errors.slice(0, 10),
       });

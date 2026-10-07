@@ -3,36 +3,16 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DollarSign, FileText, TrendingUp, Download } from "lucide-react";
+import { DollarSign, FileText, Receipt, Download } from "lucide-react";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { Verbs } from "@/lib/labels";
-
-interface AnnualInterestReport {
-  taxYear: number;
-  totalInterestIncome: number;
-  totalPrincipalReceived: number;
-  totalLateFeesCollected: number;
-  notesWith1099Required: number;
-  notes: Array<{
-    noteId: number;
-    borrowerName: string;
-    interestCollected: number;
-    principalCollected: number;
-    requires1099: boolean;
-  }>;
-}
-
-interface PortfolioSummary {
-  taxYear: number;
-  totalRevenue: number;
-  totalCosts: number;
-  netProfit: number;
-  dealsCompleted: number;
-  avgRoi: number;
-}
+import { usd } from "@/lib/format";
+import { contractQueryFn } from "@/lib/contractFetch";
+import { buildBookkeepingCsv } from "@/lib/bookkeepingCsv";
+import { annualInterestReportContract } from "@shared/contracts";
 
 const currentYear = new Date().getFullYear();
 const taxYear = currentYear - 1;
@@ -41,6 +21,10 @@ export default function BookkeepingPage() {
   useDocumentTitle("Bookkeeping");
   const { toast } = useToast();
 
+  // One request, through the app's query client and the shared contract
+  // (shared/contracts/bookkeeping.ts): a non-2xx response is an ERROR, and a
+  // response missing a field this page reads fails the contract instead of
+  // rendering as "$NaN". The key IS the URL — getQueryFn joins it.
   const {
     data: report,
     isLoading: loadingReport,
@@ -48,26 +32,15 @@ export default function BookkeepingPage() {
     error: reportErrorObj,
     refetch: refetchReport,
     isRefetching: reportRefetching,
-  } = useQuery<AnnualInterestReport>({
-    queryKey: ["/api/bookkeeping/annual-report", taxYear],
-    queryFn: () => fetch(`/api/bookkeeping/annual-report?year=${taxYear}`).then(r => r.json()),
+  } = useQuery({
+    queryKey: [`${annualInterestReportContract.path}?year=${taxYear}`],
+    queryFn: contractQueryFn(annualInterestReportContract),
   });
 
-  const {
-    data: summary,
-    isLoading: loadingSummary,
-    isError: summaryError,
-    refetch: refetchSummary,
-  } = useQuery<PortfolioSummary>({
-    queryKey: ["/api/bookkeeping/portfolio-summary", taxYear],
-    queryFn: () => fetch(`/api/bookkeeping/portfolio-summary?year=${taxYear}`).then(r => r.json()),
-  });
-
-  const hasError = reportError || summaryError;
-
-  // cents → "$X,XXX.XX" with full precision so $1,234.56 never rounds to $1,235.
-  const fmt = (n: number) =>
-    `$${(n / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  // The report's money fields are DOLLARS (the contract's stated unit — the
+  // server converted from cents once). Render them as dollars; `usd` shows
+  // the not-available mark for a missing or non-finite value, never NaN.
+  const fmt = (n: number | null | undefined) => usd(n);
 
   return (
     <PageShell>
@@ -77,7 +50,7 @@ export default function BookkeepingPage() {
             Bookkeeping
           </h1>
           <p className="text-muted-foreground text-sm md:text-base">
-            <span className="tabular-nums">{taxYear}</span> tax year — interest income, P&amp;L, and year-end interest reports.
+            <span className="tabular-nums">{taxYear}</span> tax year — interest income, principal, late fees, and the year-end interest report.
           </p>
         </div>
         <Button
@@ -85,26 +58,10 @@ export default function BookkeepingPage() {
           size="sm"
           disabled={!report || loadingReport}
           onClick={() => {
-            // Build a CSV from the annual interest report client-side
-            // (server export not shipped yet — but the data Tom needs
-            // is already loaded). Beats a toast that says "coming soon".
+            // Built client-side from the loaded report (no server export
+            // yet). Dollars in, dollars out — see lib/bookkeepingCsv.ts.
             if (!report) return;
-            const lines = [
-              "Note ID,Borrower,Interest collected,Principal collected,Interest received >= $600 (review)",
-              ...report.notes.map((n) => [
-                n.noteId,
-                JSON.stringify(n.borrowerName ?? ""),
-                (n.interestCollected / 100).toFixed(2),
-                (n.principalCollected / 100).toFixed(2),
-                n.requires1099 ? "yes" : "no",
-              ].join(",")),
-              "",
-              `Total interest,${(report.totalInterestIncome / 100).toFixed(2)}`,
-              `Total principal,${(report.totalPrincipalReceived / 100).toFixed(2)}`,
-              `Total late fees,${(report.totalLateFeesCollected / 100).toFixed(2)}`,
-              `Notes with >= $600 interest received (review),${report.notesWith1099Required}`,
-            ];
-            const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+            const blob = new Blob([buildBookkeepingCsv(report)], { type: "text/csv;charset=utf-8" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
@@ -121,19 +78,18 @@ export default function BookkeepingPage() {
         </Button>
       </div>
 
-      {loadingReport || loadingSummary ? (
+      {loadingReport ? (
         <PageSkeleton variant="table" statCards={4} announceText="Loading bookkeeping data" />
-      ) : hasError ? (
+      ) : reportError ? (
         <QueryErrorState
           error={reportErrorObj instanceof Error ? reportErrorObj : null}
           onRetry={() => {
             refetchReport();
-            refetchSummary();
           }}
           isRetrying={reportRefetching}
           compact
           title="Couldn't load your books"
-          description="We hit a snag loading your interest income and P&L. Your data is safe — try again."
+          description="We hit a snag loading your interest income report. Your data is safe — try again."
           testId="bookkeeping-query-error"
         />
       ) : (
@@ -146,7 +102,7 @@ export default function BookkeepingPage() {
                   <span className="text-xs">Interest income</span>
                 </dt>
                 <dd className="text-xl font-bold tabular-nums">
-                  {report ? fmt(report.totalInterestIncome) : "—"}
+                  {fmt(report?.totalInterestIncome)}
                 </dd>
               </CardContent>
             </Card>
@@ -154,18 +110,21 @@ export default function BookkeepingPage() {
               <CardContent className="p-4">
                 <dt className="text-xs text-muted-foreground mb-1">Principal collected</dt>
                 <dd className="text-xl font-bold tabular-nums">
-                  {report ? fmt(report.totalPrincipalReceived) : "—"}
+                  {fmt(report?.totalPrincipalReceived)}
                 </dd>
               </CardContent>
             </Card>
+            {/* This card read `netProfit`, which no endpoint returns, and
+                rendered "$NaN". No portfolio P&L is computed anywhere, so the
+                card shows a figure the report really carries. */}
             <Card>
               <CardContent className="p-4">
                 <dt className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <TrendingUp className="w-4 h-4" aria-hidden="true" />
-                  <span className="text-xs">Net P&amp;L</span>
+                  <Receipt className="w-4 h-4" aria-hidden="true" />
+                  <span className="text-xs">Late fees collected</span>
                 </dt>
                 <dd className="text-xl font-bold tabular-nums">
-                  {summary ? fmt(summary.netProfit) : "—"}
+                  {fmt(report?.totalLateFeesCollected)}
                 </dd>
               </CardContent>
             </Card>

@@ -12,6 +12,8 @@ import {
 import { assertNotUnderLegalHold, filterOutHeldIds } from "../services/legalHold";
 import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../storage";
 import { LIST_READ_CAP, capListRead } from "./listCap";
+import { DEFAULT_GRANT_SOURCE, stampConsentForInsert, stampConsentForUpdate } from "../services/consentStamp";
+import { leadHasOptedOut } from "../services/leadContactability";
 
 /** Refused merge: the two leads are different parcels (DEFECT-0161). */
 class LeadsAreDistinctParcelsError extends Error {
@@ -272,7 +274,8 @@ export const leadRepo = {
   // organizationId is omitted from InsertLead (set server-side) but the DB
   // column is NOT NULL — callers supply it, so it is required here.
   async createLead(this: DatabaseStorage, lead: InsertLead & { organizationId: number }): Promise<Lead> {
-    const [newLead] = await db.insert(leads).values(lead).returning();
+    // consentDate is the server's clock, never the caller's (consentStamp.ts).
+    const [newLead] = await db.insert(leads).values(stampConsentForInsert(lead, DEFAULT_GRANT_SOURCE)).returning();
     await this.logActivity({
       organizationId: lead.organizationId,
       action: "created",
@@ -286,7 +289,10 @@ export const leadRepo = {
   async createLeadsBatch(this: DatabaseStorage, leadsData: (InsertLead & { organizationId: number })[]): Promise<Lead[]> {
     if (leadsData.length === 0) return [];
     // Batch insert all leads in a single query instead of N individual inserts
-    const newLeads = await db.insert(leads).values(leadsData).returning();
+    const newLeads = await db
+      .insert(leads)
+      .values(leadsData.map((l) => stampConsentForInsert(l, "imported")))
+      .returning();
     // Batch-log activity for all created leads
     if (newLeads.length > 0) {
       const activityEntries = newLeads.map((lead) => ({
@@ -305,7 +311,7 @@ export const leadRepo = {
     const conditions = [eq(leads.id, id)];
     if (organizationId) conditions.push(eq(leads.organizationId, organizationId));
     const [updated] = await db.update(leads)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...stampConsentForUpdate(omitProtectedFields(updates), DEFAULT_GRANT_SOURCE), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -357,7 +363,7 @@ export const leadRepo = {
   async bulkUpdateLeads(this: DatabaseStorage, orgId: number, ids: number[], updates: Partial<InsertLead>): Promise<number> {
     if (ids.length === 0) return 0;
     await db.update(leads)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...stampConsentForUpdate(omitProtectedFields(updates), DEFAULT_GRANT_SOURCE), updatedAt: new Date() })
       .where(and(
         eq(leads.organizationId, orgId),
         inArray(leads.id, ids),
@@ -483,6 +489,9 @@ export const leadRepo = {
     if (!primary || !duplicate) {
       throw new Error("Lead not found");
     }
+    // The merge ends by deleting the duplicate, so a hold on it refuses the
+    // whole merge here, before the primary is rewritten.
+    await assertNotUnderLegalHold(orgId, "lead", duplicateId);
     // Two different parcels are not duplicates, however alike their owner
     // details: the merge deletes one (DEFECT-0161).
     const { areDistinctParcels } = await import("../services/leads/parcelDedupe");
@@ -531,8 +540,26 @@ export const leadRepo = {
       mergedData.notes = duplicate.notes;
     }
 
-    const updated = await this.updateLead(primaryId, mergedData);
-    await this.deleteLead(duplicateId);
+    // An opt-out survives the merge. The fields above only fill the primary's
+    // GAPS, so a duplicate that had said STOP was deleted and its opt-out with
+    // it — the merged lead was contactable again. Either lead's opt-out now
+    // carries over: doNotContact if either had it, and the EARLIEST opt-out
+    // date (the moment the person first revoked contact).
+    if (leadHasOptedOut(primary) || leadHasOptedOut(duplicate)) {
+      if (primary.doNotContact === true || duplicate.doNotContact === true) mergedData.doNotContact = true;
+      const dates = [primary.optOutDate, duplicate.optOutDate]
+        .filter((d): d is Date => d !== null && d !== undefined)
+        .map((d) => new Date(d));
+      if (dates.length > 0) {
+        const earliest = dates.reduce((a, b) => (a.getTime() <= b.getTime() ? a : b));
+        mergedData.optOutDate = earliest;
+        const reasonFrom = primary.optOutDate && new Date(primary.optOutDate).getTime() === earliest.getTime() ? primary : duplicate;
+        if (reasonFrom.optOutReason) mergedData.optOutReason = reasonFrom.optOutReason;
+      }
+    }
+
+    const updated = await this.updateLead(primaryId, mergedData, orgId);
+    await this.deleteLead(duplicateId, orgId);
 
     await this.logActivity({
       organizationId: orgId,

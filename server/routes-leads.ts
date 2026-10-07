@@ -22,6 +22,8 @@ import { requirePermission } from "./utils/permissions";
 import { usageMeteringService, creditService } from "./services/credits";
 import { parseCSV, importLeads, exportLeadsToCSV, getExpectedColumns, type ExportFilters } from "./services/importExport";
 import { logger } from "./utils/logger";
+import { DEFAULT_GRANT_SOURCE } from "./services/consentStamp";
+import type { ConsentSource } from "./services/consentEvents";
 import { Errors } from "./utils/errors";
 // ONE owner for the assigned-leads rule. It was hand-copied into five places
 // and missing from four write paths — see server/utils/assignedLeadGate.ts.
@@ -40,7 +42,9 @@ import { apnMatchForm, createParcelDedupeIndex } from "./services/leads/parcelDe
 import { splitOwnerName } from "@shared/parcel/ownerName";
 
 // Partial update schema for PUT endpoints
-const updateLeadSchema = insertLeadSchema.partial();
+// deletedAt/deletedBy are written only by the delete/restore routes, which
+// check the legal hold and record who deleted — never by a generic edit.
+const updateLeadSchema = insertLeadSchema.partial().omit({ deletedAt: true, deletedBy: true });
 
 // Task #Phase5: Zod schemas for bulk operations (mirrors bulkIdsSchema in routes-properties.ts)
 const bulkLeadIdsSchema = z.object({
@@ -472,20 +476,15 @@ export function registerLeadRoutes(app: Express): void {
       if (inputAny.tcpaConsent === true) {
         try {
           const { recordConsentGranted } = await import("./services/consentEvents");
-          const sourceRaw = (inputAny.consentSource ?? "website") as string;
-          const allowedSources = new Set([
-            "website",
-            "phone_ivr",
-            "written",
-            "sms_double_optin",
-            "imported",
-            "admin_manual",
-          ]);
+          // The SAME source the lead row was stamped with (consentStamp.ts),
+          // read back from the persisted row — the event used to default to
+          // "website" while the row defaulted to "admin_manual", so one grant
+          // carried two different sources.
           await recordConsentGranted({
             organizationId: org.id,
             leadId: lead.id,
             channels: ["sms", "email", "phone", "direct_mail"],
-            source: (allowedSources.has(sourceRaw) ? sourceRaw : "admin_manual") as any,
+            source: (lead.consentSource ?? DEFAULT_GRANT_SOURCE) as ConsentSource,
             consentText: (req.body.consentText ?? req.body.consent_text ?? null) as string | null,
             checkboxChecked:
               typeof req.body.consentCheckboxChecked === "boolean"

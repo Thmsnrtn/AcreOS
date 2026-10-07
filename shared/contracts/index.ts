@@ -65,8 +65,15 @@ export {
   type PropertyListResponse,
 } from "./properties";
 
+export {
+  annualInterestReportContract,
+  projectAnnualInterestReport,
+  type AnnualInterestReportResponse,
+} from "./bookkeeping";
+
 import { createLeadContract } from "./leads";
 import { listPropertiesContract } from "./properties";
+import { annualInterestReportContract } from "./bookkeeping";
 
 /**
  * Registry of every adopted contract, keyed by `"<METHOD> <path>"`. Grows
@@ -76,4 +83,5 @@ import { listPropertiesContract } from "./properties";
 export const API_CONTRACTS = {
   "POST /api/leads": createLeadContract,
   "GET /api/properties": listPropertiesContract,
+  "GET /api/bookkeeping/annual-report": annualInterestReportContract,
 } as const;

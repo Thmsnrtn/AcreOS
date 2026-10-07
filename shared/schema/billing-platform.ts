@@ -12,7 +12,7 @@
  */
 import { pgTable, text, serial, integer, bigint, boolean, timestamp, jsonb, index, primaryKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { createInsertSchema } from "drizzle-zod";
+import { createInsertSchema } from "../db/createInsertSchema";
 import { z } from "zod";
 import { organizations } from "../schema";
 
