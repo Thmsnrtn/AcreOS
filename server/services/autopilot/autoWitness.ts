@@ -12,6 +12,13 @@
  *
  * Fail-closed properties, in order:
  *   • Panic stop engaged → the sweep does nothing at all.
+ *   • Dispatch switched off, the hand's domain paused, or the domain at
+ *     OBSERVE (quarantined) → that action is not released (delegationRules).
+ *   • A grant covers only the hands and drafting roles it NAMES; a draft with
+ *     no source role (a coding dispatch, the chat) is never released.
+ *   • The hand's own delegated rules (refund eligibility, owner-only email
+ *     recipient) are re-read against live data before a slot is spent — and
+ *     again at execution.
  *   • Zero grants issued → the sweep is a no-op (status quo: founder taps).
  *   • A money-moving hand whose cost cannot be PROVEN from the frozen args is
  *     never covered — an unprovable amount cannot be shown under the ceiling.
@@ -119,7 +126,10 @@ export async function runAutoWitnessSweep(
       continue;
     }
 
+    const sourceRole = (action as { sourceRole?: string | null }).sourceRole ?? null;
     const req: WitnessRequest = {
+      handName: action.handName,
+      sourceRole,
       domain: spec.domain,
       predictedCostUsd: predicted ?? 0,
       movesMoney,
@@ -138,6 +148,26 @@ export async function runAutoWitnessSweep(
       continue;
     }
 
+    // The founder's controls and the hand's own rules, read live. A paused
+    // or quarantined domain, or a refund / email the role rules forbid, is
+    // never released — and no budget slot is spent on it.
+    const { delegationBlockedByControls, delegatedHandRefusal } = await import("./delegationRules");
+    try {
+      const blocked = await delegationBlockedByControls(spec.domain);
+      if (blocked) {
+        skip(`not released: ${blocked}`);
+        continue;
+      }
+      const refused = await delegatedHandRefusal(action.handName, args);
+      if (refused) {
+        skip(`not released: ${refused}`);
+        continue;
+      }
+    } catch (err) {
+      skip(`not released: could not verify the controls / hand rules (${err instanceof Error ? err.message : String(err)})`);
+      continue;
+    }
+
     // Spend the budget slot FIRST — the conditional UPDATE re-verifies
     // revocation/expiry/budget at the database, so a founder revoke that
     // landed after our in-memory read wins here.
@@ -150,7 +180,7 @@ export async function runAutoWitnessSweep(
 
     const approver = `${verdict.attribution.grantee} (delegated by ${verdict.attribution.grantor} via witness-grant #${verdict.attribution.grantId})`;
     try {
-      const outcome = await approvePendingHand({ id: action.id, approvedBy: approver, now });
+      const outcome = await approvePendingHand({ id: action.id, approvedBy: approver, delegation: { grantId: String(grant.id) }, now });
       if (outcome.outcome === "executed") {
         result.witnessed++;
         result.decisions.push({ pendingId: action.id, handName: action.handName, outcome: "witnessed", reason: verdict.reason });

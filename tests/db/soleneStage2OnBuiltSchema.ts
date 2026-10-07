@@ -24,6 +24,7 @@ import { and, eq, inArray, like, sql } from "drizzle-orm";
 import {
   agentLlmTraces,
   autopilotPendingActions,
+  autopilotRefundClaims,
   autopilotSenses,
   autopilotSettings,
   creditTransactions,
@@ -37,6 +38,7 @@ import {
 } from "@shared/schema";
 import { soleneDispatchQueue } from "@shared/schema/solene-dispatch";
 import { soleneFounderAsks } from "@shared/schema/solene-founder-collab";
+import { witnessGrants } from "@shared/schema/autopilot-witness-grants";
 import { db, pool } from "../../server/db";
 
 const failures: string[] = [];
@@ -62,6 +64,8 @@ async function main(): Promise<void> {
   const savedLevels = await db.select().from(domainAutonomyLevels);
   const dispatchIds: number[] = [];
   const pendingIds: number[] = [];
+  const extraOrgIds: number[] = [];
+  const grantIds: number[] = [];
   let orgId: number | null = null;
   try {
     const { executeBusinessChatTool } = await import("../../server/services/solene/chat/businessTools");
@@ -107,6 +111,24 @@ async function main(): Promise<void> {
     await executeBusinessChatTool("resume", { target: "growth" }, tag);
     check(!(await getControlState()).pausedDomains.includes("growth"), "resume growth lifts the pause");
 
+    // ── H2: a pause reaches what is already DRAFTED in the domain ──────────
+    {
+      await import("../../server/services/autopilot/hands");
+      const exp = new Date(Date.now() + 3_600_000);
+      const mk = async (handName: string, domain: string | null, h: string) =>
+        (await db.insert(autopilotPendingActions).values({ handName, args: { tag }, contentHash: `${tag}-${h}`, domain, sourceRole: "retention", status: "pending", expiresAt: exp }).returning({ id: autopilotPendingActions.id }))[0].id;
+      const email = await mk("send_email", "retention", "pe"); // a seam-labelled support-domain hand
+      const reply = await mk("reply_support_ticket", "support", "pr");
+      const refund = await mk("apply_refund", "finance", "pf");
+      pendingIds.push(email, reply, refund);
+      const { setPaused } = await import("../../server/services/autopilot/founderControls");
+      const pr = await setPaused("support", true, tag);
+      const st = async (id: number) => (await db.select({ s: autopilotPendingActions.status }).from(autopilotPendingActions).where(eq(autopilotPendingActions.id, id)))[0]?.s;
+      check((await st(email)) === "rejected" && (await st(reply)) === "rejected", `pausing support rejected its drafted actions (rejected ${pr.pendingActionsRejected.length})`);
+      check((await st(refund)) === "pending", "a finance draft was not touched by a support pause");
+      await setPaused("support", false, tag);
+    }
+
     // ── S13 fold ──────────────────────────────────────────────────────────
     const { askFounder } = await import("../../server/services/solene/founderCollab");
     const summary = `${tag} Review a drafted growth action`;
@@ -126,8 +148,18 @@ async function main(): Promise<void> {
     await setAutopilotSetting("cognitionEnabled", false, tag);
     await setDomainLevel("growth", "execute_gated", tag);
     await setDomainLevel("support", "draft", tag);
+    // H2: a stop reaches drafted actions and delegations too.
+    const { issueWitnessGrant: issueG } = await import("../../server/services/autopilot/witnessGrantStore");
+    const liveGrant = await issueG({ grantorId: tag, granteeId: "solene", domains: ["support"], hands: ["reply_support_ticket"], sourceRoles: ["support"], maxCostUsd: 1, maxActions: 5, expiresAt: new Date(Date.now() + 86_400_000), note: tag });
+    grantIds.push(liveGrant.id);
+    const [stopPending] = await db.insert(autopilotPendingActions).values({ handName: "reply_support_ticket", args: { tag }, contentHash: `${tag}-ps`, domain: "support", sourceRole: "support", status: "pending", expiresAt: new Date(Date.now() + 3_600_000) }).returning({ id: autopilotPendingActions.id });
+    pendingIds.push(stopPending.id);
     const { panicStop } = await import("../../server/services/autopilot/panicStop");
     await panicStop({ reason: tag, by: tag });
+    const [psRow] = await db.select({ s: autopilotPendingActions.status }).from(autopilotPendingActions).where(eq(autopilotPendingActions.id, stopPending.id));
+    const [gRow] = await db.select({ revoked: witnessGrants.revoked }).from(witnessGrants).where(eq(witnessGrants.id, liveGrant.id));
+    check(psRow?.s === "rejected", "the panic stop rejected every drafted action");
+    check(gRow?.revoked === true, "the panic stop revoked every live delegation");
     const lv = async () => Object.fromEntries((await db.select().from(domainAutonomyLevels)).map((r) => [r.domain, r.level]));
     const afterStop = await lv();
     check(afterStop.growth === "observe" && afterStop.support === "observe", "the stop quarantined every domain");
@@ -142,6 +174,12 @@ async function main(): Promise<void> {
     check(st.dispatchEnabled && st.publishEnabled && !st.cognitionEnabled, "switches restored exactly (dispatch on, publish on, cognition off)");
     const again = await restorePriorStanding(tag);
     check(!again.done, "the snapshot is single-use (a second restore does nothing)");
+    // LOW: a manual resume (the founder turns dispatch back on himself) forgets the snapshot.
+    await panicStop({ reason: `${tag}-2`, by: tag });
+    const { readPreStopSnapshot, setSwitchByFounder } = await import("../../server/services/autopilot/founderControls");
+    check((await readPreStopSnapshot()) != null, "a second stop recorded a snapshot");
+    await setSwitchByFounder("dispatchEnabled", true, tag);
+    check((await readPreStopSnapshot()) == null, "turning dispatch back on by hand forgets the stale pre-stop snapshot");
 
     // ── reply_support_ticket hand ─────────────────────────────────────────
     const [o] = await db.insert(organizations).values({ name: tag, slug: tag, ownerId: tag }).returning({ id: organizations.id });
@@ -166,7 +204,10 @@ async function main(): Promise<void> {
         .insert(supportTickets)
         .values({ organizationId: o.id, userId: tag, subject: `${tag} refund`, description: "Please refund my $30 pack.", status: "open", resolutionType: "escalated" })
         .returning({ id: supportTickets.id });
-      const ctx = { dispatchId: 0 };
+      // The run is bound to the ONE ticket its briefing named (audit M2).
+      const ctx = { dispatchId: 0, ticketId: t3.id, organizationId: o.id };
+      const foreignTicket = await tools.executeRoleTool("support", "list_recent_purchases", { ticket_id: t.id }, ctx);
+      check(!foreignTicket.success && /only/.test(foreignTicket.output), "a Support tool call naming a ticket the run was not briefed on is refused");
       const refunds = async () => (await db.select().from(autopilotPendingActions).where(eq(autopilotPendingActions.handName, "apply_refund"))).filter((r) => (r.args as { charge_id?: string }).charge_id === `pi_${tag}`);
       const big = await tools.executeRoleTool("support", "refund_purchase", { ticket_id: t3.id, payment_intent_id: `pi_${tag}`, amount_cents: 200000, reason: "x" }, ctx);
       check(!big.success && (await refunds()).length === 0, `a $2,000 refund is refused before anything is drafted (${big.output.slice(0, 80)})`);
@@ -190,6 +231,99 @@ async function main(): Promise<void> {
       await db.delete(autopilotPendingActions).where(inArray(autopilotPendingActions.handName, ["apply_refund", "reply_support_ticket"]));
       await db.delete(supportTickets).where(eq(supportTickets.id, t3.id));
       await db.delete(creditTransactions).where(eq(creditTransactions.organizationId, o.id));
+    }
+
+    // ── H1/M4: the refund rules live INSIDE apply_refund, whoever witnessed it ──
+    {
+      // No Stripe credentials in this check: every refusal below must happen
+      // before Stripe, and an eligible refund fails AT Stripe and must then
+      // put everything back.
+      delete process.env.STRIPE_SECRET_KEY;
+      const { executeHandWitnessed } = await import("../../server/services/autopilot/hands/registry");
+      const [other] = await db.insert(organizations).values({ name: `${tag}-other`, slug: `${tag}-other`, ownerId: `${tag}-other` }).returning({ id: organizations.id });
+      extraOrgIds.push(other.id);
+      await db.update(organizations).set({ creditBalance: "3000" }).where(eq(organizations.id, o.id));
+      const pi = `pi_${tag}_rf`;
+      await db.insert(creditTransactions).values({ organizationId: o.id, type: "purchase", amountCents: 3000, balanceAfterCents: 3000, description: tag, stripePaymentIntentId: pi });
+      const claims = async () => db.select().from(autopilotRefundClaims).where(eq(autopilotRefundClaims.chargeKey, pi));
+      const balance = async () => Number((await db.select({ b: organizations.creditBalance }).from(organizations).where(eq(organizations.id, o.id)))[0]?.b ?? 0);
+      const founder = `${tag}-founder`;
+
+      const foreign = await executeHandWitnessed("apply_refund", { charge_id: pi, amount_cents: 1000, organization_id: other.id }, founder);
+      check(!foreign.success && /not a purchase organization/.test(foreign.output) && (await claims()).length === 0, `a founder-witnessed refund of ANOTHER org's purchase is refused in the hand (${foreign.output.slice(0, 90)})`);
+      const over = await executeHandWitnessed("apply_refund", { charge_id: pi, amount_cents: 3500, organization_id: o.id }, founder);
+      check(!over.success && /more than the purchase cost/.test(over.output), "a refund over the purchase cost is refused in the hand");
+      const noOrg = await executeHandWitnessed("apply_refund", { charge_id: pi, amount_cents: 1000 }, founder);
+      check(!noOrg.success && /organization_id' is required/.test(noOrg.output), "a refund naming no organization is refused in the hand");
+
+      // Eligible — but Stripe is unreachable here: the claim and the clawback must both be undone.
+      const failed = await executeHandWitnessed("apply_refund", { charge_id: pi, amount_cents: 1000, organization_id: o.id }, founder);
+      check(!failed.success && (await claims()).length === 0 && (await balance()) === 3000, `a refund that fails at Stripe releases its claim and returns the credits (${failed.output.slice(0, 80)}; balance ${await balance()})`);
+
+      // Concurrency: five executions at once never leave a claim, a double clawback, or a lost credit.
+      await Promise.all(Array.from({ length: 5 }, () => executeHandWitnessed("apply_refund", { charge_id: pi, amount_cents: 1000, organization_id: o.id }, founder)));
+      const pr = await db.select().from(creditTransactions).where(and(eq(creditTransactions.stripePaymentIntentId, pi), eq(creditTransactions.type, "purchase_refund")));
+      check((await claims()).length === 0 && (await balance()) === 3000 && pr.length === 0, `five concurrent executions end consistent (claims ${(await claims()).length}, balance ${await balance()}, clawback rows ${pr.length})`);
+
+      // ONCE, at the database: a second claim on the same payment cannot exist.
+      await db.insert(autopilotRefundClaims).values({ chargeKey: pi, organizationId: o.id, amountCents: 1000 });
+      let dupRejected = false;
+      try {
+        await db.insert(autopilotRefundClaims).values({ chargeKey: pi, organizationId: o.id, amountCents: 1000 });
+      } catch {
+        dupRejected = true;
+      }
+      check(dupRejected, "the database refuses a second claim on the same payment (UNIQUE charge_key)");
+      const twice = await executeHandWitnessed("apply_refund", { charge_id: pi, amount_cents: 1000, organization_id: o.id }, founder);
+      check(!twice.success && /never twice/.test(twice.output) && (await balance()) === 3000, "a payment already refunded by the autopilot is never refunded again");
+      await db.delete(autopilotRefundClaims).where(eq(autopilotRefundClaims.chargeKey, pi));
+
+      // Refunded OUTSIDE the autopilot (a credit_transactions refund row for the payment).
+      const [outside] = await db.insert(creditTransactions).values({ organizationId: o.id, type: "refund", amountCents: 500, balanceAfterCents: 3500, description: tag, stripePaymentIntentId: pi }).returning({ id: creditTransactions.id });
+      const recorded = await executeHandWitnessed("apply_refund", { charge_id: pi, amount_cents: 1000, organization_id: o.id }, founder);
+      check(!recorded.success && /already recorded/.test(recorded.output) && (await claims()).length === 0, "a payment refunded outside the autopilot is never refunded again");
+      await db.delete(creditTransactions).where(eq(creditTransactions.id, outside.id));
+
+      // M4: the credits were spent → refused, nothing clawed back partially.
+      await db.update(organizations).set({ creditBalance: "200" }).where(eq(organizations.id, o.id));
+      const spent = await executeHandWitnessed("apply_refund", { charge_id: pi, amount_cents: 1000, organization_id: o.id }, founder);
+      check(!spent.success && /no longer holds/.test(spent.output) && (await balance()) === 200 && (await claims()).length === 0, `a refund of credits the org already spent is refused, balance untouched (${spent.output.slice(0, 80)})`);
+      await db.update(organizations).set({ creditBalance: "3000" }).where(eq(organizations.id, o.id));
+
+      // The auditor's case, end to end: a coding-agent-frozen refund of a FOREIGN
+      // charge and a Support-frozen refund of an ALREADY-REFUNDED charge, with a
+      // live finance grant that allows money → neither released, neither executed.
+      const { ensureDomainsSeeded, setDomainLevel } = await import("../../server/services/autopilot/domainAutonomy");
+      await ensureDomainsSeeded();
+      await setDomainLevel("finance", "draft", tag);
+      await setAutopilotSetting("dispatchEnabled", true, tag);
+      const { issueWitnessGrant } = await import("../../server/services/autopilot/witnessGrantStore");
+      const g = await issueWitnessGrant({ grantorId: founder, granteeId: "solene", domains: ["finance"], hands: ["apply_refund"], sourceRoles: ["support"], maxCostUsd: 50, maxActions: 10, expiresAt: new Date(Date.now() + 86_400_000), allowMoney: true, note: tag });
+      grantIds.push(g.id);
+      await db.insert(creditTransactions).values({ organizationId: other.id, type: "purchase", amountCents: 4000, balanceAfterCents: 4000, description: tag, stripePaymentIntentId: `${pi}_foreign` });
+      await db.insert(autopilotRefundClaims).values({ chargeKey: `${pi}_done`, organizationId: o.id, amountCents: 1000 });
+      await db.insert(creditTransactions).values({ organizationId: o.id, type: "purchase", amountCents: 3000, balanceAfterCents: 3000, description: tag, stripePaymentIntentId: `${pi}_done` });
+      const exp = new Date(Date.now() + 3_600_000);
+      // REAL content hashes: a fake one would make the approval path refuse on
+      // hash_mismatch and hide whether the sweep tried to release at all.
+      const { actionContentHash } = await import("../../server/services/approvalKernel");
+      const caArgs = { charge_id: `${pi}_foreign`, amount_cents: 4000, organization_id: other.id };
+      const dupArgs = { charge_id: `${pi}_done`, amount_cents: 1000, organization_id: o.id };
+      const [codingAgent] = await db.insert(autopilotPendingActions).values({ handName: "apply_refund", args: caArgs, contentHash: actionContentHash("apply_refund", caArgs), domain: "finance", status: "pending", expiresAt: exp }).returning({ id: autopilotPendingActions.id });
+      const [dup] = await db.insert(autopilotPendingActions).values({ handName: "apply_refund", args: dupArgs, contentHash: actionContentHash("apply_refund", dupArgs), domain: "finance", sourceRole: "support", status: "pending", expiresAt: exp }).returning({ id: autopilotPendingActions.id });
+      pendingIds.push(codingAgent.id, dup.id);
+      const { runAutoWitnessSweep } = await import("../../server/services/autopilot/autoWitness");
+      const sweep = await runAutoWitnessSweep();
+      const rows = await db.select().from(autopilotPendingActions).where(inArray(autopilotPendingActions.id, [codingAgent.id, dup.id]));
+      const [gAfter] = await db.select({ used: witnessGrants.usedCount }).from(witnessGrants).where(eq(witnessGrants.id, g.id));
+      const foreignClaims = await db.select().from(autopilotRefundClaims).where(eq(autopilotRefundClaims.chargeKey, `${pi}_foreign`));
+      check(
+        sweep.witnessed === 0 && rows.every((r) => r.status === "pending" && r.approvedBy == null) && gAfter?.used === 0 && foreignClaims.length === 0 &&
+          sweep.decisions.filter((d) => d.handName === "apply_refund").every((d) => /^not released|no source role/.test(d.reason)),
+        `with a live finance grant, a coding-agent refund of a foreign charge and a Support refund of an already-refunded charge are NOT released and NOT executed (${sweep.decisions.filter((d) => d.handName === "apply_refund").map((d) => d.reason.slice(0, 60)).join(" | ")})`,
+      );
+      await db.delete(autopilotRefundClaims).where(like(autopilotRefundClaims.chargeKey, `${pi}%`));
+      await db.delete(creditTransactions).where(inArray(creditTransactions.organizationId, [o.id, other.id]));
     }
 
     // ── the founder's own org is never a churning customer ────────────────
@@ -247,6 +381,8 @@ async function main(): Promise<void> {
     if (dispatchIds.length) await db.delete(soleneDispatchQueue).where(inArray(soleneDispatchQueue.id, dispatchIds)).catch(() => {});
     if (pendingIds.length) await db.delete(autopilotPendingActions).where(inArray(autopilotPendingActions.id, pendingIds)).catch(() => {});
     if (orgId != null) await db.delete(organizations).where(eq(organizations.id, orgId)).catch(() => {});
+    if (extraOrgIds.length) await db.delete(organizations).where(inArray(organizations.id, extraOrgIds)).catch(() => {});
+    if (grantIds.length) await db.delete(witnessGrants).where(inArray(witnessGrants.id, grantIds)).catch(() => {});
     if (savedSettings) await db.update(autopilotSettings).set(savedSettings).where(eq(autopilotSettings.id, 1)).catch(() => {});
     else await db.delete(autopilotSettings).where(eq(autopilotSettings.id, 1)).catch(() => {});
     for (const l of savedLevels) await db.update(domainAutonomyLevels).set({ level: l.level, cleanCycleCount: l.cleanCycleCount }).where(eq(domainAutonomyLevels.domain, l.domain)).catch(() => {});

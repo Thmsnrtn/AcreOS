@@ -1478,6 +1478,8 @@ interface GrantRow {
   grantorId: string;
   granteeId: string;
   domains: string[];
+  hands?: string[];
+  sourceRoles?: string[];
   maxCostUsd: string;
   maxActions: number;
   usedCount: number;
@@ -1490,13 +1492,25 @@ interface GrantRow {
 }
 
 const GRANTS_KEY = ["/api/founder/autopilot/witness-grants"];
-const GRANT_DOMAINS = ["growth", "support", "deploy", "ops", "finance"] as const;
+/**
+ * What a grant may release: a hand drafted by a named role. The server holds
+ * the authoritative list (witnessGrant.ts DELEGABLE_HANDS) and refuses any
+ * other pair; this is only the menu. Every other hand stays a founder tap.
+ */
+const GRANT_KINDS = [
+  { key: "support_reply", label: "Support ticket replies", hand: "reply_support_ticket", role: "support", domain: "support" },
+  { key: "support_refund", label: "Support refunds (the ticket's own purchase, ≤ $50, once)", hand: "apply_refund", role: "support", domain: "finance" },
+  { key: "retention_email", label: "Retention emails to an org's owner", hand: "send_email", role: "retention", domain: "support" },
+  { key: "seam_email", label: "System emails to an org's owner", hand: "send_email", role: "outbound_seam", domain: "support" },
+] as const;
 
 function WitnessGrantsSection() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
-  const [domains, setDomains] = useState<string[]>(["support"]);
+  const [kinds, setKinds] = useState<string[]>(["support_reply"]);
+  const chosen = GRANT_KINDS.filter((k) => kinds.includes(k.key));
+  const domains = [...new Set(chosen.map((k) => k.domain))];
   const [maxCostUsd, setMaxCostUsd] = useState("5");
   const [maxActions, setMaxActions] = useState("20");
   const [expiresInDays, setExpiresInDays] = useState("7");
@@ -1521,6 +1535,8 @@ function WitnessGrantsSection() {
         body: JSON.stringify({
           granteeId: "solene",
           domains,
+          hands: [...new Set(chosen.map((k) => k.hand))],
+          sourceRoles: [...new Set(chosen.map((k) => k.role))],
           maxCostUsd: Number(maxCostUsd),
           maxActions: Number(maxActions),
           expiresInDays: Number(expiresInDays),
@@ -1581,7 +1597,7 @@ function WitnessGrantsSection() {
               {rows.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
                   No delegations. Every outward action waits for your tap — that's the default, and it never changes unless
-                  you issue a grant here. A grant is bounded (domains, per-action cost, total actions, expiry) and revocable instantly.
+                  you issue a grant here. A grant is bounded (which drafts, per-action cost, total actions, expiry) and revocable instantly.
                 </p>
               ) : (
                 <ul className="divide-y divide-border/60">
@@ -1591,7 +1607,7 @@ function WitnessGrantsSection() {
                       <li key={g.id} className="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between">
                         <div className="min-w-0">
                           <p className="text-sm text-foreground">
-                            {g.domains.map(prettyDomain).join(" · ")} — up to ${Number(g.maxCostUsd).toFixed(0)}/action
+                            {(g.hands?.length ? g.hands.join(" · ") : `${g.domains.map(prettyDomain).join(" · ")} (covers nothing — re-issue)`)} — up to ${Number(g.maxCostUsd).toFixed(0)}/action
                             <span className="text-muted-foreground"> · {g.usedCount}/{g.maxActions} used</span>
                           </p>
                           <p className="text-micro text-muted-foreground">
@@ -1618,16 +1634,16 @@ function WitnessGrantsSection() {
               {formOpen ? (
                 <div className="space-y-3 rounded-card border border-border/60 bg-muted/20 p-3">
                   <div className="flex flex-wrap gap-2">
-                    {GRANT_DOMAINS.map((d) => {
-                      const on = domains.includes(d);
+                    {GRANT_KINDS.map((k) => {
+                      const on = kinds.includes(k.key);
                       return (
                         <Button
-                          key={d} type="button" size="sm" variant={on ? "default" : "outline"} className="min-h-[36px]"
-                          onClick={() => setDomains((cur) => (on ? cur.filter((x) => x !== d) : [...cur, d]))}
+                          key={k.key} type="button" size="sm" variant={on ? "default" : "outline"} className="min-h-[36px]"
+                          onClick={() => setKinds((cur) => (on ? cur.filter((x) => x !== k.key) : [...cur, k.key]))}
                           aria-pressed={on}
-                          data-testid={`grant-domain-${d}`}
+                          data-testid={`grant-kind-${k.key}`}
                         >
-                          {prettyDomain(d)}
+                          {k.label}
                         </Button>
                       );
                     })}

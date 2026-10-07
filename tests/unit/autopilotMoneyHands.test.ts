@@ -66,10 +66,15 @@ describe("money limb — apply_refund (irreversible, approval-required, $50 cap)
     expect(refundsCreate).not.toHaveBeenCalled();
   });
 
-  it("issues a within-ceiling refund via the witnessed path", async () => {
+  // H1: the refund rules live INSIDE the hand. A within-ceiling refund that
+  // names no organization is refused even when a founder witnessed it — it
+  // can only ever refund a purchase that org made (org-owned / ≤ cost / once
+  // are proven against a real database in tests/db/soleneStage2OnBuiltSchema.ts).
+  it("refuses a witnessed within-ceiling refund that names no organization — Stripe is never called", async () => {
     refundsCreate.mockResolvedValue({ id: "re_1" });
     const r = await executeHandWitnessed("apply_refund", { charge_id: "ch_1", amount_cents: 2500 }, "founder_1");
-    expect(r.success).toBe(true);
-    expect(refundsCreate).toHaveBeenCalledWith({ charge: "ch_1", amount: 2500 });
+    expect(r.success).toBe(false);
+    expect(r.output).toMatch(/organization_id' is required/);
+    expect(refundsCreate).not.toHaveBeenCalled();
   });
 });

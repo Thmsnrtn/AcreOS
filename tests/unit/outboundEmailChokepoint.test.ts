@@ -76,6 +76,11 @@ const REGISTER: Record<string, [number, SendClass]> = {
   "server/services/alertPolicy.ts": [3, "system-mail"],
   "server/services/autonomousDecisionExecutor.ts": [0, "agent-autonomous"],
   "server/services/autopilot/hands/send-email.ts": [1, "witnessed-hand"],
+  // Stage 2: the Support reply hand mails the TICKET OPENER (users.id =
+  // ticket.user_id, and only while they belong to the ticket's org) on the
+  // system lane — never a model-chosen address. requiresApproval: it runs only
+  // on a founder tap or a support-role grant, re-checked at execution.
+  "server/services/autopilot/hands/reply-support-ticket.ts": [1, "witnessed-hand"],
   "server/services/communications.ts": [1, "system-mail"],
   "server/services/credits.ts": [2, "system-mail"],
   "server/services/customerNarrative.ts": [1, "system-mail"],
@@ -208,8 +213,18 @@ describe("outbound email chokepoint — the population is enumerated and frozen"
     ).toBe(AGENT_AUTONOMOUS_BASELINE);
   });
 
-  it("the witnessed hand is exactly one file", () => {
-    const hands = Object.entries(REGISTER).filter(([, [, k]]) => k === "witnessed-hand");
-    expect(hands.map(([f]) => f)).toEqual(["server/services/autopilot/hands/send-email.ts"]);
+  it("the witnessed-hand class is exactly the two approval-required hands", () => {
+    const hands = Object.entries(REGISTER).filter(([, [, k]]) => k === "witnessed-hand").map(([f]) => f);
+    expect(hands.sort()).toEqual([
+      "server/services/autopilot/hands/reply-support-ticket.ts",
+      "server/services/autopilot/hands/send-email.ts",
+    ]);
+    // The class is only honest if each member really IS a witnessed hand: it
+    // registers with requiresApproval: true, so no model call can send.
+    for (const f of hands) {
+      const src = readFileSync(join(ROOT, f), "utf8");
+      expect(src, `${f} must register a hand`).toMatch(/registerHand\(\{/);
+      expect(src, `${f} must be approval-required`).toMatch(/requiresApproval:\s*true/);
+    }
   });
 });

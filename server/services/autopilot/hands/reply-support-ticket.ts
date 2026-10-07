@@ -15,11 +15,11 @@
  * (autoWitness.ts) — the bounded delegation the founder grants once instead of
  * tapping every reply.
  */
-import { and, eq, or } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { registerHand } from "./registry";
 import { handError, type HandResult } from "./types";
 import { unscopedForPlatformOps } from "../../../utils/orgScopedDb";
-import { supportTickets, supportTicketMessages } from "@shared/schema";
+import { organizations, supportTickets, teamMembers } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { sendEmail } from "../../emailService";
 import { filterSuppressed } from "../../emailSuppressions";
@@ -60,12 +60,13 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
       return { success: false, output: `reply_support_ticket: ticket #${ticketId} is already ${ticket.status}; not replying twice.`, durationMs: Date.now() - started };
     }
 
-    await db.insert(supportTicketMessages).values({
-      ticketId,
-      role: "agent",
-      content: message,
-      agentName: "Solene (support)",
-    });
+    // The canonical customer-visible writer (customerComms/supportReply.ts) —
+    // one insert path for every agent reply, scoped to (ticket, org).
+    const { postAgentSupportReply } = await import("../../customerComms/supportReply");
+    const posted = await postAgentSupportReply({ ticketId, organizationId: ticket.organizationId, content: message, agentName: "Solene (support)" });
+    if (!posted.posted) {
+      return { success: false, output: `reply_support_ticket: ${posted.detail}`, durationMs: Date.now() - started };
+    }
     await db
       .update(supportTickets)
       .set({
@@ -75,15 +76,29 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
       })
       .where(and(eq(supportTickets.id, ticketId), eq(supportTickets.organizationId, ticket.organizationId)));
 
-    // Tell the customer by SYSTEM mail. The recipient is the ticket opener.
+    // Tell the customer by SYSTEM mail. The recipient is the ticket opener —
+    // and only while that user still belongs to the ticket's organization (its
+    // owner or a team member). Anyone else gets nothing by mail; the reply
+    // stays on the ticket in-app.
     const [u] = await db
       .select({ email: users.email, firstName: users.firstName })
       .from(users)
-      .where(or(eq(users.id, ticket.userId), eq(users.clerkUserId, ticket.userId)))
+      .where(eq(users.id, ticket.userId))
       .limit(1);
+    const [org] = await db
+      .select({ ownerId: organizations.ownerId })
+      .from(organizations)
+      .where(eq(organizations.id, ticket.organizationId))
+      .limit(1);
+    const [member] = await db
+      .select({ id: teamMembers.id })
+      .from(teamMembers)
+      .where(and(eq(teamMembers.organizationId, ticket.organizationId), eq(teamMembers.userId, ticket.userId)))
+      .limit(1);
+    const belongs = org?.ownerId === ticket.userId || !!member;
     let emailed = false;
-    let emailNote = "no email on file for the ticket opener";
-    if (u?.email) {
+    let emailNote = u?.email ? "the ticket opener no longer belongs to the ticket's organization; reply left in-app only" : "no email on file for the ticket opener";
+    if (u?.email && belongs) {
       const { allowed } = await filterSuppressed([u.email]);
       if (allowed.length === 0) {
         emailNote = "ticket opener has unsubscribed/suppressed; reply left in-app only";

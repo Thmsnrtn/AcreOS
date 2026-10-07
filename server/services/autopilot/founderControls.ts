@@ -15,7 +15,7 @@
  * prompt. These are not: the reply text of a chat turn is never the evidence;
  * the settings row, the dispatch queue and the pending-action queue are.
  */
-import { and, eq, inArray, like } from "drizzle-orm";
+import { and, eq, inArray, like, or } from "drizzle-orm";
 import { db } from "../../db";
 import { autopilotPendingActions, autopilotSettings } from "@shared/schema";
 import { soleneDispatchQueue } from "@shared/schema/solene-dispatch";
@@ -30,7 +30,7 @@ export function isPausable(v: unknown): v is Pausable {
 }
 
 /** Ad-shaped move kinds/rationales (paid reach). Pure. */
-export function isAdMove(move: { kind: string; rationale?: string }): boolean {
+function isAdMove(move: { kind: string; rationale?: string }): boolean {
   return /\b(ads?|advertis\w*|ad[\s_-]?spend|paid[\s_-]?(?:reach|acquisition|social|search)|ppc|meta[\s_-]?ads|facebook[\s_-]?ads|google[\s_-]?ads|run_ad_campaign)\b/i.test(
     `${move.kind.replace(/_/g, " ")} ${move.kind} ${move.rationale ?? ""}`,
   );
@@ -123,6 +123,22 @@ export async function setPaused(target: Pausable, paused: boolean, by: string): 
     if (paused) {
       const { bindingFor } = await import("./act");
       out.dispatchesCancelled = await cancelDispatchesWhere((k) => bindingFor(k).domain === target, `the founder paused ${target}`);
+      // The pause reaches what is already DRAFTED, not only what is queued:
+      // every pending action in the domain is rejected, so neither a grant
+      // nor a stale card can release it after the founder said stop. Matched
+      // by the frozen row's domain AND by the hand's own domain (a seam may
+      // freeze a support-domain hand under another label).
+      const { listHandSpecs } = await import("./hands");
+      const handsInDomain = listHandSpecs().filter((h) => h.domain === target).map((h) => h.name);
+      const inDomain = handsInDomain.length
+        ? or(eq(autopilotPendingActions.domain, target), inArray(autopilotPendingActions.handName, handsInDomain))
+        : eq(autopilotPendingActions.domain, target);
+      const rejected = await db
+        .update(autopilotPendingActions)
+        .set({ status: "rejected", approvedBy: `${by} (paused ${target})` })
+        .where(and(eq(autopilotPendingActions.status, "pending"), inDomain))
+        .returning({ id: autopilotPendingActions.id });
+      out.pendingActionsRejected = rejected.map((r) => r.id);
     }
   }
   try {
@@ -173,6 +189,23 @@ export async function recordPreStopSnapshot(by: string): Promise<PreStopSnapshot
 export async function readPreStopSnapshot(): Promise<PreStopSnapshot | null> {
   const [row] = await db.select({ snap: autopilotSettings.preStopSnapshot }).from(autopilotSettings).where(eq(autopilotSettings.id, 1)).limit(1);
   return (row?.snap as PreStopSnapshot | null) ?? null;
+}
+
+/**
+ * A master switch flipped by the founder's own hand on the Controls door. When
+ * he turns DISPATCH back on himself, he has resumed manually: the pre-stop
+ * snapshot is stale, so it is forgotten — a later "restore" must never put
+ * back a standing from before a resume he already made.
+ */
+export async function setSwitchByFounder(
+  key: "dispatchEnabled" | "publishEnabled" | "cognitionEnabled" | "selfPatchEnabled",
+  value: boolean,
+  by: string,
+) {
+  const { setAutopilotSetting } = await import("./settings");
+  const settings = await setAutopilotSetting(key, value, by);
+  if (key === "dispatchEnabled" && value) await clearPreStopSnapshot(by);
+  return settings;
 }
 
 export async function clearPreStopSnapshot(by: string): Promise<void> {

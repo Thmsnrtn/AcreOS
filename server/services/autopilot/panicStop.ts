@@ -22,6 +22,10 @@ import { PLATFORM_SCOPE } from "./tenantScope";
 
 export interface PanicStopResult {
   switchesOff: string[];
+  /** Frozen actions rejected by the stop — none can be released afterwards. */
+  pendingActionsRejected: number[];
+  /** Live WitnessGrants revoked by the stop — delegation is re-issued deliberately. */
+  grantsRevoked: number[];
   /** In-flight dispatches cancelled (each runner stops at its next turn/tool boundary). */
   dispatchesAborted: number[];
   domainsQuarantined: string[];
@@ -36,7 +40,7 @@ export interface PanicStopResult {
  */
 export async function panicStop(params: { reason: string; by: string }): Promise<PanicStopResult> {
   const reason = params.reason?.trim() || "panic stop (no reason given)";
-  const result: PanicStopResult = { switchesOff: [], dispatchesAborted: [], domainsQuarantined: [], receiptHash: null, reason };
+  const result: PanicStopResult = { switchesOff: [], pendingActionsRejected: [], grantsRevoked: [], dispatchesAborted: [], domainsQuarantined: [], receiptHash: null, reason };
   logger.error(`[autopilot/panicStop] TRIPPED by ${params.by}: ${reason}`);
 
   // 0. Record what is ON right now (switches + every domain's level) BEFORE
@@ -76,6 +80,31 @@ export async function panicStop(params: { reason: string; by: string }): Promise
     logger.error("[autopilot/panicStop] failed to abort in-flight dispatches", err instanceof Error ? err : undefined);
   }
 
+  // 1c. What is already DRAFTED stops too. Every pending action is rejected
+  // (terminal — no tap or grant can release it later) and every live
+  // WitnessGrant is revoked, so a stop reaches delegated sends and not only
+  // new dispatches. Grants are not part of the one-confirm restore: after a
+  // stop, delegation is re-issued deliberately.
+  try {
+    const { db } = await import("../../db");
+    const { autopilotPendingActions } = await import("@shared/schema");
+    const { eq } = await import("drizzle-orm");
+    const rejected = await db
+      .update(autopilotPendingActions)
+      .set({ status: "rejected", approvedBy: `${params.by} (panic stop)` })
+      .where(eq(autopilotPendingActions.status, "pending"))
+      .returning({ id: autopilotPendingActions.id });
+    result.pendingActionsRejected = rejected.map((r) => r.id);
+  } catch (err) {
+    logger.error("[autopilot/panicStop] failed to reject pending actions", err instanceof Error ? err : undefined);
+  }
+  try {
+    const { revokeAllLiveGrants } = await import("./witnessGrantStore");
+    result.grantsRevoked = await revokeAllLiveGrants(`panic stop: ${reason}`);
+  } catch (err) {
+    logger.error("[autopilot/panicStop] failed to revoke witness grants", err instanceof Error ? err : undefined);
+  }
+
   // 2. Quarantine every domain back to OBSERVE.
   try {
     const { AUTOPILOT_DOMAINS, setDomainLevel } = await import("./domainAutonomy");
@@ -98,7 +127,7 @@ export async function panicStop(params: { reason: string; by: string }): Promise
     const receipt = await recordReceipt({
       actionKind: "panic_stop",
       scope: PLATFORM_SCOPE,
-      payloadHash: hashPayload({ reason, switchesOff: result.switchesOff, dispatchesAborted: result.dispatchesAborted, domains: result.domainsQuarantined }),
+      payloadHash: hashPayload({ reason, switchesOff: result.switchesOff, dispatchesAborted: result.dispatchesAborted, pendingActionsRejected: result.pendingActionsRejected, grantsRevoked: result.grantsRevoked, domains: result.domainsQuarantined }),
       accountableHumanId: params.by,
       autonomyLevel: "halted",
     });
@@ -113,7 +142,7 @@ export async function panicStop(params: { reason: string; by: string }): Promise
     await sendSolenePage({
       severity: "critical",
       subject: "Autopilot PANIC STOP tripped",
-      body: `${reason}\nSwitches off: ${result.switchesOff.join(", ") || "none"}\nIn-flight dispatches aborted: ${result.dispatchesAborted.length}\nDomains quarantined: ${result.domainsQuarantined.length}`,
+      body: `${reason}\nSwitches off: ${result.switchesOff.join(", ") || "none"}\nIn-flight dispatches aborted: ${result.dispatchesAborted.length}\nDrafted actions rejected: ${result.pendingActionsRejected.length}\nDelegations revoked: ${result.grantsRevoked.length}\nDomains quarantined: ${result.domainsQuarantined.length}`,
     });
   } catch (err) {
     // Best-effort by design (the stop itself already applied), but a

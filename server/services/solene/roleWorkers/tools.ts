@@ -18,7 +18,7 @@
  * Reads are platform-scope by design: the support desk and the retention desk
  * serve every AcreOS customer (AcreOS operating itself — Level-1 work).
  */
-import { and, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import {
   autopilotPendingActions,
   creditTransactions,
@@ -26,7 +26,6 @@ import {
   supportTicketMessages,
   supportTickets,
 } from "@shared/schema";
-import { users } from "@shared/models/auth";
 import { unscopedForPlatformOps } from "../../../utils/orgScopedDb";
 import { logger } from "../../../utils/logger";
 import type { RoleWorker } from "./routing";
@@ -51,6 +50,13 @@ export interface RoleToolResult {
 
 export interface RoleToolContext {
   dispatchId: number;
+  /**
+   * The ONE ticket (and its org) this Support run was briefed on. Support tools
+   * act on that ticket only — another ticket id, or a run with no briefed
+   * ticket, is refused. One org per model context (audit M2).
+   */
+  ticketId?: number;
+  organizationId?: number;
 }
 
 import { SUPPORT_WORKER_AGENT, FOUNDER_AGENT } from "./routing";
@@ -127,9 +133,15 @@ const PLATFORM_WRITER = "Solene writer role worker: AcreOS's own published field
 
 // ── Support ─────────────────────────────────────────────────────────────────
 
-/** Tickets waiting on AcreOS that no worker or founder has picked up yet. */
-async function listWaitingTickets(limit = 10) {
-  const tickets = await unscopedForPlatformOps(PLATFORM_SUPPORT)
+/**
+ * The ONE ticket waiting on AcreOS that no worker or founder has picked up yet
+ * (oldest first). A Support run works exactly one ticket, so one model
+ * context never holds two organizations' tickets (audit M2). Selecting which
+ * ticket is next is the platform-scope read; everything after it is scoped to
+ * that ticket's organization.
+ */
+async function nextWaitingTicket() {
+  const [ticket] = await unscopedForPlatformOps(PLATFORM_SUPPORT)
     .select({
       id: supportTickets.id,
       organizationId: supportTickets.organizationId,
@@ -145,29 +157,27 @@ async function listWaitingTickets(limit = 10) {
           and coalesce(${supportTickets.assignedAgent}, '') not in (${SUPPORT_WORKER_AGENT}, ${FOUNDER_AGENT})`,
     )
     .orderBy(supportTickets.createdAt)
-    .limit(limit);
-  if (tickets.length === 0) return [];
+    .limit(1);
+  if (!ticket) return null;
   const msgs = await unscopedForPlatformOps(PLATFORM_SUPPORT)
-    .select({ ticketId: supportTicketMessages.ticketId, role: supportTicketMessages.role, content: supportTicketMessages.content })
+    .select({ role: supportTicketMessages.role, content: supportTicketMessages.content })
     .from(supportTicketMessages)
-    .where(inArray(supportTicketMessages.ticketId, tickets.map((t) => t.id)))
+    .where(eq(supportTicketMessages.ticketId, ticket.id))
     .orderBy(supportTicketMessages.id);
-  const orgs = await unscopedForPlatformOps(PLATFORM_SUPPORT)
+  const [org] = await unscopedForPlatformOps(PLATFORM_SUPPORT)
     .select({ id: organizations.id, name: organizations.name, tier: organizations.subscriptionTier, status: organizations.subscriptionStatus })
     .from(organizations)
-    .where(inArray(organizations.id, [...new Set(tickets.map((t) => t.organizationId))]));
-  return tickets.map((t) => ({
-    ...t,
-    org: orgs.find((o) => o.id === t.organizationId) ?? null,
-    recentMessages: msgs.filter((m) => m.ticketId === t.id).slice(-4),
-  }));
+    .where(eq(organizations.id, ticket.organizationId))
+    .limit(1);
+  return { ...ticket, org: org ?? null, recentMessages: msgs.slice(-4) };
 }
 
-async function ticketById(ticketId: number) {
+/** The briefed ticket, read within its organization. */
+async function ticketInOrg(organizationId: number, ticketId: number) {
   const [t] = await unscopedForPlatformOps(PLATFORM_SUPPORT)
     .select()
     .from(supportTickets)
-    .where(eq(supportTickets.id, ticketId))
+    .where(and(eq(supportTickets.id, ticketId), eq(supportTickets.organizationId, organizationId)))
     .limit(1);
   return t ?? null;
 }
@@ -208,9 +218,9 @@ async function assignTicket(organizationId: number, ticketId: number, agent: str
 }
 
 /** Freeze a hand through the dispatch executor (constitutional screen + witnessed-send). */
-async function freezeHand(handName: string, args: Record<string, unknown>, ctx: RoleToolContext): Promise<{ pendingId: number | null; output: string }> {
+async function freezeHand(role: RoleWorker, handName: string, args: Record<string, unknown>, ctx: RoleToolContext): Promise<{ pendingId: number | null; output: string }> {
   const { executeDispatchTool } = await import("../dispatchToolExecutor");
-  const r = await executeDispatchTool(handName, args, { dispatchId: ctx.dispatchId, agentRole: "general-purpose", untrusted: true });
+  const r = await executeDispatchTool(handName, args, { dispatchId: ctx.dispatchId, agentRole: "general-purpose", untrusted: true, sourceRole: role });
   const m = /pending action #(\d+)/.exec(r.output);
   return { pendingId: m ? Number(m[1]) : null, output: r.output };
 }
@@ -237,24 +247,22 @@ export interface AtRiskCustomer {
 async function listAtRiskCustomers(now = new Date()): Promise<AtRiskCustomer[]> {
   const db = unscopedForPlatformOps(PLATFORM_RETENTION);
   const rows = await db.execute(sql`
-    with quiet as (
-      select distinct (detail->>'org')::int as org_id
-        from autopilot_senses
-       where kind = 'churn_signal' and detail->>'org' ~ '^[0-9]+$'
-         and observed_at > ${new Date(now.getTime() - 14 * 24 * 3600_000)}
-    ),
-    last_dunning as (
-      select distinct on (organization_id) organization_id, coalesce(jsonb_array_length(notifications_sent), 0) as sent
-        from dunning_events
-       where event_type = 'payment_failed'
-       order by organization_id, id desc
-    )
     select o.id, o.name, o.dunning_stage, o.subscription_status, o.subscription_tier,
            o.trial_ends_at, o.subscription_ended_at,
            (q.org_id is not null) as quiet, coalesce(ld.sent, 0) as dunning_emails
       from organizations o
-      left join quiet q on q.org_id = o.id
-      left join last_dunning ld on ld.organization_id = o.id
+      left join (
+        select distinct (detail->>'org')::int as org_id
+          from autopilot_senses
+         where kind = 'churn_signal' and detail->>'org' ~ '^[0-9]+$'
+           and observed_at > ${new Date(now.getTime() - 14 * 24 * 3600_000)}
+      ) q on q.org_id = o.id
+      left join (
+        select distinct on (organization_id) organization_id, coalesce(jsonb_array_length(notifications_sent), 0) as sent
+          from dunning_events
+         where event_type = 'payment_failed'
+         order by organization_id, id desc
+      ) ld on ld.organization_id = o.id
      where coalesce(o.is_founder, false) = false and (
         (coalesce(o.dunning_stage, 'none') not in ('none', 'cancelled') and coalesce(ld.sent, 0) = 0)
         or (o.subscription_status in ('canceled', 'cancelled') and o.subscription_ended_at > ${new Date(now.getTime() - 60 * 24 * 3600_000)})
@@ -275,18 +283,6 @@ async function listAtRiskCustomers(now = new Date()): Promise<AtRiskCustomer[]> 
     }
     return { organizationId: r.id, name: r.name, kind: "trial_ending" as const, detail: `trial ends ${r.trial_ends_at ? new Date(r.trial_ends_at).toISOString().slice(0, 10) : "soon"}` };
   });
-}
-
-async function ownerEmail(organizationId: number): Promise<string | null> {
-  const db = unscopedForPlatformOps(PLATFORM_RETENTION);
-  const [org] = await db.select({ ownerId: organizations.ownerId }).from(organizations).where(eq(organizations.id, organizationId)).limit(1);
-  if (!org) return null;
-  const [u] = await db
-    .select({ email: users.email })
-    .from(users)
-    .where(or(eq(users.id, org.ownerId), eq(users.clerkUserId, org.ownerId)))
-    .limit(1);
-  return u?.email ?? null;
 }
 
 async function recentlyEmailed(organizationId: number, kind: string): Promise<boolean> {
@@ -325,21 +321,27 @@ export interface Briefing {
   text: string;
   /** How many work items the briefing carries (0 ⇒ nothing to do). */
   items: number;
+  /** Support: the one ticket (and org) the run is bound to. */
+  scope?: { ticketId: number; organizationId: number };
 }
 
 /** The work a role worker is handed, read fresh at run time. */
 export async function buildBriefing(role: RoleWorker): Promise<Briefing> {
   if (role === "support") {
-    const tickets = await listWaitingTickets();
-    if (tickets.length === 0) return { text: "No tickets are waiting.", items: 0 };
-    const lines = tickets.map((t) => [
-      `### Ticket #${t.id} — ${t.subject}`,
-      `- Organization: #${t.organizationId}${t.org ? ` "${t.org.name}" (${t.org.tier}, ${t.org.status})` : ""}`,
-      `- Category: ${t.category}; opened ${t.createdAt?.toISOString() ?? "unknown"}`,
-      `- Customer wrote: ${t.description}`,
-      ...t.recentMessages.map((m) => `- ${m.role}: ${m.content.slice(0, 400)}`),
-    ].join("\n"));
-    return { text: [`## Waiting tickets (${tickets.length})`, "", ...lines].join("\n\n"), items: tickets.length };
+    const t = await nextWaitingTicket();
+    if (!t) return { text: "No tickets are waiting.", items: 0 };
+    const text = [
+      `## The ticket you are working (one ticket per run)`,
+      "",
+      [
+        `### Ticket #${t.id} — ${t.subject}`,
+        `- Organization: #${t.organizationId}${t.org ? ` "${t.org.name}" (${t.org.tier}, ${t.org.status})` : ""}`,
+        `- Category: ${t.category}; opened ${t.createdAt?.toISOString() ?? "unknown"}`,
+        `- Customer wrote: ${t.description}`,
+        ...t.recentMessages.map((m) => `- ${m.role}: ${m.content.slice(0, 400)}`),
+      ].join("\n"),
+    ].join("\n");
+    return { text, items: 1, scope: { ticketId: t.id, organizationId: t.organizationId } };
   }
   if (role === "retention") {
     const list = await listAtRiskCustomers();
@@ -386,8 +388,15 @@ export async function executeRoleTool(
 }
 
 async function executeSupportRoleTool(name: string, input: Record<string, unknown>, ctx: RoleToolContext): Promise<RoleToolResult> {
+  // Bound to the briefed ticket: one ticket, one org, per run.
+  if (ctx.ticketId == null || ctx.organizationId == null) {
+    return { success: false, output: "This Support run was not briefed on a ticket; no ticket tool may act." };
+  }
   const ticketId = num(input.ticket_id);
-  const ticket = Number.isFinite(ticketId) ? await ticketById(ticketId) : null;
+  if (ticketId !== ctx.ticketId) {
+    return { success: false, output: `You are working ticket #${ctx.ticketId} only — ticket #${input.ticket_id} is not yours in this run.` };
+  }
+  const ticket = await ticketInOrg(ctx.organizationId, ctx.ticketId);
   if (!ticket) return { success: false, output: `ticket #${input.ticket_id} not found.` };
 
   if (name === "list_recent_purchases") {
@@ -424,7 +433,7 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
     const already = prior.reduce((a, r) => a + Number((r.args as { amount_cents?: number } | null)?.amount_cents ?? 0), 0);
     if (already > 0) return { success: false, output: `refund_purchase refused: $${(already / 100).toFixed(2)} of ${pi} is already refunded or awaiting its witness — never twice.` };
     if (amount > purchase.amountCents) return { success: false, output: `refund_purchase refused: $${(amount / 100).toFixed(2)} is more than the purchase ($${(purchase.amountCents / 100).toFixed(2)}).` };
-    const frozen = await freezeHand("apply_refund", { charge_id: pi, amount_cents: amount, reason: `ticket #${ticket.id}: ${str(input.reason).slice(0, 300)}`, organization_id: ticket.organizationId }, ctx);
+    const frozen = await freezeHand("support", "apply_refund", { charge_id: pi, amount_cents: amount, reason: `ticket #${ticket.id}: ${str(input.reason).slice(0, 300)}`, organization_id: ticket.organizationId }, ctx);
     if (frozen.pendingId == null) return { success: false, output: frozen.output };
     return { success: true, effect: "drafted_refund", output: `Refund of $${(amount / 100).toFixed(2)} drafted (pending action #${frozen.pendingId}); it goes out once witnessed. Do not tell the customer it has already been refunded — say it is being processed.` };
   }
@@ -445,7 +454,7 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
     for (const v of [...known]) known.add(v.replace(/\.00$/, "")).add(/\./.test(v) ? v : `${v}.00`);
     const fab = screenFabrication(message, { allowDollarFigures: [...known] });
     if (fab.length > 0) return { success: false, output: `reply_to_ticket refused by the honesty screen: ${fab.map((v) => v.message).join(" ")}` };
-    const frozen = await freezeHand("reply_support_ticket", { ticket_id: ticket.id, organization_id: ticket.organizationId, message, resolve: input.resolve === true }, ctx);
+    const frozen = await freezeHand("support", "reply_support_ticket", { ticket_id: ticket.id, organization_id: ticket.organizationId, message, resolve: input.resolve === true }, ctx);
     if (frozen.pendingId == null) return { success: false, output: frozen.output };
     await assignTicket(ticket.organizationId, ticket.id, SUPPORT_WORKER_AGENT);
     return { success: true, effect: "drafted_reply", output: `Reply to ticket #${ticket.id} drafted (pending action #${frozen.pendingId}); it is posted and emailed once witnessed.` };
@@ -489,12 +498,13 @@ async function executeRetentionRoleTool(name: string, input: Record<string, unkn
   const fab = screenFabrication(`${subject}\n${html}`);
   if (fab.length > 0) return { success: false, output: `email_customer refused by the honesty screen: ${fab.map((v) => v.message).join(" ")}` };
   if (await recentlyEmailed(orgId, kind)) return { success: false, output: `email_customer refused: org #${orgId} already got a ${kind} email in the last 7 days.` };
-  const to = await ownerEmail(orgId);
+  const { ownerEmailOf } = await import("../../autopilot/delegationRules");
+  const to = await ownerEmailOf(orgId);
   if (!to) return { success: false, output: `email_customer refused: no owner email on file for org #${orgId}.` };
   const { filterSuppressed } = await import("../../emailSuppressions");
   const { allowed } = await filterSuppressed([to]);
   if (allowed.length === 0) return { success: false, output: `email_customer refused: the owner of org #${orgId} has unsubscribed. Not emailing.` };
-  const frozen = await freezeHand("send_email", { to, subject, html, organization_id: orgId, retention_kind: kind }, ctx);
+  const frozen = await freezeHand("retention", "send_email", { to, subject, html, organization_id: orgId, retention_kind: kind }, ctx);
   if (frozen.pendingId == null) return { success: false, output: frozen.output };
   return { success: true, effect: "drafted_email", output: `${kind} email to org #${orgId}'s owner drafted (pending action #${frozen.pendingId}); it goes out once witnessed.` };
 }

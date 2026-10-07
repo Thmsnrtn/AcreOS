@@ -19,7 +19,7 @@ const grant = (over: Partial<WitnessGrant> = {}): WitnessGrant => ({
   id: "g1",
   grantorId: "founder_1",
   granteeId: "delegate_1",
-  bounds: { domains: ["support"], maxCostUsd: 10, maxActions: 5, expiresAt: future },
+  bounds: { domains: ["support"], hands: ["send_email"], sourceRoles: ["retention"], maxCostUsd: 10, maxActions: 5, expiresAt: future },
   usedCount: 0,
   revoked: false,
   issuedAt: past,
@@ -27,6 +27,8 @@ const grant = (over: Partial<WitnessGrant> = {}): WitnessGrant => ({
 });
 
 const req = (over: Partial<WitnessRequest> = {}): WitnessRequest => ({
+  handName: "send_email",
+  sourceRole: "retention",
   domain: "support",
   predictedCostUsd: 1,
   movesMoney: false,
@@ -50,6 +52,21 @@ describe("evaluateWitnessGrant — fails CLOSED on every violation", () => {
   it("wrong grantee (a different principal can't borrow the grant)", () =>
     expect(evaluateWitnessGrant(grant(), req({ granteeId: "someone_else" }), NOW).authorized).toBe(false));
   it("domain not covered", () => expect(evaluateWitnessGrant(grant(), req({ domain: "finance" }), NOW).authorized).toBe(false));
+  // H1 — a grant covers only the hands and drafting roles it NAMES.
+  it("hand not named by the grant", () =>
+    expect(evaluateWitnessGrant(grant(), req({ handName: "send_sms" }), NOW).reason).toMatch(/hand "send_sms" not in grant/));
+  it("a grant with no hands list covers nothing (pre-0264 grants)", () =>
+    expect(evaluateWitnessGrant(grant({ bounds: { ...grant().bounds, hands: undefined } }), req(), NOW).authorized).toBe(false));
+  it("a draft with no source role (coding agent, chat) is never covered", () =>
+    expect(evaluateWitnessGrant(grant(), req({ sourceRole: null }), NOW).reason).toMatch(/no source role/));
+  it("a role the grant does not name", () =>
+    expect(evaluateWitnessGrant(grant(), req({ sourceRole: "support" }), NOW).reason).toMatch(/source role "support" not in grant/));
+  it("a (hand, role) pair outside the role rules is never covered, whatever the grant names", () => {
+    const wide = grant({ bounds: { ...grant().bounds, domains: ["finance"], hands: ["apply_refund"], sourceRoles: ["retention"], denyMoney: false } });
+    const v = evaluateWitnessGrant(wide, req({ handName: "apply_refund", sourceRole: "retention", domain: "finance", movesMoney: true }), NOW);
+    expect(v.authorized).toBe(false);
+    expect(v.reason).toMatch(/never grant-released/);
+  });
   it("over the per-action cost ceiling", () =>
     expect(evaluateWitnessGrant(grant(), req({ predictedCostUsd: 11 }), NOW).authorized).toBe(false));
   it("the permanent $500 spend hard-stop clamps even a generous grant ceiling", () => {

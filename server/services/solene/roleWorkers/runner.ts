@@ -58,7 +58,12 @@ export interface ModelTurn {
 export interface RoleRunDeps {
   callModel: (req: { system: string; messages: Array<{ role: "user" | "assistant"; content: unknown }>; tools: RoleToolSchema[] }) => Promise<ModelTurn>;
   buildBriefing: (role: RoleWorker) => Promise<Briefing>;
-  executeTool: (role: RoleWorker, name: string, input: Record<string, unknown>, ctx: { dispatchId: number }) => Promise<RoleToolResult>;
+  executeTool: (
+    role: RoleWorker,
+    name: string,
+    input: Record<string, unknown>,
+    ctx: { dispatchId: number; ticketId?: number; organizationId?: number },
+  ) => Promise<RoleToolResult>;
   /** The publish gate's own parse + screen (publishArtifact.ts) — never a second gate. */
   screenPublishable: (text: string) => { parsed: boolean; ok: boolean; violations: string[] };
   runOps: () => Promise<string>;
@@ -138,7 +143,8 @@ export async function runRoleWorker(row: Pick<SoleneDispatchQueueRow, "id" | "pr
           await log({ event: "aborted", turn });
           return result;
         }
-        const r = await deps.executeTool(role, u.name, u.input ?? {}, { dispatchId: row.id });
+        // The briefing's scope (Support: the one ticket and its org) binds every tool call.
+        const r = await deps.executeTool(role, u.name, u.input ?? {}, { dispatchId: row.id, ...(briefing.scope ?? {}) });
         if (r.success && r.effect) result.effects.push(r.effect);
         await log({ event: "tool", turn, tool: u.name, success: r.success, effect: r.effect ?? null, output: r.output.slice(0, 500) });
         results.push({ type: "tool_result", tool_use_id: u.id, content: r.output.slice(0, 8000), is_error: !r.success });

@@ -2,47 +2,242 @@
  * Founder Autopilot — apply_refund hand (Hands roadmap P2.2).
  *
  * Issuing a refund moves real money OUT and cannot be un-done — irreversible
- * class. So beyond the standard witnessed-send tap (requiresApproval), this hand
- * enforces a HARD $50 ceiling that mirrors the platform's existing auto-approve
- * threshold: even a founder-approved call through THIS hand cannot exceed $50.
- * Larger refunds must go through the full manual refund flow in routes-billing —
- * deliberately not reachable from the autopilot.
+ * class. Beyond the standard witnessed-send tap (requiresApproval), THIS HAND
+ * enforces the refund rules itself, at execution, whoever witnessed it (a
+ * founder tap or a WitnessGrant) and whoever drafted it (the Support worker or
+ * any other dispatch):
  *
- * Thin adapter over stripe.refunds.create (partial amount supported).
+ *   • a HARD $50 ceiling, mirroring the platform's auto-approve threshold;
+ *   • ORG-OWNED: `organization_id` is required and `charge_id` must be a
+ *     purchase that org made (a credit_transactions `purchase` row carrying
+ *     that payment id). Anything else — another org's payment, a charge with
+ *     no recorded purchase — is refused; larger or unusual refunds go through
+ *     the manual refund flow in routes-billing, never the autopilot;
+ *   • ≤ COST: never more than the purchase cost;
+ *   • ONCE: never a second refund of the same payment — counting refunds the
+ *     autopilot made (autopilot_refund_claims, UNIQUE per charge, claimed
+ *     under an advisory lock so two concurrent executions cannot both pass),
+ *     refunds recorded outside the autopilot (credit_transactions `refund` /
+ *     `purchase_refund` rows for that payment), and refunds made on the
+ *     Stripe side (the charge's amount_refunded, read before refunding);
+ *   • CREDITS: a credit-pack refund takes the purchased credits back in the
+ *     same transaction as the claim. RULE CHOSEN (the safer of the two): when
+ *     the org no longer holds the credits being refunded — it spent them — the
+ *     refund is REFUSED rather than clawed back partially or left as free
+ *     credit. A refund never leaves an org holding credits it was repaid for.
+ *
+ * Any failure after the claim (Stripe unreachable, Stripe already refunded,
+ * the refund call failing) releases the claim and returns the credits in one
+ * compensating transaction, so a failed refund can be retried and never
+ * leaves the org short.
  */
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { registerHand } from "./registry";
-import { handError, type HandResult } from "./types";
+import { handError, type HandContext, type HandResult } from "./types";
+import { autopilotRefundClaims, creditTransactions, organizations } from "@shared/schema";
+import { db, withTransaction } from "../../../db";
 
 const NAME = "apply_refund";
 /** Hard ceiling (cents). Matches the platform auto-approve threshold. */
 export const REFUND_CEILING_CENTS = 5000;
+/** credit_transactions types that record money already returned for a payment. */
+const PRIOR_REFUND_TYPES = ["refund", "purchase_refund"];
 
-async function handler(input: Record<string, unknown>): Promise<HandResult> {
+type Refusal = { ok: false; reason: string };
+type Eligible = { ok: true; chargeId: string; amountCents: number; organizationId: number; purchaseCents: number };
+
+/**
+ * Read-only eligibility of a refund against the database: the shape, the
+ * ceiling, org ownership, ≤ cost, and every refund already recorded for the
+ * payment. The hand runs it at execution (inside the claim lock it is run
+ * again); delegationRules runs it before a grant releases a frozen refund.
+ */
+export async function refundEligibility(input: Record<string, unknown>): Promise<Refusal | Eligible> {
+  const chargeId = String(input.charge_id ?? "").trim();
+  const amountCents = typeof input.amount_cents === "number" ? Math.floor(input.amount_cents) : NaN;
+  const organizationId = typeof input.organization_id === "number" ? Math.floor(input.organization_id) : NaN;
+  if (!chargeId || !Number.isFinite(amountCents) || amountCents <= 0) {
+    return { ok: false, reason: "apply_refund: 'charge_id' and a positive 'amount_cents' are required." };
+  }
+  if (amountCents > REFUND_CEILING_CENTS) {
+    return {
+      ok: false,
+      reason: `apply_refund: $${(amountCents / 100).toFixed(2)} exceeds the $${(REFUND_CEILING_CENTS / 100).toFixed(2)} autopilot ceiling. Larger refunds must use the manual refund flow. Refusing.`,
+    };
+  }
+  if (!Number.isFinite(organizationId) || organizationId <= 0) {
+    return { ok: false, reason: "apply_refund: 'organization_id' is required — a refund is only ever of a purchase that org made. Refusing." };
+  }
+  const [purchase] = await db
+    .select({ amountCents: creditTransactions.amountCents })
+    .from(creditTransactions)
+    .where(
+      and(
+        eq(creditTransactions.organizationId, organizationId),
+        eq(creditTransactions.type, "purchase"),
+        eq(creditTransactions.stripePaymentIntentId, chargeId),
+      ),
+    )
+    .limit(1);
+  if (!purchase) {
+    return { ok: false, reason: `apply_refund: ${chargeId} is not a purchase organization #${organizationId} made. Refusing.` };
+  }
+  if (amountCents > purchase.amountCents) {
+    return {
+      ok: false,
+      reason: `apply_refund: $${(amountCents / 100).toFixed(2)} is more than the purchase cost ($${(purchase.amountCents / 100).toFixed(2)}). Refusing.`,
+    };
+  }
+  const [claimed] = await db
+    .select({ id: autopilotRefundClaims.id })
+    .from(autopilotRefundClaims)
+    .where(and(eq(autopilotRefundClaims.organizationId, organizationId), eq(autopilotRefundClaims.chargeKey, chargeId)))
+    .limit(1);
+  if (claimed) return { ok: false, reason: `apply_refund: ${chargeId} has already been refunded (or a refund of it is in flight) — never twice. Refusing.` };
+  const [recorded] = await db
+    .select({ id: creditTransactions.id })
+    .from(creditTransactions)
+    .where(and(eq(creditTransactions.organizationId, organizationId), eq(creditTransactions.stripePaymentIntentId, chargeId), inArray(creditTransactions.type, PRIOR_REFUND_TYPES)))
+    .limit(1);
+  if (recorded) return { ok: false, reason: `apply_refund: a refund of ${chargeId} is already recorded — never twice. Refusing.` };
+  return { ok: true, chargeId, amountCents, organizationId, purchaseCents: purchase.amountCents };
+}
+
+class RefundRefused extends Error {}
+
+/**
+ * Claim the payment (once, race-safe) and take the purchased credits back, in
+ * ONE transaction under an advisory lock on the payment id. Throws
+ * RefundRefused when another claim / recorded refund exists or the org no
+ * longer holds the credits.
+ */
+async function claimRefund(e: Eligible, approvedBy: string | null): Promise<{ claimId: number; clawedCents: number; isFounderOrg: boolean }> {
+  return withTransaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`apply_refund:${e.chargeId}`}))`);
+    const [recorded] = await tx
+      .select({ id: creditTransactions.id })
+      .from(creditTransactions)
+      .where(and(eq(creditTransactions.organizationId, e.organizationId), eq(creditTransactions.stripePaymentIntentId, e.chargeId), inArray(creditTransactions.type, PRIOR_REFUND_TYPES)))
+      .limit(1);
+    if (recorded) throw new RefundRefused(`a refund of ${e.chargeId} is already recorded — never twice`);
+    const [claim] = await tx
+      .insert(autopilotRefundClaims)
+      .values({ chargeKey: e.chargeId, organizationId: e.organizationId, amountCents: e.amountCents, approvedBy })
+      .onConflictDoNothing({ target: autopilotRefundClaims.chargeKey })
+      .returning({ id: autopilotRefundClaims.id });
+    if (!claim) throw new RefundRefused(`${e.chargeId} has already been refunded (or a refund of it is in flight) — never twice`);
+    const [org] = await tx
+      .select({ isFounder: organizations.isFounder })
+      .from(organizations)
+      .where(eq(organizations.id, e.organizationId))
+      .limit(1);
+    const isFounderOrg = org?.isFounder === true;
+    let clawedCents = 0;
+    if (!isFounderOrg) {
+      const [after] = await tx
+        .update(organizations)
+        .set({ creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric - ${e.amountCents}` })
+        .where(and(eq(organizations.id, e.organizationId), sql`COALESCE(${organizations.creditBalance}, '0')::numeric >= ${e.amountCents}`))
+        .returning({ balance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
+      if (!after) {
+        throw new RefundRefused(
+          `organization #${e.organizationId} no longer holds the $${(e.amountCents / 100).toFixed(2)} of credits this would refund — they were spent. A refund never leaves an org holding credits it was repaid for; the founder decides this one by hand`,
+        );
+      }
+      clawedCents = e.amountCents;
+      await tx.insert(creditTransactions).values({
+        organizationId: e.organizationId,
+        type: "purchase_refund",
+        amountCents: -e.amountCents,
+        balanceAfterCents: after.balance,
+        description: `Refund of purchase ${e.chargeId}: purchased credits returned`,
+        stripePaymentIntentId: e.chargeId,
+      });
+      await tx
+        .update(autopilotRefundClaims)
+        .set({ creditsClawedBackCents: clawedCents })
+        .where(and(eq(autopilotRefundClaims.organizationId, e.organizationId), eq(autopilotRefundClaims.id, claim.id)));
+    }
+    return { claimId: claim.id, clawedCents, isFounderOrg };
+  });
+}
+
+/** Undo a claim whose refund did not happen: release it and give the credits back. */
+async function releaseClaim(e: Eligible, claimId: number, clawedCents: number): Promise<void> {
+  await withTransaction(async (tx) => {
+    await tx.delete(autopilotRefundClaims).where(and(eq(autopilotRefundClaims.organizationId, e.organizationId), eq(autopilotRefundClaims.id, claimId)));
+    if (clawedCents > 0) {
+      await tx
+        .update(organizations)
+        .set({ creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${clawedCents}` })
+        .where(eq(organizations.id, e.organizationId));
+      await tx
+        .delete(creditTransactions)
+        .where(
+          and(
+            eq(creditTransactions.organizationId, e.organizationId),
+            eq(creditTransactions.type, "purchase_refund"),
+            eq(creditTransactions.stripePaymentIntentId, e.chargeId),
+          ),
+        );
+    }
+  });
+}
+
+async function handler(input: Record<string, unknown>, ctx: HandContext = {}): Promise<HandResult> {
   const started = Date.now();
+  let eligible: Eligible | null = null;
+  let claim: { claimId: number; clawedCents: number } | null = null;
   try {
-    const chargeId = String(input.charge_id ?? "").trim();
-    const amountCents = typeof input.amount_cents === "number" ? Math.floor(input.amount_cents) : NaN;
-    if (!chargeId || !Number.isFinite(amountCents) || amountCents <= 0) {
-      return { success: false, output: "apply_refund: 'charge_id' and a positive 'amount_cents' are required.", durationMs: Date.now() - started };
+    const e = await refundEligibility(input);
+    if (!e.ok) return { success: false, output: e.reason, durationMs: Date.now() - started };
+    eligible = e;
+    try {
+      claim = await claimRefund(e, ctx.witnessedBy ?? null);
+    } catch (err) {
+      if (err instanceof RefundRefused) return { success: false, output: `apply_refund: ${err.message}. Refusing.`, durationMs: Date.now() - started };
+      throw err;
     }
-    if (amountCents > REFUND_CEILING_CENTS) {
-      return {
-        success: false,
-        output: `apply_refund: $${(amountCents / 100).toFixed(2)} exceeds the $${(REFUND_CEILING_CENTS / 100).toFixed(2)} autopilot ceiling. Larger refunds must use the manual refund flow. Refusing.`,
-        durationMs: Date.now() - started,
-      };
-    }
+
     const { getUncachableStripeClient } = await import("../../../stripeClient");
     const stripe = await getUncachableStripeClient();
-    // Stage 2: a credit-pack purchase is recorded by its PaymentIntent id
-    // (credit_transactions.stripe_payment_intent_id). Stripe refunds take
-    // either a charge or a payment_intent, so a `pi_…` id refunds that
-    // payment. Same hand, same ceiling, same witness.
+    // A credit-pack purchase is recorded by its PaymentIntent id; Stripe
+    // refunds take either a charge or a payment_intent. Read the payment
+    // first: a refund made on the Stripe side counts as "already refunded".
+    const charge = e.chargeId.startsWith("pi_")
+      ? ((await stripe.paymentIntents.retrieve(e.chargeId, { expand: ["latest_charge"] })).latest_charge as { amount?: number; amount_refunded?: number; refunded?: boolean } | null)
+      : await stripe.charges.retrieve(e.chargeId);
+    if (!charge || typeof charge !== "object") {
+      await releaseClaim(e, claim.claimId, claim.clawedCents);
+      return { success: false, output: `apply_refund: Stripe has no charge for ${e.chargeId}. Refusing.`, durationMs: Date.now() - started };
+    }
+    if ((charge.amount_refunded ?? 0) > 0 || charge.refunded === true) {
+      // Refunded outside the autopilot. Keep NO claim of ours (none was paid
+      // out), give the credits back — the outside refund owns the record.
+      await releaseClaim(e, claim.claimId, claim.clawedCents);
+      return { success: false, output: `apply_refund: ${e.chargeId} was already refunded on Stripe — never twice. Refusing.`, durationMs: Date.now() - started };
+    }
+    if (typeof charge.amount === "number" && e.amountCents > charge.amount) {
+      await releaseClaim(e, claim.claimId, claim.clawedCents);
+      return { success: false, output: `apply_refund: $${(e.amountCents / 100).toFixed(2)} is more than Stripe charged. Refusing.`, durationMs: Date.now() - started };
+    }
     const refund = await stripe.refunds.create(
-      chargeId.startsWith("pi_") ? { payment_intent: chargeId, amount: amountCents } : { charge: chargeId, amount: amountCents },
+      e.chargeId.startsWith("pi_") ? { payment_intent: e.chargeId, amount: e.amountCents } : { charge: e.chargeId, amount: e.amountCents },
+      { idempotencyKey: `apply_refund:${e.chargeId}` },
     );
-    return { success: true, output: JSON.stringify({ refundId: refund.id, amountCents }), durationMs: Date.now() - started };
+    await db
+      .update(autopilotRefundClaims)
+      .set({ stripeRefundId: refund.id })
+      .where(and(eq(autopilotRefundClaims.organizationId, e.organizationId), eq(autopilotRefundClaims.id, claim.claimId)));
+    return { success: true, output: JSON.stringify({ refundId: refund.id, amountCents: e.amountCents, creditsReturned: claim.clawedCents }), durationMs: Date.now() - started };
   } catch (err) {
+    if (eligible && claim) {
+      try {
+        await releaseClaim(eligible, claim.claimId, claim.clawedCents);
+      } catch {
+        /* the claim stays: fail closed — a second refund is refused until a human looks */
+      }
+    }
     return handError(NAME, err, started);
   }
 }
@@ -52,15 +247,16 @@ registerHand({
   schema: {
     name: NAME,
     description:
-      "Issue a refund (partial allowed) against a Stripe charge, for a retention save. IRREVERSIBLE; hard-capped at $50 — larger refunds are not available to the autopilot. REQUIRES a founder tap.",
+      "Refund (partial allowed) a purchase an organization made (its credit-pack PaymentIntent id), for a retention save. IRREVERSIBLE; hard-capped at $50, never more than the purchase cost, never twice, and only while the org still holds the credits being refunded. REQUIRES a founder tap.",
     input_schema: {
       type: "object",
       properties: {
-        charge_id: { type: "string", description: "The Stripe charge id (ch_...), or the PaymentIntent id (pi_...) of the purchase." },
-        amount_cents: { type: "number", description: "Amount to refund in cents (≤ 5000)." },
+        charge_id: { type: "string", description: "The purchase's PaymentIntent id (pi_...) as the org's purchase recorded it." },
+        amount_cents: { type: "number", description: "Amount to refund in cents (≤ 5000, ≤ the purchase)." },
+        organization_id: { type: "number", description: "The organization that made the purchase. Required." },
         reason: { type: "string", description: "Why — for the audit trail." },
       },
-      required: ["charge_id", "amount_cents"],
+      required: ["charge_id", "amount_cents", "organization_id"],
     },
   },
   domain: "finance",

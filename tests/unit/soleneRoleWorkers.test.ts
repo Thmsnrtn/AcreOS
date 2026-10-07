@@ -187,3 +187,30 @@ describe("Support / Retention — a real effect is the work product", () => {
     expect(seen).toHaveLength(0);
   });
 });
+
+// M2 — one ticket, one org, per Support run: the briefing binds the run to the
+// ticket it names, and the tools refuse every other ticket id.
+describe("Support runs are bound to one ticket (one org per model context)", () => {
+  it("the runner hands the briefing's ticket scope to every tool call", async () => {
+    const ctxs: Array<Record<string, unknown>> = [];
+    const { d } = deps([call("reply_to_ticket", { ticket_id: 4, message: "Go to Deals → Import.", resolve: true }), text("Done.")], {
+      buildBriefing: async () => ({ text: "## The ticket you are working\n### Ticket #4", items: 1, scope: { ticketId: 4, organizationId: 9 } }),
+      executeTool: async (_r, _n, _i, ctx) => {
+        ctxs.push(ctx as Record<string, unknown>);
+        return { success: true, output: "drafted", effect: "drafted_reply" };
+      },
+    });
+    await runRoleWorker(row, "support", d);
+    expect(ctxs[0]).toMatchObject({ ticketId: 4, organizationId: 9 });
+  });
+
+  it("a tool call naming another ticket — or a run with no briefed ticket — is refused before any read", async () => {
+    const { executeRoleTool } = await import("../../server/services/solene/roleWorkers/tools");
+    const other = await executeRoleTool("support", "reply_to_ticket", { ticket_id: 5, message: "hi", resolve: false }, { dispatchId: 1, ticketId: 4, organizationId: 9 });
+    expect(other.success).toBe(false);
+    expect(other.output).toMatch(/ticket #4 only/);
+    const unbound = await executeRoleTool("support", "list_recent_purchases", { ticket_id: 4 }, { dispatchId: 1 });
+    expect(unbound.success).toBe(false);
+    expect(unbound.output).toMatch(/not briefed on a ticket/);
+  });
+});

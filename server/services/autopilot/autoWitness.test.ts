@@ -29,11 +29,22 @@ vi.mock("./witnessGrantStore", () => ({
   consumeGrantUse: (id: number) => consumeGrantUseMock(id),
 }));
 
+// ── delegated-release rules (controls + hand rules), default: nothing blocks ──
+let controlsBlock: string | null = null;
+let handRefusal: string | null = null;
+const handRefusalMock = vi.fn(async (_h: string, _a: Record<string, unknown>) => handRefusal);
+vi.mock("./delegationRules", () => ({
+  delegationBlockedByControls: vi.fn(async () => controlsBlock),
+  delegatedHandRefusal: (h: string, a: Record<string, unknown>) => handRefusalMock(h, a),
+}));
+
 // ── pending hands + hand registry ────────────────────────────────────────────
 interface FakePending {
   id: number;
   handName: string;
   args: Record<string, unknown>;
+  /** Who drafted it; send_email defaults to the Retention worker. */
+  sourceRole?: string | null;
 }
 let pending: FakePending[] = [];
 const approveMock = vi.fn(async (_input: { id: number; approvedBy: string; now?: number }) => ({
@@ -41,7 +52,7 @@ const approveMock = vi.fn(async (_input: { id: number; approvedBy: string; now?:
   result: { success: true },
 }));
 vi.mock("./pendingHands", () => ({
-  listPendingHands: vi.fn(async () => pending),
+  listPendingHands: vi.fn(async () => pending.map((p) => ({ sourceRole: p.handName === "send_email" ? "retention" : null, ...p }))),
   approvePendingHand: (input: any) => approveMock(input),
 }));
 
@@ -72,6 +83,8 @@ function makeGrant(
     granteeId: over.granteeId ?? AUTO_WITNESS_GRANTEE,
     bounds: {
       domains: ["support"],
+      hands: ["send_email"],
+      sourceRoles: ["retention"],
       maxCostUsd: 10,
       maxActions: 5,
       expiresAt: new Date(NOW + 24 * 60 * 60 * 1000).toISOString(),
@@ -87,6 +100,8 @@ function makeGrant(
 
 beforeEach(() => {
   panicStopped = false;
+  controlsBlock = null;
+  handRefusal = null;
   grants = [];
   pending = [];
   vi.clearAllMocks();
@@ -151,8 +166,8 @@ describe("runAutoWitnessSweep — delegation", () => {
   });
 
   it("never covers a money hand whose amount cannot be proven from frozen args", async () => {
-    grants = [makeGrant({ bounds: { domains: ["finance"], denyMoney: false } })];
-    pending = [{ id: 3, handName: "apply_refund", args: { invoice: "in_123" } }];
+    grants = [makeGrant({ bounds: { domains: ["finance"], hands: ["apply_refund"], sourceRoles: ["support"], denyMoney: false } })];
+    pending = [{ id: 3, handName: "apply_refund", args: { invoice: "in_123" }, sourceRole: "support" }];
     const r = await runAutoWitnessSweep({ now: NOW });
     expect(r.witnessed).toBe(0);
     expect(r.decisions[0].reason).toContain("no provable amount");
@@ -160,23 +175,23 @@ describe("runAutoWitnessSweep — delegation", () => {
   });
 
   it("covers a money hand ONLY with explicit opt-in and a provable amount under the ceiling", async () => {
-    grants = [makeGrant({ bounds: { domains: ["finance"], denyMoney: false, maxCostUsd: 50 } })];
-    pending = [{ id: 3, handName: "apply_refund", args: { refund_amount_usd: 20 } }];
+    grants = [makeGrant({ bounds: { domains: ["finance"], hands: ["apply_refund"], sourceRoles: ["support"], denyMoney: false, maxCostUsd: 50 } })];
+    pending = [{ id: 3, handName: "apply_refund", args: { refund_amount_usd: 20 }, sourceRole: "support" }];
     const r = await runAutoWitnessSweep({ now: NOW });
     expect(r.witnessed).toBe(1);
   });
 
   it("denies a money hand when the grant keeps the deny-money belt on", async () => {
-    grants = [makeGrant({ bounds: { domains: ["finance"] } })]; // denyMoney defaults true
-    pending = [{ id: 3, handName: "apply_refund", args: { refund_amount_usd: 5 } }];
+    grants = [makeGrant({ bounds: { domains: ["finance"], hands: ["apply_refund"], sourceRoles: ["support"] } })]; // denyMoney defaults true
+    pending = [{ id: 3, handName: "apply_refund", args: { refund_amount_usd: 5 }, sourceRole: "support" }];
     const r = await runAutoWitnessSweep({ now: NOW });
     expect(r.witnessed).toBe(0);
     expect(r.decisions[0].reason).toContain("money");
   });
 
   it("denies an over-ceiling amount", async () => {
-    grants = [makeGrant({ bounds: { domains: ["finance"], denyMoney: false, maxCostUsd: 10 } })];
-    pending = [{ id: 3, handName: "apply_refund", args: { refund_amount_usd: 11 } }];
+    grants = [makeGrant({ bounds: { domains: ["finance"], hands: ["apply_refund"], sourceRoles: ["support"], denyMoney: false, maxCostUsd: 10 } })];
+    pending = [{ id: 3, handName: "apply_refund", args: { refund_amount_usd: 11 }, sourceRole: "support" }];
     const r = await runAutoWitnessSweep({ now: NOW });
     expect(r.witnessed).toBe(0);
     expect(r.decisions[0].reason).toContain("ceiling");
@@ -194,12 +209,12 @@ describe("runAutoWitnessSweep — delegation", () => {
     expect(r.decisions[1].reason).toContain("budget exhausted");
   });
 
-  it("a broadcast hand needs the broadcast opt-in", async () => {
-    grants = [makeGrant({ bounds: { domains: ["growth"] } })]; // denyBroadcast default true
-    pending = [{ id: 9, handName: "publish_post", args: {} }];
+  it("a broadcast hand is never grant-released — not even with the broadcast opt-in", async () => {
+    grants = [makeGrant({ bounds: { domains: ["growth"], hands: ["publish_post"], sourceRoles: ["writer"], denyBroadcast: false } })];
+    pending = [{ id: 9, handName: "publish_post", args: {}, sourceRole: "writer" }];
     const r = await runAutoWitnessSweep({ now: NOW });
     expect(r.witnessed).toBe(0);
-    expect(r.decisions[0].reason).toContain("broadcast");
+    expect(r.decisions[0].reason).toContain("never grant-released");
   });
 
   it("keeps the budget spent when the approval path refuses (conservative)", async () => {
@@ -218,5 +233,69 @@ describe("runAutoWitnessSweep — delegation", () => {
     const r = await runAutoWitnessSweep({ now: NOW });
     expect(r.witnessed).toBe(0);
     expect(r.decisions[0].reason).toContain("not registered");
+  });
+});
+
+// ── H1 / H2: the grant knows the hand, who drafted it, and the founder's controls ──
+describe("runAutoWitnessSweep — hand, role and control bounds", () => {
+  const financeGrant = () =>
+    makeGrant({ bounds: { domains: ["finance"], hands: ["apply_refund"], sourceRoles: ["support"], denyMoney: false, maxCostUsd: 50 } });
+
+  it("a coding-agent-frozen apply_refund (no source role) with a live finance grant is NOT released and NOT executed", async () => {
+    grants = [financeGrant()];
+    pending = [{ id: 11, handName: "apply_refund", args: { charge_id: "pi_other_org", amount_cents: 4000, organization_id: 999 }, sourceRole: null }];
+    const r = await runAutoWitnessSweep({ now: NOW });
+    expect(r.witnessed).toBe(0);
+    expect(approveMock).not.toHaveBeenCalled();
+    expect(consumeGrantUseMock).not.toHaveBeenCalled();
+    expect(r.decisions[0].reason).toMatch(/no source role/);
+  });
+
+  it("a Support-drafted refund of a foreign or already-refunded charge is NOT released and NOT executed", async () => {
+    grants = [financeGrant()];
+    handRefusal = "apply_refund: pi_dup has already been refunded (or a refund of it is in flight) — never twice. Refusing.";
+    pending = [{ id: 12, handName: "apply_refund", args: { charge_id: "pi_dup", amount_cents: 3000, organization_id: 5 }, sourceRole: "support" }];
+    const r = await runAutoWitnessSweep({ now: NOW });
+    expect(r.witnessed).toBe(0);
+    expect(approveMock).not.toHaveBeenCalled();
+    expect(consumeGrantUseMock).not.toHaveBeenCalled();
+    expect(handRefusalMock).toHaveBeenCalledWith("apply_refund", expect.objectContaining({ charge_id: "pi_dup" }));
+    expect(r.decisions[0].reason).toMatch(/never twice/);
+  });
+
+  it("a send_email drafted by a role the grant does not name is not released", async () => {
+    grants = [makeGrant()]; // retention only
+    pending = [{ id: 13, handName: "send_email", args: { to: "a@b.c" }, sourceRole: "outbound_seam" }];
+    const r = await runAutoWitnessSweep({ now: NOW });
+    expect(r.witnessed).toBe(0);
+    expect(r.decisions[0].reason).toMatch(/source role "outbound_seam" not in grant/);
+  });
+
+  it("a hand the grant does not name is not released, even in a covered domain", async () => {
+    HAND_SPECS.send_sms = { domain: "support" };
+    grants = [makeGrant()];
+    pending = [{ id: 14, handName: "send_sms", args: {}, sourceRole: "retention" }];
+    const r = await runAutoWitnessSweep({ now: NOW });
+    expect(r.witnessed).toBe(0);
+    expect(r.decisions[0].reason).toMatch(/hand "send_sms" not in grant/);
+    delete HAND_SPECS.send_sms;
+  });
+
+  it("a paused / quarantined domain or dispatch-off releases nothing, and spends no slot", async () => {
+    grants = [makeGrant()];
+    pending = [{ id: 15, handName: "send_email", args: { to: "owner@x.com" } }];
+    controlsBlock = "the founder paused support";
+    const r = await runAutoWitnessSweep({ now: NOW });
+    expect(r.witnessed).toBe(0);
+    expect(approveMock).not.toHaveBeenCalled();
+    expect(consumeGrantUseMock).not.toHaveBeenCalled();
+    expect(r.decisions[0].reason).toMatch(/paused support/);
+  });
+
+  it("a released action carries the grant into the approval path (the executor re-checks)", async () => {
+    grants = [makeGrant()];
+    pending = [{ id: 16, handName: "send_email", args: { to: "owner@x.com" } }];
+    await runAutoWitnessSweep({ now: NOW });
+    expect(approveMock.mock.calls[0][0]).toMatchObject({ id: 16, delegation: { grantId: "1" } });
   });
 });

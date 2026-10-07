@@ -35,8 +35,9 @@
  * the consequences through a mock whose result the test controls.
  *
  * Mutation probes (each must go RED): drop the status='open' clause; drop the
- * questionBody clause; move the dedup check below the sendSolenePage call;
- * return a fresh insert instead of the existing id.
+ * questionSummary clause; add questionBody back to the key (S13); move the
+ * dedup check below the sendSolenePage call; return a fresh insert instead of
+ * the existing id.
  *
  * idempotent: true — db and pager fully mocked.
  */
@@ -55,6 +56,8 @@ const state = vi.hoisted(() => ({
   duplicateRows: [] as Array<{ id: number; askedAt: Date }>,
   selects: [] as Array<{ sql: string; params: unknown[] }>,
   inserts: [] as Array<Record<string, unknown>>,
+  /** S13 fold writes: the SET of each update and its rendered WHERE. */
+  updates: [] as Array<{ set: Record<string, unknown>; sql: string; params: unknown[] }>,
   pages: [] as Array<{ severity: string; subject: string }>,
 }));
 
@@ -68,7 +71,19 @@ vi.mock("../../server/db", async () => {
           where: (pred: unknown) => {
             const q = dialect.sqlToQuery(pred as never);
             state.selects.push({ sql: q.sql, params: q.params });
-            return { limit: async () => state.duplicateRows };
+            // The dedup read is `.where(…).orderBy(id).limit(1)` (oldest open
+            // ask wins the fold); both shapes resolve to the controlled rows.
+            const limit = async () => state.duplicateRows;
+            return { limit, orderBy: () => ({ limit }) };
+          },
+        }),
+      }),
+      update: () => ({
+        set: (set: Record<string, unknown>) => ({
+          where: async (pred: unknown) => {
+            const q = dialect.sqlToQuery(pred as never);
+            state.updates.push({ set, sql: q.sql, params: q.params });
+            return [];
           },
         }),
       }),
@@ -106,6 +121,7 @@ describe("an identical open ask is reused, not duplicated", () => {
     state.duplicateRows = [];
     state.selects = [];
     state.inserts = [];
+    state.updates = [];
     state.pages = [];
     vi.clearAllMocks();
   });
@@ -148,23 +164,39 @@ describe("an identical open ask is reused, not duplicated", () => {
     expect(state.pages).toHaveLength(0);
   });
 
-  it("the predicate binds status, role, summary and body — checked as SQL", async () => {
+  it("the predicate binds status and summary — checked as SQL (S13: the summary is the question)", async () => {
     // A symbol check would pass on `eq(status,'open')` alone. This asserts the
-    // rendered WHERE actually names every column that makes two asks the same
-    // question, with the values the caller passed.
+    // rendered WHERE actually names the columns that make two asks the same
+    // question, with the values the caller passed. Since S13 that is the
+    // SUMMARY among OPEN asks: a re-raised escalation carries a fresh forecast
+    // in its body, so a (role, summary, body) key let the same card open four
+    // times. Role and body must therefore NOT be part of the key.
     const { askFounder } = await import("../../server/services/solene/founderCollab");
     await askFounder(ASK);
 
     expect(state.selects, "the dedup SELECT never ran").toHaveLength(1);
     const { sql, params } = state.selects[0];
 
-    for (const col of ["status", "asking_agent_role", "question_summary", "question_body"]) {
+    for (const col of ["status", "question_summary"]) {
       expect(sql, `the dedup predicate does not constrain ${col}`).toContain(`"${col}"`);
     }
     expect(params).toContain("open");
-    expect(params).toContain(ASK.askingAgentRole);
     expect(params).toContain(ASK.questionSummary);
-    expect(params).toContain(ASK.questionBody);
+    expect(sql, "the body must not split one question into two cards").not.toContain(`"question_body"`);
+  });
+
+  it("a repeat with a fresher body FOLDS into the open ask: no row, no page, the body refreshed", async () => {
+    state.duplicateRows = [{ id: 17, askedAt: new Date(Date.now() - 3_600_000) }];
+    const { askFounder } = await import("../../server/services/solene/founderCollab");
+    const r = await askFounder({ ...ASK, questionBody: "Same question, newer forecast (41%)." });
+    expect(r).toMatchObject({ askId: 17, deduped: true, pagerFired: false });
+    expect(state.inserts).toHaveLength(0);
+    expect(state.pages).toHaveLength(0);
+    expect(state.updates).toHaveLength(1);
+    expect(state.updates[0].set.questionBody).toBe("Same question, newer forecast (41%).");
+    // The fold writes only the OPEN row it read.
+    expect(state.updates[0].params).toContain(17);
+    expect(state.updates[0].params).toContain("open");
   });
 
   it("a different question from the same agent is not suppressed", async () => {
@@ -175,10 +207,11 @@ describe("an identical open ask is reused, not duplicated", () => {
     await askFounder(ASK);
     const first = state.selects[0].params;
     state.selects = [];
-    await askFounder({ ...ASK, questionBody: "A different rationale entirely." });
+    await askFounder({ ...ASK, questionSummary: "Approve a growth action: a different move" });
     const second = state.selects[0].params;
     expect(second).not.toEqual(first);
-    expect(second).toContain("A different rationale entirely.");
+    expect(second).toContain("Approve a growth action: a different move");
+    expect(state.inserts).toHaveLength(2);
   });
 });
 
