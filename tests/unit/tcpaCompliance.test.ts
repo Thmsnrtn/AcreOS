@@ -136,8 +136,17 @@ describe("detectOptKeyword — CTIA STOP/START detection", () => {
   });
 
   it("detects START-class keywords", () => {
-    for (const raw of ["START", "yes", "UNSTOP", "optin", "Opt-In"]) {
+    for (const raw of ["START", "UNSTOP", "optin", "Opt-In"]) {
       expect(detectOptKeyword(raw), raw).toBe("opt_in");
+    }
+  });
+
+  // A bare YES used to be 'opt_in' and re-subscribed a lead who had sent STOP.
+  // The carrier still treats YES as re-subscribe, so it is detected — as a
+  // carrier-level signal AcreOS records but never applies (see tcpaCompliance).
+  it("a bare YES is a carrier-level opt-in, not an AcreOS re-subscribe", () => {
+    for (const raw of ["yes", "YES", "Yes!"]) {
+      expect(detectOptKeyword(raw), raw).toBe("carrier_opt_in");
     }
   });
 

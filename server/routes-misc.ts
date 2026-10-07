@@ -6,12 +6,16 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { alertingService } from "./services/alerting";
 import { usageMeteringService, creditService } from "./services/credits";
-import { organizationIntegrations, callTranscripts } from "@shared/schema";
+import { callTranscripts } from "@shared/schema";
 import { requireAdminOrAbove } from "./utils/permissions";
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
-import { verifyTwilioSignature } from "./middleware/twilioSignature";
+import {
+  verifyTwilioSignature,
+  verifyInboundTwilioSms,
+  type VerifiedTwilioInbound,
+} from "./middleware/twilioSignature";
 import { idempotencyMiddleware } from "./middleware/idempotency";
 import { withIdempotency } from "./services/webhook-idempotency";
 import { poolDebit, refundPoolDebit, poolRefusalDetails } from "./services/creditPool";
@@ -331,9 +335,9 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
     }
   });
 
-  api.post("/api/webhooks/twilio/sms", verifyTwilioSignature, async (req, res) => {
+  api.post("/api/webhooks/twilio/sms", verifyInboundTwilioSms, async (req, res) => {
     try {
-      const { From, To, Body, MessageSid, AccountSid } = req.body;
+      const { From, To, Body, MessageSid } = req.body;
 
       if (!From || !Body || !MessageSid) {
         return res.status(400).send("Invalid webhook payload");
@@ -355,23 +359,14 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
       logger.info(`[Twilio Webhook] Incoming SMS from ${From} to ${To}: ${Body.substring(0, 50)}...`);
 
-      const orgIntegrations = await db
-        .select()
-        .from(organizationIntegrations)
-        .where(
-          and(
-            eq(organizationIntegrations.provider, "twilio"),
-            eq(organizationIntegrations.isEnabled, true)
-          )
-        );
-      
-      const cleanTo = To?.replace(/\D/g, "") || "";
-      const matchingOrg = orgIntegrations.find(integration => {
-        const creds = integration.credentials as any;
-        if (!creds?.fromPhoneNumber) return false;
-        const configuredPhone = creds.fromPhoneNumber.replace(/\D/g, "");
-        return cleanTo.includes(configuredPhone) || configuredPhone.includes(cleanTo.slice(-10));
-      });
+      // The org is the one verifyInboundTwilioSms resolved from the `To`
+      // number across EVERY place a number can be configured (integration
+      // row, BYOK vault, purchased numbers, tracking pool) and whose own token
+      // — or the platform's — verified the signature. It is never re-derived
+      // here: a second, narrower lookup is how BYO numbers went unmatched.
+      const verified = res.locals.twilioInbound as VerifiedTwilioInbound | undefined;
+      const matchingOrg =
+        verified?.organizationId != null ? { organizationId: verified.organizationId } : null;
 
       if (matchingOrg) {
         try {
@@ -385,13 +380,31 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
           );
 
           if (optResult.action === 'opt_out') {
-            logger.info(`[Twilio Webhook] STOP keyword received from ${From} — lead ${optResult.leadId} opted out`);
+            logger.info(`[Twilio Webhook] Opt-out received from ${From} — lead ${optResult.leadId ?? "(none matched)"} opted out`);
+            if (optResult.leadId == null) {
+              // No lead row to mark do-not-contact. Record the text itself
+              // (as an unattached inbound) so the reply gate sees the opt-out
+              // as this number's latest message and refuses to answer it
+              // (DEFECT-0104). Best-effort: the confirmation still goes out.
+              try {
+                await smsServiceModule.handleIncomingSMS(matchingOrg.organizationId, From, To, Body, MessageSid);
+              } catch (recordErr) {
+                logger.error(
+                  "[Twilio Webhook] could not record an unmatched opt-out",
+                  recordErr instanceof Error ? recordErr : undefined,
+                  { metadata: { organizationId: matchingOrg.organizationId, messageSid: MessageSid } },
+                );
+              }
+            }
             // Respond with TCPA-required opt-out confirmation message
             res.status(200).send(
               '<?xml version="1.0" encoding="UTF-8"?><Response><Message>You have been unsubscribed and will receive no further messages. Reply START to re-subscribe.</Message></Response>'
             );
             return;
           }
+          // A carrier-level "YES" (optResult.action === 'carrier_opt_in') is
+          // recorded by processOptKeyword but does NOT re-subscribe the lead
+          // inside AcreOS; it falls through and is stored as an ordinary reply.
           if (optResult.action === 'opt_in') {
             logger.info(`[Twilio Webhook] START keyword received from ${From} — lead ${optResult.leadId} opted in`);
             res.status(200).send(

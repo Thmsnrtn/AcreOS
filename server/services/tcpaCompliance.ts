@@ -294,18 +294,125 @@ export function isWithinQuietHoursForLead(
 // STOP keywords per CTIA/TCPA guidelines
 const STOP_KEYWORDS = new Set([
   'stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit', 'optout', 'opt-out',
+  // FCC 2024 revocation order (47 CFR 64.1200(a)(10)) lists "revoke" among the
+  // words that revoke consent per se.
+  'revoke',
 ]);
 
-const START_KEYWORDS = new Set(['start', 'yes', 'unstop', 'optin', 'opt-in']);
+// ─── RE-SUBSCRIBE: START / UNSTOP only — never a bare YES ────────────────────
+// Twilio's Advanced Opt-Out (and the carriers) treat START, YES and UNSTOP as
+// opt-in keywords: when a number that sent STOP later texts YES, Twilio lifts
+// its own block on that sender. AcreOS deliberately does NOT follow it on YES:
+//
+//   - "Yes" is the most common reply a seller sends to anything ("Yes, still
+//     own it", "yes call me"). Read as re-consent it turned an ordinary answer
+//     into tcpaConsent=true — and into a re-subscribe of a lead who had said
+//     STOP, on a word they did not send in answer to any opt-in prompt.
+//   - Our own opt-out confirmation says "Reply START to re-subscribe", so the
+//     re-subscribe we offer is START; honouring only what we offered is the
+//     clear, affirmative re-consent the TCPA asks for.
+//   - Being STRICTER than the carrier is always consistent with it: Twilio
+//     lifting its block only means a send would no longer be refused at the
+//     carrier; AcreOS still refusing to send cannot violate anything. The
+//     reverse (re-subscribing where the carrier still blocks) would be the
+//     inconsistent direction.
+//
+// So a bare YES is detected as 'carrier_opt_in': it is RECORDED (the carrier
+// will have unblocked the number, and a later reviewer needs to see why sends
+// now reach Twilio), it is stored as an ordinary reply, and it changes no
+// consent. Only START / UNSTOP (and the explicit OPTIN) re-subscribe.
+const START_KEYWORDS = new Set(['start', 'unstop', 'optin', 'opt-in']);
+const CARRIER_ONLY_OPT_IN_KEYWORDS = new Set(['yes']);
+
+// ─── NATURAL-LANGUAGE OPT-OUT ────────────────────────────────────────────────
+// The FCC's 2024 revocation rule lets a consumer revoke consent "by any
+// reasonable means", and a reply like "please stop texting me" is plainly
+// one. Matching only a message that IS a keyword missed it entirely.
+//
+// The bias is deliberate: a wrongly honoured opt-out costs one lead; a missed
+// one costs $500–$1,500 per subsequent text. Patterns are phrase-level (never
+// a bare "stop" inside a sentence) so ordinary land talk — "stop by Friday?",
+// "can't stop thinking about selling" — stays a conversation.
+//
+// Decisions on the ambiguous cases (pinned in tcpaNaturalLanguageOptOut.test.ts):
+//   - "Don't call me after 5" → OPT-OUT. A request to limit contact is a
+//     partial revocation; honouring it globally is the conservative reading.
+//   - "Stop. Not selling" / "STOP please" → OPT-OUT. A clause that is
+//     nothing but a STOP keyword (plus politeness) is the keyword.
+//   - "How do I unsubscribe?" → OPT-OUT. Asking how to leave is leaving.
+//   - "Wrong number" → OPT-OUT. Whoever this is never consented.
+//   - "Not interested" → NOT an opt-out on its own. It is a price/terms answer
+//     ("not interested at that price") far more often than a revocation, and
+//     the FCC treats non-keyword wording as a question of fact. The operator
+//     sees it in the inbox like any other reply.
+//   - "No" / "no thanks" → NOT an opt-out, for the same reason.
+const NL_OPT_OUT_PATTERNS: RegExp[] = [
+  // stop / quit / cease + a contact verb
+  /\b(stop|quit|cease)\s+(texting|txting|texing|messaging|msging|contacting|calling|sending|emailing|mailing|bothering|harass(ing)?|spamming|hitting me up)\b/,
+  /\b(stop|quit)\s+(text|txt|message|msg|contact|call|email)\s*(ing)?\s+(me|us|this number)\b/,
+  // remove / take off / delete
+  /\bremove\s+(me|us|my\s+(number|name|info|information|phone|contact))\b/,
+  /\btake\s+(me|us|my\s+(number|name|info))\s+off\b/,
+  /\b(delete|lose|erase)\s+(my\s+(number|name|info|information|contact)|this\s+number)\b/,
+  /\b(put|add)\s+(me|us|my number)\s+(on|to)\s+(your|the)\s+(do\s+not|dnc|don'?t)\b/,
+  // unsubscribe / opt out in any position
+  /\bun-?subscribe\b/,
+  /\bopt\s*-?\s*(me\s+)?out\b/,
+  /\brevoke\b/,
+  // do not / don't contact
+  /\bdo\s+not\s+(contact|text|txt|message|msg|call|email|e-mail)\b/,
+  /\b(don'?t|dont|never)\s+(ever\s+)?(contact|text|txt|message|msg|call|email|e-mail)\s+(me|us|this number)\b/,
+  /\bno\s+more\s+(texts?|txts?|messages?|msgs?|calls?|emails?|contact)\b/,
+  /\bdnc\b/,
+  /\bleave\s+(me|us)\s+alone\b/,
+  /\bwrong\s+(number|person|guy|lady)\b/,
+];
+
+/** A clause that is nothing but a STOP keyword plus politeness ("stop please", "STOP!!"). */
+const POLITE_WORDS = new Set(['please', 'pls', 'plz', 'now', 'it', 'thanks', 'thank', 'you', 'thx', 'ty', 'already', 'asap']);
+
+function normalizeForPhrases(messageBody: string): string {
+  return messageBody
+    .toLowerCase()
+    .replace(/[\u2018\u2019\u02bc`]/g, "'")
+    .replace(/[^a-z0-9'\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * True when a free-text inbound message revokes consent ("please stop
+ * texting me", "remove me from your list", "wrong number"). Conservative by
+ * design — see the decision list above.
+ */
+function detectNaturalLanguageOptOut(messageBody: string): boolean {
+  if (!messageBody) return false;
+  // Clause-level keyword: "Stop. I'm not selling." / "STOP please".
+  for (const clause of messageBody.split(/[.!?,;:\n\r]+/)) {
+    const words = normalizeForPhrases(clause).split(' ').filter(Boolean);
+    if (words.length === 0) continue;
+    const content = words.filter((w) => !POLITE_WORDS.has(w));
+    if (content.length === 1 && STOP_KEYWORDS.has(content[0])) return true;
+  }
+  const text = normalizeForPhrases(messageBody);
+  return NL_OPT_OUT_PATTERNS.some((re) => re.test(text));
+}
+
+export type OptSignal = 'opt_out' | 'opt_in' | 'carrier_opt_in';
 
 /**
  * Detect if an inbound SMS is an opt-out or opt-in signal.
- * Returns: 'opt_out' | 'opt_in' | null
+ *   - 'opt_out'        — a STOP keyword, or natural-language revocation;
+ *   - 'opt_in'         — START / UNSTOP / OPTIN (re-subscribes);
+ *   - 'carrier_opt_in' — a bare YES: the carrier re-subscribes, AcreOS only records it;
+ *   - null             — an ordinary message.
  */
-export function detectOptKeyword(messageBody: string): 'opt_out' | 'opt_in' | null {
+export function detectOptKeyword(messageBody: string): OptSignal | null {
   const normalized = messageBody.trim().toLowerCase().replace(/[^a-z-]/g, '');
   if (STOP_KEYWORDS.has(normalized)) return 'opt_out';
   if (START_KEYWORDS.has(normalized)) return 'opt_in';
+  if (CARRIER_ONLY_OPT_IN_KEYWORDS.has(normalized)) return 'carrier_opt_in';
+  if (detectNaturalLanguageOptOut(messageBody)) return 'opt_out';
   return null;
 }
 
@@ -318,9 +425,30 @@ export async function processOptKeyword(
   phone: string,
   messageBody: string,
   messageSid: string
-): Promise<{ action: 'opt_out' | 'opt_in' | 'none'; leadId?: number }> {
+): Promise<{ action: OptSignal | 'none'; leadId?: number }> {
   const action = detectOptKeyword(messageBody);
   if (!action) return { action: 'none' };
+
+  if (action === 'carrier_opt_in') {
+    // Recorded, never applied: see the RE-SUBSCRIBE note above. Only leads
+    // that are currently opted out get the record — for anyone else "yes" is
+    // just an answer.
+    const opted = (await storage.findLeadsByPhoneLast10(organizationId, phone, { includeDeleted: true }))
+      .filter((l) => l.doNotContact);
+    for (const lead of opted) {
+      await db.insert(activityLog).values({
+        organizationId,
+        entityType: 'lead',
+        entityId: lead.id,
+        action: 'tcpa_carrier_opt_in_not_applied',
+        description:
+          'Lead replied YES after opting out. The carrier treats YES as re-subscribe; AcreOS does not — ' +
+          'the lead stays do-not-contact until they reply START or UNSTOP.',
+        metadata: { messageSid, phone, keyword: messageBody.trim(), inboundText: messageBody, channel: 'sms' },
+      });
+    }
+    return { action, leadId: opted[0]?.id };
+  }
 
   // EVERY lead at this number (DEFECT-0104): a STOP from a number two leads
   // share must revoke both, and a START must not re-consent a row the
@@ -333,6 +461,11 @@ export async function processOptKeyword(
     await applyOptKeywordToLead(organizationId, matched.id, action, phone, messageBody, messageSid);
   }
   return { action, leadId: matches[0].id };
+}
+
+function optOutKind(messageBody: string): string {
+  const normalized = messageBody.trim().toLowerCase().replace(/[^a-z-]/g, '');
+  return STOP_KEYWORDS.has(normalized) ? 'SMS STOP keyword' : 'SMS opt-out language';
 }
 
 async function applyOptKeywordToLead(
@@ -352,7 +485,7 @@ async function applyOptKeywordToLead(
         doNotContact: true,
         tcpaConsent: false,
         optOutDate: now,
-        optOutReason: `SMS STOP keyword: "${messageBody.trim()}" (${messageSid})`,
+        optOutReason: `${optOutKind(messageBody)}: "${messageBody.trim()}" (${messageSid})`,
         updatedAt: now,
       })
       .where(and(eq(leads.id, matched.id), eq(leads.organizationId, organizationId)));
@@ -362,7 +495,7 @@ async function applyOptKeywordToLead(
       entityType: 'lead',
       entityId: matched.id,
       action: 'tcpa_opt_out',
-      metadata: { messageSid, phone, keyword: messageBody.trim(), inboundText: messageBody, channel: 'sms', revokedChannels: ['sms','email','phone','direct_mail'] },
+      metadata: { messageSid, phone, keyword: messageBody.trim(), inboundText: messageBody, channel: 'sms', detection: STOP_KEYWORDS.has(messageBody.trim().toLowerCase().replace(/[^a-z-]/g, '')) ? 'keyword' : 'natural_language', revokedChannels: ['sms','email','phone','direct_mail'] },
     });
     try {
       const { recordConsentRevoked } = await import('./consentEvents');
@@ -377,7 +510,7 @@ async function applyOptKeywordToLead(
         recordedBy: 'tcpa_opt_keyword',
       });
     } catch { /* best-effort */ }
-    logger.info(`[TCPA] Lead ${matched.id} opted OUT via STOP keyword "${messageBody.trim()}"`);
+    logger.info(`[TCPA] Lead ${matched.id} opted OUT via ${optOutKind(messageBody)}`);
   } else {
     await db
       .update(leads)
