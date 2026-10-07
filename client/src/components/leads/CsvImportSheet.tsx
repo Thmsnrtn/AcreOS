@@ -9,8 +9,9 @@
  *
  * This sheet collapses that workflow to ~60 seconds:
  *   1. Drop or pick the file.
- *   2. We auto-detect each header → field by substring heuristic
- *      (e.g. "Parcel #" → APN, "Owner Mailing Address" → address).
+ *   2. We auto-detect each header → field (shared/leads/csvImportMapping.ts):
+ *      "Parcel #" → APN, "Owner Mailing Address" → the MAILING address mail
+ *      is sent to, "Situs Address" / "Property Address" → the property.
  *      Operator can override each mapping via a dropdown.
  *   3. We preview the first 5 mapped rows so the operator can sanity-
  *      check before commit.
@@ -52,104 +53,22 @@ import { Upload, AlertCircle, CheckCircle2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
+import {
+  CSV_IMPORT_MAX_ROWS_PER_REQUEST,
+  CSV_IMPORT_TARGET_FIELDS,
+  chunkCsvImportRows,
+  mapCsvRow,
+  parseCsv,
+  suggestMapping,
+  type CsvImportTargetField,
+} from "@shared/leads/csvImportMapping";
 
-/** Canonical AcreOS lead fields the importer can route a CSV column into. */
-const TARGET_FIELDS = [
-  { id: "skip", label: "— Don't import —" },
-  { id: "firstName", label: "First name" },
-  { id: "lastName", label: "Last name" },
-  { id: "ownerName", label: "Owner name (split into first/last)" },
-  { id: "address", label: "Address" },
-  { id: "city", label: "City" },
-  { id: "state", label: "State" },
-  { id: "county", label: "County" },
-  { id: "zip", label: "ZIP" },
-  { id: "phone", label: "Phone" },
-  { id: "email", label: "Email" },
-  { id: "apn", label: "APN / Parcel number" },
-] as const;
-
-type TargetFieldId = (typeof TARGET_FIELDS)[number]["id"];
-
-/**
- * Heuristic: lowercase the header and match substrings. The first hit
- * wins, so order is important — put narrow matches before broad ones
- * (e.g. "owner name" before "name", "parcel" before "owner parcel"
- * doesn't matter because "parcel" only maps to APN regardless).
- */
-function suggestField(header: string): TargetFieldId {
-  const h = header.toLowerCase().replace(/[^a-z0-9 ]/g, " ");
-  // Order: longest-specific first.
-  if (/\b(apn|parcel|pin)\b/.test(h)) return "apn";
-  if (/\bcounty\b/.test(h)) return "county";
-  if (/owner.*name|name.*owner/.test(h)) return "ownerName";
-  if (/\bfirst\b/.test(h) && /\bname\b/.test(h)) return "firstName";
-  if (/\blast\b/.test(h) && /\bname\b/.test(h)) return "lastName";
-  if (/\bemail\b/.test(h)) return "email";
-  if (/\bphone\b|\bmobile\b|\btel\b/.test(h)) return "phone";
-  if (/\bzip\b|\bpostal\b/.test(h)) return "zip";
-  if (/\bstate\b|\bst\b/.test(h)) return "state";
-  if (/\bcity\b|town/.test(h)) return "city";
-  if (/\baddress\b|\bstreet\b|\bsitus\b|\bproperty\b.*\baddr/.test(h)) return "address";
-  if (/^name$/.test(h) || /full.*name|owner/.test(h)) return "ownerName";
-  return "skip";
-}
-
-/**
- * Lightweight CSV parser. Handles double-quote-escaped commas + CRLF.
- * Not RFC 4180-perfect, but sufficient for county tax lists (which are
- * the actual hot use case). Server-side import handles the strict edge
- * cases for power users via /api/leads/import (preview path).
- */
-function parseCsv(text: string): { headers: string[]; rows: string[][] } {
-  const lines: string[] = [];
-  let buf = "";
-  let inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (c === '"') {
-      // Treat "" inside quotes as literal "
-      if (inQuotes && text[i + 1] === '"') {
-        buf += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if ((c === "\n" || c === "\r") && !inQuotes) {
-      if (buf.length > 0 || lines.length === 0) lines.push(buf);
-      buf = "";
-      if (c === "\r" && text[i + 1] === "\n") i++;
-    } else {
-      buf += c;
-    }
-  }
-  if (buf.length > 0) lines.push(buf);
-
-  const parseLine = (line: string): string[] => {
-    const cells: string[] = [];
-    let cur = "";
-    let quoted = false;
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i];
-      if (c === '"') {
-        if (quoted && line[i + 1] === '"') { cur += '"'; i++; }
-        else quoted = !quoted;
-      } else if (c === "," && !quoted) {
-        cells.push(cur);
-        cur = "";
-      } else {
-        cur += c;
-      }
-    }
-    cells.push(cur);
-    return cells.map((s) => s.trim());
-  };
-
-  if (lines.length === 0) return { headers: [], rows: [] };
-  const headers = parseLine(lines[0]);
-  const rows = lines.slice(1).map(parseLine).filter((r) => r.some((c) => c.length > 0));
-  return { headers, rows };
-}
+// The header → field mapping (mailing vs property address, split names, every
+// phone column, the DNC flag) and the per-request row limit live in
+// shared/leads/csvImportMapping.ts, so they can be tested against real
+// land-list shapes and the server enforces the same limit the sheet batches by.
+const TARGET_FIELDS = CSV_IMPORT_TARGET_FIELDS;
+type TargetFieldId = CsvImportTargetField;
 
 export interface CsvImportSheetProps {
   open: boolean;
@@ -188,10 +107,9 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
     const { headers: h, rows: r } = parseCsv(text);
     setHeaders(h);
     setRows(r);
-    // Pre-fill mapping from heuristic.
-    const initial: Record<string, TargetFieldId> = {};
-    for (const header of h) initial[header] = suggestField(header);
-    setMapping(initial);
+    // Pre-fill mapping from the whole header row (a bare "City" is the
+    // property's when the file also has a "Mailing City").
+    setMapping(suggestMapping(h));
   };
 
   // Compute mapped preview + counts.
@@ -201,13 +119,8 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
     const apnSeen = new Set<string>();
     let apnDupesInFile = 0;
     for (const r of rows) {
-      const out: Record<string, string> = {};
-      for (let i = 0; i < headers.length; i++) {
-        const target = mapping[headers[i]];
-        if (!target || target === "skip") continue;
-        const val = r[i] ?? "";
-        if (val) out[target] = val;
-      }
+      // First non-empty value per field wins, in column order.
+      const out = mapCsvRow(headers, r, mapping);
       // APN within-file dedupe count (preview only — server reconfirms).
       // A parcel is APN + state + county, so the same APN in two counties is
       // two parcels, not a duplicate.
@@ -226,17 +139,49 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
     if (!fieldsSet.has("apn")) {
       warnings.push("No APN column mapped — re-imports of the same list will create duplicate leads.");
     }
+    if (!fieldsSet.has("address") && fieldsSet.has("propertyAddress")) {
+      warnings.push("No mailing address column mapped — leads will have no address to mail to (the property address is not where the owner receives mail).");
+    }
     return { mappedRows, warnings, apnDupesInFile };
   }, [headers, rows, mapping]);
 
+  const [progress, setProgress] = useState<string | null>(null);
+
+  // A large list goes up in request-sized batches (the server takes at most
+  // CSV_IMPORT_MAX_ROWS_PER_REQUEST rows per request). Results are summed; a
+  // failed batch stops the import and says exactly which rows did and did not
+  // go in, so the customer knows where to resume.
   const importMut = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/leads/csv-import", {
-        rows: mappedRows,
-      });
-      return (await res.json()) as ImportResult;
+      const total: ImportResult = { imported: 0, skippedExisting: 0, skippedInvalid: 0, skippedDuplicateInFile: 0, errors: [] };
+      const batches = chunkCsvImportRows(mappedRows);
+      for (const batch of batches) {
+        const first = batch.offset + 1;
+        const last = batch.offset + batch.rows.length;
+        if (batches.length > 1) setProgress(`Importing rows ${first.toLocaleString()}–${last.toLocaleString()} of ${mappedRows.length.toLocaleString()}…`);
+        let data: ImportResult;
+        try {
+          const res = await apiRequest("POST", "/api/leads/csv-import", { rows: batch.rows });
+          data = (await res.json()) as ImportResult;
+        } catch (err: any) {
+          const done = batch.offset > 0
+            ? `Rows 1–${batch.offset.toLocaleString()} were imported (${total.imported.toLocaleString()} new leads). `
+            : "";
+          throw new Error(
+            `${done}Rows ${first.toLocaleString()}–${mappedRows.length.toLocaleString()} were not imported: ${err?.message ?? "the request failed"}. ` +
+              (batch.offset > 0 ? `Re-importing the same file is safe — rows already imported are skipped by APN.` : "Try again."),
+          );
+        }
+        total.imported += data.imported;
+        total.skippedExisting += data.skippedExisting;
+        total.skippedInvalid += data.skippedInvalid;
+        total.skippedDuplicateInFile += data.skippedDuplicateInFile;
+        total.errors.push(...data.errors.map((e) => ({ ...e, row: e.row + batch.offset })));
+      }
+      return total;
     },
     onSuccess: (data) => {
+      setProgress(null);
       setResult(data);
       queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
       toast({
@@ -246,8 +191,10 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
       onImported?.(data);
     },
     onError: (err: any) => {
+      setProgress(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
       toast({
-        title: "Import failed",
+        title: "Import stopped",
         description: err?.message ?? "Try again.",
         variant: "destructive",
       });
@@ -305,6 +252,12 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
               <div className="text-sm text-muted-foreground">
                 <CheckCircle2 className="inline w-4 h-4 text-acr-pos mr-1" />
                 {fileName} · {rows.length.toLocaleString()} rows
+                {rows.length > CSV_IMPORT_MAX_ROWS_PER_REQUEST && (
+                  <span className="ml-2">
+                    · sent in {Math.ceil(rows.length / CSV_IMPORT_MAX_ROWS_PER_REQUEST)} batches of{" "}
+                    {CSV_IMPORT_MAX_ROWS_PER_REQUEST}
+                  </span>
+                )}
                 {apnDupesInFile > 0 && (
                   <span className="ml-2 text-acr-warn">
                     {apnDupesInFile} duplicate APN
@@ -372,7 +325,8 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
                   <TableHeader>
                     <TableRow>
                       <TableHead>Name</TableHead>
-                      <TableHead>Address</TableHead>
+                      <TableHead>Mailing address</TableHead>
+                      <TableHead>Property</TableHead>
                       <TableHead>APN</TableHead>
                       <TableHead>Phone</TableHead>
                     </TableRow>
@@ -393,6 +347,9 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
                           {[r.address, r.city, r.state, r.zip]
                             .filter(Boolean)
                             .join(", ") || "—"}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {r.propertyAddress || "—"}
                         </TableCell>
                         <TableCell className="text-xs tabular-nums">
                           {r.apn || "—"}
@@ -420,7 +377,7 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
                 data-testid="csv-importer-submit"
               >
                 {importMut.isPending
-                  ? "Importing…"
+                  ? (progress ?? "Importing…")
                   : `Import ${mappedRows.length.toLocaleString()} rows`}
               </Button>
             </div>

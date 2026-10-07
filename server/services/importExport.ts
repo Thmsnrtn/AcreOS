@@ -1,3 +1,4 @@
+import { parseDncFlag } from "@shared/leads/csvImportMapping";
 import { z } from "zod";
 // Exports read the WHOLE book, never the 5000-row capped list (DEFECT-0170).
 import {
@@ -131,6 +132,13 @@ const LEAD_COLUMN_MAP: Record<string, string> = {
   status: "status",
   source: "source",
   notes: "notes",
+  // A list's DNC flag may set do-not-contact. There is deliberately NO consent
+  // column here: an import never grants TCPA consent.
+  doNotContact: "doNotContact",
+  do_not_contact: "doNotContact",
+  "do not contact": "doNotContact",
+  dnc: "doNotContact",
+  DNC: "doNotContact",
   // Phase 4 Week 15-16 (Magdalena §1) — history-preserving migration columns.
   tags: "tags",
   tag: "tags",
@@ -384,6 +392,7 @@ export async function importLeads(
         status: row.status || "new",
         source: row.source || "import",
         notes: row.notes || null,
+        ...(parseDncFlag(row.doNotContact) ? { doNotContact: true, optOutDate: new Date(), optOutReason: "import_dnc_flag" } : {}),
       });
 
       if (!parseResult.success) {
