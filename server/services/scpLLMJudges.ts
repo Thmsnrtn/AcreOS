@@ -19,6 +19,7 @@ import { logger } from "../utils/logger";
 import { CONSTITUTION_PRINCIPLES, type ConfigDelta, type ConstitutionViolation } from "./constitutionChecker";
 import { readConstitution } from "./scpConfigVersioning";
 import type { Observation } from "./scpEvolutionEngine";
+import { clock } from "../utils/clock";
 
 // ─── Cost Tracking ─────────────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ function trackCost(judge: string, agent: string, inputTokens: number, outputToke
     tokens_input: inputTokens,
     tokens_output: outputTokens,
     estimated_cost_usd: cost,
-    timestamp: new Date().toISOString(),
+    timestamp: clock.now().toISOString(),
   };
 
   costLog.push(entry);
@@ -170,7 +171,7 @@ ${messages.map((m) => `[${m.role}]: ${m.content}`).join("\n")}`;
 
   try {
     const { parsed } = await callJudge("observation_extraction", agent, systemPrompt, userPrompt);
-    const timestamp = new Date().toISOString();
+    const timestamp = clock.now().toISOString();
 
     return (parsed.observations ?? []).map((obs: any) => ({
       type: obs.type,

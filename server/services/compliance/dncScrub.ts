@@ -47,6 +47,7 @@ import { db } from "../../db";
 import { dncScrubResults, type DncScrubResult } from "@shared/schema";
 import { logger } from "../../utils/logger";
 import { searchbugDncProvider } from "./searchbugDncProvider";
+import { clock } from "../../utils/clock";
 
 export const DNC_ENGINE_VERSION = "v1";
 
@@ -156,7 +157,7 @@ export function getConfiguredDncProvider(): DncScrubProvider | null {
     // Selected but unusable — surface it loudly and refuse to fake a pass.
     // Throttled: this is checked on EVERY send, and a flooded log is an
     // ignored log. The refusal itself is never throttled.
-    const now = Date.now();
+    const now = clock.nowMs();
     if (now - lastUnconfiguredLogAt > UNCONFIGURED_LOG_INTERVAL_MS) {
       lastUnconfiguredLogAt = now;
       logger.error(
@@ -206,7 +207,7 @@ async function readCachedScrub(
         eq(dncScrubResults.organizationId, organizationId),
         eq(dncScrubResults.phoneLast10, phoneLast10),
         eq(dncScrubResults.provider, providerName),
-        gt(dncScrubResults.expiresAt, new Date()),
+        gt(dncScrubResults.expiresAt, clock.now()),
       ),
     )
     .orderBy(desc(dncScrubResults.scrubbedAt))
@@ -267,7 +268,7 @@ export async function scrubPhone(
 
   // Persist (best-effort — a cache-write failure must not block the send path).
   try {
-    const expiresAt = new Date(Date.now() + ttlDays() * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(clock.nowMs() + ttlDays() * 24 * 60 * 60 * 1000);
     await db.insert(dncScrubResults).values({
       organizationId,
       phoneLast10,

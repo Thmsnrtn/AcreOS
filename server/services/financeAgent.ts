@@ -74,6 +74,7 @@ import {
   type BorrowerNoticeInput,
   type BorrowerNoticeStage,
 } from "./borrowerNotices";
+import { clock } from "../utils/clock";
 
 export type DelinquencyStatus =
   | "current"
@@ -170,7 +171,7 @@ export function utcMidnight(date: Date): Date {
  * Whole days from the period due date to `now`. Signed: -3 means "due in three
  * days", +5 means "five days past due".
  */
-export function daysRelativeToDue(dueDate: Date, now: Date = new Date()): number {
+export function daysRelativeToDue(dueDate: Date, now: Date = clock.now()): number {
   return Math.floor((utcMidnight(now).getTime() - utcMidnight(dueDate).getTime()) / DAY_MS);
 }
 
@@ -210,7 +211,7 @@ export function rungScheduledFor(periodDueDate: Date, offsetDays: number): Date 
 export class FinanceAgentService {
   calculateDaysDelinquent(nextPaymentDate: Date | null): number {
     if (!nextPaymentDate) return 0;
-    const now = new Date();
+    const now = clock.now();
     const diffTime = now.getTime() - nextPaymentDate.getTime();
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
     return Math.max(0, diffDays);
@@ -334,7 +335,7 @@ export class FinanceAgentService {
   async ensureLadderRung(
     note: Note,
     borrower: Lead | null,
-    now: Date = new Date(),
+    now: Date = clock.now(),
     controls?: PaxControlsState,
   ): Promise<{
     created: boolean;
@@ -445,7 +446,7 @@ export class FinanceAgentService {
    * (0 or 1) — the ladder creates at most one rung per tick.
    */
   async scheduleReminders(note: Note, borrower: Lead | null, controls?: PaxControlsState): Promise<number> {
-    const result = await this.ensureLadderRung(note, borrower, new Date(), controls);
+    const result = await this.ensureLadderRung(note, borrower, clock.now(), controls);
     return result.created ? 1 : 0;
   }
 
@@ -676,7 +677,7 @@ export class FinanceAgentService {
       await storage.updateNote(
         note.id,
         {
-          lastReminderSentAt: new Date(),
+          lastReminderSentAt: clock.now(),
           reminderCount: (note.reminderCount || 0) + 1,
         },
         orgId,
@@ -996,7 +997,7 @@ export class FinanceAgentService {
           noteId,
           borrowerId: borrower?.id ?? null,
           type,
-          scheduledFor: new Date(),
+          scheduledFor: clock.now(),
           channel: "letter",
           content: letter.letterText,
           status: REMINDER_STATUS.documentReady,
@@ -1056,7 +1057,7 @@ export class FinanceAgentService {
         noteId,
         borrowerId: borrower?.id ?? null,
         type,
-        scheduledFor: new Date(),
+        scheduledFor: clock.now(),
         channel,
         content,
         status: REMINDER_STATUS.scheduled,

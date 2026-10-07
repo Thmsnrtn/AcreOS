@@ -13,6 +13,7 @@ import { generateOfferSuggestions, generateOfferLetter, predictAcceptanceProbabi
 import { logger } from "./utils/logger";
 import { assertFeeSimpleOrThrow, handleLandStatusError } from "./utils/landStatus";
 import { Errors } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 export function registerCRMExtrasRoutes(app: Express): void {
   const api = app;
@@ -259,7 +260,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
       const allTasks = await storage.getTasks(orgId);
       const activeTasks = allTasks.filter(t => t.status === "pending" || t.status === "in_progress");
       
-      const now = new Date();
+      const now = clock.now();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const todayEnd = new Date(todayStart);
       todayEnd.setDate(todayEnd.getDate() + 1);

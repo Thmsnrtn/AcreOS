@@ -17,6 +17,7 @@ import { db } from "../db";
 import { agentMemory } from "@shared/schema";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type MemoryType = 'fact' | 'preference' | 'pattern' | 'goal' | 'warning';
 
@@ -65,7 +66,7 @@ export async function storeMemory(
         value: entry.value,
         confidence: String(newConfidence),
         usageCount: (existing[0].usageCount || 0) + 1,
-        lastUsedAt: new Date(),
+        lastUsedAt: clock.now(),
       })
       .where(eq(agentMemory.id, existing[0].id));
   } else {
@@ -255,7 +256,7 @@ export async function manuallyAddMemory(
     agentType,
     memoryType: type,
     key,
-    value: { summary, addedAt: new Date().toISOString(), manual: true },
+    value: { summary, addedAt: clock.now().toISOString(), manual: true },
     confidence: 0.95, // High confidence for manual entries
   });
 }

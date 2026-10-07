@@ -33,6 +33,7 @@ import { organizations, deals, leads, properties, teamMembers } from "@shared/sc
 import { eq, and, desc, gte, sql, count } from "drizzle-orm";
 import { subDays, subYears } from "date-fns";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ---------------------------------------------------------------------------
 // Investor Reputation Score
@@ -115,7 +116,7 @@ export async function computeInvestorTrustScore(
 
   if (org?.createdAt) {
     const monthsOnPlatform = Math.floor(
-      (Date.now() - new Date(org.createdAt).getTime()) / (30 * 24 * 60 * 60 * 1000)
+      (clock.nowMs() - new Date(org.createdAt).getTime()) / (30 * 24 * 60 * 60 * 1000)
     );
     components.tenureScore = Math.min(100, monthsOnPlatform * 5);
   }
@@ -182,8 +183,8 @@ export async function shareDealWithPartner(
 ): Promise<DealShareResult> {
   // Verify trust relationship exists between orgs
   // In production: check investor_connections table
-  const shareId = `share_${Date.now()}_${request.fromOrganizationId}_${request.toOrganizationId}`;
-  const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours
+  const shareId = `share_${clock.nowMs()}_${request.fromOrganizationId}_${request.toOrganizationId}`;
+  const expiresAt = new Date(clock.nowMs() + 48 * 60 * 60 * 1000); // 48 hours
 
   logger.info(`[InvestorNetwork] Deal share sent from org ${request.fromOrganizationId} to ${request.toOrganizationId}. ` +
     `${request.dealSummary.acreage} acres in ${request.dealSummary.county}, ${request.dealSummary.state} at $${request.dealSummary.askingPrice.toLocaleString()}. ` +

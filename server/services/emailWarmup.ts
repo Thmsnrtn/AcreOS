@@ -27,6 +27,7 @@ import { db } from "../db";
 import { emailWarmupState } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export const WARMUP_RAMP: ReadonlyArray<{ day: number; limit: number }> = [
   { day: 1, limit: 50 },
@@ -50,7 +51,7 @@ export function limitForDay(daysSinceFirstSend: number): number {
   return entry ? entry.limit : WARMUP_RAMP[0].limit;
 }
 
-function startOfUtcDay(d: Date = new Date()): Date {
+function startOfUtcDay(d: Date = clock.now()): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
 
@@ -83,7 +84,7 @@ export interface ReserveResult {
  *
  * For brand-new orgs the row is inserted with day-1 defaults on first call.
  */
-export async function reserveSend(organizationId: number, now: Date = new Date()): Promise<ReserveResult> {
+export async function reserveSend(organizationId: number, now: Date = clock.now()): Promise<ReserveResult> {
   // Insert if missing — first send for this org. firstSendAt = now.
   await db
     .insert(emailWarmupState)

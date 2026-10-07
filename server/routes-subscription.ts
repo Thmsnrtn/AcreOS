@@ -43,6 +43,7 @@ import {
   type BillingInterval,
 } from "@shared/billing/tier-pricing";
 import type { AuthenticatedRequest } from "./types/request";
+import { clock } from "./utils/clock";
 
 interface WhatsNewItem {
   date: string;
@@ -72,7 +73,7 @@ function computeTenureDays(rows: Array<{ eventType: string; eventAt: Date }>): n
     // tier_changed events don't toggle the active state
   }
   if (activeStart != null) {
-    totalMs += Date.now() - activeStart.getTime();
+    totalMs += clock.nowMs() - activeStart.getTime();
   }
   return Math.max(0, Math.floor(totalMs / (1000 * 60 * 60 * 24)));
 }
@@ -281,7 +282,7 @@ export function registerSubscriptionRoutes(app: Express): void {
           tenureDays = Math.max(
             0,
             Math.floor(
-              (Date.now() - new Date(org.createdAt).getTime()) /
+              (clock.nowMs() - new Date(org.createdAt).getTime()) /
                 (1000 * 60 * 60 * 24),
             ),
           );

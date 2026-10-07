@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { Errors } from './utils/errors';
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -16,7 +17,7 @@ router.get('/buyer-network/demand/:state', async (req: Request, res: Response) =
     }
     // Stub: aggregate demand signals per county
     const heatmap: any[] = [];
-    res.json({ state: state.toUpperCase(), heatmap, fetchedAt: new Date().toISOString() });
+    res.json({ state: state.toUpperCase(), heatmap, fetchedAt: clock.now().toISOString() });
   } catch (error) {
     Errors.internal(res, error);
   }
@@ -86,7 +87,7 @@ router.post('/buyer-network/buyers', async (req: Request, res: Response) => {
 
     // Stub: upsert buyer profile
     const buyer = {
-      id: Date.now(),
+      id: clock.nowMs(),
       name,
       email,
       phone: phone ?? null,
@@ -99,7 +100,7 @@ router.post('/buyer-network/buyers', async (req: Request, res: Response) => {
       propertyTypes: propertyTypes ?? [],
       zoning: zoning ?? [],
       notes: notes ?? '',
-      createdAt: new Date().toISOString(),
+      createdAt: clock.now().toISOString(),
     };
     res.status(201).json({ buyer, success: true });
   } catch (error) {
@@ -121,7 +122,7 @@ router.get('/buyer-network/matches/:propertyId', async (req: Request, res: Respo
       propertyId: req.params.propertyId,
       matches,
       minScore: minScore ? parseFloat(minScore as string) : 0,
-      fetchedAt: new Date().toISOString(),
+      fetchedAt: clock.now().toISOString(),
     });
   } catch (error) {
     Errors.internal(res, error);
@@ -143,7 +144,7 @@ router.get('/buyer-network/analytics', async (_req: Request, res: Response) => {
       topTargetStates: [],
       topPropertyTypes: [],
       matchSuccessRate: 0,
-      fetchedAt: new Date().toISOString(),
+      fetchedAt: clock.now().toISOString(),
     };
     res.json({ analytics });
   } catch (error) {
@@ -164,12 +165,12 @@ router.post('/buyer-network/alerts', async (req: Request, res: Response) => {
     }
     // Stub: persist alert
     const alert = {
-      id: Date.now(),
+      id: clock.nowMs(),
       buyerId,
       criteria,
       notificationChannels: notificationChannels ?? ['email'],
       isActive: true,
-      createdAt: new Date().toISOString(),
+      createdAt: clock.now().toISOString(),
     };
     res.status(201).json({ alert, success: true });
   } catch (error) {
@@ -192,7 +193,7 @@ router.get('/buyer-network/heatmap', async (req: Request, res: Response) => {
       metadata: {
         state: state ?? null,
         zoom: zoom ? parseInt(zoom as string) : 8,
-        fetchedAt: new Date().toISOString(),
+        fetchedAt: clock.now().toISOString(),
       },
     };
     res.json(geojson);

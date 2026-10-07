@@ -4,6 +4,7 @@ import {
   properties,
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 const SHORT_TERM_MONTHS = 12;  // IRS: ≤12 months = short-term
 
@@ -71,7 +72,7 @@ export class CostBasisTracker {
   private determineHoldingPeriodFromDate(acquisitionDate: Date | string | null): "short" | "long" {
     if (!acquisitionDate) return "short";
     const acquired = new Date(acquisitionDate);
-    const monthsHeld = (Date.now() - acquired.getTime()) / (30.44 * 24 * 3600 * 1000);
+    const monthsHeld = (clock.nowMs() - acquired.getTime()) / (30.44 * 24 * 3600 * 1000);
     return monthsHeld > SHORT_TERM_MONTHS ? "long" : "short";
   }
 
@@ -137,7 +138,7 @@ export class CostBasisTracker {
       }
     }
 
-    return { orgId, generatedAt: new Date(), summary, properties: detailed };
+    return { orgId, generatedAt: clock.now(), summary, properties: detailed };
   }
 }
 

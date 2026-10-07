@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { openAICircuitBreaker, CircuitOpenError } from "./circuitBreaker";
 import { logger } from "./logger";
+import { clock } from "./clock";
 
 let openaiClient: OpenAI | null = null;
 let warnedNoKey = false;
@@ -81,7 +82,7 @@ export async function callWithCircuitBreaker<T>(fn: () => Promise<T>): Promise<T
     return {
       id: rec.id,
       object: "chat.completion",
-      created: Math.floor(Date.now() / 1000),
+      created: Math.floor(clock.nowMs() / 1000),
       model: "simulation",
       choices: [
         {

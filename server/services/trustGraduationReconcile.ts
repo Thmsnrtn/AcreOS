@@ -20,6 +20,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../db";
 import { platformSettings } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const MARKER_KEY = "trust_graduation.silent_recollar_2026_07";
 
@@ -45,13 +46,13 @@ export async function recollarSilentTiersOnce(): Promise<"reconciled" | "already
       key: MARKER_KEY,
       scope: "global",
       scopeRef: null,
-      value: { reconciledAt: new Date().toISOString(), demoted },
+      value: { reconciledAt: clock.now().toISOString(), demoted },
       defaultValue: {},
       category: "autopilot",
       description:
         "One-shot marker: 2026-07 trust-graduation re-collar — silent tiers without founder force_silent demoted to notify_only (Sovereign Principle 10).",
       lastChangedBy: "trust-graduation-recollar",
-      lastChangedAt: new Date(),
+      lastChangedAt: clock.now(),
     });
     logger.info(`[trustGraduationReconcile] re-collar complete — ${demoted} silent tier(s) demoted to notify_only (founder force_silent rows untouched)`);
     return "reconciled";

@@ -70,6 +70,7 @@ import { enqueueDispatch } from "../solene/dispatchQueue";
 import { logger } from "../../utils/logger";
 
 import { redactCredentials } from "../../utils/redactCredentials";
+import { clock } from "../../utils/clock";
 // ============================================================================
 // PUBLIC TYPES
 // ============================================================================
@@ -124,7 +125,7 @@ export function sanitizeEvidence(s: string): string {
  * AuditRunResult records the error count.
  */
 export async function runMobileFeelAudit(): Promise<AuditRunResult> {
-  const startedAt = Date.now();
+  const startedAt = clock.nowMs();
   // Indirection through the DETECTORS object lets tests `vi.spyOn` each
   // detector independently without rewriting the orchestrator's call graph.
   // Direct references to detectTouchTargetDrift etc. would bypass spies,
@@ -182,7 +183,7 @@ export async function runMobileFeelAudit(): Promise<AuditRunResult> {
     }
   }
 
-  const durationMs = Date.now() - startedAt;
+  const durationMs = clock.nowMs() - startedAt;
   logger.info(
     `[krieger-audit] run complete detectors=${detectors.length} findings=${findingsRecorded} dispatches=${dispatchesEnqueued} errors=${errors} durationMs=${durationMs}`,
   );
@@ -576,7 +577,7 @@ function extractFailures(parsed: unknown): ParsedFailure[] {
 
 export async function detectMobileErrorBoundaryTrip(): Promise<DetectorFinding[]> {
   try {
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const cutoff = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
     const rows = await db
       .select({
         id: soleneDispatchQueue.id,

@@ -41,6 +41,7 @@ import { aiCallLog } from "@shared/schema";
 import { organizations } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { MODELS } from "./models";
+import { clock } from "../utils/clock";
 
 // ── Model constants ──────────────────────────────────────────────────────────
 // Resolved through models.ts — the single source of truth — so this router can
@@ -109,7 +110,7 @@ export function paxTierForSubscriptionTier(raw: string | null | undefined): PaxT
 }
 
 function startOfCurrentUtcMonth(): Date {
-  const now = new Date();
+  const now = clock.now();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
 }
 

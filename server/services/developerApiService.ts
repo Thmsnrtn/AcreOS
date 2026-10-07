@@ -20,6 +20,7 @@ import { createHash, createHmac, randomBytes } from "crypto";
 import { db } from "../db";
 import { organizationIntegrations, organizations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 // ---------------------------------------------------------------------------
 // API Key Management
@@ -152,7 +153,7 @@ export function buildWebhookPayload(
   const payload = {
     id: `evt_${randomBytes(8).toString("hex")}`,
     type: eventType,
-    created: Math.floor(Date.now() / 1000),
+    created: Math.floor(clock.nowMs() / 1000),
     livemode: process.env.NODE_ENV === "production",
     organization_id: organizationId,
     api_version: "2024-01",
@@ -170,7 +171,7 @@ export function buildWebhookPayload(
 }
 
 export function signWebhookPayload(rawJson: string, secret: string): string {
-  const timestamp = Math.floor(Date.now() / 1000);
+  const timestamp = Math.floor(clock.nowMs() / 1000);
   const signedPayload = `${timestamp}.${rawJson}`;
   const signature = createHmac("sha256", secret).update(signedPayload).digest("hex");
   return `t=${timestamp},v1=${signature}`;

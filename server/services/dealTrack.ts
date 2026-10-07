@@ -29,6 +29,7 @@ import {
   type MailShipmentPiece,
 } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /** ActivityEvent-shaped, but with a string id (see module header). */
 export interface TrackEvent {
@@ -142,7 +143,7 @@ export function inboundCommToTrackEvent(comm: SellerCommunication): TrackEvent |
     entityId: comm.leadId,
     eventType: "response_received",
     description: snippet ? `Inbound ${comm.channel}: ${snippet}` : `Inbound ${comm.channel}`,
-    eventDate: new Date(comm.createdAt ?? Date.now()),
+    eventDate: new Date(comm.createdAt ?? clock.nowMs()),
     metadata: {
       channel: comm.channel,
       ...(comm.sentiment ? { sentiment: comm.sentiment } : {}),
@@ -161,7 +162,7 @@ export function campaignResponseToTrackEvent(response: CampaignResponse): TrackE
     entityId: response.leadId,
     eventType: "response_received",
     description: `Campaign response via ${response.channel}`,
-    eventDate: new Date(response.responseDate ?? response.createdAt ?? Date.now()),
+    eventDate: new Date(response.responseDate ?? response.createdAt ?? clock.nowMs()),
     campaignId: response.campaignId ?? null,
     metadata: {
       channel: response.channel,

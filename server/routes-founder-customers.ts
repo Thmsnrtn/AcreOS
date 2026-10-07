@@ -34,6 +34,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const RECENT_SIGNUPS_LIMIT = 20;
 const TRIAL_WINDOW_DAYS = 14;
@@ -75,7 +76,7 @@ export function registerFounderCustomersRoutes(app: Express) {
     requireFounder,
     async (_req: AuthenticatedRequest, res: Response) => {
       try {
-        const now = new Date();
+        const now = clock.now();
         const trialCutoff = new Date(now.getTime() - TRIAL_WINDOW_DAYS * 24 * 3600 * 1000);
         const churnCutoff = new Date(now.getTime() - CHURN_WINDOW_DAYS * 24 * 3600 * 1000);
         const utmCutoff = new Date(now.getTime() - UTM_WINDOW_DAYS * 24 * 3600 * 1000);

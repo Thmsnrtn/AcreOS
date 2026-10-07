@@ -24,6 +24,7 @@ import {
 import { eq, desc, gte, and, count, sql } from "drizzle-orm";
 import { companyAgentService } from "./companyAgents";
 import { routeAITask, TaskComplexity } from "./aiRouter";
+import { clock } from "../utils/clock";
 
 // ─── Health Grading ────────────────────────────────────────────────────────
 
@@ -70,7 +71,7 @@ class OrgHeartbeatService {
    * Take a heartbeat snapshot — measure all organizational vital signs.
    */
   async takeSnapshot(type: "hourly" | "daily" | "weekly" = "hourly"): Promise<OrgHeartbeatSnapshot> {
-    const now = new Date();
+    const now = clock.now();
     const agents = await companyAgentService.getAll();
 
     // 1. Decision queue depth — count pending approvals

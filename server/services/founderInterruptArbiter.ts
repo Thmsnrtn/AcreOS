@@ -59,6 +59,7 @@ import { logger } from "../utils/logger";
 import { logActivity } from "./systemActivityLogger";
 import { countFounderDecisionsThisWeek } from "./solene/tickMetric";
 import { getFounderUserIds } from "./founder";
+import { clock } from "../utils/clock";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -126,7 +127,7 @@ function founderTimezone(): string {
  */
 export async function arbitrateFounderInterrupt(
   interrupt: FounderInterrupt,
-  now: Date = new Date(),
+  now: Date = clock.now(),
 ): Promise<ArbiterDecision> {
   try {
     let decision: ArbiterDecision;
@@ -461,7 +462,7 @@ export async function recordDeferredInterrupt(
         },
         organizationId: typeof orgId === "number" ? orgId : null,
         status: "deferred",
-        deferredUntil: decision.deferUntil ?? new Date(Date.now() + DAY_MS),
+        deferredUntil: decision.deferUntil ?? new Date(clock.nowMs() + DAY_MS),
       })
       .returning({ id: decisionsInboxItems.id });
     return row?.id ?? null;

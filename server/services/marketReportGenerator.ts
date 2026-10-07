@@ -9,6 +9,7 @@ import { jsPDF } from "jspdf";
 import { db } from "../db";
 import { properties, deals, territories } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 const GREEN: [number, number, number] = [30, 58, 30];
 const GRAY: [number, number, number] = [80, 80, 80];
@@ -108,7 +109,7 @@ export async function generateMonthlyMarketReport(orgId: number): Promise<Buffer
   const valX = 4.5;
 
   // Page 1: Overview
-  let y = addPageHeader(doc, "Monthly Market Report", `Generated ${new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}`, margin, pageWidth);
+  let y = addPageHeader(doc, "Monthly Market Report", `Generated ${clock.now().toLocaleDateString("en-US", { month: "long", year: "numeric" })}`, margin, pageWidth);
 
   y = addSection(doc, "Top Counties by Opportunity", y, margin);
   if (opportunities.length === 0) {
@@ -163,7 +164,7 @@ export async function generateMonthlyMarketReport(orgId: number): Promise<Buffer
   // Footer
   doc.setFontSize(7);
   doc.setTextColor(...GRAY);
-  doc.text(`Confidential — Generated ${new Date().toISOString().slice(0, 10)}`, margin, 10.25);
+  doc.text(`Confidential — Generated ${clock.now().toISOString().slice(0, 10)}`, margin, 10.25);
 
   return Buffer.from(doc.output("arraybuffer"));
 }
@@ -234,7 +235,7 @@ export async function generateCountyReport(state: string, county: string): Promi
   // Footer
   doc.setFontSize(7);
   doc.setTextColor(...GRAY);
-  doc.text(`Confidential — Generated ${new Date().toISOString().slice(0, 10)}`, margin, 10.25);
+  doc.text(`Confidential — Generated ${clock.now().toISOString().slice(0, 10)}`, margin, 10.25);
 
   return Buffer.from(doc.output("arraybuffer"));
 }

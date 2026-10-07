@@ -46,6 +46,7 @@ import { type CreditAction } from "@shared/billing/credit-weights";
 import { creditCost } from "./creditCost";
 import { isByokEnabled } from "./byok/toggle";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /** TRACKED_CATEGORIES on the gauge query — must stay in sync. */
 const POOL_FEATURE_FOR_ACTION: Record<CreditAction, string> = {
@@ -191,7 +192,7 @@ const PURCHASED_REFUND_FEATURE = "refund_purchased_credits";
 const PRIOR_PERIOD_POOL_REFUND_FEATURE = "refund_prior_period";
 
 async function poolUsageThisMonth(organizationId: number, tx: PrimaryDb = db): Promise<number> {
-  const now = new Date();
+  const now = clock.now();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const features = Object.values(POOL_FEATURE_FOR_ACTION);
   const uniqueFeatures = Array.from(new Set(features));
@@ -338,7 +339,7 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
     // refused once used >= pool. Idempotency (ON CONFLICT on
     // external_event_id) is unchanged.
     const poolMonthlyForGate = TIER_LIMITS[tier].creditPool;
-    const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+    const monthStart = new Date(Date.UTC(clock.now().getUTCFullYear(), clock.now().getUTCMonth(), 1));
     const uniqueFeatures = Array.from(new Set(Object.values(POOL_FEATURE_FOR_ACTION)));
 
     let inserted: Array<{ id: number }>;
@@ -416,7 +417,7 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
                 feature,
                 provider,
                 externalEventId: args.externalEventId,
-                postedAt: new Date(),
+                postedAt: clock.now(),
                 postedBy: `system:credit-pool:${args.action}:purchased-overflow`,
                 notes: args.notes ?? null,
               })
@@ -463,7 +464,7 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
           feature,
           provider,
           externalEventId: args.externalEventId,
-          postedAt: new Date(),
+          postedAt: clock.now(),
           postedBy: `system:credit-pool:${args.action}`,
           notes: args.notes ?? null,
         })
@@ -605,7 +606,7 @@ export async function refundPoolDebit(args: {
     // usage: the allowance it drew on belonged to a month that has closed, and
     // netting it now handed the org more than a month's allowance (DEFECT-0227).
     // It is recorded under its own feature, which the pool sum does not read.
-    const now = new Date();
+    const now = clock.now();
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     const originalThisMonth = original.postedAt != null && new Date(original.postedAt) >= monthStart;
     const feature = fromPurchased

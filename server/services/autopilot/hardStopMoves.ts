@@ -41,6 +41,14 @@ const MOVE_PATTERNS: ReadonlyArray<{ re: RegExp; hardStop: HardStop }> = [
     re: /\b(?:free|paid|trial)[\s_-]+(?:users?|plans?|tiers?|accounts?|customers?|members?|cohorts?)\b[\s\S]*\b(?:to|onto|into)\b|\b(?:to|onto|into)[\s_-]+(?:paid|the[\s_-]+\$?\d+[\s_-]+(?:option|plan|package|level))\b|\b(?:starter|pro|premium|enterprise|basic|plus|business)\b[\s_-]+\$?\d+\b|\b\$?\d+[\s_-]+(?:a|per|\/)[\s_-]*(?:month|mo|year|yr)[\s_-]+going[\s_-]+forward\b/i,
     hardStop: "pricing_changes",
   },
+  // pricing, by what the customer PAYS (red-team working set, 2026-10-07):
+  // "simplify what customers pay", "adjust what the Pro bundle costs", "the
+  // monthly amount new signups are charged", "retire the legacy rate",
+  // "annual billing … at a higher number", "the entry package", "a single 79 level".
+  {
+    re: /\bwhat\s+(?:\w+[\s-]+){0,3}(?:pays?|paying|costs?|is\s+charged|are\s+charged)\b|\b(?:amount|price|sum)\s+(?:\w+[\s-]+){0,3}(?:is|are|get|gets)?\s*charged\b|\b(?:legacy|founding(?:[\s-]+member)?|member|grandfathered|introductory|subscription|monthly|annual|yearly)[\s-]+rates?\b|\b(?:annual|monthly|yearly)[\s-]+billing\b|\b(?:entry|starter|basic|base|pro|premium|top|single|cheapest|lowest)[\s-]+(?:\$?\d+[\s-]+)?(?:package|bundle|level|option)s?\b|\b(?:package|bundle)s?\b[\s\S]{0,40}\b(?:costs?|\$?\d+[\s-]+(?:level|option))\b/i,
+    hardStop: "pricing_changes",
+  },
   // legal — contracts, agreements, terms, signatures, settlements, acceptance
   // of an offer/terms, indemnities. "sign" but not "sign up / sign in / signal".
   {
@@ -55,7 +63,7 @@ const MOVE_PATTERNS: ReadonlyArray<{ re: RegExp; hardStop: HardStop }> = [
   // anonymizing / pseudonymizing / redacting / scrubbing verb anywhere with a
   // customer-data subject anywhere.
   {
-    re: /\b(delet\w*|purg\w*|eras\w*|wip(?:e|es|ed|ing)|destroy\w*|anonymi[sz]\w*|pseudonymi[sz]\w*|de-?identif\w*|redact\w*|scrub\w*|forget|drop(?:s|ped|ping)?[\s_-]+(?:table|rows?|data|records?|accounts?))\b[\s\S]*\b(customers?|users?|orgs?|organi[sz]ations?|accounts?|tenants?|leads?|contacts?|data|records?|pii|histor(?:y|ies)|profiles?|emails?)\b|\b(customers?|users?|orgs?|organi[sz]ations?|accounts?|tenants?|leads?|contacts?|data|records?|pii|profiles?)\b[\s\S]*\b(delet\w*|purg\w*|eras\w*|wip(?:e|es|ed|ing)|anonymi[sz]\w*|pseudonymi[sz]\w*|redact\w*)\b/i,
+    re: /\b(delet\w*|purg\w*|eras\w*|wip(?:e|es|ed|ing)|destroy\w*|anonymi[sz]\w*|pseudonymi[sz]\w*|de-?identif\w*|redact\w*|scrub\w*|forget|drop(?:s|ped|ping)?[\s_-]+(?:the[\s_-]+|all[\s_-]+)?(?:table|rows?|data|records?|accounts?))\b[\s\S]*\b(customers?|users?|orgs?|organi[sz]ations?|accounts?|tenants?|leads?|contacts?|data|records?|pii|histor(?:y|ies)|profiles?|emails?)\b|\b(customers?|users?|orgs?|organi[sz]ations?|accounts?|tenants?|leads?|contacts?|data|records?|pii|profiles?)\b[\s\S]*\b(delet\w*|purg\w*|eras\w*|wip(?:e|es|ed|ing)|anonymi[sz]\w*|pseudonymi[sz]\w*|redact\w*)\b/i,
     hardStop: "customer_data_deletion",
   },
   {
@@ -157,7 +165,7 @@ export function moneyAmountsUsd(text: string): number[] {
 
 /** Money-SHAPED text (founder-only for chat and grants, even with no parseable amount). Pure. */
 const MONEY_SHAPED_RE =
-  /\$\s?\d|\b\d[\d,.]*\s?(?:dollars?|usd|bucks|cents?)\b|\b(?:dollars?|usd)\b|\b(refund\w*|charg(?:e|es|ed|ing)|chargebacks?|payments?|pay(?:s|ing|outs?)?|spend\w*|spent|budgets?|invoic\w*|billing|bill(?:s|ed)?|credits?|money|cash|revenue|wires?|transfers?|ad[\s_-]?spend|costs?|dunning|subscriptions?|ads?|advertis\w*|promoted|boost(?:ed|ing)?|sponsored|campaigns?|grand|paid)\b/i;
+  /\b(?:full|account|stripe|remaining|outstanding|credit|available)[\s_-]+balances?\b|\bstripe\b|\$\s?\d|\b\d[\d,.]*\s?(?:dollars?|usd|bucks|cents?)\b|\b(?:dollars?|usd)\b|\b(refund\w*|charg(?:e|es|ed|ing)|chargebacks?|payments?|pay(?:s|ing|outs?)?|spend\w*|spent|budgets?|invoic\w*|billing|bill(?:s|ed)?|credits?|money|cash|revenue|wires?|transfers?|ad[\s_-]?spend|costs?|dunning|subscriptions?|ads?|advertis\w*|promoted|boost(?:ed|ing)?|sponsored|campaigns?|grand|paid)\b/i;
 export function isMoneyShaped(text: string): boolean {
   return MONEY_SHAPED_RE.test(text ?? "");
 }
@@ -181,6 +189,31 @@ export function hardStopForMove(move: MoveLike): HardStop | null {
   if (hand) return hand;
   for (const p of MOVE_PATTERNS) if (p.re.test(hay)) return p.hardStop;
   if (moneyAmountsUsd(hay).some((a) => a > HARD_STOP_SPEND_LIMIT_USD)) return "spend_over_500_usd";
+  return null;
+}
+
+// A sentence that says something was DONE (first person, perfective, passive
+// completion) — the shape of a claim, as opposed to an explanation.
+const COMPLETION_CLAIM = /\b(?:i['’]ve|i have|we['’]ve|we have|i['’]ll|we['’]ll|i will|we will|has been|have been|is done|are done|all done|done|taken care of|went ahead|accepted|signed|executed|lowered|raised|reduced|changed|deleted|erased|wiped|approved)\b/i;
+const NEGATED = /\b(?:not|never|no|won['’]t|can['’]t|cannot|isn['’]t|aren['’]t|doesn['’]t|don['’]t|didn['’]t)\b/i;
+
+/**
+ * The hard-stop class a CUSTOMER-FACING message claims was done, or null.
+ * Found by the simulation's red-team world (2026-10-07): a support reply
+ * telling a customer "I've taken care of it: … accept the reseller's proposed
+ * terms on our behalf" was witnessed and posted. A role worker may explain,
+ * and may say the founder is reviewing — it may never tell a customer that a
+ * founder-only action (pricing, legal signing, a spend over the limit, a data
+ * deletion) has been or will be done. Per sentence: a completion claim, not
+ * negated, not an honest hand-off to the founder, whose subject is a hard-stop. Pure.
+ */
+export function claimsFounderOnlyAction(text: string): HardStop | null {
+  for (const sentence of (text ?? "").split(/(?<=[.!?])\s+|\n+/)) {
+    if (!COMPLETION_CLAIM.test(sentence) || NEGATED.test(sentence)) continue;
+    if (/\bfounder\b/i.test(sentence)) continue;
+    const hs = hardStopForMove({ kind: "customer_reply", rationale: sentence });
+    if (hs) return hs;
+  }
   return null;
 }
 

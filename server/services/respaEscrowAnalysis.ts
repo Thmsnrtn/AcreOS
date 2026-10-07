@@ -54,6 +54,7 @@ import { db } from "../db";
 import { notes, taxEscrowPayments } from "@shared/schema";
 import { and, eq, gte, lte } from "drizzle-orm";
 import { jsPDF } from "jspdf";
+import { clock } from "../utils/clock";
 
 export interface RespaEscrowAnalysisInput {
   noteId: number;
@@ -313,7 +314,7 @@ export async function analyzeEscrowAccount(
     requiredAction,
     recomputedMonthlyEscrowPaymentCents: recomputedMonthly,
     projectionSource,
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
   };
 }
 
@@ -769,7 +770,7 @@ export function buildAnnualEscrowStatement(
 
       lowBalanceVarianceExplanation: variance,
 
-      generatedAt: new Date().toISOString(),
+      generatedAt: clock.now().toISOString(),
     },
   };
 }

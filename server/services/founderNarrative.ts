@@ -36,6 +36,7 @@ import { and, desc, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 import { FOUNDER_MINUTES_BUDGET } from "@sovereign/immutables";
 import { logger } from "../utils/logger";
 import { routeCriticalTask } from "./aiRouter";
+import { clock } from "../utils/clock";
 
 export interface MonthlySummary {
   monthKey: string;
@@ -153,7 +154,7 @@ export async function generateMonthlyLetter(monthKey?: string): Promise<{
         letterMarkdown,
         summaryJson: summary,
         pendingFounderDecision: prose.pendingFounderDecision,
-        generatedAt: new Date(),
+        generatedAt: clock.now(),
       },
     });
 
@@ -223,7 +224,7 @@ export async function listLetterArchive(limit = 24) {
 export async function markLetterDelivered(monthKey: string) {
   await db
     .update(founderLetters)
-    .set({ status: "delivered", deliveredAt: new Date() })
+    .set({ status: "delivered", deliveredAt: clock.now() })
     .where(eq(founderLetters.monthKey, monthKey));
 }
 
@@ -235,7 +236,7 @@ export async function markLetterDelivered(monthKey: string) {
 function resolveMonth(
   monthKey?: string,
 ): { key: string; start: Date; end: Date; label: string } {
-  const now = new Date();
+  const now = clock.now();
   let year: number, month: number; // month 0-indexed
   if (monthKey) {
     const [y, m] = monthKey.split("-").map((n) => parseInt(n, 10));

@@ -61,6 +61,7 @@ import {
   type LandDealDefaults,
 } from "./landDealDefaults";
 import { computeLandDeal } from "@shared/calculators/landDeal";
+import { clock } from "../utils/clock";
 
 const LAND_DEFAULT_KEYS = Object.keys(PLATFORM_LAND_DEFAULTS) as Array<
   keyof LandDealDefaults
@@ -392,7 +393,7 @@ export async function calculateBlindOffer(input: BlindOfferInput): Promise<Blind
       state: state.toUpperCase(),
       county,
       targetAcres,
-      generatedAt: new Date().toISOString(),
+      generatedAt: clock.now().toISOString(),
       compAnalysis,
       missing: missing.length > 0
         ? missing
@@ -450,7 +451,7 @@ export async function calculateBlindOffer(input: BlindOfferInput): Promise<Blind
     state: state.toUpperCase(),
     county,
     targetAcres,
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
     compAnalysis,
     lowestCompPerAcre: Math.round(lowestCompPerAcre),
     baseOfferPerAcre: Math.round(basePerAcre),
@@ -529,7 +530,7 @@ function buildBenchmarks(nassData: SnapshotLike, trend: TrendLike): MarketBenchm
  * statistic is taken, each named in `dataQualityNotes` — a client that sends
  * a USDA average, or a ten-year-old sale, as a "comp" cannot make it one.
  */
-export function analyzeComps(input: CompData[], now: Date = new Date()): CompAnalysis {
+export function analyzeComps(input: CompData[], now: Date = clock.now()): CompAnalysis {
   const dropped = new Map<CompExclusion, number>();
   const comps = input.filter((c) => {
     const why = compExclusion(c, now);

@@ -455,6 +455,9 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
     for (const v of [...known]) known.add(v.replace(/\.00$/, "")).add(/\./.test(v) ? v : `${v}.00`);
     const fab = screenFabrication(message, { allowDollarFigures: [...known] });
     if (fab.length > 0) return { success: false, output: `reply_to_ticket refused by the honesty screen: ${fab.map((v) => v.message).join(" ")}` };
+    const { claimsFounderOnlyAction } = await import("../../autopilot/hardStopMoves");
+    const claimed = claimsFounderOnlyAction(message);
+    if (claimed) return { success: false, output: `reply_to_ticket refused: the reply tells the customer a founder-only action (${claimed.replace(/_/g, " ")}) was done. Only the founder does that — escalate the ticket to the founder and tell the customer it is being reviewed.` };
     const frozen = await freezeHand("support", "reply_support_ticket", { ticket_id: ticket.id, organization_id: ticket.organizationId, message, resolve: input.resolve === true }, ctx);
     if (frozen.pendingId == null) return { success: false, output: frozen.output };
     await assignTicket(ticket.organizationId, ticket.id, SUPPORT_WORKER_AGENT);
@@ -498,6 +501,9 @@ async function executeRetentionRoleTool(name: string, input: Record<string, unkn
   const { screenFabrication } = await import("../../autopilot/contentHonesty");
   const fab = screenFabrication(`${subject}\n${html}`);
   if (fab.length > 0) return { success: false, output: `email_customer refused by the honesty screen: ${fab.map((v) => v.message).join(" ")}` };
+  const { claimsFounderOnlyAction } = await import("../../autopilot/hardStopMoves");
+  const claimed = claimsFounderOnlyAction(`${subject}\n${html.replace(/<[^>]+>/g, " ")}`);
+  if (claimed) return { success: false, output: `email_customer refused: the email tells the customer a founder-only action (${claimed.replace(/_/g, " ")}) was done or will be. Pricing, legal, large spends and data deletion are the founder's alone.` };
   if (await recentlyEmailed(orgId, kind)) return { success: false, output: `email_customer refused: org #${orgId} already got a ${kind} email in the last 7 days.` };
   const { ownerEmailOf } = await import("../../autopilot/delegationRules");
   const to = await ownerEmailOf(orgId);

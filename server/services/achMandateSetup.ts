@@ -61,6 +61,7 @@ import {
   buildAuthorizationText,
   scheduledDebitAmountCents,
 } from "./achAutopay";
+import { clock } from "../utils/clock";
 
 /**
  * Headroom over the currently-scheduled payment that the authorization
@@ -243,7 +244,7 @@ export async function startAchMandateSetup(
     noteReference: `Note #${note.id}`,
   });
 
-  const agreedAt = new Date();
+  const agreedAt = clock.now();
 
   try {
     const { getUncachableStripeClient } = await import("../stripeClient");
@@ -490,7 +491,7 @@ export async function confirmAchMandateSetup(input: {
       });
     }
 
-    const confirmedAt = new Date();
+    const confirmedAt = clock.now();
     const activated = await withTransaction(async (tx) => {
       // One live authorization per note, always.
       await tx
@@ -583,7 +584,7 @@ export async function revokeAchMandatesForNote(input: {
   reason: string;
   at?: Date;
 }): Promise<number> {
-  const at = input.at ?? new Date();
+  const at = input.at ?? clock.now();
   const revoked = await db
     .update(achMandates)
     .set({ status: "revoked", revokedAt: at, revokedReason: input.reason, updatedAt: at })

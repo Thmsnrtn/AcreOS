@@ -12,6 +12,7 @@ import { db } from "../db";
 import { quietHoursConfig } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /**
  * Check if current time falls within quiet hours.
@@ -21,7 +22,7 @@ export async function isQuietHours(): Promise<boolean> {
   if (!config || !config.isActive) return false;
 
   // Get current hour in the configured timezone
-  const now = new Date();
+  const now = clock.now();
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone: config.timezone,
     hour: "numeric",
@@ -94,7 +95,7 @@ export async function setQuietHours(params: {
         daysOfWeek: params.daysOfWeek || existing.daysOfWeek,
         emergencyOverride: params.emergencyOverride ?? existing.emergencyOverride,
         isActive: params.isActive,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(quietHoursConfig.id, existing.id));
   } else {

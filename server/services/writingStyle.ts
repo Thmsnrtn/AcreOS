@@ -5,6 +5,7 @@ import { logger } from "../utils/logger";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 
 import { wrapUntrusted } from "../ai/untrustedEnvelope";
+import { clock } from "../utils/clock";
 // Migrated from direct OpenAI client to central aiRouter (P1-36).
 // All calls flow through aiRouter for cost tracking, semantic caching,
 // rate limiting, and provider failover.
@@ -132,11 +133,11 @@ export async function addSampleMessage(
   const sentiment = await analyzeSentiment(content);
   
   const newSample: SampleMessage = {
-    id: `sample-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    id: `sample-${clock.nowMs()}-${Math.random().toString(36).substr(2, 9)}`,
     context,
     content,
     sentiment,
-    addedAt: new Date().toISOString(),
+    addedAt: clock.now().toISOString(),
   };
   
   const updatedSamples = [...existingSamples, newSample].slice(-50);
@@ -146,7 +147,7 @@ export async function addSampleMessage(
     .set({
       sampleMessages: updatedSamples,
       totalSamples: updatedSamples.length,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     })
     .where(and(
       eq(writingStyleProfiles.id, profileId),
@@ -267,8 +268,8 @@ Only output valid JSON, no other text.`
       patterns: analysis.patterns,
       preferences: analysis.preferences,
       confidenceScore: String(analysis.confidenceScore || 0.5),
-      lastTrainedAt: new Date(),
-      updatedAt: new Date(),
+      lastTrainedAt: clock.now(),
+      updatedAt: clock.now(),
     })
     .where(and(
       eq(writingStyleProfiles.id, profileId),

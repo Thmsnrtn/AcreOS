@@ -24,6 +24,7 @@ import { resolveAgentData } from "./agentDataResolvers";
 import { logger } from "../utils/logger";
 
 import { wrapUntrusted } from "../ai/untrustedEnvelope";
+import { clock } from "../utils/clock";
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 class FounderTwinService {
@@ -87,7 +88,7 @@ Look for: sentence length preference, formality level, specific vocabulary, prio
               confidence: newConfidence.toFixed(3),
               sourceCount: newCount,
               examples,
-              updatedAt: new Date(),
+              updatedAt: clock.now(),
             })
             .where(eq(founderTwinContext.id, existing.id));
         } else {
@@ -203,7 +204,7 @@ Write the draft now. No preamble, just the content.`,
       const dataSources = relevantAgents[input.draftType] || [];
       const title = input.topic
         ? `${input.draftType.replace(/_/g, " ")} — ${input.topic}`
-        : `${input.draftType.replace(/_/g, " ")} — ${new Date().toLocaleDateString()}`;
+        : `${input.draftType.replace(/_/g, " ")} — ${clock.now().toLocaleDateString()}`;
 
       const [draft] = await db.insert(founderDrafts).values({
         draftType: input.draftType,
@@ -217,7 +218,7 @@ Write the draft now. No preamble, just the content.`,
     } catch (err: any) {
       const [draft] = await db.insert(founderDrafts).values({
         draftType: input.draftType,
-        title: `${input.draftType.replace(/_/g, " ")} — ${new Date().toLocaleDateString()}`,
+        title: `${input.draftType.replace(/_/g, " ")} — ${clock.now().toLocaleDateString()}`,
         content: `Draft generation failed: ${err.message}`,
         dataSources: [],
         status: "draft",
@@ -238,7 +239,7 @@ Write the draft now. No preamble, just the content.`,
       .set({
         content: editedContent,
         ceoEdits: editedContent,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(founderDrafts.id, draftId));
 
@@ -254,7 +255,7 @@ Write the draft now. No preamble, just the content.`,
   /** Mark a draft as approved/sent */
   async approveDraft(draftId: number): Promise<void> {
     await db.update(founderDrafts)
-      .set({ status: "approved", updatedAt: new Date() })
+      .set({ status: "approved", updatedAt: clock.now() })
       .where(eq(founderDrafts.id, draftId));
   }
 
@@ -302,7 +303,7 @@ Write the draft now. No preamble, just the content.`,
     });
     if (existing) {
       await db.update(systemMeta)
-        .set({ value: tier, updatedAt: new Date() })
+        .set({ value: tier, updatedAt: clock.now() })
         .where(eq(systemMeta.key, "founder_twin_autonomy_tier"));
     } else {
       await db.insert(systemMeta).values({
@@ -332,7 +333,7 @@ Write the draft now. No preamble, just the content.`,
       logger.info(`[FounderTwin/Shadow] Content preview: ${(draft.content || "").slice(0, 200)}...`);
 
       await db.update(founderDrafts)
-        .set({ status: "shadow_logged", updatedAt: new Date() })
+        .set({ status: "shadow_logged", updatedAt: clock.now() })
         .where(eq(founderDrafts.id, draftId));
 
       return {
@@ -343,7 +344,7 @@ Write the draft now. No preamble, just the content.`,
 
     if (tier === "suggestion") {
       await db.update(founderDrafts)
-        .set({ status: "pending_approval", updatedAt: new Date() })
+        .set({ status: "pending_approval", updatedAt: clock.now() })
         .where(eq(founderDrafts.id, draftId));
 
       return {
@@ -357,7 +358,7 @@ Write the draft now. No preamble, just the content.`,
 
     if (styleConfidence >= 0.8) {
       await db.update(founderDrafts)
-        .set({ status: "approved", updatedAt: new Date() })
+        .set({ status: "approved", updatedAt: clock.now() })
         .where(eq(founderDrafts.id, draftId));
 
       return {
@@ -369,7 +370,7 @@ Write the draft now. No preamble, just the content.`,
 
     // Below confidence threshold — fall back to suggestion mode
     await db.update(founderDrafts)
-      .set({ status: "pending_approval", updatedAt: new Date() })
+      .set({ status: "pending_approval", updatedAt: clock.now() })
       .where(eq(founderDrafts.id, draftId));
 
     return {

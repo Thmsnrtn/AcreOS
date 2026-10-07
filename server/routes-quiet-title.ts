@@ -40,6 +40,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireRole } from "./middleware/roleGuard";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 /**
  * Default per-step deadline offsets (days) from deed_recordation_date.
@@ -247,7 +248,7 @@ export function registerQuietTitleRoutes(app: Express): void {
 
         const update: Partial<typeof noteQuietTitleCases.$inferInsert> = {
           ...parsed.data,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
           hearingScheduledAt: parsed.data.hearingScheduledAt
             ? new Date(parsed.data.hearingScheduledAt)
             : undefined,
@@ -289,10 +290,10 @@ export function registerQuietTitleRoutes(app: Express): void {
           requiredByDate: parsed.data.requiredByDate,
           documentS3Key: parsed.data.documentS3Key,
           notes: parsed.data.notes,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         };
         if (parsed.data.completed === true) {
-          update.completedAt = new Date();
+          update.completedAt = clock.now();
           update.completedByUserId = userId;
         } else if (parsed.data.completed === false) {
           update.completedAt = null;

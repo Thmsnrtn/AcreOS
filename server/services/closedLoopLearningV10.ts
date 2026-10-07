@@ -23,6 +23,7 @@ import { eq, desc, and, lte, gte, sql, count } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Learning Type Routing ─────────────────────────────────────────────────
 
@@ -86,7 +87,7 @@ class ClosedLoopLearningService {
         actualOutcome: params.actualOutcome,
         actualSuccess: params.actualSuccess,
         accuracyDelta,
-        outcomeMeasuredAt: new Date(),
+        outcomeMeasuredAt: clock.now(),
         status: "measured",
       })
       .where(eq(outcomeCalibrations.id, calibrationId))
@@ -138,7 +139,7 @@ Respond in JSON:
           outcomeWindowDays: prediction.outcomeWindowDays,
           originalOutcomeId: String(calibrationId),
           propagationStatus: "propagated",
-          propagatedAt: new Date(),
+          propagatedAt: clock.now(),
           acceptanceRate: 100, // all agents receive it
         }).returning();
 

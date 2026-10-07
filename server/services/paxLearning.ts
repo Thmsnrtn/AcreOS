@@ -10,6 +10,7 @@ import { logger } from "../utils/logger";
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
 import { consentingOrgIds, sophiePrivacyGuard } from "./sophiePrivacyGuard";
 import { meetsOperatorFloor } from "./dataCoop/privacyRollup";
+import { clock } from "../utils/clock";
 
 /**
  * A cross-org learning may be shown to (or acted on for) another org only
@@ -186,7 +187,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
             isAutoFixable: learning.isAutoFixable,
             autoFixAction: learning.autoFixAction,
             source: "human_resolution",
-            learnedAt: new Date().toISOString()
+            learnedAt: clock.now().toISOString()
           } as any,
           importance: 9,
           sourceTicketId: ticket.id
@@ -249,7 +250,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
           sourceTicketIds,
           contributingOrgIds,
           contributingOrgs: contributingOrgIds.length,
-          updatedAt: new Date()
+          updatedAt: clock.now()
         })
         .where(eq(paxCrossOrgLearnings.id, existing.id))
         .returning();
@@ -379,7 +380,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
       trace.push({
         layer: "frontend",
         errors: errorContext.consoleErrors.slice(0, 5),
-        timestamp: new Date().toISOString()
+        timestamp: clock.now().toISOString()
       });
     }
     
@@ -388,19 +389,19 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
       trace.push({
         layer: "api",
         errors: errorContext.failedRequests.slice(0, 5),
-        timestamp: new Date().toISOString()
+        timestamp: clock.now().toISOString()
       });
     }
     
     try {
       await db.execute(sql`SELECT 1`);
-      trace.push({ layer: "database", status: "healthy", timestamp: new Date().toISOString() });
+      trace.push({ layer: "database", status: "healthy", timestamp: clock.now().toISOString() });
     } catch (dbError) {
       affectedLayers.push("database");
       trace.push({
         layer: "database",
         error: String(dbError),
-        timestamp: new Date().toISOString()
+        timestamp: clock.now().toISOString()
       });
     }
     
@@ -512,7 +513,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
     pattern: string;
     recommendedAction: string;
   }> {
-    const recentHour = new Date(Date.now() - 60 * 60 * 1000);
+    const recentHour = new Date(clock.nowMs() - 60 * 60 * 1000);
     
     // Narrowed to the one column the aggregate needs. Even if the predicate
     // below were ever dropped again, foreign ticket SUBJECTS and DESCRIPTIONS
@@ -732,7 +733,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
     
     const recentAttempts = existingAttempts.filter(a => {
       const createdAt = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      return Date.now() - createdAt < 24 * 60 * 60 * 1000; // Within last 24 hours
+      return clock.nowMs() - createdAt < 24 * 60 * 60 * 1000; // Within last 24 hours
     });
     
     const failedCount = recentAttempts.filter(a => a.status === "failed").length;
@@ -829,8 +830,8 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
       result: {
         success,
         details: result || errorMessage,
-        fixedAt: success ? new Date().toISOString() : undefined,
-        retryAfter: !success ? new Date(Date.now() + backoffDelay * 2).toISOString() : undefined
+        fixedAt: success ? clock.now().toISOString() : undefined,
+        retryAfter: !success ? new Date(clock.nowMs() + backoffDelay * 2).toISOString() : undefined
       },
       sourceObservationId: options?.observationId,
       sourceTicketId: options?.ticketId
@@ -842,12 +843,12 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
           organizationId: orgId,
           userId: "system",
           memoryType: "solution_tried",
-          key: `self_heal_${Date.now()}`,
+          key: `self_heal_${clock.nowMs()}`,
           value: {
             issuePattern,
             fixApplied: matchingFix.fixAction,
             result,
-            appliedAt: new Date().toISOString(),
+            appliedAt: clock.now().toISOString(),
             wasAutomatic: true,
             attemptNumber: currentAttemptNumber
           } as any,
@@ -863,7 +864,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
         if (matchingFix.crossOrgId !== null) await db.update(paxCrossOrgLearnings)
           .set({
             successCount: sql`${paxCrossOrgLearnings.successCount} + 1`,
-            updatedAt: new Date()
+            updatedAt: clock.now()
           })
           .where(eq(paxCrossOrgLearnings.id, matchingFix.crossOrgId));
       } catch (updateErr) {
@@ -874,7 +875,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
         if (matchingFix.crossOrgId !== null) await db.update(paxCrossOrgLearnings)
           .set({
             failureCount: sql`${paxCrossOrgLearnings.failureCount} + 1`,
-            updatedAt: new Date()
+            updatedAt: clock.now()
           })
           .where(eq(paxCrossOrgLearnings.id, matchingFix.crossOrgId));
       } catch (updateErr) {
@@ -896,8 +897,8 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
       await db.update(fixAttempts)
         .set({
           status: "escalated",
-          escalatedAt: new Date(),
-          updatedAt: new Date()
+          escalatedAt: clock.now(),
+          updatedAt: clock.now()
         })
         .where(and(
           eq(fixAttempts.organizationId, orgId),
@@ -1034,7 +1035,7 @@ This requires human investigation.`,
     
     const lastActivity = recentActivity[0]?.createdAt;
     const stuckDuration = lastActivity 
-      ? Math.floor((Date.now() - new Date(lastActivity).getTime()) / (1000 * 60 * 60))
+      ? Math.floor((clock.nowMs() - new Date(lastActivity).getTime()) / (1000 * 60 * 60))
       : 999;
     
     const isStuck = stuckDuration >= 24;
@@ -1103,7 +1104,7 @@ This requires human investigation.`,
           const { subscriptionPeriod } = await import("../stripeClient");
           const periodEnd = subscriptionPeriod(sub)?.end;
           if (periodEnd) {
-            const daysUntilRenewal = Math.floor((periodEnd * 1000 - Date.now()) / (1000 * 60 * 60 * 24));
+            const daysUntilRenewal = Math.floor((periodEnd * 1000 - clock.nowMs()) / (1000 * 60 * 60 * 24));
             if (daysUntilRenewal <= 3) {
               predictions.push({
                 prediction: "Subscription renewal in next 3 days",

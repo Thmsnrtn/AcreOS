@@ -11,6 +11,7 @@ import fs from "node:fs";
 import { db } from "../db";
 import { decisionsInboxItems, agentEvents } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export async function runPillarReviewJob(): Promise<{
   reportPath: string;
@@ -26,7 +27,7 @@ export async function runPillarReviewJob(): Promise<{
     return { reportPath: "", staleCount: 0, deadCount: 0 };
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = clock.now().toISOString().slice(0, 10);
   const reportPath = path.join(repoRoot, `docs/archive/exhaustive-completion/pillar-review-${today}.md`);
   if (!fs.existsSync(reportPath)) {
     return { reportPath: "", staleCount: 0, deadCount: 0 };

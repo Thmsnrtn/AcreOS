@@ -29,6 +29,7 @@ import { isAuthenticated } from "./auth";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { JOB_ROSTER } from "./jobs/jobRegistry";
+import { clock } from "./utils/clock";
 
 /**
  * Jobs we surface in the user-facing health card, derived from the canonical
@@ -79,7 +80,7 @@ export function registerJobHealthRoutes(app: Express): void {
     isAuthenticated,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const now = Date.now();
+        const now = clock.nowMs();
         const out: JobHealth[] = [];
 
         for (const j of TRACKED_JOBS) {
@@ -183,7 +184,7 @@ export function registerJobHealthRoutes(app: Express): void {
         };
 
         if (lastDrill?.ranAt) {
-          const days = Math.floor((Date.now() - new Date(lastDrill.ranAt).getTime()) / 86_400_000);
+          const days = Math.floor((clock.nowMs() - new Date(lastDrill.ranAt).getTime()) / 86_400_000);
           drDrill = {
             lastRanAt: new Date(lastDrill.ranAt).toISOString(),
             daysSince: days,

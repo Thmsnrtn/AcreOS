@@ -29,6 +29,7 @@ import { logger } from "../../utils/logger";
 import { unscopedForPlatformOps } from "../../utils/orgScopedDb";
 import { getNumberSetting } from "../founderSettings";
 import { commsRouter, type CommsProviderName } from "./router";
+import { clock } from "../../utils/clock";
 
 const DEFAULT_AUTO_RELEASE_DAYS = 60;
 
@@ -146,7 +147,7 @@ export async function assignNumber(
   } = {},
 ): Promise<AssignedNumber> {
   const autoReleaseDays = await getAutoReleaseDays();
-  const idleCutoff = new Date(Date.now() - autoReleaseDays * 86400 * 1000);
+  const idleCutoff = new Date(clock.nowMs() - autoReleaseDays * 86400 * 1000);
 
   // Candidate: released, OR no inbound activity inside the idle window.
   // `lastInboundAt IS NULL` is treated as "not idle" only if the
@@ -201,7 +202,7 @@ export async function assignNumber(
     if (candidate.releasedAt == null) {
       await db
         .update(trackingNumberAssignments)
-        .set({ releasedAt: new Date() })
+        .set({ releasedAt: clock.now() })
         .where(and(
           eq(trackingNumberAssignments.id, candidate.id),
           eq(trackingNumberAssignments.organizationId, organizationId),
@@ -263,7 +264,7 @@ export async function assignNumber(
 export async function releaseNumber(number: string): Promise<void> {
   await db
     .update(trackingNumberAssignments)
-    .set({ releasedAt: new Date() })
+    .set({ releasedAt: clock.now() })
     .where(
       and(
         eq(trackingNumberAssignments.number, number),
@@ -282,7 +283,7 @@ export async function releaseNumber(number: string): Promise<void> {
 export async function attributeInbound(
   toNumber: string,
   _fromCallerId: string,
-  timestamp: Date = new Date(),
+  timestamp: Date = clock.now(),
 ): Promise<{ organizationId: number | null; campaignId: number | null; assignmentId: number } | null> {
   // Active assignment = released_at IS NULL. (We don't enforce a
   // historical window here because the partial index keeps the lookup

@@ -8,6 +8,7 @@
 
 import { voiceLearningService } from "./voiceLearning";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const REBUILD_THRESHOLD = 10; // new samples since last build
 const MIN_REBUILD_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
@@ -25,7 +26,7 @@ export function onNewCommunication(organizationId: number): void {
   newSampleCounts.set(organizationId, entry);
 
   if (entry.count >= REBUILD_THRESHOLD) {
-    const now = Date.now();
+    const now = clock.nowMs();
     if (now - entry.lastRebuilt < MIN_REBUILD_INTERVAL_MS) return;
 
     // Reset counter and trigger async rebuild
@@ -45,7 +46,7 @@ export async function forceRebuild(organizationId: number): Promise<void> {
   await voiceLearningService.buildProfile(organizationId);
   const entry = newSampleCounts.get(organizationId) ?? { count: 0, lastRebuilt: 0 };
   entry.count = 0;
-  entry.lastRebuilt = Date.now();
+  entry.lastRebuilt = clock.nowMs();
   newSampleCounts.set(organizationId, entry);
 }
 

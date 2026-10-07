@@ -30,6 +30,7 @@ import {
   TIER_PRICES_CENTS,
 } from "@shared/billing/tier-pricing";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface RecognitionResult {
   periodKey: string;
@@ -170,7 +171,7 @@ export async function getPeriodTotals(periodKeyFrom: string, periodKeyTo: string
   };
 }
 
-export function currentPeriodKey(now: Date = new Date()): string {
+export function currentPeriodKey(now: Date = clock.now()): string {
   const y = now.getUTCFullYear();
   const m = String(now.getUTCMonth() + 1).padStart(2, "0");
   return `${y}-${m}`;

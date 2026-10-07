@@ -28,6 +28,7 @@ import { isAuthenticated, requireFounder } from "./auth";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 interface Check {
   name: string;
@@ -217,7 +218,7 @@ export function registerAgentPrereqsRoute(app: Express): void {
         }
         return res.json({
           allOk,
-          generatedAt: new Date().toISOString(),
+          generatedAt: clock.now().toISOString(),
           summary: byCategory,
           checks,
         });

@@ -9,6 +9,7 @@ import { sql } from "drizzle-orm";
 import { emailService } from "../services/emailService";
 import { logger } from "../utils/logger";
 import { coerceTimerDelay } from "../utils/safeTimer";
+import { clock } from "../utils/clock";
 
 export type AgentStatus = "idle" | "running" | "error" | "disabled";
 
@@ -66,7 +67,7 @@ export abstract class BaseAgent {
     // Run once immediately then schedule
     await this.safeRun();
     this.timer = setInterval(() => this.safeRun(), safeInterval);
-    this.nextRun = new Date(Date.now() + safeInterval);
+    this.nextRun = new Date(clock.nowMs() + safeInterval);
   }
 
   stop(): void {
@@ -84,14 +85,14 @@ export abstract class BaseAgent {
       this.status = "running";
       await this.runOnce();
       this.status = "idle";
-      this.lastRun = new Date();
+      this.lastRun = clock.now();
       this.runCount++;
       this.lastError = null;
-      this.nextRun = new Date(Date.now() + this.intervalMs);
+      this.nextRun = new Date(clock.nowMs() + this.intervalMs);
     } catch (err: any) {
       this.status = "error";
       this.lastError = err.message || "Unknown error";
-      this.lastRun = new Date();
+      this.lastRun = clock.now();
       logger.error(`[${this.name}] Error`, err);
     }
   }

@@ -82,6 +82,7 @@ import { organizations, teamMembers } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { logger } from "../utils/logger";
 import { PAX_LABELS, PAX_PAUSE_COPY } from "@shared/pax-glossary";
+import { clock } from "../utils/clock";
 
 /** The person whose `pax.pausedUntil` is the org's latest active pause. */
 export interface PaxPauseHolder {
@@ -156,7 +157,7 @@ function latestFuturePause(
  */
 export async function getPaxPauseState(orgId: number): Promise<PaxPauseState> {
   try {
-    const nowMs = Date.now();
+    const nowMs = clock.nowMs();
     const shape = {
       id: users.id,
       firstName: users.firstName,

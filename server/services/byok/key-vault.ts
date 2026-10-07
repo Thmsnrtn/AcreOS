@@ -25,6 +25,7 @@ import { and, eq, isNull, desc } from "drizzle-orm";
 import { encrypt, decrypt } from "../fieldEncryption";
 import { logger } from "../../utils/logger";
 import { founderAudit } from "../founderAuditService";
+import { clock } from "../../utils/clock";
 
 export interface SetByokCredentialArgs {
   organizationId: number;
@@ -75,7 +76,7 @@ export async function setByokCredential(args: SetByokCredentialArgs): Promise<By
   const inserted = await db.transaction(async (tx) => {
     await tx
       .update(byokCredentials)
-      .set({ revokedAt: new Date() })
+      .set({ revokedAt: clock.now() })
       .where(
         and(
           eq(byokCredentials.organizationId, organizationId),
@@ -164,7 +165,7 @@ export async function getByokCredential(args: {
   // Fire-and-forget lastUsedAt bump.
   db
     .update(byokCredentials)
-    .set({ lastUsedAt: new Date() })
+    .set({ lastUsedAt: clock.now() })
     .where(eq(byokCredentials.id, row.id))
     .catch(() => {});
 
@@ -182,7 +183,7 @@ export async function revokeByokCredential(args: {
   const { organizationId, channel } = args;
   const result = await db
     .update(byokCredentials)
-    .set({ revokedAt: new Date() })
+    .set({ revokedAt: clock.now() })
     .where(
       and(
         eq(byokCredentials.organizationId, organizationId),

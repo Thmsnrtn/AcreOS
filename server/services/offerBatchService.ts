@@ -22,6 +22,7 @@ import {
 } from "@shared/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { jobQueueService } from "./jobQueue";
+import { clock } from "../utils/clock";
 
 // ─── Pricing Matrix ──────────────────────────────────────────────────────────
 
@@ -198,7 +199,7 @@ export async function createOfferBatch(
     // TODO(tsc): offers has no apn/earnestMoneyDeposit/closingDays/expirationDays/
     // sellerFinancing/metadata columns. Map amount→cashOffer and seller-financing terms
     // onto the dedicated columns; expiration is stored as an absolute expiresAt timestamp.
-    const expiresAt = new Date(Date.now() + (config.expirationDays ?? 10) * 86400000);
+    const expiresAt = new Date(clock.nowMs() + (config.expirationDays ?? 10) * 86400000);
     const sf = config.sellerFinancing?.enabled ? config.sellerFinancing : null;
     offerRows.push({
       organizationId: config.orgId,

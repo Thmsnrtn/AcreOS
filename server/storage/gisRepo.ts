@@ -29,6 +29,7 @@ import { logger } from "../utils/logger";
 import { mayCacheAndRedistribute } from "../services/providers/data-licenses";
 import type { DatabaseStorage } from "../storage";
 import { assertWritablePatch } from "../utils/patch";
+import { clock } from "../utils/clock";
 
 /**
  * Match a stored county against a parcelRef-normalised county name.
@@ -57,7 +58,7 @@ export const gisRepo = {
   async updateCountyGisEndpoint(this: DatabaseStorage, id: number, updates: { isVerified?: boolean; errorCount?: number; lastVerified?: Date; isActive?: boolean; lastError?: string | null }): Promise<any> {
     const { countyGisEndpoints } = await import('@shared/schema');
     const [updated] = await db.update(countyGisEndpoints)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(eq(countyGisEndpoints.id, id))
       .returning();
     return updated;
@@ -147,7 +148,7 @@ export const gisRepo = {
 
   async updateDataSource(this: DatabaseStorage, id: number, updates: Partial<InsertDataSource>): Promise<DataSource> {
     const [updated] = await db.update(dataSources)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(eq(dataSources.id, id))
       .returning();
     return updated;
@@ -364,7 +365,7 @@ export const gisRepo = {
       return undefined;
     }
 
-    const cutoffDate = new Date();
+    const cutoffDate = clock.now();
     cutoffDate.setDate(cutoffDate.getDate() - maxAgeDays);
 
     const [snapshot] = await db
@@ -399,7 +400,7 @@ export const gisRepo = {
       );
     }
 
-    const expiresAt = new Date();
+    const expiresAt = clock.now();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
     const [existing] = await db
@@ -428,9 +429,9 @@ export const gisRepo = {
         .set({
           ...omitProtectedFields(data),
           ...normalized,
-          fetchedAt: new Date(),
+          fetchedAt: clock.now(),
           expiresAt,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(parcelSnapshots.id, existing.id))
         .returning();
@@ -441,7 +442,7 @@ export const gisRepo = {
         .values({
           ...data,
           ...normalized,
-          fetchedAt: new Date(),
+          fetchedAt: clock.now(),
           expiresAt,
         })
         .returning();

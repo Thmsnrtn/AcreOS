@@ -47,6 +47,7 @@ import { db } from "../db";
 import { mailShipmentPieces } from "@shared/schema";
 import { Errors, sendError } from "../utils/errors";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /** Reject posts whose signed timestamp is older than this (replay guard). */
 const MAX_SIGNATURE_AGE_MS = 5 * 60 * 1000;
@@ -110,7 +111,7 @@ export function verifyLobSignature(args: {
   now?: number;
 }): string | null {
   const { secret, signature, timestamp, rawBody } = args;
-  const now = args.now ?? Date.now();
+  const now = args.now ?? clock.nowMs();
 
   if (!secret) return "webhook_secret_not_configured";
   if (!signature || !timestamp) return "missing_signature_headers";
@@ -162,7 +163,7 @@ export function readLobEvent(body: unknown): {
   return {
     eventType: normalizeEventType(evt.id ?? b.event_type),
     providerPieceId,
-    occurredAt: parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : new Date(),
+    occurredAt: parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : clock.now(),
     /** Whether the event carried a readable date (occurredAt is "now" otherwise). */
     eventDated: Boolean(parsedDate && !Number.isNaN(parsedDate.getTime())),
     expectedDeliveryAt:
@@ -235,7 +236,7 @@ export function registerLobWebhookRoutes(app: Express): void {
         // acknowledged as unknown.
         // An event without a readable date is treated as old: "now" as its
         // age would keep asking Lob to retry it for ever.
-        const ageMs = eventDated ? Date.now() - occurredAt.getTime() : Number.POSITIVE_INFINITY;
+        const ageMs = eventDated ? clock.nowMs() - occurredAt.getTime() : Number.POSITIVE_INFINITY;
         if (ageMs < UNMATCHED_RETRY_WINDOW_MS) {
           logger.info("[lob-webhook] no piece yet for provider id — asking Lob to retry", {
             metadata: { eventType },
@@ -254,7 +255,7 @@ export function registerLobWebhookRoutes(app: Express): void {
 
       // Timestamp columns: write-once. A retry cannot overwrite the first
       // (real) scan time with a replay's clock.
-      const set: Record<string, unknown> = { updatedAt: new Date() };
+      const set: Record<string, unknown> = { updatedAt: clock.now() };
       if (nextRank > currentRank) set.status = mapped.status;
       if (mapped.stamp) {
         set[mapped.stamp] = sql`COALESCE(${mailShipmentPieces[mapped.stamp]}, ${occurredAt})`;

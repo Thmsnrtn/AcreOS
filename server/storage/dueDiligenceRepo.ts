@@ -30,6 +30,7 @@ import {
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
 import { assertWritablePatch } from "../utils/patch";
+import { clock } from "../utils/clock";
 
 // due_diligence_items and deal_checklists carry no organization column: the
 // owning organization is the parent property's / deal's. The reads, updates
@@ -123,7 +124,7 @@ export const dueDiligenceRepo = {
   async updateDueDiligenceItem(this: DatabaseStorage, organizationId: number, id: number, updates: Partial<InsertDueDiligenceItem>) {
     const updateData: any = { ...updates };
     if (updates.completed === true && !updates.completedAt) {
-      updateData.completedAt = new Date();
+      updateData.completedAt = clock.now();
     }
     if (updates.completed === false) {
       updateData.completedAt = null;
@@ -195,7 +196,7 @@ export const dueDiligenceRepo = {
 
   async updateChecklistTemplate(this: DatabaseStorage, organizationId: number, id: number, updates: Partial<InsertChecklistTemplate>) {
     const [updated] = await db.update(checklistTemplates)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(eq(checklistTemplates.id, id), eq(checklistTemplates.organizationId, organizationId)))
       .returning();
     return updated;
@@ -243,7 +244,7 @@ export const dueDiligenceRepo = {
 
   async updateDealChecklist(this: DatabaseStorage, organizationId: number, id: number, updates: Partial<InsertDealChecklist>) {
     const [updated] = await db.update(dealChecklists)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(
         eq(dealChecklists.id, id),
         inArray(dealChecklists.dealId, orgDealIds(organizationId)),
@@ -300,7 +301,7 @@ export const dueDiligenceRepo = {
         const updatedItem = { ...item };
         if (updates.checked !== undefined) {
           if (updates.checked) {
-            updatedItem.checkedAt = new Date().toISOString();
+            updatedItem.checkedAt = clock.now().toISOString();
             updatedItem.checkedBy = updates.checkedBy;
           } else {
             // Untick clears BOTH vocabularies and the evidence (DEFECT-0176
@@ -325,7 +326,7 @@ export const dueDiligenceRepo = {
     });
 
     const allComplete = updatedItems.every(item => item.checkedAt || item.completed);
-    const completedAt = allComplete ? new Date() : null;
+    const completedAt = allComplete ? clock.now() : null;
 
     return await this.updateDealChecklist(organizationId, checklist.id, {
       items: updatedItems,

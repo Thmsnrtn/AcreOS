@@ -22,6 +22,7 @@
 import type { Response, NextFunction } from "express";
 import type { AuthenticatedRequest } from "../types/request";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /**
  * Loosely-typed request used by rate-limit middleware.
@@ -61,10 +62,10 @@ async function checkRateLimit(
 ): Promise<RateLimitResult> {
   if (!redisClient) {
     // No Redis — fall back to allow (graceful degradation)
-    return { allowed: true, remaining: config.maxRequests, resetAt: new Date(), totalRequests: 0 };
+    return { allowed: true, remaining: config.maxRequests, resetAt: clock.now(), totalRequests: 0 };
   }
 
-  const now = Date.now();
+  const now = clock.nowMs();
   const windowStart = now - config.windowMs;
   const fullKey = `${config.keyPrefix}:${key}`;
 
@@ -110,7 +111,7 @@ async function checkRateLimit(
   } catch (err) {
     // Redis error — fail open (allow request, log error)
     logger.error("Redis rate limit check failed — allowing request", err instanceof Error ? err : undefined);
-    return { allowed: true, remaining: config.maxRequests, resetAt: new Date(), totalRequests: 0 };
+    return { allowed: true, remaining: config.maxRequests, resetAt: clock.now(), totalRequests: 0 };
   }
 }
 
@@ -173,11 +174,11 @@ export function createOrgRateLimit(redisClient: any) {
         res.setHeader("X-RateLimit-Limit", limits.perMinute);
         res.setHeader("X-RateLimit-Remaining", 0);
         res.setHeader("X-RateLimit-Reset", Math.floor(minuteResult.resetAt.getTime() / 1000));
-        res.setHeader("Retry-After", Math.ceil((minuteResult.resetAt.getTime() - Date.now()) / 1000));
+        res.setHeader("Retry-After", Math.ceil((minuteResult.resetAt.getTime() - clock.nowMs()) / 1000));
         return res.status(429).json({
           error: "rate_limit_exceeded",
           message: `Too many requests. Limit: ${limits.perMinute}/minute for ${tier} tier.`,
-          retryAfter: Math.ceil((minuteResult.resetAt.getTime() - Date.now()) / 1000),
+          retryAfter: Math.ceil((minuteResult.resetAt.getTime() - clock.nowMs()) / 1000),
           upgradeUrl: "/settings/billing",
         });
       }
@@ -193,7 +194,7 @@ export function createOrgRateLimit(redisClient: any) {
         return res.status(429).json({
           error: "hourly_rate_limit_exceeded",
           message: `Hourly limit of ${limits.perHour} requests reached.`,
-          retryAfter: Math.ceil((hourResult.resetAt.getTime() - Date.now()) / 1000),
+          retryAfter: Math.ceil((hourResult.resetAt.getTime() - clock.nowMs()) / 1000),
         });
       }
 

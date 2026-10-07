@@ -23,6 +23,7 @@ import {
 import { eq, and, gte, lte, sql, count, avg } from "drizzle-orm";
 
 import { CLOSED_DEAL_STATUSES, ENGAGED_LEAD_STATUSES, NEGOTIATING_LEAD_STATUSES, UNDER_CONTRACT_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
+import { clock } from "../utils/clock";
 export type CohortSegment =
   | "source"
   | "state"
@@ -209,6 +210,6 @@ export async function buildCohortReport(
     cohorts,
     totalLeads: totalAll,
     overallClosedRate: totalAll > 0 ? totalClosed / totalAll : 0,
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
   };
 }

@@ -24,6 +24,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const drawSchema = z.object({
   label: z.string().min(1).max(120),
@@ -171,7 +172,7 @@ export function registerConstructionDrawRoutes(app: Express): void {
       const parsed = updateSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      const updates: Record<string, unknown> = { updatedAt: clock.now() };
       for (const k of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {
         if (parsed.data[k] !== undefined) {
           updates[k] = k === "pctOfLoan" ? String(parsed.data[k]) : parsed.data[k];

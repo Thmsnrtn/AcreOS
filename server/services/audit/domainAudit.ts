@@ -38,6 +38,7 @@ import {
   type DomainAuditSeverity,
   type DomainAuditFinding,
 } from "@shared/schema";
+import { clock } from "../../utils/clock";
 
 // ── Detector contract ────────────────────────────────────────────────────────
 
@@ -116,7 +117,7 @@ export async function recordFinding(input: FindingInput): Promise<void> {
     }
   }
 
-  const now = new Date();
+  const now = clock.now();
   await db
     .insert(domainAuditFindings)
     .values({
@@ -163,7 +164,7 @@ export async function acknowledgeFinding(
 ): Promise<DomainAuditFinding | null> {
   const [row] = await db
     .update(domainAuditFindings)
-    .set({ status: "acknowledged", lastSeenAt: new Date() })
+    .set({ status: "acknowledged", lastSeenAt: clock.now() })
     .where(eq(domainAuditFindings.id, id))
     .returning();
   return row ?? null;
@@ -173,7 +174,7 @@ export async function acknowledgeFinding(
 export async function resolveFinding(
   id: number,
 ): Promise<DomainAuditFinding | null> {
-  const now = new Date();
+  const now = clock.now();
   const [row] = await db
     .update(domainAuditFindings)
     .set({ status: "resolved", resolvedAt: now })
@@ -196,7 +197,7 @@ export async function resolveFinding(
  * @returns number of findings transitioned to 'stale'.
  */
 export async function staleFindings(olderThanDays = 7): Promise<number> {
-  const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - olderThanDays * 24 * 60 * 60 * 1000);
   const rows = await db
     .update(domainAuditFindings)
     .set({ status: "stale" })

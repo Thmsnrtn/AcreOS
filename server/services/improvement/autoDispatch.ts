@@ -61,6 +61,7 @@ import { getMonthlyEnvelopeStatus } from "../solene/capitalTracker";
 import { enqueueDispatch } from "../solene/dispatchQueue";
 import type { SoleneDispatchAgentRole } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // CONSTANTS — guardrail thresholds. Exposed for test injection.
@@ -143,7 +144,7 @@ export async function evaluateForAutoDispatch(
     dryRun?: boolean;
   } = {},
 ): Promise<AutoDispatchResult> {
-  const now = opts.now ?? new Date();
+  const now = opts.now ?? clock.now();
   const evaluation = await runGuardrails(opportunity, now, opts);
 
   if (!evaluation.passed) {

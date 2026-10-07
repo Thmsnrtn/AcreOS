@@ -44,6 +44,7 @@
 
 import { and, eq, isNull, lt, notInArray, or, type SQL } from "drizzle-orm";
 import { organizations } from "@shared/schema";
+import { clock } from "../utils/clock";
 
 /** Why AcreOS may not act for an org. `null` means it may. */
 export type OrgActRefusal =
@@ -97,7 +98,7 @@ const NON_ACTING_DUNNING_STAGES = ["restricted", "suspended"] as const;
  */
 export function orgActRefusal(
   facts: OrgOperatingFacts,
-  now: number = Date.now(),
+  now: number = clock.nowMs(),
 ): OrgActRefusal | null {
   if (pauseInForce(facts, now)) return "subscription_paused";
   if ((facts.subscriptionStatus ?? "") !== "active") return "subscription_inactive";
@@ -127,7 +128,7 @@ export function orgMayActFilter(): SQL {
       isNull(organizations.subscriptionPaused),
       eq(organizations.subscriptionPaused, false),
       // An elapsed pause is not a pause — see `pauseInForce`.
-      lt(organizations.subscriptionPauseEndsAt, new Date()),
+      lt(organizations.subscriptionPauseEndsAt, clock.now()),
     ),
     or(
       isNull(organizations.dunningStage),

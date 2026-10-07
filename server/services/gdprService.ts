@@ -35,6 +35,7 @@ import {
 import { eq, and, count, inArray } from "drizzle-orm";
 import crypto from "crypto";
 import { orgHasActiveHold, LegalHoldViolationError } from "./legalHold";
+import { clock } from "../utils/clock";
 
 /** Safety limit to prevent unbounded memory usage on very large accounts */
 const MAX_EXPORT_RECORDS = 100_000;
@@ -115,7 +116,7 @@ export async function exportUserData(userId: string): Promise<GdprExportData> {
   ]);
 
   return {
-    exportedAt: new Date().toISOString(),
+    exportedAt: clock.now().toISOString(),
     user: safeUser,
     leads: userLeads,
     deals: userDeals,
@@ -228,7 +229,7 @@ export async function anonymizeUser(userId: string): Promise<DeletionReport> {
 
   return {
     userId,
-    deletedAt: new Date().toISOString(),
+    deletedAt: clock.now().toISOString(),
     itemsDeleted: {
       agentEvents: deletedEvents.length,
       teamMessages: deletedMessages.length,

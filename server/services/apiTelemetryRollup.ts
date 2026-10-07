@@ -39,6 +39,7 @@ import {
   apiTelemetryRollupMonthly,
 } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const DEFAULT_RETENTION_DAYS = 30;
 
@@ -160,7 +161,7 @@ export async function aggregateAndUpsert(cutoff: Date): Promise<number> {
           requestCount: sql`${apiTelemetryRollupMonthly.requestCount} + ${requestCount}`,
           totalDurationMs: sql`${apiTelemetryRollupMonthly.totalDurationMs} + ${totalDurationMs}`,
           distinctOrgs: sql`${apiTelemetryRollupMonthly.distinctOrgs} + ${distinctOrgs}`,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         },
       });
     touched++;
@@ -202,7 +203,7 @@ export async function runApiTelemetryRollup(opts?: {
   now?: Date;
 }): Promise<RollupRunResult> {
   const retentionDays = opts?.retentionDays ?? getRetentionDays();
-  const now = opts?.now ?? new Date();
+  const now = opts?.now ?? clock.now();
   const cutoff = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000);
 
   // Optional context — oldest sample timestamp, for the log row.

@@ -21,6 +21,7 @@ import { db } from "../db";
 import { supportTickets, supportTicketMessages } from "@shared/schema";
 import { eq, gte, count, and, desc } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // Confidence thresholds per SOPHIE_CONFIDENCE_MODE env var
 const CONFIDENCE_THRESHOLDS: Record<string, number> = {
@@ -140,7 +141,7 @@ Please provide a definitive resolution. Address the customer as Pax / AcreOS Sup
         content: parsed.response,
       });
       await db.update(supportTickets)
-        .set({ status: "resolved", resolvedAt: new Date(), updatedAt: new Date() })
+        .set({ status: "resolved", resolvedAt: clock.now(), updatedAt: clock.now() })
         .where(eq(supportTickets.id, ticketId));
       return { resolved: true, response: parsed.response, confidence };
     }
@@ -199,7 +200,7 @@ export const customerSupportAutoResolver = {
         content: opts.draftResponse,
       });
       await db.update(supportTickets)
-        .set({ status: "resolved", resolvedAt: new Date(), updatedAt: new Date() })
+        .set({ status: "resolved", resolvedAt: clock.now(), updatedAt: clock.now() })
         .where(eq(supportTickets.id, ticketId));
 
       logger.info(`[AutoResolver] Ticket #${ticketId} auto-resolved by Sophie (confidence: ${confidence}%)`);
@@ -258,7 +259,7 @@ export const customerSupportAutoResolver = {
     totalAutoResolved: number;
     escalatedToFounder: number;
   }> {
-    const since = new Date(Date.now() - periodHours * 60 * 60 * 1000);
+    const since = new Date(clock.nowMs() - periodHours * 60 * 60 * 1000);
 
     const [sophieResult] = await db.select({ c: count() })
       .from(supportTicketMessages)

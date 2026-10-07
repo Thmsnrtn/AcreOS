@@ -60,6 +60,7 @@ import {
   type EtlRecord,
   type UpsertAction,
 } from "./etlOrchestrator";
+import { clock } from "../utils/clock";
 
 // ─── Regrid ─────────────────────────────────────────────────────────────────
 
@@ -163,7 +164,7 @@ const defaultRegridFetchPage: RegridFetchPageFn = async ({ since, cursor, apiKey
       updatedAt:
         (fields.ll_updated_at as string | undefined) ??
         (p.updated_at as string | undefined) ??
-        new Date().toISOString(),
+        clock.now().toISOString(),
     };
   });
 
@@ -259,7 +260,7 @@ export const regridEtlHandler: EtlProviderHandler & {
           centroid: r.centroid ?? null,
           boundary: r.boundary ?? null,
           rawData: r.rawData ?? null,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(parcelSnapshots.id, existing.id));
       return { action: "updated" };
@@ -296,7 +297,7 @@ export const regridEtlHandler: EtlProviderHandler & {
   async softDelete(externalId: string, tx: DrizzleDb): Promise<void> {
     await tx
       .update(parcelSnapshots)
-      .set({ expiresAt: new Date(0), updatedAt: new Date() })
+      .set({ expiresAt: new Date(0), updatedAt: clock.now() })
       .where(
         and(
           eq(parcelSnapshots.source, "regrid"),
@@ -375,7 +376,7 @@ const defaultFemaFetchPage: FemaFetchPageFn = async ({ since, cursor, sourceUrl 
       updatedAt:
         typeof a.MOD_DATE === "number"
           ? new Date(a.MOD_DATE as number).toISOString()
-          : new Date().toISOString(),
+          : clock.now().toISOString(),
     };
   });
 
@@ -417,7 +418,7 @@ export const femaEtlHandler: EtlProviderHandler & {
     const r = record.payload as unknown as FemaFloodZoneRecord;
     const cacheKey = `etl:fema:${r.externalId}`;
     // 30 days is plenty — real FEMA updates are rare.
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(clock.nowMs() + 30 * 24 * 60 * 60 * 1000);
 
     const [existing] = await tx
       .select({ id: providerCache.id })
@@ -737,7 +738,7 @@ export function detectEmploymentTrendCrossing(args: {
  * reassigns it.
  */
 export const changeEventsRuntime = {
-  now: () => new Date(),
+  now: () => clock.now(),
 
   /** Insert one row into open_data_change_events. Fails loudly here; callers swallow + log. */
   insert: async (event: OpenDataChangeEventRow): Promise<void> => {
@@ -1047,7 +1048,7 @@ export function joinIrsMigrationFlows(
 }
 
 /** Filing-year labels newest-first, e.g. 2026 → ['2526','2425','2324','2223','2122']. */
-function irsFilingYearCandidates(now = new Date()): string[] {
+function irsFilingYearCandidates(now = clock.now()): string[] {
   const y = now.getUTCFullYear();
   const labels: string[] = [];
   for (let end = y; end >= y - 4; end--) {
@@ -1070,7 +1071,7 @@ export const irsSoiMigrationEtlHandler: EtlProviderHandler & {
     exists: publicCsvExists,
     // ~5 MB per file; generous per-attempt timeout.
     download: (url) => fetchPublicCsv(url, 120_000),
-    now: () => new Date(),
+    now: () => clock.now(),
   },
 
   async *fetch(opts: EtlFetchOpts): AsyncGenerator<EtlRecord, void, void> {
@@ -1156,7 +1157,7 @@ export const irsSoiMigrationEtlHandler: EtlProviderHandler & {
     if (existing) {
       await tx
         .update(countyMigrationSummary)
-        .set({ ...values, updatedAt: new Date() })
+        .set({ ...values, updatedAt: clock.now() })
         .where(eq(countyMigrationSummary.id, existing.id));
       return { action: "updated" };
     }
@@ -1271,7 +1272,7 @@ export const censusBpsPermitsEtlHandler: EtlProviderHandler & {
   name: "census_bps_permits_v1",
   _runtime: {
     download: (url) => fetchPublicCsv(url, 60_000),
-    now: () => new Date(),
+    now: () => clock.now(),
   },
 
   async *fetch(opts: EtlFetchOpts): AsyncGenerator<EtlRecord, void, void> {
@@ -1344,7 +1345,7 @@ export const censusBpsPermitsEtlHandler: EtlProviderHandler & {
     if (existing) {
       await tx
         .update(countyBuildingPermits)
-        .set({ ...values, updatedAt: new Date() })
+        .set({ ...values, updatedAt: clock.now() })
         .where(eq(countyBuildingPermits.id, existing.id));
       return { action: "updated" };
     }
@@ -1491,7 +1492,7 @@ export const blsQcewEmploymentEtlHandler: EtlProviderHandler & {
   _runtime: {
     // ~3.5 MB per file; generous per-attempt timeout.
     download: (url) => fetchPublicCsv(url, 120_000),
-    now: () => new Date(),
+    now: () => clock.now(),
   },
 
   async *fetch(opts: EtlFetchOpts): AsyncGenerator<EtlRecord, void, void> {
@@ -1566,7 +1567,7 @@ export const blsQcewEmploymentEtlHandler: EtlProviderHandler & {
     if (existing) {
       await tx
         .update(countyEmploymentWages)
-        .set({ ...values, updatedAt: new Date() })
+        .set({ ...values, updatedAt: clock.now() })
         .where(eq(countyEmploymentWages.id, existing.id));
       return { action: "updated" };
     }

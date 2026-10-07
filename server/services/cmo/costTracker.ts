@@ -18,6 +18,7 @@ import { db } from "../../db";
 import { cmoBudget, brandProfiles } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 export interface CostBreakdown {
   scriptCents: number;
@@ -109,7 +110,7 @@ export async function chargeBudget(
     throw new Error(`[cmo:cost] no budget row for brand_profile_id=${brandProfileId}`);
   }
 
-  const now = new Date();
+  const now = clock.now();
   const dayMs = 24 * 60 * 60 * 1000;
   const weekMs = 7 * dayMs;
   const monthMs = 30 * dayMs;

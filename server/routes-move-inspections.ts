@@ -34,6 +34,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { startDepositClock } from "./services/rental/depositClock";
+import { clock as appClock } from "./utils/clock";
 
 const checklistItemSchema = z.object({
   area: z.string(),
@@ -134,7 +135,7 @@ export function registerMoveInspectionRoutes(app: Express): void {
       const parsed = updateSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      const updates: Record<string, unknown> = { updatedAt: appClock.now() };
       for (const k of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
       }
@@ -152,7 +153,7 @@ export function registerMoveInspectionRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [updated] = await db.update(moveInspections)
-        .set({ tenantSignedAt: new Date(), updatedAt: new Date() })
+        .set({ tenantSignedAt: appClock.now(), updatedAt: appClock.now() })
         .where(and(eq(moveInspections.id, req.params.id), eq(moveInspections.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Inspection");
@@ -166,7 +167,7 @@ export function registerMoveInspectionRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const [updated] = await db.update(moveInspections)
-        .set({ landlordSignedAt: new Date(), updatedAt: new Date() })
+        .set({ landlordSignedAt: appClock.now(), updatedAt: appClock.now() })
         .where(and(eq(moveInspections.id, req.params.id), eq(moveInspections.organizationId, orgId)))
         .returning();
       if (!updated) return Errors.notFound(res, "Inspection");
@@ -202,13 +203,13 @@ export function registerMoveInspectionRoutes(app: Express): void {
         deductions: parsed.data.deductions,
         deductionsTotalCents: totalDeductions,
         refundCents,
-        updatedAt: new Date(),
+        updatedAt: appClock.now(),
       }).where(eq(securityDeposits.id, deposit.id)).returning();
 
       // Stamp the inspection with damages total.
       await db.update(moveInspections).set({
         damagesTotalCents: totalDeductions,
-        updatedAt: new Date(),
+        updatedAt: appClock.now(),
       }).where(eq(moveInspections.id, insp.id));
 
       // THE statutory clock trigger. `security_deposits.statutory_deadline` had

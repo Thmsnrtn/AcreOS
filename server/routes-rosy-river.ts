@@ -36,6 +36,7 @@ import {
   WEEKLY_BUDGET_ALERT_USD,
   WEEKLY_BUDGET_CEILING_USD,
 } from "./services/rosyRiver";
+import { clock } from "./utils/clock";
 
 const PROPOSAL_DECISIONS = ["approve", "reject", "defer"] as const;
 const INBOX_STATUSES = ["pending", "approved", "rejected", "deferred", "auto_resolved"] as const;
@@ -153,7 +154,7 @@ export function registerRosyRiverRoutes(app: Express): void {
           return Errors.validationFailed(res, parsed.error.flatten());
         }
         const { decision, notes } = parsed.data;
-        const now = new Date();
+        const now = clock.now();
         const founderId = req.user?.id ? parseInt(String(req.user.id), 10) : null;
 
         // 1. Update the agentTask. Approve clears the simulationMode flag in
@@ -302,7 +303,7 @@ export function registerRosyRiverRoutes(app: Express): void {
           return Errors.validationFailed(res, parsed.error.flatten());
         }
         const { status, founderModification } = parsed.data;
-        const now = new Date();
+        const now = clock.now();
 
         const patch: Record<string, unknown> = {
           status,

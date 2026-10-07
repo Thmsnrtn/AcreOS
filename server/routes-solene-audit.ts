@@ -36,6 +36,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { getMonthlyEnvelopeStatus, getSpendSummary } from "./services/solene/capitalTracker";
 import { secretEquals } from "./utils/secretEquals";
+import { clock } from "./utils/clock";
 
 const RECENT_RUNS_LIMIT = 30;
 const MAX_FINDINGS_PER_RUN = 500;
@@ -243,7 +244,7 @@ export function registerSoleneAuditRoutes(app: Express): void {
     requireFounder,
     async (_req: AuthenticatedRequest, res: Response) => {
       try {
-        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const sevenDaysAgo = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
         const events = await db
           .select()
           .from(soleneCapitalEvents)

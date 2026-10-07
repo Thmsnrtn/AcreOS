@@ -21,6 +21,7 @@ import {
   type ReserveFloorCheck,
 } from "@shared/finance/reserve-floor";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface ReserveFloorComputation extends ReserveFloorCheck {
   trailingWindowDays: number;
@@ -34,7 +35,7 @@ export interface ReserveFloorComputation extends ReserveFloorCheck {
 export async function computeReserveFloor(opts?: {
   now?: Date;
 }): Promise<ReserveFloorComputation> {
-  const now = opts?.now ?? new Date();
+  const now = opts?.now ?? clock.now();
   const trailingWindowDays = RESERVE_FLOOR_RULE.trailingWindowDays;
   const since = new Date(now.getTime() - trailingWindowDays * 24 * 60 * 60 * 1000);
 

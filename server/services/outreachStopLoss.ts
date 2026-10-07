@@ -41,6 +41,7 @@ import { and, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import { db } from "../db";
 import { financialLedger, providerLookupLog, platformSettings } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -86,7 +87,7 @@ export interface StopLossState {
 }
 
 /** UTC month key, e.g. "2026-07". */
-export function currentMonthKey(now: Date = new Date()): string {
+export function currentMonthKey(now: Date = clock.now()): string {
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
@@ -171,7 +172,7 @@ export interface MailDataSpendBreakdown {
   totalCents: number;
 }
 
-function monthStartUtc(now: Date = new Date()): Date {
+function monthStartUtc(now: Date = clock.now()): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
 }
 
@@ -181,7 +182,7 @@ function monthStartUtc(now: Date = new Date()): Date {
  * fails closed. Never fabricates a zero for a failed read.
  */
 export async function readMonthToDateMailDataSpendCents(
-  now: Date = new Date(),
+  now: Date = clock.now(),
 ): Promise<MailDataSpendBreakdown> {
   const start = monthStartUtc(now);
 
@@ -260,7 +261,7 @@ async function writeGlobalSettingValue(
   if (existing) {
     await db
       .update(platformSettings)
-      .set({ value, lastChangedBy: changedBy, lastChangedAt: new Date() })
+      .set({ value, lastChangedBy: changedBy, lastChangedAt: clock.now() })
       .where(eq(platformSettings.id, existing.id));
   } else {
     await db.insert(platformSettings).values({
@@ -274,7 +275,7 @@ async function writeGlobalSettingValue(
       category: "safety",
       description,
       lastChangedBy: changedBy,
-      lastChangedAt: new Date(),
+      lastChangedAt: clock.now(),
     });
   }
 }

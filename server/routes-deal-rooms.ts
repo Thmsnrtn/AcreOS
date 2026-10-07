@@ -318,7 +318,7 @@ router.get('/:id/documents/:docId/download', asyncHandler(async (req: Authentica
 
     // Generate a signed URL that expires in 1 hour
     // If using S3/GCS, replace with SDK presigned URL generation
-    const expiresAt = Date.now() + 60 * 60 * 1000; // 1 hour
+    const expiresAt = clock.nowMs() + 60 * 60 * 1000; // 1 hour
     const signingSecret = process.env.DOCUMENT_SIGNING_SECRET
       || (process.env.NODE_ENV === 'production'
         ? (() => { throw new Error('Missing required secret: DOCUMENT_SIGNING_SECRET'); })()
@@ -358,14 +358,14 @@ router.post('/:id/participants', asyncHandler(async (req: AuthenticatedRequest, 
     const newParticipant = {
       email,
       role,
-      joinedAt: new Date().toISOString(),
+      joinedAt: clock.now().toISOString(),
     };
 
     const updatedParticipants = [...currentParticipants, newParticipant];
 
     const [updated] = await db
       .update(dealRooms)
-      .set({ participants: updatedParticipants, updatedAt: new Date() })
+      .set({ participants: updatedParticipants, updatedAt: clock.now() })
       .where(eq(dealRooms.id, dealRoomId))
       .returning();
 
@@ -453,7 +453,7 @@ router.patch('/:id/participants/:userId', asyncHandler(async (req: Authenticated
 
     const [updated] = await db
       .update(dealRooms)
-      .set({ participants, updatedAt: new Date() })
+      .set({ participants, updatedAt: clock.now() })
       .where(eq(dealRooms.id, dealRoomId))
       .returning();
 
@@ -484,7 +484,7 @@ router.delete('/:id/participants/:userId', asyncHandler(async (req: Authenticate
 
     const [updated] = await db
       .update(dealRooms)
-      .set({ participants: filtered, updatedAt: new Date() })
+      .set({ participants: filtered, updatedAt: clock.now() })
       .where(eq(dealRooms.id, dealRoomId))
       .returning();
 
@@ -563,7 +563,7 @@ router.post('/:id/nda', asyncHandler(async (req: AuthenticatedRequest, res: Resp
       partyName,
       partyTitle,
       disclosingParty = 'AcreOS Marketplace Seller',
-      effectiveDate = new Date().toISOString().split('T')[0],
+      effectiveDate = clock.now().toISOString().split('T')[0],
     } = req.body;
 
     // Generate a basic NDA document structure
@@ -680,8 +680,8 @@ router.post('/:id/share-link', asyncHandler(async (req: AuthenticatedRequest, re
     .update(dealRooms)
     .set({
       publicShareSlug: slug,
-      publicShareEnabledAt: new Date(),
-      updatedAt: new Date(),
+      publicShareEnabledAt: clock.now(),
+      updatedAt: clock.now(),
     })
     .where(eq(dealRooms.id, dealRoomId));
 
@@ -697,7 +697,7 @@ router.delete('/:id/share-link', asyncHandler(async (req: AuthenticatedRequest, 
 
   await db
     .update(dealRooms)
-    .set({ publicShareSlug: null, publicShareEnabledAt: null, updatedAt: new Date() })
+    .set({ publicShareSlug: null, publicShareEnabledAt: null, updatedAt: clock.now() })
     .where(eq(dealRooms.id, dealRoomId));
 
   return res.json({ revoked: true });
@@ -712,6 +712,7 @@ export default router;
 // to make a viewer think "I'd want this for my own deals" + signup CTA.
 import type { Express } from 'express';
 import { sql } from 'drizzle-orm';
+import { clock } from "./utils/clock";
 export function registerPublicDealRoomRoute(app: Express): void {
   app.get('/api/public/deal-rooms/:slug', async (req: Request, res: Response) => {
     try {

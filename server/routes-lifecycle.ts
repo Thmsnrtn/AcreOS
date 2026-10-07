@@ -28,6 +28,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const npsSubmitSchema = z.object({
   score: z.number().int().min(0).max(10),
@@ -144,7 +145,7 @@ export function registerLifecycleRoutes(app: Express): void {
     requireFounder,
     async (_req: AuthenticatedRequest, res: Response) => {
       try {
-        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
 
         const leadsByOrg = await db
           .select({
@@ -240,7 +241,7 @@ export function registerLifecycleRoutes(app: Express): void {
     requireFounder,
     async (_req: AuthenticatedRequest, res: Response) => {
       try {
-        const now = Date.now();
+        const now = clock.nowMs();
         const fired: { orgId: number; rung: string }[] = [];
         const skipped: { orgId: number; rung: string; reason: string }[] = [];
 
@@ -400,7 +401,7 @@ export function registerLifecycleRoutes(app: Express): void {
               retentionDays: parsed.data.retentionDays,
               legalBasis: parsed.data.legalBasis ?? null,
               enabled: parsed.data.enabled ?? true,
-              updatedAt: new Date(),
+              updatedAt: clock.now(),
             },
           })
           .returning();

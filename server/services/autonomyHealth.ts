@@ -48,6 +48,7 @@ import {
 } from "@shared/schema";
 import { eq, and, gte, lt, ne, sql, desc, isNull, isNotNull } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type Band = "green" | "yellow" | "red";
 
@@ -106,7 +107,7 @@ async function gradePendingQueue(): Promise<DimensionResult> {
 }
 
 async function gradeFounderInterventionRate(): Promise<DimensionResult> {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const sevenDaysAgo = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
   const [row] = await db
     .select({ c: sql<number>`count(*)::int` })
     .from(decisionsInboxItems)
@@ -132,7 +133,7 @@ async function gradeFounderInterventionRate(): Promise<DimensionResult> {
 }
 
 async function gradeAvgOutcomeScore(): Promise<DimensionResult> {
-  const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+  const fourteenDaysAgo = new Date(clock.nowMs() - 14 * 24 * 60 * 60 * 1000);
   const rows = await db
     .select({ score: decisionsInboxItems.outcomeScore })
     .from(decisionsInboxItems)
@@ -168,7 +169,7 @@ async function gradeAvgOutcomeScore(): Promise<DimensionResult> {
 }
 
 async function gradeAgentHealth(): Promise<DimensionResult> {
-  const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+  const threeDaysAgo = new Date(clock.nowMs() - 3 * 24 * 60 * 60 * 1000);
   const agents = await db.select().from(companyAgents).where(eq(companyAgents.status, "active"));
   if (agents.length === 0) {
     return {
@@ -201,7 +202,7 @@ async function gradeAgentHealth(): Promise<DimensionResult> {
 }
 
 async function gradeSafetyRailTripRate(): Promise<DimensionResult> {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const sevenDaysAgo = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
 
   const [guardrailRow] = await db
     .select({ c: sql<number>`count(*)::int` })
@@ -295,7 +296,7 @@ export async function getAutonomyHealth(): Promise<AutonomyHealthReport> {
     : "Nothing specific. Glance at the decision log if you want reassurance.";
 
   return {
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
     band,
     verdict,
     dimensions: {
@@ -333,8 +334,8 @@ export async function getAutonomyHealth(): Promise<AutonomyHealthReport> {
  * ledger's own instrument and are never graded either.
  */
 export async function gradeRecentDecisions(): Promise<{ graded: number }> {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+  const sevenDaysAgo = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
+  const threeDaysAgo = new Date(clock.nowMs() - 3 * 24 * 60 * 60 * 1000);
   const rows = await db
     .select()
     .from(decisionsInboxItems)
@@ -406,8 +407,8 @@ export async function gradeRecentDecisions(): Promise<{ graded: number }> {
       .set({
         outcomeScore: score,
         actualOutcome: outcome,
-        outcomeRecordedAt: new Date(),
-        updatedAt: new Date(),
+        outcomeRecordedAt: clock.now(),
+        updatedAt: clock.now(),
       })
       .where(eq(decisionsInboxItems.id, row.id));
 

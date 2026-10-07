@@ -26,6 +26,7 @@ import {
 import { eq, desc, and, isNotNull, not } from 'drizzle-orm';
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface VoiceProfile {
   organizationId: number;
@@ -75,7 +76,7 @@ class VoiceLearningService {
 
       for (const n of orgNotes) {
         if (n.body && n.body.trim().length > 20) {
-          samples.push({ text: n.body.trim(), source: 'note', createdAt: n.createdAt ?? new Date() });
+          samples.push({ text: n.body.trim(), source: 'note', createdAt: n.createdAt ?? clock.now() });
         }
       }
     } catch (_) { /* table may not have notes column — skip */ }
@@ -98,7 +99,7 @@ class VoiceLearningService {
       for (const c of comms) {
         if (c.body && c.body.trim().length > 30) {
           const source = c.type === 'sms' ? 'sms' : 'email';
-          samples.push({ text: c.body.trim(), source, createdAt: c.createdAt ?? new Date() });
+          samples.push({ text: c.body.trim(), source, createdAt: c.createdAt ?? clock.now() });
         }
       }
     } catch (_) { /* skip */ }
@@ -169,7 +170,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these exact f
         exampleOpeners: parsed.exampleOpeners || [],
         exampleClosers: parsed.exampleClosers || [],
         rawSamples: samples.slice(0, 5).map(s => s.text),
-        analyzedAt: new Date().toISOString(),
+        analyzedAt: clock.now().toISOString(),
         sampleCount: samples.length,
       };
     } catch (err) {
@@ -208,7 +209,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these exact f
     // Check memory cache first (fast path)
     const cached = this.profileCache.get(organizationId);
     if (cached) {
-      const cacheAge = Date.now() - new Date(cached.analyzedAt).getTime();
+      const cacheAge = clock.nowMs() - new Date(cached.analyzedAt).getTime();
       if (cacheAge < 24 * 60 * 60 * 1000) return cached; // 24-hour cache
     }
 
@@ -336,7 +337,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these exact f
       exampleOpeners: ['Hi', 'Hope this finds you well'],
       exampleClosers: ['Thanks', 'Best regards'],
       rawSamples: [],
-      analyzedAt: new Date().toISOString(),
+      analyzedAt: clock.now().toISOString(),
       sampleCount: 0,
     };
   }

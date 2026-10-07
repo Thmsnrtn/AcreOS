@@ -77,6 +77,7 @@ import {
   type PayoffQuote,
   type PayoffQuoteInput,
 } from "./services/notePaymentMath";
+import { clock } from "./utils/clock";
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -778,7 +779,7 @@ function addCalendarMonths(base: Date, months: number): Date {
 export function mapDealToNoteFields(
   deal: CarryableDeal,
   overrides: CarryOverrides,
-  now: Date = new Date(),
+  now: Date = clock.now(),
 ): MappedNoteFields {
   const salePrice =
     overrides.salePrice ??
@@ -899,7 +900,7 @@ export function computeYields(input: ComputeYieldsInput): ComputeYieldsResult {
     acquisitionDate,
     payments,
   } = input;
-  const asOf = input.asOf ?? new Date();
+  const asOf = input.asOf ?? clock.now();
 
   // ── Current yield ───────────────────────────────────────────────────────
   // running coupon on basis: (annual interest payment / acquisition price)
@@ -1317,7 +1318,7 @@ export function registerNoteRoutes(app: Express): void {
         // `delinquencyStatus` ride along as real columns (written by the daily
         // aging sweep and by the payment path); `lateFeeAdvisory` is derived
         // per response and is ADVICE — nothing has been charged.
-        const asOfList = new Date();
+        const asOfList = clock.now();
         const safe = rows.map(({ payerEncryptedTin: _stripped, ...rest }) => ({
           ...rest,
           lateFeeAdvisory: noteLateFeeAdvisory(rest, asOfList),
@@ -1425,7 +1426,7 @@ export function registerNoteRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const today = new Date();
+        const today = clock.now();
         const horizon = new Date(today.getTime() + 60 * 86_400_000);
         const horizonIso = horizon.toISOString().slice(0, 10);
         const todayIso = today.toISOString().slice(0, 10);
@@ -1468,7 +1469,7 @@ export function registerNoteRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const withinDays = Math.min(365, Math.max(1, parseInt(String(req.query.withinDays ?? "60"), 10) || 60));
-        const today = new Date();
+        const today = clock.now();
         const horizon = new Date(today.getTime() + withinDays * 86_400_000);
         const horizonIso = horizon.toISOString().slice(0, 10);
 
@@ -1518,7 +1519,7 @@ export function registerNoteRoutes(app: Express): void {
           return Errors.notFound(res, "Note");
         }
         const { payerEncryptedTin: _stripped, ...safe } = row;
-        const asOfDetail = new Date();
+        const asOfDetail = clock.now();
         // Same discriminators + the same advisory shape as the list, so a
         // consumer never has to derive lateness itself (which is how the
         // browser came to invent a friendly "next payment" date in the first
@@ -1557,7 +1558,7 @@ export function registerNoteRoutes(app: Express): void {
 
         // Build the update object explicitly so unset fields aren't nulled.
         const update: Partial<typeof acquiredNotes.$inferInsert> = {
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         };
         if (patch.propertyId !== undefined) update.propertyId = patch.propertyId;
         if (patch.borrowerId !== undefined) update.borrowerId = patch.borrowerId;
@@ -1961,7 +1962,7 @@ export function registerNoteRoutes(app: Express): void {
           const updates: Partial<typeof acquiredNotes.$inferInsert> = {
             currentBalanceCents: newCurrentBalance,
             unappliedBalanceCents: newUnappliedBalance,
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           };
           if (data.paymentType === "payoff" && newCurrentBalance === 0) {
             updates.status = "paid_off";
@@ -1974,7 +1975,7 @@ export function registerNoteRoutes(app: Express): void {
           // and the status badge follows — inside the SAME transaction and the
           // SAME FOR UPDATE row as the balance write, so a concurrent payment
           // cannot advance from a stale paid-through.
-          const asOfPayment = new Date();
+          const asOfPayment = clock.now();
           const schedule = applyPaymentToSchedule({
             paymentType: data.paymentType,
             paymentDate: data.paymentDate,
@@ -2215,7 +2216,7 @@ export function registerNoteRoutes(app: Express): void {
           scheduleSaysPrincipalCents,
           drift,
           lastPostingId: lastPosting?.id ?? null,
-          asOf: new Date().toISOString(),
+          asOf: clock.now().toISOString(),
         });
       } catch (err) {
         logger.error(
@@ -2475,7 +2476,7 @@ export function registerNoteRoutes(app: Express): void {
 
         const update: Partial<typeof noteAssignments.$inferInsert> = {
           ...parsed.data,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
           signedAt: parsed.data.signedAt ? new Date(parsed.data.signedAt) : undefined,
           recordedAt: parsed.data.recordedAt ? new Date(parsed.data.recordedAt) : undefined,
         };
@@ -2588,12 +2589,12 @@ export function registerNoteRoutes(app: Express): void {
 
         const update: Partial<typeof noteLossMitCases.$inferInsert> = {
           ...parsed.data,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
           scraCheckedAt: parsed.data.scraCheckedAt ? new Date(parsed.data.scraCheckedAt) : undefined,
         };
         // Closing the case stamps closedAt.
         if (parsed.data.status && parsed.data.status !== "open") {
-          update.closedAt = new Date();
+          update.closedAt = clock.now();
         }
 
         const [row] = await db
@@ -2665,7 +2666,7 @@ export function registerNoteRoutes(app: Express): void {
             organizationId: orgId,
             caseId: req.params.id,
             actionType: parsed.data.actionType,
-            performedAt: parsed.data.performedAt ? new Date(parsed.data.performedAt) : new Date(),
+            performedAt: parsed.data.performedAt ? new Date(parsed.data.performedAt) : clock.now(),
             notes: parsed.data.notes ?? null,
             performedByUserId: userId,
           })
@@ -2678,7 +2679,7 @@ export function registerNoteRoutes(app: Express): void {
           const isActiveDuty = /active.duty/i.test(parsed.data.notes ?? "");
           await db
             .update(noteLossMitCases)
-            .set({ scraCheckedAt: new Date(), scraActiveDuty: isActiveDuty, updatedAt: new Date() })
+            .set({ scraCheckedAt: clock.now(), scraActiveDuty: isActiveDuty, updatedAt: clock.now() })
             .where(eq(noteLossMitCases.id, req.params.id));
         }
 
@@ -2857,7 +2858,7 @@ export function registerNoteRoutes(app: Express): void {
 
         const [row] = await db
           .update(noteOwnershipSplits)
-          .set({ ...parsed.data, updatedAt: new Date() })
+          .set({ ...parsed.data, updatedAt: clock.now() })
           .where(and(eq(noteOwnershipSplits.id, splitId), eq(noteOwnershipSplits.organizationId, orgId)))
           .returning();
         if (!row) return Errors.notFound(res, "Split");
@@ -2915,7 +2916,7 @@ export function registerNoteRoutes(app: Express): void {
         const orgId = getOrganizationId(req);
         const id = req.params.id;
         const dateParam =
-          (req.query.date as string | undefined) ?? new Date().toISOString().slice(0, 10);
+          (req.query.date as string | undefined) ?? clock.now().toISOString().slice(0, 10);
         let payoffDate: Date;
         try {
           payoffDate = parseIsoDateUtc(dateParam);
@@ -2976,7 +2977,7 @@ export function registerNoteRoutes(app: Express): void {
         let payoffDate: Date;
         try {
           payoffDate = parseIsoDateUtc(
-            parsed.data.payoffDate ?? new Date().toISOString().slice(0, 10),
+            parsed.data.payoffDate ?? clock.now().toISOString().slice(0, 10),
           );
         } catch {
           return Errors.badRequest(res, "payoffDate must be a valid ISO date (YYYY-MM-DD)");
@@ -3138,8 +3139,8 @@ export function registerNoteRoutes(app: Express): void {
         const origDate = new Date(note.originationDate as unknown as string);
         const monthsElapsed = Math.max(
           0,
-          (new Date().getUTCFullYear() - origDate.getUTCFullYear()) * 12 +
-            (new Date().getUTCMonth() - origDate.getUTCMonth()),
+          (clock.now().getUTCFullYear() - origDate.getUTCFullYear()) * 12 +
+            (clock.now().getUTCMonth() - origDate.getUTCMonth()),
         );
         const remaining = Math.max(1, note.termMonths - monthsElapsed);
 
@@ -3153,7 +3154,7 @@ export function registerNoteRoutes(app: Express): void {
           // disagreed with the due date shown everywhere else on the same note.
           startDate: note.nextPaymentDate
             ? new Date(`${note.nextPaymentDate}T00:00:00.000Z`)
-            : new Date(),
+            : clock.now(),
           paymentDueDay: note.paymentDueDay,
         });
 
@@ -3208,7 +3209,7 @@ export function registerNoteRoutes(app: Express): void {
           );
         }
 
-        let computationYearStart = new Date();
+        let computationYearStart = clock.now();
         const rawStart = req.query.computationYearStart;
         if (typeof rawStart === "string" && rawStart.length > 0) {
           const parsedStart = new Date(`${rawStart}T00:00:00.000Z`);

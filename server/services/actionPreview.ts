@@ -31,6 +31,7 @@ import { actionPreviews } from "@shared/schema";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { getNumberSetting } from "./founderSettings";
+import { clock } from "../utils/clock";
 
 export interface PreviewInput {
   decisionId: number;
@@ -60,7 +61,7 @@ export async function beginActionPreview(
   input: PreviewInput,
 ): Promise<PreviewCheckpoint> {
   const windowSeconds = await getNumberSetting("ACTION_PREVIEW_WINDOW_SECONDS", 0);
-  const commitAt = new Date(Date.now() + windowSeconds * 1000);
+  const commitAt = new Date(clock.nowMs() + windowSeconds * 1000);
 
   const [row] = await db
     .insert(actionPreviews)
@@ -83,8 +84,8 @@ export async function beginActionPreview(
   // If there's a window, poll every 500ms for cancellation.
   if (windowSeconds > 0) {
     const deadline = commitAt.getTime();
-    while (Date.now() < deadline) {
-      await sleep(Math.min(500, deadline - Date.now()));
+    while (clock.nowMs() < deadline) {
+      await sleep(Math.min(500, deadline - clock.nowMs()));
       const current = await getPreviewStatus(previewId);
       if (current === "cancelled") break;
     }
@@ -114,7 +115,7 @@ export async function beginActionPreview(
       .update(actionPreviews)
       .set({
         status,
-        committedAt: status === "committed" ? new Date() : null,
+        committedAt: status === "committed" ? clock.now() : null,
         executionResult: executionResult?.slice(0, 500) ?? null,
       })
       .where(and(eq(actionPreviews.id, previewId), eq(actionPreviews.status, "executing")));
@@ -148,7 +149,7 @@ export async function listPendingPreviews(limit: number = 20) {
 }
 
 export async function listRecentPreviews(hoursBack: number = 48, limit: number = 50) {
-  const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - hoursBack * 60 * 60 * 1000);
   return db
     .select()
     .from(actionPreviews)
@@ -163,7 +164,7 @@ export async function cancelPreview(id: number, cancelledBy: string, reason?: st
     .update(actionPreviews)
     .set({
       status: "cancelled",
-      cancelledAt: new Date(),
+      cancelledAt: clock.now(),
       cancelledBy,
       cancelReason: reason?.slice(0, 500) ?? null,
     })
@@ -179,7 +180,7 @@ export async function cancelPreview(id: number, cancelledBy: string, reason?: st
  * show a pending action.
  */
 export async function sweepOrphanedPreviews(): Promise<{ swept: number }> {
-  const cutoff = new Date(Date.now() - 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - 60 * 60 * 1000);
   const updated = await db
     .update(actionPreviews)
     .set({ status: "failed", executionResult: "orphaned: executor did not commit" })

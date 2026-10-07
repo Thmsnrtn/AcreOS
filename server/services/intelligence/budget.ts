@@ -30,6 +30,7 @@ import { aiBudgetRuns } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { logger } from "../../utils/logger";
 import { getNumberSetting } from "../founderSettings";
+import { clock } from "../../utils/clock";
 
 export type BudgetCategory =
   | "founder_brief"
@@ -123,7 +124,7 @@ let cachedTotalCap: { value: number; at: number } | null = null;
 const CAP_CACHE_TTL_MS = 60_000;
 
 async function getTotalDailyCapCents(): Promise<number> {
-  const now = Date.now();
+  const now = clock.nowMs();
   if (cachedTotalCap && now - cachedTotalCap.at < CAP_CACHE_TTL_MS) {
     return cachedTotalCap.value;
   }
@@ -141,7 +142,7 @@ async function getCategoryCapCents(category: BudgetCategory, totalCapCents: numb
 }
 
 function todayUtc(): string {
-  return new Date().toISOString().slice(0, 10);
+  return clock.now().toISOString().slice(0, 10);
 }
 
 /**
@@ -250,8 +251,8 @@ export async function recordSpend(
       .set({
         spentCents: newSpent.toFixed(4),
         calls: newCalls,
-        exceededAt: crossedThreshold ? new Date() : row.exceededAt,
-        updatedAt: new Date(),
+        exceededAt: crossedThreshold ? clock.now() : row.exceededAt,
+        updatedAt: clock.now(),
       })
       .where(eq(aiBudgetRuns.id, row.id));
     if (crossedThreshold) {

@@ -27,6 +27,7 @@ import {
   type WebhookEventId,
   normalizeSubscribedEvents,
 } from "@shared/webhooks/catalogue";
+import { clock } from "../utils/clock";
 
 /**
  * The event vocabulary now lives in `@shared/webhooks/catalogue`, so the
@@ -355,7 +356,7 @@ export async function saveWebhookEndpoints(
   if (existing) {
     await db
       .update(organizationIntegrations)
-      .set({ credentials, isEnabled: true, updatedAt: new Date() })
+      .set({ credentials, isEnabled: true, updatedAt: clock.now() })
       .where(eq(organizationIntegrations.id, existing.id));
   } else {
     await db.insert(organizationIntegrations).values({
@@ -406,7 +407,7 @@ export async function dispatchWebhook(
 
   const payload: WebhookPayload = {
     event,
-    timestamp: new Date().toISOString(),
+    timestamp: clock.now().toISOString(),
     organizationId,
     data,
     metadata: { version: '1.0', source: 'acreos' },
@@ -438,7 +439,7 @@ export async function dispatchWebhook(
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'X-AcreOS-Event': event,
-        'X-AcreOS-Delivery': `${organizationId}-${Date.now()}`,
+        'X-AcreOS-Delivery': `${organizationId}-${clock.nowMs()}`,
       };
 
       if (endpoint.secret) {

@@ -18,6 +18,7 @@ import { logger } from "./utils/logger";
 import { sql, eq, desc } from "drizzle-orm";
 import { countyReviews } from "@shared/schema";
 import { z } from "zod";
+import { clock } from "./utils/clock";
 
 export function registerPlatformFeatureRoutes(app: Express): void {
 
@@ -44,7 +45,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
         : 0;
 
       const closedDeals = deals.filter(d => d.status === "closed");
-      const thisYearStart = new Date(new Date().getFullYear(), 0, 1);
+      const thisYearStart = new Date(clock.now().getFullYear(), 0, 1);
       const closedThisYear = closedDeals.filter((d: any) => d.updatedAt && new Date(d.updatedAt) >= thisYearStart);
       const portfolioValue = properties.reduce((s: number, p: any) => s + (Number(p.marketValue) || 0), 0);
       const totalAcquired = properties.reduce((s: number, p: any) => s + (Number(p.purchasePrice) || 0), 0);
@@ -96,7 +97,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
       // not recorded anywhere, so they stay 0 rather than being guessed.
       const payments = await readAllPayments(org.id, { realOnly: true });
       const months: Array<{ month: string; grossDue: number; collected: number; lateFees: number; servicingCosts: number; netCashFlow: number }> = [];
-      const now = new Date();
+      const now = clock.now();
 
       for (let i = 6; i >= 0; i--) {
         const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -144,8 +145,8 @@ export function registerPlatformFeatureRoutes(app: Express): void {
       const { getPortfolioPnl } = await import("./services/portfolioPnl");
       let portfolioAvgRoi = 0;
       try {
-        const ytdStart = new Date(new Date().getFullYear(), 0, 1);
-        const pnl = await getPortfolioPnl(org.id, ytdStart, new Date(), "quarterly");
+        const ytdStart = new Date(clock.now().getFullYear(), 0, 1);
+        const pnl = await getPortfolioPnl(org.id, ytdStart, clock.now(), "quarterly");
         portfolioAvgRoi = pnl?.totals?.irr || 0;
       } catch {}
 
@@ -202,7 +203,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
       // Store tokens (simplified — in prod, exchange code for tokens via Intuit OAuth)
       await db.execute(sql`
         INSERT INTO organization_integrations (organization_id, provider, credentials, is_active, created_at)
-        VALUES (${org.id}, 'quickbooks', ${JSON.stringify({ code, realmId, connectedAt: new Date().toISOString() })}, true, NOW())
+        VALUES (${org.id}, 'quickbooks', ${JSON.stringify({ code, realmId, connectedAt: clock.now().toISOString() })}, true, NOW())
         ON CONFLICT (organization_id, provider) DO UPDATE SET
           credentials = EXCLUDED.credentials, is_active = true
       `);
@@ -580,7 +581,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   app.post("/api/export/full", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
     try {
       const org = req.organization;
-      const exportId = `export_${org.id}_${Date.now()}`;
+      const exportId = `export_${org.id}_${clock.nowMs()}`;
 
       // Generate synchronously and return the data inline
       const { generateFullExport } = await import("./services/dataPortability");
@@ -615,7 +616,7 @@ export function registerPlatformFeatureRoutes(app: Express): void {
       const { generateFullExport } = await import("./services/dataPortability");
       const data = await generateFullExport(org.id);
       res.setHeader("Content-Type", "application/json");
-      res.setHeader("Content-Disposition", `attachment; filename="acreos-export-${org.id}-${Date.now()}.json"`);
+      res.setHeader("Content-Disposition", `attachment; filename="acreos-export-${org.id}-${clock.nowMs()}.json"`);
       res.json(data);
     } catch (error) { Errors.internal(res, error); }
   });

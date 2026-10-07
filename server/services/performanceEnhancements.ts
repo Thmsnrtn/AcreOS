@@ -5,6 +5,7 @@
 
 import { db } from "../db";
 import { sql, and } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 // Item 201: Identify slow queries
 export async function getSlowQuerySuggestions(): Promise<Array<{ table: string; suggestion: string }>> {
@@ -36,7 +37,7 @@ export function generateETag(data: any): string {
 
 // Item 216: Request ID generation
 export function generateRequestId(): string {
-  return `req_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
+  return `req_${clock.nowMs().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
 }
 
 // Item 220: Deep health check
@@ -48,9 +49,9 @@ export async function deepHealthCheck(): Promise<{
 
   // Database check
   try {
-    const start = Date.now();
+    const start = clock.nowMs();
     await db.execute(sql`SELECT 1`);
-    services.database = { status: "healthy", latencyMs: Date.now() - start };
+    services.database = { status: "healthy", latencyMs: clock.nowMs() - start };
   } catch {
     services.database = { status: "unhealthy", latencyMs: -1 };
   }
@@ -90,7 +91,7 @@ export async function getJobMonitoringStats(): Promise<{
   avgDurationMs: number;
 }> {
   const { jobHealthLogs } = await import("@shared/schema");
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const oneDayAgo = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
 
   const [total] = await db.select({ count: sql<number>`COUNT(*)` }).from(jobHealthLogs);
   const [failed] = await db.select({ count: sql<number>`COUNT(*)` }).from(jobHealthLogs)

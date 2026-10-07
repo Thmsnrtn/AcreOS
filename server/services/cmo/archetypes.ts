@@ -16,6 +16,7 @@ import { db } from "../../db";
 import { cmoHookArchetypes } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 export interface ArchetypeDef {
   slug: string;
@@ -136,7 +137,7 @@ export async function seedHookArchetypes(): Promise<void> {
           displayName: archetype.displayName,
           description: archetype.description,
           examplePrompt: archetype.examplePrompt,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(cmoHookArchetypes.id, existing.id));
     } else {

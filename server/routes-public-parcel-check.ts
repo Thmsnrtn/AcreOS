@@ -42,6 +42,7 @@ import { resolveParcel } from "./services/parcel/resolveParcel";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { getClientIp } from "./utils/clientIp";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -354,7 +355,7 @@ router.get("/stream", ipCeiling, sessionLimiter, async (req: Request, res: Respo
       categories: PUBLIC_CATEGORIES,
     });
 
-    const started = Date.now();
+    const started = clock.nowMs();
     let successCount = 0;
     let failureCount = 0;
 
@@ -387,7 +388,7 @@ router.get("/stream", ipCeiling, sessionLimiter, async (req: Request, res: Respo
       send("done", {
         successCount,
         failureCount,
-        lookupTimeMs: Date.now() - started,
+        lookupTimeMs: clock.nowMs() - started,
       });
     }
     return res.end();

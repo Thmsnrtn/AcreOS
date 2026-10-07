@@ -307,7 +307,10 @@ http.createServer(async (req, res) => {
       a = { ...scriptAnswer(n), brainSkipped: 'tool not offered: ' + a.tool_calls.map((t) => t.name).join(','), attack: a.attack };
     }
   } else a = scriptAnswer(n);
-  log({ ...meta, outcome: 'answered', brain: mode.startsWith('brain:') ? (a.brainSkipped || 'applied') : undefined, attack: a.attack, brainRole: a.role, ms: Date.now() - t0, outChars: (a.content || JSON.stringify(a.tool_calls || '')).length, canned: mode.startsWith('canned:') ? (a.cannedSkipped || 'applied') : undefined, answeredTools: a.tool_calls ? a.tool_calls.map((t) => t.name) : undefined });
+  // SIMPLAT: what the product answered the brain's previous tool calls (refusals included).
+  const lastA = n.messages.map((m) => m.role).lastIndexOf('assistant');
+  const toolText = mode.startsWith('brain:') && lastA >= 0 ? n.messages.slice(lastA + 1).map((m) => m.content || '').join('\n').slice(0, 800) : undefined;
+  log({ ...meta, outcome: 'answered', brain: mode.startsWith('brain:') ? (a.brainSkipped || 'applied') : undefined, attack: a.attack, brainRole: a.role, toolText, ms: Date.now() - t0, outChars: (a.content || JSON.stringify(a.tool_calls || '')).length, canned: mode.startsWith('canned:') ? (a.cannedSkipped || 'applied') : undefined, answeredTools: a.tool_calls ? a.tool_calls.map((t) => t.name) : undefined });
   if (n.stream) return sse(res, kind, a, n, inTok);
   return send(200, kind === 'anthropic' ? anthropicBody(a, n, inTok) : openaiBody(a, n, inTok));
 }).listen(PORT, '127.0.0.1', () => console.log(`model stand-in on :${PORT}, dir ${DIR}`));

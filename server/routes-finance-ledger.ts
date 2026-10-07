@@ -31,13 +31,14 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { REVENUE_TRIGGER_LADDER, pendingScaleUpTriggers, trailing30dRevenueCents } from "./services/finance/scaleUpTriggers";
 import { liveMrrDetail } from "./services/finance/runwayModel";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
 
 function daysAgo(n: number): Date {
-  return new Date(Date.now() - n * 24 * 60 * 60 * 1000);
+  return new Date(clock.nowMs() - n * 24 * 60 * 60 * 1000);
 }
 
 // ── GET /buckets ─────────────────────────────────────────────────────────────
@@ -98,7 +99,7 @@ router.get("/buckets", async (_req: AuthenticatedRequest, res: Response) => {
       opexAvailable: opexAllocatedCents,
       opexSpent: opexSpentCents,
       opexAvailableNet: opexAvailableNetCents,
-      asOf: new Date().toISOString(),
+      asOf: clock.now().toISOString(),
     });
   } catch (err) {
     Errors.internal(res, err);
@@ -180,7 +181,7 @@ router.get("/mrr", async (_req: AuthenticatedRequest, res: Response) => {
 
 router.get("/contribution-margin", async (_req: AuthenticatedRequest, res: Response) => {
   try {
-    const thisMonthStart = new Date();
+    const thisMonthStart = clock.now();
     thisMonthStart.setUTCDate(1);
     thisMonthStart.setUTCHours(0, 0, 0, 0);
 
@@ -213,7 +214,7 @@ router.get("/contribution-margin", async (_req: AuthenticatedRequest, res: Respo
       return { revenue, opexSigned, margin: revenue + opexSigned };
     }
 
-    const now = new Date();
+    const now = clock.now();
     const thisMonth = await rangeAgg(thisMonthStart, now);
     const lastMonth = await rangeAgg(lastMonthStart, thisMonthStart);
 
@@ -515,7 +516,7 @@ router.post("/recovery-transfer", async (req: AuthenticatedRequest, res: Respons
     }
 
     const founderId = req.user?.id ?? "founder";
-    const transferId = `founder:${founderId}:transfer:${Date.now()}`;
+    const transferId = `founder:${founderId}:transfer:${clock.nowMs()}`;
 
     // Paired entry: debit fromBucket, credit toBucket. Same external id pair
     // with deterministic suffixes so retries collapse via unique constraint.
@@ -530,7 +531,7 @@ router.post("/recovery-transfer", async (req: AuthenticatedRequest, res: Respons
         externalEventId: `${transferId}:from`,
         invoiceId: null,
         campaignId: null,
-        postedAt: new Date(),
+        postedAt: clock.now(),
         postedBy: `founder:${founderId}`,
         notes: note ?? null,
       },
@@ -544,7 +545,7 @@ router.post("/recovery-transfer", async (req: AuthenticatedRequest, res: Respons
         externalEventId: `${transferId}:to`,
         invoiceId: null,
         campaignId: null,
-        postedAt: new Date(),
+        postedAt: clock.now(),
         postedBy: `founder:${founderId}`,
         notes: note ?? null,
       },

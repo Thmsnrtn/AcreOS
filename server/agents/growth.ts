@@ -6,6 +6,7 @@ import { BaseAgent, type AgentDecision } from "./base-agent";
 import { db } from "../storage";
 import { sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -16,7 +17,7 @@ export class GrowthAgent extends BaseAgent {
   readonly intervalMs = 6 * HOUR; // Check every 6 hours
 
   async runOnce(): Promise<void> {
-    const now = new Date();
+    const now = clock.now();
     const hour = now.getHours();
 
     // Daily report at ~9am
@@ -35,7 +36,7 @@ export class GrowthAgent extends BaseAgent {
 
   private async generateDailyGrowthReport(): Promise<void> {
     // Check if already generated today
-    const today = new Date();
+    const today = clock.now();
     today.setHours(0, 0, 0, 0);
     const existing = await db.execute(sql`
       SELECT 1 FROM founder_briefs
@@ -44,7 +45,7 @@ export class GrowthAgent extends BaseAgent {
     `);
     if ((existing as any).rows?.length > 0) return;
 
-    const yesterday = new Date(Date.now() - DAY);
+    const yesterday = new Date(clock.nowMs() - DAY);
 
     const [signups, onboardingCompletions, activations] = await Promise.all([
       db.execute(sql`
@@ -63,7 +64,7 @@ export class GrowthAgent extends BaseAgent {
     ]);
 
     const report = {
-      date: new Date().toISOString().split("T")[0],
+      date: clock.now().toISOString().split("T")[0],
       signups: Number((signups as any).rows?.[0]?.count ?? 0),
       onboardingCompletions: Number((onboardingCompletions as any).rows?.[0]?.count ?? 0),
       activations: ((activations as any).rows ?? []).reduce(
@@ -80,7 +81,7 @@ export class GrowthAgent extends BaseAgent {
   }
 
   private async generateWeeklyBrief(): Promise<void> {
-    const today = new Date();
+    const today = clock.now();
     today.setHours(0, 0, 0, 0);
     const existing = await db.execute(sql`
       SELECT 1 FROM founder_briefs
@@ -89,8 +90,8 @@ export class GrowthAgent extends BaseAgent {
     `);
     if ((existing as any).rows?.length > 0) return;
 
-    const oneWeekAgo = new Date(Date.now() - 7 * DAY);
-    const twoWeeksAgo = new Date(Date.now() - 14 * DAY);
+    const oneWeekAgo = new Date(clock.nowMs() - 7 * DAY);
+    const twoWeeksAgo = new Date(clock.nowMs() - 14 * DAY);
 
     const [thisWeek, lastWeek, activations, topPages] = await Promise.all([
       db.execute(sql`
@@ -145,7 +146,7 @@ export class GrowthAgent extends BaseAgent {
 
   private async checkGrowthTriggers(): Promise<void> {
     // Check for upgrade events
-    const yesterday = new Date(Date.now() - DAY);
+    const yesterday = new Date(clock.nowMs() - DAY);
     const upgrades = await db.execute(sql`
       SELECT o.id, o.name, o.subscription_tier, o.created_at
       FROM organizations o
@@ -162,7 +163,7 @@ export class GrowthAgent extends BaseAgent {
     `);
 
     for (const org of (upgrades as any).rows ?? []) {
-      const daysSinceSignup = Math.round((Date.now() - new Date(org.created_at).getTime()) / DAY);
+      const daysSinceSignup = Math.round((clock.nowMs() - new Date(org.created_at).getTime()) / DAY);
       const decision: AgentDecision = {
         agentName: this.name,
         action: "log_upgrade_journey",
@@ -170,7 +171,7 @@ export class GrowthAgent extends BaseAgent {
         riskLevel: "low",
         autoApproved: true,
         data: { orgId: org.id, tier: org.subscription_tier, daysSinceSignup },
-        timestamp: new Date(),
+        timestamp: clock.now(),
       };
       await this.logDecision(decision);
       await this.storeBrief("upgrade_logged", { orgId: org.id });

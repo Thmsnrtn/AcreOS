@@ -41,6 +41,7 @@ import type {
   EvidenceAuthority,
   EvidenceClaimInput,
 } from "@shared/evidence/claim";
+import { clock } from "../../utils/clock";
 
 /**
  * AUTHORITY BELONGS TO THE SOURCE, NOT TO THE TRANSPORT.
@@ -178,7 +179,7 @@ export function claimsFromEnrichment(
 ): EvidenceClaimInput[] {
   const ctx: EmitContext = {
     propertyId,
-    fetchedAt: enrichment.enrichedAt ? new Date(enrichment.enrichedAt) : new Date(),
+    fetchedAt: enrichment.enrichedAt ? new Date(enrichment.enrichedAt) : clock.now(),
     provenance: enrichment.provenance,
   };
 

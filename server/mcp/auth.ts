@@ -23,6 +23,7 @@
 
 import { hashApiKey, verifyHash, verifySecret } from "../services/apiKeys.js";
 import { logger } from "../utils/logger.js";
+import { clock } from "../utils/clock";
 
 export type McpAuthResult =
   | { status: "unconfigured" }
@@ -68,7 +69,7 @@ export async function resolveMcpAuth(
       if (!row) return { status: "unauthorized" };
       // Timing-safe re-compare (defense-in-depth, mirrors requireApiKey.ts).
       if (!verifyHash(hashed, row.hashedKey)) return { status: "unauthorized" };
-      if (row.expiresAt && row.expiresAt.getTime() < Date.now()) {
+      if (row.expiresAt && row.expiresAt.getTime() < clock.nowMs()) {
         return { status: "unauthorized" };
       }
       return {

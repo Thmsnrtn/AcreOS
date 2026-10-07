@@ -16,6 +16,7 @@ import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { addMonths } from "../utils/dateUtils";
 import { noteGracePeriodDays } from "@shared/notes/delinquency";
+import { clock } from "../utils/clock";
 
 /**
  * Thrown when a note, property or forecast id does not belong to the calling
@@ -185,7 +186,7 @@ class CashFlowForecasterService {
       organizationId,
       noteId: noteId || null,
       propertyId: propertyId || null,
-      forecastDate: new Date(),
+      forecastDate: clock.now(),
       forecastPeriodMonths: periodMonths,
       projectedIncome,
       projectedExpenses,
@@ -258,7 +259,7 @@ class CashFlowForecasterService {
     // Track balance in integer cents to avoid IEEE-754 cumulative error
     let currentBalanceCents = Math.round(parseFloat(note.currentBalance) * 100);
 
-    const today = new Date();
+    const today = clock.now();
     const nextPaymentDate = note.nextPaymentDate ? new Date(note.nextPaymentDate) : new Date(today);
 
     for (let i = 0; i < months; i++) {
@@ -309,7 +310,7 @@ class CashFlowForecasterService {
     }
 
     const projections: IncomeProjection[] = [];
-    const today = new Date();
+    const today = clock.now();
 
     // Income from a property is what a CONTRACT says (DEFECT-0175). This
     // projected every owned parcel with a market value as rented at 0.8% of
@@ -362,7 +363,7 @@ class CashFlowForecasterService {
     months: number
   ): Promise<ExpenseProjection[]> {
     const projections: ExpenseProjection[] = [];
-    const today = new Date();
+    const today = clock.now();
 
     if (entityType === "property") {
       const [property] = await db
@@ -575,7 +576,7 @@ class CashFlowForecasterService {
 
   private calculateExpectedPayments(note: Note): number {
     const startDate = new Date(note.startDate);
-    const today = new Date();
+    const today = clock.now();
     const monthsDiff = (today.getFullYear() - startDate.getFullYear()) * 12 + 
                        (today.getMonth() - startDate.getMonth());
     return Math.max(0, Math.min(monthsDiff, note.termMonths));
@@ -1018,7 +1019,7 @@ Return valid JSON array with objects containing: type (string), message (string)
     organizationId: number,
     periodMonths: number
   ): Promise<ActualVsProjectedComparison> {
-    const cutoffDate = addMonths(new Date(), -periodMonths);
+    const cutoffDate = addMonths(clock.now(), -periodMonths);
 
     const historicalForecasts = await db
       .select()
@@ -1040,7 +1041,7 @@ Return valid JSON array with objects containing: type (string), message (string)
 
       const forecastEndDate = addMonths(new Date(forecast.forecastDate), forecast.forecastPeriodMonths || 12);
 
-      if (forecastEndDate > new Date()) continue;
+      if (forecastEndDate > clock.now()) continue;
 
       const actualPayments = await db
         .select()
@@ -1145,7 +1146,7 @@ Return valid JSON array with objects containing: type (string), message (string)
     }
 
     // Build sorted timeline covering the full requested window
-    const today = new Date();
+    const today = clock.now();
     const result = [];
     for (let i = 0; i < months; i++) {
       const d = new Date(today.getFullYear(), today.getMonth() + i, 1);

@@ -31,6 +31,7 @@ import {
   type ServicerRemittance,
 } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface GenerateMonthlyRemittancesResult {
   organizationId: number;
@@ -175,8 +176,8 @@ export async function generateMonthlyRemittances(
           grossCents,
           servicerFeeCents,
           netCents,
-          generatedAt: new Date(),
-          updatedAt: new Date(),
+          generatedAt: clock.now(),
+          updatedAt: clock.now(),
         },
       })
       .returning();

@@ -29,6 +29,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -110,10 +111,10 @@ router.put("/:key", async (req: AuthenticatedRequest, res: Response) => {
 
     await db
       .insert(uiState)
-      .values({ organizationId, userId, key, value, updatedAt: new Date() })
+      .values({ organizationId, userId, key, value, updatedAt: clock.now() })
       .onConflictDoUpdate({
         target: [uiState.organizationId, uiState.userId, uiState.key],
-        set: { value, updatedAt: new Date() },
+        set: { value, updatedAt: clock.now() },
       });
 
     logger.info("UI state persisted", { organizationId, userId, key });

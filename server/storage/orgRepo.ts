@@ -10,6 +10,7 @@ import { db } from "../db";
 import { organizations, type Organization, type InsertOrganization } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export const orgRepo = {
   async getOrganization(this: DatabaseStorage, id: number): Promise<Organization | undefined> {
@@ -76,7 +77,7 @@ export const orgRepo = {
 
   async updateOrganization(this: DatabaseStorage, id: number, updates: Partial<InsertOrganization>): Promise<Organization> {
     const [updated] = await db.update(organizations)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(eq(organizations.id, id))
       .returning();
     return updated;

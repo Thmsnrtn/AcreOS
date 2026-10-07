@@ -32,6 +32,7 @@ import { emailService } from "./emailService";
 import { sendPushToUser } from "./pushNotificationService";
 import { getFounderEmails, getFounderUserIds, getFounderPrimaryOrgId } from "./founder";
 import { registerCriticalAlert } from "../routes-founder-critical-alerts";
+import { clock } from "../utils/clock";
 
 /** P0 = page-now (15m ack), P1 = urgent (60m ack). Mirrors criticalAlertAcks. */
 export type OnCallSeverity = "P0" | "P1";
@@ -120,7 +121,7 @@ export async function notifyOnCall(
         // dedicated on-call page and inventing one would be a new top-level
         // founder route, which the four-doors rule forbids.
         url: "/founder",
-        tag: `oncall-${severity}-${result.notificationId ?? Date.now()}`,
+        tag: `oncall-${severity}-${result.notificationId ?? clock.nowMs()}`,
         data: { severity, oncall: true, ...meta },
       });
       result.push.sent += r.sent;
@@ -139,7 +140,7 @@ export async function notifyOnCall(
 <div style="font-family:-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:20px;">
   <div style="background:${color};padding:16px 20px;border-radius:8px;margin-bottom:16px;">
     <h2 style="color:white;margin:0;font-size:18px;">🔴 ${severity} — ${title}</h2>
-    <p style="color:rgba(255,255,255,0.85);margin:4px 0 0;font-size:13px;">AcreOS On-Call · ${new Date().toISOString()}</p>
+    <p style="color:rgba(255,255,255,0.85);margin:4px 0 0;font-size:13px;">AcreOS On-Call · ${clock.now().toISOString()}</p>
   </div>
   <pre style="white-space:pre-wrap;font-family:-apple-system,sans-serif;color:#374151;font-size:14px;line-height:1.5;">${escapeHtml(body)}</pre>
   <div style="margin-top:20px;text-align:center;">

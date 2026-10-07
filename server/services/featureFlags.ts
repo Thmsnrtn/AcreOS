@@ -15,6 +15,7 @@ import {
   FEATURE_FLAG_STATES,
 } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface FlagContext {
   userId?: string;
@@ -196,7 +197,7 @@ export const featureFlagService = {
     if (key in RETIRED_FLAG_KEYS) {
       throw new RetiredFeatureFlagError(key, RETIRED_FLAG_KEYS[key]);
     }
-    const set: Record<string, unknown> = { changedBy: changedBy ?? null, changedAt: new Date(), updatedAt: new Date() };
+    const set: Record<string, unknown> = { changedBy: changedBy ?? null, changedAt: clock.now(), updatedAt: clock.now() };
     if (update.state !== undefined) {
       if (!FEATURE_FLAG_STATES.includes(update.state)) {
         throw new Error(`Invalid feature flag state: ${update.state}`);

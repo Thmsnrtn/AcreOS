@@ -47,6 +47,7 @@ import { desc, and, eq, gte } from "drizzle-orm";
 import { db } from "../../db";
 import { openDataChangeEvents, type OpenDataChangeEvent } from "@shared/schema";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -329,7 +330,7 @@ export async function listRecentChangeEvents(
 ): Promise<OpenDataChangeEvent[]> {
   const sinceDays = options.sinceDays ?? 90;
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 500);
-  const cutoff = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - sinceDays * 24 * 60 * 60 * 1000);
 
   const conditions = [gte(openDataChangeEvents.detectedAt, cutoff)];
   if (options.scopeType) conditions.push(eq(openDataChangeEvents.scopeType, options.scopeType));

@@ -13,6 +13,7 @@ import { db } from "./db";
 import { territories, teamMembers } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { Errors } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -72,7 +73,7 @@ router.put("/:id", async (req: Request, res: Response) => {
 
     const [updated] = await db
       .update(territories)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...updates, updatedAt: clock.now() })
       .where(and(eq(territories.id, id), eq(territories.organizationId, org.id)))
       .returning();
 
@@ -110,7 +111,7 @@ router.post("/:id/assign", async (req: Request, res: Response) => {
 
     const [updated] = await db
       .update(territories)
-      .set({ assignedUserId: userId, updatedAt: new Date() })
+      .set({ assignedUserId: userId, updatedAt: clock.now() })
       .where(and(eq(territories.id, id), eq(territories.organizationId, org.id)))
       .returning();
 

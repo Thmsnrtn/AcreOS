@@ -44,6 +44,7 @@
  */
 
 import { createHmac, timingSafeEqual } from "crypto";
+import { clock } from "../../utils/clock";
 
 /** Wire-format version, so a future rotation can coexist with printed mail. */
 const CODE_VERSION = "v1";
@@ -193,7 +194,7 @@ export function scanSuppressionReason(args: {
   now?: Date;
 }): ScanSuppression | null {
   const { signals, lastCountedScanAt } = args;
-  const now = args.now ?? new Date();
+  const now = args.now ?? clock.now();
 
   // A HEAD probe is never a human reading a postcard.
   if (signals.method && signals.method.toUpperCase() === "HEAD") return "prefetch";

@@ -53,6 +53,7 @@ import { acquiredNotes } from "@shared/schema/notes-vertical";
 import { eq } from "drizzle-orm";
 import { logger } from "../../utils/logger";
 import { qualifiesForRegZStatement } from "../periodicStatements/predicate";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // PURE ALGORITHM
@@ -374,7 +375,7 @@ export async function applyPayment(
   // because the JSONB append is cleaner as an explicit read-modify-write
   // than as a SQL-level jsonb_set on insert.
   const ledgerEntry = {
-    at: new Date().toISOString(),
+    at: clock.now().toISOString(),
     deltaCents: decision.appliedToSuspenseCents,
     paymentId: input.paymentId,
     kind:
@@ -393,7 +394,7 @@ export async function applyPayment(
       .set({
         balanceCents: decision.newSuspenseBalanceCents,
         ledgerEntries: newEntries,
-        lastUpdatedAt: new Date(),
+        lastUpdatedAt: clock.now(),
       })
       .where(eq(suspenseBalances.id, existingSuspense.id));
   } else if (decision.newSuspenseBalanceCents > 0 || decision.appliedToSuspenseCents !== 0) {

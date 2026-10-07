@@ -48,6 +48,7 @@ import { makeSigningToken } from "../signingTokens";
 import { loadSigningProgress } from "../esign/signingProgress";
 import { tenantDisplayName } from "@shared/rental/tenantName";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 export const LEASE_PACKET_TEMPLATE_VERSION = "2026-07-30-v1";
 /** Signing links expire with the document; 30 days matches the deal rail. */
@@ -317,7 +318,7 @@ export async function createLeaseSignaturePacket(args: {
     throw new LeasePacketBlockedError(args.packet.blocking);
   }
 
-  const expiresAt = new Date(Date.now() + PACKET_TTL_MS);
+  const expiresAt = new Date(clock.nowMs() + PACKET_TTL_MS);
   const doc = await storage.createGeneratedDocument({
     organizationId: args.organizationId,
     name: args.packet.title,
@@ -338,7 +339,7 @@ export async function createLeaseSignaturePacket(args: {
     // `sentAt` records that the operator dispatched the packet (minted the
     // links), not that AcreOS transmitted anything — AcreOS has no send rail
     // for counterparty mail.
-    sentAt: new Date(),
+    sentAt: clock.now(),
     expiresAt,
   });
 
@@ -356,9 +357,9 @@ export async function createLeaseSignaturePacket(args: {
     .set({
       status: "pending_signature",
       signingDocumentId: doc.id,
-      signaturePacketSentAt: new Date(),
+      signaturePacketSentAt: clock.now(),
       signatureRequestedBy: args.userId,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     })
     .where(and(eq(rentalLeases.id, args.leaseId), eq(rentalLeases.organizationId, args.organizationId)));
 
@@ -496,7 +497,7 @@ export async function getLeaseSignatureStatus(args: {
 
   const allSigned = signers.length > 0 && signers.every((s) => !!s.signedAt);
   const allConsented = signers.length > 0 && signers.every((s) => s.consentRecorded);
-  const expired = !!doc.expiresAt && new Date(doc.expiresAt) < new Date();
+  const expired = !!doc.expiresAt && new Date(doc.expiresAt) < clock.now();
 
   const blockers: string[] = [];
   if (signers.length === 0) blockers.push("The signing document has no signers.");
@@ -546,7 +547,7 @@ export async function executeSignedLease(args: {
     throw new LeasePacketBlockedError(status.blockers);
   }
 
-  const executedAt = new Date();
+  const executedAt = clock.now();
   await db
     .update(rentalLeases)
     .set({ status: "active", executedAt, updatedAt: executedAt })

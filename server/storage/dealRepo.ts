@@ -14,6 +14,7 @@ import { publishDealLifecycle, recordDealTransitionEvidence } from "../services/
 import { LIST_READ_CAP, capListRead } from "./listCap";
 
 import { ADMINISTRATIVE_DEAL_STATUSES, isDealStatus, validateDealTransition } from "@shared/lifecycle/pipeline-status";
+import { clock } from "../utils/clock";
 
 /**
  * A deal status write the state machine refuses. Thrown by the repository —
@@ -142,7 +143,7 @@ export const dealRepo = {
     }
 
     const [updated] = await db.update(deals)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(whereClause!)
       .returning();
 
@@ -231,7 +232,7 @@ export const dealRepo = {
       .from(deals)
       .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids), eq(deals.status, "closed")));
     await db.update(deals)
-      .set({ status: "deleted", updatedAt: new Date() })
+      .set({ status: "deleted", updatedAt: clock.now() })
       .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
     for (const d of closedBefore) recordDealTransitionEvidence(orgId, { status: "closed" }, { id: d.id, status: "deleted" });
     return ids.length;
@@ -267,7 +268,7 @@ export const dealRepo = {
     }
 
     await db.update(deals)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
 
     for (const before of beforeRows) {

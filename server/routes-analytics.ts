@@ -12,6 +12,7 @@ import { Errors } from "./utils/errors";
 import { omitServerOwnedFields } from "./utils/updatePayload";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
+import { clock } from "./utils/clock";
 
 export function registerAnalyticsRoutes(app: Express): void {
   const api = app;
@@ -20,8 +21,8 @@ export function registerAnalyticsRoutes(app: Express): void {
   // ============================================
 
   function parseDateRange(range: string): { startDate: Date; endDate: Date } {
-    const endDate = new Date();
-    let startDate = new Date();
+    const endDate = clock.now();
+    let startDate = clock.now();
     
     switch (range) {
       case '7d':
@@ -165,8 +166,8 @@ export function registerAnalyticsRoutes(app: Express): void {
   api.get("/api/analytics/team-kpi", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const now = new Date();
-      const thirtyDaysAgo = new Date();
+      const now = clock.now();
+      const thirtyDaysAgo = clock.now();
       thirtyDaysAgo.setDate(now.getDate() - 30);
 
       const [deals, leads] = await Promise.all([
@@ -405,7 +406,7 @@ export function registerAnalyticsRoutes(app: Express): void {
 
       const since = req.query.since
         ? new Date(req.query.since as string)
-        : new Date(new Date().getFullYear(), new Date().getMonth(), 1); // MTD default
+        : new Date(clock.now().getFullYear(), clock.now().getMonth(), 1); // MTD default
 
       // Fetch all active team members
       const members = await db
@@ -493,7 +494,7 @@ export function registerAnalyticsRoutes(app: Express): void {
       const granularity = (req.query.granularity as string) || "week";
       const weeksBack = parseInt(req.query.weeksBack as string) || 12;
 
-      const now = new Date();
+      const now = clock.now();
       const cutoff = new Date(now);
       if (granularity === "month") {
         const adjusted = addMonths(cutoff, -weeksBack);
@@ -651,7 +652,7 @@ export function registerAnalyticsRoutes(app: Express): void {
         granularity,
         weeksBack,
         cohorts,
-        generatedAt: new Date().toISOString(),
+        generatedAt: clock.now().toISOString(),
       });
     } catch (error) {
       logger.error("Cohort dashboard error", error instanceof Error ? error : undefined);
@@ -668,8 +669,8 @@ export function registerAnalyticsRoutes(app: Express): void {
   api.get("/api/analytics/attribution", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const from = req.query.from ? new Date(req.query.from as string) : new Date(Date.now() - 90 * 86400000);
-      const to = req.query.to ? new Date(req.query.to as string) : new Date();
+      const from = req.query.from ? new Date(req.query.from as string) : new Date(clock.nowMs() - 90 * 86400000);
+      const to = req.query.to ? new Date(req.query.to as string) : clock.now();
       const { getAttributionReport } = await import("./services/attributionService");
       const report = await getAttributionReport(org.id, from, to);
       res.json(report);

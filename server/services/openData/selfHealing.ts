@@ -48,6 +48,7 @@ import { db } from "../../db";
 import { platformSettings, providerHealth } from "@shared/schema";
 import { decisionsInboxService } from "../decisionsInbox";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ── Threshold constants (see module doc for the rationale) ────────────────
 
@@ -208,7 +209,7 @@ export function evaluateProbeRows(rows: ProbeHealthRow[]): ProbeHealthEvaluation
 
 /** Read recent provider_health rows and evaluate them (DB wrapper). */
 export async function evaluateProbeHealth(): Promise<ProbeHealthEvaluation> {
-  const cutoff = new Date(Date.now() - PROBE_HEALTH_LOOKBACK_MS);
+  const cutoff = new Date(clock.nowMs() - PROBE_HEALTH_LOOKBACK_MS);
   const rows = await db
     .select({
       source: providerHealth.source,
@@ -260,7 +261,7 @@ async function writeDriftMarker(
       .set({
         value,
         lastChangedBy: "self-healing-data-plane",
-        lastChangedAt: new Date(),
+        lastChangedAt: clock.now(),
       })
       .where(
         and(
@@ -280,7 +281,7 @@ async function writeDriftMarker(
       description:
         "Self-Healing Data Plane drift-window marker: open/closed annunciation state for this data category's canary probes (ruling #9 wave 4).",
       lastChangedBy: "self-healing-data-plane",
-      lastChangedAt: new Date(),
+      lastChangedAt: clock.now(),
     });
   }
 }
@@ -300,7 +301,7 @@ export function buildDriftCard(finding: ConfirmedDrift): {
 } {
   const since = finding.firstFailedAt.toISOString().slice(0, 16).replace("T", " ") + " UTC";
   const hours = Math.floor(
-    Math.max(0, Date.now() - finding.firstFailedAt.getTime()) / (60 * 60 * 1000),
+    Math.max(0, clock.nowMs() - finding.firstFailedAt.getTime()) / (60 * 60 * 1000),
   );
   const label = humanCategory(finding.category);
   return {
@@ -376,7 +377,7 @@ export async function annunciateDrift(finding: ConfirmedDrift): Promise<Annuncia
       category: finding.category,
       source: finding.source,
       firstFailedAt: finding.firstFailedAt.toISOString(),
-      openedAt: new Date().toISOString(),
+      openedAt: clock.now().toISOString(),
       cardItemId: itemId,
     });
 
@@ -415,7 +416,7 @@ export async function closeDriftWindowIfOpen(category: string): Promise<boolean>
     await writeDriftMarker(category, marker, {
       ...marker.value,
       status: "closed",
-      closedAt: new Date().toISOString(),
+      closedAt: clock.now().toISOString(),
     });
     logger.info(`[selfHealing] drift window closed on recovery: ${category}`, {
       source: "selfHealing",

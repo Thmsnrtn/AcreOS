@@ -60,6 +60,7 @@ import { db } from "../../db";
 import { sanctionsListEntries, type InsertSanctionsListEntry } from "@shared/schema";
 import { logger } from "../../utils/logger";
 import { normalizeName } from "./ofacScreening";
+import { clock } from "../../utils/clock";
 
 export type SourceList = "SDN" | "CONSOLIDATED";
 export type EntityType = "individual" | "entity" | "vessel" | "aircraft";
@@ -340,7 +341,7 @@ async function fetchAddrMap(url: string): Promise<Map<string, Array<Record<strin
  */
 export async function upsertEntries(entries: ParsedEntry[]): Promise<number> {
   if (entries.length === 0) return 0;
-  const now = new Date();
+  const now = clock.now();
   const CHUNK = 500;
   let written = 0;
   for (let i = 0; i < entries.length; i += CHUNK) {
@@ -442,13 +443,13 @@ async function refreshOneList(
  * its cached rows intact while the other still refreshes. Never throws.
  */
 export async function syncSanctionsLists(): Promise<SanctionsSyncSummary> {
-  const start = Date.now();
+  const start = clock.nowMs();
   const results = await Promise.all([
     refreshOneList("SDN", SDN_URL, SDN_ALT_URL, SDN_ADD_URL),
     refreshOneList("CONSOLIDATED", CONSOLIDATED_URL, CONSOLIDATED_ALT_URL, CONSOLIDATED_ADD_URL),
   ]);
   const totalUpserted = results.reduce((s, r) => s + r.upserted, 0);
-  const durationMs = Date.now() - start;
+  const durationMs = clock.nowMs() - start;
   logger.info("[sanctionsListSync] sync complete", {
     metadata: {
       totalUpserted,

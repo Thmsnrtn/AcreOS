@@ -27,6 +27,7 @@ import { SAMPLE_APN_PREFIX } from "./onboarding/sampleSeeder";
 import { consentingOrgIds, sophiePrivacyGuard } from "./sophiePrivacyGuard";
 import { MIN_DISTINCT_OPERATORS } from "./dataCoop/privacyRollup";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -271,8 +272,8 @@ export async function contributeClosedDealToNetwork(
       acreageBucket: bucketAcreage(acres),
       pricePerAcre,          // Rounded to nearest $500
       zoningCategory: zoning ?? "unknown",
-      saleQuarter: quarterOf(closingDate ?? new Date()),
-      contributedAt: new Date().toISOString(),
+      saleQuarter: quarterOf(closingDate ?? clock.now()),
+      contributedAt: clock.now().toISOString(),
       dealKey,
       // Operator-entered at close — not a recorded deed price.
       evidence: "operator_entered_close",
@@ -303,7 +304,7 @@ export async function contributeClosedDealToNetwork(
         organizationId: null, // ← global pool marker
         county,
         state,
-        metricDate: new Date(),
+        metricDate: clock.now(),
         periodType: "transaction",
         averagePricePerAcre: String(pricePerAcre),
         medianPricePerAcre: String(pricePerAcre),
@@ -312,7 +313,7 @@ export async function contributeClosedDealToNetwork(
           {
             sourceId: 0,
             sourceName: "network_aggregate",
-            fetchedAt: new Date().toISOString(),
+            fetchedAt: clock.now().toISOString(),
           },
         ],
         economicData: {
@@ -332,7 +333,7 @@ export async function contributeClosedDealToNetwork(
             organizationId: null,
             county,
             state,
-            metricDate: new Date(staged.contributedAt ?? Date.now()),
+            metricDate: new Date(staged.contributedAt ?? clock.nowMs()),
             periodType: "transaction",
             averagePricePerAcre: String(staged.pricePerAcre),
             medianPricePerAcre: String(staged.pricePerAcre),
@@ -341,7 +342,7 @@ export async function contributeClosedDealToNetwork(
               {
                 sourceId: 0,
                 sourceName: "network_aggregate",
-                fetchedAt: new Date().toISOString(),
+                fetchedAt: clock.now().toISOString(),
               },
             ],
             economicData: {

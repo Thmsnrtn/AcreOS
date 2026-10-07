@@ -14,6 +14,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { SpanStatusCode, SpanKind, context, propagation, trace, type Span } from "@opentelemetry/api";
 import { getTracer } from "../tracing";
+import { clock } from "../utils/clock";
 
 // ─── Span recording ──────────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ function recordSpan(span: SpanRecord): void {
 
 /** Return a snapshot of recent span records (for metrics / debugging). */
 export function getRecentSpans(limitMs = 60_000): SpanRecord[] {
-  const cutoff = Date.now() - limitMs;
+  const cutoff = clock.nowMs() - limitMs;
   return spanBuffer.filter(
     (s) => {
       // We don't store a timestamp on SpanRecord — use buffer position proxy.
@@ -129,11 +130,11 @@ export function tracingMiddleware(
   // Surface trace ID to callers (useful for correlating logs)
   res.setHeader("X-Trace-Id", traceId);
 
-  const startTime = Date.now();
+  const startTime = clock.nowMs();
 
   // Capture response details on finish
   res.on("finish", () => {
-    const duration = Date.now() - startTime;
+    const duration = clock.nowMs() - startTime;
     const statusCode = res.statusCode;
 
     // Annotate span with response attributes

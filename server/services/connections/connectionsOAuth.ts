@@ -18,6 +18,7 @@ import {
   resolveConnectionValue,
   setConnectionField,
 } from "./platformConnections";
+import { clock } from "../../utils/clock";
 
 export const OAUTH_PROVIDERS = ["meta_ads", "google_ads"] as const;
 export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
@@ -86,7 +87,7 @@ export async function startOAuth(
     if (!appId || !appSecret) {
       return { ok: false, reason: "Save the Meta app ID + app secret first — then Connect logs you into your Meta account." };
     }
-    await setConnectionField(provider, "oauth_state", `${nonce}:${Date.now()}`, updatedBy);
+    await setConnectionField(provider, "oauth_state", `${nonce}:${clock.nowMs()}`, updatedBy);
     return { ok: true, url: buildMetaAuthUrl(appId, redirectUri, state) };
   }
 
@@ -95,7 +96,7 @@ export async function startOAuth(
   if (!clientId || !clientSecret) {
     return { ok: false, reason: "Save the Google OAuth client ID + secret first — then Connect logs you into your Google account." };
   }
-  await setConnectionField(provider, "oauth_state", `${nonce}:${Date.now()}`, updatedBy);
+  await setConnectionField(provider, "oauth_state", `${nonce}:${clock.nowMs()}`, updatedBy);
   return { ok: true, url: buildGoogleAuthUrl(clientId, redirectUri, state) };
 }
 
@@ -125,7 +126,7 @@ export async function completeOAuth(
     if (!stored || storedNonce !== nonce) {
       return { ok: false, provider, detail: "state mismatch — start the connect flow again" };
     }
-    if (!Number.isFinite(mintedAt) || Date.now() - mintedAt > STATE_TTL_MS) {
+    if (!Number.isFinite(mintedAt) || clock.nowMs() - mintedAt > STATE_TTL_MS) {
       return { ok: false, provider, detail: "connect flow expired — start again" };
     }
 

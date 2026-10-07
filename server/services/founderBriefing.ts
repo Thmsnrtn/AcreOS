@@ -22,6 +22,7 @@ import { jobSupervisor } from "./jobSupervisor";
 import { logActivity } from "./systemActivityLogger";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const FOUNDER_EMAILS: string[] = [
   ...(process.env.FOUNDER_EMAIL ? [process.env.FOUNDER_EMAIL.trim()] : []),
@@ -39,7 +40,7 @@ async function alreadySentToday(): Promise<boolean> {
 
   if (!row?.value) return false;
   const lastSent = new Date(row.value);
-  const now = new Date();
+  const now = clock.now();
   return (
     lastSent.getFullYear() === now.getFullYear() &&
     lastSent.getMonth() === now.getMonth() &&
@@ -48,11 +49,11 @@ async function alreadySentToday(): Promise<boolean> {
 }
 
 async function markSentToday(): Promise<void> {
-  const now = new Date().toISOString();
+  const now = clock.now().toISOString();
   await db
     .insert(systemMeta)
     .values({ key: "founder_briefing_last_sent", value: now })
-    .onConflictDoUpdate({ target: systemMeta.key, set: { value: now, updatedAt: new Date() } });
+    .onConflictDoUpdate({ target: systemMeta.key, set: { value: now, updatedAt: clock.now() } });
 }
 
 async function gatherStats(since: Date): Promise<Record<string, number | string>> {
@@ -191,7 +192,7 @@ export async function sendDailyBriefing(): Promise<void> {
   // records a finding, critical (≤2 days or already expired) pages the phone.
   try {
     const { imminentCredentialExpiries, EXPIRY_PAGE_THRESHOLDS } = await import("./vendorCredentialExpiry");
-    for (const v of imminentCredentialExpiries(new Date(), 14)) {
+    for (const v of imminentCredentialExpiries(clock.now(), 14)) {
       const atMilestone = v.daysLeft < 0 || (EXPIRY_PAGE_THRESHOLDS as readonly number[]).includes(v.daysLeft);
       if (!atMilestone) continue;
       const { raiseAlert } = await import("./alertSpine");
@@ -211,7 +212,7 @@ export async function sendDailyBriefing(): Promise<void> {
     });
   }
 
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
 
   const [stats, topActions] = await Promise.all([
     gatherStats(since),

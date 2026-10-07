@@ -22,6 +22,7 @@ import {
   properties,
 } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -107,7 +108,7 @@ export interface ScoringCalibrationResult {
 export async function runScoringCalibration(): Promise<ScoringCalibrationResult> {
   logger.info("[outcomeAnalyzer] Starting runScoringCalibration");
 
-  const cutoff = new Date();
+  const cutoff = clock.now();
   cutoff.setDate(cutoff.getDate() - LOOKBACK_DAYS);
 
   // Get all active orgs
@@ -193,7 +194,7 @@ export async function runScoringCalibration(): Promise<ScoringCalibrationResult>
         "lead_score_calibration",
         {
           buckets,
-          lastUpdated: new Date().toISOString(),
+          lastUpdated: clock.now().toISOString(),
         },
         parseFloat(confidence.toFixed(4))
       );
@@ -336,7 +337,7 @@ export async function runPriceAccuracyTracking(): Promise<PriceAccuracyResult> {
         "price_accuracy_by_county",
         {
           counties: Object.values(countyAccuracyByOrg),
-          lastUpdated: new Date().toISOString(),
+          lastUpdated: clock.now().toISOString(),
         },
         0.8
       );
@@ -370,7 +371,7 @@ export interface TacticAttributionResult {
 export async function runTacticAttribution(): Promise<TacticAttributionResult> {
   logger.info("[outcomeAnalyzer] Starting runTacticAttribution");
 
-  const cutoff = new Date();
+  const cutoff = clock.now();
   cutoff.setDate(cutoff.getDate() - LOOKBACK_DAYS);
 
   const activeOrgs = await db
@@ -484,7 +485,7 @@ export async function runTacticAttribution(): Promise<TacticAttributionResult> {
           {
             tactics: topWins,
             period: `last_${LOOKBACK_DAYS}_days`,
-            lastUpdated: new Date().toISOString(),
+            lastUpdated: clock.now().toISOString(),
           },
           0.75
         );
@@ -500,7 +501,7 @@ export async function runTacticAttribution(): Promise<TacticAttributionResult> {
           {
             tactics: topLosses,
             period: `last_${LOOKBACK_DAYS}_days`,
-            lastUpdated: new Date().toISOString(),
+            lastUpdated: clock.now().toISOString(),
           },
           0.75
         );

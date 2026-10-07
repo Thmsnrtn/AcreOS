@@ -39,6 +39,7 @@ import {
   emitCertRedeemed,
   type CertEventRow,
 } from "./services/certificateEvents";
+import { clock } from "./utils/clock";
 
 // Build the CertEventRow slice the workflow emitters need from a full
 // tax_certificates row. Real columns only — the `date` columns come back as
@@ -137,7 +138,7 @@ export function registerTaxCertificateRoutes(app: Express): void {
         // Decorate each row with a live redemption-amount snapshot so the
         // dashboard renders the running total without N+1 calls from the
         // client.
-        const today = new Date().toISOString().slice(0, 10);
+        const today = clock.now().toISOString().slice(0, 10);
         const decorated = rows.map((row) => {
           const amt = computeRedemptionAmount({
             state: row.state,
@@ -191,7 +192,7 @@ export function registerTaxCertificateRoutes(app: Express): void {
           .limit(1);
         if (!row) return Errors.notFound(res, "Certificate");
 
-        const today = new Date().toISOString().slice(0, 10);
+        const today = clock.now().toISOString().slice(0, 10);
         const amt = computeRedemptionAmount({
           state: row.state,
           saleDate: row.saleDate as unknown as string,
@@ -303,7 +304,7 @@ export function registerTaxCertificateRoutes(app: Express): void {
 
         const update: Partial<typeof taxCertificates.$inferInsert> = {
           ...parsed.data,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         };
 
         // Unconditional pre-image status capture, read BEFORE the update so a
@@ -330,7 +331,7 @@ export function registerTaxCertificateRoutes(app: Express): void {
             .where(and(eq(taxCertificates.id, req.params.id), eq(taxCertificates.organizationId, orgId)))
             .limit(1);
           if (row) {
-            const asOf = parsed.data.redeemedAt ?? new Date().toISOString().slice(0, 10);
+            const asOf = parsed.data.redeemedAt ?? clock.now().toISOString().slice(0, 10);
             const amt = computeRedemptionAmount({
               state: row.state,
               saleDate: row.saleDate as unknown as string,
@@ -369,7 +370,7 @@ export function registerTaxCertificateRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const asOf = (req.query.asOf as string | undefined) ?? new Date().toISOString().slice(0, 10);
+        const asOf = (req.query.asOf as string | undefined) ?? clock.now().toISOString().slice(0, 10);
         const [row] = await db
           .select()
           .from(taxCertificates)
@@ -425,9 +426,9 @@ export function registerTaxCertificateRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const today = new Date().toISOString().slice(0, 10);
-        const in30 = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
-        const in90 = new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10);
+        const today = clock.now().toISOString().slice(0, 10);
+        const in30 = new Date(clock.nowMs() + 30 * 86_400_000).toISOString().slice(0, 10);
+        const in90 = new Date(clock.nowMs() + 90 * 86_400_000).toISOString().slice(0, 10);
 
         const [{ active = 0 } = {}] = await db
           .select({ active: sql<number>`COUNT(*)::int` })

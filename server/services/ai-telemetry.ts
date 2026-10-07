@@ -34,6 +34,7 @@ import { db } from "../db";
 import { aiCallLog, coerceAiFeature, type AiFeature, type InsertAiCallLogRow } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { postOpexSpent } from "./financial-ledger";
+import { clock } from "../utils/clock";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -198,7 +199,7 @@ async function recordAiCallUnsafe(opts: RecordAiCallOpts): Promise<void> {
 // ── Query helpers ────────────────────────────────────────────────────────────
 
 function sinceDate(sinceDays: number): Date {
-  return new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
+  return new Date(clock.nowMs() - sinceDays * 24 * 60 * 60 * 1000);
 }
 
 export interface ModelDistributionEntry {

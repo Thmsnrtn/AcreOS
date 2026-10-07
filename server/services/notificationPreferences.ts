@@ -20,6 +20,7 @@
 import { db } from "../db";
 import { eq } from "drizzle-orm";
 import { users } from "@shared/models/auth";
+import { clock } from "../utils/clock";
 
 export interface NotificationChannel {
   email: boolean;
@@ -270,7 +271,7 @@ export const notificationPrefsService = {
       weeklyDigest: stored.weeklyDigest ?? DEFAULTS.weeklyDigest,
       digestDay: stored.digestDay ?? DEFAULTS.digestDay,
       digestHour: stored.digestHour ?? DEFAULTS.digestHour,
-      updatedAt: row?.updatedAt ?? new Date(),
+      updatedAt: row?.updatedAt ?? clock.now(),
     };
   },
 
@@ -290,14 +291,14 @@ export const notificationPrefsService = {
 
     await db
       .update(users)
-      .set({ notificationPrefs: merged, updatedAt: new Date() })
+      .set({ notificationPrefs: merged, updatedAt: clock.now() })
       .where(eq(users.id, userId));
 
     return {
       userId,
       organizationId: orgId,
       ...merged,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     };
   },
 

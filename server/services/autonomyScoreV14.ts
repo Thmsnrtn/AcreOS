@@ -27,6 +27,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, gte, lte, sql, count } from "drizzle-orm";
 import crypto from "crypto";
+import { clock } from "../utils/clock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -104,11 +105,11 @@ class AutonomyScoreService {
     if (!event) throw new Error(`Dependency event ${eventId} not found`);
 
     const blockedDuration = event.createdAt
-      ? Date.now() - new Date(event.createdAt).getTime()
+      ? clock.nowMs() - new Date(event.createdAt).getTime()
       : 0;
 
     const [updated] = await db.update(founderDependencyEvents).set({
-      resolvedAt: new Date(),
+      resolvedAt: clock.now(),
       blockedDurationMs: blockedDuration,
     }).where(eq(founderDependencyEvents.eventId, eventId)).returning();
 
@@ -148,7 +149,7 @@ class AutonomyScoreService {
   // ── 4. Calculate Daily Score ────────────────────────────────────────────────
 
   async calculateDailyScore(orgId: number, date?: string): Promise<AutonomyScoreSnapshotEntry> {
-    const targetDate = date || new Date().toISOString().split("T")[0];
+    const targetDate = date || clock.now().toISOString().split("T")[0];
 
     // Gather metrics from cascade resolutions, overrides, and chain runs
     const metrics = await this.gatherDailyMetrics(orgId, targetDate);
@@ -215,7 +216,7 @@ class AutonomyScoreService {
   // ── 5. Calculate Weekly Score ───────────────────────────────────────────────
 
   async calculateWeeklyScore(orgId: number): Promise<WeeklyScore> {
-    const now = new Date();
+    const now = clock.now();
     const weekStart = new Date(now.getTime() - 7 * 86400000);
     const weekStartStr = weekStart.toISOString().split("T")[0];
     const weekEndStr = now.toISOString().split("T")[0];
@@ -372,7 +373,7 @@ class AutonomyScoreService {
   // ── 7. Score History ────────────────────────────────────────────────────────
 
   async getScoreHistory(orgId: number, days: number = 30): Promise<AutonomyScoreSnapshotEntry[]> {
-    const startDate = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+    const startDate = new Date(clock.nowMs() - days * 86400000).toISOString().split("T")[0];
 
     return db.select().from(autonomyScoreSnapshots)
       .where(and(
@@ -639,7 +640,7 @@ class AutonomyScoreService {
     const makeTarget = (name: string, target: number, current: number) => {
       const gap = target - current;
       const projectedDate = gap > 0 && dailyImprovement > 0
-        ? new Date(Date.now() + (gap / dailyImprovement) * 86400000).toISOString().split("T")[0]
+        ? new Date(clock.nowMs() + (gap / dailyImprovement) * 86400000).toISOString().split("T")[0]
         : null;
       return { name, target, current, onTrack: current >= target || dailyImprovement > 0, projectedDate };
     };
@@ -673,7 +674,7 @@ class AutonomyScoreService {
     topAgent: string | null;
     worstAgent: string | null;
   }> {
-    const today = new Date().toISOString().split("T")[0];
+    const today = clock.now().toISOString().split("T")[0];
     const [todaySnapshot] = await db.select().from(autonomyScoreSnapshots)
       .where(and(eq(autonomyScoreSnapshots.orgId, orgId), eq(autonomyScoreSnapshots.date, today)));
 

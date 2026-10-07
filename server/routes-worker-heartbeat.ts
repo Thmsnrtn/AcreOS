@@ -29,6 +29,7 @@ import { db } from "./db";
 import { workerHeartbeat } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 export const DEFAULT_STALE_SECONDS = 600; // 10 minutes
 
@@ -104,7 +105,7 @@ export function registerWorkerHeartbeatRoute(app: Express): void {
       // an external eye treats "never beat" the same as "beat long ago."
       const body = computeHeartbeatFreshness({
         lastBeatAt: row?.updatedAt ? new Date(row.updatedAt) : null,
-        now: Date.now(),
+        now: clock.nowMs(),
         thresholdSeconds: threshold,
         instanceId: row?.instanceId ?? null,
         gitSha: row?.gitSha ?? null,

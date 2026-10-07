@@ -9,6 +9,7 @@ import { db } from "../db";
 import { paxMemory } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /**
  * Store a memory when a deal is closed — captures deal preference patterns.
@@ -33,7 +34,7 @@ export async function onDealClosed(
         priceRange: dealData.priceRange ?? null,
         strategy: dealData.strategy ?? null,
       },
-      timestamp: new Date().toISOString(),
+      timestamp: clock.now().toISOString(),
     };
 
     // Upsert: update if key exists for this org, insert otherwise
@@ -51,7 +52,7 @@ export async function onDealClosed(
     if (existing.length > 0) {
       await db
         .update(paxMemory)
-        .set({ value, updatedAt: new Date() })
+        .set({ value, updatedAt: clock.now() })
         .where(eq(paxMemory.id, existing[0].id));
     } else {
       await db.insert(paxMemory).values({
@@ -87,7 +88,7 @@ export async function onUserCorrection(
         topic,
         correction,
       },
-      timestamp: new Date().toISOString(),
+      timestamp: clock.now().toISOString(),
     };
 
     const correctionKey = `correction_${topic.replace(/\s+/g, "_").toLowerCase()}`;
@@ -106,7 +107,7 @@ export async function onUserCorrection(
     if (existing.length > 0) {
       await db
         .update(paxMemory)
-        .set({ value, updatedAt: new Date() })
+        .set({ value, updatedAt: clock.now() })
         .where(eq(paxMemory.id, existing[0].id));
     } else {
       await db.insert(paxMemory).values({
@@ -143,7 +144,7 @@ export async function onGoalSet(
         target: target ?? null,
         deadline: deadline ?? null,
       },
-      timestamp: new Date().toISOString(),
+      timestamp: clock.now().toISOString(),
     };
 
     const goalKey = `goal_${goalType.replace(/\s+/g, "_").toLowerCase()}`;
@@ -162,7 +163,7 @@ export async function onGoalSet(
     if (existing.length > 0) {
       await db
         .update(paxMemory)
-        .set({ value, updatedAt: new Date() })
+        .set({ value, updatedAt: clock.now() })
         .where(eq(paxMemory.id, existing[0].id));
     } else {
       await db.insert(paxMemory).values({
@@ -196,7 +197,7 @@ export async function onConstraintMentioned(
       details: {
         detail,
       },
-      timestamp: new Date().toISOString(),
+      timestamp: clock.now().toISOString(),
     };
 
     const existing = await db
@@ -213,7 +214,7 @@ export async function onConstraintMentioned(
     if (existing.length > 0) {
       await db
         .update(paxMemory)
-        .set({ value, updatedAt: new Date() })
+        .set({ value, updatedAt: clock.now() })
         .where(eq(paxMemory.id, existing[0].id));
     } else {
       await db.insert(paxMemory).values({

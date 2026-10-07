@@ -3,6 +3,7 @@ import { dataSources } from "@shared/schema";
 import { eq, and, isNull, or, lt, sql } from "drizzle-orm";
 import type { DataSource } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type EndpointType = 
   | "arcgis_featureserver" 
@@ -53,7 +54,7 @@ export class DataSourceValidator {
   private abortControllers: Map<number, AbortController> = new Map();
 
   async validateSource(source: DataSource): Promise<ValidationResult> {
-    const startTime = Date.now();
+    const startTime = clock.nowMs();
     const result: ValidationResult = {
       sourceId: source.id,
       status: "unknown_format",
@@ -64,13 +65,13 @@ export class DataSourceValidator {
       recordCount: null,
       sampleData: null,
       errorMessage: null,
-      validatedAt: new Date(),
+      validatedAt: clock.now(),
     };
 
     if (!source.apiUrl) {
       result.status = "invalid_url";
       result.errorMessage = "No API URL configured";
-      result.latencyMs = Date.now() - startTime;
+      result.latencyMs = clock.nowMs() - startTime;
       await this.saveValidationResult(source.id, result);
       return result;
     }
@@ -104,9 +105,9 @@ export class DataSourceValidator {
           await this.validateGeneric(source.apiUrl, result, controller.signal);
       }
 
-      result.latencyMs = Date.now() - startTime;
+      result.latencyMs = clock.nowMs() - startTime;
     } catch (error: any) {
-      result.latencyMs = Date.now() - startTime;
+      result.latencyMs = clock.nowMs() - startTime;
       if (error.name === "AbortError") {
         result.status = "timeout";
         result.errorMessage = `Request timed out after ${VALIDATION_TIMEOUT_MS}ms`;
@@ -409,7 +410,7 @@ export class DataSourceValidator {
           lastStatus: result.status,
           lastStatusMessage: result.errorMessage || (result.status === "valid" ? "OK" : null),
           endpointType: result.endpointType,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(dataSources.id, sourceId));
     } catch (error) {
@@ -493,7 +494,7 @@ export class DataSourceValidator {
   }
 
   async getSourcesNeedingValidation(limit: number = 100, category?: string): Promise<DataSource[]> {
-    const thirtyDaysAgo = new Date();
+    const thirtyDaysAgo = clock.now();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     let query = db.select().from(dataSources)

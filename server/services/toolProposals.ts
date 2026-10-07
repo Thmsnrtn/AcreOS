@@ -27,6 +27,7 @@ import { db } from "../db";
 import { toolProposals } from "@shared/schema";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface ToolProposalInput {
   proposedBy: string;
@@ -42,7 +43,7 @@ export interface ToolProposalInput {
 
 export async function proposeTool(input: ToolProposalInput): Promise<number> {
   // De-duplicate: don't re-file a near-identical proposal within 30 days.
-  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
   const existing = await db
     .select({ id: toolProposals.id })
     .from(toolProposals)
@@ -98,7 +99,7 @@ export async function resolveToolProposal(
     .set({
       status,
       founderNotes: founderNotes?.slice(0, 2000) ?? null,
-      resolvedAt: new Date(),
+      resolvedAt: clock.now(),
       resolvedBy,
     })
     .where(eq(toolProposals.id, id));

@@ -17,6 +17,7 @@ import { storage } from './storage';
 import { organizationIntegrations, organizations } from '../shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { sendError } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 // ─── Rate Limiter ─────────────────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ const RATE_LIMIT_MAX = 100;
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 function checkRateLimit(orgId: number): { allowed: boolean; remaining: number; resetAt: number } {
-  const now = Date.now();
+  const now = clock.nowMs();
   let bucket = rateLimitMap.get(orgId);
 
   if (!bucket || now > bucket.resetAt) {
@@ -231,7 +232,7 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
   }
 
   // 5. Execute tool
-  const startedAt = Date.now();
+  const startedAt = clock.nowMs();
   try {
     const result = await runTool(tool, params, orgId);
 
@@ -243,7 +244,7 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
         entityType: 'mcp_tool',
         entityId: 0,
         description: `MCP tool executed: ${tool}`,
-        metadata: { tool, params, durationMs: Date.now() - startedAt },
+        metadata: { tool, params, durationMs: clock.nowMs() - startedAt },
       });
     } catch {
       // Non-fatal: don't fail the request if activity logging fails
@@ -253,8 +254,8 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
       success: true,
       tool,
       result,
-      executedAt: new Date().toISOString(),
-      durationMs: Date.now() - startedAt,
+      executedAt: clock.now().toISOString(),
+      durationMs: clock.nowMs() - startedAt,
     });
   } catch (err: any) {
     // Log failed execution
@@ -265,7 +266,7 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
         entityType: 'mcp_tool',
         entityId: 0,
         description: `MCP tool failed: ${tool} — ${err.message}`,
-        metadata: { tool, params, error: err.message, durationMs: Date.now() - startedAt },
+        metadata: { tool, params, error: err.message, durationMs: clock.nowMs() - startedAt },
       });
     } catch {
       // Non-fatal

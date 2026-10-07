@@ -18,6 +18,7 @@ import crypto from "crypto";
 import { db, storage } from "../storage";
 import { jobHealthLogs } from "@shared/schema";
 import { logger } from "./logger";
+import { clock } from "./clock";
 
 // One UUID per Node process. Used as the lock-holder identifier so
 // `releaseJobLock` only releases a lock this process actually owns.
@@ -95,39 +96,39 @@ export async function withJobLock<T>(
     // Log skipped_lock (fire-and-forget, non-blocking)
     db.insert(jobHealthLogs).values({
       jobName,
-      runStartedAt: new Date(),
-      runCompletedAt: new Date(),
+      runStartedAt: clock.now(),
+      runCompletedAt: clock.now(),
       durationMs: 0,
       status: "skipped_lock",
     }).catch(() => {/* best effort */});
     return null;
   }
-  const startedAt = new Date();
+  const startedAt = clock.now();
   const stopHeartbeat = startLeaseHeartbeat(jobName, ttlSeconds);
   try {
     const result = await fn();
-    const durationMs = Date.now() - startedAt.getTime();
+    const durationMs = clock.nowMs() - startedAt.getTime();
     // Sample: only log success once per hour per job
-    const now = Date.now();
+    const now = clock.nowMs();
     const lastLog = _jobLastSuccessLog[jobName] ?? 0;
     if (now - lastLog > 60 * 60 * 1000) {
       _jobLastSuccessLog[jobName] = now;
       db.insert(jobHealthLogs).values({
         jobName,
         runStartedAt: startedAt,
-        runCompletedAt: new Date(),
+        runCompletedAt: clock.now(),
         durationMs,
         status: "success",
       }).catch(() => {/* best effort */});
     }
     return result;
   } catch (err: any) {
-    const durationMs = Date.now() - startedAt.getTime();
+    const durationMs = clock.nowMs() - startedAt.getTime();
     // Always log failures
     db.insert(jobHealthLogs).values({
       jobName,
       runStartedAt: startedAt,
-      runCompletedAt: new Date(),
+      runCompletedAt: clock.now(),
       durationMs,
       status: "failed",
       errorMessage: err?.message ?? String(err),
@@ -149,7 +150,7 @@ export async function withJobLock<T>(
  * format stays identical to pre-extraction production logs.
  */
 export function jobLog(message: string, source = "express"): void {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
+  const formattedTime = clock.now().toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",

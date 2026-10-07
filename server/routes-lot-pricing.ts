@@ -37,6 +37,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { formatCents } from "@shared/finance/cents";
+import { clock } from "./utils/clock";
 
 const ruleSchema = z.object({
   attribute: z.string().min(1).max(64),
@@ -193,7 +194,7 @@ export function registerLotPricingRoutes(app: Express): void {
               basePriceSource: parsed.data.basePriceSource,
               fixedPerAcreCents: parsed.data.fixedPerAcreCents ?? null,
               rules: parsed.data.rules,
-              updatedAt: new Date(),
+              updatedAt: clock.now(),
             })
             .where(eq(lotPricingRules.id, existing.id))
             .returning();
@@ -306,14 +307,14 @@ export function registerLotPricingRoutes(app: Express): void {
         await db.transaction(async (tx) => {
           await tx.update(lotPricingRules).set({
             lockedGrid,
-            lockedAt: new Date(),
-            updatedAt: new Date(),
+            lockedAt: clock.now(),
+            updatedAt: clock.now(),
           }).where(eq(lotPricingRules.id, rules.id));
 
           for (const row of lockedGrid) {
             await tx.update(properties).set({
               listPrice: String(row.askingPriceCents / 100),
-              updatedAt: new Date(),
+              updatedAt: clock.now(),
             }).where(and(
               eq(properties.id, row.childParcelId),
               eq(properties.organizationId, orgId),
@@ -439,7 +440,7 @@ export function registerLotPricingRoutes(app: Express): void {
         logger.info("[SD-5] pricing grid locked", { orgId, userId, parentId, lotCount: lockedGrid.length });
         return res.json({
           lockedGrid,
-          lockedAt: new Date().toISOString(),
+          lockedAt: clock.now().toISOString(),
           decisionSnapshotId,
         });
       } catch (err) {

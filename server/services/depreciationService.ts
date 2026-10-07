@@ -12,6 +12,7 @@
  * References: IRS Publication 527, 946; Rev. Proc. 87-57 (MACRS tables)
  */
 
+import { clock } from "../utils/clock";
 export type PropertyClass =
   | 'residential_rental'    // 27.5 yr straight-line
   | 'nonresidential'        // 39 yr straight-line
@@ -100,7 +101,7 @@ export function buildDepreciationSchedule(input: DepreciationInput): Depreciatio
     totalBasis,
     landBasis = 0,
     inServiceDate,
-    currentTaxYear = new Date().getFullYear(),
+    currentTaxYear = clock.now().getFullYear(),
   } = input;
 
   const depreciableBasis = totalBasis - landBasis;

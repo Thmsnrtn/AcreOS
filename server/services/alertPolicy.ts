@@ -18,6 +18,7 @@ import { db } from "../db";
 import { systemAlerts, coerceIrSeverity } from "@shared/schema";
 import { eq, and, gte, desc, sql, count } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type AlertPriority = "P0" | "P1" | "P2" | "P3";
 
@@ -136,7 +137,7 @@ class AlertPolicyService {
           <p><strong>${alert.title}</strong></p>
           <p>${alert.message}</p>
           <p><a href="${this.config.appUrl}/founder/dashboard">View Dashboard</a></p>
-          <p style="color:#666;font-size:12px;">Alert ID: ${alert.id} | ${new Date().toISOString()}</p>
+          <p style="color:#666;font-size:12px;">Alert ID: ${alert.id} | ${clock.now().toISOString()}</p>
         `,
         text: `[P0 CRITICAL] ${alert.title}\n\n${alert.message}\n\nDashboard: ${this.config.appUrl}/founder/dashboard`,
       });
@@ -192,7 +193,7 @@ class AlertPolicyService {
           <p><strong>${alert.title}</strong></p>
           <p>${alert.message}</p>
           <p><a href="${this.config.appUrl}/founder/dashboard">View Dashboard</a></p>
-          <p style="color:#666;font-size:12px;">Alert ID: ${alert.id} | ${new Date().toISOString()}</p>
+          <p style="color:#666;font-size:12px;">Alert ID: ${alert.id} | ${clock.now().toISOString()}</p>
         `,
         text: `[P1 Warning] ${alert.title}\n\n${alert.message}\n\nDashboard: ${this.config.appUrl}/founder/dashboard`,
       });
@@ -205,7 +206,7 @@ class AlertPolicyService {
    * Generate weekly P2 digest for founder
    */
   async generateWeeklyDigest(): Promise<{ html: string; text: string; count: number } | null> {
-    const oneWeekAgo = new Date();
+    const oneWeekAgo = clock.now();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
     const alerts = await db

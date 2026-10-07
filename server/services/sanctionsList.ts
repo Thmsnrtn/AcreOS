@@ -40,6 +40,7 @@ import { eq, and } from "drizzle-orm";
 import { db } from "../db";
 import { sanctionsList } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /**
  * OFAC-comprehensive embargoed countries (2026 list). Quick-block at signup
@@ -256,14 +257,14 @@ export async function refreshOfacSdnList(opts: { url?: string } = {}): Promise<{
   durationMs: number;
   error?: string;
 }> {
-  const start = Date.now();
+  const start = clock.nowMs();
   const url = opts.url || process.env.OFAC_SDN_URL || DEFAULT_OFAC_SDN_URL;
   try {
     const resp = await fetch(url, { method: "GET" });
     if (!resp.ok) {
       const error = `OFAC SDN fetch returned ${resp.status}`;
       logger.warn("[sanctionsList] refresh skipped — fetch non-OK", { metadata: { url, status: resp.status } });
-      return { fetched: 0, inserted: 0, durationMs: Date.now() - start, error };
+      return { fetched: 0, inserted: 0, durationMs: clock.nowMs() - start, error };
     }
     const text = await resp.text();
     const rows = parseSdnCsv(text);
@@ -299,12 +300,12 @@ export async function refreshOfacSdnList(opts: { url?: string } = {}): Promise<{
     });
 
     logger.info("[sanctionsList] OFAC SDN refresh complete", {
-      metadata: { fetched: rows.length, inserted: inserts.length, durationMs: Date.now() - start },
+      metadata: { fetched: rows.length, inserted: inserts.length, durationMs: clock.nowMs() - start },
     });
-    return { fetched: rows.length, inserted: inserts.length, durationMs: Date.now() - start };
+    return { fetched: rows.length, inserted: inserts.length, durationMs: clock.nowMs() - start };
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     logger.error("[sanctionsList] OFAC SDN refresh failed", err instanceof Error ? err : undefined);
-    return { fetched: 0, inserted: 0, durationMs: Date.now() - start, error: errMsg };
+    return { fetched: 0, inserted: 0, durationMs: clock.nowMs() - start, error: errMsg };
   }
 }

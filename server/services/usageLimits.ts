@@ -17,6 +17,7 @@ import {
   type TierLimits,
 } from "@shared/billing/tier-limits";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export {
   TIER_LIMITS,
@@ -56,7 +57,7 @@ async function getOrganizationTierAndFounderStatus(organizationId: number): Prom
   if (!org) return { tier: "free", isFounder: false, isTrialing: false };
 
   const isTrialing = org.subscriptionStatus === "trialing" &&
-    !!org.trialEndsAt && org.trialEndsAt > new Date();
+    !!org.trialEndsAt && org.trialEndsAt > clock.now();
 
   return {
     tier: normalizeTier(org.subscriptionTier),
@@ -119,7 +120,7 @@ async function getCampaignCount(organizationId: number): Promise<number> {
  * subscriptions, so the calendar-month window keeps the two in sync.
  */
 async function getMonthlyAiRequestCount(organizationId: number): Promise<number> {
-  const now = new Date();
+  const now = clock.now();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
 
   const [result] = await db
@@ -354,7 +355,7 @@ async function recordAiByokThresholdCrossing(args: {
   try {
     const { systemAlerts } = await import("@shared/schema");
     const { eq: eqOp, and: andOp, gte: gteOp } = await import("drizzle-orm");
-    const now = new Date();
+    const now = clock.now();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
     // Dedup: one alert per org per month.
     const existing = await db

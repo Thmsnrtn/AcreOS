@@ -21,6 +21,7 @@ import { DataSourceBroker } from "./data-source-broker";
 import { getCountyNetworkIntelligence, publishedMarketMetric } from "./marketNetworkContributor";
 import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
+import { clock } from "../utils/clock";
 
 const dataSourceBroker = new DataSourceBroker();
 
@@ -386,7 +387,7 @@ class MarketIntelligenceService {
     await this.storeMarketMetric({
       county,
       state,
-      metricDate: new Date(),
+      metricDate: clock.now(),
       periodType: "monthly",
       salesVolume: currentMetrics.salesVolumeLastMonth,
       averageDaysOnMarket: currentMetrics.averageDaysOnMarket?.toString(),
@@ -425,7 +426,7 @@ class MarketIntelligenceService {
     
     return {
       location,
-      analyzedAt: new Date().toISOString(),
+      analyzedAt: clock.now().toISOString(),
       currentMetrics,
       trends: {
         pricePerAcreTrend,
@@ -707,7 +708,7 @@ class MarketIntelligenceService {
    * Track prediction accuracy over time
    */
   async trackPredictionAccuracy(): Promise<PredictionAccuracyResult> {
-    const now = new Date();
+    const now = clock.now();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     
     // Get all verified predictions
@@ -782,7 +783,7 @@ class MarketIntelligenceService {
   // Private helper methods
   
   private async getHistoricalMetrics(county: string, state: string, months: number): Promise<MarketMetric[]> {
-    const startDate = addMonths(new Date(), -months);
+    const startDate = addMonths(clock.now(), -months);
     
     return db.select()
       .from(marketMetrics)
@@ -819,7 +820,7 @@ class MarketIntelligenceService {
       metrics: {
         county,
         state,
-        metricDate: new Date(),
+        metricDate: clock.now(),
         medianPricePerAcre: marketData.medianPricePerAcre?.toString(),
         averagePricePerAcre: marketData.averagePricePerAcre?.toString(),
         averageDaysOnMarket: marketData.averageDaysOnMarket?.toString(),
@@ -832,7 +833,7 @@ class MarketIntelligenceService {
   
   private isStaleData(updatedAt: Date | null): boolean {
     if (!updatedAt) return true;
-    const oneWeekAgo = new Date();
+    const oneWeekAgo = clock.now();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
     return updatedAt < oneWeekAgo;
   }
@@ -1016,7 +1017,7 @@ class MarketIntelligenceService {
     }
     
     const hasRecentData = metrics.some(m => {
-      const oneMonthAgo = addMonths(new Date(), -1);
+      const oneMonthAgo = addMonths(clock.now(), -1);
       return m.metricDate >= oneMonthAgo;
     });
     
@@ -1038,7 +1039,7 @@ class MarketIntelligenceService {
       horizon12Month: PredictionDetail;
     }
   ): Promise<void> {
-    const now = new Date();
+    const now = clock.now();
     
     const predictionRecords: InsertMarketPrediction[] = [
       {
@@ -1181,8 +1182,8 @@ class MarketIntelligenceService {
         predictionError: predictionError.toString(),
         accuracyScore: Math.round(accuracyScore),
         status: "verified",
-        verifiedAt: new Date(),
-        updatedAt: new Date(),
+        verifiedAt: clock.now(),
+        updatedAt: clock.now(),
       })
       .where(eq(marketPredictions.id, prediction.id));
   }

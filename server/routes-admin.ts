@@ -46,6 +46,7 @@ import { getUserId, getOrganization, getClerkAuth, type AuthenticatedRequest } f
 
 import { sanitizePromptInline } from "./utils/sanitizePrompt";
 import { wrapUntrusted } from "./ai/untrustedEnvelope";
+import { clock } from "./utils/clock";
 // ── Zod validation schemas for admin endpoints ────────────────────────────────
 const createSupportCaseSchema = z.object({
   subject: z.string().min(1).max(500),
@@ -325,7 +326,7 @@ export function registerAdminRoutes(app: Express): void {
       if (resolve) {
         await storage.updateSupportCase(supportCase.organizationId, caseId, {
           status: "resolved",
-          resolvedAt: new Date(),
+          resolvedAt: clock.now(),
           resolutionSummary: message,
           resolutionType: "escalated_resolved",
           assignedTo: user.id,
@@ -600,7 +601,7 @@ export function registerAdminRoutes(app: Express): void {
       }
       
       // Sample notes (seller financing)
-      const startDate = addMonths(new Date(), -3);
+      const startDate = addMonths(clock.now(), -3);
       const firstPaymentDate = addMonths(new Date(startDate), 1);
       
       const demoNotes = [
@@ -632,8 +633,8 @@ export function registerAdminRoutes(app: Express): void {
           termMonths: 24, 
           monthlyPayment: "395.00",
           downPayment: "2000",
-          startDate: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
-          firstPaymentDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          startDate: new Date(clock.nowMs() - 60 * 24 * 60 * 60 * 1000),
+          firstPaymentDate: new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000),
           status: "active",
           gracePeriodDays: 10,
           lateFee: "25",
@@ -778,7 +779,7 @@ export function registerAdminRoutes(app: Express): void {
       const { jobHealthLogs } = await import("@shared/schema");
       const { and, eq, gte, inArray, desc: descOp } = await import("drizzle-orm");
       const sinceDays = Math.max(1, Math.min(90, Number(req.query.sinceDays ?? 7)));
-      const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
+      const since = new Date(clock.nowMs() - sinceDays * 24 * 60 * 60 * 1000);
 
       const rows = await db
         .select()
@@ -856,12 +857,12 @@ export function registerAdminRoutes(app: Express): void {
       if (currentOnly) {
         const { getTelemetrySummary } = await import("./middleware/apiTelemetry");
         const summary = getTelemetrySummary();
-        res.json({ ...summary, generatedAt: new Date().toISOString(), source: "current-tick" });
+        res.json({ ...summary, generatedAt: clock.now().toISOString(), source: "current-tick" });
         return;
       }
       const { getTelemetrySummaryDurable } = await import("./middleware/apiTelemetry");
       const summary = await getTelemetrySummaryDurable(sinceHours * 60 * 60 * 1000);
-      res.json({ ...summary, generatedAt: new Date().toISOString(), source: "durable+current-tick", windowHours: sinceHours });
+      res.json({ ...summary, generatedAt: clock.now().toISOString(), source: "durable+current-tick", windowHours: sinceHours });
     } catch (err: any) {
       Errors.internal(res, err);
     }
@@ -1358,7 +1359,7 @@ export function registerAdminRoutes(app: Express): void {
       if (!parsedDsp.success) return Errors.validationFailed(res, parsedDsp.error.issues);
       const { isEnabled, priority, notes } = parsedDsp.data;
       
-      const updates: Record<string, any> = { updatedAt: new Date() };
+      const updates: Record<string, any> = { updatedAt: clock.now() };
       if (isEnabled !== undefined) updates.isEnabled = isEnabled;
       if (priority !== undefined) updates.priority = priority;
       if (notes !== undefined) updates.notes = notes;
@@ -1538,7 +1539,7 @@ export function registerAdminRoutes(app: Express): void {
       await storage.updateCountyGisEndpoint(id, {
         isVerified: success,
         errorCount: success ? 0 : (endpoint.errorCount || 0) + 1,
-        lastVerified: new Date(),
+        lastVerified: clock.now(),
         lastError: success ? null : message,
       });
 
@@ -1601,7 +1602,7 @@ export function registerAdminRoutes(app: Express): void {
           await storage.updateCountyGisEndpoint(endpoint.id, {
             isVerified: success,
             errorCount: success ? 0 : (endpoint.errorCount || 0) + 1,
-            lastVerified: new Date(),
+            lastVerified: clock.now(),
             lastError: success ? null : message,
           });
 
@@ -1615,7 +1616,7 @@ export function registerAdminRoutes(app: Express): void {
           await storage.updateCountyGisEndpoint(endpoint.id, {
             isVerified: false,
             errorCount: (endpoint.errorCount || 0) + 1,
-            lastVerified: new Date(),
+            lastVerified: clock.now(),
             lastError: message,
           });
           results.push({ id: endpoint.id, state: endpoint.state, county: endpoint.county, success: false, message });
@@ -2087,7 +2088,7 @@ export function registerAdminRoutes(app: Express): void {
       const result = await validateEndpoint(endpoint.baseUrl);
       
       await storage.updateDiscoveredEndpoint(id, {
-        lastChecked: new Date(),
+        lastChecked: clock.now(),
         healthCheckPassed: result.valid,
         healthCheckMessage: result.message,
         status: result.valid ? "validated" : "pending",
@@ -2143,7 +2144,7 @@ export function registerAdminRoutes(app: Express): void {
         try {
           const result = await validateEndpoint(endpoint.baseUrl);
           await storage.updateDiscoveredEndpoint(endpoint.id, {
-            lastChecked: new Date(),
+            lastChecked: clock.now(),
             healthCheckPassed: result.valid,
             healthCheckMessage: result.message,
             status: result.valid ? "validated" : "pending",
@@ -2580,7 +2581,7 @@ export function registerAdminRoutes(app: Express): void {
           .set({
             ...(enabled !== undefined && { enabled }),
             ...(opacity !== undefined && { opacity: String(opacity) }),
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(and(eq(userMapLayerPreferences.userId, userId), eq(userMapLayerPreferences.layerId, layerId)));
       } else {
@@ -2720,7 +2721,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const id = parseInt(req.params.id);
       const [updated] = await db.update(aiModelConfigs)
-        .set({ ...omitProtectedFields(req.body), updatedAt: new Date() })
+        .set({ ...omitProtectedFields(req.body), updatedAt: clock.now() })
         .where(eq(aiModelConfigs.id, id))
         .returning();
       const { invalidateDbModelCache } = await import('./services/aiRouter');
@@ -2831,7 +2832,7 @@ export function registerAdminRoutes(app: Express): void {
 
       await connection.quit();
 
-      res.json({ enabled: true, queues: queueStats, timestamp: new Date().toISOString() });
+      res.json({ enabled: true, queues: queueStats, timestamp: clock.now().toISOString() });
     } catch (err: any) {
       Errors.internal(res, err);
     }
@@ -2935,7 +2936,7 @@ export function registerAdminRoutes(app: Express): void {
         activityAnomaly: activityResult,
         integrityIssues,
         anomalies: anomalyResult,
-        checkedAt: new Date().toISOString(),
+        checkedAt: clock.now().toISOString(),
       });
     } catch (err: any) {
       Errors.internal(res, err);
@@ -3177,7 +3178,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const configs = await storage.getAllPricingConfig();
       // Filter out expired promos
-      const now = new Date();
+      const now = clock.now();
       const cleaned = configs.map(c => ({
         ...c,
         promoLabel: c.promoEndsAt && c.promoEndsAt < now ? null : c.promoLabel,
@@ -3543,11 +3544,11 @@ export function registerAdminRoutes(app: Express): void {
 
   api.get("/api/founder/briefing", isAuthenticated, isFounderAdmin, async (_req, res) => {
     try {
-      if (briefingCache && Date.now() - briefingCache.generatedAt < BRIEFING_TTL_MS) {
+      if (briefingCache && clock.nowMs() - briefingCache.generatedAt < BRIEFING_TTL_MS) {
         return res.json(briefingCache.data);
       }
 
-      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const since24h = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
 
       const [orgRows, alertRows, escalatedRows, recentCampaigns] = await Promise.all([
         db.select({
@@ -3618,12 +3619,12 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         }
       } catch { /* non-fatal — use plain summary */ }
 
-      const result = { summary, highlights, generatedAt: new Date().toISOString() };
-      briefingCache = { data: result, generatedAt: Date.now() };
+      const result = { summary, highlights, generatedAt: clock.now().toISOString() };
+      briefingCache = { data: result, generatedAt: clock.nowMs() };
       res.json(result);
     } catch (err: any) {
       logger.error("Founder briefing error", { message: err.message, name: err.name });
-      res.json({ summary: "Briefing temporarily unavailable", highlights: [], generatedAt: new Date().toISOString() });
+      res.json({ summary: "Briefing temporarily unavailable", highlights: [], generatedAt: clock.now().toISOString() });
     }
   });
 
@@ -3670,7 +3671,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
         // Trial expiring
         if (org.trialEndsAt) {
-          const daysLeft = Math.ceil((new Date(org.trialEndsAt as any).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          const daysLeft = Math.ceil((new Date(org.trialEndsAt as any).getTime() - clock.nowMs()) / (1000 * 60 * 60 * 24));
           if (daysLeft <= 0) { score -= 15; issues.push('Trial expired — not converted'); }
           else if (daysLeft <= 2) { score -= 10; issues.push(`Trial expires in ${daysLeft}d`); }
         }
@@ -3822,7 +3823,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
       if (resolve) {
         await db.update(supportTickets)
-          .set({ status: "resolved", resolvedAt: new Date(), resolvedBy: "founder", resolution: message } as any)
+          .set({ status: "resolved", resolvedAt: clock.now(), resolvedBy: "founder", resolution: message } as any)
           .where(eq(supportTickets.id, ticketId));
       }
 
@@ -3880,7 +3881,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     try {
       const hours = Math.min(Number(req.query.hours) || 48, 168); // max 7 days
       const limit = Math.min(Number(req.query.limit) || 100, 500);
-      const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+      const since = new Date(clock.nowMs() - hours * 60 * 60 * 1000);
 
       const rows = await db
         .select({
@@ -3903,7 +3904,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
       res.json({ rows, since: since.toISOString(), total: rows.length });
     } catch (err: any) {
-      res.json({ rows: [], since: new Date().toISOString(), total: 0 });
+      res.json({ rows: [], since: clock.now().toISOString(), total: 0 });
     }
   });
 
@@ -4029,7 +4030,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
       // Mark observation as acknowledged
       await db.update(paxObservations)
-        .set({ status: "acknowledged", acknowledgedAt: new Date() })
+        .set({ status: "acknowledged", acknowledgedAt: clock.now() })
         .where(eq(paxObservations.id, obsId));
 
       res.json({ message: "Action executed", actionTaken });
@@ -4111,7 +4112,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const keyPrefix = rawKey.slice(0, 12); // "acos_" + 7 chars
 
       const expiresAt = expiresInDays
-        ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
+        ? new Date(clock.nowMs() + expiresInDays * 24 * 60 * 60 * 1000)
         : null;
 
       const [row] = await db
@@ -4140,7 +4141,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const keyId = parseInt(req.params.id);
       const [updated] = await db
         .update(orgApiKeys)
-        .set({ isRevoked: true, updatedAt: new Date() })
+        .set({ isRevoked: true, updatedAt: clock.now() })
         .where(and(eq(orgApiKeys.id, keyId), eq(orgApiKeys.organizationId, org.id)))
         .returning({ id: orgApiKeys.id });
       if (!updated) return Errors.notFound(res, "Key");
@@ -4351,7 +4352,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const { evolutionCircuitBreaker } = await import("@shared/schema");
       const user = req.user;
       await db.update(evolutionCircuitBreaker)
-        .set({ isTripped: false, consecutiveReverts: 0, resumedBy: user?.email || "founder", updatedAt: new Date() })
+        .set({ isTripped: false, consecutiveReverts: 0, resumedBy: user?.email || "founder", updatedAt: clock.now() })
         .where(eq(evolutionCircuitBreaker.id, 1));
       res.json({ success: true, message: "Evolution pipeline resumed" });
     } catch (err: any) {
@@ -4392,7 +4393,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     try {
       const { aiTelemetryEvents } = await import("@shared/schema");
       const { gte } = await import("drizzle-orm");
-      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const oneDayAgo = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
       const events = await db
         .select()
         .from(aiTelemetryEvents)
@@ -4665,7 +4666,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const { organizations } = await import("@shared/schema");
       const { eq } = await import("drizzle-orm");
       const [updated] = await db.update(organizations)
-        .set({ subscriptionTier: tier, updatedAt: new Date() } as any)
+        .set({ subscriptionTier: tier, updatedAt: clock.now() } as any)
         .where(eq(organizations.id, targetOrgId))
         .returning();
       if (!updated) return Errors.notFound(res, "Organization");
@@ -4699,7 +4700,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         entityType: "organization",
         entityId: targetOrgId,
         action: "impersonation_started",
-        details: { founderOrgId: org.id, readOnly: true, expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() },
+        details: { founderOrgId: org.id, readOnly: true, expiresAt: new Date(clock.nowMs() + 30 * 60 * 1000).toISOString() },
       } as any);
       res.json({
         success: true,
@@ -4707,7 +4708,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
           orgId: targetOrgId,
           orgName: target.name,
           readOnly: true,
-          expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+          expiresAt: new Date(clock.nowMs() + 30 * 60 * 1000).toISOString(),
         },
       });
     } catch (err: any) {
@@ -4757,7 +4758,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
   app.get("/api/founder/monthly-checkin", isAuthenticated, isFounderAdmin, async (_req, res) => {
     try {
-      const now = new Date();
+      const now = clock.now();
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
 
@@ -4883,7 +4884,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
       res.json({
         success: true,
-        timestamp: new Date().toISOString(),
+        timestamp: clock.now().toISOString(),
         results,
       });
     } catch (err: any) {
@@ -4965,7 +4966,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
       const [updated] = await db.update(knowledgeBaseArticles)
-        .set({ ...parsed.data, updatedAt: new Date() })
+        .set({ ...parsed.data, updatedAt: clock.now() })
         .where(eq(knowledgeBaseArticles.id, id))
         .returning();
 

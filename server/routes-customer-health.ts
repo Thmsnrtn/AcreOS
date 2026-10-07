@@ -16,6 +16,7 @@ import { isAuthenticated, requireFounder } from "./auth";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 export function registerCustomerHealthRoutes(app: Express): void {
   app.get(
@@ -53,7 +54,7 @@ export function registerCustomerHealthRoutes(app: Express): void {
 
         return res.json({
           scores: rows ?? [],
-          generatedAt: new Date().toISOString(),
+          generatedAt: clock.now().toISOString(),
         });
       } catch (err: unknown) {
         logger.error("[customer-health] list failed", err);
@@ -89,7 +90,7 @@ export function registerCustomerHealthRoutes(app: Express): void {
         return res.json({
           distribution,
           bands: [...HEALTH_BANDS],
-          generatedAt: new Date().toISOString(),
+          generatedAt: clock.now().toISOString(),
         });
       } catch (err: unknown) {
         logger.error("[customer-health] distribution failed", err);

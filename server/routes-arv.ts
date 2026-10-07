@@ -26,6 +26,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const compSchema = z.object({
   address: z.string().optional(),
@@ -177,7 +178,7 @@ export function registerArvRoutes(app: Express): void {
       // low otherwise.
       let confidence = "low";
       const compCount = parsed.data.comps.length;
-      const sixMonthsAgo = Date.now() - 180 * 86_400_000;
+      const sixMonthsAgo = clock.nowMs() - 180 * 86_400_000;
       const closeAndRecent = parsed.data.comps.filter((c) => {
         const isClose = c.distanceMiles !== undefined ? c.distanceMiles <= 0.5 : false;
         const dt = c.soldDate ? new Date(c.soldDate).getTime() : 0;
@@ -188,7 +189,7 @@ export function registerArvRoutes(app: Express): void {
       else if (compCount >= 3) confidence = "medium";
 
       // Mark prior current=true rows as not current.
-      await db.update(arvCalculations).set({ isCurrent: false, updatedAt: new Date() })
+      await db.update(arvCalculations).set({ isCurrent: false, updatedAt: clock.now() })
         .where(and(
           eq(arvCalculations.organizationId, orgId),
           eq(arvCalculations.propertyId, propId),

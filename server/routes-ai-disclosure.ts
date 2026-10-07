@@ -36,6 +36,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -96,7 +97,7 @@ router.post("/accept", async (req: AuthenticatedRequest, res: Response) => {
     //     new consent supersedes old.
     //
     // The compound WHERE: id = $1 AND (ai_disclosed_at IS NULL OR ai_disclosure_version != $2)
-    const now = new Date();
+    const now = clock.now();
     await db
       .update(users)
       .set({

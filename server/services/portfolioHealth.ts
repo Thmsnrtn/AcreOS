@@ -22,12 +22,13 @@ import {
 import { and, eq, isNull, lt, lte, ne, notInArray } from 'drizzle-orm';
 
 import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
+import { clock } from "../utils/clock";
 const STALE_LEAD_DAYS = 90;
 const STUCK_DEAL_DAYS = 45;
 const STALE_AVM_DAYS = 90;
 
 export async function runPortfolioHealthJob(orgId: number): Promise<void> {
-  const now = new Date();
+  const now = clock.now();
   const alertsToInsert: Array<typeof systemAlerts.$inferInsert> = [];
 
   // Helper to check if an existing undismissed alert of this type already exists

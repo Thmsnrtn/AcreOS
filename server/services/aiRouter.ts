@@ -12,6 +12,7 @@ import {
   complexityClassFromTaskType,
   classifyError as classifyAiError,
 } from "./ai-telemetry";
+import { clock } from "../utils/clock";
 
 // ============================================
 // AI RESPONSE CACHE — Dual-layer
@@ -124,7 +125,7 @@ function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
 function findSemanticCacheHit(task: AITask, orgId: number | null): CacheEntry | null {
   const queryText = (task.messages ?? []).map(m => m.content).join(" ");
   const queryTokens = tokenize(queryText);
-  const now = Date.now();
+  const now = clock.nowMs();
 
   for (const [key, entry] of AI_CACHE.entries()) {
     // Skip expired
@@ -152,7 +153,7 @@ function findSemanticCacheHit(task: AITask, orgId: number | null): CacheEntry | 
 function getCachedResponse(key: string): CacheEntry | null {
   const entry = AI_CACHE.get(key);
   if (!entry) return null;
-  if (Date.now() - entry.cachedAt > CACHE_TTL_MS) {
+  if (clock.nowMs() - entry.cachedAt > CACHE_TTL_MS) {
     AI_CACHE.delete(key);
     return null;
   }
@@ -414,7 +415,7 @@ let overrideCache: OverrideCache | null = null;
 const OVERRIDE_CACHE_TTL_MS = 5 * 60 * 1000;
 
 async function loadRoutingOverrides(): Promise<OverrideCache> {
-  if (overrideCache && Date.now() - overrideCache.loadedAt < OVERRIDE_CACHE_TTL_MS) {
+  if (overrideCache && clock.nowMs() - overrideCache.loadedAt < OVERRIDE_CACHE_TTL_MS) {
     return overrideCache;
   }
   try {
@@ -425,7 +426,7 @@ async function loadRoutingOverrides(): Promise<OverrideCache> {
     const map = new Map<string, RoutingOverride>();
     for (const r of rows) {
       // Skip expired overrides — defensive even though active=false should be set
-      if (r.expiresAt && new Date(r.expiresAt).getTime() < Date.now()) continue;
+      if (r.expiresAt && new Date(r.expiresAt).getTime() < clock.nowMs()) continue;
       map.set(r.taskType, {
         taskType: r.taskType,
         overrideTier: r.overrideTier as TaskTier,
@@ -433,13 +434,13 @@ async function loadRoutingOverrides(): Promise<OverrideCache> {
         reason: r.reason,
       });
     }
-    overrideCache = { byTaskType: map, loadedAt: Date.now() };
+    overrideCache = { byTaskType: map, loadedAt: clock.nowMs() };
     return overrideCache;
   } catch (err) {
     logger.warn("[AIRouter] failed to load routing overrides — proceeding without", {
       metadata: { detail: err instanceof Error ? err.message : err },
     });
-    return { byTaskType: new Map(), loadedAt: Date.now() };
+    return { byTaskType: new Map(), loadedAt: clock.nowMs() };
   }
 }
 
@@ -777,7 +778,7 @@ let dbModelCache: DbModelCache | null = null;
 const DB_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 async function loadDbModelConfigs(): Promise<DbModelCache> {
-  if (dbModelCache && Date.now() - dbModelCache.loadedAt < DB_CACHE_TTL_MS) {
+  if (dbModelCache && clock.nowMs() - dbModelCache.loadedAt < DB_CACHE_TTL_MS) {
     return dbModelCache;
   }
   try {
@@ -810,11 +811,11 @@ async function loadDbModelConfigs(): Promise<DbModelCache> {
       simple: findBestForTask(SIMPLE_TASKS),
       moderate: findBestForTask(["basic_analysis", "draft_email"]),
       complex: findBestForTask(COMPLEX_TASKS),
-      loadedAt: Date.now(),
+      loadedAt: clock.nowMs(),
     };
     return dbModelCache;
   } catch {
-    return { simple: null, moderate: null, complex: null, loadedAt: Date.now() };
+    return { simple: null, moderate: null, complex: null, loadedAt: clock.nowMs() };
   }
 }
 
@@ -1267,7 +1268,7 @@ export async function routeAITask(
     && task.complexity !== TaskComplexity.CRITICAL
     && (task.temperature ?? 0.7) <= 0.3;
   let cacheKey = '';
-  const cacheCheckStart = Date.now();
+  const cacheCheckStart = clock.nowMs();
   // T0-4: the org dimension for both cache layers. Callers without org
   // context (cron jobs, platform-level tasks) land in the "platform" bucket
   // (null) and can only ever hit other platform-level entries.
@@ -1278,7 +1279,7 @@ export async function routeAITask(
     const cached = getCachedResponse(cacheKey);
     if (cached) {
       cacheHits++;
-      const cacheHitLatency = Date.now() - cacheCheckStart;
+      const cacheHitLatency = clock.nowMs() - cacheCheckStart;
       logger.info(`[AIRouter] Cache HIT (exact) for ${task.taskType}`);
       recordAITelemetry({ orgId: config.orgId, taskType: task.taskType ?? "unknown", provider: cached.provider, model: cached.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: cacheHitLatency, cacheHit: true, complexity: task.complexity, success: true });
       // Pillar 7 — cascade telemetry: cache hits are model="cache".
@@ -1301,7 +1302,7 @@ export async function routeAITask(
     const semanticHit = findSemanticCacheHit(task, cacheOrgId);
     if (semanticHit) {
       semanticCacheHits++;
-      const semanticLatency = Date.now() - cacheCheckStart;
+      const semanticLatency = clock.nowMs() - cacheCheckStart;
       logger.info(`[AIRouter] Cache HIT (semantic) for ${task.taskType}`);
       recordAITelemetry({ orgId: config.orgId, taskType: task.taskType ?? "unknown", provider: semanticHit.provider, model: semanticHit.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: semanticLatency, cacheHit: true, complexity: task.complexity, success: true });
       void recordCascadeCall({
@@ -1323,7 +1324,7 @@ export async function routeAITask(
   }
 
   // ── Model selection ──────────────────────────────────────────────────────────
-  const startTime = Date.now();
+  const startTime = clock.nowMs();
   let { provider, model, client, maxTokens: dbMaxTokens } = await selectProviderAndModelAsync(task.complexity, task.taskType ?? "ad_hoc", config);
 
   // ── Wave 8 — Tier-based override ───────────────────────────────────────────
@@ -1467,7 +1468,7 @@ export async function routeAITask(
       ?? (usage as any)?.cache_read_input_tokens
       ?? 0;
   } catch (err: any) {
-    const latencyMs = Date.now() - startTime;
+    const latencyMs = clock.nowMs() - startTime;
     recordAITelemetry({ orgId: config.orgId, taskType: task.taskType ?? "unknown", provider, model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs, cacheHit: false, complexity: task.complexity, success: false, errorMessage: err.message });
     void recordCascadeCall({
       organizationId: config.orgId ?? null,
@@ -1566,7 +1567,7 @@ export async function routeAITask(
   }
 
   // ── Build result ─────────────────────────────────────────────────────────────
-  const latencyMs = Date.now() - startTime;
+  const latencyMs = clock.nowMs() - startTime;
   // Tier 1I: BYOK-routed calls are genuinely $0 PLATFORM cost — the
   // customer's key paid the provider. Recording 0 keeps COGS telemetry
   // truthful; the [byok:*] tag in the routing log preserves attribution.
@@ -1599,7 +1600,7 @@ export async function routeAITask(
     const queryText = (task.messages ?? []).map(m => m.content).join(" ");
     setCachedResponse(cacheKey, {
       ...result,
-      cachedAt: Date.now(),
+      cachedAt: clock.nowMs(),
       orgId: cacheOrgId,
       queryTokens: tokenize(queryText),
       taskType: task.taskType,

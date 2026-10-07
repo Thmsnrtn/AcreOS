@@ -6,6 +6,7 @@ import { auditEvents, deals } from '@shared/schema';
 import { and, eq, desc } from 'drizzle-orm';
 import { logger } from './utils/logger';
 import { Errors, sendError } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -288,7 +289,7 @@ router.get('/evidence-pack/:dealId', async (req: Request, res: Response) => {
       dealId: deal.id,
       dealAddress: deal.propertyId ? `Property #${deal.propertyId}` : '—',
       dealStatus: (deal as any).status ?? '—',
-      generatedAt: new Date().toISOString(),
+      generatedAt: clock.now().toISOString(),
       eventCounts: {
         total: allEvents.length,
         lifecycle: grouped.lifecycle.length,

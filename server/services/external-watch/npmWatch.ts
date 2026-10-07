@@ -38,6 +38,7 @@ import {
   type InsertExternalWatchEvent,
 } from "@shared/schema/external-watch";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // fetchNpmVulnerabilities — cron entrypoint
@@ -102,7 +103,7 @@ export async function fetchNpmVulnerabilities(
       sourceUrl: adv.sourceUrl,
       title: `[${adv.severity}] ${adv.packageName}: ${adv.summary}`,
       summary: adv.detail,
-      publishedAt: new Date(),
+      publishedAt: clock.now(),
       severityKeywordMatch: [adv.severity, adv.packageName],
     };
     try {

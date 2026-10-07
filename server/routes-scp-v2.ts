@@ -10,6 +10,7 @@ import { type Express, type Request, type Response } from "express";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { isAuthenticated, requireFounder } from "./auth";
+import { clock } from "./utils/clock";
 
 // ─── Lazy imports to avoid circular dependencies ───────────────────────────
 
@@ -287,7 +288,7 @@ export function registerSCPv2Routes(app: Express) {
     try {
       const reason = req.body.reason || "CEO paused evolution";
       evolutionPaused = true;
-      evolutionPausedAt = new Date().toISOString();
+      evolutionPausedAt = clock.now().toISOString();
       evolutionPausedReason = reason;
 
       logger.info("Evolution paused", { reason });
@@ -309,7 +310,7 @@ export function registerSCPv2Routes(app: Express) {
       evolutionPausedReason = null;
 
       logger.info("Evolution resumed", { was_paused_at: wasPausedAt });
-      res.json({ paused: false, resumed_at: new Date().toISOString() });
+      res.json({ paused: false, resumed_at: clock.now().toISOString() });
     } catch (err: any) {
       Errors.internal(res, err);
     }

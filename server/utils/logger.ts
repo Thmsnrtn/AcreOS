@@ -52,7 +52,7 @@ interface RequestLogEntry extends LogEntry {
 }
 
 function formatTimestamp(): string {
-  return new Date().toISOString();
+  return clock.now().toISOString();
 }
 
 // ─── Pillar D / D7 — PII redaction ─────────────────────────────────────────
@@ -156,6 +156,7 @@ function serializeEntry(entry: LogEntry): string {
 // budget is a no-op and every info log flows through normally.
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { clock } from "./clock";
 
 export const LOG_BUDGET_PER_REQUEST = 5;
 
@@ -325,11 +326,11 @@ let requestCounter = 0;
 
 function generateRequestId(): string {
   requestCounter++;
-  return `${Date.now()}-${requestCounter}`;
+  return `${clock.nowMs()}-${requestCounter}`;
 }
 
 export function requestLoggingMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const startTime = Date.now();
+  const startTime = clock.nowMs();
   const requestId = generateRequestId();
 
   (req as Request & { requestId: string }).requestId = requestId;
@@ -352,7 +353,7 @@ export function requestLoggingMiddleware(req: Request, res: Response, next: Next
     }
 
     res.on("finish", () => {
-      const duration = Date.now() - startTime;
+      const duration = clock.nowMs() - startTime;
 
       if (req.path.startsWith("/api")) {
         // Pillar 9.3 — demote successful response logs to debug.  4xx

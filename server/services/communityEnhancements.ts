@@ -7,6 +7,7 @@ import { db } from "../db";
 import { eq, and } from "drizzle-orm";
 
 import { CLOSED_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
+import { clock } from "../utils/clock";
 // Item 281: In-app knowledge base articles
 export const KNOWLEDGE_BASE = [
   { id: "getting-started", title: "Getting Started with AcreOS", category: "Basics", content: "Welcome to AcreOS! Start by adding your first leads, then explore the Deal Feed for opportunities.", keywords: ["start", "begin", "new", "onboarding"] },
@@ -43,7 +44,7 @@ export const WEEKLY_TIPS = [
 ];
 
 export function getWeeklyTip(): string {
-  const weekNumber = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000));
+  const weekNumber = Math.floor(clock.nowMs() / (7 * 24 * 60 * 60 * 1000));
   return WEEKLY_TIPS[weekNumber % WEEKLY_TIPS.length];
 }
 

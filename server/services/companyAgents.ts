@@ -29,6 +29,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { resolveAgentData } from "./agentDataResolvers";
 import { executeWithAuthority, checkAuthority } from "./agentAuthorityGate";
+import { clock } from "../utils/clock";
 
 // ─── Core Agent Mapping ─────────────────────────────────────────────────────
 // Maps company agent codenames to the 4 core agent types for skill/goal routing
@@ -273,7 +274,7 @@ class CompanyAgentService {
             ownedJobs: persona.ownedJobs,
             ownedRoutes: persona.ownedRoutes,
             authorityConfig: persona.authorityConfig,
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(eq(companyAgents.codename, persona.codename));
       } else {
@@ -370,7 +371,7 @@ class CompanyAgentService {
 
     const newScore = Math.max(0, Math.min(100, agent.trustScore + delta));
     await db.update(companyAgents)
-      .set({ trustScore: newScore, updatedAt: new Date() })
+      .set({ trustScore: newScore, updatedAt: clock.now() })
       .where(eq(companyAgents.codename, codename));
 
     return newScore;
@@ -392,7 +393,7 @@ class CompanyAgentService {
     await db.update(companyAgents)
       .set({
         metrics: { ...currentMetrics, ...updates },
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(companyAgents.codename, codename));
   }
@@ -400,14 +401,14 @@ class CompanyAgentService {
   /** Set agent status (active/paused/disabled) */
   async setStatus(codename: string, status: "active" | "paused" | "disabled"): Promise<void> {
     await db.update(companyAgents)
-      .set({ status, updatedAt: new Date() })
+      .set({ status, updatedAt: clock.now() })
       .where(eq(companyAgents.codename, codename));
   }
 
   /** Record activity timestamp */
   async recordActivity(codename: string): Promise<void> {
     await db.update(companyAgents)
-      .set({ lastActivityAt: new Date(), updatedAt: new Date() })
+      .set({ lastActivityAt: clock.now(), updatedAt: clock.now() })
       .where(eq(companyAgents.codename, codename));
   }
 
@@ -450,7 +451,7 @@ class CompanyAgentService {
       try {
         const { agentConversations } = await import("@shared/schema");
         const { desc: descOrder, eq: eqOp, gte: gteOp } = await import("drizzle-orm");
-        const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+        const threeDaysAgo = new Date(clock.nowMs() - 3 * 24 * 60 * 60 * 1000);
         const recentChats = await db.select()
           .from(agentConversations)
           .where(eqOp(agentConversations.agentCodename, codename))

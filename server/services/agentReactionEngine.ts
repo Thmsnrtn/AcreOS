@@ -18,6 +18,7 @@ import { agentCommsService, type AgentChannel } from "./agentComms";
 import { executeWithAuthority } from "./agentAuthorityGate";
 import { executeAction } from "./agentActionExecutors";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -192,7 +193,7 @@ const REACTION_RULES: ReactionRule[] = [
  * Called every 2 minutes by the background job.
  */
 export async function processAgentReactions(): Promise<{ processed: number; reactions: number }> {
-  const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+  const twoMinutesAgo = new Date(clock.nowMs() - 2 * 60 * 1000);
   let processed = 0;
   let reactionsTriggered = 0;
 

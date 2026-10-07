@@ -14,6 +14,7 @@ import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 import { omitProtectedFields } from "./utils/updatePayload";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
+import { clock } from "./utils/clock";
 
 export function registerIntegrationRoutes(app: Express): void {
   const api = app;
@@ -229,7 +230,7 @@ export function registerIntegrationRoutes(app: Express): void {
       }
       
       if (testResult.success) {
-        await storage.updateIntegrationValidation(org.id, provider, new Date(), null);
+        await storage.updateIntegrationValidation(org.id, provider, clock.now(), null);
       } else {
         await storage.updateIntegrationValidation(org.id, provider, null, testResult.message);
       }
@@ -524,7 +525,7 @@ export function registerIntegrationRoutes(app: Express): void {
       const updatedDomain = await storage.updateVerifiedEmailDomain(domainId, {
         status: isValid ? 'verified' : 'pending',
         dnsRecords: updatedDnsRecords,
-        verifiedAt: isValid ? new Date() : null,
+        verifiedAt: isValid ? clock.now() : null,
       });
       
       res.json({
@@ -775,7 +776,7 @@ export function registerIntegrationRoutes(app: Express): void {
         },
         status: 'active',
         isDefault: false,
-        purchasedAt: new Date(),
+        purchasedAt: clock.now(),
       });
 
       try {
@@ -1093,7 +1094,7 @@ export function registerIntegrationRoutes(app: Express): void {
       // Update test status to running
       const updatedTest = await storage.updateAbTest(org.id, testId, {
         status: "running",
-        startedAt: new Date(),
+        startedAt: clock.now(),
       });
       
       res.json({ ...updatedTest, variants: result.variants });
@@ -1166,7 +1167,7 @@ export function registerIntegrationRoutes(app: Express): void {
       // Update test as completed
       const updatedTest = await storage.updateAbTest(org.id, testId, {
         status: "completed",
-        completedAt: new Date(),
+        completedAt: clock.now(),
         winnerId,
       });
       
@@ -1656,7 +1657,7 @@ export function registerIntegrationRoutes(app: Express): void {
     try {
       const checks = {
         database: false,
-        timestamp: new Date().toISOString(),
+        timestamp: clock.now().toISOString(),
         uptime: process.uptime(),
         memory: process.memoryUsage()
       };
@@ -1799,7 +1800,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
       const payload = JSON.stringify({
         event: "webhook.test",
-        timestamp: new Date().toISOString(),
+        timestamp: clock.now().toISOString(),
         organizationId: org.id,
         data: { message: "This is a test event from AcreOS" },
       });

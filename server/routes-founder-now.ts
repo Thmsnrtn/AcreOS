@@ -28,6 +28,7 @@ import {
 import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { logger } from "./utils/logger";
 import { applyBudget, classifyKind, type InboxItem } from "./services/founderInboxBudget";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -56,7 +57,7 @@ router.get("/", async (req: Request, res: Response) => {
       .limit(1);
     const dailyCap = org?.cap ?? 5;
 
-    const now = new Date();
+    const now = clock.now();
     const tomorrow = new Date(now.getTime() + 86_400_000);
 
     const candidates: InboxItem[] = [];

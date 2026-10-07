@@ -16,6 +16,7 @@ import { db } from "../db";
 import { aiMessages, agentLlmTraces } from "@shared/schema";
 import { and, eq, gte, desc, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const SAMPLE_SIZE = 50;
 const ALERT_DELTA_PCT = 0.10; // 10% mean drop triggers an alert
@@ -134,7 +135,7 @@ function meanScores(scores: SampleScore[]): SampleScore {
 }
 
 export async function runPersonalityDriftSampler(): Promise<DriftReport> {
-  const now = new Date();
+  const now = clock.now();
   const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
 

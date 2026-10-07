@@ -28,6 +28,7 @@ import { qrRedirectUrl } from "./qrCodes";
 import { refundPoolDebit } from "../creditPool";
 import { logger } from "../../utils/logger";
 import { mergeMailCopy } from "@shared/parcel/ownerName";
+import { clock } from "../../utils/clock";
 
 /** Minimal shipment shape the flusher needs (raw claim row OR a mapped row). */
 export interface FlushShipment {
@@ -183,7 +184,7 @@ async function bookFreeSendAcquisitionCogs(ship: FlushShipment): Promise<void> {
     await db.insert(marketingSpend).values({
       channel: "other",
       amountCents: totalCents,
-      spentAt: new Date(),
+      spentAt: clock.now(),
       source: "autopilot",
       campaignRef,
       note: `Free first-send postage (D4 acquisition COGS) — org ${ship.organizationId}, shipment ${ship.id}`,
@@ -331,7 +332,7 @@ async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
     if (pieces.length === 0) {
       await db
         .update(mailShipments)
-        .set({ status: "cancelled", cancelledAt: new Date(), cancellationReason: "every recipient opted out or was removed during the hold" })
+        .set({ status: "cancelled", cancelledAt: clock.now(), cancellationReason: "every recipient opted out or was removed during the hold" })
         .where(and(eq(mailShipments.id, ship.id), eq(mailShipments.organizationId, ship.organizationId)));
       return "sent";
     }
@@ -341,7 +342,7 @@ async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
     // Nothing to send (already flushed / empty) — mark sent, no charge change.
     await db
       .update(mailShipments)
-      .set({ status: "sent", sentAt: new Date() })
+      .set({ status: "sent", sentAt: clock.now() })
       .where(and(eq(mailShipments.id, ship.id), eq(mailShipments.organizationId, ship.organizationId)));
     return "sent";
   }
@@ -401,7 +402,7 @@ async function flushOne(ship: FlushShipment): Promise<"sent" | "failed"> {
     }
     await db
       .update(mailShipments)
-      .set({ status: "sent", sentAt: new Date(), provider: route.chosenProvider })
+      .set({ status: "sent", sentAt: clock.now(), provider: route.chosenProvider })
       .where(and(eq(mailShipments.id, ship.id), eq(mailShipments.organizationId, ship.organizationId)));
   } catch (err) {
     logger.error(
@@ -468,7 +469,7 @@ async function settlePartialShipment(
     `${unsent} failed and were refunded — ${err.causeMessage}`;
   await db
     .update(mailShipments)
-    .set({ status: "sent", sentAt: new Date(), provider: err.provider, cancellationReason: reason.slice(0, 500) })
+    .set({ status: "sent", sentAt: clock.now(), provider: err.provider, cancellationReason: reason.slice(0, 500) })
     .where(and(eq(mailShipments.id, ship.id), eq(mailShipments.organizationId, ship.organizationId)));
   if (ship.debitEventKey && ship.debitedCents && ship.debitedCents > 0 && unsent > 0) {
     // Against the pieces the debit PAID for, not those left after suppression.
@@ -500,7 +501,7 @@ export interface FlushSummary {
  * single cycle can't run unbounded. Best-effort per shipment — one failure
  * never blocks the rest.
  */
-export async function flushDueMailShipments(now: Date = new Date(), limit = 50): Promise<FlushSummary> {
+export async function flushDueMailShipments(now: Date = clock.now(), limit = 50): Promise<FlushSummary> {
   // ── Outreach stop-loss gate (founder rulings #4/#5, 2026-07-28) ──────────
   // Checked BEFORE claiming so a paused cycle leaves every due shipment in
   // 'queued' — skipped, never dropped, never marked failed, never refunded.

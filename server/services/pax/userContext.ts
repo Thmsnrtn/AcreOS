@@ -68,6 +68,7 @@ import {
 } from "@shared/schema/pax-verticals";
 import { buildVerticalPromptAppendix } from "./verticalSystemPrompt";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ── Public types ─────────────────────────────────────────────────────────
 
@@ -161,7 +162,7 @@ export async function captureUserContext(
         ? input.displayedName.trim().slice(0, 80)
         : null;
 
-    const now = new Date();
+    const now = clock.now();
     const [row] = await db
       .insert(paxUserContext)
       .values({
@@ -223,7 +224,7 @@ export async function loadUserContext(userId: string): Promise<UserContext | nul
     // Fire-and-forget — don't await, don't surface DB write errors.
     void db
       .update(paxUserContext)
-      .set({ lastUsedAt: new Date() })
+      .set({ lastUsedAt: clock.now() })
       .where(eq(paxUserContext.userId, userId))
       .catch((err) => {
         logger.debug("[paxUserContext] last_used_at update failed (non-fatal)", {
@@ -317,7 +318,7 @@ export async function setPersonalizationOptOut(
       .update(paxUserContext)
       .set({
         optedInPersonalization: !optOut,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(paxUserContext.userId, userId));
   } catch (err) {

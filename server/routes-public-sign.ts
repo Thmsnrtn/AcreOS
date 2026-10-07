@@ -24,6 +24,7 @@ import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { idempotencyMiddleware } from "./middleware/idempotency";
 import { loadSigningProgress, statusPatchFor } from "./services/esign/signingProgress";
+import { clock } from "./utils/clock";
 
 export function registerPublicSignRoutes(app: Express): void {
   // consent — registered BEFORE /api/public/sign/:docId so the literal path wins (2026-07-11 route-order sweep).
@@ -166,7 +167,7 @@ export function registerPublicSignRoutes(app: Express): void {
         .where(eq(organizations.id, doc.organizationId))
         .limit(1);
 
-      if (doc.expiresAt && new Date(doc.expiresAt) < new Date()) {
+      if (doc.expiresAt && new Date(doc.expiresAt) < clock.now()) {
         return sendError(res, 410, "GONE", "This signing link has expired");
       }
 
@@ -225,7 +226,7 @@ export function registerPublicSignRoutes(app: Express): void {
         .limit(1);
       if (!doc) return Errors.notFound(res, "Document");
 
-      if (doc.expiresAt && new Date(doc.expiresAt) < new Date()) {
+      if (doc.expiresAt && new Date(doc.expiresAt) < clock.now()) {
         return sendError(res, 410, "GONE", "This signing link has expired");
       }
 
@@ -307,7 +308,7 @@ export function registerPublicSignRoutes(app: Express): void {
 
       const signedAtIso =
         progress.perSigner.find((p) => p.signer.id === String(signerId))?.signedAt?.toISOString() ??
-        new Date().toISOString();
+        clock.now().toISOString();
 
       res.json({
         success: true,

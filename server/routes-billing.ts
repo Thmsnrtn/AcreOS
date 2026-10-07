@@ -16,6 +16,7 @@ import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { customerAuditFromRequest, CustomerAuditActions } from "./utils/customerAudit";
 import { z } from "zod";
 import { lenderServicingPhase, subscriptionEndedPatch } from "./services/borrower/servicingPhase";
+import { clock } from "./utils/clock";
 
 export function registerBillingRoutes(app: Express): void {
   const api = app;
@@ -50,7 +51,7 @@ export function registerBillingRoutes(app: Express): void {
     try {
       const { usageMeteringService } = await import("./services/credits");
       const org = req.organization;
-      const month = req.query.month as string || new Date().toISOString().slice(0, 7);
+      const month = req.query.month as string || clock.now().toISOString().slice(0, 7);
       const summary = await usageMeteringService.getUsageSummary(org.id, month);
       res.json(summary);
     } catch (error: any) {
@@ -590,7 +591,7 @@ export function registerBillingRoutes(app: Express): void {
           })
           .from(orgVerticalPacks)
           .where(eq(orgVerticalPacks.organizationId, orgId));
-        const now = new Date();
+        const now = clock.now();
         for (const row of rows) {
           if (row.status === "active" && (!row.cancelAt || row.cancelAt > now)) {
             ownedKeys.add(row.packKey);
@@ -797,7 +798,7 @@ export function registerBillingRoutes(app: Express): void {
         const tierFromMeta = (price?.metadata?.tier || price?.metadata?.plan) as string | undefined;
         if (tierFromMeta) {
           const pricingCfg = await storage.getPricingConfigForTier(tierFromMeta.toLowerCase());
-          const now = new Date();
+          const now = clock.now();
           if (pricingCfg?.stripeCouponId && pricingCfg.promoEndsAt && pricingCfg.promoEndsAt > now) {
             checkoutOptions.couponId = pricingCfg.stripeCouponId;
           } else if (pricingCfg?.allowPromoCodes) {
@@ -1435,7 +1436,7 @@ export function registerBillingRoutes(app: Express): void {
           });
         }
 
-        const now = new Date();
+        const now = clock.now();
         const pauseEnds = new Date(now.getTime() + parsed.data.days * 24 * 60 * 60 * 1000);
         const resumesAtUnix = Math.floor(pauseEnds.getTime() / 1000);
 
@@ -1520,7 +1521,7 @@ export function registerBillingRoutes(app: Express): void {
       }
 
       // Rate limit: reject if org already had a refund in the last 30 days
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
       const recentRefunds = await db.select({ id: refundRequests.id })
         .from(refundRequests)
         .where(and(
@@ -1541,7 +1542,7 @@ export function registerBillingRoutes(app: Express): void {
       const charges = await stripe.charges.list({
         customer: org.stripeCustomerId,
         limit: 5,
-        created: { gte: Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60 },
+        created: { gte: Math.floor(clock.nowMs() / 1000) - 30 * 24 * 60 * 60 },
       });
 
       if (!charges.data.length) {
@@ -1575,7 +1576,7 @@ export function registerBillingRoutes(app: Express): void {
           await db.update(refundRequests)
             .set({
               status: "processed",
-              processedAt: new Date(),
+              processedAt: clock.now(),
               processedBy: "auto",
               stripeRefundId: refund.id,
             })

@@ -75,6 +75,7 @@ import {
   CLOSED_DEAL_STATUSES,
   ENGAGED_LEAD_STATUSES,
 } from "@shared/lifecycle/pipeline-status";
+import { clock } from "../utils/clock";
 /**
  * `"unverified"` is a first-class result, not a failure to produce one. It
  * means: no observation of this action's effect exists. It is reported, and it
@@ -116,7 +117,7 @@ class OutcomeVerificationLoop {
     unverified: number;
     qualityScore: number;
   }> {
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const weekAgo = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
     const results: VerificationResult[] = [];
 
     // Get recent auto-executed actions — THIS organization's.
@@ -142,7 +143,7 @@ class OutcomeVerificationLoop {
         orgId,
         agentCodename: payload?.agentCodename ?? "unknown",
         actionType: payload?.action ?? "unknown",
-        actionCreatedAt: action.createdAt ?? new Date(),
+        actionCreatedAt: action.createdAt ?? clock.now(),
         payload,
       };
 

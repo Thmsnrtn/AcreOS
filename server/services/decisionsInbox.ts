@@ -15,6 +15,7 @@ import {
   type OutcomePrediction,
 } from "./outcomeLedger";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /**
  * The per-class "If you do nothing" sentence (founder-trust audit 2026-07-28).
@@ -58,7 +59,7 @@ async function arbitrateInboxInsert(
     if (decision.outcome === "suppress") return { status: "suppressed", deferredUntil: null };
     return {
       status: "deferred",
-      deferredUntil: decision.deferUntil ?? new Date(Date.now() + 24 * 60 * 60 * 1000),
+      deferredUntil: decision.deferUntil ?? new Date(clock.nowMs() + 24 * 60 * 60 * 1000),
     };
   } catch (err) {
     logger.error(
@@ -66,7 +67,7 @@ async function arbitrateInboxInsert(
       err instanceof Error ? err : undefined,
     );
     return interruptClass === "B"
-      ? { status: "deferred", deferredUntil: new Date(Date.now() + 24 * 60 * 60 * 1000) }
+      ? { status: "deferred", deferredUntil: new Date(clock.nowMs() + 24 * 60 * 60 * 1000) }
       : { status: "suppressed", deferredUntil: null };
   }
 }
@@ -408,7 +409,7 @@ export const decisionsInboxService = {
           analysisReason: analysis.analysisReason,
           autoDisposed: !analysis.shouldSurface,
         },
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(featureRequests.id, requestId));
 
@@ -742,9 +743,9 @@ export const decisionsInboxService = {
     await db.update(decisionsInboxItems)
       .set({
         status: "approved",
-        resolvedAt: new Date(),
+        resolvedAt: clock.now(),
         resolvedBy: "founder",
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
         ...(chosenOptionText ? { founderOverrideAction: chosenOptionText } : {}),
       })
       .where(eq(decisionsInboxItems.id, itemId));
@@ -811,18 +812,18 @@ export const decisionsInboxService = {
     await db.update(decisionsInboxItems)
       .set({
         status: "rejected",
-        resolvedAt: new Date(),
+        resolvedAt: clock.now(),
         resolvedBy: "founder",
         founderOverrideAction: reason,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(decisionsInboxItems.id, itemId));
   },
 
   async defer(itemId: number, hours = 24): Promise<void> {
-    const deferredUntil = new Date(Date.now() + hours * 60 * 60 * 1000);
+    const deferredUntil = new Date(clock.nowMs() + hours * 60 * 60 * 1000);
     await db.update(decisionsInboxItems)
-      .set({ status: "deferred", deferredUntil, updatedAt: new Date() })
+      .set({ status: "deferred", deferredUntil, updatedAt: clock.now() })
       .where(eq(decisionsInboxItems.id, itemId));
   },
 
@@ -830,10 +831,10 @@ export const decisionsInboxService = {
     await db.update(decisionsInboxItems)
       .set({
         status: "approved",
-        resolvedAt: new Date(),
+        resolvedAt: clock.now(),
         resolvedBy: "founder",
         founderOverrideAction: customAction,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(decisionsInboxItems.id, itemId));
   },
@@ -851,7 +852,7 @@ export const decisionsInboxService = {
     byType: Record<string, number>;
     total: number;
   }> {
-    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const cutoff = new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000);
     // Cross-org for the same reason getPendingItems is, and through the same
     // hatch: this is the founder's own view of what the inbox SUPPRESSED, and
     // a per-org predicate would empty it.
@@ -882,10 +883,10 @@ export const decisionsInboxService = {
   /** Re-open deferred items whose deferral window has passed. */
   async processDeferredItems(): Promise<void> {
     await db.update(decisionsInboxItems)
-      .set({ status: "pending", deferredUntil: null, updatedAt: new Date() })
+      .set({ status: "pending", deferredUntil: null, updatedAt: clock.now() })
       .where(and(
         eq(decisionsInboxItems.status, "deferred"),
-        lt(decisionsInboxItems.deferredUntil, new Date()),
+        lt(decisionsInboxItems.deferredUntil, clock.now()),
       ));
   },
 };

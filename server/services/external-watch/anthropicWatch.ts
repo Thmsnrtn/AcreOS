@@ -32,6 +32,7 @@ import {
 } from "@shared/schema/external-watch";
 import { logger } from "../../utils/logger";
 import { processWatchEvent } from "./modelUpgradePath";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // fetchAnthropicChangelog — cron entrypoint
@@ -96,7 +97,7 @@ export async function fetchAnthropicChangelog(
       sourceUrl: item.link,
       title: item.title,
       summary: item.summary,
-      publishedAt: item.publishedAt ?? new Date(),
+      publishedAt: item.publishedAt ?? clock.now(),
       severityKeywordMatch: matches,
     };
     try {

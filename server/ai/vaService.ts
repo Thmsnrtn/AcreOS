@@ -8,6 +8,7 @@ import { validateAtlasOutput, AtlasOutputType } from "./validators";
 import { logger } from "../utils/logger";
 import { assertAiSpendAllowed, recordExternalAiSpend } from "../services/aiSpendGuard";
 import { OPENAI_DIRECT_MODELS, openAiModelIdFor } from "../services/models";
+import { clock } from "../utils/clock";
 
 // Lazy client: constructing OpenAI at module scope threw at import time when
 // the key was unset, so the first hit on any VA route surfaced as a generic
@@ -528,7 +529,7 @@ export class VaAgentService {
       const completed = await storage.updateVaAction(actionId, {
         status: "completed",
         output: result,
-        executedAt: new Date()
+        executedAt: clock.now()
       });
 
       await storage.logActivity({
@@ -643,7 +644,7 @@ export class VaAgentService {
       throw new Error(`Agent ${agentType} not found for organization`);
     }
 
-    await storage.updateVaAgent(agent.id, { isActive: true, lastActiveAt: new Date() });
+    await storage.updateVaAgent(agent.id, { isActive: true, lastActiveAt: clock.now() });
 
     const tools = profile.tools.map(toolName => ({
       type: "function" as const,
@@ -818,7 +819,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
     const newLeads = leads.filter(l => {
       const createdAt = l.createdAt ? new Date(l.createdAt) : null;
       if (!createdAt) return false;
-      const oneDayAgo = new Date();
+      const oneDayAgo = clock.now();
       oneDayAgo.setDate(oneDayAgo.getDate() - 1);
       return createdAt > oneDayAgo;
     }).length;
@@ -826,7 +827,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
     const activeNotes = notesData.filter(n => n.status === "active");
     const overduePayments = activeNotes.filter(n => {
       if (!n.nextPaymentDate) return false;
-      return new Date(n.nextPaymentDate) < new Date();
+      return new Date(n.nextPaymentDate) < clock.now();
     }).length;
 
     const monthlyRevenue = activeNotes.reduce((sum, n) => sum + Number(n.monthlyPayment || 0), 0);
@@ -876,7 +877,7 @@ Keep it concise and actionable.`;
     const content = response.choices[0].message.content || "";
     
     const lines = content.split('\n').filter(l => l.trim());
-    const title = lines[0]?.replace(/^#*\s*/, '') || `Daily Briefing - ${new Date().toLocaleDateString()}`;
+    const title = lines[0]?.replace(/^#*\s*/, '') || `Daily Briefing - ${clock.now().toLocaleDateString()}`;
     const summary = lines.slice(1, 4).join(' ').substring(0, 500);
 
     const sections: InsertVaBriefing["sections"] = [];
@@ -958,7 +959,7 @@ Keep it concise and actionable.`;
   }
 
   async executeAgentAction(action: VaAction): Promise<{ success: boolean; result?: any; error?: string }> {
-    const startTime = Date.now();
+    const startTime = clock.nowMs();
     
     // Only approved actions can be executed
     if (action.status !== "approved") {
@@ -998,12 +999,12 @@ Keep it concise and actionable.`;
           result = { message: `Action type '${action.actionType}' logged for manual processing` };
       }
       
-      const executionTimeMs = Date.now() - startTime;
+      const executionTimeMs = clock.nowMs() - startTime;
       
       await storage.updateVaAction(action.id, {
         status: "completed",
         output: result,
-        executedAt: new Date(),
+        executedAt: clock.now(),
         executionTimeMs
       });
       
@@ -1048,7 +1049,7 @@ Keep it concise and actionable.`;
   private async executeCreateFollowUp(action: VaAction): Promise<any> {
     const input = action.input as any;
     const title = input.title || action.title;
-    const startTime = input.startTime ? new Date(input.startTime) : new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const startTime = input.startTime ? new Date(input.startTime) : new Date(clock.nowMs() + 24 * 60 * 60 * 1000);
     
     const event = await storage.createVaCalendarEvent({
       organizationId: action.organizationId,
@@ -1088,7 +1089,7 @@ Keep it concise and actionable.`;
       eventType: "payment_due",
       title: `Payment Reminder: ${input.reminderType || "Standard"} - Note #${noteId}`,
       description: `Payment of $${note.monthlyPayment} due. Balance: $${note.currentBalance}`,
-      startTime: new Date(),
+      startTime: clock.now(),
       status: "completed"
     });
     
@@ -1123,7 +1124,7 @@ Keep it concise and actionable.`;
       suggestedOfferAmount: suggestedOffer,
       marketValue,
       offerPercentage: "30%",
-      draftedAt: new Date().toISOString()
+      draftedAt: clock.now().toISOString()
     };
 
     const offerValidation = validateAtlasOutput(AtlasOutputType.OFFER_AMOUNT, {
@@ -1156,7 +1157,7 @@ Keep it concise and actionable.`;
       estimatedBudget: input.estimatedBudget || 0,
       proposedContent: input.content || action.description,
       status: "draft",
-      proposedAt: new Date().toISOString()
+      proposedAt: clock.now().toISOString()
     };
     
     return {
@@ -1177,7 +1178,7 @@ Keep it concise and actionable.`;
       subject: input.subject,
       content: input.content || input.message,
       status: "queued",
-      queuedAt: new Date().toISOString()
+      queuedAt: clock.now().toISOString()
     };
     
     return {
@@ -1194,7 +1195,7 @@ Keep it concise and actionable.`;
     
     let researchResult: any = {
       message: "Research request logged",
-      requestedAt: new Date().toISOString()
+      requestedAt: clock.now().toISOString()
     };
     
     if (apn && state) {

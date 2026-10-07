@@ -34,6 +34,7 @@ import {
   type LandIntelligenceReportRow,
 } from "@shared/schema";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ---------------------------------------------------------------------------
 // Staleness policy
@@ -130,7 +131,7 @@ export function withScenarioKey<T extends object>(report: T, scenarioKey: string
 export function servableStoredReport(
   row: Pick<LandIntelligenceReportRow, "staleAfter" | "report"> | null,
   scenarioKey: string,
-  now: Date = new Date(),
+  now: Date = clock.now(),
 ): Record<string, unknown> | null {
   if (!row || !isReportFresh(row, now)) return null;
   const report = row.report as Record<string, unknown> | null;
@@ -146,7 +147,7 @@ export function servableStoredReport(
 /** A stored report is fresh when now() < staleAfter. */
 export function isReportFresh(
   row: Pick<LandIntelligenceReportRow, "staleAfter">,
-  now: Date = new Date(),
+  now: Date = clock.now(),
 ): boolean {
   return row.staleAfter.getTime() > now.getTime();
 }
@@ -159,7 +160,7 @@ export function isReportFresh(
 export function staleFields(
   fieldProvenance: LandIntelligenceReportRow["fieldProvenance"],
   fields: string[],
-  now: Date = new Date(),
+  now: Date = clock.now(),
 ): string[] {
   const fp = fieldProvenance ?? {};
   const out: string[] = [];
@@ -243,7 +244,7 @@ export async function writeStoredReport(args: {
   report: ComputedReportLike;
   now?: Date;
 }): Promise<void> {
-  const now = args.now ?? new Date();
+  const now = args.now ?? clock.now();
   try {
     const staleAfter = new Date(now.getTime() + REPORT_STALE_AFTER_MS);
     const values = {

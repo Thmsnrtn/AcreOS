@@ -34,6 +34,7 @@ import {
   resolveSubject,
 } from "./services/evidence/evidenceStore";
 import { isKnownPredicate, predicateById } from "@shared/evidence/claim";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -112,7 +113,7 @@ router.get("/:id/enrichment", async (req: Request, res: Response) => {
  */
 function parseAsOf(raw: unknown): { ok: true; asOf: Date } | { ok: false } {
   if (raw === undefined || raw === null || raw === "") {
-    return { ok: true, asOf: new Date() };
+    return { ok: true, asOf: clock.now() };
   }
   if (typeof raw !== "string") return { ok: false };
   const d = new Date(raw);

@@ -24,6 +24,7 @@ import { generateWithAutoRouting } from "./aiRouter";
 import { getComparableProperties, ComparableProperty, calculateMarketValue } from "./comps";
 import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
+import { clock } from "../utils/clock";
 
 interface AdjustmentFactor {
   factor: number;
@@ -385,7 +386,7 @@ export class PriceOptimizerService {
       return [];
     }
 
-    const minSaleDate = addMonths(new Date(), -monthsBack);
+    const minSaleDate = addMonths(clock.now(), -monthsBack);
 
     const sizeAcres = property.sizeAcres ? parseFloat(property.sizeAcres) : 5;
     const minAcreage = sizeAcres * 0.5;
@@ -436,7 +437,7 @@ export class PriceOptimizerService {
       let recencyWeight = 1.0;
       if (comp.saleDate) {
         const saleDate = new Date(comp.saleDate);
-        const monthsAgo = (Date.now() - saleDate.getTime()) / (1000 * 60 * 60 * 24 * 30);
+        const monthsAgo = (clock.nowMs() - saleDate.getTime()) / (1000 * 60 * 60 * 24 * 30);
         recencyWeight = Math.max(0.5, 1 - (monthsAgo / 24));
       }
 
@@ -730,7 +731,7 @@ export class PriceOptimizerService {
       .set({
         actualPrice: actualPrice.toString(),
         priceAccepted: accepted,
-        outcomeRecordedAt: new Date(),
+        outcomeRecordedAt: clock.now(),
       })
       .where(owned);
 
@@ -859,7 +860,7 @@ export class PriceOptimizerService {
       similarity += distanceSimilarity * 0.30;
 
       if (comp.saleDate) {
-        const monthsAgo = (Date.now() - new Date(comp.saleDate).getTime()) / (1000 * 60 * 60 * 24 * 30);
+        const monthsAgo = (clock.nowMs() - new Date(comp.saleDate).getTime()) / (1000 * 60 * 60 * 24 * 30);
         const recencySimilarity = Math.max(0, 1 - monthsAgo / 24);
         similarity += recencySimilarity * 0.30;
       }
@@ -974,7 +975,7 @@ export class PriceOptimizerService {
       .filter(c => c.saleDate)
       .map(c => {
         const saleDate = new Date(c.saleDate!);
-        return Math.floor((Date.now() - saleDate.getTime()) / (1000 * 60 * 60 * 24));
+        return Math.floor((clock.nowMs() - saleDate.getTime()) / (1000 * 60 * 60 * 24));
       });
 
     const avgDom = daysOnMarket.length > 0 

@@ -54,6 +54,7 @@ import type {
 } from "@shared/schema/va-tasks";
 import { and, desc, eq } from "drizzle-orm";
 import { startOfDay, endOfDay, subDays, format } from "date-fns";
+import { clock } from "../utils/clock";
 
 // ============================================
 // TYPES — Task assignment system
@@ -228,8 +229,8 @@ export async function createTask(
       estimatedMinutes: input.estimatedMinutes ?? null,
       // A task created as already-started or already-done carries the stamp its
       // status implies, so the metrics below are not computing over a null.
-      startedAt: input.status === "in_progress" ? new Date() : null,
-      completedAt: input.status === "completed" ? new Date() : null,
+      startedAt: input.status === "in_progress" ? clock.now() : null,
+      completedAt: input.status === "completed" ? clock.now() : null,
     })
     .returning();
   return toVaTask(row);
@@ -303,7 +304,7 @@ export async function updateTask(
 ): Promise<VaTask> {
   const current = await getTask(organizationId, taskId);
 
-  const patch: Partial<typeof vaTasks.$inferInsert> = { updatedAt: new Date() };
+  const patch: Partial<typeof vaTasks.$inferInsert> = { updatedAt: clock.now() };
   if (updates.title !== undefined) patch.title = updates.title;
   if (updates.description !== undefined) patch.description = updates.description;
   if (updates.category !== undefined) patch.category = updates.category;
@@ -323,8 +324,8 @@ export async function updateTask(
   if (updates.attachmentUrls !== undefined) patch.attachmentUrls = updates.attachmentUrls;
   if (updates.loomUrl !== undefined) patch.loomUrl = updates.loomUrl;
 
-  if (updates.status === "in_progress" && !current.startedAt) patch.startedAt = new Date();
-  if (updates.status === "completed" && !current.completedAt) patch.completedAt = new Date();
+  if (updates.status === "in_progress" && !current.startedAt) patch.startedAt = clock.now();
+  if (updates.status === "completed" && !current.completedAt) patch.completedAt = clock.now();
 
   const [row] = await db
     .update(vaTasks)
@@ -358,10 +359,10 @@ export async function verifyTask(
     .update(vaTasks)
     .set({
       verified: input.verified,
-      verifiedAt: new Date(),
+      verifiedAt: clock.now(),
       verifiedByUserId: input.verifiedByUserId ?? null,
       verificationNotes: input.notes ?? null,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     })
     .where(and(eq(vaTasks.id, taskId), eq(vaTasks.organizationId, organizationId)))
     .returning();
@@ -448,7 +449,7 @@ export function calculateVaMetrics(
   userId: string,
   period: "today" | "week" | "month"
 ): VaPerformanceMetrics {
-  const now = new Date();
+  const now = clock.now();
   const periodStart =
     period === "today"
       ? startOfDay(now)
@@ -520,7 +521,7 @@ export function generateStandupDigest(
   tasks: VaTask[],
   userId: string,
   vaName: string,
-  date: Date = new Date()
+  date: Date = clock.now()
 ): DailyStandupDigest {
   const dayStart = startOfDay(subDays(date, 1)); // Yesterday
   const dayEnd = endOfDay(subDays(date, 1));

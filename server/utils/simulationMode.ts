@@ -28,6 +28,7 @@
  */
 
 import { logger } from "./logger";
+import { clock } from "./clock";
 
 export type SimulatedCategory =
   | "stripe"
@@ -130,7 +131,7 @@ export async function recordSimulatedAction<T extends Record<string, unknown>>(
   payload: T,
   org?: { id?: number; settings?: unknown } | null
 ): Promise<{ simulated: true; category: SimulatedCategory; action: string; payload: T; id: string }> {
-  const id = `sim_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  const id = `sim_${clock.nowMs().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
   const record = {
     simulated: true as const,
     category,
@@ -138,7 +139,7 @@ export async function recordSimulatedAction<T extends Record<string, unknown>>(
     payload,
     id,
     orgId: org?.id,
-    at: new Date().toISOString(),
+    at: clock.now().toISOString(),
   };
   logger.info("[simulation] would have executed action", {
     source: "simulationMode",

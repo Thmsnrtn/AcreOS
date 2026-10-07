@@ -21,6 +21,7 @@
 
 import { jsPDF } from "jspdf";
 import { DISCLAIMER_DOCUMENT_TEMPLATE } from "./legalDisclaimers";
+import { clock } from "../utils/clock";
 
 interface OfferLetterData {
   // Organization (buyer)
@@ -75,9 +76,9 @@ export async function generateOfferLetterPdf(data: OfferLetterData): Promise<Buf
 
   const offerDate = data.offerDate
     ? new Date(data.offerDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
-    : new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    : clock.now().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
-  const expirationDate = new Date();
+  const expirationDate = clock.now();
   expirationDate.setDate(expirationDate.getDate() + (data.offerExpirationDays ?? 10));
   const expStr = expirationDate.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 

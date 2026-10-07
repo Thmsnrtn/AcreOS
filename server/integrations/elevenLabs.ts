@@ -20,6 +20,7 @@ import crypto from "crypto";
 import { logger } from "../utils/logger";
 import { getStorage, type StoragePath } from "../services/cmo/storage";
 import { estimateElevenLabsCostCents } from "../services/cmo/costTracker";
+import { clock } from "../utils/clock";
 
 const ELEVEN_LABS_BASE_URL = "https://api.elevenlabs.io/v1";
 const DEFAULT_MODEL_ID = "eleven_multilingual_v2"; // best quality for English at ~1 credit/char
@@ -199,12 +200,12 @@ export async function checkElevenLabsHealth(): Promise<{ ok: boolean; latencyMs?
   if (!process.env.ELEVENLABS_API_KEY) {
     return { ok: false, message: "ELEVENLABS_API_KEY not set" };
   }
-  const start = Date.now();
+  const start = clock.nowMs();
   try {
     const response = await fetch(`${ELEVEN_LABS_BASE_URL}/user`, {
       headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY },
     });
-    const latencyMs = Date.now() - start;
+    const latencyMs = clock.nowMs() - start;
     if (!response.ok) {
       return { ok: false, latencyMs, message: `HTTP ${response.status}` };
     }

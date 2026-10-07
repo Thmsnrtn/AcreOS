@@ -27,6 +27,7 @@ import { db } from "../db";
 import { dataSources, dataSourceCache, properties } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { femaZoneCode, isSfhaCode } from "./data-source-broker";
+import { clock } from "../utils/clock";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA SIGNAL CATALOG
@@ -876,7 +877,7 @@ export function assessDataFreshness(propertyEnrichmentData: any, propertyId: num
   let completenessScore = 0;
   const totalSignals = 10;
 
-  const now = new Date();
+  const now = clock.now();
   const msSince = (date: Date | null) => date ? (now.getTime() - date.getTime()) / 86400000 : Infinity;
 
   // Check each critical signal

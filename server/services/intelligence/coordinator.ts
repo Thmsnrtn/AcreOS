@@ -34,6 +34,7 @@ import {
   type BudgetCategory,
   checkBudget,
 } from "./budget";
+import { clock } from "../../utils/clock";
 
 export interface JobGateOptions {
   /** Budget category to check before running. Default "general". */
@@ -208,7 +209,7 @@ export async function shouldRunAIJob(
   }
   const row = await getJobRunRow(name);
   if (row) {
-    const minutesSince = (Date.now() - new Date(row.last_ran_at).getTime()) / 60_000;
+    const minutesSince = (clock.nowMs() - new Date(row.last_ran_at).getTime()) / 60_000;
     if (minIntervalMinutes > 0 && minutesSince < minIntervalMinutes) {
       await recordSkip(name, `min interval (${minIntervalMinutes}m, last ran ${minutesSince.toFixed(1)}m ago)`, fingerprint);
       return { run: false, reason: `min interval not yet elapsed` };

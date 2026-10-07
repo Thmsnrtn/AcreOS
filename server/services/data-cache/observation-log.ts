@@ -29,6 +29,7 @@
 import { db } from "../../db";
 import { parcelObservations, type InsertParcelObservation } from "@shared/schema";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 /** A single fact about a parcel, ready to be appended. */
 export interface ObservationInput {
@@ -167,7 +168,7 @@ export function coerceSaleDate(value: unknown): Date | null {
   const year = d.getUTCFullYear();
   // Plausibility gate: a sale outside 1900..now+1y is provider noise, and a
   // wrongly-dated observation poisons the tenure clock worse than no point.
-  if (year < 1900 || d.getTime() > Date.now() + 365 * 24 * 60 * 60 * 1000) return null;
+  if (year < 1900 || d.getTime() > clock.nowMs() + 365 * 24 * 60 * 60 * 1000) return null;
   return d;
 }
 

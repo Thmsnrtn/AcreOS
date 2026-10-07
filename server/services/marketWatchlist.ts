@@ -32,6 +32,7 @@ import { db } from "../db";
 import { and, count, desc, eq, inArray } from "drizzle-orm";
 import { marketWatchlistEntries, marketWatchlistAlerts } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface WatchlistEntry {
   id: string;
@@ -365,7 +366,7 @@ export class MarketWatchlistService {
       emailAlert: data.emailAlert ?? true,
       pushAlert: data.pushAlert ?? true,
       active: true,
-      createdAt: new Date(),
+      createdAt: clock.now(),
     });
   }
 

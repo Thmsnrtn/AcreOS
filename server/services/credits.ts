@@ -19,6 +19,7 @@ import {
   type SubscriptionTier,
 } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /** FRAUD-011: the most free usage a trial may consume. */
 const TRIAL_SPENDING_CAP_CENTS = 500;
@@ -187,7 +188,7 @@ export class CreditService {
       where: eq(organizations.id, organizationId),
       columns: { trialEndsAt: true },
     });
-    if (!org?.trialEndsAt || new Date(org.trialEndsAt) <= new Date()) return null;
+    if (!org?.trialEndsAt || new Date(org.trialEndsAt) <= clock.now()) return null;
 
     const [result] = await db
       .select({
@@ -271,7 +272,7 @@ export class CreditService {
       unitCostCents: amountCents,
       totalCostCents: amountCents,
       metadata: { description, fundedBy: TRIAL_ALLOWANCE_FUNDING },
-      billingMonth: new Date().toISOString().slice(0, 7),
+      billingMonth: clock.now().toISOString().slice(0, 7),
     });
     return "trial";
   }
@@ -336,7 +337,7 @@ export class CreditService {
     }
 
     const allowance = tierConfig.limits.monthlyCredits;
-    const currentMonth = new Date().toISOString().slice(0, 7);
+    const currentMonth = clock.now().toISOString().slice(0, 7);
 
     // DEFECT-0007: Use atomic INSERT ... ON CONFLICT DO NOTHING on the
     // (organization_id, allowance_month) unique index to prevent double-granting
@@ -451,7 +452,7 @@ export class UsageMeteringService {
   ): Promise<{ record: UsageRecord | null; deducted: boolean; insufficientCredits: boolean }> {
     const unitCost = await this.getRate(actionType);
     const totalCost = unitCost * quantity;
-    const billingMonth = new Date().toISOString().slice(0, 7);
+    const billingMonth = clock.now().toISOString().slice(0, 7);
 
     if (autoDeduct && totalCost > 0) {
       const deductResult = await this.creditService.deductCredits(
@@ -505,7 +506,7 @@ export class UsageMeteringService {
     organizationId: number,
     billingMonth?: string
   ): Promise<{ actionType: string; count: number; totalCost: number }[]> {
-    const month = billingMonth || new Date().toISOString().slice(0, 7);
+    const month = billingMonth || clock.now().toISOString().slice(0, 7);
 
     const results = await db
       .select({
@@ -547,7 +548,7 @@ export class UsageMeteringService {
     if (existing) {
       const [updated] = await db
         .update(usageRates)
-        .set({ unitCostCents, updatedAt: new Date() })
+        .set({ unitCostCents, updatedAt: clock.now() })
         .where(eq(usageRates.id, existing.id))
         .returning();
       return updated;
@@ -621,7 +622,7 @@ export class UsageMeteringService {
     const amountCents = Math.min(configuredCents, AUTO_TOP_UP_HARD_STOP_CENTS);
 
     // Ledger-based idempotency: one auto charge per org per hour, max.
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const oneHourAgo = new Date(clock.nowMs() - 60 * 60 * 1000);
     const [recent] = await db
       .select({ id: creditTransactions.id })
       .from(creditTransactions)
@@ -677,7 +678,7 @@ export class UsageMeteringService {
       recipientEmail = null;
     }
 
-    const hourBucket = new Date().toISOString().slice(0, 13); // YYYY-MM-DDTHH
+    const hourBucket = clock.now().toISOString().slice(0, 13); // YYYY-MM-DDTHH
     try {
       const intent = await stripe.paymentIntents.create(
         {
@@ -772,7 +773,7 @@ export class UsageMeteringService {
       return null;
     }
 
-    const currentMonth = new Date().toISOString().slice(0, 7);
+    const currentMonth = clock.now().toISOString().slice(0, 7);
 
     return await withTransaction(async (tx) => {
       // Update credit balance first

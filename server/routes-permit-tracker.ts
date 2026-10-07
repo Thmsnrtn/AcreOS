@@ -40,6 +40,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { emitPermitGateApproved } from "./services/subdivisionEvents";
+import { clock } from "./utils/clock";
 
 // ----------------------------------------------------------------------------
 // Templates — permit gate sequences per (state, county) Brigid actually works.
@@ -330,7 +331,7 @@ export function registerPermitTrackerRoutes(app: Express): void {
         const parsed = updateGateSchema.safeParse(req.body);
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-        const updates: Record<string, unknown> = { updatedAt: new Date() };
+        const updates: Record<string, unknown> = { updatedAt: clock.now() };
         for (const k of [
           "status", "submittedAt", "expectedReturnAt", "completedAt",
           "feeCents", "contactName", "contactEmail", "contactPhone",
@@ -458,7 +459,7 @@ export function registerPermitTrackerRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const orgId = getOrganizationId(req);
-        const today = new Date().toISOString().slice(0, 10);
+        const today = clock.now().toISOString().slice(0, 10);
 
         const stalled = await db
           .select({
@@ -499,7 +500,7 @@ export function registerPermitTrackerRoutes(app: Express): void {
 function isStalledGate(g: { status: string; expectedReturnAt: string | null }): boolean {
   if (!g.expectedReturnAt) return false;
   if (g.status !== "submitted" && g.status !== "in_review") return false;
-  const today = new Date();
+  const today = clock.now();
   const expected = new Date(g.expectedReturnAt);
   return expected.getTime() < today.getTime();
 }

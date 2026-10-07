@@ -10,6 +10,7 @@ import {
 } from "@shared/schema";
 import { eq, and, gte, desc, sql } from "drizzle-orm";
 import { addMonths } from "../utils/dateUtils";
+import { clock } from "../utils/clock";
 
 interface MarketPredictionParams {
   state: string;
@@ -78,7 +79,7 @@ export class MarketPredictionService {
     const { state, county } = params;
     
     // Check for existing valid prediction (less than 7 days old)
-    const validDate = new Date();
+    const validDate = clock.now();
     validDate.setDate(validDate.getDate() - 7);
     
     const existing = await db.select()
@@ -155,7 +156,7 @@ export class MarketPredictionService {
     // Detect opportunity windows
     const opportunity = this.detectOpportunityWindow(timing, demandScore, indicators);
     
-    const validUntil = new Date();
+    const validUntil = clock.now();
     validUntil.setDate(validUntil.getDate() + 30);
     
     return {
@@ -191,7 +192,7 @@ export class MarketPredictionService {
    * Get historical price trends for analysis
    */
   private async getHistoricalTrends(state: string, county: string) {
-    const sixMonthsAgo = addMonths(new Date(), -6);
+    const sixMonthsAgo = addMonths(clock.now(), -6);
     
     return await db.select()
       .from(priceTrends)
@@ -640,7 +641,7 @@ export class MarketPredictionService {
         Q4: "Oct–Dec",
       };
 
-      const now = new Date();
+      const now = clock.now();
       const currentQ = now.getMonth() < 3 ? "Q1" : now.getMonth() < 6 ? "Q2" : now.getMonth() < 9 ? "Q3" : "Q4";
 
       let timing = "";

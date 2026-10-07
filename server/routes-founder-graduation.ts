@@ -22,6 +22,7 @@ import { desc, eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { logger } from "./utils/logger";
 import { overrideTier } from "./services/trustGraduation";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -33,7 +34,7 @@ router.get("/", async (_req: Request, res: Response) => {
       .orderBy(desc(agentActionGraduations.tierChangedAt))
       .limit(500);
     res.json({
-      generatedAt: new Date().toISOString(),
+      generatedAt: clock.now().toISOString(),
       rows: rows.map((r) => ({
         id: r.id,
         agentCodename: r.agentCodename,

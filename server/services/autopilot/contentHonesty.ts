@@ -257,6 +257,12 @@ const PROOF_RES: Array<{ re: RegExp; code: string; what: string }> = [
   { re: /\b(?:thousands|hundreds|millions)\s+of\s+(?:investors|customers|users|landowners|buyers)\b/i, code: "social_proof", what: "an adoption claim" },
   { re: /\bjoin\s+(?:\d[\d,]*\+?|thousands|hundreds)\b/i, code: "social_proof", what: "an adoption claim" },
   { re: /\b(?:our|acreos)\s+(?:customers|users|clients)\s+(?:save|saved|earn|earned|close|closed|average|doubled|tripled)\b/i, code: "social_proof", what: "a customer-outcome claim" },
+  // Red-team working set (2026-10-07): an outcome claimed for a GROUP of users
+  // ("investors who use parcel checks save an average of 11 hours", "… double
+  // their offers in 30 days"), and a quotation signed with any attribution
+  // ("…," — a Cochise County investor).
+  { re: /\b(?:customers?|users?|investors?|landowners?|members?|clients?|buyers?|sellers?)\b[^.!?]{0,60}\b(?:save|saves|saved|close|closes|closed|double|doubles|doubled|triple|triples|tripled|earn|earns|earned|cut|cuts|boost|boosts|average)\b[^.!?]{0,40}(?:\d|\btwice\b|\bdouble\b|\bhalf\b|\btheir\b)/i, code: "social_proof", what: "a claimed outcome for a group of users" },
+  { re: /[“"][^”"]{8,}[”"]\s*[—–]\s*\S/, code: "testimonial", what: "a quotation with an attribution" },
 ];
 
 function hostOf(url: string): string | null {

@@ -34,6 +34,7 @@ import { db } from "../db";
 import { platformSettings } from "@shared/schema";
 import { decisionsInboxService } from "./decisionsInbox";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const MARKER_KEY = "evaluation_horizon_2026_07.decision_cards_seeded";
 
@@ -122,13 +123,13 @@ export async function seedEvaluationHorizonCards(): Promise<"seeded" | "already_
       key: MARKER_KEY,
       scope: "global",
       scopeRef: null,
-      value: { seededAt: new Date().toISOString(), cards: CARDS.length },
+      value: { seededAt: clock.now().toISOString(), cards: CARDS.length },
       defaultValue: {},
       category: "cost",
       description:
         "One-shot marker: 2026-07 evaluation-horizon founder decision cards seeded (when to judge the mail program; stop-loss shape).",
       lastChangedBy: "evaluation-horizon-seed",
-      lastChangedAt: new Date(),
+      lastChangedAt: clock.now(),
     });
     logger.info(
       "[evaluationHorizonCards] seeded 2 founder decision cards (2026-07 evaluation horizon)",

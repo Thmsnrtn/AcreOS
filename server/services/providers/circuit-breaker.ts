@@ -36,6 +36,7 @@
  */
 
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 export type BreakerStateName = "closed" | "open" | "half_open";
 
@@ -89,7 +90,7 @@ export class ProviderCircuitBreaker {
     this.failureThreshold = opts.failureThreshold ?? 3;
     this.windowMs = opts.windowMs ?? 5 * 60 * 1000;
     this.cooloffMs = opts.cooloffMs ?? 5 * 60 * 1000;
-    this.now = opts.now ?? Date.now;
+    this.now = opts.now ?? (() => clock.nowMs());
     this.store = opts.store ?? null;
   }
 

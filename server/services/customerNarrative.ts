@@ -54,6 +54,7 @@ import { logger } from "../utils/logger";
 import { routeCriticalTask } from "./aiRouter";
 
 import { ACTIVE_DEAL_STATUSES, CLOSED_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
+import { clock } from "../utils/clock";
 export interface CustomerMonthlySummary {
   monthKey: string;
   monthLabel: string;
@@ -113,7 +114,7 @@ export async function generateCustomerLetter(
         letterMarkdown: prose.markdown,
         summaryJson: summary,
         recommendedAction: prose.recommendedAction,
-        generatedAt: new Date(),
+        generatedAt: clock.now(),
       },
     });
 
@@ -213,7 +214,7 @@ export async function listCustomerLetterArchive(organizationId: number, limit = 
 export async function markCustomerLetterOpened(organizationId: number, monthKey: string) {
   await db
     .update(customerLetters)
-    .set({ openedAt: new Date(), status: "opened" })
+    .set({ openedAt: clock.now(), status: "opened" })
     .where(
       and(
         eq(customerLetters.organizationId, organizationId),
@@ -269,7 +270,7 @@ export async function deliverCustomerLetter(
   if (result.success) {
     await db
       .update(customerLetters)
-      .set({ deliveredAt: new Date(), status: "delivered" })
+      .set({ deliveredAt: clock.now(), status: "delivered" })
       .where(
         and(
           eq(customerLetters.organizationId, organizationId),
@@ -470,7 +471,7 @@ async function writeLetter(s: CustomerMonthlySummary): Promise<{
   const systemPrompt = verticalBlock
     ? `${CUSTOMER_LETTER_SYSTEM_PROMPT}\n${verticalBlock}`
     : CUSTOMER_LETTER_SYSTEM_PROMPT;
-  const started = Date.now();
+  const started = clock.nowMs();
   try {
     const response = await routeCriticalTask(
       "customer_monthly_letter",
@@ -489,7 +490,7 @@ async function writeLetter(s: CustomerMonthlySummary): Promise<{
       systemPrompt,
       userPrompt: context,
       response: response.content,
-      latencyMs: Date.now() - started,
+      latencyMs: clock.nowMs() - started,
       metadata: { monthKey: s.monthKey, investorType },
     });
     const parsed = parseNarrative(response.content);
@@ -575,7 +576,7 @@ function buildFallbackLetter(s: CustomerMonthlySummary): string {
 function resolveMonth(
   monthKey?: string,
 ): { key: string; start: Date; end: Date; label: string } {
-  const now = new Date();
+  const now = clock.now();
   let year: number, month: number;
   if (monthKey) {
     const [y, m] = monthKey.split("-").map((n) => parseInt(n, 10));

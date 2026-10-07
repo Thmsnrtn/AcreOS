@@ -11,6 +11,7 @@
 
 import { logger } from "../utils/logger";
 import { SOVEREIGN_PRINCIPLES } from "@sovereign/immutables";
+import { clock } from "../utils/clock";
 
 // ─── Constitutional Principles ──────────────────────────────────────────────
 //
@@ -196,7 +197,7 @@ export function checkPatterns(content: string): ConstitutionCheckResult {
   return {
     passed: violations.length === 0,
     violations,
-    checked_at: new Date().toISOString(),
+    checked_at: clock.now().toISOString(),
     check_type: "pattern",
   };
 }

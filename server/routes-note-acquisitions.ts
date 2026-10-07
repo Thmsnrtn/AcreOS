@@ -26,6 +26,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireRole } from "./middleware/roleGuard";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const addressSchema = z
   .object({
@@ -183,10 +184,10 @@ export function registerNoteAcquisitionRoutes(app: Express): void {
         // Auto-stamp BPO timestamps when the corresponding fields land.
         const update: Partial<typeof noteAcquisitions.$inferInsert> = {
           ...parsed.data,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         };
         if (parsed.data.bpoValueCents !== undefined) {
-          update.bpoReceivedAt = new Date();
+          update.bpoReceivedAt = clock.now();
           if (parsed.data.stage === undefined) update.stage = "bpo_received";
         }
 
@@ -255,7 +256,7 @@ export function registerNoteAcquisitionRoutes(app: Express): void {
 
         await db
           .update(noteAcquisitions)
-          .set({ stage: "on_book", promotedToNoteId: note.id, updatedAt: new Date() })
+          .set({ stage: "on_book", promotedToNoteId: note.id, updatedAt: clock.now() })
           .where(eq(noteAcquisitions.id, req.params.id));
 
         return res.status(201).json({ note: { ...note, payerEncryptedTin: undefined }, acquisitionId: req.params.id });

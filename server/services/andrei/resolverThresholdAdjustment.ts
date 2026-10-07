@@ -50,6 +50,7 @@ import {
   type ThresholdAdjustmentDirection,
 } from "@shared/schema";
 import type { SupportResolverCalibrationReport } from "./supportResolverCalibration";
+import { clock } from "../../utils/clock";
 
 // ── Hard bounds (the "bounded" in bounded-adjustment) ───────────────────────
 
@@ -180,7 +181,7 @@ async function readLatestOffset(): Promise<number> {
  * calibration plumbing must NEVER break a customer support turn.
  */
 export async function getActiveResolveThresholdOffset(): Promise<number> {
-  const now = Date.now();
+  const now = clock.nowMs();
   if (offsetCache && now - offsetCache.loadedAt < OFFSET_CACHE_TTL_MS) {
     return offsetCache.value;
   }

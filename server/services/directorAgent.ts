@@ -36,6 +36,7 @@ import {
 import { executeAgentTask, type CoreAgentType } from "./core-agents";
 import type { AgentContext } from "./core-agents";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -115,7 +116,7 @@ export class DirectorAgent {
    * Main entry point: process a high-level goal through the ReAct loop.
    */
   async processGoal(input: DirectorGoal): Promise<DirectorResult> {
-    const startTime = Date.now();
+    const startTime = clock.nowMs();
     const maxIter = input.maxIterations ?? this.MAX_ITERATIONS;
     const steps: ReActStep[] = [];
     const observationHistory: string[] = [];
@@ -182,7 +183,7 @@ export class DirectorAgent {
       finalSynthesis,
       iterationsUsed: steps.length,
       totalCostEstimate,
-      executionTimeMs: Date.now() - startTime,
+      executionTimeMs: clock.nowMs() - startTime,
     };
   }
 

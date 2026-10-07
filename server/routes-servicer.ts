@@ -44,6 +44,7 @@ import { requireRole } from "./middleware/roleGuard";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { generateMonthlyRemittances } from "./services/servicerRemittance";
+import { clock } from "./utils/clock";
 
 const ownerTypeEnum = z.enum(NOTE_OWNER_OF_RECORD_TYPES);
 const licenseTypeEnum = z.enum(SERVICER_LICENSE_TYPES);
@@ -306,7 +307,7 @@ export function registerServicerRoutes(app: Express): void {
             ownerType: data.ownerType,
             basisPercentage:
               data.basisPercentage !== undefined ? data.basisPercentage.toFixed(2) : "100.00",
-            effectiveAt: data.effectiveAt ? new Date(data.effectiveAt) : new Date(),
+            effectiveAt: data.effectiveAt ? new Date(data.effectiveAt) : clock.now(),
           })
           .returning();
 
@@ -372,7 +373,7 @@ export function registerServicerRoutes(app: Express): void {
               licenseNumber: data.licenseNumber,
               expiresAt: data.expiresAt,
               notes: data.notes,
-              updatedAt: new Date(),
+              updatedAt: clock.now(),
             },
           })
           .returning();

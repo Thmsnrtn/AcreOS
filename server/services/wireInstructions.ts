@@ -39,6 +39,7 @@ import { titleOrders, titlePartners } from "@shared/schema";
 import { and, eq, isNull, or } from "drizzle-orm";
 import { decrypt } from "./fieldEncryption";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -242,7 +243,7 @@ export async function issueWireInstructions(
 
   // The encrypted PDF lives on the shared exchange bucket; the
   // pdf-render worker writes it under this canonical key.
-  const encryptedPdfS3Key = `title-orders/${order.id}/wire-instructions-${Date.now()}.pdf.enc`;
+  const encryptedPdfS3Key = `title-orders/${order.id}/wire-instructions-${clock.nowMs()}.pdf.enc`;
   const password = generatePassword();
   const hmacSignature = signWireInstructions(
     instructions,
@@ -257,12 +258,12 @@ export async function issueWireInstructions(
       wireInstructionsPasswordHint: passwordHint(destinationPhoneForPasswordSms),
       wireInstructionsHmac: hmacSignature,
       wireConfirmationPhone: instructions.confirmationPhone,
-      wireInstructionsIssuedAt: new Date(),
+      wireInstructionsIssuedAt: clock.now(),
       // New instructions void any earlier confirmation: the wire step must be
       // verified against THESE (DEFECT-0176 audit).
       wireConfirmedAt: null,
       status: "wire_instructions_issued",
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     })
     .where(
       and(
@@ -306,8 +307,8 @@ export async function recordWireConfirmation(
   await db
     .update(titleOrders)
     .set({
-      wireConfirmedAt: new Date(),
-      updatedAt: new Date(),
+      wireConfirmedAt: clock.now(),
+      updatedAt: clock.now(),
     })
     .where(
       and(

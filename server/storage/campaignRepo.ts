@@ -10,6 +10,7 @@ import {
   type CampaignOptimization, type InsertCampaignOptimization,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { clock } from "../utils/clock";
 
 export const campaignRepo = {
   // Campaigns
@@ -34,7 +35,7 @@ export const campaignRepo = {
     const conditions = [eq(campaigns.id, id)];
     if (organizationId) conditions.push(eq(campaigns.organizationId, organizationId));
     const [updated] = await db.update(campaigns)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -56,7 +57,7 @@ export const campaignRepo = {
     const [updated] = await db.update(campaignOptimizations)
       .set({
         implemented: true,
-        implementedAt: new Date(),
+        implementedAt: clock.now(),
         resultDelta,
       })
       .where(eq(campaignOptimizations.id, optimizationId))
@@ -65,7 +66,7 @@ export const campaignRepo = {
   },
 
   async getCampaignsNeedingOptimization(this: DatabaseStorage, orgId: number): Promise<Campaign[]> {
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
     return await db.select().from(campaigns)
       .where(and(
         eq(campaigns.organizationId, orgId),

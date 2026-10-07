@@ -18,6 +18,7 @@
  */
 
 import { promises as dns } from "node:dns";
+import { clock } from "../../utils/clock";
 
 export interface DkimSelector {
   selector: string;
@@ -219,7 +220,7 @@ export async function checkDeliverability(
 ): Promise<DeliverabilityReport> {
   const resolver = options.resolver ?? defaultResolver;
   const selectors = options.selectors ?? DEFAULT_DKIM_SELECTORS;
-  const checkedAt = new Date();
+  const checkedAt = clock.now();
 
   // SPF — TXT at the apex with `v=spf1`.
   let spfFound = false;

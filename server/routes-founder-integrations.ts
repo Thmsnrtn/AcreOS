@@ -13,6 +13,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 // ─── Integration definitions ────────────────────────────────────────────────
 
@@ -189,7 +190,7 @@ export function registerFounderIntegrationsRoutes(app: Express) {
             key,
             status: "fail",
             message: `${def.displayName} is not configured. Set the environment variable to enable it.`,
-            verifiedAt: new Date().toISOString(),
+            verifiedAt: clock.now().toISOString(),
           });
         }
 
@@ -201,7 +202,7 @@ export function registerFounderIntegrationsRoutes(app: Express) {
           key,
           status: "pass",
           message: `${def.displayName} environment variable is configured.`,
-          verifiedAt: new Date().toISOString(),
+          verifiedAt: clock.now().toISOString(),
         });
       } catch (error) {
         logger.error(

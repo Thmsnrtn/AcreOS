@@ -38,6 +38,7 @@ import {
   type ExternalWatchAckStatus,
   type ExternalWatchSource,
 } from "@shared/schema/external-watch";
+import { clock } from "./utils/clock";
 
 const DEFAULT_DAYS = 30;
 
@@ -58,7 +59,7 @@ export function registerExternalWatchRoutes(app: Express): void {
         const sourceFilter = parseSourceFilter(req.query.source);
         const ackFilter = parseAckStatusFilter(req.query.ack_status);
 
-        const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        const cutoff = new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000);
 
         const conditions = [gte(externalWatchEvents.publishedAt, cutoff)];
         if (sourceFilter.length > 0) {
@@ -144,7 +145,7 @@ export function registerExternalWatchRoutes(app: Express): void {
           .set({
             ackStatus: nextStatus,
             ackBy: "tom",
-            ackAt: new Date(),
+            ackAt: clock.now(),
             ...(actionTaken !== null ? { actionTaken } : {}),
           })
           .where(eq(externalWatchEvents.id, id))

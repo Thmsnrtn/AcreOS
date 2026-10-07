@@ -33,6 +33,7 @@ import {
   prepareCustomerMoneyCall,
   type CustomerMoneyRefusal,
 } from "./customerMoneyRouting";
+import { clock } from "../utils/clock";
 
 function isStripeConfigured(): boolean {
   return !!process.env.STRIPE_SECRET_KEY;
@@ -268,7 +269,7 @@ export class StripeConnectService {
       settings: existing?.settings || {
         stripeConnectOnboardingComplete: false,
       },
-      lastValidatedAt: new Date(),
+      lastValidatedAt: clock.now(),
     });
   }
 
@@ -293,7 +294,7 @@ export class StripeConnectService {
             achPayments: status.capabilities?.usBankAccountAchPayments === "active",
           },
         },
-        lastValidatedAt: new Date(),
+        lastValidatedAt: clock.now(),
         validationError: status.requirements?.currentlyDue?.length 
           ? `Pending requirements: ${status.requirements.currentlyDue.join(", ")}`
           : undefined,

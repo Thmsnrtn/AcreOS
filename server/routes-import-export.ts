@@ -32,6 +32,7 @@ import { requirePermission } from "./utils/permissions";
 import rateLimit from "express-rate-limit";
 import { getClientIp, clientIpOrNull } from "./utils/clientIp";
 import { CSV_IMPORT_MAX_ROWS_PER_FILE, BULK_EXPORT_DAILY_CAP } from "@shared/product-limits";
+import { clock } from "./utils/clock";
 
 // Phase 4 Week 15-16 (Magdalena §1): the synchronous /api/import/:entityType
 // handler still rejects CSVs above this limit so legacy clients see a clear
@@ -424,7 +425,7 @@ export function registerImportExportRoutes(app: Express): void {
         metadata: {
           organizationId: org.id,
           organizationName: org.name,
-          exportedAt: new Date().toISOString(),
+          exportedAt: clock.now().toISOString(),
         },
         files: backup.files.map((f) => ({
           name: f.name,
@@ -435,7 +436,7 @@ export function registerImportExportRoutes(app: Express): void {
       res.setHeader("Content-Type", "application/json");
       res.setHeader(
         "Content-Disposition",
-        `attachment; filename="backup_${org.slug}_${new Date().toISOString().split("T")[0]}.json"`
+        `attachment; filename="backup_${org.slug}_${clock.now().toISOString().split("T")[0]}.json"`
       );
       res.send(JSON.stringify(jsonResponse, null, 2));
     } catch (error: any) {
@@ -492,7 +493,7 @@ export function registerImportExportRoutes(app: Express): void {
         endDate: req.query.endDate as string | undefined,
       };
 
-      const date = new Date().toISOString().split("T")[0];
+      const date = clock.now().toISOString().split("T")[0];
 
       // Phase 3 Week 11 — every customer-initiated data export must be
       // recorded in audit_events for compliance posture (GDPR Art. 30).
@@ -946,7 +947,7 @@ export function registerImportExportRoutes(app: Express): void {
         }
         const buf = await readExportArchive(id, org.id);
         if (!buf) return sendError(res, 410, "GONE", "Archive expired or unavailable");
-        const date = new Date().toISOString().split("T")[0];
+        const date = clock.now().toISOString().split("T")[0];
         res.setHeader("Content-Type", "application/zip");
         res.setHeader(
           "Content-Disposition",

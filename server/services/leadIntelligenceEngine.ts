@@ -49,6 +49,7 @@ import { eq, and, gte, desc, sql, isNull, ne } from "drizzle-orm";
 import { computeSellerMotivationScore } from "./sellerMotivationEngine";
 import { getCachedLandTrend, getCachedCountySnapshot } from "./usdaNassService";
 import { splitOwnerName } from "@shared/parcel/ownerName";
+import { clock } from "../utils/clock";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -164,7 +165,7 @@ function extractSignals(lead: any): LeadIntelligenceProfile["signals"] {
 
   // Contact history
   const lastContactDaysAgo = lead.lastContactedAt
-    ? Math.floor((Date.now() - new Date(lead.lastContactedAt).getTime()) / (24 * 60 * 60 * 1000))
+    ? Math.floor((clock.nowMs() - new Date(lead.lastContactedAt).getTime()) / (24 * 60 * 60 * 1000))
     : null;
 
   const touchCount = lead.touchCount ?? lead.contactAttempts ?? 0;
@@ -515,7 +516,7 @@ export async function scoreLeadIntelligence(
     estimatedOfferPrice: offerIntel.offerPrice,
     estimatedFlipPrice: offerIntel.flipPrice,
     estimatedOwnerFinanceMonthly: offerIntel.ownerFinanceMonthly,
-    scoredAt: new Date().toISOString(),
+    scoredAt: clock.now().toISOString(),
     dataCompleteness: completeness,
   };
 }
@@ -589,7 +590,7 @@ export async function batchScoreLeadsForOrg(
   if (orgLeads.length === 0) {
     return {
       organizationId,
-      processedAt: new Date().toISOString(),
+      processedAt: clock.now().toISOString(),
       totalLeads: 0,
       immediateCount: 0,
       highCount: 0,
@@ -630,7 +631,7 @@ export async function batchScoreLeadsForOrg(
 
   return {
     organizationId,
-    processedAt: new Date().toISOString(),
+    processedAt: clock.now().toISOString(),
     totalLeads: scoredLeads.length,
     immediateCount,
     highCount,
@@ -670,5 +671,5 @@ function getWeeklyFocus(): string {
     "Focus: Review your note portfolio — any late payments? Address dunning before adding new deals.",
     "Focus: Run the Blind Offer Wizard for any county you haven't analyzed this month. Fresh comps = accurate offers.",
   ];
-  return focuses[Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000)) % focuses.length];
+  return focuses[Math.floor(clock.nowMs() / (7 * 24 * 60 * 60 * 1000)) % focuses.length];
 }

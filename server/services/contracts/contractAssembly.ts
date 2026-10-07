@@ -66,6 +66,7 @@ import {
 import { DISCLAIMER_DOCUMENT_TEMPLATE } from "../legalDisclaimers";
 import { checkDisclosure, buildDisclosureMissingPayload } from "../disclosureRegistry";
 import type { HardStop } from "../autopilot/hardStops";
+import { clock } from "../../utils/clock";
 
 // ---------------------------------------------------------------------------
 // Kinds
@@ -436,7 +437,7 @@ export function sealReviewedContent(
     ...variables,
     [REVIEW_SEAL_KEY]: seal.hash,
     [REVIEW_SEAL_BY_KEY]: seal.userId,
-    [REVIEW_SEAL_AT_KEY]: (seal.at ?? new Date()).toISOString(),
+    [REVIEW_SEAL_AT_KEY]: (seal.at ?? clock.now()).toISOString(),
   };
 }
 
@@ -741,7 +742,7 @@ export function assembleContract(input: ContractAssemblyInput): ContractAssembly
     closing_date: closingDate as string,
     deed_type: getDeedTypeLabel(config.primaryDeedType),
     recording_office: config.recordingOffice,
-    today: format(new Date(), "MMMM d, yyyy"),
+    today: format(clock.now(), "MMMM d, yyyy"),
   };
   if (property.sizeAcres !== null && property.sizeAcres !== undefined && property.sizeAcres !== "") {
     variables.property_acres = String(property.sizeAcres);

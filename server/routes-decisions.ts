@@ -46,6 +46,7 @@ import {
   MIN_COMPARISONS_FOR_DIRECTION,
   describeCalibration,
 } from "@shared/outcomes/calibration";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -123,7 +124,7 @@ router.post("/", async (req: AuthenticatedRequest, res: Response) => {
     const recorded = await recordDecision(
       organizationId,
       { ...decision, reviewDueAt: decision.reviewDueAt ?? null },
-      new Date(),
+      clock.now(),
       scenarioIds,
     );
     // 200 rather than 201: the res-status-raw ratchet is down-only and 172

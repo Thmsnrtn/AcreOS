@@ -44,6 +44,7 @@ import { soleneDispatchQueue } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
 import { LEARN_SEO_TARGETS } from "./seoTargets";
 import { enqueueDispatch } from "../solene/dispatchQueue";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // trackRankings — fetch + parse + persist
@@ -64,7 +65,7 @@ export async function trackRankings(
   } = {},
 ): Promise<TrackRankingsResult> {
   const fetchImpl = options.fetchImpl ?? defaultSerpFetch;
-  const now = options.now ?? new Date();
+  const now = options.now ?? clock.now();
   let pagesChecked = 0;
   let keywordsChecked = 0;
   let rankingsPersisted = 0;
@@ -553,7 +554,7 @@ export async function getRecentRankings(days: number = 30): Promise<{
     }>
   >;
 }> {
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000);
   const rows = await db
     .select()
     .from(sorenSeoRankings)

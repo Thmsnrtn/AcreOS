@@ -68,6 +68,7 @@ import { storage } from "../../storage";
 import { emailService, type EmailResult } from "../emailService";
 import { logger } from "../../utils/logger";
 import { ORG_IDENTITY_BLOCK_REASON, isOrgIdentityRefusal } from "./orgIdentityBlock";
+import { clock } from "../../utils/clock";
 
 /**
  * Machine-readable reason stamped into `delivery_error` alongside the
@@ -565,7 +566,7 @@ export async function notifyStatementGenerated(
     transactional: true,
   });
 
-  const now = new Date();
+  const now = clock.now();
   if (result.success) {
     await db
       .update(periodicStatements)

@@ -26,6 +26,7 @@ import { db } from "../db";
 import { founderSettings } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface KnobDefinition {
   key: string;
@@ -230,7 +231,7 @@ async function readPlatformOwned(key: string): Promise<string | null> {
 }
 
 export async function getSetting(key: string): Promise<string | null> {
-  const now = Date.now();
+  const now = clock.nowMs();
   const hit = cache.get(key);
   if (hit && now - hit.fetchedAt < CACHE_TTL_MS) return hit.value;
 
@@ -311,7 +312,7 @@ export async function setSetting(
       target: founderSettings.key,
       set: {
         value,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
         updatedBy: updatedBy ?? null,
       },
     });

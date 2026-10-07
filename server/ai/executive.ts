@@ -45,6 +45,7 @@ import { resolveModel } from "../services/modelRouter";
 import { predictCostCents, computeCostUsd } from "../services/aiCostRates";
 import { evaluateLivePaxOutput } from "../services/aiEvalHarness";
 import { paxGuardDeflection, paxInputRedactionNote } from "./paxTurnNotes";
+import { clock } from "../utils/clock";
 
 // Tahoe Andrei (2026-06-07): live runtime eval gate. The critical `pax_inbox`
 // forbidden-trait cases + gateOutputOrThrow ran only in CI, never on the live
@@ -242,7 +243,7 @@ Return ONLY valid JSON: {"score": <number 1-10>, "reasons": ["<reason>"], "impro
         improvements: parsed.improvements || [],
         // The model's own self-reported confidence in its rating (0..1) or null.
         modelConfidence: result.confidence ?? null,
-        recordedAt: new Date().toISOString(),
+        recordedAt: clock.now().toISOString(),
       },
       confidence: String(Math.min(1, score / 10)),
     });
@@ -1216,7 +1217,7 @@ async function createConversation(data: { organizationId: number; userId: string
 }
 
 async function updateConversation(id: number, updates: Partial<{ title: string }>): Promise<void> {
-  await db.update(aiConversations).set({ ...updates, updatedAt: new Date() }).where(eq(aiConversations.id, id));
+  await db.update(aiConversations).set({ ...updates, updatedAt: clock.now() }).where(eq(aiConversations.id, id));
 }
 
 async function getMessages(conversationId: number): Promise<AiMessage[]> {
@@ -1331,7 +1332,7 @@ async function compactConversationIfNeeded(
     });
     logger.info(`[AI] Auto-compacted ${compactUpTo} messages for conversation ${conversationId}`);
     return [
-      { id: -1, conversationId, role: "assistant", content: `=== CONVERSATION SUMMARY (auto-compacted) ===\n${summary}\n=== END SUMMARY ===`, createdAt: new Date() } as AiMessage,
+      { id: -1, conversationId, role: "assistant", content: `=== CONVERSATION SUMMARY (auto-compacted) ===\n${summary}\n=== END SUMMARY ===`, createdAt: clock.now() } as AiMessage,
       ...toKeep
     ];
   } catch {

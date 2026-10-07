@@ -50,6 +50,7 @@ import { db } from "./db";
 import { titleOrders, titlePartners, deals } from "@shared/schema";
 import { encrypt, decrypt } from "./services/fieldEncryption";
 import { notificationDispatcher } from "./services/notificationDispatcher";
+import { clock } from "./utils/clock";
 
 // ─── Volume pricing tier → per-file price (USD) ──────────────────────────────
 
@@ -278,7 +279,7 @@ async function routeTitleOrder(
 function estimateDeliveryDate(expectedClosingDate: string): string {
   // Default: 5 business days before expected close, floored at "today + 7d".
   const expected = new Date(expectedClosingDate);
-  const minLeadtime = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const minLeadtime = new Date(clock.nowMs() + 7 * 24 * 60 * 60 * 1000);
   const target = new Date(expected.getTime() - 5 * 24 * 60 * 60 * 1000);
   const date = target > minLeadtime ? target : minLeadtime;
   return date.toISOString().slice(0, 10);
@@ -341,7 +342,7 @@ export function registerTitlePartnerRoutes(app: Express) {
             salePrice: String(body.salePrice),
             expectedClosingDate: body.expectedClosingDate,
             estimatedDeliveryDate: estimatedDelivery,
-            partnerAssignedAt: partner ? new Date() : null,
+            partnerAssignedAt: partner ? clock.now() : null,
           })
           .returning();
 
@@ -486,7 +487,7 @@ export function registerTitlePartnerRoutes(app: Express) {
         const updates: Partial<typeof titleOrders.$inferInsert> = {
           status: body.status,
           statusDetails: body.statusDetails ?? order.statusDetails,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         };
         if (body.commitmentS3Key) updates.commitmentS3Key = body.commitmentS3Key;
         if (body.scheduleBS3Key) updates.scheduleBS3Key = body.scheduleBS3Key;
@@ -494,7 +495,7 @@ export function registerTitlePartnerRoutes(app: Express) {
         // Auto-claim the order on first webhook from a partner.
         if (!order.titlePartnerId) {
           updates.titlePartnerId = partner.id;
-          updates.partnerAssignedAt = new Date();
+          updates.partnerAssignedAt = clock.now();
         }
 
         await db

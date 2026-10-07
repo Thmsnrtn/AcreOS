@@ -25,6 +25,7 @@ import {
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
 import { assertWritablePatch } from "../utils/patch";
+import { clock } from "../utils/clock";
 
 export const platformOpsRepo = {
   // Feature Requests
@@ -51,7 +52,7 @@ export const platformOpsRepo = {
     const conditions = [eq(featureRequests.id, id)];
     if (organizationId) conditions.push(eq(featureRequests.organizationId, organizationId));
     const [updated] = await db.update(featureRequests)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -77,7 +78,7 @@ export const platformOpsRepo = {
     };
     recentUsage: Array<{ date: string; costCents: number }>;
   }> {
-    const now = new Date();
+    const now = clock.now();
     const start = startDate || new Date(now.getFullYear(), now.getMonth(), 1);
     const end = endDate || now;
     
@@ -177,7 +178,7 @@ export const platformOpsRepo = {
   },
 
   async updateBorrowerSessionAccess(this: DatabaseStorage, token: string): Promise<BorrowerSession | undefined> {
-    const now = new Date();
+    const now = clock.now();
     const newExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours from now
     
     const [updated] = await db.update(borrowerSessions)
@@ -196,7 +197,7 @@ export const platformOpsRepo = {
   },
 
   async cleanExpiredBorrowerSessions(this: DatabaseStorage): Promise<number> {
-    const now = new Date();
+    const now = clock.now();
     const result = await db.delete(borrowerSessions)
       .where(lt(borrowerSessions.expiresAt, now))
       .returning();
@@ -214,7 +215,7 @@ export const platformOpsRepo = {
   // that either own the lock OR find it expired, and we trust the
   // 0-vs-non-0 rowcount as the acquire signal.
   async acquireJobLock(this: DatabaseStorage, jobName: string, instanceId: string, ttlSeconds: number): Promise<boolean> {
-    const now = new Date();
+    const now = clock.now();
     const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
 
     try {
@@ -265,7 +266,7 @@ export const platformOpsRepo = {
   },
 
   async cleanExpiredJobLocks(this: DatabaseStorage): Promise<void> {
-    const now = new Date();
+    const now = clock.now();
     await db.delete(jobLocks).where(lt(jobLocks.expiresAt, now));
   },
 };

@@ -61,6 +61,7 @@ import { raiseAlert } from "./alertSpine";
 import { DISCLAIMER_INFORMATIONAL_SCORE } from "./legalDisclaimers";
 import { logger } from "../utils/logger";
 import { publicParcelReportEventsTotal } from "../metrics";
+import { clock } from "../utils/clock";
 
 // ── Tunables ─────────────────────────────────────────────────────────────────
 
@@ -383,7 +384,7 @@ export function computePartialLcs(
     partialGrade,
     dimensions,
     modelVersion: PUBLIC_LCS_MODEL_VERSION,
-    computedAt: new Date().toISOString(),
+    computedAt: clock.now().toISOString(),
     // L1 liability shield — the legend travels with the score payload so
     // any renderer or forwarder of this JSON carries the framing too.
     disclaimer: DISCLAIMER_INFORMATIONAL_SCORE,
@@ -400,7 +401,7 @@ function isFresh(report: PublicParcelReport): boolean {
   const refreshed = report.refreshedAt
     ? new Date(report.refreshedAt).getTime()
     : 0;
-  return Date.now() - refreshed < REPORT_TTL_MS;
+  return clock.nowMs() - refreshed < REPORT_TTL_MS;
 }
 
 async function findReport(key: ReportKey): Promise<PublicParcelReport | null> {
@@ -420,7 +421,7 @@ async function findReport(key: ReportKey): Promise<PublicParcelReport | null> {
 
 /** UTC-day generation count — the spike detector + hard-cap input. */
 async function countGeneratedToday(): Promise<number> {
-  const dayStart = new Date();
+  const dayStart = clock.now();
   dayStart.setUTCHours(0, 0, 0, 0);
   const [row] = await db
     .select({ n: sql<number>`count(*)::int` })
@@ -599,7 +600,7 @@ async function applyDailyGuards(): Promise<{ capped: boolean }> {
     return { capped: false };
   }
 
-  const day = new Date().toISOString().slice(0, 10);
+  const day = clock.now().toISOString().slice(0, 10);
   if (todayCount >= PUBLIC_REPORT_DAILY_ALERT) {
     // raiseAlert dedupes on (source, dedupeKey) — per-day key means one
     // durable finding per spike day, not one per request.
@@ -723,7 +724,7 @@ export async function recordReportView(reportId: number): Promise<void> {
       .update(publicParcelReports)
       .set({
         viewCount: sql`${publicParcelReports.viewCount} + 1`,
-        lastViewedAt: new Date(),
+        lastViewedAt: clock.now(),
       })
       .where(eq(publicParcelReports.id, reportId));
     publicParcelReportEventsTotal.inc({ event: "view" });

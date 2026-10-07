@@ -75,7 +75,7 @@ export const CANARIES: Record<string, Canary> = {
     ],
   },
   "one-page-per-incident": {
-    clean: [{ ...base(1), outages: [{ provider: "stripe", names: ["Stripe"], from: "2026-10-05T00:00:00.000Z", to: null }], pages: [{ at: AT, subject: "Stripe is down", body: "Incident 1" }, { at: AT, subject: "Email is down", body: "x" }] }],
+    clean: [{ ...base(1), outages: [{ provider: "stripe", names: ["Stripe"], from: "2026-10-05T00:00:00.000Z", to: null }], pages: [{ at: AT, subject: "Stripe is down", body: "Incident 1" }, { at: AT, subject: "Email is down", body: "x" }, { at: AT, subject: "Approve a growth action", body: "A draft that would email our own customers about Stripe receipts" }] }],
     // Two ticks: the second page is worded differently but names the same outage.
     violating: [
       { ...base(2), outages: [{ provider: "stripe", names: ["Stripe"], from: "2026-10-05T00:00:00.000Z", to: null }], pages: [{ at: AT, subject: "Stripe is down", body: "Incident 1" }] },

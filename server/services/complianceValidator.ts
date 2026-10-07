@@ -40,6 +40,7 @@ import { routeAITask, TaskComplexity, AIProvider } from "./aiRouter";
 import { MODELS } from "./models";
 import type { InsertComplianceValidation } from "@shared/schema";
 import { TAX_ADVISORY_COPY } from "../utils/taxAdvisory";
+import { clock } from "../utils/clock";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -117,7 +118,7 @@ function cacheKey(req: ComplianceCheckRequest): string {
 function getCached(key: string): ComplianceCheckResult | null {
   const entry = VALIDATION_CACHE.get(key);
   if (!entry) return null;
-  if (Date.now() - entry.cachedAt > CACHE_TTL_MS) {
+  if (clock.nowMs() - entry.cachedAt > CACHE_TTL_MS) {
     VALIDATION_CACHE.delete(key);
     return null;
   }
@@ -129,7 +130,7 @@ function setCached(key: string, result: ComplianceCheckResult): void {
     const oldest = VALIDATION_CACHE.keys().next().value;
     if (oldest) VALIDATION_CACHE.delete(oldest);
   }
-  VALIDATION_CACHE.set(key, { result, cachedAt: Date.now() });
+  VALIDATION_CACHE.set(key, { result, cachedAt: clock.nowMs() });
 }
 
 // ─── Validator prompt ───────────────────────────────────────────────────────
@@ -179,7 +180,7 @@ const DEFAULT_THINKING_BUDGET = 4096;
 export async function validateCompliance(
   req: ComplianceCheckRequest,
 ): Promise<ComplianceCheckResult> {
-  const startedAt = Date.now();
+  const startedAt = clock.nowMs();
 
   // Trivial bypass: empty candidate → nothing to review.
   if (!req.candidate || req.candidate.trim().length === 0) {
@@ -233,7 +234,7 @@ export async function validateCompliance(
         missingPhrases: [],
         prependedDisclosure: null,
         rationale: parsed.rationale,
-        latencyMs: Date.now() - startedAt,
+        latencyMs: clock.nowMs() - startedAt,
         cacheHit: false,
       };
     } else {
@@ -244,7 +245,7 @@ export async function validateCompliance(
         missingPhrases: parsed.missingPhrases,
         prependedDisclosure: disclosure,
         rationale: parsed.rationale,
-        latencyMs: Date.now() - startedAt,
+        latencyMs: clock.nowMs() - startedAt,
         cacheHit: false,
       };
     }
@@ -264,7 +265,7 @@ export async function validateCompliance(
       missingPhrases: [],
       prependedDisclosure: null,
       rationale: `validator error: ${err instanceof Error ? err.message : "unknown"}`,
-      latencyMs: Date.now() - startedAt,
+      latencyMs: clock.nowMs() - startedAt,
       cacheHit: false,
     };
   }

@@ -22,6 +22,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const SLA_HOURS = 24;
 
@@ -39,7 +40,7 @@ export function registerPrivacyDsarRoutes(app: Express): void {
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.flatten());
       }
-      const slaDeadline = new Date(Date.now() + SLA_HOURS * 60 * 60 * 1000);
+      const slaDeadline = new Date(clock.nowMs() + SLA_HOURS * 60 * 60 * 1000);
       const [row] = await db
         .insert(dsarRequestsLifecycle)
         .values({
@@ -90,7 +91,7 @@ export function registerPrivacyDsarRoutes(app: Express): void {
           .from(dsarRequestsLifecycle)
           .orderBy(desc(dsarRequestsLifecycle.receivedAt))
           .limit(200);
-        const now = Date.now();
+        const now = clock.nowMs();
         const overdue = rows.filter(
           (r) => !r.fulfilledAt && new Date(r.slaDeadlineAt).getTime() < now,
         );
@@ -122,12 +123,12 @@ export function registerPrivacyDsarRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const slaDeadline = new Date(Date.now() + SLA_HOURS * 60 * 60 * 1000);
+        const slaDeadline = new Date(clock.nowMs() + SLA_HOURS * 60 * 60 * 1000);
         const [row] = await db
           .insert(dsarRequestsLifecycle)
           .values({
             requestType: "access",
-            requesterEmail: `self-test+${Date.now()}@acreos.io`,
+            requesterEmail: `self-test+${clock.nowMs()}@acreos.io`,
             slaDeadlineAt: slaDeadline,
             isSelfTest: true,
             auditNotes: "Quarterly DSAR self-test (panel-300 #26)",
@@ -210,7 +211,7 @@ export function registerPrivacyDsarRoutes(app: Express): void {
         const [updated] = await db
           .update(dsarRequestsLifecycle)
           .set({
-            fulfilledAt: new Date(),
+            fulfilledAt: clock.now(),
             deliveryMethod: deliveryMethod ?? null,
             bytesDelivered: bytesDelivered ?? null,
             auditNotes: auditNotes ?? null,

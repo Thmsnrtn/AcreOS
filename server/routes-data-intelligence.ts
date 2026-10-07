@@ -60,6 +60,7 @@ import { eq, and } from "drizzle-orm";
 import { assertFeeSimpleOrThrow, handleLandStatusError } from "./utils/landStatus";
 import { Errors } from "./utils/errors";
 import type { AuthenticatedRequest } from "./types/request";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -145,7 +146,7 @@ router.get("/county-snapshot/:state/:county", async (req: Request, res: Response
       countyOpportunityScoreUnavailableReason: countyScore
         ? null
         : "No land transaction feed on file for this county — sales volume and days-on-market are required to score it, and neither is measured by the USDA/Census sources behind this endpoint.",
-      generatedAt: new Date().toISOString(),
+      generatedAt: clock.now().toISOString(),
     });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -223,7 +224,7 @@ router.get("/county-comps", async (req: Request, res: Response) => {
       comps: trimmed,
       source: process.env.ATTOM_API_KEY ? "attom" : "unavailable",
       fallback: process.env.ATTOM_API_KEY ? null : "ATTOM_API_KEY not configured — paste comps manually",
-      generatedAt: new Date().toISOString(),
+      generatedAt: clock.now().toISOString(),
     });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -438,7 +439,7 @@ router.post("/blind-offer/commit", async (req: Request, res: Response) => {
         alternatives: input.alternatives ?? [],
         reviewDueAt: input.reviewDueAt ? new Date(input.reviewDueAt) : null,
       },
-      new Date(),
+      clock.now(),
       [scenario.id],
     );
 
@@ -641,7 +642,7 @@ router.get("/state-land-rankings", async (req: Request, res: Response) => {
   try {
     const { rankStatesByLandAppreciation } = await import("./services/usdaNassService");
     const rankings = await rankStatesByLandAppreciation();
-    res.json({ rankings, generatedAt: new Date().toISOString() });
+    res.json({ rankings, generatedAt: clock.now().toISOString() });
   } catch (err: any) {
     Errors.internal(res, err);
   }
@@ -777,8 +778,8 @@ router.get("/lead-intelligence/focus", async (req: Request, res: Response) => {
       "Focus: Review your note portfolio — any late payments? Address dunning before adding new deals.",
       "Focus: Run the Blind Offer Wizard for any county you haven't analyzed this month. Fresh comps = accurate offers.",
     ];
-    const focus = focuses[Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000)) % focuses.length];
-    res.json({ focus, generatedAt: new Date().toISOString() });
+    const focus = focuses[Math.floor(clock.nowMs() / (7 * 24 * 60 * 60 * 1000)) % focuses.length];
+    res.json({ focus, generatedAt: clock.now().toISOString() });
   } catch (err: any) {
     Errors.internal(res, err);
   }
@@ -809,7 +810,7 @@ router.post("/solar-potential", async (req: Request, res: Response) => {
 
     res.json({
       ...result,
-      generatedAt: new Date().toISOString(),
+      generatedAt: clock.now().toISOString(),
       input: { lat, lng, acres, state, zoning, floodZone },
     });
   } catch (err: any) {
@@ -886,7 +887,7 @@ router.get("/county-momentum/:state/:county", async (req: Request, res: Response
     }
 
     const momentum = await getCountyMomentum(stateFips, countyFips);
-    res.json({ ...momentum, generatedAt: new Date().toISOString() });
+    res.json({ ...momentum, generatedAt: clock.now().toISOString() });
   } catch (err: any) {
     Errors.internal(res, err);
   }
@@ -1027,7 +1028,7 @@ router.get("/data-changes", async (req: Request, res: Response) => {
         events.length === 0
           ? `No open-data change events recorded in the last ${sinceDays} days${scopeRef ? ` for ${scopeRef}` : ""}. Events are emitted only when a newly ingested data year materially shifts a county signal (migration flip/swing, permit doubling/halving, employment-trend threshold crossing).`
           : null,
-      generatedAt: new Date().toISOString(),
+      generatedAt: clock.now().toISOString(),
     });
   } catch (err: any) {
     Errors.internal(res, err);
@@ -1139,7 +1140,7 @@ router.get("/freedom-number", async (req: Request, res: Response) => {
 
     // Trailing-12-month window: an all-time payment total divided by 12
     // misstates monthly income for any portfolio older or younger than a year.
-    const windowStart = new Date();
+    const windowStart = clock.now();
     windowStart.setMonth(windowStart.getMonth() - 12);
 
     const [incomeResult] = await db

@@ -75,6 +75,7 @@ import { wrapUntrusted, wrapUntrustedFields } from "./ai/untrustedEnvelope";
 
 // Ensure tool side-effect registration on module import.
 import "./services/founder-chat/tools";
+import { clock } from "./utils/clock";
 
 // Phase D — the chat client sends a structured pageContext (currentPath
 // plus already-resolved entity hints from useFounderChat/use-page-context).
@@ -276,7 +277,7 @@ router.post("/secret-paste/:requestId", async (req: AuthenticatedRequest, res) =
     if (!row) return Errors.notFound(res, "Sealed paste request");
     if (row.founderUserId !== userId) return Errors.forbidden(res, "Paste request belongs to a different founder");
     if (row.consumedAt) return Errors.badRequest(res, "Paste request already consumed");
-    if (row.expiresAt.getTime() < Date.now()) return Errors.badRequest(res, "Paste request expired");
+    if (row.expiresAt.getTime() < clock.nowMs()) return Errors.badRequest(res, "Paste request expired");
 
     // Lazy-import so the fly provider isn't loaded at module-eval time
     // for environments without FLY_API_TOKEN.
@@ -301,7 +302,7 @@ router.post("/secret-paste/:requestId", async (req: AuthenticatedRequest, res) =
     // Stamp consumedAt (single-use).
     await db
       .update(chatSecretPasteRequests)
-      .set({ consumedAt: new Date() as any })
+      .set({ consumedAt: clock.now() as any })
       .where(eq(chatSecretPasteRequests.id, row.id));
 
     // Audit: ONLY the fingerprint — never the value.
@@ -315,7 +316,7 @@ router.post("/secret-paste/:requestId", async (req: AuthenticatedRequest, res) =
         after: {
           fingerprint,
           requestId: row.id,
-          consumedAt: new Date().toISOString(),
+          consumedAt: clock.now().toISOString(),
           rollbackRecipe: {
             // The reverse is: paste the prior value again — but we have
             // ONLY the fingerprint, not the value. So this is a no-undo
@@ -377,7 +378,7 @@ router.post("/stream", async (req: AuthenticatedRequest, res) => {
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders?.();
 
-    const messageId = `atlas-msg-${Date.now()}`;
+    const messageId = `atlas-msg-${clock.nowMs()}`;
     sse(res, "message_start", { messageId, threadId });
 
     // Build context.
@@ -535,7 +536,7 @@ router.post("/stream", async (req: AuthenticatedRequest, res) => {
         content: assistantText,
         toolCalls: accumulatedToolCalls as any,
       } as any);
-      await db.update(aiConversations).set({ updatedAt: new Date() } as any).where(eq(aiConversations.id, threadId));
+      await db.update(aiConversations).set({ updatedAt: clock.now() } as any).where(eq(aiConversations.id, threadId));
     } catch (persistErr) {
       logger.warn("[founder-chat] failed to persist assistant turn", { metadata: { err: String(persistErr) } });
     }

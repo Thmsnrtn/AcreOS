@@ -13,6 +13,7 @@ import {
 import { eq, and, desc, gte, sql, count, avg } from "drizzle-orm";
 import crypto from "crypto";
 import { BoundedMap } from "../utils/boundedMap";
+import { clock } from "../utils/clock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,7 +57,7 @@ class AgentEvolutionEngine {
    * Analyze an agent's performance data to determine if prompt changes would help.
    */
   async analyzePromptPerformance(agentCodename: string): Promise<PerformanceAnalysis> {
-    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
+    const sevenDaysAgo = new Date(clock.nowMs() - 7 * 86400000);
 
     // Get recent action metrics
     const [totalActions] = await db.select({ count: sql<number>`count(*)` })
@@ -161,7 +162,7 @@ class AgentEvolutionEngine {
       await db.update(companyAgents)
         .set({
           personalityPrompt: evolution.proposedPrompt,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(companyAgents.codename, evolution.agentCodename));
 
@@ -188,7 +189,7 @@ class AgentEvolutionEngine {
    * Identify capability gaps that suggest a new agent is needed.
    */
   async identifyCapabilityGaps(): Promise<CapabilityGap[]> {
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+    const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 86400000);
     const gaps: CapabilityGap[] = [];
 
     // Check for frequently deferred decisions (indicates gaps)
@@ -398,7 +399,7 @@ class AgentEvolutionEngine {
 
     // Set status to disabled (preserves data)
     await db.update(companyAgents)
-      .set({ status: "disabled", updatedAt: new Date() })
+      .set({ status: "disabled", updatedAt: clock.now() })
       .where(eq(companyAgents.codename, agentCodename));
 
     return {
@@ -421,7 +422,7 @@ class AgentEvolutionEngine {
       insight,
       relevantAgents,
       appliedBy: [],
-      createdAt: new Date().toISOString(),
+      createdAt: clock.now().toISOString(),
     };
 
     sharedInsights.set(id, shared);
@@ -473,7 +474,7 @@ class AgentEvolutionEngine {
     totalDecisions: number;
     successRate: number;
   }> {
-    const since = new Date(Date.now() - periodDays * 86400000);
+    const since = new Date(clock.nowMs() - periodDays * 86400000);
 
     const [total] = await db.select({ count: sql<number>`count(*)` })
       .from(agentActionLog)
@@ -564,7 +565,7 @@ class AgentEvolutionEngine {
     if (!insight) return { success: false, message: "Insight not found" };
 
     await db.update(metaLearningInsights)
-      .set({ appliedAt: new Date() })
+      .set({ appliedAt: clock.now() })
       .where(eq(metaLearningInsights.insightId, insightId));
 
     return { success: true, message: `Insight ${insightId} marked as applied` };
@@ -625,7 +626,7 @@ class AgentEvolutionEngine {
     windowDays = 30,
     minSignal = 3,
   ): Promise<{ proposalId: number; signalCount: number } | null> {
-    const cutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+    const cutoff = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
 
     const { getRejectionSummary } = await import("./agentRejectionContext");
     const summary = await getRejectionSummary(agentCodename, windowDays);

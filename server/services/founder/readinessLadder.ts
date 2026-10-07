@@ -37,6 +37,7 @@
  * Never throws. Every rung is independently fail-soft.
  */
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -876,7 +877,7 @@ async function measureDelegation(g: GrantsProbe): Promise<Measurement> {
     }
     const remaining = grants.reduce((sum, g) => sum + Math.max(0, g.maxActions - g.usedCount), 0);
     const soonest = grants.reduce((min, g) => Math.min(min, g.expiresAt.getTime()), Infinity);
-    const days = Math.max(0, Math.floor((soonest - Date.now()) / 86_400_000));
+    const days = Math.max(0, Math.floor((soonest - clock.nowMs()) / 86_400_000));
     return {
       ok: true,
       evidence: `${grants.length} live grant${grants.length === 1 ? "" : "s"}, ${remaining} delegated action${remaining === 1 ? "" : "s"} left, earliest expiry in about ${days} day${days === 1 ? "" : "s"}.`,

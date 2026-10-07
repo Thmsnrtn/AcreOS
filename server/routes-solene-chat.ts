@@ -42,6 +42,7 @@ import {
 import type { ContentBlock } from "./services/solene/chat/openRouterClient";
 import type { ChatTier } from "@shared/schema/solene-chat-config";
 import { CHAT_TIERS } from "@shared/schema/solene-chat-config";
+import { clock } from "./utils/clock";
 
 // ============================================================================
 // Helpers
@@ -402,7 +403,7 @@ export function registerSoleneChatRoutes(app: Express): void {
           const { soleneMessages } = await import("@shared/schema");
           const { gte } = await import("drizzle-orm");
           const { CHAT_MODELS } = await import("@shared/schema/solene-chat-config");
-          const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+          const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
           const rows = await db
             .select({
               modelUsed: soleneMessages.modelUsed,

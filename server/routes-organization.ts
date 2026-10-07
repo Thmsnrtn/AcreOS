@@ -52,6 +52,7 @@ import {
   maskTaxId,
   type TaxIdType,
 } from "@shared/taxIdentity";
+import { clock } from "./utils/clock";
 
 // Customer-safe slice of the organizations.settings jsonb blob. The Settings
 // page sends the whole current blob back with one key changed, so this schema
@@ -149,7 +150,7 @@ export function registerOrganizationRoutes(app: Express): void {
         isOrgSimulated,
       } = await import("./utils/simulationMode");
       const { simulatedActions } = await import("@shared/schema");
-      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const since = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
       const recent = await db
         .select()
         .from(simulatedActions)
@@ -330,7 +331,7 @@ export function registerOrganizationRoutes(app: Express): void {
         linkedLeadId: linkedLeadId || null,
         completedSteps: [],
         stepData: {},
-        startedAt: new Date(),
+        startedAt: clock.now(),
       });
       
       // Log activity
@@ -406,7 +407,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const updatedInstance = await storage.updatePlaybookInstance(org.id, instance.id, {
         completedSteps,
         status: allComplete ? "completed" : "in_progress",
-        completedAt: allComplete ? new Date() : null,
+        completedAt: allComplete ? clock.now() : null,
       });
       
       // Log activity
@@ -631,7 +632,7 @@ export function registerOrganizationRoutes(app: Express): void {
 
         // Merge the captured-at timestamp into onboardingData and clear any
         // prior "skipped" flag — capturing always supersedes skipping.
-        const now = new Date().toISOString();
+        const now = clock.now().toISOString();
         const existingData = org.onboardingData ?? {};
         const nextData = {
           ...existingData,
@@ -750,7 +751,7 @@ export function registerOrganizationRoutes(app: Express): void {
       try {
         const authReq = req as AuthenticatedRequest;
         const org = authReq.organization;
-        const now = new Date().toISOString();
+        const now = clock.now().toISOString();
         const existingData = org.onboardingData ?? {};
         const nextData = {
           ...existingData,
@@ -1486,11 +1487,11 @@ export function registerOrganizationRoutes(app: Express): void {
       const cacheKey = `${org.id}-${periodDays}`;
       
       const cached = teamPerformanceCache.get(cacheKey);
-      if (cached && (Date.now() - cached.timestamp) < CACHE_TTL_MS) {
+      if (cached && (clock.nowMs() - cached.timestamp) < CACHE_TTL_MS) {
         return res.json(cached.data);
       }
       
-      const periodStart = new Date();
+      const periodStart = clock.now();
       periodStart.setDate(periodStart.getDate() - periodDays);
       
       const teamMembers = await storage.getTeamMembers(org.id);
@@ -1583,7 +1584,7 @@ export function registerOrganizationRoutes(app: Express): void {
         leaderboard
       };
       
-      teamPerformanceCache.set(cacheKey, { data: responseData, timestamp: Date.now() });
+      teamPerformanceCache.set(cacheKey, { data: responseData, timestamp: clock.nowMs() });
       
       res.json(responseData);
     } catch (error: any) {
@@ -1843,7 +1844,7 @@ export function registerOrganizationRoutes(app: Express): void {
       }
 
       const { organizationInvitations } = await import("@shared/schema");
-      const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days
+      const expiresAt = new Date(clock.nowMs() + 14 * 24 * 60 * 60 * 1000); // 14 days
 
       // Generate one plaintext token per invite, persist only the hash +
       // last4. The plaintext lives in memory just long enough to build the
@@ -2054,7 +2055,7 @@ export function registerOrganizationRoutes(app: Express): void {
 
       if (!invite) return Errors.notFound(res, "Invitation");
       if (invite.status !== "pending") return Errors.badRequest(res, `Invitation is ${invite.status}`);
-      if (invite.expiresAt < new Date()) {
+      if (invite.expiresAt < clock.now()) {
         await db.update(organizationInvitations).set({ status: "expired" }).where(eq(organizationInvitations.id, invite.id));
         return Errors.badRequest(res, "Invitation has expired");
       }
@@ -2076,7 +2077,7 @@ export function registerOrganizationRoutes(app: Express): void {
           displayName: user?.firstName || user?.email || null,
           role: invite.role,
           isActive: true,
-          joinedAt: new Date(),
+          joinedAt: clock.now(),
         });
       }
 
@@ -2119,7 +2120,7 @@ export function registerOrganizationRoutes(app: Express): void {
 
       await db
         .update(organizationInvitations)
-        .set({ status: "accepted", acceptedAt: new Date(), acceptedByUserId: userId })
+        .set({ status: "accepted", acceptedAt: clock.now(), acceptedByUserId: userId })
         .where(eq(organizationInvitations.id, invite.id));
 
       // Audit-log the acceptance with the token redacted to last4 only.
@@ -2263,7 +2264,7 @@ export function registerOrganizationRoutes(app: Express): void {
   // `config` is null and `configured` is false — never an assumed split.
   api.get("/api/commissions/split", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
     try {
-      const year = parseInt(req.query.year as string) || new Date().getFullYear();
+      const year = parseInt(req.query.year as string) || clock.now().getFullYear();
       const summary = await getSplitConfigSummary(req.organization.id, year);
       res.json(summary);
     } catch (err) {
@@ -2309,7 +2310,7 @@ export function registerOrganizationRoutes(app: Express): void {
   // saved — no assumed rate, no invented deals.
   api.get("/api/commissions/forecast", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
     try {
-      const year = parseInt(req.query.year as string) || new Date().getFullYear();
+      const year = parseInt(req.query.year as string) || clock.now().getFullYear();
       const forecast = await getGciForecast(req.organization.id, year);
       res.json(forecast);
     } catch (err) {
@@ -2320,7 +2321,7 @@ export function registerOrganizationRoutes(app: Express): void {
   // GET /api/commissions/summaries — YTD summary per agent
   api.get("/api/commissions/summaries", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
     try {
-      const year = parseInt(req.query.year as string) || new Date().getFullYear();
+      const year = parseInt(req.query.year as string) || clock.now().getFullYear();
       const summaries = await getAgentCommissionSummaries(req.organization.id, year);
       res.json(summaries);
     } catch (err: any) {
@@ -2399,7 +2400,7 @@ export function registerOrganizationRoutes(app: Express): void {
   // GET /api/commissions/statement/:teamMemberId — download plain-text statement
   api.get("/api/commissions/statement/:teamMemberId", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
     try {
-      const year = parseInt(req.query.year as string) || new Date().getFullYear();
+      const year = parseInt(req.query.year as string) || clock.now().getFullYear();
       const summaries = await getAgentCommissionSummaries(req.organization.id, year);
       const summary = summaries.find(s => s.teamMemberId === parseInt(req.params.teamMemberId));
       if (!summary) return Errors.notFound(res, "Team member");
@@ -2454,7 +2455,7 @@ export function registerOrganizationRoutes(app: Express): void {
       // submitted so we don't double-prompt the same user.
       try {
         await db.update(npsPromptQueue)
-          .set({ status: "submitted", consumedAt: new Date() })
+          .set({ status: "submitted", consumedAt: clock.now() })
           .where(and(
             eq(npsPromptQueue.organizationId, orgId),
             eq(npsPromptQueue.userId, userId),
@@ -2528,7 +2529,7 @@ export function registerOrganizationRoutes(app: Express): void {
 
         if (queued) {
           await db.update(npsPromptQueue)
-            .set({ status: "shown", shownAt: new Date() })
+            .set({ status: "shown", shownAt: clock.now() })
             .where(eq(npsPromptQueue.id, queued.id));
           return res.json({ shouldShow: true, trigger: queued.trigger });
         }
@@ -2538,7 +2539,7 @@ export function registerOrganizationRoutes(app: Express): void {
       }
 
       const org = authReq.organization;
-      const now = new Date();
+      const now = clock.now();
       const createdAt = org.createdAt ? new Date(org.createdAt) : now;
       const daysSinceCreation = Math.floor(
         (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24)
@@ -2630,7 +2631,7 @@ export function registerOrganizationRoutes(app: Express): void {
       const userId = String(authReq.user.id);
 
       await db.update(npsPromptQueue)
-        .set({ status: "dismissed", consumedAt: new Date() })
+        .set({ status: "dismissed", consumedAt: clock.now() })
         .where(and(
           eq(npsPromptQueue.organizationId, orgId),
           eq(npsPromptQueue.userId, userId),

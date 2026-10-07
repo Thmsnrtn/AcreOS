@@ -12,6 +12,7 @@ import { assertNotUnderLegalHold } from "../services/legalHold";
 import { recordDealTransitionEvidence } from "../services/dealLifecycleEvents";
 import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../storage";
 import { LIST_READ_CAP, capListRead } from "./listCap";
+import { clock } from "../utils/clock";
 
 /** Search / lookup filters for the paginated property list (DEFECT-0168). */
 interface PropertyListFilters {
@@ -102,7 +103,7 @@ export const propertyRepo = {
     const conditions = [eq(properties.id, id)];
     if (organizationId) conditions.push(eq(properties.organizationId, organizationId));
     const [updated] = await db.update(properties)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     // Land that is no longer held comes off the market (DEFECT-0181).
@@ -124,7 +125,7 @@ export const propertyRepo = {
     const conditions = [eq(properties.id, id)];
     if (organizationId) conditions.push(eq(properties.organizationId, organizationId));
     await db.update(properties)
-      .set({ status: "deleted", updatedAt: new Date() })
+      .set({ status: "deleted", updatedAt: clock.now() })
       .where(and(...conditions));
     if (organizationId !== undefined) {
       const { withdrawListingsForUnheldProperty } = await import("../services/listingWithdrawal");
@@ -138,7 +139,7 @@ export const propertyRepo = {
       .from(deals)
       .where(and(...dealConditions, eq(deals.status, "closed")));
     await db.update(deals)
-      .set({ status: "deleted", updatedAt: new Date() })
+      .set({ status: "deleted", updatedAt: clock.now() })
       .where(and(...dealConditions));
     for (const d of closedBefore) {
       recordDealTransitionEvidence(d.organizationId, { status: "closed" }, { id: d.id, status: "deleted" });
@@ -166,13 +167,13 @@ export const propertyRepo = {
     if (owned.length === 0) return 0;
     for (const id of owned) await assertNotUnderLegalHold(orgId, "property", id);
     await db.update(properties)
-      .set({ status: "deleted", updatedAt: new Date() })
+      .set({ status: "deleted", updatedAt: clock.now() })
       .where(and(eq(properties.organizationId, orgId), inArray(properties.id, owned)));
     const closedBefore = await db.select({ id: deals.id })
       .from(deals)
       .where(and(eq(deals.organizationId, orgId), inArray(deals.propertyId, owned), eq(deals.status, "closed")));
     await db.update(deals)
-      .set({ status: "deleted", updatedAt: new Date() })
+      .set({ status: "deleted", updatedAt: clock.now() })
       .where(and(eq(deals.organizationId, orgId), inArray(deals.propertyId, owned)));
     for (const d of closedBefore) recordDealTransitionEvidence(orgId, { status: "closed" }, { id: d.id, status: "deleted" });
     const { withdrawListingsForUnheldProperty } = await import("../services/listingWithdrawal");
@@ -183,7 +184,7 @@ export const propertyRepo = {
   async bulkUpdateProperties(this: DatabaseStorage, orgId: number, ids: number[], updates: Partial<InsertProperty>): Promise<number> {
     if (ids.length === 0) return 0;
     const updated = await db.update(properties)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(eq(properties.organizationId, orgId), inArray(properties.id, ids)))
       .returning({ id: properties.id, status: properties.status });
     // A bulk status change that ends the holding withdraws the listings

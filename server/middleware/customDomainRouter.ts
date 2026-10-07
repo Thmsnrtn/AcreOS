@@ -30,6 +30,7 @@ import { db } from "../storage";
 import { whitelabelTenants } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,7 +66,7 @@ const LOCAL_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 function localGet(domain: string): TenantContext | null | undefined {
   const entry = localCache.get(domain);
   if (!entry) return undefined; // miss
-  if (Date.now() > entry.expiresAt) {
+  if (clock.nowMs() > entry.expiresAt) {
     localCache.delete(domain);
     return undefined; // expired
   }
@@ -73,7 +74,7 @@ function localGet(domain: string): TenantContext | null | undefined {
 }
 
 function localSet(domain: string, value: TenantContext | null): void {
-  localCache.set(domain, { value, expiresAt: Date.now() + LOCAL_CACHE_TTL_MS });
+  localCache.set(domain, { value, expiresAt: clock.nowMs() + LOCAL_CACHE_TTL_MS });
 
   // Evict oldest entries if cache grows too large
   if (localCache.size > 1000) {

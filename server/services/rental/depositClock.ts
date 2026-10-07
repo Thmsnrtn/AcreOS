@@ -36,6 +36,7 @@ import {
   type DepositDeadlineResult,
 } from "@shared/regulatory/depositReturnRules";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 export type DepositClockTrigger = "move_out_inspection" | "lease_ended" | "reconciliation" | "manual";
 
@@ -203,8 +204,8 @@ export async function startDepositClock(args: {
         statutoryDeadlineDays: deadline.deadlineDays,
         statutoryDeadlineCitation: deadline.citation,
         statutoryDeadlineUnknownReason: deadline.unknownReason,
-        statutoryDeadlineSetAt: new Date(),
-        updatedAt: new Date(),
+        statutoryDeadlineSetAt: clock.now(),
+        updatedAt: clock.now(),
       })
       .where(eq(securityDeposits.id, deposit.id));
 

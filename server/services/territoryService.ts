@@ -14,6 +14,7 @@ import { db } from "../db";
 import { organizationIntegrations, teamMembers, leads } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface Territory {
   id: string;
@@ -72,7 +73,7 @@ async function saveTerritoriesStore(
   if (existing) {
     await db
       .update(organizationIntegrations)
-      .set({ credentials, updatedAt: new Date() })
+      .set({ credentials, updatedAt: clock.now() })
       .where(eq(organizationIntegrations.id, existing.id));
   } else {
     await db.insert(organizationIntegrations).values({
@@ -185,7 +186,7 @@ export async function autoAssignLeadToTerritory(
   // Update the lead's assignedTo field
   await db
     .update(leads)
-    .set({ assignedTo: teamMember.id, updatedAt: new Date() })
+    .set({ assignedTo: teamMember.id, updatedAt: clock.now() })
     .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)));
 
   logger.info(`[Territory] Lead ${leadId} auto-assigned to ${matched.teamMemberName || matched.teamMemberId} via territory "${matched.name}"`);

@@ -23,6 +23,7 @@ import { shouldSimulate, recordSimulatedAction } from "./utils/simulationMode";
 import * as listingSyndication from "./services/listingSyndication";
 import { inArray } from "drizzle-orm";
 import { wsServer } from "./websocket";
+import { clock } from "./utils/clock";
 
 export function registerTeamMessagingRoutes(app: Express): void {
   const api = app;
@@ -269,8 +270,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       await db
         .update(teamConversations)
         .set({
-          lastMessageAt: new Date(),
-          updatedAt: new Date(),
+          lastMessageAt: clock.now(),
+          updatedAt: clock.now(),
         })
         .where(and(eq(teamConversations.id, conversationId), eq(teamConversations.organizationId, org.id)));
 
@@ -362,7 +363,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       }
       
       const { messageIds, upToMessageId } = parsed.data;
-      const now = new Date().toISOString();
+      const now = clock.now().toISOString();
       
       // Get messages to update
       let messagesToUpdate: typeof teamMessages.$inferSelect[] = [];
@@ -466,7 +467,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
           .update(teamMemberPresence)
           .set({
             status,
-            lastSeenAt: new Date(),
+            lastSeenAt: clock.now(),
             deviceInfo: deviceInfo || existing.deviceInfo,
           })
           .where(and(eq(teamMemberPresence.id, existing.id), eq(teamMemberPresence.organizationId, org.id)))
@@ -479,7 +480,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
             organizationId: org.id,
             userId,
             status,
-            lastSeenAt: new Date(),
+            lastSeenAt: clock.now(),
             deviceInfo: deviceInfo || null,
           })
           .returning();
@@ -585,8 +586,8 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const propertyMap = new Map(sellerProperties.map(p => [p.sellerId, p]));
       
       // Generate batch ID
-      const batchId = `batch_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-      const expirationDate = new Date();
+      const batchId = `batch_${clock.nowMs()}_${Math.random().toString(36).substring(2, 8)}`;
+      const expirationDate = clock.now();
       expirationDate.setDate(expirationDate.getDate() + expirationDays);
       
       // A LEAD WE CANNOT PRICE DOES NOT GET A PRICED LETTER.
@@ -1155,7 +1156,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
           listingUrl?: string;
           error?: string;
         }>;
-        const now = Date.now();
+        const now = clock.nowMs();
         const recentByPlatform = new Map<string, (typeof existingTargets)[number]>();
         for (const t of existingTargets) {
           if (!t.postedAt) continue;
@@ -1352,7 +1353,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
         const carriedOver = existingTargets.filter(
           (t) => !touched.has(listingSyndication.canonicalPlatform(t.platform))
         );
-        const stamp = new Date().toISOString();
+        const stamp = clock.now().toISOString();
         const newEntries = finalResults.filter((r) => touched.has(r.platform)).map((r) => ({
           platform: r.platform,
           listingId: r.listingId,
@@ -1389,7 +1390,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
         await storage.updatePropertyListing(id, {
           status: anySent ? "active" : listing.status,
           syndicationTargets: merged,
-          publishedAt: anySent ? new Date() : listing.publishedAt ?? null,
+          publishedAt: anySent ? clock.now() : listing.publishedAt ?? null,
         });
 
         logger.info("Listing publish fan-out complete", {
@@ -1444,7 +1445,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
         status: "removed",
         error: undefined,
         removalSource: "operator",
-        removedAt: new Date().toISOString(),
+        removedAt: clock.now().toISOString(),
         removedBy: req.user?.id,
       };
       const updated = await storage.updatePropertyListing(id, { syndicationTargets: next }, org.id);
@@ -1617,7 +1618,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
       const participants: string[] = Array.from(new Set([...(channel.participantIds ?? []), userId]));
       const [updated] = await db
         .update(teamConversations)
-        .set({ participantIds: participants, updatedAt: new Date() })
+        .set({ participantIds: participants, updatedAt: clock.now() })
         .where(and(eq(teamConversations.id, channelId), eq(teamConversations.organizationId, org.id)))
         .returning();
 

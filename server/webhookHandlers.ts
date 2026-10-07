@@ -16,6 +16,7 @@ import { logger } from './utils/logger';
 import { postBorrowerPortalCheckoutPayment } from './services/borrower/portalPaymentPosting';
 import { recordSense } from './services/autopilot/perception';
 import { subscriptionEndedPatch, subscriptionHasEnded } from './services/borrower/servicingPhase';
+import { clock } from "./utils/clock";
 
 // ─── Refund reversal derivation (PURE) ──────────────────────────────────────
 //
@@ -487,7 +488,7 @@ export class WebhookHandlers {
             stripeSubscriptionId: subscriptionId,
             subscriptionStatus: 'active',
             trialUsed: true, // Mark here, not at checkout creation — abandoned checkouts must not consume the trial
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(eq(organizations.id, organizationId))
           .returning({
@@ -782,7 +783,7 @@ export class WebhookHandlers {
             // otherwise restart the clock and re-open borrower payments that
             // borrowers were already told had ended.
             ...(subscriptionHasEnded(org.subscriptionStatus) ? {} : subscriptionEndedPatch()),
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(eq(organizations.id, org.id));
 
@@ -899,13 +900,13 @@ export class WebhookHandlers {
           subjectType: 'org',
           subjectId: String(org.id),
           orgId: org.id,
-          decisionAt: new Date(),
-          outcomeAt: new Date(),
+          decisionAt: clock.now(),
+          outcomeAt: clock.now(),
           features: {
             previousTier,
             billingInterval: org.billingInterval ?? null,
             ageDays: org.createdAt
-              ? Math.round((Date.now() - new Date(org.createdAt as any).getTime()) / 86400000)
+              ? Math.round((clock.nowMs() - new Date(org.createdAt as any).getTime()) / 86400000)
               : null,
             leadsCreated30d: Number(usageRow.leadsCreated30d ?? 0),
             propertiesCreated30d: Number(usageRow.propertiesCreated30d ?? 0),
@@ -915,7 +916,7 @@ export class WebhookHandlers {
           labels: {
             outcome: 'churned',
             stripeSubscriptionId: subscription.id,
-            cancelledAt: new Date().toISOString(),
+            cancelledAt: clock.now().toISOString(),
             // Reason will be backfilled via metadata when the exit-survey
             // (churn_reasons) row is recorded.
           },
@@ -1026,7 +1027,7 @@ export class WebhookHandlers {
       await withTransaction(async (tx) => {
         await tx
           .update(organizations)
-          .set({ ...updates, updatedAt: new Date() })
+          .set({ ...updates, updatedAt: clock.now() })
           .where(eq(organizations.id, org.id));
 
         if (tierChanged) {
@@ -1147,7 +1148,7 @@ export class WebhookHandlers {
         // Preserve the originally-elected `subscriptionPausedAt` if already
         // set by the /api/subscription/pause route — webhook redelivery
         // shouldn't reset the clock. New pauses default to now().
-        ...(org.subscriptionPausedAt ? {} : { subscriptionPausedAt: new Date() }),
+        ...(org.subscriptionPausedAt ? {} : { subscriptionPausedAt: clock.now() }),
         ...(subscriptionPauseEndsAt ? { subscriptionPauseEndsAt } : {}),
       });
 
@@ -1254,7 +1255,7 @@ export class WebhookHandlers {
           customerId,
           organizationId: org.id,
           amountPaidCents: invoice.amount_paid,
-          paidAt: new Date(((invoice as any).status_transitions?.paid_at ?? Date.now() / 1000) * 1000).toISOString(),
+          paidAt: new Date(((invoice as any).status_transitions?.paid_at ?? clock.nowMs() / 1000) * 1000).toISOString(),
           periodStartIso: period?.start ? new Date(period.start * 1000).toISOString() : undefined,
           periodEndIso: period?.end ? new Date(period.end * 1000).toISOString() : undefined,
           description: `Stripe invoice ${invoice.id}`,
@@ -1327,7 +1328,7 @@ export class WebhookHandlers {
         chargeId: charge.id,
         organizationId: org.id,
         amountRefundedCents: charge.amount_refunded ?? 0,
-        refundedAt: new Date().toISOString(),
+        refundedAt: clock.now().toISOString(),
         invoiceId: typeof chargeInvoice === 'string' ? chargeInvoice : chargeInvoice?.id,
         description: `Stripe refund — charge ${charge.id}`,
       });
@@ -1516,7 +1517,7 @@ export class WebhookHandlers {
           organizationId: orgId,
           packKey,
           status: 'active',
-          activatedAt: new Date(),
+          activatedAt: clock.now(),
           billingInterval,
           priceCents,
           stripeSubscriptionItemId: subscriptionItemId,
@@ -1526,13 +1527,13 @@ export class WebhookHandlers {
           target: [orgVerticalPacks.organizationId, orgVerticalPacks.packKey],
           set: {
             status: 'active',
-            activatedAt: new Date(),
+            activatedAt: clock.now(),
             cancelledAt: null,
             cancelAt: null,
             billingInterval,
             priceCents,
             stripeSubscriptionItemId: subscriptionItemId,
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           },
         });
 
@@ -1553,7 +1554,7 @@ export class WebhookHandlers {
       const { and, eq } = await import('drizzle-orm');
       await db
         .update(orgVerticalPacks)
-        .set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
+        .set({ status: 'cancelled', cancelledAt: clock.now(), updatedAt: clock.now() })
         .where(and(eq(orgVerticalPacks.organizationId, orgId), eq(orgVerticalPacks.packKey, packKey)));
       logger.info(`[webhook] vertical pack cancelled: org ${orgId}, pack ${packKey}`);
     } catch (err) {
@@ -1990,7 +1991,7 @@ export class WebhookHandlers {
                   ? 'active'
                   : locked.status,
               version: (locked.version ?? 1) + 1,
-              updatedAt: new Date(),
+              updatedAt: clock.now(),
             })
             .where(and(eqOp(notes.id, original.noteId), eqOp(notes.version, locked.version ?? 1)))
             .returning();

@@ -34,6 +34,7 @@ import { errorBoundaryTrips } from "@shared/schema/error-boundary-trips";
 import { solenePageEvents } from "@shared/schema/solene-page";
 import { sendSolenePage } from "../solene/pagerService";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 export const SPIKE_TRIPS_PER_HOUR = 5;
 export const PULSE_MIN_TRIPS = 1;
@@ -66,7 +67,7 @@ export interface RecentTripCounts {
 export async function getRecentTripCounts(
   windowHours: number = 24,
 ): Promise<RecentTripCounts> {
-  const cutoff = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - windowHours * 60 * 60 * 1000);
 
   const byRoute = await db
     .select({
@@ -122,7 +123,7 @@ export interface SpikeDetectionResult {
  * SPIKE_DEDUPE_HOURS window, not on every cron tick.
  */
 export async function detectAndPageOnSpike(): Promise<SpikeDetectionResult> {
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const oneHourAgo = new Date(clock.nowMs() - 60 * 60 * 1000);
 
   const recentByRoute = await db
     .select({
@@ -147,7 +148,7 @@ export async function detectAndPageOnSpike(): Promise<SpikeDetectionResult> {
     // Dedupe: has a page already fired for this route in the last
     // SPIKE_DEDUPE_HOURS window? Match by subject substring.
     const dedupeCutoff = new Date(
-      Date.now() - SPIKE_DEDUPE_HOURS * 60 * 60 * 1000,
+      clock.nowMs() - SPIKE_DEDUPE_HOURS * 60 * 60 * 1000,
     );
     const subjectMarker = `error-boundary spike: ${row.routePath}`;
     const existing = await db

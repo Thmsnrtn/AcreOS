@@ -23,6 +23,7 @@ import { db } from "../../db";
 import { and, eq } from "drizzle-orm";
 import { supportTicketMessages, supportTickets } from "@shared/schema";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 export interface AgentSupportReply {
   ticketId: number;
@@ -66,7 +67,7 @@ export async function postAgentSupportReply(
     if (reply.resolveTicket) {
       await db
         .update(supportTickets)
-        .set({ status: "resolved", resolvedAt: new Date(), updatedAt: new Date() })
+        .set({ status: "resolved", resolvedAt: clock.now(), updatedAt: clock.now() })
         .where(and(eq(supportTickets.id, reply.ticketId), eq(supportTickets.organizationId, reply.organizationId)));
     }
     return {

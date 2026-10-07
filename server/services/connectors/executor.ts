@@ -4,6 +4,7 @@
 
 import { storage } from "../../storage";
 import type { Organization } from "@shared/schema";
+import { clock } from "../../utils/clock";
 
 interface ConnectorCredentials {
   // Google OAuth
@@ -223,7 +224,7 @@ export async function listCalendarEvents(org: Organization, args: { days?: numbe
   const creds = await getCredentials(org.id, "google_calendar");
   if (!creds?.accessToken) return { success: false, error: "Google Calendar is not connected." };
 
-  const now = new Date();
+  const now = clock.now();
   const end = new Date(now.getTime() + (args.days ?? 7) * 24 * 60 * 60 * 1000);
   const data = await calFetch(creds.accessToken,
     `/calendar/v3/calendars/primary/events?timeMin=${now.toISOString()}&timeMax=${end.toISOString()}&singleEvents=true&orderBy=startTime&maxResults=20`);

@@ -25,6 +25,7 @@ import type {
   LookupResult,
   ProviderHealthStatus,
 } from "./types";
+import { clock } from "../../utils/clock";
 
 const SUPPORTED_CATEGORIES: DataCategory[] = ["parcel_data", "owner_info"];
 
@@ -70,7 +71,7 @@ export const countyGisProvider: DataProvider = {
   },
 
   async lookup(category: DataCategory, input: LookupInput): Promise<LookupResult> {
-    const start = Date.now();
+    const start = clock.nowMs();
 
     // Coordinate inputs: FREE statewide point-intersection lookup against
     // the county = "*" statewide rows (Open-Data Phase 3). A point sits in
@@ -88,9 +89,9 @@ export const countyGisProvider: DataProvider = {
         category,
         confidence: 80,
         costCents: 0,
-        fetchedAt: new Date(),
+        fetchedAt: clock.now(),
         cached: false,
-        latencyMs: Date.now() - start,
+        latencyMs: clock.nowMs() - start,
         data: pointResult.parcel,
         source: "County GIS",
         sourceAsOf: null,
@@ -132,9 +133,9 @@ export const countyGisProvider: DataProvider = {
       category,
       confidence: 80, // county records are authoritative; deduct 20 for staleness
       costCents: 0,
-      fetchedAt: new Date(),
+      fetchedAt: clock.now(),
       cached: false,
-      latencyMs: Date.now() - start,
+      latencyMs: clock.nowMs() - start,
       data: result.parcel,
       source: "County GIS",
       // County assessor records are systems-of-record; freshness lags by tax
@@ -145,7 +146,7 @@ export const countyGisProvider: DataProvider = {
   },
 
   async healthCheck(): Promise<ProviderHealthStatus> {
-    const start = Date.now();
+    const start = clock.nowMs();
     try {
       const [endpoints] = await db
         .select({ id: countyGisEndpoints.id })
@@ -154,15 +155,15 @@ export const countyGisProvider: DataProvider = {
         .limit(1);
       return {
         healthy: Boolean(endpoints),
-        latencyMs: Date.now() - start,
-        checkedAt: new Date(),
+        latencyMs: clock.nowMs() - start,
+        checkedAt: clock.now(),
         message: endpoints ? undefined : "no active county endpoints seeded",
       };
     } catch (err) {
       return {
         healthy: false,
-        latencyMs: Date.now() - start,
-        checkedAt: new Date(),
+        latencyMs: clock.nowMs() - start,
+        checkedAt: clock.now(),
         message: err instanceof Error ? err.message : String(err),
       };
     }

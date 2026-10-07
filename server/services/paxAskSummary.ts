@@ -44,6 +44,7 @@ import {
   PAX_LABELS,
   PAX_STANDING_LINE,
 } from "@shared/pax-glossary";
+import { clock } from "../utils/clock";
 
 /** The columns of a pending_actions row this module reads. */
 export interface AskRow {
@@ -214,7 +215,7 @@ function changeOf(args: Record<string, unknown>): Record<string, unknown> {
  * One card's worth of server-formatted truth for a pending_actions row.
  */
 export function summarizeAsk(row: AskRow, ctx: AskContext = {}): AskSummary {
-  const now = ctx.now ?? new Date();
+  const now = ctx.now ?? clock.now();
   const args = row.args ?? {};
   const group = PAX_TOOL_GROUPS[row.toolName] ?? null;
   const to = recipientOf(args);

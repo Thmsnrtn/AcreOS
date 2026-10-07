@@ -17,6 +17,7 @@ import { logger } from "./utils/logger";
 import { usageMeteringService, creditService } from "./services/credits";
 import { workflowEngine, LAND_INVESTING_WORKFLOW_TEMPLATES } from "./services/workflow-engine";
 import { processMentions } from "./services/mentionService";
+import { clock } from "./utils/clock";
 
 export function registerCommunicationRoutes(app: Express): void {
   const api = app;
@@ -407,7 +408,7 @@ export function registerCommunicationRoutes(app: Express): void {
       if (verificationResult.isValid) {
         updated = await storage.updateMailSenderIdentity(id, {
           status: "verified",
-          verifiedAt: new Date(),
+          verifiedAt: clock.now(),
           lobAddressId: verificationResult.details.lobAddressId || null,
           verificationDetails: {
             deliverability: verificationResult.deliverability,
@@ -611,7 +612,7 @@ export function registerCommunicationRoutes(app: Express): void {
       ]);
       const emails = isStarred !== undefined ? emailsRaw.filter(m => m.isStarred === isStarred) : emailsRaw;
 
-      res.json({ emails, smsConversations, generatedAt: new Date().toISOString() });
+      res.json({ emails, smsConversations, generatedAt: clock.now().toISOString() });
     } catch (error: any) {
       logger.error("Get unified inbox error", error instanceof Error ? error : undefined);
       Errors.internal(res, error instanceof Error ? error : new Error(error.message || "Failed to fetch unified inbox"));
@@ -809,7 +810,7 @@ export function registerCommunicationRoutes(app: Express): void {
         eventType,
         description: content,
         userId,
-        eventDate: new Date(),
+        eventDate: clock.now(),
         metadata: { hasContent: true },
       });
 
@@ -988,7 +989,7 @@ export function registerCommunicationRoutes(app: Express): void {
         },
         workflows: workflowsWithStats,
         mostRecentlyTriggered,
-        generatedAt: new Date().toISOString(),
+        generatedAt: clock.now().toISOString(),
       });
     } catch (error: any) {
       logger.error("Workflow analytics error", error instanceof Error ? error : undefined);

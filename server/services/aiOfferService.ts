@@ -13,6 +13,7 @@ import { logAgentTrace } from "./agentLlmTraces";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
 import { validateCompliance } from "./complianceValidator";
+import { clock } from "../utils/clock";
 
 // Migrated from direct OpenAI client to central aiRouter (P1-36).
 // Tracing is preserved via logAgentTrace; cost tracking, semantic caching,
@@ -247,7 +248,7 @@ Provide exactly 3 offer strategies as JSON with this structure:
   "marketTrend": "stable" | "increasing" | "decreasing"
 }`;
 
-    const startedAt = Date.now();
+    const startedAt = clock.nowMs();
     const aiResponse = await routeAITask({
       taskType: "offer_suggestions",
       complexity: TaskComplexity.COMPLEX,
@@ -265,7 +266,7 @@ Provide exactly 3 offer strategies as JSON with this structure:
       systemPrompt: null,
       userPrompt: prompt,
       response: content || "",
-      latencyMs: Date.now() - startedAt,
+      latencyMs: clock.nowMs() - startedAt,
       inputTokens: aiResponse.usage?.promptTokens,
       outputTokens: aiResponse.usage?.completionTokens,
       error: null,
@@ -452,7 +453,7 @@ The letter should:
 4. Include a call to action
 5. Close professionally with buyer contact information`;
 
-    const letterStartedAt = Date.now();
+    const letterStartedAt = clock.nowMs();
     const aiLetter = await routeAITask({
       taskType: "offer_letter",
       complexity: TaskComplexity.COMPLEX,
@@ -470,7 +471,7 @@ The letter should:
       systemPrompt: null,
       userPrompt: prompt,
       response: content || "",
-      latencyMs: Date.now() - letterStartedAt,
+      latencyMs: clock.nowMs() - letterStartedAt,
       inputTokens: aiLetter.usage?.promptTokens,
       outputTokens: aiLetter.usage?.completionTokens,
       error: null,

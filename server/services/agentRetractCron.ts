@@ -31,6 +31,7 @@ import {
 import { and, eq, lt, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { recordRetract } from "./trustGraduation";
+import { clock } from "../utils/clock";
 
 interface RegressionVerdict {
   regressed: boolean;
@@ -55,7 +56,7 @@ const REGRESSION_THRESHOLDS = {
 };
 
 async function snapshotCurrentTelemetry(): Promise<Record<string, number>> {
-  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const dayAgo = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
   try {
     const [errorRow] = await db
       .select({ c: sql<number>`count(*)::int` })
@@ -95,11 +96,11 @@ async function snapshotCurrentTelemetry(): Promise<Record<string, number>> {
       jobFailures24h: Number(jobFailRow?.c ?? 0),
       customerHealthAvg: Number(healthRow?.avg ?? 0),
       supportEscalations24h: Number(escalatedRow?.c ?? 0),
-      capturedAtMs: Date.now(),
+      capturedAtMs: clock.nowMs(),
     };
   } catch (err) {
     logger.warn("[retract-cron] telemetry snapshot failed", err as Error);
-    return { capturedAtMs: Date.now() };
+    return { capturedAtMs: clock.nowMs() };
   }
 }
 
@@ -183,7 +184,7 @@ async function retractObservation(
     .update(agentProposalObservations)
     .set({
       status: "retracted",
-      retractedAt: new Date(),
+      retractedAt: clock.now(),
       retractReason: reason,
       telemetryCurrent: metrics,
     })
@@ -274,7 +275,7 @@ export async function runAgentRetractCron(): Promise<{
   }
 
   const current = await snapshotCurrentTelemetry();
-  const now = new Date();
+  const now = clock.now();
   let retracted = 0;
   let cleaned = 0;
   let errors = 0;

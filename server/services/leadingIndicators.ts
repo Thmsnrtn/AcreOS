@@ -41,6 +41,7 @@ import { count, sql, gte, and, eq, lt, inArray } from "drizzle-orm";
 import { METERED_TIERS, planLimitsFor } from "./planLimits";
 import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /**
  * The five customer doors, as slugs. Derived from the canonical nav model
@@ -125,7 +126,7 @@ export interface LeadingIndicators {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export async function computeLeadingIndicators(): Promise<LeadingIndicators> {
-  const now = Date.now();
+  const now = clock.nowMs();
   const sevenDaysAgo = new Date(now - 7 * DAY_MS);
   const fourteenDaysAgo = new Date(now - 14 * DAY_MS);
   const thirtyDaysAgo = new Date(now - 30 * DAY_MS);

@@ -37,6 +37,7 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { parcelObservations } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ----------------------------------------------------------------------------
 // Tracked biography fields
@@ -302,7 +303,7 @@ export function deriveNumericTrend(points: SeriesPoint[]): NumericTrend | null {
  */
 export function deriveOwnerTenure(
   points: SeriesPoint[],
-  asOf: Date = new Date(),
+  asOf: Date = clock.now(),
   saleEvents: Date[] = [],
 ): OwnerTenure | null {
   const named = points.filter((p) => {
@@ -467,7 +468,7 @@ export function assembleBiography(
     confidence: number | null;
     observedAt: Date;
   }>,
-  asOf: Date = new Date(),
+  asOf: Date = clock.now(),
 ): ParcelBiography {
   const byField = new Map<string, SeriesPoint[]>();
   for (const r of rows) {
@@ -719,7 +720,7 @@ export async function getParcelBiography(
 
     if (rows.length === 0) return empty;
 
-    return assembleBiography(apn, upperState, county || "", rows, asOf ?? new Date());
+    return assembleBiography(apn, upperState, county || "", rows, asOf ?? clock.now());
   } catch (err) {
     // Read elevation must never break the parcel response; degrade to empty.
     logger.warn("[parcelBiography] read failed (non-fatal)", {

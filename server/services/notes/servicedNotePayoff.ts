@@ -27,6 +27,7 @@ import {
 } from "../notePaymentMath";
 import { dayInZone } from "../form1098Batch";
 import { assessServicedNoteLateFee, lateFeeDueByCents, outstandingServicedLateFeesCents } from "./servicedLateFees";
+import { clock } from "../../utils/clock";
 
 export async function quoteServicedNotePayoff(args: {
   note: Note;
@@ -61,7 +62,7 @@ export async function quoteServicedNotePayoff(args: {
   // never misses a fee the daily job has not reached yet; and a fee grace
   // will pass on BY the good-through date is quoted too — paying the quoted
   // total on that date must pay the note off, and posting would assess it.
-  const now = new Date();
+  const now = clock.now();
   await assessServicedNoteLateFee(note, now);
   const lateFeesOwedCents =
     (await outstandingServicedLateFeesCents(note.organizationId, note.id)) +

@@ -3,6 +3,7 @@
  * Provides probe URLs, health recording, and status reporting.
  */
 
+import { clock } from "../utils/clock";
 export interface DataSourceEntry {
   name: string;
   category: string;
@@ -163,7 +164,7 @@ export function recordSourceFailure(name: string, error: string, latencyMs: numb
     status: "down",
     statusCode: null,
     latencyMs,
-    lastChecked: new Date(),
+    lastChecked: clock.now(),
     error,
   };
   const history = healthHistory.get(name) || [];
@@ -202,7 +203,7 @@ export function recordSourceSuccess(name: string, latencyMs: number): void {
     status: latencyMs > 3000 ? "degraded" : "up",
     statusCode: 200,
     latencyMs,
-    lastChecked: new Date(),
+    lastChecked: clock.now(),
   };
   const history = healthHistory.get(name) || [];
   history.push(record);
@@ -214,20 +215,20 @@ export async function runHealthProbe(): Promise<SourceHealthRecord[]> {
   const results: SourceHealthRecord[] = [];
 
   for (const source of DATA_SOURCES) {
-    const start = Date.now();
+    const start = clock.nowMs();
     try {
       const response = await fetch(source.probeUrl, {
         signal: AbortSignal.timeout(source.timeout),
         headers: { "User-Agent": "AcreOS Health Monitor" },
       });
-      const latency = Date.now() - start;
+      const latency = clock.nowMs() - start;
       const record: SourceHealthRecord = {
         name: source.name,
         category: source.category,
         status: response.ok ? (latency > 3000 ? "degraded" : "up") : "down",
         statusCode: response.status,
         latencyMs: latency,
-        lastChecked: new Date(),
+        lastChecked: clock.now(),
       };
       if (response.ok) {
         recordSourceSuccess(source.name, latency);
@@ -236,14 +237,14 @@ export async function runHealthProbe(): Promise<SourceHealthRecord[]> {
       }
       results.push(record);
     } catch (err: any) {
-      const latency = Date.now() - start;
+      const latency = clock.nowMs() - start;
       const record: SourceHealthRecord = {
         name: source.name,
         category: source.category,
         status: "down",
         statusCode: null,
         latencyMs: latency,
-        lastChecked: new Date(),
+        lastChecked: clock.now(),
         error: err.message || "Connection failed",
       };
       recordSourceFailure(source.name, err.message || "Connection failed", latency);

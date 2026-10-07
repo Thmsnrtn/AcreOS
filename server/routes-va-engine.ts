@@ -13,6 +13,7 @@ import { Errors } from "./utils/errors";
 import { omitProtectedFields, omitServerOwnedFields } from "./utils/updatePayload";
 import { getOrganizationId } from "./types/request";
 import * as vaManagement from "./services/vaManagement";
+import { clock } from "./utils/clock";
 
 export async function registerVAEngineRoutes(app: Express): Promise<void> {
   const api = app;
@@ -342,7 +343,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
             // response time when the caller supplied one; otherwise now. It is
             // never back-dated to the offer's creation, which would make every
             // response look instant.
-            observedAt: offer?.respondedAt ? new Date(offer.respondedAt) : new Date(),
+            observedAt: offer?.respondedAt ? new Date(offer.respondedAt) : clock.now(),
           });
         } catch (err) {
           logger.warn(
@@ -1740,10 +1741,10 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const { period = "week" } = req.query;
       const tasks = await vaManagement.listTasks(getOrganizationId(req), { limit: 500 });
 
-      const now = new Date();
+      const now = clock.now();
       const periodStart =
         period === "today"
-          ? new Date(new Date().setHours(0, 0, 0, 0))
+          ? new Date(clock.now().setHours(0, 0, 0, 0))
           : period === "month"
           ? new Date(now.getFullYear(), now.getMonth(), 1)
           : new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -1881,9 +1882,9 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
         return Errors.badRequest(res, "supervisorUserId must be a member of this organization");
       }
 
-      const escalatedAt = new Date();
+      const escalatedAt = clock.now();
       const escalation = {
-        id: `esc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        id: `esc_${clock.nowMs()}_${Math.random().toString(36).slice(2, 8)}`,
         taskId: String(taskId),
         reason: String(reason),
         urgency: String(urgency),
@@ -1990,7 +1991,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       }
 
       const workflow = {
-        id: `wf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        id: `wf_${clock.nowMs()}_${Math.random().toString(36).slice(2, 8)}`,
         organizationId: org.id,
         createdByUserId: user.id,
         name,
@@ -2007,8 +2008,8 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
           dependsOnStep: step.dependsOnStep || null,
         })),
         status: "active",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: clock.now().toISOString(),
+        updatedAt: clock.now().toISOString(),
       };
 
       const orgRecord = await storage.getOrganization(org.id);

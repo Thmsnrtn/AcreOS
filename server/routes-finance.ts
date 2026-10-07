@@ -31,6 +31,7 @@ import {
 } from "./services/atrSafeHarbor";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
+import { clock } from "./utils/clock";
 
 // Zod schema for note updates — only user-editable fields are allowed.
 // Sensitive fields (organizationId, currentBalance, interestRate, accessToken,
@@ -165,7 +166,7 @@ export function registerFinanceRoutes(app: Express): void {
   api.get("/api/notes/export", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
     const org = req.organization;
     const csv = await exportNotesToCSV(org.id);
-    const date = new Date().toISOString().split("T")[0];
+    const date = clock.now().toISOString().split("T")[0];
     res.setHeader("Content-Type", "text/csv");
     res.setHeader("Content-Disposition", `attachment; filename="notes-${date}.csv"`);
     res.send(csv);
@@ -239,8 +240,8 @@ export function registerFinanceRoutes(app: Express): void {
       );
 
       // Convert date strings to Date objects
-      const startDate = req.body.startDate ? new Date(req.body.startDate) : new Date();
-      const firstPaymentDate = req.body.firstPaymentDate ? new Date(req.body.firstPaymentDate) : new Date();
+      const startDate = req.body.startDate ? new Date(req.body.startDate) : clock.now();
+      const firstPaymentDate = req.body.firstPaymentDate ? new Date(req.body.firstPaymentDate) : clock.now();
       const maturityDate = req.body.maturityDate ? new Date(req.body.maturityDate) : undefined;
       const nextPaymentDate = req.body.nextPaymentDate ? new Date(req.body.nextPaymentDate) : firstPaymentDate;
 
@@ -514,7 +515,7 @@ export function registerFinanceRoutes(app: Express): void {
             .update(notesTable)
             .set({
               atrExemptionCode: parsed.data.atrExemptionCode,
-              updatedAt: new Date(),
+              updatedAt: clock.now(),
             })
             .where(eq(notesTable.id, noteId));
         }
@@ -697,7 +698,7 @@ export function registerFinanceRoutes(app: Express): void {
       const annualRate = Number(note.interestRate);
       const termMonths = note.termMonths;
       const monthlyPayment = Number(note.monthlyPayment);
-      const startDate = note.startDate ? new Date(note.startDate) : new Date();
+      const startDate = note.startDate ? new Date(note.startDate) : clock.now();
       
       const schedule: any[] = [];
       let balance = principal;
@@ -829,7 +830,7 @@ export function registerFinanceRoutes(app: Express): void {
           noteId,
           borrowerId: note.borrowerId,
           type: action === "record_contact" ? "contact_logged" : action,
-          scheduledFor: new Date(),
+          scheduledFor: clock.now(),
           channel: "manual",
           content: actionNotes || `Manual action: ${action}`,
           status: "completed",
@@ -979,7 +980,7 @@ export function registerFinanceRoutes(app: Express): void {
       // shape, the new monthlyBreakdownByType field is additive.
       const monthlyCashFlow: { month: string; amount: number }[] = [];
       const monthlyBreakdownByType: { month: string; principal: number; interest: number; lateFees: number; total: number }[] = [];
-      const now = new Date();
+      const now = clock.now();
       for (let i = 11; i >= 0; i--) {
         const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
@@ -1157,7 +1158,7 @@ export function registerFinanceRoutes(app: Express): void {
       const allNotes = await readAllNotes(org.id, { realOnly: true });
       const activeNotes = allNotes.filter(n => n.status === 'active');
 
-      const now = new Date();
+      const now = clock.now();
 
       const agingBuckets = {
         current: [] as typeof activeNotes,
@@ -1199,7 +1200,7 @@ export function registerFinanceRoutes(app: Express): void {
 
       const monthlyBreakdown: { month: string; principal: number; interest: number }[] = [];
       const last12Months = Array.from({ length: 12 }, (_, i) => {
-        const d = addMonths(new Date(), -(11 - i));
+        const d = addMonths(clock.now(), -(11 - i));
         return { year: d.getFullYear(), month: d.getMonth() };
       });
 
@@ -1260,13 +1261,13 @@ export function registerFinanceRoutes(app: Express): void {
       let cashOnCashReturn = 0;
 
       if (firstPaymentDate && totalInvested > 0) {
-        const yearsActive = Math.max(0.083, (Date.now() - firstPaymentDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+        const yearsActive = Math.max(0.083, (clock.nowMs() - firstPaymentDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
         annualYield = (totalInterestEarned / totalInvested / yearsActive) * 100;
         cashOnCashReturn = (totalCollected / totalInvested) * 100;
       }
 
       const projectedIncome: { month: string; expectedPayments: number; principal: number; interest: number }[] = [];
-      const now = new Date();
+      const now = clock.now();
 
       for (let i = 0; i < 12; i++) {
         const projMonth = new Date(now.getFullYear(), now.getMonth() + i + 1, 1);
@@ -1459,7 +1460,7 @@ export function registerFinanceRoutes(app: Express): void {
       const { assessServicedNoteLateFee, outstandingServicedLateFeesCents, feeFromExcessCents } = await import(
         "./services/notes/servicedLateFees"
       );
-      await assessServicedNoteLateFee(note, new Date());
+      await assessServicedNoteLateFee(note, clock.now());
       const feeCents = feeFromExcessCents({
         amountCents,
         scheduledCents: note.monthlyPayment != null ? decimalDollarsToCents(note.monthlyPayment) : null,
@@ -1608,7 +1609,7 @@ export function registerFinanceRoutes(app: Express): void {
       }
 
       doc.moveDown(2);
-      doc.fontSize(8).fillColor("gray").text(`Generated: ${new Date().toISOString()}`, { align: "center" });
+      doc.fontSize(8).fillColor("gray").text(`Generated: ${clock.now().toISOString()}`, { align: "center" });
 
       doc.end();
     } catch (err: any) {

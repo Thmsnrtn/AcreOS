@@ -28,6 +28,7 @@ import {
 import { and, desc, eq, gte, sql, count } from "drizzle-orm";
 import { isAuthenticated, requireFounder } from "./auth/clerkAuth";
 import { sendError } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 export function registerFounderInspectorRoutes(app: Express) {
   // Per-agent deep dive
@@ -38,7 +39,7 @@ export function registerFounderInspectorRoutes(app: Express) {
     async (req: Request, res: Response) => {
       const codename = req.params.codename;
       const days = Math.max(1, Math.min(180, parseInt(String(req.query.days ?? "30"), 10)));
-      const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+      const cutoff = new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000);
 
       const agent = await db.query.companyAgents.findFirst({
         where: eq(companyAgents.codename, codename),

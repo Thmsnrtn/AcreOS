@@ -36,11 +36,12 @@ import {
   organizations,
 } from "@shared/schema";
 import { getQuotaState, todayUtc } from "./services/aiQuotaService";
+import { clock } from "./utils/clock";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function isoDateNDaysAgo(n: number): string {
-  return new Date(Date.now() - n * 86400_000).toISOString().slice(0, 10);
+  return new Date(clock.nowMs() - n * 86400_000).toISOString().slice(0, 10);
 }
 
 // ─── Route registration ─────────────────────────────────────────────────────
@@ -161,7 +162,7 @@ export function registerAiCostRoutes(app: Express): void {
           })
           .from(aiTelemetryEvents)
           .where(gte(aiTelemetryEvents.createdAt,
-            new Date(Date.now() - 24 * 3600_000)))
+            new Date(clock.nowMs() - 24 * 3600_000)))
           .orderBy(desc(aiTelemetryEvents.estimatedCostCents))
           .limit(20);
 
@@ -252,7 +253,7 @@ export function registerAiCostRoutes(app: Express): void {
             "Cost ceiling status is restricted to founders",
           );
         }
-        const since24h = new Date(Date.now() - 24 * 3600_000);
+        const since24h = new Date(clock.nowMs() - 24 * 3600_000);
         const [row] = await db
           .select({
             cents: sql<string>`COALESCE(SUM(${aiTelemetryEvents.estimatedCostCents}), 0)`,

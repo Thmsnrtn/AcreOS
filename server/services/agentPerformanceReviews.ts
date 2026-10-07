@@ -19,6 +19,7 @@ import {
 import { eq, and, gte, lte, desc, count, avg, sql } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
+import { clock } from "../utils/clock";
 
 // ─── Service ─────────────────────────────────────────────────────────────────
 
@@ -29,8 +30,8 @@ class PerformanceReviewService {
     const agent = await companyAgentService.getByCodename(agentCodename);
     if (!agent) return null;
 
-    const periodEnd = new Date();
-    const periodStart = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000);
+    const periodEnd = clock.now();
+    const periodStart = new Date(clock.nowMs() - periodDays * 24 * 60 * 60 * 1000);
 
     // Gather metrics from action log
     const actions = await db.select({

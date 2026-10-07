@@ -35,6 +35,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { emitRehabStatusChange } from "./services/rehabEvents";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 // ----------------------------------------------------------------------------
 // Scope templates — Devon §5.1: "Templated scopes — kitchen mid-grade, bath
@@ -169,7 +170,7 @@ async function recomputeRehabSpend(orgId: number, rehabId: string) {
   if (agg) {
     await db.update(rehabs).set({
       spentTotalCents: Number(agg.spent) || 0,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     }).where(eq(rehabs.id, rehabId));
   }
 }
@@ -258,7 +259,7 @@ export function registerRehabRoutes(app: Express): void {
       if (r.startedAt) {
         const startedMs = new Date(r.startedAt).getTime();
         if (Number.isFinite(startedMs)) {
-          daysOnSite = Math.floor((Date.now() - startedMs) / 86_400_000);
+          daysOnSite = Math.floor((clock.nowMs() - startedMs) / 86_400_000);
         }
       }
       const holdingDaily = r.holdingCostMonthlyCents ? Math.round(r.holdingCostMonthlyCents / 30) : null;
@@ -328,7 +329,7 @@ export function registerRehabRoutes(app: Express): void {
       const parsed = updateRehabSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      const updates: Record<string, unknown> = { updatedAt: clock.now() };
       for (const k of [
         "name", "status", "startedAt", "plannedListingDate",
         "purchasePriceCents", "purchaseClosingCents", "budgetTotalCents",
@@ -402,7 +403,7 @@ export function registerRehabRoutes(app: Express): void {
       const parsed = lineItemUpdateSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      const updates: Record<string, unknown> = { updatedAt: clock.now() };
       for (const k of [
         "category", "scope", "contractorId", "budgetCents",
         "committedCents", "spentCents", "startedAt", "completedAt", "notes",
@@ -479,7 +480,7 @@ export function registerRehabRoutes(app: Express): void {
       const totalSpent = activeRehabs.reduce((s: number, r: any) => s + r.spentCents, 0);
 
       // Stalled draws — past inspection date and not funded yet.
-      const today = new Date().toISOString().slice(0, 10);
+      const today = clock.now().toISOString().slice(0, 10);
       const stalledRows = await db.execute(sql`
         SELECT COUNT(*) AS c
         FROM construction_draws cd
@@ -492,7 +493,7 @@ export function registerRehabRoutes(app: Express): void {
       const stalledDraws = Number(((stalledRows as any).rows?.[0]?.c) ?? 0);
 
       // YTD-eligible 1099 contractors (over $600 paid this year, not excluded).
-      const taxYear = new Date().getFullYear();
+      const taxYear = clock.now().getFullYear();
       const necRows = await db.execute(sql`
         SELECT COUNT(*) AS c FROM (
           SELECT contractor_id, SUM(amount_cents) AS total

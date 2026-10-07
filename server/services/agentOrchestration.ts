@@ -18,6 +18,7 @@ import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { SkillRegistry } from "./agent-skills";
 import { logger } from "../utils/logger";
 import { validateUrl, SSRFBlockedError } from "../middleware/fileUploadSecurity";
+import { clock } from "../utils/clock";
 
 const skillRegistry = new SkillRegistry();
 
@@ -176,7 +177,7 @@ class AgentOrchestrationService {
     if (!session) throw new Error("Session not found");
 
     const currentContext = (session.sharedContext as SessionContext) || {};
-    const timestamp = new Date().toISOString();
+    const timestamp = clock.now().toISOString();
 
     const newOutputHistory = [...(currentContext.outputHistory || [])];
     if (contextUpdate.intermediateResults) {
@@ -253,7 +254,7 @@ class AgentOrchestrationService {
       agentType: step.agentType,
       skillName: step.skillUsed || undefined,
       reason,
-      requestedAt: new Date().toISOString(),
+      requestedAt: clock.now().toISOString(),
       requestedBy,
     };
 
@@ -300,7 +301,7 @@ class AgentOrchestrationService {
           agentType: "human",
           decision: "approved",
           reasoning: `Step ${stepId} approved by ${approvedBy}`,
-          timestamp: new Date().toISOString(),
+          timestamp: clock.now().toISOString(),
         },
       ],
     };
@@ -334,7 +335,7 @@ class AgentOrchestrationService {
       .update(agentSessions)
       .set({ 
         status, 
-        completedAt: new Date() 
+        completedAt: clock.now() 
       })
       .where(eq(agentSessions.id, sessionId));
   }
@@ -390,7 +391,7 @@ class AgentOrchestrationService {
   }
 
   async executeStep(stepId: number, userId?: string): Promise<ExecutionResult> {
-    const startTime = Date.now();
+    const startTime = clock.nowMs();
     
     const [step] = await db
       .select()
@@ -427,14 +428,14 @@ class AgentOrchestrationService {
       return {
         success: false,
         error: "Step requires human approval",
-        executionTimeMs: Date.now() - startTime,
+        executionTimeMs: clock.nowMs() - startTime,
         awaitingApproval: true,
       };
     }
 
     await db
       .update(agentSessionSteps)
-      .set({ status: "running", startedAt: new Date() })
+      .set({ status: "running", startedAt: clock.now() })
       .where(eq(agentSessionSteps.id, stepId));
 
     try {
@@ -479,15 +480,15 @@ class AgentOrchestrationService {
         result = { message: "Step completed (no skill specified)" };
       }
 
-      const executionTimeMs = Date.now() - startTime;
-      const timestamp = new Date().toISOString();
+      const executionTimeMs = clock.nowMs() - startTime;
+      const timestamp = clock.now().toISOString();
 
       await db
         .update(agentSessionSteps)
         .set({
           status: "completed",
           output: result,
-          completedAt: new Date(),
+          completedAt: clock.now(),
           executionTimeMs,
         })
         .where(eq(agentSessionSteps.id, stepId));
@@ -514,14 +515,14 @@ class AgentOrchestrationService {
 
       return { success: true, output: result, executionTimeMs };
     } catch (error: any) {
-      const executionTimeMs = Date.now() - startTime;
+      const executionTimeMs = clock.nowMs() - startTime;
 
       await db
         .update(agentSessionSteps)
         .set({
           status: "failed",
           error: error.message,
-          completedAt: new Date(),
+          completedAt: clock.now(),
           executionTimeMs,
         })
         .where(eq(agentSessionSteps.id, stepId));
@@ -766,7 +767,7 @@ class AgentOrchestrationService {
                 eventId: event.id,
                 eventType: event.eventType,
                 payload: event.payload,
-                triggeredAt: new Date().toISOString(),
+                triggeredAt: clock.now().toISOString(),
               }),
             });
             logger.info(`[orchestration] Called webhook for event ${event.eventType}`);
@@ -814,7 +815,7 @@ class AgentOrchestrationService {
       await db
         .update(eventSubscriptions)
         .set({
-          lastTriggeredAt: new Date(),
+          lastTriggeredAt: clock.now(),
           triggerCount: sql`${eventSubscriptions.triggerCount} + 1`,
         })
         .where(eq(eventSubscriptions.id, sub.id));
@@ -831,7 +832,7 @@ class AgentOrchestrationService {
 
     await db
       .update(agentEvents)
-      .set({ processedAt: new Date() })
+      .set({ processedAt: clock.now() })
       .where(eq(agentEvents.id, event.id));
 
     return { eventId: event.id, triggeredSubscriptions: triggeredCount, actionsTriggered };

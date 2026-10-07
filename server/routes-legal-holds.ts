@@ -28,6 +28,7 @@ import { logger } from "./utils/logger";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { getActiveHoldSummary, orgHasActiveHold } from "./services/legalHold";
 import { getClerkAuth, type AuthenticatedRequest } from "./types/request";
+import { clock } from "./utils/clock";
 
 // ─── Validation schemas ─────────────────────────────────────────────────────
 const placeHoldSchema = z.object({
@@ -201,7 +202,7 @@ export function registerLegalHoldRoutes(app: Express): void {
         return Errors.badRequest(res, "Hold is already released");
       }
 
-      const now = new Date();
+      const now = clock.now();
       const [updated] = await db
         .update(legalHolds)
         .set({

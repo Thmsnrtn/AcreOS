@@ -14,6 +14,7 @@ import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
+import { clock } from "../utils/clock";
 export type RuleType = "subdivision" | "building" | "zoning" | "environmental" | "disclosure" | "recording" | "tax";
 export type CheckStatus = "pending" | "compliant" | "non_compliant" | "not_applicable" | "needs_review";
 
@@ -147,7 +148,7 @@ class ComplianceGuardianService {
   async updateRule(ruleId: number, updates: UpdateRuleParams): Promise<ComplianceRule | null> {
     const updateData: Partial<ComplianceRule> = {
       ...updates,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     };
 
     const [rule] = await db
@@ -166,7 +167,7 @@ class ComplianceGuardianService {
   async deactivateRule(ruleId: number): Promise<ComplianceRule | null> {
     const [rule] = await db
       .update(complianceRules)
-      .set({ isActive: false, updatedAt: new Date() })
+      .set({ isActive: false, updatedAt: clock.now() })
       .where(eq(complianceRules.id, ruleId))
       .returning();
 
@@ -270,7 +271,7 @@ class ComplianceGuardianService {
         checkType: rule.ruleType,
         checkDescription: `${rule.ruleName}: ${rule.ruleDescription || "Compliance check"}`,
         status: "pending",
-        lastCheckedAt: new Date(),
+        lastCheckedAt: clock.now(),
       };
 
       const [check] = await db.insert(complianceChecks).values(checkData).returning();
@@ -380,13 +381,13 @@ class ComplianceGuardianService {
         checkType: rule.ruleType,
         checkDescription: `${rule.ruleName}: ${rule.ruleDescription || "Compliance check"}`,
         status: "pending",
-        lastCheckedAt: new Date(),
+        lastCheckedAt: clock.now(),
       };
       [check] = await db.insert(complianceChecks).values(checkData).returning();
     } else {
       [check] = await db
         .update(complianceChecks)
-        .set({ lastCheckedAt: new Date(), updatedAt: new Date() })
+        .set({ lastCheckedAt: clock.now(), updatedAt: clock.now() })
         .where(eq(complianceChecks.id, check.id))
         .returning();
     }
@@ -402,12 +403,12 @@ class ComplianceGuardianService {
     const updateData: Partial<ComplianceCheck> = {
       status,
       findings,
-      lastCheckedAt: new Date(),
-      updatedAt: new Date(),
+      lastCheckedAt: clock.now(),
+      updatedAt: clock.now(),
     };
 
     if (status === "compliant") {
-      updateData.resolvedAt = new Date();
+      updateData.resolvedAt = clock.now();
     }
 
     const [check] = await db
@@ -435,8 +436,8 @@ class ComplianceGuardianService {
       .set({
         status: "compliant",
         resolutionNotes,
-        resolvedAt: new Date(),
-        updatedAt: new Date(),
+        resolvedAt: clock.now(),
+        updatedAt: clock.now(),
       })
       .where(eq(complianceChecks.id, checkId))
       .returning();
@@ -688,7 +689,7 @@ Generate a comprehensive compliance report in markdown format that includes:
       daysRemaining: number;
     }> = [];
 
-    const now = new Date();
+    const now = clock.now();
 
     for (const { check, rule } of checks) {
       const findings = check.findings as ComplianceFindings | null;

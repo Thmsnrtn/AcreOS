@@ -16,6 +16,7 @@ import {
 import { eq, desc, sql, and, lt } from "drizzle-orm";
 import { companyAgentService } from "./companyAgents";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Lifecycle State Machine ──────────────────────────────────────────────────
 
@@ -68,7 +69,7 @@ class AgentLifecycleRuntimeService {
         agentCodename: agent.codename,
         lifecycleState: "initializing",
         persistentContext: {},
-        lastHeartbeatAt: new Date(),
+        lastHeartbeatAt: clock.now(),
       });
       initialized++;
     }
@@ -101,7 +102,7 @@ class AgentLifecycleRuntimeService {
 
     const updates: Record<string, any> = {
       lifecycleState: newState,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     };
 
     if (context) {
@@ -135,8 +136,8 @@ class AgentLifecycleRuntimeService {
     await db
       .update(agentRuntimeState)
       .set({
-        lastHeartbeatAt: new Date(),
-        updatedAt: new Date(),
+        lastHeartbeatAt: clock.now(),
+        updatedAt: clock.now(),
       })
       .where(eq(agentRuntimeState.agentCodename, agentCodename));
   }
@@ -151,7 +152,7 @@ class AgentLifecycleRuntimeService {
     restarted: string[];
   }> {
     const allStates = await this.getAllStates();
-    const now = Date.now();
+    const now = clock.nowMs();
     const healthy: string[] = [];
     const unhealthy: string[] = [];
     const restarted: string[] = [];
@@ -174,7 +175,7 @@ class AgentLifecycleRuntimeService {
       if (agent.restartPolicy === "restart" && agent.lifecycleState !== "crashed") {
         await this.transitionState(agent.agentCodename, "crashed", {
           crashReason: "heartbeat_timeout",
-          crashedAt: new Date().toISOString(),
+          crashedAt: clock.now().toISOString(),
         });
         await this.restart(agent.agentCodename);
         restarted.push(agent.agentCodename);
@@ -215,8 +216,8 @@ class AgentLifecycleRuntimeService {
       .update(agentRuntimeState)
       .set({
         waitingFor,
-        waitingSince: new Date(),
-        updatedAt: new Date(),
+        waitingSince: clock.now(),
+        updatedAt: clock.now(),
       })
       .where(eq(agentRuntimeState.agentCodename, agentCodename));
   }
@@ -248,9 +249,9 @@ class AgentLifecycleRuntimeService {
         persistentContext: {
           ...current.persistentContext,
           lastError: error,
-          lastErrorAt: new Date().toISOString(),
+          lastErrorAt: clock.now().toISOString(),
         },
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(agentRuntimeState.agentCodename, agentCodename));
 
@@ -282,12 +283,12 @@ class AgentLifecycleRuntimeService {
         lifecycleState: "initializing",
         consecutiveFailures: 0,
         restartCount: current.restartCount + 1,
-        lastRestartAt: new Date(),
+        lastRestartAt: clock.now(),
         currentTask: null,
         currentTaskStartedAt: null,
         waitingFor: null,
         waitingSince: null,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(agentRuntimeState.agentCodename, agentCodename))
       .returning();
@@ -310,7 +311,7 @@ class AgentLifecycleRuntimeService {
       .update(agentRuntimeState)
       .set({
         persistentContext: { ...current.persistentContext, ...contextUpdate },
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(agentRuntimeState.agentCodename, agentCodename));
   }

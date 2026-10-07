@@ -24,6 +24,7 @@ import { db } from "../db";
 import { founderAdAccounts, type FounderAdAccount } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const META_BASE = "https://graph.facebook.com/v19.0";
 
@@ -104,9 +105,9 @@ export async function uploadVideoToMeta(input: MetaUploadInput): Promise<MetaUpl
 export async function waitForVideoReady(videoId: string, opts?: { maxWaitMs?: number }): Promise<void> {
   const account = await loadMetaAccount();
   const maxWaitMs = opts?.maxWaitMs ?? 5 * 60 * 1000;
-  const startedAt = Date.now();
+  const startedAt = clock.nowMs();
 
-  while (Date.now() - startedAt < maxWaitMs) {
+  while (clock.nowMs() - startedAt < maxWaitMs) {
     const response = await fetch(`${META_BASE}/${videoId}?fields=status&access_token=${account.accessToken}`);
     if (!response.ok) {
       throw new Error(`[cmo:meta] status check failed: ${response.status}`);

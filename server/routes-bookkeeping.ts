@@ -17,6 +17,7 @@ import {
 } from "./services/bookkeeping";
 import { Errors } from "./utils/errors";
 import { requireQualified1099Output } from "./services/form1099Refusal";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -24,7 +25,7 @@ const router = Router();
 router.get("/annual-report", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const taxYear = parseInt((req.query.year as string) ?? String(new Date().getFullYear() - 1));
+    const taxYear = parseInt((req.query.year as string) ?? String(clock.now().getFullYear() - 1));
     if (isNaN(taxYear)) return Errors.badRequest(res, "Invalid tax year");
 
     const report = await generateAnnualInterestReport(org.id, taxYear);
@@ -40,7 +41,7 @@ router.get("/annual-report", async (req: Request, res: Response) => {
 router.get("/1099", requireQualified1099Output(), async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const taxYear = parseInt((req.query.year as string) ?? String(new Date().getFullYear() - 1));
+    const taxYear = parseInt((req.query.year as string) ?? String(clock.now().getFullYear() - 1));
     if (isNaN(taxYear)) return Errors.badRequest(res, "Invalid tax year");
 
     const forms = await generate1099IntForms(org.id, taxYear);
@@ -111,7 +112,7 @@ router.post("/deal-pnl", (req: Request, res: Response) => {
 router.get("/portfolio-summary", async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const taxYear = parseInt((req.query.year as string) ?? String(new Date().getFullYear() - 1));
+    const taxYear = parseInt((req.query.year as string) ?? String(clock.now().getFullYear() - 1));
     if (isNaN(taxYear)) return Errors.badRequest(res, "Invalid tax year");
 
     const summary = await getPortfolioAnnualSummary(org.id, taxYear);

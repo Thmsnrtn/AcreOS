@@ -42,6 +42,7 @@ import {
   type ArcGISSearchItem,
 } from "./arcgis-discovery";
 import { checkOperatorUrl } from "./providers/ssrf-guard";
+import { clock } from "../utils/clock";
 
 // ── Normalization (shared with parcel.ts lookup path) ───────────────────────
 
@@ -137,7 +138,7 @@ export async function enqueueCountyForDiscovery(
         // re-pended row that kept its spent attempts sat pending forever.
         status: sql`CASE WHEN ${reopenOnDemand} THEN 'pending' ELSE ${countyDiscoveryQueue.status} END`,
         attempts: sql`CASE WHEN ${reopenOnDemand} THEN 0 ELSE ${countyDiscoveryQueue.attempts} END`,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       },
     })
     .returning({
@@ -450,9 +451,9 @@ export async function discoverCountyEndpoint(
       .set({
         status: terminal ? "exhausted" : outcome === "no-candidate" ? "failed" : "pending",
         attempts,
-        lastAttemptAt: new Date(),
+        lastAttemptAt: clock.now(),
         lastResult: message,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(countyDiscoveryQueue.id, queueRow.id));
     return { state, county, outcome: terminal ? "exhausted" : outcome, message };
@@ -513,7 +514,7 @@ export async function discoverCountyEndpoint(
             redistributable: "review-required",
             errorCount: 0,
             sourceUrl: `arcgis-online:${candidate.discoverySource}`,
-            notes: `discovery-on-miss ${new Date()
+            notes: `discovery-on-miss ${clock.now()
               .toISOString()
               .slice(0, 10)} — confidence ${candidate.confidenceScore.toFixed(
               0,
@@ -532,9 +533,9 @@ export async function discoverCountyEndpoint(
           .set({
             isActive: true,
             isVerified: true,
-            lastVerified: new Date(),
+            lastVerified: clock.now(),
             errorCount: 0,
-            notes: `discovery-on-miss ${new Date()
+            notes: `discovery-on-miss ${clock.now()
               .toISOString()
               .slice(0, 10)} — ACTIVE (feature probe ok${
               featureProbe.sampleApn ? `, sample APN ${featureProbe.sampleApn}` : ""
@@ -547,17 +548,17 @@ export async function discoverCountyEndpoint(
           .set({
             status: "resolved",
             attempts,
-            lastAttemptAt: new Date(),
+            lastAttemptAt: clock.now(),
             lastResult: `activated endpoint ${endpointId}`,
             resolvedEndpointId: endpointId,
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(eq(countyDiscoveryQueue.id, queueRow.id));
 
         // Mark any open per-org coverage requests for this county as covered.
         await db
           .update(countyCoverageRequests)
-          .set({ status: "covered", updatedAt: new Date() })
+          .set({ status: "covered", updatedAt: clock.now() })
           .where(
             and(
               eq(countyCoverageRequests.queueId, queueRow.id),
@@ -581,9 +582,9 @@ export async function discoverCountyEndpoint(
         .set({
           status: "pending",
           attempts,
-          lastAttemptAt: new Date(),
+          lastAttemptAt: clock.now(),
           lastResult: `endpoint ${endpointId} inserted, awaiting feature probe`,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(countyDiscoveryQueue.id, queueRow.id));
 

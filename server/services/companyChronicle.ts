@@ -22,6 +22,7 @@ import { eq, desc, gte, lte, and, count, sql } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
 import { resolveAgentData } from "./agentDataResolvers";
+import { clock } from "../utils/clock";
 
 // ─── Service ─────────────────────────────────────────────────────────────────
 
@@ -29,7 +30,7 @@ class CompanyChronicleService {
 
   /** Generate a chronicle entry for a given period */
   async generateEntry(periodType: "week" | "month" | "quarter", periodEnd?: Date): Promise<number> {
-    const end = periodEnd || new Date();
+    const end = periodEnd || clock.now();
     let start: Date;
     let label: string;
 

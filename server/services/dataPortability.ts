@@ -8,6 +8,7 @@ import { leads, deals, properties, notes, campaigns } from "@shared/schema";
 import { and, asc, eq, gt } from "drizzle-orm";
 import { readAllPages, WHOLE_BOOK_PAGE } from "../storage/wholeBookReads";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ── Full Data Export ────────────────────────────────────────────────
 
@@ -55,7 +56,7 @@ export async function generateFullExport(orgId: number): Promise<DataExport> {
   logger.info("Full data export generated", { orgId, totalRecords });
 
   return {
-    exportedAt: new Date().toISOString(),
+    exportedAt: clock.now().toISOString(),
     orgId,
     format: "json",
     sections: {
@@ -93,13 +94,13 @@ export function buildAIReasoningExplanation(
   const reasoning = generateReasoning(feature, inputs, confidence);
 
   return {
-    id: `air_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    id: `air_${clock.nowMs()}_${Math.random().toString(36).slice(2, 7)}`,
     feature,
     decision,
     reasoning,
     inputs,
     confidence,
-    timestamp: new Date().toISOString(),
+    timestamp: clock.now().toISOString(),
   };
 }
 
@@ -152,7 +153,7 @@ export async function generateContributionReport(orgId: number): Promise<Contrib
 
   return {
     orgId,
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
     dataContributed: {
       properties: propertiesContributed,
       deals: dealsContributed,

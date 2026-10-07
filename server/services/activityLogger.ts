@@ -1,6 +1,7 @@
 import { storage } from "../storage";
 import type { InsertActivityEvent, ActivityEventType } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export class ActivityLoggerService {
   async logEvent(data: InsertActivityEvent): Promise<void> {
@@ -29,7 +30,7 @@ export class ActivityLoggerService {
       metadata: { subject, recipient },
       campaignId,
       userId,
-      eventDate: new Date(),
+      eventDate: clock.now(),
     });
   }
 
@@ -51,7 +52,7 @@ export class ActivityLoggerService {
       metadata: { recipient, messagePreview: messagePreview.substring(0, 100) },
       campaignId,
       userId,
-      eventDate: new Date(),
+      eventDate: clock.now(),
     });
   }
 
@@ -73,7 +74,7 @@ export class ActivityLoggerService {
       metadata: { recipient: recipientName, templateUsed },
       campaignId,
       userId,
-      eventDate: new Date(),
+      eventDate: clock.now(),
     });
   }
 
@@ -94,7 +95,7 @@ export class ActivityLoggerService {
       description: `Call made to ${phoneNumber}${outcome ? ` - ${outcome}` : ""}`,
       metadata: { recipient: phoneNumber, callDuration: duration, outcome },
       userId,
-      eventDate: new Date(),
+      eventDate: clock.now(),
     });
   }
 
@@ -115,7 +116,7 @@ export class ActivityLoggerService {
       description: `Call received from ${phoneNumber}`,
       metadata: { recipient: phoneNumber, callDuration: duration, notes },
       userId,
-      eventDate: new Date(),
+      eventDate: clock.now(),
     });
   }
 
@@ -134,7 +135,7 @@ export class ActivityLoggerService {
       description: `Note added: ${noteTitle}`,
       metadata: { subject: noteTitle },
       userId,
-      eventDate: new Date(),
+      eventDate: clock.now(),
     });
   }
 
@@ -154,7 +155,7 @@ export class ActivityLoggerService {
       description: `Stage changed from ${previousStage} to ${newStage}`,
       metadata: { previousStage, newStage },
       userId,
-      eventDate: new Date(),
+      eventDate: clock.now(),
     });
   }
 
@@ -178,7 +179,7 @@ export class ActivityLoggerService {
       description: `Payment received: ${formattedAmount}`,
       metadata: { amount, paymentMethod },
       userId,
-      eventDate: new Date(),
+      eventDate: clock.now(),
     });
   }
 
@@ -198,7 +199,7 @@ export class ActivityLoggerService {
       description: `Document uploaded: ${documentName}`,
       metadata: { documentName, documentUrl },
       userId,
-      eventDate: new Date(),
+      eventDate: clock.now(),
     });
   }
 
@@ -219,7 +220,7 @@ export class ActivityLoggerService {
         description: `Task created: ${taskTitle}`,
         metadata: { taskId, taskTitle },
         userId,
-        eventDate: new Date(),
+        eventDate: clock.now(),
       });
     }
   }
@@ -242,7 +243,7 @@ export class ActivityLoggerService {
         description: `Task updated: ${taskTitle} - ${changes}`,
         metadata: { taskId, taskTitle, changes },
         userId,
-        eventDate: new Date(),
+        eventDate: clock.now(),
       });
     }
   }
@@ -264,7 +265,7 @@ export class ActivityLoggerService {
         description: `Task completed: ${taskTitle}`,
         metadata: { taskId, taskTitle },
         userId,
-        eventDate: new Date(),
+        eventDate: clock.now(),
       });
     }
   }

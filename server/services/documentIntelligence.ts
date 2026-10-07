@@ -39,6 +39,7 @@ import { wrapUntrusted } from '../ai/untrustedEnvelope';
 import { USER_DATA_SYSTEM_CLAUSE } from '../utils/sanitizePrompt';
 
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
+import { clock } from "../utils/clock";
 /**
  * Unit 112: uploaded document text is the textbook indirect-injection vector —
  * an attacker authors the PDF, the customer uploads it, and the model reads it
@@ -188,7 +189,7 @@ export class DocumentIntelligenceService {
 
     await db
       .update(documentAnalysis)
-      .set({ status: "processing", updatedAt: new Date() })
+      .set({ status: "processing", updatedAt: clock.now() })
       .where(this.ownedBy(documentId, organizationId));
 
     await this.logEvent(doc.organizationId, "document_processing_started", {
@@ -201,7 +202,7 @@ export class DocumentIntelligenceService {
 
       await db
         .update(documentAnalysis)
-        .set({ rawText, updatedAt: new Date() })
+        .set({ rawText, updatedAt: clock.now() })
         .where(this.ownedBy(documentId, organizationId));
 
       const extractedData = await this.parseDocument(documentId, organizationId);
@@ -217,8 +218,8 @@ export class DocumentIntelligenceService {
           keyTerms,
           riskFlags,
           status: "completed",
-          processedAt: new Date(),
-          updatedAt: new Date(),
+          processedAt: clock.now(),
+          updatedAt: clock.now(),
         })
         .where(this.ownedBy(documentId, organizationId))
         .returning();
@@ -236,7 +237,7 @@ export class DocumentIntelligenceService {
 
       await db
         .update(documentAnalysis)
-        .set({ status: "failed", updatedAt: new Date() })
+        .set({ status: "failed", updatedAt: clock.now() })
         .where(this.ownedBy(documentId, organizationId));
 
       await this.logEvent(doc.organizationId, "document_processing_failed", {
@@ -265,7 +266,7 @@ export class DocumentIntelligenceService {
         const text = Buffer.from(b64, "base64").toString("utf-8");
         await db
           .update(documentAnalysis)
-          .set({ rawText: text, ocrConfidence: "1.00", updatedAt: new Date() })
+          .set({ rawText: text, ocrConfidence: "1.00", updatedAt: clock.now() })
           .where(this.ownedBy(documentId, organizationId));
         return text;
       } catch (err) {
@@ -303,7 +304,7 @@ export class DocumentIntelligenceService {
           .set({
             rawText: extractedText,
             ocrConfidence: "0.85",
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(this.ownedBy(documentId, organizationId));
 

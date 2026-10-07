@@ -15,6 +15,7 @@ import type {
   ProviderLookupContext,
 } from "./types";
 import crypto from "crypto";
+import { clock } from "../../utils/clock";
 
 const ATTOM_BASE = "https://api.gateway.attomdata.com";
 
@@ -138,7 +139,7 @@ export const attomProvider: DataProvider = {
   },
 
   async lookup(category: DataCategory, input: LookupInput, ctx?: ProviderLookupContext): Promise<LookupResult> {
-    const start = Date.now();
+    const start = clock.nowMs();
     // R1d BYO-data-keys: prefer the customer's own ATTOM key when connected.
     const apiKey = ctx?.apiKeyOverride ?? getApiKey();
 
@@ -164,9 +165,9 @@ export const attomProvider: DataProvider = {
           category,
           confidence: 90,
           costCents: 0, // Cached = no cost
-          fetchedAt: new Date(),
+          fetchedAt: clock.now(),
           cached: true,
-          latencyMs: Date.now() - start,
+          latencyMs: clock.nowMs() - start,
           data: cached,
           source: "ATTOM Data",
           sourceAsOf: null,
@@ -265,9 +266,9 @@ export const attomProvider: DataProvider = {
       category,
       confidence,
       costCents,
-      fetchedAt: new Date(),
+      fetchedAt: clock.now(),
       cached: false,
-      latencyMs: Date.now() - start,
+      latencyMs: clock.nowMs() - start,
       data,
       source: "ATTOM Data",
       sourceAsOf: null,
@@ -277,7 +278,7 @@ export const attomProvider: DataProvider = {
   },
 
   async healthCheck(): Promise<ProviderHealthStatus> {
-    const start = Date.now();
+    const start = clock.nowMs();
     const apiKey = getApiKey();
 
     if (!apiKey) {
@@ -285,7 +286,7 @@ export const attomProvider: DataProvider = {
         healthy: false,
         latencyMs: 0,
         message: "No API key configured",
-        checkedAt: new Date(),
+        checkedAt: clock.now(),
       };
     }
 
@@ -300,16 +301,16 @@ export const attomProvider: DataProvider = {
       );
       return {
         healthy: response.status !== 401 && response.status !== 403,
-        latencyMs: Date.now() - start,
+        latencyMs: clock.nowMs() - start,
         message: `ATTOM API responded with status ${response.status}`,
-        checkedAt: new Date(),
+        checkedAt: clock.now(),
       };
     } catch (error) {
       return {
         healthy: false,
-        latencyMs: Date.now() - start,
+        latencyMs: clock.nowMs() - start,
         message: error instanceof Error ? error.message : "Health check failed",
-        checkedAt: new Date(),
+        checkedAt: clock.now(),
       };
     }
   },

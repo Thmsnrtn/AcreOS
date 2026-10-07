@@ -25,6 +25,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 // FW-6: PDF estimate upload — 10MB cap. PDFs only.
 const pdfUpload = createUploadMiddleware({ maxSizeMB: 10, allowedTypes: ["pdf"] });
@@ -135,7 +136,7 @@ export function registerBidEstimateRoutes(app: Express): void {
       const parsed = updateSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      const updates: Record<string, unknown> = { updatedAt: clock.now() };
       for (const k of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
       }
@@ -159,12 +160,12 @@ export function registerBidEstimateRoutes(app: Express): void {
       if (!target) return Errors.notFound(res, "Bid");
 
       await db.transaction(async (tx) => {
-        await tx.update(bidEstimates).set({ isAccepted: false, rejectedAt: new Date(), updatedAt: new Date() })
+        await tx.update(bidEstimates).set({ isAccepted: false, rejectedAt: clock.now(), updatedAt: clock.now() })
           .where(and(
             eq(bidEstimates.organizationId, orgId),
             eq(bidEstimates.rehabId, target.rehabId as string),
           ));
-        await tx.update(bidEstimates).set({ isAccepted: true, rejectedAt: null, updatedAt: new Date() })
+        await tx.update(bidEstimates).set({ isAccepted: true, rejectedAt: null, updatedAt: clock.now() })
           .where(eq(bidEstimates.id, target.id));
       });
 

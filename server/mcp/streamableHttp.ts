@@ -44,6 +44,7 @@ import {
   requiredApiScopesFor,
 } from "./safeIntents";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── MCP / JSON-RPC constants ──────────────────────────────────────────────
 
@@ -100,7 +101,7 @@ async function authenticate(req: Request): Promise<AuthedKey | null> {
       .limit(1);
     if (!row) return null;
     if (!verifyHash(hashed, row.hashedKey)) return null;
-    if (row.expiresAt && row.expiresAt.getTime() < Date.now()) return null;
+    if (row.expiresAt && row.expiresAt.getTime() < clock.nowMs()) return null;
 
     const [org] = await db
       .select()

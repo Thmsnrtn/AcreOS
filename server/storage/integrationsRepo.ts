@@ -22,6 +22,7 @@ import {
   type InsertProvisionedPhoneNumber,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { clock } from "../utils/clock";
 
 export const integrationsRepo = {
   // Organization Integrations CRUD
@@ -47,7 +48,7 @@ export const integrationsRepo = {
       const [updated] = await db.update(organizationIntegrations)
         .set({
           ...omitProtectedFields(data),
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(organizationIntegrations.id, existing.id))
         .returning();
@@ -86,7 +87,7 @@ export const integrationsRepo = {
       .set({
         lastValidatedAt: validatedAt,
         validationError: error,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(and(
         eq(organizationIntegrations.organizationId, orgId),
@@ -115,7 +116,7 @@ export const integrationsRepo = {
     const conditions = [eq(verifiedEmailDomains.id, id)];
     if (organizationId) conditions.push(eq(verifiedEmailDomains.organizationId, organizationId));
     const [domain] = await db.update(verifiedEmailDomains)
-      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return domain;
@@ -148,7 +149,7 @@ export const integrationsRepo = {
     const conditions = [eq(provisionedPhoneNumbers.id, id)];
     if (organizationId) conditions.push(eq(provisionedPhoneNumbers.organizationId, organizationId));
     const [phone] = await db.update(provisionedPhoneNumbers)
-      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return phone;

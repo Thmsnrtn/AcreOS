@@ -6,6 +6,7 @@ import { logger } from "../utils/logger";
 import { getPaxControls } from "./paxControls";
 
 import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
+import { clock } from "../utils/clock";
 export interface AgingLead {
   id: number;
   firstName: string;
@@ -41,12 +42,12 @@ const alertRules: AlertRule[] = [
     severity: 'warning',
     check: async (orgId: number): Promise<AlertResult | null> => {
       const notes = await storage.getNotes(orgId);
-      const oneWeekAgo = new Date();
+      const oneWeekAgo = clock.now();
       oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
       
       const recentlyInactiveNotes = notes.filter(n => {
         if (n.status !== 'paid_off' && n.status !== 'defaulted') return false;
-        const updated = n.updatedAt ? new Date(n.updatedAt) : new Date();
+        const updated = n.updatedAt ? new Date(n.updatedAt) : clock.now();
         return updated >= oneWeekAgo;
       });
       
@@ -180,7 +181,7 @@ export class AlertingService {
     severity: IrSeverity,
     alert: AlertResult
   ): Promise<void> {
-    const today = new Date();
+    const today = clock.now();
     today.setHours(0, 0, 0, 0);
     
     const existing = await db
@@ -271,7 +272,7 @@ export class AlertingService {
   async resolveAlert(id: number): Promise<void> {
     await db
       .update(systemAlerts)
-      .set({ status: 'resolved', resolvedAt: new Date() })
+      .set({ status: 'resolved', resolvedAt: clock.now() })
       .where(eq(systemAlerts.id, id));
   }
 
@@ -333,7 +334,7 @@ export class AlertingService {
     const agingLeads: AgingLead[] = [];
     let alertsCreated = 0;
 
-    const now = Date.now();
+    const now = clock.nowMs();
 
     for (const lead of allLeads) {
       // `converted` is not a lead status — the canonical end of the funnel
@@ -409,7 +410,7 @@ export class AlertingService {
   }
 
   private async getExistingLeadAgingAlert(organizationId: number, leadId: number): Promise<boolean> {
-    const today = new Date();
+    const today = clock.now();
     today.setHours(0, 0, 0, 0);
 
     const existing = await db
@@ -430,7 +431,7 @@ export class AlertingService {
   async getAgingLeads(organizationId: number): Promise<AgingLead[]> {
     const allLeads = await storage.getLeads(organizationId);
     const agingLeads: AgingLead[] = [];
-    const now = Date.now();
+    const now = clock.nowMs();
 
     for (const lead of allLeads) {
       // `converted` is not a lead status — the canonical end of the funnel

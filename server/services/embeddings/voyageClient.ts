@@ -23,6 +23,7 @@
 import { logger } from "../../utils/logger";
 
 import { redactCredentials } from "../../utils/redactCredentials";
+import { clock } from "../../utils/clock";
 // ----------------------------------------------------------------------------
 // Constants — env-overridable so the founder can swap model versions without
 // a code change. Defaults reflect the shipped target (voyage-3-large @ 1024-d).
@@ -247,7 +248,7 @@ export async function embedTexts(input: EmbedInput): Promise<EmbedResult> {
   const totalCostUsd = estimateCost(inputTokens);
 
   // Refresh the canary cache on any successful embed.
-  lastCanaryAt = new Date();
+  lastCanaryAt = clock.now();
   lastCanaryModel = model;
 
   logger.info("[voyage] embedTexts.success", {
@@ -291,7 +292,7 @@ export async function checkVoyageStatus(): Promise<VoyageStatus> {
   // Cached canary still fresh?
   if (
     lastCanaryAt &&
-    Date.now() - lastCanaryAt.getTime() < CANARY_TTL_MS &&
+    clock.nowMs() - lastCanaryAt.getTime() < CANARY_TTL_MS &&
     lastCanaryModel
   ) {
     return {
@@ -307,7 +308,7 @@ export async function checkVoyageStatus(): Promise<VoyageStatus> {
     return {
       ...base,
       available: true,
-      lastVerifiedAt: lastCanaryAt ?? new Date(),
+      lastVerifiedAt: lastCanaryAt ?? clock.now(),
       detectedModel: result.model,
     };
   } catch (err) {

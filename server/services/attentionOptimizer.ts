@@ -21,6 +21,7 @@ import { routeAITask, TaskComplexity } from "./aiRouter";
 import { agentInitiativeService } from "./agentInitiatives";
 import { warRoomService } from "./warRoomService";
 import { decisionAutopilotService } from "./decisionAutopilot";
+import { clock } from "../utils/clock";
 
 // ─── Service ─────────────────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ class AttentionOptimizerService {
 
   /** Record time spent in an area (called from frontend events) */
   async recordTimeSpent(area: string, durationMinutes: number): Promise<void> {
-    const today = new Date();
+    const today = clock.now();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -69,7 +70,7 @@ class AttentionOptimizerService {
     outcomeWith: string;
     impactDelta: number; // -1 to +1
   }): Promise<void> {
-    const today = new Date();
+    const today = clock.now();
     today.setHours(0, 0, 0, 0);
 
     const insight = await db.query.attentionInsights.findFirst({
@@ -95,7 +96,7 @@ class AttentionOptimizerService {
     ]);
 
     // Get recent time spent data
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const weekAgo = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
     const recentInsights = await db.query.attentionInsights.findMany({
       where: gte(attentionInsights.periodStart, weekAgo),
       orderBy: [desc(attentionInsights.periodStart)],
@@ -162,7 +163,7 @@ Write a concise focus card. Start with the single most important thing. Format:
       const focusCard = response.content;
 
       // Save to today's insight
-      const today = new Date();
+      const today = clock.now();
       today.setHours(0, 0, 0, 0);
       const insight = await db.query.attentionInsights.findFirst({
         where: gte(attentionInsights.periodStart, today),
@@ -195,7 +196,7 @@ Write a concise focus card. Start with the single most important thing. Format:
     reason: string;
     projectedTimeSaved: number;
   }>> {
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const weekAgo = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
     const insights = await db.query.attentionInsights.findMany({
       where: gte(attentionInsights.periodStart, weekAgo),
     });
@@ -242,7 +243,7 @@ Write a concise focus card. Start with the single most important thing. Format:
 
   /** Get the latest focus card */
   async getLatestFocusCard(): Promise<string | null> {
-    const today = new Date();
+    const today = clock.now();
     today.setHours(0, 0, 0, 0);
 
     const insight = await db.query.attentionInsights.findFirst({

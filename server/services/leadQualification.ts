@@ -8,6 +8,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
 import { generateWithAutoRouting, routeAITask, TaskComplexity } from "./aiRouter";
+import { clock } from "../utils/clock";
 
 // Migrated from direct OpenAI client to central aiRouter (P1-36).
 // All AI calls now flow through aiRouter for cost tracking, rate limiting,
@@ -135,7 +136,7 @@ export async function calculateLeadIntentScore(
       and(
         eq(leadQualificationSignals.organizationId, organizationId),
         eq(leadQualificationSignals.leadId, leadId),
-        gte(leadQualificationSignals.detectedAt, new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
+        gte(leadQualificationSignals.detectedAt, new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000))
       )
     )
     .orderBy(desc(leadQualificationSignals.detectedAt));
@@ -200,7 +201,7 @@ export async function createEscalationAlert(
   }
 ): Promise<number> {
   const expiresAt = params.expiresInHours
-    ? new Date(Date.now() + params.expiresInHours * 60 * 60 * 1000)
+    ? new Date(clock.nowMs() + params.expiresInHours * 60 * 60 * 1000)
     : null;
   
   const [alert] = await db
@@ -276,7 +277,7 @@ export async function acknowledgeAlert(
     .update(escalationAlerts)
     .set({
       status: actionTaken ? "actioned" : "acknowledged",
-      acknowledgedAt: new Date(),
+      acknowledgedAt: clock.now(),
       acknowledgedBy: userId,
       actionTaken,
     })
@@ -327,7 +328,7 @@ export async function checkForHotLeads(organizationId: number): Promise<number[]
     .where(
       and(
         eq(leadQualificationSignals.organizationId, organizationId),
-        gte(leadQualificationSignals.detectedAt, new Date(Date.now() - 24 * 60 * 60 * 1000))
+        gte(leadQualificationSignals.detectedAt, new Date(clock.nowMs() - 24 * 60 * 60 * 1000))
       )
     )
     .groupBy(leadQualificationSignals.leadId);

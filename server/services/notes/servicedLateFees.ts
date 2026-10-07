@@ -40,6 +40,7 @@ import { decimalDollarsToCents } from "../notePaymentMath";
 import { addMonths } from "../../utils/dateUtils";
 import { unscopedForPlatformOps } from "../../utils/orgScopedDb";
 import { lenderServicingPhase, orgsStillServiced } from "../borrower/servicingPhase";
+import { clock } from "../../utils/clock";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
@@ -150,7 +151,7 @@ async function evaluateCurrentInstallment(note: ServicedNoteForFees, at: Date): 
  */
 export async function assessServicedNoteLateFee(
   note: ServicedNoteForFees & { status?: string | null },
-  now: Date = new Date(),
+  now: Date = clock.now(),
   paymentId: string | null = null,
   servicingKnownActive = false,
 ): Promise<AssessmentOutcome> {
@@ -306,7 +307,7 @@ export interface LateFeePassResult {
  * installment. Lenders whose 90-day servicing wind-down is over are skipped —
  * AcreOS no longer services their loans (ruling #3).
  */
-export async function runServicedLateFeeAssessmentPass(now: Date = new Date()): Promise<LateFeePassResult> {
+export async function runServicedLateFeeAssessmentPass(now: Date = clock.now()): Promise<LateFeePassResult> {
   const result: LateFeePassResult = { scanned: 0, assessed: 0, alreadyAssessed: 0, errors: 0 };
   const serviced = new Set(await orgsStillServiced(now));
   // PLATFORM SWEEP, said out loud: a scheduled job reads every

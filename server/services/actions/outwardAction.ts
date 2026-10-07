@@ -54,6 +54,7 @@ import {
   type OutwardActionStatus,
 } from "@shared/schema";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ── Errors ────────────────────────────────────────────────────────────────
 
@@ -337,7 +338,7 @@ export async function withOutwardAction<T>(
         status: "in_flight",
         attempts: sql`${outwardActions.attempts} + 1`,
         lastError: null,
-        claimedAt: new Date(),
+        claimedAt: clock.now(),
         completedAt: null,
       })
       .where(
@@ -406,6 +407,6 @@ async function markClaim(
 ): Promise<void> {
   await db
     .update(outwardActions)
-    .set({ status, externalId, lastError, completedAt: new Date() })
+    .set({ status, externalId, lastError, completedAt: clock.now() })
     .where(eq(outwardActions.id, id));
 }

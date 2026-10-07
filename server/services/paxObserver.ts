@@ -22,6 +22,7 @@ import {
 import { eq, and, desc, gte, ne, sql, like, lt, lte } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { publishableCrossOrgLearnings } from "./paxLearning";
+import { clock } from "../utils/clock";
 
 export type ObservationSeverity = 'info' | 'low' | 'medium' | 'high';
 export type NotificationType = 'none' | 'passive' | 'active';
@@ -226,7 +227,7 @@ class PaxObserverService {
    * Check if observation should be batched with similar recent observations
    */
   shouldBatchObservation(batchKey: string): { shouldBatch: boolean; existingCount: number } {
-    const now = new Date();
+    const now = clock.now();
     const cutoff = new Date(now.getTime() - BATCH_WINDOW_MS);
     const existing = this.recentObservations.get(batchKey);
 
@@ -374,7 +375,7 @@ class PaxObserverService {
     occurrenceCount: number
   ): Promise<PaxObservation | null> {
     try {
-      const recentWindow = new Date(Date.now() - BATCH_WINDOW_MS);
+      const recentWindow = new Date(clock.nowMs() - BATCH_WINDOW_MS);
       
       const existing = await db
         .select()
@@ -403,7 +404,7 @@ class PaxObserverService {
               previousOccurrences: occurrenceCount
             },
             description: `${matchingObs.description} (${occurrenceCount} similar occurrences)`,
-            updatedAt: new Date()
+            updatedAt: clock.now()
           })
           .where(eq(paxObservations.id, matchingObs.id))
           .returning();
@@ -440,7 +441,7 @@ class PaxObserverService {
         severity: observation.severity,
         title: observation.title,
         description: observation.description,
-        createdAt: observation.createdAt ?? new Date(),
+        createdAt: observation.createdAt ?? clock.now(),
       });
     } catch {}
   }
@@ -502,8 +503,8 @@ class PaxObserverService {
         .update(paxObservations)
         .set({
           status: 'acknowledged',
-          acknowledgedAt: new Date(),
-          updatedAt: new Date()
+          acknowledgedAt: clock.now(),
+          updatedAt: clock.now()
         })
         .where(and(
           eq(paxObservations.id, observationId),
@@ -526,8 +527,8 @@ class PaxObserverService {
         .update(paxObservations)
         .set({
           status: 'dismissed',
-          resolvedAt: new Date(),
-          updatedAt: new Date()
+          resolvedAt: clock.now(),
+          updatedAt: clock.now()
         })
         .where(and(
           eq(paxObservations.id, observationId),
@@ -550,8 +551,8 @@ class PaxObserverService {
         .update(paxObservations)
         .set({
           status: 'escalated',
-          escalatedAt: new Date(),
-          updatedAt: new Date()
+          escalatedAt: clock.now(),
+          updatedAt: clock.now()
         })
         .where(and(
           eq(paxObservations.id, observationId),
@@ -582,8 +583,8 @@ class PaxObserverService {
           autoResolveAttempted: true,
           autoResolveSuccess: success,
           autoResolveDetails: details,
-          resolvedAt: new Date(),
-          updatedAt: new Date()
+          resolvedAt: clock.now(),
+          updatedAt: clock.now()
         })
         .where(and(
           eq(paxObservations.id, observationId),
@@ -737,7 +738,7 @@ class PaxObserverService {
    */
   async cleanupOldObservations(daysOld = 30): Promise<number> {
     try {
-      const cutoff = new Date();
+      const cutoff = clock.now();
       cutoff.setDate(cutoff.getDate() - daysOld);
 
       const result = await db
@@ -914,7 +915,7 @@ class PaxObserverService {
    */
   async checkStaleLeads(orgId: number): Promise<PaxObservation | null> {
     try {
-      const cutoff = new Date();
+      const cutoff = clock.now();
       cutoff.setDate(cutoff.getDate() - 14);
 
       const allLeads = await db
@@ -944,7 +945,7 @@ class PaxObserverService {
       const maxDaysStale = Math.max(
         ...stale.map(l => {
           const lastContact = l.lastContactedAt || l.createdAt;
-          const ms = lastContact ? Date.now() - new Date(lastContact).getTime() : 0;
+          const ms = lastContact ? clock.nowMs() - new Date(lastContact).getTime() : 0;
           return ms / (1000 * 60 * 60 * 24);
         }),
       );
@@ -982,7 +983,7 @@ class PaxObserverService {
    */
   async checkExpiringOffers(orgId: number): Promise<PaxObservation | null> {
     try {
-      const cutoff = new Date();
+      const cutoff = clock.now();
       cutoff.setDate(cutoff.getDate() - 7);
 
       const expiringDeals = await db
@@ -1005,7 +1006,7 @@ class PaxObserverService {
       if (expiringDeals.length === 0) return null;
 
       // Calculate average days waiting
-      const now = Date.now();
+      const now = clock.nowMs();
       const avgDays = Math.round(
         expiringDeals.reduce((sum, d) => {
           const offerMs = d.offerDate ? new Date(d.offerDate).getTime() : now;
@@ -1052,7 +1053,7 @@ class PaxObserverService {
    */
   async checkPipelineVelocity(orgId: number): Promise<PaxObservation | null> {
     try {
-      const now = new Date();
+      const now = clock.now();
 
       // This month boundaries
       const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -1131,7 +1132,7 @@ class PaxObserverService {
    */
   async checkHighValueInactiveLeads(orgId: number): Promise<PaxObservation | null> {
     try {
-      const cutoff = new Date();
+      const cutoff = clock.now();
       cutoff.setDate(cutoff.getDate() - 7);
 
       // Import properties to cross-reference
@@ -1186,7 +1187,7 @@ class PaxObserverService {
       const maxDaysInactive = Math.max(
         ...inactive.map(l => {
           const lastContact = l.lastContactedAt || l.createdAt;
-          const ms = lastContact ? Date.now() - new Date(lastContact).getTime() : 0;
+          const ms = lastContact ? clock.nowMs() - new Date(lastContact).getTime() : 0;
           return ms / (1000 * 60 * 60 * 24);
         }),
       );

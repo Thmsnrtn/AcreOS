@@ -9,6 +9,7 @@ import puppeteer, { Browser, Page } from "puppeteer-core";
 import { execSync } from "child_process";
 import { logger } from "../utils/logger";
 import { isPrivateIPv4 as isPrivateIpv4, isPrivateIPv6 as isPrivateIpv6 } from "../middleware/fileUploadSecurity";
+import { clock } from "../utils/clock";
 // DNS resolution for SSRF protection
 const dnsResolve4 = (host: string): Promise<string[]> => {
   return new Promise((resolve, reject) => {
@@ -289,11 +290,11 @@ async function updateJobStatus(
   const updateData: Record<string, any> = { status };
   
   if (status === "running") {
-    updateData.startedAt = new Date();
+    updateData.startedAt = clock.now();
   }
   
   if (status === "completed" || status === "failed") {
-    updateData.completedAt = new Date();
+    updateData.completedAt = clock.now();
   }
   
   if (updates) {
@@ -540,7 +541,7 @@ async function executeStep(
       screenshots.push({
         name: screenshotName,
         data: `data:image/png;base64,${screenshotData}`,
-        capturedAt: new Date().toISOString(),
+        capturedAt: clock.now().toISOString(),
       });
       break;
 
@@ -570,7 +571,7 @@ async function executeStep(
 }
 
 export async function executeJob(jobId: number): Promise<ExecutionResult> {
-  const startTime = Date.now();
+  const startTime = clock.nowMs();
   const outputData: Record<string, any> = {};
   const screenshots: { name: string; data: string; capturedAt: string }[] = [];
   
@@ -636,7 +637,7 @@ export async function executeJob(jobId: number): Promise<ExecutionResult> {
             message: errorMessage,
             stack: errorStack,
           },
-          executionTimeMs: Date.now() - startTime,
+          executionTimeMs: clock.nowMs() - startTime,
         };
         
         await updateJobStatus(jobId, "failed", {
@@ -657,7 +658,7 @@ export async function executeJob(jobId: number): Promise<ExecutionResult> {
       success: true,
       outputData,
       screenshots,
-      executionTimeMs: Date.now() - startTime,
+      executionTimeMs: clock.nowMs() - startTime,
     };
     
     await updateJobStatus(jobId, "completed", {
@@ -686,7 +687,7 @@ export async function executeJob(jobId: number): Promise<ExecutionResult> {
         message: errorMessage,
         stack: errorStack,
       },
-      executionTimeMs: Date.now() - startTime,
+      executionTimeMs: clock.nowMs() - startTime,
     };
     
     await updateJobStatus(jobId, "failed", {
@@ -839,7 +840,7 @@ export async function browseWeb(url: string, options?: {
   captureScreenshot?: boolean;
   waitMs?: number;
 }): Promise<BrowseWebResult> {
-  const startTime = Date.now();
+  const startTime = clock.nowMs();
   let browser: Browser | null = null;
   
   const urlCheck = isBlockedUrl(url);
@@ -852,7 +853,7 @@ export async function browseWeb(url: string, options?: {
       links: [],
       tables: [],
       error: urlCheck.reason || "URL blocked",
-      loadTimeMs: Date.now() - startTime,
+      loadTimeMs: clock.nowMs() - startTime,
     };
   }
   
@@ -867,7 +868,7 @@ export async function browseWeb(url: string, options?: {
       links: [],
       tables: [],
       error: dnsCheck.reason || "DNS resolution blocked",
-      loadTimeMs: Date.now() - startTime,
+      loadTimeMs: clock.nowMs() - startTime,
     };
   }
   
@@ -967,7 +968,7 @@ export async function browseWeb(url: string, options?: {
       links,
       tables,
       screenshot,
-      loadTimeMs: Date.now() - startTime,
+      loadTimeMs: clock.nowMs() - startTime,
     };
   } catch (error: any) {
     if (browser) await browser.close().catch(() => {});
@@ -979,7 +980,7 @@ export async function browseWeb(url: string, options?: {
       links: [],
       tables: [],
       error: error.message,
-      loadTimeMs: Date.now() - startTime,
+      loadTimeMs: clock.nowMs() - startTime,
     };
   }
 }

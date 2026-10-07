@@ -23,6 +23,7 @@ import { aiTelemetryEvents } from "@shared/schema";
 import { and, gte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { emailService } from "./emailService";
+import { clock } from "../utils/clock";
 
 export interface DailyCostSummary {
   windowHours: number;
@@ -42,7 +43,7 @@ function getAlertThresholdUsd(): number {
 }
 
 export async function summarizeAiCostLast24h(): Promise<DailyCostSummary> {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
 
   const [totalRow] = await db
     .select({

@@ -8,6 +8,7 @@ import { storage, db } from "../storage";
 import { deals, notes, payments } from "@shared/schema";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 interface MonthlyReviewData {
   orgId: number;
@@ -39,7 +40,7 @@ export async function generateMonthlyReview(orgId: number): Promise<MonthlyRevie
     const org = await storage.getOrganization(orgId);
     if (!org) return null;
 
-    const now = new Date();
+    const now = clock.now();
     const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
     const monthName = lastMonth.toLocaleDateString("en-US", { month: "long" });

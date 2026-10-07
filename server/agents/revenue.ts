@@ -7,6 +7,7 @@ import { db } from "../storage";
 import { sql } from "drizzle-orm";
 import { TIER_LIMITS, type SubscriptionTier } from "../services/usageLimits";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -28,7 +29,7 @@ export class RevenueAgent extends BaseAgent {
     await this.checkPaymentFailures();
 
     // Weekly revenue brief on Mondays
-    const now = new Date();
+    const now = clock.now();
     if (now.getDay() === 1 && now.getHours() >= 8 && now.getHours() <= 10) {
       await this.generateWeeklyRevenueBrief();
     }
@@ -70,7 +71,7 @@ export class RevenueAgent extends BaseAgent {
               AND brief_type = 'upgrade_nudge'
               AND (content->>'orgId')::int = ${org.id}
               AND (content->>'resource') = ${check.resource}
-              AND generated_at > ${new Date(Date.now() - 7 * DAY)}
+              AND generated_at > ${new Date(clock.nowMs() - 7 * DAY)}
             LIMIT 1
           `);
           if ((existing as any).rows?.length > 0) continue;
@@ -82,7 +83,7 @@ export class RevenueAgent extends BaseAgent {
             riskLevel: "low",
             autoApproved: false,
             data: { orgId: org.id, resource: check.resource, current: check.current, limit: check.limit, pct, tier },
-            timestamp: new Date(),
+            timestamp: clock.now(),
           };
           await this.logDecision(decision);
           await this.storeBrief("upgrade_nudge", {
@@ -98,7 +99,7 @@ export class RevenueAgent extends BaseAgent {
   }
 
   private async checkPaymentFailures(): Promise<void> {
-    const threeDaysAgo = new Date(Date.now() - 3 * DAY);
+    const threeDaysAgo = new Date(clock.nowMs() - 3 * DAY);
 
     const failures = await db.execute(sql`
       SELECT o.id, o.name, o.owner_id, o.last_payment_failed_at, o.dunning_stage
@@ -121,11 +122,11 @@ export class RevenueAgent extends BaseAgent {
       const decision: AgentDecision = {
         agentName: this.name,
         action: "payment_failure_alert",
-        reason: `Payment failed ${Math.round((Date.now() - new Date(org.last_payment_failed_at).getTime()) / DAY)} days ago, dunning: ${org.dunning_stage}`,
+        reason: `Payment failed ${Math.round((clock.nowMs() - new Date(org.last_payment_failed_at).getTime()) / DAY)} days ago, dunning: ${org.dunning_stage}`,
         riskLevel: "high",
         autoApproved: false,
         data: { orgId: org.id, orgName: org.name, dunningStage: org.dunning_stage },
-        timestamp: new Date(),
+        timestamp: clock.now(),
       };
       await this.logDecision(decision);
       await this.storeBrief("payment_failure_alert", { orgId: org.id });
@@ -133,7 +134,7 @@ export class RevenueAgent extends BaseAgent {
   }
 
   private async generateWeeklyRevenueBrief(): Promise<void> {
-    const today = new Date();
+    const today = clock.now();
     today.setHours(0, 0, 0, 0);
     const existing = await db.execute(sql`
       SELECT 1 FROM founder_briefs

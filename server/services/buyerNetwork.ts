@@ -6,6 +6,7 @@ import {
 } from '../../shared/schema';
 import { eq, and, desc, gte, sql } from 'drizzle-orm';
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 interface BuyerBehaviorEvent {
   eventType: 'property_view' | 'search' | 'save_favorite' | 'contact_seller' | 'make_offer' | 'attend_showing';
@@ -126,7 +127,7 @@ class BuyerIntelligenceNetwork {
         }
       } else {
         // Create new heatmap row for this county
-        const now = new Date();
+        const now = clock.now();
         await db.insert(demandHeatmaps).values({
           state: property.state,
           county: property.county,
@@ -154,7 +155,7 @@ class BuyerIntelligenceNetwork {
   ): Promise<DemandHeatmap> {
     try {
       // Get all behavior events for this location in last 90 days
-      const ninetyDaysAgo = new Date();
+      const ninetyDaysAgo = clock.now();
       ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
       const events = await db.query.buyerBehaviorEvents.findMany({
@@ -215,7 +216,7 @@ class BuyerIntelligenceNetwork {
 
       // Save heatmap. TODO(tsc): demand_heatmaps stores scalar columns only — the rich
       // metrics/buyerProfile/confidence are computed in-memory and returned, not persisted.
-      const nowPeriod = new Date();
+      const nowPeriod = clock.now();
       await db.insert(demandHeatmaps).values({
         state,
         county,
@@ -357,7 +358,7 @@ class BuyerIntelligenceNetwork {
   ): Promise<DemandHeatmap['trend']> {
     try {
       // Get events from last 90 days vs previous 90 days
-      const now = new Date();
+      const now = clock.now();
       const ninetyDaysAgo = new Date(now);
       ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
       const oneEightyDaysAgo = new Date(now);
@@ -492,7 +493,7 @@ class BuyerIntelligenceNetwork {
     demandScore: number;
   }> {
     try {
-      const thirtyDaysAgo = new Date();
+      const thirtyDaysAgo = clock.now();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
       // TODO(tsc): buyer_behavior_events is anonymized with no propertyId/org columns,
@@ -583,7 +584,7 @@ class BuyerIntelligenceNetwork {
     trend: 'up' | 'down' | 'stable';
   }[]> {
     try {
-      const cutoffDate = new Date();
+      const cutoffDate = clock.now();
       cutoffDate.setDate(cutoffDate.getDate() - days);
 
       // TODO(tsc): buyer_behavior_events has no org/searchCriteria columns; group by the

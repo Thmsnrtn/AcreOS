@@ -32,6 +32,7 @@ import { db } from "../../db";
 import { generatedDocuments, signatures as signaturesTable, organizations } from "@shared/schema";
 import { and, asc, eq } from "drizzle-orm";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 const PRIMARY = "#9C4221"; // terracotta — AcreOS brand
 const TEXT = "#1f2937";
@@ -169,7 +170,7 @@ export async function generateSealedDocumentPdf(input: SealedDocInput): Promise<
   doc
     .fontSize(10)
     .font("Helvetica")
-    .text(`${org?.name ?? "AcreOS"} · sealed ${fmtDate(new Date())}`, 50, 52);
+    .text(`${org?.name ?? "AcreOS"} · sealed ${fmtDate(clock.now())}`, 50, 52);
   doc.fillColor(TEXT).y = 100;
 
   // ── Title block ──

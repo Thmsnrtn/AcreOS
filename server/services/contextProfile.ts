@@ -26,6 +26,7 @@ import {
   taxSaleAuctions,
 } from '../../shared/schema';
 import { eq, count, sql, desc } from 'drizzle-orm';
+import { clock } from "../utils/clock";
 
 export type InvestorType =
   | 'wholesaler'
@@ -239,7 +240,7 @@ class ContextProfileService {
         ...a,
         reason: `Recommended for ${investorType.replace('_', ' ')} investors`,
       })),
-      detectedAt: new Date().toISOString(),
+      detectedAt: clock.now().toISOString(),
     };
 
     this.profileCache.set(organizationId, profile);
@@ -252,7 +253,7 @@ class ContextProfileService {
   async getProfile(organizationId: number): Promise<ContextProfile> {
     const cached = this.profileCache.get(organizationId);
     if (cached) {
-      const age = Date.now() - new Date(cached.detectedAt).getTime();
+      const age = clock.nowMs() - new Date(cached.detectedAt).getTime();
       if (age < 6 * 60 * 60 * 1000) return cached; // 6-hour cache
     }
     return this.buildProfile(organizationId);

@@ -51,6 +51,7 @@ import {
   quarterOf,
   type CountyRollupRow,
 } from "./privacyRollup";
+import { clock } from "../../utils/clock";
 
 interface CandidateCounty {
   state: string;
@@ -286,7 +287,7 @@ export interface CountyRollupRunResult {
  * alert-spine warning.
  */
 export async function runCountyMarketRollup(
-  now: Date = new Date(),
+  now: Date = clock.now(),
 ): Promise<CountyRollupRunResult> {
   const currentPeriod = periodOf(now);
   const prevMonth = new Date(
@@ -313,7 +314,7 @@ export async function runCountyMarketRollup(
             period: rollup.period,
             metrics: rollup.metrics as unknown as Record<string, unknown>,
             cohortSize: rollup.cohortSize,
-            computedAt: new Date(),
+            computedAt: clock.now(),
           })
           .onConflictDoUpdate({
             target: [
@@ -324,7 +325,7 @@ export async function runCountyMarketRollup(
             set: {
               metrics: rollup.metrics as unknown as Record<string, unknown>,
               cohortSize: rollup.cohortSize,
-              computedAt: new Date(),
+              computedAt: clock.now(),
             },
           });
         rollupsWritten++;
@@ -349,7 +350,7 @@ export async function runCountyMarketRollup(
     period: currentPeriod,
     rollupsWritten,
     countiesScanned: candidates.length,
-    ranAt: new Date(),
+    ranAt: clock.now(),
   });
 
   try {

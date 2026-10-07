@@ -19,6 +19,7 @@ import { selfHealingMeshService } from "./selfHealingMeshV13";
 import { retrieveRelevantMemories } from "./solene/learningLoop";
 import { logActivity } from "./systemActivityLogger";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -123,7 +124,7 @@ class ConfidenceCascadeService {
   // ─── 1. resolve — THE MAIN METHOD ───────────────────────────────────────────
 
   async resolve(orgId: number, request: CascadeRequest): Promise<CascadeResult> {
-    const startTime = Date.now();
+    const startTime = clock.nowMs();
     const resolutionId = crypto.randomUUID();
     const threshold = request.confidenceThreshold ?? 75;
     let confidence = request.currentConfidence;
@@ -140,7 +141,7 @@ class ConfidenceCascadeService {
       originAgent: request.originAgent,
       layersAttempted: [],
       founderEscalated: false,
-      createdAt: new Date(),
+      createdAt: clock.now(),
     });
 
     // ── Layer 1: Memory Lookup ──────────────────────────────────────────────
@@ -249,7 +250,7 @@ class ConfidenceCascadeService {
       });
     }
 
-    const totalDurationMs = Date.now() - startTime;
+    const totalDurationMs = clock.nowMs() - startTime;
 
     // Persist final state
     await db
@@ -263,7 +264,7 @@ class ConfidenceCascadeService {
         finalConfidence: confidence,
         founderEscalated,
         totalDurationMs,
-        resolvedAt: status !== "escalated" ? new Date() : null,
+        resolvedAt: status !== "escalated" ? clock.now() : null,
       })
       .where(eq(cascadeResolutions.resolutionId, resolutionId));
 
@@ -287,7 +288,7 @@ class ConfidenceCascadeService {
     request: CascadeRequest,
     currentConfidence: number,
   ): Promise<LayerAttempt> {
-    const start = Date.now();
+    const start = clock.nowMs();
     try {
       // Stage-4 turn 17: the layer reads the CANONICAL solene corpus
       // (cross-namespace RAG) instead of the drained V13 episodic store.
@@ -361,7 +362,7 @@ class ConfidenceCascadeService {
     currentConfidence: number,
     orgId: number,
   ): Promise<LayerAttempt> {
-    const start = Date.now();
+    const start = clock.nowMs();
     try {
       const strategy = await Promise.race([
         adaptiveStrategyService.selectStrategy(request.originAgent, request.triggerContext, orgId),
@@ -408,7 +409,7 @@ class ConfidenceCascadeService {
     orgId: number,
     threshold: number,
   ): Promise<LayerAttempt> {
-    const start = Date.now();
+    const start = clock.nowMs();
     try {
       // Find agents with relevant skills via collaboration protocol
       const relevantSkill = request.triggerType;
@@ -462,7 +463,7 @@ class ConfidenceCascadeService {
     currentConfidence: number,
     orgId: number,
   ): Promise<LayerAttempt> {
-    const start = Date.now();
+    const start = clock.nowMs();
     try {
       const evaluation = await Promise.race([
         governanceBrainService.evaluateAction({
@@ -572,7 +573,7 @@ class ConfidenceCascadeService {
         founderResolution: founderDecision,
         finalDecision: founderDecision,
         finalConfidence: MAX_CONFIDENCE,
-        resolvedAt: new Date(),
+        resolvedAt: clock.now(),
       })
       .where(eq(cascadeResolutions.resolutionId, resolutionId))
       .returning();
@@ -787,7 +788,7 @@ class ConfidenceCascadeService {
             ? 75 - (row.finalConfidence ?? 0)
             : 0,
           waitingMinutes: Math.round(
-            (Date.now() - new Date(row.createdAt).getTime()) / 60000,
+            (clock.nowMs() - new Date(row.createdAt).getTime()) / 60000,
           ),
         },
       };
@@ -951,7 +952,7 @@ class ConfidenceCascadeService {
       confidenceBoost: boost,
       confidenceAfter: Math.min(confidenceBefore + boost, MAX_CONFIDENCE),
       details,
-      durationMs: Date.now() - startTime,
+      durationMs: clock.nowMs() - startTime,
     };
   }
 

@@ -29,6 +29,7 @@ import { sql, and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { aiUsageDaily, organizations } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /** Thrown when an org has hit its daily AI USD cap. Surfaced as HTTP 429. */
 export class AIQuotaExceeded extends Error {
@@ -50,7 +51,7 @@ export class AIQuotaExceeded extends Error {
 
 /** UTC date in YYYY-MM-DD form — the partition key for ai_usage_daily.date. */
 export function todayUtc(): string {
-  return new Date().toISOString().slice(0, 10);
+  return clock.now().toISOString().slice(0, 10);
 }
 
 /**

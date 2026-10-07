@@ -15,6 +15,7 @@ import { and, desc, gte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { marketingSpend, organizations, type MarketingSpendEntry } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export const MARKETING_CHANNELS = [
   "meta",
@@ -50,7 +51,7 @@ export async function recordMarketingSpend(
     .values({
       channel: input.channel,
       amountCents: input.amountCents,
-      spentAt: input.spentAt ?? new Date(),
+      spentAt: input.spentAt ?? clock.now(),
       source: input.source ?? "manual",
       campaignRef: input.campaignRef ?? null,
       note: input.note ?? null,
@@ -74,7 +75,7 @@ export interface MarketingSpendSummary {
 }
 
 export async function marketingSpendSummary(sinceDays: number): Promise<MarketingSpendSummary> {
-  const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - sinceDays * 24 * 60 * 60 * 1000);
   const rows = await db
     .select({
       channel: marketingSpend.channel,
@@ -100,7 +101,7 @@ export async function listMarketingSpend(
   sinceDays: number,
   limit = 200,
 ): Promise<MarketingSpendEntry[]> {
-  const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - sinceDays * 24 * 60 * 60 * 1000);
   return db
     .select()
     .from(marketingSpend)
@@ -111,7 +112,7 @@ export async function listMarketingSpend(
 
 /** Month-to-date actual ad/marketing spend in USD (budget-ramp input). */
 export async function marketingSpendMonthToDateUsd(): Promise<number> {
-  const now = new Date();
+  const now = clock.now();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const [row] = await db
     .select({ totalCents: sql<number>`coalesce(sum(${marketingSpend.amountCents}), 0)::int` })
@@ -147,7 +148,7 @@ export function cacFromTotals(spendCents: number, newPayingCustomers: number): n
  * signed up in the window and are currently on a paid tier.
  */
 export async function computeCac(windowDays = 90): Promise<CacResult> {
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
 
   const [{ totalCents } = { totalCents: 0 }] = await db
     .select({ totalCents: sql<number>`coalesce(sum(${marketingSpend.amountCents}), 0)::int` })

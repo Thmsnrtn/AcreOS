@@ -17,6 +17,7 @@ import { db } from '../db';
 import { organizations, whiteLabelConfigs } from '../../shared/schema';
 import { eq, and } from 'drizzle-orm';
 import crypto from 'crypto';
+import { clock } from "../utils/clock";
 
 export interface WhiteLabelConfig {
   tenantId: string;
@@ -111,8 +112,8 @@ class WhiteLabelService {
       plan: row.plan as WhiteLabelConfig['plan'],
       billingEmail: row.billingEmail,
       status: row.status as WhiteLabelConfig['status'],
-      createdAt: (row.createdAt ?? new Date()).toISOString(),
-      updatedAt: (row.updatedAt ?? new Date()).toISOString(),
+      createdAt: (row.createdAt ?? clock.now()).toISOString(),
+      updatedAt: (row.updatedAt ?? clock.now()).toISOString(),
     };
   }
 
@@ -204,7 +205,7 @@ class WhiteLabelService {
       // revenueShare, limits and plan are commercial terms the platform sets;
       // this caller-facing update does not write them.
       ...(updates.billingEmail && { billingEmail: updates.billingEmail }),
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     }).where(eq(whiteLabelConfigs.organizationId, organizationId)).returning();
 
     return this.rowToConfig(row);
@@ -215,7 +216,7 @@ class WhiteLabelService {
    */
   async suspendTenant(organizationId: number): Promise<void> {
     await db.update(whiteLabelConfigs)
-      .set({ status: 'suspended', updatedAt: new Date() })
+      .set({ status: 'suspended', updatedAt: clock.now() })
       .where(eq(whiteLabelConfigs.organizationId, organizationId));
   }
 

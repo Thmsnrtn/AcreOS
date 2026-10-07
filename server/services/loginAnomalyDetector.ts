@@ -25,6 +25,7 @@ import { eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { emailService } from "./emailService";
+import { clock } from "../utils/clock";
 
 // Process-lifetime memo of (sessionId|userId+ipPrefix+uaFamily) we've
 // already checked, so the detector runs at most once per session per
@@ -213,7 +214,7 @@ async function sendNewLocationEmail(opts: {
   try {
     const [user] = await db.select().from(users).where(eq(users.id, opts.userId)).limit(1);
     if (!user?.email) return;
-    const when = new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+    const when = clock.now().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
     const reviewUrl = `${process.env.PUBLIC_APP_URL ?? "https://app.acreos.io"}/account/security`;
     const lines = [
       `A new sign-in to your AcreOS account just happened.`,

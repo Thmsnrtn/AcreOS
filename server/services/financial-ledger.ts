@@ -39,6 +39,7 @@ import {
 } from "@shared/billing/allocation-policy";
 import { getSetting } from "./founderSettings";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -159,7 +160,7 @@ export async function postRevenue(args: PostRevenueArgs): Promise<{
   const policy = await resolveAllocationPolicy();
   const splits = splitAmountByPolicy(args.amountCents, policy);
 
-  const postedAt = args.postedAt ?? new Date();
+  const postedAt = args.postedAt ?? clock.now();
   const postedBy = "stripe_webhook";
 
   const toInsert: InsertFinancialLedgerRow[] = BUCKET_NAMES.map((bucket) => ({
@@ -229,7 +230,7 @@ export async function postOpexSpent(args: PostOpexArgs): Promise<{
     externalEventId: args.externalEventId,
     invoiceId: null,
     campaignId: args.campaignId ?? null,
-    postedAt: args.postedAt ?? new Date(),
+    postedAt: args.postedAt ?? clock.now(),
     postedBy: `system:${args.providerName}`,
     notes: args.notes ?? null,
   };
@@ -297,7 +298,7 @@ export async function postRefund(args: PostRefundArgs): Promise<{
     externalEventId: args.externalEventId,
     invoiceId: null,
     campaignId: null,
-    postedAt: args.postedAt ?? new Date(),
+    postedAt: args.postedAt ?? clock.now(),
     postedBy: "stripe_webhook",
     notes:
       args.originalRevenueEventId != null
@@ -356,7 +357,7 @@ export async function getContributionMargin(
   organizationId: number,
   sinceDays = 30,
 ): Promise<ContributionMargin> {
-  const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - sinceDays * 24 * 60 * 60 * 1000);
 
   // Pillar 8.6 — pure analytical reads, route to replica.
   const reader = await dbForReads("financial-ledger.contribution-margin");

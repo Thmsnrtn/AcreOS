@@ -21,6 +21,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { Errors } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -363,7 +364,7 @@ router.get("/financial/tax-report/:year", async (req: Request, res: Response) =>
   try {
     const { generateTaxReport } = await import("./services/financialOSService");
     const org = req.organization;
-    const year = parseInt(req.params.year) || new Date().getFullYear() - 1;
+    const year = parseInt(req.params.year) || clock.now().getFullYear() - 1;
     const report = await generateTaxReport(org.id, year);
     res.json(report);
   } catch (err: any) {

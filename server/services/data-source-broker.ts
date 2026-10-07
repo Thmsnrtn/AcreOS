@@ -7,6 +7,7 @@ import { orderSourcesForLookup, TIER_PRIORITY } from "./dataSourceOrdering";
 import { enrichmentCircuitBreaker, countyApiCircuitBreaker, CircuitOpenError } from "../utils/circuitBreaker";
 import { getSetting } from "./settings";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type AccessTier = "free" | "cached" | "byok" | "paid";
 export type LookupCategory =
@@ -579,7 +580,7 @@ export class DataSourceBroker {
     maxTierIndex: number,
     byokKeys: Record<string, string> | undefined,
   ): Promise<{ data: any; cachedAt: Date; source: { id: number; title: string; tier: AccessTier } } | null> {
-    const expirationDate = new Date();
+    const expirationDate = clock.now();
     expirationDate.setDate(expirationDate.getDate() - CACHE_DURATION_DAYS);
 
     const rows = await db.select().from(dataSourceCache)
@@ -614,7 +615,7 @@ export class DataSourceBroker {
       // FEMA query used to produce. It is not served; the lookup re-reads.
       if (category === "flood_zone" && typeof (row.data as { status?: unknown } | null)?.status !== "string") continue;
       const source = { id: known.id, title: known.title, tier };
-      return { data: row.data, cachedAt: row.fetchedAt || new Date(), source };
+      return { data: row.data, cachedAt: row.fetchedAt || clock.now(), source };
     }
     return null;
   }
@@ -627,7 +628,7 @@ export class DataSourceBroker {
     // An unmapped FEMA point is a statement about today's map; holding it for
     // CACHE_DURATION_DAYS would hide a panel FEMA digitises next week.
     if (data && typeof data === "object" && (data as { status?: unknown }).status === "unmapped") return;
-    const expiresAt = new Date();
+    const expiresAt = clock.now();
     expiresAt.setDate(expiresAt.getDate() + CACHE_DURATION_DAYS);
 
     await db.insert(dataSourceCache).values({
@@ -644,7 +645,7 @@ export class DataSourceBroker {
         data,
         expiresAt,
         successfulFetch: true,
-        fetchedAt: new Date(),
+        fetchedAt: clock.now(),
       },
     }).catch(() =>
       // Fallback plain insert (no upsert target). Awaited and caught: it was
@@ -678,8 +679,8 @@ export class DataSourceBroker {
       ...current,
       successRate: newSuccessRate,
       avgLatencyMs: newAvgLatency,
-      lastSuccess: success ? new Date() : current.lastSuccess,
-      lastFailure: success ? current.lastFailure : new Date(),
+      lastSuccess: success ? clock.now() : current.lastSuccess,
+      lastFailure: success ? current.lastFailure : clock.now(),
       consecutiveFailures: success ? 0 : current.consecutiveFailures + 1,
     });
   }
@@ -704,7 +705,7 @@ export class DataSourceBroker {
   }
 
   async lookup(category: LookupCategory, options: BrokerLookupOptions): Promise<BrokerResult> {
-    const startTime = Date.now();
+    const startTime = clock.nowMs();
     const lookupKey = this.generateLookupKey(category, options);
     const fallbacksUsed: string[] = [];
     const maxTierIndex = options.maxTier ? TIER_PRIORITY.indexOf(options.maxTier) : TIER_PRIORITY.length - 1;
@@ -726,7 +727,7 @@ export class DataSourceBroker {
           costCents: 0,
         },
         fromCache: false,
-        lookupTimeMs: Date.now() - startTime,
+        lookupTimeMs: clock.nowMs() - startTime,
         fallbacksUsed: [retired.reason],
       };
     }
@@ -749,7 +750,7 @@ export class DataSourceBroker {
           costCents: 0,
         },
         fromCache: false,
-        lookupTimeMs: Date.now() - startTime,
+        lookupTimeMs: clock.nowMs() - startTime,
         fallbacksUsed: [FCC_BDC_UNKEYED_REASON],
       };
     }
@@ -765,7 +766,7 @@ export class DataSourceBroker {
           source: { ...cached.source, costCents: 0 },
           fromCache: true,
           cachedAt: cached.cachedAt,
-          lookupTimeMs: Date.now() - startTime,
+          lookupTimeMs: clock.nowMs() - startTime,
           fallbacksUsed: [],
         };
       }
@@ -793,7 +794,7 @@ export class DataSourceBroker {
 
       try {
         const result = await this.executeSourceLookup(source, category, options);
-        const latencyMs = Date.now() - startTime;
+        const latencyMs = clock.nowMs() - startTime;
         const costCents = source.costPerCall || 0;
 
         this.updateHealth(source.id, true, latencyMs);
@@ -815,7 +816,7 @@ export class DataSourceBroker {
           fallbacksUsed,
         };
       } catch (error: any) {
-        this.updateHealth(source.id, false, Date.now() - startTime);
+        this.updateHealth(source.id, false, clock.nowMs() - startTime);
         fallbacksUsed.push(`${source.title}: ${error.message}`);
         continue;
       }
@@ -841,7 +842,7 @@ export class DataSourceBroker {
         try {
           const virtualSource = this.buildVirtualFederalSource(category);
           const result = await this.executeSourceLookup(virtualSource, category, options);
-          const latencyMs = Date.now() - startTime;
+          const latencyMs = clock.nowMs() - startTime;
 
           this.updateHealth(BUILTIN_FEDERAL_SOURCE_ID, true, latencyMs);
           this.trackUsage(BUILTIN_FEDERAL_SOURCE_ID, 0, false);
@@ -861,7 +862,7 @@ export class DataSourceBroker {
             fallbacksUsed,
           };
         } catch (error: any) {
-          this.updateHealth(BUILTIN_FEDERAL_SOURCE_ID, false, Date.now() - startTime);
+          this.updateHealth(BUILTIN_FEDERAL_SOURCE_ID, false, clock.nowMs() - startTime);
           fallbacksUsed.push(`built-in federal (${category}): ${error?.message ?? String(error)}`);
         }
       }
@@ -877,7 +878,7 @@ export class DataSourceBroker {
         costCents: 0,
       },
       fromCache: false,
-      lookupTimeMs: Date.now() - startTime,
+      lookupTimeMs: clock.nowMs() - startTime,
       fallbacksUsed,
     };
   }
@@ -931,7 +932,7 @@ export class DataSourceBroker {
   }
 
   async lookupMultiple(categories: LookupCategory[], options: BrokerLookupOptions): Promise<MultiLookupResult> {
-    const startTime = Date.now();
+    const startTime = clock.nowMs();
     const results: Record<string, BrokerResult> = {};
     let successCount = 0;
     let failureCount = 0;
@@ -968,7 +969,7 @@ export class DataSourceBroker {
 
     return {
       results: results as Record<LookupCategory, BrokerResult>,
-      totalLookupTimeMs: Date.now() - startTime,
+      totalLookupTimeMs: clock.nowMs() - startTime,
       successCount,
       failureCount,
     };
@@ -1138,7 +1139,7 @@ export class DataSourceBroker {
       const data = await response.json();
       if (data.error) throw new Error(data.error.message);
 
-      return floodZoneFromNfhl(data.features, new Date());
+      return floodZoneFromNfhl(data.features, clock.now());
     });
   }
 
@@ -1162,7 +1163,7 @@ export class DataSourceBroker {
       classification: features[0]?.attributes?.WETLAND_TYPE || null,
       percentage: features.length > 0 ? 100 : 0,
       source: "NWI",
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: clock.now().toISOString(),
       details: features[0]?.attributes || {},
     };
   }
@@ -1264,7 +1265,7 @@ export class DataSourceBroker {
       septicRating,
       septicRatingSource: "USDA SSURGO septic tank absorption fields",
       source: "USDA NRCS SDA",
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: clock.now().toISOString(),
     };
   }
 
@@ -1349,7 +1350,7 @@ export class DataSourceBroker {
       ustSitesNearby,
       note: depthNotes.length > 0 ? depthNotes.join("; ") : null,
       source: "EPA TRI",
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: clock.now().toISOString(),
     };
   }
 
@@ -1377,7 +1378,7 @@ export class DataSourceBroker {
       return {
         parcelData: data.features?.[0]?.attributes || {},
         source: source.title,
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: clock.now().toISOString(),
       };
     });
   }
@@ -1494,7 +1495,7 @@ export class DataSourceBroker {
         flood: results.floodHazard ? "medium" : "low",
       },
       source: "USGS/FEMA/WFIGS",
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: clock.now().toISOString(),
     };
   }
 
@@ -1521,7 +1522,7 @@ export class DataSourceBroker {
           available: false,
           message: "Census tract not found for coordinates",
           source: "Census Bureau",
-          lastUpdated: new Date().toISOString(),
+          lastUpdated: clock.now().toISOString(),
         };
       }
 
@@ -1547,7 +1548,7 @@ export class DataSourceBroker {
           available: true,
           acsDataAvailable: false,
           source: "Census Bureau",
-          lastUpdated: new Date().toISOString(),
+          lastUpdated: clock.now().toISOString(),
         };
       }
 
@@ -1595,7 +1596,7 @@ export class DataSourceBroker {
         bachelorsOrHigher: bachelorsPlus,
         unemployment: laborForce && unemployed ? ((unemployed / laborForce) * 100).toFixed(1) + "%" : null,
         source: "Census ACS 5-Year Estimates",
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: clock.now().toISOString(),
       };
     } catch (error: any) {
       throw new Error(`Demographics query failed: ${error.message}`);
@@ -1679,7 +1680,7 @@ export class DataSourceBroker {
       npsLand: results.npsLand,
       usfsLand: results.usfsLand,
       source: "BLM/NPS/USFS",
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: clock.now().toISOString(),
     };
   }
 
@@ -1788,7 +1789,7 @@ export class DataSourceBroker {
         nearbyLocalRoads: results.localRoadCount ?? 0,
       },
       source: "DOT/ESRI/Census TIGER",
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: clock.now().toISOString(),
     };
   }
 
@@ -1876,7 +1877,7 @@ export class DataSourceBroker {
         inWatershed: !!results.watershed,
       },
       source: "USGS Water Services",
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: clock.now().toISOString(),
     };
   }
 
@@ -1898,8 +1899,8 @@ export class DataSourceBroker {
         elevationMeters: elevM,
         datum: "NAVD88",
         source: "USGS 3DEP National Map",
-        queryDate: data.date ?? new Date().toISOString(),
-        lastUpdated: new Date().toISOString(),
+        queryDate: data.date ?? clock.now().toISOString(),
+        lastUpdated: clock.now().toISOString(),
       };
     } catch (error: any) {
       // Fallback: Open-Elevation (community-hosted SRTM mirror)
@@ -1917,7 +1918,7 @@ export class DataSourceBroker {
             elevationMeters: elevM,
             datum: "SRTM",
             source: "Open-Elevation (SRTM)",
-            lastUpdated: new Date().toISOString(),
+            lastUpdated: clock.now().toISOString(),
           };
         }
       } catch (_) { /* ignore fallback error */ }
@@ -1961,7 +1962,7 @@ export class DataSourceBroker {
         annualPrecipInches: annualPrecipIn,
         period: "1991-2020 (30-year average)",
         source: "Open-Meteo ERA5 Reanalysis",
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: clock.now().toISOString(),
       };
     } catch (error: any) {
       throw new Error(`Climate query failed: ${error.message}`);
@@ -2048,7 +2049,7 @@ export class DataSourceBroker {
         dataYear: 2023,
         source: "USDA ERS / USDA NASS QuickStats",
         notes: "Farm real estate values include land and buildings. Raw land values typically 60-80% of farm real estate value.",
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: clock.now().toISOString(),
       };
     } catch (error: any) {
       throw new Error(`Agricultural values query failed: ${error.message}`);
@@ -2092,7 +2093,7 @@ export class DataSourceBroker {
           isForested: pixelValue === 41 || pixelValue === 42 || pixelValue === 43,
           isWetland: pixelValue === 90 || pixelValue === 95,
           source: "USGS NLCD 2021",
-          lastUpdated: new Date().toISOString(),
+          lastUpdated: clock.now().toISOString(),
         };
       }
 
@@ -2173,7 +2174,7 @@ export class DataSourceBroker {
         isForest: cropCode === 63 || cropCode === 141 || cropCode === 142 || cropCode === 143,
         isWetland: cropCode === 87,
         source: "USDA NASS CropScape CDL 2023",
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: clock.now().toISOString(),
       };
     } catch (error: any) {
       throw new Error(`Cropland query failed: ${error.message}`);
@@ -2240,7 +2241,7 @@ export class DataSourceBroker {
         riskLevel,
         searchRadiusMiles: radiusMiles,
         source: "EPA Facility Registry Service (FRS)",
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: clock.now().toISOString(),
       };
     } catch (error: any) {
       throw new Error(`EPA FRS query failed: ${error.message}`);
@@ -2269,7 +2270,7 @@ export class DataSourceBroker {
 
       // NOAA Climate Data API (v2) - public endpoint, no key needed for some datasets
       // Fetch summary tornado/hail/wind events for the county
-      const currentYear = new Date().getFullYear();
+      const currentYear = clock.now().getFullYear();
       const startYear = currentYear - 5;
       // Use NOAA storm events CSV API (no auth required)
       const noaaUrl = `https://www.ncdc.noaa.gov/stormevents/csv?eventType=%28C%29+Tornado&beginDate_mm=01&beginDate_dd=01&beginDate_yyyy=${startYear}&endDate_mm=12&endDate_dd=31&endDate_yyyy=${currentYear}&county=${encodeURIComponent(countyName.toUpperCase())}&statename=${encodeURIComponent(state?.toUpperCase() || "")}&hailsize=&windspd_mph=&phenomena=&significance=&action=Search&tab_id=results&format=CSV`;
@@ -2287,7 +2288,7 @@ export class DataSourceBroker {
         hailRisk: tornadoRisk,
         note: "Risk estimates based on geographic location. See NOAA Storm Events Database for full event history.",
         source: "NOAA Storm Events / Geographic Risk Estimate",
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: clock.now().toISOString(),
       };
     } catch (error: any) {
       throw new Error(`Storm history query failed: ${error.message}`);
@@ -2322,7 +2323,7 @@ export class DataSourceBroker {
         legalDescription,
         plssId: feature.PLSSID,
         source: "BLM CadNSDI",
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: clock.now().toISOString(),
       };
     } catch (error: any) {
       throw new Error(`PLSS query failed: ${error.message}`);
@@ -2377,7 +2378,7 @@ export class DataSourceBroker {
         huc12,
         watershedName,
         source: "EPA WATERS / USGS NHD Plus",
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: clock.now().toISOString(),
       };
     } catch (error: any) {
       throw new Error(`Watershed query failed: ${error.message}`);
@@ -2411,7 +2412,7 @@ export class DataSourceBroker {
         county: attrs.COUNTY || null,
         state: attrs.STATE || null,
         source: "FEMA National Risk Index",
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: clock.now().toISOString(),
       };
     } catch (error: any) {
       throw new Error(`FEMA NRI query failed: ${error.message}`);
@@ -2440,7 +2441,7 @@ export class DataSourceBroker {
         tractNumber: attrs.tract_number ? String(attrs.tract_number) : null,
         calculatedAcres: attrs.calculated_acres ? parseFloat(attrs.calculated_acres) : null,
         source: "USDA FSA Common Land Units",
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: clock.now().toISOString(),
       };
     } catch (error: any) {
       throw new Error(`USDA CLU query failed: ${error.message}`);
@@ -2481,7 +2482,7 @@ export class DataSourceBroker {
       whpLabel: mapped.whpLabel,
       note: mapped.note,
       source: "USFS Wildfire Hazard Potential",
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: clock.now().toISOString(),
     };
   }
 
@@ -2544,7 +2545,7 @@ export class DataSourceBroker {
       ...availability,
       note: "Availability facts from FCC BDC filings for this census block; CostQuest Fabric location records are licensed and are never stored.",
       source: "FCC Broadband Data Collection",
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: clock.now().toISOString(),
     };
   }
 

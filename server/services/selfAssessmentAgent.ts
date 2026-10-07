@@ -39,11 +39,12 @@ const CHEAP_MODEL = MODELS.DEEPSEEK_CHAT;
 // System org ID used for platform-wide agent tasks that are not tied to a
 // specific customer organisation. org 1 is the founder / system org.
 import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
+import { clock } from "../utils/clock";
 
 const log = (msg: string, meta?: Record<string, unknown>) =>
   logger.info(JSON.stringify({
       level: "INFO",
-      timestamp: new Date().toISOString(),
+      timestamp: clock.now().toISOString(),
       source: "[self-assessment]",
       message: msg,
       ...meta,
@@ -52,7 +53,7 @@ const log = (msg: string, meta?: Record<string, unknown>) =>
 const logError = (msg: string, meta?: Record<string, unknown>) =>
   logger.error(JSON.stringify({
       level: "ERROR",
-      timestamp: new Date().toISOString(),
+      timestamp: clock.now().toISOString(),
       source: "[self-assessment]",
       message: msg,
       ...meta,
@@ -72,7 +73,7 @@ const logError = (msg: string, meta?: Record<string, unknown>) =>
 export async function analyzeToolFailures(): Promise<number> {
   log("analyzeToolFailures — starting");
 
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
 
   // 1. Recent AI messages containing failure phrases
   const failureMessages = await db
@@ -419,7 +420,7 @@ Return a JSON array only — no prose, no markdown fences.`;
   // Store results in paxCrossOrgLearnings, one row per opportunity.
   // The schema stores generalizable learnings; we map tech-watch items to the
   // closest semantic fit so they are discoverable alongside other learnings.
-  const dateString = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const dateString = clock.now().toISOString().slice(0, 10); // YYYY-MM-DD
 
   for (const opp of opportunities) {
     try {
@@ -472,7 +473,7 @@ export async function runSelfAssessment(): Promise<{
   ranAt: string;
   errors: string[];
 }> {
-  const ranAt = new Date().toISOString();
+  const ranAt = clock.now().toISOString();
   log("runSelfAssessment — starting weekly assessment");
 
   // Mark agent as running
@@ -485,13 +486,13 @@ export async function runSelfAssessment(): Promise<{
     if (existing) {
       await db
         .update(agentRuns)
-        .set({ status: "running", lastRunAt: new Date() })
+        .set({ status: "running", lastRunAt: clock.now() })
         .where(eq(agentRuns.agentName, "self_assessment_agent"));
     } else {
       await db.insert(agentRuns).values({
         agentName: "self_assessment_agent",
         status: "running",
-        lastRunAt: new Date(),
+        lastRunAt: clock.now(),
         processedCount: 0,
         errorCount: 0,
       });
@@ -542,7 +543,7 @@ export async function runSelfAssessment(): Promise<{
   }
 
   // Compute next run: next Sunday 3am
-  const nextRun = new Date();
+  const nextRun = clock.now();
   const daysUntilSunday = (7 - nextRun.getDay()) % 7 || 7;
   nextRun.setDate(nextRun.getDate() + daysUntilSunday);
   nextRun.setHours(3, 0, 0, 0);
@@ -553,7 +554,7 @@ export async function runSelfAssessment(): Promise<{
       .update(agentRuns)
       .set({
         status: errors.length > 0 ? "failed" : "completed",
-        lastRunAt: new Date(),
+        lastRunAt: clock.now(),
         nextRunAt: nextRun,
         processedCount: sql`${agentRuns.processedCount} + ${proposalsCreated + techOpportunitiesCount}`,
         errorCount: sql`${agentRuns.errorCount} + ${errors.length}`,

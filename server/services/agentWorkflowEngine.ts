@@ -20,6 +20,7 @@ import { companyAgentService } from "./companyAgents";
 import { agentCommsService } from "./agentComms";
 import { wsServer } from "../websocket";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Built-in Workflow Templates ─────────────────────────────────────────────
 
@@ -290,7 +291,7 @@ class WorkflowEngine {
 
     // Update workflow run count
     await db.update(agentWorkflows)
-      .set({ totalRuns: sql`${agentWorkflows.totalRuns} + 1`, updatedAt: new Date() })
+      .set({ totalRuns: sql`${agentWorkflows.totalRuns} + 1`, updatedAt: clock.now() })
       .where(eq(agentWorkflows.id, workflowId));
 
     // Execute asynchronously
@@ -331,7 +332,7 @@ class WorkflowEngine {
       // Record activity for the agent
       await companyAgentService.recordActivity(step.agentCodename).catch(() => {});
 
-      const startTime = Date.now();
+      const startTime = clock.nowMs();
       try {
         const result = await executeAction({
           agentCodename: step.agentCodename,
@@ -340,12 +341,12 @@ class WorkflowEngine {
           triggeredBy: `workflow:${workflow.name}`,
         });
 
-        const durationMs = Date.now() - startTime;
+        const durationMs = clock.nowMs() - startTime;
         stepOutputs[i] = result.metrics || { success: result.success, detail: result.detail };
 
         await this.updateRunStep(runId, i, "completed", stepOutputs[i], undefined, durationMs);
       } catch (err: any) {
-        const durationMs = Date.now() - startTime;
+        const durationMs = clock.nowMs() - startTime;
         const errorMsg = err.message || "Unknown error";
 
         if (step.failureStrategy === "abort") {
@@ -362,7 +363,7 @@ class WorkflowEngine {
               triggeredBy: `workflow:${workflow.name}:retry`,
             });
             stepOutputs[i] = retryResult.metrics || {};
-            await this.updateRunStep(runId, i, "completed", stepOutputs[i], undefined, Date.now() - startTime);
+            await this.updateRunStep(runId, i, "completed", stepOutputs[i], undefined, clock.nowMs() - startTime);
           } catch {
             await this.updateRunStep(runId, i, "failed", undefined, errorMsg, durationMs);
           }
@@ -426,8 +427,8 @@ class WorkflowEngine {
         output,
         error,
         durationMs,
-        ...(status === "running" ? { startedAt: new Date().toISOString() } : {}),
-        ...(status !== "running" && status !== "pending" ? { completedAt: new Date().toISOString() } : {}),
+        ...(status === "running" ? { startedAt: clock.now().toISOString() } : {}),
+        ...(status !== "running" && status !== "pending" ? { completedAt: clock.now().toISOString() } : {}),
       };
     }
 
@@ -446,12 +447,12 @@ class WorkflowEngine {
     });
     if (!run) return;
 
-    const durationMs = Date.now() - new Date(run.startedAt).getTime();
+    const durationMs = clock.nowMs() - new Date(run.startedAt).getTime();
 
     await db.update(agentWorkflowRuns)
       .set({
         status,
-        completedAt: new Date(),
+        completedAt: clock.now(),
         durationMs,
       })
       .where(eq(agentWorkflowRuns.id, runId));

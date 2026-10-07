@@ -20,6 +20,7 @@ import { isAuthenticated, requireFounder } from "./auth";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 export function registerPaxQualityRoutes(app: Express): void {
   app.get(
@@ -100,7 +101,7 @@ export function registerPaxQualityRoutes(app: Express): void {
 
         return res.json({
           windowDays: 30,
-          generatedAt: new Date().toISOString(),
+          generatedAt: clock.now().toISOString(),
           csat: {
             ratedMessages: totalRated,
             thumbsUp: Number(r.thumbs_up),

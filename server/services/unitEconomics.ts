@@ -74,6 +74,7 @@ import {
 } from "@shared/billing/tier-pricing";
 import { logger } from "../utils/logger";
 import { storage } from "../storage";
+import { clock } from "../utils/clock";
 
 const DEFAULT_WINDOW_DAYS = 30;
 
@@ -300,7 +301,7 @@ export async function computeUnitEconomicsForOrg(
     throw new Error(`Organization ${orgId} not found`);
   }
 
-  const since = new Date(Date.now() - windowDays * 86_400_000);
+  const since = new Date(clock.nowMs() - windowDays * 86_400_000);
 
   // Tier 2B — all variable costs from the ONE money spine (financial_ledger).
   const costs = await ledgerCostsFor(orgId, since);
@@ -328,7 +329,7 @@ export async function computeUnitEconomicsForOrg(
   const profitMarginUsd = round6(mrrUsd - totalCogsUsd);
   const profitMarginPct = mrrUsd > 0 ? Math.round((profitMarginUsd / mrrUsd) * 10000) / 100 : 0;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = clock.now().toISOString().slice(0, 10);
   const prev = await previousDaySnapshot(orgId, today);
   const consecutiveUnprofitableDays = unprofitableStreak(profitMarginUsd, prev, today);
 
@@ -375,7 +376,7 @@ export async function computeUnitEconomicsForOrg(
  * within the same UTC day overwrite in place.
  */
 export async function persistSnapshot(result: UnitEconomicsResult): Promise<void> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = clock.now().toISOString().slice(0, 10);
   const insert: InsertCustomerUnitEconomics = {
     organizationId: result.organizationId,
     computedDate: today,
@@ -405,7 +406,7 @@ export async function persistSnapshot(result: UnitEconomicsResult): Promise<void
     .onConflictDoUpdate({
       target: [customerUnitEconomics.organizationId, customerUnitEconomics.computedDate],
       set: {
-        computedAt: new Date(),
+        computedAt: clock.now(),
         windowDays: insert.windowDays,
         mrrUsd: insert.mrrUsd,
         aiCostUsd: insert.aiCostUsd,
@@ -648,7 +649,7 @@ export async function readUnitEconomicsRollup(): Promise<UnitEconomicsApiRespons
   ).length;
 
   // 90-day trend — sum across orgs per computed_date.
-  const ninetyDaysAgo = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
+  const ninetyDaysAgo = new Date(clock.nowMs() - 90 * 86_400_000).toISOString().slice(0, 10);
   const trendRows = await db.execute(sql`
     SELECT
       computed_date AS date,

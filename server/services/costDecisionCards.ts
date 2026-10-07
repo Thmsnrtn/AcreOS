@@ -19,6 +19,7 @@ import { db } from "../db";
 import { platformSettings } from "@shared/schema";
 import { decisionsInboxService } from "./decisionsInbox";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const MARKER_KEY = "cost_audit_2026_07.decision_cards_seeded";
 
@@ -87,14 +88,14 @@ export async function seedCostDecisionCards(): Promise<"seeded" | "already_seede
       key: MARKER_KEY,
       scope: "global",
       scopeRef: null,
-      value: { seededAt: new Date().toISOString(), cards: CARDS.length },
+      value: { seededAt: clock.now().toISOString(), cards: CARDS.length },
       // jsonb NOT NULL; a one-shot marker has no meaningful default.
       defaultValue: {},
       category: "cost",
       description:
         "One-shot marker: 2026-07 cost-audit founder decision cards seeded (Scale default model; DeepSeek governance).",
       lastChangedBy: "cost-audit-seed",
-      lastChangedAt: new Date(),
+      lastChangedAt: clock.now(),
     });
     logger.info("[costDecisionCards] seeded 2 founder decision cards (2026-07 cost audit)");
     return "seeded";

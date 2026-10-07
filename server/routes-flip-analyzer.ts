@@ -75,6 +75,7 @@ import {
   PLATFORM_FLIP_DEFAULTS,
   type FlipDefaults,
 } from "./services/flipUnderwriting";
+import { clock } from "./utils/clock";
 
 // ── money boundary ─────────────────────────────────────────────────────────
 
@@ -146,7 +147,7 @@ const offerSchema = maoSchema.extend({
     .date()
     .nullable()
     .optional()
-    .refine((d) => d == null || d.getTime() > Date.now(), {
+    .refine((d) => d == null || d.getTime() > clock.nowMs(), {
       message: "A review date must be in the future.",
     }),
 });
@@ -242,7 +243,7 @@ export function registerFlipAnalyzerRoutes(app: Express): void {
 
         await db
           .update(organizations)
-          .set({ underwritingDefaults: next, updatedAt: new Date() })
+          .set({ underwritingDefaults: next, updatedAt: clock.now() })
           .where(eq(organizations.id, orgId));
 
         logger.info("[flip-analyzer] org flip rules saved", {
@@ -628,7 +629,7 @@ export function registerFlipAnalyzerRoutes(app: Express): void {
               // knows how long a seller takes.
               reviewDueAt: parsed.data.reviewDueAt ?? null,
             },
-            new Date(),
+            clock.now(),
             [scenario.id],
           );
           decisionSnapshotId = decision.id;

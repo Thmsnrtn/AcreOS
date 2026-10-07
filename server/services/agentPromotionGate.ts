@@ -20,6 +20,7 @@ import { and, eq, gte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
 import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
+import { clock } from "../utils/clock";
 const SIMULATION_RULE_TYPE = "simulation_required";
 const MIN_SIMULATION_DAYS = 14;
 const MIN_SIMULATED_DECISIONS = 20;
@@ -129,9 +130,9 @@ export async function canPromoteToLive(
     return { ok: true, reason: "no simulation gate active" };
   }
 
-  const ruleCreatedAt = rule.createdAt ?? new Date();
+  const ruleCreatedAt = rule.createdAt ?? clock.now();
   const daysInSim = Math.floor(
-    (Date.now() - ruleCreatedAt.getTime()) / (24 * 60 * 60 * 1000),
+    (clock.nowMs() - ruleCreatedAt.getTime()) / (24 * 60 * 60 * 1000),
   );
 
   // Count simulated decisions — agent_tasks rows for this codename whose
@@ -257,7 +258,7 @@ export async function listGateStatus(): Promise<
       daysInSim: eligibility.daysInSim ?? 0,
       simulatedDecisions: eligibility.simulatedDecisions ?? 0,
       eligibleForPromotion: rule.isActive && eligibility.ok,
-      createdAt: (rule.createdAt ?? new Date()).toISOString(),
+      createdAt: (rule.createdAt ?? clock.now()).toISOString(),
     });
   }
   return out;

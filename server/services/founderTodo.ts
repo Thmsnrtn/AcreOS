@@ -36,6 +36,7 @@ import { and, desc, eq, isNotNull, or, sql } from "drizzle-orm";
 import { feedbackLoopService } from "./feedbackLoopV14";
 import { confidenceCascadeService } from "./confidenceCascadeV14";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type TodoType =
   | "decision"                 // operational decision awaiting approval
@@ -151,7 +152,7 @@ export async function getFounderTodos(
   const autoResolveCandidates = annotated.filter((it) => it.autoResolveCandidate).length;
 
   return {
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
     total: annotated.length,
     byType,
     autoResolveCandidates,
@@ -260,7 +261,7 @@ async function fetchDecisions(): Promise<TodoItem[]> {
     urgency: r.urgencyScore,
     estimatedImpactCents: r.estimatedImpactCents,
     actionUrl: `/founder/decisions?id=${r.id}`,
-    createdAt: (r.createdAt ?? new Date()).toISOString(),
+    createdAt: (r.createdAt ?? clock.now()).toISOString(),
     badge: r.ownerAgentCodename ?? undefined,
   }));
 }
@@ -280,7 +281,7 @@ async function fetchPromptEvolutions(): Promise<TodoItem[]> {
     urgency: 45, // medium — review benefits compound but nothing is on fire
     estimatedImpactCents: null,
     actionUrl: `/founder/prompt-evolutions`,
-    createdAt: (r.createdAt ?? new Date()).toISOString(),
+    createdAt: (r.createdAt ?? clock.now()).toISOString(),
     badge: r.agentCodename,
   }));
 }
@@ -302,7 +303,7 @@ async function fetchStrategicProposals(): Promise<TodoItem[]> {
     urgency: r.status === "synthesized" ? 55 : 35,
     estimatedImpactCents: r.estimatedImpactCents,
     actionUrl: `/founder/strategy`,
-    createdAt: (r.createdAt ?? new Date()).toISOString(),
+    createdAt: (r.createdAt ?? clock.now()).toISOString(),
     badge: r.category,
   }));
 }
@@ -322,7 +323,7 @@ async function fetchToolProposals(): Promise<TodoItem[]> {
     urgency: 30,
     estimatedImpactCents: r.estimatedImpactCents,
     actionUrl: `/founder/tools`,
-    createdAt: (r.createdAt ?? new Date()).toISOString(),
+    createdAt: (r.createdAt ?? clock.now()).toISOString(),
     badge: r.proposedBy,
   }));
 }
@@ -352,7 +353,7 @@ async function fetchExpansionCandidates(): Promise<TodoItem[]> {
     urgency: 40 + Math.round((r.score / 100) * 20), // 40-60
     estimatedImpactCents: r.estimatedMrrLiftCents,
     actionUrl: `/founder/expansion`,
-    createdAt: (r.createdAt ?? new Date()).toISOString(),
+    createdAt: (r.createdAt ?? clock.now()).toISOString(),
     badge: "forge_revenue",
   }));
 }
@@ -380,7 +381,7 @@ async function fetchOnboardingFlagged(): Promise<TodoItem[]> {
     urgency: 75, // high — customer is actively at risk
     estimatedImpactCents: -100000, // ~$1k LTV risk per churn
     actionUrl: `/founder/onboarding`,
-    createdAt: (r.createdAt ?? new Date()).toISOString(),
+    createdAt: (r.createdAt ?? clock.now()).toISOString(),
     badge: "sophie_csm",
   }));
 }
@@ -405,7 +406,7 @@ async function fetchExperimentPromotions(): Promise<TodoItem[]> {
     urgency: 50, // medium — winner locked in but not urgent
     estimatedImpactCents: r.estimatedImpactCents,
     actionUrl: `/founder/experiments`,
-    createdAt: (r.createdAt ?? new Date()).toISOString(),
+    createdAt: (r.createdAt ?? clock.now()).toISOString(),
     badge: "oracle_analytics",
   }));
 }

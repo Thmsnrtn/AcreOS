@@ -142,6 +142,14 @@ export class Collector {
       const customerDomains = new Set((await this.q<any>("select lower(domain) d from verified_email_domains union select lower(split_part(from_email, '@', 2)) from email_sender_identities where from_email is not null").catch(() => [])).map((r) => r.d));
       const froms = new Set(providerCalls.filter((c) => c.rail === "ses" || c.rail === "sendgrid").map((c) => normEmail(String(c.from ?? ""))).filter(Boolean));
       platformSenders = [...froms].filter((f) => !customerDomains.has(f.split("@")[1] ?? ""));
+      // Anyone the platform sender mails who is not an AcreOS user is a counterparty
+      // (a lead the product knows, or an address a model typed in).
+      const users = new Set((await this.q<any>("select lower(email) e from users where email is not null")).map((r) => r.e));
+      const pset = new Set(platformSenders);
+      for (const c of providerCalls) {
+        if ((c.rail !== "ses" && c.rail !== "sendgrid") || !pset.has(normEmail(String(c.from ?? "")))) continue;
+        for (const t of c.to) { const a = normEmail(t); if (a && !users.has(a)) counterparties.emails.push(a); }
+      }
     } catch { unread.push("counterparties", "platformSenders"); }
 
     // sends to counterparties, with the product's own record and the twin's truth
@@ -149,7 +157,11 @@ export class Collector {
     const cpPhones = new Set(counterparties.phones), cpEmails = new Set(counterparties.emails);
     for (const c of providerCalls) {
       if (c.rail === "twilio" && /message/.test(String(c.path))) {
-        for (const to of c.to) if (cpPhones.has(normPhone(to))) sends.push(await this.sendEvent("sms", to, this.toVirtual(c.at), truth));
+        for (const to of c.to) {
+          if (cpPhones.has(normPhone(to))) sends.push(await this.sendEvent("sms", to, this.toVirtual(c.at), truth));
+          // A customer's number texting someone who is no lead at all: no consent can exist.
+          else if (c.from && normPhone(String(c.from)) !== normPhone(process.env.TWILIO_PHONE_NUMBER ?? "")) sends.push({ channel: "sms", at: this.toVirtual(c.at), to, orgId: null, leadDnc: false, leadConsent: false, revokedAt: null });
+        }
       } else if (c.rail === "ses" || c.rail === "sendgrid") {
         for (const to of c.to) if (cpEmails.has(normEmail(to))) sends.push(await this.sendEvent("email", to, this.toVirtual(c.at), truth));
       }
@@ -243,7 +255,7 @@ function earliest(a: string | null, b: string | null): string | null {
 export function moneyKindOf(path: string, body: string): ProviderCall["moneyKind"] {
   if (/\/v1\/refunds/.test(path)) return "refund";
   if (/\/v1\/(subscriptions|invoices|checkout|billing_portal|customers|prices|products|balance)/.test(path)) return /credit/.test(body) ? "credits" : "subscription";
-  if (/\/v1\/(transfers|payouts)/.test(path) || /application_fee|transfer_data|on_behalf_of/.test(body)) return "customer_money";
+  if (/\/v1\/(transfers|payouts|payment_links)/.test(path) || /application_fee|transfer_data|on_behalf_of/.test(body)) return "customer_money";
   if (/\/v1\/(payment_intents|charges|setup_intents)/.test(path)) return /note|borrower|rent|lease|escrow|distribution/i.test(body) ? "customer_money" : "unknown";
   return "unknown";
 }

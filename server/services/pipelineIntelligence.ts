@@ -7,6 +7,7 @@ import { db } from "../db";
 import { deals, leads, campaigns, properties } from "@shared/schema";
 import { eq, and, gte, desc, sql, count } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ── Throughput Analysis ─────────────────────────────────────────────
 
@@ -22,7 +23,7 @@ export interface ThroughputMetrics {
 }
 
 export async function analyzeThroughput(orgId: number, periodDays = 90): Promise<ThroughputMetrics> {
-  const since = new Date(Date.now() - periodDays * 86400000);
+  const since = new Date(clock.nowMs() - periodDays * 86400000);
 
   const [leadsResult] = await db.select({ cnt: count() }).from(leads)
     .where(and(eq(leads.organizationId, orgId), gte(leads.createdAt, since)));

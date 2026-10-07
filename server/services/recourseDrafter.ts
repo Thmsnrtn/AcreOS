@@ -40,6 +40,7 @@ import {
 import { users } from "@shared/models/auth";
 import { routeAITask, MODEL_MODERATE, TaskComplexity } from "./aiRouter";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // How far back the sweep looks for fresh negative signals. The detractor-alert
 // + cancellation flows already page the founder in real time; this is the
@@ -68,7 +69,7 @@ export interface RecourseSignal {
 export async function collectRecourseSignals(
   sinceDays: number = LOOKBACK_DAYS,
 ): Promise<RecourseSignal[]> {
-  const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - sinceDays * 24 * 60 * 60 * 1000);
   const signals: RecourseSignal[] = [];
 
   // --- Detractor NPS — system_alerts rows minted by notifyFounderOfDetractor.
@@ -439,7 +440,7 @@ export async function generateDraftReply(draftId: number): Promise<string | null
 
     await db
       .update(recourseDrafts)
-      .set({ draftBody: body, draftModel: resp.model, updatedAt: new Date() })
+      .set({ draftBody: body, draftModel: resp.model, updatedAt: clock.now() })
       .where(
         and(eq(recourseDrafts.id, draftId), eq(recourseDrafts.status, "draft")),
       );

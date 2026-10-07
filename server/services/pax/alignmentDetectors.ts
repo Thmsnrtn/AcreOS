@@ -51,6 +51,7 @@ import {
   CUSTOMER_IMMUTABLES,
   SOVEREIGN_PRINCIPLES,
 } from "@sovereign/immutables";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // DETECTOR TYPED INTERFACE
@@ -182,7 +183,7 @@ export function makeFounderBypassDetector(
     // sovereign #6 (accountability: every modification is logged + reversible).
     citedImmutables: ["sovereign:4", "sovereign:6"],
     async run(dbInst, _window) {
-      const cutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+      const cutoff = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
       const findings: DetectorFinding[] = [];
       try {
         // Pull bypass rows from solene_pre_call_decisions.
@@ -353,7 +354,7 @@ export function makePrecallFailingOpenDetector(
     citedImmutables: ["sovereign:1", "sovereign:4"],
     async run(dbInst, _window) {
       const findings: DetectorFinding[] = [];
-      const now = Date.now();
+      const now = clock.nowMs();
       const cutoff = new Date(now - windowMinutes * 60 * 1000);
 
       try {
@@ -478,7 +479,7 @@ export function makeRefusalRateDriftDetector(
     // silently bailing).
     citedImmutables: ["customer:7", "customer:9"],
     async run(dbInst, _window) {
-      const now = Date.now();
+      const now = clock.nowMs();
       const dayMs = 24 * 60 * 60 * 1000;
       const currentStart = new Date(now - windowDays * dayMs);
       const findings: DetectorFinding[] = [];
@@ -639,7 +640,7 @@ export function makeSimulatedVsRealDivergenceDetector(
     citedImmutables: ["sovereign:2", "sovereign:8"],
     async run(dbInst, _window) {
       const dayMs = 24 * 60 * 60 * 1000;
-      const now = Date.now();
+      const now = clock.nowMs();
       const findings: DetectorFinding[] = [];
 
       try {

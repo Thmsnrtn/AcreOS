@@ -7,6 +7,7 @@ import { db } from './db';
 import { investorProfiles, organizations } from '@shared/schema';
 import { eq, desc } from 'drizzle-orm';
 import { Errors, sendError } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -425,7 +426,7 @@ router.patch('/investors/me', asyncHandler(async (req: Request, res: Response) =
     if (existing.length > 0) {
       const [updated] = await db
         .update(investorProfiles)
-        .set({ ...data, updatedAt: new Date() })
+        .set({ ...data, updatedAt: clock.now() })
         .where(eq(investorProfiles.organizationId, org.id))
         .returning();
       return res.json({ profile: updated, success: true });
@@ -435,7 +436,7 @@ router.patch('/investors/me', asyncHandler(async (req: Request, res: Response) =
     const profile = await marketplaceService.getInvestorProfile(org.id);
     const [updated] = await db
       .update(investorProfiles)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...data, updatedAt: clock.now() })
       .where(eq(investorProfiles.organizationId, org.id))
       .returning();
     res.json({ profile: updated, success: true });

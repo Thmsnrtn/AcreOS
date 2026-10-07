@@ -17,6 +17,7 @@ import { eq, and, desc, gte, count, sql } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
 import { resolveAgentData } from "./agentDataResolvers";
+import { clock } from "../utils/clock";
 
 // ─── Initiative Generation Rules ─────────────────────────────────────────────
 // Each agent has domains where it can propose initiatives
@@ -50,7 +51,7 @@ class AgentInitiativeService {
     const liveData = await resolveAgentData(agentCodename).catch(() => ({}));
 
     // Check if this agent already has a recent unvoted proposal (don't spam)
-    const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const oneWeekAgo = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
     const recentProposal = await db.query.agentInitiatives.findFirst({
       where: and(
         eq(agentInitiatives.proposedBy, agentCodename),
@@ -154,8 +155,8 @@ If you don't see a clear opportunity worth proposing, respond: {"skip": true}`,
       .set({
         status: "approved",
         ceoNotes,
-        votedAt: new Date(),
-        updatedAt: new Date(),
+        votedAt: clock.now(),
+        updatedAt: clock.now(),
       })
       .where(eq(agentInitiatives.id, initiativeId));
   }
@@ -166,8 +167,8 @@ If you don't see a clear opportunity worth proposing, respond: {"skip": true}`,
       .set({
         status: "rejected",
         ceoNotes,
-        votedAt: new Date(),
-        updatedAt: new Date(),
+        votedAt: clock.now(),
+        updatedAt: clock.now(),
       })
       .where(eq(agentInitiatives.id, initiativeId));
   }
@@ -178,8 +179,8 @@ If you don't see a clear opportunity worth proposing, respond: {"skip": true}`,
       .set({
         status: "shelved",
         ceoNotes,
-        votedAt: new Date(),
-        updatedAt: new Date(),
+        votedAt: clock.now(),
+        updatedAt: clock.now(),
       })
       .where(eq(agentInitiatives.id, initiativeId));
   }

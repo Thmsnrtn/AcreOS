@@ -14,6 +14,7 @@
  *   ATTOM_API_KEY         — ATTOM fallback key
  */
 
+import { clock } from "../utils/clock";
 export interface LienRecord {
   type: "mortgage" | "tax_lien" | "mechanic_lien" | "judgment" | "hoa" | "other";
   amount: number;
@@ -88,7 +89,7 @@ async function getPropstreamToken(): Promise<string | null> {
   const password = process.env.PROPSTREAM_PASSWORD;
   if (!email || !password) return null;
 
-  if (propstreamToken && Date.now() < propstreamTokenExpiry) {
+  if (propstreamToken && clock.nowMs() < propstreamTokenExpiry) {
     return propstreamToken;
   }
 
@@ -102,7 +103,7 @@ async function getPropstreamToken(): Promise<string | null> {
     if (!res.ok) return null;
     const data = await res.json() as any;
     propstreamToken = data.access_token || data.token || null;
-    propstreamTokenExpiry = Date.now() + 55 * 60 * 1000; // 55 min
+    propstreamTokenExpiry = clock.nowMs() + 55 * 60 * 1000; // 55 min
     return propstreamToken;
   } catch {
     return null;
@@ -186,7 +187,7 @@ async function fetchFromPropstream(apn: string, state: string): Promise<TitleSea
       redFlags,
       source: "propstream",
       confidence: 0.9,
-      searchedAt: new Date().toISOString(),
+      searchedAt: clock.now().toISOString(),
     };
   } catch {
     return null;
@@ -258,7 +259,7 @@ async function fetchFromAttom(apn: string): Promise<TitleSearchResult | null> {
       redFlags: liens.length > 0 ? ["Open mortgage found — verify payoff amount"] : [],
       source: "attom",
       confidence: 0.65,
-      searchedAt: new Date().toISOString(),
+      searchedAt: clock.now().toISOString(),
     };
   } catch {
     return null;
@@ -298,7 +299,7 @@ export const titleSearchService = {
       redFlags: ["Title data unavailable — manual search required"],
       source: "mock",
       confidence: 0,
-      searchedAt: new Date().toISOString(),
+      searchedAt: clock.now().toISOString(),
     };
   },
 

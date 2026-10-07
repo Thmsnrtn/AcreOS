@@ -21,6 +21,7 @@ import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
 import { resolveAgentData } from "./agentDataResolvers";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Agent Perspectives by Scenario Type ─────────────────────────────────────
 
@@ -210,13 +211,13 @@ Synthesize into JSON:
           scenarios: parsed.scenarios,
           recommendation: parsed.recommendation,
           status: "completed",
-          completedAt: new Date(),
+          completedAt: clock.now(),
         })
         .where(eq(scenarioSimulations.id, simId));
 
     } catch {
       await db.update(scenarioSimulations)
-        .set({ agentAnalyses: analyses, status: "completed", completedAt: new Date() })
+        .set({ agentAnalyses: analyses, status: "completed", completedAt: clock.now() })
         .where(eq(scenarioSimulations.id, simId));
     }
   }

@@ -33,6 +33,7 @@ import { outreachAbTests, outreachAbOutcomes } from "@shared/schema";
 import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import { logger } from "../utils/logger";
 import crypto from "crypto";
+import { clock } from "../utils/clock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -393,7 +394,7 @@ export class AbTestEngine {
     }
     const fullTest: AbTest = {
       ...test,
-      startedAt: new Date(),
+      startedAt: clock.now(),
       status: "active",
     };
     const saved = await this.storage.upsertTest(fullTest);

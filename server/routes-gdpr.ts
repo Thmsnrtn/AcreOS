@@ -38,6 +38,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -56,7 +57,7 @@ async function enqueueDsar(
   const email = getRequesterEmail(req);
   if (!email) return null;
 
-  const slaDeadline = new Date(Date.now() + SLA_HOURS * 60 * 60 * 1000);
+  const slaDeadline = new Date(clock.nowMs() + SLA_HOURS * 60 * 60 * 1000);
   const [row] = await db
     .insert(dsarRequestsLifecycle)
     .values({
@@ -154,7 +155,7 @@ router.get("/status", isAuthenticated, async (req, res: Response) => {
       .orderBy(desc(dsarRequestsLifecycle.receivedAt))
       .limit(20);
 
-    const now = Date.now();
+    const now = clock.nowMs();
     const open = rows
       .filter((r) => !r.fulfilledAt)
       .map((r) => ({

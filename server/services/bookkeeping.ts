@@ -16,6 +16,7 @@ import { eq, and, gte, lte, sql, desc, sum, asc } from "drizzle-orm";
 import { format, startOfYear, endOfYear } from "date-fns";
 import { decryptValue } from "./configManager";
 import { centsFromDecimal, sumCents } from "@shared/finance/cents";
+import { clock } from "../utils/clock";
 
 // ============================================
 // DEAL P&L CALCULATION
@@ -275,7 +276,7 @@ export async function generateAnnualInterestReport(
     notesWith1099Required: notes_array.filter((n) => n.requires1099).length,
     requires1099Note: REQUIRES_1099_NOTE,
     notes: notes_array,
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
   };
 }
 
@@ -657,7 +658,7 @@ export async function syncPaymentsToQbo(
     }
   }
 
-  return { synced, errors, lastSyncAt: new Date().toISOString() };
+  return { synced, errors, lastSyncAt: clock.now().toISOString() };
 }
 
 // ============================================

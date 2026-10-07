@@ -23,6 +23,7 @@ import { leads } from "@shared/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { normalizeParcelRef, parcelKey } from "@shared/parcel/parcelRef";
 import { splitOwnerName } from "@shared/parcel/ownerName";
+import { clock } from "../utils/clock";
 
 // ─── Tax-delinquent payload convention ──────────────────────────────────────
 // The leads table has no apn/county/taxDelinquent/delinquentAmount/metadata/
@@ -378,10 +379,10 @@ export async function processTaxDelinquentImport(
         delinquentAmount: rec.delinquentAmount?.toString(),
         delinquentYears: rec.delinquentYears,
         acres: rec.acres,
-        importedAt: new Date().toISOString(),
+        importedAt: clock.now().toISOString(),
       }),
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      createdAt: clock.now(),
+      updatedAt: clock.now(),
     });
   }
 
@@ -651,7 +652,7 @@ async function addToOutreach(id: number, orgId: number): Promise<AddToOutreachRe
   // first cadence is the TCPA-safe default.
   await db
     .update(leads)
-    .set({ status: "contacted", updatedAt: new Date() })
+    .set({ status: "contacted", updatedAt: clock.now() })
     .where(eq(leads.id, id));
 
   return { success: true, leadId: id, status: "contacted", consentState };

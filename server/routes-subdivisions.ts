@@ -35,6 +35,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 // ----------------------------------------------------------------------------
 // Validation
@@ -232,7 +233,7 @@ export function registerSubdivisionRoutes(app: Express): void {
           ))
           .orderBy(asc(properties.childLotNumber), asc(properties.id));
 
-        const now = Date.now();
+        const now = clock.nowMs();
         const children: ChildSummary[] = childRows.map((c) => {
           const created = c.createdAt ? new Date(c.createdAt).getTime() : null;
           return {
@@ -365,7 +366,7 @@ export function registerSubdivisionRoutes(app: Express): void {
         const parsed = editLotSchema.safeParse(req.body);
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-        const updates: Record<string, unknown> = { updatedAt: new Date() };
+        const updates: Record<string, unknown> = { updatedAt: clock.now() };
         if (parsed.data.childLotNumber !== undefined) updates.childLotNumber = parsed.data.childLotNumber;
         if (parsed.data.sizeAcres !== undefined) updates.sizeAcres = String(parsed.data.sizeAcres);
         if (parsed.data.status !== undefined) updates.status = parsed.data.status;
@@ -390,7 +391,7 @@ export function registerSubdivisionRoutes(app: Express): void {
 
         // Default soldDate when status flips to "sold" without one supplied.
         if (parsed.data.status === "sold" && existing.status !== "sold" && !parsed.data.soldDate) {
-          updates.soldDate = new Date();
+          updates.soldDate = clock.now();
         }
 
         const [updated] = await db
@@ -598,7 +599,7 @@ export function registerSubdivisionRoutes(app: Express): void {
         }
 
         // Stalled permit gates count.
-        const today = new Date().toISOString().slice(0, 10);
+        const today = clock.now().toISOString().slice(0, 10);
         const stalledRows = await db.execute(sql`
           SELECT COUNT(*) AS c
           FROM permit_gates
@@ -640,7 +641,7 @@ export function registerSubdivisionRoutes(app: Express): void {
 
         const [updated] = await db
           .update(properties)
-          .set({ parentParcelId: null, childLotNumber: null, updatedAt: new Date() })
+          .set({ parentParcelId: null, childLotNumber: null, updatedAt: clock.now() })
           .where(and(
             eq(properties.id, childId),
             eq(properties.organizationId, orgId),

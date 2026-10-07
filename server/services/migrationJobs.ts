@@ -68,6 +68,7 @@ import {
 } from "./importExport";
 
 import { DATA_IMPORT_JOB_MAX_ROWS } from "@shared/product-limits";
+import { clock } from "../utils/clock";
 
 const deflateRaw = promisify(zlib.deflateRaw);
 
@@ -586,7 +587,7 @@ async function runImportJob(job: ImportJob): Promise<void> {
       .set({
         status: "failed",
         errorMessage: err instanceof Error ? err.message : String(err),
-        completedAt: new Date(),
+        completedAt: clock.now(),
         payloadBytes: null,
       })
       .where(and(eq(importJobs.id, job.id), eq(importJobs.status, "running")));
@@ -610,7 +611,7 @@ async function writeImportProgress(
 ): Promise<void> {
   const still = await db
     .update(importJobs)
-    .set({ ...patch, heartbeatAt: new Date() })
+    .set({ ...patch, heartbeatAt: clock.now() })
     .where(and(eq(importJobs.id, jobId), eq(importJobs.organizationId, organizationId), eq(importJobs.status, "running")))
     .returning({ id: importJobs.id });
   if (still.length === 0) throw new ImportNoLongerRunningError(`import job ${jobId} is no longer running`);
@@ -712,7 +713,7 @@ async function processCommunicationsImport(
           leadByEmail.set(email, leadId);
         }
 
-        const sentAt = sentAtRaw ? new Date(sentAtRaw) : new Date();
+        const sentAt = sentAtRaw ? new Date(sentAtRaw) : clock.now();
         if (isNaN(sentAt.getTime())) throw new Error("Invalid sentAt timestamp");
 
         // Find-or-create a conversation per lead+channel.
@@ -897,7 +898,7 @@ async function markImportComplete(
       duplicatesSkipped: result.duplicatesSkipped,
       errors: result.errors,
       result: result as any,
-      completedAt: new Date(),
+      completedAt: clock.now(),
       payloadBytes: null,
     })
     .where(and(eq(importJobs.id, job.id), eq(importJobs.status, "running")))
@@ -1074,7 +1075,7 @@ async function runExportJob(job: ExportJob): Promise<void> {
     const schemaJson = {
       schemaVersion: 1,
       organizationId: orgId,
-      generatedAt: new Date().toISOString(),
+      generatedAt: clock.now().toISOString(),
       counts,
       params,
     };
@@ -1085,7 +1086,7 @@ async function runExportJob(job: ExportJob): Promise<void> {
     archiveEntries.push({
       name: "README.md",
       data: Buffer.from(
-        README_TEMPLATE.replace("{timestamp}", new Date().toISOString()).replace(
+        README_TEMPLATE.replace("{timestamp}", clock.now().toISOString()).replace(
           "{orgId}",
           String(orgId)
         ),
@@ -1098,7 +1099,7 @@ async function runExportJob(job: ExportJob): Promise<void> {
     // served by whichever machine takes the request.
     const archivePath = "db:export_jobs.archive_bytes";
 
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(clock.nowMs() + 7 * 24 * 60 * 60 * 1000);
 
     await db
       .update(exportJobs)
@@ -1108,7 +1109,7 @@ async function runExportJob(job: ExportJob): Promise<void> {
         archiveBytes: zipBuf,
         archiveSizeBytes: zipBuf.length,
         entityCounts: counts,
-        completedAt: new Date(),
+        completedAt: clock.now(),
         expiresAt,
       })
       .where(and(eq(exportJobs.id, job.id), eq(exportJobs.status, "running")));
@@ -1119,7 +1120,7 @@ async function runExportJob(job: ExportJob): Promise<void> {
       .set({
         status: "failed",
         errorMessage: err instanceof Error ? err.message : String(err),
-        completedAt: new Date(),
+        completedAt: clock.now(),
       })
       .where(eq(exportJobs.id, job.id));
   }
@@ -1212,7 +1213,7 @@ export async function readExportArchive(jobId: number, orgId: number): Promise<B
     .where(and(eq(exportJobs.id, jobId), eq(exportJobs.organizationId, orgId)))
     .limit(1);
   if (!job) return null;
-  if (job.expiresAt && job.expiresAt.getTime() < Date.now()) return null;
+  if (job.expiresAt && job.expiresAt.getTime() < clock.nowMs()) return null;
   if (job.archiveBytes) return Buffer.from(job.archiveBytes);
   // Legacy rows built before migration 0253 name a local file.
   if (!job.archivePath || job.archivePath.startsWith("db:")) return null;

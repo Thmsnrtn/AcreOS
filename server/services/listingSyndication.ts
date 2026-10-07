@@ -13,6 +13,7 @@
 
 import logger from "../utils/logger";
 import type { BusinessType } from "./onboarding";
+import { clock } from "../utils/clock";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -162,7 +163,7 @@ export class ListingSyndicationService {
       title,
       body,
       category,
-      generatedAt: new Date().toISOString(),
+      generatedAt: clock.now().toISOString(),
     };
   }
 

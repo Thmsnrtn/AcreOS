@@ -12,6 +12,7 @@ import {
 import { assertNotUnderLegalHold, filterOutHeldIds } from "../services/legalHold";
 import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../storage";
 import { LIST_READ_CAP, capListRead } from "./listCap";
+import { clock } from "../utils/clock";
 
 /** Refused merge: the two leads are different parcels (DEFECT-0161). */
 class LeadsAreDistinctParcelsError extends Error {
@@ -330,7 +331,7 @@ export const leadRepo = {
     const conditions = [eq(leads.id, id)];
     if (organizationId) conditions.push(eq(leads.organizationId, organizationId));
     const [updated] = await db.update(leads)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -353,7 +354,7 @@ export const leadRepo = {
     // route's own delete keeps it, so a restore brings the lead back as it
     // was (audit of 9ed61f4).
     await db.update(leads)
-      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .set({ deletedAt: clock.now(), updatedAt: clock.now() })
       .where(and(...conditions));
   },
 
@@ -374,7 +375,7 @@ export const leadRepo = {
     const allowed = await filterOutHeldIds(orgId, "lead", ids);
     if (allowed.length === 0) return 0;
     await db.update(leads)
-      .set({ deletedAt: new Date(), deletedBy: _userId ?? null, updatedAt: new Date() })
+      .set({ deletedAt: clock.now(), deletedBy: _userId ?? null, updatedAt: clock.now() })
       .where(and(eq(leads.organizationId, orgId), inArray(leads.id, allowed)));
     return allowed.length;
   },
@@ -382,7 +383,7 @@ export const leadRepo = {
   async bulkUpdateLeads(this: DatabaseStorage, orgId: number, ids: number[], updates: Partial<InsertLead>): Promise<number> {
     if (ids.length === 0) return 0;
     await db.update(leads)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(
         eq(leads.organizationId, orgId),
         inArray(leads.id, ids),
@@ -412,7 +413,7 @@ export const leadRepo = {
         deletedAt: null,
         deletedBy: null,
         status: sql`case when ${leads.status} = 'deleted' then 'new' else ${leads.status} end`,
-        updatedAt: new Date()
+        updatedAt: clock.now()
       })
       .where(and(
         eq(leads.organizationId, orgId),
@@ -572,7 +573,7 @@ export const leadRepo = {
 
   // Lead Scoring & Nurturing
   async getLeadsNeedingScoring(this: DatabaseStorage, orgId: number, limit: number = 50): Promise<Lead[]> {
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const oneDayAgo = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
     return await db.select().from(leads)
       .where(and(
         eq(leads.organizationId, orgId),
@@ -588,7 +589,7 @@ export const leadRepo = {
   },
 
   async getLeadsDueForFollowUp(this: DatabaseStorage, orgId: number): Promise<Lead[]> {
-    const now = new Date();
+    const now = clock.now();
     return await db.select().from(leads)
       .where(and(
         eq(leads.organizationId, orgId),
@@ -631,8 +632,8 @@ export const leadRepo = {
       .set({
         score,
         scoreFactors,
-        lastScoreAt: new Date(),
-        updatedAt: new Date(),
+        lastScoreAt: clock.now(),
+        updatedAt: clock.now(),
       })
       .where(and(...conditions))
       .returning();

@@ -50,6 +50,7 @@
 
 import { emitWholesaleDealEvent } from "./workflow-engine";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /** The slice of a deals row this emitter needs. Real columns only. */
 export interface WholesaleDealEventRow {
@@ -123,7 +124,7 @@ const isoDayOf = (v: Date | string | null | undefined): string | null => {
   return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 };
 
-const isoDay = (): string => new Date().toISOString().slice(0, 10);
+const isoDay = (): string => clock.now().toISOString().slice(0, 10);
 
 /**
  * Emit deal.contract_signed ONLY on a genuine transition of a deal INTO

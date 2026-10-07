@@ -20,6 +20,7 @@
  */
 
 import type { Request, Response, NextFunction } from "express";
+import { clock } from "../utils/clock";
 
 const TTL_SECONDS =
   parseInt(process.env.IDEMPOTENCY_TTL_HOURS ?? "24", 10) * 3600;
@@ -42,7 +43,7 @@ const memStore = new Map<string, StoredResponse>();
 // Skipped entirely under NODE_ENV=test so unit tests don't open a DB pool
 // or leak timers when they import this module.
 function _runIdempotencyMemSweep(): number {
-  const now = Date.now();
+  const now = clock.nowMs();
   let removed = 0;
   for (const [key, value] of memStore.entries()) {
     if (now - value.timestamp > TTL_SECONDS * 1000) {
@@ -143,7 +144,7 @@ export function idempotencyMiddleware(
       const status = res.statusCode || 200;
       // Only cache success responses
       if (status < 400) {
-        setCached(scopedKey, { status, body, timestamp: Date.now() }).catch(
+        setCached(scopedKey, { status, body, timestamp: clock.nowMs() }).catch(
           () => {}
         );
       }

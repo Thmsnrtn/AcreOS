@@ -150,7 +150,10 @@ export const INVARIANTS: Invariant[] = [
           for (const n of numbersIn(t)) {
             if (n >= 1900 && n <= 2100 && Number.isInteger(n)) continue; // a year
             if (n === 0 || n === 1) continue; // "one", "none" — counting words, not claims
-            if (!sourced.has(Math.round(n * 100) / 100)) out.push(`${sc.surface}: "${t.slice(0, 120)}" shows ${n}, which no sourced field carries`);
+            if (!sourced.has(Math.round(n * 100) / 100)) {
+              const i = Math.max(0, t.search(new RegExp(`(?<![\\w.#\\-])\\$?${String(n).replace(".", "\\.")}`)));
+              out.push(`${sc.surface}: "…${t.slice(Math.max(0, i - 70), i + 50)}…" shows ${n}, which no sourced field carries`);
+            }
           }
         }
       }
@@ -230,8 +233,13 @@ export const INVARIANTS: Invariant[] = [
       const out: string[] = [];
       // detect:one-page-per-incident
       for (const p of o.pages ?? []) {
+        // A page is ABOUT an outage when its subject names the provider, or its
+        // body names the provider AND says it is down — a routine page during an
+        // outage that merely mentions "email" is not a second page for it.
+        const named = (t: string, x: { names: string[] }) => x.names.some((n) => t.toLowerCase().includes(n.toLowerCase()));
+        const downWords = /\b(down|outage|failing|failed|unreachable|not (?:answer|respond)\w*|no response|recovered)\b/i;
+        const w = (o.outages ?? []).find((x) => p.at >= x.from && (x.to == null || p.at <= x.to) && (named(p.subject, x) || (named(p.body, x) && downWords.test(p.body))));
         const text = `${p.subject}\n${p.body}`;
-        const w = (o.outages ?? []).find((x) => p.at >= x.from && (x.to == null || p.at <= x.to) && x.names.some((n) => text.toLowerCase().includes(n.toLowerCase())));
         const key = w ? `outage:${w.provider}:${w.from}` : /#(\d+)/.test(text) ? `ask:${/#(\d+)/.exec(text)![1]}` : null;
         if (!key) continue;
         const n = (st.pagesByIncident.get(key) ?? 0) + 1;

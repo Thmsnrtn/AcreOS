@@ -20,6 +20,7 @@ import {
   enableTaxEscrow,
 } from "./services/propertyTaxService";
 import { Errors } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -85,7 +86,7 @@ router.post("/escrow/:noteId/pay", async (req: Request, res: Response) => {
       noteId,
       taxYear,
       amountPaid: Number(amountCents) / 100,
-      paymentDate: new Date(),
+      paymentDate: clock.now(),
       notes,
     });
     res.json(result);

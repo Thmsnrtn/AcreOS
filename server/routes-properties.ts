@@ -23,6 +23,7 @@ import { compsGuard } from "./middleware/expensiveEndpointGuard";
 import { emitPropertyCreated, emitPropertyStatusChanged } from "./services/propertyEvents";
 import { readIntegrationCredentials } from "./services/integrationCredentials";
 import { CSV_IMPORT_MAX_ROWS_PER_FILE } from "@shared/product-limits";
+import { clock } from "./utils/clock";
 
 // Partial update schema for PUT endpoints.
 // insertPropertySchema already omits organizationId, so no further omit needed.
@@ -285,7 +286,7 @@ export function registerPropertyRoutes(app: Express): void {
   api.get("/api/properties/export", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
     const org = req.organization;
     const csv = await exportPropertiesToCSV(org.id);
-    const date = new Date().toISOString().split("T")[0];
+    const date = clock.now().toISOString().split("T")[0];
     res.setHeader("Content-Type", "text/csv");
     res.setHeader("Content-Disposition", `attachment; filename="properties-${date}.csv"`);
     res.send(csv);

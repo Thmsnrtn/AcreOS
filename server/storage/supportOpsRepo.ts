@@ -29,6 +29,7 @@ import {
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
 import { assertWritablePatch } from "../utils/patch";
+import { clock } from "../utils/clock";
 
 export const supportOpsRepo = {
   // Usage Records
@@ -108,7 +109,7 @@ export const supportOpsRepo = {
 
   async updateSupportCase(this: DatabaseStorage, organizationId: number, id: number, data: Partial<InsertSupportCase>) {
     const [updated] = await db.update(supportCases)
-      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: clock.now() })
       .where(and(eq(supportCases.id, id), eq(supportCases.organizationId, organizationId)))
       .returning();
     return updated;
@@ -186,7 +187,7 @@ export const supportOpsRepo = {
         .set({
           timesUsed: newUsage,
           successRate: newRate,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(supportPlaybooks.slug, slug));
     }
@@ -227,7 +228,7 @@ export const supportOpsRepo = {
 
   async updateDunningEvent(this: DatabaseStorage, organizationId: number, id: number, updates: Partial<InsertDunningEvent>) {
     const [updated] = await db.update(dunningEvents)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(eq(dunningEvents.id, id), eq(dunningEvents.organizationId, organizationId)))
       .returning();
     return updated;
@@ -237,9 +238,9 @@ export const supportOpsRepo = {
     await db.update(dunningEvents)
       .set({
         status: "resolved",
-        resolvedAt: new Date(),
+        resolvedAt: clock.now(),
         resolutionType,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(and(
         eq(dunningEvents.organizationId, orgId),
@@ -298,7 +299,7 @@ export const supportOpsRepo = {
     const [updated] = await unscopedForPlatformOps(
       "founder alert console: resolve a system alert of any organization by id",
     ).update(systemAlerts)
-      .set({ status: "resolved", resolvedAt: new Date() })
+      .set({ status: "resolved", resolvedAt: clock.now() })
       .where(eq(systemAlerts.id, id))
       .returning();
     return updated;
@@ -306,7 +307,7 @@ export const supportOpsRepo = {
 
   async acknowledgeAllAlerts(this: DatabaseStorage) {
     const result = await db.update(systemAlerts)
-      .set({ status: "acknowledged", acknowledgedAt: new Date() })
+      .set({ status: "acknowledged", acknowledgedAt: clock.now() })
       // Only a NEW alert is acknowledged (DEFECT-0135): "not resolved and
       // not acknowledged" also matched dismissed alerts and reopened them.
       .where(eq(systemAlerts.status, "new"))
@@ -316,7 +317,7 @@ export const supportOpsRepo = {
 
   async resolveAllAlerts(this: DatabaseStorage) {
     const result = await db.update(systemAlerts)
-      .set({ status: "resolved", resolvedAt: new Date() })
+      .set({ status: "resolved", resolvedAt: clock.now() })
       .where(ne(systemAlerts.status, "resolved"))
       .returning();
     return result.length;
@@ -329,7 +330,7 @@ export const supportOpsRepo = {
   },
 
   async getAdminDashboardData(this: DatabaseStorage) {
-    const now = new Date();
+    const now = clock.now();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 

@@ -23,6 +23,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { systemApiKeys } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export function hashApiKey(plaintext: string): string {
   return createHash("sha256").update(plaintext, "utf8").digest("hex");
@@ -71,7 +72,7 @@ export async function verifyApiKey(presented: string): Promise<VerifiedApiKey | 
       try {
         await db
           .update(systemApiKeys)
-          .set({ keyHash: hash, keyLast4: presented.slice(-4), apiKey: null, updatedAt: new Date() })
+          .set({ keyHash: hash, keyLast4: presented.slice(-4), apiKey: null, updatedAt: clock.now() })
           .where(eq(systemApiKeys.id, legacy.id));
         logger.warn(`[dataApiKeys] legacy plaintext key #${legacy.id} upgraded to hash-at-rest on use`);
       } catch (err) {

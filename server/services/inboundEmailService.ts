@@ -5,6 +5,7 @@ import { eq, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { activityLogger } from "./activityLogger";
 import { wsServer } from "../websocket";
+import { clock } from "../utils/clock";
 
 const HMAC_SECRET = process.env.INBOUND_EMAIL_HMAC_SECRET
   || process.env.SESSION_SECRET
@@ -139,7 +140,7 @@ export async function processInboundEmail(payload: InboundEmailPayload): Promise
     // Mark lead as responded
     await db.update(leads).set({
       status: "responded",
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     }).where(
       and(eq(leads.id, leadId), eq(leads.organizationId, lead.organizationId))
     );
@@ -218,7 +219,7 @@ export async function getLeadEmailThread(leadId: number, organizationId: number)
  */
 export async function markEmailsRead(emailIds: number[], organizationId: number): Promise<void> {
   for (const id of emailIds) {
-    await db.update(leadEmails).set({ readAt: new Date() }).where(
+    await db.update(leadEmails).set({ readAt: clock.now() }).where(
       and(eq(leadEmails.id, id), eq(leadEmails.organizationId, organizationId))
     );
   }

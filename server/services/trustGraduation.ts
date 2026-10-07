@@ -29,6 +29,7 @@ import { db } from "../db";
 import { agentActionGraduations, type AgentActionGraduation } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type GraduationTier = "manual" | "notify_only" | "silent" | "suspended";
 
@@ -118,7 +119,7 @@ export async function recordAcceptance(
         consecutiveAccepted: grad.consecutiveAccepted + 1,
         consecutiveRetracted: 0,
         totalAccepted: grad.totalAccepted + 1,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(agentActionGraduations.id, grad.id));
     return { tierChanged: false, newTier: grad.graduationTier as GraduationTier };
@@ -149,8 +150,8 @@ export async function recordAcceptance(
       consecutiveRetracted: 0,
       totalAccepted: grad.totalAccepted + 1,
       graduationTier: newTier,
-      tierChangedAt: tierChanged ? new Date() : grad.tierChangedAt,
-      updatedAt: new Date(),
+      tierChangedAt: tierChanged ? clock.now() : grad.tierChangedAt,
+      updatedAt: clock.now(),
     })
     .where(eq(agentActionGraduations.id, grad.id));
 
@@ -191,8 +192,8 @@ export async function recordRetract(
       consecutiveRetracted: grad.consecutiveRetracted + 1,
       totalRetracted: grad.totalRetracted + 1,
       graduationTier: newTier,
-      tierChangedAt: tierChanged ? new Date() : grad.tierChangedAt,
-      updatedAt: new Date(),
+      tierChangedAt: tierChanged ? clock.now() : grad.tierChangedAt,
+      updatedAt: clock.now(),
     })
     .where(eq(agentActionGraduations.id, grad.id));
 
@@ -216,8 +217,8 @@ export async function overrideTier(
     .set({
       graduationTier: tier,
       founderOverride: override,
-      tierChangedAt: new Date(),
-      updatedAt: new Date(),
+      tierChangedAt: clock.now(),
+      updatedAt: clock.now(),
     })
     .where(eq(agentActionGraduations.id, grad.id));
   logger.info(`[trust-graduation] founder set ${agentCodename}:${actionCategory} to ${tier}${override ? ` (override=${override})` : ""}`);
@@ -244,8 +245,8 @@ export async function reconcileSilentTiers(): Promise<{ demoted: number }> {
       .update(agentActionGraduations)
       .set({
         graduationTier: "notify_only",
-        tierChangedAt: new Date(),
-        updatedAt: new Date(),
+        tierChangedAt: clock.now(),
+        updatedAt: clock.now(),
       })
       .where(eq(agentActionGraduations.id, row.id));
     logger.info(`[trust-graduation] re-collar: ${row.agentCodename}:${row.actionCategory} demoted silent → notify_only (auto-graduated without founder force_silent; silent now requires explicit founder override)`);

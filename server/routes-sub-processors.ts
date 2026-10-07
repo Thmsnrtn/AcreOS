@@ -23,6 +23,7 @@ import { isFounderIdentity } from "./services/founder";
 import { Errors } from "./utils/errors";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { getClerkAuth, type AuthenticatedRequest } from "./types/request";
+import { clock } from "./utils/clock";
 
 function requireFounder(req: AuthenticatedRequest, res: Response): boolean {
   const user = req.user;
@@ -111,7 +112,7 @@ export function registerSubProcessorRoutes(app: Express): void {
         .limit(1);
       if (!existing) return Errors.notFound(res, "Sub-processor");
 
-      const patch: Record<string, unknown> = { updatedAt: new Date() };
+      const patch: Record<string, unknown> = { updatedAt: clock.now() };
       if (parsed.data.status !== undefined) patch.status = parsed.data.status;
       if (parsed.data.signedDate !== undefined) patch.signedDate = parsed.data.signedDate;
       if (parsed.data.expiresAt !== undefined) patch.expiresAt = parsed.data.expiresAt;

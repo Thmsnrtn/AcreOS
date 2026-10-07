@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { storage } from '../storage';
 import { logger } from "../utils/logger";
 import { BoundedMap } from "../utils/boundedMap";
+import { clock } from "../utils/clock";
 
 async function logRegridApiUsage(
   orgId: number | undefined,
@@ -402,7 +403,7 @@ export async function getComparableProperties(
       : null;
   const cacheKey = `${cacheScope ?? "uncached"}:${source}:${getCacheKey(lat, lng, radiusMiles, filters)}`;
   const cached = cacheScope ? compsCache.get(cacheKey) : undefined;
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+  if (cached && clock.nowMs() - cached.timestamp < CACHE_TTL) {
     return { ...cached.data, credentialSource: source };
   }
 
@@ -527,7 +528,7 @@ export async function getComparableProperties(
       if (c.salePrice < NOMINAL_SALE_FLOOR_DOLLARS) return false; // non-market transfer
       if (!filters.minSaleDate) {
         if (!c.saleDate) return false; // priced but undatable — unverifiable recency
-        const floor = new Date();
+        const floor = clock.now();
         floor.setMonth(floor.getMonth() - RECENCY_FLOOR_MONTHS);
         if (new Date(c.saleDate) < floor) return false; // stale sale
       }
@@ -550,7 +551,7 @@ export async function getComparableProperties(
         : "Limited sales data available. Market analysis may be less accurate.";
     }
 
-    if (cacheScope) compsCache.set(cacheKey, { data: result, timestamp: Date.now() });
+    if (cacheScope) compsCache.set(cacheKey, { data: result, timestamp: clock.nowMs() });
 
     return result;
   } catch (error) {

@@ -37,6 +37,7 @@ import {
   type InsertBeatriceRegEvent,
 } from "@shared/schema/beatrice-regwatch";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // fetchRegSources — cron entrypoint
@@ -82,7 +83,7 @@ export async function fetchRegSources(
           sourceUrl: item.link,
           title: item.title,
           summary: item.summary,
-          publishedAt: item.publishedAt ?? new Date(),
+          publishedAt: item.publishedAt ?? clock.now(),
           severityKeywordMatch: matches,
         };
         try {
@@ -292,7 +293,7 @@ export async function getRecentRegEvents(days: number = 30): Promise<{
   bySource: Record<string, number>;
   unreviewedCount: number;
 }> {
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000);
   const { gte, desc } = await import("drizzle-orm");
   const rows = await db
     .select()

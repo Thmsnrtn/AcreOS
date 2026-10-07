@@ -57,6 +57,7 @@ import type { DecisionCardOption } from "./services/decisionsInbox";
 import { generateBriefingUpdates, generateHeadlineInsight } from "./services/aiBriefingWriter";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -80,7 +81,7 @@ function requireFounder(req: any, res: any, next: any) {
 
 router.get("/morning-briefing", requireFounder, async (req: Request, res: Response) => {
   try {
-    const now = new Date();
+    const now = clock.now();
     const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const hour = now.getHours();
 
@@ -292,7 +293,7 @@ router.get("/morning-briefing", requireFounder, async (req: Request, res: Respon
 
 router.get("/pulse", requireFounder, async (req: Request, res: Response) => {
   try {
-    const now = new Date();
+    const now = clock.now();
     const yesterday = new Date(now.getTime() - 86400000);
     const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
@@ -530,7 +531,7 @@ router.get("/pulse", requireFounder, async (req: Request, res: Response) => {
     };
 
     res.json({
-      generatedAt: new Date().toISOString(),
+      generatedAt: clock.now().toISOString(),
       pulseStatus,
       platformHealth: {
         score: healthScore,
@@ -593,7 +594,7 @@ router.get("/mrr", requireFounder, async (req: Request, res: Response) => {
     const reader = await dbForReads("founder.intelligence.mrr");
 
     for (let i = months - 1; i >= 0; i--) {
-      const start = addMonths(new Date(), -i);
+      const start = addMonths(clock.now(), -i);
       start.setDate(1);
       start.setHours(0, 0, 0, 0);
 
@@ -664,8 +665,8 @@ router.get("/mrr", requireFounder, async (req: Request, res: Response) => {
 
 router.get("/automation", requireFounder, async (req: Request, res: Response) => {
   try {
-    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
-    const oneDayAgo = new Date(Date.now() - 86400000);
+    const sevenDaysAgo = new Date(clock.nowMs() - 7 * 86400000);
+    const oneDayAgo = new Date(clock.nowMs() - 86400000);
 
     // Pillar 8.6 — automation roll-up is pure analytics, route to replica.
     const reader = await dbForReads("founder.intelligence.automation");
@@ -911,8 +912,8 @@ router.get("/automation", requireFounder, async (req: Request, res: Response) =>
 
 router.get("/churn", requireFounder, async (req: Request, res: Response) => {
   try {
-    const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000);
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+    const fourteenDaysAgo = new Date(clock.nowMs() - 14 * 86400000);
+    const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 86400000);
 
     // Pillar 8.6 — churn analytics is pure-read, route to replica.
     const reader = await dbForReads("founder.intelligence.churn");
@@ -997,7 +998,7 @@ router.get("/churn", requireFounder, async (req: Request, res: Response) => {
       atRiskOrgs: atRiskOrgs.map(org => ({
         ...org,
         daysSinceLastActive: org.lastActiveAt
-          ? Math.round((Date.now() - new Date(org.lastActiveAt).getTime()) / 86400000)
+          ? Math.round((clock.nowMs() - new Date(org.lastActiveAt).getTime()) / 86400000)
           : null,
         churnSignal: getRiskLevel(org.lastActiveAt),
       })),
@@ -1016,7 +1017,7 @@ router.get("/churn", requireFounder, async (req: Request, res: Response) => {
 
 router.get("/growth", requireFounder, async (req: Request, res: Response) => {
   try {
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+    const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 86400000);
 
     // Pillar 8.6 — growth roll-up is pure analytics, route to replica.
     const reader = await dbForReads("founder.intelligence.growth");
@@ -1118,13 +1119,13 @@ function forecastLinear(values: number[], periods: number): number[] {
 }
 
 function getFutureMonth(offset: number): string {
-  const d = addMonths(new Date(), offset);
+  const d = addMonths(clock.now(), offset);
   return d.toISOString().slice(0, 7);
 }
 
 function getRiskLevel(lastActiveAt: Date | string | null): "high" | "medium" | "low" {
   if (!lastActiveAt) return "high";
-  const days = (Date.now() - new Date(lastActiveAt).getTime()) / 86400000;
+  const days = (clock.nowMs() - new Date(lastActiveAt).getTime()) / 86400000;
   if (days > 60) return "high";
   if (days > 30) return "medium";
   return "low";
@@ -1507,7 +1508,7 @@ router.post("/decisions-inbox/purge", requireFounder, async (req: Request, res: 
       ? req.body.itemTypes
       : null;
     const hardDelete = Boolean(req.body?.hardDelete);
-    const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
+    const cutoff = new Date(clock.nowMs() - olderThanDays * 24 * 60 * 60 * 1000);
 
     const { inArray, lte, and } = await import("drizzle-orm");
     const whereClauses = [
@@ -1531,10 +1532,10 @@ router.post("/decisions-inbox/purge", requireFounder, async (req: Request, res: 
       .update(decisionsInboxItems)
       .set({
         status: "rejected",
-        resolvedAt: new Date(),
+        resolvedAt: clock.now(),
         resolvedBy: "founder:purge",
         founderModification: `Purged: stale ${statuses.join("/")} item ≥${olderThanDays}d old`,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(and(...whereClauses))
       .returning({ id: decisionsInboxItems.id });
@@ -1572,7 +1573,7 @@ router.get("/decision-log", requireFounder, async (req: Request, res: Response) 
   try {
     const days = Math.min(Math.max(parseInt(String(req.query.days ?? "30"), 10) || 30, 1), 90);
     const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? "200"), 10) || 200, 10), 500);
-    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const since = new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000);
     // "Needs you" is EVERY pending decision, whatever its age (DEFECT-0167).
     // It was the pending rows among the newest `limit` rows of the window,
     // so a decision older than 30 days — or pushed out by 300 resolved ones
@@ -1634,7 +1635,7 @@ router.get("/decision-log", requireFounder, async (req: Request, res: Response) 
 
     res.json({
       windowDays: days,
-      generatedAt: new Date().toISOString(),
+      generatedAt: clock.now().toISOString(),
       // The windowed history hit its row limit: bucket counts below are of
       // the newest `limit` rows, not the whole window.
       truncated: rows.length >= limit,
@@ -1717,7 +1718,7 @@ router.post("/scenario/run", requireFounder, async (req: Request, res: Response)
 router.get("/agent-activity", requireFounder, async (req: Request, res: Response) => {
   try {
     const hours = Math.min(Math.max(parseInt((req.query.hours as string) ?? "24", 10), 1), 24 * 30);
-    const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+    const since = new Date(clock.nowMs() - hours * 60 * 60 * 1000);
 
     const agents = await companyAgentService.getAllIncludingPaused();
     const recent = await db
@@ -1767,7 +1768,7 @@ router.get("/agent-activity", requireFounder, async (req: Request, res: Response
 
     res.json({
       windowHours: hours,
-      generatedAt: new Date().toISOString(),
+      generatedAt: clock.now().toISOString(),
       totalAgents: perAgent.length,
       agentsWithActivity: perAgent.filter((a) => a.hasActivity).length,
       silentAgents: perAgent.filter((a) => !a.hasActivity).map((a) => a.codename),
@@ -2708,9 +2709,9 @@ router.post("/decision-log/:id/reverse", requireFounder, async (req: Request, re
         status: "rejected",
         founderOverrideAction: "reverse",
         founderModification: reason?.slice(0, 1000) || "founder reversed an auto-handled decision",
-        resolvedAt: new Date(),
+        resolvedAt: clock.now(),
         resolvedBy: "founder",
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(decisionsInboxItems.id, id));
     // Feed the reversal back into the learning loop.
@@ -2740,7 +2741,7 @@ router.post("/decision-log/:id/reverse", requireFounder, async (req: Request, re
 router.get("/sophie-activity", requireFounder, async (req: Request, res: Response) => {
   try {
     const hours = parseInt((req.query.hours as string) ?? "24");
-    const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+    const since = new Date(clock.nowMs() - hours * 60 * 60 * 1000);
 
     const autoResolved = await db.query.supportTickets.findMany({
       where: and(
@@ -2788,7 +2789,7 @@ const KNOWN_JOBS = [
 
 router.get("/job-health", requireFounder, async (req: Request, res: Response) => {
   try {
-    const now = Date.now();
+    const now = clock.nowMs();
 
     const jobs = await Promise.all(KNOWN_JOBS.map(async (job) => {
       const lastSuccess = await db.query.jobHealthLogs.findFirst({
@@ -2911,7 +2912,7 @@ router.get("/digest/history", requireFounder, async (req: Request, res: Response
 
 router.get("/business-intelligence", requireFounder, async (req: Request, res: Response) => {
   try {
-    const now = new Date();
+    const now = clock.now();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
 
@@ -2979,7 +2980,7 @@ router.get("/business-intelligence", requireFounder, async (req: Request, res: R
 router.post("/company-briefing", requireFounder, async (req: Request, res: Response) => {
   try {
     // Check for cached briefing (generated within last 2 hours)
-    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const twoHoursAgo = new Date(clock.nowMs() - 2 * 60 * 60 * 1000);
     const cached = await db.select()
       .from(companyBriefingCache)
       .where(gte(companyBriefingCache.generatedAt, twoHoursAgo))
@@ -2990,7 +2991,7 @@ router.post("/company-briefing", requireFounder, async (req: Request, res: Respo
       return res.json(cached[0].briefingData);
     }
 
-    const now = new Date();
+    const now = clock.now();
     const yesterday = new Date(now.getTime() - 86400000);
 
     // 1. Fetch all agents
@@ -3088,7 +3089,7 @@ router.post("/company-briefing", requireFounder, async (req: Request, res: Respo
           .map((m: any) => ({
             description: m.subject,
             autonomous: true,
-            timestamp: m.createdAt?.toISOString() || new Date().toISOString(),
+            timestamp: m.createdAt?.toISOString() || clock.now().toISOString(),
           })),
       }))
       .filter(a => a.actions.length > 0);
@@ -3238,7 +3239,7 @@ router.post("/agent-chat", requireFounder, async (req: Request, res: Response) =
 
       if (commandResult.understood) {
         // Save command + result to conversation history
-        const conversationId = clientConvId || `cmd_${Date.now()}`;
+        const conversationId = clientConvId || `cmd_${clock.nowMs()}`;
         try {
           await db.insert(agentConversations).values([
             { conversationId, agentCodename: "system", role: "user", content: message },
@@ -3356,7 +3357,7 @@ Respond with ONLY the agent codename (e.g. "forge_revenue") or "team" if the mes
     }
 
     // v2: Load conversation history for persistence
-    const conversationId = clientConvId || `chat_${Date.now()}`;
+    const conversationId = clientConvId || `chat_${clock.nowMs()}`;
     let historyMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [];
     if (clientConvId) {
       try {
@@ -3574,7 +3575,7 @@ router.get("/agent-messages", requireFounder, async (req: Request, res: Response
     const hoursBack = parseInt(req.query.hours as string) || 24;
     const channel = req.query.channel as string;
 
-    const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
+    const since = new Date(clock.nowMs() - hoursBack * 60 * 60 * 1000);
 
     let messages;
     if (channel) {
@@ -3658,7 +3659,7 @@ router.get("/activity-timeline", requireFounder, async (req: Request, res: Respo
     const agentNames = Object.fromEntries(agents.map(a => [a.codename, a.title]));
 
     // Group entries by time blocks (today, yesterday, this week, older)
-    const now = new Date();
+    const now = clock.now();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterdayStart = new Date(todayStart.getTime() - 86400000);
     const weekStart = new Date(todayStart.getTime() - 7 * 86400000);
@@ -3666,7 +3667,7 @@ router.get("/activity-timeline", requireFounder, async (req: Request, res: Respo
     const grouped: Record<string, any[]> = { today: [], yesterday: [], thisWeek: [], older: [] };
 
     for (const entry of results) {
-      const entryDate = new Date(entry.createdAt ?? Date.now());
+      const entryDate = new Date(entry.createdAt ?? clock.nowMs());
       const canUndo = entry.undoAvailable && !entry.undoExecutedAt &&
         (!entry.undoExpiry || new Date(entry.undoExpiry) > now);
 
@@ -3698,7 +3699,7 @@ router.get("/activity-timeline", requireFounder, async (req: Request, res: Respo
 
     res.json({
       entries: results.map(entry => {
-        const entryDate = new Date(entry.createdAt ?? Date.now());
+        const entryDate = new Date(entry.createdAt ?? clock.nowMs());
         const canUndo = entry.undoAvailable && !entry.undoExecutedAt &&
           (!entry.undoExpiry || new Date(entry.undoExpiry) > now);
         return {
@@ -4237,7 +4238,7 @@ router.get("/data-plane", requireFounder, async (_req: Request, res: Response) =
         readDataPlaneSection(async () => {
           const reader = await dbForReads("founder.intelligence.dataPlane");
           const windowHours = 48;
-          const cutoff = new Date(Date.now() - windowHours * 3600 * 1000);
+          const cutoff = new Date(clock.nowMs() - windowHours * 3600 * 1000);
           const rows = await reader
             .select()
             .from(providerHealth)
@@ -4340,7 +4341,7 @@ router.get("/data-plane", requireFounder, async (_req: Request, res: Response) =
       ]);
 
     res.json({
-      generatedAt: new Date().toISOString(),
+      generatedAt: clock.now().toISOString(),
       probeHealth: probeHealthSection,
       circuits,
       recentChanges,

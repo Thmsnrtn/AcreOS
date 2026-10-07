@@ -48,6 +48,7 @@ import { monthlyRevenueCentsFor } from "@shared/billing/tier-pricing";
 import type { BillingInterval } from "@shared/billing/tier-pricing";
 import { soleneCapitalEvents } from "@shared/schema/solene-capital";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const DAYS_PER_MONTH = 30;
@@ -364,7 +365,7 @@ export async function captureMrrSnapshot(): Promise<{ mrrCents: number; payingOr
  */
 async function priorWeekMrrUsd(): Promise<number | null> {
   try {
-    const sixDaysAgo = new Date(Date.now() - 6 * ONE_DAY_MS);
+    const sixDaysAgo = new Date(clock.nowMs() - 6 * ONE_DAY_MS);
     const [row] = await db
       .select({ mrrCents: mrrSnapshots.mrrCents })
       .from(mrrSnapshots)
@@ -382,7 +383,7 @@ async function priorWeekMrrUsd(): Promise<number | null> {
  * routes-founder-money wires into its summary.
  */
 export async function computeRunway(): Promise<RunwayResult> {
-  const now = new Date();
+  const now = clock.now();
   const weekAgo = new Date(now.getTime() - 7 * ONE_DAY_MS);
   const thirtyDaysAgo = new Date(now.getTime() - 30 * ONE_DAY_MS);
   // Prior-week 30-day window: [37d ago, 7d ago).

@@ -59,6 +59,7 @@ import {
 import { getStateRuleCoverage, UNREVIEWED_RULE_CAVEAT } from "./services/taxRuleCoverage";
 import { emitCertAcquired } from "./services/certificateEvents";
 import { isCalendarDate } from "@shared/dates/calendar";
+import { clock } from "./utils/clock";
 
 const partnerSplitSchema = z.array(z.object({
   investorName: z.string().min(1).max(240),
@@ -512,7 +513,7 @@ router.patch('/auctions/:id', async (req: AuthenticatedRequest, res: Response) =
         ...(b.sessionBudgetCents !== undefined ? { sessionBudgetCents: b.sessionBudgetCents } : {}),
         ...(b.notes !== undefined ? { notes: b.notes } : {}),
         ...(b.status !== undefined ? { status: b.status } : {}),
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(and(eq(taxSaleAuctions.id, auctionId), eq(taxSaleAuctions.organizationId, organizationId)))
       .returning();
@@ -644,7 +645,7 @@ async function handoffWonLotToCertificate(params: {
   const saleDate =
     params.saleDate ??
     (auction?.auctionDate ? auction.auctionDate.toISOString().slice(0, 10) : null) ??
-    new Date().toISOString().slice(0, 10);
+    clock.now().toISOString().slice(0, 10);
 
   const wonAmountCents =
     params.wonAmountCents ??
@@ -849,7 +850,7 @@ router.patch('/listings/:id', async (req: Request, res: Response) => {
 
     const update = {
       ...parsed.data,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     };
     const [row] = await drizzleDb
       .update(taxSaleListings)
@@ -923,8 +924,8 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
           status: "won",
           winningBid: centsToNumeric(parsed.data.amountCents ?? null) ?? undefined,
           bidAmount: centsToNumeric(parsed.data.amountCents ?? null) ?? undefined,
-          bidDate: new Date(),
-          updatedAt: new Date(),
+          bidDate: clock.now(),
+          updatedAt: clock.now(),
         })
         .where(eq(taxSaleListings.id, id));
 
@@ -956,7 +957,7 @@ router.post('/listings/:id/bid-log', async (req: Request, res: Response) => {
     } else if (parsed.data.action === "outbid" || parsed.data.action === "passed") {
       await drizzleDb
         .update(taxSaleListings)
-        .set({ status: "lost", updatedAt: new Date() })
+        .set({ status: "lost", updatedAt: clock.now() })
         .where(eq(taxSaleListings.id, id));
     }
 
@@ -979,8 +980,8 @@ router.get('/county-summary', async (req: Request, res: Response) => {
       return Errors.badRequest(res, "state + county query params required");
     }
 
-    const today = new Date().toISOString().slice(0, 10);
-    const in90 = new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10);
+    const today = clock.now().toISOString().slice(0, 10);
+    const in90 = new Date(clock.nowMs() + 90 * 86_400_000).toISOString().slice(0, 10);
 
     // We need: leads (drizzle), tax_certificates, tax_sale_listings,
     // tax_sale_auctions counts. Use sql tagged for COUNT readability.

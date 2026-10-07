@@ -53,6 +53,7 @@ import { logger } from "../utils/logger";
 // makes it structurally impossible for the executor lane and the autopilot
 // lane to disagree about the constitutional limit. See autopilot/hardStops.ts.
 import { HARD_STOP_SPEND_LIMIT_CENTS } from "./autopilot/hardStops";
+import { clock } from "../utils/clock";
 
 // ─── Hard global cap ─────────────────────────────────────────────────────────
 // Absolute ceiling. Any request above this amount fails immediately, even if
@@ -389,7 +390,7 @@ class FinancialAuthorityGateService {
     const requestId = crypto.randomUUID();
     const coolingPeriodEnds =
       tier.coolingPeriodHours > 0
-        ? new Date(Date.now() + tier.coolingPeriodHours * 60 * 60 * 1000)
+        ? new Date(clock.nowMs() + tier.coolingPeriodHours * 60 * 60 * 1000)
         : null;
 
     // Determine which specific agent codenames need to approve
@@ -571,7 +572,7 @@ class FinancialAuthorityGateService {
       ...(request.approvalStatus as Record<string, { approved: boolean; timestamp: string; reasoning: string }>),
       [approverCodename]: {
         approved: true,
-        timestamp: new Date().toISOString(),
+        timestamp: clock.now().toISOString(),
         reasoning,
       },
     };
@@ -580,7 +581,7 @@ class FinancialAuthorityGateService {
       .update(financialApprovals)
       .set({
         approvalStatus: updatedStatus,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(financialApprovals.requestId, requestId));
 
@@ -618,14 +619,14 @@ class FinancialAuthorityGateService {
     // to "expired" so the queue can't grow unbounded and stale
     // consensus can't be rubber-stamped days later.
     const ttlHours = await getApprovalTtlHours();
-    const createdAt = request.createdAt instanceof Date ? request.createdAt : new Date(request.createdAt ?? Date.now());
+    const createdAt = request.createdAt instanceof Date ? request.createdAt : new Date(request.createdAt ?? clock.nowMs());
     const ttlDeadline = new Date(createdAt.getTime() + ttlHours * 60 * 60 * 1000);
-    if (request.status === "pending" && new Date() > ttlDeadline) {
+    if (request.status === "pending" && clock.now() > ttlDeadline) {
       await db
         .update(financialApprovals)
         .set({
           status: "expired",
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(financialApprovals.requestId, requestId));
       return {
@@ -645,7 +646,7 @@ class FinancialAuthorityGateService {
 
     const coolingComplete =
       !request.coolingPeriodEnds ||
-      new Date() >= new Date(request.coolingPeriodEnds);
+      clock.now() >= new Date(request.coolingPeriodEnds);
 
     const hasEnoughApprovals = approvalsReceived >= approvalsRequired;
     const readyToExecute =
@@ -659,8 +660,8 @@ class FinancialAuthorityGateService {
         .update(financialApprovals)
         .set({
           status: "approved",
-          executedAt: new Date(),
-          updatedAt: new Date(),
+          executedAt: clock.now(),
+          updatedAt: clock.now(),
         })
         .where(eq(financialApprovals.requestId, requestId));
 
@@ -765,7 +766,7 @@ class FinancialAuthorityGateService {
       .update(agentBudgetEnvelopes)
       .set({
         spentCents: sql`${agentBudgetEnvelopes.spentCents} + ${amountCents}`,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(
         and(
@@ -851,7 +852,7 @@ class FinancialAuthorityGateService {
    * Return the current month key in YYYY-MM format.
    */
   getMonthKey(): string {
-    const now = new Date();
+    const now = clock.now();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, "0");
     return `${year}-${month}`;
@@ -864,12 +865,12 @@ class FinancialAuthorityGateService {
    */
   async sweepStaleApprovals(): Promise<{ expired: number }> {
     const ttlHours = await getApprovalTtlHours();
-    const cutoff = new Date(Date.now() - ttlHours * 60 * 60 * 1000);
+    const cutoff = new Date(clock.nowMs() - ttlHours * 60 * 60 * 1000);
     const updated = await db
       .update(financialApprovals)
       .set({
         status: "expired",
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(
         and(

@@ -26,6 +26,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -116,7 +117,7 @@ router.patch("/", async (req: AuthenticatedRequest, res: Response) => {
 
     await db
       .update(users)
-      .set({ appearancePreferences: merged, updatedAt: new Date() })
+      .set({ appearancePreferences: merged, updatedAt: clock.now() })
       .where(eq(users.id, userId));
 
     logger.info("Appearance preferences updated", { userId, fields: Object.keys(update) });

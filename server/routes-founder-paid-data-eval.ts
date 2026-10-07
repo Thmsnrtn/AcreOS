@@ -39,6 +39,7 @@ import {
   saveEvalRun,
 } from "./services/paidDataEvalHarness";
 import { MockPaidProvider } from "./services/paidDataProviders";
+import { clock } from "./utils/clock";
 
 const runRequestSchema = z.object({
   // Scope the corpus to one state (e.g. a trial window). Omit = whole corpus.
@@ -70,7 +71,7 @@ export function registerFounderPaidDataEvalRoutes(app: Express) {
         ]);
 
         return res.json({
-          asOf: new Date().toISOString(),
+          asOf: clock.now().toISOString(),
           corpusSize,
           latestRun: latest, // null until the first run
         });

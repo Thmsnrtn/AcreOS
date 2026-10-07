@@ -15,6 +15,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, gte, or, sql, inArray } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /**
  * The investor-profile columns a customer edits: the "Public info" and
@@ -130,7 +131,7 @@ export class MarketplaceService {
     }
     
     // Create listing
-    const expiresAt = new Date();
+    const expiresAt = clock.now();
     expiresAt.setDate(expiresAt.getDate() + 90); // 90 day default
     
     const [listing] = await db.insert(marketplaceListings).values({
@@ -342,7 +343,7 @@ export class MarketplaceService {
     const flaggedForReview = askingPrice > 0 && data.bidAmount > askingPrice * 5;
 
     // Create bid
-    const expiresAt = new Date();
+    const expiresAt = clock.now();
     expiresAt.setDate(expiresAt.getDate() + 7); // 7 day expiry
     
     const [bid] = await db.insert(marketplaceBids).values({
@@ -470,7 +471,7 @@ export class MarketplaceService {
           status: action === "accept" ? "accepted" : action === "reject" ? "rejected" : "countered",
           sellerResponse: data?.sellerResponse,
           counterOffer: data?.counterOffer?.toString(),
-          respondedAt: new Date(),
+          respondedAt: clock.now(),
         })
         .where(and(
           eq(marketplaceBids.id, bidId),
@@ -503,12 +504,12 @@ export class MarketplaceService {
             {
               organizationId: listing.sellerOrganizationId,
               role: "seller",
-              joinedAt: new Date().toISOString(),
+              joinedAt: clock.now().toISOString(),
             },
             {
               organizationId: bid.bidderOrganizationId,
               role: "buyer",
-              joinedAt: new Date().toISOString(),
+              joinedAt: clock.now().toISOString(),
             },
           ],
           status: "active",
@@ -554,12 +555,12 @@ export class MarketplaceService {
         {
           organizationId: sellerOrgId,
           role: "seller",
-          joinedAt: new Date().toISOString(),
+          joinedAt: clock.now().toISOString(),
         },
         {
           organizationId: buyerOrgId,
           role: "buyer",
-          joinedAt: new Date().toISOString(),
+          joinedAt: clock.now().toISOString(),
         },
       ],
       status: "active",
@@ -646,7 +647,7 @@ export class MarketplaceService {
         platformFeePercent: platformFeePercent.toString(),
         platformFeeCents,
         status: "pending",
-        closingDate: new Date(),
+        closingDate: clock.now(),
       }).returning();
 
       // Update listing. The seller predicate is redundant given the join
@@ -656,7 +657,7 @@ export class MarketplaceService {
       await tx.update(marketplaceListings)
         .set({
           status: "sold",
-          soldAt: new Date(),
+          soldAt: clock.now(),
         })
         .where(and(
           eq(marketplaceListings.id, listingId),
@@ -667,7 +668,7 @@ export class MarketplaceService {
       await tx.update(dealRooms)
         .set({
           status: "closed",
-          closedAt: new Date(),
+          closedAt: clock.now(),
         })
         .where(eq(dealRooms.listingId, listingId));
 
@@ -769,7 +770,7 @@ export class MarketplaceService {
         // Applied here as well as at the route, so no caller of this method
         // can write a platform-owned column through it.
         ...investorProfileEdits(data),
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(investorProfiles.organizationId, organizationId))
       .returning();
@@ -928,7 +929,7 @@ export class MarketplaceService {
     // makes the mutation self-evidently scoped to a reader who arrives at this
     // line without the guard in view.
     const [updated] = await db.update(marketplaceListings)
-      .set({ status: "cancelled", updatedAt: new Date() })
+      .set({ status: "cancelled", updatedAt: clock.now() })
       .where(and(
         eq(marketplaceListings.id, listingId),
         eq(marketplaceListings.sellerOrganizationId, organizationId),
@@ -970,7 +971,7 @@ export class MarketplaceService {
       throw new Error("Listing not found or you don't have access");
     }
     
-    const expiresAt = new Date();
+    const expiresAt = clock.now();
     expiresAt.setDate(expiresAt.getDate() + durationDays);
     
     await db.update(marketplaceListings)

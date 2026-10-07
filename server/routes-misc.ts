@@ -23,6 +23,7 @@ import {
   readIntegrationCredentials,
   sealIntegrationCredentials,
 } from "./services/integrationCredentials";
+import { clock } from "./utils/clock";
 
 const smsSendSchema = z.object({
   to: z.string().trim().min(7, "Phone number is required"),
@@ -230,7 +231,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       // doesn't double-bill (the Idempotency-Key middleware above already
       // collapses replays, but we belt-and-brace here because pool draws
       // are ledger inserts).
-      const smsDebitKey = `sms:send:${org.id}:${cleanTo}:${Math.floor(Date.now() / 60000)}`;
+      const smsDebitKey = `sms:send:${org.id}:${cleanTo}:${Math.floor(clock.nowMs() / 60000)}`;
       const smsDebit = await poolDebit({
         organizationId: org.id,
         action: "sms_outbound",
@@ -319,7 +320,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       // re-checks whichever question the purpose asks.
       const answering =
         !!lead.phone &&
-        (await storage.latestInboundSmsFrom(org.id, lead.phone, new Date(Date.now() - 24 * 60 * 60 * 1000))) !== null;
+        (await storage.latestInboundSmsFrom(org.id, lead.phone, new Date(clock.nowMs() - 24 * 60 * 60 * 1000))) !== null;
       const result = await smsServiceModule.sendSMSToLead(org.id, leadId, message, user.id, {
         purpose: answering ? "reply" : "prospecting",
       });
@@ -481,7 +482,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       };
       const mappedStatus = statusMap[MessageStatus] || MessageStatus;
       await db.update(messages)
-        .set({ status: mappedStatus, updatedAt: new Date() } as any)
+        .set({ status: mappedStatus, updatedAt: clock.now() } as any)
         .where(eq(messages.externalId, MessageSid));
 
       if (ErrorCode) {
@@ -714,7 +715,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
         provider: service,
         isEnabled: true,
         credentials: sealIntegrationCredentials(merged, org.id),
-        lastValidatedAt: new Date(),
+        lastValidatedAt: clock.now(),
         validationError: null,
       });
 
@@ -864,7 +865,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   api.get("/api/tax-optimizer/position", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const taxYear = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+      const taxYear = req.query.year ? parseInt(req.query.year as string) : clock.now().getFullYear();
       const { taxOptimizerService } = await import("./services/taxOptimizer");
       const position = await taxOptimizerService.analyzeYearEndPosition(org.id, taxYear);
       res.json(position);
@@ -891,7 +892,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   api.post("/api/tax-optimizer/report", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const taxYear = req.body.taxYear || new Date().getFullYear();
+      const taxYear = req.body.taxYear || clock.now().getFullYear();
       const { taxOptimizerService } = await import("./services/taxOptimizer");
       const report = await taxOptimizerService.generateTaxPlanningReport(org.id, taxYear);
       res.json({ report, taxYear });
@@ -1007,7 +1008,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       if (existing) {
         const [updated] = await database
           .update(investorProfiles)
-          .set({ ...safeBody, updatedAt: new Date() })
+          .set({ ...safeBody, updatedAt: clock.now() })
           .where(
             and(
               eq(investorProfiles.id, existing.id),
@@ -1027,8 +1028,8 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
             organizationId: org.id,
             userId: user?.id || "unknown",
             verificationStatus: "pending",
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            createdAt: clock.now(),
+            updatedAt: clock.now(),
           } as unknown as typeof investorProfiles.$inferInsert)
           .returning();
         res.json({ profile: created });
@@ -1057,8 +1058,8 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
         .set({
           isVerified: Boolean(selfAttestation),
           verificationDocuments: documentUrl ? [documentUrl] : [],
-          verifiedAt: selfAttestation ? new Date() : null,
-          updatedAt: new Date(),
+          verifiedAt: selfAttestation ? clock.now() : null,
+          updatedAt: clock.now(),
         })
         .where(eq(investorProfiles.organizationId, org.id))
         .returning();

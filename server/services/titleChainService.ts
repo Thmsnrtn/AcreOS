@@ -34,6 +34,7 @@ import { db } from "../db";
 import { deals, properties, backgroundJobs } from "@shared/schema";
 import { eq, and, desc, gte } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ---------------------------------------------------------------------------
 // Title Chain Models
@@ -728,7 +729,7 @@ export async function runPostCloseAutomation(
         return result;
       }
       const { storage } = await import("../storage");
-      await storage.updateDeal(dealId, { status: "closed", closingDate: deal.closingDate || new Date() }, undefined, organizationId);
+      await storage.updateDeal(dealId, { status: "closed", closingDate: deal.closingDate || clock.now() }, undefined, organizationId);
     }
 
     result.portfolioEntryCreated = true;

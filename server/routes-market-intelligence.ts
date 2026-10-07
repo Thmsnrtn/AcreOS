@@ -4,6 +4,7 @@ import { cacheResponse } from './middleware/responseCache';
 import { generateMonthlyMarketReport, generateCountyReport } from './services/marketReportGenerator';
 import { logger } from './utils/logger';
 import { Errors } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -87,7 +88,7 @@ router.get('/monthly-report', async (req: Request, res: Response) => {
     const org = req.organization;
     const pdf = await generateMonthlyMarketReport(org.id);
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="market-report-${new Date().toISOString().slice(0, 7)}.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="market-report-${clock.now().toISOString().slice(0, 7)}.pdf"`);
     res.send(pdf);
   } catch (err) {
     logger.error('monthly report generation failed', err instanceof Error ? err : undefined);

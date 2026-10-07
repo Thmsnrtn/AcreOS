@@ -12,6 +12,7 @@ import crypto from "crypto";
 import { cognitiveMemoryService } from "./cognitiveMemoryV13";
 import { governanceBrainService } from "./governanceBrainV13";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -261,7 +262,7 @@ class FeedbackLoopService {
     const [updated] = await db.update(feedbackLearnings).set({
       confidence: Math.min(newConfidence, 1.0),
       reinforcementCount: existing.reinforcementCount + 1,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     }).where(eq(feedbackLearnings.learningId, learningId)).returning();
     return updated;
   }
@@ -296,7 +297,7 @@ class FeedbackLoopService {
           { orgId: learning.orgId, category: "founder_feedback", limit: 1 },
         );
         const verified = verifyRecall && verifyRecall.length > 0;
-        appliedToMemory.push({ factId: fact.id, appliedAt: new Date().toISOString(), verified });
+        appliedToMemory.push({ factId: fact.id, appliedAt: clock.now().toISOString(), verified });
         summary.memory = { applied: true, factId: String(fact.id), verified };
         if (!verified) {
           logger.warn(`[FeedbackLoop] Memory fact ${fact.id} created but verification recall failed`);
@@ -356,7 +357,7 @@ class FeedbackLoopService {
           actionContext: {},
         });
         const verified = testEval.policiesChecked?.some((p: any) => p.policyId === policy.policyId) ?? true;
-        appliedToPolicies.push({ policyId: policy.policyId, appliedAt: new Date().toISOString(), verified });
+        appliedToPolicies.push({ policyId: policy.policyId, appliedAt: clock.now().toISOString(), verified });
         summary.governance = { applied: true, policyId: policy.policyId, verified };
       } catch (err: any) {
         summary.governance = { applied: false, error: err.message };
@@ -366,7 +367,7 @@ class FeedbackLoopService {
       summary.governance = { applied: true, policyId: (appliedToPolicies[0] as any)?.policyId };
     }
 
-    await db.update(feedbackLearnings).set({ appliedToMemory, appliedToStrategies, appliedToPolicies, updatedAt: new Date() })
+    await db.update(feedbackLearnings).set({ appliedToMemory, appliedToStrategies, appliedToPolicies, updatedAt: clock.now() })
       .where(eq(feedbackLearnings.learningId, learningId));
     return summary;
   }
@@ -407,8 +408,8 @@ class FeedbackLoopService {
     const cfg = existing.ruleConfig as Record<string, any>;
     const [updated] = await db.update(feedbackLearnings).set({
       status: "retracted",
-      ruleConfig: { ...cfg, retracted: true, retractedAt: new Date().toISOString(), retractedReason: reason ?? "Founder disagreed with extracted rule" },
-      updatedAt: new Date(),
+      ruleConfig: { ...cfg, retracted: true, retractedAt: clock.now().toISOString(), retractedReason: reason ?? "Founder disagreed with extracted rule" },
+      updatedAt: clock.now(),
     }).where(eq(feedbackLearnings.learningId, learningId)).returning();
     return updated;
   }
@@ -443,7 +444,7 @@ class FeedbackLoopService {
 
   // ─── 11. Override Analytics — Dashboard Data ─────────────────────────────────
   async getOverrideAnalytics(orgId: number): Promise<OverrideAnalytics> {
-    const now = new Date();
+    const now = clock.now();
     const d7 = new Date(now.getTime() - 7 * 86_400_000);
     const d30 = new Date(now.getTime() - 30 * 86_400_000);
     const d84 = new Date(now.getTime() - 84 * 86_400_000); // 12 weeks

@@ -42,6 +42,7 @@ import { Errors } from "./utils/errors";
 import { hasWritableValues } from "./utils/patch";
 import { logger } from "./utils/logger";
 import { sendEmail } from "./services/emailService";
+import { clock } from "./utils/clock";
 
 const blastBodySchema = z.object({
   subject: z.string().min(1).max(240),
@@ -120,7 +121,7 @@ export function registerBuyerBlastRoutes(app: Express): void {
         // blasted. Two blasts in a week is the ceiling — past that, you're
         // training them to filter your emails into trash."
         const MAX_BLASTS_PER_7_DAYS = 2;
-        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const sevenDaysAgo = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
         const buyerIds = eligible.map((m) => m.buyerId);
         const recentCounts = buyerIds.length === 0
           ? []
@@ -241,7 +242,7 @@ export function registerBuyerBlastRoutes(app: Express): void {
                 sentCount++;
                 await db
                   .update(buyerBlastRecipients)
-                  .set({ status: "sent", sentAt: new Date() })
+                  .set({ status: "sent", sentAt: clock.now() })
                   .where(and(eq(buyerBlastRecipients.blastId, blast.id), eq(buyerBlastRecipients.buyerProfileId, m.buyerId)));
               } else {
                 failedCount++;
@@ -267,7 +268,7 @@ export function registerBuyerBlastRoutes(app: Express): void {
             status: "sent",
             sentCount,
             failedCount,
-            completedAt: new Date(),
+            completedAt: clock.now(),
           })
           .where(eq(buyerBlasts.id, blast.id));
 
@@ -392,7 +393,7 @@ export function registerBuyerBlastRoutes(app: Express): void {
           ...parsed.data,
         };
         if (parsed.data.status === "replied_interested" || parsed.data.status === "replied_not_interested") {
-          update.respondedAt = new Date();
+          update.respondedAt = clock.now();
         }
         // Both schema fields are optional, so `{}` parses clean and reaches
         // here with nothing to set. Unlike its sibling routes this patch has

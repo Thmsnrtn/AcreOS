@@ -142,6 +142,7 @@ import { emitRentReceived } from "./services/rentalEvents";
 // Fire-and-forget — see services/strEvents.ts.
 import { emitReservationCheckout } from "./services/strEvents";
 import { isCalendarDate } from "@shared/dates/calendar";
+import { clock } from "./utils/clock";
 
 // ----------------------------------------------------------------------------
 // Validation
@@ -999,7 +1000,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       const parsed = scheduledPreviewSchema.safeParse(req.query);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-      const throughDate = parsed.data.throughDate ?? new Date().toISOString().slice(0, 10);
+      const throughDate = parsed.data.throughDate ?? clock.now().toISOString().slice(0, 10);
       const preview = await previewScheduledCharges({
         organizationId: orgId,
         throughDate,
@@ -1031,7 +1032,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       const parsed = generateScheduledSchema.safeParse(req.body ?? {});
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-      const throughDate = parsed.data.throughDate ?? new Date().toISOString().slice(0, 10);
+      const throughDate = parsed.data.throughDate ?? clock.now().toISOString().slice(0, 10);
       const result = await generateScheduledCharges({
         organizationId: orgId,
         throughDate,
@@ -1324,7 +1325,7 @@ export function registerRentLedgerRoutes(app: Express): void {
         organizationId: orgId,
         charge,
         lease,
-        asOf: new Date(),
+        asOf: clock.now(),
       });
 
       return res.json({
@@ -1356,7 +1357,7 @@ export function registerRentLedgerRoutes(app: Express): void {
     try {
       if (refuseResidentialLateFeeForCommercial(req, res)) return;
       const orgId = getOrganizationId(req);
-      const asOf = new Date();
+      const asOf = clock.now();
 
       const rows = await db
         .select({ charge: rentCharges, lease: rentalLeases })
@@ -1451,7 +1452,7 @@ export function registerRentLedgerRoutes(app: Express): void {
         organizationId: orgId,
         charge,
         lease,
-        asOf: new Date(),
+        asOf: clock.now(),
       });
 
       // An operator can never confirm an amount they were not shown. When the
@@ -1522,9 +1523,9 @@ export function registerRentLedgerRoutes(app: Express): void {
           charge.lateFeeCents +
           proposal.proposedFeeCents -
           charge.paidCents,
-        lateFeeAppliedAt: new Date(),
+        lateFeeAppliedAt: clock.now(),
         legalPosture: charge.legalPosture === "ok" ? "late" : charge.legalPosture,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       }).where(and(eq(rentCharges.id, charge.id), eq(rentCharges.organizationId, orgId)));
 
       logger.info("[BH-3] late fee charged from a confirmed proposal", {
@@ -1558,9 +1559,9 @@ export function registerRentLedgerRoutes(app: Express): void {
 
       const [updated] = await db.update(rentCharges).set({
         legalPosture: parsed.data.legalPosture,
-        legalPostureAt: new Date(),
+        legalPostureAt: clock.now(),
         notes: parsed.data.notes ?? null,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
         .where(and(eq(rentCharges.id, req.params.id), eq(rentCharges.organizationId, orgId)))
         .returning();
@@ -1578,7 +1579,7 @@ export function registerRentLedgerRoutes(app: Express): void {
   app.get("/api/rent/aging", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const today = new Date().toISOString().slice(0, 10);
+      const today = clock.now().toISOString().slice(0, 10);
       const rows = await db.execute(sql`
         SELECT
           rc.id, rc.lease_id, rc.charged_for_month, rc.due_date,
@@ -1623,7 +1624,7 @@ export function registerRentLedgerRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const rawSince = typeof req.query.since === "string" ? req.query.since : null;
-      const todayIso = new Date().toISOString().slice(0, 10);
+      const todayIso = clock.now().toISOString().slice(0, 10);
       // Normalize "2026-05-26" or "2026-05-26T00:00:00.000Z" -> "2026-05-26".
       // Anything unparseable falls back to today (start of day in server tz),
       // which matches the Today-tab intent without surfacing a 400.
@@ -1856,7 +1857,7 @@ export function registerRentLedgerRoutes(app: Express): void {
           deductions,
           moveOutDate,
           deadline,
-          letterDate: parsed.data.letterDate ?? new Date().toISOString().slice(0, 10),
+          letterDate: parsed.data.letterDate ?? clock.now().toISOString().slice(0, 10),
           state: lease.state,
         });
       } catch (err) {
@@ -1872,9 +1873,9 @@ export function registerRentLedgerRoutes(app: Express): void {
       const [updated] = await db.update(securityDeposits).set({
         dispositionLetterMarkdown: letter.markdown,
         dispositionLetterVersion: letter.version,
-        dispositionLetterGeneratedAt: new Date(),
+        dispositionLetterGeneratedAt: clock.now(),
         // deliveredAt/deliveryMethod are deliberately NOT touched here.
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       }).where(and(
         eq(securityDeposits.id, deposit.id),
         eq(securityDeposits.organizationId, orgId),
@@ -1936,7 +1937,7 @@ export function registerRentLedgerRoutes(app: Express): void {
 
       const updates: Partial<typeof rentalLeases.$inferInsert> = {
         ...parsed.data,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       };
       const [updated] = await db.update(rentalLeases).set(updates)
         .where(and(eq(rentalLeases.id, lease.id), eq(rentalLeases.organizationId, orgId)))
@@ -2059,7 +2060,7 @@ export function registerRentLedgerRoutes(app: Express): void {
         coverageComplete: null,
         statementMarkdown: null,
         statementVersion: null,
-        generatedAt: new Date(),
+        generatedAt: clock.now(),
         generatedBy: "operator_entered",
       })
         .onConflictDoUpdate({
@@ -2076,7 +2077,7 @@ export function registerRentLedgerRoutes(app: Express): void {
             estimatedBilledCents: parsed.data.estimatedBilledCents ?? null,
             estimatedBilledBasis: parsed.data.estimatedBilledCents != null ? "operator_entered" : null,
             deltaCents: parsed.data.deltaCents ?? null,
-            generatedAt: new Date(),
+            generatedAt: clock.now(),
             generatedBy: "operator_entered",
           },
         })
@@ -2215,7 +2216,7 @@ export function registerRentLedgerRoutes(app: Express): void {
         coverageComplete: result.coverageComplete,
         statementMarkdown,
         statementVersion: "cam-v1",
-        generatedAt: new Date(),
+        generatedAt: clock.now(),
         generatedBy: "engine",
       };
 
@@ -2543,7 +2544,7 @@ export function registerRentLedgerRoutes(app: Express): void {
         .where(and(eq(rentalLeases.id, charge.leaseId), eq(rentalLeases.organizationId, orgId)));
       if (!lease) return Errors.notFound(res, "Lease");
 
-      const asOf = parsed.data.asOf ? new Date(parsed.data.asOf) : new Date();
+      const asOf = parsed.data.asOf ? new Date(parsed.data.asOf) : clock.now();
       const daysLate = daysOverdue(charge.dueDate, asOf) ?? 0;
 
       const result = computeCommercialLateFee({
@@ -2862,7 +2863,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       // Freeze one row per BILLED pad (a refused pad has no bill to freeze — it is
       // still returned in the response so the operator sees why). Re-generating
       // UPSERTs the snapshot rather than double-billing the pad.
-      const generatedAt = new Date();
+      const generatedAt = clock.now();
       const billedLines = result.perPad.filter((p) => p.refusedReason == null && p.allocatedCents != null);
       const labelById = new Map(pads.map((p) => [p.id, p.label]));
       const frozen = [];
@@ -2952,7 +2953,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       const parsed = mobileHomeUnitSchema.safeParse(req.body ?? {});
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      const updates: Record<string, unknown> = { updatedAt: clock.now() };
       if (parsed.data.homeOwnership !== undefined) updates.homeOwnership = parsed.data.homeOwnership;
       if (parsed.data.chattelTitleType !== undefined) updates.chattelTitleType = parsed.data.chattelTitleType;
       if (parsed.data.chattelVin !== undefined) updates.chattelVin = parsed.data.chattelVin;
@@ -3294,7 +3295,7 @@ export function registerRentLedgerRoutes(app: Express): void {
       if (!current) return Errors.notFound(res, "Reservation");
 
       const [updated] = await db.update(reservations)
-        .set({ status: parsed.data.status, updatedAt: new Date() })
+        .set({ status: parsed.data.status, updatedAt: clock.now() })
         .where(and(eq(reservations.id, req.params.id), eq(reservations.organizationId, orgId)))
         .returning();
 

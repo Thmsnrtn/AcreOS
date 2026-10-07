@@ -32,6 +32,7 @@ import {
   servicingPhaseFor,
   stampUnstampedSubscriptionEnds,
 } from "./servicingPhase";
+import { clock } from "../../utils/clock";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BORROWER_NOTICE_WINDOW_DAYS = 30;
@@ -50,7 +51,7 @@ export interface WindDownPassResult {
 
 const day = (d: Date) => d.toISOString().slice(0, 10);
 
-export async function runServicingWindDownPass(now: Date = new Date()): Promise<WindDownPassResult> {
+export async function runServicingWindDownPass(now: Date = clock.now()): Promise<WindDownPassResult> {
   const result: WindDownPassResult = {
     stamped: await stampUnstampedSubscriptionEnds(now),
     lendersInWindDown: 0,

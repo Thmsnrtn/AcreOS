@@ -36,6 +36,7 @@ import { notes } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../../utils/logger";
 import { qualifiesForRegZStatement } from "../periodicStatements/predicate";
+import { clock } from "../../utils/clock";
 
 // §1024.39(a) trigger day. Servicer must attempt live contact NO LATER
 // THAN the 36th day of delinquency. Industry-standard read: day 36 itself
@@ -87,7 +88,7 @@ export async function flagEarlyIntervention(
 
   // Cycle anchor: the calendar month containing the evaluation. Idempotency
   // is "one §1024.39 event per cycle", and we use the month as the cycle.
-  const now = input.cycleAnchor ?? new Date();
+  const now = input.cycleAnchor ?? clock.now();
   const cycleAnchor = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
   // Trigger gate. Firing earlier than 36d is permitted by the reg but
@@ -162,7 +163,7 @@ export async function flagEarlyIntervention(
       loanId,
       loanType,
       eventType: "early_intervention_36d",
-      firedAt: new Date(),
+      firedAt: clock.now(),
       cycleAnchor,
       daysDelinquent,
       citation: "12 C.F.R. §1024.39(a)",

@@ -191,6 +191,7 @@ import { format } from "date-fns";
 import { companyAgentService } from "./companyAgents";
 import { logger } from "../utils/logger";
 import { AUTONOMOUS_SPEND_CEILING_CENTS } from "./financialAuthorityGate";
+import { clock } from "../utils/clock";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration — all controlled via env vars (founder owns these, system cannot change)
@@ -407,7 +408,7 @@ Organization: "${org?.name ?? `#${item.organizationId}`}"
 Subscription Tier: ${org?.subscriptionTier ?? "unknown"}
 Subscription Status: ${org?.subscriptionStatus ?? "unknown"}
 Churn Risk Score: ${item.urgencyScore}/100 (critical band: 90+)
-Days Since Created: ${org?.createdAt ? Math.floor((Date.now() - new Date(org.createdAt).getTime()) / 86400000) : "unknown"}
+Days Since Created: ${org?.createdAt ? Math.floor((clock.nowMs() - new Date(org.createdAt).getTime()) / 86400000) : "unknown"}
 
 Sophie's Analysis: ${item.sophieAnalysis}
 
@@ -584,10 +585,10 @@ async function executeFeatureRequestApproval(
           autoApprovedByExecutor: true,
           approvalReason: decision.reasoning,
           approvalNotes: decision.executionNotes,
-          approvedAt: new Date().toISOString(),
+          approvedAt: clock.now().toISOString(),
           approvalConfidence: decision.confidence,
         },
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       } as any)
       .where(eq(featureRequests.id, item.sourceFeatureRequestId));
 
@@ -861,7 +862,7 @@ export function checkHardGuardrails(action: {
 async function captureTelemetryBaseline(): Promise<Record<string, number>> {
   try {
     const { auditEvents, jobHealthLogs, customerHealthScores, supportCases } = await import("@shared/schema");
-    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const dayAgo = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
     const [errorRow] = await db
       .select({ c: sql<number>`count(*)::int` })
       .from(auditEvents)
@@ -900,10 +901,10 @@ async function captureTelemetryBaseline(): Promise<Record<string, number>> {
       jobFailures24h: Number(jobFailRow?.c ?? 0),
       customerHealthAvg: Number(healthRow?.avg ?? 0),
       supportEscalations24h: Number(escalatedRow?.c ?? 0),
-      capturedAtMs: Date.now(),
+      capturedAtMs: clock.nowMs(),
     };
   } catch {
-    return { capturedAtMs: Date.now() };
+    return { capturedAtMs: clock.nowMs() };
   }
 }
 
@@ -916,7 +917,7 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
     executed: false,
     executedAction: "none",
     executionSuccess: false,
-    executedAt: new Date(),
+    executedAt: clock.now(),
   };
 
   // ── Pax pause kill-switch (Workstream A honesty) ────────────────────────
@@ -930,7 +931,7 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
     const pause = await getPaxPauseState(item.organizationId);
     if (pause.paused) {
       const resumeAt =
-        pause.pausedUntil ?? new Date(Date.now() + 4 * 60 * 60 * 1000);
+        pause.pausedUntil ?? new Date(clock.nowMs() + 4 * 60 * 60 * 1000);
       result.decision = {
         action: "defer",
         confidence: 100,
@@ -942,7 +943,7 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
       result.executionSuccess = true;
       await db
         .update(decisionsInboxItems)
-        .set({ status: "deferred", deferredUntil: resumeAt, updatedAt: new Date() })
+        .set({ status: "deferred", deferredUntil: resumeAt, updatedAt: clock.now() })
         .where(eq(decisionsInboxItems.id, item.id));
       logger.info(
         `[AutonomousExecutor] Skipping item #${item.id} — Pax is paused for org ${item.organizationId}` +
@@ -995,9 +996,9 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
       await db.update(decisionsInboxItems)
         .set({
           status: "approved",
-          resolvedAt: new Date(),
+          resolvedAt: clock.now(),
           resolvedBy: "intelligence/triage",
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(decisionsInboxItems.id, item.id));
       return result;
@@ -1013,9 +1014,9 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
       await db.update(decisionsInboxItems)
         .set({
           status: "rejected",
-          resolvedAt: new Date(),
+          resolvedAt: clock.now(),
           resolvedBy: "intelligence/triage",
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(decisionsInboxItems.id, item.id));
       return result;
@@ -1028,9 +1029,9 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
       };
       result.executedAction = "auto_deferred_via_triage";
       result.executionSuccess = true;
-      const until = new Date(Date.now() + triageDecision.deferMinutes * 60_000);
+      const until = new Date(clock.nowMs() + triageDecision.deferMinutes * 60_000);
       await db.update(decisionsInboxItems)
-        .set({ status: "deferred", deferredUntil: until, updatedAt: new Date() })
+        .set({ status: "deferred", deferredUntil: until, updatedAt: clock.now() })
         .where(eq(decisionsInboxItems.id, item.id));
       return result;
     }
@@ -1071,7 +1072,7 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
         result.executionSuccess = true;
         result.executed = false;
         await db.update(decisionsInboxItems)
-          .set({ status: "deferred", deferredUntil: new Date(Date.now() + 72 * 60 * 60 * 1000), updatedAt: new Date() })
+          .set({ status: "deferred", deferredUntil: new Date(clock.nowMs() + 72 * 60 * 60 * 1000), updatedAt: clock.now() })
           .where(eq(decisionsInboxItems.id, item.id));
         return result;
       }
@@ -1088,7 +1089,7 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
         result.executionSuccess = true;
         result.executed = false;
         await db.update(decisionsInboxItems)
-          .set({ status: "deferred", deferredUntil: new Date(Date.now() + 4 * 60 * 60 * 1000), updatedAt: new Date() })
+          .set({ status: "deferred", deferredUntil: new Date(clock.nowMs() + 4 * 60 * 60 * 1000), updatedAt: clock.now() })
           .where(eq(decisionsInboxItems.id, item.id));
         return result;
       }
@@ -1120,8 +1121,8 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
     await db.update(decisionsInboxItems)
       .set({
         status: "deferred",
-        deferredUntil: new Date(Date.now() + 72 * 60 * 60 * 1000),
-        updatedAt: new Date(),
+        deferredUntil: new Date(clock.nowMs() + 72 * 60 * 60 * 1000),
+        updatedAt: clock.now(),
       })
       .where(eq(decisionsInboxItems.id, item.id));
 
@@ -1159,8 +1160,8 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
     await db.update(decisionsInboxItems)
       .set({
         status: "deferred",
-        deferredUntil: new Date(Date.now() + 72 * 60 * 60 * 1000),
-        updatedAt: new Date(),
+        deferredUntil: new Date(clock.nowMs() + 72 * 60 * 60 * 1000),
+        updatedAt: clock.now(),
       })
       .where(eq(decisionsInboxItems.id, item.id));
 
@@ -1223,7 +1224,7 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
               experimentId: assigned.experimentId,
               experimentVariant: assigned.variantKey,
             },
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(eq(decisionsInboxItems.id, item.id));
       }
@@ -1266,7 +1267,7 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
     // Budget exhausted for today — defer the item to the start of
     // tomorrow (UTC) so it gets picked back up under the fresh cap.
     if (err?.name === "BudgetExceededError") {
-      const tomorrowMidnightUtc = new Date();
+      const tomorrowMidnightUtc = clock.now();
       tomorrowMidnightUtc.setUTCHours(24, 0, 0, 0);
       result.decision = {
         action: "defer",
@@ -1276,7 +1277,7 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
       result.executedAction = "deferred_budget_exhausted";
       result.executionSuccess = true;
       await db.update(decisionsInboxItems)
-        .set({ status: "deferred", deferredUntil: tomorrowMidnightUtc, updatedAt: new Date() })
+        .set({ status: "deferred", deferredUntil: tomorrowMidnightUtc, updatedAt: clock.now() })
         .where(eq(decisionsInboxItems.id, item.id));
       return result;
     }
@@ -1287,7 +1288,7 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
       reasoning: `AI evaluation failed: ${err.message}. Deferred for safety.`,
     };
     await db.update(decisionsInboxItems)
-      .set({ status: "deferred", deferredUntil: new Date(Date.now() + 4 * 60 * 60 * 1000), updatedAt: new Date() })
+      .set({ status: "deferred", deferredUntil: new Date(clock.nowMs() + 4 * 60 * 60 * 1000), updatedAt: clock.now() })
       .where(eq(decisionsInboxItems.id, item.id));
     return result;
   }
@@ -1324,8 +1325,8 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
       await db.update(decisionsInboxItems)
         .set({
           status: "deferred",
-          deferredUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          updatedAt: new Date(),
+          deferredUntil: new Date(clock.nowMs() + 7 * 24 * 60 * 60 * 1000),
+          updatedAt: clock.now(),
         })
         .where(eq(decisionsInboxItems.id, item.id));
       result.executedAction = `deferred_suspended (agent=${ownerAgent} category=${item.itemType})`;
@@ -1342,8 +1343,8 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
       await db.update(decisionsInboxItems)
         .set({
           status: "deferred",
-          deferredUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
-          updatedAt: new Date(),
+          deferredUntil: new Date(clock.nowMs() + 24 * 60 * 60 * 1000),
+          updatedAt: clock.now(),
         })
         .where(eq(decisionsInboxItems.id, item.id));
       result.executedAction = `deferred_low_confidence (${aiDecision.confidence}% < ${autoExecuteThreshold}% threshold, tier=${decision.tier})`;
@@ -1357,8 +1358,8 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
       await db.update(decisionsInboxItems)
         .set({
           status: "deferred",
-          deferredUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
-          updatedAt: new Date(),
+          deferredUntil: new Date(clock.nowMs() + 24 * 60 * 60 * 1000),
+          updatedAt: clock.now(),
         })
         .where(eq(decisionsInboxItems.id, item.id));
       result.executedAction = `deferred_low_confidence (${aiDecision.confidence}% < ${autoExecuteThreshold}% threshold)`;
@@ -1392,8 +1393,8 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
       await db.update(decisionsInboxItems)
         .set({
           status: "deferred",
-          deferredUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
-          updatedAt: new Date(),
+          deferredUntil: new Date(clock.nowMs() + 24 * 60 * 60 * 1000),
+          updatedAt: clock.now(),
         })
         .where(eq(decisionsInboxItems.id, item.id));
       result.executed = false;
@@ -1476,7 +1477,7 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
       await db.update(decisionsInboxItems)
         .set({
           status: "approved",
-          resolvedAt: new Date(),
+          resolvedAt: clock.now(),
           resolvedBy: "autonomous_executor",
           resolvedByActionLogId: actionLogId ?? null,
           founderOverrideAction: `[AUTO] ${aiDecision.reasoning.slice(0, 200)}`,
@@ -1486,7 +1487,7 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
             executorAction: aiDecision.action,
             graduationTier,
           },
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(decisionsInboxItems.id, item.id));
 
@@ -1496,13 +1497,13 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
       try {
         const { agentProposalObservations } = await import("@shared/schema");
         const { recordAcceptance } = await import("./trustGraduation");
-        const observationEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        const observationEnd = new Date(clock.nowMs() + 7 * 24 * 60 * 60 * 1000);
         await db.insert(agentProposalObservations).values({
           agentCodename: ownerAgent ?? "executor",
           actionCategory: item.itemType,
           shippedRef: String(item.id),
           shippedRefType: "decision_id",
-          shippedAt: new Date(),
+          shippedAt: clock.now(),
           observationEndsAt: observationEnd,
           telemetryBaseline: await captureTelemetryBaseline(),
           status: "observing",
@@ -1517,10 +1518,10 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
     await db.update(decisionsInboxItems)
       .set({
         status: "rejected",
-        resolvedAt: new Date(),
+        resolvedAt: clock.now(),
         resolvedBy: "autonomous_executor",
         founderOverrideAction: `[AUTO-REJECT] ${aiDecision.reasoning.slice(0, 200)}`,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(decisionsInboxItems.id, item.id));
 
@@ -1531,7 +1532,7 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
   } else {
     // defer
     await db.update(decisionsInboxItems)
-      .set({ status: "deferred", deferredUntil: new Date(Date.now() + 24 * 60 * 60 * 1000), updatedAt: new Date() })
+      .set({ status: "deferred", deferredUntil: new Date(clock.nowMs() + 24 * 60 * 60 * 1000), updatedAt: clock.now() })
       .where(eq(decisionsInboxItems.id, item.id));
     result.executedAction = `Deferred by AI: ${aiDecision.reasoning.slice(0, 100)}`;
   }
@@ -1577,14 +1578,14 @@ export async function runAutonomousDecisionExecutor(): Promise<DecisionExecutorR
   if (!EXECUTOR_CONFIG.ENABLED) {
     logger.info("[AutonomousExecutor] Disabled via AUTONOMOUS_EXECUTOR_ENABLED=false");
     return {
-      runAt: new Date(), itemsProcessed: 0, itemsApproved: 0, itemsRejected: 0,
+      runAt: clock.now(), itemsProcessed: 0, itemsApproved: 0, itemsRejected: 0,
       itemsDeferred: 0, itemsHardStopped: 0, executionSuccesses: 0, executionFailures: 0, results: [],
     };
   }
 
   // Re-open expired deferred items first
   await db.update(decisionsInboxItems)
-    .set({ status: "pending", deferredUntil: null, updatedAt: new Date() })
+    .set({ status: "pending", deferredUntil: null, updatedAt: clock.now() })
     .where(and(
       eq(decisionsInboxItems.status, "deferred"),
       sql`deferred_until IS NOT NULL AND deferred_until <= NOW()`,
@@ -1620,7 +1621,7 @@ export async function runAutonomousDecisionExecutor(): Promise<DecisionExecutorR
   }
 
   const runResult: DecisionExecutorRunResult = {
-    runAt: new Date(),
+    runAt: clock.now(),
     itemsProcessed: pendingItems.length,
     itemsApproved: approved,
     itemsRejected: rejected,

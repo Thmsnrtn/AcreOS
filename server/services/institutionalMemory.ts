@@ -26,6 +26,7 @@ import {
 import { eq, desc, gte, and, sql } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
+import { clock } from "../utils/clock";
 
 // ─── Service ─────────────────────────────────────────────────────────────────
 
@@ -59,7 +60,7 @@ class InstitutionalMemoryService {
         contextConditions: input.context,
         successRate: input.success ? "1.0" : "0.0",
         sampleSize: 1,
-        lastTriggered: new Date(),
+        lastTriggered: clock.now(),
         contributingAgents: input.contributingAgents,
       });
       return;
@@ -73,8 +74,8 @@ class InstitutionalMemoryService {
     const updates: any = {
       sampleSize: newSampleSize,
       successRate: newRate.toFixed(3),
-      lastTriggered: new Date(),
-      updatedAt: new Date(),
+      lastTriggered: clock.now(),
+      updatedAt: clock.now(),
     };
 
     if (input.success && input.response) {
@@ -97,7 +98,7 @@ class InstitutionalMemoryService {
   /** Record a signal for cross-agent correlation tracking */
   async recordSignal(agentCodename: string, signalName: string): Promise<void> {
     const signal = `${agentCodename}:${signalName}`;
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const oneHourAgo = new Date(clock.nowMs() - 60 * 60 * 1000);
 
     // Find recent signals from OTHER agents (within 1 hour)
     // to detect co-occurrence
@@ -113,7 +114,7 @@ class InstitutionalMemoryService {
         await db.update(signalCorrelations)
           .set({
             observationCount: (existing.observationCount || 0) + 1,
-            lastObserved: new Date(),
+            lastObserved: clock.now(),
             correlation: Math.min(0.99,
               Number(existing.correlation || 0) + (1 - Number(existing.correlation || 0)) * 0.1
             ).toFixed(3),
@@ -136,7 +137,7 @@ class InstitutionalMemoryService {
       predictedOutcome: input.predictedOutcome,
       correlation: "0.5",
       observationCount: 1,
-      lastObserved: new Date(),
+      lastObserved: clock.now(),
       autoTriggerPlaybookId: input.autoTriggerPlaybookId,
     }).returning({ id: signalCorrelations.id });
 

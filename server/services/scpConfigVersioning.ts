@@ -11,6 +11,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const SOVEREIGN_PROTOCOL_DIR = path.resolve(__dirname, "../../sovereign-protocol");
 const AGENTS_DIR = path.join(SOVEREIGN_PROTOCOL_DIR, "agents");
@@ -151,7 +152,7 @@ export function bumpVersion(
     agent,
     version: (current?.version ?? 0) + 1,
     parent: current?.version ?? null,
-    timestamp: new Date().toISOString(),
+    timestamp: clock.now().toISOString(),
     session_id: sessionId,
     changes: changedFiles,
     metrics_snapshot: metricsSnapshot,
@@ -294,7 +295,7 @@ export function getAllAgentVersions(): Array<AgentVersion & { configFiles: strin
       agent,
       version: 0,
       parent: null,
-      timestamp: new Date().toISOString(),
+      timestamp: clock.now().toISOString(),
       session_id: null,
       changes: [],
       metrics_snapshot: { total_sessions: 0, success_rate: 0, correction_rate: 0, ceo_override_rate: 0 },

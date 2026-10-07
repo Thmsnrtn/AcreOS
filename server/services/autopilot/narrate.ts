@@ -22,6 +22,7 @@
  */
 import type { RankedMove } from "./decide";
 import { clock } from "../../utils/clock";
+import { evidenceLine, evidenceSummary } from "@shared/governance/evidenceLadder";
 
 export type PartOfDay = "morning" | "afternoon" | "evening";
 
@@ -188,6 +189,11 @@ export interface FounderBrief {
   needsYouParts: { asks: number; queuedDecisions: number; frozenSends: number };
   /** This week's witnessed-send counters the Word recites; null when unread. */
   witnessedSends: FounderBriefInputs["frozenSends"];
+  /**
+   * What is PROVEN, from the Evidence Ladder (shared/governance/evidenceLadder.ts)
+   * — the Letter states it, never re-derives it: the line and the counts it cites.
+   */
+  evidence: { line: string; counts: Record<string, number>; total: number; provenInSimulation: number; provenBeyondSimulation: number };
   /** The single hero decision, if one exists. Most days this is null. */
   decision: FounderDecisionCard | null;
   vitalSign: {
@@ -527,6 +533,7 @@ export function buildFounderBrief(inp: FounderBriefInputs): FounderBrief {
     isFounderNeeded,
     needsYouCount,
     needsYouParts: { asks: asksCount, queuedDecisions: queueCount, frozenSends: sendsCount },
+    evidence: (() => { const e = evidenceSummary(); return { line: evidenceLine(), counts: e.counts, total: e.total, provenInSimulation: e.provenInSimulation, provenBeyondSimulation: e.provenBeyondSimulation }; })(),
     witnessedSends: inp.frozenSends ?? null,
     decision,
     vitalSign: {

@@ -20,6 +20,7 @@ import { isAuthenticated, requireFounder } from "./auth";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const HORIZON_MONTHS = [1, 3, 6, 12] as const;
 
@@ -77,7 +78,7 @@ export function registerCohortLtvRoutes(app: Express): void {
               end.setUTCMonth(end.getUTCMonth() + months);
               // Don't credit horizons that haven't elapsed yet — would
               // under-report newer cohorts and skew averages.
-              if (end > new Date()) continue;
+              if (end > clock.now()) continue;
               const probe = await reader.execute(sql.raw(`
                 SELECT COALESCE(SUM(recognized_cents), 0)::bigint AS sum
                 FROM revenue_recognition_periods
@@ -107,7 +108,7 @@ export function registerCohortLtvRoutes(app: Express): void {
         return res.json({
           cohorts,
           horizons: [...HORIZON_MONTHS],
-          generatedAt: new Date().toISOString(),
+          generatedAt: clock.now().toISOString(),
           notes: [
             "Cohort = ISO week of organizations.created_at.",
             "Revenue = revenue_recognition_periods.recognized_cents (ASC 606 ledger).",

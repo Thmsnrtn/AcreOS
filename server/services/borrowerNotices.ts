@@ -30,6 +30,7 @@
  *     record it as mailed.
  */
 
+import { clock } from "../utils/clock";
 export type BorrowerNoticeStage =
   | "upcoming"
   | "due"
@@ -281,7 +282,7 @@ export function buildBorrowerLetter(
   input: BorrowerNoticeInput,
 ): BorrowerLetterDocument {
   const notice = buildBorrowerNotice(stage, input);
-  const today = longDate(new Date()) ?? "";
+  const today = longDate(clock.now()) ?? "";
   const header: string[] = [today, ""];
   const reference = (input.noteReference ?? "").trim();
   if (reference.length > 0) header.push(`Re: ${reference}`, "");

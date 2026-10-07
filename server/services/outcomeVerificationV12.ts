@@ -15,6 +15,7 @@ import {
 import { eq, desc, and, lte, gte, sql, isNull } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { unscopedForPlatformOps } from "../utils/orgScopedDb";
+import { clock } from "../utils/clock";
 
 // ─── Verification Method Registry ─────────────────────────────────────────────
 
@@ -97,7 +98,7 @@ async function verifyEmailDelivery(config: Record<string, any>): Promise<Verific
 
 async function verifyCustomerLogin(config: Record<string, any>): Promise<VerificationResult> {
   const userId = config.userId ?? config.orgId ?? "unknown";
-  const actionTimestamp = config.actionTimestamp ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const actionTimestamp = config.actionTimestamp ?? new Date(clock.nowMs() - 24 * 60 * 60 * 1000).toISOString();
 
   try {
     // Check if organization had any activity since action timestamp
@@ -218,7 +219,7 @@ async function verifyMetricChange(config: Record<string, any>): Promise<Verifica
   const expectedDirection = config.expectedDirection ?? "increase";
   const threshold = config.threshold ?? 0;
   const baselineValue = config.baselineValue ?? 0;
-  const baselineTimestamp = config.baselineTimestamp ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const baselineTimestamp = config.baselineTimestamp ?? new Date(clock.nowMs() - 24 * 60 * 60 * 1000).toISOString();
 
   try {
     // Query actual metric from agent events or action log
@@ -347,7 +348,7 @@ class OutcomeVerificationService {
     ];
 
     const verifyAfterMinutes = params.verifyAfterMinutes ?? stages[0]?.minutes ?? 60;
-    const nextVerificationAt = new Date(Date.now() + verifyAfterMinutes * 60 * 1000);
+    const nextVerificationAt = new Date(clock.nowMs() + verifyAfterMinutes * 60 * 1000);
 
     const [contract] = await db
       .insert(outcomeVerificationContracts)
@@ -383,7 +384,7 @@ class OutcomeVerificationService {
     discrepancies: number;
     errors: number;
   }> {
-    const now = new Date();
+    const now = clock.now();
     // A SCHEDULED SWEEP: every due contract in the business, whoever owns it.
     // Per-org scoping here would mean one tenant's verifications ran and the
     // rest silently never did.
@@ -492,10 +493,10 @@ class OutcomeVerificationService {
 
     if (hasNextStage) {
       updates.nextVerificationAt = new Date(
-        Date.now() + stages[nextStageIndex].minutes * 60 * 1000,
+        clock.nowMs() + stages[nextStageIndex].minutes * 60 * 1000,
       );
     } else {
-      updates.completedAt = new Date();
+      updates.completedAt = clock.now();
       updates.nextVerificationAt = null;
     }
 

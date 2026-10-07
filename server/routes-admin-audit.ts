@@ -31,6 +31,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { verifyAuditLogChain } from "./utils/auditLogChain";
 import { auditFromRequest } from "./utils/auditLog";
+import { clock } from "./utils/clock";
 
 export function registerAdminAuditLogRoutes(app: Express): void {
   // Single-org verification — defaults to the caller's active org.
@@ -46,9 +47,9 @@ export function registerAdminAuditLogRoutes(app: Express): void {
           return Errors.badRequest(res, "orgId required (query or active organization)");
         }
 
-        const startedAt = Date.now();
+        const startedAt = clock.nowMs();
         const result = await verifyAuditLogChain(orgId);
-        const elapsedMs = Date.now() - startedAt;
+        const elapsedMs = clock.nowMs() - startedAt;
 
         // Emit a sensitive-action audit event for the verification itself.
         // SOC 2 evidence: the auditor wants to know who ran the integrity

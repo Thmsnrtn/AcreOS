@@ -3,6 +3,7 @@ import { countyGisEndpoints } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { BoundedMap } from "../utils/boundedMap";
+import { clock } from "../utils/clock";
 
 interface ValidationJob {
   id: string;
@@ -20,7 +21,7 @@ interface ValidationJob {
 const validationJobs = new BoundedMap<string, ValidationJob>(500);
 
 function generateJobId(): string {
-  return `gis-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+  return `gis-${clock.nowMs()}-${Math.random().toString(36).substring(2, 8)}`;
 }
 
 export function getValidationJob(jobId: string): ValidationJob | undefined {
@@ -60,7 +61,7 @@ async function testEndpoint(
   endpoint: typeof countyGisEndpoints.$inferSelect,
   timeoutMs: number = 10000
 ): Promise<EndpointValidationResult> {
-  const startTime = Date.now();
+  const startTime = clock.nowMs();
   
   try {
     const baseUrl = endpoint.baseUrl.replace(/\/$/, "");
@@ -82,7 +83,7 @@ async function testEndpoint(
     });
     
     clearTimeout(timeoutId);
-    const responseTime = Date.now() - startTime;
+    const responseTime = clock.nowMs() - startTime;
     
     if (!response.ok) {
       return {
@@ -93,7 +94,7 @@ async function testEndpoint(
         status: "error",
         responseTime,
         error: `HTTP ${response.status}`,
-        lastChecked: new Date(),
+        lastChecked: clock.now(),
       };
     }
     
@@ -108,7 +109,7 @@ async function testEndpoint(
         status: "error",
         responseTime,
         error: data.error.message || JSON.stringify(data.error),
-        lastChecked: new Date(),
+        lastChecked: clock.now(),
       };
     }
     
@@ -120,10 +121,10 @@ async function testEndpoint(
       status: "online",
       responseTime,
       featureCount: data.count,
-      lastChecked: new Date(),
+      lastChecked: clock.now(),
     };
   } catch (error: any) {
-    const responseTime = Date.now() - startTime;
+    const responseTime = clock.nowMs() - startTime;
     
     if (error.name === "AbortError") {
       return {
@@ -134,7 +135,7 @@ async function testEndpoint(
         status: "timeout",
         responseTime,
         error: `Timeout after ${timeoutMs}ms`,
-        lastChecked: new Date(),
+        lastChecked: clock.now(),
       };
     }
     
@@ -146,7 +147,7 @@ async function testEndpoint(
       status: "error",
       responseTime,
       error: error.message || String(error),
-      lastChecked: new Date(),
+      lastChecked: clock.now(),
     };
   }
 }
@@ -186,7 +187,7 @@ export async function validateAllEndpoints(
       
       if (result.status === "online") {
         await db.update(countyGisEndpoints)
-          .set({ lastVerified: new Date() })
+          .set({ lastVerified: clock.now() })
           .where(eq(countyGisEndpoints.id, result.id));
       }
     }
@@ -220,7 +221,7 @@ export async function validateAllEndpoints(
     timeouts: timeouts.length,
     avgResponseTime: Math.round(avgResponseTime),
     byState,
-    testedAt: new Date(),
+    testedAt: clock.now(),
   };
   
   logger.info(`[GISValidation] Complete: ${online.length}/${results.length} online (${Math.round(online.length / results.length * 100)}%)`);
@@ -272,7 +273,7 @@ export async function validateSampleEndpoints(
       timeouts: results.filter(r => r.status === "timeout").length,
       avgResponseTime: Math.round(avgResponseTime),
       byState,
-      testedAt: new Date(),
+      testedAt: clock.now(),
     },
   };
 }
@@ -286,7 +287,7 @@ export async function getEndpointStats(): Promise<{
 }> {
   const all = await db.select().from(countyGisEndpoints);
   const active = all.filter(e => e.isActive);
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const oneDayAgo = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
   const recentlyVerified = active.filter(e => e.lastVerified && new Date(e.lastVerified) > oneDayAgo);
   
   const states = new Set(active.map(e => e.state));
@@ -318,7 +319,7 @@ export async function startValidationJob(
   const job: ValidationJob = {
     id: jobId,
     status: "pending",
-    startedAt: new Date(),
+    startedAt: clock.now(),
     total: endpoints.length,
     completed: 0,
     stateFilter,
@@ -342,14 +343,14 @@ export async function startValidationJob(
       });
       
       job.status = "completed";
-      job.completedAt = new Date();
+      job.completedAt = clock.now();
       job.summary = result.summary;
       job.results = result.results;
       
       logger.info(`[GISValidation] Job ${jobId} completed: ${result.summary.online}/${result.summary.total} online`);
     } catch (error: any) {
       job.status = "failed";
-      job.completedAt = new Date();
+      job.completedAt = clock.now();
       job.error = error.message || String(error);
       logger.error(`[GISValidation] Job ${jobId} failed`, error);
     }

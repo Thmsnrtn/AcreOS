@@ -58,6 +58,7 @@ import {
 import { emitRentalEvent } from "./workflow-engine";
 import { tenantDisplayName } from "@shared/rental/tenantName";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ── Small pure helpers ──────────────────────────────────────────────────────
 
@@ -178,7 +179,7 @@ async function resolveRentReceiptExtras(
   rentChargeId: string | null,
   receivedAt: string,
 ): Promise<{ ytdPaidCents: number; nextDueDate: string | null; lateFeeApplied: boolean }> {
-  const year = String(receivedAt ?? new Date().toISOString().slice(0, 10)).slice(0, 4);
+  const year = String(receivedAt ?? clock.now().toISOString().slice(0, 10)).slice(0, 4);
   const yearStart = `${year}-01-01`;
 
   const [ytdRow] = await db

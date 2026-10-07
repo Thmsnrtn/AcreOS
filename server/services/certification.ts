@@ -21,6 +21,7 @@ import {
 } from '../../shared/schema';
 import { eq, and, count, sql, desc } from 'drizzle-orm';
 import crypto from 'crypto';
+import { clock } from "../utils/clock";
 
 export interface Certificate {
   id: string;
@@ -157,7 +158,7 @@ class CertificationService {
       courseId,
       courseTitle: course?.title || 'Land Investment Course',
       userName: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : 'Real Estate Professional',
-      issuedAt: new Date().toISOString(),
+      issuedAt: clock.now().toISOString(),
       verificationCode: crypto.randomBytes(8).toString('hex').toUpperCase(),
       score: avgScore,
     };
@@ -172,7 +173,7 @@ class CertificationService {
     try {
       await db
         .update(courseEnrollments)
-        .set({ completedAt: new Date(), certificateIssued: true })
+        .set({ completedAt: clock.now(), certificateIssued: true })
         .where(
           and(
             eq(courseEnrollments.userId, String(userId)),
@@ -251,7 +252,7 @@ class CertificationService {
           description: check.description,
           icon: check.icon,
           tier: check.tier,
-          unlockedAt: new Date().toISOString(),
+          unlockedAt: clock.now().toISOString(),
         };
 
         achievementStore.set(check.id, achievement);

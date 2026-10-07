@@ -9,6 +9,7 @@ import { db } from "../db";
 import { campaigns } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ── Subject Line Evolution ──────────────────────────────────────────
 
@@ -137,7 +138,7 @@ const CIRCUIT_BREAKER_THRESHOLD = 3;
 const CIRCUIT_BREAKER_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
 export function recordEvolutionRevert(domain: string): { paused: boolean } {
-  const now = Date.now();
+  const now = clock.nowMs();
   let entry = revertTracker.get(domain);
   if (!entry) {
     entry = { timestamps: [], paused: false };

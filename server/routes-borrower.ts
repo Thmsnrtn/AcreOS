@@ -74,6 +74,7 @@ import {
 } from "./services/notes/servicedLateFees";
 import { lenderServicingPhase, servicingEndedBorrowerMessage } from "./services/borrower/servicingPhase";
 import { getClientIp, clientIpOrNull } from "./utils/clientIp";
+import { clock } from "./utils/clock";
 
 // ─────────────────────────────────────────────────────────────────────
 // Borrower ACH autopay (Wave C — "money moves")
@@ -256,7 +257,7 @@ function sunsetMiddleware(sunsetDateStr: string = BORROWER_PORTAL_SUNSET_DATE) {
 
   return function sunsetHeaders(req: Request, res: Response, next: NextFunction) {
     // After the sunset date — endpoint is gone. RFC 7231 §6.5.9.
-    if (Date.now() > sunsetDate.getTime()) {
+    if (clock.nowMs() > sunsetDate.getTime()) {
       logger.warn("Sunset endpoint accessed after sunset date", {
         path: req.originalUrl,
         sunsetDate: sunsetDate.toISOString(),
@@ -340,7 +341,7 @@ async function validateBorrowerSession(req: Request, res: Response, next: NextFu
       res.clearCookie('borrower_session');
       return Errors.unauthorized(res);
     }
-    if (new Date(session.expiresAt) < new Date()) {
+    if (new Date(session.expiresAt) < clock.now()) {
       await storage.deleteBorrowerSession(sessionToken);
       res.clearCookie('borrower_session');
       return Errors.unauthorized(res);
@@ -438,7 +439,7 @@ async function renderBorrowerPayoffQuotePdf(
   );
   doc.text(BORROWER_LATE_FEES_NOTE);
   doc.moveDown();
-  doc.text(`Engine: ${row.engineVersion} · Generated: ${new Date().toISOString()}`, { align: "center" });
+  doc.text(`Engine: ${row.engineVersion} · Generated: ${clock.now().toISOString()}`, { align: "center" });
 
   doc.end();
 }
@@ -482,7 +483,7 @@ export function registerBorrowerRoutes(app: Express): void {
       
       // Create a session for the borrower
       const sessionToken = crypto.randomBytes(32).toString('hex');
-      const now = new Date();
+      const now = clock.now();
       const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours
       
       await storage.createBorrowerSession({
@@ -971,8 +972,8 @@ export function registerBorrowerRoutes(app: Express): void {
       // only money ABOVE the scheduled installment collects it. This used to
       // write the day-count fee as "collected" while the whole amount went
       // to principal and interest. No grace period stated = no fee.
-      const paymentDate = new Date();
-      const dueDate = note.nextPaymentDate || new Date();
+      const paymentDate = clock.now();
+      const dueDate = note.nextPaymentDate || clock.now();
       await assessServicedNoteLateFee(note, paymentDate);
       const lateFeeAppliedCents = feeFromExcessCents({
         amountCents: paymentAmountCents,
@@ -1026,7 +1027,7 @@ export function registerBorrowerRoutes(app: Express): void {
         );
       }
 
-      const nextPaymentDate = addMonths(new Date(note.nextPaymentDate || new Date()), 1);
+      const nextPaymentDate = addMonths(new Date(note.nextPaymentDate || clock.now()), 1);
 
       await storage.updateNote(note.id, {
         amortizationSchedule: updatedSchedule,
@@ -1698,7 +1699,7 @@ export function registerBorrowerRoutes(app: Express): void {
       // "today", not UTC's tomorrow). A past date is refused rather than
       // floored to zero days of interest.
       const lenderTimeZone = await resolveOrgTimeZone(note.organizationId);
-      const todayIso = dayInZone(new Date(), lenderTimeZone) ?? isoDateUtc(new Date());
+      const todayIso = dayInZone(clock.now(), lenderTimeZone) ?? isoDateUtc(clock.now());
       const requestedDate = typeof req.query.payoffDate === "string" ? req.query.payoffDate : todayIso;
       let payoffDate: Date;
       try {
@@ -1790,7 +1791,7 @@ export function registerBorrowerRoutes(app: Express): void {
       // never short-circuits a check, it is only ever an input to one.
       if (dbSessionToken !== "") {
         const dbSession = await storage.getBorrowerSession(dbSessionToken);
-        if (dbSession && new Date(dbSession.expiresAt) >= new Date()) {
+        if (dbSession && new Date(dbSession.expiresAt) >= clock.now()) {
           noteIdFromSession = String(dbSession.noteId);
         }
       }
@@ -1858,7 +1859,7 @@ export function registerBorrowerRoutes(app: Express): void {
       
       if (statementType === '1098') {
         // 1098 Interest Statement for tax year
-        const taxYear = year ? Number(year) : new Date().getFullYear() - 1;
+        const taxYear = year ? Number(year) : clock.now().getFullYear() - 1;
 
         // BUCKET BY THE LENDER'S CALENDAR DAY, NOT THE SERVER'S.
         //
@@ -1905,7 +1906,7 @@ export function registerBorrowerRoutes(app: Express): void {
         // Regular account statement
         res.json({
           type: 'statement',
-          generatedDate: new Date().toISOString(),
+          generatedDate: clock.now().toISOString(),
           borrowerName: `${borrower.firstName} ${borrower.lastName}`,
           borrowerAddress: borrower.address || '',
           borrowerEmail: borrower.email || '',

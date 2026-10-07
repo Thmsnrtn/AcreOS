@@ -26,6 +26,7 @@ import {
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
 import { assertWritablePatch } from "../utils/patch";
+import { clock } from "../utils/clock";
 
 export const paxRepo = {
   // PAX KNOWLEDGE BASE
@@ -60,7 +61,7 @@ export const paxRepo = {
 
   async incrementKnowledgeFileUsage(this: DatabaseStorage, orgId: number): Promise<void> {
     await db.update(paxKnowledgeFiles)
-      .set({ usageCount: sql`${paxKnowledgeFiles.usageCount} + 1`, lastUsedAt: new Date() })
+      .set({ usageCount: sql`${paxKnowledgeFiles.usageCount} + 1`, lastUsedAt: clock.now() })
       .where(and(eq(paxKnowledgeFiles.organizationId, orgId), eq(paxKnowledgeFiles.isActive, true)));
   },
 
@@ -162,7 +163,7 @@ export const paxRepo = {
 
   async setConversationProject(this: DatabaseStorage, conversationId: number, projectId: number | null): Promise<void> {
     await db.update(aiConversations)
-      .set({ activeProjectId: projectId, updatedAt: new Date() } as any)
+      .set({ activeProjectId: projectId, updatedAt: clock.now() } as any)
       .where(eq(aiConversations.id, conversationId));
   },
 
@@ -189,7 +190,7 @@ export const paxRepo = {
   async updatePaxScheduledTask(this: DatabaseStorage, id: number, updates: { isActive?: boolean; schedule?: string; lastRunAt?: Date; nextRunAt?: Date; lastRunConversationId?: number; lastRunStatus?: string; lastRunSummary?: string; runCount?: number; updatedAt?: Date }, organizationId?: number): Promise<void> {
     const conditions = [eq(paxScheduledTasks.id, id)];
     if (organizationId) conditions.push(eq(paxScheduledTasks.organizationId, organizationId));
-    await db.update(paxScheduledTasks).set({ ...omitProtectedFields(updates), updatedAt: new Date() }).where(and(...conditions));
+    await db.update(paxScheduledTasks).set({ ...omitProtectedFields(updates), updatedAt: clock.now() }).where(and(...conditions));
   },
 
   async deletePaxScheduledTask(this: DatabaseStorage, id: number, organizationId?: number): Promise<void> {
@@ -284,7 +285,7 @@ export const paxRepo = {
     const existing = await this.getPaxConnector(orgId, connectorId);
     if (existing) {
       const [row] = await db.update(paxConnectorInstances)
-        .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+        .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
         .where(and(eq(paxConnectorInstances.organizationId, orgId), eq(paxConnectorInstances.connectorId, connectorId)))
         .returning();
       return row;

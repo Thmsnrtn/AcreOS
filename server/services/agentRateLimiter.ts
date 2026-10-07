@@ -8,6 +8,7 @@
 import { db } from "../db";
 import { agentActionLog, systemAlerts } from "@shared/schema";
 import { eq, and, gte, count, sql } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 // ─── Rate Limit Configuration ──────────────────────────────────────────────
 
@@ -76,8 +77,8 @@ export async function checkRateLimit(agentCodename: string): Promise<{ allowed: 
   if (!limits) return { allowed: true };
 
   try {
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const oneHourAgo = new Date(clock.nowMs() - 60 * 60 * 1000);
+    const oneDayAgo = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
 
     const [hourCount] = await db.select({ count: count() })
       .from(agentActionLog)
@@ -111,8 +112,8 @@ export async function checkRateLimit(agentCodename: string): Promise<{ allowed: 
 
 export async function checkVolumeAnomaly(agentCodename: string): Promise<{ anomaly: boolean; currentRate: number; avgRate: number }> {
   try {
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const oneHourAgo = new Date(clock.nowMs() - 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
 
     // Current hour count
     const [hourCount] = await db.select({ count: count() })
@@ -165,7 +166,7 @@ export async function checkDeadMansSwitch(): Promise<{ daysSinceLogin: number; a
       return { daysSinceLogin: 0, action: "none" };
     }
 
-    const daysSince = Math.floor((Date.now() - new Date(latest.created).getTime()) / (24 * 60 * 60 * 1000));
+    const daysSince = Math.floor((clock.nowMs() - new Date(latest.created).getTime()) / (24 * 60 * 60 * 1000));
 
     if (daysSince >= 21) return { daysSinceLogin: daysSince, action: "pause_non_critical" };
     if (daysSince >= 14) return { daysSinceLogin: daysSince, action: "reduce_to_assisted" };

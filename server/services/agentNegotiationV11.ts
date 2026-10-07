@@ -13,6 +13,7 @@ import { agentNegotiations, type AgentNegotiation } from "@shared/schema";
 import { eq, desc, and, count, sql } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
+import { clock } from "../utils/clock";
 
 const MAX_ROUNDS = 3;
 
@@ -171,7 +172,7 @@ Respond in JSON:
         resolutionType,
         compromiseDetails,
         status: finalStatus,
-        resolvedAt: new Date(),
+        resolvedAt: clock.now(),
       })
       .where(eq(agentNegotiations.id, negotiationId))
       .returning();
@@ -184,7 +185,7 @@ Respond in JSON:
    */
   async ceoOverride(negotiationId: number, override: string): Promise<void> {
     await db.update(agentNegotiations)
-      .set({ ceoOverride: override, status: "resolved", resolvedAt: new Date() })
+      .set({ ceoOverride: override, status: "resolved", resolvedAt: clock.now() })
       .where(eq(agentNegotiations.id, negotiationId));
   }
 

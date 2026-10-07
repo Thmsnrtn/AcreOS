@@ -26,6 +26,7 @@ import { agentCommsService } from "./agentComms";
 import { getSetting } from "./settings";
 import { logger } from "../utils/logger";
 import { trustDeltaFrom, type TrustEvidence } from "./trustDelta";
+import { clock } from "../utils/clock";
 
 interface TierBreakpoints {
   observer: number;
@@ -43,7 +44,7 @@ export async function runTrustEvolution(): Promise<{
   updates: { codename: string; previousScore: number; newScore: number; delta: number; reason: string }[];
   promotionSuggestions: { codename: string; title: string; suggestion: string }[];
 }> {
-  const now = new Date();
+  const now = clock.now();
   const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
   // Read tunable thresholds from the founder settings substrate (Phase A).

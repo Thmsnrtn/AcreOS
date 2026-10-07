@@ -17,6 +17,7 @@ import { eq, desc, and, like, sql, inArray, lte, gte } from "drizzle-orm";
 import crypto from "crypto";
 import { logger } from "../utils/logger";
 import { unscopedForPlatformOps } from "../utils/orgScopedDb";
+import { clock } from "../utils/clock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -231,7 +232,7 @@ class EventMeshService {
       .update(eventMeshSubscriptions)
       .set({
         eventsProcessed: sql`${eventMeshSubscriptions.eventsProcessed} + 1`,
-        lastEventAt: new Date(),
+        lastEventAt: clock.now(),
       })
       .where(eq(eventMeshSubscriptions.subscriber, subscriber));
   }
@@ -393,7 +394,7 @@ class EventMeshService {
       .from(eventMeshSubscriptions)
       .where(eq(eventMeshSubscriptions.isActive, true));
 
-    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const fiveMinAgo = new Date(clock.nowMs() - 5 * 60 * 1000);
     const [recentRow] = await unscopedForPlatformOps(
       "mesh health: throughput, DLQ depth, channel spread and subscriber lag measure ONE shared bus, not a tenant",
     )

@@ -44,6 +44,7 @@ import { countyMarkets, properties, deals } from "@shared/schema";
 import { eq, and, desc, gte, sql, avg, count } from "drizzle-orm";
 import { subDays, subMonths, subYears } from "date-fns";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ---------------------------------------------------------------------------
 // County Opportunity Score (0–100)
@@ -574,7 +575,7 @@ export async function detectLeadIndicatorAlerts(
   if (newsApiKey) {
     try {
       const query = `${county} county ${state} (new development OR highway OR hospital OR employer OR manufacturing OR distribution center OR data center)`;
-      const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&sortBy=publishedAt&pageSize=10&language=en&from=${new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]}`;
+      const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&sortBy=publishedAt&pageSize=10&language=en&from=${new Date(clock.nowMs() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]}`;
 
       const resp = await fetch(url, {
         headers: { "X-Api-Key": newsApiKey },
@@ -620,7 +621,7 @@ export async function detectLeadIndicatorAlerts(
                   ? "Act within 60 days — employer announcements drive the fastest land price increases"
                   : "Add to watchlist and increase mailing frequency in surrounding areas",
               sourceUrl: article.url,
-              detectedAt: new Date(),
+              detectedAt: clock.now(),
               isActedUpon: false,
             });
           }
@@ -712,7 +713,7 @@ ${score.keyInsights.length > 0 ? "\n### Key Insights\n" + score.keyInsights.map(
 | Low Competition | ${sub(score.investorCompetitionScore)} | 30% |
 | Growth Potential | ${sub(score.growthPotentialScore)} | 15% |
 
-*Report generated ${new Date().toLocaleDateString()} · AcreOS Market Intelligence*
+*Report generated ${clock.now().toLocaleDateString()} · AcreOS Market Intelligence*
 `.trim();
 }
 

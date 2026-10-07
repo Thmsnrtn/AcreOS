@@ -39,6 +39,7 @@ import { stampTraceContext } from "./utils/queueTraceContext";
 import { getStorage } from "./services/cmo/storage";
 import { Errors, sendError } from "./utils/errors";
 import { omitProtectedFields } from "./utils/updatePayload";
+import { clock } from "./utils/clock";
 
 export function registerCmoRoutes(app: Express) {
   // ─── Dashboard ──────────────────────────────────────────────────────────
@@ -118,7 +119,7 @@ export function registerCmoRoutes(app: Express) {
     if (!id) return Errors.badRequest(res, "id is required");
     const [updated] = await db
       .update(brandProfiles)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(eq(brandProfiles.id, id))
       .returning();
     res.json({ profile: updated });
@@ -140,7 +141,7 @@ export function registerCmoRoutes(app: Express) {
       monthlyCapCents?: number;
     };
     if (!id) return Errors.badRequest(res, "id is required");
-    const updates: Partial<typeof cmoBudget.$inferInsert> = { updatedAt: new Date() };
+    const updates: Partial<typeof cmoBudget.$inferInsert> = { updatedAt: clock.now() };
     if (typeof dailyCapCents === "number") updates.dailyCapCents = dailyCapCents;
     if (typeof weeklyCapCents === "number") updates.weeklyCapCents = weeklyCapCents;
     if (typeof monthlyCapCents === "number") updates.monthlyCapCents = monthlyCapCents;
@@ -207,9 +208,9 @@ export function registerCmoRoutes(app: Express) {
       .update(cmoAdRenders)
       .set({
         status: "approved",
-        approvedAt: new Date(),
+        approvedAt: clock.now(),
         approvedBy: req.user?.email ?? "founder",
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(inArray(cmoAdRenders.id, renderIds));
 
@@ -217,9 +218,9 @@ export function registerCmoRoutes(app: Express) {
       .update(decisionsInboxItems)
       .set({
         status: "approved",
-        resolvedAt: new Date(),
+        resolvedAt: clock.now(),
         resolvedBy: req.user?.email ?? "founder",
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(decisionsInboxItems.id, inboxItemId));
 
@@ -284,9 +285,9 @@ export function registerCmoRoutes(app: Express) {
         .update(cmoAdRenders)
         .set({
           status: "rejected" as never,
-          rejectedAt: new Date(),
+          rejectedAt: clock.now(),
           rejectionNoteId: rejectionNote.id,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(inArray(cmoAdRenders.id, renderIds));
     }
@@ -295,10 +296,10 @@ export function registerCmoRoutes(app: Express) {
       .update(decisionsInboxItems)
       .set({
         status: "rejected",
-        resolvedAt: new Date(),
+        resolvedAt: clock.now(),
         resolvedBy: req.user?.email ?? "founder",
         founderModification: note ?? null,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(decisionsInboxItems.id, inboxItemId));
 

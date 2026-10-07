@@ -27,6 +27,7 @@ import { and, gte, lt, sql } from "drizzle-orm";
 import { db } from "../../../db";
 import { parcelObservations } from "@shared/schema";
 import type { DomainDetector, FindingInput } from "../domainAudit";
+import { clock } from "../../../utils/clock";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HIGH_VOLUME_PRIOR = 100; // prior-week count above which a full stall is critical
@@ -45,7 +46,7 @@ export const observationRateDetector: DomainDetector = {
   id: "observation_rate",
   domain: "future",
   async run(): Promise<FindingInput[]> {
-    const now = Date.now();
+    const now = clock.nowMs();
     const last24hStart = new Date(now - DAY_MS);
     const priorWeekStart = new Date(now - 8 * DAY_MS);
 

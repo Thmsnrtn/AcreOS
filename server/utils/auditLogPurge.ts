@@ -66,6 +66,7 @@ import { db } from "../db";
 import { auditLog, auditLogPurges, type AuditLogEntry } from "@shared/schema";
 import { chainAndInsertAuditLog } from "./auditLogChain";
 import { logger } from "./logger";
+import { clock } from "./clock";
 
 export const PURGE_SEALING_ACTION = "audit_log:sealing_purge";
 
@@ -187,7 +188,7 @@ export async function sealAndPurgeAuditLogs(opts: SealAndPurgeOpts): Promise<Pur
 
     // 2c) Update the ledger row with the sealing row id + completion stamp.
     await tx.update(auditLogPurges)
-      .set({ sealingAuditLogId: sealingRow.id, purgeCompletedAt: new Date() })
+      .set({ sealingAuditLogId: sealingRow.id, purgeCompletedAt: clock.now() })
       .where(eq(auditLogPurges.id, ledger.id));
 
     // 2d) Delete the original rows. The chain trigger blocks DELETEs on

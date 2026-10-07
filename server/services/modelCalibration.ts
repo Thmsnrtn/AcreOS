@@ -7,6 +7,7 @@ import { db } from "../db";
 import { deals, properties } from "@shared/schema";
 import { eq, and, gte, desc, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface ScoreOutcome {
   propertyId: number;
@@ -60,7 +61,7 @@ export async function recordScoreOutcome(outcome: ScoreOutcome): Promise<void> {
 }
 
 export async function runWeeklyCalibration(orgId: number): Promise<CalibrationResult> {
-  const ninetyDaysAgo = new Date(Date.now() - 90 * 86400000);
+  const ninetyDaysAgo = new Date(clock.nowMs() - 90 * 86400000);
 
   // Get closed deals from last 90 days
   // SCOPED. `orgId` was optional and referenced nowhere in this body, so the
@@ -82,7 +83,7 @@ export async function runWeeklyCalibration(orgId: number): Promise<CalibrationRe
       recordsAnalyzed: closedDeals.length,
       lcsCorrelation: 0,
       adjustments: [],
-      timestamp: new Date(),
+      timestamp: clock.now(),
     };
   }
 
@@ -126,6 +127,6 @@ export async function runWeeklyCalibration(orgId: number): Promise<CalibrationRe
     recordsAnalyzed: closedDeals.length,
     lcsCorrelation: parseFloat(correlation.toFixed(4)),
     adjustments,
-    timestamp: new Date(),
+    timestamp: clock.now(),
   };
 }

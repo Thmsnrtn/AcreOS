@@ -33,6 +33,7 @@ import {
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import * as cockpit from "./services/founder/lifeCockpit";
+import { clock } from "./utils/clock";
 
 // ─── Validation helpers ──────────────────────────────────────────────────────
 
@@ -51,7 +52,7 @@ const INCOME_TYPES = new Set(["w2_self", "w2_spouse", "acreos_draw", "side_incom
 function parseYear(raw: unknown): number {
   const n = Number.parseInt(String(raw ?? ""), 10);
   if (Number.isFinite(n) && n >= 2000 && n <= 2100) return n;
-  return new Date().getUTCFullYear();
+  return clock.now().getUTCFullYear();
 }
 
 function parseId(raw: unknown): number | null {

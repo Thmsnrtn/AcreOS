@@ -13,6 +13,7 @@ import {
   agentActionLog, churnRiskScores,
 } from "@shared/schema";
 import { sql, gte, and, lte, count } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 export interface TrendResult {
   metric: string;
@@ -29,7 +30,7 @@ export interface TrendResult {
  * Calculate week-over-week trends for key business metrics.
  */
 export async function getWeeklyTrends(): Promise<TrendResult[]> {
-  const now = new Date();
+  const now = clock.now();
   const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
 
@@ -92,7 +93,7 @@ export async function getWeeklyTrends(): Promise<TrendResult[]> {
  * Get monthly trends (this month vs last month).
  */
 export async function getMonthlyTrends(): Promise<TrendResult[]> {
-  const now = new Date();
+  const now = clock.now();
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);

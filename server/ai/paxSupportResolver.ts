@@ -46,6 +46,7 @@ import {
 } from "./supportAgent";
 import { serializeToolResultForModel } from "./untrustedEnvelope";
 import { recordSupportResolveDecision } from "../services/andrei/supportResolverCalibration";
+import { clock } from "../utils/clock";
 
 const MAX_RESOLVE_ITERATIONS = 8;
 
@@ -371,11 +372,11 @@ export async function resolveTicketWithPax(
         resolution: draft.response,
         resolutionType: "auto_fixed",
         resolvedBy: "pax",
-        resolvedAt: new Date(),
+        resolvedAt: clock.now(),
         aiHandled: true,
         aiConfidenceScore: String(confidence),
         aiResolutionAttempts: (ticket.aiResolutionAttempts ?? 0) + 1,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(supportTickets.id, ticketId));
 
@@ -456,7 +457,7 @@ export async function resolveTicketWithPax(
       aiHandled: true,
       aiConfidenceScore: String(confidence),
       aiResolutionAttempts: (ticket.aiResolutionAttempts ?? 0) + 1,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     })
     .where(eq(supportTickets.id, ticketId));
 

@@ -10,6 +10,7 @@ import { processUploadedImage } from "./services/imagePipeline";
 import { persistPhotoBytes, photoStorageAvailable, PHOTO_STORAGE_UNAVAILABLE_MESSAGE } from "./services/photoStorage";
 import { signedOrgObjectUrl } from "./services/documentStore";
 import { createHash } from "node:crypto";
+import { clock } from "./utils/clock";
 
 const fieldScoutRouter = Router();
 
@@ -519,7 +520,7 @@ fieldScoutRouter.post('/field-scout/reports', async (req: Request, res: Response
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Generated: ${new Date().toLocaleString()}`, margin, y);
+    doc.text(`Generated: ${clock.now().toLocaleString()}`, margin, y);
     y += lineHeight;
     doc.text(`Total Visits: ${visits.length}`, margin, y);
     y += lineHeight * 2;

@@ -22,7 +22,7 @@ export function sourcedNumbersOf(...payloads: unknown[]): number[] {
 
 /** The founder's Letter (GET /api/founder/solene/brief → brief) as a screen. */
 export function letterScreen(brief: any, ...sources: unknown[]): ScreenEvent {
-  const texts = [brief.theWord, brief.neededLine, brief.focusLine, brief.calibrationLine, brief.modelChangeNotice, ...(brief.learningLines ?? []), ...(brief.trackRecord ?? []).map((t: any) => t.line), ...(brief.misses ?? []).map((m: any) => m.line)]
+  const texts = [brief.theWord, brief.neededLine, brief.focusLine, brief.calibrationLine, brief.modelChangeNotice, brief.evidence?.line, ...(brief.learningLines ?? []), ...(brief.trackRecord ?? []).map((t: any) => t.line), ...(brief.misses ?? []).map((m: any) => m.line)]
     .filter((x): x is string => typeof x === "string" && x.length > 0);
   return { surface: "letter", texts, sourcedNumbers: sourcedNumbersOf(brief, ...sources) };
 }

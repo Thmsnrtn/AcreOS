@@ -23,6 +23,7 @@ import {
   trustEvolutionLog,
 } from "@shared/schema";
 import { and, asc, desc, eq, gte, isNotNull, sql } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 export interface TrendPoint {
   date: string; // ISO date (YYYY-MM-DD) for daily, YYYY-WW for weekly
@@ -92,7 +93,7 @@ export async function computeSystemTrends(
 
   return {
     windowDays,
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
     series: {
       avgOutcomeScore,
       founderOverrideRate,
@@ -109,7 +110,7 @@ export async function computeSystemTrends(
 // ── Individual series ───────────────────────────────────────────────
 
 async function dailyOutcomeAvg(windowDays: number): Promise<TrendSeries> {
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
   const rows = await db.execute(sql`
     SELECT
       date_trunc('day', outcome_recorded_at)::date AS day,
@@ -128,7 +129,7 @@ async function dailyOutcomeAvg(windowDays: number): Promise<TrendSeries> {
 }
 
 async function weeklyOverrideRate(windowDays: number): Promise<TrendSeries> {
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
   const rows = await db.execute(sql`
     SELECT
       date_trunc('week', resolved_at)::date AS week,
@@ -147,7 +148,7 @@ async function weeklyOverrideRate(windowDays: number): Promise<TrendSeries> {
 }
 
 async function weeklyAutoResolvedRatio(windowDays: number): Promise<TrendSeries> {
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
   const rows = await db.execute(sql`
     SELECT
       date_trunc('week', created_at)::date AS week,
@@ -166,7 +167,7 @@ async function weeklyAutoResolvedRatio(windowDays: number): Promise<TrendSeries>
 }
 
 async function weeklyBrier(windowDays: number): Promise<TrendSeries> {
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
   // Brier requires (confidence, right). Group by ISO week. Confidence is
   // in contextBundle->>'executorConfidence'; rightness is outcomeScore > 0.
   const rows = await db.execute(sql`
@@ -196,7 +197,7 @@ async function weeklyBrier(windowDays: number): Promise<TrendSeries> {
 }
 
 async function weeklySafetyRails(windowDays: number): Promise<TrendSeries> {
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
   const rows = await db.execute(sql`
     SELECT
       date_trunc('week', resolved_at)::date AS week,
@@ -215,7 +216,7 @@ async function weeklySafetyRails(windowDays: number): Promise<TrendSeries> {
 }
 
 async function dailyDecisionVolume(windowDays: number): Promise<TrendSeries> {
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
   const rows = await db.execute(sql`
     SELECT
       date_trunc('day', created_at)::date AS day,
@@ -233,7 +234,7 @@ async function dailyDecisionVolume(windowDays: number): Promise<TrendSeries> {
 }
 
 async function agentTrustSeries(windowDays: number): Promise<AgentTrustPoint[]> {
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
   const rows = await db
     .select({
       codename: trustEvolutionLog.agentCodename,

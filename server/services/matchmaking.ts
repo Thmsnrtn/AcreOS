@@ -7,6 +7,7 @@ import {
 } from '../../shared/schema';
 import { eq, and, gte, lte, desc } from 'drizzle-orm';
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 interface MatchScore {
   listingId: number;
@@ -184,7 +185,7 @@ class Matchmaking {
 
     // Time on market (fresh listings are better)
     const daysOnMarket = Math.floor(
-      (new Date().getTime() - listing.createdAt.getTime()) / (1000 * 60 * 60 * 24)
+      (clock.now().getTime() - listing.createdAt.getTime()) / (1000 * 60 * 60 * 24)
     );
 
     if (daysOnMarket < 7) {

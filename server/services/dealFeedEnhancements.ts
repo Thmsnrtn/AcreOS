@@ -8,6 +8,7 @@ import { dailyDealFeed, dealFeedInteractions, deals, properties } from "@shared/
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { CLOSED_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
+import { clock } from "../utils/clock";
 // Item 17: "Why not?" feedback categories
 export type PassReason = "too_expensive" | "wrong_area" | "wrong_size" | "low_quality" | "already_have" | "other";
 
@@ -57,7 +58,7 @@ export interface SavedFilter {
 
 // Item 24: Stale opportunity detection
 export async function flagStaleOpportunities(orgId: number): Promise<number> {
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
   const stale = await db.select({ id: dailyDealFeed.id })
     .from(dailyDealFeed)
     .where(and(

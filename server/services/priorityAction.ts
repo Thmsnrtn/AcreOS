@@ -3,6 +3,7 @@
  */
 
 import { storage } from "../storage";
+import { clock } from "../utils/clock";
 
 export interface PriorityActionResult {
   action: string;
@@ -51,7 +52,7 @@ export async function getTopPriority(orgId: number): Promise<PriorityActionResul
     }
 
     // 3. Stale leads — no campaign after 7+ days
-    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
+    const sevenDaysAgo = new Date(clock.nowMs() - 7 * 86400000);
     const stale = leads.filter(l => l.status === "new" && l.createdAt && new Date(l.createdAt) < sevenDaysAgo);
     if (stale.length > 0) {
       return {

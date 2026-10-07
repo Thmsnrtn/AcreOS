@@ -34,6 +34,7 @@
 import { db } from "../db";
 import { decisionsInboxItems } from "@shared/schema";
 import { and, eq, gte, isNotNull, sql } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 export interface CalibrationBucket {
   bucketLowPct: number; // e.g. 70 for the 70-79% bucket
@@ -63,7 +64,7 @@ export async function computeCalibration(
   agentCodename: string | "all" = "all",
   windowDays: number = DEFAULT_WINDOW_DAYS,
 ): Promise<CalibrationReport> {
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
   const conditions = [
     gte(decisionsInboxItems.resolvedAt, since),
     isNotNull(decisionsInboxItems.outcomeScore),

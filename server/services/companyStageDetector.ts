@@ -6,6 +6,7 @@
 import { db } from "../db";
 import { organizations } from "@shared/schema";
 import { count, sql, gte, isNotNull } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 export type CompanyStage = "pre_launch" | "beta" | "pmf_seeking" | "growth" | "established";
 
@@ -55,8 +56,8 @@ export async function detectStage(): Promise<StageInfo> {
 
     // Days since first user
     const [oldest] = await db.select({ created: sql<string>`MIN(${organizations.createdAt})` }).from(organizations);
-    const firstSignup = oldest?.created ? new Date(oldest.created) : new Date();
-    const daysActive = Math.floor((Date.now() - firstSignup.getTime()) / (24 * 60 * 60 * 1000));
+    const firstSignup = oldest?.created ? new Date(oldest.created) : clock.now();
+    const daysActive = Math.floor((clock.nowMs() - firstSignup.getTime()) / (24 * 60 * 60 * 1000));
 
     // Determine stage
     let stage: CompanyStage;

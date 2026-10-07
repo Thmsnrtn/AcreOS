@@ -34,6 +34,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { assertEntityBelongsToOrg } from "./utils/orgScope";
 import { generate1099NecPdf, type Nec1099Form } from "./services/form1099NecPdf";
+import { clock } from "./utils/clock";
 
 const NEC_THRESHOLD_CENTS = 60000;  // $600.00 — IRS 1099-NEC threshold
 
@@ -81,7 +82,7 @@ function maskTaxId(raw: string | null | undefined, type: string | null | undefin
 }
 
 async function recomputeContractorTotals(orgId: number, contractorId: string) {
-  const ytdYear = new Date().getFullYear();
+  const ytdYear = clock.now().getFullYear();
   const [ytdRow] = await db.execute(sql`
     SELECT COALESCE(SUM(amount_cents), 0) AS ytd
     FROM contractor_payments
@@ -100,7 +101,7 @@ async function recomputeContractorTotals(orgId: number, contractorId: string) {
   await db.update(contractors).set({
     ytdPaidCents: Number((ytdRow as any)?.ytd ?? 0),
     lifetimePaidCents: Number((lifetimeRow as any)?.total ?? 0),
-    updatedAt: new Date(),
+    updatedAt: clock.now(),
   }).where(eq(contractors.id, contractorId));
 }
 
@@ -131,8 +132,8 @@ export function registerContractorRoutes(app: Express): void {
   app.get("/api/contractors/1099-nec-batch", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const parsedYear = parseInt(String(req.query.taxYear ?? new Date().getFullYear()), 10);
-      const taxYear = Number.isFinite(parsedYear) ? parsedYear : new Date().getFullYear();
+      const parsedYear = parseInt(String(req.query.taxYear ?? clock.now().getFullYear()), 10);
+      const taxYear = Number.isFinite(parsedYear) ? parsedYear : clock.now().getFullYear();
 
       const rows = await db.execute(sql`
         SELECT c.id, c.name, c.business_name, c.legal_entity_name, c.email, c.address, c.tax_id_encrypted, c.tax_id_type,
@@ -183,7 +184,7 @@ export function registerContractorRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const userId = getUserId(req);
-      const taxYear = parseInt(String(req.query.taxYear ?? req.body?.taxYear ?? new Date().getFullYear()), 10);
+      const taxYear = parseInt(String(req.query.taxYear ?? req.body?.taxYear ?? clock.now().getFullYear()), 10);
 
       const [org] = await db.select().from(organizations).where(eq(organizations.id, orgId));
       if (!org) return Errors.notFound(res, "Organization");
@@ -316,7 +317,7 @@ export function registerContractorRoutes(app: Express): void {
       const parsed = updateContractorSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      const updates: Record<string, unknown> = { updatedAt: clock.now() };
       for (const k of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
       }

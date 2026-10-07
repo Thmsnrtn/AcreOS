@@ -22,6 +22,7 @@ import { db } from "../../db";
 import { unscopedForPlatformOps } from "../../utils/orgScopedDb";
 import { financialLedger, founderAudit, mrrSnapshots } from "@shared/schema";
 import { liveMrrDetail } from "./runwayModel";
+import { clock } from "../../utils/clock";
 
 export const REVENUE_TRIGGER_LADDER: ReadonlyArray<{
   thresholdId: string;
@@ -43,7 +44,7 @@ export const REVENUE_TRIGGER_LADDER: ReadonlyArray<{
 
 /** Posted revenue over the trailing 30 days — revenue, not a run rate. */
 export async function trailing30dRevenueCents(): Promise<number> {
-  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
   // Platform-wide by definition: AcreOS's own subscription revenue across all
   // orgs, read only by the founder surfaces (founder-guarded router, founder
   // chat).
@@ -94,7 +95,7 @@ export async function pendingScaleUpTriggers(): Promise<{
     else if (r.action === "defer") decided.set(r.targetId, { status: "deferred", at: r.createdAt, deferDays: deferDaysOf(r.after) });
   }
 
-  const now = Date.now();
+  const now = clock.nowMs();
   const pending = REVENUE_TRIGGER_LADDER.filter((t) => {
     if (recurringMrrCents < t.thresholdCents) return false;
     const d = decided.get(t.thresholdId);

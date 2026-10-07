@@ -47,6 +47,7 @@ import { emitLeadCreated, emitLeadUpdated } from "../services/leadEvents";
 // Pax moves is a stage change like any other.
 import { emitDealCreated, emitDealStageChanged } from "../services/dealEvents";
 import { emitPropertyCreated, emitPropertyStatusChanged } from "../services/propertyEvents";
+import { clock } from "../utils/clock";
 
 // Tool parameter schemas (OpenAI function calling format)
 export const toolDefinitions = {
@@ -2878,7 +2879,7 @@ export async function executeTool(
             value: {
               summary: `Offer draft for deal ${deal.id}: ${offerAmountFormatted}`,
               details: { dealId: deal.id, propertyId: property.id, offerAmount: args.offerAmount, closingDays, contingencies, draftText },
-              timestamp: new Date().toISOString(),
+              timestamp: clock.now().toISOString(),
             },
             importance: 6,
           });
@@ -3034,14 +3035,14 @@ export async function executeTool(
 
       case "get_stale_leads": {
         const daysSinceContact = Number(args.daysSinceContact) || 14;
-        const cutoffDate = new Date();
+        const cutoffDate = clock.now();
         cutoffDate.setDate(cutoffDate.getDate() - daysSinceContact);
 
         const allLeads = await storage.getLeads(org.id);
         const staleLeads = allLeads.filter(lead => {
           if (["closed", "dead"].includes(lead.status)) return false;
           if (!lead.lastContactedAt && !lead.createdAt) return true;
-          const lastContact = lead.lastContactedAt || lead.createdAt || new Date();
+          const lastContact = lead.lastContactedAt || lead.createdAt || clock.now();
           return new Date(lastContact) < cutoffDate;
         });
 
@@ -3059,7 +3060,7 @@ export async function executeTool(
               lastContactedAt: l.lastContactedAt || null,
               createdAt: l.createdAt,
               daysSinceContact: Math.floor(
-                (Date.now() - new Date(l.lastContactedAt || l.createdAt || new Date()).getTime()) / (1000 * 60 * 60 * 24)
+                (clock.nowMs() - new Date(l.lastContactedAt || l.createdAt || clock.now()).getTime()) / (1000 * 60 * 60 * 24)
               ),
             })).sort((a, b) => b.daysSinceContact - a.daysSinceContact),
             message: staleLeads.length > 0

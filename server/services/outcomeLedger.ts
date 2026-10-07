@@ -40,6 +40,7 @@ import { db } from "../db";
 import { decisionsInboxItems, organizations } from "@shared/schema";
 import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Prediction types ────────────────────────────────────────────────────────
 
@@ -157,7 +158,7 @@ export function attachPrediction(item: {
   const prediction =
     item.prediction ?? defaultPrediction(item.itemType, item.organizationId ?? null);
   if (!prediction) return null;
-  const now = item.now ?? new Date();
+  const now = item.now ?? clock.now();
   return {
     expectedOutcome: prediction.expectedOutcome,
     checkInDate: new Date(now.getTime() + prediction.checkInDays * DAY_MS),
@@ -195,7 +196,7 @@ export interface ScoreDueCheckInsResult {
  * card. Items whose criterion cannot be evaluated stay unscored.
  */
 export async function scoreDueCheckIns(
-  now: Date = new Date(),
+  now: Date = clock.now(),
   limit = 50,
 ): Promise<ScoreDueCheckInsResult> {
   const rows = await db
@@ -441,7 +442,7 @@ export async function applyCheckInAnswer(params: {
   optionKey: string;
   now?: Date;
 }): Promise<CheckInAnswerResult> {
-  const now = params.now ?? new Date();
+  const now = params.now ?? clock.now();
   const option = OUTCOME_CHECK_IN_OPTIONS.find((o) => o.key === params.optionKey);
   if (!option) {
     // The route validates keys against the stored options; an unknown key
@@ -514,7 +515,7 @@ export interface OutcomeLedgerCounts {
  * 90 days (rows carrying a checkInDate). Honest zeros — if nothing carries
  * a prediction yet, every count is 0.
  */
-export async function getOutcomeLedgerCounts(now: Date = new Date()): Promise<OutcomeLedgerCounts> {
+export async function getOutcomeLedgerCounts(now: Date = clock.now()): Promise<OutcomeLedgerCounts> {
   const windowStart = new Date(now.getTime() - LEDGER_WINDOW_DAYS * DAY_MS);
   const rows = await db
     .select({

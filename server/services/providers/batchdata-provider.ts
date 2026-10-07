@@ -13,6 +13,7 @@ import type {
   ProviderHealthStatus,
   ProviderLookupContext,
 } from "./types";
+import { clock } from "../../utils/clock";
 
 const BATCHDATA_BASE = "https://api.batchdata.com/api/v1";
 
@@ -84,7 +85,7 @@ export const batchdataProvider: DataProvider = {
   },
 
   async lookup(category: DataCategory, input: LookupInput, ctx?: ProviderLookupContext): Promise<LookupResult> {
-    const start = Date.now();
+    const start = clock.nowMs();
     // R1d BYO-data-keys: the customer's own BatchData key (when connected)
     // takes precedence over the platform key — the customer pays BatchData
     // directly and the registry skips the credit-pool debit.
@@ -136,9 +137,9 @@ export const batchdataProvider: DataProvider = {
       category,
       confidence,
       costCents,
-      fetchedAt: new Date(),
+      fetchedAt: clock.now(),
       cached: false,
-      latencyMs: Date.now() - start,
+      latencyMs: clock.nowMs() - start,
       data,
       source: "BatchData",
       sourceAsOf: null,
@@ -149,7 +150,7 @@ export const batchdataProvider: DataProvider = {
   },
 
   async healthCheck(): Promise<ProviderHealthStatus> {
-    const start = Date.now();
+    const start = clock.nowMs();
     const apiKey = getApiKey();
 
     if (!apiKey) {
@@ -157,7 +158,7 @@ export const batchdataProvider: DataProvider = {
         healthy: false,
         latencyMs: 0,
         message: "No API key configured",
-        checkedAt: new Date(),
+        checkedAt: clock.now(),
       };
     }
 
@@ -177,16 +178,16 @@ export const batchdataProvider: DataProvider = {
 
       return {
         healthy: response.status !== 401 && response.status !== 403,
-        latencyMs: Date.now() - start,
+        latencyMs: clock.nowMs() - start,
         message: `BatchData responded with status ${response.status}`,
-        checkedAt: new Date(),
+        checkedAt: clock.now(),
       };
     } catch (error) {
       return {
         healthy: false,
-        latencyMs: Date.now() - start,
+        latencyMs: clock.nowMs() - start,
         message: error instanceof Error ? error.message : "Health check failed",
-        checkedAt: new Date(),
+        checkedAt: clock.now(),
       };
     }
   },

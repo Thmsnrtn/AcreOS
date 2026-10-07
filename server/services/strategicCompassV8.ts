@@ -17,6 +17,7 @@ import { strategicCompass, type StrategicCompass } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { resolveAgentData } from "./agentDataResolvers";
+import { clock } from "../utils/clock";
 
 // ─── Mode Presets ────────────────────────────────────────────────────────────
 
@@ -149,7 +150,7 @@ class StrategicCompassV8Service {
       agentDirectives,
       metrics: preset.metrics,
       lastUpdatedBy: "ceo",
-      changelog: [{ timestamp: new Date().toISOString(), changedBy: "ceo", description: `Initialized in ${mode} mode`, newMode: mode }],
+      changelog: [{ timestamp: clock.now().toISOString(), changedBy: "ceo", description: `Initialized in ${mode} mode`, newMode: mode }],
     }).returning({ id: strategicCompass.id });
 
     return compass.id;
@@ -163,11 +164,11 @@ class StrategicCompassV8Service {
     const preset = MODE_PRESETS[newMode] || MODE_PRESETS.balanced;
     const agentDirectives = this.buildAgentDirectives(newMode);
     const changelog = [...((compass.changelog as any[]) || [])];
-    changelog.push({ timestamp: new Date().toISOString(), changedBy: "ceo", description: reason || `Switched to ${newMode}`, previousMode: compass.mode, newMode });
+    changelog.push({ timestamp: clock.now().toISOString(), changedBy: "ceo", description: reason || `Switched to ${newMode}`, previousMode: compass.mode, newMode });
 
     await db.update(strategicCompass).set({
       mode: newMode, northStar: preset.northStar, priorities: preset.priorities,
-      agentDirectives, metrics: preset.metrics, changelog, lastUpdatedBy: "ceo", updatedAt: new Date(),
+      agentDirectives, metrics: preset.metrics, changelog, lastUpdatedBy: "ceo", updatedAt: clock.now(),
     }).where(eq(strategicCompass.id, compass.id));
   }
 
@@ -176,8 +177,8 @@ class StrategicCompassV8Service {
     const compass = await this.getActive();
     if (!compass) return;
     const changelog = [...((compass.changelog as any[]) || [])];
-    changelog.push({ timestamp: new Date().toISOString(), changedBy: "ceo", description: `North star: "${northStar}"` });
-    await db.update(strategicCompass).set({ northStar, changelog, updatedAt: new Date() }).where(eq(strategicCompass.id, compass.id));
+    changelog.push({ timestamp: clock.now().toISOString(), changedBy: "ceo", description: `North star: "${northStar}"` });
+    await db.update(strategicCompass).set({ northStar, changelog, updatedAt: clock.now() }).where(eq(strategicCompass.id, compass.id));
   }
 
   /** Get directive for a specific agent */

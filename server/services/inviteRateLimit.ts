@@ -12,6 +12,7 @@
 
 import { getRedisClient } from "../utils/redis";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const INVITE_CREATE_LIMIT = 100; // invites per org per 24h
 const INVITE_CREATE_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -26,7 +27,7 @@ const memStore = new Map<string, MemEntry>();
 
 // Cleanup memory store hourly
 setInterval(() => {
-  const cutoff = Date.now() - Math.max(INVITE_CREATE_WINDOW_MS, INVITE_ACCEPT_WINDOW_MS) * 2;
+  const cutoff = clock.nowMs() - Math.max(INVITE_CREATE_WINDOW_MS, INVITE_ACCEPT_WINDOW_MS) * 2;
   for (const [k, v] of memStore.entries()) {
     v.timestamps = v.timestamps.filter((t) => t > cutoff);
     if (v.timestamps.length === 0) memStore.delete(k);
@@ -77,7 +78,7 @@ function checkMemoryCounter(
   limit: number,
   cost: number
 ): RateLimitDecision {
-  const now = Date.now();
+  const now = clock.nowMs();
   const cutoff = now - windowMs;
   const entry = memStore.get(key) ?? { timestamps: [] };
   entry.timestamps = entry.timestamps.filter((t) => t > cutoff);

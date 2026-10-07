@@ -41,6 +41,7 @@ import {
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
 import { assertWritablePatch } from "../utils/patch";
+import { clock } from "../utils/clock";
 
 export const growthConfigRepo = {
   // Playbook Instances
@@ -84,7 +85,7 @@ export const growthConfigRepo = {
 
   async updatePlaybookInstance(this: DatabaseStorage, organizationId: number, id: number, data: Partial<InsertPlaybookInstance>): Promise<PlaybookInstance | undefined> {
     const [updated] = await db.update(playbookInstances)
-      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: clock.now() })
       .where(and(eq(playbookInstances.id, id), eq(playbookInstances.organizationId, organizationId)))
       .returning();
     return updated;
@@ -131,7 +132,7 @@ export const growthConfigRepo = {
    */
   async updateFeatureFlag(this: DatabaseStorage, key: string, enabled: boolean): Promise<PlatformFeatureFlag | undefined> {
     const [updated] = await db.update(platformFeatureFlags)
-      .set({ enabled, state: enabled ? "on" : "off", updatedAt: new Date() })
+      .set({ enabled, state: enabled ? "on" : "off", updatedAt: clock.now() })
       .where(eq(platformFeatureFlags.key, key))
       .returning();
     return updated;
@@ -150,7 +151,7 @@ export const growthConfigRepo = {
 
   async updatePricingConfig(this: DatabaseStorage, tier: string, data: Partial<InsertPricingConfig>): Promise<PricingConfig | undefined> {
     const [updated] = await db.update(pricingConfig)
-      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: clock.now() })
       .where(eq(pricingConfig.tier, tier))
       .returning();
     return updated;
@@ -158,7 +159,7 @@ export const growthConfigRepo = {
 
   async clearPricingPromo(this: DatabaseStorage, tier: string): Promise<void> {
     await db.update(pricingConfig)
-      .set({ promoLabel: null, promoDiscountPercent: null, promoEndsAt: null, stripeCouponId: null, updatedAt: new Date() })
+      .set({ promoLabel: null, promoDiscountPercent: null, promoEndsAt: null, stripeCouponId: null, updatedAt: clock.now() })
       .where(eq(pricingConfig.tier, tier));
   },
 
@@ -183,7 +184,7 @@ export const growthConfigRepo = {
     const existing = await this.getFounderAdAccount(data.platform);
     if (existing) {
       const [updated] = await db.update(founderAdAccounts)
-        .set({ ...omitProtectedFields(sealed), updatedAt: new Date() })
+        .set({ ...omitProtectedFields(sealed), updatedAt: clock.now() })
         .where(eq(founderAdAccounts.id, existing.id))
         .returning();
       return openFounderAdAccount(updated);
@@ -209,7 +210,7 @@ export const growthConfigRepo = {
 
   async updateGrowthCampaign(this: DatabaseStorage, id: number, data: Partial<InsertGrowthCampaign>): Promise<GrowthCampaign | undefined> {
     const [updated] = await db.update(growthCampaigns)
-      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: clock.now() })
       .where(eq(growthCampaigns.id, id))
       .returning();
     return updated;
@@ -291,7 +292,7 @@ export const growthConfigRepo = {
 
   async markBorrowerMessagesRead(this: DatabaseStorage, noteId: number, senderType: string): Promise<void> {
     await db.update(borrowerMessages)
-      .set({ readAt: new Date() })
+      .set({ readAt: clock.now() })
       .where(and(
         eq(borrowerMessages.noteId, noteId),
         eq(borrowerMessages.senderType, senderType),

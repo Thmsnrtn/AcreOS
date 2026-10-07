@@ -43,6 +43,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 
 import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
+import { clock } from "./utils/clock";
 const router = Router();
 
 const priorityRank: Record<string, number> = { high: 0, medium: 1, low: 2 };
@@ -1275,7 +1276,7 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = getOrganization(req);
     const orgId = org.id;
-    const now = new Date();
+    const now = clock.now();
 
     // Refresh portfolio alerts the same way /api/alerts/active does.
     await runPortfolioHealthJob(orgId).catch((e) =>
@@ -1598,7 +1599,7 @@ router.patch("/queue/:id", async (req: AuthenticatedRequest, res: Response) => {
       return Errors.badRequest(res, "Invalid action — expected one of: done, snooze, dismiss");
     }
 
-    const now = new Date();
+    const now = clock.now();
     const { status, snoozedUntil } = resolveActionToState(action as ResolveAction, now);
 
     await db
@@ -1647,7 +1648,7 @@ router.post("/queue/clear", async (req: AuthenticatedRequest, res: Response) => 
   try {
     const orgId = getOrganizationId(req);
     const userId = getUserId(req);
-    const now = new Date();
+    const now = clock.now();
 
     const { items } = await buildActiveQueue(orgId, now);
     if (items.length === 0) {

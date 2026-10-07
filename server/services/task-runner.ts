@@ -4,15 +4,16 @@ import type { ScheduledTask, InsertScheduledTask } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
 import { getPaxControls, paxControlsRefusalMessage } from "./paxControls";
+import { clock } from "../utils/clock";
 
 const log = (msg: string, meta?: Record<string, any>) => 
-  logger.info(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), source: 'task-runner', message: msg, ...meta }));
+  logger.info(JSON.stringify({ level: 'INFO', timestamp: clock.now().toISOString(), source: 'task-runner', message: msg, ...meta }));
 
 const logError = (msg: string, meta?: Record<string, any>) => 
-  logger.error(JSON.stringify({ level: 'ERROR', timestamp: new Date().toISOString(), source: 'task-runner', message: msg, ...meta }));
+  logger.error(JSON.stringify({ level: 'ERROR', timestamp: clock.now().toISOString(), source: 'task-runner', message: msg, ...meta }));
 
 export function parseSchedule(schedule: string): Date {
-  const now = new Date();
+  const now = clock.now();
   
   switch (schedule.toLowerCase()) {
     case "hourly":
@@ -124,7 +125,7 @@ class TaskRunnerService {
       
       const nextRunAt = parseSchedule(task.schedule);
       await storage.updateScheduledTask(taskId, {
-        lastRunAt: new Date(),
+        lastRunAt: clock.now(),
         nextRunAt,
         retryCount: 0,
         lastError: null,
@@ -144,20 +145,20 @@ class TaskRunnerService {
           retryCount: newRetryCount,
           lastError: errorMessage,
           status: "failed",
-          lastRunAt: new Date(),
+          lastRunAt: clock.now(),
         });
         logError(`Task marked as failed after max retries`, { taskId, maxRetries: task.maxRetries });
         return { success: false, error: `Failed after ${task.maxRetries} retries: ${errorMessage}` };
       }
 
       const retryDelay = task.retryDelayMinutes * 60 * 1000;
-      const nextRetryAt = new Date(Date.now() + retryDelay);
+      const nextRetryAt = new Date(clock.nowMs() + retryDelay);
       
       await storage.updateScheduledTask(taskId, {
         retryCount: newRetryCount,
         lastError: errorMessage,
         nextRunAt: nextRetryAt,
-        lastRunAt: new Date(),
+        lastRunAt: clock.now(),
       });
 
       log(`Task scheduled for retry`, { taskId, retryCount: newRetryCount, nextRetryAt });
@@ -274,7 +275,7 @@ class TaskRunnerService {
     failed: number;
     skippedPaused: number;
   }> {
-    const now = new Date();
+    const now = clock.now();
     const dueTasks = await storage.getDueScheduledTasks(now);
 
     let processed = 0;

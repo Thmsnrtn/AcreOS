@@ -13,6 +13,7 @@ import { db } from "../db";
 import { companySeasons, type CompanySeason } from "@shared/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { strategicCompassV8Service } from "./strategicCompassV8";
+import { clock } from "../utils/clock";
 
 // ─── Season Configurations ───────────────────────────────────────────────────
 
@@ -73,7 +74,7 @@ class CompanySeasonService {
     const [record] = await db.insert(companySeasons).values({
       season,
       isActive: true,
-      activatedAt: new Date(),
+      activatedAt: clock.now(),
       activatedBy: "ceo",
       reason: reason || `CEO activated ${season} season`,
       config,
@@ -96,7 +97,7 @@ class CompanySeasonService {
       await db.update(companySeasons)
         .set({
           isActive: false,
-          deactivatedAt: new Date(),
+          deactivatedAt: clock.now(),
         })
         .where(eq(companySeasons.id, current.id));
     }

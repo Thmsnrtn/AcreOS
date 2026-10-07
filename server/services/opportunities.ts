@@ -30,6 +30,7 @@ import {
 } from "@shared/schema";
 import { type ParcelRef } from "@shared/parcel/parcelRef";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /** A subject with more open opportunities than this has a runaway writer. */
 const OPPORTUNITY_READ_CAP = 500;
@@ -193,7 +194,7 @@ export async function closeOpportunity(
   // Existence and tenancy first, so a miss refuses instead of silently
   // updating zero rows and reporting success.
   await requireOpportunity(organizationId, opportunityId);
-  const now = new Date();
+  const now = clock.now();
   const [row] = await db
     .update(opportunities)
     .set({ status, closedAt: now, updatedAt: now })

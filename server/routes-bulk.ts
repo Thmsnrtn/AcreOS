@@ -24,6 +24,7 @@ import { logger } from "./utils/logger";
 import { assertUserIsOrgMember } from "./utils/orgScope";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
+import { clock } from "./utils/clock";
 
 const router = Router();
 const MAX_BATCH = 100;
@@ -77,7 +78,7 @@ router.post("/leads/update", attachPermissionContext(), async (req: Authenticate
       return Errors.badRequest(res, "No valid updates provided");
     }
 
-    allowedUpdates.updatedAt = new Date();
+    allowedUpdates.updatedAt = clock.now();
 
     await db.update(leads)
       .set(allowedUpdates)
@@ -150,7 +151,7 @@ router.post("/properties/update", async (req: AuthenticatedRequest, res: Respons
       return Errors.badRequest(res, "No valid updates provided");
     }
 
-    allowedUpdates.updatedAt = new Date();
+    allowedUpdates.updatedAt = clock.now();
 
     const updatedRows = await db.update(properties)
       .set(allowedUpdates)
@@ -236,7 +237,7 @@ router.post("/tasks/complete", async (req: AuthenticatedRequest, res: Response) 
     if (!parsedIds) return Errors.badRequest(res, `ids must be a non-empty array of numbers (max ${MAX_BATCH})`);
 
     await db.update(tasks)
-      .set({ status: "completed", completedAt: new Date(), updatedAt: new Date() })
+      .set({ status: "completed", completedAt: clock.now(), updatedAt: clock.now() })
       .where(and(
         eq(tasks.organizationId, orgId),
         inArray(tasks.id, parsedIds)

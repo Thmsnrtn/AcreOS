@@ -20,6 +20,7 @@ import { dataSourceBroker } from "../services/data-source-broker.js";
 import { propertyEnrichmentService } from "../services/propertyEnrichment.js";
 import { storage } from "../storage.js";
 import { logger } from "../utils/logger.js";
+import { clock } from "../utils/clock";
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
 
@@ -80,7 +81,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
     handler: (args: any) => Promise<any>,
   ) => {
     server.tool(name, description, schema, async (args: any) => {
-      const startedAt = Date.now();
+      const startedAt = clock.nowMs();
       let isError = false;
       try {
         const result = await handler(args);
@@ -93,7 +94,7 @@ export function createMcpServer(options: McpServerOptions = {}) {
         logger.info("[mcp] tool call", {
           source: "mcp",
           organizationId: boundOrgId,
-          metadata: { tool: name, durationMs: Date.now() - startedAt, isError },
+          metadata: { tool: name, durationMs: clock.nowMs() - startedAt, isError },
         });
       }
     });

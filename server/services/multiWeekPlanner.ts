@@ -24,6 +24,7 @@ import { and, gte, lt, sql, inArray } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { notifyFounder, ROSY_RIVER_AGENT_TYPES, WEEKLY_BUDGET_CEILING_USD } from "./rosyRiver";
 import { listGateStatus } from "./agentPromotionGate";
+import { clock } from "../utils/clock";
 
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -100,7 +101,7 @@ async function readWindowMetrics(start: Date, end: Date): Promise<WeekMetrics> {
 }
 
 export async function runMultiWeekPlanner(): Promise<PlannerOutput> {
-  const now = Date.now();
+  const now = clock.nowMs();
   const thisWeekStart = new Date(now - ONE_WEEK_MS);
   const lastWeekStart = new Date(now - 2 * ONE_WEEK_MS);
 

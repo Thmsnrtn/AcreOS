@@ -12,6 +12,7 @@ import {
   _setSubscribeConfirmerForTests,
   _resetTestOverrides,
 } from "./snsVerification";
+import { clock } from "../utils/clock";
 
 export type { SnsMessage };
 
@@ -84,7 +85,7 @@ function verifyHmac(
 ): { ok: boolean; reason?: string } {
   const ts = parseInt(timestamp, 10);
   if (!Number.isFinite(ts)) return { ok: false, reason: "invalid timestamp" };
-  const now = Date.now();
+  const now = clock.nowMs();
   const tsMs = ts * 1000;
   if (Math.abs(now - tsMs) > TIMESTAMP_DRIFT_MS) {
     return { ok: false, reason: "timestamp outside replay window" };

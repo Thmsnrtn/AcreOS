@@ -31,6 +31,7 @@ import {
 import { describeScope, orgScope, type TenantScope } from "../autopilot/tenantScope";
 import { summarizeControlCatalog, type ControlCatalogSummary } from "./controlCatalog";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 export interface GovernanceEvidencePacket {
   v: 1;
@@ -101,9 +102,9 @@ export function verifyEvidencePacket(packet: GovernanceEvidencePacket): {
 export async function gatherGovernanceEvidence(
   orgId: number,
   periodDays = 30,
-  generatedAt: string = new Date().toISOString(),
+  generatedAt: string = clock.now().toISOString(),
 ): Promise<GovernanceEvidencePacket> {
-  const since = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - periodDays * 24 * 60 * 60 * 1000);
 
   // 1. Audit-log hash-chain verification (tamper-evidence).
   let auditChainVerified = false;

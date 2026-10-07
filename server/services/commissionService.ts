@@ -38,6 +38,7 @@ import {
 import { projectGci, type GciForecastResult, type PipelineDealInput } from "@shared/commission/forecast";
 
 import { ADMINISTRATIVE_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
+import { clock } from "../utils/clock";
 export {
   type CommissionTier,
   type CommissionConfig,
@@ -186,7 +187,7 @@ export async function saveCommissionConfig(
   if (existing) {
     await db
       .update(organizationIntegrations)
-      .set({ credentials, updatedAt: new Date() })
+      .set({ credentials, updatedAt: clock.now() })
       .where(eq(organizationIntegrations.id, existing.id));
   } else {
     await db.insert(organizationIntegrations).values({
@@ -278,7 +279,7 @@ export async function saveSplitConfig(
   if (existing) {
     await db
       .update(organizationIntegrations)
-      .set({ credentials, updatedAt: new Date() })
+      .set({ credentials, updatedAt: clock.now() })
       .where(eq(organizationIntegrations.id, existing.id));
   } else {
     await db.insert(organizationIntegrations).values({
@@ -347,7 +348,7 @@ async function saveCommissionRecordsStore(
   if (existing) {
     await db
       .update(organizationIntegrations)
-      .set({ credentials, updatedAt: new Date() })
+      .set({ credentials, updatedAt: clock.now() })
       .where(eq(organizationIntegrations.id, existing.id));
   } else {
     await db.insert(organizationIntegrations).values({
@@ -372,7 +373,7 @@ export async function recordDealCommission(
   teamMemberId: number,
   dealId: number,
   salePriceCents: number,
-  closedAt: Date = new Date()
+  closedAt: Date = clock.now()
 ): Promise<CommissionRecord> {
   const config = await getCommissionConfig(organizationId);
   const records = await getCommissionRecordsStore(organizationId);
@@ -438,7 +439,7 @@ export async function recordDealCommission(
   }
 
   const record: CommissionRecord = {
-    id: `comm_${dealId}_${teamMemberId}_${Date.now()}`,
+    id: `comm_${dealId}_${teamMemberId}_${clock.nowMs()}`,
     organizationId,
     teamMemberId,
     dealId,
@@ -450,8 +451,8 @@ export async function recordDealCommission(
     totalOwedCents,
     paidCents: 0,
     status: "owed",
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    createdAt: clock.now(),
+    updatedAt: clock.now(),
     ...splitFields,
   };
 
@@ -488,7 +489,7 @@ export async function recordCommissionPayment(
         : newPaid > 0
         ? "partial"
         : "owed",
-    updatedAt: new Date(),
+    updatedAt: clock.now(),
   };
 
   await saveCommissionRecordsStore(organizationId, records);
@@ -537,7 +538,7 @@ export async function getCommissionRecords(
  */
 export async function getAgentCommissionSummaries(
   organizationId: number,
-  year: number = new Date().getFullYear()
+  year: number = clock.now().getFullYear()
 ): Promise<AgentCommissionSummary[]> {
   const fromDate = startOfYear(new Date(year, 0, 1));
   const toDate = endOfYear(new Date(year, 0, 1));
@@ -614,7 +615,7 @@ export function generateCommissionStatement(
   lines.push(`Organization: ${orgName}`);
   lines.push(`Agent: ${summary.displayName} (${summary.email})`);
   lines.push(`Year: ${year}`);
-  lines.push(`Generated: ${format(new Date(), "MMMM d, yyyy")}`);
+  lines.push(`Generated: ${format(clock.now(), "MMMM d, yyyy")}`);
   lines.push(``);
   lines.push(`─`.repeat(60));
   lines.push(`YEAR-TO-DATE SUMMARY`);
@@ -710,7 +711,7 @@ export interface SplitConfigSummary {
  */
 export async function getSplitConfigSummary(
   organizationId: number,
-  year: number = new Date().getFullYear()
+  year: number = clock.now().getFullYear()
 ): Promise<SplitConfigSummary> {
   const [config, summaries] = await Promise.all([
     getSplitConfig(organizationId),
@@ -741,7 +742,7 @@ export async function getSplitConfigSummary(
  */
 export async function getGciForecast(
   organizationId: number,
-  year: number = new Date().getFullYear()
+  year: number = clock.now().getFullYear()
 ): Promise<GciForecastResult> {
   const [configured, commissionConfig, splitConfig] = await Promise.all([
     hasCommissionConfig(organizationId),

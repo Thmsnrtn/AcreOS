@@ -32,6 +32,7 @@ import { and, eq, gte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { logAgentTrace, type LogTraceInput } from "./agentLlmTraces";
 import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
+import { clock } from "../utils/clock";
 
 // Platform-wide agent tasks live under the system org. Codebase-monitor
 // proposals and similar Rosy River outputs are not org-scoped, so they use the
@@ -99,7 +100,7 @@ const DEFAULT_FOUNDER_APPROVAL_PATTERNS = [
 ];
 
 async function loadRules(): Promise<CachedRules> {
-  if (rulesCache && Date.now() - rulesCache.loadedAt < RULES_CACHE_TTL_MS) {
+  if (rulesCache && clock.nowMs() - rulesCache.loadedAt < RULES_CACHE_TTL_MS) {
     return rulesCache;
   }
   const rows = await db
@@ -128,7 +129,7 @@ async function loadRules(): Promise<CachedRules> {
       founderApprovalDbRules.length > 0
         ? founderApprovalDbRules
         : DEFAULT_FOUNDER_APPROVAL_PATTERNS.map(parsePattern),
-    loadedAt: Date.now(),
+    loadedAt: clock.nowMs(),
   };
   return rulesCache;
 }
@@ -370,7 +371,7 @@ export async function getWeeklyAgentSpend(): Promise<{
   crossedAlert: boolean;
   crossedCeiling: boolean;
 }> {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const sevenDaysAgo = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
 
   const rows = await db
     .select({

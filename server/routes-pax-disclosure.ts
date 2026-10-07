@@ -32,13 +32,14 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { isFounderIdentity } from "./services/founder";
 import { toAuthUserView } from "@shared/accountViews";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
 router.post("/acknowledge-disclosure", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = getUserId(req);
-    const now = new Date();
+    const now = clock.now();
 
     // Idempotent set — UPDATE matches only when the column is still null.
     // Re-posting after acknowledgement touches 0 rows; the re-SELECT below

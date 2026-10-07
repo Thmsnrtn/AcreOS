@@ -11,6 +11,7 @@ import OpenAI from "openai";
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { wrapUntrustedFields } from "../ai/untrustedEnvelope";
+import { clock } from "../utils/clock";
 
 interface SellerProfile {
   motivation: 'distressed' | 'motivated' | 'neutral' | 'passive';
@@ -306,7 +307,7 @@ Respond in JSON format.`;
         await db.update(negotiationThreads)
           .set({ 
             status: finalStatus,
-            closedAt: new Date(),
+            closedAt: clock.now(),
           })
           .where(eq(negotiationThreads.id, Number(threadId)));
       }

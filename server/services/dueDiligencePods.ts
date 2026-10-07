@@ -11,6 +11,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { DataSourceBroker } from "./data-source-broker";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const dataSourceBroker = new DataSourceBroker();
 
@@ -144,7 +145,7 @@ interface CalculatedScores {
 
 class DueDiligencePodService {
   private generateAgentId(agentType: AgentType): string {
-    return `${agentType}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    return `${agentType}-${clock.nowMs()}-${Math.random().toString(36).substring(2, 8)}`;
   }
 
   async requestDossier(
@@ -196,7 +197,7 @@ class DueDiligencePodService {
 
     await db
       .update(dueDiligenceDossiers)
-      .set({ status: "running", startedAt: new Date() })
+      .set({ status: "running", startedAt: clock.now() })
       .where(and(eq(dueDiligenceDossiers.id, dossierId), eq(dueDiligenceDossiers.organizationId, organizationId)));
 
     await this.logAgentEvent(dossier.organizationId, "dossier_pod_started", {
@@ -223,7 +224,7 @@ class DueDiligencePodService {
           agentsAssigned[task.key] = {
             ...agentsAssigned[task.key],
             status: "running",
-            startedAt: new Date().toISOString(),
+            startedAt: clock.now().toISOString(),
           };
           await this.updateAgentStatus(dossierId, organizationId, agentsAssigned);
 
@@ -232,14 +233,14 @@ class DueDiligencePodService {
             agentsAssigned[task.key] = {
               ...agentsAssigned[task.key],
               status: "completed",
-              completedAt: new Date().toISOString(),
+              completedAt: clock.now().toISOString(),
             };
             return { key: task.findingKey, result };
           } catch (error) {
             agentsAssigned[task.key] = {
               ...agentsAssigned[task.key],
               status: "failed",
-              completedAt: new Date().toISOString(),
+              completedAt: clock.now().toISOString(),
             };
             throw error;
           }
@@ -270,8 +271,8 @@ class DueDiligencePodService {
           greenFlags: recommendation.greenFlags,
           agentsAssigned,
           status: "completed",
-          completedAt: new Date(),
-          updatedAt: new Date(),
+          completedAt: clock.now(),
+          updatedAt: clock.now(),
         })
         .where(and(eq(dueDiligenceDossiers.id, dossierId), eq(dueDiligenceDossiers.organizationId, organizationId)))
         .returning();
@@ -282,7 +283,7 @@ class DueDiligencePodService {
         .update(dueDiligenceDossiers)
         .set({
           executiveSummary,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(and(eq(dueDiligenceDossiers.id, dossierId), eq(dueDiligenceDossiers.organizationId, organizationId)))
         .returning();
@@ -303,7 +304,7 @@ class DueDiligencePodService {
         .set({
           status: "failed",
           agentsAssigned,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(and(eq(dueDiligenceDossiers.id, dossierId), eq(dueDiligenceDossiers.organizationId, organizationId)));
 
@@ -320,7 +321,7 @@ class DueDiligencePodService {
   private async updateAgentStatus(dossierId: number, organizationId: number, agentsAssigned: Record<AgentType, AgentAssignment>): Promise<void> {
     await db
       .update(dueDiligenceDossiers)
-      .set({ agentsAssigned, updatedAt: new Date() })
+      .set({ agentsAssigned, updatedAt: clock.now() })
       .where(and(eq(dueDiligenceDossiers.id, dossierId), eq(dueDiligenceDossiers.organizationId, organizationId)));
   }
 

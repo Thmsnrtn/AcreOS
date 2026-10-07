@@ -7,6 +7,7 @@ import { isFounderEmail, isFounderIdentity } from "../services/founder";
 import { logger } from "../utils/logger";
 import { e2eTestAuthEnabled, resolveTestUserId } from "./testAuth";
 import { sendError } from "../utils/errors";
+import { clock } from "../utils/clock";
 
 export { clerkMiddleware };
 
@@ -71,7 +72,7 @@ async function refreshRevokedSids(): Promise<void> {
         if (s?.id) next.add(s.id);
       }
       revokedSidCache.sids = next;
-      revokedSidCache.lastRefreshAt = Date.now();
+      revokedSidCache.lastRefreshAt = clock.nowMs();
     } catch (err: any) {
       logger.warn("[clerkAuth] revoked-sid cache refresh failed: " + err?.message);
       // Don't clobber the cache — keep whatever we last had and let the
@@ -108,7 +109,7 @@ async function checkRevokedSid(
   sid: string | undefined,
 ): Promise<"ok" | "revoked"> {
   if (!sid) return "ok"; // No sid claim → can't validate; defer to clerkMiddleware
-  const now = Date.now();
+  const now = clock.nowMs();
   // Trigger a background refresh if stale, but never block the hot path.
   if (now - revokedSidCache.lastRefreshAt > REVOKED_SID_REFRESH_MS) {
     void refreshRevokedSids();
@@ -129,7 +130,7 @@ export function __setRevokedSidsForTests(sids: string[] | null): void {
     return;
   }
   revokedSidCache.sids = new Set(sids);
-  revokedSidCache.lastRefreshAt = Date.now();
+  revokedSidCache.lastRefreshAt = clock.nowMs();
 }
 
 /**
@@ -187,7 +188,7 @@ async function hydrateUser(req: any, res: any, next: any) {
         // Accept tokens up to 30 seconds past expiry to handle Clerk session refresh lag
         // SEC-005: reduced from 5 min — 30s is sufficient for normal clock skew
         const GRACE_PERIOD_MS = 30 * 1000;
-        if (isValid && payload.sub && payload.exp * 1000 > Date.now() - GRACE_PERIOD_MS) {
+        if (isValid && payload.sub && payload.exp * 1000 > clock.nowMs() - GRACE_PERIOD_MS) {
           // Lens 23 #5: JWT signature + expiry are necessary but not sufficient.
           // A revoked session keeps its valid JWT until exp. Cross-check the
           // `sid` claim against our revoked-sid cache; fail closed on unknown.
@@ -245,7 +246,7 @@ async function hydrateUser(req: any, res: any, next: any) {
       // client-clock manipulation); the two columns are set to the same
       // instant for v1.0 (separate columns enable independent re-acceptance
       // tracking when v1.1 ships).
-      const acceptedAt = new Date();
+      const acceptedAt = clock.now();
       const inserted = await db
         .insert(users)
         .values({

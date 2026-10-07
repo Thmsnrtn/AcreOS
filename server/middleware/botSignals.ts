@@ -32,6 +32,7 @@ import { db } from "../db";
 import { signupSignals } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { ipBucket } from "./authPathLimits";
+import { clock } from "../utils/clock";
 
 /**
  * Heuristic regexes for known crawler/scrape UAs. Conservative on purpose —
@@ -155,7 +156,7 @@ export async function recordSignupSignals(input: {
    */
   signalsEmitted?: boolean;
 }): Promise<number | null> {
-  const now = Date.now();
+  const now = clock.nowMs();
   const email = (input.email || "").toLowerCase().trim();
   const emailHash = email ? sha256Email(email) : null;
   const userAgent = (input.userAgent || "").slice(0, 1000);
@@ -274,7 +275,7 @@ export async function captureSignupSignals(
   next: NextFunction,
 ): Promise<void> {
   const body = (req.body ?? {}) as SignupBodyShape;
-  const now = Date.now();
+  const now = clock.nowMs();
 
   const email = (body.email || body.identifier || "").toLowerCase().trim();
   const emailHash = email ? sha256Email(email) : null;

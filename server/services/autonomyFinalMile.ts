@@ -14,6 +14,7 @@ import { agentEvents } from "@shared/schema";
 import { eq, and, sql, desc, gte, lt, inArray } from "drizzle-orm";
 import { wsServer } from "../websocket";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── 1. Daily Autonomous Summary ─────────────────────────────────────────────
 
@@ -25,7 +26,7 @@ export async function generateDailyAutonomousSummary(): Promise<{
   topAgents: Array<{ agent: string; actions: number }>;
   summary: string;
 }> {
-  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const dayAgo = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
 
   // Count autonomous actions
   const actionCounts = await db
@@ -159,7 +160,7 @@ export async function checkDelegationCompletions(): Promise<{ completed: number;
       }
 
       // Check SLA deadline
-      if (delegation.slaDeadline && new Date(delegation.slaDeadline) < new Date()) {
+      if (delegation.slaDeadline && new Date(delegation.slaDeadline) < clock.now()) {
         // SLA breached — escalate to founder
         try {
           wsServer.broadcastFounderEvent("delegation_sla_breach", {
@@ -204,8 +205,8 @@ export async function retryFailedActions(): Promise<{ retried: number; succeeded
   let succeeded = 0;
 
   try {
-    const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const hourAgo = new Date(clock.nowMs() - 60 * 60 * 1000);
+    const dayAgo = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
 
     // Find actions that failed in the last hour but not older than 24h
     const failedActions = await db
@@ -327,7 +328,7 @@ export async function executeResolvedConsensus(): Promise<{ executed: number }> 
 
           // Mark as executed by closing the dialogue.
           await db.update(agentDialogues)
-            .set({ status: "closed", resolvedAt: new Date() })
+            .set({ status: "closed", resolvedAt: clock.now() })
             .where(and(
               eq(agentDialogues.id, dialogue.id),
               eq(agentDialogues.orgId, dialogueOrgId),

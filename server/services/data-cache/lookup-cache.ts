@@ -23,6 +23,7 @@ import { db } from "../../db";
 import { cachedLookups, cachedLookupHits } from "@shared/schema";
 import { logger } from "../../utils/logger";
 import * as providerIntel from "../providerIntelligence";
+import { clock } from "../../utils/clock";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TTL policy. Tuned per entity type — parcel polygons are effectively static
@@ -115,7 +116,7 @@ export async function getCachedOrFetch<T>(
   opts: GetCachedOrFetchOpts<T>,
 ): Promise<GetCachedOrFetchResult<T>> {
   const freshnessHours = opts.freshnessHours ?? defaultFreshnessHours(opts.entityType);
-  const now = new Date();
+  const now = clock.now();
   const staleBefore = new Date(now.getTime() - freshnessHours * 60 * 60 * 1000);
 
   // Look up existing row.
@@ -232,7 +233,7 @@ export async function getCacheHitSavingsForOrg(
   organizationId: number,
   sinceDays = 30,
 ): Promise<{ savingsCents: number; hitCount: number }> {
-  const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - sinceDays * 24 * 60 * 60 * 1000);
   const rows = await db
     .select({
       savingsCents: sql<number>`COALESCE(SUM(${cachedLookups.costCents}), 0)::int`,
@@ -261,7 +262,7 @@ export async function getCacheHitRate(sinceDays = 7): Promise<{
   hits: number;
   misses: number;
 }> {
-  const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - sinceDays * 24 * 60 * 60 * 1000);
   const [hitsRow] = await db
     .select({ count: sql<number>`COUNT(*)::int` })
     .from(cachedLookupHits)

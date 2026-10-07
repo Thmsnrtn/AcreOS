@@ -26,6 +26,7 @@ import { Errors } from "./utils/errors";
 import { mayChangeOrganizationType, withoutOrgLevelKeys } from "./middleware/roleGuard";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 import { seedSampleDataForOrg } from "./services/onboarding/sampleSeeder";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -123,7 +124,7 @@ router.post("/complete", async (req: Request, res: Response) => {
         const persona = derivePersona(businessType, investorChoice, effectiveNoteRole);
         await db
           .update(users)
-          .set({ persona, updatedAt: new Date() })
+          .set({ persona, updatedAt: clock.now() })
           .where(eq(users.id, user.id));
         if (mayMoveOrg) {
           await db
@@ -192,7 +193,7 @@ router.post("/skip", async (req: Request, res: Response) => {
     const nextData: Record<string, unknown> = {
       ...existingData,
       skipped: true,
-      skippedAt: new Date().toISOString(),
+      skippedAt: clock.now().toISOString(),
     };
     await storage.updateOrganization(org.id, {
       onboardingData: nextData as typeof org.onboardingData,
@@ -384,7 +385,7 @@ router.patch("/progress", async (req: Request, res: Response) => {
     const { organizations } = await import("@shared/schema");
     const { eq } = await import("drizzle-orm");
     await db.update(organizations)
-      .set({ onboardingStep: step || 0, onboardingData: { ...(org.onboardingData || {}), ...stepData }, updatedAt: new Date() } as any)
+      .set({ onboardingStep: step || 0, onboardingData: { ...(org.onboardingData || {}), ...stepData }, updatedAt: clock.now() } as any)
       .where(eq(organizations.id, org.id));
 
     // Phase 3 Week 14 — Activation telemetry. Each canonical step gets its

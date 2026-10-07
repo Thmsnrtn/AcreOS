@@ -44,6 +44,7 @@ import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { logger } from "../../utils/logger";
 import { qualifiesForRegZStatement } from "./predicate";
 import { parseCalendarDate } from "@shared/dates/calendar";
+import { clock } from "../../utils/clock";
 
 // HUD-approved housing counsellor hotline — §1026.41(d)(8) mandates
 // disclosure when the borrower is 45+ days delinquent. The hotline
@@ -140,7 +141,7 @@ export async function generateStatementsForCycle(
   asOfDate: Date,
   options: GenerateStatementsOptions = {},
 ): Promise<GenerateStatementsResult> {
-  const start = Date.now();
+  const start = clock.nowMs();
 
   // Cycle = the calendar month ending at asOfDate. We use a
   // last-day-of-cycle anchor: cycleEnd is the last day of the month
@@ -412,7 +413,7 @@ export async function generateStatementsForCycle(
     }
   }
 
-  result.durationMs = Date.now() - start;
+  result.durationMs = clock.nowMs() - start;
   logger.info(
     `[periodicStatements] org=${organizationId} loans=${result.loansEvaluated} generated=${result.statementsGenerated} skipped=${result.statementsSkipped} errors=${result.errors.length} duration=${result.durationMs}ms`,
   );
@@ -1023,7 +1024,7 @@ async function computeStatementFields(
   let delinquencyInfo: ComputedFields["delinquencyInfo"];
   if (daysDelinquent >= DELINQUENCY_DISCLOSURE_THRESHOLD_DAYS) {
     const delinquentSinceDate = new Date(
-      Date.now() - daysDelinquent * 24 * 60 * 60 * 1000,
+      clock.nowMs() - daysDelinquent * 24 * 60 * 60 * 1000,
     );
     delinquencyInfo = {
       daysDelinquent,

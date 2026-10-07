@@ -21,6 +21,7 @@ import { properties } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { sampleParcelTerrain } from "./terrain";
 import { floodZoneFromNfhl } from "./data-source-broker";
+import { clock } from "../utils/clock";
 
 // ============================================
 // TYPES
@@ -289,7 +290,7 @@ async function checkFloodZone(lat: number, lng: number): Promise<FloodZoneResult
 
     const data = await resp.json();
     if (data?.error) throw new Error(String(data.error.message ?? "FEMA API error"));
-    const reading = floodZoneFromNfhl(data.features, new Date());
+    const reading = floodZoneFromNfhl(data.features, clock.now());
 
     if (reading.status === "unmapped" || reading.zone === null) {
       return {
@@ -1247,7 +1248,7 @@ async function checkWeatherAlerts(lat: number, lng: number): Promise<WeatherAler
     risk: "unknown",
   };
   try {
-    const end = new Date();
+    const end = clock.now();
     const start = new Date(end.getTime() - WEATHER_ALERTS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
     const url =
       `https://api.weather.gov/alerts?point=${safeCoord(lat, "lat")},${safeCoord(lng, "lng")}` +
@@ -1540,7 +1541,7 @@ export async function runAutoDueDiligence(
     lat,
     lng,
     acreage: acreage || null,
-    runAt: new Date().toISOString(),
+    runAt: clock.now().toISOString(),
     overallScore: score,
     overallRisk: risk,
     passedChecks,

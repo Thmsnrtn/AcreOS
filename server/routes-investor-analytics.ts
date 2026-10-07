@@ -39,6 +39,7 @@ import { getOrganizationId } from "./types/request";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 interface PropertyAnalytics {
   propertyId: number;
@@ -187,7 +188,7 @@ async function snapshotForProperty(orgId: number, propId: number, opExBps?: numb
   // ── The trailing-12 window, declared once and reused ─────────────────────
   // Both the measured-op-ex sum immediately below and the vacancy-months query
   // further down bucket over the SAME trailing-12 months.
-  const twelveAgo = new Date();
+  const twelveAgo = clock.now();
   twelveAgo.setMonth(twelveAgo.getMonth() - 12);
   const twelveAgoDate = twelveAgo.toISOString().slice(0, 10);
 
@@ -378,7 +379,7 @@ async function t12ForProperty(orgId: number, propId: number): Promise<T12Respons
 
   // The trailing-12 window: the current month and the eleven before it. Computed
   // in UTC so a month boundary never shifts under a server timezone.
-  const now = new Date();
+  const now = clock.now();
   const windowStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (T12_MONTHS - 1), 1));
   const windowStartMonth = windowStart.toISOString().slice(0, 7); // YYYY-MM
   const windowStartDate = windowStart.toISOString().slice(0, 10); // YYYY-MM-01

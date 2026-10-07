@@ -22,6 +22,7 @@ import {
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { generateWithAutoRouting } from "./aiRouter";
 import { TAX_ADVISORY_COPY } from "../utils/taxAdvisory";
+import { clock } from "../utils/clock";
 
 // Migrated from direct OpenAI client to central aiRouter (P1-36).
 // Cost tracking, semantic caching, prompt versioning all flow through aiRouter.
@@ -209,7 +210,7 @@ class TaxOptimizerService {
       const realizedGain = saleProceeds - adjustedBasis;
 
       const acquisitionDate = deal.createdAt ? new Date(deal.createdAt) : null;
-      const dispositionDate = deal.closingDate ? new Date(deal.closingDate) : new Date();
+      const dispositionDate = deal.closingDate ? new Date(deal.closingDate) : clock.now();
 
       const holdingPeriodDays = acquisitionDate
         ? Math.floor((dispositionDate.getTime() - acquisitionDate.getTime()) / (1000 * 60 * 60 * 24))
@@ -323,7 +324,7 @@ class TaxOptimizerService {
       recommendations,
       installmentSaleOpportunities,
       exchange1031Candidates,
-      generatedAt: new Date(),
+      generatedAt: clock.now(),
       disclaimer: TAX_ADVISORY_COPY,
     };
   }
@@ -501,7 +502,7 @@ class TaxOptimizerService {
     return transactions
       .filter(t => t.realizedGain > 25000 && t.isLongTerm)
       .map(t => {
-        const saleDate = t.dispositionDate || new Date();
+        const saleDate = t.dispositionDate || clock.now();
         const deadline45 = new Date(saleDate.getTime() + 45 * 24 * 60 * 60 * 1000);
         const deadline180 = new Date(saleDate.getTime() + 180 * 24 * 60 * 60 * 1000);
         const potentialTaxDeferred = t.realizedGain * 0.15 + (t.realizedGain > 200000 ? (t.realizedGain - 200000) * 0.038 : 0);
@@ -546,7 +547,7 @@ class TaxOptimizerService {
     const gain = salePrice - purchasePrice - closingCosts;
 
     const holdingDays = deal.createdAt
-      ? Math.floor((Date.now() - new Date(deal.createdAt).getTime()) / 86400000)
+      ? Math.floor((clock.nowMs() - new Date(deal.createdAt).getTime()) / 86400000)
       : 0;
     const isLongTerm = holdingDays > 365;
 

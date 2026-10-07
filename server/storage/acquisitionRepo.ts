@@ -19,6 +19,7 @@ import {
   type InsertDueDiligenceChecklist,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { clock } from "../utils/clock";
 
 export const acquisitionRepo = {
   // Target Counties
@@ -39,7 +40,7 @@ export const acquisitionRepo = {
   async updateTargetCounty(this: DatabaseStorage, id: number, updates: Partial<InsertTargetCounty>, organizationId?: number) {
     const conditions = [eq(targetCounties.id, id)];
     if (organizationId) conditions.push(eq(targetCounties.organizationId, organizationId));
-    const [updated] = await db.update(targetCounties).set({ ...omitProtectedFields(updates), updatedAt: new Date() }).where(and(...conditions)).returning();
+    const [updated] = await db.update(targetCounties).set({ ...omitProtectedFields(updates), updatedAt: clock.now() }).where(and(...conditions)).returning();
     return updated;
   },
 
@@ -85,7 +86,7 @@ export const acquisitionRepo = {
     const conditions = [eq(offerLetters.id, id)];
     if (organizationId) conditions.push(eq(offerLetters.organizationId, organizationId));
     const [updated] = await db.update(offerLetters)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -119,7 +120,7 @@ export const acquisitionRepo = {
     const conditions = [eq(offerTemplates.id, id)];
     if (organizationId) conditions.push(eq(offerTemplates.organizationId, organizationId));
     const [updated] = await db.update(offerTemplates)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -190,13 +191,13 @@ export const acquisitionRepo = {
       updates.completedPercent = Math.round((completedCount / items.length) * 100);
       if (updates.completedPercent === 100) {
         updates.status = "completed";
-        updates.completedAt = new Date();
+        updates.completedAt = clock.now();
       }
     }
     const conditions = [eq(dueDiligenceChecklists.id, id)];
     if (organizationId) conditions.push(eq(dueDiligenceChecklists.organizationId, organizationId));
     const [updated] = await db.update(dueDiligenceChecklists)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;

@@ -28,6 +28,7 @@
 
 import crypto from "crypto";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 /** 30 minutes — borrower opens email link, reads statement, done. */
 export const SESSION_TTL_SECONDS = 30 * 60;
@@ -88,7 +89,7 @@ export interface SignSessionPayload {
  */
 export function signSession(payload: SignSessionPayload): string {
   const secret = getSigningSecret();
-  const exp = Math.floor(Date.now() / 1000) + payload.expSeconds;
+  const exp = Math.floor(clock.nowMs() / 1000) + payload.expSeconds;
   const body = { scope: payload.scope, exp, ip: payload.ip };
   const encoded = Buffer.from(JSON.stringify(body), "utf8").toString(
     "base64url",
@@ -158,7 +159,7 @@ export function verifySignedSession(cookieValue: string): VerifySignedResult {
     return { valid: false };
   }
 
-  const now = Math.floor(Date.now() / 1000);
+  const now = Math.floor(clock.nowMs() / 1000);
   if (body.exp < now) {
     return { valid: false, expired: true, scope: body.scope, ip: body.ip };
   }

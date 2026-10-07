@@ -33,6 +33,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireRole } from "./middleware/roleGuard";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 export function registerBuyerAnalyticsRoutes(app: Express): void {
   const ownerOrAdmin = requireRole(["owner", "admin"]);
@@ -47,7 +48,7 @@ export function registerBuyerAnalyticsRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const days = Math.min(365, Math.max(7, parseInt(String(req.query.days ?? "30"), 10) || 30));
-        const since = new Date(Date.now() - days * 86_400_000);
+        const since = new Date(clock.nowMs() - days * 86_400_000);
 
         // Pull recent blasts with their recipient counts grouped by status.
         // Aggregating client-side for simplicity (small datasets per org).
@@ -129,7 +130,7 @@ export function registerBuyerAnalyticsRoutes(app: Express): void {
           .from(buyerProfiles)
           .where(eq(buyerProfiles.organizationId, orgId));
 
-        const now = Date.now();
+        const now = clock.nowMs();
         const buckets = {
           fresh: [] as typeof rows,         // ≤ 30 days
           warming: [] as typeof rows,       // 31-90 days
@@ -200,12 +201,12 @@ export function registerBuyerAnalyticsRoutes(app: Express): void {
 
         const newEngagement = {
           ...((existing.engagement as any) ?? {}),
-          deactivatedAt: new Date().toISOString(),
+          deactivatedAt: clock.now().toISOString(),
         };
 
         const [row] = await db
           .update(buyerProfiles)
-          .set({ engagement: newEngagement, isActive: false, updatedAt: new Date() })
+          .set({ engagement: newEngagement, isActive: false, updatedAt: clock.now() })
           .where(and(eq(buyerProfiles.id, id), eq(buyerProfiles.organizationId, orgId)))
           .returning();
         return res.json({ buyer: row });

@@ -26,6 +26,7 @@ import { resolveAgentData } from "./agentDataResolvers";
 import { strategicCompassV8Service } from "./strategicCompassV8";
 import { institutionalMemoryService } from "./institutionalMemory";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Initiative Priority Levels ──────────────────────────────────────────────
 
@@ -235,7 +236,7 @@ Write a 3-5 sentence executive summary. Be direct. Lead with the most important 
       : "all_clear";
 
     const [briefing] = await db.insert(ceoBriefings).values({
-      date: new Date(),
+      date: clock.now(),
       overallStatus,
       narrative,
       allClearAgents: allClear.map(a => a.agentCodename),
@@ -268,7 +269,7 @@ Write a 3-5 sentence executive summary. Be direct. Lead with the most important 
    */
   async approveAction(initiativeId: number): Promise<void> {
     await db.update(agentInitiatives)
-      .set({ status: "approved", votedAt: new Date() })
+      .set({ status: "approved", votedAt: clock.now() })
       .where(eq(agentInitiatives.id, initiativeId));
   }
 
@@ -280,7 +281,7 @@ Write a 3-5 sentence executive summary. Be direct. Lead with the most important 
       .set({
         status: "rejected",
         ceoNotes: reason,
-        votedAt: new Date(),
+        votedAt: clock.now(),
       })
       .where(eq(agentInitiatives.id, initiativeId));
   }

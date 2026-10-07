@@ -23,6 +23,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, sql, isNull, asc } from "drizzle-orm";
 import crypto from "crypto";
+import { clock } from "../utils/clock";
 
 // ─── Beta Distribution Sampling ─────────────────────────────────────────────
 
@@ -210,7 +211,7 @@ class AdaptiveStrategyService {
       .set({
         outcome,
         outcomeValue: outcomeValue !== undefined ? String(outcomeValue) : null,
-        outcomeRecordedAt: new Date(),
+        outcomeRecordedAt: clock.now(),
       })
       .where(and(
         eq(strategyAssignments.id, assignmentId),
@@ -265,7 +266,7 @@ class AdaptiveStrategyService {
         avgOutcomeValue: newAvg,
         thompsonAlpha: newAlpha,
         thompsonBeta: newBeta,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(and(
         eq(agentStrategies.strategyId, assignment.strategyId),
@@ -329,7 +330,7 @@ class AdaptiveStrategyService {
         status: decision,
         reviewedBy,
         reviewNotes: reviewNotes ?? null,
-        reviewedAt: new Date(),
+        reviewedAt: clock.now(),
       })
       .where(eq(strategyProposals.proposalId, proposalId))
       .returning();
@@ -427,7 +428,7 @@ class AdaptiveStrategyService {
       .update(agentStrategies)
       .set({
         isActive: false,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(agentStrategies.strategyId, strategyId))
       .returning();

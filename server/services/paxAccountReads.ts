@@ -46,6 +46,7 @@ import { directMailService } from "./directMail";
 import { storage } from "../storage";
 import { byokTierAllows } from "@shared/billing/byok-tiers";
 import { tierForSubscriptionTier } from "@shared/billing/tier-pricing";
+import { clock } from "../utils/clock";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -106,7 +107,7 @@ export async function readCampaignsForPax(
 ) {
   const limit = clampInt(opts.limit, 1, 50, 20);
   const status = typeof opts.status === "string" && opts.status.trim() ? opts.status.trim() : null;
-  const since = new Date(Date.now() - 120 * DAY_MS);
+  const since = new Date(clock.nowMs() - 120 * DAY_MS);
 
   // ONE QUERY PER STATEMENT, on purpose. The tenancy lint slices a query chain
   // from `.from(table)` to its terminating `;`. Three chains inside one
@@ -195,7 +196,7 @@ export async function readInboxRepliesForPax(
 ) {
   const days = clampInt(opts.days, 1, 90, 7);
   const limit = clampInt(opts.limit, 1, 50, 20);
-  const since = new Date(Date.now() - days * DAY_MS);
+  const since = new Date(clock.nowMs() - days * DAY_MS);
 
   // One query per statement — see readCampaignsForPax.
   const emailsQ = db
@@ -276,7 +277,7 @@ export async function readTeamActivityForPax(
   const days = clampInt(opts.days, 1, 30, 1);
   const limit = clampInt(opts.limit, 1, 100, 50);
   const role = typeof opts.role === "string" && opts.role.trim() ? opts.role.trim().toLowerCase() : null;
-  const since = new Date(Date.now() - days * DAY_MS);
+  const since = new Date(clock.nowMs() - days * DAY_MS);
 
   const members = await db
     .select({
@@ -489,7 +490,7 @@ export type FinancePeriod = "this_year" | "last_year" | "this_quarter" | "this_m
 const FINANCE_PERIODS: readonly FinancePeriod[] = ["this_year", "last_year", "this_quarter", "this_month", "last_30_days"];
 
 /** [start, end) in UTC for a named period. Pure, so the window is testable. */
-function financeWindow(period: FinancePeriod, now: Date = new Date()): { start: Date; end: Date } {
+function financeWindow(period: FinancePeriod, now: Date = clock.now()): { start: Date; end: Date } {
   const y = now.getUTCFullYear();
   const m = now.getUTCMonth();
   switch (period) {
@@ -523,7 +524,7 @@ export async function readFinanceSummaryForPax(
   const period: FinancePeriod = FINANCE_PERIODS.includes(opts.period as FinancePeriod)
     ? (opts.period as FinancePeriod)
     : "this_year";
-  const { start, end } = financeWindow(period, opts.now ?? new Date());
+  const { start, end } = financeWindow(period, opts.now ?? clock.now());
 
   const [income] = await db
     .select({
