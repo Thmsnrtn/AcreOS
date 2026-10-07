@@ -76,6 +76,11 @@ interface FounderBrief {
    */
   modelChangeNotice: string | null;
   /**
+   * What is PROVEN — the Evidence Ladder's own line (shared/governance/
+   * evidenceLadder.ts), composed server-side. Absent on an older server.
+   */
+  evidence?: { line: string; provenInSimulation: number; provenBeyondSimulation: number; total: number };
+  /**
    * QUIET-DAY MODE (ruling #7, 2026-07-28) — server-computed: true ONLY when
    * nothing needs the founder, the confession is empty, no model-change
    * notice, AND the budget envelope is a verified green ("unknown" is never
@@ -380,6 +385,16 @@ export default function FounderHomePage() {
                 data-testid="letter-model-change-notice"
               >
                 {brief.modelChangeNotice}
+              </p>
+            </motion.div>
+          )}
+
+          {/* What is proven — the Evidence Ladder's line, verbatim: how much
+              of what Solene claims is proven, and at what level. */}
+          {brief.evidence?.line && (
+            <motion.div variants={staggerItem}>
+              <p className="text-sm leading-relaxed text-muted-foreground" data-testid="letter-evidence-line">
+                {brief.evidence.line}
               </p>
             </motion.div>
           )}

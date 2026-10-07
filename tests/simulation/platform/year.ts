@@ -458,7 +458,9 @@ async function main() {
       const askMinutes = asks.reduce((a, r) => a + k.priceAsk({ answerFormat: r.answer_format, questionBody: r.question_body }), 0);
       const pages = await k.q<any>("select id from solene_page_events where id > $1", [weekPageMark]);
       if (pages.length) weekPageMark = Math.max(...pages.map((p) => p.id));
-      const dropped = Number((await k.q1<any>(`select count(*)::int n from support_tickets where status not in ('resolved','closed') and coalesce(assigned_agent,'') <> 'founder' and created_at < now() - interval '3 days' and created_at >= now() - interval '10 days'`))?.n ?? 0);
+      const dropped = Number((await k.q1<any>(`select count(*)::int n from support_tickets t where t.status not in ('resolved','closed') and coalesce(t.assigned_agent,'') <> 'founder' and t.created_at < now() - interval '3 days' and t.created_at >= now() - interval '10 days'
+          and not exists (select 1 from support_ticket_messages m where m.ticket_id = t.id and m.role <> 'user')
+          and not exists (select 1 from autopilot_pending_actions a where a.hand_name = 'reply_support_ticket' and (a.args->>'ticket_id')::int = t.id and a.status in ('pending','approved','executed'))`))?.n ?? 0);
       const week = Math.floor(day / 7) + 1;
       const row = { week, customers: customers.filter((c) => c.churnedDay == null).length, askMinutes, dropMinutes: dropped * k.MINUTES.investigation, pageMinutes: pages.length * k.MINUTES.yesNo, setupMinutes: week === 1 ? k.SETUP_MINUTES : week % 4 === 0 ? k.MINUTES.approvalWithReading : 0, total: 0, asks: asks.length, pages: pages.length, dropped };
       row.total = row.askMinutes + row.dropMinutes + row.pageMinutes + row.setupMinutes;
@@ -470,10 +472,18 @@ async function main() {
   await k.drainDispatches(60_000);
 
   // ── the year's outcome, measured from the DB and the logs ──
-  const tickets = await k.q<any>("select id, status, assigned_agent, resolution_type, created_at from support_tickets where organization_id = any($1::int[])", [customers.map((c) => c.orgId)]);
-  const handled = tickets.filter((t) => ["resolved", "closed"].includes(t.status) && t.assigned_agent !== "founder").length;
+  // handled: resolved/closed, or someone other than the customer answered (a posted
+  // reply, or Solene's drafted reply awaiting its witness); escalated: the founder
+  // has it; dropped: nobody answered and nobody owns it.
+  const tickets = await k.q<any>(
+    `select t.id, t.status, t.assigned_agent, t.resolution_type,
+            exists (select 1 from support_ticket_messages m where m.ticket_id = t.id and m.role <> 'user') as answered,
+            exists (select 1 from autopilot_pending_actions a where a.hand_name = 'reply_support_ticket' and (a.args->>'ticket_id')::int = t.id and a.status in ('pending','approved','executed')) as drafted
+       from support_tickets t where t.organization_id = any($1::int[])`, [customers.map((c) => c.orgId)]);
   const escalated = tickets.filter((t) => t.assigned_agent === "founder").length;
+  const handled = tickets.filter((t) => t.assigned_agent !== "founder" && (["resolved", "closed"].includes(t.status) || t.answered || t.drafted)).length;
   const dropped = tickets.length - handled - escalated;
+  const droppedDetail = tickets.filter((t) => t.assigned_agent !== "founder" && !(["resolved", "closed"].includes(t.status) || t.answered || t.drafted)).map((t) => ({ id: t.id, status: t.status, assigned: t.assigned_agent, resolution: t.resolution_type }));
   const ai = await k.q<any>("select organization_id o, coalesce(sum(estimated_cost_cents),0)::float c from ai_telemetry_events group by 1");
   const customerIds = new Set(customers.map((c) => c.orgId));
   const aiCustomerCents = ai.filter((r) => customerIds.has(r.o)).reduce((a, r) => a + r.c, 0);
@@ -501,7 +511,7 @@ async function main() {
   const result = {
     seed: SEED, days: DAYS, stepHours: STEP_H, brain: BRAIN, plan: PLAN, wallSeconds: Math.round((Date.now() - t0) / 1000), setup,
     founderMinutesPerWeek: { mean: weeksTotal.reduce((a, b) => a + b, 0) / Math.max(1, weeksTotal.length), weeks: metrics.weeks, askMinutesByDriver },
-    support: { tickets: tickets.length, handled, escalated, dropped },
+    support: { tickets: tickets.length, handled, escalated, dropped, droppedDetail: droppedDetail.slice(0, 20) },
     complianceIncidents: compliance,
     invariants: summary,
     customerList: customers.map((c) => ({ slug: c.slug, persona: c.persona, orgId: c.orgId, churned: c.churnedDay != null })),

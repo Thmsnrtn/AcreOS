@@ -38,18 +38,20 @@ interface Task { who: string; question: string; start: string; /** Names a perso
 const FOUNDER_DOOR_NAMES = ["The Letter", "Decisions", "Controls", "Story"];
 const FOUNDER_TASKS: Task[] = LETTER_QUESTIONS.map((q) => ({ who: "founder", question: q.question, start: "/founder", via: FOUNDER_DOOR_NAMES, target: q.onScreen }));
 const CUSTOMER_TASKS: Record<string, Task[]> = {
+  // Targets are the words of the CONTROL that does the job (Pax's own place facts
+  // name them: paxProductFacts.ts PLACES), not a word that merely appears nearby.
   land_flipper: [
-    { who: "land flipper", question: "Import my list of owners", start: "/today", via: ["Deals", "Leads", "Import"], target: /import (csv|leads|a list|tax)/i },
-    { who: "land flipper", question: "Send postcards to my leads", start: "/today", via: ["Deals", "Outreach", "Campaigns"], target: /direct mail|postcard/i },
-    { who: "land flipper", question: "Read what sellers texted back", start: "/today", via: ["Inbox"], target: /inbox|replies|conversations/i },
+    { who: "land flipper", question: "Import my list of owners", start: "/today", via: ["Deals", "Leads", "Import"], target: /import csv|import tax list|import leads/i },
+    { who: "land flipper", question: "Send postcards to my leads", start: "/today", via: ["Deals", "Outreach", "Campaigns", "New campaign"], target: /direct mail|postcards?\b/i },
+    { who: "land flipper", question: "Read what sellers texted back", start: "/today", via: ["Inbox"], target: /\binbox\b[\s\S]{0,400}(repl|message|conversation)/i },
   ],
   note_investor: [
-    { who: "note investor", question: "Record a borrower payment", start: "/today", via: ["Finance", "Notes"], target: /record payment|payment ledger|payments/i },
-    { who: "note investor", question: "See which notes are late", start: "/today", via: ["Finance", "Notes"], target: /late|delinquen|past due/i },
+    { who: "note investor", question: "Record a borrower payment", start: "/today", via: ["Finance", "Notes"], target: /record payment/i },
+    { who: "note investor", question: "See which notes are late", start: "/today", via: ["Finance", "Notes", "Delinquent"], target: /delinquen|past due|days late/i },
   ],
   va_team: [
-    { who: "VA-run team", question: "Invite my VA", start: "/today", via: ["Settings", "Team", "Organization"], target: /invite/i },
-    { who: "VA-run team", question: "See what my VA did today", start: "/today", via: ["Activity", "Settings"], target: /activity|what .* did/i },
+    { who: "VA-run team", question: "Invite my VA", start: "/today", via: ["Settings", "Organization", "Team", "Members"], target: /invite (a )?(member|teammate|team member|user)|send invit/i },
+    { who: "VA-run team", question: "See what my VA did today", start: "/today", via: ["Activity", "Settings"], target: /team activity|activity log|what your team did/i },
   ],
 };
 const CLICK_BUDGET = 4;
@@ -99,8 +101,11 @@ async function audit(page: Page, viewport: string, customer: boolean): Promise<v
   audits.set(key, { url, viewport, axeSerious: serious, axeCritical: critical, axeRules: rules, unlabelled: dom.unlabelled, jargon, emptyNoCta: dom.emptyNoCta });
 }
 
+let shot = 0;
 async function visibleText(page: Page): Promise<string> {
-  return page.evaluate(() => document.body.innerText).catch(() => "");
+  const t = await page.evaluate(() => document.body.innerText).catch(() => "");
+  try { writeFileSync(join(OUT, `text-${String(++shot).padStart(3, "0")}.txt`), `${page.url()}\n\n${t}`); } catch { /* evidence only */ }
+  return t;
 }
 
 async function walkTask(page: Page, t: Task, viewport: string, customer: boolean) {
@@ -112,9 +117,11 @@ async function walkTask(page: Page, t: Task, viewport: string, customer: boolean
   if (t.target.test(await visibleText(page))) return { ...base(t, viewport), answered: true, seconds: (Date.now() - t0) / 1000, clicks };
   for (const name of t.via) {
     if (clicks.length >= CLICK_BUDGET) break;
-    const link = page.getByRole("link", { name: new RegExp(`^\\s*${name}\\b`, "i") }).first();
-    const btn = page.getByRole("button", { name: new RegExp(`^\\s*${name}\\b`, "i") }).first();
-    const target = (await link.isVisible().catch(() => false)) ? link : (await btn.isVisible().catch(() => false)) ? btn : null;
+    let target = null;
+    for (const role of ["link", "tab", "button", "menuitem"] as const) {
+      const el = page.getByRole(role, { name: new RegExp(`^\\s*${name}\\b`, "i") }).first();
+      if (await el.isVisible().catch(() => false)) { target = el; break; }
+    }
     if (!target) {
       // On a phone a door may sit behind the menu.
       const menu = page.getByRole("button", { name: /menu|more|open navigation/i }).first();

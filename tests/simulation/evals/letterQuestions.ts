@@ -19,6 +19,6 @@ export const LETTER_QUESTIONS: LetterQuestion[] = [
   { id: "overnight", question: "What happened overnight?", field: "theWord", onScreen: /overnight|kept watch|completed/i },
   { id: "money", question: "How is the money — revenue and spend?", field: "vitalSign.mrr", onScreen: /mrr|spend|budget|\$/i },
   { id: "focus", question: "What are you working on right now?", field: "focusLine", onScreen: /focused on|watching|working on/i },
-  { id: "misses", question: "What went wrong that I should know about?", field: "misses", onScreen: /miss|went wrong|failed|nothing went wrong|pulled back/i },
-  { id: "trust", question: "How much of this is proven — can I trust it?", field: "evidence.line", onScreen: /proven|track record|calibrat|too early/i },
+  { id: "misses", question: "What went wrong that I should know about?", field: "misses", onScreen: /what went wrong|nothing went wrong/i },
+  { id: "trust", question: "How much of this is proven — can I trust it?", field: "evidence.line", onScreen: /what's proven:|proven in simulation/i },
 ];
