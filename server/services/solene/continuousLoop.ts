@@ -936,7 +936,8 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           if (actMove.kind === "clear_support_backlog") {
             try {
               const { supportPlayRationale } = await import("../autopilot/supportPlaybook");
-              actMove = { ...actMove, rationale: supportPlayRationale(supportBacklog) };
+              // Server-authored (a fixed template over a count): still eligible for the chat allow-list.
+              actMove = (await import("../autopilot/decide")).markServerAuthored({ ...actMove, rationale: supportPlayRationale(supportBacklog) });
               selectedPlayId = "support-triage";
             } catch (sErr) {
               logger.warn(
@@ -1007,7 +1008,8 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                   selectedGrowthTarget = { id: target.id, countyLabel: target.countyLabel, state: target.state };
                 }
               }
-              actMove = { ...actMove, rationale: growthPlayRationale(play, focus) };
+              // Server-authored (a fixed play template over the focus data).
+              actMove = (await import("../autopilot/decide")).markServerAuthored({ ...actMove, rationale: growthPlayRationale(play, focus) });
               const picked = stats.find((s) => s.playId === play.id);
               logger.info("[continuousLoop] tick: growth play selected (efficacy-weighted)", {
                 play: play.id,

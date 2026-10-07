@@ -172,8 +172,8 @@
     },
     {
       "kind": "export",
-      "id": "server/services/autopilot/contentHonesty.ts::VERIFIED_SOURCES",
-      "reason": "TEST-INTROSPECTION SEAM (audit M1, 2026-10-07). The codebase-supplied allowlist of real sources screenFabrication verifies citations against (same module; production reaches it through screenFabrication from the publish gate and the role tools). Exported so the list is reviewable and pinnable. REVOCATION: if a second production module imports it, remove this entry."
+      "id": "server/services/autopilot/act.ts::isChatApprovableMove",
+      "reason": "TEST-INTROSPECTION SEAM (audit H4 round 2, 2026-10-07). The STRUCTURAL rule planAndAct applies in the same module when it binds an ask: only a server-authored catalog move on the allow-list may be approved by anything but the founder's own tap. Exported so chatApprovalIsStructural.test.ts can prove a copy or rewrite of a catalog move, whatever its words, is never chat-approvable. REVOCATION: if a second production module imports it, remove this entry."
     },
     {
       "kind": "export",

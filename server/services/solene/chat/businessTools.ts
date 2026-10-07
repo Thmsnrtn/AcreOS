@@ -138,10 +138,15 @@ export async function executeBusinessChatTool(
         if (!ask) return { ok: false, text: `Ask #${askId} does not exist.` };
         if (ask.status !== "open") return { ok: false, text: `Ask #${askId} is already ${ask.status}.` };
         if (ask.answerFormat !== "yes_no") return { ok: false, text: `Ask #${askId} needs a written answer — answer it on the Decisions door.` };
-        if (isUndelegableAsk(ask)) {
+        // STRUCTURAL: the chat answers only an ask the server bound to a
+        // server-authored catalog move on the allow-list (chat_approvable,
+        // set by planAndAct — never by a model). Whatever words a model wrote
+        // into an ask, it is the founder's own tap. The classifier below is
+        // defence in depth.
+        if (ask.chatApprovable !== true || isUndelegableAsk(ask)) {
           return { ok: false, text: `Ask #${askId} ("${ask.questionSummary}") is founder-only and un-delegable (a hard-stop, a net-new move, a money or finance decision, or a legal/data matter). I did not answer it; tap it yourself on the Decisions door.` };
         }
-        await answerFounderAsk({ askId, answerText: decision });
+        await answerFounderAsk({ askId, answerText: decision, expectedBodyHash: ask.bodyHash ?? undefined });
         logger.info("[soleneChat] business tool answered an ask", { metadata: { askId, decision, founderUserId } });
         return { ok: true, text: `Ask #${askId} ${decision === "yes" ? "approved — an approved autopilot move is queued to run" : "declined — it stays held"}.` };
       }

@@ -35,6 +35,8 @@ export interface FounderAsk {
   pagerEventId: number | null;
   timeoutAt: string | null;
   urgency: AskUrgency;
+  /** The card's version; an answer names it so a changed card is refused. */
+  bodyHash?: string | null;
 }
 
 export interface AsksResponse {

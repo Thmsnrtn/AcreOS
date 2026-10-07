@@ -151,9 +151,10 @@ export function registerFounderCollabRoutes(app: Express): void {
         if (!Number.isFinite(id) || id <= 0) {
           return Errors.badRequest(res, "Invalid ask id");
         }
-        const { answerText, chosenOptionId } = (req.body ?? {}) as {
+        const { answerText, chosenOptionId, expectedBodyHash } = (req.body ?? {}) as {
           answerText?: string;
           chosenOptionId?: string;
+          expectedBodyHash?: string;
         };
 
         try {
@@ -161,6 +162,7 @@ export function registerFounderCollabRoutes(app: Express): void {
             askId: id,
             answerText,
             chosenOptionId,
+            expectedBodyHash: typeof expectedBodyHash === "string" ? expectedBodyHash : undefined,
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);

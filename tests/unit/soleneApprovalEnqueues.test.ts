@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-type Ask = { id: number; status: string; answerFormat: string; options: unknown };
+type Ask = { id: number; status: string; answerFormat: string; options: unknown; bodyHash?: string | null; actsPayload?: { moveKind: string; domain: string; rationale: string } | null };
 const state = {
   asks: new Map<number, Ask>(),
   experiences: [] as Array<{ id: number; askId: number; moveKind: string; domain: string; dispatchId: number | null; reasoningTrace: unknown }>,
@@ -87,8 +87,9 @@ const approvedAskIdempotencyKey = (askId: number) => `approved-ask:${askId}`;
 import * as experienceLog from "../../server/services/autopilot/experienceLog";
 import { enqueueDispatch } from "../../server/services/solene/dispatchQueue";
 
+const PROPOSAL = { moveKind: "clear_support_backlog", domain: "support", rationale: "3 customer(s) waiting on support." };
 function seed(askId: number, withExperience = true) {
-  state.asks.set(askId, { id: askId, status: "open", answerFormat: "yes_no", options: null });
+  state.asks.set(askId, { id: askId, status: "open", answerFormat: "yes_no", options: null, bodyHash: `v${askId}`, actsPayload: withExperience ? PROPOSAL : null });
   if (withExperience) {
     state.experiences.push({
       id: askId * 10,
@@ -112,7 +113,7 @@ beforeEach(() => {
 describe("approving an autopilot ask enqueues the drafted move", () => {
   it("approve → exactly one dispatch, carrying the move and the founder's approval", async () => {
     seed(7);
-    await answerFounderAsk({ askId: 7, answerText: "yes" });
+    await answerFounderAsk({ askId: 7, answerText: "yes", expectedBodyHash: "v7" });
     expect(state.dispatches).toHaveLength(1);
     const d = state.dispatches[0];
     expect(d.sourceId).toBe("autopilot:clear_support_backlog");
@@ -125,11 +126,12 @@ describe("approving an autopilot ask enqueues the drafted move", () => {
 
   it("approving twice still gives one dispatch", async () => {
     seed(8);
-    await answerFounderAsk({ askId: 8, answerText: "yes" });
+    await answerFounderAsk({ askId: 8, answerText: "yes", expectedBodyHash: "v8" });
     // The second answer is refused (the ask is no longer open)…
-    await expect(answerFounderAsk({ askId: 8, answerText: "yes" })).rejects.toThrow(/only 'open' is answerable/);
+    await expect(answerFounderAsk({ askId: 8, answerText: "yes", expectedBodyHash: "v8" })).rejects.toThrow(/only 'open' is answerable/);
     // …and a racing/retried enqueue for the same ask dedupes.
     await enqueueApprovedMove(8, {
+      proposal: PROPOSAL,
       findEscalatedMove: experienceLog.findEscalatedMoveForAsk,
       enqueue: enqueueDispatch,
       linkDispatch: experienceLog.linkExperienceDispatch,
@@ -139,9 +141,10 @@ describe("approving an autopilot ask enqueues the drafted move", () => {
 
   it("even when the link was lost, a re-enqueue for the same ask dedupes on its key", async () => {
     seed(9);
-    await answerFounderAsk({ askId: 9, answerText: "yes" });
+    await answerFounderAsk({ askId: 9, answerText: "yes", expectedBodyHash: "v9" });
     state.experiences[0].dispatchId = null; // simulate a lost link write
     const out = await enqueueApprovedMove(9, {
+      proposal: PROPOSAL,
       findEscalatedMove: experienceLog.findEscalatedMoveForAsk,
       enqueue: enqueueDispatch,
       linkDispatch: experienceLog.linkExperienceDispatch,
@@ -166,6 +169,36 @@ describe("approving an autopilot ask enqueues the drafted move", () => {
   it("an enqueue that fails does not read as done", async () => {
     seed(12);
     vi.mocked(enqueueDispatch).mockRejectedValueOnce(new Error("insert refused"));
-    await expect(answerFounderAsk({ askId: 12, answerText: "yes" })).rejects.toThrow(/could not be queued/);
+    await expect(answerFounderAsk({ askId: 12, answerText: "yes", expectedBodyHash: "v12" })).rejects.toThrow(/could not be queued/);
+  });
+});
+
+// Audit item 4 — an approval is bound to the exact proposal and card version
+// the founder saw; what runs is the proposal, never a later re-read.
+describe("approval is bound to the version the founder saw", () => {
+  it("what runs is the bound proposal, even when the decision trace says something else", async () => {
+    seed(20);
+    state.experiences[0].reasoningTrace = { consideredMoves: [{ kind: "clear_support_backlog", rationale: "A LATER, DIFFERENT rationale." }] };
+    await answerFounderAsk({ askId: 20, answerText: "yes", expectedBodyHash: "v20" });
+    expect(state.dispatches[0].promptText).toContain("3 customer(s) waiting on support.");
+    expect(state.dispatches[0].promptText).not.toContain("LATER, DIFFERENT");
+  });
+  it("a card that changed since it was shown is refused — nothing recorded, nothing enqueued", async () => {
+    seed(21);
+    await expect(answerFounderAsk({ askId: 21, answerText: "yes", expectedBodyHash: "stale" })).rejects.toThrow(/changed since it was shown/);
+    expect(state.asks.get(21)?.status).toBe("open");
+    expect(state.dispatches).toHaveLength(0);
+  });
+  it("a YES to an acting ask that names no version is refused", async () => {
+    seed(22);
+    await expect(answerFounderAsk({ askId: 22, answerText: "yes" })).rejects.toThrow(/must name the version/);
+    expect(state.dispatches).toHaveLength(0);
+  });
+  it("an approval with no bound proposal (or a proposal for another move) enqueues nothing", async () => {
+    seed(23);
+    const deps = { findEscalatedMove: experienceLog.findEscalatedMoveForAsk, enqueue: enqueueDispatch, linkDispatch: experienceLog.linkExperienceDispatch };
+    expect((await enqueueApprovedMove(23, deps)).status).toBe("not_bound");
+    expect((await enqueueApprovedMove(23, { ...deps, proposal: { ...PROPOSAL, moveKind: "grow_owned_channels" } })).status).toBe("not_bound");
+    expect(state.dispatches).toHaveLength(0);
   });
 });

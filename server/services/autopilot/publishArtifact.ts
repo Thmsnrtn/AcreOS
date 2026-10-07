@@ -27,7 +27,7 @@ import { db } from "../../db";
 import { communityLetters, marketingArtifacts } from "@shared/schema";
 import { logger } from "../../utils/logger";
 import { screenLandClaims, type ClaimViolation, type ClaimsGateOptions } from "./claimsGate";
-import { screenFabrication } from "./contentHonesty";
+import { screenFabrication, VERIFIED_SOURCES } from "./contentHonesty";
 
 /** Hard cap on autopilot publishes per UTC day (lean + blast-radius bound). */
 export const PUBLISH_MAX_PER_DAY = Number(process.env.AUTOPILOT_PUBLISH_MAX_PER_DAY ?? 1);
@@ -68,7 +68,10 @@ function screenLinks(sanitizedHtml: string): ClaimViolation[] {
     if (href.startsWith("/") || href.startsWith("mailto:") || href.startsWith("#")) continue;
     try {
       const host = new URL(href).hostname.toLowerCase();
-      if (!ALLOWED_LINK_HOSTS.has(host)) {
+      // A citation link to a verified source (contentHonesty VERIFIED_SOURCES)
+      // is the ONE outbound link allowed: it is how a quantity gets published.
+      const verified = VERIFIED_SOURCES.some((src) => src.hosts.some((h) => host === h || host.endsWith(`.${h}`)));
+      if (!ALLOWED_LINK_HOSTS.has(host) && !verified) {
         violations.push({ code: "external_link", severity: "critical", match: href, message: `Outbound link to a non-AcreOS host ("${host}") is not allowed in auto-published content.` });
       }
     } catch {

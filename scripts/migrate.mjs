@@ -11232,6 +11232,13 @@ END $mig0252$`,
   `ALTER TABLE "witness_grants" ADD COLUMN IF NOT EXISTS "hands" jsonb NOT NULL DEFAULT '[]'::jsonb`,
   `ALTER TABLE "witness_grants" ADD COLUMN IF NOT EXISTS "source_roles" jsonb NOT NULL DEFAULT '[]'::jsonb`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "credit_txn_purchase_refund_pi_uniq" ON "credit_transactions" ("stripe_payment_intent_id") WHERE type = 'purchase_refund'`,
+
+  // 0265 — an ask whose approval acts is bound to the exact proposal and
+  // version the founder saw. Mirrors migrations/0265_founder_ask_bound_proposals.sql.
+  `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "acts_key" text`,
+  `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "acts_payload" jsonb`,
+  `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "body_hash" text`,
+  `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "chat_approvable" boolean NOT NULL DEFAULT false`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

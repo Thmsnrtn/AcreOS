@@ -7,10 +7,23 @@ describe("autopilot publish gate — screenForPublish", () => {
   it("passes clean, sanitized, disclosed, internally-linked content", () => {
     const r = screenForPublish({
       subject: "Land basics in Brewster County",
-      htmlBody: `<p>A 5-acre parcel along a county road, according to County GIS as of 2024. <a href="/parcel-check">Run a check</a>.</p>${DISCLOSURE}`,
+      htmlBody: `<p>Before you buy, confirm road access with the county. <a href="/parcel-check">Run a check</a>.</p>${DISCLOSURE}`,
     });
     expect(r.ok).toBe(true);
     expect(r.violations).toEqual([]);
+  });
+
+  it("a quantity publishes only with a link to a verified source (naming one is not enough)", () => {
+    const named = screenForPublish({
+      subject: "Land basics in Brewster County",
+      htmlBody: `<p>A 5-acre parcel along a county road, according to County GIS as of 2024.</p>${DISCLOSURE}`,
+    });
+    expect(named.ok).toBe(false);
+    const linked = screenForPublish({
+      subject: "Land basics",
+      htmlBody: `<p>Farmland is 39% of US land area (<a href="https://www.nass.usda.gov/AgCensus/">USDA</a>).</p>${DISCLOSURE}`,
+    });
+    expect(linked.violations).toEqual([]);
   });
 
   it("SANITIZES: strips script, event handlers, and javascript: URLs", () => {

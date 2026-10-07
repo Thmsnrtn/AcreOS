@@ -47,12 +47,33 @@ describe("contentHonesty — no fabrication in generated content", () => {
     expect(screenFabrication(t).map((v) => v.code)).toContain(code);
   });
 
+  // Round 2 (M1): naming a source is not citing it. A quantity passes only
+  // with a LINK to a verified host in the same sentence; prose with no
+  // quantity passes.
+  it.each([
+    '<p>Farmland is 39% of US land area (<a href="https://www.nass.usda.gov/AgCensus/">Census of Agriculture</a>).</p>',
+    "Check whether taxes are current with the county treasurer.",
+    "Ask the seller for the recorded deed before you make an offer.",
+  ])("%j passes", (t) => {
+    expect(screenFabrication(t)).toEqual([]);
+  });
+
   it.each([
     "According to the 2022 Census of Agriculture, farmland is 39% of US land area.",
     "The county assessor's records list the parcel at 40 acres as of 2024.",
-    "Check whether taxes are current with the county treasurer.",
-  ])("%j passes", (t) => {
-    expect(screenFabrication(t)).toEqual([]);
+    "According to the IRS, 87% of rural parcels are mispriced.",
+    "Nine of every ten buyers skip the survey.",
+    "We have listed over 4k parcels.",
+    "Flippers net five figures per flip.",
+    "Investors close deals in a fortnight on average.",
+    "Most land flippers lose money on their first deal.",
+    "Time to offer dropped from 9 days to 2.",
+    "One customer told me it changed everything.",
+    // reported speech with no number and no testimonial shape
+    "My neighbor told me the county never checks.",
+    "The seller said the road is public.",
+  ])("round-2 canary %j is refused (a quantity with no verified link, or reported speech)", (t) => {
+    expect(screenFabrication(t).length).toBeGreaterThan(0);
   });
 
   // M1 — the auditor's exact evasions. Each one passed the first screen.
@@ -75,13 +96,19 @@ describe("contentHonesty — no fabrication in generated content", () => {
     expect(screenFabrication(t).map((v) => v.code)).toContain(code);
   });
 
-  it("a claim passes only with a VERIFIED source: by name or by a link to its host; founder-supplied sources count", () => {
-    expect(screenFabrication("Per the U.S. Census Bureau, 19% of Americans live in rural areas.")).toEqual([]);
-    expect(screenFabrication('<p>Rural land is 39% of the total (<a href="https://www.nass.usda.gov/x">source</a>).</p>')).toEqual([]);
+  it("a claim passes only with a LINK to a verified host; a name, a look-alike host or an unlisted host does not", () => {
+    expect(screenFabrication("Per the U.S. Census Bureau, 19% of Americans live in rural areas.").length).toBeGreaterThan(0);
+    expect(screenFabrication('<p>19% of Americans live in rural areas (<a href="https://www.census.gov/x">Census</a>).</p>')).toEqual([]);
     expect(screenFabrication('<p>Rural land is 39% of the total (<a href="https://usda.gov.evil.example/x">source</a>).</p>').length).toBeGreaterThan(0);
     const founderSource = { name: "Land Report 2026", pattern: /\bland report 2026\b/i, hosts: ["landreport.com"] };
-    expect(screenFabrication("The Land Report 2026 lists 72% of deals closing in 30 days.").length).toBeGreaterThan(0);
-    expect(screenFabrication("The Land Report 2026 lists 72% of deals closing in 30 days.", { verifiedSources: [founderSource] })).toEqual([]);
+    const linked = '<p>72% of deals close in 30 days (<a href="https://landreport.com/2026">Land Report</a>).</p>';
+    expect(screenFabrication(linked).length).toBeGreaterThan(0);
+    expect(screenFabrication(linked, { verifiedSources: [founderSource] })).toEqual([]);
+  });
+
+  it("facts of the case and record references are not claims", () => {
+    expect(screenFabrication("Your $30 refund for ticket #45 is being processed.", { allowDollarFigures: ["$30"] })).toEqual([]);
+    expect(screenFabrication("Your $30 refund is being processed and it saved $90.", { allowDollarFigures: ["$30"] }).length).toBeGreaterThan(0);
   });
 
   it("the publish gate refuses a <blockquote> testimonial even if sanitizing would drop the tag", () => {
@@ -195,7 +222,7 @@ vi.mock("../../server/services/solene/founderCollab", () => ({
       // A net-new move the kernel has never seen.
       4: { id: 4, status: "open", answerFormat: "yes_no", questionSummary: "Approve a ops action: tidy_dormant_tenants", questionBody: "Tidy up dormant tenants." },
       // The control: a known, non-money growth draft — the chat MAY answer this one.
-      5: { id: 5, status: "open", answerFormat: "yes_no", questionSummary: "Review a drafted growth action: grow_owned_channels", questionBody: "Approve to let it proceed." },
+      5: { id: 5, status: "open", answerFormat: "yes_no", questionSummary: "Review a drafted growth action: grow_owned_channels", questionBody: "Approve to let it proceed.", chatApprovable: true, bodyHash: "v5" },
     })[id] ?? null,
   // A SPY, not a thrower: the refusal must come from the classifier, never
   // from the answer path failing. (The earlier mock threw, the catch returned
@@ -216,7 +243,7 @@ describe("chat business tools — hard-stops are un-delegable", () => {
     answerSpy.mockClear();
     const r = await executeBusinessChatTool("answer_ask", { ask_id: 5, decision: "approve" }, "f");
     expect(r.ok).toBe(true);
-    expect(answerSpy).toHaveBeenCalledWith({ askId: 5, answerText: "yes" });
+    expect(answerSpy).toHaveBeenCalledWith({ askId: 5, answerText: "yes", expectedBodyHash: "v5" });
   });
   it("refuses a budget over $500", async () => {
     const r = await executeBusinessChatTool("set_budget", { monthly_usd: 2000 }, "f");

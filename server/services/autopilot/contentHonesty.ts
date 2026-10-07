@@ -9,20 +9,17 @@
  *
  * It FAILS CLOSED, in two ways (audit M1):
  *
- *   1. Any numeric, statistical or comparative CLAIM — digits or words
- *      ("Eighty-seven percent", "one in twenty", "9/10", "nearly half",
- *      "doubled their close rate", "3x", "$3,500 off", "4,000 dollars") — must
- *      carry, in the same sentence, a CITATION THE GATE CAN VERIFY: the name of
- *      a source on VERIFIED_SOURCES (real public sources this codebase names),
- *      one the founder supplied (opts.verifiedSources), or a link to one of
- *      their hosts. A generic cue is not a citation — "according to our
- *      internal data", "a recent study", or an invented publication name are
- *      exactly what a model writes when it has no source — so they are refused
- *      with the reason named.
- *   2. Any QUOTATION or TESTIMONIAL — a quote attributed to a person ("…,"
- *      says Mike R.; As one landowner told us, "…"), a <blockquote>/<cite>,
- *      star ratings, adoption and customer-outcome claims — is refused
- *      outright. AcreOS has no customer quotes to cite; a model cannot have
+ *   1. STRUCTURAL: any sentence carrying a QUANTITY — a digit, a number word,
+ *      a magnitude word (k, grand, figures, most, majority, half, double…) or
+ *      a time quantity (days, a fortnight…) — fails unless the same sentence
+ *      LINKS to a host on the verified-source allowlist (VERIFIED_SOURCES, or
+ *      founder-supplied opts.verifiedSources). Naming a source is not citing
+ *      it: "According to the IRS, 87% …" is refused without the link, because
+ *      the name costs a model nothing. Facts of the case (opts
+ *      .allowDollarFigures) and record references (#123) are not claims.
+ *   2. Any REPORTED SPEECH or QUOTATION — "told me/us", "says", "said", a
+ *      quoted passage, a <blockquote>/<cite> — and star ratings, adoption and
+ *      customer-outcome claims are refused outright. AcreOS has no customer quotes to cite; a model cannot have
  *      one either.
  *
  * A false block costs one revision; a false pass publishes a lie under the
@@ -58,30 +55,32 @@ export const VERIFIED_SOURCES: readonly VerifiedSource[] = [
   { name: "the county's own records", pattern: /\bcounty(?:'s)?\s+(?:assessor|recorder|treasurer|clerk|tax collector|appraisal district)(?:'s)?\b/i, hosts: [] },
 ];
 
-/** Cues a model uses to LOOK sourced. Not a citation by themselves. */
-const SOURCE_CUE = /\b(according to|per (?:the )?[A-Z]|source[sd]?:|sourced from|as reported by|reported by|published by|a (?:recent )?(?:study|survey|report)|research (?:shows|finds|found)|data (?:shows|show))\b/i;
-
-const NUMBER_WORD = String.raw`(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand)`;
-
-/** Shapes that read as a factual, numeric, statistical or comparative claim. */
-const CLAIM_RES: Array<{ re: RegExp; what: string; dollar?: boolean }> = [
-  { re: /\b\d{1,3}(?:\.\d+)?\s?%/, what: "a percentage" },
-  { re: /\b\d{1,3}(?:\.\d+)?\s?(?:percent|per cent|pct)\b/i, what: "a percentage" },
-  { re: new RegExp(String.raw`\b${NUMBER_WORD}(?:[\s-]+${NUMBER_WORD})*\s+(?:percent|per cent)\b`, "i"), what: "a percentage" },
-  { re: new RegExp(String.raw`\b(?:\d+|${NUMBER_WORD})\s+(?:in|out of)\s+(?:every\s+)?(?:\d+|${NUMBER_WORD})\b`, "i"), what: "a ratio" },
-  { re: /(?<![\/\d])\b\d{1,3}\s?\/\s?\d{1,3}\b(?!\s?\/\d)/, what: "a ratio" },
-  { re: /\b(?:nearly|almost|about|roughly|over|under|more than|less than|fewer than|just over|just under)?\s*(?:half|a third|one third|a quarter|one quarter|two[\s-]thirds|three[\s-]quarters|the majority|a majority|the minority)\s+of\b/i, what: "a proportion" },
-  { re: /\bmost\s+(?:land\s+)?(?:investors|buyers|sellers|landowners|owners|customers|users|people|agents|brokers|deals|parcels)\b/i, what: "a proportion" },
-  { re: /\b(?:doubl|tripl|quadrupl|halv)(?:e|ed|es|ing)\b/i, what: "a comparative claim" },
-  { re: /\b\d+(?:\.\d+)?\s?x\b(?!\s?\d)/i, what: "a comparative claim" },
-  { re: new RegExp(String.raw`\b(?:twice|thrice|(?:\d+|${NUMBER_WORD})\s+times)\s+(?:as|more|faster|higher|better|lower|cheaper|less)\b`, "i"), what: "a comparative claim" },
-  { re: /\b(?:more|less|fewer|faster|higher|lower|better|cheaper)\s+than\s+(?:the\s+)?(?:average|most|others|competitors|industry)\b/i, what: "a comparative claim" },
-  { re: /\$\s?\d[\d,]*(?:\.\d+)?\s?(?:k|m|million|billion)?\b/i, what: "a dollar figure", dollar: true },
-  { re: /\b\d[\d,]*(?:\.\d+)?\s?(?:k|thousand|million|billion)?\s?(?:dollars?|usd|bucks)\b/i, what: "a dollar figure", dollar: true },
-  { re: new RegExp(String.raw`\b${NUMBER_WORD}(?:[\s-]+${NUMBER_WORD})*\s+(?:dollars?|bucks)\b`, "i"), what: "a dollar figure", dollar: true },
-  { re: /\b\d[\d,]{2,}\+?\s+(?:investors|customers|users|buyers|sellers|landowners|people|members|deals|parcels|acres sold)\b/i, what: "a count of people/deals" },
-  { re: /\b(?:average|median|typical(?:ly)?)\b[^.]{0,40}\b\d[\d,.]*/i, what: "an average/median figure" },
+/**
+ * STRUCTURAL claim detection (audit M1, round 2). Enumerating claim SHAPES
+ * failed open twice — "Nine of every ten buyers", "over 4k parcels", "net
+ * five figures per flip", "close deals in a fortnight on average" each slipped
+ * a shape list. So a sentence is a CLAIM when it carries ANY quantity at all:
+ * a digit, a number word, a magnitude word, or a time quantity. What it says
+ * does not matter; only whether it can be checked does.
+ */
+const QUANTITY_RES: Array<{ re: RegExp; what: string }> = [
+  { re: /\d/, what: "a number" },
+  {
+    re: /\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundreds?|thousands?|millions?|billions?|dozens?|first|second|third|fourth|fifth|tenth|once|twice|thrice|single|pair|couple|percent|percentage)\b/i,
+    what: "a number word",
+  },
+  {
+    re: /\b(?:k|grand|figures?|most|majority|minority|half|halves|halved|quarters?|double[ds]?|doubling|triple[ds]?|tripling|quadrupl\w*|\w+fold|average|averages|median|typical(?:ly)?|dozens?)\b/i,
+    what: "a magnitude",
+  },
+  {
+    re: /\b(?:fortnight|overnight|week(?:s|end)?|days?|months?|years?|hours?|minutes?|quarterly|annually|yearly|monthly|weekly|daily)\b/i,
+    what: "a time quantity",
+  },
 ];
+
+/** Reported speech: someone said something. Refused outright — AcreOS has no one to quote. */
+const REPORTED_SPEECH = /\b(?:told|tell|tells)\s+(?:me|us|him|her|them|you)\b|\b(?:says|said|saying|quoted|quote|quotes|recalls|recalled|wrote|writes|explained|explains|mentioned|shared with (?:me|us))\b|[“”"«»][^“”"«»]{8,}[“”"«»]/i;
 
 /** Quotation / testimonial / social-proof shapes — refused outright, sourced or not. */
 const PROOF_RES: Array<{ re: RegExp; code: string; what: string }> = [
@@ -117,12 +116,8 @@ function hostOf(url: string): string | null {
   }
 }
 
-/** The verified source a sentence cites (by name, or by a link to its host), or null. */
-function verifiedCitation(sentence: string, sources: readonly VerifiedSource[]): string | null {
-  // Names are read from the prose only — a URL that merely CONTAINS a source's
-  // name ("usda.gov.example.net") is judged by its host below, never its text.
-  const prose = sentence.replace(/https?:\/\/[^\s"'<>)]+/gi, " ");
-  for (const src of sources) if (src.pattern.test(prose)) return src.name;
+/** The verified source a sentence LINKS to (host on the allowlist), or null. Naming one is not enough. */
+function verifiedLink(sentence: string, sources: readonly VerifiedSource[]): string | null {
   for (const m of sentence.matchAll(/https?:\/\/[^\s"'<>)]+/gi)) {
     const h = hostOf(m[0]);
     if (!h) continue;
@@ -156,31 +151,37 @@ export function screenFabrication(
     }
   }
   const sources = [...VERIFIED_SOURCES, ...(opts.verifiedSources ?? [])];
-  const allowed = new Set((opts.allowDollarFigures ?? []).map((s) => s.replace(/\s/g, "")));
+  const allowed = (opts.allowDollarFigures ?? []).map((x) => x.replace(/\s/g, "")).filter(Boolean);
   for (const s of sentences(raw)) {
-    let claim: RegExpMatchArray | undefined;
-    let what = "";
-    for (const st of CLAIM_RES) {
-      // Every occurrence, not only the first: an allowed figure (the
-      // customer's own purchase) must not shield an invented one beside it.
-      const all = [...s.matchAll(new RegExp(st.re.source, st.re.flags.includes("g") ? st.re.flags : `${st.re.flags}g`))];
-      const m = all.find((x) => !(st.dollar && allowed.has(x[0].replace(/\s/g, ""))));
+    const speech = REPORTED_SPEECH.exec(s);
+    if (speech) {
+      out.push({
+        code: "testimonial",
+        severity: "critical",
+        match: speech[0].slice(0, 120),
+        message: `Generated content reports what someone said ("${speech[0]}"). AcreOS has no such statement to cite — refusing rather than fabricating.`,
+      });
+      continue;
+    }
+    // Facts of the case (the customer's own purchase amount) and ticket /
+    // record references (#123) are not claims; links are judged separately.
+    let probe = s.replace(/https?:\/\/[^\s"'<>)]+/gi, " ").replace(/#\d+\b/g, " ");
+    for (const a of allowed) probe = probe.split(a).join(" ").split(a.replace(/^\$/, "$ ")).join(" ");
+    let hit: { m: RegExpExecArray; what: string } | null = null;
+    for (const q of QUANTITY_RES) {
+      const m = q.re.exec(probe);
       if (m) {
-        claim = m;
-        what = st.what;
+        hit = { m, what: q.what };
         break;
       }
     }
-    if (!claim) continue;
-    if (verifiedCitation(s, sources)) continue;
-    const cue = SOURCE_CUE.exec(s);
+    if (!hit) continue;
+    if (verifiedLink(s, sources)) continue;
     out.push({
       code: "unsourced_statistic",
       severity: "critical",
-      match: claim[0].slice(0, 120),
-      message: cue
-        ? `Generated content states ${what} ("${claim[0]}") and cites "${cue[0]}…", which is not a source this gate can verify. Cite a verified source (${sources.map((x) => x.name).join(", ")}) or remove the claim.`
-        : `Generated content states ${what} ("${claim[0]}") with no verifiable source in the same sentence. Cite a verified source (${sources.map((x) => x.name).join(", ")}) or remove it.`,
+      match: hit.m[0].slice(0, 120),
+      message: `Generated content states ${hit.what} ("${hit.m[0]}") without a link to a verified source in the same sentence. Naming a source is not citing it: link to ${sources.flatMap((x) => x.hosts).join(", ") || "a verified source"}, or remove the claim.`,
     });
   }
   return out;

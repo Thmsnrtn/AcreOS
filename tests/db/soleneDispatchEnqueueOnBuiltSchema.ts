@@ -24,6 +24,7 @@ import { soleneDispatchQueue } from "@shared/schema/solene-dispatch";
 import { soleneFounderAsks } from "@shared/schema/solene-founder-collab";
 import { db, pool } from "../../server/db";
 import { enqueueDispatch } from "../../server/services/solene/dispatchQueue";
+import { createHash } from "node:crypto";
 import { answerFounderAsk } from "../../server/services/solene/founderCollab";
 
 /** The per-ask idempotency key the approval enqueue uses (act.ts). */
@@ -89,16 +90,23 @@ async function main(): Promise<void> {
         urgency: "normal",
         status: "open",
         timeoutAt: new Date(Date.now() + 3_600_000),
+        // Bound to the exact proposal and card version (migration 0265).
+        actsPayload: { moveKind: "optimize", domain: "ops", rationale: `Nothing urgent ${tag}` },
+        actsKey: `k-${tag}`,
+        bodyHash: createHash("sha256").update(tag, "utf8").digest("hex"),
       } as any)
       .returning({ id: soleneFounderAsks.id });
     askIds.push(ask.id);
     await db.insert(autopilotExperiences).values({ moveKind: "optimize", domain: "ops", outcome: "escalated", askId: ask.id } as any);
+    const shownHash = createHash("sha256").update(tag, "utf8").digest("hex");
+    const stale = await answerFounderAsk({ askId: ask.id, answerText: "yes", expectedBodyHash: "stale" }).then(() => false, () => true);
+    check(stale, "approving a card version that is not the stored one is refused");
     try {
-      await answerFounderAsk({ askId: ask.id, answerText: "yes" });
+      await answerFounderAsk({ askId: ask.id, answerText: "yes", expectedBodyHash: shownHash });
     } catch (err) {
       check(false, `approve threw: ${why(err)}`);
     }
-    await answerFounderAsk({ askId: ask.id, answerText: "yes" }).catch(() => undefined); // refused: not open
+    await answerFounderAsk({ askId: ask.id, answerText: "yes", expectedBodyHash: shownHash }).catch(() => undefined); // refused: not open
     const key = approvedAskIdempotencyKey(ask.id);
     const approvedRows = await db
       .select({ id: soleneDispatchQueue.id, sourceId: soleneDispatchQueue.sourceId })

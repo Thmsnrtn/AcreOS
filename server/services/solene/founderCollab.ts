@@ -35,7 +35,8 @@
  * shared/decisions/doNothing.ts).
  */
 
-import { and, desc, eq, lte, sql } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import { and, desc, eq, isNull, lte, sql } from "drizzle-orm";
 import { db } from "../../db";
 import {
   soleneFounderAsks,
@@ -63,6 +64,24 @@ export interface AskFounderInput {
   urgency?: SoleneFounderAskUrgency;
   /** Default 24h. Set lower for time-sensitive asks. */
   timeoutHours?: number;
+  /**
+   * Set when a YES to this ask ACTS (enqueues a move): the exact proposal that
+   * runs on approval. Such an ask folds only into the same proposal, never by
+   * summary, and its body is never rewritten after the founder can see it.
+   * `chatApprovable` is set only by server code (planAndAct) for a
+   * server-authored catalog move on the allow-list.
+   */
+  acts?: { moveKind: string; domain: string; rationale: string; chatApprovable: boolean };
+}
+
+/** The version of a card: sha256 of the body the founder reads. Pure. */
+function askBodyHash(body: string): string {
+  return createHash("sha256").update(body ?? "", "utf8").digest("hex");
+}
+
+/** The identity of an acting proposal (kind + domain + rationale). Pure. */
+function actsKeyOf(a: { moveKind: string; domain: string; rationale: string }): string {
+  return createHash("sha256").update(`${a.moveKind}\u0000${a.domain}\u0000${a.rationale}`, "utf8").digest("hex");
 }
 
 export interface AskFounderResult {
@@ -79,6 +98,12 @@ export interface AskFounderResult {
 
 export interface AnswerFounderInput {
   askId: number;
+  /**
+   * The body_hash of the card the founder (or the chat, reading it) saw. A YES
+   * to an ask that acts is refused without it, and any answer is refused when
+   * it no longer matches the stored card.
+   */
+  expectedBodyHash?: string;
   answerText?: string;
   chosenOptionId?: string;
 }
@@ -181,14 +206,22 @@ export async function askFounder(
   // The repeat folds into the open ask: fold_count +1, the body refreshed to
   // the newest facts, NO new row and NO page. The original timeout stands, so
   // the escalation ladder still bounds the pile.
+  // Asks whose YES acts fold ONLY into the same proposal (acts_key), and the
+  // fold never rewrites the card: what the founder reads is what runs.
+  // Informational asks keep the S13 summary fold (body refreshed).
+  const bodyHash = askBodyHash(input.questionBody);
+  const actsKey = input.acts ? actsKeyOf(input.acts) : null;
   const [duplicate] = await db
     .select({ id: soleneFounderAsks.id, askedAt: soleneFounderAsks.askedAt })
     .from(soleneFounderAsks)
     .where(
-      and(
-        eq(soleneFounderAsks.status, "open"),
-        eq(soleneFounderAsks.questionSummary, summary),
-      ),
+      actsKey
+        ? and(eq(soleneFounderAsks.status, "open"), eq(soleneFounderAsks.actsKey, actsKey))
+        : and(
+            eq(soleneFounderAsks.status, "open"),
+            eq(soleneFounderAsks.questionSummary, summary),
+            isNull(soleneFounderAsks.actsKey),
+          ),
     )
     .orderBy(soleneFounderAsks.id)
     .limit(1);
@@ -199,7 +232,8 @@ export async function askFounder(
       .set({
         foldCount: sql`${soleneFounderAsks.foldCount} + 1`,
         lastFoldedAt: askedAt,
-        questionBody: input.questionBody,
+        // An acting ask keeps the card the founder saw; an informational one is refreshed.
+        ...(actsKey ? {} : { questionBody: input.questionBody, bodyHash }),
       })
       .where(and(eq(soleneFounderAsks.id, duplicate.id), eq(soleneFounderAsks.status, "open")));
     logger.info("[founderCollab] ask folded — the same question is already open", {
@@ -252,6 +286,10 @@ export async function askFounder(
       pagerEventId,
       timeoutAt,
       urgency,
+      bodyHash,
+      actsKey,
+      actsPayload: input.acts ? { moveKind: input.acts.moveKind, domain: input.acts.domain, rationale: input.acts.rationale } : null,
+      chatApprovable: input.acts?.chatApprovable === true,
     })
     .returning({ id: soleneFounderAsks.id });
 
@@ -302,6 +340,17 @@ export async function answerFounderAsk(
     throw new Error(
       `answerFounderAsk: ask ${input.askId} is status=${ask.status} (only 'open' is answerable)`,
     );
+  }
+
+  // Version binding: an answer names the card it answers. A stale card is
+  // refused; a YES to an ask that ACTS must name it.
+  const storedHash = (ask as { bodyHash?: string | null }).bodyHash ?? null;
+  const acts = (ask as { actsPayload?: { moveKind: string; domain: string; rationale: string } | null }).actsPayload ?? null;
+  if (input.expectedBodyHash != null && input.expectedBodyHash !== storedHash) {
+    throw new Error(`answerFounderAsk: ask ${input.askId} changed since it was shown — reload it and review the current version`);
+  }
+  if (acts && (input.answerText ?? "").trim().toLowerCase() === "yes" && input.expectedBodyHash == null) {
+    throw new Error(`answerFounderAsk: ask ${input.askId} acts on approval — the approval must name the version that was shown`);
   }
 
   const format = ask.answerFormat as SoleneFounderAskFormat;
@@ -367,8 +416,15 @@ export async function answerFounderAsk(
       and(
         eq(soleneFounderAsks.id, input.askId),
         eq(soleneFounderAsks.status, "open"),
+        // The card answered is the card stored — a body rewritten between the
+        // read above and this write leaves the ask open.
+        ...(input.expectedBodyHash != null ? [eq(soleneFounderAsks.bodyHash, input.expectedBodyHash)] : []),
       ),
     );
+  const after = await getAsk(input.askId);
+  if (after?.status !== "answered") {
+    throw new Error(`answerFounderAsk: ask ${input.askId} changed or was answered elsewhere — nothing was recorded; reload and review`);
+  }
 
   logger.info("[founderCollab] ask answered", {
     askId: input.askId,
@@ -402,6 +458,7 @@ export async function answerFounderAsk(
       const { enqueueDispatch } = await import("./dispatchQueue");
       try {
         const out = await enqueueApprovedMove(input.askId, {
+          proposal: acts,
           findEscalatedMove: findEscalatedMoveForAsk,
           enqueue: enqueueDispatch,
           linkDispatch: linkExperienceDispatch,
@@ -409,6 +466,10 @@ export async function answerFounderAsk(
         });
         if (out.status === "hard_stop_refused") {
           logger.warn("[founderCollab] approval of a hard-stop move recorded; the move was NOT enqueued (founder-only, forever)", {
+            metadata: { askId: input.askId },
+          });
+        } else if (out.status === "not_bound") {
+          logger.warn("[founderCollab] approval recorded, but the ask is not bound to a proposal (or names another move) — nothing was enqueued; the move will be raised again", {
             metadata: { askId: input.askId },
           });
         } else if (out.status !== "not_a_move") {

@@ -35,10 +35,20 @@ const MOVE_PATTERNS: ReadonlyArray<{ re: RegExp; hardStop: HardStop }> = [
     re: /\b(re-?pric\w*|pric(?:e|es|ed|ing)|fees?|surcharges?|discount\w*|coupons?|promo(?:tional)?[\s_-]?codes?|tiers?|(?:subscription|billing|paid|pro|premium|starter|basic|growth|enterprise|annual|monthly)[\s_-]+plans?|plans?[\s_-]+(?:change|migration|limits?|upgrade|downgrade|pricing))\b/i,
     hardStop: "pricing_changes",
   },
+  // pricing, the plan-move shapes: free/paid cohorts, a named plan with a
+  // number, "the 49 option", "N a month going forward".
+  {
+    re: /\b(?:free|paid|trial)[\s_-]+(?:users?|plans?|tiers?|accounts?|customers?|members?|cohorts?)\b[\s\S]*\b(?:to|onto|into)\b|\b(?:to|onto|into)[\s_-]+(?:paid|the[\s_-]+\$?\d+[\s_-]+(?:option|plan|package|level))\b|\b(?:starter|pro|premium|enterprise|basic|plus|business)\b[\s_-]+\$?\d+\b|\b\$?\d+[\s_-]+(?:a|per|\/)[\s_-]*(?:month|mo|year|yr)[\s_-]+going[\s_-]+forward\b/i,
+    hardStop: "pricing_changes",
+  },
   // legal — contracts, agreements, terms, signatures, settlements, acceptance
   // of an offer/terms, indemnities. "sign" but not "sign up / sign in / signal".
   {
     re: /\b(contracts?|agreements?|terms(?:[\s_-]+of[\s_-]+(?:service|use))?|tos|countersign\w*|sign(?:s|ed|ing)?(?![\s_-]*(?:up|in|out|on|al))|signatures?|e-?sign\w*|docusign|settle(?:ment)?s?|leases?|nda|indemn\w*|addend(?:um|a)|accept(?:s|ed|ing|ance)?[\s_-]+(?:\w+[\s_-]+){0,3}?(?:terms|offer|contract|agreement|quote|proposal))\b/i,
+    hardStop: "legal_signing",
+  },
+  {
+    re: /\b(paperwork|renewals?|t&cs?|conditions|obligations?|binding|commit(?:s|ted|ting)?[\s_-]+to[\s_-]+(?:a|the)[\s_-]+(?:vendor|partner|supplier)|agree(?:s|d|ing)?[\s_-]+to|okay[\s_-]+the|ok[\s_-]+the|approve[\s_-]+the[\s_-]+(?:vendor|renewal|deal))\b/i,
     hardStop: "legal_signing",
   },
   // customer-data deletion — any deleting / purging / erasing / wiping /
@@ -46,6 +56,10 @@ const MOVE_PATTERNS: ReadonlyArray<{ re: RegExp; hardStop: HardStop }> = [
   // customer-data subject anywhere.
   {
     re: /\b(delet\w*|purg\w*|eras\w*|wip(?:e|es|ed|ing)|destroy\w*|anonymi[sz]\w*|pseudonymi[sz]\w*|de-?identif\w*|redact\w*|scrub\w*|forget|drop(?:s|ped|ping)?[\s_-]+(?:table|rows?|data|records?|accounts?))\b[\s\S]*\b(customers?|users?|orgs?|organi[sz]ations?|accounts?|tenants?|leads?|contacts?|data|records?|pii|histor(?:y|ies)|profiles?|emails?)\b|\b(customers?|users?|orgs?|organi[sz]ations?|accounts?|tenants?|leads?|contacts?|data|records?|pii|profiles?)\b[\s\S]*\b(delet\w*|purg\w*|eras\w*|wip(?:e|es|ed|ing)|anonymi[sz]\w*|pseudonymi[sz]\w*|redact\w*)\b/i,
+    hardStop: "customer_data_deletion",
+  },
+  {
+    re: /\b(?:clear(?:ing)?[\s_-]+out|get(?:ting)?[\s_-]+rid[\s_-]+of|remov\w*|offboard\w*|cull\w*|prun\w*|retire\w*)\b[\s\S]*\b(?:borrowers?|buyers?|sellers?|customers?|users?|members?|accounts?|leads?|contacts?|signups?|tenants?|orgs?|them|for[\s_-]+good|permanently|forever)\b/i,
     hardStop: "customer_data_deletion",
   },
 ];
@@ -101,7 +115,7 @@ export function moneyAmountsUsd(text: string): number[] {
   const out: number[] = [];
   const t = text ?? "";
   const amountRe = new RegExp(
-    String.raw`(?:\$\s?${NUM}|\b${NUM}\s?(?:dollars?|usd|bucks)\b|\busd\s?${NUM}|\b${WORDNUM}(?:dollars?|bucks)\b)`,
+    String.raw`(?:\$\s?${NUM}|\b${NUM}\s?(?:dollars?|usd|bucks)\b|\busd\s?${NUM}|\b${WORDNUM}(?:dollars?|bucks|grand)\b|\b(\d[\d,]*(?:\.\d+)?)\s?(k|grand)\b|\b(\d[\d,]*(?:\.\d+)?)(?=\s*(?:\/|per\b|a\b|an\b|each\b|every\b)\s*(?:day|week|month|year)\b))`,
     "gi",
   );
   let m: RegExpExecArray | null;
@@ -110,7 +124,12 @@ export function moneyAmountsUsd(text: string): number[] {
     if (m[1] != null) amount = scaled(m[1], m[2]);
     else if (m[3] != null) amount = scaled(m[3], m[4]);
     else if (m[5] != null) amount = scaled(m[5], m[6]);
-    else if (m[7] != null) amount = wordsToNumber(m[7]);
+    else if (m[7] != null) {
+      const n = wordsToNumber(m[7]);
+      amount = n == null ? null : /grand$/i.test(m[0].trim()) ? n * 1_000 : n;
+    }
+    else if (m[8] != null) amount = scaled(m[8], m[9] === "grand" ? "thousand" : m[9]);
+    else if (m[10] != null) amount = Number(m[10].replace(/,/g, ""));
     if (amount == null || !Number.isFinite(amount)) continue;
     // A rate? "/day", "per week", "a month", "each day", "daily".
     const after = t.slice(m.index + m[0].length, m.index + m[0].length + 60);
@@ -138,7 +157,7 @@ export function moneyAmountsUsd(text: string): number[] {
 
 /** Money-SHAPED text (founder-only for chat and grants, even with no parseable amount). Pure. */
 const MONEY_SHAPED_RE =
-  /\$\s?\d|\b\d[\d,.]*\s?(?:dollars?|usd|bucks|cents?)\b|\b(?:dollars?|usd)\b|\b(refund\w*|charg(?:e|es|ed|ing)|chargebacks?|payments?|pay(?:s|ing|outs?)?|spend\w*|spent|budgets?|invoic\w*|billing|bill(?:s|ed)?|credits?|money|cash|revenue|wires?|transfers?|ad[\s_-]?spend|costs?|dunning|subscriptions?)\b/i;
+  /\$\s?\d|\b\d[\d,.]*\s?(?:dollars?|usd|bucks|cents?)\b|\b(?:dollars?|usd)\b|\b(refund\w*|charg(?:e|es|ed|ing)|chargebacks?|payments?|pay(?:s|ing|outs?)?|spend\w*|spent|budgets?|invoic\w*|billing|bill(?:s|ed)?|credits?|money|cash|revenue|wires?|transfers?|ad[\s_-]?spend|costs?|dunning|subscriptions?|ads?|advertis\w*|promoted|boost(?:ed|ing)?|sponsored|campaigns?|grand|paid)\b/i;
 export function isMoneyShaped(text: string): boolean {
   return MONEY_SHAPED_RE.test(text ?? "");
 }

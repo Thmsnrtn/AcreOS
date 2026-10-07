@@ -182,6 +182,7 @@ async function handler(input: Record<string, unknown>, ctx: HandContext = {}): P
   const started = Date.now();
   let eligible: Eligible | null = null;
   let claim: { claimId: number; clawedCents: number } | null = null;
+  let refundCalled = false;
   try {
     const e = await refundEligibility(input);
     if (!e.ok) return { success: false, output: e.reason, durationMs: Date.now() - started };
@@ -215,24 +216,85 @@ async function handler(input: Record<string, unknown>, ctx: HandContext = {}): P
       await releaseClaim(e, claim.claimId, claim.clawedCents);
       return { success: false, output: `apply_refund: $${(e.amountCents / 100).toFixed(2)} is more than Stripe charged. Refusing.`, durationMs: Date.now() - started };
     }
+    // From here on the money may have moved. Once refunds.create has been
+    // CALLED, the claim is never released and the credits are never given
+    // back — a timeout on a refund that succeeded, or a failing bookkeeping
+    // write after it, would otherwise let a retry refund the same payment
+    // twice. Such an outcome is recorded as UNCERTAIN and put in front of the
+    // founder instead.
+    refundCalled = true;
     const refund = await stripe.refunds.create(
       e.chargeId.startsWith("pi_") ? { payment_intent: e.chargeId, amount: e.amountCents } : { charge: e.chargeId, amount: e.amountCents },
       { idempotencyKey: `apply_refund:${e.chargeId}` },
     );
-    await db
-      .update(creditTransactions)
-      .set({ metadata: { refundAmountCents: e.amountCents, approvedBy: ctx.witnessedBy ?? null, stripeRefundId: refund.id } })
-      .where(and(eq(creditTransactions.organizationId, e.organizationId), eq(creditTransactions.id, claim.claimId)));
+    try {
+      await db
+        .update(creditTransactions)
+        .set({ metadata: { refundAmountCents: e.amountCents, approvedBy: ctx.witnessedBy ?? null, stripeRefundId: refund.id, state: "refunded" } })
+        .where(and(eq(creditTransactions.organizationId, e.organizationId), eq(creditTransactions.id, claim.claimId)));
+    } catch (bookErr) {
+      // The refund WENT OUT; only our record of its id did not. Keep the claim.
+      await markUncertain(e, claim.claimId, `refund ${refund.id} issued but its record could not be written: ${bookErr instanceof Error ? bookErr.message : String(bookErr)}`);
+      return {
+        success: true,
+        output: JSON.stringify({ refundId: refund.id, amountCents: e.amountCents, creditsReturned: claim.clawedCents, recordIncomplete: true }),
+        durationMs: Date.now() - started,
+      };
+    }
     return { success: true, output: JSON.stringify({ refundId: refund.id, amountCents: e.amountCents, creditsReturned: claim.clawedCents }), durationMs: Date.now() - started };
   } catch (err) {
     if (eligible && claim) {
+      if (refundCalled) {
+        // The outcome at Stripe is unknown: keep the claim (a retry is refused
+        // as "never twice") and tell the founder to look.
+        await markUncertain(eligible, claim.claimId, `refund call failed or timed out — Stripe may or may not have refunded: ${err instanceof Error ? err.message : String(err)}`);
+        return {
+          success: false,
+          output: `apply_refund: the outcome of refunding ${eligible.chargeId} is UNCERTAIN (the refund call did not return). The claim is kept so it can never be refunded twice; the founder has been asked to check Stripe.`,
+          durationMs: Date.now() - started,
+        };
+      }
       try {
+        // Nothing reached Stripe's refund call: undo the claim and the clawback.
         await releaseClaim(eligible, claim.claimId, claim.clawedCents);
       } catch {
         /* the claim stays: fail closed — a second refund is refused until a human looks */
       }
     }
     return handError(NAME, err, started);
+  }
+}
+
+/**
+ * Record a refund whose outcome is not certain, where the founder sees it: the
+ * claim row says so, and a founder ask names the payment to check on Stripe.
+ * Best-effort on each half; never throws (the claim itself already stands).
+ */
+async function markUncertain(e: Eligible, claimId: number, why: string): Promise<void> {
+  try {
+    await db
+      .update(creditTransactions)
+      .set({ metadata: { refundAmountCents: e.amountCents, state: "uncertain", uncertainBecause: why.slice(0, 500) } })
+      .where(and(eq(creditTransactions.organizationId, e.organizationId), eq(creditTransactions.id, claimId)));
+  } catch {
+    /* the ask below still surfaces it */
+  }
+  try {
+    const { askFounder } = await import("../../solene/founderCollab");
+    await askFounder({
+      askingAgentRole: "general-purpose",
+      questionSummary: `Refund outcome uncertain: ${e.chargeId} (org #${e.organizationId})`,
+      questionBody: [
+        `A $${(e.amountCents / 100).toFixed(2)} refund of ${e.chargeId} for organization #${e.organizationId} may or may not have gone out.`,
+        `Why: ${why.slice(0, 500)}`,
+        "",
+        "The claim is kept, so the autopilot will never refund this payment again. Check the payment on Stripe and record what happened.",
+      ].join("\n"),
+      answerFormat: "free_text",
+      urgency: "urgent",
+    });
+  } catch {
+    /* logged by the caller's handError path if it matters; the claim stands */
   }
 }
 

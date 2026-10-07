@@ -34,7 +34,8 @@ import { craftStandardPrompt, type CraftSurface } from "./craftStandard";
 import { recordCleanCycle, recordAnomaly } from "./domainAutonomy";
 import { PLATFORM_SCOPE } from "./tenantScope";
 import { isRoleWorkerMove } from "../solene/roleWorkers/routing";
-import { hardStopForMove } from "./hardStopMoves";
+import { founderOnlyClassForMove, hardStopForMove } from "./hardStopMoves";
+import { isServerAuthored } from "./decide";
 import type {
   SoleneDispatchAgentRole,
   SoleneDispatchSourceType,
@@ -121,6 +122,35 @@ export function bindingFor(moveKind: string): MoveBinding {
   return isRoleWorkerMove(moveKind) ? { ...b, effectsGatedPerAction: true } : b;
 }
 
+/**
+ * The ONLY (move kind, domain) pairs anything but the founder's own tap may
+ * approve (the chat's answer_ask). Each pair's rationale is SERVER-AUTHORED
+ * by rankMoves from structured senses — counts and fixed text, no
+ * model-written words. Whatever a model writes can therefore never be
+ * approved by anyone but the founder: an ask is chat-approvable only when its
+ * move IS the server-authored catalog object (decide.ts isServerAuthored), is
+ * on this list, and the defence-in-depth classifiers find nothing.
+ */
+const CHAT_APPROVABLE_MOVES: ReadonlySet<string> = new Set([
+  "grow_owned_channels:growth",
+  "optimize:ops",
+  "resolve_incident:deploy",
+  "clear_compliance:ops",
+  "stabilize_reflexes:deploy",
+  "protect_deliverability:ops",
+  "unblock_activation:deploy",
+  "retain_at_risk:support",
+  "clear_support_backlog:support",
+]);
+
+/** May a YES to this move's ask come from anywhere but the founder's own tap? Fails closed. */
+export function isChatApprovableMove(move: RankedMove): boolean {
+  if (move.isNetNew || !isServerAuthored(move)) return false;
+  const domain = bindingFor(move.kind).domain;
+  if (move.domain !== domain || !CHAT_APPROVABLE_MOVES.has(`${move.kind}:${domain}`)) return false;
+  return founderOnlyClassForMove({ kind: move.kind, rationale: move.rationale, domain, isNetNew: false }) == null;
+}
+
 /** True iff this move-kind has an explicit, known binding (not the fail-closed default). */
 export function isKnownMoveKind(moveKind: string): boolean {
   return Object.prototype.hasOwnProperty.call(MOVE_BINDINGS, moveKind);
@@ -204,6 +234,8 @@ export interface ActDeps {
     questionBody: string;
     answerFormat: "yes_no";
     urgency: "urgent" | "normal" | "low";
+    /** The exact proposal a YES runs (founderCollab binds the ask to it). */
+    acts?: { moveKind: string; domain: string; rationale: string; chatApprovable: boolean };
   }) => Promise<{ askId: number }>;
   /** Recent blocks for this action-kind — lets the classifier spot a stall. */
   recentBlockCount?: (domain: AutopilotDomain, moveKind: string) => Promise<number>;
@@ -317,6 +349,7 @@ export async function planAndAct(
             ].join("\n"),
             answerFormat: "yes_no",
             urgency: "normal",
+            acts: { moveKind: move.kind, domain: binding.domain, rationale: move.rationale, chatApprovable: false },
           });
           return {
             status: "escalated",
@@ -343,6 +376,8 @@ export async function planAndAct(
               "",
               "Approve to proceed anyway, or decline to hold it.",
             ].join("\n"),
+            // A pre-mortem objection is model-written: founder tap only.
+            acts: { moveKind: move.kind, domain: binding.domain, rationale: move.rationale, chatApprovable: false },
             answerFormat: "yes_no",
             urgency: "urgent",
           });
@@ -403,6 +438,7 @@ export async function planAndAct(
       ].join("\n"),
       answerFormat: "yes_no",
       urgency: verdict.urgency,
+      acts: { moveKind: move.kind, domain: binding.domain, rationale: move.rationale, chatApprovable: isChatApprovableMove(move) },
     });
     return { status: "escalated", move, askId, verdict, gate };
   } catch (err) {
@@ -433,6 +469,12 @@ export interface EscalatedMoveRecord {
 }
 
 export interface ApprovedMoveDeps {
+  /**
+   * The proposal the approved ask is bound to (solene_founder_asks.acts_payload)
+   * — exactly what the founder saw. What runs is THIS, never a later re-read
+   * of the decision trace; an ask with no bound proposal enqueues nothing.
+   */
+  proposal?: { moveKind: string; domain: string; rationale: string } | null;
   findEscalatedMove: (askId: number) => Promise<EscalatedMoveRecord | null>;
   enqueue: ActDeps["enqueue"];
   linkDispatch: (experienceId: number, dispatchId: number) => Promise<void>;
@@ -443,7 +485,8 @@ export type ApprovedMoveOutcome =
   | { status: "enqueued"; dispatchId: number }
   | { status: "already_enqueued"; dispatchId: number }
   | { status: "not_a_move" }
-  | { status: "hard_stop_refused" };
+  | { status: "hard_stop_refused" }
+  | { status: "not_bound" };
 
 /** The move's own rationale, as the decision trace recorded it (never invented). */
 function recordedRationale(rec: EscalatedMoveRecord): string | null {
@@ -462,9 +505,16 @@ export async function enqueueApprovedMove(askId: number, deps: ApprovedMoveDeps)
   if (!rec) return { status: "not_a_move" };
   // A hard-stop move is never enqueued by an approval — a one-tap yes on a
   // one-line card must not be the path to a pricing change or a data purge.
-  if (hardStopForMove({ kind: rec.moveKind, rationale: recordedRationale(rec) ?? undefined, isNetNew: !isKnownMoveKind(rec.moveKind) })) {
+  const proposal = deps.proposal ?? null;
+  if (
+    hardStopForMove({ kind: rec.moveKind, rationale: recordedRationale(rec) ?? undefined, isNetNew: !isKnownMoveKind(rec.moveKind) }) ||
+    (proposal && hardStopForMove({ kind: proposal.moveKind, rationale: proposal.rationale, isNetNew: !isKnownMoveKind(proposal.moveKind) }))
+  ) {
     return { status: "hard_stop_refused" };
   }
+  // Bound to the version the founder saw: no bound proposal, or one for a
+  // different move than the ask's experience, enqueues nothing.
+  if (!proposal || proposal.moveKind !== rec.moveKind) return { status: "not_bound" };
   if (rec.dispatchId != null) return { status: "already_enqueued", dispatchId: rec.dispatchId };
 
   const binding = bindingFor(rec.moveKind);
@@ -472,7 +522,7 @@ export async function enqueueApprovedMove(askId: number, deps: ApprovedMoveDeps)
     priority: 0,
     domain: binding.domain,
     kind: rec.moveKind,
-    rationale: recordedRationale(rec) ?? `The ${rec.moveKind} move the autopilot proposed.`,
+    rationale: proposal.rationale,
   };
   const dispatchId = await deps.enqueue({
     sourceType: "auto_dispatch",

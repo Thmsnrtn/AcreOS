@@ -224,3 +224,37 @@ describe("the reminder path the dedup relies on still exists", () => {
     expect(SRC).toMatch(/Still waiting on you/);
   });
 });
+
+// Audit item 4 — an ask whose YES ACTS folds only into the SAME proposal and
+// never has its card rewritten; summary folding is for informational asks only.
+describe("acting asks fold by proposal, never by summary, and keep the card the founder saw", () => {
+  beforeEach(() => {
+    state.duplicateRows = [];
+    state.selects = [];
+    state.inserts = [];
+    state.updates = [];
+    state.pages = [];
+  });
+  const ACTING = { ...ASK, acts: { moveKind: "optimize", domain: "ops", rationale: "Nothing urgent.", chatApprovable: false } };
+
+  it("the dedup predicate is the proposal key, not the summary", async () => {
+    const { askFounder } = await import("../../server/services/solene/founderCollab");
+    await askFounder(ACTING);
+    expect(state.selects[0].sql).toContain(`"acts_key"`);
+    expect(state.selects[0].sql).not.toContain(`"question_summary"`);
+    expect(state.inserts[0]).toMatchObject({ actsPayload: { moveKind: "optimize", domain: "ops", rationale: "Nothing urgent." }, chatApprovable: false });
+    expect(typeof state.inserts[0].bodyHash).toBe("string");
+  });
+  it("a fold of an acting ask does NOT rewrite the body", async () => {
+    state.duplicateRows = [{ id: 31, askedAt: new Date() }];
+    const { askFounder } = await import("../../server/services/solene/founderCollab");
+    const r = await askFounder({ ...ACTING, questionBody: "A different body." });
+    expect(r).toMatchObject({ askId: 31, deduped: true });
+    expect(state.updates[0].set).not.toHaveProperty("questionBody");
+  });
+  it("informational asks fold only among informational asks (acts_key IS NULL)", async () => {
+    const { askFounder } = await import("../../server/services/solene/founderCollab");
+    await askFounder(ASK);
+    expect(state.selects[0].sql).toMatch(/"acts_key" is null/);
+  });
+});
