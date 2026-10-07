@@ -37,8 +37,13 @@ export type OpsProvider = (typeof OPS_PROVIDERS)[number];
 /** Ticks (30 min each) of all-failed model calls before an incident opens. */
 export const MODEL_FAILURE_TICKS = 3;
 export const TICK_MINUTES = 30;
-/** Email transport failures, with no success after them, before an incident opens. */
-export const EMAIL_FAILURES_TO_OPEN = 2;
+/**
+ * Email transport failures, with no success after them, before an incident
+ * opens. ONE: emailService only records a failure after its own retries are
+ * exhausted, so a recorded failure is already a provider that would not take
+ * the message — and the next send that gets through closes the incident.
+ */
+export const EMAIL_FAILURES_TO_OPEN = 1;
 export const EMAIL_WINDOW_HOURS = 3;
 /** Stripe unreachable this long (no successful probe) before the founder is paged. */
 export const STRIPE_DOWN_PAGE_HOURS = 24;

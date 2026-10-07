@@ -266,16 +266,10 @@ export async function planAndAct(
     // that says what it is and that only the founder can do it.
     const hardStop = hardStopForMove(move);
     if (hardStop) {
-      const { HARD_STOP_LABEL } = await import("./hardStopMoves");
+      const { heldHardStopAsk } = await import("./hardStopMoves");
       const { askId } = await deps.ask({
         askingAgentRole: binding.agentRole,
-        questionSummary: `Held — founder-only: ${HARD_STOP_LABEL[hardStop]} (${move.kind})`,
-        questionBody: [
-          `The autopilot proposed ${HARD_STOP_LABEL[hardStop]}: ${move.rationale}`,
-          "",
-          "This is a permanent hard-stop — never autonomous, and approving here does NOT run it. Nothing was done.",
-          "If you want it, do it yourself; if not, decline and it stays held.",
-        ].join("\n"),
+        ...heldHardStopAsk(move, hardStop),
         answerFormat: "yes_no",
         urgency: "normal",
       });

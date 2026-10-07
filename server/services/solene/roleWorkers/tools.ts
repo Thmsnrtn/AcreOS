@@ -224,37 +224,56 @@ export interface AtRiskCustomer {
   detail: string;
 }
 
-/** Today's eligible retention list — the ONLY orgs email_customer may reach. */
+/**
+ * Today's eligible retention list — the ONLY orgs email_customer may reach.
+ *   payment_recovery — in dunning AND the dunning service has not emailed for
+ *     the latest failed invoice (it owns those emails; the worker only covers
+ *     the gap, never a second email about the same payment);
+ *   win_back — cancelled in the last 60 days, or a paying customer the churn
+ *     engine flagged as quiet (autopilot_senses churn_signal, last 14 days);
+ *   trial_ending — an in-app trial ending in the next 3 days.
+ * Founder orgs are never on it.
+ */
 export async function listAtRiskCustomers(now = new Date()): Promise<AtRiskCustomer[]> {
   const db = unscopedForPlatformOps(PLATFORM_RETENTION);
-  const rows = await db
-    .select({
-      id: organizations.id,
-      name: organizations.name,
-      dunningStage: organizations.dunningStage,
-      status: organizations.subscriptionStatus,
-      tier: organizations.subscriptionTier,
-      trialEndsAt: organizations.trialEndsAt,
-      endedAt: organizations.subscriptionEndedAt,
-      isFounder: organizations.isFounder,
-    })
-    .from(organizations)
-    .where(
-      sql`coalesce(${organizations.isFounder}, false) = false and (
-        (coalesce(${organizations.dunningStage}, 'none') not in ('none', 'cancelled'))
-        or (${organizations.subscriptionStatus} in ('canceled', 'cancelled') and ${organizations.subscriptionEndedAt} > ${new Date(now.getTime() - 60 * 24 * 3600_000)})
-        or (${organizations.subscriptionTier} = 'free' and ${organizations.trialEndsAt} between ${now} and ${new Date(now.getTime() + 3 * 24 * 3600_000)})
-      )`,
+  const rows = await db.execute(sql`
+    with quiet as (
+      select distinct (detail->>'org')::int as org_id
+        from autopilot_senses
+       where kind = 'churn_signal' and detail->>'org' ~ '^[0-9]+$'
+         and observed_at > ${new Date(now.getTime() - 14 * 24 * 3600_000)}
+    ),
+    last_dunning as (
+      select distinct on (organization_id) organization_id, coalesce(jsonb_array_length(notifications_sent), 0) as sent
+        from dunning_events
+       where event_type = 'payment_failed'
+       order by organization_id, id desc
     )
-    .limit(50);
-  return rows.map((r) => {
-    if (r.dunningStage && r.dunningStage !== "none" && r.dunningStage !== "cancelled") {
-      return { organizationId: r.id, name: r.name, kind: "payment_recovery" as const, detail: `subscription payment failed — dunning stage ${r.dunningStage}` };
+    select o.id, o.name, o.dunning_stage, o.subscription_status, o.subscription_tier,
+           o.trial_ends_at, o.subscription_ended_at,
+           (q.org_id is not null) as quiet, coalesce(ld.sent, 0) as dunning_emails
+      from organizations o
+      left join quiet q on q.org_id = o.id
+      left join last_dunning ld on ld.organization_id = o.id
+     where coalesce(o.is_founder, false) = false and (
+        (coalesce(o.dunning_stage, 'none') not in ('none', 'cancelled') and coalesce(ld.sent, 0) = 0)
+        or (o.subscription_status in ('canceled', 'cancelled') and o.subscription_ended_at > ${new Date(now.getTime() - 60 * 24 * 3600_000)})
+        or (q.org_id is not null and o.subscription_status = 'active')
+        or (o.subscription_tier = 'free' and o.trial_ends_at between ${now} and ${new Date(now.getTime() + 3 * 24 * 3600_000)})
+     )
+     limit 50`);
+  type Row = { id: number; name: string; dunning_stage: string | null; subscription_status: string; subscription_tier: string; trial_ends_at: Date | null; subscription_ended_at: Date | null; quiet: boolean };
+  return (rows.rows as Row[]).map((r) => {
+    if (r.dunning_stage && r.dunning_stage !== "none" && r.dunning_stage !== "cancelled" && !r.quiet) {
+      return { organizationId: r.id, name: r.name, kind: "payment_recovery" as const, detail: `subscription payment failed — dunning stage ${r.dunning_stage}; no dunning email has gone out yet` };
     }
-    if (r.status === "canceled" || r.status === "cancelled") {
-      return { organizationId: r.id, name: r.name, kind: "win_back" as const, detail: `cancelled ${r.endedAt?.toISOString().slice(0, 10) ?? "recently"}` };
+    if (r.subscription_status === "canceled" || r.subscription_status === "cancelled") {
+      return { organizationId: r.id, name: r.name, kind: "win_back" as const, detail: `cancelled ${r.subscription_ended_at ? new Date(r.subscription_ended_at).toISOString().slice(0, 10) : "recently"}` };
     }
-    return { organizationId: r.id, name: r.name, kind: "trial_ending" as const, detail: `trial ends ${r.trialEndsAt?.toISOString().slice(0, 10)}` };
+    if (r.quiet) {
+      return { organizationId: r.id, name: r.name, kind: "win_back" as const, detail: "paying customer gone quiet (churn engine signal)" };
+    }
+    return { organizationId: r.id, name: r.name, kind: "trial_ending" as const, detail: `trial ends ${r.trial_ends_at ? new Date(r.trial_ends_at).toISOString().slice(0, 10) : "soon"}` };
   });
 }
 
@@ -390,6 +409,20 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
     }
     const purchase = (await purchasesForOrg(ticket.organizationId)).find((p) => p.paymentIntentId === pi);
     if (!purchase) return { success: false, output: `refund_purchase refused: ${pi} is not a purchase this ticket's organization made in the last 90 days.` };
+    // Never refund the same payment twice: anything already drafted, approved
+    // or executed against it counts toward what it cost.
+    const prior = await unscopedForPlatformOps(PLATFORM_SUPPORT)
+      .select({ args: autopilotPendingActions.args })
+      .from(autopilotPendingActions)
+      .where(
+        and(
+          eq(autopilotPendingActions.handName, "apply_refund"),
+          sql`${autopilotPendingActions.status} in ('pending', 'approved', 'executed')`,
+          sql`${autopilotPendingActions.args}->>'charge_id' = ${pi}`,
+        ),
+      );
+    const already = prior.reduce((a, r) => a + Number((r.args as { amount_cents?: number } | null)?.amount_cents ?? 0), 0);
+    if (already > 0) return { success: false, output: `refund_purchase refused: $${(already / 100).toFixed(2)} of ${pi} is already refunded or awaiting its witness — never twice.` };
     if (amount > purchase.amountCents) return { success: false, output: `refund_purchase refused: $${(amount / 100).toFixed(2)} is more than the purchase ($${(purchase.amountCents / 100).toFixed(2)}).` };
     const frozen = await freezeHand("apply_refund", { charge_id: pi, amount_cents: amount, reason: `ticket #${ticket.id}: ${str(input.reason).slice(0, 300)}`, organization_id: ticket.organizationId }, ctx);
     if (frozen.pendingId == null) return { success: false, output: frozen.output };
@@ -399,8 +432,18 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
   if (name === "reply_to_ticket") {
     const message = str(input.message);
     if (!message) return { success: false, output: "reply_to_ticket: message is required." };
+    // The honesty screen, with the amounts this ticket is ABOUT allowed: a
+    // dollar figure the customer wrote, or one of their own purchases, is a
+    // fact of the case, not an invented statistic.
     const { screenFabrication } = await import("../../autopilot/contentHonesty");
-    const fab = screenFabrication(message);
+    const known = new Set<string>();
+    for (const m of `${ticket.subject} ${ticket.description}`.matchAll(/\$\s?\d[\d,]*(?:\.\d+)?/g)) known.add(m[0]);
+    for (const p of await purchasesForOrg(ticket.organizationId)) {
+      known.add(`$${(p.amountCents / 100).toFixed(2)}`);
+      if (p.amountCents % 100 === 0) known.add(`$${p.amountCents / 100}`);
+    }
+    for (const v of [...known]) known.add(v.replace(/\.00$/, "")).add(/\./.test(v) ? v : `${v}.00`);
+    const fab = screenFabrication(message, { allowDollarFigures: [...known] });
     if (fab.length > 0) return { success: false, output: `reply_to_ticket refused by the honesty screen: ${fab.map((v) => v.message).join(" ")}` };
     const frozen = await freezeHand("reply_support_ticket", { ticket_id: ticket.id, message, resolve: input.resolve === true }, ctx);
     if (frozen.pendingId == null) return { success: false, output: frozen.output };

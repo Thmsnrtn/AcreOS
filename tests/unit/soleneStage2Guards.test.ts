@@ -67,6 +67,8 @@ describe("S9 — hard-stop moves are held AND surfaced", () => {
     [{ kind: "purge_inactive_customer_data", rationale: "Delete all customer data for inactive orgs.", isNetNew: true }, "customer_data_deletion"],
     [{ kind: "buy_meta_ads_2000", rationale: "Spend $2,000 on Meta ads now.", isNetNew: true }, "spend_over_500_usd"],
     [{ kind: "sign_vendor_contract", rationale: "Sign the data vendor agreement.", isNetNew: true }, "legal_signing"],
+    // phrasing the hands lane's patterns do not catch — the move lane must
+    [{ kind: "tidy_dormant_tenants", rationale: "Wipe the accounts of orgs inactive for 90 days.", isNetNew: true }, "customer_data_deletion"],
   ])("%j → %s", (m, cls) => {
     expect(hardStopForMove(m)).toBe(cls);
   });

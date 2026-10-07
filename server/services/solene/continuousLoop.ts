@@ -862,6 +862,23 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
               }
             }
           } catch { /* operator best-effort — deterministic ranking stands */ }
+          // S9 — every hard-stop proposal among the moves under consideration
+          // (an Operator net-new move need not rank first to exist) is held
+          // AND surfaced to the founder, and removed so it can never act.
+          try {
+            const { holdAndSurfaceHardStops } = await import("../autopilot/hardStopMoves");
+            const { bindingFor } = await import("../autopilot/act");
+            const { remaining, held } = await holdAndSurfaceHardStops(effectiveMoves, async (a) =>
+              askFounder({ askingAgentRole: bindingFor("unknown").agentRole, ...a, answerFormat: "yes_no", urgency: "normal" }),
+            );
+            if (held.length > 0) {
+              asksFiredToFounder += held.length;
+              logger.warn("[continuousLoop] tick: held + surfaced hard-stop proposal(s)", { metadata: { held } });
+              if (remaining.length > 0) effectiveMoves = remaining;
+            }
+          } catch (hsErr) {
+            logger.warn("[continuousLoop] tick: hard-stop screen failed", hsErr instanceof Error ? hsErr : undefined);
+          }
           try {
             const { shouldDeliberate, runCouncilPanel } = await import("../autopilot/deliberate");
             if (callModel && shouldDeliberate(effectiveMoves)) {
@@ -1118,6 +1135,22 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
               "[continuousLoop] tick: budget gate read failed; proceeding (caps still bind)",
               budErr instanceof Error ? budErr : undefined,
             );
+          }
+
+          // Stage 2: the Writer's only output is a publish, capped per day. Do
+          // not dispatch (and pay for) an article the cap would refuse, and do
+          // not stack a second Writer run on one already queued/running.
+          if (!budgetDeferReason && actMove.kind === "grow_owned_channels") {
+            try {
+              const { publishRoomToday } = await import("../autopilot/publishArtifact");
+              const room = await publishRoomToday();
+              if (!room.room) budgetDeferReason = room.reason;
+              else {
+                const { listDispatches } = await import("./dispatchQueue");
+                const live = [...(await listDispatches({ status: "queued", limit: 50 })), ...(await listDispatches({ status: "in_progress", limit: 50 }))];
+                if (live.some((d) => d.queue.sourceId === "autopilot:grow_owned_channels")) budgetDeferReason = "a Writer run is already queued";
+              }
+            } catch { /* quota read is best-effort; the publish gate still caps */ }
           }
 
           const { simulateMove, renderSimulation } = await import("../autopilot/simulate");

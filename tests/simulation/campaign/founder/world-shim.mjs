@@ -70,6 +70,16 @@ function mockAnswer(host, path, body) {
   if (/amazonaws\.com$/.test(host) && /Action=GetSendQuota/.test(body)) {
     return { status: 200, type: "text/xml", body: `<GetSendQuotaResponse xmlns="http://ses.amazonaws.com/doc/2010-12-01/"><GetSendQuotaResult><Max24HourSend>50000</Max24HourSend><MaxSendRate>14</MaxSendRate><SentLast24Hours>0</SentLast24Hours></GetSendQuotaResult><ResponseMetadata><RequestId>${id}</RequestId></ResponseMetadata></GetSendQuotaResponse>` };
   }
+  // Stripe UP (Stage 2): the two calls the founder sims reach — a refund the
+  // Support worker drafts and a founder/grant witnesses, and the ops watch's
+  // balance probe — answered in Stripe's shape so the SDK parses them.
+  if (/stripe\.com$/.test(host) && /\/v1\/refunds/.test(path)) {
+    const amount = Number(/(?:^|&)amount=(\d+)/.exec(body)?.[1] ?? 0);
+    return { status: 200, type: "application/json", body: JSON.stringify({ id: "re_sim_" + id, object: "refund", amount, status: "succeeded", currency: "usd" }) };
+  }
+  if (/stripe\.com$/.test(host) && /\/v1\/balance/.test(path)) {
+    return { status: 200, type: "application/json", body: JSON.stringify({ object: "balance", available: [{ amount: 0, currency: "usd" }], pending: [], livemode: false }) };
+  }
   if (/twilio\.com$/.test(host)) {
     return { status: 201, type: "application/json", body: JSON.stringify({ sid: "SMsim" + id, status: "queued", error_code: null }) };
   }

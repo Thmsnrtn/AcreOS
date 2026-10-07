@@ -228,6 +228,31 @@ export async function publishGrowthArtifact(
   }
 }
 
+/**
+ * Stage 2 — is there room for another publish today (the same authority-paced
+ * cap publishGrowthArtifact enforces)? The loop asks BEFORE dispatching the
+ * Writer, so it does not pay for an article the cap would refuse. A failed
+ * read says "no room" (never spend on an unknown).
+ */
+export async function publishRoomToday(): Promise<{ room: boolean; reason: string }> {
+  try {
+    const { computeAllowedPublishesPerDay } = await import("./publishGovernor");
+    const { allowedPerDay, reason } = await computeAllowedPublishesPerDay(PUBLISH_MAX_PER_DAY);
+    const startOfDay = new Date();
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    const todays = await db
+      .select({ id: marketingArtifacts.id })
+      .from(marketingArtifacts)
+      .where(and(gte(marketingArtifacts.publishedAt, startOfDay), isNull(marketingArtifacts.unpublishedAt)))
+      .limit(allowedPerDay + 1);
+    return todays.length < allowedPerDay
+      ? { room: true, reason }
+      : { room: false, reason: `today's publish quota is met (${todays.length}/${allowedPerDay}; ${reason})` };
+  } catch (err) {
+    return { room: false, reason: `publish quota unreadable (${err instanceof Error ? err.message : String(err)})` };
+  }
+}
+
 async function defaultIsEnabled(): Promise<boolean> {
   const { isPublishEnabled } = await import("./settings");
   return isPublishEnabled();

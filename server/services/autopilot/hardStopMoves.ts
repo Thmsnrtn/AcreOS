@@ -68,3 +68,39 @@ export const HARD_STOP_LABEL: Record<HardStop, string> = {
   spend_over_500_usd: `a spend over $${HARD_STOP_SPEND_LIMIT_USD}`,
   customer_data_deletion: "deleting customer data",
 };
+
+/** The founder-facing ask for a held hard-stop move — ONE wording, used by the loop and planAndAct (so a repeat folds). */
+export function heldHardStopAsk(move: MoveLike & { kind: string }, hardStop: HardStop): { questionSummary: string; questionBody: string } {
+  return {
+    questionSummary: `Held — founder-only: ${HARD_STOP_LABEL[hardStop]} (${move.kind})`,
+    questionBody: [
+      `The autopilot proposed ${HARD_STOP_LABEL[hardStop]}: ${move.rationale ?? "(no rationale given)"}`,
+      "",
+      "This is a permanent hard-stop — never autonomous, and approving here does NOT run it. Nothing was done.",
+      "If you want it, do it yourself; if not, decline and it stays held.",
+    ].join("\n"),
+  };
+}
+
+/**
+ * S9 — screen EVERY move the loop is considering (not only the one that wins
+ * the tick): each hard-stop proposal is surfaced as a held ask and removed, so
+ * it can never act and is never held silently because it ranked second.
+ */
+export async function holdAndSurfaceHardStops<M extends MoveLike & { kind: string }>(
+  moves: M[],
+  ask: (a: { questionSummary: string; questionBody: string }) => Promise<unknown>,
+): Promise<{ remaining: M[]; held: Array<{ kind: string; hardStop: HardStop }> }> {
+  const remaining: M[] = [];
+  const held: Array<{ kind: string; hardStop: HardStop }> = [];
+  for (const m of moves) {
+    const hs = hardStopForMove(m);
+    if (!hs) {
+      remaining.push(m);
+      continue;
+    }
+    held.push({ kind: m.kind, hardStop: hs });
+    await ask(heldHardStopAsk(m, hs));
+  }
+  return { remaining, held };
+}

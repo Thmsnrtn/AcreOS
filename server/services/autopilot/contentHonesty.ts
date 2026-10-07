@@ -58,8 +58,8 @@ function sentences(text: string): string[] {
 
 /**
  * Screen generated text for invented statistics and fake social proof.
- * `allowPrices` lists dollar figures that are AcreOS's own published prices
- * (e.g. a plan price stated in a payment-recovery email) — never invented.
+ * `allowDollarFigures` lists dollar figures that are facts of the case (the
+ * customer's own purchase, an amount they wrote) — never invented.
  */
 export function screenFabrication(text: string, opts: { allowDollarFigures?: string[] } = {}): ClaimViolation[] {
   const out: ClaimViolation[] = [];
@@ -79,9 +79,11 @@ export function screenFabrication(text: string, opts: { allowDollarFigures?: str
   for (const s of sentences(raw)) {
     if (SOURCE_CUE.test(s)) continue;
     for (const st of STAT_RES) {
-      const m = st.re.exec(s);
+      // Every occurrence, not only the first: an allowed figure (the
+      // customer's own purchase) must not shield an invented one beside it.
+      const all = [...s.matchAll(new RegExp(st.re.source, st.re.flags.includes("g") ? st.re.flags : `${st.re.flags}g`))];
+      const m = all.find((x) => !(st.what === "a dollar figure" && allowed.has(x[0].replace(/\s/g, ""))));
       if (!m) continue;
-      if (st.what === "a dollar figure" && allowed.has(m[0].replace(/\s/g, ""))) continue;
       out.push({
         code: "unsourced_statistic",
         severity: "critical",

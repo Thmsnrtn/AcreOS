@@ -19,6 +19,7 @@
  * Founder posture: Dispatch ON (what the Letter tells him to do), otherwise absent.
  */
 import * as k from "./simkit";
+import { writeSupportScript, writeRetentionScript, roleWorkerRules } from "./roleScripts";
 
 const which = process.argv[2] ?? "s2";
 
@@ -111,13 +112,25 @@ const TICKETS = [
 ];
 async function s3() {
   const jobs = await baseWorld();
+  // Stage 2: the founder's one-time setup (levels + bounded grants), so the
+  // Support role worker can act and witness its own drafts inside his bounds.
+  await k.founderOneTimeSetup();
   const m = k.marks();
   const { org, user, client } = await k.signUpCustomer("support-1");
+  // The purchases the two refund tickets are about (Stripe Checkout — the world).
+  await k.q(
+    `insert into credit_transactions (organization_id, type, amount_cents, balance_after_cents, description, stripe_payment_intent_id)
+     values ($1,'purchase',3000,3000,'Skip-trace credit pack','pi_sim_s3_30'), ($1,'purchase',8000,11000,'Comps add-on','pi_sim_s3_80a'), ($1,'purchase',8000,19000,'Comps add-on','pi_sim_s3_80b')`,
+    [org.id],
+  );
   const created: any[] = [];
   for (const t of TICKETS) {
     const r = await client.post("/api/support/tickets", { subject: t.subject, description: t.description, category: t.category });
     created.push({ key: t.key, status: r.status, id: r.body?.ticket?.id ?? r.body?.id, body: r.status !== 200 && r.status !== 201 ? r.text.slice(0, 200) : undefined });
   }
+  // Realistic scripted answers for the Support worker (roleScripts.ts).
+  const supportScript = writeSupportScript(created.map((c) => ({ key: c.key, id: c.id, paymentIntentId: c.key === "refund30" ? "pi_sim_s3_30" : undefined })));
+  k.setStandinRules({ default: "script", rules: roleWorkerRules({ support: supportScript }) });
   // let the fire-and-forget AI first-response pass settle on the web process
   await new Promise((res) => setTimeout(res, 8000));
   const afterFirst = await k.q<any>("select id, subject, status, resolution_type, ai_handled, ai_confidence_score from support_tickets where organization_id=$1 order by id", [org.id]);
@@ -125,8 +138,13 @@ async function s3() {
   const firstId = created[0]?.id;
   const follow = firstId ? await client.post(`/api/support/tickets/${firstId}/messages`, { content: "Any update on my $30 refund?" }) : null;
   await new Promise((res) => setTimeout(res, 3000));
-  const log = await k.advance(48, jobs);
+  const log: k.JobRunLog[] = [];
+  for (let h = 0; h < 96; h++) {
+    log.push(...(await k.advance(0.5, jobs)));
+    if (h % 4 === 3) await k.drainDispatches(90_000);
+  }
   const tickets = await k.q<any>("select id, subject, status, resolution_type, assigned_agent, ai_confidence_score from support_tickets where organization_id=$1 order by id", [org.id]);
+  const refunds = await k.q<any>("select id, status, args, approved_by from autopilot_pending_actions where hand_name='apply_refund' order by id");
   const msgs = await k.q<any>("select ticket_id, role, left(content, 160) as content from support_ticket_messages where ticket_id = any($1::int[]) order by id", [tickets.map((t) => t.id)]);
   const supportCases = await k.q("select count(*)::int n from support_cases");
   const contact = k.classifyEgress(m.since().egress);
@@ -142,17 +160,23 @@ async function s3() {
   ].join("; ");
   const result = { created, afterFirstResponse: afterFirst, followUp: follow ? { status: follow.status, body: follow.text.slice(0, 400) } : null, tickets, messages: msgs, supportCasesTableRows: supportCases, emailsToCustomer: toCustomer, founder: fp, experiences: moves, pendingHands, modelCallers: modelCalls.map((c: any) => (c.caller ?? "").slice(0, 90)), tickOutcomes: tickMoves(log), vacuity: vac };
   k.saveJson("s03-support.json", result);
+  // Stage 2: a reply is the Support worker's (role 'agent'), witnessed under
+  // the founder's grant; a ticket handed to the founder is named in an ask.
   const assistantReplies = (id: number) => msgs.filter((x: any) => x.ticket_id === id && /assistant|agent|pax/i.test(x.role));
+  const askNaming = (id: number) => fp.asksMentioningEvent.filter((a: any) => new RegExp(`#${id}\\b`).test(a.summary)).length;
+  const executed = refunds.filter((r: any) => r.status === "executed");
   for (const t of TICKETS) {
     const c = created.find((x) => x.key === t.key);
     const row = tickets.find((x: any) => x.id === c?.id);
     const replies = row ? assistantReplies(row.id) : [];
-    const surfaced = fp.asksMentioningEvent.length + fp.decisionsInboxForOrg.length > 0;
+    const named = row ? askNaming(row.id) > 0 : false;
+    const refundRight = t.key === "refund30" ? executed.some((r: any) => Number(r.args?.amount_cents) === 3000) : t.key === "refund80" ? !executed.some((r: any) => Number(r.args?.amount_cents) > 5000) : true;
+    const outcome: k.Outcome = replies.length > 0 && refundRight ? (named ? "ESCALATED" : "HANDLED") : named ? "ESCALATED" : "DROPPED";
     k.recordEvent({
       scenario: "S3", event: `Support ticket: ${t.key}`,
-      outcome: row?.status === "resolved" || replies.length > 0 ? (replies.length > 0 && row?.status !== "resolved" ? "ESCALATED" : "HANDLED") : surfaced ? "ESCALATED" : "DROPPED",
-      founderMinutes: surfaced ? k.MINUTES.investigation : 0,
-      evidence: `ticket #${row?.id} status=${row?.status} resolution=${row?.resolution_type} confidence=${row?.ai_confidence_score}; assistant msgs=${replies.length}${replies[0] ? ` ("${replies[0].content.slice(0, 80)}")` : ""}; customer emails=${toCustomer.length}; support_cases rows (what Solene reads)=${supportCases[0]?.n}; founder asks mentioning support=${fp.asksMentioningEvent.length}; on-door needsYou=${JSON.stringify(fp.needsYou)}; off-door /todo matches=${fp.offDoorTodo.matching.length}`,
+      outcome,
+      founderMinutes: outcome === "ESCALATED" ? (t.key === "refund80" ? k.MINUTES.approvalWithReading : k.MINUTES.investigation) : 0,
+      evidence: `ticket #${row?.id} status=${row?.status} assigned=${row?.assigned_agent} resolution=${row?.resolution_type}; agent replies=${replies.length}${replies[0] ? ` ("${replies[0].content.slice(0, 80)}")` : ""}; refunds=${JSON.stringify(refunds.map((r: any) => ({ amt: r.args?.amount_cents, status: r.status })))}; customer emails=${toCustomer.length}; founder asks naming it=${named}; on-door needsYou=${JSON.stringify(fp.needsYou)}`,
       vacuity: vac,
     });
   }
@@ -162,8 +186,11 @@ async function s3() {
 // ── S4 dunning ────────────────────────────────────────────────────────────────
 async function s4() {
   const jobs = await baseWorld();
+  await k.founderOneTimeSetup();
   const m = k.marks();
   const { org, user } = await k.signUpCustomer("pay-1");
+  // Retention worker's scripted answer (used only if the dunning service has not emailed).
+  k.setStandinRules({ default: "script", rules: roleWorkerRules({ retention: writeRetentionScript(org.id, "payment_recovery") }) });
   // Stripe checkout already happened (the world): the org is a paying Pro customer.
   await k.q(`update organizations set subscription_tier='pro', subscription_status='active', stripe_customer_id='cus_sim_pay1', stripe_subscription_id='sub_sim_pay1' where id=$1`, [org.id]);
   const invoice = (attempt: number) => ({
@@ -204,8 +231,10 @@ async function s4() {
 // ── S5 churn ──────────────────────────────────────────────────────────────────
 async function s5() {
   const jobs = await baseWorld();
+  await k.founderOneTimeSetup();
   const m = k.marks();
   const { org, user, client } = await k.signUpCustomer("quiet-1");
+  k.setStandinRules({ default: "script", rules: roleWorkerRules({ retention: writeRetentionScript(org.id, "win_back") }) });
   await k.q(`update organizations set subscription_tier='pro', subscription_status='active', stripe_customer_id='cus_sim_quiet1' where id=$1`, [org.id]);
   const made: number[] = [];
   for (let i = 0; i < 6; i++) {

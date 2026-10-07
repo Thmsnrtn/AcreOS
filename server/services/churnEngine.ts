@@ -320,7 +320,11 @@ export const churnEngine = {
       .where(
         and(
           sql`${organizations.subscriptionStatus} = 'active'`,
-          sql`${organizations.subscriptionTier} != 'free'`
+          sql`${organizations.subscriptionTier} != 'free'`,
+          // The founder's own org (enterprise, rarely "active" in the product)
+          // is not a customer: scoring it raised a quiet-payer churn signal
+          // that ranked retain_at_risk against AcreOS itself every tick.
+          sql`coalesce(${organizations.isFounder}, false) = false`
         )
       )
       .limit(500);
