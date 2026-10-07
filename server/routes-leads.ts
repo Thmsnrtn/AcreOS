@@ -23,6 +23,7 @@ import { usageMeteringService, creditService } from "./services/credits";
 import { parseCSV, importLeads, exportLeadsToCSV, getExpectedColumns, type ExportFilters } from "./services/importExport";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { omitSecretColumns } from "./utils/secretColumns";
 // ONE owner for the assigned-leads rule. It was hand-copied into five places
 // and missing from four write paths — see server/utils/assignedLeadGate.ts.
 import {
@@ -183,7 +184,7 @@ export function registerLeadRoutes(app: Express): void {
       const data = result.data.map(lead => {
         const { score, factors } = leadNurturerService.calculateLeadScore(lead);
         const computedStage = leadNurturerService.segmentLead(score);
-        return { ...lead, score, scoreFactors: factors, nurturingStage: computedStage };
+        return { ...omitSecretColumns(leads, lead), score, scoreFactors: factors, nurturingStage: computedStage };
       });
       return res.json({ data, total: result.total, page, pageSize, totalPages: result.totalPages });
     }
@@ -194,7 +195,7 @@ export function registerLeadRoutes(app: Express): void {
     const leadsWithScores = result.data.map(lead => {
       const { score, factors } = leadNurturerService.calculateLeadScore(lead);
       const computedStage = leadNurturerService.segmentLead(score);
-      return { ...lead, score, scoreFactors: factors, nurturingStage: computedStage };
+      return { ...omitSecretColumns(leads, lead), score, scoreFactors: factors, nurturingStage: computedStage };
     });
 
     res.json({
@@ -340,7 +341,9 @@ export function registerLeadRoutes(app: Express): void {
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const lead = await storage.getLead(org.id, leadId);
     if (!lead) return Errors.notFound(res, "Lead");
-    res.json(lead);
+    // Lead responses omit tax identity (ciphertext TIN and its type); the
+    // 1099/1098 paths read them server-side.
+    res.json(omitSecretColumns(leads, lead));
   });
   
 
@@ -634,7 +637,7 @@ export function registerLeadRoutes(app: Express): void {
         .json(
           validateResponse(
             createLeadContract.responseSchema,
-            lead,
+            omitSecretColumns(leads, lead),
             "POST /api/leads",
           ),
         );
@@ -736,7 +739,7 @@ export function registerLeadRoutes(app: Express): void {
       }
       
       res.json({
-        ...lead,
+        ...omitSecretColumns(leads, lead!),
         score,
         scoreFactors: factors,
         nurturingStage,

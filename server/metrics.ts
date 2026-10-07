@@ -181,6 +181,20 @@ export const publicParcelReportEventsTotal = new Counter({
   registers: [registry],
 });
 
+// ── Response secret-column guard ────────────────────────────────────────────
+// server/middleware/secretColumnGuard.ts removes registered secret columns
+// (server/utils/secretColumns.ts) from JSON responses. Every increment is a
+// handler that serialized one; the log line beside it names the route.
+// Labels are bounded by the registry (plus "envelope" for a value carrying
+// the encryption prefix).
+
+export const responseSecretColumnStrippedTotal = new Counter({
+  name: "acreos_response_secret_column_stripped_total",
+  help: "Secret columns removed from a JSON response by the response guard, labelled by table and key. Non-zero means a handler serialized one; the warn log names the route.",
+  labelNames: ["table", "key"] as const,
+  registers: [registry],
+});
+
 // ── Public helpers ──────────────────────────────────────────────────────────
 // These are the call-site interface other services should use. Direct
 // access to the metric objects above is fine inside this file but the
@@ -228,6 +242,11 @@ export function recordStripeWebhookVerified(): void {
 /** Record a delivery to the Stripe webhook that did not verify. */
 export function recordStripeWebhookSignatureRejected(): void {
   stripeWebhookSignatureRejectedTotal.inc();
+}
+
+/** Record one secret column removed from a response by the response guard. */
+export function recordResponseSecretColumnStripped(table: string, key: string): void {
+  responseSecretColumnStrippedTotal.inc({ table: safeLabel(table), key: safeLabel(key) });
 }
 
 // ── Internal helpers ────────────────────────────────────────────────────────

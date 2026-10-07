@@ -53,6 +53,7 @@ logIntegrationReadiness();
 
 // F-A09-2: PII masking console interceptor — masks phone, email, SSN, CC in all log output
 import { installConsoleInterceptor } from "./middleware/piiMasking";
+import { secretColumnGuard } from "./middleware/secretColumnGuard";
 installConsoleInterceptor();
 
 // Global safety net for unhandled errors — log and report to Sentry
@@ -164,6 +165,11 @@ app.use((req, _res, next) => {
   }
   next();
 });
+
+// Secret columns (server/utils/secretColumns.ts) never leave in a JSON
+// response: one app-wide wrap of res.json, installed before every route and
+// router so the whole population of handlers passes through it.
+app.use(secretColumnGuard);
 
 // F-A05-3: Remove x-powered-by header
 app.disable("x-powered-by");

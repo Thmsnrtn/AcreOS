@@ -50,7 +50,7 @@ interface AdAccount {
   adAccountId: string;
   pixelId: string | null;
   isActive: boolean;
-  accessToken: string;
+  accessTokenMasked: string | null;
 }
 
 interface CampaignTemplate {
