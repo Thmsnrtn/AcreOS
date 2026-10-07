@@ -20,6 +20,11 @@ import {
 } from "@shared/schema";
 import { logger } from "../utils/logger";
 
+/** FRAUD-011: the most free usage a trial may consume. */
+const TRIAL_SPENDING_CAP_CENTS = 500;
+/** usage_records.metadata.fundedBy for usage the trial allowance paid for. */
+const TRIAL_ALLOWANCE_FUNDING = "trial_allowance";
+
 export class CreditService {
   async isFounder(organizationId: number): Promise<boolean> {
     const org = await db.query.organizations.findFirst({
@@ -164,52 +169,70 @@ export class CreditService {
     });
   }
 
+  /**
+   * Cents of the trial's FREE allowance still unspent, or null when the org
+   * is not in an active trial.
+   *
+   * FRAUD-011 caps free trial usage at $5. The cap must count only what the
+   * TRIAL paid for. It used to sum every "debit" row in the trial window —
+   * and a debit row is only ever written when the org's OWN balance covered
+   * the charge — so it counted exactly the credits the customer had bought,
+   * and once they had spent $5 of their own money the trial lock refused them
+   * with a full balance (Pax included). Free trial usage is now recorded as a
+   * usage record tagged `fundedBy: "trial_allowance"` (see recordUsage), and
+   * only those count.
+   */
+  async trialAllowanceRemaining(organizationId: number): Promise<number | null> {
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, organizationId),
+      columns: { trialEndsAt: true },
+    });
+    if (!org?.trialEndsAt || new Date(org.trialEndsAt) <= new Date()) return null;
+
+    const [result] = await db
+      .select({
+        trialFundedCents: sql<number>`COALESCE(SUM(${usageRecords.totalCostCents}), 0)::int`,
+      })
+      .from(usageRecords)
+      .where(
+        and(
+          eq(usageRecords.organizationId, organizationId),
+          sql`${usageRecords.metadata}->>'fundedBy' = ${TRIAL_ALLOWANCE_FUNDING}`,
+          sql`${usageRecords.createdAt} >= (
+            SELECT ${organizations.trialEndsAt} - INTERVAL '14 days'
+            FROM ${organizations}
+            WHERE ${organizations.id} = ${organizationId}
+          )`
+        )
+      );
+    const consumed = result?.trialFundedCents || 0;
+    return Math.max(TRIAL_SPENDING_CAP_CENTS - consumed, 0);
+  }
+
   async hasEnoughCredits(organizationId: number, requiredCents: number): Promise<boolean> {
     if (await this.isFounder(organizationId)) return true;
 
-    // Check if user is in trial period - allow basic AI chat during trial
-    const org = await db.query.organizations.findFirst({
-      where: eq(organizations.id, organizationId),
-      columns: { trialEndsAt: true, subscriptionTier: true }
-    });
+    // The org's own credit (purchased packs, allowances, top-ups) pays first,
+    // and is never limited by the trial cap — that cap bounds what AcreOS
+    // gives away free, not what a customer spends of their own.
+    const balance = await this.getBalance(organizationId);
+    if (balance >= requiredCents) return true;
 
-    // Users in active trial period get free basic AI chat, but capped at 500 cents ($5)
-    // to prevent abuse (FRAUD-011)
-    if (org?.trialEndsAt && new Date(org.trialEndsAt) > new Date()) {
-      const TRIAL_SPENDING_CAP_CENTS = 500;
-
-      // Sum all debit transactions during this trial period
-      const [result] = await db
-        .select({
-          totalDebits: sql<number>`COALESCE(SUM(ABS(${creditTransactions.amountCents})), 0)::int`
-        })
-        .from(creditTransactions)
-        .where(
-          and(
-            eq(creditTransactions.organizationId, organizationId),
-            eq(creditTransactions.type, "debit"),
-            sql`${creditTransactions.createdAt} >= (
-              SELECT ${organizations.trialEndsAt} - INTERVAL '14 days'
-              FROM ${organizations}
-              WHERE ${organizations.id} = ${organizationId}
-            )`
-          )
-        );
-
-      const totalDebits = result?.totalDebits || 0;
-      if (totalDebits + requiredCents > TRIAL_SPENDING_CAP_CENTS) {
-        logger.info(`[credits] Trial spending cap reached for org ${organizationId}: ${totalDebits}¢ spent of ${TRIAL_SPENDING_CAP_CENTS}¢ cap`);
+    // Users in an active trial get free basic usage (AI chat etc.) when their
+    // balance does not cover it, capped at 500 cents ($5) of trial-funded
+    // usage to prevent abuse (FRAUD-011).
+    const trialRemaining = await this.trialAllowanceRemaining(organizationId);
+    if (trialRemaining !== null) {
+      if (requiredCents > trialRemaining) {
+        logger.info(`[credits] Trial allowance exhausted for org ${organizationId}: ${TRIAL_SPENDING_CAP_CENTS - trialRemaining}¢ of ${TRIAL_SPENDING_CAP_CENTS}¢ used`);
         return false;
       }
-
       return true;
     }
 
     // Note: Trial tokens are for premium skills only, not basic AI chat
     // They are consumed via storage.consumeTrialToken() in skill permission checks
-
-    const balance = await this.getBalance(organizationId);
-    return balance >= requiredCents;
+    return false;
   }
 
   async getTransactionHistory(
@@ -398,7 +421,26 @@ export class UsageMeteringService {
       );
 
       if (!deductResult) {
-        return { record: null, deducted: false, insufficientCredits: true };
+        // The org's own balance could not pay. In an active trial the free
+        // allowance pays instead, while it lasts — and is RECORDED, so the
+        // FRAUD-011 cap counts trial-funded usage and nothing else.
+        const trialRemaining = await this.creditService.trialAllowanceRemaining(organizationId);
+        if (trialRemaining === null || totalCost > trialRemaining) {
+          return { record: null, deducted: false, insufficientCredits: true };
+        }
+        const [trialRecord] = await db
+          .insert(usageRecords)
+          .values({
+            organizationId,
+            actionType,
+            quantity,
+            unitCostCents: unitCost,
+            totalCostCents: totalCost,
+            metadata: { ...(metadata ?? {}), fundedBy: TRIAL_ALLOWANCE_FUNDING },
+            billingMonth,
+          })
+          .returning();
+        return { record: trialRecord, deducted: false, insufficientCredits: false };
       }
     }
 
