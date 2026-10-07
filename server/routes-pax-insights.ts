@@ -13,6 +13,7 @@ import {
   type PendingAction,
 } from "@shared/schema";
 import { logger } from "./utils/logger";
+import { leadHasOptedOut } from "./services/leadContactability";
 import { Errors, sendError } from "./utils/errors";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization, getUserId } from "./types/request";
@@ -143,6 +144,7 @@ router.get("/insights", async (req, res) => {
         lastContactedAt: leads.lastContactedAt,
         status: leads.status,
         doNotContact: leads.doNotContact,
+        optOutDate: leads.optOutDate,
       })
       .from(leads)
       .where(eq(leads.organizationId, org.id));
@@ -150,7 +152,7 @@ router.get("/insights", async (req, res) => {
     const staleLeads = allActiveLeads
       .filter((l) => {
         if (l.status === "closed" || l.status === "dead") return false;
-        if (l.doNotContact) return false;
+        if (leadHasOptedOut(l)) return false;
         if (!l.lastContactedAt) return true; // never contacted = stale
         return new Date(l.lastContactedAt).getTime() < twentyOneDaysAgo.getTime();
       })
@@ -235,6 +237,7 @@ router.get("/insights", async (req, res) => {
         notes: leads.notes,
         tags: leads.tags,
         doNotContact: leads.doNotContact,
+        optOutDate: leads.optOutDate,
       })
       .from(leads)
       .where(eq(leads.organizationId, org.id));
@@ -242,7 +245,7 @@ router.get("/insights", async (req, res) => {
     const motivatedLeads = fullLeads
       .filter((l) => {
         if (["closed", "dead"].includes(l.status)) return false;
-        if (l.doNotContact) return false;
+        if (leadHasOptedOut(l)) return false;
         const tags: string[] = (l.tags as string[]) || [];
         const hasMotivatedTag = tags.some((t) =>
           urgencyKeywords.some((kw) => t.toLowerCase().includes(kw))

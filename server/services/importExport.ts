@@ -509,7 +509,8 @@ export async function importLeads(
       // If batch fails, fall back to individual inserts for this chunk
       for (const item of chunk) {
         try {
-          const single = await storage.createLead({ ...item.data, ...item.extras, organizationId });
+          // Same consent label the batch insert stamps (consentStamp.ts).
+          const single = await storage.createLead({ consentSource: "imported", ...item.data, ...item.extras, organizationId });
           result.successCount++;
           if (options.durableEvents) await emitLeadCreatedDurably(organizationId, single);
           else emitLeadCreated(organizationId, single);

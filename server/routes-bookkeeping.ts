@@ -17,6 +17,8 @@ import {
 } from "./services/bookkeeping";
 import { Errors } from "./utils/errors";
 import { requireQualified1099Output } from "./services/form1099Refusal";
+import { annualInterestReportContract, projectAnnualInterestReport } from "@shared/contracts";
+import { validateResponse } from "./utils/contractResponse";
 
 const router = Router();
 
@@ -28,7 +30,17 @@ router.get("/annual-report", async (req: Request, res: Response) => {
     if (isNaN(taxYear)) return Errors.badRequest(res, "Invalid tax year");
 
     const report = await generateAnnualInterestReport(org.id, taxYear);
-    res.json(report);
+    // The shared contract states the unit (dollars) of every money field the
+    // bookkeeping page reads; dev/test throws on drift, prod warns and sends.
+    // Projected first: the report holds borrower PII (address, email, tax-ID
+    // ciphertext) that the 1099 path uses server-side and no client renders.
+    res.json(
+      validateResponse(
+        annualInterestReportContract.responseSchema,
+        projectAnnualInterestReport(report),
+        "GET /api/bookkeeping/annual-report",
+      ),
+    );
   } catch (err) {
     Errors.internal(res, err);
   }

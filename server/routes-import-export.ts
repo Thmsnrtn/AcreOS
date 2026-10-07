@@ -600,7 +600,7 @@ export function registerImportExportRoutes(app: Express): void {
         tcpaConsent,
         consentSource,
         optOutReason
-      });
+      }, orgId);
       
       // Log consent change in audit log
       await storage.createAuditLogEntry({

@@ -9,7 +9,7 @@
     "**/*.test.ts",
     "**/*.spec.ts"
   ],
-  "baselineCount": 2663,
+  "baselineCount": 2659,
   "direction": "down",
   "lastBumpNote": "2663 on 2026-09-30 (quality directive H2, DEFECT-0206): the invented-Zone-X getDefaultFloodData(): any and queryFemaFloodService's Promise<any> went with the shared NFHL reading. PRIOR NOTE — 2664 on 2026-09-29 (ruling #11, DEFECT-0159): the deleted case-study mapper's `(r: any)` and the deleted uncalled getNetworkCoverageStats' `catch (err: any)` went with them. PRIOR NOTE — 2672 -> 2669 on 2026-09-28 (DEFECT-0173): takeDownListing's two `catch (err: any)` and unpublish's `(target: any)` went with the rewrite that makes a take-down believe the provider's answer and unpublish report per-channel state. PRIOR NOTE — 2676 -> 2672 on 2026-09-28 (DEFECT-0170 audit follow-up): the unused server/services/export.ts (capped exporters, no importers) was deleted, and the cash-flow waterfall's `(s, n: any)` reducers went with its invented figures. PRIOR NOTE — 2026-09-27 DEFECT-0054: the retired PUT /api/admin/system-api-keys/:provider took its `catch (err: any)` with it.",
   "minima": {

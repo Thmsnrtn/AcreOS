@@ -191,3 +191,46 @@ describe("the receipt", () => {
     expect(mocks.recordPaxEffect).not.toHaveBeenCalled();
   });
 });
+
+describe("a borrower reminder ask is executed only when the reminder was delivered", () => {
+  // sendManualReminder returns success:true whenever it created the reminder
+  // ROW; delivery is in `status`. The replay used to take `success` as the
+  // outcome, so the ask was closed as executed — with a "Send a borrower
+  // payment reminder" receipt — for reminders that never reached anyone.
+  const NOT_DELIVERED = [
+    { status: "failed", deliveryNote: "The provider rejected the message." },
+    { status: "blocked", deliveryNote: "Borrower opted out." },
+    { status: "unavailable", deliveryNote: "No email or phone on file." },
+    { status: "document_ready", deliveryNote: "Physical mail is not wired — the letter was prepared, not mailed." },
+  ];
+  for (const o of NOT_DELIVERED) {
+    it(`a "${o.status}" reminder is a failed replay with the reason, and writes no receipt`, async () => {
+      mocks.sendManualReminder.mockResolvedValueOnce({ success: true, reminderId: 5, ...o } as never);
+      const result = await executeApprovedAsk("send_borrower_reminder", { noteId: 3, type: "late" }, ctx);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe(o.deliveryNote);
+      expect(mocks.recordPaxEffect).not.toHaveBeenCalled();
+    });
+  }
+
+  for (const status of ["queued", "scheduled"]) {
+    it(`a "${status}" reminder is accepted — executed, receipted as queued, never as sent`, async () => {
+      // The dispatcher still sends these; a failure here would release the ask
+      // and the re-tap would create a second reminder row.
+      mocks.sendManualReminder.mockResolvedValueOnce({ success: true, reminderId: 5, status, deliveryNote: "No sending identity yet; retried on the next sweep." } as never);
+      const result = await executeApprovedAsk("send_borrower_reminder", { noteId: 3, type: "late" }, ctx);
+      expect(result.success).toBe(true);
+      expect(mocks.recordPaxEffect).toHaveBeenCalledTimes(1);
+      const effect = mocks.recordPaxEffect.mock.calls[0][0] as { description: string };
+      expect(effect.description).toBe("Queued a borrower payment reminder for sending");
+      expect(effect.description).not.toMatch(/\bsent\b|^Send/i);
+    });
+  }
+
+  it("a delivered reminder is executed and receipted", async () => {
+    mocks.sendManualReminder.mockResolvedValueOnce({ success: true, reminderId: 5, status: "sent" } as never);
+    const result = await executeApprovedAsk("send_borrower_reminder", { noteId: 3, type: "late" }, ctx);
+    expect(result.success).toBe(true);
+    expect(mocks.recordPaxEffect).toHaveBeenCalledTimes(1);
+  });
+});

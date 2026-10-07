@@ -8,6 +8,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
+import { stampOfferInsert, stampOfferUpdate } from "../services/offerTimestamps";
 import {
   targetCounties,
   offerLetters,
@@ -71,13 +72,16 @@ export const acquisitionRepo = {
   },
 
   async createOfferLetter(this: DatabaseStorage, letter: InsertOfferLetter) {
-    const [created] = await db.insert(offerLetters).values(letter).returning();
+    const [created] = await db.insert(offerLetters).values(stampOfferInsert(letter, { sentAt: offerLetters.sentAt, respondedAt: offerLetters.respondedAt, deliveredAt: offerLetters.deliveredAt })).returning();
     return created;
   },
 
   async createOfferLettersBatch(this: DatabaseStorage, letters: InsertOfferLetter[]) {
     if (letters.length === 0) return [];
-    const created = await db.insert(offerLetters).values(letters).returning();
+    const created = await db
+      .insert(offerLetters)
+      .values(letters.map((l) => stampOfferInsert(l, { sentAt: offerLetters.sentAt, respondedAt: offerLetters.respondedAt, deliveredAt: offerLetters.deliveredAt })))
+      .returning();
     return created;
   },
 
@@ -85,7 +89,7 @@ export const acquisitionRepo = {
     const conditions = [eq(offerLetters.id, id)];
     if (organizationId) conditions.push(eq(offerLetters.organizationId, organizationId));
     const [updated] = await db.update(offerLetters)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...stampOfferUpdate(omitProtectedFields(updates), { sentAt: offerLetters.sentAt, respondedAt: offerLetters.respondedAt, deliveredAt: offerLetters.deliveredAt }), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return updated;

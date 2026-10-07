@@ -40,6 +40,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { leadHasOptedOut } from "./leadContactability";
 import { wsServer } from "../websocket";
 import { commsRouter, type CommsRouter } from "./comms/router";
 import { twilioProvider } from "./comms/providers/twilio";
@@ -288,7 +289,7 @@ async function smsPurposeGate(input: SendOrgSmsInput): Promise<PurposeGateVerdic
         if (last10Of(borrower.phone) !== last10) {
           return refuse(`destination is not the borrower of record on note ${input.noteId}`, borrower.id);
         }
-        if (borrower.doNotContact) {
+        if (leadHasOptedOut(borrower)) {
           return refuse("borrower has revoked contact (STOP / do-not-contact)", borrower.id);
         }
         const quiet = isWithinQuietHours(to, borrower.timezone ?? null);
@@ -317,7 +318,7 @@ async function smsPurposeGate(input: SendOrgSmsInput): Promise<PurposeGateVerdic
           return refuse("recipient's latest text was an opt-out (STOP) — no reply may be sent");
         }
         const matches = await storage.findLeadsByPhoneLast10(organizationId, to);
-        const stopped = matches.find((l) => l.doNotContact);
+        const stopped = matches.find((l) => leadHasOptedOut(l));
         if (stopped) return refuse("recipient has revoked contact (STOP / do-not-contact)", stopped.id);
         const quiet = isWithinQuietHours(to, matches[0]?.timezone ?? null);
         if (quiet.blocked) return refuse(quiet.reason ?? "recipient quiet hours", matches[0]?.id);

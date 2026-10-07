@@ -14,7 +14,7 @@
  * module evaluates before the monolith's body and must never read one eagerly.
  */
 import { pgTable, text, serial, integer, boolean, timestamp, numeric, jsonb, index, primaryKey } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
+import { createInsertSchema } from "../db/createInsertSchema";
 import { z } from "zod";
 import { agentTasks, organizations } from "../schema";
 

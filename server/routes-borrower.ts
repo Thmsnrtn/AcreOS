@@ -24,6 +24,19 @@ import {
 import { dayInZone, resolveOrgTimeZone } from "./services/form1098Batch";
 import { quoteServicedNotePayoff } from "./services/notes/servicedNotePayoff";
 import { Errors, sendError } from "./utils/errors";
+
+/**
+ * The one answer the borrower portal gives when a link + email pair does not
+ * open a loan. Neutral on purpose: it names what to check without saying
+ * whether the link was valid, whether a loan exists, or which part was wrong.
+ */
+export const BORROWER_ACCESS_NOT_VERIFIED =
+  "We couldn't open a loan with that link and email address. Check that you're using the link " +
+  "and the email address from your lender's payment reminder, then try again.";
+
+function refuseBorrowerAccess(res: Response): void {
+  sendError(res, 404, "NOT_FOUND", BORROWER_ACCESS_NOT_VERIFIED);
+}
 import { getOrganization, type AuthenticatedRequest } from "./types/request";
 import {
   exchangeForBorrowerSession,
@@ -463,21 +476,22 @@ export function registerBorrowerRoutes(app: Express): void {
       // Look up note by access token
       const note = await storage.getNoteByAccessToken(accessToken);
       
-      // Security: Use generic "not found" for all failure cases to avoid information leakage
-      // Do NOT expose whether access token exists or email matches
+      // Security: ONE response for every failure — unknown link, wrong email,
+      // no borrower on the loan — so the answer never confirms whether a loan
+      // exists or which email is on file. It used to be the generic not-found
+      // copy, which told a borrower who mistyped their email that their loan
+      // "may have been deleted, archived, or moved between organizations".
       if (!note) {
-        return Errors.notFound(res, "loan");
+        return refuseBorrowerAccess(res);
       }
       
-      // Verify borrower email - return same generic error if mismatch
       if (note.borrowerId) {
         const borrower = await storage.getLead(note.organizationId, note.borrowerId);
         if (!borrower || borrower.email?.toLowerCase() !== email.toLowerCase()) {
-          return Errors.notFound(res, "loan");
+          return refuseBorrowerAccess(res);
         }
       } else {
-        // No borrower linked - cannot verify, treat as not found
-        return Errors.notFound(res, "loan");
+        return refuseBorrowerAccess(res);
       }
       
       // Create a session for the borrower
@@ -1570,17 +1584,19 @@ export function registerBorrowerRoutes(app: Express): void {
       
       const note = await storage.getNoteByAccessToken(accessToken);
       if (!note) {
-        return Errors.notFound(res, "loan");
+        return refuseBorrowerAccess(res);
       }
       
-      // Verify borrower email for security
+      // Verify borrower email for security — same single refusal as the
+      // portal sign-in, so the status code no longer distinguishes an unknown
+      // link (404) from a known one with the wrong email (403).
       if (note.borrowerId) {
         const borrower = await storage.getLead(note.organizationId, note.borrowerId);
         if (!borrower || borrower.email?.toLowerCase() !== email?.toLowerCase()) {
-          return Errors.forbidden(res, "We couldn't verify your access to this loan — check the email address on your payment reminder.");
+          return refuseBorrowerAccess(res);
         }
       } else {
-        return Errors.forbidden(res, "We couldn't verify your access to this loan — check the email address on your payment reminder.");
+        return refuseBorrowerAccess(res);
       }
       
       // Same honesty gate as the session route: ON needs a stored, active

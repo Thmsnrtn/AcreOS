@@ -16,6 +16,7 @@ import {
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
 import { assertWritablePatch } from "../utils/patch";
+import { DISPATCHABLE_REMINDER_STATUSES } from "../services/reminderOutcome";
 
 /**
  * Statuses a reminder row may sit in while it is still waiting for a rail to
@@ -24,7 +25,7 @@ import { assertWritablePatch } from "../utils/patch";
  * (no connected identity, warmup quota, frequency cap) so it is retried.
  * See server/services/financeAgent.ts REMINDER_STATUS for the full vocabulary.
  */
-const DISPATCHABLE_STATUSES = ["scheduled", "queued"] as const;
+const DISPATCHABLE_STATUSES = DISPATCHABLE_REMINDER_STATUSES;
 
 export const paymentRemindersRepo = {
   // Payment Reminders (Finance Agent)
