@@ -45,6 +45,7 @@ import { providerRulesFor, writeProviderRules } from "../twin/providers";
 import { InvariantMonitor } from "../invariants/monitor";
 import { Collector, truthKey, type GroundTruth } from "./collector";
 import { letterScreen } from "../invariants/screens";
+import { generatePaxBank } from "../evals/paxBank";
 
 // ── args ─────────────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);
@@ -137,7 +138,8 @@ async function openTicket(c: Customer, subject: string, description: string, cat
 const counts = { signups: 0, churned: 0, smsSent: 0, emailsSent: 0, mailSent: 0, replies: 0, revocations: 0, paxAsked: 0, offers: 0, ticketsOpened: 0, refundRequests: 0, founderSessions: 0, founderAnswers: 0, grantRenewals: 0, founderChats: 0, dispatchesDrained: 0 };
 
 async function signUp(n: number, day: number, rng: Rng, world: ReturnType<typeof buildWorld>) {
-  const persona = drawPersona(rng);
+  // The first three are one of each persona (the cohort starts as a representative mix, like the market cohort's); then the twin's mix.
+  const persona: PersonaId = n <= 3 ? (["land_flipper", "note_investor", "va_team"] as const)[n - 1] : drawPersona(rng);
   const spec = PERSONAS[persona];
   const slug = `simplat-s${SEED}-c${n}`;
   const { client, org } = await k.signUpCustomer(slug);
@@ -274,10 +276,14 @@ async function customerWeek(c: Customer, day: number, rng: Rng) {
     targets.forEach((l) => c.mailed.add(l.id));
     for (const l of targets) if (rng.bernoulli(PARAMS.mailCallbackRate.value * (0.5 + l.owner.motivation))) { c.interested.push(l); c.monthValue++; }
   }
-  // Pax
+  // Pax: questions from the generated bank (tests/simulation/evals/paxBank.ts),
+  // answers recorded for the bank's judges.
   for (let i = 0; i < rng.poisson(spec.weekly.pax); i++) {
-    const q = rng.pick(PAX_QUESTIONS[c.persona]);
-    await act(c, "ai/chat", client.post("/api/ai/chat", { message: q }), day, rng);
+    const pool = PAX_BANK.filter((q) => q.persona === c.persona);
+    const q = rng.pick(pool.length ? pool : PAX_BANK);
+    const r = await act(c, "ai/chat", client.post("/api/ai/chat", { message: q.text }), day, rng);
+    const answer = String(r.body?.response ?? r.body?.message ?? r.body?.reply ?? r.body?.content ?? "");
+    appendFileSync(join(OUT, "pax-answers.jsonl"), JSON.stringify({ id: q.id, category: q.category, status: r.status, answer: answer.slice(0, 2000) }) + "\n");
     counts.paxAsked++;
   }
   // pipeline: call back interested sellers, make offers
@@ -302,11 +308,8 @@ async function customerWeek(c: Customer, day: number, rng: Rng) {
   }
 }
 
-const PAX_QUESTIONS: Record<PersonaId, string[]> = {
-  land_flipper: ["How do I import my list of owners?", "Why didn't my texts go out?", "How do I send postcards to my leads?", "What does do-not-contact mean for my campaign?", "How do I make an offer on a parcel?"],
-  note_investor: ["How do I record a borrower payment?", "Where do I see late payments?", "How do I set up a new note?", "Can AcreOS collect payments for me?", "How do I send a payoff quote?"],
-  va_team: ["How do I give my VA access?", "Can my VA send texts?", "How do I see what my VA did today?", "How do I import a list for my team?", "Why was a text blocked?"],
-};
+// The bank's questions a customer can ask anywhere (their own-data questions belong to the bank's own twin world).
+const PAX_BANK = generatePaxBank().filter((q) => q.category !== "data");
 
 // ── founder ──────────────────────────────────────────────────────────────────
 async function founderSession(truth: GroundTruth) {
@@ -501,6 +504,7 @@ async function main() {
     support: { tickets: tickets.length, handled, escalated, dropped },
     complianceIncidents: compliance,
     invariants: summary,
+    customerList: customers.map((c) => ({ slug: c.slug, persona: c.persona, orgId: c.orgId, churned: c.churnedDay != null })),
     customers: { signedUp: customers.length, activated, churned: counts.churned, byPersona: Object.fromEntries((["land_flipper", "note_investor", "va_team"] as const).map((p) => [p, customers.filter((c) => c.persona === p).length])) },
     aiCost: { customerCentsPerCustomerMonth: aiCustomerCents / Math.max(1, customerMonths), platformCentsPerCustomerMonth: aiPlatformCents / Math.max(1, customerMonths), customerMonths },
     published: Number((await k.q1<any>("select count(*)::int n from marketing_artifacts"))?.n ?? 0),

@@ -12,7 +12,6 @@
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-// @ts-expect-error — plain .mjs generator; types in generate.d.mts
 import { generateAttacks, CATEGORIES } from "./generate.mjs";
 import { scoreAll } from "./score";
 

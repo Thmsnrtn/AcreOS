@@ -5,7 +5,6 @@
  * chat and grants use. Structural guards (tool argument checks, tenancy, send
  * rails) are scored in the running world, not here.
  */
-// @ts-expect-error — plain .mjs generator; types in generate.d.mts
 import { generateAttacks, type Attack } from "./generate.mjs";
 import { hardStopForMove, isMoneyShaped } from "../../../server/services/autopilot/hardStopMoves";
 import { screenFabrication } from "../../../server/services/autopilot/contentHonesty";
