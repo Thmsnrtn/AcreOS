@@ -107,11 +107,11 @@ describe("chat approval is structural", () => {
     const card = { status: "open", answerFormat: "yes_no", questionSummary: "Review a drafted growth action: grow_owned_channels", questionBody: "Approve to let it proceed.", bodyHash: "h1" };
     store.asks.set(1, { id: 1, ...card, chatApprovable: false });
     store.asks.set(2, { id: 2, ...card, chatApprovable: true });
-    const refused = await executeBusinessChatTool("answer_ask", { ask_id: 1, decision: "approve" }, "f");
+    const refused = await executeBusinessChatTool("answer_ask", { ask_id: 1, decision: "approve", version: "h1" }, "f");
     expect(refused.ok).toBe(false);
     expect(refused.text).toMatch(/founder-only/);
     expect(store.answered).toHaveLength(0);
-    const ok = await executeBusinessChatTool("answer_ask", { ask_id: 2, decision: "approve" }, "f");
+    const ok = await executeBusinessChatTool("answer_ask", { ask_id: 2, decision: "approve", version: "h1" }, "f");
     expect(ok.ok).toBe(true);
     expect(store.answered).toEqual([{ askId: 2, answerText: "yes", expectedBodyHash: "h1" }]);
   });
@@ -128,5 +128,16 @@ describe("chat approval is structural", () => {
 describe("defence in depth — the classifiers also catch the ten phrasings", () => {
   it.each(MODEL_WRITTEN)("%j is founder-only by the classifier too", (text) => {
     expect(founderOnlyClassForMove({ kind: "optimize", rationale: text, domain: "ops" })).not.toBeNull();
+  });
+});
+
+describe("the chat answers only a version it SHOWED the founder", () => {
+  const card = { status: "open", answerFormat: "yes_no", questionSummary: "Review a drafted growth action: grow_owned_channels", questionBody: "Approve to let it proceed.", bodyHash: "h1", chatApprovable: true };
+  it("no version → refused; a stale version → refused; the shown version → answered", async () => {
+    store.asks.set(3, { id: 3, ...card });
+    expect((await executeBusinessChatTool("answer_ask", { ask_id: 3, decision: "approve" }, "f")).ok).toBe(false);
+    expect((await executeBusinessChatTool("answer_ask", { ask_id: 3, decision: "approve", version: "old" }, "f")).ok).toBe(false);
+    expect(store.answered).toHaveLength(0);
+    expect((await executeBusinessChatTool("answer_ask", { ask_id: 3, decision: "approve", version: "h1" }, "f")).ok).toBe(true);
   });
 });

@@ -60,7 +60,9 @@ describe("contentHonesty — no fabrication in generated content", () => {
 
   it.each([
     "According to the 2022 Census of Agriculture, farmland is 39% of US land area.",
-    "The county assessor's records list the parcel at 40 acres as of 2024.",
+    // (Round 3 rescope: a bare parcel fact — "the parcel at 40 acres" — and a
+    // bare "the seller said …" with no quotation are not claims; they live in
+    // contentHonestyScope.test.ts's proportionality set.)
     "According to the IRS, 87% of rural parcels are mispriced.",
     "Nine of every ten buyers skip the survey.",
     "We have listed over 4k parcels.",
@@ -71,7 +73,6 @@ describe("contentHonesty — no fabrication in generated content", () => {
     "One customer told me it changed everything.",
     // reported speech with no number and no testimonial shape
     "My neighbor told me the county never checks.",
-    "The seller said the road is public.",
   ])("round-2 canary %j is refused (a quantity with no verified link, or reported speech)", (t) => {
     expect(screenFabrication(t).length).toBeGreaterThan(0);
   });
@@ -241,7 +242,7 @@ describe("chat business tools — hard-stops are un-delegable", () => {
   });
   it("control: a known, non-money draft IS answered (the spy is live, so the refusals above are not vacuous)", async () => {
     answerSpy.mockClear();
-    const r = await executeBusinessChatTool("answer_ask", { ask_id: 5, decision: "approve" }, "f");
+    const r = await executeBusinessChatTool("answer_ask", { ask_id: 5, decision: "approve", version: "v5" }, "f");
     expect(r.ok).toBe(true);
     expect(answerSpy).toHaveBeenCalledWith({ askId: 5, answerText: "yes", expectedBodyHash: "v5" });
   });

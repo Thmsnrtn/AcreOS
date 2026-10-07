@@ -725,6 +725,8 @@ function OpenAsksSection() {
   const { data } = useQuery<{
     asks: Array<{ id: number; questionSummary: string; askingAgentRole: string; urgency: "urgent" | "normal" | "low"; askedAt: string }>;
     count: number;
+    /** Refunds whose outcome the autopilot could not confirm — always shown. */
+    uncertainRefunds?: Array<{ id: number; organizationId: number; chargeId: string | null; why: string | null }>;
   }>({
     queryKey: ["/api/founder/asks?status=open&limit=10"],
     staleTime: 30_000,
@@ -770,8 +772,27 @@ function OpenAsksSection() {
     });
   };
 
-  if (!data || data.count === 0) return null;
+  const uncertain = data?.uncertainRefunds ?? [];
+  if (!data || (data.count === 0 && uncertain.length === 0)) return null;
   return (
+    <>
+    {uncertain.length > 0 && (
+      <Card className="border-l-4 border-l-destructive" data-testid="decisions-uncertain-refunds">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Refunds to check on Stripe ({uncertain.length})</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-1">
+          {uncertain.map((r) => (
+            <p key={r.id} className="text-sm text-foreground">
+              {r.chargeId ?? "unknown payment"} · org #{r.organizationId}
+              {r.why ? <span className="text-muted-foreground"> — {r.why}</span> : null}
+            </p>
+          ))}
+          <p className="text-xs text-muted-foreground">The autopilot will never refund these payments again; check each on Stripe.</p>
+        </CardContent>
+      </Card>
+    )}
+    {data.count > 0 && (
     <Card className="border-l-4 border-l-primary" data-testid="decisions-open-asks">
       <CardHeader className="pb-2">
         <CardTitle className="text-base flex items-center gap-2">
@@ -866,6 +887,8 @@ function OpenAsksSection() {
         />
       </CardContent>
     </Card>
+    )}
+    </>
   );
 }
 

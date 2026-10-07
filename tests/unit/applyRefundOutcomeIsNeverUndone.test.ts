@@ -27,6 +27,8 @@ vi.mock("../../server/stripeClient", () => ({
   getUncachableStripeClient: async () => ({ paymentIntents: { retrieve: stripe.retrieve }, refunds: { create: stripe.create } }),
 }));
 vi.mock("../../server/services/solene/founderCollab", () => ({ askFounder }));
+const logged = vi.hoisted(() => ({ error: vi.fn() }));
+vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: logged.error } }));
 
 vi.mock("../../server/db", () => {
   const nameOf = (t: unknown) => String((t as Record<symbol, unknown>)[Symbol.for("drizzle:Name")] ?? "?");
@@ -141,5 +143,17 @@ describe("apply_refund — never more than the purchase cost", () => {
     const r = await executeHandWitnessed("apply_refund", { ...REFUND, amount_cents: 2500 }, "founder_1");
     expect(r.success).toBe(true);
     expect(stripe.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("apply_refund — an uncertain refund is never told to the founder zero times silently", () => {
+  it("when the founder ask itself fails, the failure is logged as an error (and the claim row stays uncertain for the Decisions door)", async () => {
+    logged.error.mockClear();
+    stripe.create.mockRejectedValueOnce(new Error("timeout"));
+    askFounder.mockRejectedValueOnce(new Error("asks table unavailable"));
+    const r = await executeHandWitnessed("apply_refund", REFUND, "founder_1");
+    expect(r.output).toMatch(/UNCERTAIN/);
+    expect(logged.error).toHaveBeenCalledWith(expect.stringMatching(/could NOT be asked/), expect.anything());
+    expect(st.writes.some((w) => w.op === "update" && JSON.stringify((w.value as { metadata?: unknown }).metadata ?? {}).includes("uncertain"))).toBe(true);
   });
 });

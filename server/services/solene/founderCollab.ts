@@ -212,7 +212,13 @@ export async function askFounder(
   const bodyHash = askBodyHash(input.questionBody);
   const actsKey = input.acts ? actsKeyOf(input.acts) : null;
   const [duplicate] = await db
-    .select({ id: soleneFounderAsks.id, askedAt: soleneFounderAsks.askedAt })
+    .select({
+      id: soleneFounderAsks.id,
+      askedAt: soleneFounderAsks.askedAt,
+      questionSummary: soleneFounderAsks.questionSummary,
+      bodyHash: soleneFounderAsks.bodyHash,
+      chatApprovable: soleneFounderAsks.chatApprovable,
+    })
     .from(soleneFounderAsks)
     .where(
       actsKey
@@ -227,23 +233,48 @@ export async function askFounder(
     .limit(1);
 
   if (duplicate) {
+    const incomingChat = input.acts?.chatApprovable === true;
+    const sameCard = duplicate.questionSummary === summary && duplicate.bodyHash === bodyHash;
+    // An acting ask can only LOSE chat-approvability on a fold (existing AND
+    // incoming): a later tick that brings an objection, a risk flag or a
+    // failed check can never be laundered into a card the chat may approve.
+    const chatApprovable = actsKey ? duplicate.chatApprovable === true && incomingChat : false;
+    // An acting card that comes back DIFFERENT is replaced and its version
+    // bumped (body_hash), so any yes given to the old card is stale. When the
+    // difference is an objection — a different card (pre-mortem veto, higher
+    // risk) or chat-approvability lost — the founder is paged: an objection
+    // never arrives silently.
+    const objection = !!actsKey && (duplicate.questionSummary !== summary || (duplicate.chatApprovable === true && !incomingChat));
     await db
       .update(soleneFounderAsks)
       .set({
         foldCount: sql`${soleneFounderAsks.foldCount} + 1`,
         lastFoldedAt: askedAt,
-        // An acting ask keeps the card the founder saw; an informational one is refreshed.
-        ...(actsKey ? {} : { questionBody: input.questionBody, bodyHash }),
+        chatApprovable,
+        ...(sameCard ? {} : { questionSummary: summary, questionBody: input.questionBody, bodyHash }),
       })
       .where(and(eq(soleneFounderAsks.id, duplicate.id), eq(soleneFounderAsks.status, "open")));
+    let pagerFired = false;
+    let pagerEventId: number | null = null;
+    if (objection && urgency !== "low") {
+      try {
+        const page = await sendSolenePage({ severity: "urgent", subject: summary, body: input.questionBody });
+        pagerFired = true;
+        pagerEventId = page.eventId;
+      } catch (err) {
+        logger.warn("[founderCollab] pager send threw on a replaced card", err instanceof Error ? err : undefined);
+      }
+    }
     logger.info("[founderCollab] ask folded — the same question is already open", {
       metadata: {
         askId: duplicate.id,
         askingAgentRole: input.askingAgentRole,
+        replaced: !sameCard,
+        objection,
         openForHours: Math.floor((askedAt.getTime() - duplicate.askedAt.getTime()) / 3_600_000),
       },
     });
-    return { askId: duplicate.id, pagerFired: false, pagerEventId: null, deduped: true };
+    return { askId: duplicate.id, pagerFired, pagerEventId, deduped: true };
   }
 
   // Fire pager first so we can persist its event id with the ask. urgency
@@ -349,8 +380,13 @@ export async function answerFounderAsk(
   if (input.expectedBodyHash != null && input.expectedBodyHash !== storedHash) {
     throw new Error(`answerFounderAsk: ask ${input.askId} changed since it was shown — reload it and review the current version`);
   }
-  if (acts && (input.answerText ?? "").trim().toLowerCase() === "yes" && input.expectedBodyHash == null) {
-    throw new Error(`answerFounderAsk: ask ${input.askId} acts on approval — the approval must name the version that was shown`);
+  // Every yes/no answer to a versioned card must name the version shown — an
+  // approval acts (a move, a budget ramp, a policy), and so can a decline.
+  if (
+    (acts || (storedHash && ask.answerFormat === "yes_no")) &&
+    input.expectedBodyHash == null
+  ) {
+    throw new Error(`answerFounderAsk: ask ${input.askId} must be answered against the version that was shown`);
   }
 
   const format = ask.answerFormat as SoleneFounderAskFormat;
@@ -404,7 +440,11 @@ export async function answerFounderAsk(
     answerText = trimmedAnswer;
   }
 
-  await db
+  // The guarded UPDATE is the decision: only the answer whose UPDATE hit the
+  // row (still open, still the card it names) runs any side effect. A losing
+  // concurrent answer — the founder's tap racing the chat — throws here,
+  // before the verdict, the enqueue or a policy proposal is touched.
+  const won = await db
     .update(soleneFounderAsks)
     .set({
       status: "answered",
@@ -420,9 +460,9 @@ export async function answerFounderAsk(
         // read above and this write leaves the ask open.
         ...(input.expectedBodyHash != null ? [eq(soleneFounderAsks.bodyHash, input.expectedBodyHash)] : []),
       ),
-    );
-  const after = await getAsk(input.askId);
-  if (after?.status !== "answered") {
+    )
+    .returning({ id: soleneFounderAsks.id });
+  if (!Array.isArray(won) || won.length === 0) {
     throw new Error(`answerFounderAsk: ask ${input.askId} changed or was answered elsewhere — nothing was recorded; reload and review`);
   }
 

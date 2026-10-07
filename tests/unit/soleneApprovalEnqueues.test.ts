@@ -26,17 +26,28 @@ vi.mock("../../server/db", () => {
         from: () => ({
           where: () => ({
             limit: async () => {
+              // A READ is a snapshot (as a database read is), so two
+              // concurrent answers can both see the ask open.
               const a = state.asks.get(currentAskId);
-              return a ? [a] : [];
+              return a ? [{ ...a }] : [];
             },
           }),
         }),
       }),
       update: () => ({
         set: (patch: { status?: string }) => ({
-          where: async () => {
-            const a = state.asks.get(currentAskId);
-            if (a && a.status === "open" && patch.status) a.status = patch.status;
+          // The guarded UPDATE: exactly one caller flips open → answered and
+          // gets the row back; a loser gets [] (as the database does).
+          where: () => {
+            const flip = () => {
+              const a = state.asks.get(currentAskId);
+              if (a && a.status === "open" && patch.status) {
+                a.status = patch.status;
+                return [{ id: a.id }];
+              }
+              return [];
+            };
+            return { returning: async () => flip(), then: (r: (v: unknown) => unknown) => Promise.resolve(flip()).then(r) };
           },
         }),
       }),
@@ -155,14 +166,14 @@ describe("approving an autopilot ask enqueues the drafted move", () => {
 
   it("decline enqueues nothing", async () => {
     seed(10);
-    await answerFounderAsk({ askId: 10, answerText: "no" });
+    await answerFounderAsk({ askId: 10, answerText: "no", expectedBodyHash: "v10" });
     expect(enqueueDispatch).not.toHaveBeenCalled();
     expect(state.dispatches).toHaveLength(0);
   });
 
   it("an approved ask that was not an autopilot move enqueues nothing", async () => {
     seed(11, false);
-    await answerFounderAsk({ askId: 11, answerText: "yes" });
+    await answerFounderAsk({ askId: 11, answerText: "yes", expectedBodyHash: "v11" });
     expect(state.dispatches).toHaveLength(0);
   });
 
@@ -191,7 +202,7 @@ describe("approval is bound to the version the founder saw", () => {
   });
   it("a YES to an acting ask that names no version is refused", async () => {
     seed(22);
-    await expect(answerFounderAsk({ askId: 22, answerText: "yes" })).rejects.toThrow(/must name the version/);
+    await expect(answerFounderAsk({ askId: 22, answerText: "yes" })).rejects.toThrow(/version that was shown/);
     expect(state.dispatches).toHaveLength(0);
   });
   it("an approval with no bound proposal (or a proposal for another move) enqueues nothing", async () => {
@@ -200,5 +211,32 @@ describe("approval is bound to the version the founder saw", () => {
     expect((await enqueueApprovedMove(23, deps)).status).toBe("not_bound");
     expect((await enqueueApprovedMove(23, { ...deps, proposal: { ...PROPOSAL, moveKind: "grow_owned_channels" } })).status).toBe("not_bound");
     expect(state.dispatches).toHaveLength(0);
+  });
+});
+
+// Round 3 — the answer race: two concurrent answers (the founder's tap and the
+// chat), exactly ONE set of side effects.
+describe("concurrent answers: exactly one wins and only it acts", () => {
+  it("approve racing approve → one dispatch, one verdict; the loser throws", async () => {
+    seed(30);
+    vi.mocked(experienceLog.recordFounderVerdict).mockClear();
+    const results = await Promise.allSettled([
+      answerFounderAsk({ askId: 30, answerText: "yes", expectedBodyHash: "v30" }),
+      answerFounderAsk({ askId: 30, answerText: "yes", expectedBodyHash: "v30" }),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(state.dispatches).toHaveLength(1);
+    expect(vi.mocked(experienceLog.recordFounderVerdict)).toHaveBeenCalledTimes(1);
+  });
+  it("approve racing decline → whichever wins, the other has no effect", async () => {
+    seed(31);
+    vi.mocked(experienceLog.recordFounderVerdict).mockClear();
+    const results = await Promise.allSettled([
+      answerFounderAsk({ askId: 31, answerText: "no", expectedBodyHash: "v31" }),
+      answerFounderAsk({ askId: 31, answerText: "yes", expectedBodyHash: "v31" }),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(vi.mocked(experienceLog.recordFounderVerdict)).toHaveBeenCalledTimes(1);
+    expect(state.dispatches).toHaveLength(0); // the decline won (it flipped first)
   });
 });

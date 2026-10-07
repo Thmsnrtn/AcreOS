@@ -245,13 +245,46 @@ describe("acting asks fold by proposal, never by summary, and keep the card the 
     expect(state.inserts[0]).toMatchObject({ actsPayload: { moveKind: "optimize", domain: "ops", rationale: "Nothing urgent." }, chatApprovable: false });
     expect(typeof state.inserts[0].bodyHash).toBe("string");
   });
-  it("a fold of an acting ask does NOT rewrite the body", async () => {
-    state.duplicateRows = [{ id: 31, askedAt: new Date() }];
+  it("a fold of the SAME acting card changes nothing the founder reads", async () => {
     const { askFounder } = await import("../../server/services/solene/founderCollab");
-    const r = await askFounder({ ...ACTING, questionBody: "A different body." });
-    expect(r).toMatchObject({ askId: 31, deduped: true });
+    await askFounder(ACTING);
+    const hash = state.inserts[0].bodyHash as string;
+    state.duplicateRows = [{ id: 31, askedAt: new Date(), questionSummary: ACTING.questionSummary, bodyHash: hash, chatApprovable: false } as never];
+    state.updates = [];
+    const r = await askFounder(ACTING);
+    expect(r).toMatchObject({ askId: 31, deduped: true, pagerFired: false });
     expect(state.updates[0].set).not.toHaveProperty("questionBody");
   });
+
+  it("CANARY: a chat-approvable card that comes back with an objection is NOT laundered — approvability is lost, the card is replaced (new version) and the founder is paged", async () => {
+    const { askFounder } = await import("../../server/services/solene/founderCollab");
+    // Tick N: the main-path card, chat-approvable.
+    const tickN = { ...ASK, questionSummary: "Review a drafted ops action: optimize", questionBody: "Nothing urgent.\n\nApprove to let it proceed.", acts: { moveKind: "optimize", domain: "ops", rationale: "Nothing urgent.", chatApprovable: true } };
+    await askFounder(tickN);
+    const oldHash = state.inserts[0].bodyHash as string;
+    // Tick N+1: the same move, now with a pre-mortem objection (not chat-approvable).
+    state.duplicateRows = [{ id: 41, askedAt: new Date(), questionSummary: tickN.questionSummary, bodyHash: oldHash, chatApprovable: true } as never];
+    state.updates = [];
+    state.pages = [];
+    const tickN1 = { ...tickN, questionSummary: "Held a high-stakes ops action for your review: optimize", questionBody: "Nothing urgent.\n\nA pre-mortem skeptic raised a serious concern: x", acts: { ...tickN.acts, chatApprovable: false } };
+    const r = await askFounder(tickN1);
+    expect(r.askId).toBe(41);
+    const set = state.updates[0].set;
+    expect(set.chatApprovable).toBe(false);
+    expect(set.questionBody).toBe(tickN1.questionBody);
+    expect(set.questionSummary).toBe(tickN1.questionSummary);
+    expect(set.bodyHash).not.toBe(oldHash);
+    expect(state.pages).toHaveLength(1);
+    expect(r.pagerFired).toBe(true);
+  });
+
+  it("chat-approvability can only be lost on a fold, never gained", async () => {
+    const { askFounder } = await import("../../server/services/solene/founderCollab");
+    state.duplicateRows = [{ id: 51, askedAt: new Date(), questionSummary: ACTING.questionSummary, bodyHash: "x", chatApprovable: false } as never];
+    await askFounder({ ...ACTING, acts: { ...ACTING.acts, chatApprovable: true } });
+    expect(state.updates[0].set.chatApprovable).toBe(false);
+  });
+
   it("informational asks fold only among informational asks (acts_key IS NULL)", async () => {
     const { askFounder } = await import("../../server/services/solene/founderCollab");
     await askFounder(ASK);

@@ -286,6 +286,12 @@ async function main(): Promise<void> {
       check(!twice.success && /never twice/.test(twice.output) && (await balance()) === 3000, "a payment already refunded by the autopilot is never refunded again");
       await db.delete(creditTransactions).where(and(eq(creditTransactions.stripePaymentIntentId, pi), eq(creditTransactions.type, "purchase_refund")));
 
+      // An UNCERTAIN refund is listed for the Decisions door.
+      const [unc] = await db.insert(creditTransactions).values({ organizationId: o.id, type: "purchase_refund", amountCents: -1000, balanceAfterCents: 2000, description: tag, stripePaymentIntentId: `${pi}_unc`, metadata: { state: "uncertain", uncertainBecause: "timeout" } }).returning({ id: creditTransactions.id });
+      const { listUncertainRefunds } = await import("../../server/services/autopilot/hands/apply-refund");
+      check((await listUncertainRefunds()).some((r) => r.id === unc.id && r.why === "timeout"), "an uncertain refund is listed for the founder's Decisions door");
+      await db.delete(creditTransactions).where(eq(creditTransactions.id, unc.id));
+
       // Refunded OUTSIDE the autopilot (a credit_transactions refund row for the payment).
       const [outside] = await db.insert(creditTransactions).values({ organizationId: o.id, type: "refund", amountCents: 500, balanceAfterCents: 3500, description: tag, stripePaymentIntentId: pi }).returning({ id: creditTransactions.id });
       const recorded = await executeHandWitnessed("apply_refund", { charge_id: pi, amount_cents: 1000, organization_id: o.id }, founder);

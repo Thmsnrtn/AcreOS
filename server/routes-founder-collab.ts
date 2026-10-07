@@ -97,10 +97,23 @@ export function registerFounderCollabRoutes(app: Express): void {
           total = Number(n);
         }
 
+        // Refunds whose outcome is uncertain sit beside the open asks, so the
+        // founder sees each one even if the ask about it could not be raised.
+        let uncertainRefunds: Awaited<ReturnType<typeof import("./services/autopilot/hands/apply-refund")["listUncertainRefunds"]>> = [];
+        if (status === "open") {
+          try {
+            const { listUncertainRefunds } = await import("./services/autopilot/hands/apply-refund");
+            uncertainRefunds = await listUncertainRefunds();
+          } catch (err) {
+            logger.error("[founder-collab] uncertain-refund read failed", { err: String(err) });
+          }
+        }
+
         return res.json({
           asks: rows,
           count: rows.length,
           total,
+          uncertainRefunds,
         });
       } catch (err) {
         logger.error("[founder-collab] list-asks failed", {

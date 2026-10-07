@@ -37,6 +37,7 @@ import { registerHand } from "./registry";
 import { handError, type HandContext, type HandResult } from "./types";
 import { creditTransactions, organizations } from "@shared/schema";
 import { db, withTransaction } from "../../../db";
+import { logger } from "../../../utils/logger";
 
 const NAME = "apply_refund";
 /** Hard ceiling (cents). Matches the platform auto-approve threshold. */
@@ -99,6 +100,28 @@ export async function refundEligibility(input: Record<string, unknown>): Promise
 }
 
 class RefundRefused extends Error {}
+
+/**
+ * Refunds whose outcome is uncertain (the refund call was made but did not
+ * return, or its record could not be written) — listed on the Decisions door
+ * so the founder sees them even if the ask about them failed. Platform-scope
+ * by design: the founder's own queue across every org.
+ */
+export async function listUncertainRefunds(limit = 50): Promise<Array<{ id: number; organizationId: number; chargeId: string | null; createdAt: Date | null; why: string | null }>> {
+  const { unscopedForPlatformOps } = await import("../../../utils/orgScopedDb");
+  const rows = await unscopedForPlatformOps("Decisions door: refunds the autopilot could not confirm, across every org, for the founder to check")
+    .select({
+      id: creditTransactions.id,
+      organizationId: creditTransactions.organizationId,
+      chargeId: creditTransactions.stripePaymentIntentId,
+      createdAt: creditTransactions.createdAt,
+      metadata: creditTransactions.metadata,
+    })
+    .from(creditTransactions)
+    .where(and(eq(creditTransactions.type, "purchase_refund"), sql`${creditTransactions.metadata}->>'state' = 'uncertain'`))
+    .limit(limit);
+  return rows.map((r) => ({ id: r.id, organizationId: r.organizationId, chargeId: r.chargeId, createdAt: r.createdAt, why: (r.metadata as { uncertainBecause?: string } | null)?.uncertainBecause ?? null }));
+}
 
 /**
  * Claim the payment (once, race-safe) and take the purchased credits back, in
@@ -276,8 +299,8 @@ async function markUncertain(e: Eligible, claimId: number, why: string): Promise
       .update(creditTransactions)
       .set({ metadata: { refundAmountCents: e.amountCents, state: "uncertain", uncertainBecause: why.slice(0, 500) } })
       .where(and(eq(creditTransactions.organizationId, e.organizationId), eq(creditTransactions.id, claimId)));
-  } catch {
-    /* the ask below still surfaces it */
+  } catch (err) {
+    logger.error(`[autopilot/hands] apply_refund: could not mark ${e.chargeId} uncertain on its claim row`, err instanceof Error ? err : undefined);
   }
   try {
     const { askFounder } = await import("../../solene/founderCollab");
@@ -293,8 +316,11 @@ async function markUncertain(e: Eligible, claimId: number, why: string): Promise
       answerFormat: "free_text",
       urgency: "urgent",
     });
-  } catch {
-    /* logged by the caller's handError path if it matters; the claim stands */
+  } catch (err) {
+    // Never silent: the founder must be told at least once. The claim row
+    // still carries state "uncertain", which the Decisions door lists
+    // (listUncertainRefunds), so a failed ask is not a lost one.
+    logger.error(`[autopilot/hands] apply_refund: the founder could NOT be asked about the uncertain refund of ${e.chargeId}`, err instanceof Error ? err : undefined);
   }
 }
 

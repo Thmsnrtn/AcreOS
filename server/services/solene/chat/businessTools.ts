@@ -44,11 +44,15 @@ export const CHAT_BUSINESS_TOOL_SCHEMAS: BusinessToolSchema[] = [
   },
   {
     name: "answer_ask",
-    description: "Approve or decline ONE pending yes/no decision by id, on the founder's explicit instruction. Refused for hard-stops (pricing, legal, spend over $500, customer-data deletion) — those stay the founder's own tap.",
+    description: "Approve or decline ONE pending yes/no decision by id, on the founder's explicit instruction, naming the version list_open_asks showed. Refused for hard-stops (pricing, legal, spend over $500, customer-data deletion) — those stay the founder's own tap.",
     input_schema: {
       type: "object",
-      properties: { ask_id: { type: "number" }, decision: { type: "string", enum: ["approve", "decline"] } },
-      required: ["ask_id", "decision"],
+      properties: {
+        ask_id: { type: "number" },
+        decision: { type: "string", enum: ["approve", "decline"] },
+        version: { type: "string", description: "The version list_open_asks returned for this ask — the card you showed the founder." },
+      },
+      required: ["ask_id", "decision", "version"],
     },
   },
   {
@@ -125,7 +129,18 @@ export async function executeBusinessChatTool(
         return {
           ok: true,
           text: JSON.stringify(
-            asks.map((a) => ({ id: a.id, summary: a.questionSummary, urgency: a.urgency, format: a.answerFormat, raisedAgain: a.foldCount ?? 0, founderOnly: isUndelegableAsk(a) })),
+            // The card itself and its VERSION: the chat may answer only a
+            // version it has shown the founder (answer_ask requires it).
+            asks.map((a) => ({
+              id: a.id,
+              summary: a.questionSummary,
+              body: a.questionBody,
+              version: a.bodyHash ?? null,
+              urgency: a.urgency,
+              format: a.answerFormat,
+              raisedAgain: a.foldCount ?? 0,
+              founderOnly: a.chatApprovable !== true || isUndelegableAsk(a),
+            })),
           ),
         };
       }
@@ -146,7 +161,12 @@ export async function executeBusinessChatTool(
         if (ask.chatApprovable !== true || isUndelegableAsk(ask)) {
           return { ok: false, text: `Ask #${askId} ("${ask.questionSummary}") is founder-only and un-delegable (a hard-stop, a net-new move, a money or finance decision, or a legal/data matter). I did not answer it; tap it yourself on the Decisions door.` };
         }
-        await answerFounderAsk({ askId, answerText: decision, expectedBodyHash: ask.bodyHash ?? undefined });
+        // Bound to the version the founder was SHOWN (list_open_asks), never
+        // to whatever the card says at this instant.
+        const version = typeof input.version === "string" ? input.version : "";
+        if (!version) return { ok: false, text: `Ask #${askId}: show the founder the card first (list_open_asks) and answer with the version you showed.` };
+        if (version !== ask.bodyHash) return { ok: false, text: `Ask #${askId} changed since you showed it — show the current card to the founder before answering.` };
+        await answerFounderAsk({ askId, answerText: decision, expectedBodyHash: version });
         logger.info("[soleneChat] business tool answered an ask", { metadata: { askId, decision, founderUserId } });
         return { ok: true, text: `Ask #${askId} ${decision === "yes" ? "approved — an approved autopilot move is queued to run" : "declined — it stays held"}.` };
       }
