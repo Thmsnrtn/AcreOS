@@ -80,12 +80,17 @@ const { creditService, getAllUsageLimits, getSeatInfo, readSendRails, getDefault
     aiTurns: { current: 3, threshold: 2500 },
   })),
   getSeatInfo: vi.fn(async () => ({ usedSeats: 1, totalSeats: 3, includedSeats: 3, availableSeats: 2, maxSeats: 10, canAddSeats: true, seatPriceCents: 1500 })),
-  readSendRails: vi.fn(async () => ({ ownMailAccount: false, ownEmailAccount: false, emailCanSend: false, smsConnected: false })),
+  // stands in for orgHasConnectedSmsIdentity — the SMS send path's own resolver
+  readSendRails: vi.fn(async () => false),
   getDefaultMailSenderIdentity: vi.fn(async () => undefined),
 }));
 vi.mock("../../server/services/credits", () => ({ creditService }));
 vi.mock("../../server/services/usageLimits", () => ({ getAllUsageLimits, getSeatInfo }));
-vi.mock("../../server/services/sendPricing", async (orig) => ({ ...(await orig<object>()), readSendRails }));
+vi.mock("../../server/services/emailService", () => ({
+  counterpartyEmailIdentityStatus: vi.fn(async () => ({ canSend: false, ownSesCredentials: false, verifiedDomain: false })),
+}));
+vi.mock("../../server/services/smsService", () => ({ orgHasConnectedSmsIdentity: readSendRails }));
+vi.mock("../../server/services/directMail", () => ({ directMailService: { hasOrgLobCredentials: vi.fn(async () => false) } }));
 vi.mock("../../server/storage", () => ({ storage: { getDefaultMailSenderIdentity } }));
 vi.mock("../../server/utils/permissions", () => ({
   getPermissionsForRole: () => ({ viewOnlyAssignedLeads: false, canImportData: true, canExportData: true, canManageTeam: true, canManageBilling: true, canAssignLeads: true, canEditLeads: true }),
@@ -120,6 +125,7 @@ const DELEGATING_READERS: Record<string, () => Promise<unknown>> = {
   readCreditsForPax: () => reads.readCreditsForPax(ORG),
   readPlanLimitsForPax: () => reads.readPlanLimitsForPax(ORG),
   readSendingIdentityForPax: () => reads.readSendingIdentityForPax(ORG, "pro"),
+  readSendRails: () => reads.readSendRails(ORG),
 };
 
 beforeEach(() => {

@@ -49,7 +49,7 @@ export const CAMPAIGN_SEND_PRICE_CREDITS = {
  * org's provider bills it. `paxSendCostIsTheCharge.test.ts` reads the executor
  * bodies, so adding a debit there without changing this number fails.
  */
-export const PAX_DIRECT_SEND_PRICE_CREDITS = 0;
+const PAX_DIRECT_SEND_PRICE_CREDITS = 0;
 
 export type QuoteChannel = "postcard" | "letter" | "email" | "sms" | "mms";
 
@@ -170,23 +170,6 @@ export function quoteOutboundSend(input: {
     chargedTo: ownAccount ? "your_own_account" : "acreos_credits",
     blocked,
     notes,
-  };
-}
-
-/** Read the org's send rails through the SAME resolvers the send paths ask. */
-export async function readSendRails(organizationId: number): Promise<SendRails> {
-  const [{ counterpartyEmailIdentityStatus }, { orgHasConnectedSmsIdentity }, { directMailService }] =
-    await Promise.all([import("./emailService"), import("./smsService"), import("./directMail")]);
-  const [email, sms, lob] = await Promise.all([
-    counterpartyEmailIdentityStatus(organizationId).catch(() => ({ canSend: false, ownSesCredentials: false, verifiedDomain: false })),
-    orgHasConnectedSmsIdentity(organizationId).catch(() => false),
-    directMailService.hasOrgLobCredentials(organizationId).catch(() => false),
-  ]);
-  return {
-    ownMailAccount: Boolean(lob),
-    ownEmailAccount: email.ownSesCredentials,
-    emailCanSend: email.canSend,
-    smsConnected: Boolean(sms),
   };
 }
 

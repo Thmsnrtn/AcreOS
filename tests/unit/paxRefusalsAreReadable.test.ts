@@ -21,7 +21,7 @@ import { describe, it, expect, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { stripCommentsPreservingLines } from "../../scripts/lib/strip-comments.mjs";
-import { classifyRefusal, customerRefusalMessage } from "../../server/services/paxRefusalCopy";
+import { customerRefusalMessage } from "../../server/services/paxRefusalCopy";
 
 const ROOT = path.resolve(__dirname, "../..");
 const OPAQUE = /refused by the constitutional pre-call check/i;
@@ -56,8 +56,8 @@ describe("the wording", () => {
   });
 
   it("I3: another customer's data — says it plainly and offers the customer's own leads", async () => {
-    expect(classifyRefusal({ immutableNumber: 5, promptText: I3 })).toBe("cross_tenant_data");
     const r = await customerRefusalMessage(166, { immutableNumber: 5, promptText: I3 }, { countContactableLeads: async () => 0 });
+    expect(r.kind).toBe("cross_tenant_data");
     expect(r.message).toMatch(/only see and use your own organization's data/);
     expect(r.message).toMatch(/list your own leads/);
   });

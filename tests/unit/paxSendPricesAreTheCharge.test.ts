@@ -28,7 +28,6 @@ import { stripCommentsPreservingLines } from "../../scripts/lib/strip-comments.m
 import {
   CAMPAIGN_SEND_PRICE_CREDITS,
   DIRECT_MAIL_COSTS,
-  PAX_DIRECT_SEND_PRICE_CREDITS,
   paxSendCost,
   quoteOutboundSend,
 } from "../../server/services/sendPricing";
@@ -89,7 +88,7 @@ describe("Pax's own sends: the card's amount is the executor's charge", () => {
     const body = caseBody(tools, name);
     expect(body.length, `${name} case not found — re-pin`).toBeGreaterThan(200);
     expect(body, `${name} now debits credits: set PAX_DIRECT_SEND_PRICE_CREDITS to the real charge`).not.toMatch(DEBIT);
-    expect(PAX_DIRECT_SEND_PRICE_CREDITS).toBe(0);
+    expect(paxSendCost(name, { lead_id: 1 })?.credits).toBe(0);
   });
 
   it("the predicate sees a debit (falsified on a mutated body)", () => {

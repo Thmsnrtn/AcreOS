@@ -33,7 +33,7 @@ function channelOf(prompt: string): "text" | "email" {
 }
 
 /** Which refusal this is, from the screener's immutable and the request itself. */
-export function classifyRefusal(input: RefusalInput): RefusalKind {
+function classifyRefusal(input: RefusalInput): RefusalKind {
   const p = String(input.promptText ?? "");
   if (OTHER_TENANTS.test(p) || (input.immutableNumber === 5 && /\b(organi[sz]ation|tenant|customer)/i.test(p))) {
     return "cross_tenant_data";

@@ -16,7 +16,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { stripCommentsPreservingLines } from "../../scripts/lib/strip-comments.mjs";
-import { CUSTOMER_DOORS, PLACES, TOP_BAR, getPaxProductFacts } from "../../server/services/paxProductFacts";
+import { PLACES, getPaxProductFacts } from "../../server/services/paxProductFacts";
 import { CSV_IMPORT_MAX_ROWS_PER_FILE, BULK_EXPORT_DAILY_CAP } from "@shared/product-limits";
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -67,7 +67,10 @@ describe("every place Pax names exists", () => {
     expect(routes.size).toBeGreaterThan(100);
   });
 
-  it("every cited path is a route", () => {
+  it("every cited path is a route", async () => {
+    const nav: any = ((await getPaxProductFacts("navigation")) as any).navigation;
+    const CUSTOMER_DOORS: Array<{ door: string; path: string }> = nav.doors;
+    const TOP_BAR: Array<{ path: string }> = nav.topBar;
     const paths = [
       ...Object.values(PLACES).map((p) => p.path),
       ...CUSTOMER_DOORS.map((d) => d.path),
@@ -77,7 +80,8 @@ describe("every place Pax names exists", () => {
     for (const p of paths) expect(routes.has(p), `${p} is not a client route`).toBe(true);
   });
 
-  it("the five doors are exactly the sidebar's door labels", () => {
+  it("the five doors are exactly the sidebar's door labels", async () => {
+    const CUSTOMER_DOORS: Array<{ door: string }> = ((await getPaxProductFacts("navigation")) as any).navigation.doors;
     expect(CUSTOMER_DOORS.map((d) => d.door)).toEqual(["Today", "Map", "Deals", "Finance", "Pax"]);
     for (const d of CUSTOMER_DOORS) {
       expect(sidebar, `door "${d.door}" is not a NAV_MODULES label`).toMatch(new RegExp(`label: "${d.door}"`));

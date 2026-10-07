@@ -45,8 +45,8 @@ const H = vi.hoisted(() => ({
     readPlanLimitsForPax: vi.fn(async (orgId: number) => ({ orgId, plan: "pro" })),
     readSendingIdentityForPax: vi.fn(async (orgId: number) => ({ orgId, sms: { ownTwilioConnected: false } })),
     countContactableLeadsForPax: vi.fn(async () => 0),
+    readSendRails: vi.fn(async () => ({ ownMailAccount: false, ownEmailAccount: false, emailCanSend: true, smsConnected: true })),
   },
-  readSendRails: vi.fn(async () => ({ ownMailAccount: false, ownEmailAccount: false, emailCanSend: true, smsConnected: true })),
   createSupportTicket: vi.fn(async (_org: any, _u: string, subject: string) => ({ id: 555, status: "open", subject })),
   notifyFounderOfTicket: vi.fn(async () => undefined),
 }));
@@ -64,10 +64,6 @@ vi.mock("../../server/services/approvalKernel", () => ({
 }));
 vi.mock("../../server/storage", () => ({ storage: { getLeads: H.getLeads }, db: {} }));
 vi.mock("../../server/services/paxAccountReads", () => H.reads);
-vi.mock("../../server/services/sendPricing", async (orig) => ({
-  ...(await orig<typeof import("../../server/services/sendPricing")>()),
-  readSendRails: H.readSendRails,
-}));
 vi.mock("../../server/ai/supportAgent", () => ({ createSupportTicket: H.createSupportTicket }));
 vi.mock("../../server/services/supportNotifications", () => ({ notifyFounderOfTicket: H.notifyFounderOfTicket }));
 vi.mock("../../server/utils/permissions", () => ({
@@ -169,7 +165,7 @@ describe("quote_outbound_cost reads the same prices the campaign send charges", 
   it("texts on the org's own Twilio number cost no AcreOS credits; without one they cannot send", async () => {
     const own: any = await run("quote_outbound_cost", { channel: "sms", recipients: 10 });
     expect(own.data).toMatchObject({ listPriceCredits: CAMPAIGN_SEND_PRICE_CREDITS.sms, unitCredits: 0, chargedTo: "your_own_account", blocked: false });
-    H.readSendRails.mockResolvedValueOnce({ ownMailAccount: false, ownEmailAccount: false, emailCanSend: false, smsConnected: false });
+    H.reads.readSendRails.mockResolvedValueOnce({ ownMailAccount: false, ownEmailAccount: false, emailCanSend: false, smsConnected: false });
     const none: any = await run("quote_outbound_cost", { channel: "sms", recipients: 10 });
     expect(none.data.blocked).toBe(true);
   });

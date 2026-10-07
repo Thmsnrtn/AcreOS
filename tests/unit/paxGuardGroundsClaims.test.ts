@@ -56,13 +56,9 @@ vi.mock("../../server/db", () => {
 });
 
 import { guardPaxOutput } from "../../server/services/paxHallucinationGuard";
-import {
-  buildPaxGuardContext,
-  extractClaimedEntityRefs,
-  extractSourceContext,
-  findUngroundedCounts,
-  buildCountGroundingContext,
-} from "../../server/ai/paxSourceExtraction";
+import { buildPaxGuardContext, extractSourceContext, findUngroundedCounts } from "../../server/ai/paxSourceExtraction";
+
+const countCtx = (calls: any[], userText: string) => buildPaxGuardContext({ output: "", toolCallsExecuted: calls, userText }).countGrounding;
 
 const FIX = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, "../fixtures/pax/oracle-2026-10-06-guard.json"), "utf8"),
@@ -136,7 +132,7 @@ describe("H2 — a count with nothing read this turn is caught", () => {
     // (get_system_context: Total 6 leads), so a count check alone cannot see
     // that the "no email" qualifier went beyond the read. This pins that the
     // grounding is computed from the real result, not assumed.
-    const ctx = buildCountGroundingContext(FIX.H2.toolsCalled, FIX.H2.question);
+    const ctx = countCtx(FIX.H2.toolsCalled, FIX.H2.question);
     expect(ctx.toolResultCount).toBe(1);
     expect(ctx.sourceCounts).toContain(6);
     expect(findUngroundedCounts(FIX.H2.shippedReply, ctx)).toEqual([]);
@@ -149,8 +145,8 @@ describe("H2 — a count with nothing read this turn is caught", () => {
   });
 
   it("dollar amounts, ids and measurements are not counts", () => {
-    const ctx = buildCountGroundingContext([], "");
+    const ctx = countCtx([], "");
     expect(findUngroundedCounts("Fines run $500 to $1,500 per text. Lead #3 owns 5 acres.", ctx)).toEqual([]);
-    expect(extractClaimedEntityRefs("Property 5 acres in Cochise").propertyIds).toEqual([]);
+    expect(buildPaxGuardContext({ output: "Property 5 acres in Cochise", toolCallsExecuted: [] }).claimedPropertyIds).toBeUndefined();
   });
 });

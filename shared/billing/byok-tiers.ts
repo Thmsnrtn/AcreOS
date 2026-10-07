@@ -18,7 +18,7 @@ import type { Tier } from "./tier-pricing";
 export const BYOK_AI_CHANNELS: readonly string[] = ["anthropic", "openrouter", "openai"];
 
 /** Tiers (in `Tier` vocabulary) on which any BYOK channel may be connected. */
-export const BYOK_ALL_CHANNEL_TIERS: readonly Tier[] = ["pro", "scale"];
+const BYOK_ALL_CHANNEL_TIERS: readonly Tier[] = ["pro", "scale"];
 
 /**
  * May an org on `tier` connect a key for `channel`? `channel` undefined means

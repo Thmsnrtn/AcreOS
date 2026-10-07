@@ -1253,7 +1253,7 @@ function receiptEntity(
 }
 
 /** "Cochise County" / " cochise " → "cochise", so a county filter matches how people type it. */
-export function normalizeCountyName(v: unknown): string {
+function normalizeCountyName(v: unknown): string {
   return typeof v === "string" ? v.trim().toLowerCase().replace(/\s+county$/, "").trim() : "";
 }
 
@@ -1737,7 +1737,8 @@ export async function executeTool(
       }
 
       case "quote_outbound_cost": {
-        const { quoteOutboundSend, readSendRails } = await import("../services/sendPricing");
+        const { quoteOutboundSend } = await import("../services/sendPricing");
+        const { readSendRails } = await import("../services/paxAccountReads");
         const channel = String(args.channel ?? "");
         if (!["postcard", "letter", "email", "sms", "mms"].includes(channel)) {
           return { success: false, error: "channel must be postcard, letter, email, sms or mms" };

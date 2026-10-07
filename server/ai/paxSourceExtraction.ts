@@ -123,7 +123,7 @@ export type GuardEntity = "lead" | "property" | "deal";
  * properties — so a bare `id` on one of those rows is typed by the tool that
  * returned it, not guessed from the row's columns.
  */
-export function entityForTool(toolName: string | undefined | null): GuardEntity | null {
+function entityForTool(toolName: string | undefined | null): GuardEntity | null {
   const n = String(toolName ?? "").toLowerCase();
   if (/(^|_)leads?(_|$)/.test(n)) return "lead";
   if (/(^|_)deals?(_|$)/.test(n)) return "deal";
@@ -267,7 +267,7 @@ export interface ClaimedEntityRefs {
 }
 
 /** Entity ids a reply names, typed by the noun in front of them. */
-export function extractClaimedEntityRefs(output: string): ClaimedEntityRefs {
+function extractClaimedEntityRefs(output: string): ClaimedEntityRefs {
   const lead = new Set<number>();
   const property = new Set<number>();
   const deal = new Set<number>();
@@ -299,7 +299,7 @@ export interface CountClaim {
 }
 
 /** "N <records>" claims in a reply. Dollar amounts, ids (#3) and decimals are not counts. */
-export function extractCountClaims(output: string): CountClaim[] {
+function extractCountClaims(output: string): CountClaim[] {
   const out: CountClaim[] = [];
   for (const m of String(output ?? "").matchAll(COUNT_RE)) {
     const value = Number(m[2].replace(/,/g, ""));
@@ -349,7 +349,7 @@ function collectCounts(node: unknown, depth: number, key: string | null, counts:
   }
 }
 
-export function buildCountGroundingContext(
+function buildCountGroundingContext(
   toolCallsExecuted: ReadonlyArray<ExecutedToolCall> | undefined | null,
   userText: string | undefined | null,
 ): CountGroundingContext {

@@ -33,11 +33,10 @@ import { byokTierAllows } from "@shared/billing/byok-tiers";
 import type { Tier } from "@shared/billing/tier-pricing";
 import { CAMPAIGN_SEND_PRICE_CREDITS, DIRECT_MAIL_COSTS, creditsToDollars } from "./sendPricing";
 
-export const PRODUCT_FACT_TOPICS = ["imports", "exports", "roles", "navigation", "sending", "billing"] as const;
-export type ProductFactTopic = (typeof PRODUCT_FACT_TOPICS)[number];
+type ProductFactTopic = "imports" | "exports" | "roles" | "navigation" | "sending" | "billing";
 
 /** The five customer doors and the top bar (CLAUDE.md, "five fixed doors"). */
-export const CUSTOMER_DOORS = [
+const CUSTOMER_DOORS = [
   { door: "Today", path: "/today", holds: "your daily briefing, tasks and what is waiting for your tap" },
   { door: "Map", path: "/maps", holds: "the parcel map, your property inventory (/properties), listings and documents" },
   {
@@ -50,7 +49,7 @@ export const CUSTOMER_DOORS = [
   { door: "Pax", path: "/ai", holds: "chat with Pax and the asks waiting for your approval" },
 ] as const;
 
-export const TOP_BAR = [
+const TOP_BAR = [
   { place: "Inbox", path: "/inbox", holds: "replies from sellers by email and text" },
   { place: "Settings", path: "/settings", holds: "account, organization and team, billing, import/export, communications" },
 ] as const;

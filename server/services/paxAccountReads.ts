@@ -32,7 +32,16 @@ import {
   messages,
   teamMembers,
 } from "@shared/schema";
-import { creditsToDollars } from "./sendPricing";
+import { creditsToDollars, type SendRails } from "./sendPricing";
+import { creditService } from "./credits";
+import { getAllUsageLimits, getSeatInfo } from "./usageLimits";
+import { getPaxProductFacts } from "./paxProductFacts";
+import { counterpartyEmailIdentityStatus } from "./emailService";
+import { orgHasConnectedSmsIdentity } from "./smsService";
+import { directMailService } from "./directMail";
+import { storage } from "../storage";
+import { byokTierAllows } from "@shared/billing/byok-tiers";
+import { tierForSubscriptionTier } from "@shared/billing/tier-pricing";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -55,7 +64,6 @@ function monthKey(d: Date): string {
 // ── Credits ──────────────────────────────────────────────────────────────────
 
 export async function readCreditsForPax(organizationId: number, opts: { limit?: unknown } = {}) {
-  const { creditService } = await import("./credits");
   const limit = clampInt(opts.limit, 1, 25, 10);
   const [isFounder, balance, history] = await Promise.all([
     creditService.isFounder(organizationId),
@@ -362,10 +370,6 @@ export async function readTeamActivityForPax(
 // ── Plan limits ──────────────────────────────────────────────────────────────
 
 export async function readPlanLimitsForPax(organizationId: number) {
-  const [{ getAllUsageLimits, getSeatInfo }, { getPaxProductFacts }] = await Promise.all([
-    import("./usageLimits"),
-    import("./paxProductFacts"),
-  ]);
   const [limits, seats, facts] = await Promise.all([
     getAllUsageLimits(organizationId),
     getSeatInfo(organizationId),
@@ -396,13 +400,27 @@ export async function readPlanLimitsForPax(organizationId: number) {
 
 // ── Sending identity ─────────────────────────────────────────────────────────
 
-export async function readSendingIdentityForPax(organizationId: number, subscriptionTier: string | null) {
-  const [{ readSendRails }, { storage }, { byokTierAllows }, { tierForSubscriptionTier }] = await Promise.all([
-    import("./sendPricing"),
-    import("../storage"),
-    import("@shared/billing/byok-tiers"),
-    import("@shared/billing/tier-pricing"),
+/**
+ * The org's send rails, read through the SAME resolvers the send paths ask:
+ * the campaign email handler's counterpartyEmailIdentityStatus, the SMS
+ * handler's orgHasConnectedSmsIdentity, the direct-mail handler's
+ * hasOrgLobCredentials. Feeds quote_outbound_cost and the identity status.
+ */
+export async function readSendRails(organizationId: number): Promise<SendRails> {
+  const [email, sms, lob] = await Promise.all([
+    counterpartyEmailIdentityStatus(organizationId).catch(() => ({ canSend: false, ownSesCredentials: false, verifiedDomain: false })),
+    orgHasConnectedSmsIdentity(organizationId).catch(() => false),
+    directMailService.hasOrgLobCredentials(organizationId).catch(() => false),
   ]);
+  return {
+    ownMailAccount: Boolean(lob),
+    ownEmailAccount: email.ownSesCredentials,
+    emailCanSend: email.canSend,
+    smsConnected: Boolean(sms),
+  };
+}
+
+export async function readSendingIdentityForPax(organizationId: number, subscriptionTier: string | null) {
   const [rails, returnAddress] = await Promise.all([
     readSendRails(organizationId),
     storage.getDefaultMailSenderIdentity(organizationId).catch(() => undefined),
