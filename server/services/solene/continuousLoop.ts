@@ -911,11 +911,16 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           // unblocked move acts instead); planAndAct re-checks as a backstop.
           let controlState: import("../autopilot/founderControls").ControlState | null = null;
           try {
-            const { getControlState, moveBlockedByControls } = await import("../autopilot/founderControls");
+            const { getControlState, firstWorkableMove } = await import("../autopilot/founderControls");
             controlState = await getControlState();
-            const cs = controlState;
-            const unblocked = effectiveMoves.filter((m) => !moveBlockedByControls(m, cs));
-            if (unblocked.length > 0) actMove = unblocked[0];
+            // Stage 2: a move already WAITING on the founder (an open ask names
+            // it) does not hold the tick hostage. Before this, one stalled
+            // signup made unblock_activation the top move forever; every tick
+            // re-raised the same ask and growth never ran again. The question
+            // stays open (the ladder re-pages it); the loop works the next move.
+            const { listOpenAsks } = await import("./founderCollab");
+            const pick = firstWorkableMove(effectiveMoves, controlState, (await listOpenAsks()).map((a) => a.questionSummary));
+            if (pick) actMove = pick;
           } catch (ctlErr) {
             logger.warn("[continuousLoop] tick: founder controls read failed", ctlErr instanceof Error ? ctlErr : undefined);
           }

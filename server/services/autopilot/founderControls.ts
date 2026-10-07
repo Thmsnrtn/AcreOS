@@ -178,3 +178,19 @@ export async function readPreStopSnapshot(): Promise<PreStopSnapshot | null> {
 export async function clearPreStopSnapshot(by: string): Promise<void> {
   await db.update(autopilotSettings).set({ preStopSnapshot: null, updatedAt: new Date(), updatedBy: by }).where(eq(autopilotSettings.id, 1));
 }
+
+/**
+ * Stage 2 — the move the tick should work: the first one the founder has not
+ * blocked (pause / ads off) and that is not already WAITING on him (an open
+ * ask whose summary names it, `…: <kind>`). Falls back to the first unblocked
+ * move when every one is waiting (its ask then folds). Pure.
+ */
+export function firstWorkableMove<M extends { domain: string; kind: string; rationale?: string }>(
+  moves: M[],
+  state: ControlState,
+  openAskSummaries: string[],
+): M | null {
+  const unblocked = moves.filter((m) => !moveBlockedByControls(m, state));
+  const waiting = (kind: string) => openAskSummaries.some((sum) => sum.endsWith(`: ${kind}`));
+  return unblocked.find((m) => !waiting(m.kind)) ?? unblocked[0] ?? null;
+}

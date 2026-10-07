@@ -28,7 +28,7 @@ import {
   STRIPE_DOWN_PAGE_HOURS,
 } from "../../server/services/autopilot/opsWatch";
 import { narrateRestore } from "../../server/services/autopilot/guidedResume";
-import { isAdMove, moveBlockedByControls } from "../../server/services/autopilot/founderControls";
+import { isAdMove, moveBlockedByControls, firstWorkableMove } from "../../server/services/autopilot/founderControls";
 
 describe("contentHonesty — no fabrication in generated content", () => {
   it.each([
@@ -176,6 +176,17 @@ describe("founder controls — pause and the ad switch are mechanical", () => {
     expect(moveBlockedByControls({ domain: "growth", kind: "buy_meta_ads_2000", rationale: "Spend on Meta ads" }, { pausedDomains: [], adsEnabled: false })).toMatch(/ad spending off/);
     expect(moveBlockedByControls({ domain: "growth", kind: "grow_owned_channels", rationale: "write an explainer" }, { pausedDomains: [], adsEnabled: false })).toBeNull();
     expect(isAdMove({ kind: "run_ad_campaign" })).toBe(true);
+  });
+  it("a move already waiting on the founder does not hold the tick: the next move is worked", () => {
+    const moves = [
+      { priority: 3, domain: "deploy", kind: "unblock_activation", rationale: "1 signup stalled" },
+      { priority: 4, domain: "growth", kind: "grow_owned_channels", rationale: "grow" },
+    ];
+    const open = { pausedDomains: [], adsEnabled: true };
+    expect(firstWorkableMove(moves, open, ["A higher-risk deploy action wants your sign-off: unblock_activation"])?.kind).toBe("grow_owned_channels");
+    expect(firstWorkableMove(moves, open, [])?.kind).toBe("unblock_activation");
+    // every move waiting → the first unblocked one (its ask folds)
+    expect(firstWorkableMove(moves, open, ["x: unblock_activation", "y: grow_owned_channels"])?.kind).toBe("unblock_activation");
   });
 });
 
