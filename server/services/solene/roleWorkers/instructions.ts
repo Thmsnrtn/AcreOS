@@ -62,8 +62,3 @@ export const ROLE_INSTRUCTIONS: Readonly<Record<RoleWorker, string>> = {
     "Deterministic: watches the providers AcreOS depends on (the model provider, email, Stripe) and the autonomous jobs, opens ONE incident per outage, pages the founder once for it, and closes it when the provider recovers. It does not call a model.",
   ].join("\n"),
 };
-
-/** The first line every role worker's system prompt starts with. Pure. */
-export function roleWorkerMarker(role: RoleWorker): string {
-  return ROLE_INSTRUCTIONS[role].split("\n")[0];
-}

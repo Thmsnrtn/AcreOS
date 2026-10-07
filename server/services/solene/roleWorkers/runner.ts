@@ -193,7 +193,7 @@ export async function runRoleWorker(row: Pick<SoleneDispatchQueueRow, "id" | "pr
 // ── Real bindings + queue persistence ───────────────────────────────────────
 
 /** Role workers run on the cheaper tier unless the dispatch pins a model. */
-export function roleWorkerMaxTokens(role: RoleWorker): number {
+function roleWorkerMaxTokens(role: RoleWorker): number {
   return role === "writer" ? 4096 : 2048;
 }
 

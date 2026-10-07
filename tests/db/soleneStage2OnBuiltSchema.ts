@@ -151,7 +151,7 @@ async function main(): Promise<void> {
       .returning({ id: supportTickets.id });
     await import("../../server/services/autopilot/hands");
     const { executeHandWitnessed } = await import("../../server/services/autopilot/hands/registry");
-    const hr = await executeHandWitnessed("reply_support_ticket", { ticket_id: t.id, message: "Go to Deals → Import and upload the CSV.", resolve: true }, `${tag}-founder`);
+    const hr = await executeHandWitnessed("reply_support_ticket", { ticket_id: t.id, organization_id: o.id, message: "Go to Deals → Import and upload the CSV.", resolve: true }, `${tag}-founder`);
     const msgs = await db.select().from(supportTicketMessages).where(eq(supportTicketMessages.ticketId, t.id));
     const [t2] = await db.select({ status: supportTickets.status }).from(supportTickets).where(eq(supportTickets.id, t.id));
     check(hr.success && msgs.some((m) => m.role === "agent" && /Import/.test(m.content)), `the reply landed on the ticket thread (${hr.output.slice(0, 120)})`);

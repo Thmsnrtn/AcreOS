@@ -6,7 +6,7 @@
  * then ABSENT: he answers nothing. The role workers run on deterministic,
  * realistic scripted answers (roleScripts.ts):
  *   - the Writer writes real articles that must reach marketing_artifacts
- *     through the publish gate; on day EMPTY_DAY (20) its next answer is
+ *     through the publish gate; once EMPTY_AFTER (2) are out its next answer is
  *     "Nothing further to add." (the S11 shape) — that run must be counted a
  *     FAILURE (and, by the trust ledger's existing rule, it costs the growth
  *     domain a rung, so the absent founder is asked again afterwards);
@@ -23,7 +23,12 @@ import * as k from "./simkit";
 import { writeWriterScripts, writeSupportScript, roleWorkerRules, type ScriptTicket } from "./roleScripts";
 
 const DAYS = Number(process.argv[2] ?? 30);
-const EMPTY_DAY = Number(process.argv[3] ?? Math.min(20, Math.max(1, DAYS - 2)));
+// The sim's ticks are seconds apart in wall-clock time, and the enqueue's
+// exactly-once effect key buckets on REAL time (30-minute window), so a sim
+// run gets about one Writer dispatch per growth play per real half hour. The
+// empty answer is therefore injected as soon as EMPTY_AFTER articles are out,
+// so it lands on a Writer run that really happens.
+const EMPTY_AFTER = Number(process.argv[3] ?? 2);
 
 const TICKETS: Array<{ key: ScriptTicket["key"]; subject: string; description: string; category: string }> = [
   { key: "refund30", subject: "Refund request", description: "Hi, I was charged $30 for a skip-trace credit pack I never used. Can I get the $30 refunded please?", category: "billing" },
@@ -41,7 +46,7 @@ async function main() {
   k.setEgressRules(k.PROVIDERS_UP);
   await k.q("alter table organizations drop column if exists monthly_price_cents");
   const files = await writeWriterScripts();
-  // Real articles from day 0; the empty answer is injected on EMPTY_DAY.
+  // Real articles from day 0; the empty answer is injected once EMPTY_AFTER are out.
   let writerFile = files.good;
   let supportFile: string | undefined;
   const applyRules = () => k.setStandinRules({ default: "script", rules: roleWorkerRules({ writer: writerFile, support: supportFile }) });
@@ -86,14 +91,15 @@ async function main() {
       supportFile = writeSupportScript(TICKETS.map((t) => ({ key: t.key, id: ticketIds[t.key], paymentIntentId: t.key === "refund30" ? "pi_sim_team_30" : undefined })));
       applyRules();
     }
-    if (d === EMPTY_DAY && emptyPhase === "before") {
-      emptyPhase = "injecting";
-      writerFile = files.empty;
-      applyRules();
-    }
+
     for (let h = 0; h < 48; h++) {
       log.push(...(await k.advance(0.5, jobs)));
       if (h % 4 === 3) await drain();
+      if (emptyPhase === "before" && Number((await k.q1<any>("select count(*)::int n from marketing_artifacts"))?.n ?? 0) >= EMPTY_AFTER) {
+        emptyPhase = "injecting";
+        writerFile = files.empty;
+        applyRules();
+      }
       if (emptyPhase === "injecting") {
         const failedEmpty = await k.q1<any>("select id from solene_dispatch_queue where source_id='autopilot:grow_owned_channels' and status = 'failed' limit 1");
         if (failedEmpty) {

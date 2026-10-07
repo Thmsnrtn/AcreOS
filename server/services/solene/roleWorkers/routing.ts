@@ -12,11 +12,11 @@
  * a caller happened to pass (a founder-enqueued "autopilot:grow_owned_channels"
  * goes to the Writer whatever role it names).
  */
-export const ROLE_WORKERS = ["writer", "support", "retention", "ops"] as const;
+const ROLE_WORKERS = ["writer", "support", "retention", "ops"] as const;
 export type RoleWorker = (typeof ROLE_WORKERS)[number];
 
 /** Move kind → the business role that carries it. Absent ⇒ coding agent. */
-export const ROLE_WORKER_BY_MOVE: Readonly<Record<string, RoleWorker>> = {
+const ROLE_WORKER_BY_MOVE: Readonly<Record<string, RoleWorker>> = {
   grow_owned_channels: "writer",
   clear_support_backlog: "support",
   retain_at_risk: "retention",
@@ -28,7 +28,7 @@ export const ROLE_WORKER_BY_MOVE: Readonly<Record<string, RoleWorker>> = {
 const AUTOPILOT_PREFIX = "autopilot:";
 
 /** The move kind an autopilot dispatch carries, or null for any other dispatch. */
-export function moveKindOfDispatch(row: { sourceType: string; sourceId: string }): string | null {
+function moveKindOfDispatch(row: { sourceType: string; sourceId: string }): string | null {
   if (row.sourceType !== "auto_dispatch" || !row.sourceId.startsWith(AUTOPILOT_PREFIX)) return null;
   return row.sourceId.slice(AUTOPILOT_PREFIX.length);
 }

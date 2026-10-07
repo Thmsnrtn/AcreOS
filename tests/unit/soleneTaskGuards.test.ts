@@ -10,9 +10,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   isEmptyResult,
   ToolLoopDetector,
-  toolCallSignature,
   turnBudgetFor,
-  MAX_IDENTICAL_TOOL_CALLS,
 } from "../../server/services/solene/taskGuards";
 import { DISPATCH_MAX_TURNS } from "../../shared/schema/solene-dispatch";
 
@@ -48,7 +46,7 @@ describe("ToolLoopDetector", () => {
     expect(d.record("reply_to_ticket", { b: 2, a: 1 }).looped).toBe(false);
     const v = d.record("reply_to_ticket", { a: 1, b: 2 });
     expect(v.looped).toBe(true);
-    expect(v.count).toBe(MAX_IDENTICAL_TOOL_CALLS);
+    expect(v.count).toBe(3);
     expect(v.reason).toMatch(/loop detected: reply_to_ticket was requested 3 times/);
   });
 
@@ -57,11 +55,6 @@ describe("ToolLoopDetector", () => {
     for (let i = 0; i < 10; i++) expect(d.record("reply_to_ticket", { ticket_id: i }).looped).toBe(false);
   });
 
-  it("signature is canonical", () => {
-    expect(toolCallSignature("x", { b: [1, { d: 1, c: 2 }], a: null })).toBe(
-      toolCallSignature("x", { a: null, b: [1, { c: 2, d: 1 }] }),
-    );
-  });
 });
 
 describe("turnBudgetFor", () => {

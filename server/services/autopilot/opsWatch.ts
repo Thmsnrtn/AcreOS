@@ -30,29 +30,30 @@ import { and, desc, eq, gte, like, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { agentLlmTraces, incidents, jobHealthLogs } from "@shared/schema";
 import { logger } from "../../utils/logger";
+import { unscopedForPlatformOps } from "../../utils/orgScopedDb";
 
-export const OPS_PROVIDERS = ["model_provider", "email_provider", "stripe"] as const;
+const OPS_PROVIDERS = ["model_provider", "email_provider", "stripe"] as const;
 export type OpsProvider = (typeof OPS_PROVIDERS)[number];
 
 /** Ticks (30 min each) of all-failed model calls before an incident opens. */
-export const MODEL_FAILURE_TICKS = 3;
-export const TICK_MINUTES = 30;
+const MODEL_FAILURE_TICKS = 3;
+const TICK_MINUTES = 30;
 /**
  * Email transport failures, with no success after them, before an incident
  * opens. ONE: emailService only records a failure after its own retries are
  * exhausted, so a recorded failure is already a provider that would not take
  * the message — and the next send that gets through closes the incident.
  */
-export const EMAIL_FAILURES_TO_OPEN = 1;
-export const EMAIL_WINDOW_HOURS = 3;
+const EMAIL_FAILURES_TO_OPEN = 1;
+const EMAIL_WINDOW_HOURS = 3;
 /** Stripe unreachable this long (no successful probe) before the founder is paged. */
-export const STRIPE_DOWN_PAGE_HOURS = 24;
+const STRIPE_DOWN_PAGE_HOURS = 24;
 /** Job names the watch writes; reflex health ignores probes (they measure, they are not jobs). */
-export const EMAIL_SEND_JOB = "email_send";
-export const STRIPE_PROBE_JOB = "ops_probe:stripe";
+const EMAIL_SEND_JOB = "email_send";
+const STRIPE_PROBE_JOB = "ops_probe:stripe";
 
 const INCIDENT_TITLE_PREFIX = "[ops] ";
-export function incidentTitleFor(p: OpsProvider): string {
+function incidentTitleFor(p: OpsProvider): string {
   return `${INCIDENT_TITLE_PREFIX}${p}`;
 }
 
@@ -128,7 +129,7 @@ export function stripeReadingFrom(lastProbe: { ok: boolean; at: Date } | null, l
 async function readModel(now: Date): Promise<ProviderReading> {
   try {
     const since = new Date(now.getTime() - MODEL_FAILURE_TICKS * TICK_MINUTES * 60_000);
-    const rows = await db
+    const rows = await unscopedForPlatformOps("Solene ops watch: whether the AI model provider is answering is read across every caller (a provider outage is platform-wide)")
       .select({ at: agentLlmTraces.createdAt, error: agentLlmTraces.error })
       .from(agentLlmTraces)
       .where(gte(agentLlmTraces.createdAt, since))
@@ -295,17 +296,4 @@ export async function runOpsWatch(opts: { now?: Date; stripeProbe?: () => Promis
     logger.warn("[opsWatch] watch pass failed", err instanceof Error ? err : undefined);
   }
   return result;
-}
-
-/** Open ops incidents in plain words, for the Letter. Best-effort. */
-export async function openOpsIncidentLines(): Promise<string[]> {
-  try {
-    const rows = await db
-      .select({ summary: incidents.summary, startedAt: incidents.startedAt })
-      .from(incidents)
-      .where(and(eq(incidents.status, "open"), like(incidents.title, `${INCIDENT_TITLE_PREFIX}%`)));
-    return rows.map((r) => r.summary);
-  } catch {
-    return [];
-  }
 }

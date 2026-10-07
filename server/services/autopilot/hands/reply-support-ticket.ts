@@ -15,10 +15,10 @@
  * (autoWitness.ts) — the bounded delegation the founder grants once instead of
  * tapping every reply.
  */
-import { eq, or } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { registerHand } from "./registry";
 import { handError, type HandResult } from "./types";
-import { db } from "../../../db";
+import { unscopedForPlatformOps } from "../../../utils/orgScopedDb";
 import { supportTickets, supportTicketMessages } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { sendEmail } from "../../emailService";
@@ -32,7 +32,7 @@ function escapeHtml(s: string): string {
 }
 
 /** Plain-text reply → minimal HTML paragraphs. Pure. */
-export function replyToHtml(message: string): string {
+function replyToHtml(message: string): string {
   return message
     .split(/\n{2,}/)
     .map((p) => `<p>${escapeHtml(p.trim()).replace(/\n/g, "<br>")}</p>`)
@@ -45,14 +45,16 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
     const ticketId = typeof input.ticket_id === "number" ? Math.floor(input.ticket_id) : NaN;
     const message = String(input.message ?? "").trim();
     const resolve = input.resolve === true;
-    if (!Number.isFinite(ticketId) || ticketId <= 0 || !message) {
-      return { success: false, output: "reply_support_ticket: 'ticket_id' and a non-empty 'message' are required.", durationMs: Date.now() - started };
+    const organizationId = typeof input.organization_id === "number" ? Math.floor(input.organization_id) : NaN;
+    if (!Number.isFinite(ticketId) || ticketId <= 0 || !message || !Number.isFinite(organizationId)) {
+      return { success: false, output: "reply_support_ticket: 'ticket_id', 'organization_id' and a non-empty 'message' are required.", durationMs: Date.now() - started };
     }
     // Platform-scope read by ticket id: the Support worker serves every
     // customer of AcreOS (the business's own support desk).
-    const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
+    const db = unscopedForPlatformOps("Solene support reply hand: AcreOS's own support desk answers the ticket an AcreOS customer opened (witnessed send)");
+    const [ticket] = await db.select().from(supportTickets).where(and(eq(supportTickets.id, ticketId), eq(supportTickets.organizationId, organizationId))).limit(1);
     if (!ticket) {
-      return { success: false, output: `reply_support_ticket: ticket #${ticketId} not found.`, durationMs: Date.now() - started };
+      return { success: false, output: `reply_support_ticket: ticket #${ticketId} not found in org ${organizationId}.`, durationMs: Date.now() - started };
     }
     if (ticket.status === "resolved" || ticket.status === "closed") {
       return { success: false, output: `reply_support_ticket: ticket #${ticketId} is already ${ticket.status}; not replying twice.`, durationMs: Date.now() - started };
@@ -71,7 +73,7 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
         ...(resolve ? { resolvedAt: new Date(), resolvedBy: "solene-support", resolution: message.slice(0, 2000), resolutionType: "manual" } : {}),
         updatedAt: new Date(),
       })
-      .where(eq(supportTickets.id, ticketId));
+      .where(and(eq(supportTickets.id, ticketId), eq(supportTickets.organizationId, ticket.organizationId)));
 
     // Tell the customer by SYSTEM mail. The recipient is the ticket opener.
     const [u] = await db
@@ -119,10 +121,11 @@ registerHand({
       type: "object",
       properties: {
         ticket_id: { type: "number" },
+        organization_id: { type: "number", description: "The org that opened the ticket (the ticket is read only within it)." },
         message: { type: "string", description: "The reply, plain text. Accurate; never promise what has not happened." },
         resolve: { type: "boolean", description: "True when this reply fully answers the request." },
       },
-      required: ["ticket_id", "message"],
+      required: ["ticket_id", "organization_id", "message"],
     },
   },
   domain: "support",

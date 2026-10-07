@@ -62,7 +62,7 @@ export function hardStopForMove(move: MoveLike): HardStop | null {
   return null;
 }
 
-export const HARD_STOP_LABEL: Record<HardStop, string> = {
+const HARD_STOP_LABEL: Record<HardStop, string> = {
   pricing_changes: "a pricing change",
   legal_signing: "legal signing",
   spend_over_500_usd: `a spend over $${HARD_STOP_SPEND_LIMIT_USD}`,

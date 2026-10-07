@@ -128,7 +128,7 @@ const PLATFORM_WRITER = "Solene writer role worker: AcreOS's own published field
 // ── Support ─────────────────────────────────────────────────────────────────
 
 /** Tickets waiting on AcreOS that no worker or founder has picked up yet. */
-export async function listWaitingTickets(limit = 10) {
+async function listWaitingTickets(limit = 10) {
   const tickets = await unscopedForPlatformOps(PLATFORM_SUPPORT)
     .select({
       id: supportTickets.id,
@@ -195,16 +195,16 @@ async function purchasesForOrg(organizationId: number) {
 }
 
 /** Mark a ticket picked up so the backlog sense stops counting it (never overwrite a founder hand-off). */
-async function assignTicket(ticketId: number, agent: string) {
+async function assignTicket(organizationId: number, ticketId: number, agent: string) {
   const db = unscopedForPlatformOps(PLATFORM_SUPPORT);
   if (agent === FOUNDER_AGENT) {
-    await db.update(supportTickets).set({ assignedAgent: FOUNDER_AGENT, status: "in_progress", updatedAt: new Date() }).where(eq(supportTickets.id, ticketId));
+    await db.update(supportTickets).set({ assignedAgent: FOUNDER_AGENT, status: "in_progress", updatedAt: new Date() }).where(and(eq(supportTickets.id, ticketId), eq(supportTickets.organizationId, organizationId)));
     return;
   }
   await db
     .update(supportTickets)
     .set({ assignedAgent: agent, status: "in_progress", updatedAt: new Date() })
-    .where(and(eq(supportTickets.id, ticketId), sql`coalesce(${supportTickets.assignedAgent}, '') <> ${FOUNDER_AGENT}`));
+    .where(and(eq(supportTickets.id, ticketId), eq(supportTickets.organizationId, organizationId), sql`coalesce(${supportTickets.assignedAgent}, '') <> ${FOUNDER_AGENT}`));
 }
 
 /** Freeze a hand through the dispatch executor (constitutional screen + witnessed-send). */
@@ -234,7 +234,7 @@ export interface AtRiskCustomer {
  *   trial_ending — an in-app trial ending in the next 3 days.
  * Founder orgs are never on it.
  */
-export async function listAtRiskCustomers(now = new Date()): Promise<AtRiskCustomer[]> {
+async function listAtRiskCustomers(now = new Date()): Promise<AtRiskCustomer[]> {
   const db = unscopedForPlatformOps(PLATFORM_RETENTION);
   const rows = await db.execute(sql`
     with quiet as (
@@ -445,9 +445,9 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
     for (const v of [...known]) known.add(v.replace(/\.00$/, "")).add(/\./.test(v) ? v : `${v}.00`);
     const fab = screenFabrication(message, { allowDollarFigures: [...known] });
     if (fab.length > 0) return { success: false, output: `reply_to_ticket refused by the honesty screen: ${fab.map((v) => v.message).join(" ")}` };
-    const frozen = await freezeHand("reply_support_ticket", { ticket_id: ticket.id, message, resolve: input.resolve === true }, ctx);
+    const frozen = await freezeHand("reply_support_ticket", { ticket_id: ticket.id, organization_id: ticket.organizationId, message, resolve: input.resolve === true }, ctx);
     if (frozen.pendingId == null) return { success: false, output: frozen.output };
-    await assignTicket(ticket.id, SUPPORT_WORKER_AGENT);
+    await assignTicket(ticket.organizationId, ticket.id, SUPPORT_WORKER_AGENT);
     return { success: true, effect: "drafted_reply", output: `Reply to ticket #${ticket.id} drafted (pending action #${frozen.pendingId}); it is posted and emailed once witnessed.` };
   }
 
@@ -469,7 +469,7 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
       answerFormat: "free_text",
       urgency: /legal|lawsuit|attorney|counsel|tcpa|cease|demand letter|subpoena/i.test(`${summary} ${why} ${ticket.description}`) ? "urgent" : "normal",
     });
-    await assignTicket(ticket.id, FOUNDER_AGENT);
+    await assignTicket(ticket.organizationId, ticket.id, FOUNDER_AGENT);
     return { success: true, effect: "escalated", output: `Ticket #${ticket.id} handed to the founder (ask #${r.askId}${r.deduped ? ", already open" : ""}).` };
   }
   return { success: false, output: `unknown support tool ${name}` };

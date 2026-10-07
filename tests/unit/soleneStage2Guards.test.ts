@@ -24,11 +24,9 @@ import {
   modelReadingFromBuckets,
   emailReadingFrom,
   stripeReadingFrom,
-  MODEL_FAILURE_TICKS,
-  STRIPE_DOWN_PAGE_HOURS,
 } from "../../server/services/autopilot/opsWatch";
 import { narrateRestore } from "../../server/services/autopilot/guidedResume";
-import { isAdMove, moveBlockedByControls, firstWorkableMove } from "../../server/services/autopilot/founderControls";
+import { moveBlockedByControls, firstWorkableMove } from "../../server/services/autopilot/founderControls";
 
 describe("contentHonesty — no fabrication in generated content", () => {
   it.each([
@@ -175,7 +173,7 @@ describe("founder controls — pause and the ad switch are mechanical", () => {
     expect(moveBlockedByControls({ domain: "growth", kind: "grow_owned_channels" }, { pausedDomains: ["growth"], adsEnabled: true })).toMatch(/paused growth/);
     expect(moveBlockedByControls({ domain: "growth", kind: "buy_meta_ads_2000", rationale: "Spend on Meta ads" }, { pausedDomains: [], adsEnabled: false })).toMatch(/ad spending off/);
     expect(moveBlockedByControls({ domain: "growth", kind: "grow_owned_channels", rationale: "write an explainer" }, { pausedDomains: [], adsEnabled: false })).toBeNull();
-    expect(isAdMove({ kind: "run_ad_campaign" })).toBe(true);
+    expect(moveBlockedByControls({ domain: "growth", kind: "run_ad_campaign" }, { pausedDomains: [], adsEnabled: false })).toMatch(/ad spending off/);
   });
   it("a move already waiting on the founder does not hold the tick: the next move is worked", () => {
     const moves = [
@@ -199,7 +197,7 @@ describe("S8 ops watch — one incident per outage", () => {
     expect(decideTransitions([{ provider: "stripe", failing: null, detail: "?" }], [{ id: "a", provider: "stripe" }]).resolve).toHaveLength(0);
   });
   it("model: N all-failed ticks in a row; any success is recovery", () => {
-    const bad = Array.from({ length: MODEL_FAILURE_TICKS }, () => ({ calls: 2, failures: 2 }));
+    const bad = Array.from({ length: 3 }, () => ({ calls: 2, failures: 2 }));
     expect(modelReadingFromBuckets(bad, 0).failing).toBe(true);
     expect(modelReadingFromBuckets([{ calls: 0, failures: 0 }, ...bad.slice(1)], 0).failing).toBeNull();
     expect(modelReadingFromBuckets(bad, 1).failing).toBe(false);
@@ -208,8 +206,8 @@ describe("S8 ops watch — one incident per outage", () => {
     const t = (h: number) => new Date(Date.UTC(2026, 9, 7, h));
     expect(emailReadingFrom(3, t(5), t(1)).failing).toBe(true);
     expect(emailReadingFrom(3, t(5), t(6)).failing).toBe(false);
-    expect(stripeReadingFrom({ ok: false, at: t(23) }, null, new Date(t(23).getTime() - (STRIPE_DOWN_PAGE_HOURS - 1) * 3_600_000), t(23)).failing).toBeNull();
-    expect(stripeReadingFrom({ ok: false, at: t(23) }, new Date(t(23).getTime() - STRIPE_DOWN_PAGE_HOURS * 3_600_000), null, t(23)).failing).toBe(true);
+    expect(stripeReadingFrom({ ok: false, at: t(23) }, null, new Date(t(23).getTime() - 23 * 3_600_000), t(23)).failing).toBeNull();
+    expect(stripeReadingFrom({ ok: false, at: t(23) }, new Date(t(23).getTime() - 24 * 3_600_000), null, t(23)).failing).toBe(true);
     expect(stripeReadingFrom({ ok: true, at: t(23) }, t(23), null, t(23)).failing).toBe(false);
   });
 });

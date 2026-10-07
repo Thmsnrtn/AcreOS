@@ -49,12 +49,12 @@ function stableJson(v: unknown): string {
 }
 
 /** The identity of one tool call: name + canonical arguments. Pure. */
-export function toolCallSignature(name: string, input: unknown): string {
+function toolCallSignature(name: string, input: unknown): string {
   return `${name}:${stableJson(input ?? {})}`;
 }
 
 /** Identical calls allowed before the task is declared looping. */
-export const MAX_IDENTICAL_TOOL_CALLS = 3;
+const MAX_IDENTICAL_TOOL_CALLS = 3;
 
 export interface LoopVerdict {
   looped: boolean;
@@ -91,7 +91,7 @@ export class ToolLoopDetector {
 }
 
 /** Per-task turn budgets. A business task that needs more is a stuck task. */
-export const ROLE_WORKER_TURN_BUDGET = {
+const ROLE_WORKER_TURN_BUDGET = {
   writer: 6,
   support: 8,
   retention: 6,

@@ -22,7 +22,7 @@ import { soleneDispatchQueue } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
 import type { AutopilotDomain } from "./policyGate";
 
-export const PAUSABLE = ["growth", "support", "deploy", "ops", "finance", "ads"] as const;
+const PAUSABLE = ["growth", "support", "deploy", "ops", "finance", "ads"] as const;
 export type Pausable = (typeof PAUSABLE)[number];
 
 export function isPausable(v: unknown): v is Pausable {

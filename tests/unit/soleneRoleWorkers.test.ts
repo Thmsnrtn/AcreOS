@@ -13,8 +13,8 @@
  *   - the instructions ship in the repo (no $HOME read).
  */
 import { describe, it, expect } from "vitest";
-import { roleWorkerForDispatch, ROLE_WORKER_BY_MOVE, ROLE_WORKERS } from "../../server/services/solene/roleWorkers/routing";
-import { ROLE_INSTRUCTIONS, roleWorkerMarker } from "../../server/services/solene/roleWorkers/instructions";
+import { roleWorkerForDispatch } from "../../server/services/solene/roleWorkers/routing";
+import { ROLE_INSTRUCTIONS } from "../../server/services/solene/roleWorkers/instructions";
 import { runRoleWorker, type RoleRunDeps, type ModelTurn } from "../../server/services/solene/roleWorkers/runner";
 import { parsePublishable, screenForPublish } from "../../server/services/autopilot/publishArtifact";
 
@@ -84,13 +84,18 @@ describe("routing — the move kind decides the worker", () => {
   });
 
   it("POPULATION: every role has instructions from the repo, opening with its marker", () => {
-    for (const r of ROLE_WORKERS) {
+    const roles = ["writer", "support", "retention", "ops"] as const;
+    expect(Object.keys(ROLE_INSTRUCTIONS).sort()).toEqual([...roles].sort());
+    for (const r of roles) {
       expect(ROLE_INSTRUCTIONS[r].length).toBeGreaterThan(50);
-      expect(roleWorkerMarker(r)).toMatch(new RegExp(`^AcreOS role worker — ${r[0].toUpperCase()}${r.slice(1)}$`));
+      expect(ROLE_INSTRUCTIONS[r].split("\n")[0]).toMatch(new RegExp(`^AcreOS role worker — ${r[0].toUpperCase()}${r.slice(1)}$`));
       expect(ROLE_INSTRUCTIONS[r]).not.toMatch(/\.claude\/projects|team_\w+\.md/);
     }
-    // every routed move kind names a real role
-    for (const role of Object.values(ROLE_WORKER_BY_MOVE)) expect(ROLE_WORKERS).toContain(role);
+    // every business move kind routes to a role with instructions
+    for (const kind of ["grow_owned_channels", "clear_support_backlog", "retain_at_risk", "recover_payments", "convert_trials", "stabilize_reflexes"]) {
+      const role = roleWorkerForDispatch({ sourceType: "auto_dispatch", sourceId: `autopilot:${kind}` });
+      expect(role && ROLE_INSTRUCTIONS[role]).toBeTruthy();
+    }
   });
 });
 
