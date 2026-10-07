@@ -1432,7 +1432,7 @@ export function registerDealRoutes(app: Express): void {
         required: item.priority === "required" || item.priority === "high",
       }));
     }
-    const template = await storage.updateDueDiligenceTemplate(Number(req.params.id), updates);
+    const template = await storage.updateDueDiligenceTemplate(org.id, Number(req.params.id), updates);
     if (!template) return Errors.notFound(res, "Template");
     res.json(template);
   });
@@ -1442,7 +1442,7 @@ export function registerDealRoutes(app: Express): void {
     // F-D39: refuse to delete another org's template.
     const existing = await storage.getDueDiligenceTemplate(org.id, Number(req.params.id));
     if (!existing || existing.organizationId !== org.id) return Errors.notFound(res, "Template");
-    await storage.deleteDueDiligenceTemplate(Number(req.params.id));
+    await storage.deleteDueDiligenceTemplate(org.id, Number(req.params.id));
     res.status(204).send();
   });
 
@@ -1452,7 +1452,7 @@ export function registerDealRoutes(app: Express): void {
     // F-D39: refuse to list another org's checklist.
     const property = await storage.getProperty(org.id, propertyId);
     if (!property) return Errors.notFound(res, "Property");
-    const items = await storage.getPropertyDueDiligence(propertyId);
+    const items = await storage.getPropertyDueDiligence(org.id, propertyId);
     res.json(items);
   });
   
@@ -1539,7 +1539,7 @@ export function registerDealRoutes(app: Express): void {
     // F-D39: org-scoped via parent property.
     const existing = await getDueDiligenceItemOrgScoped(Number(req.params.id), org.id);
     if (!existing) return Errors.notFound(res, "Item");
-    const item = await storage.updateDueDiligenceItem(Number(req.params.id), updates);
+    const item = await storage.updateDueDiligenceItem(org.id, Number(req.params.id), updates);
     if (!item) return Errors.notFound(res, "Item");
     res.json(item);
   });
@@ -1549,7 +1549,7 @@ export function registerDealRoutes(app: Express): void {
     // F-D39: org-scoped via parent property.
     const existing = await getDueDiligenceItemOrgScoped(Number(req.params.id), org.id);
     if (!existing) return Errors.notFound(res, "Item");
-    await storage.deleteDueDiligenceItem(Number(req.params.id));
+    await storage.deleteDueDiligenceItem(org.id, Number(req.params.id));
     res.status(204).send();
   });
 
@@ -2436,7 +2436,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     // F-D39: refuse to mutate another org's checklist template.
     const existing = await storage.getChecklistTemplate(org.id, Number(req.params.id));
     if (!existing || existing.organizationId !== org.id) return Errors.notFound(res, "Template");
-    const template = await storage.updateChecklistTemplate(Number(req.params.id), req.body);
+    const template = await storage.updateChecklistTemplate(org.id, Number(req.params.id), req.body);
     if (!template) return Errors.notFound(res, "Template");
     res.json(template);
   });
@@ -2446,7 +2446,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     // F-D39: refuse to delete another org's checklist template.
     const existing = await storage.getChecklistTemplate(org.id, Number(req.params.id));
     if (!existing || existing.organizationId !== org.id) return Errors.notFound(res, "Template");
-    await storage.deleteChecklistTemplate(Number(req.params.id));
+    await storage.deleteChecklistTemplate(org.id, Number(req.params.id));
     res.status(204).send();
   });
   
@@ -2460,7 +2460,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     // Task #2: Verify deal belongs to org before returning checklist (IDOR prevention)
     const deal = await storage.getDeal(org.id, dealId);
     if (!deal) return Errors.notFound(res, "Deal");
-    const checklist = await storage.getDealChecklist(dealId);
+    const checklist = await storage.getDealChecklist(org.id, dealId);
     if (!checklist) {
       return res.json(null);
     }
@@ -2507,7 +2507,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       // The deal page's toggle writes the same row as the closing checklist;
       // the wire interlock needs its evidence here too (DEFECT-0176).
       let sealed: ReturnType<typeof sealWireAttestation> = null;
-      const current = checked !== undefined ? await storage.getDealChecklist(dealId) : undefined;
+      const current = checked !== undefined ? await storage.getDealChecklist(org.id, dealId) : undefined;
       const item = current?.items.find((i) => i.id === req.params.itemId);
       const isWire = item?.category === "fraud_gate";
       if (checked) {
@@ -2517,6 +2517,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       }
 
       const checklist = await storage.updateDealChecklistItem(
+        org.id,
         dealId,
         req.params.itemId,
         { checked, documentUrl, checkedBy: userId, verification: sealed ?? undefined }
@@ -2539,7 +2540,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     // `?to=<stage>` asks about one transition (DEFECT-0180 audit): the deal
     // page pre-checked every status change with the stage-less gate.
     const to = typeof req.query.to === "string" ? req.query.to : undefined;
-    const result = await storage.checkStageGate(dealId, to);
+    const result = await storage.checkStageGate(org.id, dealId, to);
     res.json(result);
   });
 
@@ -2596,7 +2597,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       if (stageRefusal) return Errors.badRequest(res, stageRefusal);
 
       if (!force) {
-        const stageGate = await storage.checkStageGate(dealId, stage);
+        const stageGate = await storage.checkStageGate(org.id, dealId, stage);
         if (!stageGate.canAdvance) {
           return Errors.badRequest(res, "Cannot advance stage: incomplete required checklist items", { incompleteItems: stageGate.incompleteItems });
         }

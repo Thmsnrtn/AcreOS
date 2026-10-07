@@ -101,9 +101,18 @@ export const paxRepo = {
     await db.delete(paxProjects).where(and(...conditions));
   },
 
-  async getPaxProjectFiles(this: DatabaseStorage, projectId: number): Promise<PaxProjectFile[]> {
+  // pax_project_files carries no organization column; the read is constrained
+  // to a project of this organization in the same statement, the same way
+  // deletePaxProjectFile below proves ownership.
+  async getPaxProjectFiles(this: DatabaseStorage, organizationId: number, projectId: number): Promise<PaxProjectFile[]> {
+    const orgOwnedProject = db.select({ id: paxProjects.id })
+      .from(paxProjects)
+      .where(and(eq(paxProjects.id, projectId), eq(paxProjects.organizationId, organizationId)));
     return db.select().from(paxProjectFiles)
-      .where(eq(paxProjectFiles.projectId, projectId))
+      .where(and(
+        eq(paxProjectFiles.projectId, projectId),
+        inArray(paxProjectFiles.projectId, orgOwnedProject),
+      ))
       .orderBy(paxProjectFiles.uploadedAt);
   },
 

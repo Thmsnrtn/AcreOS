@@ -5,7 +5,7 @@
 // into DatabaseStorage.prototype at construction time; `this` refers to the
 // full DatabaseStorage instance.
 
-import { and, desc, eq, gte, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, ne, or, sql } from "drizzle-orm";
 import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import { forOrg, unscopedForPlatformOps } from "../utils/orgScopedDb";
@@ -106,12 +106,10 @@ export const supportOpsRepo = {
       .orderBy(desc(supportCases.createdAt));
   },
 
-  async updateSupportCase(this: DatabaseStorage, id: number, data: Partial<InsertSupportCase>, organizationId?: number) {
-    const conditions = [eq(supportCases.id, id)];
-    if (organizationId) conditions.push(eq(supportCases.organizationId, organizationId));
+  async updateSupportCase(this: DatabaseStorage, organizationId: number, id: number, data: Partial<InsertSupportCase>) {
     const [updated] = await db.update(supportCases)
       .set({ ...omitProtectedFields(data), updatedAt: new Date() })
-      .where(and(...conditions))
+      .where(and(eq(supportCases.id, id), eq(supportCases.organizationId, organizationId)))
       .returning();
     return updated;
   },
@@ -128,9 +126,14 @@ export const supportOpsRepo = {
     return newMessage;
   },
 
-  async getSupportMessages(this: DatabaseStorage, caseId: number) {
+  // support_messages and support_actions carry no organization column; the
+  // case is the owner, so both reads constrain the case to the organization in
+  // the same statement.
+  async getSupportMessages(this: DatabaseStorage, organizationId: number, caseId: number) {
+    const orgCase = db.select({ id: supportCases.id }).from(supportCases)
+      .where(and(eq(supportCases.id, caseId), eq(supportCases.organizationId, organizationId)));
     return await db.select().from(supportMessages)
-      .where(eq(supportMessages.caseId, caseId))
+      .where(and(eq(supportMessages.caseId, caseId), inArray(supportMessages.caseId, orgCase)))
       .orderBy(supportMessages.createdAt);
   },
 
@@ -140,9 +143,11 @@ export const supportOpsRepo = {
     return newAction;
   },
 
-  async getSupportActions(this: DatabaseStorage, caseId: number) {
+  async getSupportActions(this: DatabaseStorage, organizationId: number, caseId: number) {
+    const orgCase = db.select({ id: supportCases.id }).from(supportCases)
+      .where(and(eq(supportCases.id, caseId), eq(supportCases.organizationId, organizationId)));
     return await db.select().from(supportActions)
-      .where(eq(supportActions.caseId, caseId))
+      .where(and(eq(supportActions.caseId, caseId), inArray(supportActions.caseId, orgCase)))
       .orderBy(desc(supportActions.createdAt));
   },
 
@@ -220,12 +225,10 @@ export const supportOpsRepo = {
     return event;
   },
 
-  async updateDunningEvent(this: DatabaseStorage, id: number, updates: Partial<InsertDunningEvent>, organizationId?: number) {
-    const conditions = [eq(dunningEvents.id, id)];
-    if (organizationId) conditions.push(eq(dunningEvents.organizationId, organizationId));
+  async updateDunningEvent(this: DatabaseStorage, organizationId: number, id: number, updates: Partial<InsertDunningEvent>) {
     const [updated] = await db.update(dunningEvents)
       .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
-      .where(and(...conditions))
+      .where(and(eq(dunningEvents.id, id), eq(dunningEvents.organizationId, organizationId)))
       .returning();
     return updated;
   },
@@ -276,10 +279,10 @@ export const supportOpsRepo = {
       .orderBy(desc(systemAlerts.createdAt));
   },
 
-  async updateSystemAlert(this: DatabaseStorage, id: number, updates: Partial<InsertSystemAlert>) {
+  async updateSystemAlert(this: DatabaseStorage, organizationId: number, id: number, updates: Partial<InsertSystemAlert>) {
     const [updated] = await db.update(systemAlerts)
       .set(assertWritablePatch(updates, "system_alerts.updateSystemAlert"))
-      .where(eq(systemAlerts.id, id))
+      .where(and(eq(systemAlerts.id, id), eq(systemAlerts.organizationId, organizationId)))
       .returning();
     return updated;
   },
@@ -287,8 +290,14 @@ export const supportOpsRepo = {
   // acknowledgeAlert was removed (DEFECT-0135): it reopened resolved alerts.
   // Acknowledge through server/services/alertAcknowledge.ts.
 
-  async resolveAlert(this: DatabaseStorage, id: number) {
-    const [updated] = await db.update(systemAlerts)
+  // The founder alert console lists every organization's system alerts (and
+  // platform alerts that belong to none), so resolving one from there is a
+  // platform operation. Callers MUST be founder-gated; the cross-organization
+  // write is stated through the sanctioned, logged hatch at the chain root.
+  async resolveAlertForPlatformOps(this: DatabaseStorage, id: number) {
+    const [updated] = await unscopedForPlatformOps(
+      "founder alert console: resolve a system alert of any organization by id",
+    ).update(systemAlerts)
       .set({ status: "resolved", resolvedAt: new Date() })
       .where(eq(systemAlerts.id, id))
       .returning();

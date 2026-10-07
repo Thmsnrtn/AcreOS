@@ -45,9 +45,13 @@ export async function checkDealAmlPatterns(
 
   // 2. Rapid flip check — same org property bought and sold within 30 days at >50% markup
   try {
-    const deal = await db.select().from(deals).where(eq(deals.id, dealId)).limit(1);
+    const deal = await db.select().from(deals)
+      .where(and(eq(deals.id, dealId), eq(deals.organizationId, orgId)))
+      .limit(1);
     if (deal.length > 0 && deal[0].propertyId) {
-      const prop = await db.select().from(properties).where(eq(properties.id, deal[0].propertyId)).limit(1);
+      const prop = await db.select().from(properties)
+        .where(and(eq(properties.id, deal[0].propertyId), eq(properties.organizationId, orgId)))
+        .limit(1);
       if (prop.length > 0 && prop[0].purchasePrice && prop[0].purchaseDate) {
         const origPrice = parseFloat(prop[0].purchasePrice);
         const daysSincePurchase = Math.floor(

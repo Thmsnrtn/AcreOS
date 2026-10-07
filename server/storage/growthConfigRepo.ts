@@ -283,9 +283,9 @@ export const growthConfigRepo = {
     return msg;
   },
 
-  async getBorrowerMessages(this: DatabaseStorage, noteId: number): Promise<BorrowerMessage[]> {
+  async getBorrowerMessages(this: DatabaseStorage, orgId: number, noteId: number): Promise<BorrowerMessage[]> {
     return await db.select().from(borrowerMessages)
-      .where(eq(borrowerMessages.noteId, noteId))
+      .where(and(eq(borrowerMessages.noteId, noteId), eq(borrowerMessages.orgId, orgId)))
       .orderBy(borrowerMessages.createdAt);
   },
 

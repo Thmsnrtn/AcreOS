@@ -550,7 +550,7 @@ export function registerCommunicationRoutes(app: Express): void {
       if (!order || order.organizationId !== org.id) {
         return Errors.notFound(res, "Mailing order");
       }
-      const pieces = await storage.getMailingOrderPieces(orderId);
+      const pieces = await storage.getMailingOrderPieces(org.id, orderId);
       res.json(pieces);
     } catch (error: any) {
       logger.error("Get mailing order pieces error", error instanceof Error ? error : undefined);
@@ -1154,7 +1154,7 @@ export function registerCommunicationRoutes(app: Express): void {
         return Errors.notFound(res, "Workflow");
       }
       const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
-      const runs = await storage.getWorkflowRuns(id, limit);
+      const runs = await storage.getWorkflowRuns(org.id, id, limit);
       res.json(runs);
     } catch (error: any) {
       logger.error("Get workflow runs error", error instanceof Error ? error : undefined);

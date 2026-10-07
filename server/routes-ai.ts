@@ -160,7 +160,7 @@ export function registerAIRoutes(app: Express): void {
       return Errors.notFound(res, "Conversation");
     }
     
-    const messages = await storage.getAiMessages(conversationId);
+    const messages = await storage.getAiMessages(org.id, conversationId);
     res.json({ conversation, messages });
   });
   
@@ -175,7 +175,7 @@ export function registerAIRoutes(app: Express): void {
       return Errors.notFound(res, "Conversation");
     }
 
-    const allMessages = await storage.getAiMessages(conversationId);
+    const allMessages = await storage.getAiMessages(org.id, conversationId);
     const messages = allMessages.slice(-limit);
 
     res.json({
@@ -842,7 +842,7 @@ export function registerAIRoutes(app: Express): void {
       if (!project || project.organizationId !== org.id) {
         return Errors.notFound(res, "Project");
       }
-      res.json(await storage.getPaxProjectFiles(projectId));
+      res.json(await storage.getPaxProjectFiles(org.id, projectId));
     } catch (err: any) {
       Errors.internal(res, err);
     }
@@ -1664,7 +1664,7 @@ export function registerAIRoutes(app: Express): void {
       const userId = user?.id || user.id;
       const actionId = parseInt(req.params.id);
 
-      const action = await storage.getVaAction(actionId);
+      const action = await storage.getVaAction(org.id, actionId);
       // F-D31 IDOR fix: refuse to approve another org's action. 404 (not 403)
       // hides existence so an attacker can't enumerate action ids.
       if (!action || action.organizationId !== org.id) {
@@ -1677,7 +1677,7 @@ export function registerAIRoutes(app: Express): void {
       const executionResult = await vaAgentService.executeAgentAction(updated);
       
       // Get the final updated action with execution result
-      const finalAction = await storage.getVaAction(actionId);
+      const finalAction = await storage.getVaAction(org.id, actionId);
       res.json({ action: finalAction, executionResult });
     } catch (error: any) {
       Errors.internal(res, error);
@@ -1699,7 +1699,7 @@ export function registerAIRoutes(app: Express): void {
       }
       const { reason } = parsed.data;
 
-      const action = await storage.getVaAction(actionId);
+      const action = await storage.getVaAction(org.id, actionId);
       // F-D31 IDOR fix.
       if (!action || action.organizationId !== org.id) {
         return Errors.notFound(res, "Action");
@@ -1762,7 +1762,7 @@ export function registerAIRoutes(app: Express): void {
       const org = req.organization;
       const actionId = parseInt(req.params.id);
 
-      const action = await storage.getVaAction(actionId);
+      const action = await storage.getVaAction(org.id, actionId);
       // F-D31 IDOR fix: explicit org gate so a customer can't execute another
       // org's approved action.
       if (!action || action.organizationId !== org.id) {
@@ -1774,7 +1774,7 @@ export function registerAIRoutes(app: Express): void {
       }
       
       const result = await vaAgentService.executeAgentAction(action);
-      const finalAction = await storage.getVaAction(actionId);
+      const finalAction = await storage.getVaAction(org.id, actionId);
       res.json({ action: finalAction, executionResult: result });
     } catch (error: any) {
       Errors.internal(res, error);

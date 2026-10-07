@@ -32,7 +32,7 @@ vi.mock("../../server/services/emailService", () => ({
   },
 }));
 
-const EVENT_UPDATES: Array<{ id: number; updates: any }> = [];
+const EVENT_UPDATES: Array<{ orgId: number; id: number; updates: any }> = [];
 let orgsInDunning: any[] = [];
 let dunningEventsByOrg: Record<number, any[]> = {};
 
@@ -43,8 +43,8 @@ vi.mock("../../server/storage", () => ({
       const all = dunningEventsByOrg[orgId] ?? [];
       return status ? all.filter((e) => e.status === status) : all;
     }),
-    updateDunningEvent: vi.fn(async (id: number, updates: any) => {
-      EVENT_UPDATES.push({ id, updates });
+    updateDunningEvent: vi.fn(async (orgId: number, id: number, updates: any) => {
+      EVENT_UPDATES.push({ orgId, id, updates });
       return { id, ...updates };
     }),
     updateOrganization: vi.fn(async () => undefined),
@@ -95,6 +95,8 @@ describe("dunning ladder revival (W1.1)", () => {
     // The sent notification is recorded on the event for dedupe.
     expect(EVENT_UPDATES).toHaveLength(1);
     expect(EVENT_UPDATES[0].id).toBe(77);
+    // ...within the organization the ladder is running for.
+    expect(EVENT_UPDATES[0].orgId).toBe(1);
     const types = EVENT_UPDATES[0].updates.notificationsSent.map((n: any) => n.type);
     expect(types).toContain("reminder");
   });
@@ -126,5 +128,6 @@ describe("dunning ladder revival (W1.1)", () => {
     await dunningService.processScheduledTasks();
     expect(EVENT_UPDATES).toHaveLength(1);
     expect(EVENT_UPDATES[0].id).toBe(79);
+    expect(EVENT_UPDATES[0].orgId).toBe(1);
   });
 });

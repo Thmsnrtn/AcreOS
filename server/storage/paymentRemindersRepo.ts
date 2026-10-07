@@ -166,9 +166,9 @@ export const paymentRemindersRepo = {
     return rows.map((r) => r.organizationId);
   },
 
-  async getRemindersForNote(this: DatabaseStorage, noteId: number) {
+  async getRemindersForNote(this: DatabaseStorage, orgId: number, noteId: number) {
     return await db.select().from(paymentReminders)
-      .where(eq(paymentReminders.noteId, noteId))
+      .where(and(eq(paymentReminders.noteId, noteId), eq(paymentReminders.organizationId, orgId)))
       .orderBy(desc(paymentReminders.createdAt));
   },
 
