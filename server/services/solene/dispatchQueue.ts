@@ -47,6 +47,7 @@ import {
   type SoleneDispatchResultRow,
   type SoleneDispatchSourceType,
   type SoleneDispatchStatus,
+  IDEMPOTENCY_KEY_INDEX_PREDICATE,
 } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
 import { assertWithinEnsembleCap, getMonthlyEnvelopeStatus } from "./capitalTracker";
@@ -286,7 +287,17 @@ export async function enqueueDispatch(
     [inserted] = await db
       .insert(soleneDispatchQueue)
       .values(values)
-      .onConflictDoNothing({ target: soleneDispatchQueue.idempotencyKey })
+      // The conflict target MUST carry the partial index's predicate: the
+      // only unique index on idempotency_key is PARTIAL (WHERE … IS NOT NULL),
+      // and PostgreSQL refuses a bare `ON CONFLICT (idempotency_key)` it cannot
+      // match to a full constraint ("no unique or exclusion constraint matching
+      // the ON CONFLICT specification") — every keyed enqueue threw on a
+      // migration-built database. IDEMPOTENCY_KEY_INDEX_PREDICATE is the same
+      // SQL the schema's uniqueIndex declares, so the two cannot drift.
+      .onConflictDoNothing({
+        target: soleneDispatchQueue.idempotencyKey,
+        where: IDEMPOTENCY_KEY_INDEX_PREDICATE,
+      })
       .returning({ id: soleneDispatchQueue.id });
     if (!inserted) {
       const [existing] = await db

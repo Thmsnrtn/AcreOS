@@ -65,6 +65,14 @@ export interface DispatchSuccessCriteria {
 // ============================================
 // SOLENE_DISPATCH_QUEUE
 // ============================================
+/**
+ * The predicate of the PARTIAL unique index on idempotency_key. Shared by the
+ * index declaration and every `ON CONFLICT (idempotency_key)` writer, because
+ * PostgreSQL infers a partial index as an arbiter only when the conflict
+ * target repeats its predicate.
+ */
+export const IDEMPOTENCY_KEY_INDEX_PREDICATE = sql`idempotency_key IS NOT NULL`;
+
 export const soleneDispatchQueue = pgTable(
   "solene_dispatch_queue",
   {
@@ -148,7 +156,7 @@ export const soleneDispatchQueue = pgTable(
     // (NULL keys — every legacy/non-autopilot enqueue — are never deduped).
     uniqueIndex("solene_dispatch_queue_idempotency_key_uq")
       .on(t.idempotencyKey)
-      .where(sql`idempotency_key IS NOT NULL`),
+      .where(IDEMPOTENCY_KEY_INDEX_PREDICATE),
   ],
 );
 
