@@ -5737,6 +5737,20 @@ Services: ${Object.entries(systemContext.serviceStatus).map(([k, v]) => `${k}:${
     });
   }
 
+  // Legal / compliance intake: a TCPA complaint, cease-and-desist, data-
+  // deletion request or litigation threat is a founder decision. Route it to
+  // ONE urgent founder ask before Pax's first-response pass. Never throws.
+  {
+    const { escalateLegalIntake } = await import("../services/supportLegalIntake");
+    await escalateLegalIntake({
+      table: "support_tickets",
+      recordId: ticket.id,
+      organizationId: org.id,
+      subject,
+      description,
+    });
+  }
+
   // RAFE — AI first-response on ticket creation.
   //
   // The interactive path (processSupportChat) only fires when the customer

@@ -59,6 +59,8 @@ import { IDENTITY_DECISION_KINDS } from "@shared/schema/solene-agent-identity";
 import { DECISION_TRACE_STEP_KINDS } from "@shared/schema/solene-decision-traces";
 import { SPECULATION_OUTPUT_KINDS } from "@shared/schema/solene-speculations";
 import { EVIDENCE_SOURCE_KINDS } from "@shared/schema/solene-evidence-weights";
+// The approval-card summary (amount, recipient, recurrence) — every hand is tested against it.
+import { summarizePendingHand, resolvePendingSummaryContext } from "../autopilot/pendingHandSummary";
 
 const PROJECT_ROOT = process.env.SOLENE_DISPATCH_PROJECT_ROOT
   ? path.resolve(process.env.SOLENE_DISPATCH_PROJECT_ROOT)
@@ -875,21 +877,6 @@ export async function executeDispatchTool(
 // founder-witnessed execution; it never runs inside an autonomous dispatch.
 // ----------------------------------------------------------------------------
 
-/** A short human-readable summary of what approving this hand will do. No PII
- * values beyond a recipient reference (which the founder needs to see). */
-function summarizePendingHand(handName: string, input: Record<string, unknown>): string {
-  const str = (v: unknown) => (typeof v === "string" && v ? v : null);
-  const recipient =
-    str(input.to) ??
-    (typeof input.lead_id === "number" ? `lead #${input.lead_id}` : null) ??
-    str(input.charge_id) ??
-    (typeof input.user_id === "string" ? `user ${input.user_id}` : null) ??
-    str(input.platform) ??
-    "—";
-  const subject = str(input.subject);
-  return subject ? `${handName} → ${recipient}: "${subject}"` : `${handName} → ${recipient}`;
-}
-
 async function executeHand(
   toolName: string,
   input: Record<string, unknown>,
@@ -915,7 +902,11 @@ async function executeHand(
         handName: toolName,
         args: input,
         domain: hand.domain,
-        summary: summarizePendingHand(toolName, input),
+        summary: summarizePendingHand(
+          toolName,
+          input,
+          await resolvePendingSummaryContext(toolName, input, hand.movesMoney === true),
+        ),
         sourceDispatchId: ctx.dispatchId ?? null,
       });
       if (frozen) {

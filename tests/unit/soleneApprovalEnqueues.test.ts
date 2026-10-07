@@ -80,7 +80,10 @@ vi.mock("../../server/services/solene/dispatchQueue", () => ({
 
 import { db } from "../../server/db";
 import { answerFounderAsk } from "../../server/services/solene/founderCollab";
-import { enqueueApprovedMove, approvedAskIdempotencyKey } from "../../server/services/autopilot/act";
+import { enqueueApprovedMove } from "../../server/services/autopilot/act";
+
+// The per-ask idempotency key the approval enqueue uses (pinned literally).
+const approvedAskIdempotencyKey = (askId: number) => `approved-ask:${askId}`;
 import * as experienceLog from "../../server/services/autopilot/experienceLog";
 import { enqueueDispatch } from "../../server/services/solene/dispatchQueue";
 

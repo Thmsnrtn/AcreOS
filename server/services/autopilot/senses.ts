@@ -7,12 +7,21 @@
  * failure and degrades to the truthful "none known" default so a single bad
  * source can't poison the decision or crash the loop.
  *
- * Currently: the support backlog (open + escalated cases). More senses
- * (activation stalls, etc.) land here as they get real sources.
+ * Currently: the support backlog (open + escalated cases AND escalated Pax
+ * tickets), open data-subject requests, stalled activation, orgs in dunning,
+ * and unanswered legal/compliance asks.
  */
 import { sql } from "drizzle-orm";
 import { db } from "../../db";
-import { eventMeshEvents, supportCases } from "@shared/schema";
+import {
+  dsarRequests,
+  dsarRequestsLifecycle,
+  eventMeshEvents,
+  organizations,
+  supportCases,
+  supportTickets,
+} from "@shared/schema";
+import { soleneFounderAsks } from "@shared/schema/solene-founder-collab";
 import { unscopedForPlatformOps } from "../../utils/orgScopedDb";
 import { logger } from "../../utils/logger";
 
@@ -22,7 +31,7 @@ import { logger } from "../../utils/logger";
  * is in progress; resolved/closed are done. Returns 0 on any error (honest
  * default — we never fabricate a backlog).
  */
-export async function getOpenSupportCaseCount(): Promise<number> {
+async function getOpenSupportCaseCount(): Promise<number> {
   try {
     const [row] = await db
       .select({ n: sql<number>`count(*)::int` })
@@ -36,6 +45,156 @@ export async function getOpenSupportCaseCount(): Promise<number> {
     );
     return 0;
   }
+}
+
+/**
+ * Pax chat escalations live in `support_tickets` (resolution_type 'escalated'),
+ * not `support_cases`. A ticket Pax handed to a human stays waiting on us until
+ * it is resolved or closed. Returns the count and the oldest ticket ids so a
+ * founder ask can NAME the ticket. Throws on a read error.
+ */
+export async function readEscalatedSupportTickets(
+  limit = 5,
+): Promise<{ count: number; ticketIds: number[] }> {
+  const rows = await unscopedForPlatformOps(
+    "Solene founder-brain support sense: escalated Pax tickets across every org are the company's support backlog the founder must see",
+  )
+    .select({ id: supportTickets.id, n: sql<number>`count(*) over ()::int` })
+    .from(supportTickets)
+    .where(
+      sql`${supportTickets.resolutionType} = 'escalated' and ${supportTickets.status} not in ('resolved', 'closed')`,
+    )
+    .orderBy(supportTickets.createdAt)
+    .limit(limit);
+  return { count: Number(rows[0]?.n ?? 0), ticketIds: rows.map((r) => r.id) };
+}
+
+/** Best-effort form for the loop: honest empty on error. The step-away check uses the throwing read. */
+async function getEscalatedSupportTickets(
+  limit = 5,
+): Promise<{ count: number; ticketIds: number[] }> {
+  try {
+    return await readEscalatedSupportTickets(limit);
+  } catch (err) {
+    logger.warn(
+      "[autopilot/senses] escalated ticket read failed; defaulting to 0",
+      err instanceof Error ? err : undefined,
+    );
+    return { count: 0, ticketIds: [] };
+  }
+}
+
+/**
+ * The whole support backlog the brain ranks on: open/escalated support cases
+ * PLUS escalated Pax tickets. Before this, only support_cases were counted, so
+ * a chat escalation never reached clear_support_backlog.
+ */
+export async function getSupportBacklog(): Promise<{ total: number; escalatedTicketIds: number[] }> {
+  const [cases, tickets] = await Promise.all([getOpenSupportCaseCount(), getEscalatedSupportTickets()]);
+  return { total: cases + tickets.count, escalatedTicketIds: tickets.ticketIds };
+}
+
+/**
+ * Open data-subject requests (access / erasure / portability) across both
+ * intake tables: `dsar_requests` (public form) and `dsar_requests_lifecycle`
+ * (in-app GDPR/privacy routes, self-tests excluded). These carry statutory
+ * deadlines and are a founder-only decision (customer-data deletion is a
+ * hard-stop), so they count as open compliance items. Throws on a read
+ * error; getOpenDsarCount is the best-effort form.
+ */
+export async function readOpenDsarCount(): Promise<number> {
+  const reason =
+    "Solene founder-brain compliance sense: open data-subject requests across every org are a founder-only legal obligation";
+  const [a] = await unscopedForPlatformOps(reason)
+    .select({ n: sql<number>`count(*)::int` })
+    .from(dsarRequests)
+    .where(sql`${dsarRequests.status} in ('pending', 'verified', 'fulfilling')`);
+  const [b] = await unscopedForPlatformOps(reason)
+    .select({ n: sql<number>`count(*)::int` })
+    .from(dsarRequestsLifecycle)
+    .where(sql`${dsarRequestsLifecycle.fulfilledAt} is null and ${dsarRequestsLifecycle.isSelfTest} = false`);
+  return Number(a?.n ?? 0) + Number(b?.n ?? 0);
+}
+
+/** Best-effort form for the loop: honest 0 on error. */
+export async function getOpenDsarCount(): Promise<number> {
+  try {
+    return await readOpenDsarCount();
+  } catch (err) {
+    logger.warn(
+      "[autopilot/senses] DSAR read failed; defaulting to 0",
+      err instanceof Error ? err : undefined,
+    );
+    return 0;
+  }
+}
+
+/** Activation is "stalled" for an org not onboarded this long after signup. */
+const ACTIVATION_STALL_HOURS = 48;
+/**
+ * Only signups from this recent window count — a years-old abandoned signup is
+ * not a leak the brain can still fix, and counting it would pin the sense on
+ * forever.
+ */
+const ACTIVATION_LOOKBACK_DAYS = 30;
+
+/**
+ * Orgs that signed up more than 48h ago (within the lookback) and have still
+ * not completed onboarding. Feeds `activationStalled`, which decide.ts ranks as
+ * unblock_activation. Founder orgs excluded. Honest 0 on error.
+ */
+export async function getStalledActivationCount(): Promise<number> {
+  try {
+    const [row] = await unscopedForPlatformOps(
+      "Solene founder-brain activation sense: counts signups across the business that never finished onboarding",
+    )
+      .select({ n: sql<number>`count(*)::int` })
+      .from(organizations)
+      .where(
+        sql`coalesce(${organizations.onboardingCompleted}, false) = false
+          and coalesce(${organizations.isFounder}, false) = false
+          and ${organizations.createdAt} < now() - (${ACTIVATION_STALL_HOURS} || ' hours')::interval
+          and ${organizations.createdAt} > now() - (${ACTIVATION_LOOKBACK_DAYS} || ' days')::interval`,
+      );
+    return Number(row?.n ?? 0);
+  } catch (err) {
+    logger.warn(
+      "[autopilot/senses] activation read failed; defaulting to 0",
+      err instanceof Error ? err : undefined,
+    );
+    return 0;
+  }
+}
+
+/**
+ * Orgs whose subscription payment has failed and is still unrecovered — any
+ * dunning stage other than none/cancelled. THROWS on a read error: its only
+ * caller is the step-away verdict, where unreadable must never read as zero.
+ */
+export async function readFailedPaymentOrgCount(): Promise<number> {
+  const [row] = await unscopedForPlatformOps(
+    "Solene founder-brain billing sense: counts orgs in dunning across the business for the step-away verdict",
+  )
+    .select({ n: sql<number>`count(*)::int` })
+    .from(organizations)
+    .where(sql`coalesce(${organizations.dunningStage}, 'none') not in ('none', 'cancelled')`);
+  return Number(row?.n ?? 0);
+}
+
+/**
+ * Legal/compliance founder asks still waiting on the founder — open, or timed
+ * out unanswered (a timeout is not a decision). Keyed on the summary prefix the
+ * support legal-intake classifier writes. Throws on a read error.
+ */
+export async function readPendingLegalAskCount(): Promise<number> {
+  const { LEGAL_ASK_SUMMARY_PREFIX } = await import("../supportLegalIntake");
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(soleneFounderAsks)
+    .where(
+      sql`${soleneFounderAsks.status} in ('open', 'timed_out') and ${soleneFounderAsks.questionSummary} like ${`${LEGAL_ASK_SUMMARY_PREFIX}%`}`,
+    );
+  return Number(row?.n ?? 0);
 }
 
 /** Deal pipeline activity as the brain sees it (Jarvis 2.1, audit G2). */

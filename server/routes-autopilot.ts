@@ -532,37 +532,16 @@ export function registerAutopilotRoutes(app: Express): void {
 
         // F1 pulse strip (experience-legibility.md): the brain's actual
         // heartbeat is the solene_continuous_tick job (30-min cadence in
-        // jobRegistry) — read its latest successful run from job_runs.
-        // Honest null when it has never run (fresh env, jobs disabled);
-        // stale after 2 missed cadences, wired to the same reality the
-        // deadman watches.
-        const LOOP_JOB = "solene_continuous_tick";
-        const LOOP_CADENCE_MS = 30 * 60 * 1000;
-        let loop: {
-          lastCycleAt: string | null;
-          cadenceMs: number;
-          nextDueAt: string | null;
-          stale: boolean;
-        } = { lastCycleAt: null, cadenceMs: LOOP_CADENCE_MS, nextDueAt: null, stale: false };
+        // jobRegistry). It runs through withJobLock, which records to
+        // job_health_logs — reading job_runs alone always said "never run".
+        // loopHeartbeat reads both liveness tables (the deadman's two-table
+        // rule). Honest null when it has never run; an unreadable read keeps
+        // the honest null too.
+        const { heartbeatFrom, readLoopLastSuccess } = await import("./services/autopilot/loopHeartbeat");
+        let loop = heartbeatFrom(null, Date.now());
         try {
           const { db } = await import("./storage");
-          const { jobRuns } = await import("@shared/schema");
-          const { and, desc, eq, isNotNull } = await import("drizzle-orm");
-          const [run] = await db
-            .select({ completedAt: jobRuns.completedAt })
-            .from(jobRuns)
-            .where(and(eq(jobRuns.jobName, LOOP_JOB), eq(jobRuns.status, "success"), isNotNull(jobRuns.completedAt)))
-            .orderBy(desc(jobRuns.completedAt))
-            .limit(1);
-          if (run?.completedAt) {
-            const last = new Date(run.completedAt);
-            loop = {
-              lastCycleAt: last.toISOString(),
-              cadenceMs: LOOP_CADENCE_MS,
-              nextDueAt: new Date(last.getTime() + LOOP_CADENCE_MS).toISOString(),
-              stale: Date.now() - last.getTime() > 2 * LOOP_CADENCE_MS,
-            };
-          }
+          loop = heartbeatFrom(await readLoopLastSuccess(db), Date.now());
         } catch {
           /* keep honest nulls */
         }

@@ -366,7 +366,7 @@ export async function planAndAct(
 // plus the row's own dispatch link). A decline or a timeout never reaches here.
 
 /** Idempotency key for the dispatch an approved ask enqueues — one per ask. */
-export function approvedAskIdempotencyKey(askId: number): string {
+function approvedAskIdempotencyKey(askId: number): string {
   return `approved-ask:${askId}`;
 }
 
