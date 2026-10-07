@@ -19,6 +19,8 @@
  *   - readInboxRepliesForPax: drop the org predicate on the conversations
  *     JOIN → red.
  *   - readTeamActivityForPax: drop `eq(activityLog.organizationId, …)` → red.
+ *   - readFinanceSummaryForPax: drop `eq(payments.organizationId, …)` or
+ *     `eq(costBasis.organizationId, …)` → red (one query each, so each is read).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PgDialect } from "drizzle-orm/pg-core";
@@ -120,6 +122,7 @@ const DIRECT_READERS: Record<string, () => Promise<unknown>> = {
   readInboxRepliesForPax: () => reads.readInboxRepliesForPax(ORG, {}),
   readTeamActivityForPax: () => reads.readTeamActivityForPax(ORG, { role: "va" }),
   countContactableLeadsForPax: () => reads.countContactableLeadsForPax(ORG, "text"),
+  readFinanceSummaryForPax: () => reads.readFinanceSummaryForPax(ORG, { period: "this_year" }),
 };
 const DELEGATING_READERS: Record<string, () => Promise<unknown>> = {
   readCreditsForPax: () => reads.readCreditsForPax(ORG),
@@ -150,6 +153,34 @@ describe.each(Object.entries(DIRECT_READERS))("%s pins every table it reads to t
         expect(pinsOrg(j.on, j.table), `JOIN ${j.table}: ON does not pin organization_id = ${ORG}`).toBe(true);
       }
     }
+  });
+});
+
+describe("the finance summary reports only what is recorded", () => {
+  it("no rows -> zeros and the window, never an estimate, and it refuses to compute profit", async () => {
+    const out: any = await reads.readFinanceSummaryForPax(ORG, { period: "last_year", now: new Date("2026-10-07T12:00:00Z") });
+    expect(out.from).toBe("2025-01-01");
+    expect(out.to).toBe("2025-12-31");
+    expect(out.incomeRecorded).toMatchObject({ payments: 0, totalReceived: 0, interest: 0 });
+    expect(out.costsRecorded).toMatchObject({ propertiesWithCosts: 0, acquisitionPrice: 0 });
+    expect(out.notComputed).toMatch(/not computed/i);
+    expect(out).not.toHaveProperty("profit");
+    expect(out).not.toHaveProperty("netIncome");
+  });
+
+  it("an unknown period falls back to this year (no invented window)", async () => {
+    const out: any = await reads.readFinanceSummaryForPax(ORG, { period: "forever", now: new Date("2026-10-07T12:00:00Z") });
+    expect(out.period).toBe("this_year");
+    expect(out.from).toBe("2026-01-01");
+  });
+
+  it("income is completed payments only, inside the window", async () => {
+    await reads.readFinanceSummaryForPax(ORG, { period: "this_year" });
+    const q = queries.find((x) => x.from === "payments")!;
+    const { sql } = render(q.where!);
+    expect(sql).toContain('"payments"."status" = $');
+    expect(sql).toContain('"payments"."payment_date" >= $');
+    expect(sql).toContain('"payments"."payment_date" < $');
   });
 });
 

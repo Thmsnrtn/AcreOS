@@ -36,6 +36,7 @@
  */
 
 import type { Scope } from "../middleware/roleScope";
+import { PLACE_TEXT } from "../services/paxPlaces";
 
 /**
  * Scope required to run each side-effecting support tool.
@@ -51,6 +52,7 @@ import type { Scope } from "../middleware/roleScope";
  *   comms_write     — anything that sends to a person
  *   deal_write      — records in the pipeline
  */
+
 export const SUPPORT_TOOL_SCOPES: Readonly<Record<string, Scope>> = {
   // ── Money ────────────────────────────────────────────────────────────────
   // Billing state and anything that moves or re-bills a customer's money.
@@ -118,6 +120,6 @@ export function supportScopeRefusalMessage(toolName: string, scope: Scope): stri
   return (
     `You do not have permission to do that here. "${toolName}" requires the ` +
     `"${scope}" permission in this workspace. An owner or admin can grant it ` +
-    `under Settings → Team.`
+    `under ${PLACE_TEXT.teamRoles}.`
   );
 }

@@ -16,6 +16,8 @@
  * (CLAUDE.md). This module only gives the numbers one home.
  */
 
+import { PLACE_TEXT } from "./paxPlaces";
+
 /**
  * Per-piece direct-mail charges, in credits (cents) — what the campaign
  * direct-mail send debits (routes-campaigns `send-direct-mail`) and what its
@@ -123,7 +125,7 @@ export function quoteOutboundSend(input: {
       pieceType = requested;
       listPrice = DIRECT_MAIL_COSTS[requested];
       ownAccount = input.rails.ownMailAccount;
-      notes.push("Mail needs a return address (Settings → Mail) before a campaign can send.");
+      notes.push(`Mail needs a return address (${PLACE_TEXT.returnAddress}) before a campaign can send.`);
       break;
     }
     case "email":

@@ -125,6 +125,7 @@ export const INTENT_META: Record<string, { door: CustomerDoor; scope: Scope | nu
   get_sending_identity_status: { door: "deals", scope: "comms_read" },
   get_team_activity: { door: "today", scope: "audit_read" },
   get_plan_limits: { door: "today", scope: null },
+  get_finance_summary: { door: "finance", scope: "financial_read" },
   get_product_facts: { door: "pax", scope: null },
   // Anyone in the org may ask for a person.
   escalate_to_support: { door: "pax", scope: null },

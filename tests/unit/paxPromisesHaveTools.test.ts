@@ -87,6 +87,17 @@ const PROMISES: PromiseClass[] = [
     backedBy: ["schedule_follow_up", "schedule_followup", "create_task"],
   },
   {
+    // M8 ("Am I profitable this year?"): Pax answered from the dashboard and
+    // offered "I can total what you've logged in Finance" — no tool totalled
+    // Finance. An offer to compute is a promise of a capability; it is allowed
+    // only beside the tool that computes it. (This reads the text Pax is
+    // GIVEN; what the model freely writes is steered by the prompt rule
+    // asserted below and graded by the oracle pass, not provable here.)
+    name: "an offer to compute or total data",
+    pattern: new RegExp(FIRST_PERSON + String.raw`(?:total|sum up|add up|tally|compute|calculate|crunch|chart|graph|forecast)\b`, "gi"),
+    backedBy: ["get_finance_summary", "get_cashflow_summary", "calculate_amortization", "calculate_roi", "calculate_payment_schedule"],
+  },
+  {
     name: "contacting the customer later",
     pattern: new RegExp(FIRST_PERSON + String.raw`(?:notify you|email you|text you|call you|let you know when)\b`, "gi"),
     backedBy: [],
@@ -182,6 +193,14 @@ describe("rule 2 — every tool a Pax prompt names is dispatched", () => {
   });
 });
 
+describe("rule 3 — the executive prompt tells Pax to offer only what a tool can do", () => {
+  it("states the limit, and names the tool that totals Finance", () => {
+    const src = code("server/ai/executive.ts");
+    expect(src).toMatch(/Offer only computations a tool can do/);
+    expect(src).toMatch(/get_finance_summary/);
+  });
+});
+
 describe("falsification — the rules fire on the defect's real shapes", () => {
   const live = new Set(["escalate_to_support", "escalate_to_human", "schedule_follow_up"]);
 
@@ -196,6 +215,13 @@ describe("falsification — the rules fire on the defect's real shapes", () => {
 
   it("a promise to contact the customer later has no tool that can keep it", () => {
     expect(unbackedPromises("mutant", "Done — I'll notify you when the export is ready.", live)).toHaveLength(1);
+  });
+
+  it("the M8 offer to total Finance is an offender, and is allowed beside the tool that does it", () => {
+    const m8 = "No income recorded this year. I can total what you've logged in Finance if you like.";
+    expect(unbackedPromises("mutant", m8, live)).toHaveLength(1);
+    const live2 = new Set([...live, "get_finance_summary"]);
+    expect(unbackedPromises("ok", "Call get_finance_summary, then I can total what it returns.", live2)).toEqual([]);
   });
 
   it("a promise conditioned on the tool that keeps it is allowed", () => {

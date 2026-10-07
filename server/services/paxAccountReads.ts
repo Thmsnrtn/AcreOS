@@ -19,11 +19,14 @@
  *   - returns counts the caller can quote, never an estimate. Where a number
  *     cannot be read it says so instead of returning 0.
  */
-import { and, desc, eq, gte, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   activityLog,
   campaigns,
+  costBasis,
+  notes,
+  payments,
   conversations,
   inboxMessages,
   leads,
@@ -35,6 +38,7 @@ import {
 import { creditsToDollars, type SendRails } from "./sendPricing";
 import { creditService } from "./credits";
 import { getAllUsageLimits, getSeatInfo } from "./usageLimits";
+import { PLACE_TEXT } from "./paxPlaces";
 import { getPaxProductFacts } from "./paxProductFacts";
 import { counterpartyEmailIdentityStatus } from "./emailService";
 import { orgHasConnectedSmsIdentity } from "./smsService";
@@ -82,7 +86,7 @@ export async function readCreditsForPax(organizationId: number, opts: { limit?: 
     balanceCredits: balance,
     balanceDollars: creditsToDollars(balance),
     creditUnit: "1 credit = $0.01",
-    where: "Settings → Account shows your available credit; Settings → Billing buys more.",
+    where: `${PLACE_TEXT.creditsAndUsage} shows your available credit, usage history and where to buy more.`,
     recent: history.map((t) => ({
       type: t.type,
       credits: t.amountCents,
@@ -439,7 +443,7 @@ export async function readSendingIdentityForPax(organizationId: number, subscrip
       planAllowsConnectingTwilio: byokTierAllows(tier, "twilio"),
       status: rails.smsConnected
         ? "ready — texts go out on your own Twilio number"
-        : "not connected — texts cannot send until your own Twilio number is connected (Settings → Bring your own keys)",
+        : `not connected — texts cannot send until your own Twilio number is connected (${PLACE_TEXT.byok})`,
     },
     mail: {
       returnAddressSet: Boolean(returnAddress),
@@ -477,4 +481,107 @@ export async function countContactableLeadsForPax(
       ),
     );
   return Number(row?.n ?? 0);
+}
+
+// ── Finance summary ──────────────────────────────────────────────────────────
+
+export type FinancePeriod = "this_year" | "last_year" | "this_quarter" | "this_month" | "last_30_days";
+const FINANCE_PERIODS: readonly FinancePeriod[] = ["this_year", "last_year", "this_quarter", "this_month", "last_30_days"];
+
+/** [start, end) in UTC for a named period. Pure, so the window is testable. */
+function financeWindow(period: FinancePeriod, now: Date = new Date()): { start: Date; end: Date } {
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  switch (period) {
+    case "last_year":
+      return { start: new Date(Date.UTC(y - 1, 0, 1)), end: new Date(Date.UTC(y, 0, 1)) };
+    case "this_quarter": {
+      const q = Math.floor(m / 3) * 3;
+      return { start: new Date(Date.UTC(y, q, 1)), end: new Date(Date.UTC(y, q + 3, 1)) };
+    }
+    case "this_month":
+      return { start: new Date(Date.UTC(y, m, 1)), end: new Date(Date.UTC(y, m + 1, 1)) };
+    case "last_30_days":
+      return { start: new Date(now.getTime() - 30 * DAY_MS), end: new Date(now.getTime() + DAY_MS) };
+    case "this_year":
+    default:
+      return { start: new Date(Date.UTC(y, 0, 1)), end: new Date(Date.UTC(y + 1, 0, 1)) };
+  }
+}
+
+/**
+ * What Finance has RECORDED for a period — nothing estimated, nothing netted.
+ * Income = completed borrower payments on this org's notes; costs = the
+ * acquisition and improvement costs recorded on the org's properties bought in
+ * the period. There is no operating-expense ledger in Finance (mailing spend,
+ * software), so profit is deliberately not computed: the result says so.
+ */
+export async function readFinanceSummaryForPax(
+  organizationId: number,
+  opts: { period?: unknown; now?: Date } = {},
+) {
+  const period: FinancePeriod = FINANCE_PERIODS.includes(opts.period as FinancePeriod)
+    ? (opts.period as FinancePeriod)
+    : "this_year";
+  const { start, end } = financeWindow(period, opts.now ?? new Date());
+
+  const [income] = await db
+    .select({
+      count: sql<number>`count(*)::int`,
+      total: sql<string>`coalesce(sum(${payments.amount}), 0)::text`,
+      principal: sql<string>`coalesce(sum(${payments.principalAmount}), 0)::text`,
+      interest: sql<string>`coalesce(sum(${payments.interestAmount}), 0)::text`,
+      fees: sql<string>`coalesce(sum(${payments.feeAmount}), 0)::text`,
+      lateFees: sql<string>`coalesce(sum(${payments.lateFeeAmount}), 0)::text`,
+    })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.organizationId, organizationId),
+        eq(payments.status, "completed"),
+        gte(payments.paymentDate, start),
+        lt(payments.paymentDate, end),
+      ),
+    );
+
+  const [costs] = await db
+    .select({
+      properties: sql<number>`count(*)::int`,
+      acquisitionPrice: sql<string>`coalesce(sum(${costBasis.acquisitionPrice}), 0)::text`,
+      acquisitionCosts: sql<string>`coalesce(sum(${costBasis.acquisitionCosts}), 0)::text`,
+      improvementCosts: sql<string>`coalesce(sum(${costBasis.improvementCosts}), 0)::text`,
+    })
+    .from(costBasis)
+    .where(
+      and(
+        eq(costBasis.organizationId, organizationId),
+        gte(costBasis.acquisitionDate, start),
+        lt(costBasis.acquisitionDate, end),
+      ),
+    );
+
+  const num = (v: string | undefined) => Math.round(Number(v ?? 0) * 100) / 100;
+  return {
+    period,
+    from: start.toISOString().slice(0, 10),
+    to: new Date(end.getTime() - 1).toISOString().slice(0, 10),
+    incomeRecorded: {
+      source: "completed borrower payments recorded on your notes (Finance → Notes)",
+      payments: Number(income?.count ?? 0),
+      totalReceived: num(income?.total),
+      principal: num(income?.principal),
+      interest: num(income?.interest),
+      fees: num(income?.fees),
+      lateFees: num(income?.lateFees),
+    },
+    costsRecorded: {
+      source: "acquisition and improvement costs entered on properties bought in the period",
+      propertiesWithCosts: Number(costs?.properties ?? 0),
+      acquisitionPrice: num(costs?.acquisitionPrice),
+      acquisitionCosts: num(costs?.acquisitionCosts),
+      improvementCosts: num(costs?.improvementCosts),
+    },
+    notComputed:
+      "Profit is not computed: Finance has no operating-expense ledger (mailing, software, travel), and principal received is not income. Report what was recorded and say what is not recorded; do not state whether the customer is profitable.",
+  };
 }

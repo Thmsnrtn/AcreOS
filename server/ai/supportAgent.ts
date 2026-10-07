@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { storage } from "../storage";
 import { subscriptionPeriodIso } from "../stripeClient";
 import type { Organization, SupportTicket, KnowledgeBaseArticle, TeamMember } from "@shared/schema";
+import { PLACE_TEXT } from "../services/paxPlaces";
 import { decisionsInboxService } from "../services/decisionsInbox";
 import { db } from "../db";
 import { dataSourceBroker } from "../services/data-source-broker.js";
@@ -2970,7 +2971,7 @@ export async function executeSupportTool(
             title: "Importing Data",
             estimatedTime: "5-10 minutes",
             steps: [
-              { step: 1, action: "Navigate to Settings > Import", path: "/settings/import" },
+              { step: 1, action: `Open ${PLACE_TEXT.importExport} (or Deals → Leads → Import CSV for leads)`, path: "/settings" },
               { step: 2, action: "Select data type", options: ["leads", "properties", "contacts"], tip: "Choose what you're importing" },
               { step: 3, action: "Download template", tip: "Use our CSV template for best results" },
               { step: 4, action: "Prepare your file", tip: "Match columns to template headers" },
@@ -2999,8 +3000,8 @@ export async function executeSupportTool(
               { step: 1, action: "Navigate to Settings", path: "/settings", tip: "Click Settings in the sidebar" },
               { step: 2, action: "Review Organization settings", tip: "Company name, logo, time zone" },
               { step: 3, action: "Configure Integrations", path: "/settings/integrations", tip: "Connect external services" },
-              { step: 4, action: "Set up Team Members", path: "/settings/team", tip: "Invite team members, assign roles" },
-              { step: 5, action: "Review Subscription", path: "/settings/billing", tip: "Manage plan and payment method" }
+              { step: 4, action: "Set up Team Members", path: "/settings", tip: "Invite team members, assign roles" },
+              { step: 5, action: "Review Subscription", path: "/settings", tip: "Manage plan and payment method" }
             ],
             proTips: skill_level !== "beginner" ? ["Set up BYOK for custom API keys", "Configure custom fields for your workflow"] : []
           },
@@ -3008,7 +3009,7 @@ export async function executeSupportTool(
             title: "Managing Your Team",
             estimatedTime: "3-5 minutes",
             steps: [
-              { step: 1, action: "Navigate to Settings > Team", path: "/settings/team" },
+              { step: 1, action: `Open ${PLACE_TEXT.invite}`, path: "/settings" },
               { step: 2, action: "Click 'Invite Member'", element: "button-invite" },
               { step: 3, action: "Enter email address", tip: "They'll receive an invitation email" },
               { step: 4, action: "Assign role", options: ["Admin", "Member", "Viewer"], tip: "Roles determine what they can access" },

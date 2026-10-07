@@ -43,6 +43,7 @@ const H = vi.hoisted(() => ({
     readInboxRepliesForPax: vi.fn(async (orgId: number) => ({ orgId, emailReplies: [], textReplies: [] })),
     readTeamActivityForPax: vi.fn(async (orgId: number) => ({ orgId, activity: [] })),
     readPlanLimitsForPax: vi.fn(async (orgId: number) => ({ orgId, plan: "pro" })),
+    readFinanceSummaryForPax: vi.fn(async (orgId: number, opts: any) => ({ orgId, period: opts?.period ?? "this_year" })),
     readSendingIdentityForPax: vi.fn(async (orgId: number) => ({ orgId, sms: { ownTwilioConnected: false } })),
     countContactableLeadsForPax: vi.fn(async () => 0),
     readSendRails: vi.fn(async () => ({ ownMailAccount: false, ownEmailAccount: false, emailCanSend: true, smsConnected: true })),
@@ -112,6 +113,7 @@ const NEW_TOOLS = [
   "get_inbox_replies",
   "get_team_activity",
   "get_plan_limits",
+  "get_finance_summary",
   "get_sending_identity_status",
   "get_product_facts",
   "escalate_to_support",
@@ -142,6 +144,7 @@ describe("the account reads delegate to the org-pinned readers with the caller's
     ["get_inbox_replies", "readInboxRepliesForPax"],
     ["get_team_activity", "readTeamActivityForPax"],
     ["get_plan_limits", "readPlanLimitsForPax"],
+    ["get_finance_summary", "readFinanceSummaryForPax"],
     ["get_sending_identity_status", "readSendingIdentityForPax"],
   ] as const)("%s → %s(org.id)", async (tool, reader) => {
     const r: any = await run(tool);

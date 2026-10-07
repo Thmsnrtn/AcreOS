@@ -11,6 +11,12 @@
  *
  * Mutation recorded: hard-coding `rowsPerFile: 500` in paxProductFacts.ts
  * turns "the import cap follows the constant" red.
+ *
+ * The sequence consent sentence is computed from `canSendViaChannel`, and the
+ * cancellation wind-down number from `WIND_DOWN_DAYS`; both are swapped for
+ * sentinels below and the facts must follow. Mutations: hard-coding "90 days"
+ * in cancellationFacts -> "the wind-down follows" red; writing the consent
+ * channel lists by hand -> "sequence consent follows the predicate" red.
  */
 import { describe, it, expect, vi } from "vitest";
 
@@ -33,6 +39,14 @@ vi.mock("../../server/utils/permissions", () => ({
     canEditLeads: true,
   }),
   getRoleLabel: (r: string) => r.toUpperCase(),
+}));
+
+vi.mock("../../server/services/borrower/servicingPhase", () => ({ WIND_DOWN_DAYS: 31 }));
+const consentRule = vi.hoisted(() => ({ allowNoConsent: new Set<string>(["direct_mail"]) }));
+vi.mock("../../server/services/tcpaCompliance", () => ({
+  canSendViaChannel: (lead: { tcpaConsent: boolean; doNotContact: boolean }, ch: string) => ({
+    allowed: !lead.doNotContact && (lead.tcpaConsent || consentRule.allowNoConsent.has(ch)),
+  }),
 }));
 
 import { getPaxProductFacts } from "../../server/services/paxProductFacts";
@@ -63,5 +77,43 @@ describe("facts follow the enforcing constants", () => {
     const va = f.team.roles.find((r: any) => r.role === "va");
     expect(va).toMatchObject({ label: "VA", seesOnlyAssignedLeads: true });
     expect(f.team.roles.find((r: any) => r.role === "member").seesOnlyAssignedLeads).toBe(false);
+  });
+});
+
+describe("the new how-to facts follow what enforces them", () => {
+  it("the borrower wind-down follows WIND_DOWN_DAYS", async () => {
+    const f: any = await getPaxProductFacts("cancellation");
+    expect(f.cancellation.borrowerNotes).toContain("31 days");
+    expect(JSON.stringify(f)).not.toContain("90 days");
+  });
+
+  it("cancellation gives no retention number it cannot source", async () => {
+    const f: any = await getPaxProductFacts("cancellation");
+    expect(f.cancellation.noRetentionPeriod).toMatch(/no number to quote/);
+    expect(f.cancellation.whatHappensToData).not.toMatch(/\d+ (days|months|years)/);
+  });
+
+  it("sequence consent follows the predicate", async () => {
+    let f: any = await getPaxProductFacts("sequences");
+    expect(f.sequences.consent.stepsThatNeedConsentOnFile).toEqual(["email", "text"]);
+    expect(f.sequences.consent.stepsAllowedWithoutConsent).toEqual(["mail"]);
+    expect(f.sequences.consent.blockedForDoNotContact).toEqual(["email", "text", "mail"]);
+    consentRule.allowNoConsent = new Set(["direct_mail", "sms"]);
+    f = await getPaxProductFacts("sequences");
+    expect(f.sequences.consent.stepsThatNeedConsentOnFile).toEqual(["email"]);
+    expect(f.sequences.consent.rule).toContain("text, mail still goes");
+    consentRule.allowNoConsent = new Set(["direct_mail"]);
+  });
+
+  it("sequences do not promise auto-enrolment or a postcard trigger", async () => {
+    const f: any = await getPaxProductFacts("sequences");
+    expect(f.sequences.enrolling).toMatch(/nothing starts a sequence when a postcard is sent/);
+  });
+
+  it("payments name the idempotency and who may record", async () => {
+    const f: any = await getPaxProductFacts("payments");
+    expect(f.payments.onlyOnce).toMatch(/idempotency key/);
+    expect(f.payments.whoCan).toMatch(/Owners and admins/);
+    expect(f.payments.sellerFinanceNote).toContain("Finance");
   });
 });

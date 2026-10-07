@@ -40,6 +40,7 @@ import { scopeForIntent, PII_SCOPES } from "../services/appIntents/intentScopes"
 // Wave B "Wire the engine" — a lead Pax creates is a lead like any other, and
 // a status Pax moves is a status change like any other. Both fire the same
 // workflow events the human routes fire. Fire-and-forget: never throws.
+import { PLACE_TEXT } from "../services/paxPlaces";
 import { emitLeadCreated, emitLeadUpdated } from "../services/leadEvents";
 // Same reasoning for deals + properties: a deal Pax creates (including the
 // offer-letter → pipeline bridge below) is a deal like any other, and a stage
@@ -58,7 +59,7 @@ export const toolDefinitions = {
   // CRM Tools
   get_leads: {
     name: "get_leads",
-    description: "Get leads in the CRM pipeline. Returns name, status, source, contact info, county/state, lead score and nurturing stage, and consent / do-not-contact flags. Filter by status, type or county.",
+    description: "Get leads in the CRM pipeline. Returns name, status, source, contact info, county/state, lead score and nurturing stage, and consent / do-not-contact flags. Each lead carries `reachability`: which of text, call, email and mail are actually usable now and why not (consent, do-not-contact, missing phone/email/address), and the result carries a per-channel count. Use it, never a guess, when advising how to contact someone. Filter by status, type or county.",
     parameters: {
       type: "object",
       properties: {
@@ -85,7 +86,7 @@ export const toolDefinitions = {
   },
   get_lead_details: {
     name: "get_lead_details",
-    description: "Get detailed information about a specific lead including notes and timeline.",
+    description: "Get detailed information about a specific lead including notes and timeline, and `reachability` (which of text, call, email and mail are usable now, and why not).",
     parameters: {
       type: "object",
       properties: {
@@ -1008,6 +1009,16 @@ export const toolDefinitions = {
       },
     },
   },
+  get_finance_summary: {
+    name: "get_finance_summary",
+    description: "Read-only: what Finance has RECORDED for a period — completed borrower payments received (total, principal, interest, fees, late fees) and the acquisition/improvement costs entered on properties bought in the period. It does not compute profit (there is no operating-expense ledger); say what is recorded and what is not. Use for 'what did I collect this year' and 'am I profitable' (answer with the recorded figures and the gap).",
+    parameters: {
+      type: "object",
+      properties: {
+        period: { type: "string", enum: ["this_year", "last_year", "this_quarter", "this_month", "last_30_days"], description: "Default this_year" },
+      },
+    },
+  },
   get_plan_limits: {
     name: "get_plan_limits",
     description: "Get the organization's plan, its caps and current usage (leads, properties, notes, campaigns, monthly Pax messages), seats used and available, the CSV import row cap and the daily export cap.",
@@ -1020,11 +1031,11 @@ export const toolDefinitions = {
   },
   get_product_facts: {
     name: "get_product_facts",
-    description: "Get authoritative AcreOS product facts for how-to answers: CSV import row caps and where Import lives, export caps and where Export lives, team roles (including the va role and assigned-leads-only), the five-door navigation, what each send channel requires (own Twilio number and its plan requirement, email identity, return address) and per-send prices, and how to cancel. Cite these instead of guessing.",
+    description: "Get authoritative AcreOS product facts for how-to answers: CSV import row caps and where Import lives, export caps and where Export lives, team roles (including the va role and assigned-leads-only), the five-door navigation, what each send channel requires (own Twilio number and its plan requirement, email identity, return address) and per-send prices, how to record a borrower payment on a note, sequences and the consent rules each step runs under, and how to cancel and what happens to your data. Cite these instead of guessing.",
     parameters: {
       type: "object",
       properties: {
-        topic: { type: "string", enum: ["imports", "exports", "roles", "navigation", "sending", "billing", "all"], description: "Which facts (default all)" },
+        topic: { type: "string", enum: ["imports", "exports", "roles", "navigation", "sending", "billing", "payments", "sequences", "cancellation", "all"], description: "Which facts (default all)" },
       },
     },
   },
@@ -1130,6 +1141,7 @@ export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
   "get_inbox_replies",
   "get_team_activity",
   "get_plan_limits",
+  "get_finance_summary",
   "get_sending_identity_status",
   "get_product_facts",
   // Reaching a person must work while Pax is paused (same rule as the support
@@ -1188,7 +1200,7 @@ export interface ExecuteToolOptions {
   scheduledTask?: { id: number; name: string } | null;
 }
 
-type ToolResult = { success: boolean; data?: any; error?: string };
+type ToolResult = { success: boolean; data?: any; error?: string; reachabilitySummary?: unknown };
 
 const positiveInt = (v: unknown): number | null => {
   if (typeof v === "number" && Number.isInteger(v) && v > 0) return v;
@@ -1419,7 +1431,7 @@ export async function executeTool(
               error:
                 `You do not have permission to do that here. "${toolName}" requires ` +
                 `the "${declaredScope}" permission in this workspace. An owner or ` +
-                `admin can grant it under Settings → Team.`,
+                `admin can grant it under ${PLACE_TEXT.teamRoles}.`,
             };
           }
         }
@@ -1473,6 +1485,7 @@ export async function executeTool(
     const outcome: ToolResult = await (async (): Promise<ToolResult> => {
     switch (toolName) {
       case "get_leads": {
+        const { leadReachabilityForPax, summarizeReachabilityForPax } = await import("../services/paxLeadReachability");
         const leads = await storage.getLeads(org.id);
         let filtered = leads;
         if (args.status) {
@@ -1509,16 +1522,21 @@ export async function executeTool(
           nurturingStage: l.nurturingStage ?? null,
           doNotContact: Boolean(l.doNotContact),
           tcpaConsent: Boolean(l.tcpaConsent),
+          // Which channels can actually reach this lead now (consent + DNC +
+          // a number/address to send to), by the send paths' own predicates.
+          reachability: leadReachabilityForPax(l),
           notes: l.notes
-        })) };
+        })), reachabilitySummary: summarizeReachabilityForPax(filtered.map(leadReachabilityForPax)) };
       }
       
       case "get_lead_details": {
+        const { leadReachabilityForPax } = await import("../services/paxLeadReachability");
         const lead = await storage.getLead(org.id, args.lead_id);
         if (!lead) return { success: false, error: "Lead not found" };
         return { success: true, data: {
           ...lead,
-          name: `${lead.firstName} ${lead.lastName}`
+          name: `${lead.firstName} ${lead.lastName}`,
+          reachability: leadReachabilityForPax(lead),
         }};
       }
       
@@ -1769,6 +1787,11 @@ export async function executeTool(
           success: true,
           data: await readTeamActivityForPax(org.id, { days: args.days, role: args.role, ownerUserId: org.ownerId ?? null }),
         };
+      }
+
+      case "get_finance_summary": {
+        const { readFinanceSummaryForPax } = await import("../services/paxAccountReads");
+        return { success: true, data: await readFinanceSummaryForPax(org.id, { period: args.period }) };
       }
 
       case "get_plan_limits": {
