@@ -94,7 +94,10 @@ for (const [name, re, perWeek] of MIX) {
   const rs = find(re);
   if (rs.length === 0) { md += `| ${name} | ${perWeek} | 0 | NOT RUN | — | — |\n`; continue; }
   // S1's row is already per-week minutes; other rows are per event.
-  const e = rs.reduce((a, r) => a + (r.outcome === "ESCALATED" || r.outcome === "REFUSED-CORRECTLY" ? r.founderMinutes : 0), 0) * perWeek;
+  // Every minute a row costs the founder counts, whatever its outcome: a
+  // HANDLED ask stream still has its asks (S1-team prices them per week), and
+  // a HANDLED signup can still have put an inbox card in front of him.
+  const e = rs.reduce((a, r) => a + (r.outcome !== "DROPPED" ? r.founderMinutes : 0), 0) * perWeek;
   const c = rs.reduce((a, r) => a + (r.outcome === "DROPPED" ? 15 : 0), 0) * perWeek;
   escalated += e;
   cover += c;
