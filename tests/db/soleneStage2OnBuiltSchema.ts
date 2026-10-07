@@ -292,6 +292,23 @@ async function main(): Promise<void> {
       check((await listUncertainRefunds()).some((r) => r.id === unc.id && r.why === "timeout"), "an uncertain refund is listed for the founder's Decisions door");
       await db.delete(creditTransactions).where(eq(creditTransactions.id, unc.id));
 
+      // An INTERRUPTED refund (process died between claim and outcome) surfaces
+      // after 10 minutes; a fresh claim does not; the founder resolves one,
+      // recorded, and the payment is still never refunded again.
+      const piInt = `${pi}_int`;
+      await db.insert(creditTransactions).values({ organizationId: o.id, type: "purchase", amountCents: 3000, balanceAfterCents: 3000, description: tag, stripePaymentIntentId: piInt });
+      const [stale] = await db.insert(creditTransactions).values({ organizationId: o.id, type: "purchase_refund", amountCents: -1000, balanceAfterCents: 2000, description: tag, stripePaymentIntentId: piInt, metadata: { state: "claimed" }, createdAt: new Date(Date.now() - 15 * 60_000) }).returning({ id: creditTransactions.id });
+      const [fresh] = await db.insert(creditTransactions).values({ organizationId: o.id, type: "purchase_refund", amountCents: -1000, balanceAfterCents: 2000, description: tag, stripePaymentIntentId: `${pi}_fresh`, metadata: { state: "claimed" } }).returning({ id: creditTransactions.id });
+      const { resolveUncertainRefund } = await import("../../server/services/autopilot/hands/apply-refund");
+      const listed = await listUncertainRefunds();
+      check(listed.some((r) => r.id === stale.id && /interrupted/.test(r.why ?? "")) && !listed.some((r) => r.id === fresh.id), "a claim with no outcome after 10 minutes is listed as interrupted; a fresh claim is not");
+      check(await resolveUncertainRefund(o.id, stale.id, founder, "refund seen on Stripe"), "the founder can resolve an uncertain refund");
+      const [resolved] = await db.select({ metadata: creditTransactions.metadata }).from(creditTransactions).where(eq(creditTransactions.id, stale.id));
+      check((resolved?.metadata as { state?: string; resolvedBy?: string } | null)?.resolvedBy === founder && !(await listUncertainRefunds()).some((r) => r.id === stale.id), "resolving is recorded (who) and removes it from the list");
+      const again = await executeHandWitnessed("apply_refund", { charge_id: piInt, amount_cents: 1000, organization_id: o.id }, founder);
+      check(!again.success && /never twice/.test(again.output), "a resolved payment is still never refunded again");
+      await db.delete(creditTransactions).where(inArray(creditTransactions.id, [stale.id, fresh.id]));
+
       // Refunded OUTSIDE the autopilot (a credit_transactions refund row for the payment).
       const [outside] = await db.insert(creditTransactions).values({ organizationId: o.id, type: "refund", amountCents: 500, balanceAfterCents: 3500, description: tag, stripePaymentIntentId: pi }).returning({ id: creditTransactions.id });
       const recorded = await executeHandWitnessed("apply_refund", { charge_id: pi, amount_cents: 1000, organization_id: o.id }, founder);

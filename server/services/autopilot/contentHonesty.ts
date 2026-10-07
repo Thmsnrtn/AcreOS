@@ -176,23 +176,49 @@ const QTY = new RegExp(String.raw`(?<![\p{L}\d])(${NUM})(?![\p{L}])`, "giu");
 const BOUND_AFTER = /^\s*(?:%|percent\b|per\s?cent\b|pct\b|por\s+ciento\b|pour\s+cent\b|k\b|grand\b|figures?\b|x\b|times\b|fold\b|-fold\b|dollars?\b|bucks\b|usd\b|euros?\b|pounds?\b|(?:\/|per\b|a\b|an\b|each\b|every\b)\s*(?:day|week|month|year|deal|flip|parcel|acre)\b|(?:in|out of|of)\s+(?:every\s+)?(?:\d|\b(?:ten|five|four|three|twenty|hundred|diez|dix)\b))/iu;
 const BOUND_BEFORE = /(?:[$€£]\s?|\b(?:usd|eur)\s?)$/iu;
 /** Outcome / comparative verbs (and their participles) in the same clause. */
-const OUTCOME_VERB = /\b(?:earn\w*|sav(?:e|es|ed|ing)|clos(?:e|es|ed|ing)|return\w*|ris(?:e|es|ing)|rose|grow\w*|grew|cut\w*|doubl\w*|tripl\w*|quadrupl\w*|halv\w*|beat\w*|outperform\w*|los(?:e|es|ing)|lost|gain\w*|boost\w*|increas\w*|decreas\w*|drop\w*|fall\w*|fell|reduc\w*|profit\w*|net(?:s|ted)?|sell\w*|sold|overpay\w*|underpay\w*|skip\w*|win\w*|won|ganan?\w*|ahorr\w*|pierd\w*|gagn\w*|économis\w*|perd\w*|paga\w*|pagan)\b|\b(?:more|less|fewer|faster|slower|cheaper|higher|lower|better|worse|on average|the average|median|más|menos|plus de|moins de)\b/iu;
+const OUTCOME_VERB = /\b(?:earn\w*|sav(?:e|es|ed|ing)|clos(?:e|es|ed|ing)|return\w*|ris(?:e|es|ing)|rose|grow\w*|grew|cut\w*|doubl\w*|tripl\w*|quadrupl\w*|quintupl\w*|multipl\w*|\w+-fold|halv\w*|beat\w*|outperform\w*|los(?:e|es|ing)|lost|gain\w*|boost\w*|increas\w*|decreas\w*|drop\w*|fall\w*|fell|reduc\w*|profit\w*|net(?:s|ted)?|sell\w*|sold|overpay\w*|underpay\w*|skip\w*|win\w*|won|ganan?\w*|ahorr\w*|pierd\w*|gagn\w*|économis\w*|perd\w*|paga\w*|pagan)\b|\b(?:more|less|fewer|faster|slower|cheaper|higher|lower|better|worse|on average|the average|median|más|menos|plus de|moins de)\b/iu;
 /** A counted population. */
 const POPULATION = /^\s*(?:[\p{L}-]+\s+){0,2}?(?:of\s+(?:the\s+|our\s+|all\s+)?(?:[\p{L}-]+\s+)?)?(?:buyers?|investors?|customers?|clients?|owners?|landowners?|flippers?|sellers?|users?|people|members?|agents?|brokers?|families|deals?|parcels?|properties|subscribers?|compradores|inversores|inversionistas|clientes|propietarios|vendedores|acheteurs|investisseurs|propriétaires|vendeurs)\b/iu;
 /** Multipliers that are claims on their own. */
-const MULTIPLIER = /\b(?:twice|thrice)\s+as\b|\b\d+(?:\.\d+)?\s?x\b|\b(?:doubl|tripl|quadrupl|halv)(?:ed|es|ing)\b/iu;
+const MULTIPLIER = /\b(?:twice|thrice)\s+as\b|\b\d+(?:\.\d+)?\s?x\b|\b(?:doubl|tripl|quadrupl|quintupl|halv)(?:ed|es|ing)\b|\b(?:two|three|four|five|six|seven|eight|nine|ten|hundred|\d+)-?fold\b/iu;
+/** A value the user is configuring, not a claim about the world. */
+const SETTING_BEFORE = /\b(?:set|sets|setting|change|changing|enter|entering|type|choose|pick|configure|adjust|use|lower|raise)\b[^.;:]{0,40}\b(?:to|at|of)\s*$/iu;
+/** A service window ("within 24 hours", "in 2 business days"). */
+const DURATION_AFTER = /^\s*-?\s*(?:business\s+|working\s+)?(?:seconds?|minutes?|mins?|hours?|hrs?|days?|weeks?)\b(?!\s*(?:faster|sooner|quicker|earlier|less|more))/iu;
+/** A count of the user's own records or product objects. */
+const RECORD_AFTER = /^\s*(?:new\s+|more\s+)?(?:leads?|rows?|records?|tickets?|credits?|contacts?|files?|items?|entries|columns?|fields?|templates?|campaigns?|letters?|mailers?|seats?|team\s+members?|duplicates?|errors?|warnings?|attachments?)\b/iu;
+/** "…, 2 skipped" after a record count in the same list. */
+const RECORD_LIST_BEFORE = /\b\d+\s+(?:leads?|rows?|records?|contacts?|files?|items?|entries)\b[^.;]{0,40},\s*$/iu;
+/** Fixed idioms that carry a number word but no claim. */
+const IDIOM_AFTER = /^\s*the\s+(?:battle|fun|story|time)\b/iu;
+
 /** Not claims: ordinals, durations, frequency, "one of", "a single", "most common". */
 const BENIGN_AFTER = /^\s*(?:of\s+(?:the|our|your|these|those|its|his|her|their)\b|common\b|important\b|popular\b|likely\b|useful\b)/iu;
+
+/** A share / rate / percentage named with a number word is a statistic, whatever the order. */
+const SHARE_NOUN = /\b(?:share|rate|percentage|proportion|fraction|ratio|odds|tasa|porcentaje|taux|pourcentage)\b/iu;
 
 function boundClaim(clause: string): string | null {
   const m0 = MULTIPLIER.exec(clause);
   if (m0) return m0[0];
+  if (SHARE_NOUN.test(clause)) {
+    QTY.lastIndex = 0;
+    const w = [...clause.matchAll(QTY)].find((x) => !/^\d/.test(x[1]) && !/^(?:most|half)$/i.test(x[1]) && !/^(?:first|second|third)$/i.test(x[1]));
+    if (w) return w[1];
+  }
   QTY.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = QTY.exec(clause)) != null) {
     const q = m[1];
     const before = clause.slice(0, m.index);
     const after = clause.slice(m.index + m[0].length);
+    // Not claims (support over-refusal, round 4): a value the user is
+    // SETTING ("set your offer to 30% of the comp"), a service window
+    // ("within 24 hours"), a count of the user's own records ("48 leads
+    // added, 2 skipped"), and fixed idioms ("half the battle").
+    if (SETTING_BEFORE.test(before)) continue;
+    if (!/\d\s?[kKmM]$/.test(q) && (DURATION_AFTER.test(after) || RECORD_AFTER.test(after) || IDIOM_AFTER.test(after))) continue;
+    if (/^\d+$/.test(q) && RECORD_LIST_BEFORE.test(before)) continue;
     if (/\d\s?[kKmM]$/.test(q) || BOUND_AFTER.test(after) || BOUND_BEFORE.test(before)) return `${before.slice(-2)}${q}${after.slice(0, 12)}`.trim();
     if (BENIGN_AFTER.test(after) && !/\d/.test(q)) continue;
     if (POPULATION.test(after)) return `${q}${after.slice(0, 24)}`.trim();

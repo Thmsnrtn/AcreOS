@@ -104,6 +104,8 @@ export interface AnswerFounderInput {
    * it no longer matches the stored card.
    */
   expectedBodyHash?: string;
+  /** Set by the chat: the guarded update then also requires chat_approvable. */
+  viaChat?: boolean;
   answerText?: string;
   chosenOptionId?: string;
 }
@@ -459,6 +461,9 @@ export async function answerFounderAsk(
         // The card answered is the card stored — a body rewritten between the
         // read above and this write leaves the ask open.
         ...(input.expectedBodyHash != null ? [eq(soleneFounderAsks.bodyHash, input.expectedBodyHash)] : []),
+        // A chat answer lands only on a card that is STILL chat-approvable at
+        // the instant of the write (a fold may have revoked it since the read).
+        ...(input.viaChat ? [eq(soleneFounderAsks.chatApprovable, true)] : []),
       ),
     )
     .returning({ id: soleneFounderAsks.id });

@@ -101,15 +101,24 @@ export async function refundEligibility(input: Record<string, unknown>): Promise
 
 class RefundRefused extends Error {}
 
+/** A claim still "claimed" this long after it was written was interrupted. */
+const INTERRUPTED_AFTER_MS = 10 * 60 * 1000;
+const PLATFORM_REFUNDS = "Decisions door: refunds the autopilot could not confirm, across every org, for the founder to check";
+
 /**
- * Refunds whose outcome is uncertain (the refund call was made but did not
- * return, or its record could not be written) — listed on the Decisions door
- * so the founder sees them even if the ask about them failed. Platform-scope
- * by design: the founder's own queue across every org.
+ * Refunds whose outcome is uncertain — listed on the Decisions door so the
+ * founder sees each one even if the ask about it failed:
+ *   • state "uncertain": the refund call was made but did not return, or its
+ *     record could not be written;
+ *   • state "claimed" for more than 10 minutes: the process stopped between
+ *     the claim and any outcome (the read IS the sweep — nothing has to run
+ *     for an interrupted refund to surface).
+ * The claim row stays either way, so the payment is never refunded twice.
  */
-export async function listUncertainRefunds(limit = 50): Promise<Array<{ id: number; organizationId: number; chargeId: string | null; createdAt: Date | null; why: string | null }>> {
+export async function listUncertainRefunds(limit = 50, now = Date.now()): Promise<Array<{ id: number; organizationId: number; chargeId: string | null; createdAt: Date | null; why: string | null }>> {
   const { unscopedForPlatformOps } = await import("../../../utils/orgScopedDb");
-  const rows = await unscopedForPlatformOps("Decisions door: refunds the autopilot could not confirm, across every org, for the founder to check")
+  const cutoff = new Date(now - INTERRUPTED_AFTER_MS);
+  const rows = await unscopedForPlatformOps(PLATFORM_REFUNDS)
     .select({
       id: creditTransactions.id,
       organizationId: creditTransactions.organizationId,
@@ -118,9 +127,47 @@ export async function listUncertainRefunds(limit = 50): Promise<Array<{ id: numb
       metadata: creditTransactions.metadata,
     })
     .from(creditTransactions)
-    .where(and(eq(creditTransactions.type, "purchase_refund"), sql`${creditTransactions.metadata}->>'state' = 'uncertain'`))
+    .where(
+      and(
+        eq(creditTransactions.type, "purchase_refund"),
+        sql`(${creditTransactions.metadata}->>'state' = 'uncertain' or (${creditTransactions.metadata}->>'state' = 'claimed' and ${creditTransactions.createdAt} < ${cutoff}))`,
+      ),
+    )
     .limit(limit);
-  return rows.map((r) => ({ id: r.id, organizationId: r.organizationId, chargeId: r.chargeId, createdAt: r.createdAt, why: (r.metadata as { uncertainBecause?: string } | null)?.uncertainBecause ?? null }));
+  return rows.map((r) => {
+    const m = (r.metadata ?? {}) as { state?: string; uncertainBecause?: string };
+    return {
+      id: r.id,
+      organizationId: r.organizationId,
+      chargeId: r.chargeId,
+      createdAt: r.createdAt,
+      why: m.state === "claimed" ? "interrupted: claimed but no outcome was recorded" : (m.uncertainBecause ?? null),
+    };
+  });
+}
+
+/**
+ * The founder has checked an uncertain refund on Stripe: record that he
+ * resolved it (who, when, what he found). The claim row STAYS — the payment
+ * is still never refunded again by the autopilot. Founder-only (the route).
+ */
+export async function resolveUncertainRefund(organizationId: number, id: number, by: string, note: string): Promise<boolean> {
+  const { unscopedForPlatformOps } = await import("../../../utils/orgScopedDb");
+  const db2 = unscopedForPlatformOps(PLATFORM_REFUNDS);
+  const [row] = await db2
+    .select({ metadata: creditTransactions.metadata })
+    .from(creditTransactions)
+    .where(and(eq(creditTransactions.organizationId, organizationId), eq(creditTransactions.id, id), eq(creditTransactions.type, "purchase_refund")))
+    .limit(1);
+  const state = (row?.metadata as { state?: string } | null)?.state;
+  if (!row || (state !== "uncertain" && state !== "claimed")) return false;
+  const updated = await db2
+    .update(creditTransactions)
+    .set({ metadata: { ...(row.metadata as Record<string, unknown>), state: "resolved_by_founder", resolvedBy: by, resolvedAt: new Date().toISOString(), resolution: note.slice(0, 1000) } })
+    .where(and(eq(creditTransactions.organizationId, organizationId), eq(creditTransactions.id, id), eq(creditTransactions.type, "purchase_refund")))
+    .returning({ id: creditTransactions.id });
+  if (updated.length > 0) logger.warn(`[autopilot/hands] uncertain refund #${id} (org #${organizationId}) resolved by ${by}: ${note.slice(0, 200)}`);
+  return updated.length > 0;
 }
 
 /**
@@ -172,7 +219,10 @@ async function claimRefund(e: Eligible, approvedBy: string | null): Promise<{ cl
           balanceAfterCents: balanceAfter,
           description: `Refund of purchase ${e.chargeId}: purchased credits returned`,
           stripePaymentIntentId: e.chargeId,
-          metadata: { refundAmountCents: e.amountCents, approvedBy },
+          // "claimed" until an outcome is written: a claim that is still
+          // "claimed" minutes later was interrupted mid-refund and is listed
+          // as uncertain for the founder (listUncertainRefunds).
+          metadata: { refundAmountCents: e.amountCents, approvedBy, state: "claimed", claimedAt: new Date().toISOString() },
         })
         .returning({ id: creditTransactions.id });
       return { claimId: claim.id, clawedCents };

@@ -177,6 +177,11 @@
     },
     {
       "kind": "export",
+      "id": "server/services/autopilot/policyInducer.ts::policyProposalSummary",
+      "reason": "TEST-INTROSPECTION SEAM (2026-10-07). The card summary runPolicyInduction (same module) gives every policy proposal; asks fold by summary, so it must name the play. Exported so autopilotPolicyInducer.test.ts pins that two plays never share a card. REVOCATION: if a second production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
       "id": "server/services/solene/chat/businessTools.ts::isUndelegableAsk",
       "reason": "TEST-INTROSPECTION SEAM (Stage 2, 2026-10-07). The hard-stop classifier answer_ask consults inside executeBusinessChatTool (the production consumer). Exported so soleneStage2Guards.test.ts pins which asks the chat may never answer for the founder. REVOCATION: if a second production module imports it, remove this entry."
     },

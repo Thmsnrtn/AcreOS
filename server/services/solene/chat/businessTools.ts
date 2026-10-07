@@ -166,7 +166,7 @@ export async function executeBusinessChatTool(
         const version = typeof input.version === "string" ? input.version : "";
         if (!version) return { ok: false, text: `Ask #${askId}: show the founder the card first (list_open_asks) and answer with the version you showed.` };
         if (version !== ask.bodyHash) return { ok: false, text: `Ask #${askId} changed since you showed it — show the current card to the founder before answering.` };
-        await answerFounderAsk({ askId, answerText: decision, expectedBodyHash: version });
+        await answerFounderAsk({ askId, answerText: decision, expectedBodyHash: version, viaChat: true });
         logger.info("[soleneChat] business tool answered an ask", { metadata: { askId, decision, founderUserId } });
         return { ok: true, text: `Ask #${askId} ${decision === "yes" ? "approved — an approved autopilot move is queued to run" : "declined — it stays held"}.` };
       }

@@ -44,6 +44,11 @@ const REFUSED: string[] = [
   "Most land flippers lose money on their first deal.",
   "Time to offer dropped from 9 days to 2.",
   "Sellers accept 3x more cash offers.",
+  // round 4: multiplier verbs and share / rate nouns with number words
+  "Their close rate tripled after the switch.",
+  "Buyers saw a fourfold return on the first flip.",
+  "Our acceptance rate is ninety out of a hundred.",
+  "The share of buyers who skip title work is about one third.",
   // reported speech
   "One customer told me it changed everything.",
   "My neighbor told me the county never checks.",
@@ -73,6 +78,19 @@ const PASSES: Array<string | [string, { allowDollarFigures: string[] }]> = [
   "The seller said the road is public, so ask for the recorded easement.",
   "Most of the work is in the title search.",
   "One of our customers asked about road access, so here is the checklist.",
+  // round 4 — the auditor's support over-refusals
+  "We'll reply within 24 hours.",
+  "We'll fix the import within 2 days and close your ticket.",
+  "48 leads added, 2 skipped.",
+  "Half the battle is finding legal access.",
+  "Set your offer to 30% of the comp value.",
+  // round 4 — ordinary support replies of our own
+  "Your import finished: 120 rows imported, 3 rows skipped.",
+  "You have 40 credits left this month.",
+  "We'll get back to you in 2 business days.",
+  "I've added 12 contacts to your Deals list.",
+  "Change the mailer quantity to 500 in Campaign settings.",
+  "Ticket #88 has 2 attachments, and I've read both.",
   '<p>Farmland is 39% of US land area (<a href="https://www.nass.usda.gov/AgCensus/">Census of Agriculture</a>).</p>',
   '<p>Farmland is 39% of US land area, according to the <a href="https://www.nass.usda.gov/AgCensus/">USDA</a>.</p>',
 ];

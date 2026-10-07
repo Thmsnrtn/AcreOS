@@ -244,7 +244,7 @@ describe("chat business tools — hard-stops are un-delegable", () => {
     answerSpy.mockClear();
     const r = await executeBusinessChatTool("answer_ask", { ask_id: 5, decision: "approve", version: "v5" }, "f");
     expect(r.ok).toBe(true);
-    expect(answerSpy).toHaveBeenCalledWith({ askId: 5, answerText: "yes", expectedBodyHash: "v5" });
+    expect(answerSpy).toHaveBeenCalledWith({ askId: 5, answerText: "yes", expectedBodyHash: "v5", viaChat: true });
   });
   it("refuses a budget over $500", async () => {
     const r = await executeBusinessChatTool("set_budget", { monthly_usd: 2000 }, "f");

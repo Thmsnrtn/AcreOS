@@ -14,9 +14,12 @@ const state = {
   asks: new Map<number, Ask>(),
   experiences: [] as Array<{ id: number; askId: number; moveKind: string; domain: string; dispatchId: number | null; reasoningTrace: unknown }>,
   dispatches: [] as Array<{ id: number; idempotencyKey: string | null; sourceId: string; promptText: string; enqueuedBy?: string }>,
+  updateSql: [] as string[],
 };
 
-vi.mock("../../server/db", () => {
+vi.mock("../../server/db", async () => {
+  const { PgDialect } = await import("drizzle-orm/pg-core");
+  const dialect = new PgDialect();
   // Only the two shapes answerFounderAsk uses: getAsk (select…limit) and the
   // status flip (update…set…where). The flip applies to the ask under test.
   let currentAskId = 0;
@@ -38,7 +41,8 @@ vi.mock("../../server/db", () => {
         set: (patch: { status?: string }) => ({
           // The guarded UPDATE: exactly one caller flips open → answered and
           // gets the row back; a loser gets [] (as the database does).
-          where: () => {
+          where: (pred: unknown) => {
+            state.updateSql.push(dialect.sqlToQuery(pred as never).sql);
             const flip = () => {
               const a = state.asks.get(currentAskId);
               if (a && a.status === "open" && patch.status) {
@@ -238,5 +242,17 @@ describe("concurrent answers: exactly one wins and only it acts", () => {
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     expect(vi.mocked(experienceLog.recordFounderVerdict)).toHaveBeenCalledTimes(1);
     expect(state.dispatches).toHaveLength(0); // the decline won (it flipped first)
+  });
+});
+
+describe("a chat answer lands only on a card still chat-approvable at the write", () => {
+  it("the guarded update for a chat answer requires chat_approvable; the founder's own does not", async () => {
+    seed(40);
+    state.updateSql.length = 0;
+    await answerFounderAsk({ askId: 40, answerText: "no", expectedBodyHash: "v40", viaChat: true });
+    expect(state.updateSql.at(-1)).toContain(`"chat_approvable"`);
+    seed(41);
+    await answerFounderAsk({ askId: 41, answerText: "no", expectedBodyHash: "v41" });
+    expect(state.updateSql.at(-1)).not.toContain(`"chat_approvable"`);
   });
 });

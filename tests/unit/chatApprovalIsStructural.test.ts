@@ -113,7 +113,7 @@ describe("chat approval is structural", () => {
     expect(store.answered).toHaveLength(0);
     const ok = await executeBusinessChatTool("answer_ask", { ask_id: 2, decision: "approve", version: "h1" }, "f");
     expect(ok.ok).toBe(true);
-    expect(store.answered).toEqual([{ askId: 2, answerText: "yes", expectedBodyHash: "h1" }]);
+    expect(store.answered).toEqual([{ askId: 2, answerText: "yes", expectedBodyHash: "h1", viaChat: true }]);
   });
 
   it("a pre-mortem card is never chat-approvable, even for a server-authored move", async () => {

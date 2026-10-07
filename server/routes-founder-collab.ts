@@ -25,6 +25,7 @@
  * wires registerFounderCollabRoutes in follow-up.
  */
 
+import { getUserId } from "./types/request";
 import type { Express, Response } from "express";
 import { isAuthenticated, requireFounder } from "./auth";
 import type { AuthenticatedRequest } from "./types/request";
@@ -97,28 +98,54 @@ export function registerFounderCollabRoutes(app: Express): void {
           total = Number(n);
         }
 
-        // Refunds whose outcome is uncertain sit beside the open asks, so the
-        // founder sees each one even if the ask about it could not be raised.
-        let uncertainRefunds: Awaited<ReturnType<typeof import("./services/autopilot/hands/apply-refund")["listUncertainRefunds"]>> = [];
-        if (status === "open") {
-          try {
-            const { listUncertainRefunds } = await import("./services/autopilot/hands/apply-refund");
-            uncertainRefunds = await listUncertainRefunds();
-          } catch (err) {
-            logger.error("[founder-collab] uncertain-refund read failed", { err: String(err) });
-          }
-        }
-
         return res.json({
           asks: rows,
           count: rows.length,
           total,
-          uncertainRefunds,
         });
       } catch (err) {
         logger.error("[founder-collab] list-asks failed", {
           err: String(err),
         });
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Uncertain refunds — their own endpoint, so an error loading the asks can
+  // never hide them (and vice versa). Founder-only; resolving is recorded.
+  // ────────────────────────────────────────────────────────────────────────
+  app.get(
+    "/api/founder/refunds/uncertain",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { listUncertainRefunds } = await import("./services/autopilot/hands/apply-refund");
+        return res.json({ refunds: await listUncertainRefunds() });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.post(
+    "/api/founder/refunds/:id/resolve",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) return Errors.badRequest(res, "Invalid refund id");
+      const organizationId = Number(req.body?.organizationId);
+      if (!Number.isInteger(organizationId) || organizationId <= 0) return Errors.badRequest(res, "organizationId required");
+      const note = typeof req.body?.note === "string" && req.body.note.trim() ? req.body.note.trim() : "checked on Stripe";
+      try {
+        const { resolveUncertainRefund } = await import("./services/autopilot/hands/apply-refund");
+        const ok = await resolveUncertainRefund(organizationId, id, getUserId(req), note);
+        if (!ok) return Errors.notFound(res, "Uncertain refund");
+        return res.json({ ok: true });
+      } catch (err) {
         return Errors.internal(res, err);
       }
     },

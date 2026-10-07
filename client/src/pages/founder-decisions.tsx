@@ -721,12 +721,63 @@ interface DefectsResponse {
  * Asks now open in a dialog here, and carry their own `?ask=` param so an ask id
  * can never be read as a decision-log id again.
  */
+/**
+ * Refunds the autopilot could not confirm (the refund call did not return, or
+ * the process stopped mid-refund). Its OWN query and its own render: an error
+ * loading the asks can never hide it. The founder resolves each one after
+ * checking Stripe; the payment is still never refunded again.
+ */
+function UncertainRefundsSection() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data, isError, refetch } = useQuery<{ refunds: Array<{ id: number; organizationId: number; chargeId: string | null; why: string | null }> }>({
+    queryKey: ["/api/founder/refunds/uncertain"],
+    staleTime: 30_000,
+  });
+  const resolve = useMutation({
+    mutationFn: async (r: { id: number; organizationId: number }) => {
+      const res = await apiRequest("POST", `/api/founder/refunds/${r.id}/resolve`, { organizationId: r.organizationId, note: "checked on Stripe" });
+      if (!res.ok) throw new Error(`Couldn't resolve (${res.status})`);
+      return res.json();
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["/api/founder/refunds/uncertain"] });
+      toast({ title: "Marked as checked" });
+    },
+    onError: (err) => toast({ title: "Couldn't resolve", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
+  });
+  if (isError) {
+    return <QueryErrorState error={new Error("Uncertain refunds could not be loaded")} title="Refunds to check" onRetry={() => void refetch()} />;
+  }
+  const refunds = data?.refunds ?? [];
+  if (refunds.length === 0) return null;
+  return (
+    <Card className="border-l-4 border-l-destructive" data-testid="decisions-uncertain-refunds">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Refunds to check on Stripe ({refunds.length})</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {refunds.map((r) => (
+          <div key={r.id} className="flex items-center justify-between gap-3">
+            <p className="text-sm text-foreground min-w-0">
+              {r.chargeId ?? "unknown payment"} · org #{r.organizationId}
+              {r.why ? <span className="text-muted-foreground"> — {r.why}</span> : null}
+            </p>
+            <Button size="sm" variant="outline" className="shrink-0" onClick={() => resolve.mutate({ id: r.id, organizationId: r.organizationId })} disabled={resolve.isPending} aria-label={`Mark refund of ${r.chargeId ?? r.id} as checked`}>
+              Checked
+            </Button>
+          </div>
+        ))}
+        <p className="text-xs text-muted-foreground">The autopilot will never refund these payments again; check each on Stripe, then mark it checked.</p>
+      </CardContent>
+    </Card>
+  );
+}
+
 function OpenAsksSection() {
   const { data } = useQuery<{
     asks: Array<{ id: number; questionSummary: string; askingAgentRole: string; urgency: "urgent" | "normal" | "low"; askedAt: string }>;
     count: number;
-    /** Refunds whose outcome the autopilot could not confirm — always shown. */
-    uncertainRefunds?: Array<{ id: number; organizationId: number; chargeId: string | null; why: string | null }>;
   }>({
     queryKey: ["/api/founder/asks?status=open&limit=10"],
     staleTime: 30_000,
@@ -772,27 +823,8 @@ function OpenAsksSection() {
     });
   };
 
-  const uncertain = data?.uncertainRefunds ?? [];
-  if (!data || (data.count === 0 && uncertain.length === 0)) return null;
+  if (!data || data.count === 0) return null;
   return (
-    <>
-    {uncertain.length > 0 && (
-      <Card className="border-l-4 border-l-destructive" data-testid="decisions-uncertain-refunds">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Refunds to check on Stripe ({uncertain.length})</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-1">
-          {uncertain.map((r) => (
-            <p key={r.id} className="text-sm text-foreground">
-              {r.chargeId ?? "unknown payment"} · org #{r.organizationId}
-              {r.why ? <span className="text-muted-foreground"> — {r.why}</span> : null}
-            </p>
-          ))}
-          <p className="text-xs text-muted-foreground">The autopilot will never refund these payments again; check each on Stripe.</p>
-        </CardContent>
-      </Card>
-    )}
-    {data.count > 0 && (
     <Card className="border-l-4 border-l-primary" data-testid="decisions-open-asks">
       <CardHeader className="pb-2">
         <CardTitle className="text-base flex items-center gap-2">
@@ -887,8 +919,6 @@ function OpenAsksSection() {
         />
       </CardContent>
     </Card>
-    )}
-    </>
   );
 }
 
@@ -1185,6 +1215,7 @@ export default function FounderDecisionsPage() {
       <WitnessedSendQueue />
 
       {/* Open agent questions — same renders-only-when-waiting contract. */}
+      <UncertainRefundsSection />
       <OpenAsksSection />
 
       {/* A failed read is not an empty queue (DEFECT-0167): the list below

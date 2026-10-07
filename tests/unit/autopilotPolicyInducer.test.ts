@@ -53,3 +53,13 @@ describe("autopilot policy inducer — propose durable policy from patterns", ()
     expect(detectPlayProposal("x", [p, p, p, p, p])).toBeNull();
   });
 });
+
+describe("policy proposal cards", () => {
+  it("two trust proposals for different plays never share a summary (so they never fold into one card)", async () => {
+    const { policyProposalSummary } = await import("../../server/services/autopilot/policyInducer");
+    const a = policyProposalSummary("trust_play", "growth", "field-notes");
+    const b = policyProposalSummary("trust_play", "growth", "parcel-check");
+    expect(a).not.toBe(b);
+    expect(a).toContain("field-notes");
+  });
+});
