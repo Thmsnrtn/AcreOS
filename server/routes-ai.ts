@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Response } from "express";
 import { z } from "zod";
 import { insertAgentConfigSchema } from "@shared/schema";
 import { isAuthenticated, requireFounder } from "./auth";
@@ -15,10 +15,46 @@ import type { SubscriptionTier } from "./services/usageLimits";
 import { aiLimiter } from "./middleware/rateLimit";
 import { paxChatGuard } from "./middleware/expensiveEndpointGuard";
 import { requirePaxDisclosure } from "./middleware/requirePaxDisclosure";
+import { promptRedactionOf } from "./middleware/promptInjection";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { createUploadMiddleware } from "./middleware/fileUploadSecurity";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
+
+/** Did the input filter remove part of the customer's `message`? */
+function inputRedactionFor(res: Response): { instructionProbe: boolean } | null {
+  const r = promptRedactionOf(res);
+  return r && r.fields.includes("message") ? { instructionProbe: r.instructionProbe } : null;
+}
+
+/**
+ * Word a pre-call screener refusal for the customer (reason + safe
+ * alternative). Never throws: a failure here falls back to a plain refusal,
+ * because the request is refused either way.
+ */
+async function paxRefusalFor(
+  organizationId: number,
+  immutableNumber: number | null,
+  promptText: string,
+): Promise<{ kind: string; message: string }> {
+  try {
+    const [{ customerRefusalMessage }, { countContactableLeadsForPax }] = await Promise.all([
+      import("./services/paxRefusalCopy"),
+      import("./services/paxAccountReads"),
+    ]);
+    return await customerRefusalMessage(
+      organizationId,
+      { immutableNumber, promptText },
+      { countContactableLeads: countContactableLeadsForPax },
+    );
+  } catch (err) {
+    logger.warn("[AI Chat] refusal wording failed — sending the plain refusal", err instanceof Error ? err : undefined);
+    return {
+      kind: "generic",
+      message: "I can't help with that request as asked. Tell me what you're trying to get done and I'll suggest a way I can help.",
+    };
+  }
+}
 
 export function registerAIRoutes(app: Express): void {
   const api = app;
@@ -309,12 +345,15 @@ export function registerAIRoutes(app: Express): void {
           promptText: message,
         });
         if (!guard.allowed) {
-          return res.status(403).json({
-            error: "ConstitutionalRefusal",
-            message:
-              "This request was refused by the constitutional pre-call check.",
-            immutableNumber: guard.immutableNumber,
-            reasoning: guard.reasoning,
+          // The screener's decision stands; what changes is that the customer
+          // reads WHY and what Pax can do instead, as Pax's reply — not a bare
+          // "refused by the constitutional pre-call check".
+          const refusal = await paxRefusalFor(org.id, guard.immutableNumber ?? null, message);
+          return res.json({
+            response: refusal.message,
+            refused: true,
+            refusal: { kind: refusal.kind, immutableNumber: guard.immutableNumber ?? null },
+            conversationId: conversationId ?? null,
           });
         }
       } catch (err) {
@@ -333,6 +372,7 @@ export function registerAIRoutes(app: Express): void {
         agentRole,
         propertyId: propertyId ? Number(propertyId) : undefined,
         paxPromptVersion,
+        inputRedaction: inputRedactionFor(res),
       });
 
       step = "record_usage";
@@ -491,15 +531,20 @@ export function registerAIRoutes(app: Express): void {
           promptText: message,
         });
         if (!guard.allowed) {
+          // Delivered as an ordinary Pax reply. The old `event: error` frame
+          // carried no `type`, so the chat client (which reads only `data:`
+          // lines with a `type`) dropped it and showed "How can I help?" —
+          // the refusal never reached the customer at all.
+          const refusal = await paxRefusalFor(org.id, guard.immutableNumber ?? null, message);
           res.setHeader("Content-Type", "text/event-stream");
           res.setHeader("Cache-Control", "no-cache");
           res.setHeader("Connection", "keep-alive");
+          res.write(`data: ${JSON.stringify({ type: "content", content: refusal.message })}\n\n`);
           res.write(
-            `event: error\ndata: ${JSON.stringify({
-              error: "ConstitutionalRefusal",
-              message:
-                "This request was refused by the constitutional pre-call check.",
-              immutableNumber: guard.immutableNumber,
+            `data: ${JSON.stringify({
+              type: "done",
+              refused: true,
+              refusal: { kind: refusal.kind, immutableNumber: guard.immutableNumber ?? null },
             })}\n\n`,
           );
           res.end();
@@ -549,6 +594,7 @@ export function registerAIRoutes(app: Express): void {
         mentionedEntities: normalizedMentionedEntities,
         activeProjectId: activeProjectId ? Number(activeProjectId) : undefined,
         paxPromptVersion: streamPaxPromptVersion,
+        inputRedaction: inputRedactionFor(res),
       });
       
       let streamCompleted = false;

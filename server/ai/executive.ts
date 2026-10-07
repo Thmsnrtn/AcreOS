@@ -44,6 +44,7 @@ import { routePaxModelForTurn } from "./paxModelTier";
 import { resolveModel } from "../services/modelRouter";
 import { predictCostCents, computeCostUsd } from "../services/aiCostRates";
 import { evaluateLivePaxOutput } from "../services/aiEvalHarness";
+import { paxGuardDeflection, paxInputRedactionNote } from "./paxTurnNotes";
 
 // Tahoe Andrei (2026-06-07): live runtime eval gate. The critical `pax_inbox`
 // forbidden-trait cases + gateOutputOrThrow ran only in CI, never on the live
@@ -76,25 +77,22 @@ async function finalizePaxOutput(params: {
   client: any;
   model: string;
   conversationId?: number;
+  /** The customer's message — a count they named is theirs to name back. */
+  userText?: string;
 }): Promise<string> {
   const { organizationId, toolCallsExecuted, chatMessages, client, model, conversationId } = params;
   let text = params.output;
-  const HONEST_DEFLECTION =
-    "I don't have verified data to answer that confidently right now. " +
-    "I can pull the underlying records first — want me to run that lookup?";
+  const HONEST_DEFLECTION = paxGuardDeflection(toolCallsExecuted.length > 0);
 
-  // 1) Hallucination guard — fabricated numbers / cross-org entities.
+  // 1) Hallucination guard — fabricated numbers / cross-org entities /
+  // counts with no source this turn.
   try {
     const { guardPaxOutput } = await import("../services/paxHallucinationGuard");
-    const { extractSourceContext } = await import("./paxSourceExtraction");
-    const sourceCtx = extractSourceContext(toolCallsExecuted);
+    const { buildPaxGuardContext } = await import("./paxSourceExtraction");
     const guardArgs = (out: string) => ({
       organizationId,
       output: out,
-      sourceNumbers: sourceCtx.sourceNumbers.length > 0 ? sourceCtx.sourceNumbers : undefined,
-      claimedPropertyIds: sourceCtx.claimedPropertyIds.length > 0 ? sourceCtx.claimedPropertyIds : undefined,
-      claimedLeadIds: sourceCtx.claimedLeadIds.length > 0 ? sourceCtx.claimedLeadIds : undefined,
-      claimedDealIds: sourceCtx.claimedDealIds.length > 0 ? sourceCtx.claimedDealIds : undefined,
+      ...buildPaxGuardContext({ output: out, toolCallsExecuted, userText: params.userText }),
     });
     let guarded = await guardPaxOutput(guardArgs(text));
     if (!guarded.safe) {
@@ -723,7 +721,7 @@ You are the STRATEGIC brain of the operation. Your role is to help the user:
 • Achieve their financial goals — whether that's freedom number, cash flow targets, or portfolio growth
 
 YOU ARE THE SINGLE FACE OF AcreOS AI:
-You are the customer's only AI surface. Founder-side agents (Solene, Iris, Soren, Beatrice, Krieger, and the rest of the company) are internal — never mention them to the customer or suggest the customer contact them. If a question is about billing, account, password, or platform troubleshooting, handle it warmly yourself. Use available tools to diagnose; offer concrete next steps. If a question truly requires a human (chargeback dispute, fraud claim), say "I'll flag this for the team" and stop — do not name a specific agent.
+You are the customer's only AI surface. Founder-side agents (Solene, Iris, Soren, Beatrice, Krieger, and the rest of the company) are internal — never mention them to the customer or suggest the customer contact them. If a question is about billing, account, password, or platform troubleshooting, handle it warmly yourself. Use available tools to diagnose; offer concrete next steps. If a question truly requires a human (chargeback dispute, fraud claim, a bug, something you cannot do), offer to hand it to the support team and, if the customer wants that, call escalate_to_support — only after it succeeds may you say it was passed on, and give the ticket number. Never promise to flag, escalate, notify or follow up on anything without a tool that does it, and do not name a specific agent.
 
 COMMUNICATION STYLE — ADAPT TO THE USER:
 Adapt your language to the user's apparent experience level. If the user asks a simple navigation question, respond with clear step-by-step instructions using plain language. Avoid jargon like APN, comps, due diligence, enrichment, FMV, DOM, or freedom number unless the user uses those terms first.
@@ -741,8 +739,10 @@ You have FULL ACCESS to all AcreOS modules and can take action, not just advise:
 - Analyze Finance and seller notes (calculate_roi, calculate_payment_schedule)
 - Run property research and comps (research_property, run_comps_analysis)
 - Generate and send offer letters (generate_offer, generate_offer_letter)
-- Send TCPA-compliant communications (send_email, send_sms)
+- Send TCPA-compliant communications (send_email, send_sms) — every send waits for the customer's one-tap approval
 - Get system overviews (get_system_context)
+- Read the account: credits (get_credits), what a send would cost (quote_outbound_cost), campaigns and mail sent (get_campaigns), replies in the Inbox (get_inbox_replies), team members and what they did (get_team_activity), plan caps and seats (get_plan_limits), whether email/texts/mail can send (get_sending_identity_status)
+- Answer how-to questions from get_product_facts (import and export caps, roles including va, where things live, what each send channel needs) instead of guessing menu paths or numbers
 
 DOCUMENT PROCESSING — CRITICAL:
 When a document (Word, PDF, CSV) with property data is attached:
@@ -947,14 +947,14 @@ CORE RESPONSIBILITIES:
 - Provide property valuation guidance using comps, market trends, and pricing frameworks
 - Offer general land investing education: due diligence basics, deal structures, seller financing
 - Guide new users through onboarding and first-deal workflows
-- Escalate complex technical issues when needed
+- Hand complex technical issues to the support team with escalate_to_support when the customer wants a person
 
 SUPPORT APPROACH:
 1. Listen carefully — restate the user's issue to confirm understanding
 2. Check context — use available tools to diagnose before guessing
 3. Provide clear, step-by-step guidance — no jargon without explanation
 4. Follow up — suggest the next logical action after resolving the issue
-5. Be honest — if you don't know, say so and escalate rather than guessing
+5. Be honest — if you don't know, say so and offer escalate_to_support rather than guessing
 
 PROPERTY VALUATION GUIDANCE:
 - Walk users through pulling comps (comparable sales within 12 months, ±50% acreage, same county)
@@ -1000,6 +1000,12 @@ interface ChatOptions {
    * up to 3 bullets). Set to "v2" via `?paxPrompt=v2` for ops fall-back.
    */
   paxPromptVersion?: PaxPromptVersion;
+  /**
+   * The request's input filter removed part of the customer's message
+   * (server/middleware/promptInjection.ts → promptRedactionOf). Pax is told
+   * what was removed and why, so it can say so plainly.
+   */
+  inputRedaction?: { instructionProbe: boolean } | null;
   /**
    * Which lane this chat runs in (AUTONOMY_SPEC.md §4.3). Threaded into every
    * executeTool call so an ask row and a receipt say where they came from:
@@ -1468,7 +1474,7 @@ export async function processChat(
   const _verticalCtx = _verticalCtxFn(await _getInvType(org.id));
   // P1-41 + P0-14: compose with response-shape v3 + untrusted-data clause.
   const _basePrompt = profile.systemPrompt + _verticalCtx + (_enrichCtx || "") + (_prefCtx || "") + (_calibrationCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "");
-  const _systemContent = composePaxSystemPrompt(_basePrompt, options.paxPromptVersion);
+  const _systemContent = composePaxSystemPrompt(_basePrompt, options.paxPromptVersion) + paxInputRedactionNote(options.inputRedaction);
 
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: _systemContent },
@@ -1803,6 +1809,7 @@ export async function processChat(
     client,
     model,
     conversationId: conversation.id,
+    userText: message,
   });
 
   await createMessage({
@@ -1977,7 +1984,7 @@ export async function* processChatStream(
   const _verticalCtx = _verticalCtxFn(await _getInvType(org.id));
   // P1-41 + P0-14: compose with response-shape v3 + untrusted-data clause.
   const _basePrompt = profile.systemPrompt + _verticalCtx + (_enrichCtx || "") + (_prefCtx || "") + (_calibrationCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "");
-  const _systemContent = composePaxSystemPrompt(_basePrompt, options.paxPromptVersion);
+  const _systemContent = composePaxSystemPrompt(_basePrompt, options.paxPromptVersion) + paxInputRedactionNote(options.inputRedaction);
 
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: _systemContent },
@@ -2342,17 +2349,15 @@ export async function* processChatStream(
   let hallucinationWarnings: unknown[] = [];
   try {
     const { guardPaxOutput } = await import("../services/paxHallucinationGuard");
-    const { extractSourceContext } = await import("./paxSourceExtraction");
+    const { buildPaxGuardContext, extractSourceContext } = await import("./paxSourceExtraction");
     const sourceCtx = extractSourceContext(toolCallsExecuted);
-
-    let guarded = await guardPaxOutput({
+    const streamGuardArgs = (out: string) => ({
       organizationId: org.id,
-      output: fullResponse,
-      sourceNumbers: sourceCtx.sourceNumbers.length > 0 ? sourceCtx.sourceNumbers : undefined,
-      claimedPropertyIds: sourceCtx.claimedPropertyIds.length > 0 ? sourceCtx.claimedPropertyIds : undefined,
-      claimedLeadIds: sourceCtx.claimedLeadIds.length > 0 ? sourceCtx.claimedLeadIds : undefined,
-      claimedDealIds: sourceCtx.claimedDealIds.length > 0 ? sourceCtx.claimedDealIds : undefined,
+      output: out,
+      ...buildPaxGuardContext({ output: out, toolCallsExecuted, userText: message }),
     });
+
+    let guarded = await guardPaxOutput(streamGuardArgs(fullResponse));
     hallucinationWarnings = guarded.warnings;
 
     if (guarded.warnings.length > 0) {
@@ -2403,14 +2408,7 @@ export async function* processChatStream(
         }, { signal });
         const corrected = correctionResponse.choices?.[0]?.message?.content?.trim();
         if (corrected) {
-          const reguarded = await guardPaxOutput({
-            organizationId: org.id,
-            output: corrected,
-            sourceNumbers: sourceCtx.sourceNumbers.length > 0 ? sourceCtx.sourceNumbers : undefined,
-            claimedPropertyIds: sourceCtx.claimedPropertyIds.length > 0 ? sourceCtx.claimedPropertyIds : undefined,
-            claimedLeadIds: sourceCtx.claimedLeadIds.length > 0 ? sourceCtx.claimedLeadIds : undefined,
-            claimedDealIds: sourceCtx.claimedDealIds.length > 0 ? sourceCtx.claimedDealIds : undefined,
-          });
+          const reguarded = await guardPaxOutput(streamGuardArgs(corrected));
           if (reguarded.safe) {
             fullResponse = corrected;
             hallucinationWarnings = reguarded.warnings;
@@ -2428,9 +2426,7 @@ export async function* processChatStream(
       // If still unsafe after the retry, deflect honestly rather than persist a
       // confident-wrong answer.
       if (!guarded.safe) {
-        const deflection =
-          "I don't have verified data to answer that confidently right now. " +
-          "I can pull the underlying records first — want me to run that lookup?";
+        const deflection = paxGuardDeflection(toolCallsExecuted.length > 0);
         fullResponse = deflection;
         hallucinationWarnings = guarded.warnings;
         yield { type: "correction", content: deflection } as any;

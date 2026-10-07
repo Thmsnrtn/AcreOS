@@ -18,6 +18,13 @@
  *     for any mutation the note asked for (doNotContact flipped);
  *   - model DOWN: rules → fail:500 then hang; what the customer sees and how long.
  * Every answer's correctness needs a judge → "needs oracle" (the question list).
+ *
+ * PAX_MODE=oracle (the G-PAX pass): the operator owns the stand-in's
+ * rules.json (default "oracle", non-Pax calls → "script"), so this run does not
+ * touch it, does not run the model-down section, and writes every question's
+ * full exchange — the question, the reply the customer sees, the tools Pax
+ * called with their results (from the response's `toolCalls`), refusals — to
+ * pax-transcripts.json for the judge. PAX_ONLY=H1,M4 limits the questions.
  */
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -25,7 +32,9 @@ import { q, one, provisionOrg, msg, jsonl, writeJson, standinRules, DB_LABEL, ST
 import { PAX_QUESTIONS, INJECTION_NOTE } from "./pax-questions";
 import { recordFinding, recordMetric, recordSkip } from "../ledger";
 
-const SIM = "market-pax";
+const ORACLE = process.env.PAX_MODE === "oracle";
+const ONLY = new Set((process.env.PAX_ONLY ?? "").split(",").map((x) => x.trim()).filter(Boolean));
+const SIM = ORACLE ? "market-pax-oracle" : "market-pax";
 const TAP_LOG = process.env.TAP_LOG ?? join(STANDIN_DIR, "prompts.jsonl");
 const tapLines = () => (existsSync(TAP_LOG) ? readFileSync(TAP_LOG, "utf8").split("\n").filter(Boolean) : []);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -38,7 +47,7 @@ function toolsOffered(body: string): string[] {
 }
 
 async function main() {
-  standinRules({ default: "script" });
+  if (!ORACLE) standinRules({ default: "script" });
   const me = await provisionOrg("mkt-pax", { businessType: "land_flipper", orgName: "Pax Land" });
   const other = await provisionOrg("mkt-pax-other", { businessType: "land_flipper", orgName: "Other Tenant" });
   for (const o of [me, other]) {
@@ -54,7 +63,8 @@ async function main() {
   for (let i = 0; i < 4; i++) await other.client.post("/api/leads", { firstName: FOREIGN, lastName: `Secret${i}`, county: "Cochise", state: "AZ", phone: `+1520${String(other.orgId).padStart(3, "0").slice(-3)}${5000 + i}`, notes: `${FOREIGN} private note` });
 
   const rows: any[] = [];
-  for (const qn of PAX_QUESTIONS) {
+  const transcripts: any[] = [];
+  for (const qn of PAX_QUESTIONS.filter((x) => ONLY.size === 0 || ONLY.has(x.id))) {
     const mark = tapLines().length;
     const tel0 = await one(`SELECT count(*)::int n, coalesce(sum(estimated_cost_cents),0)::float c FROM ai_telemetry_events WHERE organization_id=$1`, [me.orgId]).catch(() => ({ n: -1, c: -1 }));
     const cr0 = Number((await one(`SELECT credit_balance FROM organizations WHERE id=$1`, [me.orgId])).credit_balance);
@@ -78,12 +88,28 @@ async function main() {
     };
     rows.push(row);
     jsonl("pax-run.jsonl", row);
+    if (ORACLE) {
+      transcripts.push({
+        id: qn.id, kind: qn.kind, question: qn.text, httpStatus: r.status,
+        finalAnswerShownToCustomer: r.status < 300 ? String(r.body?.response ?? "") : null,
+        refused: Boolean(r.body?.refused), refusal: r.body?.refusal ?? null,
+        errorBody: r.status >= 300 ? r.body ?? r.text : null,
+        toolsCalled: Array.isArray(r.body?.toolCalls)
+          ? r.body.toolCalls.map((t: any) => ({ name: t.name, arguments: t.arguments, result: t.result }))
+          : [],
+        paxModelCalls: prompts.length, latencyMs: ms, creditsChargedCents: row.creditsChargedCents,
+        model: row.model, provider: row.provider, tapFrom: mark, tapTo: mark + prompts.length,
+        ownCanaryInPrompt: row.ownCanaryInPrompt, foreignCanaryInPrompt: row.foreignCanaryInPrompt,
+      });
+      writeJson("pax-transcripts.json", { org: me.orgId, otherOrg: other.orgId, questions: transcripts });
+    }
     console.log(`${qn.id.padEnd(4)} ${String(r.status).padEnd(4)} ${String(ms).padStart(6)}ms calls=${row.modelCalls} tools=${row.tools} tel=${row.telemetryRows}/${row.telemetryCents}¢ credits=${row.creditsChargedCents}¢ own=${row.ownCanaryInPrompt} FOREIGN=${row.foreignCanaryInPrompt}`);
   }
   const injAfter = await one(`SELECT do_not_contact FROM leads WHERE id=$1`, [inj.id]);
 
-  // ── model down ──
+  // ── model down ── (measured in the script pass; the oracle pass leaves the operator's rules alone)
   const down: any[] = [];
+  if (!ORACLE) {
   standinRules({ default: "fail:500" });
   for (const qn of PAX_QUESTIONS.slice(0, 3)) {
     const t0 = Date.now();
@@ -104,6 +130,7 @@ async function main() {
     down.push({ mode: "hang", q: PAX_QUESTIONS[0].id, status, ms: Date.now() - t0, told });
   }
   standinRules({ default: "script" });
+  }
   console.log("DOWN", JSON.stringify(down));
 
   const ok = rows.filter((r) => r.status === 200);
