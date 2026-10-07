@@ -304,10 +304,24 @@ class HealthCheckService {
   }
 
   /**
+   * Business invariants that are cheap and safe to read in production
+   * (server/services/invariantWatch.ts — the read-only half of the
+   * simulation's invariant monitor). A breach is `degraded`, never a 503.
+   */
+  async checkInvariants(): Promise<ServiceHealth[]> {
+    try {
+      const { checkProductionInvariants } = await import('./invariantWatch');
+      return await checkProductionInvariants();
+    } catch (error: unknown) {
+      return [this.createHealth('invariant:watch', 'degraded', undefined, `invariant watch unread: ${error instanceof Error ? error.message : 'failed'}`)];
+    }
+  }
+
+  /**
    * Run all health checks
    */
   async checkAll(): Promise<HealthCheckResult> {
-    const [coreChecks, dataChecks] = await Promise.all([
+    const [coreChecks, dataChecks, invariantChecks] = await Promise.all([
       Promise.all([
         this.checkDatabase(),
         this.checkRedis(),
@@ -318,8 +332,9 @@ class HealthCheckService {
         this.checkLob(),
       ]),
       this.checkDataProviders(),
+      this.checkInvariants(),
     ]);
-    const checks = [...coreChecks, ...dataChecks];
+    const checks = [...coreChecks, ...dataChecks, ...invariantChecks];
 
     checks.forEach((check: ServiceHealth) => {
       this.lastResults.set(check.name, check);
@@ -419,11 +434,33 @@ class HealthCheckService {
   }
 
   private consecutiveFailures = new Map<string, number>();
+  private invariantAlerted = new Set<string>();
 
   private async alertOnFailures(checks: ServiceHealth[]): Promise<void> {
     const criticalServices = new Set(["database", "redis", "stripe"]);
 
     for (const check of checks) {
+      // A business-invariant breach alerts on its FIRST observation (once per
+      // breach episode): it is a fact about what already happened, not a flaky probe.
+      if (check.name.startsWith("invariant:") && check.status === "degraded" && /breach/.test(check.message ?? "")) {
+        if (!this.invariantAlerted.has(check.name)) {
+          this.invariantAlerted.add(check.name);
+          try {
+            const { storage } = await import("../storage");
+            await storage.createSystemAlert({
+              type: "invariant_breach",
+              alertType: "invariant_breach",
+              severity: "critical",
+              title: `Business invariant breached: ${check.name.slice("invariant:".length)}`,
+              message: check.message ?? "breach",
+              status: "new",
+              metadata: { service: check.name },
+            });
+          } catch {}
+        }
+        continue;
+      }
+      if (check.name.startsWith("invariant:")) this.invariantAlerted.delete(check.name);
       if (check.status === "unavailable") {
         const failures = (this.consecutiveFailures.get(check.name) || 0) + 1;
         this.consecutiveFailures.set(check.name, failures);

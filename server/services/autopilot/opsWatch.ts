@@ -53,7 +53,8 @@ const STRIPE_DOWN_PAGE_HOURS = 24;
 const EMAIL_SEND_JOB = "email_send";
 const STRIPE_PROBE_JOB = "ops_probe:stripe";
 
-const INCIDENT_TITLE_PREFIX = "[ops] ";
+/** Every ops incident title starts with this (the invariant watch reads incidents by it). */
+export const INCIDENT_TITLE_PREFIX = "[ops] ";
 function incidentTitleFor(p: OpsProvider): string {
   return `${INCIDENT_TITLE_PREFIX}${p}`;
 }
