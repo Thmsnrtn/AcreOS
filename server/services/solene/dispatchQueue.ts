@@ -751,6 +751,53 @@ export async function cancelDispatch(
   return { priorStatus: existing.status, cancelled: true };
 }
 
+/**
+ * Has this dispatch been cancelled while it runs? The runner checks this
+ * before every model turn and before every tool call (cooperative abort — it
+ * cannot preempt a streaming model call, but it never starts another turn or
+ * tool after a cancel). Fails OPEN on a read error: a DB blip must not kill
+ * healthy work, and the panic stop's switches still bind new claims.
+ */
+export async function isDispatchCancelled(id: number): Promise<boolean> {
+  try {
+    const [row] = await db
+      .select({ status: soleneDispatchQueue.status })
+      .from(soleneDispatchQueue)
+      .where(eq(soleneDispatchQueue.id, id))
+      .limit(1);
+    return row?.status === "cancelled";
+  } catch (err) {
+    logger.warn(
+      `[dispatchQueue] cancel check failed for id=${id} — continuing`,
+      err instanceof Error ? err : undefined,
+    );
+    return false;
+  }
+}
+
+/**
+ * Cancel every IN-FLIGHT dispatch (status in_progress) — the panic stop's
+ * abort path. Flips the rows to 'cancelled'; each running worker sees that at
+ * its next turn/tool boundary (isDispatchCancelled) and stops. Queued rows are
+ * left for the dispatch switch to hold. Returns the ids it cancelled.
+ */
+export async function cancelInFlightDispatches(reason: string): Promise<number[]> {
+  const rows = await db
+    .update(soleneDispatchQueue)
+    .set({
+      status: "cancelled",
+      completedAt: new Date(),
+      resultSummary: `aborted in flight: ${reason}`.slice(0, 4000),
+    })
+    .where(eq(soleneDispatchQueue.status, "in_progress"))
+    .returning({ id: soleneDispatchQueue.id });
+  const ids = rows.map((r) => r.id);
+  if (ids.length > 0) {
+    logger.warn(`[dispatchQueue] cancelled ${ids.length} in-flight dispatch(es): ${ids.join(", ")}`);
+  }
+  return ids;
+}
+
 // ----------------------------------------------------------------------------
 // Founder read/list/cancel helpers — back the /api/founder/dispatches surface.
 // ----------------------------------------------------------------------------

@@ -22,6 +22,8 @@ import { PLATFORM_SCOPE } from "./tenantScope";
 
 export interface PanicStopResult {
   switchesOff: string[];
+  /** In-flight dispatches cancelled (each runner stops at its next turn/tool boundary). */
+  dispatchesAborted: number[];
   domainsQuarantined: string[];
   receiptHash: string | null;
   reason: string;
@@ -34,7 +36,7 @@ export interface PanicStopResult {
  */
 export async function panicStop(params: { reason: string; by: string }): Promise<PanicStopResult> {
   const reason = params.reason?.trim() || "panic stop (no reason given)";
-  const result: PanicStopResult = { switchesOff: [], domainsQuarantined: [], receiptHash: null, reason };
+  const result: PanicStopResult = { switchesOff: [], dispatchesAborted: [], domainsQuarantined: [], receiptHash: null, reason };
   logger.error(`[autopilot/panicStop] TRIPPED by ${params.by}: ${reason}`);
 
   // 1. Flip all three master switches OFF.
@@ -50,6 +52,18 @@ export async function panicStop(params: { reason: string; by: string }): Promise
     }
   } catch (err) {
     logger.error("[autopilot/panicStop] settings module unavailable", err instanceof Error ? err : undefined);
+  }
+
+  // 1b. Abort IN-FLIGHT dispatches. The switches only stop NEW claims; a
+  // dispatch already running kept going through every remaining turn and
+  // tool. Cancelling the row makes its runner stop at the next turn/tool
+  // boundary (cooperative abort in dispatchRunner — it cannot preempt a
+  // streaming model call, but it never starts another tool).
+  try {
+    const { cancelInFlightDispatches } = await import("../solene/dispatchQueue");
+    result.dispatchesAborted = await cancelInFlightDispatches(`panic stop: ${reason}`);
+  } catch (err) {
+    logger.error("[autopilot/panicStop] failed to abort in-flight dispatches", err instanceof Error ? err : undefined);
   }
 
   // 2. Quarantine every domain back to OBSERVE.
@@ -74,7 +88,7 @@ export async function panicStop(params: { reason: string; by: string }): Promise
     const receipt = await recordReceipt({
       actionKind: "panic_stop",
       scope: PLATFORM_SCOPE,
-      payloadHash: hashPayload({ reason, switchesOff: result.switchesOff, domains: result.domainsQuarantined }),
+      payloadHash: hashPayload({ reason, switchesOff: result.switchesOff, dispatchesAborted: result.dispatchesAborted, domains: result.domainsQuarantined }),
       accountableHumanId: params.by,
       autonomyLevel: "halted",
     });
@@ -89,7 +103,7 @@ export async function panicStop(params: { reason: string; by: string }): Promise
     await sendSolenePage({
       severity: "critical",
       subject: "Autopilot PANIC STOP tripped",
-      body: `${reason}\nSwitches off: ${result.switchesOff.join(", ") || "none"}\nDomains quarantined: ${result.domainsQuarantined.length}`,
+      body: `${reason}\nSwitches off: ${result.switchesOff.join(", ") || "none"}\nIn-flight dispatches aborted: ${result.dispatchesAborted.length}\nDomains quarantined: ${result.domainsQuarantined.length}`,
     });
   } catch (err) {
     // Best-effort by design (the stop itself already applied), but a
