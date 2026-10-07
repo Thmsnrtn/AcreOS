@@ -21,7 +21,7 @@
  * "the key was not in the output" true of every schema.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
@@ -29,6 +29,10 @@ import { getTableColumns } from "drizzle-orm";
 import { leads, insertLeadSchema as canonicalInsertLeadSchema } from "@shared/schema";
 import { API_CONTRACTS } from "@shared/contracts";
 import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+// Reads the repository tree; the sweep budget, not the 30s default.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.resolve(__dirname, "../..");
 const CONTRACTS_DIR = path.join(ROOT, "shared/contracts");

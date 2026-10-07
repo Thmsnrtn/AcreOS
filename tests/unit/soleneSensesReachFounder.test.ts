@@ -27,6 +27,10 @@ import { heartbeatFrom, readLoopLastSuccess } from "../../server/services/autopi
 const LOOP_CADENCE_MS = 30 * 60 * 1000;
 const SUCCESS_SAMPLE_MS = 60 * 60 * 1000;
 import { summarizePendingHand } from "../../server/services/autopilot/pendingHandSummary";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+// Reads the repository tree; the sweep budget, not the 30s default.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (rel: string) => stripComments(fs.readFileSync(path.join(ROOT, rel), "utf8"));

@@ -221,6 +221,19 @@ const PAGER_CALLS: PagerCall[] = [];
 let pagerThrow = false;
 let nextPagerEventId = 100;
 
+// The asks in this suite are plain founder questions, not autopilot moves.
+// answerFounderAsk now enqueues an APPROVED autopilot move (Stage 1 A5b), and
+// it finds the move through experienceLog. Against this in-memory db every
+// select returns ask rows, which would read as an escalated move; so the
+// experience lookup is pinned to "not a move" here. The approval → enqueue
+// path is proven in its own suites and on a built schema
+// (tests/db/soleneDispatchEnqueueOnBuiltSchema.ts).
+vi.mock("../autopilot/experienceLog", () => ({
+  recordFounderVerdict: vi.fn(async () => undefined),
+  findEscalatedMoveForAsk: vi.fn(async () => null),
+  linkExperienceDispatch: vi.fn(async () => undefined),
+}));
+
 vi.mock("./pagerService", () => ({
   sendSolenePage: vi.fn(async (input: PagerCall) => {
     PAGER_CALLS.push(input);

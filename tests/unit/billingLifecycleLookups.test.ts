@@ -7,6 +7,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+// Reads the repository tree; the sweep budget, not the 30s default.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.resolve(__dirname, "../..");
 const src = (rel: string) => stripComments(fs.readFileSync(path.join(ROOT, rel), "utf8"));

@@ -271,15 +271,20 @@ describe("send-sms: BYO sends are not billed twice", () => {
     expect(r.body).toMatchObject({ sent: 1, chargedCents: 0, billedTo: "your_own_sms_account" });
   });
 
-  it("a non-BYO send (simulation) is still charged per recipient", async () => {
+  // A simulated send moves no real text, so it moves no credit either (Stage 1
+  // A5a, "simulated campaign sends are not charged"). Before that ruling this
+  // case pinned a 3¢ charge; the BYO no-double-billing invariant above is
+  // unchanged.
+  it("a non-BYO send (simulation) is not charged — nothing real was sent", async () => {
     S.campaignType = "sms";
     S.byoSms = false;
     S.simulated = true;
     S.leads.set(1, lead(1));
     const r = res();
     await (await handler("/api/campaigns/:id/send-sms"))(req([1]), r);
-    expect(S.deducted).toEqual([3]);
-    expect(r.body).toMatchObject({ sent: 1, chargedCents: 3, billedTo: "acreos_credits" });
+    expect(S.deducted).toEqual([]);
+    expect(S.refunds).toEqual([]);
+    expect(r.body).toMatchObject({ sent: 1, chargedCents: 0 });
   });
 
   it("no BYO number and not simulated: refused before any credit moves", async () => {

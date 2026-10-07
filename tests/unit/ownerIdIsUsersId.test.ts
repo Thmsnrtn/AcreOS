@@ -3,10 +3,14 @@
  * users.clerk_user_id (in any spelling or line layout) resolves no owner, so
  * billing mail, dunning, and revenue-protection notices silently go nowhere.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+// Reads the repository tree; the sweep budget, not the 30s default.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.resolve(__dirname, "../../server");
 function walk(dir: string, out: string[] = []): string[] {

@@ -359,8 +359,15 @@ const RULE_3_CHAIN_FLOOR = 300;
  *     and the inbound-number attribution stamp in tracking-pool (1). Each had
  *     been either an unstated cross-organization statement or one predicated
  *     on an organization read off the very row being written.
+ *
+ * 18 → 16 on 2026-10-07 (reconciliation of #327 with Stage 1). Stage 1 added a
+ * founder approval-card read of a dunning event by id (pendingHandSummary),
+ * which took the measured count to 19. Rather than raise the ceiling, the
+ * dunning console's three identical by-id reads (retryPayment / cancelCase /
+ * resolveCase) became one, dunningService.getCaseForConsole, and the approval
+ * card reads through it: same statements, same reason sentence, 16 sites.
  */
-const HATCH_EXEMPTION_CEILING = 18;
+const HATCH_EXEMPTION_CEILING = 16;
 
 /**
  * BOTH of Drizzle's query spellings reach rule 3.

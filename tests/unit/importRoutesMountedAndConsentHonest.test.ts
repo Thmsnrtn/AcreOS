@@ -93,6 +93,10 @@ vi.mock("../../server/services/leadEvents", () => ({ emitLeadCreated: vi.fn(), e
 import { registerImportExportRoutes } from "../../server/routes-import-export";
 import { importLeads as legacyImportLeads } from "../../server/services/import";
 import { importLeads } from "../../server/services/importExport";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+// Reads the repository tree; the sweep budget, not the 30s default.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 function makeApp() {
   const app = express();

@@ -87,19 +87,11 @@ export async function resolvePendingSummaryContext(
   const ctx: PendingSummaryContext = { movesMoney };
   if (handName === "dunning_action" && num(input.event_id) != null) {
     try {
-      const { unscopedForPlatformOps } = await import("../../utils/orgScopedDb");
-      const { dunningEvents } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
-      // Platform op: a dunning event is AcreOS's own subscription billing of an
-      // org, read by id from the founder's approval card — the hand's request
-      // carries no organization to scope by.
-      const [ev] = await unscopedForPlatformOps(
-        "founder approval card: resolve a platform dunning event's amount due and org for the pending-action summary",
-      )
-        .select({ amountDueCents: dunningEvents.amountDueCents, organizationId: dunningEvents.organizationId })
-        .from(dunningEvents)
-        .where(eq(dunningEvents.id, input.event_id as number))
-        .limit(1);
+      // A dunning event is AcreOS's own subscription billing of an org; the
+      // hand's request carries only the event id. Read through the dunning
+      // console's one by-id platform read rather than a second copy of it.
+      const { dunningService } = await import("../dunning");
+      const ev = await dunningService.getCaseForConsole(input.event_id as number);
       if (ev) {
         ctx.amountCents = ev.amountDueCents ?? null;
         ctx.recipient = `org ${ev.organizationId}`;

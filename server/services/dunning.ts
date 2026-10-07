@@ -810,12 +810,23 @@ class DunningService {
       .limit(100);
   }
 
-  async retryPayment(eventId: number): Promise<{ success: boolean; message: string }> {
+  /**
+   * One dunning case, by id — the single platform read behind the founder's
+   * dunning console (retry / cancel / resolve) and the founder approval card
+   * that summarizes a pending dunning action. A dunning event is AcreOS's own
+   * subscription billing of an org; the caller holds only the event id.
+   */
+  async getCaseForConsole(eventId: number): Promise<DunningEvent | undefined> {
     const [event] = await unscopedForPlatformOps(DUNNING_CONSOLE_REASON)
       .select()
       .from(dunningEvents)
       .where(eq(dunningEvents.id, eventId))
       .limit(1);
+    return event;
+  }
+
+  async retryPayment(eventId: number): Promise<{ success: boolean; message: string }> {
+    const event = await this.getCaseForConsole(eventId);
 
     if (!event) {
       return { success: false, message: "Dunning event not found" };
@@ -851,11 +862,7 @@ class DunningService {
   }
 
   async cancelCase(eventId: number): Promise<{ success: boolean; message: string }> {
-    const [event] = await unscopedForPlatformOps(DUNNING_CONSOLE_REASON)
-      .select()
-      .from(dunningEvents)
-      .where(eq(dunningEvents.id, eventId))
-      .limit(1);
+    const event = await this.getCaseForConsole(eventId);
 
     if (!event) {
       return { success: false, message: "Dunning event not found" };
@@ -878,11 +885,7 @@ class DunningService {
   }
 
   async resolveCase(eventId: number, notes?: string): Promise<{ success: boolean; message: string }> {
-    const [event] = await unscopedForPlatformOps(DUNNING_CONSOLE_REASON)
-      .select()
-      .from(dunningEvents)
-      .where(eq(dunningEvents.id, eventId))
-      .limit(1);
+    const event = await this.getCaseForConsole(eventId);
 
     if (!event) {
       return { success: false, message: "Dunning event not found" };
