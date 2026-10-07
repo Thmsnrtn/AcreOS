@@ -50,6 +50,7 @@ import type { DecisionCardOption } from "../decisionsInbox";
 import { recordCapitalEvent } from "./capitalTracker";
 import { recordFounderPrecedent } from "./founderPrecedent";
 import { enqueueDispatch } from "./dispatchQueue";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // Public types + constants
@@ -552,7 +553,7 @@ export async function confirmLetterReply(
   // card pending (retappable); the effects themselves are idempotent
   // (precedent upserts on sourceRef; dispatch dedupes on idempotencyKey),
   // so a retap can never double-fire.
-  const now = new Date();
+  const now = clock.now();
   await db
     .update(decisionsInboxItems)
     .set({

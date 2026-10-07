@@ -22,6 +22,7 @@ import { desc, eq, gte, and } from "drizzle-orm";
 import { db } from "../../db";
 import { autopilotSenses } from "@shared/schema";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 export const GATHER_KIND = "context_gather";
 export const PAGE_MARKER_PREFIX = "sense_dark_paged:";
@@ -73,7 +74,7 @@ export async function recordGatherAndCheck(degraded: string[]): Promise<{ paged:
       // 24h cooldown per sense — a broken instrument pages once a day, not
       // every 30-minute tick.
       const markerKind = `${PAGE_MARKER_PREFIX}${sense}`;
-      const cooldownFloor = new Date(Date.now() - REPAGE_COOLDOWN_MS);
+      const cooldownFloor = new Date(clock.nowMs() - REPAGE_COOLDOWN_MS);
       const [recentPage] = await db
         .select({ id: autopilotSenses.id })
         .from(autopilotSenses)

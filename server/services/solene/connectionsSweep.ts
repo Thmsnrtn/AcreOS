@@ -45,6 +45,7 @@ import {
   platformSettings,
 } from "@shared/schema";
 import { enqueueDispatch } from "./dispatchQueue";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // Constants + types
@@ -119,7 +120,7 @@ function clip(s: string | null | undefined, max: number): string {
  * source is NAMED as unreadable in the brief rather than silently omitted,
  * so the agent (and the audit trail) knows what it could not see.
  */
-export async function buildSweepBrief(now: Date = new Date()): Promise<string> {
+export async function buildSweepBrief(now: Date = clock.now()): Promise<string> {
   const lines: string[] = [];
   lines.push(
     "You are the weekly CONNECTIONS SWEEP — a READ-ONLY audit dispatch. You",
@@ -406,7 +407,7 @@ export interface EnqueueSweepResult {
  * Never throws. Stands down when the dispatch switch is OFF, like every
  * other autonomous enqueue path.
  */
-export async function enqueueWeeklySweep(now: Date = new Date()): Promise<EnqueueSweepResult> {
+export async function enqueueWeeklySweep(now: Date = clock.now()): Promise<EnqueueSweepResult> {
   try {
     const { isDispatchEnabled } = await import("../autopilot/settings");
     if (!(await isDispatchEnabled())) {
@@ -546,7 +547,7 @@ export async function persistSweepBlob(blob: ConnectionsSweepBlob): Promise<void
       .set({
         value: blob,
         lastChangedBy: "connections-sweep",
-        lastChangedAt: new Date(),
+        lastChangedAt: clock.now(),
         lastChangedNote: `sweep dispatch #${blob.dispatchId} (parseOk=${blob.parseOk})`,
       })
       .where(eq(platformSettings.id, existing[0].id));
@@ -566,7 +567,7 @@ export async function persistSweepBlob(blob: ConnectionsSweepBlob): Promise<void
         "blob {atIso, findings, dispatchId, parseOk}; read by The Letter's " +
         "connections paragraph + the morning pulse. Silent-log tier — never an interrupt.",
       lastChangedBy: "connections-sweep",
-      lastChangedAt: new Date(),
+      lastChangedAt: clock.now(),
       lastChangedNote: `sweep dispatch #${blob.dispatchId} (parseOk=${blob.parseOk})`,
     });
   }
@@ -628,7 +629,7 @@ export async function handleSweepCompletion(
 
     const parsed = parseSweepFindings(resultSummary);
     const blob: ConnectionsSweepBlob = {
-      atIso: atIso ?? new Date().toISOString(),
+      atIso: atIso ?? clock.now().toISOString(),
       findings: parsed ?? [],
       dispatchId,
       parseOk: parsed !== null,

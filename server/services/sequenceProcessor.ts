@@ -17,6 +17,7 @@ import { salutationName } from "@shared/parcel/ownerName";
 import { logger } from '../utils/logger';
 import { getPaxControls, paxControlsRefusalMessage } from "./paxControls";
 import { recordPaxEffect } from "./paxReceipts";
+import { clock } from "../utils/clock";
 
 type EnrollmentWithDetails = SequenceEnrollment & { sequence: CampaignSequence; lead: Lead };
 
@@ -180,7 +181,7 @@ export class SequenceProcessorService {
         
         const furtherStep = steps.find(s => s.stepNumber === nextStepNumber + 1);
         if (furtherStep) {
-          const nextScheduledAt = new Date();
+          const nextScheduledAt = clock.now();
           nextScheduledAt.setDate(nextScheduledAt.getDate() + furtherStep.delayDays);
           
           await storage.updateSequenceEnrollment(orgId, enrollment.id, {
@@ -221,14 +222,14 @@ export class SequenceProcessorService {
 
         const furtherStep = steps.find(s => s.stepNumber === nextStepNumber + 1);
         if (furtherStep) {
-          const nextScheduledAt = new Date();
+          const nextScheduledAt = clock.now();
           nextScheduledAt.setDate(nextScheduledAt.getDate() + furtherStep.delayDays);
 
           await storage.updateSequenceEnrollment(orgId, enrollment.id, {
             currentStep: nextStepNumber,
             // Only stamp lastStepSentAt when something was ACTUALLY sent.
             // A skipped/failed step must not look like a delivered one.
-            ...(outcome.status === "sent" ? { lastStepSentAt: new Date() } : {}),
+            ...(outcome.status === "sent" ? { lastStepSentAt: clock.now() } : {}),
             nextStepScheduledAt: nextScheduledAt,
           });
         } else {
@@ -238,7 +239,7 @@ export class SequenceProcessorService {
       } else {
         const furtherStep = steps.find(s => s.stepNumber === nextStepNumber + 1);
         if (furtherStep) {
-          const nextScheduledAt = new Date();
+          const nextScheduledAt = clock.now();
           nextScheduledAt.setDate(nextScheduledAt.getDate() + furtherStep.delayDays);
           
           await storage.updateSequenceEnrollment(orgId, enrollment.id, {
@@ -288,7 +289,7 @@ export class SequenceProcessorService {
 
   async checkLeadResponded(leadId: number, orgId: number, withinDays: number): Promise<boolean> {
     try {
-      const cutoffDate = new Date();
+      const cutoffDate = clock.now();
       cutoffDate.setDate(cutoffDate.getDate() - withinDays);
       
       const activities = await storage.getLeadActivities(orgId, leadId);
@@ -307,7 +308,7 @@ export class SequenceProcessorService {
 
   /** Never let a bad/absent next-eligible time turn a deferral into a hot loop. */
   clampRetryAt(retryAt?: Date): Date {
-    const floor = Date.now() + MIN_DEFER_MS;
+    const floor = clock.nowMs() + MIN_DEFER_MS;
     if (!retryAt || Number.isNaN(retryAt.getTime()) || retryAt.getTime() < floor) {
       return new Date(floor);
     }
@@ -350,7 +351,7 @@ export class SequenceProcessorService {
     const controls = await getPaxControls(enrollment.sequence.organizationId);
     if (controls.paused) {
       const reason = paxControlsRefusalMessage(controls);
-      const retryAt = controls.pausedUntil ?? new Date(Date.now() + MIN_DEFER_MS);
+      const retryAt = controls.pausedUntil ?? new Date(clock.nowMs() + MIN_DEFER_MS);
       logger.info("[sequence-processor] Step deferred — Pax is paused for this org", {
         metadata: {
           enrollmentId: enrollment.id,
@@ -486,8 +487,8 @@ export class SequenceProcessorService {
             leadId: lead.id,
             channel: step.channel,
             status: "sent",
-            sentAt: new Date(),
-            statusUpdatedAt: new Date(),
+            sentAt: clock.now(),
+            statusUpdatedAt: clock.now(),
             metadata: { enrollmentId: enrollment.id, stepNumber: step.stepNumber },
           });
         }
@@ -521,7 +522,7 @@ export class SequenceProcessorService {
         channel: step.channel,
         status,
         sentAt: null,
-        statusUpdatedAt: new Date(),
+        statusUpdatedAt: clock.now(),
         metadata: {
           enrollmentId: enrollment.id,
           stepNumber: step.stepNumber,

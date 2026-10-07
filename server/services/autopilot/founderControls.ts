@@ -21,6 +21,7 @@ import { autopilotPendingActions, autopilotSettings } from "@shared/schema";
 import { soleneDispatchQueue } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
 import type { AutopilotDomain } from "./policyGate";
+import { clock } from "../../utils/clock";
 
 const PAUSABLE = ["growth", "support", "deploy", "ops", "finance", "ads"] as const;
 export type Pausable = (typeof PAUSABLE)[number];
@@ -78,7 +79,7 @@ async function cancelDispatchesWhere(match: (moveKind: string) => boolean, reaso
   if (ids.length === 0) return [];
   await db
     .update(soleneDispatchQueue)
-    .set({ status: "cancelled", completedAt: new Date(), resultSummary: `cancelled: ${reason}`.slice(0, 4000) })
+    .set({ status: "cancelled", completedAt: clock.now(), resultSummary: `cancelled: ${reason}`.slice(0, 4000) })
     .where(and(inArray(soleneDispatchQueue.id, ids), inArray(soleneDispatchQueue.status, ["queued", "in_progress"])));
   return ids;
 }
@@ -100,7 +101,7 @@ export async function setPaused(target: Pausable, paused: boolean, by: string): 
     await db
       .insert(autopilotSettings)
       .values({ id: 1, adsEnabled: !paused, updatedBy: by })
-      .onConflictDoUpdate({ target: autopilotSettings.id, set: { adsEnabled: !paused, updatedAt: new Date(), updatedBy: by } });
+      .onConflictDoUpdate({ target: autopilotSettings.id, set: { adsEnabled: !paused, updatedAt: clock.now(), updatedBy: by } });
     if (paused) {
       const rejected = await db
         .update(autopilotPendingActions)
@@ -119,7 +120,7 @@ export async function setPaused(target: Pausable, paused: boolean, by: string): 
     await db
       .insert(autopilotSettings)
       .values({ id: 1, pausedDomains: value, updatedBy: by })
-      .onConflictDoUpdate({ target: autopilotSettings.id, set: { pausedDomains: value, updatedAt: new Date(), updatedBy: by } });
+      .onConflictDoUpdate({ target: autopilotSettings.id, set: { pausedDomains: value, updatedAt: clock.now(), updatedBy: by } });
     if (paused) {
       const { bindingFor } = await import("./act");
       out.dispatchesCancelled = await cancelDispatchesWhere((k) => bindingFor(k).domain === target, `the founder paused ${target}`);
@@ -193,7 +194,7 @@ export async function recordPreStopSnapshot(by: string): Promise<PreStopSnapshot
   const { getTrustLedger } = await import("./domainAutonomy");
   const ledger = await getTrustLedger();
   const snap: PreStopSnapshot = {
-    at: new Date().toISOString(),
+    at: clock.now().toISOString(),
     by,
     switches: { dispatchEnabled: s.dispatchEnabled, publishEnabled: s.publishEnabled, cognitionEnabled: s.cognitionEnabled },
     levels: Object.fromEntries(ledger.map((l) => [l.domain, l.level])),
@@ -201,7 +202,7 @@ export async function recordPreStopSnapshot(by: string): Promise<PreStopSnapshot
   await db
     .insert(autopilotSettings)
     .values({ id: 1, preStopSnapshot: snap, updatedBy: by })
-    .onConflictDoUpdate({ target: autopilotSettings.id, set: { preStopSnapshot: snap, updatedAt: new Date() } });
+    .onConflictDoUpdate({ target: autopilotSettings.id, set: { preStopSnapshot: snap, updatedAt: clock.now() } });
   return snap;
 }
 
@@ -228,7 +229,7 @@ export async function setSwitchByFounder(
 }
 
 export async function clearPreStopSnapshot(by: string): Promise<void> {
-  await db.update(autopilotSettings).set({ preStopSnapshot: null, updatedAt: new Date(), updatedBy: by }).where(eq(autopilotSettings.id, 1));
+  await db.update(autopilotSettings).set({ preStopSnapshot: null, updatedAt: clock.now(), updatedBy: by }).where(eq(autopilotSettings.id, 1));
 }
 
 /**

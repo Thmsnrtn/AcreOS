@@ -26,6 +26,7 @@ import { eq, and, lt, desc, sql } from "drizzle-orm";
 import { subDays, addDays } from "date-fns";
 import { landCredit, LCS_METHODOLOGY_VERSION } from "../services/landCredit";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export const LAND_CREDIT_RECALC_QUEUE_NAME = "land-credit-score-recalculation";
 
@@ -37,7 +38,7 @@ const SCORE_DROP_ALERT_THRESHOLD = 10; // Alert when score drops by this many po
 // ---------------------------------------------------------------------------
 
 async function findStaleProperties(): Promise<any[]> {
-  const cutoff = subDays(new Date(), STALE_DAYS);
+  const cutoff = subDays(clock.now(), STALE_DAYS);
 
   // Properties with a score older than cutoff, or with no score at all
   const allActiveProperties = await db
@@ -117,7 +118,7 @@ async function recalculateProperty(
       factorProvenance: scoreResult.factorProvenance,
     },
     modelVersion: LCS_METHODOLOGY_VERSION,
-    validUntil: addDays(new Date(), STALE_DAYS),
+    validUntil: addDays(clock.now(), STALE_DAYS),
   });
 
   if (dropped) {
@@ -132,7 +133,7 @@ async function recalculateProperty(
 // ---------------------------------------------------------------------------
 
 async function processLandCreditRecalcJob(job: Job): Promise<void> {
-  const startedAt = new Date();
+  const startedAt = clock.now();
 
   const jobRecord = await db
     .insert(backgroundJobs)
@@ -167,7 +168,7 @@ async function processLandCreditRecalcJob(job: Job): Promise<void> {
       }
     }
 
-    const finishedAt = new Date();
+    const finishedAt = clock.now();
     if (bgJobId) {
       await db
         .update(backgroundJobs)
@@ -185,7 +186,7 @@ async function processLandCreditRecalcJob(job: Job): Promise<void> {
     if (bgJobId) {
       await db
         .update(backgroundJobs)
-        .set({ status: "failed", completedAt: new Date(), error: err.message })
+        .set({ status: "failed", completedAt: clock.now(), error: err.message })
         .where(eq(backgroundJobs.id, bgJobId));
     }
     throw err;
@@ -246,5 +247,5 @@ export function landCreditScoreRecalculationJob(redisConnection: any): Worker {
  * job.id for the backgroundJobs audit row, so we synthesize a stable id.
  */
 export async function runLandCreditScoreRecalculation(): Promise<void> {
-  await processLandCreditRecalcJob({ id: `scheduler-${Date.now()}` } as Job);
+  await processLandCreditRecalcJob({ id: `scheduler-${clock.nowMs()}` } as Job);
 }

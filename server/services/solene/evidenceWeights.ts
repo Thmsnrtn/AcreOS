@@ -68,6 +68,7 @@ import {
 } from "@shared/schema/solene-evidence-weights";
 import { type SoleneDispatchAgentRole } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // PUBLIC TYPES
@@ -116,7 +117,7 @@ export interface AssessmentResult {
  */
 export function computeWeights(
   items: EvidenceItem[],
-  now: Date = new Date(),
+  now: Date = clock.now(),
 ): Record<string, number> {
   if (!Array.isArray(items) || items.length === 0) {
     return {};
@@ -284,7 +285,7 @@ export function computeConfidence(weights: Record<string, number>): number {
 export async function assessEvidence(
   input: AssessmentInput,
 ): Promise<AssessmentResult> {
-  const now = new Date();
+  const now = clock.now();
   const items = input.evidenceItems ?? [];
 
   // 1. Compute weights (default or custom).

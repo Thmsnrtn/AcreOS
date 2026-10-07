@@ -71,6 +71,7 @@ import {
 import { logger } from "../../utils/logger";
 
 import { redactCredentials } from "../../utils/redactCredentials";
+import { clock } from "../../utils/clock";
 // ============================================================================
 // CREDENTIAL SANITIZATION — inline (don't import frozen constitutionalGuard).
 // ============================================================================
@@ -198,7 +199,7 @@ export async function createSpeculation(
     sanitizeText(ref),
   );
   const expiresAt = new Date(
-    Date.now() + expiresInDays * 24 * 60 * 60 * 1000,
+    clock.nowMs() + expiresInDays * 24 * 60 * 60 * 1000,
   );
 
   const [inserted] = await db
@@ -260,7 +261,7 @@ export async function consumeSpeculation(
     );
   }
 
-  const now = new Date();
+  const now = clock.now();
   await db
     .update(soleneSpeculations)
     .set({
@@ -326,7 +327,7 @@ export async function findMatchingSpeculations(
     .where(and(...filters));
 
   const minConfidence = input.minConfidence ?? 0;
-  const now = Date.now();
+  const now = clock.nowMs();
   const scored: MatchResult[] = [];
 
   for (const row of rows) {
@@ -378,7 +379,7 @@ export async function supersedeSpeculation(
     supersedesSpeculationId: originalId,
   });
 
-  const now = new Date();
+  const now = clock.now();
   await db
     .update(soleneSpeculations)
     .set({ status: "superseded", updatedAt: now })
@@ -419,7 +420,7 @@ export async function discardSpeculation(
     );
   }
 
-  const now = new Date();
+  const now = clock.now();
   await db
     .update(soleneSpeculations)
     .set({
@@ -439,7 +440,7 @@ export async function discardSpeculation(
 // ============================================================================
 
 export async function expireStale(): Promise<{ expired: number }> {
-  const now = new Date();
+  const now = clock.now();
   const expired = await db
     .update(soleneSpeculations)
     .set({ status: "expired", updatedAt: now })
@@ -525,7 +526,7 @@ export async function getStats(windowDays: number): Promise<SpeculationStats> {
       `getStats: windowDays=${windowDays} must be a positive integer`,
     );
   }
-  const cutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
 
   const rows = await db
     .select()

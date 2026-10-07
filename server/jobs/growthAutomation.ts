@@ -56,6 +56,7 @@ import { PLAN_LIMITS } from "../services/planLimits";
 import { routeComplexTask } from "../services/aiRouter";
 import { logger } from "../utils/logger";
 import { orgMayActFilter } from "../services/orgOperating";
+import { clock } from "../utils/clock";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
@@ -92,7 +93,7 @@ const CONFIG = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function wasRecentlyEmailed(orgId: number): Promise<boolean> {
-  const since = subDays(new Date(), CONFIG.MIN_DAYS_BETWEEN_EMAILS);
+  const since = subDays(clock.now(), CONFIG.MIN_DAYS_BETWEEN_EMAILS);
   const recent = await db.select({ c: count() })
     .from(revenueProtectionInterventions)
     .where(and(
@@ -219,7 +220,7 @@ async function runUpsellEngine(): Promise<{ sent: number }> {
 
 async function runWinBackEngine(): Promise<{ sent: number }> {
   let sent = 0;
-  const now = new Date();
+  const now = clock.now();
 
   // Find orgs that cancelled in the last 90 days
   const cancelledOrgs = await db.select({
@@ -335,7 +336,7 @@ async function runWinBackEngine(): Promise<{ sent: number }> {
 
 async function runReferralActivation(): Promise<{ sent: number }> {
   let sent = 0;
-  const since = subDays(new Date(), CONFIG.POWER_USER_ACTIVITY_DAYS);
+  const since = subDays(clock.now(), CONFIG.POWER_USER_ACTIVITY_DAYS);
 
   // Find power users: paying, active, high activity, not recently emailed about referrals
   const powerUsers = await db.select({
@@ -414,7 +415,7 @@ async function runReferralActivation(): Promise<{ sent: number }> {
 
 async function runEngagementReactivation(): Promise<{ sent: number }> {
   let sent = 0;
-  const inactiveSince = subDays(new Date(), CONFIG.REENGAGEMENT_DAYS);
+  const inactiveSince = subDays(clock.now(), CONFIG.REENGAGEMENT_DAYS);
 
   // Find paying orgs with no recent activity
   const inactiveOrgs = await db.select({
@@ -437,7 +438,7 @@ async function runEngagementReactivation(): Promise<{ sent: number }> {
       .where(eq(activityLog.organizationId, org.orgId));
 
     if (!lastActivity?.lastAt) continue;
-    const daysSinceActivity = differenceInDays(new Date(), new Date(lastActivity.lastAt));
+    const daysSinceActivity = differenceInDays(clock.now(), new Date(lastActivity.lastAt));
     if (daysSinceActivity < CONFIG.REENGAGEMENT_DAYS) continue;
 
     // Get their specific data to personalize
@@ -518,7 +519,7 @@ async function runChurnRiskInterventions(): Promise<{ reengaged: number; alerted
 
     // Update the churnRiskScore field on the organizations table
     await db.update(organizations)
-      .set({ churnRiskScore: risk, churnRiskUpdatedAt: new Date() } as any)
+      .set({ churnRiskScore: risk, churnRiskUpdatedAt: clock.now() } as any)
       .where(eq(organizations.id, orgId));
 
     // Tier 1: score >= 70 — send re-engagement email
@@ -644,7 +645,7 @@ export interface GrowthAutomationResult {
 }
 
 export async function runGrowthAutomation(): Promise<GrowthAutomationResult> {
-  const runAt = new Date();
+  const runAt = clock.now();
   logger.info("[GrowthAutomation] Starting growth automation run...");
 
   const [upsell, winBack, referral, reengagement, churnRisk] = await Promise.allSettled([

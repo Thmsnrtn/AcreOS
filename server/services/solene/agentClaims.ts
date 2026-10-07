@@ -66,6 +66,7 @@ import {
   type SoleneAgentClaimRole,
 } from "@shared/schema/solene-agent-claims";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ============================================
 // Types
@@ -139,7 +140,7 @@ export async function claimSurfaces(opts: ClaimSurfacesOpts): Promise<number> {
 // ============================================
 
 export async function releaseClaim(claimId: number): Promise<void> {
-  const now = new Date();
+  const now = clock.now();
   const updated = await db
     .update(soleneAgentClaims)
     .set({ releasedAt: now, claimStatus: "released" })
@@ -172,7 +173,7 @@ export async function expireStaleClaims(): Promise<number> {
   // raw SQL fragment for the predicate.
   const result = await db
     .update(soleneAgentClaims)
-    .set({ claimStatus: "expired", releasedAt: new Date() })
+    .set({ claimStatus: "expired", releasedAt: clock.now() })
     .where(
       sql`${soleneAgentClaims.claimStatus} = 'active' AND (${soleneAgentClaims.claimedAt} + (${soleneAgentClaims.ttlMinutes} || ' minutes')::interval) < now()`,
     )

@@ -28,6 +28,7 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { organizations } from "@shared/schema";
+import { clock } from "../utils/clock";
 
 /** Injected so the caller keeps owning how this job logs. */
 export interface ResumeExpiredPausesDeps {
@@ -47,7 +48,7 @@ export async function resumeExpiredPauses(
   deps: ResumeExpiredPausesDeps,
 ): Promise<ResumeExpiredPausesResult> {
   const { logLine } = deps;
-  const now = new Date();
+  const now = clock.now();
   const expired = await db
     .select({
       id: organizations.id,

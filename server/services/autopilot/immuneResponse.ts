@@ -28,6 +28,7 @@ import { autopilotImmuneReports, type AutopilotImmuneReportRow } from "@shared/s
 import { logger } from "../../utils/logger";
 import { parseAudit, type AuditSummary } from "./dependencyAudit";
 import { planSecurityResponse, immuneSystemLine, type RepairPlan } from "./immuneSystem";
+import { clock } from "../../utils/clock";
 
 /** Marker the witnessed-class founder ask carries, used to dedup across days. */
 export const IMMUNE_ASK_MARKER = "Security advisories need your call";
@@ -121,7 +122,7 @@ export async function runImmuneResponse(
       } else {
         const { runGatedSelfPatch } = await import("./selfPatch");
         const git = createSelfPatchGitOps();
-        const suffix = opts.branchSuffix ?? String(Date.now());
+        const suffix = opts.branchSuffix ?? String(clock.nowMs());
         const patch = await runGatedSelfPatch(git, autoMergeEarned, suffix);
         result.selfPatch = { ran: patch.ran, reason: patch.reason, prUrl: patch.prUrl };
         // Leave the work tree the way we found it whether or not a PR opened.

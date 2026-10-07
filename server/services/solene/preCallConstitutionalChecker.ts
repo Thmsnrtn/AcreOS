@@ -96,6 +96,7 @@ import {
   CRITICAL_CUSTOMER_IMMUTABLE_NUMBERS,
   customerImmutableByNumber,
 } from "@sovereign/immutables";
+import { clock } from "../../utils/clock";
 
 export const TWELVE_IMMUTABLES_VERBATIM: ReadonlyArray<{
   number: number;
@@ -399,7 +400,7 @@ async function getClient(apiKey: string): Promise<AnthropicLike> {
 export async function checkPromptAgainstConstitution(
   input: CheckInput,
 ): Promise<CheckResult> {
-  const startedAt = Date.now();
+  const startedAt = clock.nowMs();
   const agentRole = input.agentRole;
   const promptText = input.promptText ?? "";
   const dispatchId = input.dispatchId ?? null;
@@ -411,7 +412,7 @@ export async function checkPromptAgainstConstitution(
     const reasoning =
       "ANTHROPIC_API_KEY not set; pre-call checker failing open";
     logger.warn(`[preCallConstitutionalChecker] ${reasoning}`);
-    const latencyMs = Date.now() - startedAt;
+    const latencyMs = clock.nowMs() - startedAt;
     await persistDecision({
       dispatchId,
       agentRole,
@@ -501,7 +502,7 @@ export async function checkPromptAgainstConstitution(
     );
   }
 
-  const latencyMs = Date.now() - startedAt;
+  const latencyMs = clock.nowMs() - startedAt;
   const costUsd = estimateCostUsd(tokensIn, tokensOut, tokensCached);
 
   // Failure paths → fail-open.

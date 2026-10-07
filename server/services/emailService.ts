@@ -15,6 +15,7 @@ import { raiseAlert } from "./alertSpine";
 // mail — reaches into an autopilot-owned module rather than owning a second
 // copy of the rule.
 import type { CounterpartyHit } from "./autopilot/hands/counterpartyMatch";
+import { clock } from "../utils/clock";
 
 /**
  * Eleonora deliverability — Phase 1 §10 / Week 7-8.
@@ -523,7 +524,7 @@ export function buildRawMimeMessage(opts: {
   listUnsubscribeMailto: string;
   listUnsubscribeUrl: string;
 }): string {
-  const boundary = `=_acreos_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const boundary = `=_acreos_${clock.nowMs()}_${Math.random().toString(36).slice(2, 10)}`;
   const headers = [
     `From: ${opts.from}`,
     `To: ${opts.to.join(", ")}`,
@@ -579,7 +580,7 @@ async function recordEmailTransportOutcome(status: 'success' | 'failed', error?:
     const { db } = await import('../db');
     const { jobHealthLogs } = await import('@shared/schema');
     const { and, eq, gte } = await import('drizzle-orm');
-    const now = new Date();
+    const now = clock.now();
     if (status === 'success') {
       if (!lastEmailFailureCheck || now.getTime() - lastEmailFailureCheck.at > 5 * 60_000) {
         const rows = await db
@@ -689,7 +690,7 @@ export class EmailService {
   }
 
   private async performSend(options: EmailOptions): Promise<EmailResult> {
-    const startTime = Date.now();
+    const startTime = clock.nowMs();
     // ONE reading of the lane for the whole send. Everything downstream that
     // could put AcreOS's name or address on a customer's counterparty mail —
     // the From: display name and the CAN-SPAM footer — branches on THIS, not
@@ -1254,11 +1255,11 @@ export class EmailService {
         });
 
         const response = await emailCircuitBreaker.call(() => client.send(command));
-        const messageId = response.MessageId || `ses-${Date.now()}`;
-        const durationMs = Date.now() - startTime;
+        const messageId = response.MessageId || `ses-${clock.nowMs()}`;
+        const durationMs = clock.nowMs() - startTime;
         
         this.log({
-          timestamp: new Date(),
+          timestamp: clock.now(),
           to: toAddresses.join(', '),
           subject: options.subject,
           status: 'sent',
@@ -1298,10 +1299,10 @@ export class EmailService {
     
     const errorType = categorizeError(lastError);
     const errorMessage = this.formatErrorMessage(lastError, errorType);
-    const durationMs = Date.now() - startTime;
+    const durationMs = clock.nowMs() - startTime;
     
     this.log({
-      timestamp: new Date(),
+      timestamp: clock.now(),
       to: toAddresses.join(', '),
       subject: options.subject,
       status: 'failed',
@@ -1426,7 +1427,7 @@ export class EmailService {
         html: this.buildAlertTemplate(options.templateData),
       },
       founder_briefing: {
-        subject: options.templateData.subject || `AcreOS Daily Briefing — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+        subject: options.templateData.subject || `AcreOS Daily Briefing — ${clock.now().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
         html: this.buildFounderBriefingTemplate(options.templateData),
       },
       churn_rescue: {
@@ -1667,7 +1668,7 @@ export class EmailService {
   }
 
   private buildFounderBriefingTemplate(data: Record<string, any>): string {
-    const date = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    const date = clock.now().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
     const paragraphs = (data.briefingParagraphs as string[] | undefined) ?? [data.briefing ?? ''];
     const stats = data.stats as Record<string, any> | undefined;
 

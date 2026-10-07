@@ -31,6 +31,7 @@ import { db } from "../../db";
 import { agentLlmTraces, incidents, jobHealthLogs } from "@shared/schema";
 import { logger } from "../../utils/logger";
 import { unscopedForPlatformOps } from "../../utils/orgScopedDb";
+import { clock } from "../../utils/clock";
 
 const OPS_PROVIDERS = ["model_provider", "email_provider", "stripe"] as const;
 export type OpsProvider = (typeof OPS_PROVIDERS)[number];
@@ -271,7 +272,7 @@ export interface OpsWatchResult {
  * worker when the brain dispatches stabilize_reflexes. Never throws.
  */
 export async function runOpsWatch(opts: { now?: Date; stripeProbe?: () => Promise<boolean>; emailProbe?: () => Promise<boolean> } = {}): Promise<OpsWatchResult> {
-  const now = opts.now ?? new Date();
+  const now = opts.now ?? clock.now();
   const result: OpsWatchResult = { readings: [], opened: [], resolved: [], paged: 0 };
   try {
     const open = await openIncidents();

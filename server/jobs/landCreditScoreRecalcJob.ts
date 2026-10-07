@@ -7,11 +7,12 @@
  */
 
 import { trackInterval, withJobLock, jobLog as log } from "../utils/jobRuntime";
+import { clock } from "../utils/clock";
 
 export function startLandCreditScoreRecalcJob(): void {
   log("Registering land credit-score recalculation (daily ~01:00 UTC)", "land-credit-recalc");
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() !== 1 || now.getUTCMinutes() >= 5) {
       return;
     }

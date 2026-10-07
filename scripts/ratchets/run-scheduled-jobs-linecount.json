@@ -5,7 +5,7 @@
   "globs": [
     "server/jobs/runScheduledJobs.ts"
   ],
-  "baselineCount": 5705,
+  "baselineCount": 5702,
   "direction": "down",
   "minima": {
     "files": 1

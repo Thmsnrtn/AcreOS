@@ -37,6 +37,7 @@ import {
 } from "@shared/schema/solene-pre-call-decisions";
 import { logger } from "../../utils/logger";
 import { enqueueDispatch, cancelQueuedDispatch } from "./dispatchQueue";
+import { clock } from "../../utils/clock";
 
 export interface FounderBypassInput {
   agentRole: SoleneDispatchAgentRole;
@@ -155,7 +156,7 @@ export async function founderDispatch(
 
   const priority = input.priority ?? FOUNDER_DEFAULT_PRIORITY;
   const bypassedCostCeiling = input.maxCostUsd > DISPATCH_MAX_COST_USD;
-  const ts = Date.now();
+  const ts = clock.nowMs();
   const sourceId = `founder:${ts}`;
 
   const dispatchId = await enqueueDispatch({
@@ -170,7 +171,7 @@ export async function founderDispatch(
     founderOverride: bypassedCostCeiling,
   });
 
-  const recordedAt = new Date();
+  const recordedAt = clock.now();
 
   // Honesty surface: record the canonical founder-bypass accountability marker.
   // This row's is_founder_bypass=true is the SINGLE source of truth the public
@@ -269,7 +270,7 @@ export async function founderCancelDispatch(
       .update(soleneDispatchQueue)
       .set({
         status: "cancelled",
-        completedAt: new Date(),
+        completedAt: clock.now(),
         resultSummary: summary,
       })
       .where(eq(soleneDispatchQueue.id, dispatchId));

@@ -37,6 +37,7 @@ import { sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { pgEnvFromDatabaseUrl } from "../utils/pgEnv";
 import { backupConfigMissingReason } from "./jobRegistry";
+import { clock } from "../utils/clock";
 
 const execFileAsync = promisify(execFile);
 
@@ -205,7 +206,7 @@ export interface RestoreVerifyResult {
  * backup pipeline is LOUD in the proof trail, not an unhandled rejection.
  */
 export async function runBackupRestoreVerification(): Promise<RestoreVerifyResult> {
-  const startedAt = Date.now();
+  const startedAt = clock.nowMs();
 
   const dormantReason = backupVerifyDisabledReason();
   if (dormantReason) {
@@ -222,7 +223,7 @@ export async function runBackupRestoreVerification(): Promise<RestoreVerifyResul
 
   const bucket = process.env.DB_BACKUP_S3_BUCKET!;
   const region = process.env.AWS_REGION || "us-east-1";
-  const dumpPath = path.join(os.tmpdir(), `restore-verify-${Date.now()}.sql`);
+  const dumpPath = path.join(os.tmpdir(), `restore-verify-${clock.nowMs()}.sql`);
   let backupKey = "";
   let backupSize = 0;
   let scratchCreated = false;
@@ -306,7 +307,7 @@ export async function runBackupRestoreVerification(): Promise<RestoreVerifyResul
     }
 
     const result = compareCrownJewelCounts(counts);
-    const durationMs = Date.now() - startedAt;
+    const durationMs = clock.nowMs() - startedAt;
 
     // 5 ── durable proof row
     await db.insert(backupVerified).values({
@@ -349,7 +350,7 @@ export async function runBackupRestoreVerification(): Promise<RestoreVerifyResul
         backupSizeBytes: backupSize || null,
         status: "failed",
         error: message.slice(0, 2000),
-        durationMs: Date.now() - startedAt,
+        durationMs: clock.nowMs() - startedAt,
       });
     } catch {
       /* proof-row write is best-effort */

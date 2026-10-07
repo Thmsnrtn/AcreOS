@@ -68,6 +68,7 @@ import {
   type MemoryRetrievalNamespace,
 } from "@shared/schema/solene-memory-retrieval";
 import type { SoleneDispatchAgentRole } from "@shared/schema/solene-dispatch";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // Public types
@@ -254,7 +255,7 @@ const NAMESPACE_DISPLAY_NAMES: Record<MemoryNamespace, string> = {
 export async function retrieveCrossNamespaceMemories(
   query: MultiNamespaceQuery,
 ): Promise<MultiNamespaceResult> {
-  const t0 = Date.now();
+  const t0 = clock.nowMs();
   const namespaces =
     query.namespaces && query.namespaces.length > 0
       ? query.namespaces
@@ -285,7 +286,7 @@ export async function retrieveCrossNamespaceMemories(
       retrievalEventId: -1,
       retrieved: [],
       byNamespace: emptyByNamespace(),
-      latencyMs: Date.now() - t0,
+      latencyMs: clock.nowMs() - t0,
     };
   }
 
@@ -358,7 +359,7 @@ export async function retrieveCrossNamespaceMemories(
     byNamespace[item.namespace] += 1;
   }
 
-  const latencyMs = Date.now() - t0;
+  const latencyMs = clock.nowMs() - t0;
 
   // Persist a single audit row covering the merged result.
   let retrievalEventId = -1;

@@ -22,6 +22,7 @@
  * not broken, and the detector says so rather than crying wolf.
  */
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 export type StallSeverity = "healthy" | "degraded" | "stalled";
 
@@ -132,7 +133,7 @@ export interface LoopHealthDeps {
  * crashing the watchdog (a watchdog that crashes is no watchdog).
  */
 export async function observeLoopHealth(deps?: Partial<LoopHealthDeps>): Promise<StallVerdict> {
-  const now = deps?.now?.() ?? Date.now();
+  const now = deps?.now?.() ?? clock.nowMs();
 
   let lastPulseAt: number | null = null;
   try {

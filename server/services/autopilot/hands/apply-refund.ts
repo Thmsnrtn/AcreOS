@@ -38,6 +38,7 @@ import { handError, type HandContext, type HandResult } from "./types";
 import { creditTransactions, organizations } from "@shared/schema";
 import { db, withTransaction } from "../../../db";
 import { logger } from "../../../utils/logger";
+import { clock } from "../../../utils/clock";
 
 const NAME = "apply_refund";
 /** Hard ceiling (cents). Matches the platform auto-approve threshold. */
@@ -115,7 +116,7 @@ const PLATFORM_REFUNDS = "Decisions door: refunds the autopilot could not confir
  *     for an interrupted refund to surface).
  * The claim row stays either way, so the payment is never refunded twice.
  */
-export async function listUncertainRefunds(limit = 50, now = Date.now()): Promise<Array<{ id: number; organizationId: number; chargeId: string | null; createdAt: Date | null; why: string | null }>> {
+export async function listUncertainRefunds(limit = 50, now = clock.nowMs()): Promise<Array<{ id: number; organizationId: number; chargeId: string | null; createdAt: Date | null; why: string | null }>> {
   const { unscopedForPlatformOps } = await import("../../../utils/orgScopedDb");
   const cutoff = new Date(now - INTERRUPTED_AFTER_MS);
   const rows = await unscopedForPlatformOps(PLATFORM_REFUNDS)
@@ -163,7 +164,7 @@ export async function resolveUncertainRefund(organizationId: number, id: number,
   if (!row || (state !== "uncertain" && state !== "claimed")) return false;
   const updated = await db2
     .update(creditTransactions)
-    .set({ metadata: { ...(row.metadata as Record<string, unknown>), state: "resolved_by_founder", resolvedBy: by, resolvedAt: new Date().toISOString(), resolution: note.slice(0, 1000) } })
+    .set({ metadata: { ...(row.metadata as Record<string, unknown>), state: "resolved_by_founder", resolvedBy: by, resolvedAt: clock.now().toISOString(), resolution: note.slice(0, 1000) } })
     .where(and(eq(creditTransactions.organizationId, organizationId), eq(creditTransactions.id, id), eq(creditTransactions.type, "purchase_refund")))
     .returning({ id: creditTransactions.id });
   if (updated.length > 0) logger.warn(`[autopilot/hands] uncertain refund #${id} (org #${organizationId}) resolved by ${by}: ${note.slice(0, 200)}`);
@@ -222,7 +223,7 @@ async function claimRefund(e: Eligible, approvedBy: string | null): Promise<{ cl
           // "claimed" until an outcome is written: a claim that is still
           // "claimed" minutes later was interrupted mid-refund and is listed
           // as uncertain for the founder (listUncertainRefunds).
-          metadata: { refundAmountCents: e.amountCents, approvedBy, state: "claimed", claimedAt: new Date().toISOString() },
+          metadata: { refundAmountCents: e.amountCents, approvedBy, state: "claimed", claimedAt: clock.now().toISOString() },
         })
         .returning({ id: creditTransactions.id });
       return { claimId: claim.id, clawedCents };
@@ -252,18 +253,18 @@ async function releaseClaim(e: Eligible, claimId: number, clawedCents: number): 
 }
 
 async function handler(input: Record<string, unknown>, ctx: HandContext = {}): Promise<HandResult> {
-  const started = Date.now();
+  const started = clock.nowMs();
   let eligible: Eligible | null = null;
   let claim: { claimId: number; clawedCents: number } | null = null;
   let refundCalled = false;
   try {
     const e = await refundEligibility(input);
-    if (!e.ok) return { success: false, output: e.reason, durationMs: Date.now() - started };
+    if (!e.ok) return { success: false, output: e.reason, durationMs: clock.nowMs() - started };
     eligible = e;
     try {
       claim = await claimRefund(e, ctx.witnessedBy ?? null);
     } catch (err) {
-      if (err instanceof RefundRefused) return { success: false, output: `apply_refund: ${err.message}. Refusing.`, durationMs: Date.now() - started };
+      if (err instanceof RefundRefused) return { success: false, output: `apply_refund: ${err.message}. Refusing.`, durationMs: clock.nowMs() - started };
       throw err;
     }
 
@@ -277,17 +278,17 @@ async function handler(input: Record<string, unknown>, ctx: HandContext = {}): P
       : await stripe.charges.retrieve(e.chargeId);
     if (!charge || typeof charge !== "object") {
       await releaseClaim(e, claim.claimId, claim.clawedCents);
-      return { success: false, output: `apply_refund: Stripe has no charge for ${e.chargeId}. Refusing.`, durationMs: Date.now() - started };
+      return { success: false, output: `apply_refund: Stripe has no charge for ${e.chargeId}. Refusing.`, durationMs: clock.nowMs() - started };
     }
     if ((charge.amount_refunded ?? 0) > 0 || charge.refunded === true) {
       // Refunded outside the autopilot. Keep NO claim of ours (none was paid
       // out), give the credits back — the outside refund owns the record.
       await releaseClaim(e, claim.claimId, claim.clawedCents);
-      return { success: false, output: `apply_refund: ${e.chargeId} was already refunded on Stripe — never twice. Refusing.`, durationMs: Date.now() - started };
+      return { success: false, output: `apply_refund: ${e.chargeId} was already refunded on Stripe — never twice. Refusing.`, durationMs: clock.nowMs() - started };
     }
     if (typeof charge.amount === "number" && e.amountCents > charge.amount) {
       await releaseClaim(e, claim.claimId, claim.clawedCents);
-      return { success: false, output: `apply_refund: $${(e.amountCents / 100).toFixed(2)} is more than Stripe charged. Refusing.`, durationMs: Date.now() - started };
+      return { success: false, output: `apply_refund: $${(e.amountCents / 100).toFixed(2)} is more than Stripe charged. Refusing.`, durationMs: clock.nowMs() - started };
     }
     // From here on the money may have moved. Once refunds.create has been
     // CALLED, the claim is never released and the credits are never given
@@ -311,10 +312,10 @@ async function handler(input: Record<string, unknown>, ctx: HandContext = {}): P
       return {
         success: true,
         output: JSON.stringify({ refundId: refund.id, amountCents: e.amountCents, creditsReturned: claim.clawedCents, recordIncomplete: true }),
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
-    return { success: true, output: JSON.stringify({ refundId: refund.id, amountCents: e.amountCents, creditsReturned: claim.clawedCents }), durationMs: Date.now() - started };
+    return { success: true, output: JSON.stringify({ refundId: refund.id, amountCents: e.amountCents, creditsReturned: claim.clawedCents }), durationMs: clock.nowMs() - started };
   } catch (err) {
     if (eligible && claim) {
       if (refundCalled) {
@@ -324,7 +325,7 @@ async function handler(input: Record<string, unknown>, ctx: HandContext = {}): P
         return {
           success: false,
           output: `apply_refund: the outcome of refunding ${eligible.chargeId} is UNCERTAIN (the refund call did not return). The claim is kept so it can never be refunded twice; the founder has been asked to check Stripe.`,
-          durationMs: Date.now() - started,
+          durationMs: clock.nowMs() - started,
         };
       }
       try {

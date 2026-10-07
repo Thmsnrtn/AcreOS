@@ -11,11 +11,12 @@
  */
 
 import { trackInterval, withJobLock, jobLog as log } from "../utils/jobRuntime";
+import { clock } from "../utils/clock";
 
 export function startReferralMaturityJob(): void {
   log("Registering referral maturity sweep (daily ~02:10 UTC)", "referral-maturity");
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() !== 2 || now.getUTCMinutes() < 10 || now.getUTCMinutes() >= 15) {
       return;
     }

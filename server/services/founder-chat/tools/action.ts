@@ -26,6 +26,7 @@ import {
 import { db } from "../../../db";
 import { registerTool } from "../tool-registry";
 import { REVENUE_TRIGGER_LADDER } from "../../finance/scaleUpTriggers";
+import { clock } from "../../../utils/clock";
 
 
 // ─── 1. approve_trigger (T2) ───────────────────────────────────────────────
@@ -168,7 +169,7 @@ registerTool({
       description: args.reason, updatedBy: ctx.founderUserId,
     } as any).onConflictDoUpdate({
       target: founderSettings.key,
-      set: { value: "true", description: args.reason, updatedBy: ctx.founderUserId, updatedAt: new Date() },
+      set: { value: "true", description: args.reason, updatedBy: ctx.founderUserId, updatedAt: clock.now() },
     });
     return {
       artifact: { type: "text", markdown: `Paused \`${args.channel}\` for org ${args.org_id}: ${args.reason}` },
@@ -202,7 +203,7 @@ registerTool({
       description: `daily cap=${args.daily_cap}`, updatedBy: ctx.founderUserId,
     } as any).onConflictDoUpdate({
       target: founderSettings.key,
-      set: { value: String(args.daily_cap), updatedBy: ctx.founderUserId, updatedAt: new Date() },
+      set: { value: String(args.daily_cap), updatedBy: ctx.founderUserId, updatedAt: clock.now() },
     });
     return {
       artifact: { type: "text", markdown: `Throttled \`${args.channel}\` to ${args.daily_cap}/day for org ${args.org_id}.` },
@@ -234,18 +235,18 @@ registerTool({
     if (args.from === args.to) {
       return { artifact: { type: "text", markdown: `Cannot transfer to the same bucket.` } };
     }
-    const externalId = `atlas-transfer-${Date.now()}`;
+    const externalId = `atlas-transfer-${clock.nowMs()}`;
     await db.insert(financialLedger).values([
       {
         organizationId: null, bucket: args.from, category: "manual_transfer",
         amountCents: -args.cents, feature: "bucket_transfer", provider: "atlas",
-        externalEventId: `${externalId}:debit`, postedAt: new Date(),
+        externalEventId: `${externalId}:debit`, postedAt: clock.now(),
         postedBy: `founder:${ctx.founderUserId}`, notes: args.note ?? null,
       } as any,
       {
         organizationId: null, bucket: args.to, category: "manual_transfer",
         amountCents: args.cents, feature: "bucket_transfer", provider: "atlas",
-        externalEventId: `${externalId}:credit`, postedAt: new Date(),
+        externalEventId: `${externalId}:credit`, postedAt: clock.now(),
         postedBy: `founder:${ctx.founderUserId}`, notes: args.note ?? null,
       } as any,
     ]);
@@ -285,7 +286,7 @@ registerTool({
       description: args.note ?? null, updatedBy: ctx.founderUserId,
     } as any).onConflictDoUpdate({
       target: founderSettings.key,
-      set: { value: String(args.value), valueType, updatedBy: ctx.founderUserId, updatedAt: new Date() },
+      set: { value: String(args.value), valueType, updatedBy: ctx.founderUserId, updatedAt: clock.now() },
     });
     return {
       artifact: { type: "text", markdown: `Set dial \`${args.key}\` = \`${String(args.value)}\`.` },
@@ -370,7 +371,7 @@ registerTool({
   schema: z.object({ org_id: z.number().int().positive(), channel: z.string().min(1) }),
   async handler(args) {
     await db.update(byokCredentials)
-      .set({ revokedAt: new Date() })
+      .set({ revokedAt: clock.now() })
       .where(and(
         eq(byokCredentials.organizationId, args.org_id),
         eq(byokCredentials.channel, args.channel),
@@ -414,7 +415,7 @@ registerTool({
       description: args.note ?? null, updatedBy: ctx.founderUserId,
     } as any).onConflictDoUpdate({
       target: founderSettings.key,
-      set: { value: String(args.value), valueType, updatedBy: ctx.founderUserId, updatedAt: new Date() },
+      set: { value: String(args.value), valueType, updatedBy: ctx.founderUserId, updatedAt: clock.now() },
     });
     return {
       artifact: { type: "text", markdown: `Set org ${args.org_id} override \`${args.key}\` = \`${String(args.value)}\`.` },

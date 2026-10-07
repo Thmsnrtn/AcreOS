@@ -53,6 +53,7 @@ import {
 } from "./dispatchToolExecutor";
 import { checkPromptAgainstConstitution } from "./preCallConstitutionalChecker";
 import { isEmptyResult, ToolLoopDetector, turnBudgetFor } from "./taskGuards";
+import { clock } from "../../utils/clock";
 
 // ----------------------------------------------------------------------------
 // Configuration
@@ -322,7 +323,7 @@ export async function loadActiveClaimsBlock(
   );
   if (others.length === 0) return ACTIVE_CLAIMS_EMPTY;
 
-  const now = Date.now();
+  const now = clock.nowMs();
   const lines: string[] = [];
   for (const c of others) {
     const ageSec = Math.max(0, Math.round((now - c.claimedAt.getTime()) / 1000));
@@ -541,7 +542,7 @@ async function appendTranscript(
   filePath: string,
   event: Record<string, unknown>,
 ): Promise<void> {
-  const line = JSON.stringify({ ts: new Date().toISOString(), ...event }) + "\n";
+  const line = JSON.stringify({ ts: clock.now().toISOString(), ...event }) + "\n";
   await fs.appendFile(filePath, line, "utf8");
 }
 
@@ -594,7 +595,7 @@ export interface RunDispatchResult {
 export async function runDispatch(
   row: SoleneDispatchQueueRow,
 ): Promise<RunDispatchResult> {
-  const started = Date.now();
+  const started = clock.nowMs();
   const dispatchId = row.id;
   const maxCostUsd = Number(row.maxCostUsd);
   const timeoutMs = row.timeoutMs;
@@ -671,7 +672,7 @@ export async function runDispatch(
         costUsd: 0,
         tokenInput: 0,
         tokenOutput: 0,
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
         finalText: msg,
         filesModified: [],
         commitsReferenced: [],
@@ -707,7 +708,7 @@ export async function runDispatch(
         costUsd: 0,
         tokenInput: 0,
         tokenOutput: 0,
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
         finalText: msg,
         filesModified: [],
         commitsReferenced: [],
@@ -958,7 +959,7 @@ export async function runDispatch(
       // Per-call timeout: remaining wall-clock budget.
       const remainingMs = Math.max(
         5000,
-        timeoutMs - (Date.now() - started),
+        timeoutMs - (clock.nowMs() - started),
       );
 
       // 2026-06-05 cost audit (batch 5): system prompt is now a 2-block
@@ -1126,7 +1127,7 @@ export async function runDispatch(
     clearTimeout(timeoutHandle);
   }
 
-  const durationMs = Date.now() - started;
+  const durationMs = clock.nowMs() - started;
   const costUsd = estimateCostUsd(
     tokenInput,
     tokenOutput,
@@ -1244,7 +1245,7 @@ function makeResult(
     costUsd,
     tokenInput,
     tokenOutput,
-    durationMs: Date.now() - started,
+    durationMs: clock.nowMs() - started,
     finalText,
     filesModified,
     commitsReferenced,

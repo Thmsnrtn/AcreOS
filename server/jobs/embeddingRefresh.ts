@@ -30,15 +30,16 @@ import { eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { generateQueryEmbedding, generateQueryEmbeddingsBatch } from "../services/embeddingClient";
 import { scheduleSelfRescheduling } from "./scheduler";
+import { clock } from "../utils/clock";
 
 // Pillar 9.4 — embedding-batch metrics. Rolling counters reset at
 // process restart; surface via getEmbeddingBatchMetrics().
 let _batchesToday = 0;
 let _rowsBatchedToday = 0;
-let _metricsResetAt = new Date(new Date().toDateString()).getTime();
+let _metricsResetAt = new Date(clock.now().toDateString()).getTime();
 
 function resetMetricsIfNewDay(): void {
-  const todayStart = new Date(new Date().toDateString()).getTime();
+  const todayStart = new Date(clock.now().toDateString()).getTime();
   if (todayStart > _metricsResetAt) {
     _batchesToday = 0;
     _rowsBatchedToday = 0;
@@ -119,7 +120,7 @@ export async function refreshStaleEmbeddings(
         // tick.
         await db
           .update(dealPatterns)
-          .set({ embeddingRefreshedAt: new Date() })
+          .set({ embeddingRefreshedAt: clock.now() })
           .where(eq(dealPatterns.id, row.id));
         continue;
       }
@@ -140,7 +141,7 @@ export async function refreshStaleEmbeddings(
       try {
         await db
           .update(dealPatterns)
-          .set({ embeddingRefreshedAt: new Date() })
+          .set({ embeddingRefreshedAt: clock.now() })
           .where(eq(dealPatterns.id, row.id));
       } catch {
         /* observability — don't escalate */

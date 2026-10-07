@@ -14,6 +14,7 @@ import {
   type SessionTaskStatus,
   type SoleneSessionTaskRow,
 } from "@shared/schema/solene-session-tasks";
+import { clock } from "../../utils/clock";
 
 // ============================================
 // Types
@@ -125,7 +126,7 @@ export async function updateTask(
     }
   }
 
-  const set: Record<string, unknown> = { updatedAt: new Date() };
+  const set: Record<string, unknown> = { updatedAt: clock.now() };
   if (patch.status !== undefined) set.status = patch.status;
   if (patch.subject !== undefined) set.subject = patch.subject;
   if (patch.description !== undefined) set.description = patch.description;

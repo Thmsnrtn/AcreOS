@@ -28,6 +28,7 @@ import {
   onboardingFunnelMetrics,
 } from "@shared/schema/onboarding-funnel";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ─── Public types ───────────────────────────────────────────────────────────
 
@@ -87,10 +88,10 @@ interface LifecycleRow {
 export async function computeFunnelMetrics(opts?: {
   sinceDate?: Date;
 }): Promise<FunnelComputeResult> {
-  const start = Date.now();
+  const start = clock.nowMs();
   const since =
-    opts?.sinceDate ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const now = new Date();
+    opts?.sinceDate ?? new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
+  const now = clock.now();
   const measuredDate = formatDateOnly(now);
 
   let orgsProcessed = 0;
@@ -128,7 +129,7 @@ export async function computeFunnelMetrics(opts?: {
         orgsProcessed: 0,
         metricsWritten: 0,
         errors: 0,
-        durationMs: Date.now() - start,
+        durationMs: clock.nowMs() - start,
       };
     }
 
@@ -258,7 +259,7 @@ export async function computeFunnelMetrics(opts?: {
     orgsProcessed,
     metricsWritten,
     errors,
-    durationMs: Date.now() - start,
+    durationMs: clock.nowMs() - start,
   };
 }
 
@@ -385,7 +386,7 @@ function eventTypeRank(t: string): number {
 export async function getFunnelSummary(
   windowDays: number,
 ): Promise<FunnelSummary> {
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
 
   // Pull the most-recent metric per org within the window. We select all
   // rows, then de-dupe in memory keyed by org_id — keeps the SQL portable

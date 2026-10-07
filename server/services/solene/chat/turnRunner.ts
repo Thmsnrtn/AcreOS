@@ -54,6 +54,7 @@ import {
 } from "./toolExecutor";
 import type { SoleneMessageRow } from "@shared/schema/solene-conversations";
 import { logger } from "../../../utils/logger";
+import { clock } from "../../../utils/clock";
 
 // ============================================================================
 // Public types
@@ -141,7 +142,7 @@ export async function* runTurn(
   input: RunTurnInput,
   signal?: AbortSignal,
 ): AsyncIterable<TurnEvent> {
-  const startedAt = Date.now();
+  const startedAt = clock.nowMs();
 
   // ── 1. Validate + persist user message ────────────────────────────────────
   if (!Array.isArray(input.userMessage) || input.userMessage.length === 0) {
@@ -281,7 +282,7 @@ export async function* runTurn(
       yield { type: "error", data: { message: "client aborted" } };
       return;
     }
-    if (Date.now() > timeoutAt) {
+    if (clock.nowMs() > timeoutAt) {
       yield { type: "error", data: { message: "turn timeout exceeded" } };
       return;
     }

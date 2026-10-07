@@ -21,6 +21,7 @@ import { performance } from "node:perf_hooks";
 import { db } from "../db";
 import { vmResourceUsage } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const SAMPLE_WINDOW_MS = 5 * 60 * 1000;
 
@@ -63,7 +64,7 @@ export function computeCpuPercent(
  * for "row written" so the scheduler reports `recordsProcessed` correctly.
  */
 export async function captureVmResourceSample(): Promise<number> {
-  const now = Date.now();
+  const now = clock.nowMs();
   const mem = process.memoryUsage();
   const cpuNow = process.cpuUsage();
   const cpuCount = os.cpus().length || 1;

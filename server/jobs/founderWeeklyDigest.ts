@@ -42,6 +42,7 @@ import { eq, and, gte, lt, desc, count, sum, avg, sql } from "drizzle-orm";
 import { subDays, subWeeks, format, startOfWeek, endOfWeek } from "date-fns";
 import { emailService } from "../services/emailService";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Data collection
@@ -151,7 +152,7 @@ interface FounderAction {
 }
 
 async function collectWeeklyData(): Promise<WeeklyDigestData> {
-  const now = new Date();
+  const now = clock.now();
   const thisWeek: DateRange = {
     start: subDays(now, 7),
     end: now,

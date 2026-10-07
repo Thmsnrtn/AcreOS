@@ -4,6 +4,7 @@ import { leads, activityLog } from "@shared/schema";
 import { eq, and, ilike } from "drizzle-orm";
 import type { Lead } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── TCPA QUIET-HOURS NOTE ────────────────────────────────────────────────────
 // TCPA § 64.1200(c)(1) and most state mini-TCPAs require contact between
@@ -201,7 +202,7 @@ export function resolveZoneForPhone(
  * Intl.DateTimeFormat so DST transitions are honored (this is the only
  * correct way — manually adding a fixed UTC offset is broken twice a year).
  */
-function getLocalHourInZone(zone: string, now: Date = new Date()): { hour: number; minute: number } {
+function getLocalHourInZone(zone: string, now: Date = clock.now()): { hour: number; minute: number } {
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: zone,
@@ -477,7 +478,7 @@ async function applyOptKeywordToLead(
   messageSid: string,
 ): Promise<void> {
   const matched = { id: leadId };
-  const now = new Date();
+  const now = clock.now();
   if (action === 'opt_out') {
     await db
       .update(leads)

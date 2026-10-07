@@ -36,6 +36,7 @@ import type { AutopilotDomain } from "./policyGate";
 import { isNeverPromote } from "../agentAuthorityGate";
 import { db } from "../../db";
 import { jobHealthLogs } from "@shared/schema";
+import { clock } from "../../utils/clock";
 
 export type SeamVerdict = "allow" | "escalate" | "block";
 
@@ -122,7 +123,7 @@ const counters: ShadowCounters = {
   seamStricter: 0,
   seamLooser: 0,
   byAction: {},
-  startedAt: new Date().toISOString(),
+  startedAt: clock.now().toISOString(),
 };
 
 /**
@@ -147,7 +148,7 @@ const counters: ShadowCounters = {
 const FLUSH_EVERY = 200;
 
 function persistShadowRow(jobName: string, status: string, metrics: Record<string, unknown>): void {
-  const now = new Date();
+  const now = clock.now();
   void db
     .insert(jobHealthLogs)
     .values({

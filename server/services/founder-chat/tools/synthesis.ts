@@ -15,9 +15,10 @@ import {
 } from "@shared/schema";
 import { db } from "../../../db";
 import { registerTool } from "../tool-registry";
+import { clock } from "../../../utils/clock";
 
 function daysAgo(n: number): Date {
-  return new Date(Date.now() - n * 24 * 60 * 60 * 1000);
+  return new Date(clock.nowMs() - n * 24 * 60 * 60 * 1000);
 }
 
 // ─── 1. draft_weekly_money_letter (T2 — draft) ──────────────────────────────
@@ -60,7 +61,7 @@ registerTool({
     return {
       artifact: {
         type: "letter_card",
-        title: `Weekly money letter — ${new Date().toISOString().slice(0, 10)}`,
+        title: `Weekly money letter — ${clock.now().toISOString().slice(0, 10)}`,
         body,
         sendTarget: "draft_only" as const,
       },

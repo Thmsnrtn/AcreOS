@@ -14,6 +14,7 @@ import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { founderChatBackgroundTasks } from "@shared/schema";
+import { clock } from "../../utils/clock";
 
 export type BackgroundTaskStatus = "queued" | "running" | "complete" | "failed";
 
@@ -77,7 +78,7 @@ export async function getBackgroundTaskStatus(taskId: string): Promise<{
 export async function markBackgroundTaskRunning(taskId: string): Promise<void> {
   await db
     .update(founderChatBackgroundTasks)
-    .set({ status: "running", startedAt: new Date() as any })
+    .set({ status: "running", startedAt: clock.now() as any })
     .where(eq(founderChatBackgroundTasks.id, taskId));
 }
 
@@ -90,7 +91,7 @@ export async function completeBackgroundTask(
     .set({
       status: "complete",
       resultArtifact: resultArtifact as any,
-      completedAt: new Date() as any,
+      completedAt: clock.now() as any,
     })
     .where(eq(founderChatBackgroundTasks.id, taskId));
 }
@@ -101,7 +102,7 @@ export async function failBackgroundTask(taskId: string, error: string): Promise
     .set({
       status: "failed",
       error,
-      completedAt: new Date() as any,
+      completedAt: clock.now() as any,
     })
     .where(eq(founderChatBackgroundTasks.id, taskId));
 }

@@ -18,6 +18,7 @@
  */
 
 import { logger } from "../../../utils/logger";
+import { clock } from "../../../utils/clock";
 
 export const FLY_API_BASE = "https://api.machines.dev/v1";
 
@@ -270,7 +271,7 @@ export async function getAppHealth(app?: string): Promise<FlyAppHealth> {
   const states: Record<string, number> = {};
   const regions = new Set<string>();
   let oldest: number | null = null;
-  const now = Date.now();
+  const now = clock.nowMs();
   for (const m of machines) {
     states[m.state] = (states[m.state] ?? 0) + 1;
     if (m.region) regions.add(m.region);

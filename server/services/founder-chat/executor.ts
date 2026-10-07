@@ -20,6 +20,7 @@ import { chatPendingToolCalls, chatToolCooldowns } from "@shared/schema";
 import { getSetting } from "../founderSettings";
 import { logger } from "../../utils/logger";
 import { getTool, type FounderTool, type FounderToolContext, type ToolResult } from "./tool-registry";
+import { clock } from "../../utils/clock";
 
 /** Kill-switch key in founder_settings. Defaults false (Tom decision #13). */
 export const ATLAS_KILL_SWITCH_KEY = "atlas.kill_switch";
@@ -100,11 +101,11 @@ async function getLastConfirmedAt(userId: string, toolName: string): Promise<num
 
 async function recordTier3Confirmation(userId: string, toolName: string): Promise<void> {
   if (__cooldownOverrideForTests) {
-    __cooldownOverrideForTests.set(`${userId}:${toolName}`, Date.now());
+    __cooldownOverrideForTests.set(`${userId}:${toolName}`, clock.nowMs());
     return;
   }
   try {
-    const now = new Date();
+    const now = clock.now();
     await db
       .insert(chatToolCooldowns)
       .values({ userId, toolName, lastConfirmedAt: now })
@@ -195,7 +196,7 @@ export async function runTool(opts: RunToolOpts): Promise<RunToolOutcome> {
   //    request that was already executed once.
   if (tool.tier === 3 && !opts.cooldownAcknowledged) {
     const lastConfirmedAt = await getLastConfirmedAt(opts.ctx.founderUserId, tool.name);
-    if (lastConfirmedAt && Date.now() - lastConfirmedAt < TIER3_COOLDOWN_MS) {
+    if (lastConfirmedAt && clock.nowMs() - lastConfirmedAt < TIER3_COOLDOWN_MS) {
       const requestId = await persistPendingCall(tool, validatedArgs, opts.ctx, { cooldownBlocked: true });
       return {
         artifact: {
@@ -265,7 +266,7 @@ async function persistPendingCall(
   extras?: Record<string, unknown>,
 ): Promise<string> {
   const id = randomBytes(16).toString("hex");
-  const expiresAt = new Date(Date.now() + PENDING_TTL_MS);
+  const expiresAt = new Date(clock.nowMs() + PENDING_TTL_MS);
   await db.insert(chatPendingToolCalls).values({
     id,
     threadId: ctx.threadId,
@@ -293,7 +294,7 @@ export async function confirmPendingToolCall(
       and(
         eq(chatPendingToolCalls.id, confirmationRequestId),
         eq(chatPendingToolCalls.founderUserId, ctx.founderUserId),
-        gt(chatPendingToolCalls.expiresAt, new Date() as any),
+        gt(chatPendingToolCalls.expiresAt, clock.now() as any),
       ),
     );
   if (rows.length === 0) {
@@ -380,7 +381,7 @@ export function __resetCooldownTrackerForTests(): void {
  * supervisor next to the other housekeeping jobs.
  */
 export async function pruneExpiredCooldowns(olderThanMs = 60 * 60 * 1000): Promise<number> {
-  const cutoff = new Date(Date.now() - olderThanMs);
+  const cutoff = new Date(clock.nowMs() - olderThanMs);
   try {
     const result = await db
       .delete(chatToolCooldowns)

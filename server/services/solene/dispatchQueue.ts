@@ -259,7 +259,7 @@ export async function enqueueDispatch(
     }
     const throttle = throttleForEnvelope(envelopeStatus, opts.sourceType);
     if (throttle.action === "defer") {
-      notBeforeAt = new Date(Date.now() + throttle.deferMs);
+      notBeforeAt = new Date(clock.nowMs() + throttle.deferMs);
       logger.info(
         `[dispatchQueue] throttle: deferred source=${opts.sourceType} envelope=${envelopeStatus} notBeforeAt=${notBeforeAt.toISOString()} — ${throttle.reason}`,
       );
@@ -454,7 +454,7 @@ export async function completeDispatch(
   id: number,
   result: DispatchResultInput,
 ): Promise<void> {
-  const now = new Date();
+  const now = clock.now();
   await db.transaction(async (tx) => {
     await tx
       .update(soleneDispatchQueue)
@@ -643,7 +643,7 @@ export async function failDispatch(
   opts: { status?: "failed" | "cancelled"; transient?: boolean } = {},
 ): Promise<{ requeued: boolean; attempts: number }> {
   const requestedStatus = opts.status ?? "failed";
-  const now = new Date();
+  const now = clock.now();
 
   return await db.transaction(async (tx) => {
     // Read attempts inside the transaction so the retry decision and the
@@ -797,7 +797,7 @@ export async function cancelInFlightDispatches(reason: string): Promise<number[]
     .update(soleneDispatchQueue)
     .set({
       status: "cancelled",
-      completedAt: new Date(),
+      completedAt: clock.now(),
       resultSummary: `aborted in flight: ${reason}`.slice(0, 4000),
     })
     .where(eq(soleneDispatchQueue.status, "in_progress"))
@@ -905,7 +905,7 @@ export async function cancelQueuedDispatch(
     return { ok: false, priorStatus: existing.status };
   }
 
-  const now = new Date();
+  const now = clock.now();
   const summary = reason && reason.trim().length > 0
     ? `cancelled by founder: ${reason}`.slice(0, 4000)
     : "cancelled by founder";

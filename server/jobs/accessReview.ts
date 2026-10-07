@@ -30,6 +30,7 @@ import { teamMembers, organizations, users, systemMeta } from "@shared/schema";
 import { emailService } from "../services/emailService";
 import { logger } from "../utils/logger";
 import { auditLog as auditEvent } from "../utils/auditLog";
+import { clock } from "../utils/clock";
 
 const STALE_THRESHOLD_DAYS = 90;
 const SENTINEL_KEY = "access_review_last_run";
@@ -63,7 +64,7 @@ interface AdminReviewRow {
 
 function daysSince(d: Date | null): number | null {
   if (!d) return null;
-  return Math.floor((Date.now() - new Date(d).getTime()) / (24 * 60 * 60 * 1000));
+  return Math.floor((clock.nowMs() - new Date(d).getTime()) / (24 * 60 * 60 * 1000));
 }
 
 /**
@@ -158,13 +159,13 @@ export async function runQuarterlyAccessReview(): Promise<{
   });
 
   // Record last-run sentinel.
-  const now = new Date().toISOString();
+  const now = clock.now().toISOString();
   await db
     .insert(systemMeta)
     .values({ key: SENTINEL_KEY, value: now })
     .onConflictDoUpdate({
       target: systemMeta.key,
-      set: { value: now, updatedAt: new Date() },
+      set: { value: now, updatedAt: clock.now() },
     });
 
   logger.info(`[accessReview] reviewed=${reviewed.length} stale=${stale.length} sent=${sentTo.length}`);
@@ -183,7 +184,7 @@ export async function alreadyRanToday(): Promise<boolean> {
     .limit(1);
   if (!row?.value) return false;
   const last = new Date(row.value);
-  const now = new Date();
+  const now = clock.now();
   return (
     last.getUTCFullYear() === now.getUTCFullYear() &&
     last.getUTCMonth() === now.getUTCMonth() &&
@@ -196,7 +197,7 @@ export async function alreadyRanToday(): Promise<boolean> {
  * dr-drill-quarterly.md cadence so the founder has one "compliance morning"
  * per quarter rather than four scattered ones.
  */
-export function isQuarterlyAccessReviewDay(now: Date = new Date()): boolean {
+export function isQuarterlyAccessReviewDay(now: Date = clock.now()): boolean {
   const month = now.getUTCMonth(); // 0-Jan, 3-Apr, 6-Jul, 9-Oct
   if (month !== 0 && month !== 3 && month !== 6 && month !== 9) return false;
   const day = now.getUTCDate();

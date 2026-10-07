@@ -16,6 +16,7 @@
  */
 import { SignJWT, importPKCS8 } from "jose";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GSC_SCOPE = "https://www.googleapis.com/auth/webmasters.readonly";
@@ -133,7 +134,7 @@ export function summarizeSearchRows(
  * when unconfigured or on any error — the caller treats null as "search data not
  * yet available," never as zero traffic. Best-effort; never throws.
  */
-export async function getSearchConsoleMetrics(windowDays = 28, now = new Date()): Promise<SearchConsoleMetrics | null> {
+export async function getSearchConsoleMetrics(windowDays = 28, now = clock.now()): Promise<SearchConsoleMetrics | null> {
   const site = gscSiteUrl();
   if (!site) return null;
   const nowSec = Math.floor(now.getTime() / 1000);

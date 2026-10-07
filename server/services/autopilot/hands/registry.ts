@@ -13,6 +13,7 @@
 import type { HandSpec, HandSchema, HandResult, HandContext } from "./types";
 import { logger } from "../../../utils/logger";
 import { matchHardStopHand } from "../hardStops";
+import { clock } from "../../../utils/clock";
 
 const REGISTRY = new Map<string, HandSpec>();
 
@@ -103,16 +104,16 @@ export async function executeHandWitnessed(
   witnessedBy: string,
   ctx: HandContext = {},
 ): Promise<HandResult> {
-  const started = Date.now();
+  const started = clock.nowMs();
   const hand = getHand(name);
   if (!hand) {
-    return { success: false, output: `unknown hand: ${name}`, durationMs: Date.now() - started };
+    return { success: false, output: `unknown hand: ${name}`, durationMs: clock.nowMs() - started };
   }
   if (!witnessedBy || !witnessedBy.trim()) {
     return {
       success: false,
       output: `[WITNESSED-SEND] ${name} refused: missing witnessing founder identity. A witnessed send requires a real approver.`,
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   }
   // T0.3: cooperative re-read of the out-of-reach kill at the choke point. Even
@@ -123,7 +124,7 @@ export async function executeHandWitnessed(
       return {
         success: false,
         output: `[PANIC-STOP] ${name} refused: the autopilot is halted (SOLENE_PANIC_STOP engaged).`,
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
   } catch { /* settings unavailable → proceed; the gate stack still applies */ }
@@ -139,7 +140,7 @@ export async function executeHandWitnessed(
     const refuse = (why: string): HandResult => ({
       success: false,
       output: `[DELEGATED-RELEASE] ${name} refused: ${why}. It waits for the founder's own tap.`,
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     });
     try {
       const { isDelegableDraft } = await import("../witnessGrant");

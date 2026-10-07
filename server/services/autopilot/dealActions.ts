@@ -22,6 +22,7 @@
  * action" surface and the autopilot's activation/support moves.
  */
 
+import { clock } from "../../utils/clock";
 export interface DealSignal {
   id: string;
   /** Pipeline status as stored (seller or buyer vocabulary; matched loosely). */
@@ -192,7 +193,7 @@ export async function getDealActionsForOrg(organizationId: number, limit = 10): 
       createdAt: r.createdAt ? new Date(r.createdAt).getTime() : null,
       taxDelinquent: r.taxDelinquent,
     }));
-    return recommendNextActions(signals, Date.now(), limit);
+    return recommendNextActions(signals, clock.nowMs(), limit);
   } catch {
     return [];
   }

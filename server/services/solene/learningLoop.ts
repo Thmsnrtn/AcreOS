@@ -76,6 +76,7 @@ import {
 } from "@shared/schema/solene-learning-loop";
 import { EMBEDDING_DIM } from "@shared/schema/solene-embeddings";
 import type { SoleneDispatchAgentRole } from "@shared/schema/solene-dispatch";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // Public types
@@ -263,7 +264,7 @@ function vectorToPgLiteral(vec: number[]): string {
 export async function retrieveRelevantMemories(
   query: RetrievalQuery,
 ): Promise<RetrievalResult> {
-  const t0 = Date.now();
+  const t0 = clock.nowMs();
   const namespace = query.namespace ?? DEFAULT_NAMESPACE;
   const minSim = query.minSimilarity ?? 0;
   const requestedK = query.topK ?? RETRIEVAL_TOP_K_DEFAULT;
@@ -333,11 +334,11 @@ export async function retrieveRelevantMemories(
     return {
       retrievalEventId: -1,
       retrieved: [],
-      latencyMs: Date.now() - t0,
+      latencyMs: clock.nowMs() - t0,
     };
   }
 
-  const latencyMs = Date.now() - t0;
+  const latencyMs = clock.nowMs() - t0;
 
   // Persist the audit row. If this fails we still return the retrieved
   // matches — the consumer can use them.

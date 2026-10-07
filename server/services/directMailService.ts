@@ -5,6 +5,7 @@ import { storage } from '../storage';
 import { readIntegrationCredentials } from './integrationCredentials';
 import { logger } from "../utils/logger";
 import { resolvePlatformLobKey } from './mail/liveSendInterlock';
+import { clock } from "../utils/clock";
 
 interface RecipientAddress {
   line1: string;
@@ -195,7 +196,7 @@ function formatRecipientAddress(name: string, address: RecipientAddress) {
 
 function parseExpectedDeliveryDate(dateString: string): Date {
   const parsed = new Date(dateString);
-  return isNaN(parsed.getTime()) ? new Date() : parsed;
+  return isNaN(parsed.getTime()) ? clock.now() : parsed;
 }
 
 async function checkCreditsAndRecord(organizationId: number, metadata?: Record<string, any>): Promise<{ hasCredits: boolean; costCents: number; errorMessage?: string }> {
@@ -293,7 +294,7 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
       return {
         lobId: rec.id,
         url: `https://sim.acreos.io/lob/${rec.id}`,
-        expectedDeliveryDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+        expectedDeliveryDate: new Date(clock.nowMs() + 5 * 24 * 60 * 60 * 1000),
         credentialSource: "simulation",
         testMode: true,
       } as SendResult;
@@ -450,7 +451,7 @@ async function performLetterSend(options: SendLetterOptions): Promise<SendResult
       return {
         lobId: rec.id,
         url: `https://sim.acreos.io/lob/${rec.id}`,
-        expectedDeliveryDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+        expectedDeliveryDate: new Date(clock.nowMs() + 5 * 24 * 60 * 60 * 1000),
         credentialSource: "simulation",
         testMode: true,
       } as SendResult;

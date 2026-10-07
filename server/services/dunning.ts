@@ -26,6 +26,7 @@ import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 const DUNNING_CONSOLE_REASON =
   "founder dunning console: platform subscription-billing queue, one dunning event addressed by id";
 import { subscriptionEndedPatch, subscriptionHasEnded } from "./borrower/servicingPhase";
+import { clock } from "../utils/clock";
 
 const APP_URL = process.env.APP_URL || "https://app.acreos.io";
 
@@ -153,7 +154,7 @@ class DunningService {
         return;
       }
 
-      const now = new Date();
+      const now = clock.now();
       const isFirstFailure = !org.dunningStartedAt;
       const dunningStartDate = isFirstFailure ? now : new Date(org.dunningStartedAt!);
       const daysSinceFailure = Math.floor((now.getTime() - dunningStartDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -261,7 +262,7 @@ class DunningService {
         if (alert.alertType === "revenue_at_risk") {
           await storage.updateSystemAlert(organizationId, alert.id, {
             status: "resolved",
-            resolvedAt: new Date(),
+            resolvedAt: clock.now(),
           });
         }
       }
@@ -424,7 +425,7 @@ class DunningService {
       // Record the dispatch — sets the throttle.
       await db
         .update(dunningEvents)
-        .set({ smsSentAt: new Date() })
+        .set({ smsSentAt: clock.now() })
         .where(eq(dunningEvents.id, dunningEventId));
 
       logger.info(`[Dunning] Sent dunning SMS to ${phone} for org ${org.id}`, {
@@ -525,7 +526,7 @@ class DunningService {
   //     clears the org's dunning state, same as the webhook path.
   // -------------------------------------------------------------------
 
-  async processAutoRetries(now: Date = new Date()): Promise<void> {
+  async processAutoRetries(now: Date = clock.now()): Promise<void> {
     let stripe: Stripe; // audit F-06-1: typed the money SDK client (was untyped)
     try {
       const { getUncachableStripeClient } = await import("../stripeClient");
@@ -627,7 +628,7 @@ class DunningService {
       );
 
       const orgsInDunning = await this.getActiveDunningOrgs();
-      const now = new Date();
+      const now = clock.now();
 
       for (const org of orgsInDunning) {
         try {
@@ -771,7 +772,7 @@ class DunningService {
     }
 
     // Count recovered in last 30 days
-    const thirtyDaysAgo = new Date();
+    const thirtyDaysAgo = clock.now();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const [recoveredResult] = await db
       .select({ count: count() })
@@ -843,7 +844,7 @@ class DunningService {
 
       await unscopedForPlatformOps(DUNNING_CONSOLE_REASON)
         .update(dunningEvents)
-        .set({ status: "resolved", resolvedAt: new Date(), resolutionType: "manual_payment", updatedAt: new Date() })
+        .set({ status: "resolved", resolvedAt: clock.now(), resolutionType: "manual_payment", updatedAt: clock.now() })
         .where(eq(dunningEvents.id, eventId));
 
       if (event.organizationId) {
@@ -870,7 +871,7 @@ class DunningService {
 
     await unscopedForPlatformOps(DUNNING_CONSOLE_REASON)
       .update(dunningEvents)
-      .set({ status: "resolved", resolvedAt: new Date(), resolutionType: "subscription_cancelled", updatedAt: new Date() })
+      .set({ status: "resolved", resolvedAt: clock.now(), resolutionType: "subscription_cancelled", updatedAt: clock.now() })
       .where(eq(dunningEvents.id, eventId));
 
     if (event.organizationId) {
@@ -895,10 +896,10 @@ class DunningService {
       .update(dunningEvents)
       .set({
         status: "resolved",
-        resolvedAt: new Date(),
+        resolvedAt: clock.now(),
         resolutionType: "escalated",
         metadata: { ...(event.metadata as Record<string, unknown> || {}), resolutionNotes: notes },
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(dunningEvents.id, eventId));
 
@@ -957,7 +958,7 @@ class DunningService {
         autoResolveAction: "payment_received",
         metadata: {
           amountAtRiskCents: amountAtRisk,
-          createdAt: new Date().toISOString(),
+          createdAt: clock.now().toISOString(),
         },
       };
 
@@ -979,7 +980,7 @@ class DunningService {
     }
 
     const daysUntilRetry = DUNNING_CONFIG.retryScheduleDays[retryIndex];
-    const nextRetry = new Date();
+    const nextRetry = clock.now();
     nextRetry.setDate(nextRetry.getDate() + daysUntilRetry);
     return nextRetry;
   }

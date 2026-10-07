@@ -60,6 +60,7 @@ export interface RoleToolContext {
 }
 
 import { SUPPORT_WORKER_AGENT, FOUNDER_AGENT } from "./routing";
+import { clock } from "../../../utils/clock";
 export { SUPPORT_WORKER_AGENT, FOUNDER_AGENT };
 
 
@@ -183,7 +184,7 @@ async function ticketInOrg(organizationId: number, ticketId: number) {
 }
 
 async function purchasesForOrg(organizationId: number) {
-  const since = new Date(Date.now() - 90 * 24 * 3600_000);
+  const since = new Date(clock.nowMs() - 90 * 24 * 3600_000);
   return unscopedForPlatformOps(PLATFORM_SUPPORT)
     .select({
       id: creditTransactions.id,
@@ -208,12 +209,12 @@ async function purchasesForOrg(organizationId: number) {
 async function assignTicket(organizationId: number, ticketId: number, agent: string) {
   const db = unscopedForPlatformOps(PLATFORM_SUPPORT);
   if (agent === FOUNDER_AGENT) {
-    await db.update(supportTickets).set({ assignedAgent: FOUNDER_AGENT, status: "in_progress", updatedAt: new Date() }).where(and(eq(supportTickets.id, ticketId), eq(supportTickets.organizationId, organizationId)));
+    await db.update(supportTickets).set({ assignedAgent: FOUNDER_AGENT, status: "in_progress", updatedAt: clock.now() }).where(and(eq(supportTickets.id, ticketId), eq(supportTickets.organizationId, organizationId)));
     return;
   }
   await db
     .update(supportTickets)
-    .set({ assignedAgent: agent, status: "in_progress", updatedAt: new Date() })
+    .set({ assignedAgent: agent, status: "in_progress", updatedAt: clock.now() })
     .where(and(eq(supportTickets.id, ticketId), eq(supportTickets.organizationId, organizationId), sql`coalesce(${supportTickets.assignedAgent}, '') <> ${FOUNDER_AGENT}`));
 }
 
@@ -244,7 +245,7 @@ export interface AtRiskCustomer {
  *   trial_ending — an in-app trial ending in the next 3 days.
  * Founder orgs are never on it.
  */
-async function listAtRiskCustomers(now = new Date()): Promise<AtRiskCustomer[]> {
+async function listAtRiskCustomers(now = clock.now()): Promise<AtRiskCustomer[]> {
   const db = unscopedForPlatformOps(PLATFORM_RETENTION);
   const rows = await db.execute(sql`
     select o.id, o.name, o.dunning_stage, o.subscription_status, o.subscription_tier,
@@ -286,7 +287,7 @@ async function listAtRiskCustomers(now = new Date()): Promise<AtRiskCustomer[]> 
 }
 
 async function recentlyEmailed(organizationId: number, kind: string): Promise<boolean> {
-  const since = new Date(Date.now() - 7 * 24 * 3600_000);
+  const since = new Date(clock.nowMs() - 7 * 24 * 3600_000);
   const rows = await unscopedForPlatformOps(PLATFORM_RETENTION)
     .select({ id: autopilotPendingActions.id })
     .from(autopilotPendingActions)

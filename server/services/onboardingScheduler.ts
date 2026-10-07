@@ -18,6 +18,7 @@ import { db } from "../db";
 import { onboardingSteps, onboardingJourneys, organizations } from "@shared/schema";
 import { and, eq, lte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface OnboardingSchedulerResult {
   fired: number;
@@ -77,7 +78,7 @@ const handlers: Record<string, StepHandler> = {
 const BATCH_LIMIT = 200;
 
 export async function runOnboardingScheduler(): Promise<OnboardingSchedulerResult> {
-  const now = new Date();
+  const now = clock.now();
 
   // Pull scheduled steps whose time has come. Join onboardingJourneys to
   // recover the orgId for the handler.

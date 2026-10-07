@@ -21,6 +21,7 @@ import fs from "fs";
 import os from "os";
 import { log } from "../index";
 import { pgEnvFromDatabaseUrl } from "../utils/pgEnv";
+import { clock } from "../utils/clock";
 
 const execFileAsync = promisify(execFile);
 
@@ -79,10 +80,10 @@ async function uploadToS3(filePath: string, key: string): Promise<string> {
 }
 
 export async function runDbBackup(): Promise<BackupResult> {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const timestamp = clock.now().toISOString().replace(/[:.]/g, "-");
   const filename = `acreos-backup-${timestamp}.sql`;
   const outputPath = path.join(os.tmpdir(), filename);
-  const s3Key = `database-backups/${new Date().getFullYear()}/${filename}`;
+  const s3Key = `database-backups/${clock.now().getFullYear()}/${filename}`;
 
   log(`Starting database backup → ${filename}`, "dbBackup");
 
@@ -99,7 +100,7 @@ export async function runDbBackup(): Promise<BackupResult> {
       filename,
       sizeBytes: stats.size,
       destination,
-      timestamp: new Date().toISOString(),
+      timestamp: clock.now().toISOString(),
     };
 
     log(`Backup complete: ${(stats.size / 1024 / 1024).toFixed(2)}MB → ${destination}`, "dbBackup");
@@ -128,7 +129,7 @@ export async function runDbBackup(): Promise<BackupResult> {
     return {
       success: false,
       error: err.message,
-      timestamp: new Date().toISOString(),
+      timestamp: clock.now().toISOString(),
     };
   }
 }

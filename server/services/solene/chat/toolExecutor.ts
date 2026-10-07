@@ -32,6 +32,7 @@ import {
   businessToolNeedsConfirmation,
   executeBusinessChatTool,
 } from "./businessTools";
+import { clock } from "../../../utils/clock";
 
 // ============================================================================
 // Classification sets
@@ -148,7 +149,7 @@ const PENDING_APPROVALS = new Map<string, PendingApproval>();
 const APPROVAL_TTL_MS = 60 * 60 * 1000; // 1h
 
 function gcPendingApprovals(): void {
-  const now = Date.now();
+  const now = clock.nowMs();
   for (const [token, row] of PENDING_APPROVALS.entries()) {
     if (now - row.createdAt > APPROVAL_TTL_MS) {
       PENDING_APPROVALS.delete(token);
@@ -221,7 +222,7 @@ export async function executeChatTool(
       toolInput: input.toolInput,
       conversationId: input.conversationId,
       founderUserId: input.founderUserId,
-      createdAt: Date.now(),
+      createdAt: clock.nowMs(),
     });
     logger.info("[soleneChat] tool.approval_required", {
       toolName: input.toolName,

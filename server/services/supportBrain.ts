@@ -16,6 +16,7 @@ import { tracedLlmCall } from "./tracedLlmCall";
 import { sanitizePrompt, USER_DATA_SYSTEM_CLAUSE } from "../utils/sanitizePrompt";
 import { validatePaxResponse } from "../utils/validatePaxResponse";
 import { OPENAI_DIRECT_MODELS, openAiModelIdFor } from "./models";
+import { clock } from "../utils/clock";
 
 // Lazy client: constructing OpenAI at module scope threw at import time when
 // the key was unset, so the first hit on any support-brain route surfaced as
@@ -551,7 +552,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
   ): Promise<{ response: string; actionsTaken: string[]; escalated: boolean }> {
     await storage.updateSupportCase(supportCase.organizationId, supportCase.id, {
       status: "escalated",
-      escalatedAt: new Date(),
+      escalatedAt: clock.now(),
       escalationReason: reason,
     });
 
@@ -615,7 +616,7 @@ In the meantime, is there anything else I can help you with?`;
   ): Promise<SupportCase | undefined> {
     const updated = await storage.updateSupportCase(organizationId, caseId, {
       status: "resolved",
-      resolvedAt: new Date(),
+      resolvedAt: clock.now(),
       resolutionSummary,
       resolutionType: resolvedBy === "ai_support" ? "auto_resolved" : "escalated_resolved",
     });

@@ -22,6 +22,7 @@ import {
 } from "@shared/schema/solene-chat-config";
 import { streamChatCompletion } from "./openRouterClient";
 import { logger } from "../../../utils/logger";
+import { clock } from "../../../utils/clock";
 
 // ============================================================================
 // Public types
@@ -234,7 +235,7 @@ export async function routeQuery(input: RouteQueryInput): Promise<RouteDecision>
   }
 
   // No rule matched — invoke the FAST-tier classifier.
-  const t0 = Date.now();
+  const t0 = clock.nowMs();
   let classified: ChatTier | null = null;
   try {
     classified = await classifyWithFastModel(input.userMessage);
@@ -243,7 +244,7 @@ export async function routeQuery(input: RouteQueryInput): Promise<RouteDecision>
       err: err instanceof Error ? err.message : String(err),
     });
   }
-  const latency = Date.now() - t0;
+  const latency = clock.nowMs() - t0;
 
   const tier = classified ?? defaultTier();
   const rationale = classified

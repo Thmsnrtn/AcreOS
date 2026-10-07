@@ -47,6 +47,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { EXECUTOR_TASK_TYPES } from "../services/intelligence/budget";
+import { clock } from "../utils/clock";
 
 export const AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK = (() => {
   const raw = Number(process.env.AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK);
@@ -90,7 +91,7 @@ async function sumExecutorAiSpendUsdSince(since: Date): Promise<number | null> {
 export async function runDecisionExecutorTickBounded(
   log: (msg: string, tag: string) => void,
 ): Promise<void> {
-  const tickStart = new Date();
+  const tickStart = clock.now();
   const windowStart = new Date(tickStart.getTime() - DECISION_EXECUTOR_TICK_WINDOW_MS);
 
   // PRE-tick enforcing bound: if the executor's own recent spend already blew

@@ -38,6 +38,7 @@ import {
   soleneDispatchResults,
 } from "@shared/schema/solene-dispatch";
 import { autopilotExperiences } from "@shared/schema";
+import { clock } from "../../utils/clock";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -162,7 +163,7 @@ export function rollupCognitionRoi(
  */
 export async function computeCognitionRoi(
   days = 30,
-  now: Date = new Date(),
+  now: Date = clock.now(),
 ): Promise<CognitionRoi> {
   const windowStart = new Date(now.getTime() - days * DAY_MS);
 

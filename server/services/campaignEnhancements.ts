@@ -6,6 +6,7 @@
 import { db } from "../db";
 import { campaigns, leads, deals } from "@shared/schema";
 import { eq, and, sql, count, gte, desc } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 // Item 106: Campaign ROI calculator
 // Item 108: Campaign cloning
@@ -58,7 +59,7 @@ export function isHoliday(date: Date): boolean {
 
 // Item 118: Timezone-aware sending
 export function getOptimalSendTime(recipientTimezone: string): Date {
-  const now = new Date();
+  const now = clock.now();
   const targetHour = 10; // 10am local time
   try {
     const formatter = new Intl.DateTimeFormat("en-US", { timeZone: recipientTimezone, hour: "numeric", hour12: false });

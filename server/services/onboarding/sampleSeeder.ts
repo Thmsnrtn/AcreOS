@@ -44,6 +44,7 @@
 import { storage } from "../../storage";
 import { logger } from "../../utils/logger";
 import { addMonths } from "../../utils/dateUtils";
+import { clock } from "../../utils/clock";
 
 export const SAMPLE_LEAD_SOURCE = "sample_data" as const;
 export const SAMPLE_APN_PREFIX = "SAMPLE-" as const;
@@ -157,7 +158,7 @@ function noteDates(monthsPaid: number, nextPaymentInDays = 12): {
   maturityDate: Date;
 } {
   // Anchor on "now" but back-date the start so a seasoned book reads honestly.
-  const now = new Date();
+  const now = clock.now();
   const startDate = new Date(now);
   startDate.setMonth(startDate.getMonth() - monthsPaid);
   const firstPaymentDate = addMonths(new Date(startDate), 1);

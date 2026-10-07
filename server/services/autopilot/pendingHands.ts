@@ -23,6 +23,7 @@ import { autopilotPendingActions, autopilotSends, type AutopilotPendingAction } 
 import { actionContentHash } from "../approvalKernel";
 import { executeHandWitnessed } from "./hands";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 const TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -47,7 +48,7 @@ export async function proposePendingHand(input: {
 }): Promise<AutopilotPendingAction | null> {
   try {
     const contentHash = actionContentHash(input.handName, input.args);
-    const now = input.now ?? Date.now();
+    const now = input.now ?? clock.nowMs();
     const existing = await db
       .select()
       .from(autopilotPendingActions)
@@ -108,7 +109,7 @@ export async function approvePendingHand(input: {
   delegation?: { grantId: string };
   now?: number;
 }): Promise<ApprovalOutcome> {
-  const now = input.now ?? Date.now();
+  const now = input.now ?? clock.nowMs();
   const [action] = await db.select().from(autopilotPendingActions).where(eq(autopilotPendingActions.id, input.id));
   if (!action) return { outcome: "not_found" };
   if (action.status === "rejected") return { outcome: "rejected" };
@@ -152,7 +153,7 @@ export async function approvePendingHand(input: {
   }
 
   const resultSummary = { success: true, output: result.output };
-  await db.update(autopilotPendingActions).set({ status: "executed", executedAt: new Date(), resultSummary }).where(and(eq(autopilotPendingActions.id, input.id), eq(autopilotPendingActions.status, "approved")));
+  await db.update(autopilotPendingActions).set({ status: "executed", executedAt: clock.now(), resultSummary }).where(and(eq(autopilotPendingActions.id, input.id), eq(autopilotPendingActions.status, "approved")));
   // Append-only audit (INSERT only — no UPDATE path, by contract).
   await db.insert(autopilotSends).values({
     pendingActionId: action.id,
@@ -208,7 +209,7 @@ export async function pendingHandCounters(windowHours = 168): Promise<{
   expiredUnseen: number;
   pendingNow: number;
 }> {
-  const since = new Date(Date.now() - windowHours * 3600_000);
+  const since = new Date(clock.nowMs() - windowHours * 3600_000);
   const rows = await db
     .select({
       status: autopilotPendingActions.status,
@@ -218,7 +219,7 @@ export async function pendingHandCounters(windowHours = 168): Promise<{
     })
     .from(autopilotPendingActions)
     .where(sql`${autopilotPendingActions.createdAt} >= ${since}`);
-  const now = Date.now();
+  const now = clock.nowMs();
   let tapped = 0, auto = 0, expired = 0, pendingNow = 0;
   for (const r of rows) {
     const viaGrant = (r.approvedBy ?? "").includes("via witness-grant #");

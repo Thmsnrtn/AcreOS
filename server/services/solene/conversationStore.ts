@@ -25,6 +25,7 @@ import {
   type SoleneMessageRow,
 } from "@shared/schema/solene-conversations";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ============================================
 // Types
@@ -230,7 +231,7 @@ export async function appendMessage(
     try {
       await db
         .update(soleneConversations)
-        .set({ lastMessageAt: new Date() })
+        .set({ lastMessageAt: clock.now() })
         .where(eq(soleneConversations.id, input.conversationId));
     } catch (err) {
       logger.warn(

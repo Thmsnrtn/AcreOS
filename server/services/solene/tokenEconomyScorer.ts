@@ -53,6 +53,7 @@ import {
 } from "@shared/schema/solene-dispatch";
 import { getMonthlyEnvelopeStatus } from "./capitalTracker";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ----------------------------------------------------------------------------
 // Pricing — per-1M-token cost of the dispatch default model (Sonnet, $3/$15;
@@ -343,7 +344,7 @@ async function fetchHistoricalSuccessRate(
   agentRole: SoleneDispatchAgentRole,
 ): Promise<number> {
   const cutoff = new Date(
-    Date.now() - HISTORICAL_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+    clock.nowMs() - HISTORICAL_WINDOW_DAYS * 24 * 60 * 60 * 1000,
   );
   try {
     const [row] = await db
@@ -524,7 +525,7 @@ function truncate(s: string, max: number): string {
 }
 
 function startOfTodayUtc(): Date {
-  const now = new Date();
+  const now = clock.now();
   return new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0),
   );

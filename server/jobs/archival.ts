@@ -54,6 +54,7 @@ import { sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { getSetting, getNumberSetting } from "../services/founderSettings";
 import { getStorage } from "../services/cmo/storage";
+import { clock } from "../utils/clock";
 
 const DEFAULT_HORIZON_DAYS = 90;
 
@@ -124,7 +125,7 @@ export async function archiveTable(
   config: ArchivalTableConfig,
   horizonDays: number,
 ): Promise<ArchivalSweepResult> {
-  const t0 = Date.now();
+  const t0 = clock.nowMs();
   const { table, ageColumn, batchSize = 5000 } = config;
 
   // Pull candidate rows.  Using sql.identifier here would be ideal but
@@ -145,7 +146,7 @@ export async function archiveTable(
       rowsArchived: 0,
       sizeBytes: 0,
       archivedTo: null,
-      durationMs: Date.now() - t0,
+      durationMs: clock.nowMs() - t0,
       skipped: "no_candidates",
     };
   }
@@ -168,7 +169,7 @@ export async function archiveTable(
   const { tmpdir } = await import("node:os");
   const path = await import("node:path");
   const fs = await import("node:fs/promises");
-  const batchId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const batchId = `${clock.nowMs()}-${Math.random().toString(36).slice(2, 8)}`;
   const tmpPath = path.join(tmpdir(), `acreos-archive-${table}-${batchId}.parquet`);
 
   const writer = await parquet.ParquetWriter.openFile(schema, tmpPath);
@@ -202,7 +203,7 @@ export async function archiveTable(
   await fs.unlink(tmpPath).catch(() => {});
 
   // Partition path: acreos-archive/{table}/{yyyy}/{mm}/{batch_id}.parquet
-  const now = new Date();
+  const now = clock.now();
   const yyyy = now.getUTCFullYear();
   const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
   const key = `acreos-archive/${table}/${yyyy}/${mm}/${batchId}.parquet`;
@@ -225,7 +226,7 @@ export async function archiveTable(
     rowsArchived: rows.length,
     sizeBytes: fileBuf.byteLength,
     archivedTo: archivedTo as string,
-    durationMs: Date.now() - t0,
+    durationMs: clock.nowMs() - t0,
   };
 }
 

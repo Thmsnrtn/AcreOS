@@ -1,0 +1,14 @@
+{
+  "name": "clock-reads",
+  "mode": "external",
+  "evaluator": "scripts/check-clock-reads.mjs",
+  "direction": "down",
+  "description": "CLOCK ratchet. Every direct wall-clock read in server/ (Date.now, new Date() with no argument, Date(), Date['now'], performance.timeOrigin, and aliases of Date.now) outside the one clock, server/utils/clock.ts. Such reads are invisible in production and make simulation impossible: the founder simulation's 30-day run produced 2 articles because the autopilot's exactly-once key bucketed on the wall clock (2026-10-07). Counted by a TypeScript parse (comments and strings never count). Strictly down: convert reads to clock.now()/clock.nowMs() (scripts/codemods/use-the-clock.mjs) and lower baselineCount in the same commit.",
+  "baselineCount": 3126,
+  "lastBumpNote": "2026-10-07 simplat: seeded at 3786 measured; the codemod converted the simulation-exercised paths (autopilot, solene, dunning, trial, churn, campaigns, sequences, jobs, onboarding, pax nudges, founder digest, TCPA/SMS/email/direct-mail send paths, support, founder chat) to 3126.",
+  "minima": {
+    "files": 1300,
+    "dirs": 80
+  },
+  "minimaNote": "VACUITY FLOOR on the scan population. MEASURED 2026-10-07: 1427 non-test source files under server/ in 90 directories. Floors sit below that so a broken walk trips them while ordinary deletion does not. Lower only with a named deletion wave."
+}

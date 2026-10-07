@@ -8,6 +8,7 @@ import {
   FATIGUE_WATCH_TOUCHES_90D,
 } from "./compliance/contactFrequency";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface OverlapReport {
   totalLeads: number;
@@ -43,7 +44,7 @@ export class CampaignOverlapDetector {
     }).from(leads).where(eq(leads.organizationId, orgId));
 
     // Get campaign responses to count actual touches per lead (last 90 days)
-    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const ninetyDaysAgo = new Date(clock.nowMs() - 90 * 24 * 60 * 60 * 1000);
 
     const responses = await db.select({
       leadId: campaignResponses.leadId,

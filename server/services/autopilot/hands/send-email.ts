@@ -46,6 +46,7 @@ import { sendEmail } from "../../emailService";
 import { filterSuppressed } from "../../emailSuppressions";
 import { logger } from "../../../utils/logger";
 import { counterpartyMatch, type CounterpartyHit } from "./counterpartyMatch";
+import { clock } from "../../../utils/clock";
 
 const NAME = "send_email";
 
@@ -53,7 +54,7 @@ const NAME = "send_email";
 
 
 async function handler(input: Record<string, unknown>): Promise<HandResult> {
-  const started = Date.now();
+  const started = clock.nowMs();
   try {
     const to = String(input.to ?? "").trim();
     const subject = String(input.subject ?? "").trim();
@@ -61,7 +62,7 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
     const organizationId =
       typeof input.organization_id === "number" ? input.organization_id : undefined;
     if (!to || !subject || !html) {
-      return { success: false, output: "send_email: 'to', 'subject', and 'html' are all required.", durationMs: Date.now() - started };
+      return { success: false, output: "send_email: 'to', 'subject', and 'html' are all required.", durationMs: clock.nowMs() - started };
     }
 
     // ── Hard stop: system-only (founder ruling, 2026-08-16) ──────────────────
@@ -93,7 +94,7 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
           `recipient is proven NOT to be a customer's lead/seller/buyer/borrower. The check failed ` +
           `(${err instanceof Error ? err.message : String(err)}), so this send fails closed. Retry once the ` +
           `database is reachable, or send counterparty mail from the org's own connected identity.`,
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
     if (hit) {
@@ -114,7 +115,7 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
           `The autopilot is system-only (founder ruling, 2026-08-16): it may only mail AcreOS's own users. ` +
           `Mail to a customer's sellers, buyers or borrowers must go out on that org's OWN connected email ` +
           `identity (founder decision, 2026-07-17 — no re-fronting the platform send rail). Nothing was sent.`,
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
 
@@ -126,7 +127,7 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
       return {
         success: false,
         output: `send_email: recipient is on the suppression list; not sending.`,
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
 
@@ -153,9 +154,9 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
       isCampaignEmail: true,
     });
     if (!result.success) {
-      return { success: false, output: `send_email failed: ${result.error ?? result.errorType ?? "unknown"}`, durationMs: Date.now() - started };
+      return { success: false, output: `send_email failed: ${result.error ?? result.errorType ?? "unknown"}`, durationMs: clock.nowMs() - started };
     }
-    return { success: true, output: JSON.stringify({ messageId: result.messageId }), durationMs: Date.now() - started };
+    return { success: true, output: JSON.stringify({ messageId: result.messageId }), durationMs: clock.nowMs() - started };
   } catch (err) {
     return handError(NAME, err, started);
   }

@@ -28,6 +28,7 @@ import { communityLetters, marketingArtifacts } from "@shared/schema";
 import { logger } from "../../utils/logger";
 import { screenLandClaims, type ClaimViolation, type ClaimsGateOptions } from "./claimsGate";
 import { screenFabrication, VERIFIED_SOURCES } from "./contentHonesty";
+import { clock } from "../../utils/clock";
 
 /** Hard cap on autopilot publishes per UTC day (lean + blast-radius bound). */
 export const PUBLISH_MAX_PER_DAY = Number(process.env.AUTOPILOT_PUBLISH_MAX_PER_DAY ?? 1);
@@ -184,7 +185,7 @@ export async function publishGrowthArtifact(
   try {
     const { computeAllowedPublishesPerDay } = await import("./publishGovernor");
     const { allowedPerDay, reason } = await computeAllowedPublishesPerDay(PUBLISH_MAX_PER_DAY);
-    const startOfDay = new Date();
+    const startOfDay = clock.now();
     startOfDay.setUTCHours(0, 0, 0, 0);
     const todays = await db
       .select({ id: marketingArtifacts.id })
@@ -200,7 +201,7 @@ export async function publishGrowthArtifact(
 
   try {
     const slug = slugify(input.subject, input.dispatchId);
-    const now = new Date();
+    const now = clock.now();
     await db.insert(communityLetters).values({
       slug,
       subject: input.subject,
@@ -244,7 +245,7 @@ export async function publishRoomToday(): Promise<{ room: boolean; reason: strin
   try {
     const { computeAllowedPublishesPerDay } = await import("./publishGovernor");
     const { allowedPerDay, reason } = await computeAllowedPublishesPerDay(PUBLISH_MAX_PER_DAY);
-    const startOfDay = new Date();
+    const startOfDay = clock.now();
     startOfDay.setUTCHours(0, 0, 0, 0);
     const todays = await db
       .select({ id: marketingArtifacts.id })
@@ -294,8 +295,8 @@ export async function maybePublishFromDispatch(d: {
 export async function unpublishArtifact(slug: string): Promise<{ ok: boolean }> {
   try {
     const { eq } = await import("drizzle-orm");
-    await db.update(communityLetters).set({ publishedAt: null, updatedAt: new Date() }).where(eq(communityLetters.slug, slug));
-    await db.update(marketingArtifacts).set({ unpublishedAt: new Date() }).where(eq(marketingArtifacts.slug, slug));
+    await db.update(communityLetters).set({ publishedAt: null, updatedAt: clock.now() }).where(eq(communityLetters.slug, slug));
+    await db.update(marketingArtifacts).set({ unpublishedAt: clock.now() }).where(eq(marketingArtifacts.slug, slug));
     logger.warn("[autopilot/publish] unpublished artifact", { slug });
     return { ok: true };
   } catch (err) {

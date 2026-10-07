@@ -15,6 +15,7 @@ import { db } from "../../db";
 import { autopilotObjectives, type AutopilotObjective } from "@shared/schema";
 import { logger } from "../../utils/logger";
 import type { AutopilotDomain } from "./policyGate";
+import { clock } from "../../utils/clock";
 
 /** Units that are LOWER-is-better (e.g. first-reply time). Everything else is
  * higher-is-better (counts, cents, rates). */
@@ -100,7 +101,7 @@ export async function upsertObjective(input: {
   deadline?: Date | null;
   createdBy?: string;
 }): Promise<void> {
-  const stamp = { updatedAt: new Date() };
+  const stamp = { updatedAt: clock.now() };
   await db
     .insert(autopilotObjectives)
     .values({
@@ -123,7 +124,7 @@ export async function setObjectiveCurrent(key: string, current: number): Promise
   try {
     await db
       .update(autopilotObjectives)
-      .set({ current, updatedAt: new Date() })
+      .set({ current, updatedAt: clock.now() })
       .where(and(eq(autopilotObjectives.key, key), eq(autopilotObjectives.active, true)));
   } catch (err) {
     logger.warn("[autopilot/objectives] setCurrent failed", err instanceof Error ? err : undefined);

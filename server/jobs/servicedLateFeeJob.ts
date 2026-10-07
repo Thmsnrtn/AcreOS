@@ -8,6 +8,7 @@
  * runScheduledJobs() — worker process only (ruling #5).
  */
 import { trackInterval, withJobLock, jobLog as log } from "../utils/jobRuntime";
+import { clock } from "../utils/clock";
 
 export function startServicedLateFeeJob() {
   const ONE_HOUR = 60 * 60 * 1000;
@@ -16,7 +17,7 @@ export function startServicedLateFeeJob() {
   log("Registering serviced late-fee assessment (daily 13:00 UTC)", "late-fees");
 
   trackInterval(() => {
-    if (new Date().getUTCHours() !== 13) return;
+    if (clock.now().getUTCHours() !== 13) return;
     import("../services/notes/servicedLateFees")
       .then(({ runServicedLateFeeAssessmentPass }) =>
         withJobLock("serviced_late_fee_assessment", TTL_SECONDS, async () => {

@@ -88,6 +88,7 @@ import {
 } from "../services/respa/earlyIntervention";
 import { emitDurablePaymentEvent } from "../services/workflow-engine";
 import type { OutboxExecutor } from "../services/workflowOutbox";
+import { clock } from "../utils/clock";
 
 /** The lock / roster key. */
 export const ACQUIRED_NOTE_AGING_JOB_NAME = "acquired_note_aging";
@@ -418,7 +419,7 @@ export async function emitAgingTransitionEvent(
 export async function runAcquiredNoteAgingSweep(options?: {
   asOf?: Date;
 }): Promise<AcquiredNoteAgingSummary> {
-  const asOf = options?.asOf ?? new Date();
+  const asOf = options?.asOf ?? clock.now();
   const summary = EMPTY_SUMMARY();
 
   const rows: AgingNoteRow[] = await db
@@ -474,7 +475,7 @@ export async function runAcquiredNoteAgingSweep(options?: {
         await db.transaction(async (tx) => {
           await tx
             .update(acquiredNotes)
-            .set({ ...plan.changes, updatedAt: new Date() })
+            .set({ ...plan.changes, updatedAt: clock.now() })
             .where(
               and(
                 eq(acquiredNotes.id, note.id),

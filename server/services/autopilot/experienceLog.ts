@@ -16,6 +16,7 @@ import { db } from "../../db";
 import { autopilotExperiences, type AutopilotExperience } from "@shared/schema";
 import { logger } from "../../utils/logger";
 import type { PlayStats } from "./efficacy";
+import { clock } from "../../utils/clock";
 
 /** Eval score at/above this counts as a pass (matches the eval-gate spirit). */
 export const EVAL_PASS_THRESHOLD = 0.6;
@@ -280,7 +281,7 @@ export async function getCalibrationPairs(
     .where(where)
     .orderBy(desc(autopilotExperiences.createdAt))
     .limit(limit);
-  const now = Date.now();
+  const now = clock.nowMs();
   const pairs: Array<{ predicted: number; actual: 0 | 1; weight: number }> = [];
   for (const r of rows) {
     const vote = outcomeOf(signalsOf(r));
@@ -307,7 +308,7 @@ export async function recordDispatchSignal(
         dispatchSuccess: signal.dispatchSuccess,
         costUsd: signal.costUsd != null ? String(signal.costUsd) : undefined,
         evalScore: signal.evalScore != null ? String(signal.evalScore) : undefined,
-        resolvedAt: new Date(),
+        resolvedAt: clock.now(),
       })
       .where(eq(autopilotExperiences.dispatchId, dispatchId));
   } catch (err) {
@@ -343,7 +344,7 @@ export async function recordFounderVerdict(
   try {
     await db
       .update(autopilotExperiences)
-      .set({ founderVerdict: verdict, resolvedAt: new Date() })
+      .set({ founderVerdict: verdict, resolvedAt: clock.now() })
       .where(eq(autopilotExperiences.askId, askId));
   } catch (err) {
     logger.warn("[autopilot/experience] founder verdict accrete failed", err instanceof Error ? err : undefined);
@@ -510,7 +511,7 @@ export async function recordConsequenceByTarget(
   },
 ): Promise<number> {
   try {
-    const set: Record<string, unknown> = { resolvedAt: new Date() };
+    const set: Record<string, unknown> = { resolvedAt: clock.now() };
     if (consequence.paymentRecovered != null) set.paymentRecovered = consequence.paymentRecovered;
     if (consequence.deliveryBounced != null) set.deliveryBounced = consequence.deliveryBounced;
     if (

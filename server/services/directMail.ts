@@ -5,6 +5,7 @@ import { shouldSimulate, recordSimulatedAction } from "../utils/simulationMode";
 import { isLiveSendArmed } from './mail/liveSendInterlock';
 import { getLobClient } from './directMailService';
 import { DIRECT_MAIL_COSTS, type MailPieceType } from "./sendPricing";
+import { clock } from "../utils/clock";
 
 async function logLobApiUsage(
   orgId: number | undefined,
@@ -264,7 +265,7 @@ export class DirectMailService {
       );
       return {
         id: sim.id,
-        expectedDeliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        expectedDeliveryDate: new Date(clock.nowMs() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
         isTestMode: true,
         credentialSource: "platform",
       };
@@ -384,7 +385,7 @@ export class DirectMailService {
       );
       return {
         id: sim.id,
-        expectedDeliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        expectedDeliveryDate: new Date(clock.nowMs() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
         isTestMode: true,
         credentialSource: "platform",
       };

@@ -52,6 +52,7 @@ import {
 } from "@shared/schema/solene-dispatch";
 import { enqueueDispatch } from "./dispatchQueue";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // Hard-coded cost + timeout caps for adversary dispatches. Adversaries should
 // be cheap reads/grep/git-show calls plus a focused analysis turn, not
@@ -373,7 +374,7 @@ export async function recordAdversaryFindings(
       status: input.status,
       findings: input.findings,
       severity: input.severity ?? null,
-      reportedAt: new Date(),
+      reportedAt: clock.now(),
     })
     .where(eq(soleneAdversarialTests.id, testId));
 

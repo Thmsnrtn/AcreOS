@@ -8,6 +8,7 @@
  */
 
 import { trackInterval, withJobLock, jobLog as log } from "../utils/jobRuntime";
+import { clock } from "../utils/clock";
 
 // ============================================================================
 // Jarvis 2.1 (audit G2) — Note payment due-date detector. Daily 11:00 UTC
@@ -26,7 +27,7 @@ export function startNotePaymentDueDetectorJob() {
   log('Registering note payment due-date detector (daily 11:00 UTC)', 'note-payments');
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 11) {
       import('../services/notePaymentDueDetector').then(({ runNotePaymentDueScan }) => {
         withJobLock('note_payment_due_scan', TTL_SECONDS, async () => {
@@ -61,7 +62,7 @@ export function startLeaseExpiryDetectorJob() {
   log('Registering lease-expiry detector (daily 10:00 UTC)', 'lease-expiry');
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 10) {
       import('../services/leaseExpiryDetector').then(({ runLeaseExpiryScan }) => {
         withJobLock('lease_expiry_scan', TTL_SECONDS, async () => {

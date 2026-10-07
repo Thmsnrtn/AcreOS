@@ -32,6 +32,7 @@ import {
   getEnsembleMonthlyCapHardCeilingUsd,
   getMonthToDateSpendForType,
 } from "../solene/capitalTracker";
+import { clock } from "../../utils/clock";
 
 /** Sentinel playId for the (play-agnostic) budget-ramp proposal row. */
 export const BUDGET_RAMP_PLAY_ID = "__growth_budget__";
@@ -80,7 +81,7 @@ async function rampProposalCoolingDown(now: Date): Promise<boolean> {
  * record the ramp_budget proposal. Returns 1 if a proposal fired, else 0.
  */
 export async function maybeProposeBudgetRamp(deps: BudgetRampDeps): Promise<number> {
-  const now = deps.now?.() ?? new Date();
+  const now = deps.now?.() ?? clock.now();
   try {
     if (await rampProposalCoolingDown(now)) return 0;
 

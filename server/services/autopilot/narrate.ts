@@ -21,6 +21,7 @@
  * under-claims, never a hype bot.
  */
 import type { RankedMove } from "./decide";
+import { clock } from "../../utils/clock";
 
 export type PartOfDay = "morning" | "afternoon" | "evening";
 
@@ -574,7 +575,7 @@ export async function composeFounderBrief(opts?: { nowEpochMs?: number; founderN
 
   // ET hour (UTC-4, summer). Approximate by design; the client can refine the
   // greeting with the real browser clock. Never load-bearing.
-  const nowMs = opts?.nowEpochMs ?? Date.now();
+  const nowMs = opts?.nowEpochMs ?? clock.nowMs();
   const etHour = new Date(nowMs - 4 * 60 * 60 * 1000).getUTCHours();
   const partOfDay = partOfDayFromHour(etHour);
 

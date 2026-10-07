@@ -34,6 +34,7 @@ import { sendRegisteredEmail } from "./emailRegistry";
 import { isFounderEmail } from "./founder";
 import { logger } from "../utils/logger";
 import { recordSense } from "./autopilot/perception";
+import { clock } from "../utils/clock";
 
 const RESCUE_RISK_THRESHOLD = 85;  // auto-send rescue email
 const ALERT_RISK_THRESHOLD = 80;   // create systemAlert
@@ -89,7 +90,7 @@ async function getDaysQuiet(orgId: number): Promise<number | null> {
       .limit(1);
 
     if (!row?.createdAt) return 60; // no activity — assume 60 days
-    const ms = Date.now() - new Date(row.createdAt).getTime();
+    const ms = clock.nowMs() - new Date(row.createdAt).getTime();
     return Math.floor(ms / (1000 * 60 * 60 * 24));
   } catch {
     return null;
@@ -292,7 +293,7 @@ async function triggerRescue(
 
   await db
     .update(organizations)
-    .set({ churnRescueSentAt: new Date() })
+    .set({ churnRescueSentAt: clock.now() })
     .where(eq(organizations.id, orgId));
 
   await logActivity({
@@ -339,7 +340,7 @@ export const churnEngine = {
           .update(organizations)
           .set({
             churnRiskScore: risk,
-            churnRiskUpdatedAt: new Date(),
+            churnRiskUpdatedAt: clock.now(),
           })
           .where(eq(organizations.id, org.id));
 
@@ -355,7 +356,7 @@ export const churnEngine = {
         //     no longer high-risk (sustained-healthy fallback).
         if (org.churnRescueSentAt && risk < RESCUE_RISK_THRESHOLD) {
           const rescueAgeDays = Math.floor(
-            (Date.now() - new Date(org.churnRescueSentAt).getTime()) / (1000 * 60 * 60 * 24)
+            (clock.nowMs() - new Date(org.churnRescueSentAt).getTime()) / (1000 * 60 * 60 * 24)
           );
           const recovered = risk < RESCUE_RECOVERY_THRESHOLD;
           const cooledDown = rescueAgeDays >= RESCUE_COOLDOWN_DAYS;
@@ -442,7 +443,7 @@ export const churnEngine = {
             ).catch(() => {});
             await db
               .update(organizations)
-              .set({ referralNudgeSentAt: new Date() })
+              .set({ referralNudgeSentAt: clock.now() })
               .where(eq(organizations.id, org.id));
           }
         }

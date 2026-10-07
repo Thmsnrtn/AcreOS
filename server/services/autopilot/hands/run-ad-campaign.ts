@@ -22,13 +22,14 @@
 import { registerHand } from "./registry";
 import { handError, type HandResult } from "./types";
 import { runAdCampaign } from "../adProvider";
+import { clock } from "../../../utils/clock";
 
 const NAME = "run_ad_campaign";
 /** Hard per-launch daily-budget ceiling (cents). A blunt backstop. */
 export const AD_DAILY_BUDGET_CEILING_CENTS = 5000; // $50/day
 
 async function handler(input: Record<string, unknown>): Promise<HandResult> {
-  const started = Date.now();
+  const started = clock.nowMs();
   try {
     const platform = String(input.platform ?? "").trim();
     const objective = String(input.objective ?? "").trim();
@@ -36,21 +37,21 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
     const creative = String(input.creative ?? "").trim();
     const dailyBudgetCents = typeof input.daily_budget_cents === "number" ? Math.floor(input.daily_budget_cents) : NaN;
     if (!platform || !objective || !audience || !creative || !Number.isFinite(dailyBudgetCents) || dailyBudgetCents <= 0) {
-      return { success: false, output: "run_ad_campaign: 'platform', 'objective', 'audience', 'creative', and a positive 'daily_budget_cents' are required.", durationMs: Date.now() - started };
+      return { success: false, output: "run_ad_campaign: 'platform', 'objective', 'audience', 'creative', and a positive 'daily_budget_cents' are required.", durationMs: clock.nowMs() - started };
     }
     // Stage 2: the founder's ad switch binds at the hand — "stop spending money
     // on ads" refuses here even for an action witnessed before the switch.
     {
       const { getControlState } = await import("../founderControls");
       if (!(await getControlState()).adsEnabled) {
-        return { success: false, output: "run_ad_campaign: the founder has turned ad spending OFF. Refusing.", durationMs: Date.now() - started };
+        return { success: false, output: "run_ad_campaign: the founder has turned ad spending OFF. Refusing.", durationMs: clock.nowMs() - started };
       }
     }
     if (dailyBudgetCents > AD_DAILY_BUDGET_CEILING_CENTS) {
       return {
         success: false,
         output: `run_ad_campaign: $${(dailyBudgetCents / 100).toFixed(2)}/day exceeds the $${(AD_DAILY_BUDGET_CEILING_CENTS / 100).toFixed(2)}/day autopilot ceiling. Refusing.`,
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
     const result = await runAdCampaign({
@@ -62,12 +63,12 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
       organizationId: typeof input.organization_id === "number" ? input.organization_id : undefined,
     });
     if (result.draftOnly) {
-      return { success: false, output: `run_ad_campaign: ${result.reason}`, durationMs: Date.now() - started };
+      return { success: false, output: `run_ad_campaign: ${result.reason}`, durationMs: clock.nowMs() - started };
     }
     if (!result.success) {
-      return { success: false, output: `run_ad_campaign failed: ${result.reason ?? "unknown"}`, durationMs: Date.now() - started };
+      return { success: false, output: `run_ad_campaign failed: ${result.reason ?? "unknown"}`, durationMs: clock.nowMs() - started };
     }
-    return { success: true, output: JSON.stringify({ campaignId: result.campaignId }), durationMs: Date.now() - started };
+    return { success: true, output: JSON.stringify({ campaignId: result.campaignId }), durationMs: clock.nowMs() - started };
   } catch (err) {
     return handError(NAME, err, started);
   }

@@ -21,6 +21,7 @@ import { db } from "../db";
 import { chatPendingToolCalls } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { sendPushToPerson } from "../services/pushNotificationService";
+import { clock } from "../utils/clock";
 
 /** How many seconds a confirmation must sit idle before we nudge. */
 const NUDGE_AFTER_SECONDS = 60;
@@ -35,7 +36,7 @@ interface NudgableCtx {
   pushedAt?: string;
 }
 
-export async function runNudgePass(now = new Date()): Promise<number> {
+export async function runNudgePass(now = clock.now()): Promise<number> {
   const nudgeBefore = new Date(now.getTime() - NUDGE_AFTER_SECONDS * 1000);
 
   // Idle, not yet expired, never pushed. We mark pushed-at inside the

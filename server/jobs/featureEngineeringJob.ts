@@ -24,6 +24,7 @@ import { subDays } from "date-fns";
 import { logger } from "../utils/logger";
 import { publicRecordTransaction } from "../services/acreOSValuation";
 import { femaZoneCode, isSfhaCode } from "../services/data-source-broker";
+import { clock } from "../utils/clock";
 
 export const FEATURE_ENGINEERING_QUEUE_NAME = "feature-engineering";
 
@@ -121,7 +122,7 @@ async function computeMarketFeatures(
   state: string,
   county: string
 ): Promise<MarketFeatures> {
-  const lookbackDate = subDays(new Date(), 180);
+  const lookbackDate = subDays(clock.now(), 180);
 
   // Aggregate from transactionTraining table
   const [agg] = await db
@@ -170,7 +171,7 @@ async function storeFeatures(
   marketFeatures: MarketFeatures
 ): Promise<void> {
   const features = {
-    computed_at: new Date().toISOString(),
+    computed_at: clock.now().toISOString(),
     location: locationFeatures,
     market: marketFeatures,
   };
@@ -187,7 +188,7 @@ async function storeFeatures(
 // ---------------------------------------------------------------------------
 
 async function processFeatureEngineeringJob(job: Job): Promise<void> {
-  const startedAt = new Date();
+  const startedAt = clock.now();
 
   const jobRecord = await db
     .insert(backgroundJobs)
@@ -233,7 +234,7 @@ async function processFeatureEngineeringJob(job: Job): Promise<void> {
       );
     }
 
-    const finishedAt = new Date();
+    const finishedAt = clock.now();
     if (bgJobId) {
       await db
         .update(backgroundJobs)
@@ -251,7 +252,7 @@ async function processFeatureEngineeringJob(job: Job): Promise<void> {
     if (bgJobId) {
       await db
         .update(backgroundJobs)
-        .set({ status: "failed", completedAt: new Date(), error: err.message })
+        .set({ status: "failed", completedAt: clock.now(), error: err.message })
         .where(eq(backgroundJobs.id, bgJobId));
     }
     throw err;
@@ -312,5 +313,5 @@ export function featureEngineeringJob(redisConnection: any): Worker {
  * job.id for the backgroundJobs audit row, so we synthesize a stable id.
  */
 export async function runFeatureEngineering(): Promise<void> {
-  await processFeatureEngineeringJob({ id: `scheduler-${Date.now()}` } as Job);
+  await processFeatureEngineeringJob({ id: `scheduler-${clock.nowMs()}` } as Job);
 }

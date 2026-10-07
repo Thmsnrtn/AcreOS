@@ -42,6 +42,7 @@ import {
   getTierToModelMap,
   getModelRoutingFlags,
 } from "../aiRouter";
+import { clock } from "../../utils/clock";
 
 /** platform_settings key holding the last-seen fingerprint + change ring. */
 export const MODEL_FINGERPRINT_KEY = "autopilot.model_config_fingerprint";
@@ -199,7 +200,7 @@ function noticeFromRecent(recent: ModelChangeEvent[], nowMs: number): string | n
  * plain-language notice. Fail-quiet: any storage failure returns silence —
  * never an invented notice, never a thrown error into the Letter.
  */
-export async function checkModelChange(nowMs: number = Date.now()): Promise<ModelChangeCheck> {
+export async function checkModelChange(nowMs: number = clock.nowMs()): Promise<ModelChangeCheck> {
   try {
     const current = captureModelConfigSnapshot();
     const fingerprint = fingerprintOf(current);

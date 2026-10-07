@@ -18,6 +18,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "../../db";
 import { autopilotStandingOrders, type AutopilotStandingOrder } from "@shared/schema";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 export const STANDING_ORDER_KINDS = ["standing_order", "intent"] as const;
 export type StandingOrderKind = (typeof STANDING_ORDER_KINDS)[number];
@@ -63,7 +64,7 @@ export async function listStandingOrders(opts?: {
 export async function deactivateStandingOrder(id: number): Promise<{ ok: boolean }> {
   const res = await db
     .update(autopilotStandingOrders)
-    .set({ active: false, updatedAt: new Date() })
+    .set({ active: false, updatedAt: clock.now() })
     .where(eq(autopilotStandingOrders.id, id))
     .returning({ id: autopilotStandingOrders.id });
   return { ok: res.length > 0 };

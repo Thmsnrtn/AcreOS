@@ -19,6 +19,7 @@ import { db } from "../../../db";
 import { leads } from "@shared/schema";
 import { sendSMSToLead } from "../../smsService";
 import { logger } from "../../../utils/logger";
+import { clock } from "../../../utils/clock";
 
 const NAME = "send_sms";
 
@@ -28,13 +29,13 @@ export function isQuietHour(hourLocal: number): boolean {
 }
 
 async function handler(input: Record<string, unknown>): Promise<HandResult> {
-  const started = Date.now();
+  const started = clock.nowMs();
   try {
     const organizationId = typeof input.organization_id === "number" ? input.organization_id : NaN;
     const leadId = typeof input.lead_id === "number" ? input.lead_id : NaN;
     const message = String(input.message ?? "").trim();
     if (!Number.isFinite(organizationId) || !Number.isFinite(leadId) || !message) {
-      return { success: false, output: "send_sms: 'organization_id', 'lead_id', and 'message' are required.", durationMs: Date.now() - started };
+      return { success: false, output: "send_sms: 'organization_id', 'lead_id', and 'message' are required.", durationMs: clock.nowMs() - started };
     }
 
     // Consent gate (defense in depth — the witnessed tap is the primary gate).
@@ -44,26 +45,26 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
       .where(and(eq(leads.organizationId, organizationId), eq(leads.id, leadId)))
       .limit(1);
     if (!lead) {
-      return { success: false, output: `send_sms: lead ${leadId} not found in org ${organizationId}.`, durationMs: Date.now() - started };
+      return { success: false, output: `send_sms: lead ${leadId} not found in org ${organizationId}.`, durationMs: clock.nowMs() - started };
     }
     if (lead.doNotContact === true || lead.tcpaConsent === false) {
       logger.info(`[autopilot/hands] send_sms refused — no TCPA consent for lead ${leadId}`);
-      return { success: false, output: `send_sms: lead ${leadId} has not consented to SMS (doNotContact / no TCPA consent); not sending.`, durationMs: Date.now() - started };
+      return { success: false, output: `send_sms: lead ${leadId} has not consented to SMS (doNotContact / no TCPA consent); not sending.`, durationMs: clock.nowMs() - started };
     }
 
     // Quiet-hours gate when a tz offset is supplied.
     if (typeof input.tz_offset_hours === "number") {
-      const localHour = (((new Date().getUTCHours() + input.tz_offset_hours) % 24) + 24) % 24;
+      const localHour = (((clock.now().getUTCHours() + input.tz_offset_hours) % 24) + 24) % 24;
       if (isQuietHour(localHour)) {
-        return { success: false, output: `send_sms: refused — ${localHour}:00 local is outside the 8am–9pm send window.`, durationMs: Date.now() - started };
+        return { success: false, output: `send_sms: refused — ${localHour}:00 local is outside the 8am–9pm send window.`, durationMs: clock.nowMs() - started };
       }
     }
 
     const result = await sendSMSToLead(organizationId, leadId, message, "autopilot", { purpose: "prospecting" });
     if (!result.success) {
-      return { success: false, output: `send_sms failed: ${result.error ?? "unknown"}`, durationMs: Date.now() - started };
+      return { success: false, output: `send_sms failed: ${result.error ?? "unknown"}`, durationMs: clock.nowMs() - started };
     }
-    return { success: true, output: JSON.stringify({ messageId: result.messageId }), durationMs: Date.now() - started };
+    return { success: true, output: JSON.stringify({ messageId: result.messageId }), durationMs: clock.nowMs() - started };
   } catch (err) {
     return handError(NAME, err, started);
   }

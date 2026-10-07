@@ -11,6 +11,7 @@
 import { registerHand } from "./registry";
 import { handError, type HandResult } from "./types";
 import { sendLetter, type MailAddress } from "../../mailProvider";
+import { clock } from "../../../utils/clock";
 
 const NAME = "send_letter";
 
@@ -35,23 +36,23 @@ function parseAddress(v: unknown): MailAddress | null {
 }
 
 async function handler(input: Record<string, unknown>): Promise<HandResult> {
-  const started = Date.now();
+  const started = clock.nowMs();
   try {
     const to = parseAddress(input.to);
     const from = parseAddress(input.from);
     const file = String(input.file ?? "").trim();
     const organizationId = typeof input.organization_id === "number" ? input.organization_id : undefined;
     if (!to || !from || !file) {
-      return { success: false, output: "send_letter: a complete 'to' + 'from' address and a 'file' (PDF URL) are required.", durationMs: Date.now() - started };
+      return { success: false, output: "send_letter: a complete 'to' + 'from' address and a 'file' (PDF URL) are required.", durationMs: clock.nowMs() - started };
     }
     const result = await sendLetter({ to, from, file, organizationId, description: typeof input.description === "string" ? input.description : undefined });
     if (!result.success) {
-      return { success: false, output: `send_letter failed: ${result.error ?? "unknown"}`, durationMs: Date.now() - started };
+      return { success: false, output: `send_letter failed: ${result.error ?? "unknown"}`, durationMs: clock.nowMs() - started };
     }
     return {
       success: true,
       output: JSON.stringify({ mailingId: result.mailingId, isTestMode: result.isTestMode, cost: result.cost, expectedDelivery: result.expectedDeliveryDate }),
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   } catch (err) {
     return handError(NAME, err, started);
