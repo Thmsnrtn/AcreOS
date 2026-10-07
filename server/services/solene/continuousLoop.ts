@@ -500,6 +500,19 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
     );
   }
 
+  // Stage 2 (S8) — the Ops watch: every provider the business depends on
+  // (model, email, Stripe) is read each tick; an outage opens ONE incident and
+  // pages the founder ONCE, recovery closes it. Deterministic, no model call.
+  try {
+    const { runOpsWatch } = await import("../autopilot/opsWatch");
+    const ops = await runOpsWatch();
+    if (ops.opened.length || ops.resolved.length) {
+      logger.warn("[continuousLoop] tick: ops incidents changed", { metadata: { opened: ops.opened, resolved: ops.resolved, paged: ops.paged } });
+    }
+  } catch (err) {
+    logger.warn("[continuousLoop] tick: ops watch failed", err instanceof Error ? err : undefined);
+  }
+
   // Scan recent dispatches for flagged/failed terminal states. The
   // remediation-dispatch enqueue path is owned by Solene's reviewer
   // queue (codeReviewQueue); we only increment the scanned counter
@@ -752,7 +765,8 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           if (apiKey) {
             try {
               const OpenAImod = (await import("openai")).default;
-              const client = new OpenAImod({ apiKey, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL });
+              const { AUTOPILOT_MODEL_CLIENT_OPTS } = await import("../autopilot/operator");
+              const client = new OpenAImod({ apiKey, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, ...AUTOPILOT_MODEL_CLIENT_OPTS });
               const { tracedLlmCall } = await import("../tracedLlmCall");
               const { OPENAI_DIRECT_MODELS, openAiModelIdFor } = await import("../models");
               // The default is named for whichever provider
@@ -875,6 +889,19 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           }
 
           let actMove = effectiveMoves[0] ?? plannedTopMove;
+          // Stage 2 — the founder's mechanical controls: a paused domain / ads
+          // switched off removes those moves from consideration (the next
+          // unblocked move acts instead); planAndAct re-checks as a backstop.
+          let controlState: import("../autopilot/founderControls").ControlState | null = null;
+          try {
+            const { getControlState, moveBlockedByControls } = await import("../autopilot/founderControls");
+            controlState = await getControlState();
+            const cs = controlState;
+            const unblocked = effectiveMoves.filter((m) => !moveBlockedByControls(m, cs));
+            if (unblocked.length > 0) actMove = unblocked[0];
+          } catch (ctlErr) {
+            logger.warn("[continuousLoop] tick: founder controls read failed", ctlErr instanceof Error ? ctlErr : undefined);
+          }
           // The play this action runs (for the Experience Log / efficacy model);
           // null for moves without a play (e.g. optimize).
           let selectedPlayId: string | null = null;
@@ -1123,6 +1150,11 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                 const r = await askFounder(input);
                 return { askId: r.askId };
               },
+              blockedByControls: async (m) => {
+                if (!controlState) return null;
+                const { moveBlockedByControls } = await import("../autopilot/founderControls");
+                return moveBlockedByControls(m, controlState);
+              },
               // Honest counterfactual + history-grounded forecast on any ask.
               simulate: (m) => {
                 const sim = renderSimulation(
@@ -1140,6 +1172,15 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                 const { assessRisk, shouldEscalateForRisk } = await import("../autopilot/riskautonomy");
                 const { bindingFor } = await import("../autopilot/act");
                 const b = bindingFor(m.kind);
+                // Stage 2: a role-worker move only DRAFTS — every outward effect
+                // is gated one by one at the effect (a frozen hand awaiting a
+                // witness, or the publish gate under the founder's publish
+                // switch). The risk at THIS step is the drafting run itself:
+                // bounded cost, nothing leaves. Novelty/irreversibility belong
+                // to the effects, which are each gated where they happen.
+                if (b.effectsGatedPerAction && !m.isNetNew) {
+                  return { tier: "low" as const, reasons: ["it only drafts; every outward effect is witnessed or gated one at a time"] };
+                }
                 const a = assessRisk({
                   reversible: b.reversible, // T0.2: the real reversibility, not a customer-facing proxy
                   customerFacing: b.isCustomerFacing,

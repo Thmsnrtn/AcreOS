@@ -33,6 +33,8 @@ import type { EscalationContext, EscalationVerdict } from "./escalation";
 import { craftStandardPrompt, type CraftSurface } from "./craftStandard";
 import { recordCleanCycle, recordAnomaly } from "./domainAutonomy";
 import { PLATFORM_SCOPE } from "./tenantScope";
+import { isRoleWorkerMove } from "../solene/roleWorkers/routing";
+import { hardStopForMove } from "./hardStopMoves";
 import type {
   SoleneDispatchAgentRole,
   SoleneDispatchSourceType,
@@ -64,6 +66,19 @@ interface MoveBinding {
    * autonomy gate; an UNKNOWN move is irreversible by default (fail closed).
    */
   reversible: boolean;
+  /**
+   * Stage 2 — the move runs a ROLE WORKER (roleWorkers/routing.ts) whose every
+   * outward effect is gated ONE BY ONE at the effect: a customer-facing or
+   * money-moving effect is a requiresApproval hand that freezes for a witness
+   * (a founder tap, or a founder-issued WitnessGrant via autoWitness), and a
+   * publish passes the publish gate under the founder's publish switch. The
+   * dispatch itself only drafts. So the move-layer witnessed-send tap would be
+   * a SECOND tap for the same effect (and one blanket tap for a whole batch is
+   * weaker than one per effect): such a move is not escalated at the move
+   * layer, and its risk is the drafting step's, not the effect's. Derived from
+   * the routing table, never hand-set (see effectsGatedFor).
+   */
+  effectsGatedPerAction?: boolean;
 }
 
 const MOVE_BINDINGS: Record<string, MoveBinding> = {
@@ -101,7 +116,9 @@ const DEFAULT_BINDING: MoveBinding = {
 };
 
 export function bindingFor(moveKind: string): MoveBinding {
-  return MOVE_BINDINGS[moveKind] ?? DEFAULT_BINDING;
+  const b = MOVE_BINDINGS[moveKind];
+  if (!b) return DEFAULT_BINDING;
+  return isRoleWorkerMove(moveKind) ? { ...b, effectsGatedPerAction: true } : b;
 }
 
 /** True iff this move-kind has an explicit, known binding (not the fail-closed default). */
@@ -117,7 +134,11 @@ export function moveToPolicyAction(move: RankedMove): PolicyAction {
   // human tap, regardless of any proposed binding. The safety lives here, at the
   // choke point, not in the proposer where the next engineer could bypass it.
   // (The MORE restrictive of the known binding and the net-new floor.)
-  const isCustomerFacing = b.isCustomerFacing || move.isNetNew === true;
+  // Stage 2: a role-worker move's customer-facing effects are each witnessed
+  // at the hand (effectsGatedPerAction) — the move itself only drafts, so it
+  // is not witnessed a second time here. A NET-NEW move never qualifies.
+  const witnessAtMove = b.isCustomerFacing && b.effectsGatedPerAction !== true;
+  const isCustomerFacing = witnessAtMove || move.isNetNew === true;
   return {
     domain: b.domain,
     actionKind: move.kind,
@@ -207,6 +228,13 @@ export interface ActDeps {
    * pre-mortem so a high-risk action escalates without spending a model call.
    */
   assessRisk?: (move: RankedMove) => Promise<{ tier: "low" | "medium" | "high"; reasons: string[] } | null>;
+  /**
+   * Stage 2 — the founder's mechanical controls (founderControls.ts): a reason
+   * string when the founder paused this move's domain or switched ads off,
+   * null to proceed. Checked before any gate; a blocked move is suppressed
+   * silently (the founder asked for exactly this).
+   */
+  blockedByControls?: (move: RankedMove) => Promise<string | null>;
 }
 
 export interface ActContext {
@@ -232,6 +260,37 @@ export async function planAndAct(
 ): Promise<ActOutcome> {
   try {
     const binding = bindingFor(move.kind);
+    // S9 — a move that implements a hard-stop class (pricing, legal signing,
+    // spend > $500, customer-data deletion) never reaches a gate, a dispatch,
+    // or an approval that could enqueue it. It is HELD and SURFACED: one ask
+    // that says what it is and that only the founder can do it.
+    const hardStop = hardStopForMove(move);
+    if (hardStop) {
+      const { HARD_STOP_LABEL } = await import("./hardStopMoves");
+      const { askId } = await deps.ask({
+        askingAgentRole: binding.agentRole,
+        questionSummary: `Held — founder-only: ${HARD_STOP_LABEL[hardStop]} (${move.kind})`,
+        questionBody: [
+          `The autopilot proposed ${HARD_STOP_LABEL[hardStop]}: ${move.rationale}`,
+          "",
+          "This is a permanent hard-stop — never autonomous, and approving here does NOT run it. Nothing was done.",
+          "If you want it, do it yourself; if not, decline and it stays held.",
+        ].join("\n"),
+        answerFormat: "yes_no",
+        urgency: "normal",
+      });
+      return {
+        status: "escalated",
+        move,
+        askId,
+        verdict: { escalate: true, action: "founder_ask", urgency: "normal", reason: `hard-stop: ${hardStop}` },
+        gate: { decision: "escalate", decidedBy: "hard_stop" },
+      };
+    }
+    if (deps.blockedByControls) {
+      const blocked = await deps.blockedByControls(move);
+      if (blocked) return { status: "suppressed", move, reason: blocked, gate: { decision: "block", decidedBy: "founder_control" } };
+    }
     const action = moveToPolicyAction(move);
     const decision = await deps.runGate(action);
 
@@ -389,7 +448,8 @@ export interface ApprovedMoveDeps {
 export type ApprovedMoveOutcome =
   | { status: "enqueued"; dispatchId: number }
   | { status: "already_enqueued"; dispatchId: number }
-  | { status: "not_a_move" };
+  | { status: "not_a_move" }
+  | { status: "hard_stop_refused" };
 
 /** The move's own rationale, as the decision trace recorded it (never invented). */
 function recordedRationale(rec: EscalatedMoveRecord): string | null {
@@ -406,6 +466,11 @@ function recordedRationale(rec: EscalatedMoveRecord): string | null {
 export async function enqueueApprovedMove(askId: number, deps: ApprovedMoveDeps): Promise<ApprovedMoveOutcome> {
   const rec = await deps.findEscalatedMove(askId);
   if (!rec) return { status: "not_a_move" };
+  // A hard-stop move is never enqueued by an approval — a one-tap yes on a
+  // one-line card must not be the path to a pricing change or a data purge.
+  if (hardStopForMove({ kind: rec.moveKind, rationale: recordedRationale(rec) ?? undefined, isNetNew: !isKnownMoveKind(rec.moveKind) })) {
+    return { status: "hard_stop_refused" };
+  }
   if (rec.dispatchId != null) return { status: "already_enqueued", dispatchId: rec.dispatchId };
 
   const binding = bindingFor(rec.moveKind);

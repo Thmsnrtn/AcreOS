@@ -52,6 +52,7 @@ import {
   executeDispatchTool,
 } from "./dispatchToolExecutor";
 import { checkPromptAgainstConstitution } from "./preCallConstitutionalChecker";
+import { isEmptyResult, ToolLoopDetector, turnBudgetFor } from "./taskGuards";
 
 // ----------------------------------------------------------------------------
 // Configuration
@@ -570,7 +571,20 @@ export interface RunDispatchResult {
     | "ensemble_monthly_cap"
     // Cancelled while running (founder cancel or panic stop) — the runner saw
     // the cancelled status at a turn/tool boundary and stopped.
-    | "aborted";
+    | "aborted"
+    // Stage 2 task guards (taskGuards.ts): the model finished with no work
+    // product ("Nothing further to add.") — a FAILURE, never a success.
+    | "empty_result"
+    // The model requested the same tool call with identical arguments
+    // MAX_IDENTICAL_TOOL_CALLS times; the repeat was not executed.
+    | "loop_detected"
+    // Role workers (roleWorkers/runner.ts): nothing was waiting when the
+    // worker ran (a stale dispatch — neither a success nor the domain's fault).
+    | "no_work"
+    // The Writer produced no well-formed <<<PUBLISH block …
+    | "no_publishable_artifact"
+    // … or one the existing publish gate refused (claims / links / fabrication).
+    | "publish_gate_blocked";
 }
 
 /**
@@ -703,6 +717,26 @@ export async function runDispatch(
     }
   }
 
+  // Stage 2 (S11): the MOVE KIND decides the worker. A business move (write an
+  // article, answer tickets, win back a customer, watch the providers) runs a
+  // role worker with business tools and its own repo-loaded instructions —
+  // not the coding agent below, whose file/git tools cannot produce any of it.
+  {
+    const { roleWorkerForDispatch } = await import("./roleWorkers/routing");
+    const role = roleWorkerForDispatch(row);
+    if (role) {
+      const model = selectModelForDispatch({ agentRole: row.agentRole, sourceType: row.sourceType, model: row.model });
+      const { runRoleWorkerDispatch } = await import("./roleWorkers/runner");
+      const r = await runRoleWorkerDispatch(row, role, {
+        model,
+        apiKey: process.env.ANTHROPIC_API_KEY?.trim() || null,
+        transcriptPath,
+        price: (i, o) => estimateCostUsd(i, o, 0, model),
+      });
+      return makeResult(dispatchId, r.success, r.costUsd, r.tokenInput, r.tokenOutput, started, r.finalText, [], [], transcriptPath, r.terminationReason);
+    }
+  }
+
   // Credential check — never logs the value.
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey || apiKey.trim().length === 0) {
@@ -829,6 +863,11 @@ export async function runDispatch(
   let toolCallsExecuted = 0;
 
   let terminationReason: RunDispatchResult["terminationReason"] = "error";
+  // Stage 2 task guards: identical repeated tool calls end the task as a loop,
+  // and the task spends at most its turn budget.
+  const loopDetector = new ToolLoopDetector();
+  let loopReason: string | null = null;
+  const turnBudget = turnBudgetFor(null);
   let timedOut = false;
   const timeoutHandle = setTimeout(() => {
     timedOut = true;
@@ -881,7 +920,7 @@ export async function runDispatch(
   }
 
   try {
-    for (let turn = 0; turn < DISPATCH_MAX_TURNS; turn++) {
+    for (let turn = 0; turn < turnBudget; turn++) {
       if (timedOut) {
         terminationReason = "timeout";
         break;
@@ -1015,6 +1054,13 @@ export async function runDispatch(
       let abortedMidTurn = false;
       for (const tu of toolUses) {
         if (timedOut) break;
+        // A repeated identical call is a loop: never execute the repeat, end
+        // the task failed with the reason.
+        const loop = loopDetector.record(tu.name, tu.input);
+        if (loop.looped) {
+          loopReason = loop.reason ?? "loop detected";
+          break;
+        }
         // …and before every tool call, so no further outward effect starts
         // after a cancel even within the turn that was already in flight.
         if (await isDispatchCancelled(dispatchId)) {
@@ -1059,6 +1105,12 @@ export async function runDispatch(
         await appendTranscript(transcriptPath, { event: "aborted", turn });
         break;
       }
+      if (loopReason) {
+        terminationReason = "loop_detected";
+        finalText = loopReason;
+        await appendTranscript(transcriptPath, { event: "loop_detected", turn, reason: loopReason });
+        break;
+      }
     }
 
     if (terminationReason === "error") terminationReason = "max_turns";
@@ -1081,8 +1133,12 @@ export async function runDispatch(
     tokenCached,
     selectedModel,
   );
-  const success =
-    terminationReason === "end_turn" && finalText.length > 0;
+  // An empty answer ("Nothing further to add.") is a FAILURE, never a
+  // success: the trust ledger must not bank a clean cycle for no work.
+  if (terminationReason === "end_turn" && isEmptyResult(finalText)) {
+    terminationReason = "empty_result";
+  }
+  const success = terminationReason === "end_turn";
 
   await appendTranscript(transcriptPath, {
     event: "complete",

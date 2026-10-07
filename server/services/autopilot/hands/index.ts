@@ -28,6 +28,7 @@ import "./send-letter";
 import "./dunning-action";
 import "./apply-refund";
 import "./run-ad-campaign";
+import "./reply-support-ticket";
 
 // ── Registered ad providers (step-away gap #7) ──────────────────────────────
 // The Meta adapter self-registers into the adProvider seam. Without a linked

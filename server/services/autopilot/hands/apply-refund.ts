@@ -34,7 +34,13 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
     }
     const { getUncachableStripeClient } = await import("../../../stripeClient");
     const stripe = await getUncachableStripeClient();
-    const refund = await stripe.refunds.create({ charge: chargeId, amount: amountCents });
+    // Stage 2: a credit-pack purchase is recorded by its PaymentIntent id
+    // (credit_transactions.stripe_payment_intent_id). Stripe refunds take
+    // either a charge or a payment_intent, so a `pi_…` id refunds that
+    // payment. Same hand, same ceiling, same witness.
+    const refund = await stripe.refunds.create(
+      chargeId.startsWith("pi_") ? { payment_intent: chargeId, amount: amountCents } : { charge: chargeId, amount: amountCents },
+    );
     return { success: true, output: JSON.stringify({ refundId: refund.id, amountCents }), durationMs: Date.now() - started };
   } catch (err) {
     return handError(NAME, err, started);
@@ -50,7 +56,7 @@ registerHand({
     input_schema: {
       type: "object",
       properties: {
-        charge_id: { type: "string", description: "The Stripe charge id (ch_...)." },
+        charge_id: { type: "string", description: "The Stripe charge id (ch_...), or the PaymentIntent id (pi_...) of the purchase." },
         amount_cents: { type: "number", description: "Amount to refund in cents (≤ 5000)." },
         reason: { type: "string", description: "Why — for the audit trail." },
       },

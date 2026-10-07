@@ -69,8 +69,11 @@ describe("autopilot frontier safety — calibration as a safety signal", () => {
 describe("autopilot frontier safety — constitutional-drift sentinel", () => {
   it("flags a witnessed-send bypass: a customer-facing action that auto-ran", () => {
     const findings = detectDrift([
-      { moveKind: "clear_support_backlog", outcome: "acted" }, // customer-facing + acted = bypass
+      { moveKind: "email_every_customer_now", outcome: "acted" }, // unknown ⇒ customer-facing + acted = bypass
       { moveKind: "grow_owned_channels", outcome: "acted" }, // owned, fine
+      // Stage 2: the Support role worker only drafts — each reply/refund is a
+      // frozen hand witnessed on its own — so the move acting is not a bypass.
+      { moveKind: "clear_support_backlog", outcome: "acted" },
       { moveKind: "clear_support_backlog", outcome: "escalated" }, // correct path
     ]);
     expect(findings).toHaveLength(1);

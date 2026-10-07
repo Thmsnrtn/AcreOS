@@ -164,30 +164,45 @@ export async function askFounder(
   // backoff (REPAGE_HOURS), not every tick. Creating a duplicate row was never
   // the mechanism for it.
   //
-  // The key is (role, summary, body) among OPEN asks. All three are already
-  // stored, so this needs no column and no migration. It is deliberately
-  // exact rather than fuzzy: a repeated escalation reproduces its summary and
-  // body verbatim, because both are derived from the same move.
+  // The key was (role, summary, body) among OPEN asks — exact, on the theory
+  // that a repeated escalation reproduces its summary and body verbatim. It
+  // does not (see S13 below), so the key is now the summary alone.
   //
   // HONEST LIMIT: this is read-then-insert, not an atomic seal. Two ticks
   // racing could still both insert. The loop is single-tick and 30 minutes
   // apart so that race is not the observed failure; closing it properly needs
   // a unique index, which needs a migration. Stated rather than implied.
+  //
+  // S13 (Stage 2) — FOLD on the summary alone. The exact (role, summary, body)
+  // key still let the same question open twice: a re-raised escalation carries
+  // a fresh forecast/simulation line in its BODY, so the founder simulation
+  // found 4 same-summary asks open at once. The summary is what the founder
+  // reads on the card; two open cards with the same words are one question.
+  // The repeat folds into the open ask: fold_count +1, the body refreshed to
+  // the newest facts, NO new row and NO page. The original timeout stands, so
+  // the escalation ladder still bounds the pile.
   const [duplicate] = await db
     .select({ id: soleneFounderAsks.id, askedAt: soleneFounderAsks.askedAt })
     .from(soleneFounderAsks)
     .where(
       and(
         eq(soleneFounderAsks.status, "open"),
-        eq(soleneFounderAsks.askingAgentRole, input.askingAgentRole),
         eq(soleneFounderAsks.questionSummary, summary),
-        eq(soleneFounderAsks.questionBody, input.questionBody),
       ),
     )
+    .orderBy(soleneFounderAsks.id)
     .limit(1);
 
   if (duplicate) {
-    logger.info("[founderCollab] ask deduped — identical question already open", {
+    await db
+      .update(soleneFounderAsks)
+      .set({
+        foldCount: sql`${soleneFounderAsks.foldCount} + 1`,
+        lastFoldedAt: askedAt,
+        questionBody: input.questionBody,
+      })
+      .where(and(eq(soleneFounderAsks.id, duplicate.id), eq(soleneFounderAsks.status, "open")));
+    logger.info("[founderCollab] ask folded — the same question is already open", {
       metadata: {
         askId: duplicate.id,
         askingAgentRole: input.askingAgentRole,
@@ -392,7 +407,11 @@ export async function answerFounderAsk(
           linkDispatch: linkExperienceDispatch,
           maxCostUsd: AUTOPILOT_DISPATCH_MAX_COST_USD,
         });
-        if (out.status !== "not_a_move") {
+        if (out.status === "hard_stop_refused") {
+          logger.warn("[founderCollab] approval of a hard-stop move recorded; the move was NOT enqueued (founder-only, forever)", {
+            metadata: { askId: input.askId },
+          });
+        } else if (out.status !== "not_a_move") {
           logger.info("[founderCollab] approved move enqueued", {
             metadata: { askId: input.askId, status: out.status, dispatchId: out.dispatchId },
           });

@@ -39,6 +39,16 @@ export async function panicStop(params: { reason: string; by: string }): Promise
   const result: PanicStopResult = { switchesOff: [], dispatchesAborted: [], domainsQuarantined: [], receiptHash: null, reason };
   logger.error(`[autopilot/panicStop] TRIPPED by ${params.by}: ${reason}`);
 
+  // 0. Record what is ON right now (switches + every domain's level) BEFORE
+  // turning it off, so the resume can restore it as ONE founder confirm (S10).
+  // Best-effort: a stop must never wait on its own bookkeeping.
+  try {
+    const { recordPreStopSnapshot } = await import("./founderControls");
+    await recordPreStopSnapshot(params.by);
+  } catch (err) {
+    logger.warn("[autopilot/panicStop] pre-stop snapshot failed (stop still applies; resume falls back to staged)", err instanceof Error ? err : undefined);
+  }
+
   // 1. Flip all three master switches OFF.
   try {
     const { setAutopilotSetting } = await import("./settings");

@@ -6,7 +6,7 @@
  * /field-notes/:slug rail (no route refactor); records a marketing_artifacts row
  * as the stable id everything attributes against (Batch D).
  *
- * The publish gate composes three safety layers, in order:
+ * The publish gate composes four safety layers, in order:
  *   1. SANITIZE — DOMPurify with a tight tag/attr allowlist (strips script,
  *      styles, iframes, event handlers, javascript: URLs).
  *   2. LINK ALLOWLIST — outbound links may only point at AcreOS / relative /
@@ -14,7 +14,10 @@
  *   3. LAND CLAIMS — screenLandClaims() bans buildability/title/etc.
  *      determinations, investment language, fair-housing steering, missing
  *      disclosure.
- * `ok` only if all three pass. screenForPublish is synchronous + pure (given the
+ *   4. FABRICATION — screenFabrication() (contentHonesty.ts) refuses invented
+ *      statistics (a number with no source in its sentence), testimonials and
+ *      social proof. Fails closed.
+ * `ok` only if all four pass. screenForPublish is synchronous + pure (given the
  * input) → exhaustively testable. Publishing itself is gated behind the DB
  * publish switch and is best-effort (it never throws into the dispatch loop).
  */
@@ -24,6 +27,7 @@ import { db } from "../../db";
 import { communityLetters, marketingArtifacts } from "@shared/schema";
 import { logger } from "../../utils/logger";
 import { screenLandClaims, type ClaimViolation, type ClaimsGateOptions } from "./claimsGate";
+import { screenFabrication } from "./contentHonesty";
 
 /** Hard cap on autopilot publishes per UTC day (lean + blast-radius bound). */
 export const PUBLISH_MAX_PER_DAY = Number(process.env.AUTOPILOT_PUBLISH_MAX_PER_DAY ?? 1);
@@ -80,7 +84,11 @@ export function screenForPublish(input: { subject: string; htmlBody: string } & 
   const linkViolations = screenLinks(sanitizedHtml);
   const text = `${input.subject ?? ""} ${toText(sanitizedHtml)}`;
   const claims = screenLandClaims(text, { requireDisclosure: input.requireDisclosure, disclosureCues: input.disclosureCues });
-  const violations = [...linkViolations, ...claims.violations];
+  // 4. FABRICATION (Stage 2) — invented statistics / testimonials / social
+  // proof fail closed (contentHonesty.ts): the no-fabrication rule applied to
+  // what a model writes, not only to source code.
+  const fabrication = screenFabrication(`${input.subject ?? ""}\n${sanitizedHtml}`);
+  const violations = [...linkViolations, ...claims.violations, ...fabrication];
   return { ok: violations.length === 0, sanitizedHtml, violations };
 }
 

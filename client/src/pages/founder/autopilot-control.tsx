@@ -746,7 +746,12 @@ function MasterToggle({ icon: Icon, title, description, enabled, source, pending
 // pre-stop state isn't recorded anywhere), and the server says so.
 
 interface ResumeChecklistItem { label: string; ok: boolean; detail: string }
-interface ResumePreflightData { ok: boolean; items: ResumeChecklistItem[] }
+interface ResumePreflightData {
+  ok: boolean;
+  items: ResumeChecklistItem[];
+  /** S10 — present when the stop recorded what it turned off: put it all back in one confirm. */
+  restore?: { available: boolean; narration: string };
+}
 
 const RESUME_PREFLIGHT_KEY = ["/api/founder/autopilot/resume/preflight"];
 
@@ -804,6 +809,35 @@ function GuidedResumeSection({ onProgress, onDismiss }: { onProgress: () => void
 
   const allDone = doneStages.length === RESUME_STAGE_STEPS.length;
 
+  // S10 — the one-confirm restore: exactly what the stop turned off, never higher.
+  const [restored, setRestored] = useState<string | null>(null);
+  const restore = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/founder/autopilot/resume/stage", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage: "restore" }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || `Couldn't restore (${res.status})`);
+      }
+      return res.json() as Promise<{ done: boolean; narration: string }>;
+    },
+    onSuccess: (r) => {
+      if (r.done) {
+        setStageError(null);
+        setRestored(r.narration);
+        onProgress();
+        void qc.invalidateQueries({ queryKey: CONTROL_KEY });
+        void qc.invalidateQueries({ queryKey: STEP_AWAY_KEY });
+        void qc.invalidateQueries({ queryKey: RESUME_PREFLIGHT_KEY });
+      } else {
+        setStageError(r.narration);
+      }
+    },
+    onError: (err) => setStageError(err instanceof Error ? err.message : String(err)),
+  });
+
   return (
     <Card className="border-primary/40 bg-primary/5" data-testid="guided-resume">
       <CardContent className="p-4 space-y-3">
@@ -844,6 +878,27 @@ function GuidedResumeSection({ onProgress, onDismiss }: { onProgress: () => void
               </li>
             ))}
           </ul>
+        )}
+
+        {/* S10 — one confirm: put back exactly what the stop turned off. */}
+        {preflight.data?.restore?.available && !restored && (
+          <div className="rounded-card border border-border/60 bg-card p-3 space-y-2" data-testid="resume-restore">
+            <p className="text-sm font-medium text-foreground">Put everything back as it was</p>
+            <p className="text-xs text-muted-foreground">{preflight.data.restore.narration}</p>
+            <Button
+              size="sm" className="min-h-[44px]" disabled={restore.isPending}
+              onClick={() => { setStageError(null); restore.mutate(); }}
+              data-testid="resume-restore-run"
+            >
+              {restore.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Restore in one step"}
+            </Button>
+            <p className="text-micro text-muted-foreground">Or come back cautiously with the three steps below.</p>
+          </div>
+        )}
+        {restored && (
+          <p className="text-xs text-foreground/80 rounded-md bg-muted/50 border border-border px-2.5 py-2" data-testid="resume-restore-done">
+            {restored}
+          </p>
         )}
 
         {/* The three stages — unlock strictly in order. */}
@@ -888,9 +943,9 @@ function GuidedResumeSection({ onProgress, onDismiss }: { onProgress: () => void
           </p>
         )}
 
-        {allDone && (
+        {(allDone || restored) && (
           <Button size="sm" variant="outline" className="min-h-[44px]" onClick={onDismiss} data-testid="resume-dismiss">
-            Done — back online (still watching-only)
+            {restored ? "Done — back online as before the stop" : "Done — back online (still watching-only)"}
           </Button>
         )}
       </CardContent>

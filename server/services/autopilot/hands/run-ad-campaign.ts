@@ -38,6 +38,14 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
     if (!platform || !objective || !audience || !creative || !Number.isFinite(dailyBudgetCents) || dailyBudgetCents <= 0) {
       return { success: false, output: "run_ad_campaign: 'platform', 'objective', 'audience', 'creative', and a positive 'daily_budget_cents' are required.", durationMs: Date.now() - started };
     }
+    // Stage 2: the founder's ad switch binds at the hand — "stop spending money
+    // on ads" refuses here even for an action witnessed before the switch.
+    {
+      const { getControlState } = await import("../founderControls");
+      if (!(await getControlState()).adsEnabled) {
+        return { success: false, output: "run_ad_campaign: the founder has turned ad spending OFF. Refusing.", durationMs: Date.now() - started };
+      }
+    }
     if (dailyBudgetCents > AD_DAILY_BUDGET_CEILING_CENTS) {
       return {
         success: false,

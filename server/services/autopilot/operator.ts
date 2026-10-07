@@ -183,6 +183,15 @@ export interface OperatorDeps {
   callModel: (prompt: string) => Promise<string>;
 }
 
+/**
+ * Stage 2 (S8) — the autopilot's model clients get a SHORT timeout. Built with
+ * SDK defaults (10 minutes, 2 retries) a hung provider stalled one continuous
+ * tick for 15 minutes in the founder simulation; a failed call is a recorded
+ * failure (agent_llm_traces.error) that the ops watch turns into ONE incident.
+ * Shared by the Operator, the tick's deliberation client and the support agent.
+ */
+export const AUTOPILOT_MODEL_CLIENT_OPTS = { timeout: 20_000, maxRetries: 1 } as const;
+
 /** The move-kind catalog the Operator can reference (mirrors decide.ts). */
 export const OPERATOR_KNOWN_KINDS = [
   "resolve_incident", "protect_runway", "clear_compliance", "stabilize_reflexes",
@@ -200,7 +209,7 @@ export async function buildOperatorModelCall(): Promise<((prompt: string) => Pro
   if (!apiKey) return null;
   try {
     const OpenAImod = (await import("openai")).default;
-    const client = new OpenAImod({ apiKey, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL });
+    const client = new OpenAImod({ apiKey, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, ...AUTOPILOT_MODEL_CLIENT_OPTS });
     const { tracedLlmCall } = await import("../tracedLlmCall");
     const { OPENAI_DIRECT_MODELS, openAiModelIdFor } = await import("../models");
     // Same reasoning as continuousLoop's deliberation model: the default is

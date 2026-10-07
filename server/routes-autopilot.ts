@@ -125,12 +125,19 @@ export function registerAutopilotRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const { isResumeStage, resumeStage, RESUME_STAGES } = await import(
+        const { isResumeStage, resumeStage, RESUME_STAGES, RESTORE_PRIOR_STANDING, restorePriorStanding } = await import(
           "./services/autopilot/guidedResume"
         );
         const stage = ((req.body ?? {}) as { stage?: unknown }).stage;
+        // S10 — the one-confirm alternative: put back exactly what the stop
+        // turned off (switches + trust levels, never higher).
+        if (stage === RESTORE_PRIOR_STANDING) {
+          const result = await restorePriorStanding(getUserId(req));
+          logger.info("[autopilot] founder restored pre-stop standing", { done: result.done });
+          return res.json(result);
+        }
         if (!isResumeStage(stage)) {
-          return Errors.badRequest(res, "Invalid stage", { allowed: RESUME_STAGES });
+          return Errors.badRequest(res, "Invalid stage", { allowed: [...RESUME_STAGES, RESTORE_PRIOR_STANDING] });
         }
         const result = await resumeStage(stage, getUserId(req));
         logger.info("[autopilot] founder ran guided-resume stage", { stage, done: result.done });

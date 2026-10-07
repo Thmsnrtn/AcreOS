@@ -55,7 +55,10 @@ export async function readReflexHealth(windowHours = 6): Promise<ReflexHealth> {
     const rows = await db
       .select({ jobName: jobHealthLogs.jobName, status: jobHealthLogs.status })
       .from(jobHealthLogs)
-      .where(sql`${jobHealthLogs.runStartedAt} > now() - (${windowHours} || ' hours')::interval`)
+      // ops_probe:* rows are the ops watch's provider measurements (opsWatch.ts),
+      // not autonomous jobs — a refused Stripe probe is an incident the watch
+      // pages on, not a reflex failure to "stabilize".
+      .where(sql`${jobHealthLogs.runStartedAt} > now() - (${windowHours} || ' hours')::interval and ${jobHealthLogs.jobName} not like 'ops_probe:%'`)
       .limit(5000);
     return summarizeReflexHealth(rows);
   } catch (err) {

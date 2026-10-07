@@ -11215,6 +11215,15 @@ BEGIN
     ALTER TABLE "territories" ALTER COLUMN "state_code" SET NOT NULL;
   END IF;
 END $mig0252$`,
+
+  // 0263 — Stage 2: founder pause controls (paused domains, the ad-spend
+  // switch), the panic-stop snapshot the one-confirm resume restores, and the
+  // S13 ask fold count. Mirrors migrations/0263_solene_role_workers_controls.sql.
+  `ALTER TABLE "autopilot_settings" ADD COLUMN IF NOT EXISTS "paused_domains" jsonb`,
+  `ALTER TABLE "autopilot_settings" ADD COLUMN IF NOT EXISTS "ads_enabled" boolean`,
+  `ALTER TABLE "autopilot_settings" ADD COLUMN IF NOT EXISTS "pre_stop_snapshot" jsonb`,
+  `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "fold_count" integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "last_folded_at" timestamp with time zone`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

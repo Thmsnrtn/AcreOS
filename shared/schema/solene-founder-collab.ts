@@ -65,6 +65,11 @@ export const soleneFounderAsks = pgTable(
     // Default ask_at + 24h, set explicitly by service.
     timeoutAt: timestamp("timeout_at", { withTimezone: true }),
     urgency: text("urgency").notNull().default("normal"), // see FOUNDER_ASK_URGENCIES
+    // Stage 2 (migration 0263) — S13 fold: a repeat of an OPEN ask with the
+    // same summary folds into it instead of opening a second row. The count
+    // says how many times it was raised again while waiting.
+    foldCount: integer("fold_count").notNull().default(0),
+    lastFoldedAt: timestamp("last_folded_at", { withTimezone: true }),
   },
   (t) => [
     // Founder-inbox surface: list open asks newest-first.

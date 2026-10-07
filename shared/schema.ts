@@ -9652,6 +9652,23 @@ export const autopilotSettings = pgTable("autopilot_settings", {
   // null → env SELF_PATCH_ENABLED fallback (OFF). Flipping it is a Control
   // Center tap, not a Fly secret + redeploy.
   selfPatchEnabled: boolean("self_patch_enabled"),
+  // Stage 2 (migration 0263) — founder pause controls the tick and the hands
+  // obey MECHANICALLY (not instruction-level like standing orders):
+  //   paused_domains: domains whose moves are suppressed and whose queued
+  //     dispatches were cancelled ("pause growth"). null/[] → none paused.
+  //   ads_enabled: the ad-spend switch. false → run_ad_campaign refuses and
+  //     pending ad actions are rejected ("stop spending money on ads"). null →
+  //     not set (ads are still bounded by the hand's own ceiling + a tap).
+  pausedDomains: jsonb("paused_domains").$type<string[]>(),
+  adsEnabled: boolean("ads_enabled"),
+  // What a panic stop switched off, recorded AT the stop so a resume can put
+  // it back as ONE founder confirm (S10). null → nothing recorded to restore.
+  preStopSnapshot: jsonb("pre_stop_snapshot").$type<{
+    at: string;
+    by: string;
+    switches: { dispatchEnabled: boolean; publishEnabled: boolean; cognitionEnabled: boolean };
+    levels: Record<string, string>;
+  }>(),
   updatedAt: timestamp("updated_at").defaultNow(),
   updatedBy: text("updated_by"),
 });

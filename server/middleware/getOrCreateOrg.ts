@@ -273,6 +273,20 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
     } catch {
       /* non-fatal */
     }
+
+    // S2 (Stage 2) — real sign-up starts the 30-day onboarding journey. This
+    // is the ONLY org-creation path real users take; startJourney was wired
+    // only to storage.createOrganization, which nothing calls, so no real
+    // customer ever got a journey. Idempotent; fire-and-forget; never blocks
+    // the request. The founder's own org is not a customer.
+    if (!isFounder) {
+      const newOrgId = org.id;
+      void import("../services/onboardingAutonomy")
+        .then(({ startJourney }) => startJourney(newOrgId))
+        .catch((err) =>
+          logger.warn(`[onboarding] startJourney failed for org ${newOrgId}: ${err instanceof Error ? err.message : String(err)}`),
+        );
+    }
   } else if (isFounder && !org.isFounder) {
     // Upgrade existing org to founder status
     await db
