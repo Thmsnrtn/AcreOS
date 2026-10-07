@@ -43,6 +43,7 @@ import { getClerkAuth } from "../types/request";
 import { getClientIp } from "../utils/clientIp";
 import { createLimiterStore } from "./limiterRedisStore";
 import { e2eTestAuthEnabled } from "../auth/testAuth";
+import { BULK_EXPORT_DAILY_CAP } from "@shared/product-limits";
 
 /**
  * The key every limiter in this module uses: the verified Clerk user when
@@ -115,12 +116,12 @@ export function mountIdentityRateLimiters(app: Express): void {
   // "per-org" and the key read an org that was never there.
   const exportLimiter = rateLimit({
     windowMs: 24 * 60 * 60 * 1000,
-    max: 5,
+    max: BULK_EXPORT_DAILY_CAP,
     standardHeaders: true,
     legacyHeaders: false,
     store: createLimiterStore("export-user"),
     keyGenerator: (req) => `export:${identityRateLimitKey(req)}`,
-    message: { message: "Bulk-export rate limit exceeded. The daily cap is 5 per user. Email support@acreos.io for one-off lifts." },
+    message: { message: `Bulk-export rate limit exceeded. The daily cap is ${BULK_EXPORT_DAILY_CAP} per user. Email support@acreos.io for one-off lifts.` },
   });
   for (const path of EXPORT_PATHS) app.use(path, exportLimiter);
 

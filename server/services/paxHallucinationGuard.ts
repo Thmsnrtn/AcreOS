@@ -16,6 +16,7 @@ import { db } from "../db";
 import { leads, properties, deals } from "@shared/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { detectHallucinations, type HallucinationWarning } from "./hallucinationDetector";
+import { findUngroundedCounts, type CountGroundingContext } from "../ai/paxSourceExtraction";
 
 export interface PaxGuardInput {
   organizationId: number;
@@ -31,6 +32,12 @@ export interface PaxGuardInput {
   claimedLeadIds?: number[];
   claimedPropertyIds?: number[];
   claimedDealIds?: number[];
+  /**
+   * What this turn READ, for the count check: a count about the customer's
+   * records ("6 leads have no email") needs a source this turn. Omitted =
+   * the count check does not run (non-Pax callers).
+   */
+  countGrounding?: CountGroundingContext;
 }
 
 export interface PaxGuardResult {
@@ -73,6 +80,21 @@ export async function guardPaxOutput(input: PaxGuardInput): Promise<PaxGuardResu
       requiredFields: input.requiredFields,
     }),
   );
+
+  // 1b. Counts about the customer's records need a source this turn.
+  if (input.countGrounding) {
+    for (const claim of findUngroundedCounts(input.output, input.countGrounding)) {
+      warnings.push({
+        kind: "ungrounded_count",
+        severity: "error",
+        detail:
+          input.countGrounding.toolResultCount === 0
+            ? `The reply states "${claim.text}" but nothing was read this turn to support that count.`
+            : `The reply states "${claim.text}" but no result read this turn supports ${claim.value}.`,
+        evidence: { outputValue: claim.value },
+      });
+    }
+  }
 
   // 2. Entity-existence checks (parallel).
   const [leadMissing, propMissing, dealMissing] = await Promise.all([

@@ -22,6 +22,7 @@ import { compsGuard } from "./middleware/expensiveEndpointGuard";
 // fire-and-forget and no-op unless the pipeline status genuinely changed.
 import { emitPropertyCreated, emitPropertyStatusChanged } from "./services/propertyEvents";
 import { readIntegrationCredentials } from "./services/integrationCredentials";
+import { CSV_IMPORT_MAX_ROWS_PER_FILE } from "@shared/product-limits";
 
 // Partial update schema for PUT endpoints.
 // insertPropertySchema already omits organizationId, so no further omit needed.
@@ -76,7 +77,8 @@ function calculateDistanceMiles(lat1: number, lng1: number, lat2: number, lng2: 
   return R * c;
 }
 
-const MAX_CSV_IMPORT_ROWS = 500;
+// One definition, shared with Pax's product facts (shared/product-limits.ts).
+const MAX_CSV_IMPORT_ROWS = CSV_IMPORT_MAX_ROWS_PER_FILE;
 
 const upload = createUploadMiddleware({ maxSizeMB: 5, allowedTypes: ["text"] });
 const validateCSV = validateFileMiddleware(["text"]);

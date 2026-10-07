@@ -39,6 +39,7 @@ import { validateResponse } from "./utils/contractResponse";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 import { apnMatchForm, createParcelDedupeIndex } from "./services/leads/parcelDedupe";
 import { splitOwnerName, ownerNameFromSingleColumn } from "@shared/parcel/ownerName";
+import { CSV_IMPORT_MAX_ROWS_PER_FILE } from "@shared/product-limits";
 import {
   CSV_IMPORT_MAX_ROWS_PER_REQUEST,
   composePropertyAddress,
@@ -95,7 +96,8 @@ const checkDuplicatesSchema = z.object({
   { message: "At least one search field is required" }
 );
 
-const MAX_CSV_IMPORT_ROWS = 500;
+// One definition, shared with Pax's product facts (shared/product-limits.ts).
+const MAX_CSV_IMPORT_ROWS = CSV_IMPORT_MAX_ROWS_PER_FILE;
 
 /**
  * Truth-immutable (Quinn): map a real skip-trace provider result into the

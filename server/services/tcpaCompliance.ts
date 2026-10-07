@@ -642,6 +642,16 @@ export function canSendViaChannel(
   }
 }
 
+/**
+ * A lead can be mailed only with a complete postal address. The direct-mail
+ * send path and Pax's lead-reachability read both ask this one predicate.
+ */
+export function hasCompleteMailingAddress<T extends Pick<Lead, 'address' | 'city' | 'state' | 'zip'>>(
+  lead: T,
+): lead is T & { address: string; city: string; state: string; zip: string } {
+  return Boolean(lead.address && lead.city && lead.state && lead.zip);
+}
+
 export function requiresTcpaConsent(channel: 'email' | 'sms' | 'direct_mail' | 'phone'): boolean {
   return channel === 'sms' || channel === 'phone';
 }

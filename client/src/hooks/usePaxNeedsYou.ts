@@ -78,6 +78,8 @@ export interface PaxAskItem {
   standingLine: string;
   status: "pending" | "expired";
   createdAt?: string | null;
+  /** For a send: recipients and what AcreOS charges (credits and dollars). Null otherwise. */
+  cost?: { recipients: number; credits: number; dollars: string; line: string } | null;
   /**
    * The frozen args, when the route includes them. Edit → revise needs the
    * whole frozen object to send a faithful revision; a card without them

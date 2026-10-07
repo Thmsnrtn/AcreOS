@@ -26,6 +26,7 @@
  */
 
 import { APPROVAL_REQUIRED_TOOLS, toolChannel } from "./approvalKernel";
+import { paxSendCost, type PaxSendCost } from "./sendPricing";
 import {
   ALWAYS_ASK_SUPPORT_TOOLS,
   PARKED_STATES,
@@ -99,6 +100,11 @@ export interface AskSummary {
   alwaysAsks: boolean;
   waitingBecause: string;
   standingLine: string;
+  /**
+   * For a send: how many people it reaches and what AcreOS charges for it, in
+   * credits and dollars (sendPricing.paxSendCost). Null for anything else.
+   */
+  cost: PaxSendCost | null;
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim().length > 0 ? v.trim() : null);
@@ -260,5 +266,6 @@ export function summarizeAsk(row: AskRow, ctx: AskContext = {}): AskSummary {
       ? PAX_GROUP_COPY.sends.ifYouNeverTouchThis
       : `You chose ${STANCE_LABELS.ask_before_everything}.`,
     standingLine: PAX_STANDING_LINE,
+    cost: paxSendCost(row.toolName, args),
   };
 }
