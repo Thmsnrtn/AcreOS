@@ -45,7 +45,7 @@ router.post('/ask', async (req: AuthenticatedRequest, res: Response) => {
       }
       // Deduct after response (fire-and-forget)
       res.on('finish', () => {
-        creditService.deductCredits(org.id, 2, 'Command palette AI query').catch((err) =>
+        creditService.deductOrFundFromTrial(org.id, 2, 'Command palette AI query', { actionType: 'ai_chat' }).catch((err) =>
           logger.error('[realtime] credit deduction failed', err instanceof Error ? err : undefined)
         );
       });

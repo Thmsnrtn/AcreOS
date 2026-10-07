@@ -33,9 +33,18 @@ import { logActivity } from "./systemActivityLogger";
 import { sendRegisteredEmail } from "./emailRegistry";
 import { isFounderEmail } from "./founder";
 import { logger } from "../utils/logger";
+import { recordSense } from "./autopilot/perception";
 
 const RESCUE_RISK_THRESHOLD = 85;  // auto-send rescue email
 const ALERT_RISK_THRESHOLD = 80;   // create systemAlert
+// A paying customer with no activity for this many days is a churn signal on
+// its own. The weighted score cannot get there: a customer who has used four
+// modules with real data scores ~50 at 16 quiet days (inactivity is capped at
+// 30 points and breadth/depth subtract for engaged users), far below 80/85.
+// 14 days = two full weeks without a login or edit; shorter would flag normal
+// travel/closing cycles for a land investor, longer would learn about it too late.
+const QUIET_PAYER_DAYS = 14;
+
 const RESCUE_RECOVERY_THRESHOLD = 40; // risk below this = recovered → clear rescue cooldown
 const RESCUE_COOLDOWN_DAYS = 60;      // a rescue this old (while no longer high-risk) also clears the cooldown
 
@@ -67,7 +76,9 @@ async function countRecords(
   }
 }
 
-async function getDaysSinceLastActivity(orgId: number): Promise<number> {
+/** Days since last org activity, or null when the lookup failed (callers that
+ *  alert must not treat a failed lookup as "quiet"). */
+async function getDaysQuiet(orgId: number): Promise<number | null> {
   try {
     // Check activityLog for most recent entry for this org
     const [row] = await db
@@ -81,8 +92,12 @@ async function getDaysSinceLastActivity(orgId: number): Promise<number> {
     const ms = Date.now() - new Date(row.createdAt).getTime();
     return Math.floor(ms / (1000 * 60 * 60 * 24));
   } catch {
-    return 30;
+    return null;
   }
+}
+
+async function getDaysSinceLastActivity(orgId: number): Promise<number> {
+  return (await getDaysQuiet(orgId)) ?? 30;
 }
 
 async function getOpenSupportCount(orgId: number): Promise<number> {
@@ -358,8 +373,13 @@ export const churnEngine = {
           }
         }
 
+        // A quiet paying customer is a churn signal even when the weighted
+        // score stays under the alert threshold.
+        const daysQuiet = await getDaysQuiet(org.id);
+        const quietPayer = daysQuiet !== null && daysQuiet >= QUIET_PAYER_DAYS;
+
         // Create systemAlert for high-risk orgs
-        if (risk >= ALERT_RISK_THRESHOLD) {
+        if (risk >= ALERT_RISK_THRESHOLD || quietPayer) {
           const [existing] = await db
             .select({ id: systemAlerts.id })
             .from(systemAlerts)
@@ -378,10 +398,15 @@ export const churnEngine = {
               type: "churn_risk" as any,
               severity: risk >= 90 ? "critical" : "warning",
               title: `Churn risk: ${org.name}`,
-              message: `Org "${org.name}" has a churn risk score of ${risk}/100. Automated re-engagement${risk >= RESCUE_RISK_THRESHOLD ? " has been sent" : " may be needed"}.`,
-              metadata: { riskScore: risk },
+              message: `Org "${org.name}" has a churn risk score of ${risk}/100${quietPayer ? ` and no activity for ${daysQuiet} days` : ""}. Automated re-engagement${risk >= RESCUE_RISK_THRESHOLD ? " has been sent" : " may be needed"}.`,
+              metadata: { riskScore: risk, daysQuiet },
             });
             alerted++;
+            if (quietPayer) {
+              // One sense row per new alert, so a long-quiet customer is not
+              // re-counted daily.
+              void recordSense("churn_signal", 1, { org: org.id, reason: "quiet_payer", daysQuiet });
+            }
           }
         }
 
