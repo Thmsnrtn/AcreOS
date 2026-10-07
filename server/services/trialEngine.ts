@@ -18,7 +18,7 @@
 
 import { db } from "../db";
 import { organizations, subscriptionHistory } from "@shared/schema";
-import { and, eq, gte, isNotNull, lte, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, isNull, lte, notInArray, or } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
 const REMINDER_EVENT = "trial_ending_reminder_sent";
@@ -99,6 +99,27 @@ async function sendTrialEmail(
  * Main entrypoint. Scans active trials, sends the appropriate touch,
  * records each in subscriptionHistory.
  */
+/**
+ * An org is "in a trial" when it is Stripe-trialing OR it is an in-app trial:
+ * getOrCreateOrg grants those as subscription_status='active', tier 'free',
+ * with trial_ends_at set and no Stripe subscription.
+ */
+const IN_APP_TRIAL = and(
+  eq(organizations.subscriptionStatus, "active"),
+  or(isNull(organizations.subscriptionTier), eq(organizations.subscriptionTier, "free")),
+  isNull(organizations.stripeSubscriptionId),
+);
+const IN_TRIAL_PREDICATE = or(
+  isNull(organizations.subscriptionStatus),
+  inArray(organizations.subscriptionStatus, ["trialing", "trial", ""]),
+  IN_APP_TRIAL,
+);
+const TRIAL_ENDED_PREDICATE = or(
+  isNull(organizations.subscriptionStatus),
+  notInArray(organizations.subscriptionStatus, ["active", "past_due"]),
+  IN_APP_TRIAL,
+);
+
 export async function runTrialExpiryCycle(): Promise<TrialEngineResult> {
   const now = new Date();
   const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
@@ -121,7 +142,7 @@ export async function runTrialExpiryCycle(): Promise<TrialEngineResult> {
         isNotNull(organizations.trialEndsAt),
         gte(organizations.trialEndsAt, now),
         lte(organizations.trialEndsAt, in24h),
-        sql`COALESCE(${organizations.subscriptionStatus}, '') IN ('trialing', 'trial', '')`,
+        IN_TRIAL_PREDICATE,
       ),
     );
 
@@ -163,7 +184,7 @@ export async function runTrialExpiryCycle(): Promise<TrialEngineResult> {
         isNotNull(organizations.trialEndsAt),
         lte(organizations.trialEndsAt, now),
         gte(organizations.trialEndsAt, sixHoursAgo),
-        sql`COALESCE(${organizations.subscriptionStatus}, '') NOT IN ('active', 'past_due')`,
+        TRIAL_ENDED_PREDICATE,
       ),
     );
 

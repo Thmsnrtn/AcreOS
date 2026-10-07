@@ -2181,7 +2181,7 @@ export function registerCampaignRoutes(app: Express): void {
       // the check and the deduct cannot race), and every send that does not go
       // out is refunded below.
       const costPerEmail = 1; // 1 cent per email
-      const chargeable = !req.isFounder && !identity.ownSesCredentials;
+      const chargeable = !req.isFounder && !identity.ownSesCredentials && !simulated;
       const totalCost = chargeable ? dedupedLeads.length * costPerEmail : 0;
       if (chargeable) {
         const deductResult = await creditService.deductCredits(
@@ -2462,7 +2462,7 @@ export function registerCampaignRoutes(app: Express): void {
         );
       }
 
-      const chargeable = !req.isFounder && !byoSms;
+      const chargeable = !req.isFounder && !byoSms && !simulated;
       const totalCost = chargeable ? dedupedLeads.length * perRecipientCost : 0;
 
       if (chargeable) {

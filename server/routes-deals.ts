@@ -1683,7 +1683,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       const aiResponse = response.content || "I couldn't generate a response. Please try again.";
 
       // Deduct credits after successful AI call
-      dealCreditService.deductCredits(org.id, 2, 'Deal AI analysis').catch(() => {});
+      dealCreditService.deductOrFundFromTrial(org.id, 2, 'Deal AI analysis', { actionType: 'ai_chat' }).catch(() => {});
 
       const suggestions = generateSuggestions(message, property);
 

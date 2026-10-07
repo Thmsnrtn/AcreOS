@@ -124,7 +124,7 @@ export async function callWithCreditCheck<T>(
   const result = await openAICircuitBreaker.call(fn);
 
   // Deduct after success — don't charge for failed calls
-  await creditService.deductCredits(organizationId, costCents, "AI chat completion", {
+  await creditService.deductOrFundFromTrial(organizationId, costCents, "AI chat completion", {
     actionType: "ai_chat",
   }).catch((err) => {
     logger.error("[AI] Failed to deduct credits after successful call", err instanceof Error ? err : undefined);

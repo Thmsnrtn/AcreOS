@@ -235,6 +235,47 @@ export class CreditService {
     return false;
   }
 
+  /**
+   * For actions whose real cost is physical or third-party money (printed mail):
+   * only the org's OWN credit pays. The trial allowance is for cheap compute; it
+   * must never fund a piece that has already been posted.
+   */
+  async hasEnoughOwnCredits(organizationId: number, requiredCents: number): Promise<boolean> {
+    if (await this.isFounder(organizationId)) return true;
+    return (await this.getBalance(organizationId)) >= requiredCents;
+  }
+
+  /**
+   * Charge after a gate that used hasEnoughCredits. The org's balance pays
+   * first; when it cannot, an active trial's allowance pays AND IS RECORDED
+   * (usage_records.metadata.fundedBy), so the FRAUD-011 cap actually shrinks.
+   * A bare deductCredits after hasEnoughCredits charged nothing in a trial and
+   * left the allowance untouched: unlimited free calls.
+   */
+  async deductOrFundFromTrial(
+    organizationId: number,
+    amountCents: number,
+    description: string,
+    metadata: { actionType: UsageActionType } & Record<string, unknown>,
+  ): Promise<"balance" | "trial" | null> {
+    const debit = await this.deductCredits(
+      organizationId, amountCents, description, metadata as InsertCreditTransaction["metadata"],
+    );
+    if (debit) return "balance";
+    const remaining = await this.trialAllowanceRemaining(organizationId);
+    if (remaining === null || amountCents > remaining) return null;
+    await db.insert(usageRecords).values({
+      organizationId,
+      actionType: metadata.actionType,
+      quantity: 1,
+      unitCostCents: amountCents,
+      totalCostCents: amountCents,
+      metadata: { description, fundedBy: TRIAL_ALLOWANCE_FUNDING },
+      billingMonth: new Date().toISOString().slice(0, 7),
+    });
+    return "trial";
+  }
+
   async getTransactionHistory(
     organizationId: number,
     limit: number = 50
@@ -629,7 +670,7 @@ export class UsageMeteringService {
       const [owner] = await db
         .select({ email: users.email })
         .from(users)
-        .where(eq(users.clerkUserId, org.ownerId))
+        .where(eq(users.id, org.ownerId))
         .limit(1);
       recipientEmail = owner?.email ?? null;
     } catch {

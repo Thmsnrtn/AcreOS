@@ -1630,7 +1630,7 @@ export function registerBillingRoutes(app: Express): void {
           try {
             const { emailService } = await import("./services/emailService");
             const { users } = await import("@shared/models/auth");
-            const [owner] = await db.select({ email: users.email }).from(users).where(eq(users.clerkUserId, org.ownerId)).limit(1);
+            const [owner] = await db.select({ email: users.email }).from(users).where(eq(users.id, org.ownerId)).limit(1);
             if (owner?.email) {
               await emailService.sendEmail({
                 to: owner.email,

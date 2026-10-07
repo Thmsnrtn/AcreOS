@@ -200,7 +200,9 @@ function parseExpectedDeliveryDate(dateString: string): Date {
 
 async function checkCreditsAndRecord(organizationId: number, metadata?: Record<string, any>): Promise<{ hasCredits: boolean; costCents: number; errorMessage?: string }> {
   const costCents = await usageMeteringService.calculateCost('direct_mail', 1);
-  const hasCredits = await creditService.hasEnoughCredits(organizationId, costCents);
+  // Real printed mail: the org's own credit only. The trial allowance never
+  // funds a piece that is physically posted.
+  const hasCredits = await creditService.hasEnoughOwnCredits(organizationId, costCents);
   
   if (!hasCredits) {
     const balance = await creditService.getBalance(organizationId);
