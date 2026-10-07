@@ -6,7 +6,7 @@
   "description": "REACHABILITY ratchet. `tsc`, the test suite and every existing lint gate check TYPES and BEHAVIOUR; nothing checked whether a thing is REACHED. CLAUDE.md names 'built but unwired' as this repo's single most common defect, and every instance (services/lateFees, services/respa/earlyIntervention, calculateFlipAnalysis, taxSaleAuctions/taxSaleListings, achMandateSetup/achAutopayRun, rental_units.kind='pad', routes-contract-chain.ts, the rent-roll importer's unitKind arg) shipped GREEN and was found hours later by a manual audit. This converts that recurring audit into CI. Every count is strictly down-only, and raising one requires explicit founder/Iris-CTO sign-off (see lastBumpNote for the exceptions actually invoked): exports in server/services|jobs with no production call site; pgTables with no writer; pgTables with no reader; routes-*.ts never mounted; exports the gate cannot assert on because their module is dynamically imported in a way that hides which exports are touched; and service/job files nothing imports at all. Family 1 is TWO rules, split 2026-08-20: `unreachedExports` is the accusation (nothing anywhere references the symbol) and `internalOnlyExports` is the narrower complaint (exported, but used only inside its own module \u2014 drop the keyword, keep the code). They are baselined apart because merged, the second buried the first four to one. The count of families is deliberately not stated here \u2014 it said 'four' for as long as there were four, and would have said it forever. THE CHEAPEST WAY TO SATISFY THIS GATE IS DELETION \u2014 the north star is a smaller codebase, and every reduction must be locked in by the commit that earned it (a stale-high baseline FAILS, same as `as-any`).",
   "baselines": {
     "unreachedExports": 421,
-    "internalOnlyExports": 1232,
+    "internalOnlyExports": 1231,
     "tablesNoWriter": 57,
     "tablesNoReader": 66,
     "unregisteredRoutes": 4,
@@ -159,6 +159,21 @@
       "kind": "export",
       "id": "server/services/solene/roleWorkers/runner.ts::runRoleWorker",
       "reason": "TEST-INTROSPECTION SEAM (Stage 2, 2026-10-07). The role-worker loop with every dependency injected; production calls it through runRoleWorkerDispatch in the same module (bound to the Anthropic client, the queue and the publish gate). Exported so soleneRoleWorkers.test.ts drives the REAL loop \u2014 empty answers, loops, the publish gate deciding success \u2014 with a scripted model instead of a copy. REVOCATION: if a second production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/autopilot/hardStopMoves.ts::moneyAmountsUsd",
+      "reason": "TEST-INTROSPECTION SEAM (audit H4, 2026-10-07). The amount parser hardStopForMove applies to every move in the same module (\"2,000 dollars\", \"$40/day for 30 days\" as a total, open-ended rates as unbounded). Exported so soleneStage2Guards.test.ts pins the totals it derives against the real parser rather than a copy. REVOCATION: if a second production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/autopilot/hardStopMoves.ts::FOUNDER_ONLY_CLASSES",
+      "reason": "TEST-INTROSPECTION SEAM (audit H4, 2026-10-07). The enumeration of founder-only classes founderOnlyClassForMove returns (same module; consumed in production through founderOnlyClassForMove by the chat's answer_ask). Exported so soleneStage2Guards.test.ts asserts every class carries canaries — the CLAUDE.md population law: a new class without a canary fails. REVOCATION: if a second production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/services/autopilot/contentHonesty.ts::VERIFIED_SOURCES",
+      "reason": "TEST-INTROSPECTION SEAM (audit M1, 2026-10-07). The codebase-supplied allowlist of real sources screenFabrication verifies citations against (same module; production reaches it through screenFabrication from the publish gate and the role tools). Exported so the list is reviewable and pinnable. REVOCATION: if a second production module imports it, remove this entry."
     },
     {
       "kind": "export",

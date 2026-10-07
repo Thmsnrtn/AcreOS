@@ -24,7 +24,6 @@ import { and, eq, inArray, like, sql } from "drizzle-orm";
 import {
   agentLlmTraces,
   autopilotPendingActions,
-  autopilotRefundClaims,
   autopilotSenses,
   autopilotSettings,
   creditTransactions,
@@ -88,8 +87,13 @@ async function main(): Promise<void> {
     const growthDispatch = await enq("autopilot:grow_owned_channels");
     const supportDispatch = await enq("autopilot:clear_support_backlog");
 
+    // M3: a campaign the founder launched himself is NOT paused by the switch — the reply must say so.
+    const { growthCampaigns } = await import("@shared/schema");
+    const [ownCampaign] = await db.insert(growthCampaigns).values({ name: `${tag}-own`, templateKey: "land_investors_signup", status: "active", dailyBudgetCents: 2500 }).returning({ id: growthCampaigns.id });
     const stop = await executeBusinessChatTool("pause", { target: "ads" }, tag);
     check(stop.ok, `chat "pause ads" answered ok (${stop.text})`);
+    check(/NOT paused: 1 campaign/.test(stop.text) && stop.text.includes(`${tag}-own`) && !/Ad spending is OFF/.test(stop.text), "the reply names the founder's own still-active campaign instead of claiming all ad spending is off");
+    await db.delete(growthCampaigns).where(eq(growthCampaigns.id, ownCampaign.id));
     const [s1] = await db.select({ ads: autopilotSettings.adsEnabled }).from(autopilotSettings).where(eq(autopilotSettings.id, 1));
     check(s1?.ads === false, "ad switch is OFF in autopilot_settings");
     const [pa2] = await db.select({ status: autopilotPendingActions.status }).from(autopilotPendingActions).where(eq(autopilotPendingActions.id, pa.id));
@@ -99,9 +103,12 @@ async function main(): Promise<void> {
     check((await rowStatus(growthDispatch)) === "queued", "a non-ad growth dispatch was left alone");
     const { getControlState, moveBlockedByControls } = await import("../../server/services/autopilot/founderControls");
     check(moveBlockedByControls({ domain: "growth", kind: "buy_meta_ads_2000", rationale: "Meta ads" }, await getControlState()) != null, "the tick would now skip an ad move");
-    const resume = await executeBusinessChatTool("resume", { target: "ads" }, tag);
+    const unconfirmed = await executeBusinessChatTool("resume", { target: "ads" }, tag);
+    const [s1b] = await db.select({ ads: autopilotSettings.adsEnabled }).from(autopilotSettings).where(eq(autopilotSettings.id, 1));
+    check(!unconfirmed.ok && s1b?.ads === false, "resume ads WITHOUT the founder's confirmation changes nothing");
+    const resume = await executeBusinessChatTool("resume", { target: "ads" }, tag, { confirmed: true });
     const [s2] = await db.select({ ads: autopilotSettings.adsEnabled }).from(autopilotSettings).where(eq(autopilotSettings.id, 1));
-    check(resume.ok && s2?.ads === true, "resume ads turns the switch back on");
+    check(resume.ok && s2?.ads === true, "a confirmed resume ads turns the switch back on");
 
     // ── pause a domain ────────────────────────────────────────────────────
     await executeBusinessChatTool("pause", { target: "growth" }, tag);
@@ -245,7 +252,8 @@ async function main(): Promise<void> {
       await db.update(organizations).set({ creditBalance: "3000" }).where(eq(organizations.id, o.id));
       const pi = `pi_${tag}_rf`;
       await db.insert(creditTransactions).values({ organizationId: o.id, type: "purchase", amountCents: 3000, balanceAfterCents: 3000, description: tag, stripePaymentIntentId: pi });
-      const claims = async () => db.select().from(autopilotRefundClaims).where(eq(autopilotRefundClaims.chargeKey, pi));
+      // The autopilot's claim on a payment is its 'purchase_refund' row.
+      const claims = async () => db.select().from(creditTransactions).where(and(eq(creditTransactions.stripePaymentIntentId, pi), eq(creditTransactions.type, "purchase_refund")));
       const balance = async () => Number((await db.select({ b: organizations.creditBalance }).from(organizations).where(eq(organizations.id, o.id)))[0]?.b ?? 0);
       const founder = `${tag}-founder`;
 
@@ -262,26 +270,26 @@ async function main(): Promise<void> {
 
       // Concurrency: five executions at once never leave a claim, a double clawback, or a lost credit.
       await Promise.all(Array.from({ length: 5 }, () => executeHandWitnessed("apply_refund", { charge_id: pi, amount_cents: 1000, organization_id: o.id }, founder)));
-      const pr = await db.select().from(creditTransactions).where(and(eq(creditTransactions.stripePaymentIntentId, pi), eq(creditTransactions.type, "purchase_refund")));
-      check((await claims()).length === 0 && (await balance()) === 3000 && pr.length === 0, `five concurrent executions end consistent (claims ${(await claims()).length}, balance ${await balance()}, clawback rows ${pr.length})`);
+      check((await claims()).length === 0 && (await balance()) === 3000, `five concurrent executions end consistent (claims ${(await claims()).length}, balance ${await balance()})`);
 
       // ONCE, at the database: a second claim on the same payment cannot exist.
-      await db.insert(autopilotRefundClaims).values({ chargeKey: pi, organizationId: o.id, amountCents: 1000 });
+      const claimRow = { organizationId: o.id, type: "purchase_refund", amountCents: -1000, balanceAfterCents: 2000, description: tag, stripePaymentIntentId: pi };
+      await db.insert(creditTransactions).values(claimRow);
       let dupRejected = false;
       try {
-        await db.insert(autopilotRefundClaims).values({ chargeKey: pi, organizationId: o.id, amountCents: 1000 });
+        await db.insert(creditTransactions).values(claimRow);
       } catch {
         dupRejected = true;
       }
-      check(dupRejected, "the database refuses a second claim on the same payment (UNIQUE charge_key)");
+      check(dupRejected, "the database refuses a second claim on the same payment (partial UNIQUE index)");
       const twice = await executeHandWitnessed("apply_refund", { charge_id: pi, amount_cents: 1000, organization_id: o.id }, founder);
       check(!twice.success && /never twice/.test(twice.output) && (await balance()) === 3000, "a payment already refunded by the autopilot is never refunded again");
-      await db.delete(autopilotRefundClaims).where(eq(autopilotRefundClaims.chargeKey, pi));
+      await db.delete(creditTransactions).where(and(eq(creditTransactions.stripePaymentIntentId, pi), eq(creditTransactions.type, "purchase_refund")));
 
       // Refunded OUTSIDE the autopilot (a credit_transactions refund row for the payment).
       const [outside] = await db.insert(creditTransactions).values({ organizationId: o.id, type: "refund", amountCents: 500, balanceAfterCents: 3500, description: tag, stripePaymentIntentId: pi }).returning({ id: creditTransactions.id });
       const recorded = await executeHandWitnessed("apply_refund", { charge_id: pi, amount_cents: 1000, organization_id: o.id }, founder);
-      check(!recorded.success && /already recorded/.test(recorded.output) && (await claims()).length === 0, "a payment refunded outside the autopilot is never refunded again");
+      check(!recorded.success && /never twice/.test(recorded.output) && (await claims()).length === 0, "a payment refunded outside the autopilot is never refunded again");
       await db.delete(creditTransactions).where(eq(creditTransactions.id, outside.id));
 
       // M4: the credits were spent → refused, nothing clawed back partially.
@@ -301,7 +309,7 @@ async function main(): Promise<void> {
       const g = await issueWitnessGrant({ grantorId: founder, granteeId: "solene", domains: ["finance"], hands: ["apply_refund"], sourceRoles: ["support"], maxCostUsd: 50, maxActions: 10, expiresAt: new Date(Date.now() + 86_400_000), allowMoney: true, note: tag });
       grantIds.push(g.id);
       await db.insert(creditTransactions).values({ organizationId: other.id, type: "purchase", amountCents: 4000, balanceAfterCents: 4000, description: tag, stripePaymentIntentId: `${pi}_foreign` });
-      await db.insert(autopilotRefundClaims).values({ chargeKey: `${pi}_done`, organizationId: o.id, amountCents: 1000 });
+      await db.insert(creditTransactions).values({ organizationId: o.id, type: "purchase_refund", amountCents: -1000, balanceAfterCents: 2000, description: tag, stripePaymentIntentId: `${pi}_done` });
       await db.insert(creditTransactions).values({ organizationId: o.id, type: "purchase", amountCents: 3000, balanceAfterCents: 3000, description: tag, stripePaymentIntentId: `${pi}_done` });
       const exp = new Date(Date.now() + 3_600_000);
       // REAL content hashes: a fake one would make the approval path refuse on
@@ -316,13 +324,12 @@ async function main(): Promise<void> {
       const sweep = await runAutoWitnessSweep();
       const rows = await db.select().from(autopilotPendingActions).where(inArray(autopilotPendingActions.id, [codingAgent.id, dup.id]));
       const [gAfter] = await db.select({ used: witnessGrants.usedCount }).from(witnessGrants).where(eq(witnessGrants.id, g.id));
-      const foreignClaims = await db.select().from(autopilotRefundClaims).where(eq(autopilotRefundClaims.chargeKey, `${pi}_foreign`));
+      const foreignClaims = await db.select().from(creditTransactions).where(and(eq(creditTransactions.stripePaymentIntentId, `${pi}_foreign`), eq(creditTransactions.type, "purchase_refund")));
       check(
         sweep.witnessed === 0 && rows.every((r) => r.status === "pending" && r.approvedBy == null) && gAfter?.used === 0 && foreignClaims.length === 0 &&
           sweep.decisions.filter((d) => d.handName === "apply_refund").every((d) => /^not released|no source role/.test(d.reason)),
         `with a live finance grant, a coding-agent refund of a foreign charge and a Support refund of an already-refunded charge are NOT released and NOT executed (${sweep.decisions.filter((d) => d.handName === "apply_refund").map((d) => d.reason.slice(0, 60)).join(" | ")})`,
       );
-      await db.delete(autopilotRefundClaims).where(like(autopilotRefundClaims.chargeKey, `${pi}%`));
       await db.delete(creditTransactions).where(inArray(creditTransactions.organizationId, [o.id, other.id]));
     }
 

@@ -87,7 +87,10 @@ export function screenForPublish(input: { subject: string; htmlBody: string } & 
   // 4. FABRICATION (Stage 2) — invented statistics / testimonials / social
   // proof fail closed (contentHonesty.ts): the no-fabrication rule applied to
   // what a model writes, not only to source code.
-  const fabrication = screenFabrication(`${input.subject ?? ""}\n${sanitizedHtml}`);
+  // Read the RAW body: a <blockquote>/<cite> the sanitizer drops is still a
+  // testimonial the model tried to publish, and everything the sanitizer keeps
+  // is in the raw body too.
+  const fabrication = screenFabrication(`${input.subject ?? ""}\n${input.htmlBody ?? ""}`);
   const violations = [...linkViolations, ...claims.violations, ...fabrication];
   return { ok: violations.length === 0, sanitizedHtml, violations };
 }

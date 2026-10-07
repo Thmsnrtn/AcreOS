@@ -334,6 +334,14 @@ export function registerSoleneChatRoutes(app: Express): void {
 
       // approve → run the tool now under the founder's identity.
       try {
+        // A founder-door business tool (e.g. resuming ad spending) runs its
+        // own service, now explicitly confirmed by this approve tap.
+        const { CHAT_BUSINESS_TOOL_NAMES, executeBusinessChatTool } = await import("./services/solene/chat/businessTools");
+        if (CHAT_BUSINESS_TOOL_NAMES.has(pending.toolName)) {
+          const r = await executeBusinessChatTool(pending.toolName, pending.toolInput, getUserId(req), { confirmed: true });
+          logger.info("[soleneChat] confirmed business tool executed", { approvalToken, toolName: pending.toolName, ok: r.ok });
+          return res.json({ status: "executed", success: r.ok, output: r.text });
+        }
         // Force the tool through the auto-allowed code path by directly invoking
         // the underlying dispatch executor (skipping classifyChatTool, which
         // would re-block it).

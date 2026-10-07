@@ -151,6 +151,25 @@ export async function setPaused(target: Pausable, paused: boolean, by: string): 
   return out;
 }
 
+/**
+ * Campaigns the FOUNDER launched himself that AcreOS records as active
+ * (growth_campaigns, AcreOS's own advertising). The ad switch does not pause
+ * them — so anything that reports "ads off" must name them. null = the read
+ * failed (say so; never "nothing is running").
+ */
+export async function liveFounderCampaigns(): Promise<Array<{ id: number; name: string; platform: string; dailyBudgetCents: number }> | null> {
+  try {
+    const { growthCampaigns } = await import("@shared/schema");
+    return await db
+      .select({ id: growthCampaigns.id, name: growthCampaigns.name, platform: growthCampaigns.platform, dailyBudgetCents: growthCampaigns.dailyBudgetCents })
+      .from(growthCampaigns)
+      .where(eq(growthCampaigns.status, "active"));
+  } catch (err) {
+    logger.warn("[founderControls] founder campaign read failed", err instanceof Error ? err : undefined);
+    return null;
+  }
+}
+
 // ── S10: the panic-stop snapshot ─────────────────────────────────────────────
 
 export interface PreStopSnapshot {

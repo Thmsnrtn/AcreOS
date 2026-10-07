@@ -11225,22 +11225,13 @@ END $mig0252$`,
   `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "fold_count" integer NOT NULL DEFAULT 0`,
   `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "last_folded_at" timestamp with time zone`,
 
-  // 0264 — delegated releases bounded by hand and drafting role; a refund is
-  // claimed exactly once. Mirrors migrations/0264_delegation_bounds_and_refund_claims.sql.
+  // 0264 — delegated releases bounded by hand and drafting role; a purchase is
+  // refunded by the autopilot exactly once. Mirrors
+  // migrations/0264_delegation_bounds_and_refund_claims.sql.
   `ALTER TABLE "autopilot_pending_actions" ADD COLUMN IF NOT EXISTS "source_role" text`,
   `ALTER TABLE "witness_grants" ADD COLUMN IF NOT EXISTS "hands" jsonb NOT NULL DEFAULT '[]'::jsonb`,
   `ALTER TABLE "witness_grants" ADD COLUMN IF NOT EXISTS "source_roles" jsonb NOT NULL DEFAULT '[]'::jsonb`,
-  `CREATE TABLE IF NOT EXISTS "autopilot_refund_claims" (
-  "id" serial PRIMARY KEY,
-  "charge_key" text NOT NULL,
-  "organization_id" integer NOT NULL,
-  "amount_cents" integer NOT NULL,
-  "credits_clawed_back_cents" integer NOT NULL DEFAULT 0,
-  "stripe_refund_id" text,
-  "approved_by" text,
-  "created_at" timestamp with time zone NOT NULL DEFAULT now()
-)`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS "autopilot_refund_claims_charge_key_uniq" ON "autopilot_refund_claims" ("charge_key")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "credit_txn_purchase_refund_pi_uniq" ON "credit_transactions" ("stripe_payment_intent_id") WHERE type = 'purchase_refund'`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

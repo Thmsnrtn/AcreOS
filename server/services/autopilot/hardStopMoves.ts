@@ -17,27 +17,130 @@
  */
 import { HARD_STOP_SPEND_LIMIT_USD, matchHardStopHand, type HardStop } from "./hardStops";
 
+/**
+ * FAIL-CLOSED hard-stop vocabulary (audit H4). The first version matched a
+ * verb next to a noun ("raise … prices"), so a model only had to word it
+ * differently — "repricing", "move everyone to the Pro tier", "countersign the
+ * vendor's terms", "anonymize churned accounts" — and the move read as
+ * ordinary. A hard-stop is now recognised by the SUBJECT it touches, not the
+ * verb a model chose: anything touching pricing / plans / tiers / fees,
+ * anything touching contracts / terms / signatures, and any deletion,
+ * anonymization or erasure of customer data. A false hold costs the founder
+ * one tap; a false pass is a pricing change or a data purge.
+ */
 const MOVE_PATTERNS: ReadonlyArray<{ re: RegExp; hardStop: HardStop }> = [
-  // pricing — raise/lower/cut/change … price(s)/pricing/plan price
-  { re: /\b(raise|raising|lower|lowering|increase|increasing|decrease|decreasing|cut|cutting|change|changing|update|updating|set|setting|adjust|adjusting|discount|discounting)[\s_-]+(?:\w+[\s_-]+){0,3}?(price|prices|pricing)\b/i, hardStop: "pricing_changes" },
-  { re: /\b(price|prices|pricing)[\s_-]+(increase|decrease|change|hike|cut|update)\b/i, hardStop: "pricing_changes" },
-  // legal signing — sign/execute a contract/agreement/settlement
-  { re: /\b(sign|signing|execute|executing|countersign)[\s_-]+(?:\w+[\s_-]+){0,3}?(contract|agreement|settlement|lease|nda|legal)\b/i, hardStop: "legal_signing" },
-  // customer-data deletion — delete/purge/erase/wipe … customer/user/org/account … data/records/accounts
-  { re: /\b(delete|deleting|purge|purging|erase|erasing|wipe|wiping|destroy|destroying|drop|dropping)[\s_-]+(?:\w+[\s_-]+){0,4}?(customer|user|org|organization|account|tenant|lead)s?[\s_-]*(?:\w+[\s_-]+){0,2}?(data|records|accounts|rows|history)?\b/i, hardStop: "customer_data_deletion" },
+  // pricing — the subject itself: price/pricing/repricing, fees, discounts,
+  // coupons, tiers, and named / paid / subscription plans.
+  {
+    re: /\b(re-?pric\w*|pric(?:e|es|ed|ing)|fees?|surcharges?|discount\w*|coupons?|promo(?:tional)?[\s_-]?codes?|tiers?|(?:subscription|billing|paid|pro|premium|starter|basic|growth|enterprise|annual|monthly)[\s_-]+plans?|plans?[\s_-]+(?:change|migration|limits?|upgrade|downgrade|pricing))\b/i,
+    hardStop: "pricing_changes",
+  },
+  // legal — contracts, agreements, terms, signatures, settlements, acceptance
+  // of an offer/terms, indemnities. "sign" but not "sign up / sign in / signal".
+  {
+    re: /\b(contracts?|agreements?|terms(?:[\s_-]+of[\s_-]+(?:service|use))?|tos|countersign\w*|sign(?:s|ed|ing)?(?![\s_-]*(?:up|in|out|on|al))|signatures?|e-?sign\w*|docusign|settle(?:ment)?s?|leases?|nda|indemn\w*|addend(?:um|a)|accept(?:s|ed|ing|ance)?[\s_-]+(?:\w+[\s_-]+){0,3}?(?:terms|offer|contract|agreement|quote|proposal))\b/i,
+    hardStop: "legal_signing",
+  },
+  // customer-data deletion — any deleting / purging / erasing / wiping /
+  // anonymizing / pseudonymizing / redacting / scrubbing verb anywhere with a
+  // customer-data subject anywhere.
+  {
+    re: /\b(delet\w*|purg\w*|eras\w*|wip(?:e|es|ed|ing)|destroy\w*|anonymi[sz]\w*|pseudonymi[sz]\w*|de-?identif\w*|redact\w*|scrub\w*|forget|drop(?:s|ped|ping)?[\s_-]+(?:table|rows?|data|records?|accounts?))\b[\s\S]*\b(customers?|users?|orgs?|organi[sz]ations?|accounts?|tenants?|leads?|contacts?|data|records?|pii|histor(?:y|ies)|profiles?|emails?)\b|\b(customers?|users?|orgs?|organi[sz]ations?|accounts?|tenants?|leads?|contacts?|data|records?|pii|profiles?)\b[\s\S]*\b(delet\w*|purg\w*|eras\w*|wip(?:e|es|ed|ing)|anonymi[sz]\w*|pseudonymi[sz]\w*|redact\w*)\b/i,
+    hardStop: "customer_data_deletion",
+  },
 ];
 
-/** Dollar amounts in free text ("$2,000", "$1.5k"). Pure. */
-function dollarAmounts(text: string): number[] {
+const NUMBER_WORDS: Record<string, number> = {
+  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
+  twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+};
+
+/** "two thousand five hundred" → 2500; null when it is not a number phrase. Pure. */
+function wordsToNumber(phrase: string): number | null {
+  let total = 0;
+  let current = 0;
+  let seen = false;
+  for (const w of phrase.toLowerCase().split(/[\s-]+/).filter((x) => x && x !== "and" && x !== "a")) {
+    if (w in NUMBER_WORDS) {
+      current += NUMBER_WORDS[w];
+      seen = true;
+    } else if (w === "hundred") {
+      current = (current || 1) * 100;
+      seen = true;
+    } else if (w === "thousand" || w === "grand") {
+      total += (current || 1) * 1_000;
+      current = 0;
+      seen = true;
+    } else if (w === "million") {
+      total += (current || 1) * 1_000_000;
+      current = 0;
+      seen = true;
+    } else return null;
+  }
+  return seen ? total + current : null;
+}
+
+const DAYS: Record<string, number> = { day: 1, week: 7, month: 30, year: 365 };
+const NUM = String.raw`(\d[\d,]*(?:\.\d+)?)\s?(k|m|thousand|million)?`;
+const WORDNUM = String.raw`((?:(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|grand|million|and|a)[\s-]+)+)`;
+
+function scaled(base: string, mult?: string): number {
+  const n = Number(base.replace(/,/g, ""));
+  const m = (mult ?? "").toLowerCase();
+  return n * (m === "k" || m === "thousand" ? 1_000 : m === "m" || m === "million" ? 1_000_000 : 1);
+}
+
+/**
+ * Every USD amount a text states, as a total commitment (audit H4): "$2,000",
+ * "$1.5k", "2,000 dollars", "USD 900", "two thousand dollars", and a RATE —
+ * "$40/day for 30 days" is $1,200; "$40 a day" with no end is unbounded
+ * (Infinity: an open-ended spend cannot be shown under any ceiling). Pure.
+ */
+export function moneyAmountsUsd(text: string): number[] {
   const out: number[] = [];
-  const re = /\$\s?(\d[\d,]*(?:\.\d+)?)\s?(k|m)?\b/gi;
+  const t = text ?? "";
+  const amountRe = new RegExp(
+    String.raw`(?:\$\s?${NUM}|\b${NUM}\s?(?:dollars?|usd|bucks)\b|\busd\s?${NUM}|\b${WORDNUM}(?:dollars?|bucks)\b)`,
+    "gi",
+  );
   let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) != null) {
-    const base = Number(m[1].replace(/,/g, ""));
-    const mult = m[2]?.toLowerCase() === "k" ? 1_000 : m[2]?.toLowerCase() === "m" ? 1_000_000 : 1;
-    if (Number.isFinite(base)) out.push(base * mult);
+  while ((m = amountRe.exec(t)) != null) {
+    let amount: number | null = null;
+    if (m[1] != null) amount = scaled(m[1], m[2]);
+    else if (m[3] != null) amount = scaled(m[3], m[4]);
+    else if (m[5] != null) amount = scaled(m[5], m[6]);
+    else if (m[7] != null) amount = wordsToNumber(m[7]);
+    if (amount == null || !Number.isFinite(amount)) continue;
+    // A rate? "/day", "per week", "a month", "each day", "daily".
+    const after = t.slice(m.index + m[0].length, m.index + m[0].length + 60);
+    const rate = /^\s*(?:\/|per\b|a\b|an\b|each\b|every\b)\s*(day|week|month|year)\b|^\s*(daily|weekly|monthly|yearly|annually)\b/i.exec(after);
+    if (rate) {
+      const unit = (rate[1] ?? { daily: "day", weekly: "week", monthly: "month", yearly: "year", annually: "year" }[rate[2].toLowerCase()]).toLowerCase();
+      const rest = after.slice(rate[0].length);
+      const dur = /^\s*(?:for|over|x|×|during|across)\s*(?:the\s+next\s+|a\s+|an\s+)?(\d+|[a-z-]+)?\s*(day|week|month|year)s?\b/i.exec(rest);
+      if (dur) {
+        const count = dur[1] == null ? 1 : /^\d+$/.test(dur[1]) ? Number(dur[1]) : wordsToNumber(dur[1]);
+        if (count == null) {
+          out.push(Number.POSITIVE_INFINITY);
+          continue;
+        }
+        out.push((amount * count * DAYS[dur[2].toLowerCase()]) / DAYS[unit]);
+      } else {
+        out.push(Number.POSITIVE_INFINITY); // open-ended recurring spend
+      }
+      continue;
+    }
+    out.push(amount);
   }
   return out;
+}
+
+/** Money-SHAPED text (founder-only for chat and grants, even with no parseable amount). Pure. */
+const MONEY_SHAPED_RE =
+  /\$\s?\d|\b\d[\d,.]*\s?(?:dollars?|usd|bucks|cents?)\b|\b(?:dollars?|usd)\b|\b(refund\w*|charg(?:e|es|ed|ing)|chargebacks?|payments?|pay(?:s|ing|outs?)?|spend\w*|spent|budgets?|invoic\w*|billing|bill(?:s|ed)?|credits?|money|cash|revenue|wires?|transfers?|ad[\s_-]?spend|costs?|dunning|subscriptions?)\b/i;
+export function isMoneyShaped(text: string): boolean {
+  return MONEY_SHAPED_RE.test(text ?? "");
 }
 
 export interface MoveLike {
@@ -58,7 +161,33 @@ export function hardStopForMove(move: MoveLike): HardStop | null {
   const hand = matchHardStopHand(move.kind, move.rationale ?? "");
   if (hand) return hand;
   for (const p of MOVE_PATTERNS) if (p.re.test(hay)) return p.hardStop;
-  if (move.isNetNew && dollarAmounts(hay).some((a) => a > HARD_STOP_SPEND_LIMIT_USD)) return "spend_over_500_usd";
+  if (moneyAmountsUsd(hay).some((a) => a > HARD_STOP_SPEND_LIMIT_USD)) return "spend_over_500_usd";
+  return null;
+}
+
+/**
+ * The classes that are FOUNDER-TAP ONLY — never released by a WitnessGrant and
+ * never answered for him by the chat. The four permanent hard-stops (which an
+ * approval does not even enqueue), plus two that the founder's own tap on the
+ * Decisions door may approve: any net-new move (the kernel has never seen it)
+ * and any finance-domain or money-shaped move.
+ */
+export const FOUNDER_ONLY_CLASSES = [
+  "pricing_changes",
+  "legal_signing",
+  "spend_over_500_usd",
+  "customer_data_deletion",
+  "net_new_move",
+  "money_or_finance",
+] as const;
+export type FounderOnlyClass = (typeof FOUNDER_ONLY_CLASSES)[number];
+
+/** The founder-only class a move falls in, or null. Fails closed. Pure. */
+export function founderOnlyClassForMove(move: MoveLike & { domain?: string }): FounderOnlyClass | null {
+  const hs = hardStopForMove(move);
+  if (hs) return hs;
+  if (move.isNetNew) return "net_new_move";
+  if (move.domain === "finance" || isMoneyShaped(`${move.kind.replace(/_/g, " ")} ${move.rationale ?? ""}`)) return "money_or_finance";
   return null;
 }
 

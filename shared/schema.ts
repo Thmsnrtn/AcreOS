@@ -1809,6 +1809,12 @@ export const creditTransactions = pgTable("credit_transactions", {
 }, (table) => [
   // Prevents double-granting monthly allowances under concurrent execution (DEFECT-0007)
   uniqueIndex("credit_txn_allowance_month_org_uniq").on(table.organizationId, table.allowanceMonth),
+  // A purchase is refunded at most ONCE by the apply_refund hand: its
+  // 'purchase_refund' row (the credits taken back) is the claim, and a second
+  // claim on the same payment fails here under any concurrency (migration 0264).
+  uniqueIndex("credit_txn_purchase_refund_pi_uniq")
+    .on(table.stripePaymentIntentId)
+    .where(sql`type = 'purchase_refund'`),
 ]);
 
 // Lens 3 (Pricing Coherence) — cache of the per-org current-month pool
@@ -9833,26 +9839,6 @@ export const autopilotSends = pgTable("autopilot_sends", {
   sentAt: timestamp("sent_at").defaultNow(),
 });
 export type AutopilotSend = typeof autopilotSends.$inferSelect;
-
-// ── Autopilot refund claims (migration 0264) ────────────────────────────────
-// One row per Stripe charge the apply_refund hand refunded (or is refunding).
-// The UNIQUE charge_key is the once-only rule under concurrency: a second
-// claim on the same payment fails at the database, whoever witnessed it.
-export const autopilotRefundClaims = pgTable("autopilot_refund_claims", {
-  id: serial("id").primaryKey(),
-  /** The charge's identity as the purchase recorded it (pi_… or ch_…). */
-  chargeKey: text("charge_key").notNull(),
-  organizationId: integer("organization_id").notNull(),
-  amountCents: integer("amount_cents").notNull(),
-  /** Purchased credits taken back with the refund (never more than the org still held). */
-  creditsClawedBackCents: integer("credits_clawed_back_cents").notNull().default(0),
-  stripeRefundId: text("stripe_refund_id"),
-  approvedBy: text("approved_by"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => ({
-  chargeKeyUniq: uniqueIndex("autopilot_refund_claims_charge_key_uniq").on(t.chargeKey),
-}));
-export type AutopilotRefundClaim = typeof autopilotRefundClaims.$inferSelect;
 
 // ── Today decision-queue resolution state (Maren CPO #2) ────────────────────
 // The /today Decision Queue is DERIVED — its items are computed each request

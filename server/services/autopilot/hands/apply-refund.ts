@@ -15,11 +15,12 @@
  *     the manual refund flow in routes-billing, never the autopilot;
  *   • ≤ COST: never more than the purchase cost;
  *   • ONCE: never a second refund of the same payment — counting refunds the
- *     autopilot made (autopilot_refund_claims, UNIQUE per charge, claimed
- *     under an advisory lock so two concurrent executions cannot both pass),
- *     refunds recorded outside the autopilot (credit_transactions `refund` /
- *     `purchase_refund` rows for that payment), and refunds made on the
- *     Stripe side (the charge's amount_refunded, read before refunding);
+ *     autopilot made (its `purchase_refund` credit_transactions row IS the
+ *     claim: written under an advisory lock and UNIQUE per payment by a
+ *     partial index, so two concurrent executions cannot both pass), refunds
+ *     recorded outside the autopilot (`refund` rows for that payment), and
+ *     refunds made on the Stripe side (the charge's amount_refunded, read
+ *     before refunding);
  *   • CREDITS: a credit-pack refund takes the purchased credits back in the
  *     same transaction as the claim. RULE CHOSEN (the safer of the two): when
  *     the org no longer holds the credits being refunded — it spent them — the
@@ -34,7 +35,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { registerHand } from "./registry";
 import { handError, type HandContext, type HandResult } from "./types";
-import { autopilotRefundClaims, creditTransactions, organizations } from "@shared/schema";
+import { creditTransactions, organizations } from "@shared/schema";
 import { db, withTransaction } from "../../../db";
 
 const NAME = "apply_refund";
@@ -88,18 +89,12 @@ export async function refundEligibility(input: Record<string, unknown>): Promise
       reason: `apply_refund: $${(amountCents / 100).toFixed(2)} is more than the purchase cost ($${(purchase.amountCents / 100).toFixed(2)}). Refusing.`,
     };
   }
-  const [claimed] = await db
-    .select({ id: autopilotRefundClaims.id })
-    .from(autopilotRefundClaims)
-    .where(and(eq(autopilotRefundClaims.organizationId, organizationId), eq(autopilotRefundClaims.chargeKey, chargeId)))
-    .limit(1);
-  if (claimed) return { ok: false, reason: `apply_refund: ${chargeId} has already been refunded (or a refund of it is in flight) — never twice. Refusing.` };
   const [recorded] = await db
     .select({ id: creditTransactions.id })
     .from(creditTransactions)
     .where(and(eq(creditTransactions.organizationId, organizationId), eq(creditTransactions.stripePaymentIntentId, chargeId), inArray(creditTransactions.type, PRIOR_REFUND_TYPES)))
     .limit(1);
-  if (recorded) return { ok: false, reason: `apply_refund: a refund of ${chargeId} is already recorded — never twice. Refusing.` };
+  if (recorded) return { ok: false, reason: `apply_refund: ${chargeId} has already been refunded (or a refund of it is in flight) — never twice. Refusing.` };
   return { ok: true, chargeId, amountCents, organizationId, purchaseCents: purchase.amountCents };
 }
 
@@ -107,79 +102,78 @@ class RefundRefused extends Error {}
 
 /**
  * Claim the payment (once, race-safe) and take the purchased credits back, in
- * ONE transaction under an advisory lock on the payment id. Throws
- * RefundRefused when another claim / recorded refund exists or the org no
- * longer holds the credits.
+ * ONE transaction under an advisory lock on the payment id. The claim IS the
+ * 'purchase_refund' credit_transactions row (UNIQUE per payment). Throws
+ * RefundRefused when a refund is already recorded or the org no longer holds
+ * the credits.
  */
-async function claimRefund(e: Eligible, approvedBy: string | null): Promise<{ claimId: number; clawedCents: number; isFounderOrg: boolean }> {
-  return withTransaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`apply_refund:${e.chargeId}`}))`);
-    const [recorded] = await tx
-      .select({ id: creditTransactions.id })
-      .from(creditTransactions)
-      .where(and(eq(creditTransactions.organizationId, e.organizationId), eq(creditTransactions.stripePaymentIntentId, e.chargeId), inArray(creditTransactions.type, PRIOR_REFUND_TYPES)))
-      .limit(1);
-    if (recorded) throw new RefundRefused(`a refund of ${e.chargeId} is already recorded — never twice`);
-    const [claim] = await tx
-      .insert(autopilotRefundClaims)
-      .values({ chargeKey: e.chargeId, organizationId: e.organizationId, amountCents: e.amountCents, approvedBy })
-      .onConflictDoNothing({ target: autopilotRefundClaims.chargeKey })
-      .returning({ id: autopilotRefundClaims.id });
-    if (!claim) throw new RefundRefused(`${e.chargeId} has already been refunded (or a refund of it is in flight) — never twice`);
-    const [org] = await tx
-      .select({ isFounder: organizations.isFounder })
-      .from(organizations)
-      .where(eq(organizations.id, e.organizationId))
-      .limit(1);
-    const isFounderOrg = org?.isFounder === true;
-    let clawedCents = 0;
-    if (!isFounderOrg) {
-      const [after] = await tx
-        .update(organizations)
-        .set({ creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric - ${e.amountCents}` })
-        .where(and(eq(organizations.id, e.organizationId), sql`COALESCE(${organizations.creditBalance}, '0')::numeric >= ${e.amountCents}`))
-        .returning({ balance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
-      if (!after) {
-        throw new RefundRefused(
-          `organization #${e.organizationId} no longer holds the $${(e.amountCents / 100).toFixed(2)} of credits this would refund — they were spent. A refund never leaves an org holding credits it was repaid for; the founder decides this one by hand`,
-        );
+async function claimRefund(e: Eligible, approvedBy: string | null): Promise<{ claimId: number; clawedCents: number }> {
+  try {
+    return await withTransaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`apply_refund:${e.chargeId}`}))`);
+      const [recorded] = await tx
+        .select({ id: creditTransactions.id })
+        .from(creditTransactions)
+        .where(and(eq(creditTransactions.organizationId, e.organizationId), eq(creditTransactions.stripePaymentIntentId, e.chargeId), inArray(creditTransactions.type, PRIOR_REFUND_TYPES)))
+        .limit(1);
+      if (recorded) throw new RefundRefused(`${e.chargeId} has already been refunded (or a refund of it is in flight) — never twice`);
+      const [org] = await tx
+        .select({ isFounder: organizations.isFounder, balance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` })
+        .from(organizations)
+        .where(eq(organizations.id, e.organizationId))
+        .limit(1);
+      if (!org) throw new RefundRefused(`organization #${e.organizationId} does not exist`);
+      // The founder's own org carries no credit balance to take back.
+      let clawedCents = 0;
+      let balanceAfter = org.balance;
+      if (org.isFounder !== true) {
+        const [after] = await tx
+          .update(organizations)
+          .set({ creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric - ${e.amountCents}` })
+          .where(and(eq(organizations.id, e.organizationId), sql`COALESCE(${organizations.creditBalance}, '0')::numeric >= ${e.amountCents}`))
+          .returning({ balance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
+        if (!after) {
+          throw new RefundRefused(
+            `organization #${e.organizationId} no longer holds the $${(e.amountCents / 100).toFixed(2)} of credits this would refund — they were spent. A refund never leaves an org holding credits it was repaid for; the founder decides this one by hand`,
+          );
+        }
+        clawedCents = e.amountCents;
+        balanceAfter = after.balance;
       }
-      clawedCents = e.amountCents;
-      await tx.insert(creditTransactions).values({
-        organizationId: e.organizationId,
-        type: "purchase_refund",
-        amountCents: -e.amountCents,
-        balanceAfterCents: after.balance,
-        description: `Refund of purchase ${e.chargeId}: purchased credits returned`,
-        stripePaymentIntentId: e.chargeId,
-      });
-      await tx
-        .update(autopilotRefundClaims)
-        .set({ creditsClawedBackCents: clawedCents })
-        .where(and(eq(autopilotRefundClaims.organizationId, e.organizationId), eq(autopilotRefundClaims.id, claim.id)));
-    }
-    return { claimId: claim.id, clawedCents, isFounderOrg };
-  });
+      const [claim] = await tx
+        .insert(creditTransactions)
+        .values({
+          organizationId: e.organizationId,
+          type: "purchase_refund",
+          amountCents: -clawedCents,
+          balanceAfterCents: balanceAfter,
+          description: `Refund of purchase ${e.chargeId}: purchased credits returned`,
+          stripePaymentIntentId: e.chargeId,
+          metadata: { refundAmountCents: e.amountCents, approvedBy },
+        })
+        .returning({ id: creditTransactions.id });
+      return { claimId: claim.id, clawedCents };
+    });
+  } catch (err) {
+    // The partial UNIQUE index refusing a second claim (a race the lock did
+    // not serialize, e.g. a different spelling path) is "never twice", not an error.
+    const code = (err as { code?: string; cause?: { code?: string } })?.code ?? (err as { cause?: { code?: string } })?.cause?.code;
+    if (code === "23505") throw new RefundRefused(`${e.chargeId} has already been refunded (or a refund of it is in flight) — never twice`);
+    throw err;
+  }
 }
 
 /** Undo a claim whose refund did not happen: release it and give the credits back. */
 async function releaseClaim(e: Eligible, claimId: number, clawedCents: number): Promise<void> {
   await withTransaction(async (tx) => {
-    await tx.delete(autopilotRefundClaims).where(and(eq(autopilotRefundClaims.organizationId, e.organizationId), eq(autopilotRefundClaims.id, claimId)));
+    await tx
+      .delete(creditTransactions)
+      .where(and(eq(creditTransactions.organizationId, e.organizationId), eq(creditTransactions.id, claimId), eq(creditTransactions.type, "purchase_refund")));
     if (clawedCents > 0) {
       await tx
         .update(organizations)
         .set({ creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${clawedCents}` })
         .where(eq(organizations.id, e.organizationId));
-      await tx
-        .delete(creditTransactions)
-        .where(
-          and(
-            eq(creditTransactions.organizationId, e.organizationId),
-            eq(creditTransactions.type, "purchase_refund"),
-            eq(creditTransactions.stripePaymentIntentId, e.chargeId),
-          ),
-        );
     }
   });
 }
@@ -226,9 +220,9 @@ async function handler(input: Record<string, unknown>, ctx: HandContext = {}): P
       { idempotencyKey: `apply_refund:${e.chargeId}` },
     );
     await db
-      .update(autopilotRefundClaims)
-      .set({ stripeRefundId: refund.id })
-      .where(and(eq(autopilotRefundClaims.organizationId, e.organizationId), eq(autopilotRefundClaims.id, claim.claimId)));
+      .update(creditTransactions)
+      .set({ metadata: { refundAmountCents: e.amountCents, approvedBy: ctx.witnessedBy ?? null, stripeRefundId: refund.id } })
+      .where(and(eq(creditTransactions.organizationId, e.organizationId), eq(creditTransactions.id, claim.claimId)));
     return { success: true, output: JSON.stringify({ refundId: refund.id, amountCents: e.amountCents, creditsReturned: claim.clawedCents }), durationMs: Date.now() - started };
   } catch (err) {
     if (eligible && claim) {

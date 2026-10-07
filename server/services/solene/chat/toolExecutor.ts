@@ -29,6 +29,7 @@ import { logger } from "../../../utils/logger";
 import {
   CHAT_BUSINESS_TOOL_NAMES,
   CHAT_BUSINESS_TOOL_SCHEMAS,
+  businessToolNeedsConfirmation,
   executeBusinessChatTool,
 } from "./businessTools";
 
@@ -209,7 +210,10 @@ export async function executeChatTool(
     };
   }
 
-  if (decision.kind === "approval_required") {
+  // A business-tool call the founder must confirm explicitly (resuming ad
+  // spending) takes the same approval path as an approval-required tool: the
+  // chat UI shows approve/reject, and only the approve route runs it.
+  if (decision.kind === "approval_required" || (CHAT_BUSINESS_TOOL_NAMES.has(input.toolName) && businessToolNeedsConfirmation(input.toolName, input.toolInput))) {
     const approvalToken = randomUUID();
     PENDING_APPROVALS.set(approvalToken, {
       approvalToken,

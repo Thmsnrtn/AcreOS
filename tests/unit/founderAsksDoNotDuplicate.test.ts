@@ -109,7 +109,7 @@ vi.mock("../../server/utils/logger", () => ({
 }));
 
 const ASK = {
-  askingAgentRole: "growth" as const,
+  askingAgentRole: "soren" as const,
   questionSummary: "Approve a growth action: send_campaign",
   questionBody: "The same rationale, reproduced verbatim by the next tick.",
   answerFormat: "yes_no" as const,
