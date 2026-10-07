@@ -38,6 +38,11 @@ import type {
   SoleneDispatchSourceType,
 } from "@shared/schema/solene-dispatch";
 
+/** Lean-mode per-dispatch cap (the $50/mo envelope; keep autopilot work cheap). */
+export const AUTOPILOT_DISPATCH_MAX_COST_USD = Number(
+  process.env.AUTOPILOT_DISPATCH_MAX_COST_USD ?? 5,
+);
+
 /** Prefix on the sourceId of every autopilot-initiated dispatch. */
 export const AUTOPILOT_SOURCE_PREFIX = "autopilot:";
 
@@ -339,8 +344,8 @@ export async function planAndAct(
         verdict.reason,
         "",
         isDraft
-          ? "The system drafted this but isn't yet trusted to send it on its own. Approve to let it proceed (this also advances the domain's autonomy)."
-          : "Approve to let the system carry this out.",
+          ? "The system drafted this but isn't yet trusted to send it on its own. Approve to let it proceed — approving queues it to run; only its real result (not your approval) earns the domain more autonomy."
+          : "Approve to let the system carry this out — approving queues it to run.",
         ...(simulation ? ["", simulation] : []),
       ].join("\n"),
       answerFormat: "yes_no",
@@ -350,6 +355,78 @@ export async function planAndAct(
   } catch (err) {
     return { status: "error", move, reason: err instanceof Error ? err.message : String(err) };
   }
+}
+
+// ── Approval → the drafted move actually runs ────────────────────────────────
+// Every escalation above tells the founder "Approve to let it proceed". Until
+// 2026-10-07 approving only recorded the verdict: nothing enqueued the move, so
+// an approved action never happened. On a YES to an autopilot move ask, the
+// move recorded on that ask's Experience Log row is enqueued — through the same
+// enqueue path a passing move uses — exactly once (idempotency key per ask,
+// plus the row's own dispatch link). A decline or a timeout never reaches here.
+
+/** Idempotency key for the dispatch an approved ask enqueues — one per ask. */
+function approvedAskIdempotencyKey(askId: number): string {
+  return `approved-ask:${askId}`;
+}
+
+export interface EscalatedMoveRecord {
+  experienceId: number;
+  moveKind: string;
+  domain: string;
+  /** Set once the approved move has been enqueued. */
+  dispatchId: number | null;
+  reasoningTrace: unknown;
+}
+
+export interface ApprovedMoveDeps {
+  findEscalatedMove: (askId: number) => Promise<EscalatedMoveRecord | null>;
+  enqueue: ActDeps["enqueue"];
+  linkDispatch: (experienceId: number, dispatchId: number) => Promise<void>;
+  maxCostUsd?: number;
+}
+
+export type ApprovedMoveOutcome =
+  | { status: "enqueued"; dispatchId: number }
+  | { status: "already_enqueued"; dispatchId: number }
+  | { status: "not_a_move" };
+
+/** The move's own rationale, as the decision trace recorded it (never invented). */
+function recordedRationale(rec: EscalatedMoveRecord): string | null {
+  const trace = rec.reasoningTrace as { consideredMoves?: Array<{ kind?: unknown; rationale?: unknown }> } | null;
+  const hit = trace?.consideredMoves?.find((m) => m?.kind === rec.moveKind);
+  return typeof hit?.rationale === "string" && hit.rationale ? hit.rationale : null;
+}
+
+/**
+ * Enqueue the move an approved ask was about. Throws on an enqueue failure so
+ * the caller can surface it — an approval whose move could not be queued must
+ * not read as done.
+ */
+export async function enqueueApprovedMove(askId: number, deps: ApprovedMoveDeps): Promise<ApprovedMoveOutcome> {
+  const rec = await deps.findEscalatedMove(askId);
+  if (!rec) return { status: "not_a_move" };
+  if (rec.dispatchId != null) return { status: "already_enqueued", dispatchId: rec.dispatchId };
+
+  const binding = bindingFor(rec.moveKind);
+  const move: RankedMove = {
+    priority: 0,
+    domain: binding.domain,
+    kind: rec.moveKind,
+    rationale: recordedRationale(rec) ?? `The ${rec.moveKind} move the autopilot proposed.`,
+  };
+  const dispatchId = await deps.enqueue({
+    sourceType: "auto_dispatch",
+    sourceId: `${AUTOPILOT_SOURCE_PREFIX}${rec.moveKind}`,
+    agentRole: binding.agentRole,
+    promptText: [dispatchPromptFor(move), "", `The founder approved this action (ask #${askId}).`].join("\n"),
+    maxCostUsd: deps.maxCostUsd,
+    enqueuedBy: "founder-approval",
+    idempotencyKey: approvedAskIdempotencyKey(askId),
+  });
+  // Link the run to the experience so its REAL result (not the approval) votes.
+  await deps.linkDispatch(rec.experienceId, dispatchId);
+  return { status: "enqueued", dispatchId };
 }
 
 // ── The feedback edge: outcomes earn (or cost) autonomy ──────────────────────

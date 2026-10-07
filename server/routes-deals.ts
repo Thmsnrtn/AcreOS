@@ -1683,7 +1683,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       const aiResponse = response.content || "I couldn't generate a response. Please try again.";
 
       // Deduct credits after successful AI call
-      dealCreditService.deductCredits(org.id, 2, 'Deal AI analysis').catch(() => {});
+      dealCreditService.deductOrFundFromTrial(org.id, 2, 'Deal AI analysis', { actionType: 'ai_chat' }).catch(() => {});
 
       const suggestions = generateSuggestions(message, property);
 
@@ -1743,6 +1743,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) return Errors.notFound(res, "Property");
       const checklist = await storage.getOrCreateDueDiligenceChecklist(org.id, propertyId);
+      if (!checklist) return Errors.notFound(res, "Property");
       res.json(checklist);
     } catch (error: any) {
       logger.error("Get due diligence checklist error", error instanceof Error ? error : undefined);

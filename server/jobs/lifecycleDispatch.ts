@@ -208,14 +208,14 @@ interface SweepCounters {
   errors: number;
 }
 
-/** Resolve the org owner's email (organizations.owner_id is the Clerk user
- *  id; users.clerk_user_id links back). */
+/** Resolve the org owner's email (organizations.owner_id is the users.id
+ *  (UUID) of the owner row). */
 async function ownerEmailOf(ownerId: string | null): Promise<{ email: string; userId: string } | null> {
   if (!ownerId) return null;
   const [owner] = await db
     .select({ id: users.id, email: users.email })
     .from(users)
-    .where(eq(users.clerkUserId, ownerId))
+    .where(eq(users.id, ownerId))
     .limit(1);
   if (!owner?.email) return null;
   return { email: owner.email, userId: owner.id };

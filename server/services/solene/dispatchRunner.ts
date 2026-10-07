@@ -44,6 +44,7 @@ import { recordCapitalEvent } from "./capitalTracker";
 import {
   completeDispatch,
   failDispatch,
+  isDispatchCancelled,
   type DispatchFailureInput,
 } from "./dispatchQueue";
 import {
@@ -566,7 +567,10 @@ export interface RunDispatchResult {
     | "error"
     | "missing_api_key"
     | "platform_cost_ceiling"
-    | "ensemble_monthly_cap";
+    | "ensemble_monthly_cap"
+    // Cancelled while running (founder cancel or panic stop) — the runner saw
+    // the cancelled status at a turn/tool boundary and stopped.
+    | "aborted";
 }
 
 /**
@@ -882,6 +886,13 @@ export async function runDispatch(
         terminationReason = "timeout";
         break;
       }
+      // Cooperative abort: a cancel (founder kill switch / panic stop) is
+      // honoured before another model turn starts.
+      if (await isDispatchCancelled(dispatchId)) {
+        terminationReason = "aborted";
+        await appendTranscript(transcriptPath, { event: "aborted", turn });
+        break;
+      }
       const costSoFar = estimateCostUsd(
         tokenInput,
         tokenOutput,
@@ -1001,8 +1012,15 @@ export async function runDispatch(
 
       // Execute each tool, build a tool_result message.
       const toolResults: any[] = [];
+      let abortedMidTurn = false;
       for (const tu of toolUses) {
         if (timedOut) break;
+        // …and before every tool call, so no further outward effect starts
+        // after a cancel even within the turn that was already in flight.
+        if (await isDispatchCancelled(dispatchId)) {
+          abortedMidTurn = true;
+          break;
+        }
         // SECURITY (elite-audit P0): worker-run dispatches are autonomous agents —
         // their bash runs with a SECRET-SCRUBBED env (no prod creds), so they
         // cannot deploy / exfiltrate / move money outside the witnessed-send hands.
@@ -1036,6 +1054,11 @@ export async function runDispatch(
         });
       }
       messages.push({ role: "user", content: toolResults });
+      if (abortedMidTurn) {
+        terminationReason = "aborted";
+        await appendTranscript(transcriptPath, { event: "aborted", turn });
+        break;
+      }
     }
 
     if (terminationReason === "error") terminationReason = "max_turns";
@@ -1113,7 +1136,7 @@ export async function runDispatch(
         filesModified: Array.from(filesModified),
       };
       const cancelStatus =
-        terminationReason === "timeout" || terminationReason === "cost_cap"
+        terminationReason === "timeout" || terminationReason === "cost_cap" || terminationReason === "aborted"
           ? "cancelled"
           : "failed";
       // Retry classification: only a thrown error with ZERO tool executions is

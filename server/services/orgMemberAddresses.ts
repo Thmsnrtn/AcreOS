@@ -65,7 +65,7 @@ export async function orgMemberAddresses(
     const owners = await db
       .select({ email: users.email })
       .from(users)
-      .where(eq(users.clerkUserId, org.ownerId))
+      .where(eq(users.id, org.ownerId))
       .limit(1);
     for (const o of owners) {
       const e = o.email?.trim().toLowerCase();

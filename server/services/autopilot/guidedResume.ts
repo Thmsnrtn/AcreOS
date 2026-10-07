@@ -19,8 +19,9 @@
  *     2. "observe"   — verifies every domain sits at watching-only (the stop
  *        already put them there; this stage changes NOTHING and says so);
  *     3. "dispatch"  — hands back on. Auto-publish stays OFF: neither the
- *        proof receipt (it seals only a HASH of {reason, switchesOff, domains},
- *        and switchesOff records what was turned off, not what was on before)
+ *        proof receipt (it seals only a HASH of {reason, switchesOff,
+ *        dispatchesAborted, domains}, and switchesOff records what was turned
+ *        off, not what was on before)
  *        nor autopilot_settings (no history, only current values) records the
  *        pre-stop publish state — so rather than guess, publish waits for the
  *        founder's own tap.

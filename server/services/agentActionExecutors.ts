@@ -65,7 +65,7 @@ async function resolveOrgContactEmail(
     const [owner] = await db
       .select({ email: users.email })
       .from(users)
-      .where(eq(users.clerkUserId, org.ownerId))
+      .where(eq(users.id, org.ownerId))
       .limit(1);
     return owner?.email ?? null;
   } catch {

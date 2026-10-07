@@ -31,6 +31,10 @@ export interface ImportResult {
   transactionUsed: boolean;
 }
 
+/** What a consent column on an import becomes: a note, never consent. */
+const CLAIMED_CONSENT_NOTE =
+  "Import file claimed TCPA consent for this lead. Not recorded as consent: confirm it with the lead and record it on the lead itself.";
+
 // 10 MB limit for CSV imports to prevent memory exhaustion
 const MAX_CSV_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_CSV_ROWS = 50_000;
@@ -414,8 +418,16 @@ export async function importLeads(
       zip: row.zip || null,
       status: row.status || "new",
       source: row.source || "import",
-      notes: row.notes || null,
-      tcpaConsent: tcpaConsentResult.value,
+      // An import may RECORD that the list claims consent, never grant it:
+      // TCPA consent needs per-lead evidence through the single-lead consent
+      // path (PATCH /api/leads/:id/consent). A whole purchased list marked
+      // "consent = yes" is not express consent from each person on it. The
+      // claim survives as a note; the flag stays false. Do-not-contact is the
+      // safe direction and is honoured.
+      notes: tcpaConsentResult.value === true
+        ? [row.notes, CLAIMED_CONSENT_NOTE].filter(Boolean).join("\n")
+        : row.notes || null,
+      tcpaConsent: false,
       doNotContact: doNotContactResult.value,
     };
 

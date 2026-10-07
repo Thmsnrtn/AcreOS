@@ -117,7 +117,7 @@ async function getOrgBillingEmail(org: Organization): Promise<string | null> {
     const [owner] = await db
       .select({ email: users.email })
       .from(users)
-      .where(eq(users.clerkUserId, org.ownerId))
+      .where(eq(users.id, org.ownerId))
       .limit(1);
     return owner?.email ?? null;
   } catch {
@@ -161,7 +161,14 @@ class DunningService {
       const newStage = this.calculateDunningStage(daysSinceFailure);
       const nextRetryAt = this.calculateNextRetryDate(attemptNumber);
 
-      const notificationToSend = this.getScheduledNotification(daysSinceFailure);
+      const scheduledNotification = this.getScheduledNotification(daysSinceFailure);
+
+      // Send first so the ledger records only what actually went out.
+      let notificationToSend = scheduledNotification;
+      if (scheduledNotification) {
+        const sent = await this.sendDunningEmail(org, scheduledNotification.type, amountDueCents);
+        if (!sent) notificationToSend = null;
+      }
 
       const dunningEvent: InsertDunningEvent = {
         organizationId,
@@ -199,11 +206,6 @@ class DunningService {
       }
 
       await storage.updateOrganization(organizationId, orgUpdates);
-
-      // Actually send the notification email
-      if (notificationToSend) {
-        await this.sendDunningEmail(org, notificationToSend.type, amountDueCents);
-      }
 
       if (amountDueCents >= this.HIGH_VALUE_THRESHOLD_CENTS) {
         await this.createRevenueAtRiskAlert(
@@ -314,12 +316,12 @@ class DunningService {
     org: Organization,
     templateType: string,
     amountCents: number
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       const recipientEmail = await getOrgBillingEmail(org);
       if (!recipientEmail) {
         logger.warn(`[Dunning] No billing email found for org ${org.id}, skipping ${templateType} email`);
-        return;
+        return false;
       }
 
       const amountDue = `$${(amountCents / 100).toFixed(2)}`;
@@ -331,21 +333,27 @@ class DunningService {
       const template = templates[templateType as keyof typeof templates];
       if (!template) {
         logger.warn(`[Dunning] Unknown email template type: ${templateType}`);
-        return;
+        return false;
       }
 
       const { emailService } = await import("./emailService");
-      await emailService.sendEmail({
+      const result = await emailService.sendEmail({
         to: recipientEmail,
         subject: template.subject,
         html: template.html,
         text: template.text,
         transactional: true, // billing/payment-failure notice — not commercial
       });
+      if (result && result.success === false) {
+        logger.warn(`[Dunning] ${templateType} email to org ${org.id} was not delivered: ${result.error ?? "unknown"}`);
+        return false;
+      }
 
       logger.info(`[Dunning] Sent ${templateType} email to ${recipientEmail} for org ${org.id}`);
+      return true;
     } catch (error) {
       logger.error(`[Dunning] Failed to send ${templateType} email for org ${org.id}`, error);
+      return false;
     }
   }
 
@@ -705,8 +713,7 @@ class DunningService {
                   );
                 } else {
                   logger.info(`[Dunning] Sending ${notification.type} notification for org ${org.id}`);
-                  await this.sendDunningEmail(org, notification.type, latestEvent.amountDueCents || 0);
-                  dispatched = true;
+                  dispatched = await this.sendDunningEmail(org, notification.type, latestEvent.amountDueCents || 0);
                 }
 
                 if (dispatched) {

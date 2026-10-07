@@ -29,9 +29,13 @@
  *     - an unknown tier grants nothing.
  *
  *   hasEnoughCredits (FRAUD-011, slice 4)
- *     - active-trial orgs get AI chat WITHOUT balance, but capped at a
- *       cumulative $5 of trial debits — at the cap allowed, a cent over
+ *     - the org's own balance pays first and is never limited by the trial
+ *       cap;
+ *     - active-trial orgs whose balance does not cover a charge get it free,
+ *       capped at a cumulative $5 of TRIAL-FUNDED usage (usage records tagged
+ *       fundedBy: "trial_allowance") — at the cap allowed, a cent over
  *       refused; expired/absent trials fall through to the balance check.
+ *       Purchased-credit debits never count toward the cap.
  *
  *   checkAutoTopUp (slice 4)
  *     - pure decision, no charge (the Stripe wire is founder-gated):
@@ -45,7 +49,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const state = {
   /** The org row db.query.organizations.findFirst returns (null = missing). */
   orgRow: { isFounder: false } as any,
-  /** Cumulative ABS(debit) cents the trial-cap SUM query reports. */
+  /** Cumulative trial-FUNDED usage cents the trial-cap SUM query reports. */
   trialDebitsCents: 0,
   /** rows returned by tx.update(...).returning() — the balance bump. */
   txUpdateRows: [{ newBalance: 5000 }] as any[],
@@ -97,10 +101,10 @@ vi.mock("../../server/db", () => {
           findFirst: async () => state.orgRow,
         },
       },
-      // The FRAUD-011 trial-cap SUM(ABS(debits)) aggregate.
+      // The FRAUD-011 trial-cap aggregate: SUM of trial-funded usage.
       select: (_projection?: any) => ({
         from: () => ({
-          where: () => Promise.resolve([{ totalDebits: state.trialDebitsCents }]),
+          where: () => Promise.resolve([{ trialFundedCents: state.trialDebitsCents }]),
         }),
       }),
       insert: (_table: any) => ({

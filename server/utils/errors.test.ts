@@ -146,6 +146,58 @@ describe("Errors helpers — Apple-voice rewrites", () => {
     expect(body.details.retryAfter).toBe(5);
   });
 
+  // Every 429 used to carry the rate-limit sentence above, whatever was hit —
+  // so a plan cap or an empty credit balance told the customer to "wait a few
+  // seconds", which never clears either. The message must name the limit.
+  describe("limitExceeded names the limit that was hit and how to raise it", () => {
+    const RATE = "faster than the system can handle";
+    const msgFor = (details: unknown) => {
+      const r = mkRes();
+      Errors.limitExceeded(asRes(r), details);
+      expect(r.statusCode).toBe(429);
+      return r.body as { message: string; docsUrl?: string };
+    };
+
+    it("a plan cap (usageLimitGate shape) names the resource, the plan and the upgrade", () => {
+      const body = msgFor({
+        resourceType: "campaigns", currentTier: "starter", currentCount: 5, currentLimit: 5,
+        nextTier: "pro", nextTierLimit: 50, nextTierMonthlyPriceCents: 9900, upgradeUrl: "/settings#billing?tier=pro",
+      });
+      expect(body.message).not.toContain(RATE);
+      expect(body.message).toMatch(/starter plan's limit for campaigns \(5\)/);
+      expect(body.message).toMatch(/Upgrade/);
+      // No rate-limit article: the client's CTA then falls through to upgradeUrl.
+      expect(body.docsUrl).toBeUndefined();
+    });
+
+    it("a credit shortfall says credits ran out and where to buy more", () => {
+      const body = msgFor({ needed: 12, action: "email_send" });
+      expect(body.message).not.toContain(RATE);
+      expect(body.message).toMatch(/enough AcreOS credits/);
+      expect(body.message).toMatch(/12¢/);
+      expect(body.message).toMatch(/credit pack/);
+    });
+
+    it("a caller's own message wins (string or details.message)", () => {
+      expect(msgFor("AI request limit reached. Upgrade to continue.").message).toBe(
+        "AI request limit reached. Upgrade to continue.",
+      );
+      expect(msgFor({ reason: "daily_budget_exhausted", message: "You've hit today's AI budget." }).message).toBe(
+        "You've hit today's AI budget.",
+      );
+    });
+
+    it("a real rate limit keeps the rate-limit voice and article", () => {
+      const body = msgFor({ route: "login", retryAfterSeconds: 2, reason: "too_many_attempts_from_this_network" });
+      expect(body.message).toContain(RATE);
+      expect(body.docsUrl).toBe("/help/article/rate-limit");
+    });
+
+    it("an unknown shape is called a usage limit, never a rate limit", () => {
+      expect(msgFor({}).message).not.toContain(RATE);
+    });
+  });
+
   it("internal (production): never leaks raw error; includes request ID + docs", () => {
     vi.stubEnv("NODE_ENV", "production");
     const r = mkRes({ correlationId: "req-abc-123" });

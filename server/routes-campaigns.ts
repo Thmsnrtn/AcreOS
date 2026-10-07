@@ -2029,14 +2029,61 @@ export function registerCampaignRoutes(app: Express): void {
         return Errors.badRequest(res, "Campaign is not an email campaign");
       }
 
-      // Get leads with email addresses
+      // Recipient eligibility. Each lead lands in exactly one bucket, and the
+      // response reports every bucket — a send that quietly drops a recipient
+      // reads to the customer exactly like a send that reached them.
+      //   1. no email address;
+      //   2. not contactable by email — doNotContact or no consent, by the
+      //      canonical per-channel rule (canSendViaChannel), the same check the
+      //      sequence processor and workflow engine run before an email;
+      //   3. on the suppression list (bounce / complaint / unsubscribe);
+      //   4. already sent this campaign.
+      // None of the skipped recipients is charged.
+      const { canSendViaChannel } = await import("./services/tcpaCompliance");
+      const { filterSuppressed } = await import("./services/emailSuppressions");
+      // A repeated leadId is ONE recipient — charged once, counted once.
       const allLeads = await Promise.all(
-        leadIds.map(id => storage.getLead(org.id, id))
+        Array.from(new Set(leadIds)).map(id => storage.getLead(org.id, id))
       );
-      const validLeads = allLeads.filter(l => l && l.email);
+      const skippedNoEmail: number[] = [];
+      const skippedNotContactable: Array<{ leadId: number; reason: string }> = [];
+      const skippedSuppressed: number[] = [];
+      const contactable = [] as NonNullable<(typeof allLeads)[number]>[];
+      for (const lead of allLeads) {
+        if (!lead) continue;
+        if (!lead.email || !lead.email.trim()) {
+          skippedNoEmail.push(lead.id);
+          continue;
+        }
+        const check = canSendViaChannel(lead, "email");
+        if (!check.allowed) {
+          skippedNotContactable.push({ leadId: lead.id, reason: check.reason || "Not contactable by email" });
+          continue;
+        }
+        contactable.push(lead);
+      }
+      const suppression = await filterSuppressed(contactable.map(l => l.email!));
+      const suppressedSet = new Set(suppression.suppressed);
+      const validLeads = contactable.filter(l => {
+        if (suppressedSet.has(l.email!.trim().toLowerCase())) {
+          skippedSuppressed.push(l.id);
+          return false;
+        }
+        return true;
+      });
 
       if (validLeads.length === 0) {
-        return Errors.badRequest(res, "No recipients with valid email addresses");
+        return Errors.badRequest(
+          res,
+          "None of the selected leads can be emailed, so nothing was sent and nothing was charged.",
+          {
+            skipped: {
+              noEmail: skippedNoEmail.length,
+              notContactable: skippedNotContactable,
+              suppressed: skippedSuppressed.length,
+            },
+          },
+        );
       }
 
       // DEFECT-0047: Per-recipient dedup — check which leads already received
@@ -2051,28 +2098,14 @@ export function registerCampaignRoutes(app: Express): void {
           )
         );
       const alreadySentLeadIds = new Set(existingDeliveries.map(d => d.leadId));
-      const dedupedLeads = validLeads.filter(l => !alreadySentLeadIds.has(l!.id));
+      const dedupedLeads = validLeads.filter(l => !alreadySentLeadIds.has(l.id));
       const skippedDuplicates = validLeads.length - dedupedLeads.length;
 
       if (dedupedLeads.length === 0) {
         return Errors.badRequest(res, "All recipients have already been sent this campaign");
       }
 
-      // DEFECT-0047: Deduct credits UPFRONT atomically to prevent TOCTOU race.
-      // deductCredits uses WHERE balance >= amount, so it's atomic check+deduct.
-      const costPerEmail = 1; // 1 cent per email
-      const totalCost = dedupedLeads.length * costPerEmail;
-
-      if (!req.isFounder) {
-        const deductResult = await creditService.deductCredits(
-          org.id, totalCost, `Campaign email send: ${campaign.name} (${dedupedLeads.length} recipients)`
-        );
-        if (!deductResult) {
-          return Errors.limitExceeded(res, { needed: totalCost, action: "email_send" }, { docsSlug: "limit-email-credits" });
-        }
-      }
-
-      const { emailService } = await import("./services/emailService");
+      const { emailService, counterpartyEmailIdentityStatus } = await import("./services/emailService");
 
       // No platform-branded fallback on the counterparty lane. This read
       // `|| "Message from AcreOS"`, and the send below is `purpose: 'counterparty'`
@@ -2121,26 +2154,76 @@ export function registerCampaignRoutes(app: Express): void {
       // Already-HTML bodies pass through; a plain-text body is wrapped once.
       const htmlTemplate = /<[a-z][\s\S]*>/i.test(body) ? body : `<p>${body}</p>`;
 
-      // Send emails with rate limiting. Track in-memory to catch any
-      // within-execution duplicates (e.g. duplicate leadIds in input).
-      const sentInExecution = new Set<number>();
+      // BYO send rail (founder decision 2026-07-17): counterparty mail goes out
+      // under the org's OWN identity or not at all, and the transport refuses
+      // every message when the org has none. Ask the SAME resolver the
+      // transport asks, BEFORE any credit moves, so a campaign with no identity
+      // is refused up front with a next step — not charged, looped over, and
+      // reported as a send. Simulation never reaches the transport's guard, so
+      // it is not refused here either (mirrors the SMS path below).
+      const simulated = shouldSimulate("email", org);
+      const identity = await counterpartyEmailIdentityStatus(org.id);
+      if (!simulated && !identity.canSend) {
+        return Errors.badRequest(
+          res,
+          "Nothing was sent and nothing was charged: campaign email goes out under your own " +
+            "sending identity, and this organization has no verified sending domain or connected " +
+            "email account yet. AcreOS does not email your leads from its own address. " +
+            "Verify your sending domain (contact support to set it up), then send again.",
+          { reason: "no_counterparty_email_identity", sent: 0, charged: 0 },
+        );
+      }
+
+      // Charging. The org's OWN SES account carries the send when it is
+      // connected — that is the customer's provider spend, so AcreOS charges
+      // nothing for it (same rule as BYO SMS). Otherwise 1¢ per recipient is
+      // deducted UPFRONT atomically (DEFECT-0047: WHERE balance >= amount, so
+      // the check and the deduct cannot race), and every send that does not go
+      // out is refunded below.
+      const costPerEmail = 1; // 1 cent per email
+      const chargeable = !req.isFounder && !identity.ownSesCredentials && !simulated;
+      const totalCost = chargeable ? dedupedLeads.length * costPerEmail : 0;
+      if (chargeable) {
+        const deductResult = await creditService.deductCredits(
+          org.id, totalCost, `Campaign email send: ${campaign.name} (${dedupedLeads.length} recipients)`
+        );
+        if (!deductResult) {
+          return Errors.limitExceeded(
+            res,
+            {
+              reason: "insufficient_credits",
+              needed: totalCost,
+              action: "email_send",
+              purchaseUrl: "/usage",
+              message:
+                `Not enough credits to email ${dedupedLeads.length} recipient(s) — this send needs ` +
+                `${totalCost}¢. Buy a credit pack in Settings → Usage & Credits, or connect your own email ` +
+                `sending account, and send again.`,
+            },
+            { docsSlug: "limit-email-credits" },
+          );
+        }
+      }
+
+      // Send emails with rate limiting. The transport's verdict is the
+      // send's verdict: sendEmail RETURNS `{ success: false }` for a refused or
+      // rejected message (identity, suppression, warm-up cap, SES rejection) —
+      // it does not throw — so ignoring the result counted every refusal as
+      // sent, charged for it, and recorded it as delivered.
       const results = { sent: 0, failed: 0, errors: [] as string[] };
 
       for (const lead of dedupedLeads) {
-        // In-memory dedup for this execution
-        if (sentInExecution.has(lead!.id)) continue;
-
         try {
           // Simple template variable replacement
           let html = htmlTemplate
-            .replace(/\{\{firstName\}\}/g, salutationName(lead!))
-            .replace(/\{\{lastName\}\}/g, lead!.lastName || "")
-            .replace(/\{\{email\}\}/g, lead!.email || "")
+            .replace(/\{\{firstName\}\}/g, salutationName(lead))
+            .replace(/\{\{lastName\}\}/g, lead.lastName || "")
+            .replace(/\{\{email\}\}/g, lead.email || "")
             .replace(/\{\{county\}\}/g, (lead as any).county || "")
             .replace(/\{\{state\}\}/g, (lead as any).state || "");
 
-          await emailService.sendEmail({
-            to: lead!.email!,
+          const sendResult = await emailService.sendEmail({
+            to: lead.email!,
             subject,
             html,
             organizationId: org.id,
@@ -2148,43 +2231,54 @@ export function registerCampaignRoutes(app: Express): void {
             // Deal mail: campaign send to a customer's lead — org identity required.
             purpose: 'counterparty',
           });
-          results.sent++;
-          sentInExecution.add(lead!.id);
-
-          // Record delivery event for future dedup
-          await db.insert(campaignDeliveryEvents).values({
-            campaignId,
-            leadId: lead!.id,
-            channel: "email",
-            status: "sent",
-          });
+          if (!sendResult.success) {
+            results.failed++;
+            results.errors.push(`${lead.email}: ${sendResult.error ?? "not sent"}`);
+          } else {
+            results.sent++;
+            // Record the delivery for future dedup. Its OWN try/catch: the
+            // email already went out, so a failed insert must not fall through
+            // to the failure branch and refund a message that was sent.
+            try {
+              await db.insert(campaignDeliveryEvents).values({
+                campaignId,
+                leadId: lead.id,
+                channel: "email",
+                status: "sent",
+              });
+            } catch (insErr) {
+              logger.warn(`[campaigns] delivery-event insert failed after a sent email (lead ${lead.id}, campaign ${campaignId}): ${String(insErr)}`);
+            }
+          }
         } catch (err: any) {
           results.failed++;
-          results.errors.push(`${lead!.email}: ${err.message}`);
+          results.errors.push(`${lead.email}: ${err?.message ?? String(err)}`);
         }
 
         // Rate limit: 5 emails per second
-        if (results.sent % 5 === 0) {
+        if ((results.sent + results.failed) % 5 === 0) {
           await new Promise(r => setTimeout(r, 200));
         }
       }
 
       // DEFECT-0047: Refund credits for failed sends
-      if (!req.isFounder && results.failed > 0) {
-        const refundAmount = results.failed * costPerEmail;
+      const refunded = chargeable ? results.failed * costPerEmail : 0;
+      if (refunded > 0) {
         await creditService.addCredits(
-          org.id, refundAmount, "refund",
+          org.id, refunded, "refund",
           `Refund for ${results.failed} failed email(s) in campaign: ${campaign.name}`
         );
-        logger.info(`[campaigns] Refunded ${refundAmount}¢ for ${results.failed} failed email sends in campaign ${campaignId}`);
+        logger.info(`[campaigns] Refunded ${refunded}¢ for ${results.failed} failed email sends in campaign ${campaignId}`);
       }
 
       // Update campaign stats. Note: the campaigns table has no sentCount
-      // column (sent_count lives on campaign_variants), so only status is set
-      // — matching prior runtime behavior where the sentCount spread was a no-op.
-      await storage.updateCampaign(campaignId, {
-        status: "sent",
-      }, org.id);
+      // column (sent_count lives on campaign_variants), so only status is set.
+      // A batch where nothing went out is not "sent".
+      if (results.sent > 0) {
+        await storage.updateCampaign(campaignId, {
+          status: "sent",
+        }, org.id);
+      }
 
       // Lenore §1 — value-event telemetry. First mailer sent via email
       // channel (distinct from first_letter_sent which is postcard).
@@ -2201,12 +2295,25 @@ export function registerCampaignRoutes(app: Express): void {
         } catch { /* non-fatal */ }
       }
 
+      const skippedCount =
+        skippedNoEmail.length + skippedNotContactable.length + skippedSuppressed.length + skippedDuplicates;
       res.json({
-        success: true,
+        success: results.sent > 0,
+        message:
+          `${results.sent} sent, ${results.failed} failed${results.failed > 0 && refunded > 0 ? " (refunded)" : ""}, ` +
+          `${skippedCount} skipped.`,
         sent: results.sent,
         failed: results.failed,
         skippedDuplicates,
-        total: validLeads.length,
+        skipped: {
+          noEmail: skippedNoEmail.length,
+          notContactable: skippedNotContactable,
+          suppressed: skippedSuppressed.length,
+          alreadySent: skippedDuplicates,
+        },
+        chargedCents: totalCost - refunded,
+        refundedCents: refunded,
+        total: allLeads.filter(Boolean).length,
         errors: results.errors.slice(0, 10),
       });
     } catch (err: any) {
@@ -2233,9 +2340,10 @@ export function registerCampaignRoutes(app: Express): void {
       const campaign = await storage.getCampaign(org.id, campaignId);
       if (!campaign) return Errors.notFound(res, "Campaign");
 
-      // Get leads with phone numbers
+      // Get leads with phone numbers. A repeated leadId is ONE recipient —
+      // charged once (the upfront deduct counts this list).
       const allLeads = await Promise.all(
-        leadIds.map(id => storage.getLead(org.id, id))
+        Array.from(new Set(leadIds)).map(id => storage.getLead(org.id, id))
       );
       const validLeads = allLeads.filter(l => l && l.phone);
 
@@ -2308,23 +2416,8 @@ export function registerCampaignRoutes(app: Express): void {
       const campaignMediaUrls = (campaign as any).mediaUrls as string[] | null | undefined;
       const hasMms = !!(campaignMediaUrls && campaignMediaUrls.length > 0);
       const perRecipientCost = hasMms ? costPerMms : costPerSms;
-      const totalCost = dedupedLeads.length * perRecipientCost;
-
-      if (!req.isFounder) {
-        const deductResult = await creditService.deductCredits(
-          org.id, totalCost, `Campaign SMS send: ${campaign.name} (${dedupedLeads.length} recipients)`
-        );
-        if (!deductResult) {
-          return Errors.limitExceeded(res, { needed: totalCost, action: "sms_send" }, { docsSlug: "limit-sms-credits" });
-        }
-      }
-
-      // Audit F-21-1/F-21-2: campaign SMS now sends through sendOrgSMS →
-      // commsRouter, which runs the Searchbug DNC/litigator scrub, quiet hours,
-      // consent and the contact-frequency cap — the raw Twilio call bypassed
-      // every one. TWILIO_PHONE_NUMBER is read only to label simulated sends.
-      const twilioPhone = process.env.TWILIO_PHONE_NUMBER ?? "byo";
-
+      // The content check runs BEFORE any credit moves: it used to run after
+      // the deduct and return without a refund.
       // `campaigns.content` is the column the customer's composed body lives in —
       // the direct-mail path in this same file reads it (see the letter/postcard
       // send above). The email and SMS paths reached past it for
@@ -2345,32 +2438,66 @@ export function registerCampaignRoutes(app: Express): void {
         );
       }
 
-      // Send SMS messages with in-memory dedup for this execution
-      const sentInExecution = new Set<number>();
-      const results = { sent: 0, failed: 0, errors: [] as string[] };
-      // Honor SIMULATION_MODE / org.settings.simulationMode — a global
-      // kill-switch must hold on the campaign batch path too (caught 2026-05-10).
+      // BYO billing: a text that goes out on the org's OWN Twilio/SMS number is
+      // the customer's provider spend — they pay the carrier directly — so
+      // AcreOS charges nothing for it (creditPool's BYOK bypass, and what the
+      // help text promises). The deduct below ran unconditionally, so every BYO
+      // text was billed twice. `orgHasConnectedSmsIdentity` is the same check
+      // the send path uses to pick the number, so the charge follows the
+      // account that actually carries the message.
       const simulated = shouldSimulate("sms", org);
+      const byoSms = await orgHasConnectedSmsIdentity(org.id);
 
       // "Be the rail, not the provider" (founder ruling 2026-07-29): campaign
       // SMS is COUNTERPARTY traffic and must run on the org's OWN connected
       // (BYO) Twilio identity. The comms router falls back to the platform
       // TWILIO_* account when no BYO is connected (that account is system-mail
-      // only) — so refuse the whole batch here rather than send counterparty
-      // texts on AcreOS's account. Refund the upfront deduct; no send happens.
-      if (!simulated && !(await orgHasConnectedSmsIdentity(org.id))) {
-        if (!req.isFounder) {
-          await creditService.addCredits(
-            org.id, totalCost, "refund",
-            `Refund: campaign ${campaign.name} not sent — no connected SMS identity`,
-          );
-        }
+      // only) — so refuse the whole batch here, before any credit moves, rather
+      // than send counterparty texts on AcreOS's account.
+      if (!simulated && !byoSms) {
         return Errors.badRequest(
           res,
           "Connect your own Twilio/SMS number before sending campaign texts — AcreOS does not send counterparty SMS on the platform account.",
           { reason: "no_byo_sms_identity" },
         );
       }
+
+      const chargeable = !req.isFounder && !byoSms && !simulated;
+      const totalCost = chargeable ? dedupedLeads.length * perRecipientCost : 0;
+
+      if (chargeable) {
+        const deductResult = await creditService.deductCredits(
+          org.id, totalCost, `Campaign SMS send: ${campaign.name} (${dedupedLeads.length} recipients)`
+        );
+        if (!deductResult) {
+          return Errors.limitExceeded(
+            res,
+            {
+              reason: "insufficient_credits",
+              needed: totalCost,
+              action: "sms_send",
+              purchaseUrl: "/usage",
+              message:
+                `Not enough credits to text ${dedupedLeads.length} recipient(s) — this send needs ` +
+                `${totalCost}¢. Buy a credit pack in Settings → Usage & Credits and send again.`,
+            },
+            { docsSlug: "limit-sms-credits" },
+          );
+        }
+      }
+
+      // Audit F-21-1/F-21-2: campaign SMS now sends through sendOrgSMS →
+      // commsRouter, which runs the Searchbug DNC/litigator scrub, quiet hours,
+      // consent and the contact-frequency cap — the raw Twilio call bypassed
+      // every one. TWILIO_PHONE_NUMBER is read only to label simulated sends.
+      const twilioPhone = process.env.TWILIO_PHONE_NUMBER ?? "byo";
+
+      // Send SMS messages with in-memory dedup for this execution
+      const sentInExecution = new Set<number>();
+      const results = { sent: 0, failed: 0, errors: [] as string[] };
+      // SIMULATION_MODE / org.settings.simulationMode (`simulated`, above) is a
+      // global kill-switch that must hold on the campaign batch path too
+      // (caught 2026-05-10).
 
       for (const lead of dedupedLeads) {
         // In-memory dedup for this execution
@@ -2447,7 +2574,7 @@ export function registerCampaignRoutes(app: Express): void {
 
       // DEFECT-0047: Refund credits for failed sends — use the same
       // per-recipient cost we deducted upfront (MMS or SMS).
-      if (!req.isFounder && results.failed > 0) {
+      if (chargeable && results.failed > 0) {
         const refundAmount = results.failed * perRecipientCost;
         await creditService.addCredits(
           org.id, refundAmount, "refund",
@@ -2456,10 +2583,12 @@ export function registerCampaignRoutes(app: Express): void {
         logger.info(`[campaigns] Refunded ${refundAmount}¢ for ${results.failed} failed ${hasMms ? "MMS" : "SMS"} sends in campaign ${campaignId}`);
       }
 
-      // Update campaign stats
-      await storage.updateCampaign(campaignId, {
-        status: "sent",
-      }, org.id);
+      // Update campaign stats. A batch where nothing went out is not "sent".
+      if (results.sent > 0) {
+        await storage.updateCampaign(campaignId, {
+          status: "sent",
+        }, org.id);
+      }
 
       // Lenore §1 — value-event telemetry. First mailer sent via SMS
       // channel. Same canonical event as email; the (orgId, eventName)
@@ -2478,7 +2607,7 @@ export function registerCampaignRoutes(app: Express): void {
       }
 
       res.json({
-        success: true,
+        success: results.sent > 0,
         sent: results.sent,
         failed: results.failed,
         skippedDuplicates,
@@ -2486,6 +2615,9 @@ export function registerCampaignRoutes(app: Express): void {
         quietHoursBlocked: quietHoursBlocked.length,
         tcpaBlockedSamples: tcpaBlocked.slice(0, 5),
         quietHoursBlockedSamples: quietHoursBlocked.slice(0, 5),
+        // What this batch actually cost: 0 when it rode the org's own number.
+        chargedCents: chargeable ? totalCost - results.failed * perRecipientCost : 0,
+        billedTo: byoSms ? "your_own_sms_account" : "acreos_credits",
         total: validLeads.length,
         errors: results.errors.slice(0, 10),
       });

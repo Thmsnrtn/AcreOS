@@ -45,7 +45,7 @@ describe.runIf(realDbAvailable)("due-diligence checklists are read within the or
 
   it("the holder's checklist is never another organization's answer — in either order", async () => {
     // A starts its checklist and writes a private note.
-    const mine = await storage.getOrCreateDueDiligenceChecklist(orgA, propA);
+    const mine = (await storage.getOrCreateDueDiligenceChecklist(orgA, propA))!;
     await storage.updateDueDiligenceChecklist(mine.id, { notes: `${tag}-private` } as never, orgA);
     // B reading the same property id finds nothing of A's.
     expect(await storage.getDueDiligenceChecklist(orgB, propA)).toBeUndefined();
@@ -55,14 +55,28 @@ describe.runIf(realDbAvailable)("due-diligence checklists are read within the or
     expect(again?.organizationId).toBe(orgA);
   });
 
+  it("get-or-create never starts a checklist on another organization's property", async () => {
+    await db.delete(schema.dueDiligenceChecklists).where(eq(schema.dueDiligenceChecklists.propertyId, propA));
+    // The repository checks the property itself (defence in depth behind the
+    // route gate in dueDiligenceChecklistRoute.test.ts): B naming A's property
+    // gets nothing back, and no row is written.
+    expect(await storage.getOrCreateDueDiligenceChecklist(orgB, propA)).toBeUndefined();
+    const rows = await db.select().from(schema.dueDiligenceChecklists).where(eq(schema.dueDiligenceChecklists.propertyId, propA));
+    expect(rows).toEqual([]);
+  });
+
   it("a row another organization started on the property is never served to the holder", async () => {
     await db.delete(schema.dueDiligenceChecklists).where(eq(schema.dueDiligenceChecklists.propertyId, propA));
-    // B's row exists first (the repository does not check the property; the
-    // route does — dueDiligenceChecklistRoute.test.ts).
-    const theirs = await storage.getOrCreateDueDiligenceChecklist(orgB, propA);
+    // A foreign row on the property, as earlier code could leave behind
+    // (scripts/data/delete-checklists-outside-property-org.ts removes them).
+    const [theirs] = await db
+      .insert(schema.dueDiligenceChecklists)
+      .values({ organizationId: orgB, propertyId: propA } as never)
+      .returning();
     const mine = await storage.getOrCreateDueDiligenceChecklist(orgA, propA);
-    expect(mine.id).not.toBe(theirs.id);
-    expect(mine.organizationId).toBe(orgA);
-    expect((await storage.getDueDiligenceChecklist(orgA, propA))?.id).toBe(mine.id);
+    expect(mine).toBeDefined();
+    expect(mine!.id).not.toBe(theirs.id);
+    expect(mine!.organizationId).toBe(orgA);
+    expect((await storage.getDueDiligenceChecklist(orgA, propA))?.id).toBe(mine!.id);
   });
 });

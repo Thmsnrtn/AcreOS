@@ -15,9 +15,12 @@ describe("autopilot outcomeOf — outward real-world outcomes (Hands P0.3)", () 
     expect(outcomeOf({})).toBe("pending");
   });
 
-  it("founder verdict still outranks outward outcomes (human ground truth wins)", () => {
-    // A bounce happened, but the founder explicitly approved the action.
-    expect(outcomeOf({ founderVerdict: "approved", deliveryBounced: true })).toBe("success");
+  it("an approval does not outrank what the action actually did", () => {
+    // Was "founder verdict outranks outward outcomes" → success. Approving an
+    // action is not evidence it worked; the bounce is.
+    expect(outcomeOf({ founderVerdict: "approved", deliveryBounced: true })).toBe("failure");
+    // A decline is still human ground truth and outranks a recovered payment.
+    expect(outcomeOf({ founderVerdict: "declined", paymentRecovered: true })).toBe("failure");
   });
 
   it("a bad support resolution still outranks a recovered payment", () => {

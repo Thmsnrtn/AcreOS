@@ -53,8 +53,12 @@ export type LeadCreateBody = Omit<InsertLeadInput, "deletedAt" | "deletedBy"> & 
  * them. So the passthrough is followed by a strip: the parsed body never
  * carries the primary key, the tenant key, the lifecycle timestamps or the
  * soft-delete fields (`serverOwnedFields.ts`), nor the lead's own generated
- * columns. Server-owned fields are set by the server, never the request.
- * Pinned by tests/unit/requestSchemasNeverCarryServerFields.test.ts.
+ * columns. Server-owned fields are set by the server, never the request: a
+ * caller-chosen `id` planted ahead of the shared `leads_id_seq` would later
+ * collide with the sequence and fail lead creation for every tenant.
+ * Pinned by tests/unit/requestSchemasNeverCarryServerFields.test.ts and by
+ * tests/unit/contractsOmitServerOwnedKeys.test.ts (which derives the
+ * forbidden keys from the leads table itself).
  */
 export const leadCreateRequestSchema = insertLeadSchema
   .passthrough()

@@ -179,6 +179,16 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
       content: initialMessage,
     });
 
+    // Legal / compliance intake → one urgent founder ask. Never throws.
+    const { escalateLegalIntake } = await import("./supportLegalIntake");
+    await escalateLegalIntake({
+      table: "support_cases",
+      recordId: supportCase.id,
+      organizationId,
+      subject,
+      description: initialMessage,
+    });
+
     return { case: supportCase, classification };
   }
 

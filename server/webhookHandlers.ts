@@ -815,7 +815,7 @@ export class WebhookHandlers {
         const { emailService } = await import('./services/emailService');
         const { users } = await import('@shared/models/auth');
         const { eq } = await import('drizzle-orm');
-        const [owner] = await db.select({ email: users.email }).from(users).where(eq(users.clerkUserId, org.ownerId)).limit(1);
+        const [owner] = await db.select({ email: users.email }).from(users).where(eq(users.id, org.ownerId)).limit(1);
         if (owner?.email) {
           await emailService.sendEmail({
             to: owner.email,
@@ -854,7 +854,7 @@ export class WebhookHandlers {
           const [ownerUser] = await db
             .select({ id: users.id, email: users.email })
             .from(users)
-            .where(eq(users.clerkUserId, org.ownerId))
+            .where(eq(users.id, org.ownerId))
             .limit(1);
           if (ownerUser?.email) {
             const { dispatchLifecycleOnce } = await import('./jobs/lifecycleDispatch');

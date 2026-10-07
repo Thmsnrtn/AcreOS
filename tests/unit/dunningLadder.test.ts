@@ -109,7 +109,7 @@ describe("processScheduledTasks — the W1.1 scheduled_retry regression", () => 
     vi.setSystemTime(NOW);
     sendEmailSpy = vi
       .spyOn(dunningService as any, "sendDunningEmail")
-      .mockResolvedValue(undefined);
+      .mockResolvedValue(true); // true = the email really went out
     sendSmsSpy = vi.spyOn(dunningService as any, "sendDunningSMS").mockResolvedValue(true);
     activeOrgsSpy = vi.spyOn(dunningService, "getActiveDunningOrgs");
     vi.mocked(storage.getDunningEvents).mockReset();
@@ -156,6 +156,17 @@ describe("processScheduledTasks — the W1.1 scheduled_retry regression", () => 
         ],
       }),
     );
+  });
+
+  it("does not record a reminder that was not actually sent", async () => {
+    activeOrgsSpy.mockResolvedValue([org()]);
+    sendEmailSpy.mockResolvedValue(false);
+    vi.mocked(storage.getDunningEvents).mockResolvedValue([
+      { id: 46, status: "scheduled_retry", notificationsSent: [], amountDueCents: 4900 },
+    ] as any);
+    await dunningService.processScheduledTasks();
+    expect(sendEmailSpy).toHaveBeenCalledTimes(1);
+    expect(storage.updateDunningEvent).not.toHaveBeenCalled();
   });
 
   it("still sends for plain pending events", async () => {

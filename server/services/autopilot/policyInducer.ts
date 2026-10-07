@@ -24,7 +24,7 @@ import {
   type AutopilotPolicyProposal,
 } from "@shared/schema";
 import { logger } from "../../utils/logger";
-import { outcomeOf, type ExperienceVote } from "./experienceLog";
+import { outcomeOf, signalsOf, type ExperienceVote } from "./experienceLog";
 
 /** Consecutive recent declines/failures that trigger a "stop" proposal. */
 export const DECLINE_STREAK = 3;
@@ -80,20 +80,16 @@ async function votesForPlay(domain: string, playId: string): Promise<ExperienceV
       founderVerdict: autopilotExperiences.founderVerdict,
       resolution: autopilotExperiences.resolution,
       satisfaction: autopilotExperiences.satisfaction,
+      deliveryBounced: autopilotExperiences.deliveryBounced,
+      paymentRecovered: autopilotExperiences.paymentRecovered,
     })
     .from(autopilotExperiences)
     .where(and(eq(autopilotExperiences.domain, domain), eq(autopilotExperiences.playId, playId)))
     .orderBy(desc(autopilotExperiences.createdAt))
     .limit(50);
-  return rows.map((r) =>
-    outcomeOf({
-      dispatchSuccess: r.dispatchSuccess,
-      evalScore: r.evalScore != null ? Number(r.evalScore) : null,
-      founderVerdict: r.founderVerdict,
-      resolution: r.resolution,
-      satisfaction: r.satisfaction,
-    }),
-  );
+  // signalsOf: the SAME field mapping every other aggregator votes on, so a
+  // real consequence (bounce / recovered payment) votes here too.
+  return rows.map((r) => outcomeOf(signalsOf(r)));
 }
 
 export interface InductionDeps {
