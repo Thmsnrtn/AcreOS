@@ -56,7 +56,9 @@ describe("statsFromExperiences — now honors the consequence columns", () => {
 
 describe("outcomeBasis — what signal decided the vote (T1.1 refine-from-consequence)", () => {
   it("classifies human / support / consequence / eval / mechanical / none", () => {
-    expect(outcomeBasis({ founderVerdict: "approved" })).toBe("human");
+    expect(outcomeBasis({ founderVerdict: "declined" })).toBe("human");
+    // An approval decides nothing (2026-10-07) — it is not a basis.
+    expect(outcomeBasis({ founderVerdict: "approved" })).toBe("none");
     expect(outcomeBasis({ resolution: "resolved" })).toBe("support");
     expect(outcomeBasis({ paymentRecovered: true })).toBe("consequence");
     expect(outcomeBasis({ deliveryBounced: true })).toBe("consequence");

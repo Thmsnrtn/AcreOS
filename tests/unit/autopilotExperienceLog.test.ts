@@ -6,9 +6,17 @@ import {
 } from "../../server/services/autopilot/experienceLog";
 
 describe("autopilot experience log — honest signal → vote", () => {
-  it("the founder's verdict is ground truth and wins over everything", () => {
-    expect(outcomeOf({ founderVerdict: "approved", dispatchSuccess: false, evalScore: 0.1 })).toBe("success");
+  it("the founder's DECLINE is ground truth and wins over everything", () => {
     expect(outcomeOf({ founderVerdict: "declined", dispatchSuccess: true, evalScore: 0.99 })).toBe("failure");
+  });
+
+  it("AN APPROVAL IS NOT AN OUTCOME — the approved move votes on its real result", () => {
+    // Was `approved → "success"`, outranking even a failed run and a failing
+    // eval. Approval is permission to try; nothing has happened when it lands.
+    expect(outcomeOf({ founderVerdict: "approved" })).toBe("pending");
+    expect(outcomeOf({ founderVerdict: "approved", dispatchSuccess: true })).toBe("pending");
+    expect(outcomeOf({ founderVerdict: "approved", dispatchSuccess: false, evalScore: 0.1 })).toBe("failure");
+    expect(outcomeOf({ founderVerdict: "approved", paymentRecovered: true })).toBe("success");
   });
 
   it("support resolution counts: resolved = success, reopened = failure", () => {
@@ -54,8 +62,9 @@ describe("autopilot experience log — honest signal → vote", () => {
 
   it("statsFromExperiences aggregates per play and ignores pending + play-less rows", () => {
     const stats = statsFromExperiences([
-      { playId: "county-guide", founderVerdict: "approved" },
-      { playId: "county-guide", founderVerdict: "approved" },
+      { playId: "county-guide", founderVerdict: "approved", resolution: "resolved" },
+      { playId: "county-guide", founderVerdict: "approved", paymentRecovered: true },
+      { playId: "county-guide", founderVerdict: "approved" }, // approved, nothing run yet — no vote
       { playId: "county-guide", founderVerdict: "declined" },
       { playId: "parcel-explainer", dispatchSuccess: true }, // sent, nothing back — no vote
       { playId: "parcel-explainer", evalScore: 0.2, dispatchSuccess: true }, // eval fail
