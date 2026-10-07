@@ -166,13 +166,20 @@ describe("DEFECT-0054 population — every read and write of the two tables", ()
     expect(repo).toMatch(/appSecret:\s*sealAdAccountSecret\(/);
   });
 
-  it("every ad-account response masks both secrets", () => {
+  it("every ad-account response omits both secrets and serves only a masked last-4", () => {
+    // Was: "masks both secrets" under their own keys. The row keys are now
+    // projected out (omitSecretColumns, the secret-column registry), so the
+    // response guard has nothing to remove; the masked values ride under
+    // their own *Masked keys.
     const admin = SOURCES.find((s) => s.file === "server/routes-admin.ts")!.src;
-    const spreads = [...admin.matchAll(/res\.json\(\{\s*\.\.\.account\b[^;]*;/g)].map((m) => m[0]);
-    expect(spreads.length).toBeGreaterThanOrEqual(2);
-    for (const s of spreads) {
-      expect(s).toMatch(/accessToken:\s*maskAdAccountSecret\(/);
-      expect(s).toMatch(/appSecret:\s*maskAdAccountSecret\(/);
+    const responses = [...admin.matchAll(/res\.json\(\{[^;]*\baccount\b[^;]*;/g)].map((m) => m[0]);
+    expect(responses.length).toBeGreaterThanOrEqual(2);
+    for (const s of responses) {
+      expect(s).toMatch(/\.\.\.omitSecretColumns\(\s*founderAdAccounts\s*,\s*account\s*\)/);
+      expect(s).not.toMatch(/\.\.\.account\b/);
+      expect(s).not.toMatch(/\b(accessToken|appSecret):/);
+      expect(s).toMatch(/accessTokenMasked:\s*maskAdAccountSecret\(/);
+      expect(s).toMatch(/appSecretMasked:\s*maskAdAccountSecret\(/);
     }
   });
 

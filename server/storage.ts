@@ -683,7 +683,7 @@ export interface IStorage {
   deleteOfferTemplate(id: number): Promise<void>;
 
   // Due Diligence Checklists (Enhanced)
-  getDueDiligenceChecklist(propertyId: number): Promise<DueDiligenceChecklist | undefined>;
+  getDueDiligenceChecklist(orgId: number, propertyId: number): Promise<DueDiligenceChecklist | undefined>;
   getOrCreateDueDiligenceChecklist(orgId: number, propertyId: number): Promise<DueDiligenceChecklist>;
   updateDueDiligenceChecklist(id: number, updates: Partial<InsertDueDiligenceChecklist>, organizationId?: number): Promise<DueDiligenceChecklist>;
 

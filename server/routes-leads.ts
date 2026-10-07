@@ -23,6 +23,7 @@ import { usageMeteringService, creditService } from "./services/credits";
 import { parseCSV, importLeads, exportLeadsToCSV, getExpectedColumns, type ExportFilters } from "./services/importExport";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { omitSecretColumns } from "./utils/secretColumns";
 // ONE owner for the assigned-leads rule. It was hand-copied into five places
 // and missing from four write paths — see server/utils/assignedLeadGate.ts.
 import {
@@ -39,8 +40,14 @@ import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fil
 import { apnMatchForm, createParcelDedupeIndex } from "./services/leads/parcelDedupe";
 import { splitOwnerName } from "@shared/parcel/ownerName";
 
-// Partial update schema for PUT endpoints
-const updateLeadSchema = insertLeadSchema.partial();
+// Partial update schema for PUT endpoints. The soft-delete fields are server-
+// owned: a lead is deleted and restored only through the dedicated paths
+// (DELETE /api/leads/:id, PATCH /api/leads/:id/restore, and the repository's
+// deleteLead / bulkDeleteLeads / restoreLeads), never by an edit, so a client-supplied `deletedAt`/`deletedBy` is dropped here (zod
+// strips keys a schema does not declare). insertLeadSchema already omits id,
+// organizationId and the timestamps. Pinned by
+// tests/unit/leadCreateServerFields.test.ts.
+const updateLeadSchema = insertLeadSchema.omit({ deletedAt: true, deletedBy: true }).partial();
 
 // Task #Phase5: Zod schemas for bulk operations (mirrors bulkIdsSchema in routes-properties.ts)
 const bulkLeadIdsSchema = z.object({
@@ -177,7 +184,7 @@ export function registerLeadRoutes(app: Express): void {
       const data = result.data.map(lead => {
         const { score, factors } = leadNurturerService.calculateLeadScore(lead);
         const computedStage = leadNurturerService.segmentLead(score);
-        return { ...lead, score, scoreFactors: factors, nurturingStage: computedStage };
+        return { ...omitSecretColumns(leads, lead), score, scoreFactors: factors, nurturingStage: computedStage };
       });
       return res.json({ data, total: result.total, page, pageSize, totalPages: result.totalPages });
     }
@@ -188,7 +195,7 @@ export function registerLeadRoutes(app: Express): void {
     const leadsWithScores = result.data.map(lead => {
       const { score, factors } = leadNurturerService.calculateLeadScore(lead);
       const computedStage = leadNurturerService.segmentLead(score);
-      return { ...lead, score, scoreFactors: factors, nurturingStage: computedStage };
+      return { ...omitSecretColumns(leads, lead), score, scoreFactors: factors, nurturingStage: computedStage };
     });
 
     res.json({
@@ -334,7 +341,9 @@ export function registerLeadRoutes(app: Express): void {
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const lead = await storage.getLead(org.id, leadId);
     if (!lead) return Errors.notFound(res, "Lead");
-    res.json(lead);
+    // Lead responses omit tax identity (ciphertext TIN and its type); the
+    // 1099/1098 paths read them server-side.
+    res.json(omitSecretColumns(leads, lead));
   });
   
 
@@ -396,11 +405,13 @@ export function registerLeadRoutes(app: Express): void {
       }
       
       // T3-3E Phase 3 — contract request validation. `leadCreateRequestSchema`
-      // is `insertLeadSchema.passthrough()`, so this is the canonical insert
-      // parse PLUS the transport-only extras the handler reads later
-      // (latitude/longitude for enrichment, consentText/pageUrl for the TCPA
-      // evidence chain). organizationId is attached from the authed org, not
-      // the wire body. On failure → 422 via Errors.validationFailed.
+      // is `insertLeadSchema.passthrough()` followed by a strip of every
+      // server-owned field, so this is the canonical insert parse PLUS the
+      // transport-only extras the handler reads later (latitude/longitude for
+      // enrichment, consentText/pageUrl for the TCPA evidence chain), and
+      // never an id, tenant key, timestamp or soft-delete field.
+      // organizationId is attached from the authed org, not the wire body.
+      // On failure → 422 via Errors.validationFailed.
       const parsedBody = createLeadContract.requestSchema.safeParse(req.body);
       if (!parsedBody.success) {
         return Errors.validationFailed(res, parsedBody.error.issues);
@@ -626,7 +637,7 @@ export function registerLeadRoutes(app: Express): void {
         .json(
           validateResponse(
             createLeadContract.responseSchema,
-            lead,
+            omitSecretColumns(leads, lead),
             "POST /api/leads",
           ),
         );
@@ -728,7 +739,7 @@ export function registerLeadRoutes(app: Express): void {
       }
       
       res.json({
-        ...lead,
+        ...omitSecretColumns(leads, lead!),
         score,
         scoreFactors: factors,
         nurturingStage,

@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction, RequestHandler } from "express";
 import { maskAdAccountSecret } from "./services/founderAdAccountSecrets";
+import { omitSecretColumns } from "./utils/secretColumns";
 import { storage, db } from "./storage";
 import { z } from "zod";
 import { eq, sql, and, desc, lt, inArray, or, count } from "drizzle-orm";
@@ -14,6 +15,7 @@ import {
   systemApiKeys,
   featureRequests,
   growthCampaigns,
+  founderAdAccounts,
   systemActivity,
   computeSla,
   orgApiKeys,
@@ -39,6 +41,7 @@ import { isFounderIdentity } from "./services/founder";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 import { Errors, sendError } from "./utils/errors";
+import { omitProtectedFields } from "./utils/updatePayload";
 import { getUserId, getOrganization, getClerkAuth, type AuthenticatedRequest } from "./types/request";
 
 import { sanitizePromptInline } from "./utils/sanitizePrompt";
@@ -2717,7 +2720,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const id = parseInt(req.params.id);
       const [updated] = await db.update(aiModelConfigs)
-        .set({ ...req.body, updatedAt: new Date() })
+        .set({ ...omitProtectedFields(req.body), updatedAt: new Date() })
         .where(eq(aiModelConfigs.id, id))
         .returning();
       const { invalidateDbModelCache } = await import('./services/aiRouter');
@@ -3271,9 +3274,9 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const account = await storage.getFounderAdAccount("meta");
       if (!account) return res.json(null);
-      // Mask both secrets for display. The app secret used to go to the
-      // browser in full (DEFECT-0054).
-      res.json({ ...account, accessToken: maskAdAccountSecret(account.accessToken), appSecret: maskAdAccountSecret(account.appSecret) });
+      // Neither secret is served (DEFECT-0054: the app secret used to go to
+      // the browser in full); a masked last-4 rides under its own key.
+      res.json({ ...omitSecretColumns(founderAdAccounts, account), accessTokenMasked: maskAdAccountSecret(account.accessToken), appSecretMasked: maskAdAccountSecret(account.appSecret) });
     } catch (err: any) {
       Errors.internal(res, err);
     }
@@ -3295,7 +3298,7 @@ export function registerAdminRoutes(app: Express): void {
         ...(typeof appSecret === "string" && appSecret.length > 0 ? { appSecret } : {}),
         isActive: true,
       });
-      res.json({ ...account, accessToken: maskAdAccountSecret(account.accessToken), appSecret: maskAdAccountSecret(account.appSecret) });
+      res.json({ ...omitSecretColumns(founderAdAccounts, account), accessTokenMasked: maskAdAccountSecret(account.accessToken), appSecretMasked: maskAdAccountSecret(account.appSecret) });
     } catch (err: any) {
       Errors.internal(res, err);
     }

@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { marketplaceService } from './services/marketplace';
+import { marketplaceService, investorProfileEdits } from './services/marketplace';
 import { matchmaking } from './services/matchmaking';
 import { isAuthenticated } from './auth';
 import { asyncHandler } from './middleware/asyncHandler';
@@ -154,7 +154,9 @@ router.get('/listings/:id/bids', asyncHandler(async (req: Request, res: Response
     if (!listing) {
       return sendError(res, 404, "NOT_FOUND", 'Listing not found');
     }
-    const bids = await marketplaceService.getBidsForListing(listingId);
+    // The seller sees every bid on the listing; any other organization sees
+    // only its own.
+    const bids = await marketplaceService.getBidsVisibleTo(listingId, org.id, listing.listing.sellerOrganizationId);
     res.json({ bids });
   } catch (error: any) {
     Errors.internal(res, error);
@@ -259,7 +261,7 @@ router.get('/investor-profile', asyncHandler(async (req: Request, res: Response)
 router.post('/investor-profile', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const profile = await marketplaceService.updateInvestorProfile(org.id, req.body);
+    const profile = await marketplaceService.updateInvestorProfile(org.id, investorProfileEdits(req.body));
     res.json({ profile, success: true });
   } catch (error: any) {
     Errors.badRequest(res, error.message ?? "Bad request");
@@ -292,7 +294,7 @@ router.get('/search', asyncHandler(async (req: Request, res: Response) => {
       sortBy: sortBy as any,
       limit: limit ? parseInt(limit as string) : undefined,
       offset: offset ? parseInt(offset as string) : undefined,
-    });
+    }, req.organization?.id);
     res.json({ listings });
   } catch (error: any) {
     Errors.internal(res, error);
@@ -409,7 +411,9 @@ router.get('/investors/:id', asyncHandler(async (req: Request, res: Response) =>
 router.patch('/investors/me', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const data = req.body;
+    // Only the customer-editable columns: the platform's verification and
+    // reputation fields, and the row's id and tenant key, are not the body's.
+    const data = investorProfileEdits(req.body);
 
     // Upsert: try update first, then insert if not found
     const existing = await db

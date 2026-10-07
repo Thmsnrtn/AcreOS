@@ -88,6 +88,18 @@ groups:
           severity: critical
         annotations:
           summary: "Stripe webhooks failing — subscription updates may be missed"
+
+      # Deliveries that do not verify never page (unsigned traffic says nothing
+      # about a customer). But a wrong or rotated endpoint secret looks exactly
+      # like that: every real event is rejected and none verifies. Rejections
+      # with no verified delivery for six hours is that shape.
+      - alert: StripeWebhookNothingVerifies
+        expr: increase(acreos_stripe_webhook_signature_rejected_total[6h]) > 0 and increase(acreos_stripe_webhook_verified_total[6h]) == 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Stripe webhook deliveries are rejected and none has verified in 6h — check STRIPE_WEBHOOK_SECRET against the Stripe dashboard"
 ```
 
 ---

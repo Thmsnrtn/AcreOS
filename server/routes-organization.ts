@@ -34,7 +34,8 @@ import { sophiePrivacyGuard } from "./services/sophiePrivacyGuard";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { customerAuditFromRequest, CustomerAuditActions } from "./utils/customerAudit";
 import { getOrganization, type AuthenticatedRequest } from "./types/request";
-import { getOrganizationId } from "./types/request";
+import { getOrganizationId, getUserId } from "./types/request";
+import { toOrganizationView, toTeamMemberView, type ViewerRole } from "@shared/accountViews";
 import type { Response } from "express";
 import {
   generateInviteToken,
@@ -97,6 +98,30 @@ const updateOrganizationSchema = z.object({
   // it without defensive parsing.
   investorType: z.enum(["land", "notes", "both"]).optional(),
 }).strict();
+
+/**
+ * The caller's role in the request's organization, for shaping read
+ * responses. A caller whose membership row cannot be read (or who has none —
+ * getOrCreateOrg has already established they belong here) gets the
+ * least-privileged view rather than an error, so the app shell still loads.
+ */
+async function viewerRoleFor(req: AuthenticatedRequest): Promise<ViewerRole> {
+  const org = getOrganization(req);
+  try {
+    const context = req.permissionContext ?? (await getUserPermissionContext(req.user, org));
+    if (context) {
+      req.permissionContext = context;
+      return context.role;
+    }
+  } catch (err) {
+    logger.warn("[account-view] role lookup failed; serving the least-privileged view", {
+      organizationId: org.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return "viewer";
+  }
+  return req.user?.id && org.ownerId === req.user.id ? "owner" : "viewer";
+}
 
 export function registerOrganizationRoutes(app: Express): void {
   const api = app;
@@ -456,9 +481,17 @@ export function registerOrganizationRoutes(app: Express): void {
   // ORGANIZATION
   // ============================================
   
+  // Responses carry only the fields the caller's role needs — see
+  // shared/accountViews.ts for the allowlist and the client surface behind
+  // each field.
   api.get("/api/organization", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = req.organization;
-    res.json(org);
+    try {
+      const authed = req as AuthenticatedRequest;
+      const org = getOrganization(authed);
+      res.json(toOrganizationView(org, await viewerRoleFor(authed)));
+    } catch (err) {
+      Errors.internal(res, err);
+    }
   });
   
   // ── Cross-customer data sharing (founder ruling 2026-09-29 #11) ─────────
@@ -520,7 +553,7 @@ export function registerOrganizationRoutes(app: Express): void {
       });
     } catch (e) { /* non-fatal */ }
 
-    res.json(updated);
+    res.json(toOrganizationView(updated, await viewerRoleFor(req as AuthenticatedRequest)));
   });
   
   // ─── Tax Identity (1099 issuer fields) ───────────────────────────────────
@@ -1148,10 +1181,18 @@ export function registerOrganizationRoutes(app: Express): void {
   // TEAM MEMBERS
   // ============================================
   
+  // Roster entries are projected per caller: teammates' email addresses only
+  // for the roles in ROLES_SEEING_TEAMMATE_EMAILS (shared/accountViews.ts).
   api.get("/api/team", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = req.organization;
-    const members = await storage.getTeamMembers(org.id);
-    res.json(members);
+    try {
+      const authed = req as AuthenticatedRequest;
+      const org = getOrganization(authed);
+      const viewer = { userId: getUserId(authed), role: await viewerRoleFor(authed) };
+      const members = await storage.getTeamMembers(org.id);
+      res.json(members.map((member) => toTeamMemberView(member, viewer)));
+    } catch (err) {
+      Errors.internal(res, err);
+    }
   });
   
   api.get("/api/me/permissions", isAuthenticated, getOrCreateOrg, async (req, res) => {

@@ -21,6 +21,31 @@ class LeadsAreDistinctParcelsError extends Error {
   }
 }
 
+/**
+ * The row a lead create actually inserts. Server-owned fields are set by the
+ * server, never the caller: the database assigns `id` and `updatedAt`, a new
+ * lead is never born soft-deleted, and `phoneNormalized` is a STORED generated
+ * column Postgres refuses to accept a value for. `organizationId` is the
+ * caller's (always the server's own org id) and is kept.
+ *
+ * `createdAt` is kept only as a real `Date`: the CSV import deliberately
+ * preserves a row's original creation date (history-preserving extras in
+ * services/importExport.ts) and constructs that Date itself, while a value
+ * that arrived in a JSON body is at most a string — which the timestamp
+ * column cannot take anyway — so it is dropped and the column default applies.
+ *
+ * Defence in depth behind the create contract's own strip
+ * (shared/contracts/leads.ts); pinned by tests/unit/leadCreateServerFields.test.ts.
+ */
+const LEAD_INSERT_SERVER_OWNED = ["id", "updatedAt", "deletedAt", "deletedBy", "lastScoreAt", "phoneNormalized"];
+
+function leadInsertRow<T extends InsertLead & { organizationId: number }>(lead: T): T {
+  const row: Record<string, unknown> = { ...lead };
+  for (const key of LEAD_INSERT_SERVER_OWNED) delete row[key];
+  if ("createdAt" in row && !(row.createdAt instanceof Date)) delete row.createdAt;
+  return row as T;
+}
+
 export const leadRepo = {
   // Leads
   async getLeads(this: DatabaseStorage, orgId: number, filters?: { assignedTo?: number | null }): Promise<Lead[]> {
@@ -272,7 +297,7 @@ export const leadRepo = {
   // organizationId is omitted from InsertLead (set server-side) but the DB
   // column is NOT NULL — callers supply it, so it is required here.
   async createLead(this: DatabaseStorage, lead: InsertLead & { organizationId: number }): Promise<Lead> {
-    const [newLead] = await db.insert(leads).values(lead).returning();
+    const [newLead] = await db.insert(leads).values(leadInsertRow(lead)).returning();
     await this.logActivity({
       organizationId: lead.organizationId,
       action: "created",
@@ -286,7 +311,7 @@ export const leadRepo = {
   async createLeadsBatch(this: DatabaseStorage, leadsData: (InsertLead & { organizationId: number })[]): Promise<Lead[]> {
     if (leadsData.length === 0) return [];
     // Batch insert all leads in a single query instead of N individual inserts
-    const newLeads = await db.insert(leads).values(leadsData).returning();
+    const newLeads = await db.insert(leads).values(leadsData.map(leadInsertRow)).returning();
     // Batch-log activity for all created leads
     if (newLeads.length > 0) {
       const activityEntries = newLeads.map((lead) => ({

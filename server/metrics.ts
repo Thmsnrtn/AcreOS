@@ -145,13 +145,26 @@ export const jobDurationSeconds = new Histogram({
 
 // ── Stripe ──────────────────────────────────────────────────────────────────
 // Counted independently of `httpRequestsTotal{status="5xx",route="/api/stripe/webhook"}`
-// because some webhook failures are processed-but-failed (the route returns
-// 400 due to a bad signature, but Stripe will retry — we want a separate
-// alarm channel).
+// because a processing failure answers 400 (Stripe retries any non-2xx) —
+// we want a separate alarm channel. Deliveries that do not verify are counted
+// apart, on their own counter: they say nothing about a customer, so they
+// must not drive the critical alert.
 
 export const stripeWebhookFailedTotal = new Counter({
   name: "acreos_stripe_webhook_failed_total",
-  help: "Stripe webhook deliveries that failed signature verification or threw inside the processor. Drives the StripeWebhookFailing alert in docs/slo-monitoring.md.",
+  help: "Stripe webhook deliveries that could not be processed after (or for want of) signature verification. Drives the StripeWebhookFailing alert in docs/slo-monitoring.md.",
+  registers: [registry],
+});
+
+export const stripeWebhookVerifiedTotal = new Counter({
+  name: "acreos_stripe_webhook_verified_total",
+  help: "Stripe webhook deliveries whose signature verified (processed or not). Read with the rejected counter: rejections with no verified delivery for hours points at a wrong or rotated endpoint secret.",
+  registers: [registry],
+});
+
+export const stripeWebhookSignatureRejectedTotal = new Counter({
+  name: "acreos_stripe_webhook_signature_rejected_total",
+  help: "Deliveries to the Stripe webhook that carried no signature or one that did not verify. Informational; never pages.",
   registers: [registry],
 });
 
@@ -165,6 +178,20 @@ export const publicParcelReportEventsTotal = new Counter({
   name: "acreos_public_parcel_report_events_total",
   help: "Public /p parcel-report lifecycle events, labelled by event: generated | cache_hit | view | og_image | unavailable | capped. Tier 3A cost-guard telemetry.",
   labelNames: ["event"] as const,
+  registers: [registry],
+});
+
+// ── Response secret-column guard ────────────────────────────────────────────
+// server/middleware/secretColumnGuard.ts removes registered secret columns
+// (server/utils/secretColumns.ts) from JSON responses. Every increment is a
+// handler that serialized one; the log line beside it names the route.
+// Labels are bounded by the registry (plus "envelope" for a value carrying
+// the encryption prefix).
+
+export const responseSecretColumnStrippedTotal = new Counter({
+  name: "acreos_response_secret_column_stripped_total",
+  help: "Secret columns removed from a JSON response by the response guard, labelled by table and key. Non-zero means a handler serialized one; the warn log names the route.",
+  labelNames: ["table", "key"] as const,
   registers: [registry],
 });
 
@@ -205,6 +232,21 @@ export function recordJobRun(
 /** Record a Stripe webhook failure. Called from the webhook route's catch block. */
 export function recordStripeWebhookFailure(): void {
   stripeWebhookFailedTotal.inc();
+}
+
+/** Record a Stripe webhook delivery whose signature verified. */
+export function recordStripeWebhookVerified(): void {
+  stripeWebhookVerifiedTotal.inc();
+}
+
+/** Record a delivery to the Stripe webhook that did not verify. */
+export function recordStripeWebhookSignatureRejected(): void {
+  stripeWebhookSignatureRejectedTotal.inc();
+}
+
+/** Record one secret column removed from a response by the response guard. */
+export function recordResponseSecretColumnStripped(table: string, key: string): void {
+  responseSecretColumnStrippedTotal.inc({ table: safeLabel(table), key: safeLabel(key) });
 }
 
 // ── Internal helpers ────────────────────────────────────────────────────────

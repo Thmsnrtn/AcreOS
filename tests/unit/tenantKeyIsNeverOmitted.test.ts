@@ -309,8 +309,9 @@ describe("the routes that were live", () => {
     const at = src.indexOf('api.post("/api/investor-profiles"');
     expect(at).toBeGreaterThan(-1);
     const handler = src.slice(at, at + 2600);
-    // The protected keys are stripped from the body before it is spread...
-    expect(handler).toMatch(/organizationId: _ignoredOrgId[\s\S]*?\.\.\.safeBody/);
+    // The body is reduced to the customer-editable columns (an allowlist that
+    // has no tenant key in it) before it is spread...
+    expect(handler).toMatch(/const safeBody = investorProfileEdits\(body\);[\s\S]*?\.\.\.safeBody/);
     // ...and the server's own value is written after the spread, not before.
     const spreadAt = handler.indexOf("...safeBody,\n            organizationId: org.id");
     expect(spreadAt, "server-owned fields must come after the spread").toBeGreaterThan(-1);

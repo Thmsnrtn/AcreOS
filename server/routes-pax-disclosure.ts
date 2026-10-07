@@ -30,6 +30,8 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { isFounderIdentity } from "./services/founder";
+import { toAuthUserView } from "@shared/accountViews";
 
 const router = Router();
 
@@ -69,9 +71,10 @@ router.post("/acknowledge-disclosure", async (req: AuthenticatedRequest, res: Re
       at: (row.paxDisclosureAcknowledgedAt ?? now).toISOString(),
     });
 
-    // Return the canonical user payload so the client can update the
-    // /api/auth/user TanStack cache without a follow-up GET.
-    return res.json(row);
+    // Return the same view GET /api/auth/user serves, so the client can
+    // update that TanStack cache without a follow-up GET.
+    const authUserId = (req as { auth?: { userId?: string } }).auth?.userId ?? row.clerkUserId ?? null;
+    return res.json(toAuthUserView(row, isFounderIdentity({ email: row.email, userId: authUserId })));
   } catch (error) {
     logger.error("[pax-disclosure] acknowledge failed", {
       error: error instanceof Error ? error.message : String(error),

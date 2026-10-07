@@ -44,6 +44,13 @@ const READ_ONLY_METHODS = new Set([
   "listPaymentMethods", "listSubscriptionItems", "listOwners",
 ]);
 
+// Webhook signature verification is local cryptography over the request
+// bytes: no API call, no side effect. It runs for real in every mode, so a
+// delivery is accepted only if it carries a valid signature.
+const LOCAL_ONLY_METHODS = new Set([
+  "constructEvent", "constructEventAsync", "generateTestHeaderString",
+]);
+
 function wrapStripeForSimulation<T extends object>(stripe: T): T {
   const handler: ProxyHandler<any> = {
     get(target: any, prop: string | symbol) {
@@ -56,7 +63,7 @@ function wrapStripeForSimulation<T extends object>(stripe: T): T {
         // `stripe.subscriptions` is an object, not a function, so this
         // branch runs for things like `stripe.subscriptions.create`.
         const methodName = prop.toString();
-        if (READ_ONLY_METHODS.has(methodName)) {
+        if (READ_ONLY_METHODS.has(methodName) || LOCAL_ONLY_METHODS.has(methodName)) {
           return value.bind(target);
         }
         // Simulated side-effectful method: record and return a fake.
