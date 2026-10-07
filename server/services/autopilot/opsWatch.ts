@@ -93,9 +93,13 @@ export function modelReadingFromBuckets(buckets: Array<{ calls: number; failures
   if (recentSuccesses > 0) {
     return { provider: "model_provider", failing: false, detail: `${recentSuccesses} model call(s) succeeded recently` };
   }
-  const allFailed = buckets.length >= MODEL_FAILURE_TICKS && buckets.slice(-MODEL_FAILURE_TICKS).every((b) => b.calls > 0 && b.failures === b.calls);
+  // N tick-windows that saw model calls, every one of them failed. The
+  // windows need not include the current one: the ops watch runs at the START
+  // of a tick, before that tick's own model calls exist.
+  const seen = buckets.filter((b) => b.calls > 0);
+  const allFailed = seen.length >= MODEL_FAILURE_TICKS && seen.every((b) => b.failures === b.calls);
   if (allFailed) {
-    const n = buckets.slice(-MODEL_FAILURE_TICKS).reduce((a, b) => a + b.failures, 0);
+    const n = seen.reduce((a, b) => a + b.failures, 0);
     return { provider: "model_provider", failing: true, detail: `every AI model call failed for ${MODEL_FAILURE_TICKS} ticks in a row (${n} calls)` };
   }
   return { provider: "model_provider", failing: null, detail: "no consecutive all-failed ticks" };
@@ -128,17 +132,19 @@ export function stripeReadingFrom(lastProbe: { ok: boolean; at: Date } | null, l
 
 async function readModel(now: Date): Promise<ProviderReading> {
   try {
-    const since = new Date(now.getTime() - MODEL_FAILURE_TICKS * TICK_MINUTES * 60_000);
+    // One window more than N: the current tick's calls are not written yet.
+    const windows = MODEL_FAILURE_TICKS + 1;
+    const since = new Date(now.getTime() - windows * TICK_MINUTES * 60_000);
     const rows = await unscopedForPlatformOps("Solene ops watch: whether the AI model provider is answering is read across every caller (a provider outage is platform-wide)")
       .select({ at: agentLlmTraces.createdAt, error: agentLlmTraces.error })
       .from(agentLlmTraces)
       .where(gte(agentLlmTraces.createdAt, since))
       .limit(5000);
-    const buckets = Array.from({ length: MODEL_FAILURE_TICKS }, () => ({ calls: 0, failures: 0 }));
+    const buckets = Array.from({ length: windows }, () => ({ calls: 0, failures: 0 }));
     let successes = 0;
     for (const r of rows) {
       const age = now.getTime() - r.at.getTime();
-      const idx = MODEL_FAILURE_TICKS - 1 - Math.min(MODEL_FAILURE_TICKS - 1, Math.floor(age / (TICK_MINUTES * 60_000)));
+      const idx = windows - 1 - Math.min(windows - 1, Math.floor(age / (TICK_MINUTES * 60_000)));
       buckets[idx].calls += 1;
       if (r.error) buckets[idx].failures += 1;
       else successes += 1;
@@ -150,8 +156,16 @@ async function readModel(now: Date): Promise<ProviderReading> {
   }
 }
 
-async function readEmail(now: Date): Promise<ProviderReading> {
+async function readEmail(now: Date, opts: { incidentOpen: boolean; probe?: () => Promise<boolean> }): Promise<ProviderReading> {
   try {
+    // While an email incident is open, ask the provider directly (a cheap
+    // quota read) — recovery must not wait for some other send to happen to
+    // go out. A good answer is recorded as the success the reading closes on.
+    if (opts.incidentOpen) {
+      const probe = opts.probe ?? defaultEmailProbe;
+      const ok = await probe().catch(() => false);
+      if (ok) await db.insert(jobHealthLogs).values({ jobName: EMAIL_SEND_JOB, runStartedAt: now, runCompletedAt: now, durationMs: 0, status: "success" });
+    }
     const since = new Date(now.getTime() - EMAIL_WINDOW_HOURS * 3_600_000);
     const [f] = await db
       .select({ n: sql<number>`count(*)::int`, last: sql<Date | null>`max(${jobHealthLogs.runStartedAt})` })
@@ -216,6 +230,11 @@ async function readStripe(now: Date, probe?: () => Promise<boolean>): Promise<Pr
   }
 }
 
+async function defaultEmailProbe(): Promise<boolean> {
+  const { emailService } = await import("../emailService");
+  return (await emailService.getSendQuota()) != null;
+}
+
 async function defaultStripeProbe(): Promise<boolean> {
   const { getUncachableStripeClient } = await import("../../stripeClient");
   const stripe = await getUncachableStripeClient();
@@ -251,12 +270,17 @@ export interface OpsWatchResult {
  * opened incident. Called every tick by the continuous loop and by the Ops role
  * worker when the brain dispatches stabilize_reflexes. Never throws.
  */
-export async function runOpsWatch(opts: { now?: Date; stripeProbe?: () => Promise<boolean> } = {}): Promise<OpsWatchResult> {
+export async function runOpsWatch(opts: { now?: Date; stripeProbe?: () => Promise<boolean>; emailProbe?: () => Promise<boolean> } = {}): Promise<OpsWatchResult> {
   const now = opts.now ?? new Date();
   const result: OpsWatchResult = { readings: [], opened: [], resolved: [], paged: 0 };
   try {
-    result.readings = await Promise.all([readModel(now), readEmail(now), readStripe(now, opts.stripeProbe)]);
-    const t = decideTransitions(result.readings, await openIncidents());
+    const open = await openIncidents();
+    result.readings = await Promise.all([
+      readModel(now),
+      readEmail(now, { incidentOpen: open.some((o) => o.provider === "email_provider"), probe: opts.emailProbe }),
+      readStripe(now, opts.stripeProbe),
+    ]);
+    const t = decideTransitions(result.readings, open);
     for (const r of t.open) {
       const [row] = await db
         .insert(incidents)

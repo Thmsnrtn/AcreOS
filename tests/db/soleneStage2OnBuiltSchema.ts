@@ -22,6 +22,7 @@
  */
 import { and, eq, inArray, like, sql } from "drizzle-orm";
 import {
+  agentLlmTraces,
   autopilotPendingActions,
   autopilotSenses,
   autopilotSettings,
@@ -212,14 +213,27 @@ async function main(): Promise<void> {
       await db.insert(jobHealthLogs).values({ jobName: "email_send", runStartedAt: new Date(now - m * 60_000), status: "failed", errorMessage: tag });
     }
     const { runOpsWatch } = await import("../../server/services/autopilot/opsWatch");
-    const w1 = await runOpsWatch({ stripeProbe: async () => true });
-    const w2 = await runOpsWatch({ stripeProbe: async () => true });
+    // the provider is still down: the probe fails, nothing closes, no second page
+    const w1 = await runOpsWatch({ stripeProbe: async () => true, emailProbe: async () => false });
+    const w2 = await runOpsWatch({ stripeProbe: async () => true, emailProbe: async () => false });
     const openEmail = await db.select().from(incidents).where(and(eq(incidents.title, "[ops] email_provider"), eq(incidents.status, "open")));
     check(w1.opened.includes("email_provider") && !w2.opened.includes("email_provider") && openEmail.length === 1, `ONE email incident across two passes (opened ${w1.opened.join(",")} then ${w2.opened.join(",") || "nothing"})`);
-    await db.insert(jobHealthLogs).values({ jobName: "email_send", runStartedAt: new Date(), status: "success" });
-    const w3 = await runOpsWatch({ stripeProbe: async () => true });
+    // the provider answers again (no other email had to go out): the probe closes it
+    const w3 = await runOpsWatch({ stripeProbe: async () => true, emailProbe: async () => true });
     const closed = await db.select().from(incidents).where(eq(incidents.title, "[ops] email_provider"));
-    check(w3.resolved.includes("email_provider") && closed.every((c) => c.status === "resolved"), "a success after the outage closed the incident");
+    check(w3.resolved.includes("email_provider") && closed.every((c) => c.status === "resolved"), "the provider answering the probe closed the incident (no send needed)");
+    // the model provider: three ticks in a row of nothing but failed calls → ONE incident
+    await db.delete(agentLlmTraces);
+    // as the watch sees them at the START of a tick: the newest calls are a tick old
+    for (const m of [100, 70, 40]) {
+      for (let i = 0; i < 2; i++) await db.insert(agentLlmTraces).values({ agentCodename: tag, purpose: "deliberation", model: "x", userPrompt: tag, response: "", error: "500 stand-in failure", createdAt: new Date(Date.now() - m * 60_000) });
+    }
+    const m1 = await runOpsWatch({ stripeProbe: async () => true, emailProbe: async () => true });
+    check(m1.opened.includes("model_provider"), `three all-failed ticks of model calls opened the model incident (${JSON.stringify(m1.readings.find((r) => r.provider === "model_provider"))})`);
+    await db.insert(agentLlmTraces).values({ agentCodename: tag, purpose: "deliberation", model: "x", userPrompt: tag, response: "ok" });
+    const m2 = await runOpsWatch({ stripeProbe: async () => true, emailProbe: async () => true });
+    check(m2.resolved.includes("model_provider"), "one successful model call closed it");
+    await db.delete(agentLlmTraces).where(eq(agentLlmTraces.agentCodename, tag));
     await db.delete(incidents).where(like(incidents.title, "[ops] %"));
     await db.delete(jobHealthLogs).where(inArray(jobHealthLogs.jobName, ["email_send", "ops_probe:stripe"]));
     if (t) {
