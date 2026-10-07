@@ -22,9 +22,9 @@
  *
  *   SIM_BASE_URL=… DATABASE_URL=… MARKET_OUT=… npx tsx tests/simulation/campaign/market/csv-imports.ts
  */
-import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFileSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { transformSync } from "esbuild";
 import { OUT, q, count, provisionOrg, msg, jsonl, writeJson, burden, rnd, reseed, type Org } from "./common";
 import { recordMetric, recordSkip } from "../ledger";
@@ -36,6 +36,17 @@ const FIX_DIR = join(OUT, "fixtures");
 mkdirSync(FIX_DIR, { recursive: true });
 
 // ─── the client's own parser + header heuristic ─────────────────────────────
+// Since Stage 1 the sheet's parser, mapping and batching live in a shared
+// module the sheet and the server both import; the sim loads THAT module, so it
+// runs exactly what ships. Older trees declared them inside the sheet itself:
+// fall back to extracting them, and fail loudly if neither shape is present.
+const SHARED = join(HERE, "../../../../shared/leads/csvImportMapping.ts");
+type SheetLib = {
+  suggest: (headers: string[]) => Record<string, string>;
+  parseCsv: (t: string) => { headers: string[]; rows: string[][] };
+  mapRow: (headers: string[], cells: string[], mapping: Record<string, string>) => Record<string, string>;
+  batch: number;
+};
 function extractFn(src: string, name: string): string {
   const start = src.indexOf(`function ${name}(`);
   if (start < 0) throw new Error(`CsvImportSheet.tsx no longer declares ${name}() — the extraction must be updated, not skipped`);
@@ -51,20 +62,34 @@ function extractFn(src: string, name: string): string {
   }
   throw new Error(`could not find the end of ${name}()`);
 }
-const sheetSrc = readFileSync(SHEET, "utf8");
-const clientCode = transformSync(
-  `${extractFn(sheetSrc, "suggestField")}\n${extractFn(sheetSrc, "parseCsv")}\nmodule.exports = { suggestField, parseCsv };`,
-  { loader: "ts", format: "cjs" },
-).code;
-const clientMod: any = { exports: {} };
-new Function("module", "exports", clientCode)(clientMod, clientMod.exports);
-const { suggestField, parseCsv } = clientMod.exports as {
-  suggestField: (h: string) => string;
-  parseCsv: (t: string) => { headers: string[]; rows: string[][] };
-};
-// vacuity guard: the extracted functions must behave like the shipped sheet on
-// the shapes its own header comment promises.
-if (suggestField("Parcel #") !== "apn" || suggestField("Owner Mailing Address") !== "address") throw new Error("extracted suggestField does not behave like the shipped heuristic");
+async function loadSheetLib(): Promise<SheetLib> {
+  if (existsSync(SHARED)) {
+    const m: any = await import(pathToFileURL(SHARED).href);
+    return { suggest: m.suggestMapping, parseCsv: m.parseCsv, mapRow: m.mapCsvRow, batch: m.CSV_IMPORT_MAX_ROWS_PER_REQUEST };
+  }
+  const sheetSrc = readFileSync(SHEET, "utf8");
+  const clientCode = transformSync(
+    `${extractFn(sheetSrc, "suggestField")}\n${extractFn(sheetSrc, "parseCsv")}\nmodule.exports = { suggestField, parseCsv };`,
+    { loader: "ts", format: "cjs" },
+  ).code;
+  const clientMod: any = { exports: {} };
+  new Function("module", "exports", clientCode)(clientMod, clientMod.exports);
+  const { suggestField, parseCsv } = clientMod.exports;
+  return {
+    suggest: (hs) => Object.fromEntries(hs.map((h) => [h, suggestField(h)])),
+    parseCsv,
+    mapRow: (hs, r, mapping) => { const out: Record<string, string> = {}; hs.forEach((h, i) => { const t = mapping[h]; if (t && t !== "skip" && r[i]) out[t] = r[i]; }); return out; },
+    batch: Infinity, // the old sheet sent the whole file in one request
+  };
+}
+const lib = await loadSheetLib();
+const { parseCsv } = lib;
+// vacuity guard: the loaded functions must behave like the shipped sheet on the
+// shapes its own header comment promises.
+{
+  const m = lib.suggest(["Parcel #", "Owner Mailing Address"]);
+  if (m["Parcel #"] !== "apn" || m["Owner Mailing Address"] !== "address") throw new Error("loaded mapping does not behave like the shipped heuristic");
+}
 
 // ─── realistic data ─────────────────────────────────────────────────────────
 const SURNAMES = ["SMITH", "JOHNSON", "GARCIA", "MARTINEZ", "BROWN", "LOPEZ", "HERNANDEZ", "DAVIS", "MILLER", "WILSON", "ANDERSON", "TAYLOR", "THOMAS", "MOORE", "JACKSON", "WHITE", "HARRIS", "CLARK", "LEWIS", "YOUNG", "NGUYEN", "O'BRIEN", "MCDONALD", "DE LA CRUZ", "VAN DYKE"];
@@ -239,17 +264,24 @@ async function audit(org: Org, fx: Fixture) {
 // ─── the three import paths ─────────────────────────────────────────────────
 async function viaSheet(org: Org, csv: string) {
   const { headers, rows } = parseCsv(csv);
-  const mapping: Record<string, string> = {};
-  for (const h of headers) mapping[h] = suggestField(h);
-  const mapped = rows.map((r) => {
-    const out: Record<string, string> = {};
-    headers.forEach((h, i) => { const t = mapping[h]; if (t && t !== "skip" && r[i]) out[t] = r[i]; });
-    return out;
-  });
+  const mapping = lib.suggest(headers);
+  const mapped = rows.map((r) => lib.mapRow(headers, r, mapping));
+  // Send it the way the sheet does: request-sized batches, stopping at the
+  // first failed batch and reporting the rows that did go in.
   const t0 = performance.now();
-  const resp = await org.client.post("/api/leads/csv-import", { rows: mapped });
-  return { resp, ms: performance.now() - t0, mapping, parsedRows: rows.length, toast: resp.status < 300 ? `Import complete: ${resp.body?.imported} imported · ${resp.body?.skippedExisting} skipped (existing APN) · ${resp.body?.skippedInvalid} invalid` : `Import failed: ${msg(resp)}` };
+  let resp: any = null;
+  const sum = { imported: 0, skippedExisting: 0, skippedInvalid: 0 };
+  for (let i = 0; i < mapped.length; i += Math.min(lib.batch, mapped.length || 1)) {
+    resp = await org.client.post("/api/leads/csv-import", { rows: mapped.slice(i, i + lib.batch) });
+    if (resp.status >= 300) break;
+    sum.imported += resp.body?.imported ?? 0;
+    sum.skippedExisting += resp.body?.skippedExisting ?? 0;
+    sum.skippedInvalid += resp.body?.skippedInvalid ?? 0;
+  }
+  const ok = resp && resp.status < 300;
+  return { resp, ms: performance.now() - t0, mapping, parsedRows: rows.length, toast: ok ? `Import complete: ${sum.imported} imported · ${sum.skippedExisting} skipped (existing APN) · ${sum.skippedInvalid} invalid` : `Import failed after ${sum.imported} rows imported: ${msg(resp)}` };
 }
+
 async function viaMultipart(org: Org, path: string, csv: string, file: string) {
   const fd = new FormData();
   fd.append("file", new Blob([csv], { type: "text/csv" }), file);
