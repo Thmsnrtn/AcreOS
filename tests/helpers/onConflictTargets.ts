@@ -686,6 +686,13 @@ export interface TableResolver {
   /** `(file, localName)` → the Drizzle table it is bound to, or a reason it is not one. */
   table(file: string, local: string, sf: ts.SourceFile): Promise<{ table: TableLike; sqlName: string } | { error: string }>;
   column(table: TableLike, prop: string): string | null;
+  /**
+   * `(file, localName)` → the SQL text of a Drizzle `sql` constant exported
+   * from shared/ (e.g. a partial index's predicate, declared once and shared by
+   * the index and every conflict target that must repeat it), or null when the
+   * identifier is not bound to one.
+   */
+  sqlConstant(file: string, local: string, sf: ts.SourceFile): Promise<string | null>;
 }
 
 /**
@@ -696,7 +703,9 @@ export interface TableResolver {
  */
 export async function makeTableResolver(root = REPO_ROOT): Promise<TableResolver> {
   const { getTableName, is } = await import("drizzle-orm");
-  const { PgTable, PgColumn } = await import("drizzle-orm/pg-core");
+  const { PgTable, PgColumn, PgDialect } = await import("drizzle-orm/pg-core");
+  const { SQL } = await import("drizzle-orm");
+  const dialect = new PgDialect();
   const modCache = new Map<string, Record<string, unknown>>();
   const resolveModule = (fromFile: string, spec: string): string | null => {
     let base: string;
@@ -714,42 +723,48 @@ export async function makeTableResolver(root = REPO_ROOT): Promise<TableResolver
     if (!modCache.has(abs)) modCache.set(abs, (await import(abs)) as Record<string, unknown>);
     return modCache.get(abs)!;
   };
+  // Every binding of `local` to an export: static `import { a as local }`
+  // and `const { a: local } = await import("…")` anywhere in the file.
+  const bindingsOf = (local: string, sf: ts.SourceFile): Array<{ spec: string; exported: string }> => {
+    const bindings: Array<{ spec: string; exported: string }> = [];
+    for (const st of sf.statements) {
+      if (!ts.isImportDeclaration(st) || !st.importClause || !ts.isStringLiteral(st.moduleSpecifier)) continue;
+      const nb = st.importClause.namedBindings;
+      if (nb && ts.isNamedImports(nb)) {
+        for (const el of nb.elements) {
+          if (el.name.text === local) bindings.push({ spec: st.moduleSpecifier.text, exported: (el.propertyName ?? el.name).text });
+        }
+      }
+    }
+    const visit = (node: ts.Node): void => {
+      if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name) && node.initializer) {
+        let init: ts.Expression = node.initializer;
+        while (ts.isAwaitExpression(init) || ts.isParenthesizedExpression(init)) init = init.expression;
+        if (
+          ts.isCallExpression(init) &&
+          init.expression.kind === ts.SyntaxKind.ImportKeyword &&
+          init.arguments[0] &&
+          ts.isStringLiteral(init.arguments[0])
+        ) {
+          for (const el of node.name.elements) {
+            if (ts.isIdentifier(el.name) && el.name.text === local) {
+              const prop = el.propertyName && ts.isIdentifier(el.propertyName) ? el.propertyName.text : el.name.text;
+              bindings.push({ spec: (init.arguments[0] as ts.StringLiteral).text, exported: prop });
+            }
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+    return bindings;
+  };
   return {
     async table(file, local, sf) {
       // Every binding of `local` to an export: static `import { a as local }`
       // and `const { a: local } = await import("…")` anywhere in the file.
       // They must all name the same table, or the reference is ambiguous.
-      const bindings: Array<{ spec: string; exported: string }> = [];
-      for (const st of sf.statements) {
-        if (!ts.isImportDeclaration(st) || !st.importClause || !ts.isStringLiteral(st.moduleSpecifier)) continue;
-        const nb = st.importClause.namedBindings;
-        if (nb && ts.isNamedImports(nb)) {
-          for (const el of nb.elements) {
-            if (el.name.text === local) bindings.push({ spec: st.moduleSpecifier.text, exported: (el.propertyName ?? el.name).text });
-          }
-        }
-      }
-      const visit = (node: ts.Node): void => {
-        if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name) && node.initializer) {
-          let init: ts.Expression = node.initializer;
-          while (ts.isAwaitExpression(init) || ts.isParenthesizedExpression(init)) init = init.expression;
-          if (
-            ts.isCallExpression(init) &&
-            init.expression.kind === ts.SyntaxKind.ImportKeyword &&
-            init.arguments[0] &&
-            ts.isStringLiteral(init.arguments[0])
-          ) {
-            for (const el of node.name.elements) {
-              if (ts.isIdentifier(el.name) && el.name.text === local) {
-                const prop = el.propertyName && ts.isIdentifier(el.propertyName) ? el.propertyName.text : el.name.text;
-                bindings.push({ spec: (init.arguments[0] as ts.StringLiteral).text, exported: prop });
-              }
-            }
-          }
-        }
-        ts.forEachChild(node, visit);
-      };
-      visit(sf);
+      const bindings = bindingsOf(local, sf);
       if (bindings.length === 0) return { error: `"${local}" is not bound by an import in this file` };
       const resolved: Array<{ table: TableLike; sqlName: string }> = [];
       for (const b of bindings) {
@@ -769,6 +784,16 @@ export async function makeTableResolver(root = REPO_ROOT): Promise<TableResolver
     column(table, prop) {
       const c = table[prop];
       return c && is(c, PgColumn) ? (c as unknown as { name: string }).name : null;
+    },
+    async sqlConstant(file, local, sf) {
+      const bindings = bindingsOf(local, sf);
+      if (bindings.length !== 1) return null;
+      const abs = resolveModule(file, bindings[0].spec);
+      if (!abs) return null;
+      const mod = await loadShared(abs);
+      const v = mod?.[bindings[0].exported];
+      if (!v || !is(v, SQL)) return null;
+      return dialect.sqlToQuery(v as InstanceType<typeof SQL>).sql;
     },
   };
 }
@@ -806,6 +831,12 @@ async function renderPredicate(
     let s = tpl.head.text;
     for (const span of tpl.templateSpans) s += (await colName(span.expression)) + span.literal.text;
     return s;
+  }
+  // A predicate constant imported from shared/ (the partial index declares the
+  // same constant, so the two cannot drift): render the SQL it holds.
+  if (ts.isIdentifier(e)) {
+    const text = await resolver.sqlConstant(file, e.text, sf);
+    if (text !== null) return text;
   }
   if (ts.isCallExpression(e) && ts.isIdentifier(e.expression)) {
     const fn = e.expression.text;

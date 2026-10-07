@@ -71,9 +71,6 @@ vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
  * Key: `<file> <kind> <table>(<cols>)` → number of such sites in that file.
  */
 const KNOWN_UNARBITRATED: Record<string, number> = {
-  // Schema declares a PARTIAL uniqueIndex on idempotency_key; the call omits
-  // the matching `where:` target predicate.
-  "server/services/solene/dispatchQueue.ts onConflictDoNothing solene_dispatch_queue(idempotency_key)": 1,
   // Schema declares `.unique()`; no migration creates it.
   "server/services/modelIntelligence.ts onConflictDoUpdate openrouter_model_catalog(model_id)": 1,
   "server/services/providers/provider-registry.ts onConflictDoUpdate provider_cache(cache_key)": 1,
@@ -89,7 +86,11 @@ const KNOWN_UNARBITRATED: Record<string, number> = {
   "server/services/dueDiligence.ts onConflictDoUpdate parcel_snapshots(state,county,apn)": 1,
   "server/services/intelligence/coordinator.ts raw-sql intelligence_job_runs(name)": 2,
 };
-const KNOWN_UNARBITRATED_BASELINE = 15;
+// 15 → 14 on 2026-10-07: Stage 1 gave the keyed Solene enqueue the partial
+// index's own predicate (IDEMPOTENCY_KEY_INDEX_PREDICATE, imported from
+// shared/), and the gate learned to read an imported predicate constant — see
+// the "imported predicate constant" canaries below.
+const KNOWN_UNARBITRATED_BASELINE = 14;
 
 /**
  * Population floors (measured 2026-10-06). A parser that stops matching a shape
@@ -197,7 +198,7 @@ describe("ON CONFLICT targets — every target has an arbiter in the shipped DDL
     expect(stale, "stale register entries — remove them and lower KNOWN_UNARBITRATED_BASELINE").toEqual([]);
     const total = Object.values(KNOWN_UNARBITRATED).reduce((a, b) => a + b, 0);
     expect(total).toBe(KNOWN_UNARBITRATED_BASELINE);
-    expect(KNOWN_UNARBITRATED_BASELINE).toBeLessThanOrEqual(15);
+    expect(KNOWN_UNARBITRATED_BASELINE).toBeLessThanOrEqual(14);
   });
 });
 
@@ -323,6 +324,37 @@ describe("canary — target with a target predicate", () => {
   });
   it("a predicate that differs from the index's → red", async () => {
     expect(await verdictOf(`db.insert(payments).values(v).onConflictDoNothing({ target: payments.transactionId, where: sql\`\${payments.organizationId} IS NOT NULL\` });`, partial)).toBe(false);
+  });
+});
+
+describe("canary — imported predicate constant", () => {
+  // The shape solene/dispatchQueue.ts uses: the partial index and the conflict
+  // target share one exported `sql` constant, so the predicate is an identifier.
+  const DISPATCH_TABLE = `CREATE TABLE "solene_dispatch_queue" ("id" serial PRIMARY KEY NOT NULL, "idempotency_key" text);`;
+  const imports = `import { soleneDispatchQueue, IDEMPOTENCY_KEY_INDEX_PREDICATE } from "@shared/schema/solene-dispatch";\n`;
+  const call = `db.insert(soleneDispatchQueue).values(v).onConflictDoNothing({ target: soleneDispatchQueue.idempotencyKey, where: IDEMPOTENCY_KEY_INDEX_PREDICATE });`;
+  const verdict = async (body: string, m: ShippedModel) => {
+    const found = (await sites(body, imports)).filter((x) => x.targeted || x.unresolved);
+    expect(found).toHaveLength(1);
+    return siteVerdict(found[0], found[0].table ? uniqueIndexesOf(m, found[0].table) : []).ok;
+  };
+
+  it("renders the constant's SQL as the target predicate", async () => {
+    const [x] = (await sites(call, imports)).filter((y) => y.targeted);
+    expect(x.targetWhere).toBe("idempotency_key IS NOT NULL");
+  });
+  it("matching partial index → green; a different predicate → red; no predicate → red", async () => {
+    const partial = (pred: string) =>
+      model(DISPATCH_TABLE, `CREATE UNIQUE INDEX "solene_dispatch_queue_idempotency_key_uq" ON "solene_dispatch_queue" ("idempotency_key") WHERE ${pred};`);
+    expect(await verdict(call, partial(`"idempotency_key" IS NOT NULL`))).toBe(true);
+    expect(await verdict(call, partial(`"id" IS NOT NULL`))).toBe(false);
+    const bare = `db.insert(soleneDispatchQueue).values(v).onConflictDoNothing({ target: soleneDispatchQueue.idempotencyKey });`;
+    expect(await verdict(bare, partial(`"idempotency_key" IS NOT NULL`))).toBe(false);
+  });
+  it("an identifier that is not an imported sql constant stays unparsed (red)", async () => {
+    const local = `const P = pick();\ndb.insert(soleneDispatchQueue).values(v).onConflictDoNothing({ target: soleneDispatchQueue.idempotencyKey, where: P });`;
+    const [x] = (await sites(local, imports)).filter((y) => y.targeted);
+    expect(x.targetWhere).toBe("<unparsed predicate>");
   });
 });
 
