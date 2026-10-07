@@ -58,7 +58,7 @@ import {
   type SoleneDispatchReviewStatus,
 } from "@shared/schema/solene-dispatch";
 import { dunningEvents, importJobs, mailShipments, organizations } from "@shared/schema";
-import { computeEffectKey, enqueueDispatch } from "./dispatchQueue";
+import { effectKeyNow, enqueueDispatch } from "./dispatchQueue";
 import { logger } from "../../utils/logger";
 
 // ----------------------------------------------------------------------------
@@ -332,11 +332,10 @@ export async function enqueueVerifyDispatch(
       timeoutMs: VERIFY_TIMEOUT_MS,
       priority: VERIFY_PRIORITY,
       enqueuedBy: `verify:auto:${targetKind}:${targetId}`,
-      idempotencyKey: computeEffectKey({
+      idempotencyKey: effectKeyNow({
         domain: "verify",
         moveKind: targetKind,
         targetId: String(targetId),
-        nowMs: Date.now(),
       }),
       // Store the criteria ON the verify row — the audit trail shows exactly
       // what the verifier was asked to check.

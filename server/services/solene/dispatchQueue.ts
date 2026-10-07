@@ -50,6 +50,7 @@ import {
   IDEMPOTENCY_KEY_INDEX_PREDICATE,
 } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 import { assertWithinEnsembleCap, getMonthlyEnvelopeStatus } from "./capitalTracker";
 import {
   scoreDispatchProposal,
@@ -144,6 +145,16 @@ export function computeEffectKey(parts: {
   const bucket = Math.floor(parts.nowMs / w);
   const raw = `${parts.domain}|${parts.moveKind}|${parts.playId ?? "-"}|${parts.targetId ?? "-"}|${bucket}`;
   return createHash("sha256").update(raw, "utf8").digest("hex");
+}
+
+/**
+ * The effect key for "now" on THE clock (server/utils/clock.ts). Every caller
+ * that means "this effect, at this moment" uses this, never the wall clock: a
+ * simulated month must be a month of distinct effects, not one 30-minute
+ * bucket (tests/unit/effectKeyFollowsTheClock.test.ts).
+ */
+export function effectKeyNow(parts: Omit<Parameters<typeof computeEffectKey>[0], "nowMs">): string {
+  return computeEffectKey({ ...parts, nowMs: clock.nowMs() });
 }
 
 // ----------------------------------------------------------------------------

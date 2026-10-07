@@ -1164,13 +1164,12 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           // Panel #2 — exactly-once seal: a deterministic effect-key so a
           // concurrent tick (lock-TTL lapse) or retry dedups this dispatch
           // instead of double-firing the outward effect.
-          const { computeEffectKey } = await import("./dispatchQueue");
-          const effectKey = computeEffectKey({
+          const { effectKeyNow } = await import("./dispatchQueue");
+          const effectKey = effectKeyNow({
             domain: actMove.domain,
             moveKind: actMove.kind,
             playId: selectedPlayId,
             targetId: selectedGrowthTarget ? String(selectedGrowthTarget.id) : null,
-            nowMs: Date.now(),
           });
           const outcome = budgetDeferReason
             ? ({
