@@ -155,9 +155,12 @@ class WhiteLabelService {
         portfolioOptimizer: true, complianceAI: false, taxResearcher: false,
         ...config.features,
       },
-      revenueShare: { platformFeePercent: 70, resellerFeePercent: 30, ...config.revenueShare },
-      limits: { maxUsers: 5, maxLeads: 1000, maxProperties: 500, maxCampaigns: 10, ...config.limits },
-      plan: config.plan || 'starter',
+      // Commercial terms — the revenue split, the limits and the plan — are
+      // set by the platform, not by the caller: a new tenant starts on the
+      // defaults whatever the request names.
+      revenueShare: { platformFeePercent: 70, resellerFeePercent: 30 },
+      limits: { maxUsers: 5, maxLeads: 1000, maxProperties: 500, maxCampaigns: 10 },
+      plan: 'starter',
       billingEmail: config.billingEmail || config.supportEmail || '',
       status: 'active',
     }).returning();
@@ -198,9 +201,8 @@ class WhiteLabelService {
       ...(updates.supportPhone !== undefined && { supportPhone: updates.supportPhone }),
       ...(updates.footerText && { footerText: updates.footerText }),
       ...(updates.features && { features: { ...(existing.features as object), ...updates.features } }),
-      ...(updates.revenueShare && { revenueShare: { ...(existing.revenueShare as object), ...updates.revenueShare } }),
-      ...(updates.limits && { limits: { ...(existing.limits as object), ...updates.limits } }),
-      ...(updates.plan && { plan: updates.plan }),
+      // revenueShare, limits and plan are commercial terms the platform sets;
+      // this caller-facing update does not write them.
       ...(updates.billingEmail && { billingEmail: updates.billingEmail }),
       updatedAt: new Date(),
     }).where(eq(whiteLabelConfigs.organizationId, organizationId)).returning();

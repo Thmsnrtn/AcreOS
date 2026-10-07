@@ -135,7 +135,7 @@ export class DispositionOptimizerService {
       ? Math.floor((Date.now() - new Date(purchaseDate).getTime()) / (1000 * 60 * 60 * 24))
       : 0;
 
-    const comps = await this.findComparables(propertyId);
+    const comps = await this.findComparables(organizationId, propertyId);
     const marketValue = this.calculateMarketValue(property, comps);
     const sizeAcres = property.sizeAcres ? parseFloat(property.sizeAcres) : 1;
     const pricePerAcre = marketValue / sizeAcres;
@@ -170,16 +170,16 @@ export class DispositionOptimizerService {
     const analysis = await this.analyzeProperty(organizationId, propertyId);
     const { property, marketValue, acquisitionCost, comparables, marketCondition } = analysis;
 
-    const pricing = await this.calculateOptimalPrice(propertyId);
-    const channels = await this.recommendChannels(propertyId);
-    const timing = await this.analyzeTimingFactors(propertyId);
+    const pricing = await this.calculateOptimalPrice(organizationId, propertyId);
+    const channels = await this.recommendChannels(organizationId, propertyId);
+    const timing = await this.analyzeTimingFactors(organizationId, propertyId);
     const targetBuyer = this.determineTargetBuyer(property, analysis.recommendedStrategy);
     const roiAnalysis = await this.calculateROI(organizationId, propertyId);
     const alternatives = await this.compareStrategies(organizationId, propertyId);
 
     let ownerFinanceTerms: OwnerFinanceTerms | undefined;
     if (analysis.recommendedStrategy === "owner_finance" || marketValue > 20000) {
-      ownerFinanceTerms = await this.calculateOwnerFinanceTerms(propertyId, pricing.recommendedPrice);
+      ownerFinanceTerms = await this.calculateOwnerFinanceTerms(organizationId, propertyId, pricing.recommendedPrice);
     }
 
     const confidence = Math.round(analysis.confidence * 100);
@@ -213,15 +213,15 @@ export class DispositionOptimizerService {
     return inserted;
   }
 
-  async calculateOptimalPrice(propertyId: number): Promise<PricingRecommendation> {
+  async calculateOptimalPrice(organizationId: number, propertyId: number): Promise<PricingRecommendation> {
     const [property] = await db.select().from(properties)
-      .where(eq(properties.id, propertyId));
+      .where(and(eq(properties.id, propertyId), eq(properties.organizationId, organizationId)));
 
     if (!property) {
       throw new Error(`Property ${propertyId} not found`);
     }
 
-    const comps = await this.findComparables(propertyId);
+    const comps = await this.findComparables(organizationId, propertyId);
     const marketValue = this.calculateMarketValue(property, comps);
     const sizeAcres = property.sizeAcres ? parseFloat(property.sizeAcres) : 1;
 
@@ -248,9 +248,9 @@ export class DispositionOptimizerService {
     };
   }
 
-  async recommendChannels(propertyId: number): Promise<ChannelRecommendation[]> {
+  async recommendChannels(organizationId: number, propertyId: number): Promise<ChannelRecommendation[]> {
     const [property] = await db.select().from(properties)
-      .where(eq(properties.id, propertyId));
+      .where(and(eq(properties.id, propertyId), eq(properties.organizationId, organizationId)));
 
     if (!property) {
       throw new Error(`Property ${propertyId} not found`);
@@ -318,9 +318,9 @@ export class DispositionOptimizerService {
     return recommendations;
   }
 
-  async analyzeTimingFactors(propertyId: number): Promise<TimingAnalysis> {
+  async analyzeTimingFactors(organizationId: number, propertyId: number): Promise<TimingAnalysis> {
     const [property] = await db.select().from(properties)
-      .where(eq(properties.id, propertyId));
+      .where(and(eq(properties.id, propertyId), eq(properties.organizationId, organizationId)));
 
     if (!property) {
       throw new Error(`Property ${propertyId} not found`);
@@ -380,11 +380,12 @@ export class DispositionOptimizerService {
   }
 
   async calculateOwnerFinanceTerms(
+    organizationId: number,
     propertyId: number,
     salePrice: number
   ): Promise<OwnerFinanceTerms> {
     const [property] = await db.select().from(properties)
-      .where(eq(properties.id, propertyId));
+      .where(and(eq(properties.id, propertyId), eq(properties.organizationId, organizationId)));
 
     if (!property) {
       throw new Error(`Property ${propertyId} not found`);
@@ -453,7 +454,7 @@ export class DispositionOptimizerService {
     const holdingCostPerDay = (annualPropertyTax / 365) + 1;
     const holdingCosts = Math.round(holdingCostPerDay * holdingDays);
 
-    const pricing = await this.calculateOptimalPrice(propertyId);
+    const pricing = await this.calculateOptimalPrice(organizationId, propertyId);
     const salePrice = pricing.recommendedPrice;
 
     const sellingCostsPercent = 0.08;
@@ -487,9 +488,9 @@ export class DispositionOptimizerService {
       throw new Error(`Property ${propertyId} not found`);
     }
 
-    const pricing = await this.calculateOptimalPrice(propertyId);
+    const pricing = await this.calculateOptimalPrice(organizationId, propertyId);
     const baseROI = await this.calculateROI(organizationId, propertyId);
-    const ownerFinanceTerms = await this.calculateOwnerFinanceTerms(propertyId, pricing.recommendedPrice);
+    const ownerFinanceTerms = await this.calculateOwnerFinanceTerms(organizationId, propertyId, pricing.recommendedPrice);
 
     const comparisons: StrategyComparison[] = [];
 
@@ -598,9 +599,12 @@ export class DispositionOptimizerService {
     return comparisons;
   }
 
-  async getRecommendation(recommendationId: number): Promise<DispositionRecommendation | null> {
+  async getRecommendation(organizationId: number, recommendationId: number): Promise<DispositionRecommendation | null> {
     const [recommendation] = await db.select().from(dispositionRecommendations)
-      .where(eq(dispositionRecommendations.id, recommendationId));
+      .where(and(
+        eq(dispositionRecommendations.id, recommendationId),
+        eq(dispositionRecommendations.organizationId, organizationId),
+      ));
 
     return recommendation || null;
   }
@@ -631,9 +635,10 @@ export class DispositionOptimizerService {
   }
 
   async refreshRecommendation(
+    organizationId: number,
     recommendationId: number
   ): Promise<DispositionRecommendation> {
-    const existing = await this.getRecommendation(recommendationId);
+    const existing = await this.getRecommendation(organizationId, recommendationId);
     
     if (!existing) {
       throw new Error(`Recommendation ${recommendationId} not found`);
@@ -654,12 +659,13 @@ export class DispositionOptimizerService {
   }
 
   private async findComparables(
+    organizationId: number,
     propertyId: number,
     radiusMiles: number = 10,
     monthsBack: number = 12
   ): Promise<ComparableProperty[]> {
     const [property] = await db.select().from(properties)
-      .where(eq(properties.id, propertyId));
+      .where(and(eq(properties.id, propertyId), eq(properties.organizationId, organizationId)));
 
     if (!property) {
       return [];

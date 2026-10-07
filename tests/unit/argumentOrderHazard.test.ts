@@ -138,6 +138,16 @@ const BENIGN: Array<{ match: RegExp; why: string }> = [
       "a different index only because one takes an extra id. No two parameters " +
       "can be swapped between them.",
   },
+  {
+    match: /^findComparables: server\/services\/dispositionOptimizer\.ts:\d+ \(organizationId, propertyId, radiusMiles, monthsBack\)  vs  server\/services\/priceOptimizer\.ts:/,
+    why:
+      "ARITY, not an inversion. `dispositionOptimizer.findComparables` is a " +
+      "PRIVATE method, reached only through `this` inside its own class, and " +
+      "reads the property within the leading `organizationId` it now takes. " +
+      "`priceOptimizer.findComparables(propertyId, radiusMiles, monthsBack)` " +
+      "keeps the same three trailing parameters in the same relative order; " +
+      "no import can hand one class's call to the other's method.",
+  },
 ];
 
 describe("no two same-named functions invert their shared parameters", () => {

@@ -379,7 +379,10 @@ export class MarketWatchlistService {
   ): Promise<WatchlistEntry | null> {
     const entry = await this.storage.getEntry(entryId);
     if (!entry || entry.orgId !== orgId) return null;
-    const updated = await this.storage.updateEntry(entryId, updates);
+    // The entry's owner and its last-alert time are set by the server (at
+    // creation and by the alert pass); a caller's edit carries neither.
+    const { userId: _owner, lastAlertAt: _lastAlert, ...editable } = updates;
+    const updated = await this.storage.updateEntry(entryId, editable);
     return updated ?? null;
   }
 

@@ -38,6 +38,7 @@ import { logger } from "./utils/logger";
 import { stampTraceContext } from "./utils/queueTraceContext";
 import { getStorage } from "./services/cmo/storage";
 import { Errors, sendError } from "./utils/errors";
+import { omitProtectedFields } from "./utils/updatePayload";
 
 export function registerCmoRoutes(app: Express) {
   // ─── Dashboard ──────────────────────────────────────────────────────────
@@ -117,7 +118,7 @@ export function registerCmoRoutes(app: Express) {
     if (!id) return Errors.badRequest(res, "id is required");
     const [updated] = await db
       .update(brandProfiles)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(eq(brandProfiles.id, id))
       .returning();
     res.json({ profile: updated });

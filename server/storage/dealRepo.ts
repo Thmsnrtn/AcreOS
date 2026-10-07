@@ -197,7 +197,7 @@ export const dealRepo = {
     organizationId: number,
     closingDate: Date | null,
   ): Promise<void> {
-    const existing = await this.getDealChecklist(dealId);
+    const existing = await this.getDealChecklist(organizationId, dealId);
     // A template-started checklist still needs the closing items
     // (DEFECT-0180); only a row that already holds them is done.
     if (existing?.items.some((i) => i.phase)) return;

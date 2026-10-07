@@ -27,6 +27,9 @@ import { Errors, sendError } from "./utils/errors";
 import { getOrganizationId } from "./types/request";
 import { BoundedMap } from "./utils/boundedMap";
 
+/** The values `due_diligence_dossiers.priority` takes. */
+const DOSSIER_PRIORITIES = new Set(["urgent", "high", "normal", "low"]);
+
 const router = Router();
 
 /**
@@ -51,7 +54,10 @@ router.post("/request/:propertyId", isAuthenticated, getOrCreateOrg, async (req:
     const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
     if (isNaN(propertyId)) return Errors.badRequest(res, "Invalid property ID");
-    const dossier = await dueDiligencePodService.requestDossier(org.id, propertyId, req.body);
+    // The service's third argument is the priority string, not the body.
+    const requested = req.body?.priority;
+    const priority = typeof requested === "string" && DOSSIER_PRIORITIES.has(requested) ? requested : undefined;
+    const dossier = await dueDiligencePodService.requestDossier(org.id, propertyId, priority);
     res.status(201).json({ dossier });
   } catch (err: any) {
     Errors.badRequest(res, err.message ?? "Bad request");

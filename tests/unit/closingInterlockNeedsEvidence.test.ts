@@ -189,8 +189,9 @@ describe("checklist state", () => {
     let written: Record<string, unknown> | null = null;
     const self = {
       getChecklistTemplate: async () => ({ items: [{ id: "t1", title: "T1", required: true, documentRequired: false }] }),
-      getDealChecklist: async () => existing,
-      updateDealChecklist: async (_id: number, patch: Record<string, unknown>) => (written = patch),
+      getDealChecklist: async (orgId: number) => (orgId === 7 ? existing : undefined),
+      updateDealChecklist: async (orgId: number, _id: number, patch: Record<string, unknown>) =>
+        (written = orgId === 7 ? patch : null),
       createDealChecklist: vi.fn(),
     };
     await dueDiligenceRepo.applyChecklistTemplateToDeal.call(self as never, 7, 4, 2);
@@ -200,7 +201,7 @@ describe("checklist state", () => {
 
   it("the stage gate counts the closing checklist's `completed`", async () => {
     const self = { getDealChecklist: async () => ({ items: [{ id: "w", required: true, completed: true }] }) };
-    expect((await dueDiligenceRepo.checkStageGate.call(self as never, 4)).canAdvance).toBe(true);
+    expect((await dueDiligenceRepo.checkStageGate.call(self as never, 7, 4)).canAdvance).toBe(true);
   });
 
   it("the gate is phase-aware: post-closing never blocks, cancelling is never blocked", async () => {
@@ -210,7 +211,7 @@ describe("checklist state", () => {
       { id: "rec", required: true, phase: "post_closing" },
     ];
     const self = { getDealChecklist: async () => ({ items }) };
-    const gate = (to?: string) => dueDiligenceRepo.checkStageGate.call(self as never, 4, to);
+    const gate = (to?: string) => dueDiligenceRepo.checkStageGate.call(self as never, 7, 4, to);
     expect((await gate("accepted")).canAdvance).toBe(true); // only pre_contract must precede acceptance
     expect((await gate("in_escrow")).canAdvance).toBe(true); // escrow work happens IN escrow
     expect((await gate("closed")).canAdvance).toBe(false); // ...and must be done by closing
@@ -223,7 +224,7 @@ describe("checklist state", () => {
 
   it("template items (no phase) still gate every forward move", async () => {
     const self = { getDealChecklist: async () => ({ items: [{ id: "t", required: true }] }) };
-    expect((await dueDiligenceRepo.checkStageGate.call(self as never, 4, "offer_sent")).canAdvance).toBe(false);
+    expect((await dueDiligenceRepo.checkStageGate.call(self as never, 7, 4, "offer_sent")).canAdvance).toBe(false);
   });
 
   it("auto-generation waits for a real closing date instead of inventing one", async () => {

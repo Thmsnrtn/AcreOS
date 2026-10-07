@@ -12,7 +12,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 // Bulk export is an exfiltration boundary, not a convenience.
 import { requirePermission } from "./utils/permissions";
-import { omitProtectedFields } from "./utils/updatePayload";
+import { omitProtectedFields, omitServerOwnedFields } from "./utils/updatePayload";
 import { logger } from "./utils/logger";
 import { usageMeteringService, creditService } from "./services/credits";
 import { workflowEngine, LAND_INVESTING_WORKFLOW_TEMPLATES } from "./services/workflow-engine";
@@ -550,7 +550,7 @@ export function registerCommunicationRoutes(app: Express): void {
       if (!order || order.organizationId !== org.id) {
         return Errors.notFound(res, "Mailing order");
       }
-      const pieces = await storage.getMailingOrderPieces(orderId);
+      const pieces = await storage.getMailingOrderPieces(org.id, orderId);
       res.json(pieces);
     } catch (error: any) {
       logger.error("Get mailing order pieces error", error instanceof Error ? error : undefined);
@@ -1154,7 +1154,7 @@ export function registerCommunicationRoutes(app: Express): void {
         return Errors.notFound(res, "Workflow");
       }
       const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
-      const runs = await storage.getWorkflowRuns(id, limit);
+      const runs = await storage.getWorkflowRuns(org.id, id, limit);
       res.json(runs);
     } catch (error: any) {
       logger.error("Get workflow runs error", error instanceof Error ? error : undefined);
@@ -1275,7 +1275,7 @@ export function registerCommunicationRoutes(app: Express): void {
 
       const nextRunAt = req.body.nextRunAt ? new Date(req.body.nextRunAt) : parseSchedule(req.body.schedule);
       const task = await taskRunnerService.scheduleTask({
-        ...req.body,
+        ...omitServerOwnedFields(req.body),
         organizationId: org.id,
         nextRunAt,
       });
@@ -1312,9 +1312,9 @@ export function registerCommunicationRoutes(app: Express): void {
         return Errors.notFound(res, "Scheduled task");
       }
 
-      const updates = { ...req.body };
-      delete updates.organizationId;
-      delete updates.id;
+      // Server-owned fields (id, tenant key, timestamps) are set by the
+      // server, never the request.
+      const updates = omitProtectedFields<Record<string, any>>(req.body);
 
       if (updates.schedule && updates.schedule !== existing.schedule) {
         const { parseSchedule } = await import("./services/task-runner");

@@ -34,6 +34,13 @@ import { eq, and, asc, sql, getTableColumns } from "drizzle-orm";
 
 import { db } from "../db";
 import { storage } from "../storage";
+import { unscopedForPlatformOps } from "../utils/orgScopedDb";
+
+// The import worker claims job rows from one queue shared by every
+// organization (FOR UPDATE SKIP LOCKED) and settles the row it claimed by id.
+// Those settling writes go through the sanctioned hatch, which says so.
+const IMPORT_QUEUE_REASON =
+  "import worker: settle the job row this worker claimed from the cross-organization queue";
 import {
   importJobs,
   exportJobs,
@@ -571,7 +578,7 @@ async function runImportJob(job: ImportJob): Promise<void> {
     });
   } catch (err) {
     logger.error("[migrationJobs] Import job failed", { jobId: job.id, error: err });
-    await db
+    await unscopedForPlatformOps(IMPORT_QUEUE_REASON)
       .update(importJobs)
       .set({
         status: "failed",
@@ -876,7 +883,7 @@ async function markImportComplete(
     errors: Array<{ row: number; error: string }>;
   }
 ): Promise<void> {
-  const completed = await db
+  const completed = await unscopedForPlatformOps(IMPORT_QUEUE_REASON)
     .update(importJobs)
     .set({
       status: "completed",

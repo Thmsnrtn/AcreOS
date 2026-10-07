@@ -1,11 +1,12 @@
 import { useClerk } from "@clerk/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { User } from "@shared/models/auth";
+import type { AuthUserView } from "@shared/accountViews";
 import { hasAnyClerkSession } from "@/lib/clerk-session-detect";
 import { touchClerkSession } from "@/lib/clerk-touch";
 import { resetAnalytics } from "@/lib/analytics";
 
-export type AuthUser = User & { isFounder?: boolean };
+// The served shape of GET /api/auth/user — an allowlist, not the users row.
+export type AuthUser = AuthUserView;
 
 // Cycle 3 / Option B: auth is decided by the server, not by Clerk-JS
 // client-side state. Clerk 6.7.4 in our proxy config has a hydration bug

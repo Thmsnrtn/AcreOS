@@ -148,6 +148,7 @@ describe("processScheduledTasks — the W1.1 scheduled_retry regression", () => 
     expect(sendEmailSpy).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), "warning", 4900);
     // The dispatch is recorded on the event so it never double-sends.
     expect(storage.updateDunningEvent).toHaveBeenCalledWith(
+      7,
       42,
       expect.objectContaining({
         notificationsSent: [
@@ -207,6 +208,7 @@ describe("processScheduledTasks — the W1.1 scheduled_retry regression", () => 
     expect(sendSmsSpy).toHaveBeenCalledTimes(1);
     expect(sendEmailSpy).not.toHaveBeenCalled();
     expect(storage.updateDunningEvent).toHaveBeenCalledWith(
+      7,
       47,
       expect.objectContaining({
         notificationsSent: [expect.objectContaining({ type: "dunning_sms", channel: "sms" })],

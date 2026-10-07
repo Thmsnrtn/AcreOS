@@ -99,6 +99,7 @@ describe("processAutoRetries — D1 ladder", () => {
 
     expect(payMock).toHaveBeenCalledWith("in_123");
     expect(storage.updateDunningEvent).toHaveBeenCalledWith(
+      42,
       7,
       expect.objectContaining({
         status: "resolved",
@@ -127,6 +128,7 @@ describe("processAutoRetries — D1 ladder", () => {
     await dunningService.processAutoRetries(NOW);
 
     expect(storage.updateDunningEvent).toHaveBeenCalledWith(
+      42,
       7,
       expect.objectContaining({
         retryCount: 1,
@@ -134,7 +136,7 @@ describe("processAutoRetries — D1 ladder", () => {
       }),
     );
     // Failure must NOT resolve the event or clear the org.
-    const update = vi.mocked(storage.updateDunningEvent).mock.calls[0][1] as any;
+    const update = vi.mocked(storage.updateDunningEvent).mock.calls[0][2] as any;
     expect(update.status).toBeUndefined();
     expect(storage.updateOrganization).not.toHaveBeenCalled();
     expect(logActivity).toHaveBeenCalledWith(
@@ -175,6 +177,7 @@ describe("processAutoRetries — D1 ladder", () => {
 
     expect(payMock).toHaveBeenCalledTimes(1);
     expect(storage.updateDunningEvent).toHaveBeenCalledWith(
+      42,
       7,
       expect.objectContaining({
         retryCount: 2,

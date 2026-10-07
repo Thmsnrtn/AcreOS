@@ -133,6 +133,33 @@ export function deriveRefundReversals(input: {
   return rows;
 }
 
+/**
+ * The delivery could not be authenticated as coming from Stripe. The route
+ * answers 400 and counts it; it is not an incident and never pages.
+ */
+export class StripeWebhookSignatureError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'StripeWebhookSignatureError';
+  }
+}
+
+/**
+ * A VERIFIED event failed to process. This is the incident case: a customer
+ * may have been charged but not provisioned. Carries the event identity so the
+ * route can page once per event type rather than once per Stripe retry.
+ */
+export class StripeWebhookProcessingError extends Error {
+  constructor(
+    readonly eventId: string,
+    readonly eventType: string,
+    readonly underlying: unknown,
+  ) {
+    super(underlying instanceof Error ? underlying.message : String(underlying));
+    this.name = 'StripeWebhookProcessingError';
+  }
+}
+
 export class WebhookHandlers {
   /**
    * Verify webhook signature and parse event.
@@ -146,7 +173,11 @@ export class WebhookHandlers {
 
     const stripe = await getUncachableStripeClient();
     // constructEvent verifies the signature and throws on mismatch
-    return stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+    try {
+      return stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+    } catch (err) {
+      throw new StripeWebhookSignatureError(err instanceof Error ? err.message : 'Signature verification failed');
+    }
   }
 
   /**
@@ -207,7 +238,7 @@ export class WebhookHandlers {
     } catch (err: any) {
       logger.error(`[webhook] Error processing ${event.type} (${event.id}) — releasing claim for Stripe retry`, err);
       await WebhookHandlers.releaseClaim(event.id);
-      throw err;
+      throw new StripeWebhookProcessingError(event.id, event.type, err);
     }
   }
 

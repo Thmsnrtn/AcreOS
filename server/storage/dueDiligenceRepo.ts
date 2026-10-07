@@ -6,7 +6,7 @@
 // DatabaseStorage instance (the many in-cluster self-calls resolve against
 // the composed prototype).
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import { forOrg } from "../utils/orgScopedDb";
@@ -15,6 +15,8 @@ import {
   dueDiligenceItems,
   checklistTemplates,
   dealChecklists,
+  properties,
+  deals,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
   DEFAULT_DEAL_CHECKLIST_TEMPLATES,
   type DueDiligenceTemplate,
@@ -28,6 +30,30 @@ import {
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
 import { assertWritablePatch } from "../utils/patch";
+
+// due_diligence_items and deal_checklists carry no organization column: the
+// owning organization is the parent property's / deal's. The reads, updates
+// and deletes below that address one of those rows by its own id or by its
+// parent id constrain the parent to the caller's organization in the same
+// statement, through these subqueries. The INSERTS (createDueDiligenceItem,
+// createDealChecklist) take no organization: their callers prove the parent
+// first — applyTemplateToProperty and applyChecklistTemplateToDeal do so
+// inside this file, and the routes do so with getProperty / getDeal.
+function orgPropertyIds(organizationId: number, propertyId?: number) {
+  return db.select({ id: properties.id }).from(properties).where(
+    propertyId === undefined
+      ? eq(properties.organizationId, organizationId)
+      : and(eq(properties.id, propertyId), eq(properties.organizationId, organizationId)),
+  );
+}
+
+function orgDealIds(organizationId: number, dealId?: number) {
+  return db.select({ id: deals.id }).from(deals).where(
+    dealId === undefined
+      ? eq(deals.organizationId, organizationId)
+      : and(eq(deals.id, dealId), eq(deals.organizationId, organizationId)),
+  );
+}
 
 export const dueDiligenceRepo = {
   // Due Diligence Templates
@@ -47,20 +73,17 @@ export const dueDiligenceRepo = {
     return newTemplate;
   },
 
-  async updateDueDiligenceTemplate(this: DatabaseStorage, id: number, updates: Partial<InsertDueDiligenceTemplate>, organizationId?: number) {
-    const conditions = [eq(dueDiligenceTemplates.id, id)];
-    if (organizationId) conditions.push(eq(dueDiligenceTemplates.organizationId, organizationId));
+  async updateDueDiligenceTemplate(this: DatabaseStorage, organizationId: number, id: number, updates: Partial<InsertDueDiligenceTemplate>) {
     const [updated] = await db.update(dueDiligenceTemplates)
       .set(assertWritablePatch(updates, "due_diligence_templates.updateDueDiligenceTemplate"))
-      .where(and(...conditions))
+      .where(and(eq(dueDiligenceTemplates.id, id), eq(dueDiligenceTemplates.organizationId, organizationId)))
       .returning();
     return updated;
   },
 
-  async deleteDueDiligenceTemplate(this: DatabaseStorage, id: number, organizationId?: number) {
-    const conditions = [eq(dueDiligenceTemplates.id, id)];
-    if (organizationId) conditions.push(eq(dueDiligenceTemplates.organizationId, organizationId));
-    await db.delete(dueDiligenceTemplates).where(and(...conditions));
+  async deleteDueDiligenceTemplate(this: DatabaseStorage, organizationId: number, id: number) {
+    await db.delete(dueDiligenceTemplates)
+      .where(and(eq(dueDiligenceTemplates.id, id), eq(dueDiligenceTemplates.organizationId, organizationId)));
   },
 
   async initializeDefaultTemplates(this: DatabaseStorage, orgId: number) {
@@ -83,9 +106,12 @@ export const dueDiligenceRepo = {
   },
 
   // Due Diligence Items (property checklist)
-  async getPropertyDueDiligence(this: DatabaseStorage, propertyId: number) {
+  async getPropertyDueDiligence(this: DatabaseStorage, organizationId: number, propertyId: number) {
     return await db.select().from(dueDiligenceItems)
-      .where(eq(dueDiligenceItems.propertyId, propertyId))
+      .where(and(
+        eq(dueDiligenceItems.propertyId, propertyId),
+        inArray(dueDiligenceItems.propertyId, orgPropertyIds(organizationId, propertyId)),
+      ))
       .orderBy(dueDiligenceItems.category, dueDiligenceItems.itemName);
   },
 
@@ -94,7 +120,7 @@ export const dueDiligenceRepo = {
     return newItem;
   },
 
-  async updateDueDiligenceItem(this: DatabaseStorage, id: number, updates: Partial<InsertDueDiligenceItem>) {
+  async updateDueDiligenceItem(this: DatabaseStorage, organizationId: number, id: number, updates: Partial<InsertDueDiligenceItem>) {
     const updateData: any = { ...updates };
     if (updates.completed === true && !updates.completedAt) {
       updateData.completedAt = new Date();
@@ -105,13 +131,19 @@ export const dueDiligenceRepo = {
     }
     const [updated] = await db.update(dueDiligenceItems)
       .set(assertWritablePatch(updateData, "due_diligence_items.updateDueDiligenceItem"))
-      .where(eq(dueDiligenceItems.id, id))
+      .where(and(
+        eq(dueDiligenceItems.id, id),
+        inArray(dueDiligenceItems.propertyId, orgPropertyIds(organizationId)),
+      ))
       .returning();
     return updated;
   },
 
-  async deleteDueDiligenceItem(this: DatabaseStorage, id: number) {
-    await db.delete(dueDiligenceItems).where(eq(dueDiligenceItems.id, id));
+  async deleteDueDiligenceItem(this: DatabaseStorage, organizationId: number, id: number) {
+    await db.delete(dueDiligenceItems).where(and(
+      eq(dueDiligenceItems.id, id),
+      inArray(dueDiligenceItems.propertyId, orgPropertyIds(organizationId)),
+    ));
   },
 
   async applyTemplateToProperty(this: DatabaseStorage, organizationId: number, propertyId: number, templateId: number) {
@@ -119,8 +151,15 @@ export const dueDiligenceRepo = {
     if (!template) {
       throw new Error("Template not found");
     }
+    const [property] = await orgPropertyIds(organizationId, propertyId);
+    if (!property) {
+      throw new Error("Property not found");
+    }
 
-    await db.delete(dueDiligenceItems).where(eq(dueDiligenceItems.propertyId, propertyId));
+    await db.delete(dueDiligenceItems).where(and(
+      eq(dueDiligenceItems.propertyId, propertyId),
+      inArray(dueDiligenceItems.propertyId, orgPropertyIds(organizationId, propertyId)),
+    ));
 
     const items: DueDiligenceItem[] = [];
     for (const templateItem of template.items) {
@@ -154,20 +193,17 @@ export const dueDiligenceRepo = {
     return newTemplate;
   },
 
-  async updateChecklistTemplate(this: DatabaseStorage, id: number, updates: Partial<InsertChecklistTemplate>, organizationId?: number) {
-    const conditions = [eq(checklistTemplates.id, id)];
-    if (organizationId) conditions.push(eq(checklistTemplates.organizationId, organizationId));
+  async updateChecklistTemplate(this: DatabaseStorage, organizationId: number, id: number, updates: Partial<InsertChecklistTemplate>) {
     const [updated] = await db.update(checklistTemplates)
       .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
-      .where(and(...conditions))
+      .where(and(eq(checklistTemplates.id, id), eq(checklistTemplates.organizationId, organizationId)))
       .returning();
     return updated;
   },
 
-  async deleteChecklistTemplate(this: DatabaseStorage, id: number, organizationId?: number) {
-    const conditions = [eq(checklistTemplates.id, id)];
-    if (organizationId) conditions.push(eq(checklistTemplates.organizationId, organizationId));
-    await db.delete(checklistTemplates).where(and(...conditions));
+  async deleteChecklistTemplate(this: DatabaseStorage, organizationId: number, id: number) {
+    await db.delete(checklistTemplates)
+      .where(and(eq(checklistTemplates.id, id), eq(checklistTemplates.organizationId, organizationId)));
   },
 
   async initializeDefaultChecklistTemplates(this: DatabaseStorage, orgId: number) {
@@ -191,9 +227,12 @@ export const dueDiligenceRepo = {
   },
 
   // Deal Checklists
-  async getDealChecklist(this: DatabaseStorage, dealId: number) {
+  async getDealChecklist(this: DatabaseStorage, organizationId: number, dealId: number) {
     const [checklist] = await db.select().from(dealChecklists)
-      .where(eq(dealChecklists.dealId, dealId));
+      .where(and(
+        eq(dealChecklists.dealId, dealId),
+        inArray(dealChecklists.dealId, orgDealIds(organizationId, dealId)),
+      ));
     return checklist;
   },
 
@@ -202,10 +241,13 @@ export const dueDiligenceRepo = {
     return newChecklist;
   },
 
-  async updateDealChecklist(this: DatabaseStorage, id: number, updates: Partial<InsertDealChecklist>) {
+  async updateDealChecklist(this: DatabaseStorage, organizationId: number, id: number, updates: Partial<InsertDealChecklist>) {
     const [updated] = await db.update(dealChecklists)
       .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
-      .where(eq(dealChecklists.id, id))
+      .where(and(
+        eq(dealChecklists.id, id),
+        inArray(dealChecklists.dealId, orgDealIds(organizationId)),
+      ))
       .returning();
     return updated;
   },
@@ -228,22 +270,27 @@ export const dueDiligenceRepo = {
     // outright — the closing checklist (which shares the row) and every
     // completed item with it. Kept: the closing generator's items and any
     // item with progress; added: template items not already present.
-    const existing = await this.getDealChecklist(dealId);
+    const existing = await this.getDealChecklist(organizationId, dealId);
     if (!existing) {
+      const [deal] = await orgDealIds(organizationId, dealId);
+      if (!deal) {
+        throw new Error("Deal not found");
+      }
       return await this.createDealChecklist({ dealId, templateId, items: templateItems });
     }
     const kept = existing.items.filter((i) => i.phase || i.checkedAt || i.completed);
     const keptIds = new Set(kept.map((i) => i.id));
     const items = [...kept, ...templateItems.filter((i) => !keptIds.has(i.id))];
-    return await this.updateDealChecklist(existing.id, { templateId, items });
+    return await this.updateDealChecklist(organizationId, existing.id, { templateId, items });
   },
 
-  async updateDealChecklistItem(this: DatabaseStorage, 
-    dealId: number, 
-    itemId: string, 
+  async updateDealChecklistItem(this: DatabaseStorage,
+    organizationId: number,
+    dealId: number,
+    itemId: string,
     updates: { checked?: boolean; documentUrl?: string; checkedBy?: string; verification?: DealChecklistItem["verification"] }
   ) {
-    const checklist = await this.getDealChecklist(dealId);
+    const checklist = await this.getDealChecklist(organizationId, dealId);
     if (!checklist) {
       throw new Error("Checklist not found for this deal");
     }
@@ -280,7 +327,7 @@ export const dueDiligenceRepo = {
     const allComplete = updatedItems.every(item => item.checkedAt || item.completed);
     const completedAt = allComplete ? new Date() : null;
 
-    return await this.updateDealChecklist(checklist.id, {
+    return await this.updateDealChecklist(organizationId, checklist.id, {
       items: updatedItems,
       completedAt,
     });
@@ -288,12 +335,13 @@ export const dueDiligenceRepo = {
 
   async checkStageGate(
     this: DatabaseStorage,
+    organizationId: number,
     dealId: number,
     toStage?: string,
   ): Promise<{ canAdvance: boolean; incompleteItems: DealChecklistItem[] }> {
     // Cancelling is never blocked by unfinished work.
     if (toStage === "cancelled") return { canAdvance: true, incompleteItems: [] };
-    const checklist = await this.getDealChecklist(dealId);
+    const checklist = await this.getDealChecklist(organizationId, dealId);
     if (!checklist) {
       return { canAdvance: true, incompleteItems: [] };
     }

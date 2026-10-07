@@ -16,6 +16,90 @@ import {
 import { eq, and, desc, gte, or, sql, inArray } from "drizzle-orm";
 import { logger } from "../utils/logger";
 
+/**
+ * The investor-profile columns a customer edits: the "Public info" and
+ * "Specialization" blocks of `investor_profiles`. Everything else on the row is
+ * the platform's — its id and tenant key, the verification state (set by the
+ * verification flow), the reputation figures (computed from marketplace
+ * activity) and the timestamps — and is never taken from a request.
+ */
+const CUSTOMER_EDITABLE_INVESTOR_PROFILE_FIELDS = [
+  "displayName",
+  "bio",
+  "location",
+  "website",
+  "specialties",
+  "preferredStates",
+  "investmentRange",
+] as const;
+
+export type InvestorProfileEdits = Partial<
+  Pick<InsertInvestorProfile, (typeof CUSTOMER_EDITABLE_INVESTOR_PROFILE_FIELDS)[number]>
+>;
+
+/**
+ * Keep only the customer-editable investor-profile fields of a request body.
+ * A non-object yields an empty object.
+ */
+export function investorProfileEdits(body: unknown): InvestorProfileEdits {
+  if (body === null || typeof body !== "object" || Array.isArray(body)) return {};
+  const src = body as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of CUSTOMER_EDITABLE_INVESTOR_PROFILE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(src, key) && src[key] !== undefined) out[key] = src[key];
+  }
+  return out as InvestorProfileEdits;
+}
+
+/**
+ * `marketplace_listings` columns only the seller sees. `minAcceptablePrice` is
+ * the seller's private floor (the schema marks it "private, not shown").
+ */
+const SELLER_ONLY_LISTING_FIELDS = ["minAcceptablePrice"] as const;
+
+type SellerOnlyListingField = (typeof SELLER_ONLY_LISTING_FIELDS)[number];
+
+/** A listing as a viewer may see it: the seller-only columns are removed unless the viewer is the seller. */
+function listingForViewer<T extends { sellerOrganizationId: number }>(
+  listing: T,
+  viewerOrgId: number | undefined,
+): T | Omit<T, SellerOnlyListingField> {
+  if (viewerOrgId !== undefined && listing.sellerOrganizationId === viewerOrgId) return listing;
+  const out: Record<string, unknown> = { ...listing };
+  for (const key of SELLER_ONLY_LISTING_FIELDS) delete out[key];
+  return out as Omit<T, SellerOnlyListingField>;
+}
+
+/**
+ * The property columns a marketplace listing shows to other organizations:
+ * where the land is and what it is. The seller's own records on the row — its
+ * tenant key, what it paid, its counterparties, its diligence and enrichment
+ * data — are not part of a listing.
+ */
+const LISTING_PROPERTY_COLUMNS = {
+  id: properties.id,
+  apn: properties.apn,
+  county: properties.county,
+  state: properties.state,
+  city: properties.city,
+  sizeAcres: properties.sizeAcres,
+  zoning: properties.zoning,
+  terrain: properties.terrain,
+  roadAccess: properties.roadAccess,
+  utilities: properties.utilities,
+  description: properties.description,
+  highlights: properties.highlights,
+  photos: properties.photos,
+  latitude: properties.latitude,
+  longitude: properties.longitude,
+};
+
+/** The seller organization as a listing shows it. */
+const LISTING_SELLER_COLUMNS = {
+  id: organizations.id,
+  name: organizations.name,
+};
+
 export class MarketplaceService {
   
   /**
@@ -62,7 +146,9 @@ export class MarketplaceService {
       acceptsPartnership: data.acceptsPartnership || false,
       partnershipTerms: data.partnershipTerms,
       visibility: data.visibility || "public",
-      isPremiumPlacement: data.isPremiumPlacement || false,
+      // Premium placement is bought through upgradeToPremium, which charges
+      // for it; a new listing never starts there.
+      isPremiumPlacement: false,
       status: "active",
       expiresAt,
     }).returning();
@@ -74,7 +160,10 @@ export class MarketplaceService {
    * Get marketplace listings with filters
    */
   async getListings(filters: {
+    /** The viewer; its own listings are excluded. */
     organizationId?: number;
+    /** The viewer, when its own listings are NOT to be excluded. */
+    viewerOrgId?: number;
     status?: string;
     listingType?: string;
     minPrice?: number;
@@ -85,11 +174,8 @@ export class MarketplaceService {
   }) {
     let query = db.select({
       listing: marketplaceListings,
-      property: properties,
-      seller: {
-        id: organizations.id,
-        name: organizations.name,
-      },
+      property: LISTING_PROPERTY_COLUMNS,
+      seller: LISTING_SELLER_COLUMNS,
     })
       .from(marketplaceListings)
       .leftJoin(properties, eq(marketplaceListings.propertyId, properties.id))
@@ -143,7 +229,8 @@ export class MarketplaceService {
       query = query.offset(filters.offset) as any;
     }
     
-    return await query;
+    const rows = await query;
+    return rows.map((row) => ({ ...row, listing: listingForViewer(row.listing, filters.organizationId ?? filters.viewerOrgId) }));
   }
   
   /**
@@ -152,8 +239,8 @@ export class MarketplaceService {
   async getListing(listingId: number, viewerOrgId?: number) {
     const results = await db.select({
       listing: marketplaceListings,
-      property: properties,
-      seller: organizations,
+      property: LISTING_PROPERTY_COLUMNS,
+      seller: LISTING_SELLER_COLUMNS,
     })
       .from(marketplaceListings)
       .leftJoin(properties, eq(marketplaceListings.propertyId, properties.id))
@@ -190,6 +277,7 @@ export class MarketplaceService {
     
     return {
       ...result,
+      listing: listingForViewer(result.listing, viewerOrgId),
       bids,
     };
   }
@@ -301,6 +389,22 @@ export class MarketplaceService {
     return bid;
   }
   
+  /** The bids a viewer may see on a listing: the seller sees every bid, any other viewer only its own. */
+  async getBidsVisibleTo(listingId: number, viewerOrgId: number, sellerOrgId: number) {
+    if (viewerOrgId === sellerOrgId) return this.getBidsForListing(listingId);
+    return await db.select({
+      bid: marketplaceBids,
+      bidder: {
+        id: organizations.id,
+        name: organizations.name,
+      },
+    })
+      .from(marketplaceBids)
+      .leftJoin(organizations, eq(marketplaceBids.bidderOrganizationId, organizations.id))
+      .where(and(eq(marketplaceBids.listingId, listingId), eq(marketplaceBids.bidderOrganizationId, viewerOrgId)))
+      .orderBy(desc(marketplaceBids.bidAmount), desc(marketplaceBids.createdAt));
+  }
+
   /**
    * Get bids for a listing (seller only)
    */
@@ -371,6 +475,16 @@ export class MarketplaceService {
         .where(and(
           eq(marketplaceBids.id, bidId),
           eq(marketplaceBids.listingId, listing.id),
+          // The write itself requires the listing to be the caller's.
+          inArray(
+            marketplaceBids.listingId,
+            tx.select({ id: marketplaceListings.id })
+              .from(marketplaceListings)
+              .where(and(
+                eq(marketplaceListings.id, listing.id),
+                eq(marketplaceListings.sellerOrganizationId, sellerOrgId),
+              )),
+          ),
         ));
 
       // If accepted, update listing status and create deal room
@@ -648,11 +762,13 @@ export class MarketplaceService {
    */
   async updateInvestorProfile(
     organizationId: number,
-    data: Partial<InsertInvestorProfile>
+    data: InvestorProfileEdits
   ) {
     const [updated] = await db.update(investorProfiles)
       .set({
-        ...data,
+        // Applied here as well as at the route, so no caller of this method
+        // can write a platform-owned column through it.
+        ...investorProfileEdits(data),
         updatedAt: new Date(),
       })
       .where(eq(investorProfiles.organizationId, organizationId))
@@ -739,12 +855,15 @@ export class MarketplaceService {
     sortBy?: "price" | "newest" | "popular";
     limit?: number;
     offset?: number;
-  }) {
+  }, viewerOrgId?: number) {
     // This would integrate with ElasticSearch in production
     // For now, basic SQL search
     
     const filters: any = {
       status: "active",
+      // The viewer decides which seller-only columns are removed; it is not a
+      // filter here (a seller's own listings stay in its search results).
+      viewerOrgId,
       minPrice: query.minPrice,
       maxPrice: query.maxPrice,
       states: query.states,
@@ -773,16 +892,19 @@ export class MarketplaceService {
    * Get all bids placed by this org (buyer perspective)
    */
   async getMyBids(organizationId: number) {
-    return await db.select({
+    // The listings here are other organizations' — the bidder sees them as
+    // any non-seller does.
+    const rows = await db.select({
       bid: marketplaceBids,
       listing: marketplaceListings,
-      property: properties,
+      property: LISTING_PROPERTY_COLUMNS,
     })
       .from(marketplaceBids)
       .leftJoin(marketplaceListings, eq(marketplaceBids.listingId, marketplaceListings.id))
       .leftJoin(properties, eq(marketplaceListings.propertyId, properties.id))
       .where(eq(marketplaceBids.bidderOrganizationId, organizationId))
       .orderBy(desc(marketplaceBids.createdAt));
+    return rows.map((row) => ({ ...row, listing: row.listing ? listingForViewer(row.listing, organizationId) : row.listing }));
   }
 
   /**

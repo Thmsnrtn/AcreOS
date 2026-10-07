@@ -1267,7 +1267,7 @@ async function loadProjectContext(orgId: number, projectId: number): Promise<str
     // context instead of leaking another tenant's project files.
     const project = await storage.getPaxProject(orgId, projectId);
     if (!project) return "";
-    const files = await storage.getPaxProjectFiles(projectId);
+    const files = await storage.getPaxProjectFiles(orgId, projectId);
     // Unit 111, same reasoning as loadOrgKnowledgeContext above. The project's
     // own name and description are org-authored free text reaching the system
     // prompt, so they are sanitized too — inline, since they sit on the framing

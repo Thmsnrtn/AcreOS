@@ -984,8 +984,12 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       // `organizationId` OVERRODE the server's own value and filed the profile
       // under another organization. Same class as the campaign-reassignment
       // hole fixed in 6c8bd244 (2026-09-04).
-      const { organizationId: _ignoredOrgId, id: _ignoredId, userId: _ignoredUserId, ...safeBody } =
-        (body ?? {}) as Record<string, unknown>;
+      // The body supplies only the customer-editable columns
+      // (investorProfileEdits, an allowlist): the row's id, tenant key and
+      // timestamps, and the platform's verification and reputation fields,
+      // are never taken from it.
+      const { investorProfileEdits } = await import("./services/marketplace");
+      const safeBody = investorProfileEdits(body);
 
       if (existing) {
         const [updated] = await database
@@ -1003,9 +1007,8 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
         const [created] = await database
           .insert(investorProfiles)
           // The server's own fields come AFTER the spread, so they win. The
-          // cast is only to satisfy Drizzle's overload on a widened body — it
-          // does not reintroduce the hole, because `safeBody` no longer
-          // carries organizationId, id or userId at all.
+          // cast is only to satisfy Drizzle's overload — `safeBody` carries
+          // customer-editable columns only.
           .values({
             ...safeBody,
             organizationId: org.id,

@@ -26,6 +26,7 @@ import { db } from "../../db";
 import { trackingNumberAssignments } from "@shared/schema";
 import { and, eq, isNull, isNotNull, lt, or } from "drizzle-orm";
 import { logger } from "../../utils/logger";
+import { unscopedForPlatformOps } from "../../utils/orgScopedDb";
 import { getNumberSetting } from "../founderSettings";
 import { commsRouter, type CommsProviderName } from "./router";
 
@@ -300,7 +301,12 @@ export async function attributeInbound(
 
   // Update lastInboundAt — only if the new timestamp advances the high
   // watermark, so a delayed webhook can't roll it backward.
-  await db
+  // Inbound attribution runs before any organization is known — the number
+  // is what names it — so the stamp addresses the assignment row by the id
+  // the lookup above returned, across organizations, through the hatch.
+  await unscopedForPlatformOps(
+    "inbound attribution: stamp lastInboundAt on the assignment the inbound number resolved to",
+  )
     .update(trackingNumberAssignments)
     .set({ lastInboundAt: timestamp })
     .where(

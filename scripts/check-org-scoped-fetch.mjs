@@ -108,6 +108,20 @@
 //     A service can take `orgId` and still hand it to nobody.
 //   - Tables queried through helper indirection (variable holding the table)
 //     are missed. Not a pattern in storage today.
+//   - A table with NO organization column is outside the population, even
+//     when every row belongs to an org-owned parent (deal_checklists,
+//     due_diligence_items, sequence_steps, sequence_enrollments,
+//     ab_test_variants, ai_messages, pax_project_files, mailing_order_pieces,
+//     workflow_runs, support_messages, support_actions). Their repository
+//     helpers prove the parent's organization inside the statement, and
+//     tests/integration/helperOrgScope.db.test.ts holds that behaviourally —
+//     this gate cannot.
+//   - A write (or relational read) is counted as touching a table only when
+//     its receiver is `db` / `tx` or the statement is rooted in
+//     `unscopedForPlatformOps(…)` itself. A chain on a STORED handle —
+//     `const platformDb = unscopedForPlatformOps(…); platformDb.update(t)` —
+//     is read only through any `.from(` it contains; its writes are not read
+//     by any rule. That is a blind spot, not an exemption.
 // ============================================================================
 
 const BASELINE_OFFENDERS = new Set([
@@ -156,19 +170,12 @@ const BASELINE_OFFENDERS = new Set([
   // project update to the projectId READ OFF THAT ROW — another org's row.
   // Pinned behaviourally by tests/unit/paxProjectFileTenancy.test.ts.
   "server/storage/integrationsRepo.ts::findOrganizationIntegrationByCredential",
-  "server/storage/sequencesRepo.ts::getAbTestByCampaign",
-  "server/storage/vaEngineRepo.ts::getAdPostingsByProperty",
   "server/storage/supportOpsRepo.ts::getAdminDashboardData",
   "server/storage/agentWorkflowsRepo.ts::getAgentFeedbackByTask",
   "server/storage/platformOpsRepo.ts::getAllFeatureRequestsForFounder",
   "server/storage/platformOpsRepo.ts::getBorrowerSession",
-  "server/storage/vaEngineRepo.ts::getBuyerPrequalificationByLead",
   "server/storage/commsRepo.ts::getCampaignByTrackingCode",
   "server/storage/commsRepo.ts::getCampaignResponsesCount",
-  "server/storage/vaEngineRepo.ts::getCollectionEnrollmentsByNote",
-  "server/storage/vaEngineRepo.ts::getCollectionEnrollmentsBySequence",
-  "server/storage/documentsRepo.ts::getDocumentSignatures",
-  "server/storage/acquisitionRepo.ts::getDueDiligenceChecklist",
   "server/storage/agentWorkflowsRepo.ts::getDueScheduledTasks",
   "server/storage/supportOpsRepo.ts::getEscalatedCases",
   "server/storage/growthConfigRepo.ts::getFieldScoutPhotosByLead",
@@ -178,20 +185,15 @@ const BASELINE_OFFENDERS = new Set([
   "server/storage.ts::getMessages",
   "server/storage/gisRepo.ts::getParcelSnapshot",
   "server/storage/paxRepo.ts::getPaxScheduledTasksDue",
-  "server/storage/paymentRemindersRepo.ts::getRemindersForNote",
   "server/storage/agentWorkflowsRepo.ts::getScheduledTask",
-  "server/storage/vaEngineRepo.ts::getSellerCommunicationsByLead",
-  "server/storage/vaRepo.ts::getVaAction",
   "server/storage/mailRepo.ts::incrementMailingOrderPieces",
   // markNotificationRead removed 2026-08-06 (audit F-23-4): it now takes an
   // optional organizationId and scopes the update when supplied, so it is no
   // longer an unscoped offender.
-  "server/storage/supportOpsRepo.ts::resolveAlert",
   "server/storage/supportOpsRepo.ts::resolveAllAlerts",
   "server/storage/documentsRepo.ts::seedSystemTemplates",
   "server/storage/paxRepo.ts::setConversationProject",
   "server/storage/platformOpsRepo.ts::updateBorrowerSessionAccess",
-  "server/storage/supportOpsRepo.ts::updateSystemAlert",
   "server/storage/gisRepo.ts::upsertParcelSnapshot",
   "server/storage/campaignRepo.ts::getCampaignOptimizations",
   "server/storage/campaignRepo.ts::markOptimizationImplemented",
@@ -261,13 +263,8 @@ const BASELINE_OFFENDERS = new Set([
   "server/services/decisionsInbox.ts::override",
   "server/services/decisionsInbox.ts::processDeferredItems",
   "server/services/decisionsInbox.ts::reject",
-  "server/services/dispositionOptimizer.ts::analyzeTimingFactors",
-  "server/services/dispositionOptimizer.ts::calculateOptimalPrice",
-  "server/services/dispositionOptimizer.ts::calculateOwnerFinanceTerms",
   "server/services/dispositionOptimizer.ts::getAverageDaysOnMarket",
   "server/services/dispositionOptimizer.ts::getMarketCondition",
-  "server/services/dispositionOptimizer.ts::getRecommendation",
-  "server/services/dispositionOptimizer.ts::recommendChannels",
   "server/services/dunning.ts::getActiveCases",
   "server/services/dunning.ts::getHistory",
   "server/services/etlHandlers.ts::softDelete",
@@ -357,9 +354,6 @@ const BASELINE_UNUSED_ORG = new Set([
   // rate, and verify every claim against the CALLER, not the signature.
   "server/services/agentOrchestration.ts::publishEvent",
   "server/services/campaignOptimizer.ts::optimizeCampaign",
-  "server/services/dunning.ts::cancelCase",
-  "server/services/dunning.ts::resolveCase",
-  "server/services/dunning.ts::retryPayment",
   "server/services/leadNurturer.ts::processLeadsForOrg",
   "server/services/sequenceOptimizer.ts::identifyBestPerformingSegments",
   // ── RULE 2 BASELINE, frozen 2026-08-13 ────────────────────────────────────
@@ -406,14 +400,10 @@ const BASELINE_UNUSED_ORG = new Set([
   "server/services/dealPatternCloning.ts::recordPatternFromClosedDeal",
   "server/services/dealPatternCloning.ts::savePatternMatch",
   "server/services/decisionsInbox.ts::createFromFeatureRequest",
-  "server/services/dispositionOptimizer.ts::findComparables",
   "server/services/dunning.ts::sendDunningSMS",
   "server/services/leadScoring.ts::scoreLead",
   "server/services/negotiationOrchestrator.ts::recordMove",
   "server/services/paxObserver.ts::updateBatchedObservation",
-  "server/services/portfolioSentinel.ts::checkCompetitorActivity",
-  "server/services/portfolioSentinel.ts::checkMarketChanges",
-  "server/services/portfolioSentinel.ts::checkTaxStatus",
   "server/services/priceOptimizer.ts::findComparables",
   "server/services/priceOptimizer.ts::recommendAcquisitionPrice",
   "server/services/priceOptimizer.ts::recommendCounterOffer",
@@ -626,11 +616,12 @@ const BASELINE_FUNCTION_OFFENDERS = new Set([
 // primary key. The (a)/(b) triage in BASELINE_UNUSED_ORG applies unchanged.
 // A worked example of each, both verified by hand:
 //
-//   (a) amlMonitor.checkDealAmlPatterns(orgId, dealId, …) takes an org and
-//       then runs `where(eq(deals.id, dealId))` with no org predicate — the
+//   (a) amlMonitor.checkDealAmlPatterns(orgId, dealId, …) took an org and
+//       then ran `where(eq(deals.id, dealId))` with no org predicate — the
 //       precise cashFlowForecaster shape that motivated rule 1, in a shape
-//       rule 1 could not see. A dealId from another tenant reads that
-//       tenant's deal through a signature whose type says it is scoped.
+//       rule 1 could not see. It now reads the deal and its property within
+//       `orgId` and has left this register (2026-10-06); the example stays
+//       because the shape it names is what this register exists to hold.
 //   (b) byok/key-vault.getByokCredential selects under a correct org filter,
 //       then bumps lastUsedAt via `where(eq(byokCredentials.id, row.id))` on
 //       the row it just read. Safe, and textually identical to (a).
@@ -711,7 +702,6 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   "server/services/smsService.ts::sendSMSToLead",
   "server/services/achMandateSetup.ts::confirmAchMandateSetup",
   "server/services/agentPromotionGate.ts::addSimulationRequirement",
-  "server/services/amlMonitor.ts::checkDealAmlPatterns",
   "server/services/andrei/supportResolverCalibration.ts::gradeAutoResolvedTicket",
   "server/services/atlasMemory.ts::storeMemory",
   "server/services/atrSafeHarbor.ts::persistAtrDetermination",
@@ -1254,7 +1244,13 @@ function findScannedFiles() {
       }
     }
   }
-  return files.sort();
+  // ONE READ PER FILE. The storage entries above are also under SERVER_DIR, so
+  // the whole-server walk pushed every server/storage.ts + server/storage/*.ts
+  // path a second time, and each repository method was scanned twice: the
+  // population line counted it twice and a new offender in a repository was
+  // listed twice. Measured 2026-10-06: 1,439 "files" were 1,403 distinct paths, and 2,999
+  // "methods" were 2,357.
+  return [...new Set(files)].sort();
 }
 
 /**
@@ -1668,7 +1664,10 @@ const ORG_CONTEXT_RE = /[Oo]rganizationId|[Oo]rgId|forOrg\s*\(|unscopedForPlatfo
  * The check: inside a method that has org context, every `where(eq(<table>.id,
  * …))` on an org-scoped table must also constrain `organizationId`. Whitespace
  * tolerant, and it looks at the WHOLE where() call, so
- * `where(and(eq(t.id, x), eq(t.organizationId, o)))` is fine.
+ * `where(and(eq(t.id, x), eq(t.organizationId, o)))` is fine — and, since
+ * 2026-10-06, `where(and(eq(t.id, x), eq(t.status, s)))` is NOT: a primary key
+ * inside a conjunction that never names the organization is read as the same
+ * defect (see the conjunction pass in loneIdPredicates).
  */
 // TWO SPELLINGS OF `where`, and until 2026-09-04 this matched one.
 //
@@ -1712,6 +1711,9 @@ const LONE_ID_WHERE = /where\s*[(:]\s*eq\(\s*([A-Za-z0-9_]+)\s*\.\s*id\s*,[^)]*\
  * what it can see and never guesses.
  */
 const HOISTED_LONE_ID = /(?:const|let)\s+([A-Za-z0-9_]+)\s*=\s*eq\(\s*([A-Za-z0-9_]+)\s*\.\s*id\s*,[^)]*\)\s*;/g;
+
+/** `where(and(` / `where: and(` — see the conjunction pass in loneIdPredicates. */
+const CONJUNCTION_WHERE = /where\s*[(:]\s*and\s*\(/g;
 
 /**
  * Sanctioned-root exemption for rule 2, added 2026-09-04 for the same reason
@@ -1783,7 +1785,7 @@ function rootedInSanctionedHatch(methodText, index) {
 
 /** Count of lone-id predicates skipped by the hatch exemption, for the floor. */
 let hatchExemptedLoneIds = 0;
-function loneIdPredicates(methodText, orgScopedIdents) {
+function loneIdPredicates(methodText, orgScopedIdents, unitLabel = "(unit)") {
   const hits = [];
   LONE_ID_WHERE.lastIndex = 0;
   let m;
@@ -1811,6 +1813,66 @@ function loneIdPredicates(methodText, orgScopedIdents) {
       continue;
     }
     hits.push(table);
+  }
+  // THIRD SPELLING: the primary key inside a CONJUNCTION.
+  //
+  // LONE_ID_WHERE needs `eq(` to follow `where(` directly, and rule 3 skips any
+  // chain that names `eq(<table>.id,` because primary-key resolution is this
+  // rule's job. So `where(and(eq(t.id, id), eq(t.status, "open")))` in a unit
+  // that HAS an organization was read by neither rule: an org-scoped row
+  // resolved by its id, narrowed by something other than the organization,
+  // and green. It is also exactly what an org-scoped helper becomes when the
+  // organization predicate is deleted from its `and(...)` and nothing else —
+  // which is why it is pinned here rather than left to the reader.
+  //
+  // The whole conjunction is judged, in both spellings (`where(and(` and the
+  // relational `where: and(`), with any predicate list it spreads in or any
+  // clause variable it names resolved the same way rule 3 resolves them. The
+  // id is looked for in that RESOLVED text, so all of these are read:
+  //   and(eq(t.id, id), eq(t.status, s))        — literal
+  //   and(eq(t.id, id), ...conditions)          — list without the org
+  //   and(...conditions)                        — the id inside the list
+  //   const owned = eq(t.id, x); and(owned, …)  — a hoisted id predicate
+  // and each is credited when the organization appears anywhere in what it
+  // resolves to. A clause whose closing paren cannot be found is COUNTED on
+  // the "could not be located" line, never skipped.
+  const hoistedIds = new Map();
+  HOISTED_LONE_ID.lastIndex = 0;
+  let hv;
+  while ((hv = HOISTED_LONE_ID.exec(methodText)) !== null) {
+    if (orgScopedIdents.has(hv[2])) hoistedIds.set(hv[1], hv[2]);
+  }
+  CONJUNCTION_WHERE.lastIndex = 0;
+  let c;
+  while ((c = CONJUNCTION_WHERE.exec(methodText)) !== null) {
+    const open = c.index + c[0].length - 1;
+    const close = matchParen(methodText, open);
+    if (close === -1) {
+      unreadableDeclarations.push(
+        `${unitLabel}: a where(and(...)) clause whose closing paren could not be found ` +
+          `(line ${methodText.slice(0, c.index).split("\n").length} of the unit) — rule 2 did not read it`,
+      );
+      continue;
+    }
+    const clause = methodText.slice(open, close + 1);
+    const resolved = chainScopeText({ text: clause }, methodText);
+    if (ORG_CONTEXT_RE.test(resolved)) continue;
+    const tables = [];
+    const idRe = /\beq\(\s*([A-Za-z0-9_]+)\s*\.\s*id\s*,/g;
+    let idm;
+    while ((idm = idRe.exec(resolved)) !== null) {
+      if (orgScopedIdents.has(idm[1])) tables.push(idm[1]);
+    }
+    for (const [varName, table] of hoistedIds) {
+      if (new RegExp(`(?:^|[^.\\w$])${varName}\\b(?!\\s*[(.:])`).test(clause.slice(1))) tables.push(table);
+    }
+    for (const table of tables) {
+      if (rootedInSanctionedHatch(methodText, c.index)) {
+        hatchExemptedLoneIds += 1;
+        continue;
+      }
+      hits.push(table);
+    }
   }
   return hits;
 }
@@ -2216,6 +2278,21 @@ function touchedOrgScopedTables(methodText, orgScopedIdents) {
     const ident = m[1];
     if (orgScopedIdents.has(ident)) touched.add(ident);
   }
+  // STATEMENTS ROOTED IN THE HATCH. `unscopedForPlatformOps(reason).update(t)`
+  // has no `db`/`tx` receiver, so until 2026-10-06 a unit whose only query was
+  // a hatch-rooted WRITE (or a hatch-rooted relational read) "touched no
+  // org-scoped table" and was never read by any rule — which also kept its
+  // by-id predicates out of the hatch-exemption count the coverage test caps.
+  // Every hatch-rooted statement now puts its table in the population, read
+  // or write, so that count is over every statement the hatch actually roots.
+  const hatchRootedRe =
+    /\)\s*\.\s*(?:update|delete)\s*\(\s*([A-Za-z0-9_]+)\s*\)|\)\s*\.\s*query\s*\.\s*([A-Za-z0-9_]+)\s*\.\s*(?:findMany|findFirst)\s*\(/g;
+  while ((m = hatchRootedRe.exec(methodText)) !== null) {
+    const ident = m[1] ?? m[2];
+    if (!orgScopedIdents.has(ident)) continue;
+    if (!rootedInSanctionedHatch(methodText, m.index)) continue;
+    touched.add(ident);
+  }
   return [...touched];
 }
 
@@ -2399,7 +2476,7 @@ function main() {
         }
         // Rule 2: it HAS an org — does it use it? See the note on
         // loneIdPredicates for why rule 1 cannot answer that.
-        const lone = loneIdPredicates(unit.text, orgScopedIdents);
+        const lone = loneIdPredicates(unit.text, orgScopedIdents, `${rel}::${unit.name}`);
         if (lone.length > 0) {
           const register = isFn ? BASELINE_FUNCTION_UNUSED_ORG : BASELINE_UNUSED_ORG;
           if (register.has(key)) (isFn ? unusedOrgSeenFunction : unusedOrgSeen).add(key);

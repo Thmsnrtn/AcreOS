@@ -5,7 +5,7 @@
 // into DatabaseStorage.prototype at construction time; `this` refers to the
 // full DatabaseStorage instance.
 
-import { and, desc, eq, lte, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import { unscopedForPlatformOps } from "../utils/orgScopedDb";
@@ -220,9 +220,17 @@ export const agentWorkflowsRepo = {
   },
 
   // Workflow Runs
-  async getWorkflowRuns(this: DatabaseStorage, workflowId: number, limit: number = 50): Promise<WorkflowRun[]> {
+  // workflow_runs carries no organization column; the read is constrained to
+  // a workflow of this organization in the same statement.
+  async getWorkflowRuns(this: DatabaseStorage, organizationId: number, workflowId: number, limit: number = 50): Promise<WorkflowRun[]> {
+    const orgWorkflow = db.select({ id: workflows.id })
+      .from(workflows)
+      .where(and(eq(workflows.id, workflowId), eq(workflows.organizationId, organizationId)));
     return await db.select().from(workflowRuns)
-      .where(eq(workflowRuns.workflowId, workflowId))
+      .where(and(
+        eq(workflowRuns.workflowId, workflowId),
+        inArray(workflowRuns.workflowId, orgWorkflow),
+      ))
       .orderBy(desc(workflowRuns.startedAt))
       .limit(limit);
   },

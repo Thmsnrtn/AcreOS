@@ -181,8 +181,9 @@ export const vaRepo = {
     return result;
   },
 
-  async getVaAction(this: DatabaseStorage, id: number) {
-    const [action] = await db.select().from(vaActions).where(eq(vaActions.id, id));
+  async getVaAction(this: DatabaseStorage, orgId: number, id: number) {
+    const [action] = await db.select().from(vaActions)
+      .where(and(eq(vaActions.id, id), eq(vaActions.organizationId, orgId)));
     return action;
   },
 

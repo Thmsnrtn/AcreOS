@@ -443,7 +443,7 @@ export function registerCampaignRoutes(app: Express): void {
     const sequence = await storage.getSequence(org.id, Number(req.params.id));
     if (!sequence) return Errors.notFound(res, "Sequence");
 
-    const steps = await storage.getSequenceSteps(sequence.id);
+    const steps = await storage.getSequenceSteps(org.id, sequence.id);
     res.json({ ...sequence, steps });
   });
 
@@ -472,7 +472,7 @@ export function registerCampaignRoutes(app: Express): void {
       const sequence = await storage.getSequence(org.id, Number(req.params.id));
       if (!sequence) return Errors.notFound(res, "Sequence");
       const validated = updateCampaignSequenceSchema.parse(req.body);
-      const updated = await storage.updateSequence(sequence.id, validated);
+      const updated = await storage.updateSequence(org.id, sequence.id, validated);
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) return Errors.badRequest(res, err.issues[0].message);
@@ -486,7 +486,7 @@ export function registerCampaignRoutes(app: Express): void {
     const sequence = await storage.getSequence(org.id, Number(req.params.id));
     if (!sequence) return Errors.notFound(res, "Sequence");
     
-    await storage.deleteSequence(sequence.id);
+    await storage.deleteSequence(org.id, sequence.id);
     res.status(204).send();
   });
 
@@ -500,7 +500,7 @@ export function registerCampaignRoutes(app: Express): void {
     const sequence = await storage.getSequence(org.id, Number(req.params.id));
     if (!sequence) return Errors.notFound(res, "Sequence");
 
-    const steps = await storage.getSequenceSteps(sequence.id);
+    const steps = await storage.getSequenceSteps(org.id, sequence.id);
     res.json(steps);
   });
 
@@ -511,7 +511,7 @@ export function registerCampaignRoutes(app: Express): void {
       const sequence = await storage.getSequence(org.id, Number(req.params.id));
       if (!sequence) return Errors.notFound(res, "Sequence");
       
-      const existingSteps = await storage.getSequenceSteps(sequence.id);
+      const existingSteps = await storage.getSequenceSteps(org.id, sequence.id);
       const nextStepNumber = existingSteps.length + 1;
       
       const input = insertSequenceStepSchema.parse({
@@ -540,9 +540,9 @@ export function registerCampaignRoutes(app: Express): void {
       return Errors.validationFailed(res, parsed.error.issues);
     }
     const { stepIds } = parsed.data;
-    await storage.reorderSequenceSteps(sequence.id, stepIds);
+    await storage.reorderSequenceSteps(org.id, sequence.id, stepIds);
     
-    const steps = await storage.getSequenceSteps(sequence.id);
+    const steps = await storage.getSequenceSteps(org.id, sequence.id);
     res.json(steps);
   });
 
@@ -556,7 +556,7 @@ export function registerCampaignRoutes(app: Express): void {
       // 2026-06-10 (T0-2 sweep): constrain to the org-checked sequence —
       // previously a foreign stepId under your own sequence id wrote
       // cross-tenant.
-      const step = await storage.updateSequenceStep(Number(req.params.stepId), validated, sequence.id);
+      const step = await storage.updateSequenceStep(org.id, Number(req.params.stepId), validated, sequence.id);
       if (!step) return Errors.notFound(res, "Step");
       res.json(step);
     } catch (err) {
@@ -572,7 +572,7 @@ export function registerCampaignRoutes(app: Express): void {
     if (!sequence) return Errors.notFound(res, "Sequence");
     
     // 2026-06-10 (T0-2 sweep): constrain to the org-checked sequence.
-    await storage.deleteSequenceStep(Number(req.params.stepId), sequence.id);
+    await storage.deleteSequenceStep(org.id, Number(req.params.stepId), sequence.id);
     res.status(204).send();
   });
 
@@ -592,7 +592,7 @@ export function registerCampaignRoutes(app: Express): void {
     const sequence = await storage.getSequence(org.id, Number(req.params.id));
     if (!sequence) return Errors.notFound(res, "Sequence");
 
-    const enrollments = await storage.getSequenceEnrollments(sequence.id);
+    const enrollments = await storage.getSequenceEnrollments(org.id, sequence.id);
     res.json(enrollments);
   });
 
@@ -623,7 +623,7 @@ export function registerCampaignRoutes(app: Express): void {
       if (!lead) return Errors.notFound(res, "Lead");
 
       // Check if lead is already enrolled in this sequence
-      const existingEnrollments = await storage.getLeadEnrollments(leadId);
+      const existingEnrollments = await storage.getLeadEnrollments(org.id, leadId);
       const alreadyEnrolled = existingEnrollments.find(
         e => e.sequenceId === sequence.id && e.status === "active"
       );
@@ -632,7 +632,7 @@ export function registerCampaignRoutes(app: Express): void {
       }
       
       // Get first step delay to schedule
-      const steps = await storage.getSequenceSteps(sequence.id);
+      const steps = await storage.getSequenceSteps(org.id, sequence.id);
       const firstStep = steps.find(s => s.stepNumber === 1);
       const delayDays = firstStep?.delayDays || 0;
       
@@ -662,11 +662,11 @@ export function registerCampaignRoutes(app: Express): void {
     reason: z.string().optional(),
   });
 
-  // 2026-06-10 (T0-2 sweep): enrollments carry no org column, so ownership is
-  // proven through the parent sequence. Previously pause/resume/cancel wrote
-  // to any org's enrollment by id. 404 hides existence.
+  // Enrollments carry no org column, so ownership is proven through the parent
+  // sequence — getSequenceEnrollment itself constrains that parent to the
+  // organization, and the sequence read below repeats it. 404 hides existence.
   const getOwnedEnrollment = async (orgId: number, enrollmentId: number) => {
-    const enrollment = await storage.getSequenceEnrollment(enrollmentId);
+    const enrollment = await storage.getSequenceEnrollment(orgId, enrollmentId);
     if (!enrollment) return undefined;
     const sequence = await storage.getSequence(orgId, enrollment.sequenceId);
     return sequence ? enrollment : undefined;
@@ -681,7 +681,7 @@ export function registerCampaignRoutes(app: Express): void {
     const { reason } = parsed.data;
     const owned = await getOwnedEnrollment(org.id, Number(req.params.id));
     if (!owned) return Errors.notFound(res, "Enrollment");
-    const enrollment = await storage.pauseEnrollment(owned.id, reason || "Manually paused");
+    const enrollment = await storage.pauseEnrollment(org.id, owned.id, reason || "Manually paused");
     res.json(enrollment);
   });
 
@@ -690,7 +690,7 @@ export function registerCampaignRoutes(app: Express): void {
     const org = req.organization;
     const owned = await getOwnedEnrollment(org.id, Number(req.params.id));
     if (!owned) return Errors.notFound(res, "Enrollment");
-    const enrollment = await storage.resumeEnrollment(owned.id);
+    const enrollment = await storage.resumeEnrollment(org.id, owned.id);
     res.json(enrollment);
   });
 
@@ -699,7 +699,7 @@ export function registerCampaignRoutes(app: Express): void {
     const org = req.organization;
     const owned = await getOwnedEnrollment(org.id, Number(req.params.id));
     if (!owned) return Errors.notFound(res, "Enrollment");
-    const enrollment = await storage.cancelEnrollment(owned.id);
+    const enrollment = await storage.cancelEnrollment(org.id, owned.id);
     res.json(enrollment);
   });
 
@@ -709,7 +709,7 @@ export function registerCampaignRoutes(app: Express): void {
     const lead = await storage.getLead(org.id, Number(req.params.id));
     if (!lead) return Errors.notFound(res, "Lead");
 
-    const enrollments = await storage.getLeadEnrollments(lead.id);
+    const enrollments = await storage.getLeadEnrollments(org.id, lead.id);
     res.json(enrollments);
   });
   

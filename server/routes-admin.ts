@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction, RequestHandler } from "express";
 import { maskAdAccountSecret } from "./services/founderAdAccountSecrets";
+import { omitSecretColumns } from "./utils/secretColumns";
 import { storage, db } from "./storage";
 import { z } from "zod";
 import { eq, sql, and, desc, lt, inArray, or, count } from "drizzle-orm";
@@ -14,6 +15,7 @@ import {
   systemApiKeys,
   featureRequests,
   growthCampaigns,
+  founderAdAccounts,
   systemActivity,
   computeSla,
   orgApiKeys,
@@ -39,6 +41,7 @@ import { isFounderIdentity } from "./services/founder";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 import { Errors, sendError } from "./utils/errors";
+import { omitProtectedFields } from "./utils/updatePayload";
 import { getUserId, getOrganization, getClerkAuth, type AuthenticatedRequest } from "./types/request";
 
 import { sanitizePromptInline } from "./utils/sanitizePrompt";
@@ -162,8 +165,8 @@ export function registerAdminRoutes(app: Express): void {
         return Errors.notFound(res, "Case");
       }
 
-      const messages = await storage.getSupportMessages(caseId);
-      const actions = await storage.getSupportActions(caseId);
+      const messages = await storage.getSupportMessages(org.id, caseId);
+      const actions = await storage.getSupportActions(org.id, caseId);
 
       res.json({ case: supportCase, messages, actions });
     } catch (err: any) {
@@ -220,7 +223,7 @@ export function registerAdminRoutes(app: Express): void {
       }
 
       const { supportBrainService } = await import("./services/supportBrain");
-      await supportBrainService.rateSatisfaction(caseId, rating);
+      await supportBrainService.rateSatisfaction(org.id, caseId, rating);
 
       res.json({ success: true, message: "Thank you for your feedback!" });
     } catch (err: any) {
@@ -241,7 +244,7 @@ export function registerAdminRoutes(app: Express): void {
       }
 
       const { supportBrainService } = await import("./services/supportBrain");
-      await supportBrainService.resolveCase(caseId, "Resolved by user", "user");
+      await supportBrainService.resolveCase(org.id, caseId, "Resolved by user", "user");
 
       res.json({ success: true });
     } catch (err: any) {
@@ -320,7 +323,7 @@ export function registerAdminRoutes(app: Express): void {
       });
 
       if (resolve) {
-        await storage.updateSupportCase(caseId, {
+        await storage.updateSupportCase(supportCase.organizationId, caseId, {
           status: "resolved",
           resolvedAt: new Date(),
           resolutionSummary: message,
@@ -328,7 +331,7 @@ export function registerAdminRoutes(app: Express): void {
           assignedTo: user.id,
         });
       } else {
-        await storage.updateSupportCase(caseId, {
+        await storage.updateSupportCase(supportCase.organizationId, caseId, {
           status: "awaiting_user",
           assignedTo: user.id,
         });
@@ -387,7 +390,7 @@ export function registerAdminRoutes(app: Express): void {
       const noteId = parseInt(req.params.noteId);
       const note = await storage.getNote(org.id, noteId);
       if (!note) return Errors.notFound(res, "Note");
-      const msgs = await storage.getBorrowerMessages(noteId);
+      const msgs = await storage.getBorrowerMessages(org.id, noteId);
       // Mark borrower messages as read since lender is viewing them
       await storage.markBorrowerMessagesRead(noteId, "borrower");
       res.json(msgs);
@@ -929,7 +932,7 @@ export function registerAdminRoutes(app: Express): void {
   api.put("/api/admin/alerts/:id/resolve", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const alertId = Number(req.params.id);
-      const updated = await storage.resolveAlert(alertId);
+      const updated = await storage.resolveAlertForPlatformOps(alertId);
       res.json(updated);
     } catch (err: any) {
       logger.error("Resolve alert error", err);
@@ -2717,7 +2720,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const id = parseInt(req.params.id);
       const [updated] = await db.update(aiModelConfigs)
-        .set({ ...req.body, updatedAt: new Date() })
+        .set({ ...omitProtectedFields(req.body), updatedAt: new Date() })
         .where(eq(aiModelConfigs.id, id))
         .returning();
       const { invalidateDbModelCache } = await import('./services/aiRouter');
@@ -3271,9 +3274,9 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const account = await storage.getFounderAdAccount("meta");
       if (!account) return res.json(null);
-      // Mask both secrets for display. The app secret used to go to the
-      // browser in full (DEFECT-0054).
-      res.json({ ...account, accessToken: maskAdAccountSecret(account.accessToken), appSecret: maskAdAccountSecret(account.appSecret) });
+      // Neither secret is served (DEFECT-0054: the app secret used to go to
+      // the browser in full); a masked last-4 rides under its own key.
+      res.json({ ...omitSecretColumns(founderAdAccounts, account), accessTokenMasked: maskAdAccountSecret(account.accessToken), appSecretMasked: maskAdAccountSecret(account.appSecret) });
     } catch (err: any) {
       Errors.internal(res, err);
     }
@@ -3295,7 +3298,7 @@ export function registerAdminRoutes(app: Express): void {
         ...(typeof appSecret === "string" && appSecret.length > 0 ? { appSecret } : {}),
         isActive: true,
       });
-      res.json({ ...account, accessToken: maskAdAccountSecret(account.accessToken), appSecret: maskAdAccountSecret(account.appSecret) });
+      res.json({ ...omitSecretColumns(founderAdAccounts, account), accessTokenMasked: maskAdAccountSecret(account.accessToken), appSecretMasked: maskAdAccountSecret(account.appSecret) });
     } catch (err: any) {
       Errors.internal(res, err);
     }

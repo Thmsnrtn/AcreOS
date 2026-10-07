@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useOptimisticUpdate } from "@/lib/optimistic-mutation";
 import type { Organization } from "@shared/schema";
+import type { OrganizationView, TeamMemberView } from "@shared/accountViews";
 
 export interface DashboardStats {
   totalLeads: number;
@@ -54,8 +55,9 @@ export interface StripeSubscription {
   };
 }
 
+// The served shape of GET /api/organization — an allowlist, not the row.
 export function useOrganization() {
-  return useQuery<Organization>({
+  return useQuery<OrganizationView>({
     queryKey: ["/api/organization"],
     queryFn: async () => {
       const res = await fetch("/api/organization", { credentials: "include" });
@@ -215,18 +217,10 @@ export function useUserPermissions() {
   });
 }
 
-export interface TeamMember {
-  id: number;
-  organizationId: number;
-  userId: string;
-  email: string | null;
-  displayName: string | null;
+// The served shape of GET /api/team. `email` is null for teammates when the
+// caller's role does not see teammates' addresses (their own is always set).
+export interface TeamMember extends Omit<TeamMemberView, "role"> {
   role: Role;
-  permissions: string[] | null;
-  viewOnlyAssignedLeads?: boolean;
-  isActive: boolean;
-  invitedAt: string | null;
-  joinedAt: string | null;
 }
 
 export function useTeamMembers() {

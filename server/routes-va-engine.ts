@@ -10,7 +10,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
-import { omitProtectedFields } from "./utils/updatePayload";
+import { omitProtectedFields, omitServerOwnedFields } from "./utils/updatePayload";
 import { getOrganizationId } from "./types/request";
 import * as vaManagement from "./services/vaManagement";
 
@@ -404,7 +404,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       // previously any org's seller communications were readable by leadId.
       const lead = await storage.getLead(org.id, leadId);
       if (!lead) return Errors.notFound(res, "Lead");
-      const comms = await storage.getSellerCommunicationsByLead(leadId);
+      const comms = await storage.getSellerCommunicationsByLead(org.id, leadId);
       res.json(comms);
     } catch (error: any) {
       logger.error("Get seller communications by lead error", error);
@@ -464,7 +464,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       // 2026-06-10 (T0-2 sweep): verify the property belongs to this org.
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) return Errors.notFound(res, "Property");
-      const postings = await storage.getAdPostingsByProperty(propertyId);
+      const postings = await storage.getAdPostingsByProperty(org.id, propertyId);
       res.json(postings);
     } catch (error: any) {
       logger.error("Get ad postings by property error", error);
@@ -553,7 +553,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const leadId = parseInt(req.params.leadId);
-      const prequal = await storage.getBuyerPrequalificationByLead(leadId);
+      const prequal = await storage.getBuyerPrequalificationByLead(org.id, leadId);
       // 2026-06-10 (T0-2 sweep): 404 on cross-tenant prequalification —
       // never confirm another org's record exists.
       if (!prequal || prequal.organizationId !== org.id) {
@@ -727,7 +727,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       // 2026-06-10 (T0-2 sweep): verify the note belongs to this org.
       const note = await storage.getNote(org.id, noteId);
       if (!note) return Errors.notFound(res, "Note");
-      const enrollments = await storage.getCollectionEnrollmentsByNote(noteId);
+      const enrollments = await storage.getCollectionEnrollmentsByNote(org.id, noteId);
       res.json(enrollments);
     } catch (error: any) {
       logger.error("Get collection enrollments by note error", error);
@@ -918,7 +918,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const reservation = await storage.createBuyerReservation({
-        ...req.body,
+        ...omitServerOwnedFields(req.body),
         organizationId: org.id,
       });
       res.status(201).json(reservation);
@@ -1005,7 +1005,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const checklist = await storage.createEscrowChecklist({
-        ...req.body,
+        ...omitServerOwnedFields(req.body),
         organizationId: org.id,
       });
       res.status(201).json(checklist);
@@ -1092,7 +1092,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const packet = await storage.createClosingPacket({
-        ...req.body,
+        ...omitServerOwnedFields(req.body),
         organizationId: org.id,
       });
       res.status(201).json(packet);
@@ -1190,7 +1190,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const enrollment = await storage.createAutopayEnrollment({
-        ...req.body,
+        ...omitServerOwnedFields(req.body),
         organizationId: org.id,
       });
       res.status(201).json(enrollment);
@@ -1331,7 +1331,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const escalation = await storage.createDelinquencyEscalation({
-        ...req.body,
+        ...omitServerOwnedFields(req.body),
         organizationId: org.id,
       });
       res.status(201).json(escalation);
@@ -1414,7 +1414,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const assignment = await storage.createDDAssignment({
-        ...req.body,
+        ...omitServerOwnedFields(req.body),
         organizationId: org.id,
       });
       res.status(201).json(assignment);
@@ -1501,7 +1501,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const report = await storage.createSwotReport({
-        ...req.body,
+        ...omitServerOwnedFields(req.body),
         organizationId: org.id,
       });
       res.status(201).json(report);
@@ -1573,7 +1573,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const memo = await storage.createGoNogoMemo({
-        ...req.body,
+        ...omitServerOwnedFields(req.body),
         organizationId: org.id,
       });
       res.status(201).json(memo);
