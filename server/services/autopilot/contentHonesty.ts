@@ -291,7 +291,9 @@ export function screenFabrication(
     }
   }
   const sources = [...VERIFIED_SOURCES, ...(opts.verifiedSources ?? [])];
-  const allowed = (opts.allowDollarFigures ?? []).map((x) => x.replace(/\s/g, "")).filter(Boolean);
+  // Longest first: removing "$30" before "$30.00" leaves ".00" behind, which
+  // then reads as an unsourced quantity (found by the simulation, 2026-10-07).
+  const allowed = (opts.allowDollarFigures ?? []).map((x) => x.replace(/\s/g, "")).filter(Boolean).sort((a, b) => b.length - a.length);
   const { text: plain, anchors } = toScreenText(canonical);
   const units: Array<{ text: string; citable: boolean }> = [
     ...sentences(plain).flatMap((s) => clauses(s).map((c) => ({ text: c, citable: true }))),

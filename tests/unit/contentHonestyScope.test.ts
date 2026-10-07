@@ -66,6 +66,11 @@ const PASSES: Array<string | [string, { allowDollarFigures: string[] }]> = [
   "A typical due-diligence list covers access, utilities, and zoning.",
   "A perc test tells you whether the soil can support a septic system.",
   ["Your $30 refund is being processed.", { allowDollarFigures: ["$30"] }],
+  // Found by the simulation's capable brain (2026-10-07): the Support tool
+  // allows BOTH "$30" (the customer's words) and "$30.00" (the purchase), and
+  // removing the shorter first left ".00" behind as an "unsourced statistic" —
+  // so a correct refund reply naming the purchase amount was refused.
+  ["I've started a refund of $30.00 for Skip-trace credit pack.", { allowDollarFigures: ["$30", "$30.00"] }],
   "Thanks for reaching out — I've reopened ticket #4521 for you.",
   "Go to Deals → Import and upload your CSV file.",
   "Step 2: open Settings and choose Billing.",
