@@ -100,9 +100,30 @@ vi.mock("./domainAutonomy", () => ({
   deriveAutonomyHorizonDays: (levels: string[]) => Math.min(21, Math.max(1, levels.length)), // simple stand-in
 }));
 
+// Customer work nobody is handling (escalated tickets, failed payments, legal
+// items) — gates the verdict since 2026-10-07. `null` = the read throws.
+let escalatedTickets: { count: number; ticketIds: number[] } | null = { count: 0, ticketIds: [] };
+let failedPaymentOrgs: number | null = 0;
+let legalAsks: number | null = 0;
+let openDsar: number | null = 0;
+const orThrow = <T,>(v: T | null): T => {
+  if (v === null) throw new Error("db down");
+  return v;
+};
+vi.mock("./senses", () => ({
+  readEscalatedSupportTickets: async () => orThrow(escalatedTickets),
+  readFailedPaymentOrgCount: async () => orThrow(failedPaymentOrgs),
+  readPendingLegalAskCount: async () => orThrow(legalAsks),
+  readOpenDsarCount: async () => orThrow(openDsar),
+}));
+
 import { buildStepAwayReadiness } from "./stepAwayReadiness";
 
 beforeEach(() => {
+  escalatedTickets = { count: 0, ticketIds: [] };
+  failedPaymentOrgs = 0;
+  legalAsks = 0;
+  openDsar = 0;
   panicStopped = false;
   topic = "private-topic";
   loopThrows = false;
@@ -130,6 +151,48 @@ afterEach(() => {
 });
 
 describe("buildStepAwayReadiness", () => {
+  it("customer work nobody is handling blocks the verdict — each kind on its own", async () => {
+    // Was infrastructure-only: "You can step away" printed over an escalated
+    // ticket, a failing payment, or a legal item waiting on the founder.
+    expect((await buildStepAwayReadiness()).verdict).toBe("ready");
+
+    escalatedTickets = { count: 2, ticketIds: [41, 57] };
+    let r = await buildStepAwayReadiness();
+    expect(r.verdict).toBe("not_ready");
+    expect(r.checks.find((c) => c.key === "escalated_tickets")!.detail).toContain("#41");
+    escalatedTickets = { count: 0, ticketIds: [] };
+
+    failedPaymentOrgs = 1;
+    expect((await buildStepAwayReadiness()).verdict).toBe("not_ready");
+    failedPaymentOrgs = 0;
+
+    legalAsks = 1;
+    expect((await buildStepAwayReadiness()).verdict).toBe("not_ready");
+    legalAsks = 0;
+
+    openDsar = 1;
+    expect((await buildStepAwayReadiness()).verdict).toBe("not_ready");
+    openDsar = 0;
+
+    expect((await buildStepAwayReadiness()).verdict).toBe("ready");
+  });
+
+  it("an unreadable customer-work count is attention, never green", async () => {
+    for (const set of [
+      () => (escalatedTickets = null),
+      () => (failedPaymentOrgs = null),
+      () => (legalAsks = null),
+    ]) {
+      escalatedTickets = { count: 0, ticketIds: [] };
+      failedPaymentOrgs = 0;
+      legalAsks = 0;
+      set();
+      const r = await buildStepAwayReadiness();
+      expect(r.verdict).toBe("not_ready");
+      expect(r.checks.some((c) => c.status === "attention" && c.detail.includes("Could not verify"))).toBe(true);
+    }
+  });
+
   it("fully armed → ready, all checks green, horizon derived from the ledger", async () => {
     const r = await buildStepAwayReadiness();
     expect(r.verdict).toBe("ready");

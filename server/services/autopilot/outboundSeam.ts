@@ -109,17 +109,20 @@ export async function proposeGovernedEmail(
 
   // 3. Freeze. Content-hash dedup inside proposePendingHand means a cadence
   //    re-proposing the identical send gets the live pending row back.
+  const args = {
+    to,
+    subject,
+    html,
+    organization_id: input.organizationId,
+    proposed_by: input.source,
+  };
+  const { summarizePendingHand } = await import("./pendingHandSummary");
   const row = await proposePendingHand({
     handName: "send_email",
-    args: {
-      to,
-      subject,
-      html,
-      organization_id: input.organizationId,
-      proposed_by: input.source,
-    },
+    args,
     domain: input.domain ?? null,
-    summary: `${input.source}: email to ${to} — "${subject}"`,
+    // The canonical approval-card line (recipient · amount · recurrence).
+    summary: `${input.source}: ${summarizePendingHand("send_email", args, { movesMoney: false })}`,
   });
   if (!row) {
     return {

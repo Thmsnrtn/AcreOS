@@ -47,6 +47,7 @@ import {
   type SoleneDispatchResultRow,
   type SoleneDispatchSourceType,
   type SoleneDispatchStatus,
+  IDEMPOTENCY_KEY_INDEX_PREDICATE,
 } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
 import { assertWithinEnsembleCap, getMonthlyEnvelopeStatus } from "./capitalTracker";
@@ -286,7 +287,17 @@ export async function enqueueDispatch(
     [inserted] = await db
       .insert(soleneDispatchQueue)
       .values(values)
-      .onConflictDoNothing({ target: soleneDispatchQueue.idempotencyKey })
+      // The conflict target MUST carry the partial index's predicate: the
+      // only unique index on idempotency_key is PARTIAL (WHERE … IS NOT NULL),
+      // and PostgreSQL refuses a bare `ON CONFLICT (idempotency_key)` it cannot
+      // match to a full constraint ("no unique or exclusion constraint matching
+      // the ON CONFLICT specification") — every keyed enqueue threw on a
+      // migration-built database. IDEMPOTENCY_KEY_INDEX_PREDICATE is the same
+      // SQL the schema's uniqueIndex declares, so the two cannot drift.
+      .onConflictDoNothing({
+        target: soleneDispatchQueue.idempotencyKey,
+        where: IDEMPOTENCY_KEY_INDEX_PREDICATE,
+      })
       .returning({ id: soleneDispatchQueue.id });
     if (!inserted) {
       const [existing] = await db
@@ -738,6 +749,53 @@ export async function cancelDispatch(
     { status: "cancelled" },
   );
   return { priorStatus: existing.status, cancelled: true };
+}
+
+/**
+ * Has this dispatch been cancelled while it runs? The runner checks this
+ * before every model turn and before every tool call (cooperative abort — it
+ * cannot preempt a streaming model call, but it never starts another turn or
+ * tool after a cancel). Fails OPEN on a read error: a DB blip must not kill
+ * healthy work, and the panic stop's switches still bind new claims.
+ */
+export async function isDispatchCancelled(id: number): Promise<boolean> {
+  try {
+    const [row] = await db
+      .select({ status: soleneDispatchQueue.status })
+      .from(soleneDispatchQueue)
+      .where(eq(soleneDispatchQueue.id, id))
+      .limit(1);
+    return row?.status === "cancelled";
+  } catch (err) {
+    logger.warn(
+      `[dispatchQueue] cancel check failed for id=${id} — continuing`,
+      err instanceof Error ? err : undefined,
+    );
+    return false;
+  }
+}
+
+/**
+ * Cancel every IN-FLIGHT dispatch (status in_progress) — the panic stop's
+ * abort path. Flips the rows to 'cancelled'; each running worker sees that at
+ * its next turn/tool boundary (isDispatchCancelled) and stops. Queued rows are
+ * left for the dispatch switch to hold. Returns the ids it cancelled.
+ */
+export async function cancelInFlightDispatches(reason: string): Promise<number[]> {
+  const rows = await db
+    .update(soleneDispatchQueue)
+    .set({
+      status: "cancelled",
+      completedAt: new Date(),
+      resultSummary: `aborted in flight: ${reason}`.slice(0, 4000),
+    })
+    .where(eq(soleneDispatchQueue.status, "in_progress"))
+    .returning({ id: soleneDispatchQueue.id });
+  const ids = rows.map((r) => r.id);
+  if (ids.length > 0) {
+    logger.warn(`[dispatchQueue] cancelled ${ids.length} in-flight dispatch(es): ${ids.join(", ")}`);
+  }
+  return ids;
 }
 
 // ----------------------------------------------------------------------------

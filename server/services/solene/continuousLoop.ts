@@ -27,7 +27,7 @@ import {
 } from "@shared/schema/solene-morning-pulse";
 import { logger } from "../../utils/logger";
 import { sensesFromPulse, rankMoves, applyObjectiveWeighting, type RankedMove } from "../autopilot/decide";
-import { planAndAct } from "../autopilot/act";
+import { planAndAct, AUTOPILOT_DISPATCH_MAX_COST_USD } from "../autopilot/act";
 import { FOUNDER_MINUTES_BUDGET } from "@sovereign/immutables";
 
 /**
@@ -38,10 +38,8 @@ import { FOUNDER_MINUTES_BUDGET } from "@sovereign/immutables";
  * through runPolicyGateStack + the Trust Ledger, which still fails safe
  * (OBSERVE → block) until a domain earns autonomy.
  */
-/** Lean-mode per-dispatch cap (the $50/mo envelope; keep autopilot work cheap). */
-const AUTOPILOT_DISPATCH_MAX_COST_USD = Number(
-  process.env.AUTOPILOT_DISPATCH_MAX_COST_USD ?? 5,
-);
+// Lean-mode per-dispatch cap: AUTOPILOT_DISPATCH_MAX_COST_USD, defined once in
+// act.ts and shared with the founder-approval enqueue path.
 
 // ============================================================================
 // Types
@@ -575,8 +573,13 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
     const pulse = await getLatestMorningPulse();
     if (pulse) {
       // Real support backlog — a measured sense, best-effort (defaults to 0).
-      const { getOpenSupportCaseCount } = await import("../autopilot/senses");
-      const supportBacklog = await getOpenSupportCaseCount();
+      // Counts open/escalated support cases AND escalated Pax tickets.
+      const { getSupportBacklog, getStalledActivationCount } = await import("../autopilot/senses");
+      const backlog = await getSupportBacklog();
+      const supportBacklog = backlog.total;
+      // Activation sense — orgs not onboarded 48h after signup. Honest 0 on error.
+      const activationStalledCount = await getStalledActivationCount();
+      const activationStalled = activationStalledCount > 0;
       // Outward perception (Hands P0.2) — best-effort; defaults to none-known so
       // a quiet/unwired channel never fabricates pressure.
       let outward: { emailComplaints?: number; dunningPressure?: number; churnSignals?: number; trialsEnding?: number; reflexFailures?: number; dealEvents24h?: number; notePaymentsDueSoon?: number; notePaymentsOverdue?: number } = {};
@@ -605,7 +608,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           envelopeStatus: pulse.envelopeStatus,
           dispatchesFlaggedLast24h: pulse.dispatchesFlaggedLast24h,
         },
-        { dispatchBacklog, supportBacklog },
+        { dispatchBacklog, supportBacklog, activationStalled, activationStalledCount, escalatedTicketIds: backlog.escalatedTicketIds },
         outward,
       );
       let moves = rankMoves(senses);
@@ -1626,7 +1629,12 @@ async function safeLoadComplianceFindings(): Promise<{ openCount: number }> {
       .select({ n: sql<number>`COUNT(*)::int` })
       .from(beatriceRegEvents)
       .where(eq(beatriceRegEvents.beatriceReviewed, false));
-    return { openCount: Number(row?.n ?? 0) };
+    // Open data-subject requests are compliance items too (statutory deadline,
+    // founder-only decision). Before this the sense read only regulatory
+    // events, so a pending erasure request never reached the brain.
+    const { getOpenDsarCount } = await import("../autopilot/senses");
+    const dsarOpen = await getOpenDsarCount();
+    return { openCount: Number(row?.n ?? 0) + dsarOpen };
   } catch (err) {
     logger.warn(
       "[continuousLoop] safeLoadComplianceFindings failed",

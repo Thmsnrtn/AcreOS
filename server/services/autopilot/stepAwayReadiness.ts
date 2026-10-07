@@ -281,6 +281,70 @@ export async function buildStepAwayReadiness(): Promise<StepAwayReadiness> {
     }
   }
 
+  // ── Customer work nobody is handling (critical) ───────────────────────────
+  // Every check above is infrastructure. "You can step away" was printed while
+  // an escalated ticket sat waiting on a human, an org's payment had failed,
+  // or a legal item waited on the founder — none of which the autopilot may
+  // resolve on its own. Each gates the verdict; an unreadable count is
+  // attention, never green.
+  {
+    const base = { key: "escalated_tickets", title: "No customer is waiting on a human", critical: true, href: "/founder/decisions" };
+    try {
+      const { readEscalatedSupportTickets } = await import("./senses");
+      const t = await readEscalatedSupportTickets();
+      checks.push(
+        t.count === 0
+          ? { ...base, status: "ready", detail: "No escalated support ticket is open." }
+          : {
+              ...base,
+              status: "action_needed",
+              detail: `${t.count} escalated support ticket(s) are waiting on a human (oldest: ${t.ticketIds.map((id) => `#${id}`).join(", ")}).`,
+              fix: "Answer or hand off the escalated tickets before you go — Pax already decided it can't.",
+            },
+      );
+    } catch (err) {
+      checks.push(attention(base, err instanceof Error ? err.message : String(err)));
+    }
+  }
+  {
+    const base = { key: "failed_payments", title: "No customer's payment is failing", critical: true, href: "/founder/decisions" };
+    try {
+      const { readFailedPaymentOrgCount } = await import("./senses");
+      const n = await readFailedPaymentOrgCount();
+      checks.push(
+        n === 0
+          ? { ...base, status: "ready", detail: "No organization is in dunning." }
+          : {
+              ...base,
+              status: "action_needed",
+              detail: `${n} organization(s) are in dunning with a failed payment.`,
+              fix: "Look at the failed payments before you go; a dunning org can lose access while you're away.",
+            },
+      );
+    } catch (err) {
+      checks.push(attention(base, err instanceof Error ? err.message : String(err)));
+    }
+  }
+  {
+    const base = { key: "legal_items", title: "No legal or compliance item is waiting on you", critical: true, href: "/founder/decisions" };
+    try {
+      const { readPendingLegalAskCount, readOpenDsarCount } = await import("./senses");
+      const [asks, dsar] = await Promise.all([readPendingLegalAskCount(), readOpenDsarCount()]);
+      checks.push(
+        asks + dsar === 0
+          ? { ...base, status: "ready", detail: "No legal ask or data-subject request is open." }
+          : {
+              ...base,
+              status: "action_needed",
+              detail: `${asks} legal/compliance ask(s) and ${dsar} data-subject request(s) are waiting on you.`,
+              fix: "These are yours alone (legal and data deletion are hard-stops). Decide them before you go.",
+            },
+      );
+    } catch (err) {
+      checks.push(attention(base, err instanceof Error ? err.message : String(err)));
+    }
+  }
+
   // ── Horizon + verdict ─────────────────────────────────────────────────────
   let horizonDays = 1;
   try {

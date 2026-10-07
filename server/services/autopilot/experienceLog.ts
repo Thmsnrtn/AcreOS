@@ -38,15 +38,21 @@ export interface ExperienceSignals {
 /**
  * Derive the learning vote from an experience's REAL signals. Priority order
  * puts the strongest ground truth first:
- *   1. The founder's explicit verdict (approve/decline) — human ground truth.
+ *   1. The founder's DECLINE — a human verdict that the move was wrong.
  *   2. Support resolution + satisfaction — did it actually help the customer.
  *   3. The eval gate — was the output grounded/acceptable.
  *   4. The mechanical dispatch result — did it even run.
  * Anything not yet signalled is "pending" (it doesn't vote — never invented).
+ *
+ * An APPROVAL is not an outcome. It is permission to try; nothing has happened
+ * yet when it lands. Until 2026-10-07 an approval voted "success" here, so a
+ * domain's hit-rate, trust and autonomy rose on moves that never ran (Story
+ * printed "100% hit-rate" with zero executed actions). An approved move now
+ * votes only on what its executed dispatch actually produced, through the
+ * rules below — exactly like a move that ran without asking.
  */
 export function outcomeOf(s: ExperienceSignals): ExperienceVote {
-  // 1. Human ground truth.
-  if (s.founderVerdict === "approved") return "success";
+  // 1. Human ground truth — the decline only (see above: approval ≠ outcome).
   if (s.founderVerdict === "declined") return "failure";
 
   // 2. Support efficacy — did it genuinely help.
@@ -344,6 +350,43 @@ export async function recordFounderVerdict(
   }
 }
 
+/**
+ * The escalated move an autopilot ask was about — the Experience Log row the
+ * loop wrote with this askId. null for asks that were not an autopilot move
+ * (policy proposals, legal intake, …). Throws on a read error.
+ */
+export async function findEscalatedMoveForAsk(askId: number): Promise<{
+  experienceId: number;
+  moveKind: string;
+  domain: string;
+  dispatchId: number | null;
+  reasoningTrace: unknown;
+} | null> {
+  const [r] = await db
+    .select({
+      id: autopilotExperiences.id,
+      moveKind: autopilotExperiences.moveKind,
+      domain: autopilotExperiences.domain,
+      dispatchId: autopilotExperiences.dispatchId,
+      reasoningTrace: autopilotExperiences.reasoningTrace,
+    })
+    .from(autopilotExperiences)
+    .where(and(eq(autopilotExperiences.askId, askId), eq(autopilotExperiences.outcome, "escalated")))
+    .orderBy(desc(autopilotExperiences.createdAt))
+    .limit(1);
+  return r
+    ? { experienceId: r.id, moveKind: r.moveKind, domain: r.domain, dispatchId: r.dispatchId ?? null, reasoningTrace: r.reasoningTrace }
+    : null;
+}
+
+/** Link the dispatch an approved move enqueued to its experience row (so its real result accretes). */
+export async function linkExperienceDispatch(experienceId: number, dispatchId: number): Promise<void> {
+  await db
+    .update(autopilotExperiences)
+    .set({ dispatchId })
+    .where(eq(autopilotExperiences.id, experienceId));
+}
+
 /** Recent experiences for a domain (most recent first), for stats + induction. */
 export async function getRecentExperiences(
   domain: string,
@@ -394,7 +437,8 @@ export async function getPastEpisodes(
  */
 export type OutcomeBasis = "human" | "support" | "consequence" | "eval" | "mechanical" | "none";
 export function outcomeBasis(s: ExperienceSignals): OutcomeBasis {
-  if (s.founderVerdict === "approved" || s.founderVerdict === "declined") return "human";
+  // Mirrors outcomeOf: only a decline decides a vote; an approval is not a basis.
+  if (s.founderVerdict === "declined") return "human";
   if (s.resolution === "reopened" || s.resolution === "resolved") return "support";
   if (s.deliveryBounced === true || s.paymentRecovered === true) return "consequence";
   if (s.evalScore != null && s.evalScore < EVAL_PASS_THRESHOLD) return "eval";

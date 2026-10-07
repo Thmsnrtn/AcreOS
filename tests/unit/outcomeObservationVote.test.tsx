@@ -62,7 +62,9 @@ describe("the mechanical result votes in one direction only", () => {
   it("every remaining success vote rests on a signal the actor does not author", () => {
     // The three ways a vote can now be "success", each an outcome observed
     // outside the acting system.
-    expect(outcomeOf({ founderVerdict: "approved" })).toBe("success");       // a human said so
+    // An approval is NOT one of them (2026-10-07): it is the founder's
+    // permission to try, authored before anything happened.
+    expect(outcomeOf({ founderVerdict: "approved" })).toBe("pending");
     expect(outcomeOf({ resolution: "resolved" })).toBe("success");           // the customer's issue closed
     expect(outcomeOf({ paymentRecovered: true })).toBe("success");           // money actually moved
   });
@@ -70,7 +72,7 @@ describe("the mechanical result votes in one direction only", () => {
   it("the strong signals still beat the mechanical one in both directions", () => {
     // Vacuity guard: if rule 4's removal had broken the priority order, the
     // assertions above would still pass while the ladder above it collapsed.
-    expect(outcomeOf({ founderVerdict: "approved", dispatchSuccess: false })).toBe("success");
+    expect(outcomeOf({ founderVerdict: "approved", dispatchSuccess: false })).toBe("failure");
     expect(outcomeOf({ founderVerdict: "declined", dispatchSuccess: true })).toBe("failure");
     expect(outcomeOf({ dispatchSuccess: true, deliveryBounced: true })).toBe("failure");
     expect(outcomeOf({ dispatchSuccess: true, evalScore: EVAL_PASS_THRESHOLD - 0.01 })).toBe("failure");
@@ -82,7 +84,7 @@ describe("the receipt no longer moves play selection", () => {
     // The concrete harm, at the surface that consumes it. Two hundred clean
     // sends nobody responded to used to read as two hundred wins.
     const sent = Array.from({ length: 200 }, () => ({ playId: "cold-blast", dispatchSuccess: true }));
-    const approved = [{ playId: "county-guide", founderVerdict: "approved" }];
+    const approved = [{ playId: "county-guide", founderVerdict: "approved", resolution: "resolved" }];
     const stats = statsFromExperiences([...sent, ...approved]);
 
     const byId = Object.fromEntries(stats.map((s) => [s.playId, s]));
@@ -96,7 +98,7 @@ describe("the receipt no longer moves play selection", () => {
     // wins essentially every Thompson draw against Beta(2,1)'s 0.67.
     const stats = statsFromExperiences([
       ...Array.from({ length: 200 }, () => ({ playId: "cold-blast", dispatchSuccess: true })),
-      { playId: "county-guide", founderVerdict: "approved" },
+      { playId: "county-guide", founderVerdict: "approved", resolution: "resolved" },
     ]);
     const scored = scorePlays(stats, makeSeededRng(1));
     const blast = scored.find((p) => p.playId === "cold-blast");
@@ -119,7 +121,8 @@ describe("outcomeBasis is consulted by the product, not only by a test", () => {
     // If these two drift, the founder is shown a reason for a verdict that was
     // never reached. Swept across the whole domain rather than spot-checked.
     const cases = [
-      { s: { founderVerdict: "approved" }, basis: "human" },
+      { s: { founderVerdict: "declined" }, basis: "human" },
+      { s: { founderVerdict: "approved" }, basis: "none" },
       { s: { resolution: "resolved" }, basis: "support" },
       { s: { paymentRecovered: true }, basis: "consequence" },
       { s: { evalScore: 0.2 }, basis: "eval" },
