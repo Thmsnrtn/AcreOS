@@ -116,19 +116,114 @@ export async function isFounderById(userId: string, storage: any): Promise<boole
 }
 
 /**
- * Resolve the founder's primary organization id. Used by services and
- * routes that need an `organizationId` for inserts but aren't run in the
- * context of a specific tenant (founder-only collaboration / agent
- * lifecycle / trust events). Reads `FOUNDER_PRIMARY_ORG_ID` from env if
- * set; otherwise looks up the founder's first owned org via
- * users → teamMembers. Cached after first resolution; resolves to 1
- * (the deployed founder org) as a last-resort fallback so callers never
- * blow up on a NOT NULL organization_id constraint.
+ * THE canonical resolver of the founder's own organisation — strict.
+ *
+ * Owner decision 2026-10-08: anything that belongs to AcreOS-the-company and
+ * must land in a tenant table (first use: leads from AcreOS's own Meta lead
+ * ads, the founder-only ad rail) lands in the FOUNDER's organisation, and the
+ * write is REFUSED when that organisation cannot be named unambiguously. It
+ * never guesses: no "org 1", no `DEFAULT_ORG_ID`, no "first membership row".
+ *
+ * The rule:
+ *   1. founder identities = users whose email is a founder email
+ *      (FOUNDER_EMAIL/FOUNDER_EMAILS) or whose id is in FOUNDER_USER_IDS —
+ *      the same identity rule as `isFounderIdentity`;
+ *   2. candidates = organisations OWNED by one of those identities
+ *      (`organizations.owner_id`). Membership is NOT ownership: a founder
+ *      invited into a customer's workspace (support, a demo) does not make
+ *      that workspace the founder's;
+ *   3. exactly one candidate → it. `FOUNDER_PRIMARY_ORG_ID`, when set, only
+ *      SELECTS among the candidates — a pin naming an org the founder does not
+ *      own is refused, so a stale or mistyped env var cannot route founder
+ *      data into a customer's tenant;
+ *   4. zero candidates, several without a pin, or a failed lookup → refusal.
+ *
+ * Each SQL predicate is re-checked in JS on the returned rows, so the
+ * "customer orgs never receive this" property does not rest on one `where`.
+ *
+ * Not cached: callers on a write path ask per write, so an operator fixing
+ * the configuration takes effect without a restart.
+ */
+export type FounderOrgResolution =
+  | { ok: true; organizationId: number; via: "sole-owned" | "pinned" }
+  | {
+      ok: false;
+      reason:
+        | "no-founder-identity"
+        | "no-founder-org"
+        | "ambiguous"
+        | "pin-not-founder-owned"
+        | "lookup-failed";
+      candidates: number[];
+    };
+
+export async function resolveFounderOrganization(): Promise<FounderOrgResolution> {
+  try {
+    const { db } = await import("../db");
+    const { users, organizations } = await import("@shared/schema");
+    const { inArray } = await import("drizzle-orm");
+
+    const founderIds = new Set<string>(FOUNDER_USER_IDS);
+    if (FOUNDER_EMAILS.length > 0) {
+      const rows = await db
+        .select({ id: users.id, email: users.email })
+        .from(users)
+        .where(inArray(users.email, FOUNDER_EMAILS));
+      for (const r of rows) {
+        if (r.id && isFounderEmail(r.email)) founderIds.add(r.id);
+      }
+    }
+    if (founderIds.size === 0) return { ok: false, reason: "no-founder-identity", candidates: [] };
+
+    const owned = await db
+      .select({ id: organizations.id, ownerId: organizations.ownerId })
+      .from(organizations)
+      .where(inArray(organizations.ownerId, [...founderIds]));
+    const candidates = [
+      ...new Set(owned.filter((o) => founderIds.has(o.ownerId)).map((o) => o.id)),
+    ].sort((a, b) => a - b);
+
+    if (candidates.length === 0) return { ok: false, reason: "no-founder-org", candidates };
+
+    const pinRaw = (process.env.FOUNDER_PRIMARY_ORG_ID || "").trim();
+    if (pinRaw) {
+      const pin = Number(pinRaw);
+      if (Number.isInteger(pin) && candidates.includes(pin)) {
+        return { ok: true, organizationId: pin, via: "pinned" };
+      }
+      return { ok: false, reason: "pin-not-founder-owned", candidates };
+    }
+
+    if (candidates.length > 1) return { ok: false, reason: "ambiguous", candidates };
+    return { ok: true, organizationId: candidates[0], via: "sole-owned" };
+  } catch {
+    return { ok: false, reason: "lookup-failed", candidates: [] };
+  }
+}
+
+/**
+ * Resolve the founder's primary organization id — the LENIENT accessor.
+ *
+ * Used by services and routes that need an `organizationId` for founder-only
+ * system rows (collaboration / agent lifecycle / trust events) and must never
+ * blow up on a NOT NULL constraint. It defers to `resolveFounderOrganization`
+ * — the canonical rule — whenever that names an org, and only otherwise falls
+ * back to `FOUNDER_PRIMARY_ORG_ID`, the founder's first membership, and
+ * finally 1. Those fallbacks are GUESSES: never use this accessor to route
+ * third-party or customer-visible data (inbound leads, mail, money) — use
+ * `resolveFounderOrganization` and refuse on `ok: false`. Cached after first
+ * resolution.
  */
 let _cachedFounderOrgId: number | null = null;
 
 export async function getFounderPrimaryOrgId(): Promise<number> {
   if (_cachedFounderOrgId !== null) return _cachedFounderOrgId;
+
+  const canonical = await resolveFounderOrganization();
+  if (canonical.ok) {
+    _cachedFounderOrgId = canonical.organizationId;
+    return _cachedFounderOrgId;
+  }
 
   const fromEnv = process.env.FOUNDER_PRIMARY_ORG_ID;
   if (fromEnv) {

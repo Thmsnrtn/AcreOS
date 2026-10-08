@@ -22,6 +22,7 @@ import { getOrganization, getOrganizationId, type AuthenticatedRequest } from ".
 import { requireFounder } from "./auth/clerkAuth";
 import { verifyMetaWebhookSignature } from "./middleware/metaWebhookSignature";
 import { addMonths } from "./utils/dateUtils";
+import { resolveFounderOrganization } from "./services/founder";
 import { requireQualified1099Output } from "./services/form1099Refusal";
 
 // Services
@@ -285,46 +286,9 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   // ============================================
   // META ADS
   // ============================================
-
-  // Webhook verification challenge
-  app.get("/api/webhooks/meta-lead-ads", (req: Request, res: Response) => {
-    const challenge = metaAdsService.verifyMetaWebhook(
-      req.query["hub.mode"] as string,
-      req.query["hub.verify_token"] as string,
-      req.query["hub.challenge"] as string
-    );
-    if (challenge) return res.send(challenge);
-    res.status(403).send("Forbidden");
-  });
-
-  // Lead Ad submission webhook. The signature check used to live inline here and
-  // was fail-open twice: no `META_APP_SECRET` meant no verification at all, and
-  // a caller who simply OMITTED the header skipped it even when the secret was
-  // set. This endpoint creates leads, so an unsigned POST wrote rows into a real
-  // pipeline. `verifyMetaWebhookSignature` fails closed on both, hashes the raw
-  // body rather than a re-serialisation of it, and compares in constant time —
-  // the same shape as the Twilio and inbound-email verifiers.
-  app.post("/api/webhooks/meta-lead-ads", verifyMetaWebhookSignature, async (req: Request, res: Response) => {
-    try {
-      const entries = req.body?.entry || [];
-      for (const entry of entries) {
-        for (const change of entry.changes || []) {
-          if (change.field === "leadgen") {
-            const { leadgen_id, form_id, ad_id, campaign_name, page_id } = change.value || {};
-            // Determine org from page_id mapping (simplified: use default org for now)
-            const orgId = parseInt(process.env.DEFAULT_ORG_ID || "1");
-            await metaAdsService.processLeadAdSubmission(
-              orgId, leadgen_id, form_id, ad_id, campaign_name
-            );
-          }
-        }
-      }
-      res.json({ success: true });
-    } catch (err: any) {
-      logger.error("Meta Lead Ads webhook error", err);
-      Errors.internal(res, err);
-    }
-  });
+  // The lead-ads webhook (GET + POST /api/webhooks/meta-lead-ads) is NOT here:
+  // Meta carries no session, so it is registered ahead of the `/api` session
+  // catch-all by `registerMetaLeadAdsWebhookRoutes` (bottom of this file).
 
   // ── META ADS: A FOUNDER INSTRUMENT, PERMANENTLY (founder ruling 2026-08-13) ──
   //
@@ -399,6 +363,9 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   // open is the half-applied rule this whole block is about.
   app.get("/api/founder/meta-ads/campaigns/:campaignId/stats", ...auth, requireFounder, async (req: Request, res: Response) => {
     try {
+      if (!metaAdsService.graphIdSegment(req.params.campaignId)) {
+        return Errors.badRequest(res, "campaignId must be a Meta Graph object id (digits)");
+      }
       const stats = await metaAdsService.getAdPerformance(req.params.campaignId);
       res.json(stats);
     } catch (err: any) {
@@ -412,6 +379,9 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const { catalogId } = req.body;
+      if (!metaAdsService.graphIdSegment(catalogId)) {
+        return Errors.badRequest(res, "catalogId must be a Meta Graph object id (digits)");
+      }
       const appUrl = process.env.APP_URL || req.headers.origin as string;
       const result = await metaAdsService.syncPropertyCatalog(org.id, catalogId, appUrl);
       res.json(result);
@@ -840,4 +810,95 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   });
 
   logger.info("✅ Elite feature routes registered");
+}
+
+/**
+ * Meta Lead Ads webhook — GET (subscription challenge) + POST (lead delivery).
+ *
+ * Registered by `registerRoutes` BEFORE the `/api` session catch-all, like the
+ * other provider callbacks: Meta carries no session, and each half verifies
+ * Meta itself, fail closed, before reading anything —
+ *   GET  — `hub.verify_token` against META_WEBHOOK_VERIFY_TOKEN (constant time;
+ *          unset token → refused);
+ *   POST — `verifyMetaWebhookSignature`: X-Hub-Signature-256 over the RAW body
+ *          keyed by META_APP_SECRET (unset secret or absent header → refused).
+ * tests/unit/inboundWebhooksReachAnonymously.test.ts boots the app to pin both.
+ *
+ * WHERE THE LEADS GO (owner decision 2026-10-08). These are leads from
+ * AcreOS's OWN lead ads — the founder-only ad rail (`ads.founder-only-rail`) —
+ * so they belong to the FOUNDER's organisation, resolved by the canonical
+ * `resolveFounderOrganization()`. The handler used to write into
+ * `DEFAULT_ORG_ID`, else org 1: a guessed tenant, and on a multi-tenant
+ * database org 1 can be a customer. Now, when the founder org cannot be named
+ * unambiguously, NOTHING is written: the refusal is logged loudly with the
+ * leadgen ids (Meta keeps each lead retrievable by id, so none is lost) and
+ * Meta gets a 200, because a non-2xx makes Meta retry a delivery that will be
+ * refused identically until the configuration is fixed.
+ * Pinned by tests/unit/metaLeadAdsFounderOrg.test.ts.
+ */
+/** Meta's `hub.challenge` is an integer; nothing else is ever echoed. */
+const META_CHALLENGE = /^\d{1,64}$/;
+
+export function registerMetaLeadAdsWebhookRoutes(app: Express) {
+  // Webhook verification challenge. Anonymous by design (Meta has no session),
+  // so the echo is the reflected-XSS shape: `hub.challenge` comes from the
+  // query string and goes back in the body. Meta's challenge is an integer, so
+  // anything that is not 1–64 ASCII digits is refused BEFORE the token is
+  // even compared, and the echo is sent as text/plain, never text/html.
+  // Query values are read as strings only — `?hub.challenge=a&hub.challenge=b`
+  // parses to an array, which is not a challenge.
+  app.get("/api/webhooks/meta-lead-ads", (req: Request, res: Response) => {
+    const q = (k: string) => (typeof req.query[k] === "string" ? (req.query[k] as string) : "");
+    const challengeParam = q("hub.challenge");
+    const challenge = META_CHALLENGE.test(challengeParam)
+      ? metaAdsService.verifyMetaWebhook(q("hub.mode"), q("hub.verify_token"), challengeParam)
+      : null;
+    if (challenge && META_CHALLENGE.test(challenge)) return res.type("text/plain").send(challenge);
+    Errors.forbidden(res, "Meta webhook verification failed");
+  });
+
+  // Lead Ad submission webhook. The signature check used to live inline here and
+  // was fail-open twice: no `META_APP_SECRET` meant no verification at all, and
+  // a caller who simply OMITTED the header skipped it even when the secret was
+  // set. This endpoint creates leads, so an unsigned POST wrote rows into a real
+  // pipeline. `verifyMetaWebhookSignature` fails closed on both, hashes the raw
+  // body rather than a re-serialisation of it, and compares in constant time —
+  // the same shape as the Twilio and inbound-email verifiers.
+  app.post("/api/webhooks/meta-lead-ads", verifyMetaWebhookSignature, async (req: Request, res: Response) => {
+    try {
+      const leadgen: Array<{ leadgen_id: string; form_id: string; ad_id: string; campaign_name: string }> = [];
+      for (const entry of req.body?.entry || []) {
+        for (const change of entry.changes || []) {
+          if (change.field === "leadgen") leadgen.push(change.value || {});
+        }
+      }
+      if (leadgen.length === 0) return res.json({ success: true, written: 0 });
+
+      const destination = await resolveFounderOrganization();
+      if (!destination.ok) {
+        logger.error("[meta-lead-ads] founder organisation unresolved — refusing to write leads", {
+          metadata: {
+            detail: {
+              reason: destination.reason,
+              candidates: destination.candidates,
+              leadgenIds: leadgen.map((l) => l.leadgen_id),
+            },
+          },
+        });
+        return res.json({ success: false, written: 0, refused: destination.reason });
+      }
+
+      let written = 0;
+      for (const { leadgen_id, form_id, ad_id, campaign_name } of leadgen) {
+        const r = await metaAdsService.processLeadAdSubmission(
+          destination.organizationId, leadgen_id, form_id, ad_id, campaign_name
+        );
+        if (r.created) written++;
+      }
+      res.json({ success: true, written });
+    } catch (err: any) {
+      logger.error("Meta Lead Ads webhook error", err);
+      Errors.internal(res, err);
+    }
+  });
 }

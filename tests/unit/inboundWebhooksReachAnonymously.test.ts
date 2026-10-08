@@ -24,7 +24,9 @@
  * catch-all: Lob delivery events, Stripe Connect events, SES bounce/complaint
  * notifications, SendGrid events, inbound email and title-partner status
  * updates. Each authenticates the provider itself and now registers before the
- * catch-all; the Meta lead-ads pair stays behind it (see KNOWN_SHADOWED).
+ * catch-all. The Meta lead-ads pair joined them on 2026-10-08, once its
+ * destination org was decided (the founder's own, or refuse — see
+ * metaLeadAdsFounderOrg.test.ts); KNOWN_SHADOWED is now empty.
  *
  * ── WHAT THIS FILE PROVES, AND OVER WHAT POPULATION ─────────────────────────
  * It boots the REAL route graph (registerRoutes, as bootSmoke.test.ts does,
@@ -81,6 +83,8 @@ const TEST_ENV: Record<string, string> = {
     .publicKey.export({ type: "spki", format: "der" })
     .toString("base64"),
   INBOUND_EMAIL_WEBHOOK_SECRET: "inbound-test-secret",
+  META_WEBHOOK_VERIFY_TOKEN: "meta-verify-test-token",
+  META_APP_SECRET: "meta-app-test-secret",
 };
 
 type Res = { status: number; body: any; text: string };
@@ -184,6 +188,33 @@ const MUST_REACH_VERIFIER: Case[] = [
     refusedByVerifier: (res) => res.status === 401 && res.body?.error === "UNAUTHORIZED",
     why: "partner API key + per-partner HMAC",
   },
+  {
+    method: "GET",
+    path: "/api/webhooks/meta-lead-ads",
+    url: "/api/webhooks/meta-lead-ads?hub.mode=subscribe&hub.verify_token=not-the-token&hub.challenge=8675309",
+    send: (r) => r,
+    // A well-formed subscribe (numeric challenge, so the format check passes)
+    // with the WRONG token: the token comparison is the only thing between this
+    // caller and the echoed challenge.
+    refusedByVerifier: (res) =>
+      res.status === 403 && /Meta webhook verification failed/.test(msgOf(res)) && !res.text.includes("8675309"),
+    why: "Meta hub.verify_token (META_WEBHOOK_VERIFY_TOKEN)",
+  },
+  {
+    method: "POST",
+    path: "/api/webhooks/meta-lead-ads",
+    send: (r) =>
+      r.set("Content-Type", "application/json").send(
+        JSON.stringify({
+          object: "page",
+          entry: [{ id: "p1", changes: [{ field: "leadgen", value: { leadgen_id: "lg-reach", form_id: "f", ad_id: "a" } }] }],
+        }),
+      ),
+    // A real leadgen delivery with no X-Hub-Signature-256 header.
+    refusedByVerifier: (res, logs) =>
+      res.status === 401 && logs.some((l) => l.includes("[MetaWebhookSig] request missing X-Hub-Signature-256")),
+    why: "Meta X-Hub-Signature-256 over the raw body (META_APP_SECRET)",
+  },
 ];
 
 /**
@@ -191,15 +222,14 @@ const MUST_REACH_VERIFIER: Case[] = [
  * when its route moves ahead of the catch-all; never add one — register a new
  * callback before the catch-all, with its verifier, and add it above.
  *
- * Meta lead-ads (2026-10-08): both halves verify Meta (hub.verify_token on
- * the GET, X-Hub-Signature-256 on the POST), but the POST handler writes each
- * lead into a GUESSED organization — DEFAULT_ORG_ID, else 1 — not one derived
- * from the page. Opening it would make that write live; it stays here until
- * the destination org is decided.
+ * Emptied 2026-10-08: the Meta lead-ads pair was the last entry. It was held
+ * because its POST wrote each lead into a GUESSED org (DEFAULT_ORG_ID, else 1);
+ * it now writes only into the founder's own org or refuses, and moved ahead.
+ * The canary below keeps the detector honest while this set is empty.
  */
-const KNOWN_SHADOWED = new Set(["GET /api/webhooks/meta-lead-ads", "POST /api/webhooks/meta-lead-ads"]);
+const KNOWN_SHADOWED = new Set<string>();
 
-/** The population floor: Twilio x3 + the six moved + the two held. */
+/** The population floor: Twilio x3 + the six moved + the Meta lead-ads pair. */
 const POPULATION_FLOOR = 11;
 
 const isProviderCallbackPath = (p: string) => /^\/api\/webhooks\/./.test(p) || /\/webhook$/.test(p);

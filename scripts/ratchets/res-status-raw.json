@@ -11,7 +11,7 @@
   ],
   "baselineCount": 355,
   "direction": "down",
-  "lastBumpNote": "357 -> 356 on 2026-09-28 (DEFECT-0166): the deal-room NDA route's `res.status(201).json(...)` went with the fabricated signed-document row it announced; the route now returns an unsigned draft with res.json. PRIOR NOTE — 2026-09-28 DEFECT-0050 second pass: 366 -> 357. Nine 4xx single-key bodies whose value is an error-message expression (err.message, message) now go through sendError. 5xx expression bodies were deliberately left: echoing err.message on a 5xx can leak internals, and those belong in Errors.internal per site.",
+  "lastBumpNote": "356 -> 355 on 2026-10-08: the Meta lead-ads GET challenge refusal `res.status(403).send(\"Forbidden\")` became Errors.forbidden when the route went anonymous (CodeQL reflected-XSS fix: numeric challenge only, echoed as text/plain). PRIOR NOTE — 357 -> 356 on 2026-09-28 (DEFECT-0166): the deal-room NDA route's `res.status(201).json(...)` went with the fabricated signed-document row it announced; the route now returns an unsigned draft with res.json. PRIOR NOTE — 2026-09-28 DEFECT-0050 second pass: 366 -> 357. Nine 4xx single-key bodies whose value is an error-message expression (err.message, message) now go through sendError. 5xx expression bodies were deliberately left: echoing err.message on a 5xx can leak internals, and those belong in Errors.internal per site.",
   "minima": {
     "files": 1100
   },
