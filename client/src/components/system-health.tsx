@@ -92,19 +92,20 @@ export function SystemHealth() {
   const queryClient = useQueryClient();
 
   const { data: healthData, isLoading, isFetching } = useQuery<HealthCheckResult>({
-    queryKey: ['/api/health/cached'],
+    // Signed-in per-service view; the public /api/health* routes are status-only.
+    queryKey: ['/api/system/health'],
     refetchInterval: 60000,
     staleTime: 30000,
   });
 
   const refreshMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("GET", "/api/health");
+      const res = await apiRequest("GET", "/api/system/health");
       if (!res.ok) throw new Error("Failed to refresh health check");
       return res.json();
     },
     onSuccess: (data) => {
-      queryClient.setQueryData(['/api/health/cached'], data);
+      queryClient.setQueryData(['/api/system/health'], data);
     },
   });
 

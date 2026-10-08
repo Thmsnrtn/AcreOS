@@ -8,6 +8,7 @@ import { insertLeadSchema, leads, properties, deals } from "@shared/schema";
 import { LEAD_STATUSES, isLeadStatus, validateLeadTransition } from "@shared/lifecycle/pipeline-status";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { idempotencyMiddleware } from "./middleware/idempotency";
 import { checkUsageLimit } from "./services/usageLimits";
 import { usageLimitGate } from "./middleware/usageLimitGate";
 import { requireScope } from "./middleware/roleScope";
@@ -380,7 +381,13 @@ export function registerLeadRoutes(app: Express): void {
   // zod validation (positive ints, primaryId !== duplicateId) was ported into
   // the live handler rather than lost. Do not re-add it here.
 
-  api.post("/api/leads", isAuthenticated, getOrCreateOrg, attachPermissionContext(), requireScope("deal_write"), usageLimitGate("leads"), async (req, res) => {
+  // Idempotency-Key honoured (2026-10-07): a client that retries a create
+  // after a timeout gets the first response replayed instead of a second lead.
+  // After getOrCreateOrg (the key is scoped by org) and after the scope check
+  // (a replay is only served to a caller allowed to create); before the usage
+  // gate, so a retry of a create that succeeded is replayed rather than
+  // refused for the very lead it created.
+  api.post("/api/leads", isAuthenticated, getOrCreateOrg, attachPermissionContext(), requireScope("deal_write"), idempotencyMiddleware, usageLimitGate("leads"), async (req, res) => {
     try {
       const org = req.organization;
       
@@ -1445,6 +1452,17 @@ export function registerLeadRoutes(app: Express): void {
     async (req, res) => {
       try {
         const org = (req as AuthenticatedRequest).organization;
+        // The cap gets its own message: through the schema it surfaced as
+        // "Validation failed" / "Array must contain at most 500 element(s)",
+        // which does not tell a customer to split the file.
+        const submitted = (req.body as { rows?: unknown } | undefined)?.rows;
+        if (Array.isArray(submitted) && submitted.length > MAX_CSV_IMPORT_ROWS) {
+          return Errors.badRequest(
+            res,
+            `One import takes at most ${MAX_CSV_IMPORT_ROWS} rows; this one has ${submitted.length}. Split the file and import each part. Nothing was imported.`,
+            { maxRows: MAX_CSV_IMPORT_ROWS, rows: submitted.length },
+          );
+        }
         const parsed = csvImportBodySchema.safeParse(req.body ?? {});
         if (!parsed.success) {
           return Errors.badRequest(

@@ -270,6 +270,35 @@ export const LAND_PROFILE_COORDINATE_CATEGORIES: LookupCategory[] = [
   "broadband",
 ];
 
+/**
+ * Enrichment refusals — the request was well-formed, but this record cannot be
+ * enriched as it stands. They were plain `Error`s, so every route that called
+ * `enrichProperty` funnelled them through `Errors.internal` and answered 500 —
+ * "our bug" — for "this parcel has no coordinates", which is the caller's to
+ * fix (add them, or geocode the address). Typed so a route can answer 404/422,
+ * and never fabricated around: enrichment is keyed on a real location, and a
+ * guessed one would attach some other parcel's flood zone and soils to this
+ * record.
+ */
+export class PropertyNotFoundForEnrichmentError extends Error {
+  readonly code = "PROPERTY_NOT_FOUND";
+  constructor(readonly propertyId: number) {
+    super("Property not found");
+    this.name = "PropertyNotFoundForEnrichmentError";
+  }
+}
+
+export class MissingCoordinatesError extends Error {
+  readonly code = "MISSING_COORDINATES";
+  constructor(readonly propertyId: number) {
+    super(
+      "This property has no coordinates, so it can't be enriched. Add its latitude and longitude " +
+        "(or a geocodable address) and try again.",
+    );
+    this.name = "MissingCoordinatesError";
+  }
+}
+
 export class PropertyEnrichmentService {
   async enrichByCoordinates(
     latitude: number,
@@ -702,7 +731,7 @@ export class PropertyEnrichmentService {
   async enrichProperty(organizationId: number, propertyId: number, forceRefresh = false): Promise<EnrichmentResult> {
     const property = await storage.getProperty(organizationId, propertyId);
     if (!property) {
-      throw new Error("Property not found");
+      throw new PropertyNotFoundForEnrichmentError(propertyId);
     }
 
     // Smart 30-day refresh: skip if enriched recently and not forcing
@@ -719,7 +748,7 @@ export class PropertyEnrichmentService {
     const lng = property.longitude ? parseFloat(property.longitude) : null;
 
     if (!lat || !lng) {
-      throw new Error("Property missing coordinates");
+      throw new MissingCoordinatesError(propertyId);
     }
 
     const result = await this.enrichByCoordinates(lat, lng, {

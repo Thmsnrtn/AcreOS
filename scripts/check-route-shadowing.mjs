@@ -78,6 +78,8 @@ import { join, resolve, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { stripCommentsPreservingLines } from "./lib/strip-comments.mjs";
+import { functionBodySpan } from "./lib/function-body.mjs";
+import { nextVerdict } from "./lib/next-guard.mjs";
 
 const require_ = createRequire(import.meta.url);
 const { pathToRegexp } = require_("path-to-regexp");
@@ -213,6 +215,8 @@ const unresolvedMountPaths = new Set();
 let routerMounts = 0;
 let registrarCalls = 0;
 let unresolved = 0;
+/** Registrars whose body could not be located — COUNTED and printed, never skipped silently. */
+const unlocatedBodies = [];
 
 const entryOnly = receiversIn(entrySrc);
 const entryEvents = [];
@@ -256,19 +260,31 @@ for (const t of timeline) {
   const spec = importMap.get(name);
   const target = spec && resolveSpec(spec);
   if (!target || !srcOf.has(target)) { unresolved += 1; continue; }
-  const src = srcOf.get(target);
-  const decl = new RegExp(String.raw`function\s+${name}\s*\(`).exec(src);
-  if (!decl) { unresolved += 1; continue; }
-  const bodyStart = src.indexOf("{", decl.index + decl[0].length);
-  let depth = 0, bodyEnd = src.length;
-  for (let i = bodyStart; i < src.length; i++) {
-    if (src[i] === "{") depth++;
-    else if (src[i] === "}") { depth--; if (depth === 0) { bodyEnd = i; break; } }
+  // Follow re-exports (`export { registerAuthRoutes } from "./routes"`) to the
+  // file that actually declares the registrar — up to 3 hops.
+  let declFile = target;
+  let span = functionBodySpan(srcOf.get(declFile), name);
+  for (let hop = 0; !span && hop < 3; hop++) {
+    const re = new RegExp(String.raw`export\s*\{[^}]*\b${name}\b[^}]*\}\s*from\s*["'](\.[^"']+)["']`);
+    const m = re.exec(srcOf.get(declFile));
+    if (!m) break;
+    const base = resolve(dirname(declFile), m[1]);
+    const next = [`${base}.ts`, join(base, "index.ts")].find((c) => srcOf.has(c));
+    if (!next) break;
+    declFile = next;
+    span = functionBodySpan(srcOf.get(declFile), name);
   }
+  const src = srcOf.get(declFile);
+  // The body span comes from the TypeScript parser (scripts/lib/function-body.mjs).
+  // A brace counter here stopped at the first regex literal holding a `}` and
+  // silently dropped every route after it — see that file's header.
+  if (!span) { unresolved += 1; unlocatedBodies.push(`${name} in ${relative(ROOT, target)}`); continue; }
+  const bodyStart = span.start;
+  const bodyEnd = span.end;
   registrarCalls += 1;
   const body = src.slice(bodyStart, bodyEnd);
   const only = receiversIn(src);
-  for (const r of registrationsIn(target, body, only)) {
+  for (const r of registrationsIn(declFile, body, only)) {
     globalRoutes.push({
       ...r,
       line: src.slice(0, bodyStart + r.idx).split("\n").length,
@@ -279,10 +295,15 @@ for (const t of timeline) {
 }
 
 // ── fall-through classification ──────────────────────────────────────────────
-function classify(reg) {
+// `later` is optional: without it (population counting) any next() reads as
+// falling through. With it, a next() that is guarded on req.params values is
+// resolved against the later path — scripts/lib/next-guard.mjs.
+function classify(reg, later) {
   const args = reg.args || "";
   const inline = /=>|\bfunction\b/.test(args);
-  if (/\bnext\s*\(/.test(args)) return "FALLS_THROUGH";
+  const v = later ? nextVerdict(args, later.abs) : /\bnext\s*\(/.test(args) ? "FALLS_THROUGH" : "NO_NEXT";
+  if (v === "FALLS_THROUGH") return "FALLS_THROUGH";
+  if (v === "TERMINATES") return "TERMINATES";
   if (inline) return "TERMINATES";
   return "UNKNOWN";
 }
@@ -326,7 +347,7 @@ for (let j = 0; j < globalRoutes.length; j++) {
       !unresolvedMountPaths.has(earlier.abs);
     // An expanded mount falls through (Router next()s on no-match) and its
     // inner routes are compared individually — see resolvedMountPaths above.
-    const verdict = expandedMount ? "FALLS_THROUGH" : classify(earlier);
+    const verdict = expandedMount ? "FALLS_THROUGH" : classify(earlier, later);
     if (verdict === "TERMINATES") {
       terminatingEarlier += 1;
       offenders.push({
@@ -339,6 +360,20 @@ for (let j = 0; j < globalRoutes.length; j++) {
     }
     if (verdict === "UNKNOWN") unknownEarlier += 1;
   }
+}
+
+// `--list-routes`: the globally-ordered table this gate actually read, one JSON
+// object per line, then exit. The per-member population canary
+// (tests/unit/routeShadowingReadsWholeRegistrar.test.ts) diffs it against every
+// registration in each registrar file.
+if (process.argv.includes("--list-routes")) {
+  const out = globalRoutes
+    .map((r) => JSON.stringify({ method: r.method, path: r.abs, file: relative(ROOT, r.file), line: r.line, via: r.via }))
+    .join("\n");
+  // One write, exit in its callback: process.exit() right after console.log
+  // truncates stdout when it is a pipe — the reader then sees a partial table.
+  process.stdout.write(out + "\n", () => process.exit(0));
+  await new Promise(() => {});
 }
 
 // ── vacuity floors, BEFORE any verdict ───────────────────────────────────────
@@ -372,6 +407,16 @@ if (!Number.isInteger(baseline) || !Number.isInteger(unknownBaseline)) {
   fail(`ratchet file must carry integer "baseline" and "unknownHandlerBaseline"`);
 }
 
+if (unlocatedBodies.length > 0) {
+  console.log(`${TAG} ${unlocatedBodies.length} registrar(s) whose body could not be located: ${unlocatedBodies.join(", ")}`);
+}
+// A registrar the gate cannot open is a population it cannot read. Held at a
+// down-only baseline (0): resolve the registrar, never skip it.
+const unlocatedBaseline = cfg.unlocatedRegistrarBaseline;
+if (!Number.isInteger(unlocatedBaseline)) fail(`ratchet file must carry integer "unlocatedRegistrarBaseline"`);
+if (unlocatedBodies.length > unlocatedBaseline) {
+  fail(`${unlocatedBodies.length} registrar(s) whose body could not be located > baseline ${unlocatedBaseline}: ${unlocatedBodies.join(", ")}`);
+}
 console.log(
   `${TAG} scanned ${live.serverFiles} files, ${live.registrations} registrations, ` +
     `${live.globalRoutes} globally-ordered routes (${routerMounts} router mounts, ` +

@@ -44,12 +44,41 @@ function detectMimeFromBuffer(buffer: Buffer): { mime: string; category: string 
       return { mime: sig.mime, category: sig.category };
     }
   }
-  // Check if it's likely text (CSV, TXT)
-  const firstBytes = buffer.slice(0, 512).toString("utf8");
-  if (/^[\x09\x0a\x0d\x20-\x7e]*$/.test(firstBytes)) {
+  if (looksLikeUtf8Text(buffer)) {
     return { mime: "text/plain", category: "text" };
   }
   return null;
+}
+
+/**
+ * Is this plausibly a UTF-8 text file (CSV, TXT)? Judged on the first 512 bytes.
+ *
+ * The check used to be printable ASCII only, which refused two things every
+ * real CSV export carries: the UTF-8 byte-order mark Excel writes on "CSV
+ * UTF-8" (EF BB BF), and any non-ASCII letter (José, Muñoz, Peñasco County).
+ * Both were answered "Unable to determine file type" — so the customer's own
+ * spreadsheet export could not be imported at all. Text now means: valid UTF-8
+ * (a BOM allowed) with no control characters other than tab, LF and CR.
+ * Binary content still fails — it is neither valid UTF-8 nor free of controls.
+ */
+const SNIFF_BYTES = 512;
+const UTF8_FATAL = new TextDecoder("utf-8", { fatal: true });
+function looksLikeUtf8Text(buffer: Buffer): boolean {
+  let head = buffer.subarray(0, SNIFF_BYTES);
+  if (head[0] === 0xef && head[1] === 0xbb && head[2] === 0xbf) head = head.subarray(3);
+  // The sniff window can end mid-character; a truncated sequence at the very
+  // end is the window's fault, not the file's. Try dropping up to 3 bytes.
+  const maxTrim = buffer.length > SNIFF_BYTES ? 3 : 0;
+  for (let trim = 0; trim <= maxTrim; trim++) {
+    let text: string;
+    try {
+      text = UTF8_FATAL.decode(head.subarray(0, head.length - trim));
+    } catch {
+      continue;
+    }
+    return /^[\t\n\r\x20-\x7e\u00a0-\u{10ffff}]*$/u.test(text);
+  }
+  return false;
 }
 
 // ─── Allowed categories by use case ──────────────────────────────────────────
@@ -137,9 +166,7 @@ export function validateFileMiddleware(
       const detected = detectMimeFromBuffer(file.buffer);
 
       if (!detected) {
-        return res
-          .status(400)
-          .json({ message: `Unable to determine file type for: ${file.originalname}` });
+        return sendError(res, 400, "BAD_REQUEST", `Unable to determine file type for: ${file.originalname}`);
       }
 
       const allowed =

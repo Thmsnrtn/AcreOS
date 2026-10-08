@@ -118,31 +118,61 @@ export async function isFounderById(userId: string, storage: any): Promise<boole
 /**
  * Resolve the founder's primary organization id. Used by services and
  * routes that need an `organizationId` for inserts but aren't run in the
- * context of a specific tenant (founder-only collaboration / agent
- * lifecycle / trust events). Reads `FOUNDER_PRIMARY_ORG_ID` from env if
- * set; otherwise looks up the founder's first owned org via
- * users → teamMembers. Cached after first resolution; resolves to 1
- * (the deployed founder org) as a last-resort fallback so callers never
- * blow up on a NOT NULL organization_id constraint.
+ * context of a specific tenant (on-call alerts, founder-only collaboration /
+ * agent lifecycle / trust events). Reads `FOUNDER_PRIMARY_ORG_ID` from env if
+ * set; otherwise looks up the founder's org via users → teamMembers. Cached
+ * after the first SUCCESSFUL resolution.
+ *
+ * NO HARD-CODED FALLBACK (2026-10-07). This used to resolve to org 1 when
+ * neither source answered, "so callers never blow up on a NOT NULL
+ * organization_id constraint". On any database where row 1 is a customer —
+ * a fresh deploy, staging, a restore — that wrote the platform's system
+ * alerts, agent events and on-call pages INTO A CUSTOMER'S WORKSPACE, where
+ * that customer could read them. A row with nowhere legitimate to go is not
+ * written; the caller is told (`FounderOrgUnresolvedError`), logs, and the
+ * `acreos_founder_org_unresolved_total` counter moves.
  */
 let _cachedFounderOrgId: number | null = null;
+/** Until when a failed lookup is remembered (the env var is still read first). */
+let _unresolvedUntil = 0;
+const UNRESOLVED_CACHE_MS = 60_000;
 
-export async function getFounderPrimaryOrgId(): Promise<number> {
+/** No founder org could be resolved — neither FOUNDER_PRIMARY_ORG_ID nor a founder membership. */
+class FounderOrgUnresolvedError extends Error {
+  readonly code = "FOUNDER_ORG_UNRESOLVED";
+  constructor() {
+    super(
+      "No founder organization is configured: set FOUNDER_PRIMARY_ORG_ID, or make a FOUNDER_EMAILS user a member of the founder's organization.",
+    );
+    this.name = "FounderOrgUnresolvedError";
+  }
+}
+
+/**
+ * The founder's primary org id, or `null` when none can be resolved. Never a
+ * guess. Prefer this where "no founder org" has a sensible branch (skip and
+ * report); use `getFounderPrimaryOrgId()` where it is an error.
+ */
+export async function resolveFounderPrimaryOrgId(): Promise<number | null> {
   if (_cachedFounderOrgId !== null) return _cachedFounderOrgId;
 
   const fromEnv = process.env.FOUNDER_PRIMARY_ORG_ID;
   if (fromEnv) {
-    const parsed = parseInt(fromEnv, 10);
-    if (Number.isFinite(parsed)) {
+    const parsed = Number(fromEnv);
+    if (Number.isInteger(parsed) && parsed > 0) {
       _cachedFounderOrgId = parsed;
       return parsed;
     }
   }
 
+  // A miss is remembered briefly, so callers on hot paths do not re-query the
+  // users/teamMembers lookup on every call while no founder org exists.
+  if (Date.now() < _unresolvedUntil) return null;
+
   try {
     const { db } = await import("../db");
     const { users, teamMembers } = await import("@shared/schema");
-    const { eq, inArray } = await import("drizzle-orm");
+    const { inArray } = await import("drizzle-orm");
     const founderEmails = getFounderEmails();
     if (founderEmails.length > 0) {
       const founderUsers = await db
@@ -164,11 +194,19 @@ export async function getFounderPrimaryOrgId(): Promise<number> {
       }
     }
   } catch {
-    /* fall through to sentinel */
+    /* unresolved — reported below */
   }
 
-  // Last-resort fallback so a missing migration / fresh DB doesn't crash
-  // an insert. Production has org id 1 as the founder workspace.
-  _cachedFounderOrgId = 1;
-  return 1;
+  _unresolvedUntil = Date.now() + UNRESOLVED_CACHE_MS;
+  void import("../metrics")
+    .then((m) => m.recordFounderOrgUnresolved())
+    .catch(() => {});
+  return null;
+}
+
+/** As `resolveFounderPrimaryOrgId`, but throws `FounderOrgUnresolvedError` instead of answering null. */
+export async function getFounderPrimaryOrgId(): Promise<number> {
+  const id = await resolveFounderPrimaryOrgId();
+  if (id === null) throw new FounderOrgUnresolvedError();
+  return id;
 }

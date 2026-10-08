@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Response } from "express";
 import { z } from "zod";
 import { insertAgentConfigSchema } from "@shared/schema";
 import { isAuthenticated, requireFounder } from "./auth";
@@ -16,9 +16,31 @@ import { aiLimiter } from "./middleware/rateLimit";
 import { paxChatGuard } from "./middleware/expensiveEndpointGuard";
 import { requirePaxDisclosure } from "./middleware/requirePaxDisclosure";
 import { Errors } from "./utils/errors";
+import { isAiProviderConfigured } from "./services/aiRouter";
 import { logger } from "./utils/logger";
 import { createUploadMiddleware } from "./middleware/fileUploadSecurity";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
+
+/** 503 in the standard shape: no platform AI provider is configured. */
+function refuseNoAiProvider(res: Response): void {
+  Errors.serviceUnavailable(
+    res,
+    "Pax isn't available: no AI provider is configured on this deployment. Nothing was sent or charged.",
+  );
+}
+
+/**
+ * 402 in the standard `{ error, message, details, statusCode }` shape. It was
+ * `{ error: "Insufficient credits", required, balance }` — no message, no
+ * statusCode — on both Pax chat routes.
+ */
+function refuseInsufficientCredits(res: Response, requiredCents: number, balanceCents: number): void {
+  Errors.paymentRequired(
+    res,
+    `Not enough credits for this Pax message: it needs $${(requiredCents / 100).toFixed(2)} and the balance is $${(balanceCents / 100).toFixed(2)}. Add credits in Settings → Billing.`,
+    { reason: "insufficient_credits", required: requiredCents / 100, balance: balanceCents / 100 },
+  );
+}
 
 export function registerAIRoutes(app: Express): void {
   const api = app;
@@ -247,6 +269,11 @@ export function registerAIRoutes(app: Express): void {
       }
       const { message, conversationId, agentRole, propertyId } = parsed.data;
 
+      // No AI provider configured → a clear 503, BEFORE any side effect (the
+      // usage counter, the stored user message). It was a 500: the provider
+      // selector's typed NoAIProviderError was re-wrapped as a plain Error.
+      if (!isAiProviderConfigured()) return refuseNoAiProvider(res);
+
       step = "usage_limit";
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
@@ -276,11 +303,7 @@ export function registerAIRoutes(app: Express): void {
         const hasCredits = byokMode || await creditService.hasEnoughCredits(org.id, aiChatCost);
         if (!hasCredits) {
           const balance = await creditService.getBalance(org.id).catch(() => 0);
-          return res.status(402).json({
-            error: "Insufficient credits",
-            required: aiChatCost / 100,
-            balance: balance / 100,
-          });
+          return refuseInsufficientCredits(res, aiChatCost, balance);
         }
       } catch (err) {
         logger.warn("[AI Chat] hasEnoughCredits failed, allowing request", err instanceof Error ? err : undefined);
@@ -355,12 +378,13 @@ export function registerAIRoutes(app: Express): void {
     } catch (error: any) {
       if (error instanceof ProviderCreditError) {
         logger.error(`[AI Chat] provider out of credits at step=${step}`, error);
-        return res.status(402).json({
-          error: "provider_credits_insufficient",
-          message:
-            "The AI provider is temporarily out of credits. We've been notified — please try again shortly.",
-          details: { affordableTokens: error.affordableTokens },
-        });
+        // AcreOS's PROVIDER account is out of credits — a dependency outage,
+        // not the customer's balance. It was a 402, which the client renders
+        // as "Insufficient credits." to a customer who has plenty.
+        return Errors.serviceUnavailable(
+          res,
+          "The AI provider is temporarily out of credits. We've been notified — please try again shortly.",
+        );
       }
       if (error instanceof PaxAiPausedError) {
         // Daily AI cost ceiling exhausted (2026-07 cost audit) — friendly
@@ -421,6 +445,11 @@ export function registerAIRoutes(app: Express): void {
       }
       const { message, conversationId, agentRole, files, propertyId: streamPropertyId, mentionedEntities, activeProjectId } = parsed.data;
 
+      // Same pre-flight as /api/ai/chat — and here it is the only point a
+      // status code can still say so: once the SSE headers go out, every
+      // failure is a 200 with an error event.
+      if (!isAiProviderConfigured()) return refuseNoAiProvider(res);
+
       // Normalize request shapes into the ChatOptions contract: FileAttachment
       // carries a numeric `size`, and mentionedEntities require numeric id +
       // string name/preview.
@@ -462,11 +491,7 @@ export function registerAIRoutes(app: Express): void {
         const hasCredits = byokMode || await creditService.hasEnoughCredits(org.id, aiChatCost);
         if (!hasCredits) {
           const balance = await creditService.getBalance(org.id).catch(() => 0);
-          return res.status(402).json({
-            error: "Insufficient credits",
-            required: aiChatCost / 100,
-            balance: balance / 100,
-          });
+          return refuseInsufficientCredits(res, aiChatCost, balance);
         }
       } catch (err) {
         logger.warn("[AI Chat Stream] hasEnoughCredits failed, allowing request", err instanceof Error ? err : undefined);

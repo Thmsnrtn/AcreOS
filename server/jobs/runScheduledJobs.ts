@@ -2681,7 +2681,9 @@ function startSoleneLoopWatchdogJob() {
  * Solene (COO) — team-state map regenerator.
  *
  * Runs scripts/regenerate-team-state.mjs every 15 minutes so the auto-
- * generated section of docs/internal/solene-team-state.md stays fresh.
+ * generated team-state map stays fresh. It writes the RUNTIME copy
+ * (server/services/solene/teamState.ts — outside the repository), seeded from
+ * the tracked docs/internal/solene-team-state.md, which it never writes.
  * Solene loads that file on session start (per the session-start protocol
  * in team_solene.md) — a stale map is worse than an empty one because it
  * encourages dispatch collisions.
@@ -2692,34 +2694,10 @@ function startSoleneLoopWatchdogJob() {
  * from double-firing.
  */
 async function processSoleneTeamStateRegenerator(): Promise<void> {
-  const { spawn } = await import("node:child_process");
-  const path = await import("node:path");
-  const scriptPath = path.resolve(process.cwd(), "scripts/regenerate-team-state.mjs");
-  await new Promise<void>((resolvePromise, rejectPromise) => {
-    const child = spawn(process.execPath, [scriptPath], {
-      cwd: process.cwd(),
-      env: {
-        ...process.env,
-        // Inside the prod container we never want the regenerator to
-        // hit the public health endpoint from itself — same-host curl
-        // can loop and consume request slots. Skip it; the daily-pulse
-        // workflow already publishes health independently.
-        SOLENE_TEAM_STATE_SKIP_HEALTHCHECK: "1",
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let stderr = "";
-    child.stderr?.on("data", (chunk) => {
-      stderr += String(chunk);
-    });
-    child.on("error", (err) => rejectPromise(err));
-    child.on("exit", (code) => {
-      if (code === 0) return resolvePromise();
-      rejectPromise(
-        new Error(`regenerate-team-state exit ${code}: ${stderr.slice(0, 500)}`),
-      );
-    });
-  });
+  // Writes the RUNTIME copy (outside the repo) — never the tracked
+  // docs/internal/solene-team-state.md. See server/services/solene/teamState.ts.
+  const { regenerateTeamState } = await import("../services/solene/teamState");
+  await regenerateTeamState();
 }
 
 /**

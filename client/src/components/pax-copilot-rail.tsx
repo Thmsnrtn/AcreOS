@@ -803,7 +803,10 @@ export function PaxCopilotRail() {
         } else if (res.status === 429) {
           err = "Rate limit reached. Please try again shortly.";
         } else if (res.status === 402) {
-          err = "Insufficient credits.";
+          err = typeof errBody?.message === "string" ? errBody.message : "Insufficient credits.";
+        } else if (res.status === 503 && typeof errBody?.message === "string") {
+          // e.g. no AI provider configured — the server says exactly what.
+          err = errBody.message;
         } else {
           err = "Pax couldn't reach us. Try again, or reload the chat.";
         }

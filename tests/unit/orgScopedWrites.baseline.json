@@ -81,7 +81,6 @@
   "server/services/gdprService.ts::delete::supportTickets": 1,
   "server/services/gdprService.ts::delete::tasks": 1,
   "server/services/gdprService.ts::update::leads": 1,
-  "server/services/leadEnrichment.ts::update::leads": 1,
   "server/services/leadNurturer.ts::update::leads": 2,
   "server/services/leadScoreDecay.ts::update::leads": 2,
   "server/services/leadScoring.ts::update::leads": 1,

@@ -126,6 +126,15 @@ export function calculateContactCompleteness(lead: {
   return Math.min(100, score);
 }
 
+/** The lead does not exist in the caller's organization (→ 404, not 500). */
+export class LeadNotFoundForEnrichmentError extends Error {
+  readonly code = "LEAD_NOT_FOUND";
+  constructor(readonly leadId: number) {
+    super(`Lead ${leadId} not found`);
+    this.name = "LeadNotFoundForEnrichmentError";
+  }
+}
+
 /**
  * Enrich a single lead with available data
  */
@@ -151,7 +160,7 @@ export async function enrichLead(organizationId: number, leadId: number): Promis
   const [lead] = await db.select().from(leads)
     .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)));
 
-  if (!lead) throw new Error(`Lead ${leadId} not found`);
+  if (!lead) throw new LeadNotFoundForEnrichmentError(leadId);
 
   const changes: Partial<EnrichmentData> = {};
 
@@ -204,9 +213,11 @@ export async function enrichLead(organizationId: number, leadId: number): Promis
   const existingEnrichment = (lead as any).enrichmentData as EnrichmentData | null || {};
   const newEnrichmentData = { ...existingEnrichment, ...changes };
 
+  // Org-scoped like the read above: the write must not be able to reach a row
+  // the read would not have returned.
   await db.update(leads)
     .set({ enrichmentData: newEnrichmentData, ...parcelCols, updatedAt: new Date() } as any)
-    .where(eq(leads.id, leadId));
+    .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)));
 
   return {
     leadId,
@@ -227,7 +238,8 @@ export async function batchEnrichLeads(
 
   for (const id of leadIds) {
     try {
-      const result = await enrichLead(id, organizationId);
+      // enrichLead is org-first; pinned by tests/unit/enrichmentRefusesWithoutCoordinates.test.ts.
+      const result = await enrichLead(organizationId, id);
       results.push(result);
     } catch (err) {
       errors++;

@@ -51,6 +51,7 @@ import {
   executeDispatchTool,
 } from "./dispatchToolExecutor";
 import { checkPromptAgainstConstitution } from "./preCallConstitutionalChecker";
+import { runtimeTeamStatePath } from "./teamState";
 
 // ----------------------------------------------------------------------------
 // Configuration
@@ -85,9 +86,11 @@ const MEMORY_DIR =
 // scripts/regenerate-team-state.mjs). Injected into the system prompt so
 // every dispatched agent knows who else is in flight, what's queued, and
 // what working-tree surfaces other agents are currently mutating.
-const TEAM_STATE_PATH =
-  process.env.SOLENE_DISPATCH_TEAM_STATE_PATH ??
-  path.resolve(process.cwd(), "docs/internal/solene-team-state.md");
+// The RUNTIME copy (server/services/solene/teamState.ts) — the regenerator no
+// longer writes the tracked docs/ file. Deliberately NO fallback to the tracked
+// copy: its AUTO block is a months-old snapshot, and a stale map is worse than
+// none (it encourages dispatch collisions). Missing → the fallback string.
+const TEAM_STATE_PATH = runtimeTeamStatePath();
 
 // Cap the team-state preamble at 8 KB. The file is normally well under
 // this; this protects against runaway regeneration putting the whole

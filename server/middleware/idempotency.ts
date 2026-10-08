@@ -9,17 +9,26 @@
  *   Server checks cache (Redis or in-memory) for that key + orgId.
  *   If found → returns the cached response (HTTP 200 or original status).
  *   If not found → processes the request, caches the response, returns it.
+ *   If the first request with that key is STILL RUNNING in this process →
+ *   409 IDEMPOTENCY_IN_PROGRESS (a concurrent retry must not run it twice).
+ *
+ * The middleware must sit AFTER getOrCreateOrg: the key is scoped by
+ * req.organization, and without it two tenants' keys share one namespace —
+ * and after the route's own permission/scope checks, so a replay is only ever
+ * served to a caller who could have made the original request.
  *
  * TTL: 24 hours (configurable via IDEMPOTENCY_TTL_HOURS env var).
  *
  * Apply to sensitive routes:
  *   router.post("/create-payment", idempotencyMiddleware, handler)
  *
- * Routes that auto-apply this middleware (via routes.ts):
- *   POST /api/billing/*, POST /api/finance/notes, POST /api/offers/batch
+ * It is applied per route — nothing in routes.ts auto-applies it (an earlier
+ * version of this header said otherwise). grep for `idempotencyMiddleware`
+ * for the live set; POST /api/leads joined it 2026-10-07.
  */
 
 import type { Request, Response, NextFunction } from "express";
+import { sendError } from "../utils/errors";
 
 const TTL_SECONDS =
   parseInt(process.env.IDEMPOTENCY_TTL_HOURS ?? "24", 10) * 3600;
@@ -89,6 +98,11 @@ async function redis(): Promise<any | null> {
 }
 
 async function getCached(key: string): Promise<StoredResponse | null> {
+  // This process's own record first: it is written synchronously the moment a
+  // response is produced, so a retry landing here never races the async Redis
+  // write.
+  const local = memStore.get(key);
+  if (local) return local;
   try {
     const r = await redis();
     if (r) {
@@ -107,7 +121,7 @@ async function setCached(key: string, value: StoredResponse): Promise<void> {
       return;
     }
   } catch {}
-  memStore.set(key, value);
+  rememberLocally(key, value);
 }
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
@@ -137,19 +151,74 @@ export function idempotencyMiddleware(
       return;
     }
 
+    // A retry that arrives while the first attempt is still running would
+    // otherwise miss the cache (nothing is cached until the first response)
+    // and run the handler a second time — the duplicate this middleware
+    // exists to prevent. Refuse it instead; the client retries after the
+    // first attempt settles and then gets the replay. Per-process: a retry
+    // that lands on a different machine in the same window is not covered.
+    const startedAt = inFlight.get(scopedKey);
+    if (startedAt !== undefined && Date.now() - startedAt < IN_FLIGHT_TTL_MS) {
+      sendError(
+        res,
+        409,
+        "IDEMPOTENCY_IN_PROGRESS",
+        "A request with this Idempotency-Key is still being processed. Retry in a moment.",
+      );
+      return;
+    }
+    inFlight.set(scopedKey, Date.now());
+    // Released when the response is PRODUCED (json below, or "finish" for a
+    // handler that answers some other way) — never on "close": a client that
+    // gives up while the handler is still running closes the socket, and
+    // releasing then would let its retry run the handler a second time. A
+    // handler that never answers is covered by IN_FLIGHT_TTL_MS.
+    const release = () => inFlight.delete(scopedKey);
+    res.on?.("finish", release);
+
     // Intercept the response to cache it
     const originalJson = res.json.bind(res);
     (res as any).json = function (body: unknown) {
       const status = res.statusCode || 200;
       // Only cache success responses
       if (status < 400) {
+        // Recorded locally BEFORE the in-flight marker is released, so a retry
+        // can never fall into the gap between the two.
+        rememberLocally(scopedKey, { status, body, timestamp: Date.now() });
         setCached(scopedKey, { status, body, timestamp: Date.now() }).catch(
           () => {}
         );
       }
+      release();
       return originalJson(body);
     };
 
     next();
   });
+}
+
+/** Keys whose first request is still running in this process → start time. */
+const inFlight = new Map<string, number>();
+
+/**
+ * An in-flight marker older than this no longer blocks a retry — the first
+ * attempt has outlived any request timeout (server/middleware/security.ts
+ * caps requests well below it) and is treated as gone.
+ */
+const IN_FLIGHT_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * The local store is bounded: it is the only store without Redis, and with
+ * Redis it is a short-lived local copy that closes the gap before the async
+ * Redis write lands. Oldest entries are evicted first (Map insertion order).
+ */
+const MEM_STORE_MAX = 10_000;
+function rememberLocally(key: string, value: StoredResponse): void {
+  memStore.delete(key);
+  memStore.set(key, value);
+  while (memStore.size > MEM_STORE_MAX) {
+    const oldest = memStore.keys().next();
+    if (oldest.done) break;
+    memStore.delete(oldest.value);
+  }
 }

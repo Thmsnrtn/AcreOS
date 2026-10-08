@@ -686,57 +686,22 @@ export function registerDocSystemRoutes(app: Express): void {
     }
   });
 
-  // POST /api/documents/generate - Generate document from template
-  api.post("/api/documents/generate", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    try {
-      const org = req.organization;
-      const user = req.user;
-      const { templateId, dealId, propertyId, name, variables } = req.body;
-      
-      if (!templateId) {
-        return Errors.badRequest(res, "Template ID is required");
-      }
-
-      const template = await storage.getDocumentTemplate(org.id, templateId);
-      // 2026-06-10 (T0-2 sweep): templateId comes from the body — without an
-      // org check this rendered another org's template content into a document.
-      // System templates (org NULL) stay shared.
-      if (!template || (!template.isSystemTemplate && template.organizationId !== org.id)) {
-        return Errors.notFound(res, "Template");
-      }
-
-      // Auto-resolve context from deal/property, then merge with caller-supplied variables
-      // (caller-supplied values take precedence over auto-resolved ones)
-      const resolvedCtx = await resolveContextVariables(org.id, dealId, propertyId);
-      const mergedVars: Record<string, string> = {
-        ...resolvedCtx,
-        ...(variables && typeof variables === 'object' ? variables : {}),
-      };
-      let generatedContent = template.content;
-      for (const [key, value] of Object.entries(mergedVars)) {
-        const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
-        generatedContent = generatedContent.replace(regex, String(value));
-      }
-
-      const document = await storage.createGeneratedDocument({
-        organizationId: org.id,
-        templateId,
-        dealId: dealId || null,
-        propertyId: propertyId || null,
-        name: name || `${template.name} - ${new Date().toLocaleDateString()}`,
-        type: template.type,
-        content: generatedContent,
-        variables: mergedVars,
-        status: "draft",
-        createdBy: user?.id ? parseInt(user.id) : undefined,
-      });
-
-      res.status(201).json(document);
-    } catch (error: any) {
-      logger.error("Generate document error", error instanceof Error ? error : undefined);
-      Errors.internal(res, error);
-    }
-  });
+  // POST /api/documents/generate was REGISTERED HERE and is DELETED (2026-10-07):
+  // it never served a request. registerDocumentRoutes (server/routes-documents.ts,
+  // mounted earlier in routes.ts) registers the same method+path first and
+  // always answers — `{type, entityType, entityId}` → a text promissory note /
+  // warranty deed / offer letter, not persisted. The route-shadowing gate missed
+  // it because its brace counter ended this registrar's body at a regex literal
+  // ~300 lines up (scripts/lib/function-body.mjs).
+  //
+  // What the dead handler would have done, for the owner deciding whether a
+  // template path should be live on this URL: take `{templateId, dealId,
+  // propertyId, name, variables}`, load the template (org-owned or system),
+  // merge resolveContextVariables() with caller variables into its {{key}}
+  // placeholders, and PERSIST a draft generated_documents row (201). That is
+  // what POST /api/generated-documents (below) already does, live — with the
+  // compliance-warning acknowledgement gate this copy lacked. Behaviour on
+  // /api/documents/generate is unchanged by this deletion.
 
   // GET /api/documents/resolve-context - Preview resolved template variables for a deal/property
   api.get("/api/documents/resolve-context", isAuthenticated, getOrCreateOrg, async (req, res) => {

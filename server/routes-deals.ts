@@ -506,7 +506,9 @@ export function registerDealRoutes(app: Express): void {
   // ── W6.1 — contract assignments (the wholesaler's defining mechanic) ──────
   // Record: original contract (this deal) → end buyer → fee → assignment doc.
   // The e-sign pipeline already exists (Assignment Contract system template,
-  // /api/documents/generate, request-signature with the state-disclosure
+  // POST /api/generated-documents — NOT /api/documents/generate, whose template
+  // handler never served a request and was deleted 2026-10-07 — request-signature
+  // with the state-disclosure
   // gate); these endpoints add the missing assignment RECORD so the fee is
   // real data instead of the netProfit proxy.
   const assignmentCreateSchema = z.object({

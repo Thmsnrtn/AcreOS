@@ -95,6 +95,9 @@ function suggestField(header: string): TargetFieldId {
   return "skip";
 }
 
+/** Mirrors MAX_CSV_IMPORT_ROWS on POST /api/leads/csv-import (server/routes-leads.ts). */
+const CSV_IMPORT_MAX_ROWS = 500;
+
 /**
  * Lightweight CSV parser. Handles double-quote-escaped commas + CRLF.
  * Not RFC 4180-perfect, but sufficient for county tax lists (which are
@@ -225,6 +228,11 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
     }
     if (!fieldsSet.has("apn")) {
       warnings.push("No APN column mapped — re-imports of the same list will create duplicate leads.");
+    }
+    if (mappedRows.length > CSV_IMPORT_MAX_ROWS) {
+      warnings.push(
+        `This file has ${mappedRows.length} rows; one import takes at most ${CSV_IMPORT_MAX_ROWS}. Split it into smaller files.`,
+      );
     }
     return { mappedRows, warnings, apnDupesInFile };
   }, [headers, rows, mapping]);
@@ -416,7 +424,7 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
               </Button>
               <Button
                 onClick={() => importMut.mutate()}
-                disabled={importMut.isPending || mappedRows.length === 0}
+                disabled={importMut.isPending || mappedRows.length === 0 || mappedRows.length > CSV_IMPORT_MAX_ROWS}
                 data-testid="csv-importer-submit"
               >
                 {importMut.isPending

@@ -1004,6 +1004,22 @@ export function selectProviderAndModel(
   throw new NoAIProviderError("No AI providers available - configure OPENROUTER_API_KEY or OPENAI_API_KEY");
 }
 
+/**
+ * Can a platform AI turn be routed at all? Decided by the SAME function that
+ * routes it — selectProviderAndModel throws NoAIProviderError exactly when no
+ * provider key is configured — so a pre-flight check cannot disagree with the
+ * turn it guards.
+ */
+export function isAiProviderConfigured(): boolean {
+  try {
+    selectProviderAndModel(TaskComplexity.SIMPLE);
+    return true;
+  } catch (err) {
+    if (err instanceof NoAIProviderError) return false;
+    throw err;
+  }
+}
+
 export async function selectProviderAndModelAsync(
   complexity: TaskComplexity,
   taskType: string,

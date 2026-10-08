@@ -43,8 +43,11 @@
 #      even though the same gate must stay tolerant against a drifted restore.
 #   4. `npx tsx scripts/check-db-column-mirror.ts` — every table and column
 #      shared/schema.ts declares must exist in what steps 1-3 produced.
+#   5. `npx tsx scripts/check-constraint-names.ts` — every unique constraint
+#      shared/schema.ts declares exists under the name it declares (register:
+#      scripts/constraint-names.allowlist.json, shrink-only).
 #
-# Steps 2-4 are the verdict; any of them failing fails the job.
+# Steps 2-5 are the verdict; any of them failing fails the job.
 #
 # Requires: DATABASE_URL, and psql (present on ubuntu-latest runners).
 # ============================================================================
@@ -70,7 +73,7 @@ if [[ "$VECTOR_OK" != "1" ]]; then
   echo "[build-schema]   it (pgvector/pgvector:pg16) rather than allowlisting the table."
 fi
 
-echo "[build-schema] 1/4 applying $(ls "$MIGRATIONS_DIR"/*.sql | wc -l) file(s) from migrations/"
+echo "[build-schema] 1/5 applying $(ls "$MIGRATIONS_DIR"/*.sql | wc -l) file(s) from migrations/"
 # LC_ALL=C: byte order, so the apply order of same-ordinal files (two 0003s,
 # three 0081s, …) is the same on every machine and locale (DEFECT-0051).
 for f in $(ls "$MIGRATIONS_DIR"/*.sql | LC_ALL=C sort); do
@@ -87,21 +90,27 @@ if [[ "$ERRORS" -gt 0 ]]; then
   grep 'ERROR:' "$LOG" | head -10 | sed 's/^/    /'
 fi
 
-echo "[build-schema] 2/4 node scripts/migrate.mjs   (the Fly release_command)"
+echo "[build-schema] 2/5 node scripts/migrate.mjs   (the Fly release_command)"
 if ! node scripts/migrate.mjs; then
   echo "[build-schema] FAIL — the release_command itself does not survive a database built from this repo." >&2
   exit 1
 fi
 
-echo "[build-schema] 3/4 node scripts/migrate.mjs --dry-run"
+echo "[build-schema] 3/5 node scripts/migrate.mjs --dry-run"
 if ! node scripts/migrate.mjs --dry-run; then
   echo "[build-schema] FAIL — statements that would not apply to the schema this repo just built." >&2
   exit 1
 fi
 
-echo "[build-schema] 4/4 npx tsx scripts/check-db-column-mirror.ts"
+echo "[build-schema] 4/5 npx tsx scripts/check-db-column-mirror.ts"
 if ! npx tsx scripts/check-db-column-mirror.ts; then
   echo "[build-schema] FAIL — shared/schema.ts declares tables or columns this repository cannot create." >&2
+  exit 1
+fi
+
+echo "[build-schema] 5/5 npx tsx scripts/check-constraint-names.ts"
+if ! npx tsx scripts/check-constraint-names.ts; then
+  echo "[build-schema] FAIL — unique constraints in the built database drift from the names shared/schema.ts declares." >&2
   exit 1
 fi
 
