@@ -2,7 +2,8 @@
 /**
  * SOLENE — team-state map regenerator.
  *
- * Writes the AUTO-GENERATED section of docs/internal/solene-team-state.md so
+ * Writes the AUTO-GENERATED section of the team-state map (the server's runtime
+ * copy, or — with --repo-doc — docs/internal/solene-team-state.md) so
  * Solene can load a fresh picture of "who is working on what right now" on
  * every session start (per the session-start protocol in team_solene.md).
  *
@@ -30,7 +31,9 @@
  * health check so a transient outage never breaks the regeneration.
  *
  * Usage:
- *   node scripts/regenerate-team-state.mjs
+ *   node scripts/regenerate-team-state.mjs --out /tmp/team-state.md
+ *   SOLENE_TEAM_STATE_PATH=/tmp/team-state.md node scripts/regenerate-team-state.mjs
+ *   node scripts/regenerate-team-state.mjs --repo-doc   # write the tracked doc, deliberately
  *   node scripts/regenerate-team-state.mjs --dry-run    # print, don't write
  *
  * Registered as a 15-minute cron in server/jobs/runScheduledJobs.ts
@@ -44,7 +47,31 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..");
-const TARGET_PATH = resolve(REPO_ROOT, "docs/internal/solene-team-state.md");
+// WHERE IT WRITES (2026-10-07). The running server calls this every 15 minutes
+// (server/services/solene/teamState.ts), and it used to write the TRACKED
+// docs/internal/solene-team-state.md — so any non-Fly host mutated the checkout
+// it was serving from. Now:
+//   --out <path> | SOLENE_TEAM_STATE_PATH   → that path (the server passes this)
+//   --repo-doc                              → the tracked doc, explicitly
+//   neither                                 → refuse (exit 2)
+// and a target inside this repository's docs/ tree is refused without
+// --repo-doc, whichever way it was named. The tracked doc is the SEED for a
+// target that does not exist yet (SOLENE_TEAM_STATE_SEED_PATH overrides).
+const REPO_DOC_PATH = resolve(REPO_ROOT, "docs/internal/solene-team-state.md");
+const REPO_DOCS_DIR = resolve(REPO_ROOT, "docs");
+const WRITE_REPO_DOC = process.argv.includes("--repo-doc");
+const outIdx = process.argv.indexOf("--out");
+const OUT_ARG = outIdx !== -1 ? process.argv[outIdx + 1] : undefined;
+const TARGET_PATH = WRITE_REPO_DOC
+  ? REPO_DOC_PATH
+  : OUT_ARG
+    ? resolve(OUT_ARG)
+    : process.env.SOLENE_TEAM_STATE_PATH
+      ? resolve(process.env.SOLENE_TEAM_STATE_PATH)
+      : null;
+const SEED_PATH = process.env.SOLENE_TEAM_STATE_SEED_PATH
+  ? resolve(process.env.SOLENE_TEAM_STATE_SEED_PATH)
+  : REPO_DOC_PATH;
 const AUTO_BEGIN = "<!-- AUTO -->";
 const AUTO_END = "<!-- /AUTO -->";
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -339,10 +366,9 @@ _See also: \`feedback_solene_self_development.md\` (team-state map directive),
 // ---------------------------------------------------------------------------
 
 function loadOrSeed(path) {
-  if (!existsSync(path)) {
-    return DEFAULT_TEMPLATE;
-  }
-  return readFileSync(path, "utf8");
+  if (existsSync(path)) return readFileSync(path, "utf8");
+  if (existsSync(SEED_PATH)) return readFileSync(SEED_PATH, "utf8");
+  return DEFAULT_TEMPLATE;
 }
 
 function spliceAutoSection(existing, autoBlock) {
@@ -363,6 +389,23 @@ function spliceAutoSection(existing, autoBlock) {
 // ---------------------------------------------------------------------------
 
 async function main() {
+  if (!DRY_RUN) {
+    if (TARGET_PATH === null) {
+      console.error(
+        "[regenerate-team-state] no target: pass --out <path>, set SOLENE_TEAM_STATE_PATH, " +
+          "or pass --repo-doc to write the tracked docs/internal/solene-team-state.md deliberately.",
+      );
+      process.exit(2);
+    }
+    const insideRepoDocs = TARGET_PATH === REPO_DOCS_DIR || TARGET_PATH.startsWith(REPO_DOCS_DIR + "/");
+    if (insideRepoDocs && !WRITE_REPO_DOC) {
+      console.error(
+        `[regenerate-team-state] refusing to write ${TARGET_PATH}: it is inside the repository's docs/ tree. ` +
+          "Pass --repo-doc to do that deliberately.",
+      );
+      process.exit(2);
+    }
+  }
   const generatedAt = new Date();
   const workingFiles = workingTreeFiles();
   const inFlight = recentCommits(30);
@@ -381,7 +424,7 @@ async function main() {
     healthCheck,
   });
 
-  const existing = loadOrSeed(TARGET_PATH);
+  const existing = loadOrSeed(TARGET_PATH ?? REPO_DOC_PATH);
   const next = spliceAutoSection(existing, autoBlock);
 
   if (DRY_RUN) {

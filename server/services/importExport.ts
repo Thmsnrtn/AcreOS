@@ -54,58 +54,85 @@ export interface ExportFilters {
   type?: string;
 }
 
+/**
+ * CSV → rows keyed by header.
+ *
+ * Exports from Excel and Google Sheets routinely start with a UTF-8 byte-order
+ * mark and end lines with CRLF. Both are handled explicitly here rather than
+ * by accident: the BOM is removed before the header is read (so the first
+ * column is `firstName`, not `\uFEFFfirstName`, and still maps), and the record
+ * splitter understands CRLF, LF and lone CR.
+ *
+ * Records are split by a single character scan that knows about quotes, so a
+ * quoted value containing a line break — an address or a note — stays ONE
+ * value. The previous version split the text on newlines before looking at
+ * quotes, which cut such a row in two and shifted every later column.
+ */
 export function parseCSV(csvString: string): Array<Record<string, string>> {
-  const lines = csvString.trim().split(/\r?\n/);
-  if (lines.length < 2) {
+  const records = splitCsvRecords(csvString.replace(/^\uFEFF/, ""))
+    .filter((cells) => cells.some((c) => c.trim().length > 0));
+  if (records.length < 2) {
     throw new Error("CSV must have a header row and at least one data row");
   }
 
-  const headers = parseCSVLine(lines[0]);
+  const headers = records[0].map((h) => h.trim());
   const data: Array<Record<string, string>> = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-
-    const values = parseCSVLine(line);
+  for (let i = 1; i < records.length; i++) {
+    const values = records[i];
     const row: Record<string, string> = {};
-
     headers.forEach((header, idx) => {
-      row[header.trim()] = values[idx]?.trim() || "";
+      row[header] = values[idx]?.trim() || "";
     });
-
     data.push(row);
   }
-
   return data;
 }
 
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = "";
+/** RFC 4180-style record split: quoted fields may hold commas, quotes ("") and line breaks. */
+function splitCsvRecords(text: string): string[][] {
+  const records: string[][] = [];
+  let record: string[] = [];
+  let cell = "";
   let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    const nextChar = line[i + 1];
-
-    if (char === '"') {
-      if (inQuotes && nextChar === '"') {
-        current += '"';
-        i++;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          cell += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
       } else {
-        inQuotes = !inQuotes;
+        cell += c;
       }
-    } else if (char === "," && !inQuotes) {
-      result.push(current);
-      current = "";
+      continue;
+    }
+    if (c === '"' && cell.trim() === "") {
+      // A quote opens a quoted field only at the START of a field. Mid-field
+      // (`5" pipe`) it is a literal — otherwise one stray inch mark would run
+      // the quoted state across every following line.
+      inQuotes = true;
+      cell = "";
+    } else if (c === ",") {
+      record.push(cell);
+      cell = "";
+    } else if (c === "\r" || c === "\n") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      record.push(cell);
+      records.push(record);
+      record = [];
+      cell = "";
     } else {
-      current += char;
+      cell += c;
     }
   }
-
-  result.push(current);
-  return result;
+  if (cell.length > 0 || record.length > 0) {
+    record.push(cell);
+    records.push(record);
+  }
+  return records;
 }
 
 const LEAD_COLUMN_MAP: Record<string, string> = {

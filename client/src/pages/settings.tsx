@@ -55,6 +55,7 @@ import { TeamInviteCard } from "@/components/settings/TeamInviteCard";
 // Monolith split (T3 census W1-2) — per-tab sections live in their own
 // modules under pages/settings/, mirroring the existing 8 routed subpages.
 import { StripeConnectSettings, SeatManagement } from "@/pages/settings/billing-sections";
+import { AvailablePlansError } from "@/components/billing/AvailablePlansError";
 import { ApiKeyManager, ActivityLogPanel } from "@/pages/settings/developer-sections";
 import { ReferralSettings, PrivacyDataSettings } from "@/pages/settings/account-sections";
 import { GoalsSettings } from "@/pages/settings/organization-sections";
@@ -1296,19 +1297,11 @@ export default function Settings() {
                     ))}
                   </div>
                 ) : productsError ? (
-                  <Card>
-                    <CardContent className="py-6">
-                      <QueryErrorState
-                        error={productsErrorObj as Error}
-                        onRetry={() => refetchProducts()}
-                        isRetrying={productsRefetching}
-                        compact
-                        title="Couldn't load plans"
-                        description="Your current subscription is unaffected — this is just a display issue."
-                        testId="error-available-plans"
-                      />
-                    </CardContent>
-                  </Card>
+                  <AvailablePlansError
+                    error={productsErrorObj}
+                    onRetry={() => refetchProducts()}
+                    isRetrying={productsRefetching}
+                  />
                 ) : products && products.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {products

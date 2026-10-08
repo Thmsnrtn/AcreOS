@@ -36,35 +36,30 @@ const obCss = fs.readFileSync(
 );
 
 describe("anonymous health responses carry no vendor inventory", () => {
-  it("the redaction helper exists and keys on the global Clerk auth signal", () => {
-    expect(routesSrc).toMatch(/redactHealthForAnonymous/);
-    expect(routesSrc).toMatch(/getClerkAuth\(req\)\?\.userId\)\s*return null; \/\/ authenticated/);
+  // REWRITTEN 2026-10-07 to the new truth, not deleted. The original pinned a
+  // `redactHealthForAnonymous` helper keyed on req.auth — but these routes are
+  // registered BEFORE clerkMiddleware, so req.auth never existed there and the
+  // helper redacted everyone by accident, while /api/health/cached (same block,
+  // Fly's probe target) kept the full list. The invariant — no vendor inventory
+  // on a public probe — now holds for ALL THREE public routes by construction:
+  // they live in server/routes-health.ts and build their body from
+  // publicHealthBody() only. Behaviour is pinned in publicHealthIsStatusOnly.test.ts.
+  const healthSrc = fs.readFileSync(path.join(ROOT, "server/routes-health.ts"), "utf-8");
+
+  it("routes.ts delegates the public probes to routes-health.ts", () => {
+    expect(routesSrc).toMatch(/registerPublicHealthRoutes\(app\)/);
+    expect(routesSrc).not.toMatch(/app\.get\("\/api\/health(?:\/live|\/cached)?",/);
   });
 
-  it("BOTH health routes consult the redaction before the verbose payload", () => {
-    // Population: the two anonymous-reachable health surfaces. A third
-    // health route added without redaction shows up here as a count drift.
-    const healthRoutes = routesSrc.match(/app\.get\("\/api\/health(?:\/live)?",/g) ?? [];
-    expect(healthRoutes.length).toBe(2);
-    const calls = routesSrc.match(/redactHealthForAnonymous\(req,/g) ?? [];
-    expect(calls.length).toBeGreaterThanOrEqual(2);
-    // and the terse body takes precedence over the verbose spread in each
-    // route (body = terse ?? { ...result … })
-    const firstRoute = routesSrc.indexOf('app.get("/api/health"');
-    const liveRoute = routesSrc.indexOf('app.get("/api/health/live"');
-    for (const start of [firstRoute, liveRoute]) {
-      const routeText = routesSrc.slice(start, start + 1600);
-      const terseIdx = routeText.indexOf("terse ??");
-      const spreadIdx = routeText.indexOf("...result");
-      expect(terseIdx, "terse precedence missing in a health route").toBeGreaterThan(-1);
-      expect(terseIdx).toBeLessThan(spreadIdx);
-    }
+  it("no public health body spreads the snapshot (which carries `services`)", () => {
+    const routes = healthSrc.match(/app\.get\("\/api\/health(?:\/live|\/cached)?",/g) ?? [];
+    expect(routes.length).toBe(3);
+    expect(healthSrc).not.toMatch(/\.\.\.(result|data|cached)\b/);
+    expect(healthSrc).not.toMatch(/services\s*:/);
   });
 
-  it("the anonymous error path leaks no error detail either", () => {
-    // Both catch blocks gate err.message on the auth signal.
-    const gated = routesSrc.match(/getClerkAuth\(req\)\?\.userId \? err\?\.message/g) ?? [];
-    expect(gated.length).toBeGreaterThanOrEqual(2);
+  it("the error path leaks no error detail either", () => {
+    expect(healthSrc).not.toMatch(/err\??\.message/);
   });
 });
 

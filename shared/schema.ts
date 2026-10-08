@@ -12556,7 +12556,12 @@ export type AgentRuntimeStateEntry = typeof agentRuntimeState.$inferSelect;
 
 export const eventMeshEvents = pgTable("event_mesh_events", {
   id: serial("id").primaryKey(),
-  eventId: text("event_id").notNull().unique(),
+  // Named for what migrations/0017_v12_real_runtime.sql actually creates:
+  // an inline `UNIQUE` gets Postgres's `<table>_<col>_key`, while a bare
+  // `.unique()` declares Drizzle's `<table>_<col>_unique` — so a database built
+  // from this repo never matched its own schema (drizzle-kit would drop and
+  // re-add the constraint). scripts/check-constraint-names.ts holds the class.
+  eventId: text("event_id").notNull().unique("event_mesh_events_event_id_key"),
   channel: text("channel").notNull(),
   eventType: text("event_type").notNull(),
   priority: integer("priority").notNull().default(5),

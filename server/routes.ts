@@ -1,5 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { getClerkAuth, type AuthenticatedRequest } from "./types/request";
+import { type AuthenticatedRequest } from "./types/request";
 import express from "express";
 import type { Server } from "http";
 import crypto from "crypto";
@@ -92,6 +92,7 @@ import mailboxRouter from "./routes-mailbox";
 import personaRouter from "./routes-persona";
 import needsOnboardingRouter from "./routes-needs-onboarding";
 import acquisitionUtmRouter from "./routes-acquisition-utm";
+import { registerPublicHealthRoutes } from "./routes-health";
 import { registerMarketingTouchRoutes } from "./routes-marketing-touch";
 import publicParcelCheckRouter from "./routes-public-parcel-check";
 import publicParcelReportRouter, { registerPublicParcelReportPages } from "./routes-public-parcel-report";
@@ -570,77 +571,12 @@ export async function registerRoutes(
     res.status(200).json({ sha: process.env.VITE_GIT_SHA || "unknown" });
   });
 
-  // ANONYMOUS CALLERS GET STATUS ONLY (2026-08-31, E-2 recon finding).
-  // The full health payload enumerates the vendor stack — every provider's
-  // name, configured/unconfigured state, and live failure detail (at the
-  // time of the finding it was advertising a regrid 401 to the open
-  // internet). Uptime monitors and CI need only the status code; the
-  // per-service detail is for signed-in operators. clerkMiddleware runs
-  // globally, so req.auth?.userId is the authenticated signal without
-  // forcing 401s that would break --fail probes.
-  const redactHealthForAnonymous = (
-    req: AuthenticatedRequest,
-    result: { overall: string; timestamp?: unknown },
-  ) => {
-    if (getClerkAuth(req)?.userId) return null; // authenticated — no redaction
-    return { overall: result.overall, timestamp: result.timestamp ?? new Date() };
-  };
-
-  app.get("/api/health", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { healthCheckService } = await import("./services/healthCheck");
-      // Use cached snapshot maintained by startPeriodicChecks(). Only fall
-      // back to a synchronous checkAll() if the cache is empty (first call
-      // after boot before the first periodic tick).
-      const cached = healthCheckService.getLastResults();
-      const result = cached || (await healthCheckService.checkAll());
-      const statusCode = result.overall === "unavailable" ? 503 : 200;
-      res.setHeader(
-        "Cache-Control",
-        "public, max-age=10, s-maxage=10, stale-while-revalidate=60",
-      );
-      const terse = redactHealthForAnonymous(req, result);
-      const body = terse ?? {
-        ...result,
-        version: process.env.npm_package_version || "1.0.0",
-        uptime: process.uptime(),
-      };
-      res.status(statusCode).json(body);
-    } catch (err: any) {
-      res.status(503).json({
-        overall: "degraded",
-        services: [],
-        timestamp: new Date(),
-        error: getClerkAuth(req)?.userId ? err?.message || "health check failed" : undefined,
-      });
-    }
-  });
-
-  app.get("/api/health/live", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { healthCheckService } = await import("./services/healthCheck");
-      const result = await healthCheckService.checkAll();
-      const statusCode = result.overall === "unavailable" ? 503 : 200;
-      res.setHeader("Cache-Control", "no-store");
-      // Same anonymous redaction as /api/health: the deploy pipeline's
-      // post-deploy probe only reads the status code (--fail), so a terse
-      // body changes nothing for it while ending the stack enumeration.
-      const terse = redactHealthForAnonymous(req, result);
-      const body = terse ?? {
-        ...result,
-        version: process.env.npm_package_version || "1.0.0",
-        uptime: process.uptime(),
-      };
-      res.status(statusCode).json(body);
-    } catch (err: any) {
-      res.status(503).json({
-        overall: "degraded",
-        services: [],
-        timestamp: new Date(),
-        error: getClerkAuth(req)?.userId ? err?.message || "live health check failed" : undefined,
-      });
-    }
-  });
+  // /api/health and /api/health/live — status only. See server/routes-health.ts.
+  registerPublicHealthRoutes(app);
+  // Tess #5 — auth-free worker liveness for the external uptime eye. MUST be
+  // registered before GET /api/health/:service (founder-only, below), which
+  // would otherwise answer /api/health/worker-heartbeat itself.
+  registerWorkerHeartbeatRoute(app);
 
   // Adjacent verticals waitlist — public, no auth
   app.post("/api/waitlist", async (req: Request, res: Response) => {
@@ -678,34 +614,8 @@ export async function registerRoutes(
   app.use("/api/public/parcel-report", publicParcelReportRouter);
   registerPublicParcelReportPages(app);
 
-  app.get("/api/health/cached", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { healthCheckService } = await import("./services/healthCheck");
-      const result = healthCheckService.getLastResults();
-      const data = result || await healthCheckService.checkAll();
-      const statusCode = data.overall === "unavailable" ? 503 : 200;
-      // Wave: cost — already memoized server-side; let Cloudflare collapse
-      // the herd from Fly health checks too (interval=30s in fly.toml).
-      res.setHeader(
-        "Cache-Control",
-        "public, max-age=10, s-maxage=10, stale-while-revalidate=60",
-      );
-      res.status(statusCode).json({
-        ...data,
-        version: process.env.npm_package_version || "1.0.0",
-        uptime: process.uptime(),
-      });
-    } catch (err: any) {
-      res.status(503).json({
-        overall: "degraded",
-        services: [],
-        timestamp: new Date(),
-        version: process.env.npm_package_version || "1.0.0",
-        uptime: process.uptime(),
-        error: err?.message || "health check failed",
-      });
-    }
-  });
+  // /api/health/cached (Fly's health-check target) is registered by
+  // registerPublicHealthRoutes above, with the same status-only body.
 
   // White-label domain middleware — runs before auth so custom domains are resolved early
   app.use(whiteLabelDomainMiddleware);
@@ -783,7 +693,10 @@ export async function registerRoutes(
   // replica had been silently 404ing the same way ever since it shipped
   // (caught 2026-07-17 while diagnosing the identically-shadowed
   // /api/health/auth-config, which now lives in the pre-Clerk probe block).
-  app.get("/api/health/:service", async (req: AuthenticatedRequest, res: Response, next) => {
+  // Founder-only (2026-10-07): one named service's live status and failure
+  // detail is the vendor inventory one row at a time. deep/replica delegate
+  // with next() and carry their own founder gate in routes-enhancements.ts.
+  app.get("/api/health/:service", isAuthenticated, getOrCreateOrg, requireFounder, async (req: AuthenticatedRequest, res: Response, next) => {
     if (req.params.service === "deep" || req.params.service === "replica") return next();
     const { healthCheckService } = await import("./services/healthCheck");
     const service = await healthCheckService.checkService(req.params.service);
@@ -2563,8 +2476,9 @@ export async function registerRoutes(
   registerIncidentRoutes(app);
   // 2026-05-13 — Pillar D / D6 error-budget endpoint.
   registerErrorBudgetRoute(app);
-  // Tess #5 — auth-free worker liveness endpoint for the external eye.
-  registerWorkerHeartbeatRoute(app);
+  // Tess #5 — the auth-free worker liveness endpoint is registered in the
+  // pre-Clerk health block above (next to registerPublicHealthRoutes): here it
+  // sat behind GET /api/health/:service, which answered it (404, later 401).
   // 2026-05-13 — Pillar E / E3 cohort retention endpoint.
   registerCohortRetentionRoutes(app);
   // 2026-05-13 — Pillar E / E4+E9 customer health endpoints.
