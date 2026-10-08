@@ -131,7 +131,7 @@ export const CAPABILITIES: readonly Capability[] = [
     claim: "The whole server runs on one clock a simulation can move",
     level: "E1",
     proof: { unit: ["tests/unit/clockReadsRatchet.test.ts", "tests/unit/effectKeyFollowsTheClock.test.ts"] },
-    caveat: "3,000+ direct wall-clock reads remain outside the simulated paths (the ratchet counts them down)",
+    caveat: "direct wall-clock reads in server/ are at 0 (lint:clock-reads), but Redis TTLs, in-process timers and SQL CURRENT_DATE / CURRENT_TIMESTAMP do not follow the clock",
   },
   // Every vertical, listed by hand (never generated from the registry, which would make
   // E1 automatic): a vertical added later with no entry here is never `core` publicly.

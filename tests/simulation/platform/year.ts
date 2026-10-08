@@ -488,14 +488,14 @@ async function main() {
   // reply, or Solene's drafted reply awaiting its witness); escalated: the founder
   // has it; dropped: nobody answered and nobody owns it.
   const tickets = await k.q<any>(
-    `select t.id, t.status, t.assigned_agent, t.resolution_type,
+    `select t.id, t.status, t.assigned_agent, t.resolution_type, t.created_at,
             exists (select 1 from support_ticket_messages m where m.ticket_id = t.id and m.role <> 'user') as answered,
             exists (select 1 from autopilot_pending_actions a where a.hand_name = 'reply_support_ticket' and (a.args->>'ticket_id')::int = t.id and a.status in ('pending','approved','executed')) as drafted
        from support_tickets t where t.organization_id = any($1::int[])`, [customers.map((c) => c.orgId)]);
   const escalated = tickets.filter((t) => t.assigned_agent === "founder").length;
   const handled = tickets.filter((t) => t.assigned_agent !== "founder" && (["resolved", "closed"].includes(t.status) || t.answered || t.drafted)).length;
   const dropped = tickets.length - handled - escalated;
-  const droppedDetail = tickets.filter((t) => t.assigned_agent !== "founder" && !(["resolved", "closed"].includes(t.status) || t.answered || t.drafted)).map((t) => ({ id: t.id, status: t.status, assigned: t.assigned_agent, resolution: t.resolution_type }));
+  const droppedDetail = tickets.filter((t) => t.assigned_agent !== "founder" && !(["resolved", "closed"].includes(t.status) || t.answered || t.drafted)).map((t) => ({ id: t.id, status: t.status, assigned: t.assigned_agent, resolution: t.resolution_type, openedDay: Math.floor((new Date(t.created_at).getTime() - startV) / 864e5) }));
   const ai = await k.q<any>("select organization_id o, coalesce(sum(estimated_cost_cents),0)::float c from ai_telemetry_events group by 1");
   const customerIds = new Set(customers.map((c) => c.orgId));
   const aiCustomerCents = ai.filter((r) => customerIds.has(r.o)).reduce((a, r) => a + r.c, 0);

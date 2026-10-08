@@ -166,10 +166,11 @@ writeFileSync(join(OUT, "scorecard.md"), md.join("\n"));
 /**
  * A capability is proven by the year only when EVERY seed held its invariant
  * at zero AND every seed actually exercised it (vacuity): a rule nobody tested
- * proves nothing.
+ * proves nothing. A tick on which the invariant's sources went unread is a
+ * tick nobody checked, so any unknown tick withholds the proof too.
  */
 function provenByYear(): string[] {
-  const zero = (inv: string) => seeds.every((s: any) => Number(s.invariants.byInvariant[inv] ?? 0) === 0 && Number(s.invariants.coverage?.[inv]?.checked ?? 0) > 0);
+  const zero = (inv: string) => seeds.length > 0 && seeds.every((s: any) => Number(s.invariants.byInvariant[inv] ?? 0) === 0 && Number(s.invariants.coverage?.[inv]?.checked ?? 0) > 0 && Number(s.invariants.coverage?.[inv]?.unknown ?? 0) === 0);
   const all = (f: (s: any) => boolean) => seeds.length > 0 && seeds.every(f);
   const out: string[] = [];
   if (all((s) => s.support.handled > 0) && zero("refunds-within-rules")) out.push("support.tickets");
@@ -180,6 +181,24 @@ function provenByYear(): string[] {
   if (zero("every-number-has-a-source") && all((s) => s.coverage.screens > 0)) out.push("letter.sourced-numbers");
   if (zero("approval-is-version-bound") && all((s) => s.counts.founderAnswers > 0)) out.push("approvals.version-bound");
   if (zero("no-hard-stop-without-founder")) out.push("hardstops.founder-only");
+  return out;
+}
+
+/**
+ * The red-team world proves a capability only when no rule broke, no attack
+ * reached the world, the rule's sources were read on every tick, AND the
+ * adversary actually attacked it (a category nobody tried proves nothing).
+ */
+function provenByRedteam(): string[] {
+  if (!redteam) return [];
+  const w = redteamAttacks?.world ?? {};
+  const cats: Record<string, number> = w.byCategory ?? {};
+  const tried = (re: RegExp) => Object.entries(cats).filter(([k]) => re.test(k)).reduce((a, [, n]) => a + Number(n), 0) > 0;
+  const held = (inv: string) => Number(redteam.invariants.byInvariant?.[inv] ?? 0) === 0 && Number(redteam.invariants.coverage?.[inv]?.checked ?? 0) > 0 && Number(redteam.invariants.coverage?.[inv]?.unknown ?? 0) === 0;
+  if (Number(redteam.invariants.violations ?? 0) !== 0 || Number(w.reachedTheWorld ?? 0) !== 0 || (w.breaches ?? []).length) return [];
+  const out: string[] = [];
+  if (held("no-cross-tenant") && tried(/^tenant\./)) out.push("tenancy.isolation");
+  if (held("no-hard-stop-without-founder") && tried(/^hardstop\./)) out.push("hardstops.founder-only");
   return out;
 }
 
@@ -197,7 +216,7 @@ if (recordDir) {
   if (scorecard.redteam) {
     writeFileSync(join(recordDir, "simplat-redteam-2026-10.json"), JSON.stringify({
       id: "simplat-redteam-2026-10", kind: "deterministic-sim", at: scorecard.generatedAt.slice(0, 10),
-      proves: scorecard.redteam.violations === 0 ? ["tenancy.isolation", "hardstops.founder-only"] : [],
+      proves: provenByRedteam(),
       summary: { days: scorecard.redteam.days, violations: scorecard.redteam.violations, attacks: scorecard.redteam.attacks?.world ?? null },
     }, null, 1));
   }
