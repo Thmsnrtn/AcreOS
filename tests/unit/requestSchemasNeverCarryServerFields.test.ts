@@ -101,6 +101,8 @@ const REVIEWED_RAW_BODY_SITES: Record<string, string> = {
     "the MCP transport reads a JSON-RPC message; it is not a row",
   "server/stripeWebhookRoute.ts post /api/stripe/webhook :: processWebhook":
     "the signature-verified provider payload, not a customer-supplied row",
+  "server/routes-ses-events.ts post /api/webhooks/ses/events :: parseSnsEnvelope":
+    "parses the SNS envelope for signature verification; nothing is written from the body",
   "server/routes-sendgrid-events.ts post /api/webhooks/sendgrid/events :: ingestSendGridEvents":
     "the signature-verified provider event batch, not a customer-supplied row",
   "server/routes-title-partners.ts post /api/webhooks/title-orders/:orderId/status :: stringify":

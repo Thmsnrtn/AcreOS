@@ -6,6 +6,7 @@ import {
   type SnsMessage,
   verifySnsMessage,
   snsTopicAllowed,
+  parseSnsEnvelope,
   confirmSubscription,
   isReplay,
   _resetReplayCache,
@@ -116,21 +117,11 @@ export function verifyInboundEmailSignature(
       const snsType = req.headers["x-amz-sns-message-type"] as string | undefined;
 
       if (snsType) {
-        // SNS path. Body should be the SNS envelope.
-        // SNS sends text/plain; the route reads it as text. Accept an
-        // already-parsed object too.
-        let msg = req.body as SnsMessage | string;
-        if (typeof msg === "string") {
-          try {
-            msg = JSON.parse(msg) as SnsMessage;
-          } catch {
-            return sendError(res, 401, "UNAUTHORIZED", "Invalid SNS payload");
-          }
-        }
-        if (!msg || typeof msg !== "object") {
-          logger.warn("[InboundEmailSig] SNS body not parsed");
-          return sendError(res, 401, "UNAUTHORIZED", "Invalid SNS payload");
-        }
+        // SNS path. Body is the SNS envelope (text/plain from SNS, read as
+        // text by the route; an already-parsed object is accepted too). An
+        // unparseable body reads as an empty envelope, which names no topic
+        // and is refused by the topic check below.
+        const msg: SnsMessage = parseSnsEnvelope(req.body) ?? ({} as SnsMessage);
 
         // The topic must be one of ours: the SNS signature alone does not
         // identify the topic.
@@ -142,7 +133,7 @@ export function verifyInboundEmailSignature(
           return sendError(res, 401, "UNAUTHORIZED", "SNS topic not accepted");
         }
 
-        const result = await verifySnsMessage(msg);
+        const result = await verifySnsMessage(msg, topic.pinned);
         if (!result.ok) {
           logger.warn("[InboundEmailSig] SNS signature invalid", {
             metadata: { reason: result.reason, messageId: msg.MessageId },
@@ -162,7 +153,7 @@ export function verifyInboundEmailSignature(
         if (msg.Type === "SubscriptionConfirmation") {
           if (msg.SubscribeURL) {
             try {
-              await confirmSubscription(msg.SubscribeURL);
+              await confirmSubscription(msg.SubscribeURL, topic.pinned);
             } catch (err) {
               logger.error(
                 "[InboundEmailSig] failed to confirm SNS subscription",

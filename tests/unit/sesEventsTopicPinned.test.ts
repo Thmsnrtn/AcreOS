@@ -35,7 +35,10 @@ function signed(topicArn: string, messageId: string, type = "Notification"): Sns
     Timestamp: new Date().toISOString(),
     TopicArn: topicArn,
     ...(type === "SubscriptionConfirmation"
-      ? { SubscribeURL: "https://sns.us-east-1.amazonaws.com/?Action=ConfirmSubscription", Token: "t" }
+      ? {
+          SubscribeURL: `https://sns.us-east-1.amazonaws.com/?Action=ConfirmSubscription&TopicArn=${encodeURIComponent(topicArn)}&Token=t`,
+          Token: "t",
+        }
       : {}),
   } as SnsMessage;
   const signature = crypto.sign("RSA-SHA1", Buffer.from(buildSnsCanonicalString(msg), "utf8"), privateKey);
@@ -43,7 +46,7 @@ function signed(topicArn: string, messageId: string, type = "Notification"): Sns
     ...msg,
     SignatureVersion: "1",
     Signature: signature.toString("base64"),
-    SigningCertURL: "https://sns.us-east-1.amazonaws.com/test.pem",
+    SigningCertURL: "https://sns.us-east-1.amazonaws.com/SimpleNotificationService-0123456789abcdef.pem",
   } as SnsMessage;
 }
 

@@ -31,9 +31,9 @@
 
 import express, { type Express, type Request, type Response } from "express";
 import {
-  type SnsMessage,
   verifySnsMessage,
   snsTopicAllowed,
+  parseSnsEnvelope,
   confirmSubscription,
   isReplay,
 } from "./middleware/snsVerification";
@@ -243,17 +243,8 @@ export function registerSesEventRoutes(app: Express): void {
     async (req: Request, res: Response) => {
       // Parse the SNS envelope. req.body may already be an object (if some
       // upstream parser matched) or the raw string from express.text().
-      let msg: SnsMessage;
-      try {
-        const raw = req.body;
-        msg =
-          typeof raw === "string"
-            ? (JSON.parse(raw) as SnsMessage)
-            : (raw as SnsMessage);
-      } catch {
-        return Errors.badRequest(res, "Invalid SNS envelope");
-      }
-      if (!msg || typeof msg !== "object" || typeof msg.Type !== "string") {
+      const msg = parseSnsEnvelope(req.body);
+      if (msg === null || typeof msg.Type !== "string") {
         return Errors.badRequest(res, "Invalid SNS envelope");
       }
 
@@ -267,7 +258,7 @@ export function registerSesEventRoutes(app: Express): void {
         });
         return Errors.unauthorized(res);
       }
-      const verdict = await verifySnsMessage(msg);
+      const verdict = await verifySnsMessage(msg, topic.pinned);
       if (!verdict.ok) {
         logger.warn("[ses-events] SNS signature invalid", {
           metadata: { reason: verdict.reason, messageId: msg.MessageId },
@@ -284,7 +275,7 @@ export function registerSesEventRoutes(app: Express): void {
       if (msg.Type === "SubscriptionConfirmation") {
         if (msg.SubscribeURL) {
           try {
-            await confirmSubscription(msg.SubscribeURL);
+            await confirmSubscription(msg.SubscribeURL, topic.pinned);
           } catch (err) {
             logger.error(
               "[ses-events] failed to confirm SNS subscription",
