@@ -190,6 +190,30 @@ export async function confirmSubscription(subscribeUrl: string): Promise<void> {
   await subscribeConfirmer(subscribeUrl);
 }
 
+/**
+ * Is this SNS message from one of OUR topics?
+ *
+ * A valid SNS signature identifies Amazon SNS as the sender, not which topic
+ * the message belongs to. Each SNS-backed webhook therefore also accepts only
+ * the topic ARNs configured for it, read from its own env var
+ * (comma-separated). Fail closed: no list configured means no topic is
+ * accepted.
+ */
+export function snsTopicAllowed(
+  topicArn: unknown,
+  allowListEnvVar: string,
+): { ok: boolean; reason?: string } {
+  const allowed = String(process.env[allowListEnvVar] ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (allowed.length === 0) return { ok: false, reason: `${allowListEnvVar} not set` };
+  if (typeof topicArn !== "string" || !allowed.includes(topicArn)) {
+    return { ok: false, reason: "TopicArn not in allowlist" };
+  }
+  return { ok: true };
+}
+
 export async function verifySnsMessage(msg: SnsMessage): Promise<{ ok: boolean; reason?: string }> {
   if (!msg.Type || !msg.MessageId || !msg.Signature || !msg.SignatureVersion) {
     return { ok: false, reason: "missing required SNS fields" };

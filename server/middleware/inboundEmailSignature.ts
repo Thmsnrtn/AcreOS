@@ -5,6 +5,7 @@ import { sendError } from "../utils/errors";
 import {
   type SnsMessage,
   verifySnsMessage,
+  snsTopicAllowed,
   confirmSubscription,
   isReplay,
   _resetReplayCache,
@@ -40,6 +41,7 @@ export {
  *
  * Behavior:
  *   - Requests with `x-amz-sns-message-type` header are validated as SNS:
+ *       * TopicArn must be listed in INBOUND_EMAIL_SNS_TOPIC_ARNS (fail closed)
  *       * SigningCertURL host must match `^sns(\.|-fips\.|-fips-)?[a-z0-9-]+\.amazonaws\.com$`
  *       * Build canonical string per AWS spec for the message Type
  *       * Verify SHA1withRSA signature against the certificate
@@ -115,10 +117,29 @@ export function verifyInboundEmailSignature(
 
       if (snsType) {
         // SNS path. Body should be the SNS envelope.
-        const msg = req.body as SnsMessage;
+        // SNS sends text/plain; the route reads it as text. Accept an
+        // already-parsed object too.
+        let msg = req.body as SnsMessage | string;
+        if (typeof msg === "string") {
+          try {
+            msg = JSON.parse(msg) as SnsMessage;
+          } catch {
+            return sendError(res, 401, "UNAUTHORIZED", "Invalid SNS payload");
+          }
+        }
         if (!msg || typeof msg !== "object") {
           logger.warn("[InboundEmailSig] SNS body not parsed");
           return sendError(res, 401, "UNAUTHORIZED", "Invalid SNS payload");
+        }
+
+        // The topic must be one of ours: the SNS signature alone does not
+        // identify the topic.
+        const topic = snsTopicAllowed(msg.TopicArn, "INBOUND_EMAIL_SNS_TOPIC_ARNS");
+        if (!topic.ok) {
+          logger.warn("[InboundEmailSig] SNS topic not accepted", {
+            metadata: { reason: topic.reason, messageId: msg.MessageId },
+          });
+          return sendError(res, 401, "UNAUTHORIZED", "SNS topic not accepted");
         }
 
         const result = await verifySnsMessage(msg);

@@ -215,10 +215,67 @@ describe("verifyInboundEmailSignature — SNS path", () => {
     _setSubscribeConfirmerForTests(async () => {
       /* no-op for tests */
     });
+    process.env.INBOUND_EMAIL_SNS_TOPIC_ARNS = "arn:aws:sns:us-east-1:123:inbound-email";
   });
 
   afterEach(() => {
     _resetTestOverrides();
+    delete process.env.INBOUND_EMAIL_SNS_TOPIC_ARNS;
+  });
+
+  /** A correctly signed Notification, from whichever topic the caller names. */
+  function signedNotification(topicArn: string, messageId: string): Request {
+    const env = {
+      Message: JSON.stringify({ from: "sender@example.com", to: "inbox@replies.acreos.io" }),
+      MessageId: messageId,
+      Timestamp: new Date().toISOString(),
+      TopicArn: topicArn,
+    };
+    const signature = crypto.sign("RSA-SHA1", Buffer.from(buildCanonicalNotification(env), "utf8"), privateKey);
+    return {
+      headers: { "x-amz-sns-message-type": "Notification" },
+      body: {
+        Type: "Notification",
+        ...env,
+        SignatureVersion: "1",
+        Signature: signature.toString("base64"),
+        SigningCertURL: "https://sns.us-east-1.amazonaws.com/test.pem",
+      },
+    } as unknown as Request;
+  }
+
+  it("refuses a validly signed message from a topic that is not ours", async () => {
+    // The SNS signature alone does not identify the topic.
+    const req = signedNotification("arn:aws:sns:us-east-1:999:other-topic", "sns-foreign-1");
+    const { res, status } = mockRes();
+    const next = mockNext();
+    verifyInboundEmailSignature(req, res, next);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(next).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(401);
+  });
+
+  it("accepts the envelope as the text/plain string SNS actually sends", async () => {
+    const req = signedNotification("arn:aws:sns:us-east-1:123:inbound-email", "sns-text-1");
+    (req as unknown as { body: unknown }).body = JSON.stringify(req.body);
+    const { res, status } = mockRes();
+    const next = mockNext();
+    verifyInboundEmailSignature(req, res, next);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(status).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect((req.body as { from: string }).from).toBe("sender@example.com");
+  });
+
+  it("refuses every SNS message when no topic allowlist is configured (fail closed)", async () => {
+    delete process.env.INBOUND_EMAIL_SNS_TOPIC_ARNS;
+    const req = signedNotification("arn:aws:sns:us-east-1:123:inbound-email", "sns-unpinned-1");
+    const { res, status } = mockRes();
+    const next = mockNext();
+    verifyInboundEmailSignature(req, res, next);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(next).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(401);
   });
 
   function buildCanonicalNotification(msg: {

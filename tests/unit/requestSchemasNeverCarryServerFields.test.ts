@@ -99,8 +99,6 @@ const REVIEWED_RAW_BODY_SITES: Record<string, string> = {
     "updateChecklistTemplate strips protected fields (omitProtectedFields) before the write",
   "server/index.ts post /mcp :: handleRequest":
     "the MCP transport reads a JSON-RPC message; it is not a row",
-  "server/routes-billing.ts post /api/stripe/connect/webhook :: constructEvent":
-    "signature verification of the raw webhook payload; nothing is written from the body",
   "server/stripeWebhookRoute.ts post /api/stripe/webhook :: processWebhook":
     "the signature-verified provider payload, not a customer-supplied row",
   "server/routes-sendgrid-events.ts post /api/webhooks/sendgrid/events :: ingestSendGridEvents":
