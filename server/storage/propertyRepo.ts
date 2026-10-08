@@ -3,6 +3,7 @@
 
 import { and, desc, asc, eq, sql, count, inArray, ilike, ne, or } from "drizzle-orm";
 import { omitProtectedFields } from "../utils/updatePayload";
+import { assertWritableLandStatus } from "../utils/landStatus";
 import { db } from "../db";
 import {
   properties, deals,
@@ -87,6 +88,7 @@ export const propertyRepo = {
   // organizationId is omitted from InsertProperty (set server-side) but the DB
   // column is NOT NULL — callers supply it, so it is required here.
   async createProperty(this: DatabaseStorage, property: InsertProperty & { organizationId: number }): Promise<Property> {
+    assertWritableLandStatus(property);
     const [newProperty] = await db.insert(properties).values(property).returning();
     await this.logActivity({
       organizationId: property.organizationId,
@@ -99,6 +101,7 @@ export const propertyRepo = {
   },
 
   async updateProperty(this: DatabaseStorage, id: number, updates: Partial<InsertProperty>, organizationId?: number): Promise<Property> {
+    assertWritableLandStatus(updates);
     const conditions = [eq(properties.id, id)];
     if (organizationId) conditions.push(eq(properties.organizationId, organizationId));
     const [updated] = await db.update(properties)
@@ -182,6 +185,7 @@ export const propertyRepo = {
 
   async bulkUpdateProperties(this: DatabaseStorage, orgId: number, ids: number[], updates: Partial<InsertProperty>): Promise<number> {
     if (ids.length === 0) return 0;
+    assertWritableLandStatus(updates);
     const updated = await db.update(properties)
       .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
       .where(and(eq(properties.organizationId, orgId), inArray(properties.id, ids)))

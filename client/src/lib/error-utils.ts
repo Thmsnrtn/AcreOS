@@ -6,12 +6,15 @@
  * fall back to free-text matching when no status is available.
  */
 
+import { PLAN_LIMIT_REACHED } from "@shared/billing/plan-limit-copy";
+
 export type ErrorKind =
   | "unauthorized"
   | "forbidden"
   | "not_found"
   | "validation"
   | "rate_limited"
+  | "plan_limit"
   | "server"
   | "network"
   | "timeout"
@@ -44,8 +47,19 @@ function shapeFromError(error: unknown): ErrorShape {
  * heuristics. Status codes come from `apiRequest` which throws Error instances
  * whose message starts with "<status>:" — we parse that as a fallback.
  */
+/** The parsed server body an `ApiError` carries, read by shape (no import cycle). */
+function serverBody(error: unknown): { error?: unknown; message?: unknown } | null {
+  const body = (error as { body?: unknown } | null | undefined)?.body;
+  return body && typeof body === "object" ? (body as { error?: unknown; message?: unknown }) : null;
+}
+
 export function classifyError(error: unknown): ErrorKind {
   const { status, message } = shapeFromError(error);
+
+  // A plan cap is a 429 too, but it is not a rate limit: waiting does not
+  // clear it, so "You're moving too fast" is wrong advice. The server's code
+  // says which it is; read it before the status.
+  if (serverBody(error)?.error === PLAN_LIMIT_REACHED) return "plan_limit";
 
   // Prefer numeric status when available.
   if (typeof status === "number") {
@@ -103,6 +117,13 @@ export function getErrorMessage(error: unknown): string {
       return "We couldn't process that — check the highlighted fields.";
     case "rate_limited":
       return "You're moving too fast. Try again in a moment.";
+    case "plan_limit": {
+      // Built server-side from the plan table — render it as sent.
+      const sent = serverBody(error)?.message;
+      return typeof sent === "string" && sent.length > 0
+        ? sent
+        : "You've reached a limit on your current plan. See Settings → Billing for plans that lift it.";
+    }
     case "server":
       return "That one's on us — give it a second and try again. Still stuck? We're already looking.";
     case "network":
@@ -135,6 +156,8 @@ export function getErrorTitle(error: unknown): string {
       return "Check your input";
     case "rate_limited":
       return "Slow down";
+    case "plan_limit":
+      return "Plan limit reached";
     case "server":
       return "That's on us";
     case "network":

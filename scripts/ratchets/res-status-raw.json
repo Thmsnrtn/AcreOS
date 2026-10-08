@@ -9,9 +9,9 @@
     "**/*.test.ts",
     "**/*.spec.ts"
   ],
-  "baselineCount": 356,
+  "baselineCount": 342,
   "direction": "down",
-  "lastBumpNote": "357 -> 356 on 2026-09-28 (DEFECT-0166): the deal-room NDA route's `res.status(201).json(...)` went with the fabricated signed-document row it announced; the route now returns an unsigned draft with res.json. PRIOR NOTE — 2026-09-28 DEFECT-0050 second pass: 366 -> 357. Nine 4xx single-key bodies whose value is an error-message expression (err.message, message) now go through sendError. 5xx expression bodies were deliberately left: echoing err.message on a 5xx can leak internals, and those belong in Errors.internal per site.",
+  "lastBumpNote": "343 -> 342 on 2026-10-08: the deal AI-chat bare 402 \"Insufficient credits\" now answers through refusePaxCredits. PRIOR NOTE — 356 -> 343 on 2026-10-07: plan-cap refusals in routes-properties/leads/finance/ai (eight raw res.status(429) bodies with no error code) now answer through refusePlanLimit (Errors.planLimitReached, PLAN_LIMIT_REACHED); the two Pax-chat 402s and three invite-seat 402s now go through utils/firstRunRefusals.ts (Errors.refusedUntil). PRIOR NOTE — 357 -> 356 on 2026-09-28 (DEFECT-0166): the deal-room NDA route's `res.status(201).json(...)` went with the fabricated signed-document row it announced; the route now returns an unsigned draft with res.json. PRIOR NOTE — 2026-09-28 DEFECT-0050 second pass: 366 -> 357. Nine 4xx single-key bodies whose value is an error-message expression (err.message, message) now go through sendError. 5xx expression bodies were deliberately left: echoing err.message on a 5xx can leak internals, and those belong in Errors.internal per site.",
   "minima": {
     "files": 1100
   },

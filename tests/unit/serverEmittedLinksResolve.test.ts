@@ -168,9 +168,10 @@ describe("every client path the server sends someone to actually resolves", () =
  * A ROUTE EXISTING IS NOT THE SAME AS A CUSTOMER BEING ABLE TO REACH IT.
  *
  * The sweep above answers "does App.tsx declare this path". Thirteen paths are
- * declared through `<FlaggedRoute>`, which renders `<NotFound />` when its flag
- * is off — and the flags are seeded FALSE. So a link can pass every assertion in
- * this file and still end at a 404.
+ * declared through `<FlaggedRoute>`, which renders a "not available" state
+ * instead of the page when its flag is off (it rendered `<NotFound />` until
+ * 2026-10) — and the flags are seeded FALSE. So a link can pass every assertion
+ * in this file and still end somewhere that is not the thing it promised.
  *
  * One did. `autonomousDealMachine.ts` linked its **default** action card —
  * *"Review your target county market data"* — at `/market-intelligence`, a
@@ -199,23 +200,31 @@ describe("no server-emitted link points at a route a flag can hide", () => {
     ).toBeGreaterThan(5);
   });
 
-  it("FlaggedRoute really renders NotFound when the flag is off (the premise)", () => {
-    // If it ever redirected instead, a link to a gated route would be merely
-    // suboptimal rather than broken, and this check would be enforcing a rule
-    // whose reason had gone.
-    const at = app.indexOf("function FlaggedRoute(");
+  it("FlaggedRoute really withholds the page when the flag is off (the premise)", () => {
+    // If it ever redirected to the content instead, a link to a gated route
+    // would be merely suboptimal rather than broken, and this check would be
+    // enforcing a rule whose reason had gone. The off branch renders the
+    // "not available" state (flaggedRouteSaysNotAvailable.test.tsx renders
+    // it); honest, but still not the page the link names. Comment-stripped,
+    // so a commented-out branch cannot satisfy it.
+    const src = stripComments(fs.readFileSync(path.join(ROOT, "client/src/components/flagged-route.tsx"), "utf8"));
+    const at = src.indexOf("export function FlaggedRoute(");
     expect(at, "FlaggedRoute is gone").toBeGreaterThan(-1);
-    const body = app.slice(at, app.indexOf("\n}", at));
-    expect(body).toContain("if (!isRouteEnabled(route)) return <NotFound />;");
+    const body = src.slice(at, src.indexOf("\n}", at));
+    expect(body).toMatch(/if \(!isRouteEnabled\(route\)\) return <FeatureNotAvailable \/>;/);
+    expect(body, "the off branch renders the page").not.toMatch(/if \(!isRouteEnabled\(route\)\) return <Component/);
+    expect(stripComments(app), "App.tsx no longer takes FlaggedRoute from its component module").toContain(
+      'import { FlaggedRoute } from "@/components/flagged-route";',
+    );
   });
 
   it("nothing the server emits lands on one", () => {
     const gated = emittedLinks().filter((l) => flagged.has(l.target));
     expect(
       gated.map((g) => `${g.where} -> ${g.target}`).join("\n"),
-      "the server sends someone to a flag-gated route. FlaggedRoute renders " +
-        "NotFound when the flag is off, and these flags are seeded FALSE, so " +
-        "the card ends at a 404 while App.tsx still declares the path — which " +
+      "the server sends someone to a flag-gated route. FlaggedRoute withholds " +
+        "the page when the flag is off, and these flags are seeded FALSE, so " +
+        "the card ends at 'not available' while App.tsx still declares the path — which " +
         "is why the sweep above passes it. Either point at an ungated surface " +
         "that owns the same content, or emit the card only when the flag is on " +
         "and record that here as a deliberate exception.",

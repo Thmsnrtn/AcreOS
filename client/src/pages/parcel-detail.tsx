@@ -67,6 +67,7 @@ import {
 } from "lucide-react";
 import type { Property, LandStatus } from "@shared/schema";
 import { buildBlindOfferPrefillSearch } from "@shared/blindOfferPrefill";
+import { landStatusCategory, landStatusHoldReason } from "@shared/land-status-copy";
 import { SubdivisionTab } from "@/components/parcels/subdivision-tab";
 import { ArvCalculator } from "@/components/parcels/arv-calculator";
 import { LandSnapshot } from "@/components/parcels/land-snapshot";
@@ -564,10 +565,12 @@ function ActionLink({
 // Red banner for verified-trust parcels; yellow banner for unverified parcels.
 // Hidden entirely for fee-simple parcels (the happy path).
 function LandStatusBanner({ property }: { property: Property }) {
-  const status = (property.landStatus ?? "unknown") as LandStatus;
-  if (status === "fee") return null;
+  // The category, not the raw string, decides the banner: a stored value that
+  // is not a land status is UNVERIFIED (yellow), never a trust parcel (red).
+  const category = landStatusCategory(property.landStatus);
+  if (category === "fee") return null;
 
-  if (status === "unknown") {
+  if (category === "unverified") {
     return (
       <div
         role="alert"
@@ -589,7 +592,8 @@ function LandStatusBanner({ property }: { property: Property }) {
     );
   }
 
-  // Any of the trust / restricted-fee variants — red banner.
+  // A verified non-fee status — red banner, worded for what it actually is.
+  const status = property.landStatus as LandStatus;
   return (
     <div
       role="alert"
@@ -602,7 +606,7 @@ function LandStatusBanner({ property }: { property: Property }) {
           Indian Country land status: {LAND_STATUS_LABELS[status]}.
         </p>
         <p className="mt-1 text-destructive/90">
-          Federal trust property — title transfers require BIA approval (25 CFR §152).
+          {landStatusHoldReason(category)}{" "}
           Auto-valuation, auto-offer, and auto-contract are blocked on this parcel.
         </p>
       </div>

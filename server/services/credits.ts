@@ -165,7 +165,22 @@ export class CreditService {
   }
 
   async hasEnoughCredits(organizationId: number, requiredCents: number): Promise<boolean> {
-    if (await this.isFounder(organizationId)) return true;
+    return (await this.evaluateCredits(organizationId, requiredCents)).allowed;
+  }
+
+  /**
+   * The credit decision WITH its reason — `hasEnoughCredits` is this, reduced
+   * to the boolean. A refusal has to say what unlocks it, and the answer is
+   * different for each lane: an org inside its trial that has used the
+   * trial's included spend is not unblocked by buying credits (this lane
+   * never reads the balance), while an org past its trial is. Callers that
+   * build refusal copy read `lane` from here instead of re-deriving the rule.
+   */
+  async evaluateCredits(
+    organizationId: number,
+    requiredCents: number,
+  ): Promise<{ allowed: boolean; lane: "founder" | "trial" | "balance" }> {
+    if (await this.isFounder(organizationId)) return { allowed: true, lane: "founder" };
 
     // Check if user is in trial period - allow basic AI chat during trial
     const org = await db.query.organizations.findFirst({
@@ -199,17 +214,17 @@ export class CreditService {
       const totalDebits = result?.totalDebits || 0;
       if (totalDebits + requiredCents > TRIAL_SPENDING_CAP_CENTS) {
         logger.info(`[credits] Trial spending cap reached for org ${organizationId}: ${totalDebits}¢ spent of ${TRIAL_SPENDING_CAP_CENTS}¢ cap`);
-        return false;
+        return { allowed: false, lane: "trial" };
       }
 
-      return true;
+      return { allowed: true, lane: "trial" };
     }
 
     // Note: Trial tokens are for premium skills only, not basic AI chat
     // They are consumed via storage.consumeTrialToken() in skill permission checks
 
     const balance = await this.getBalance(organizationId);
-    return balance >= requiredCents;
+    return { allowed: balance >= requiredCents, lane: "balance" };
   }
 
   async getTransactionHistory(
