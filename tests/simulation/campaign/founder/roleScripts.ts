@@ -25,7 +25,7 @@ export const ARTICLES: Array<{ match: string; subject: string; body: string }> =
     match: "Programmatic county guide",
     subject: "Buying rural land in a new county: what to check first",
     body:
-      "<p>Every county keeps its own records, and the first hour you spend with them saves the most trouble later. This guide walks through the records a careful buyer reads before making an offer.</p>" +
+      "<p>Every county keeps its own records. An hour with them before an offer is time well spent. This guide walks through the records a careful buyer reads before making an offer.</p>" +
       "<h2>Start with the assessor's parcel record</h2><p>The county assessor's records list the owner of record, the parcel number and the legal description. Confirm the seller's name matches the owner of record before you go further.</p>" +
       "<h2>Read the tax history</h2><p>Ask the county treasurer whether taxes are current. Unpaid taxes can become a lien, so get the answer in writing.</p>" +
       "<h2>Look at the recorded documents</h2><p>The county recorder holds deeds, easements and liens. A title company can search them for you; the county's own index is a useful first look.</p>" +
@@ -37,7 +37,7 @@ export const ARTICLES: Array<{ match: string; subject: string; body: string }> =
     subject: "How to read a parcel record before you buy land",
     body:
       "<p>A parcel record is the county's file on a piece of land. Reading one takes ten minutes and tells you who owns the land, how the county describes it and whether the taxes are paid.</p>" +
-      "<h2>The four fields that matter most</h2><ul><li><strong>Owner of record</strong> — should match the person selling.</li><li><strong>Parcel number (APN)</strong> — the id every other county office uses.</li><li><strong>Legal description</strong> — should match the listing.</li><li><strong>Assessed value</strong> — the county's figure for tax purposes, not a market price.</li></ul>" +
+      "<h2>The four fields to read first</h2><ul><li><strong>Owner of record</strong> — should match the person selling.</li><li><strong>Parcel number (APN)</strong> — the id every other county office uses.</li><li><strong>Legal description</strong> — should match the listing.</li><li><strong>Assessed value</strong> — the county's figure for tax purposes, not a market price.</li></ul>" +
       "<h2>What a parcel record does not tell you</h2><p>It is not a title search and it is not a survey. Use it to decide whether a deal is worth a closer look, then order the title work.</p>" +
       FOOTER,
   },

@@ -29,6 +29,7 @@ import { DataSourceBroker } from "./data-source-broker";
 import { logger } from "../utils/logger";
 
 import { ENGAGED_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
+import { clock } from "../utils/clock";
 interface ScoreFactorResult {
   value: number | boolean | string;
   score: number;
@@ -135,7 +136,7 @@ export class LeadScoringService {
       },
       enrichmentData: {
         ...enrichmentData,
-        lastEnriched: new Date().toISOString(),
+        lastEnriched: clock.now().toISOString(),
       },
       triggerSource,
     });
@@ -143,7 +144,7 @@ export class LeadScoringService {
     await db.update(leads)
       .set({
         score: Math.round((normalizedScore + 400) / 8),
-        lastScoreAt: new Date(),
+        lastScoreAt: clock.now(),
         nurturingStage: recommendation === "mail" ? "hot" : recommendation === "maybe" ? "warm" : "cold",
       })
       .where(eq(leads.id, leadId));
@@ -155,7 +156,7 @@ export class LeadScoringService {
       recommendation,
       factors,
       enrichmentData,
-      scoredAt: new Date(),
+      scoredAt: clock.now(),
     };
   }
 
@@ -378,7 +379,7 @@ export class LeadScoringService {
     
     if (enrichment.parcelData?.lastSaleDate) {
       const lastSale = new Date(enrichment.parcelData.lastSaleDate);
-      const now = new Date();
+      const now = clock.now();
       yearsOwned = (now.getTime() - lastSale.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
       
       if (yearsOwned >= 15) scoreMultiplier = 1.0;
@@ -558,7 +559,7 @@ export class LeadScoringService {
     
     if (lead.responses && lead.responses > 0 && lead.lastContactedAt) {
       const lastContact = new Date(lead.lastContactedAt);
-      const now = new Date();
+      const now = clock.now();
       daysSinceResponse = Math.floor((now.getTime() - lastContact.getTime()) / (24 * 60 * 60 * 1000));
       
       if (daysSinceResponse <= 7) scoreMultiplier = 1.0;
@@ -743,14 +744,14 @@ export class LeadScoringService {
     let daysFromFirstTouch = null;
     if (activities?.firstTouch) {
       const firstTouchDate = new Date(activities.firstTouch as string);
-      const now = new Date();
+      const now = clock.now();
       daysFromFirstTouch = Math.floor((now.getTime() - firstTouchDate.getTime()) / (24 * 60 * 60 * 1000));
     }
     
     let daysFromScore = null;
     if (latestScore?.scoredAt) {
       const scoreDate = new Date(latestScore.scoredAt);
-      const now = new Date();
+      const now = clock.now();
       daysFromScore = Math.floor((now.getTime() - scoreDate.getTime()) / (24 * 60 * 60 * 1000));
     }
     

@@ -44,6 +44,7 @@ import { isFounderIdentity } from "./services/founder";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { getClerkAuth, type AuthenticatedRequest } from "./types/request";
+import { clock } from "./utils/clock";
 
 // ─── Clerk client (lazy, env-driven) ──────────────────────────────────────────
 const clerkClient = createClerkClient({
@@ -627,7 +628,7 @@ export function registerAdminRecoveryRoutes(app: Express): void {
           .update(organizations)
           .set({
             autopayFrozen: true,
-            autopayFrozenAt: new Date(),
+            autopayFrozenAt: clock.now(),
             autopayFrozenReason: reason,
             autopayFrozenUntil: until,
           } as any)

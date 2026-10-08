@@ -16,6 +16,7 @@
  */
 
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ── Raw inputs (what the gatherer reads from real sources) ────────────────────
 
@@ -307,7 +308,7 @@ export async function gatherContextPack(): Promise<ContextPack> {
   try {
     const { listOpenAsks } = await import("../solene/founderCollab");
     const asks = await listOpenAsks();
-    const now = Date.now();
+    const now = clock.nowMs();
     raw.openAsks = asks.map((a) => ({
       summary: a.questionSummary,
       ageHours: a.askedAt ? Math.max(0, Math.round((now - new Date(a.askedAt).getTime()) / 3_600_000)) : 0,

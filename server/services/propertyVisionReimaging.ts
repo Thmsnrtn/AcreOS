@@ -29,6 +29,7 @@ import {
 } from "@shared/schema";
 import { and, desc, eq, lte, sql, isNotNull } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -71,7 +72,7 @@ export async function fetchAerialImagery(
   if (!token) {
     // Deterministic mock so the job can run without credentials.
     return {
-      imageS3Key: `mock/property-${propertyId}/${new Date().toISOString().slice(0, 10)}.jpg`,
+      imageS3Key: `mock/property-${propertyId}/${clock.now().toISOString().slice(0, 10)}.jpg`,
       imageUrl: `https://mock.acreos.local/imagery/${propertyId}.jpg`,
       provider: "mock",
       resolution: 0.6,
@@ -84,7 +85,7 @@ export async function fetchAerialImagery(
   // Real implementation would download the bytes and push to S3.
   // For the scaffold we just synthesize the S3 key + return the signed URL.
   return {
-    imageS3Key: `vision/property-${propertyId}/${Date.now()}.jpg`,
+    imageS3Key: `vision/property-${propertyId}/${clock.nowMs()}.jpg`,
     imageUrl: url,
     provider: "mapbox",
     resolution: 0.6,
@@ -223,7 +224,7 @@ export async function reimageProperty(
       .values({
         organizationId: property.organizationId,
         propertyId: property.id,
-        capturedAt: new Date(),
+        capturedAt: clock.now(),
         imageS3Key: imagery.imageS3Key,
         imageUrl: imagery.imageUrl,
         provider: imagery.provider,
@@ -307,7 +308,7 @@ export async function findPropertiesDueForReimaging(
     >
   >
 > {
-  const cutoff = new Date(Date.now() - intervalDays * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - intervalDays * 24 * 60 * 60 * 1000);
 
   // Owned/active properties only — we don't bother with sold/dead deals.
   const rows = await db

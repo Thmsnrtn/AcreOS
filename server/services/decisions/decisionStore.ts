@@ -30,6 +30,7 @@ import { resolveSubject } from "../evidence/evidenceStore";
 import { freezeScenarioRefs } from "../economics/scenarioStore";
 import { requireOpportunity } from "../opportunities";
 import type { ResolvedValue } from "@shared/evidence/claim";
+import { clock } from "../../utils/clock";
 
 /** Read cap — a subject with more decisions than this has a runaway writer. */
 const DECISION_READ_CAP = 500;
@@ -83,7 +84,7 @@ export interface RecordedDecision {
 export async function recordDecision(
   organizationId: number,
   input: DecisionSnapshotInput,
-  evidenceAsOf: Date = new Date(),
+  evidenceAsOf: Date = clock.now(),
   /**
    * Scenarios whose economics justified this choice. Resolved to frozen
    * references HERE rather than accepted pre-frozen, for the same reason the
@@ -270,7 +271,7 @@ export interface DecisionDueForOutcome {
  */
 export async function decisionsDueForOutcome(
   organizationId: number,
-  asOf: Date = new Date(),
+  asOf: Date = clock.now(),
 ): Promise<DecisionDueForOutcome[]> {
   // Decisions this org has already RESOLVED. `still_open` is deliberately not
   // in this set: an interim observation does not answer the question.

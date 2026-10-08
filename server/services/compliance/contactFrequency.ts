@@ -34,6 +34,7 @@ import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { leadActivities, organizations } from "@shared/schema";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ─── Channels + ledger types ──────────────────────────────────────────────────
 
@@ -155,7 +156,7 @@ function toMillis(t: Date | string | number): number {
 export function evaluateContactFrequency(
   touchTimes: Array<Date | string | number>,
   caps: FrequencyCaps = DEFAULT_FREQUENCY_CAPS,
-  now: Date = new Date(),
+  now: Date = clock.now(),
 ): FrequencyDecision {
   const nowMs = now.getTime();
   const times = touchTimes
@@ -306,7 +307,7 @@ export async function resolveFrequencyCaps(organizationId: number): Promise<Freq
 export async function getTouchTimestamps(
   organizationId: number,
   leadId: number,
-  now: Date = new Date(),
+  now: Date = clock.now(),
 ): Promise<Date[]> {
   const since = new Date(now.getTime() - MAX_FREQUENCY_WINDOW_MS);
   const rows = await db
@@ -341,7 +342,7 @@ export async function getTouchTimestamps(
 export async function countTouchesByLead(
   organizationId: number,
   windowMs: number = MAX_FREQUENCY_WINDOW_MS,
-  now: Date = new Date(),
+  now: Date = clock.now(),
 ): Promise<Map<number, number>> {
   const since = new Date(now.getTime() - windowMs);
   const rows = await db
@@ -374,7 +375,7 @@ export async function countTouchesByLead(
 export async function frequencyGateForLead(
   organizationId: number,
   leadId: number,
-  now: Date = new Date(),
+  now: Date = clock.now(),
 ): Promise<FrequencyDecision> {
   try {
     const [caps, times] = await Promise.all([

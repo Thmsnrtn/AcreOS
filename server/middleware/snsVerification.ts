@@ -2,6 +2,7 @@ import crypto from "crypto";
 import https from "https";
 import { logger } from "../utils/logger";
 import { BoundedMap } from "../utils/boundedMap";
+import { clock } from "../utils/clock";
 
 /**
  * Shared AWS SNS message verification core.
@@ -37,7 +38,7 @@ function pruneReplayCache(now: number): void {
 
 /** Returns true if message was already seen; otherwise records it. */
 export function isReplay(messageId: string): boolean {
-  const now = Date.now();
+  const now = clock.nowMs();
   const seen = replayCache.get(messageId);
   if (seen !== undefined && now - seen < REPLAY_TTL_MS) {
     return true;

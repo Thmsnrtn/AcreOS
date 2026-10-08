@@ -16,6 +16,7 @@ import type { InsertLead } from "@shared/schema";
 import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { estimateClosingCosts } from "./services/closingCostEstimator";
+import { clock } from "./utils/clock";
 
 export function registerMicroFeatureRoutes(app: Express): void {
 
@@ -535,7 +536,7 @@ async function getTopPriority(orgId: number) {
     }
 
     // 3. Leads with no campaign after 7+ days
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
     const stale = leads.filter(
       (l) => l.status === "new" && l.createdAt && new Date(l.createdAt) < sevenDaysAgo
     );

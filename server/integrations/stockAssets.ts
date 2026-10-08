@@ -17,6 +17,7 @@ import { db } from "../db";
 import { cmoAssetUsage, type CmoAssetUsage } from "@shared/schema";
 import { eq, sql, lt, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type AssetProvider = "pexels" | "pixabay";
 
@@ -209,7 +210,7 @@ async function tryPixabay(query: string, minDuration: number, maxDuration: numbe
 }
 
 async function loadRecentExternalIds(days: number): Promise<Set<string>> {
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000);
   const rows = await db
     .select({
       provider: cmoAssetUsage.provider,
@@ -236,7 +237,7 @@ export async function recordAssetUsage(clip: StockClip, renderId: string): Promi
     const [updated] = await db
       .update(cmoAssetUsage)
       .set({
-        lastUsedAt: new Date(),
+        lastUsedAt: clock.now(),
         useCount: existing.useCount + 1,
         shippedInRenderIds: existing.shippedInRenderIds.includes(renderId)
           ? existing.shippedInRenderIds

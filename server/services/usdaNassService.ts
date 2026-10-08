@@ -28,6 +28,7 @@
 import { db } from "../db";
 import { logger } from "../utils/logger";
 import { BoundedMap } from "../utils/boundedMap";
+import { clock } from "../utils/clock";
 
 const NASS_BASE = "https://quickstats.nass.usda.gov/api/api_GET/";
 const NASS_KEY = process.env.USDA_NASS_API_KEY || "";
@@ -158,7 +159,7 @@ export async function fetchCountyLandValues(
   county: string,
   years = 5
 ): Promise<CountyLandValue[]> {
-  const currentYear = new Date().getFullYear();
+  const currentYear = clock.now().getFullYear();
   const startYear = currentYear - years;
 
   try {
@@ -184,7 +185,7 @@ export async function fetchCountyLandValues(
         valuePerAcreDollars: parseFloat(r.Value.replace(/,/g, "")),
         landCategory: "farm_real_estate" as const,
         source: "usda_nass" as const,
-        retrieved: new Date().toISOString(),
+        retrieved: clock.now().toISOString(),
       }))
       .sort((a, b) => b.year - a.year);
   } catch {
@@ -209,7 +210,7 @@ export async function fetchCountyPastureLandValues(
       agg_level_desc: "COUNTY",
       state_alpha: state.toUpperCase(),
       county_name: county.toUpperCase(),
-      year__GE: String(new Date().getFullYear() - 5),
+      year__GE: String(clock.now().getFullYear() - 5),
     });
 
     return rows
@@ -221,7 +222,7 @@ export async function fetchCountyPastureLandValues(
         valuePerAcreDollars: parseFloat(r.Value.replace(/,/g, "")),
         landCategory: "pastureland" as const,
         source: "usda_nass" as const,
-        retrieved: new Date().toISOString(),
+        retrieved: clock.now().toISOString(),
       }))
       .sort((a, b) => b.year - a.year);
   } catch {
@@ -355,7 +356,7 @@ export async function buildCountyAgSnapshot(
   return {
     state: state.toUpperCase(),
     county,
-    year: farmData[0]?.year || new Date().getFullYear() - 1,
+    year: farmData[0]?.year || clock.now().getFullYear() - 1,
     farmRealEstatePerAcre: latestFarm,
     croplandPerAcre: latestFarm * 1.1, // Cropland typically 10% above farm RE average
     pasturePerAcre: latestPasture,
@@ -438,7 +439,7 @@ function getEstimatedLandValues(state: string, county: string): CountyLandValue[
   };
 
   const baseValue = stateDefaults[state.toUpperCase()] || 2000;
-  const currentYear = new Date().getFullYear();
+  const currentYear = clock.now().getFullYear();
 
   // Generate synthetic 5-year trend with ~5% annual appreciation
   // IMPORTANT: mark source as "estimate" not "usda_nass" so downstream
@@ -450,7 +451,7 @@ function getEstimatedLandValues(state: string, county: string): CountyLandValue[
     valuePerAcreDollars: Math.round(baseValue / Math.pow(1.05, i)),
     landCategory: "farm_real_estate" as const,
     source: "estimate" as const,
-    retrieved: new Date().toISOString(),
+    retrieved: clock.now().toISOString(),
   }));
 }
 
@@ -467,12 +468,12 @@ export async function getCachedCountySnapshot(
   const key = `snapshot:${state}:${county}`.toLowerCase();
   const cached = memCache.get(key);
 
-  if (cached && cached.expiresAt > Date.now()) {
+  if (cached && cached.expiresAt > clock.nowMs()) {
     return cached.data;
   }
 
   const snapshot = await buildCountyAgSnapshot(state, county);
-  memCache.set(key, { data: snapshot, expiresAt: Date.now() + 86400 * 1000 }); // 24h cache
+  memCache.set(key, { data: snapshot, expiresAt: clock.nowMs() + 86400 * 1000 }); // 24h cache
 
   return snapshot;
 }
@@ -484,12 +485,12 @@ export async function getCachedLandTrend(
   const key = `trend:${state}:${county}`.toLowerCase();
   const cached = memCache.get(key);
 
-  if (cached && cached.expiresAt > Date.now()) {
+  if (cached && cached.expiresAt > clock.nowMs()) {
     return cached.data;
   }
 
   const trend = await computeLandValueTrend(state, county);
-  memCache.set(key, { data: trend, expiresAt: Date.now() + 86400 * 1000 });
+  memCache.set(key, { data: trend, expiresAt: clock.nowMs() + 86400 * 1000 });
 
   return trend;
 }

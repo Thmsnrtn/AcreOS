@@ -24,6 +24,7 @@ import { eq } from "drizzle-orm";
 import { uploadVideoToMeta, waitForVideoReady, createMetaCreative } from "../integrations/metaAdsVideo";
 import { uploadVideoToTikTok, createTikTokAd } from "../integrations/tiktokAds";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface CmoBroadcastPayload {
   renderId: string;
@@ -66,7 +67,7 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
 
   await db
     .update(cmoAdRenders)
-    .set({ status: "broadcasting", updatedAt: new Date() })
+    .set({ status: "broadcasting", updatedAt: clock.now() })
     .where(eq(cmoAdRenders.id, render.id));
 
   const storageRoot = process.env.CMO_STORAGE_ROOT ?? "/data/cmo";
@@ -148,7 +149,7 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
       ...(render.manifestJson as Record<string, unknown>),
       platforms: {
         ...(existingManifest?.platforms ?? {}),
-        [payload.platform]: { externalId, externalCampaignId, broadcastAt: new Date().toISOString() },
+        [payload.platform]: { externalId, externalCampaignId, broadcastAt: clock.now().toISOString() },
       },
     };
 
@@ -156,9 +157,9 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
       .update(cmoAdRenders)
       .set({
         status: "live",
-        broadcastAt: new Date(),
+        broadcastAt: clock.now(),
         manifestJson: updatedManifest as Record<string, unknown>,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(cmoAdRenders.id, render.id));
 
@@ -174,7 +175,7 @@ export async function handleCmoBroadcast(payload: CmoBroadcastPayload): Promise<
       .set({
         status: "error",
         errorMessage: message,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(cmoAdRenders.id, render.id));
     throw err;

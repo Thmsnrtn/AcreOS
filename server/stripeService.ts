@@ -2,6 +2,7 @@ import type Stripe from 'stripe';
 import { getUncachableStripeClient } from './stripeClient';
 import crypto from 'crypto';
 import { stripeCircuitBreaker } from './utils/circuitBreaker';
+import { clock } from "./utils/clock";
 
 /** Deterministic idempotency key for a given operation + seed. */
 function idempotencyKey(operation: string, ...seeds: (string | number | undefined)[]): string {
@@ -249,7 +250,7 @@ export class StripeService {
       stripe.subscriptions.update(
         subscriptionId,
         { pause_collection: '' } as any,
-        { idempotencyKey: idempotencyKey('resume_subscription', subscriptionId, Date.now()) },
+        { idempotencyKey: idempotencyKey('resume_subscription', subscriptionId, clock.nowMs()) },
       ),
     );
   }

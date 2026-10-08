@@ -13,6 +13,7 @@ import { db } from "../db";
 import { companyPriorities } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /**
  * Get all active company priorities, ordered by weight.
@@ -59,7 +60,7 @@ export async function createPriority(params: {
  */
 export async function deactivatePriority(id: number): Promise<void> {
   await db.update(companyPriorities)
-    .set({ isActive: false, updatedAt: new Date() })
+    .set({ isActive: false, updatedAt: clock.now() })
     .where(eq(companyPriorities.id, id));
 }
 
@@ -68,7 +69,7 @@ export async function deactivatePriority(id: number): Promise<void> {
  */
 export async function updatePriorityWeight(id: number, weight: number): Promise<void> {
   await db.update(companyPriorities)
-    .set({ weight: Math.max(1, Math.min(10, weight)), updatedAt: new Date() })
+    .set({ weight: Math.max(1, Math.min(10, weight)), updatedAt: clock.now() })
     .where(eq(companyPriorities.id, id));
 }
 

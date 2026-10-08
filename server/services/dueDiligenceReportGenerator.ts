@@ -18,6 +18,7 @@ import {
   estimateCarbonCredits,
   assessClimateRisk,
 } from "./environmentalIntelligence";
+import { clock } from "../utils/clock";
 
 interface ReportResult {
   pdf: Buffer;
@@ -189,7 +190,7 @@ export async function generateFullReport(propertyId: number, orgId: number): Pro
   // Footer
   doc.setFontSize(7);
   doc.setTextColor(...GRAY);
-  doc.text(`Confidential — Generated ${new Date().toLocaleDateString()}`, margin, 10.3);
+  doc.text(`Confidential — Generated ${clock.now().toLocaleDateString()}`, margin, 10.3);
 
   // ─── Page 2: Environmental & Hazards ────────────────────────────────
   doc.addPage();
@@ -503,7 +504,7 @@ export async function generateFullReport(propertyId: number, orgId: number): Pro
   return {
     pdf,
     summary: { riskLevel, redFlags, greenFlags, sourcesQueried, sourcesResponded },
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
   };
 }
 

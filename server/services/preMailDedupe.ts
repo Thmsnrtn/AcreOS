@@ -17,6 +17,7 @@ import { db } from "../db";
 import { leads, properties, mailingOrderPieces, mailingOrders } from "@shared/schema";
 import { and, eq, inArray, gte, isNotNull, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface PreMailDedupeInput {
   organizationId: number;
@@ -146,7 +147,7 @@ export async function runPreMailDedupe(
 
   // 3. Pull mail pieces sent in the last N days for this org so we can
   //    skip re-mails inside the cooldown window.
-  const since = new Date(Date.now() - recentMailWindowDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - recentMailWindowDays * 24 * 60 * 60 * 1000);
   let recentMailedLeadIds = new Set<number>();
   let returnedAddressKeys = new Set<string>();
   try {
@@ -169,7 +170,7 @@ export async function runPreMailDedupe(
     }
     // Returned-mail lookup — broader window (the address is bad regardless of
     // when it returned). One year is the right horizon for USPS DPV churn.
-    const returnedSince = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+    const returnedSince = new Date(clock.nowMs() - 365 * 24 * 60 * 60 * 1000);
     const returned = await db
       .select({ address: mailingOrderPieces.recipientAddressLine1, zip: mailingOrderPieces.recipientZipCode })
       .from(mailingOrderPieces)

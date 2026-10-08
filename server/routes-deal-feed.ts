@@ -14,6 +14,7 @@ import { getOrganizationId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { getTodaysFeed, generateDealFeed, recordInteraction } from "./services/dealFeedEngine";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -24,7 +25,7 @@ router.get("/", isAuthenticated, getOrCreateOrg, async (req, res: Response) => {
   try {
     const orgId = getOrganizationId(req as AuthenticatedRequest);
     const feed = await getTodaysFeed(orgId);
-    res.json({ opportunities: feed, generatedAt: new Date().toISOString() });
+    res.json({ opportunities: feed, generatedAt: clock.now().toISOString() });
   } catch (err) {
     logger.error("deal feed fetch failed", { error: err instanceof Error ? err.message : String(err) });
     Errors.internal(res, err);
@@ -37,17 +38,17 @@ router.post("/refresh", isAuthenticated, getOrCreateOrg, async (req, res: Respon
 
     // Rate limit: 1/hour
     const lastRefresh = refreshTimestamps.get(orgId) || 0;
-    const hourAgo = Date.now() - 60 * 60 * 1000;
+    const hourAgo = clock.nowMs() - 60 * 60 * 1000;
     if (lastRefresh > hourAgo) {
       return Errors.limitExceeded(res, {
         message: "Feed can only be refreshed once per hour",
-        retryAfter: Math.ceil((lastRefresh + 60 * 60 * 1000 - Date.now()) / 1000),
+        retryAfter: Math.ceil((lastRefresh + 60 * 60 * 1000 - clock.nowMs()) / 1000),
       });
     }
 
-    refreshTimestamps.set(orgId, Date.now());
+    refreshTimestamps.set(orgId, clock.nowMs());
     const feed = await generateDealFeed(orgId);
-    res.json({ opportunities: feed, generatedAt: new Date().toISOString() });
+    res.json({ opportunities: feed, generatedAt: clock.now().toISOString() });
   } catch (err) {
     logger.error("deal feed refresh failed", { error: err instanceof Error ? err.message : String(err) });
     Errors.internal(res, err);

@@ -22,6 +22,7 @@ import {
   recordDeferredInterrupt,
   type ArbiterDecision,
 } from "./founderInterruptArbiter";
+import { clock } from "../utils/clock";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -201,14 +202,14 @@ export class NotificationDispatcher {
 
     // Build notification
     const notification: StoredNotification = {
-      id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: `notif_${clock.nowMs()}_${Math.random().toString(36).slice(2, 8)}`,
       eventType: event.eventType,
       title: label,
       message: this.buildMessage(event),
       priority: event.priority,
       channel: event.channel,
       read: false,
-      createdAt: new Date().toISOString(),
+      createdAt: clock.now().toISOString(),
       payload: event.payload,
       delivery: {},
       persisted: false,
@@ -448,7 +449,7 @@ export class NotificationDispatcher {
             createdAt:
               r.createdAt instanceof Date
                 ? r.createdAt.toISOString()
-                : String(r.createdAt ?? new Date().toISOString()),
+                : String(r.createdAt ?? clock.now().toISOString()),
             payload: (m.payload as Record<string, any>) ?? {},
             delivery: (m.delivery as Record<string, ChannelDeliveryStatus>) ?? {},
             persisted: true,
@@ -468,7 +469,7 @@ export class NotificationDispatcher {
       this.store = [...byId.values()]
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
         .slice(0, MAX_NOTIFICATIONS);
-      this.lastRefreshAt = Date.now();
+      this.lastRefreshAt = clock.nowMs();
     } catch (err) {
       logger.error(
         `[notification-dispatcher] ${reason}: failed to load persisted notifications — serving the in-memory view only`,
@@ -555,8 +556,8 @@ export class NotificationDispatcher {
    * the DB (other machines' writes appear within one tray poll).
    */
   getNotifications(limit: number = 50): StoredNotification[] {
-    if (Date.now() - this.lastRefreshAt > REFRESH_INTERVAL_MS) {
-      this.lastRefreshAt = Date.now();
+    if (clock.nowMs() - this.lastRefreshAt > REFRESH_INTERVAL_MS) {
+      this.lastRefreshAt = clock.nowMs();
       void this.refreshFromDb("tray-read");
     }
     return this.store.slice(0, limit);
@@ -623,13 +624,13 @@ export async function dispatchPaxAskEvent(event: PaxAskEvent): Promise<PaxAskDel
   // Leg 1 — org broadcast (best-effort; a WS failure never fails the event).
   try {
     wsServer.broadcastToOrg(event.orgId, "notification", {
-      id: `pax_${event.type}_${event.pendingActionId ?? "count"}_${Date.now()}`,
+      id: `pax_${event.type}_${event.pendingActionId ?? "count"}_${clock.nowMs()}`,
       title,
       message,
       priority: 3,
       eventType: event.type,
       actionUrl: PAX_ASK_ACTION_URL,
-      createdAt: new Date().toISOString(),
+      createdAt: clock.now().toISOString(),
     });
   } catch (err) {
     logger.warn(

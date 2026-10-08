@@ -45,6 +45,7 @@ import {
   type CertEventRow,
 } from "../services/certificateEvents";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // "Crosses threshold today" window. Configurable later via founder_settings
 // once we add the surface; 7d is the bucket Marcus uses in his head ("if
@@ -151,7 +152,7 @@ export async function runRedemptionClockRefresh(): Promise<RefreshResult> {
   }
 
   result.certsScanned = rows.length;
-  const today = new Date();
+  const today = clock.now();
   const todayIso = today.toISOString().slice(0, 10);
   const thresholdMs = THRESHOLD_DAYS * 86_400_000;
 
@@ -183,7 +184,7 @@ export async function runRedemptionClockRefresh(): Promise<RefreshResult> {
       if (recomputed !== storedIso) {
         await db
           .update(taxCertificates)
-          .set({ redemptionDeadline: recomputed, updatedAt: new Date() })
+          .set({ redemptionDeadline: recomputed, updatedAt: clock.now() })
           .where(eq(taxCertificates.id, row.id));
         result.deadlineChanged += 1;
       }

@@ -3,6 +3,7 @@ import { aiTelemetryEvents, aiModelConfigs } from "@shared/schema";
 import { invalidateDbModelCache } from "./aiRouter";
 import { sql, eq, gte, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ============================================
 // TELEMETRY OPTIMIZER
@@ -42,7 +43,7 @@ const LOOKBACK_DAYS = 7;
  * Returns one row per (model, complexity) combination.
  */
 async function queryRawStats(): Promise<ModelStats[]> {
-  const cutoff = new Date();
+  const cutoff = clock.now();
   cutoff.setDate(cutoff.getDate() - LOOKBACK_DAYS);
 
   const rows = await db
@@ -229,7 +230,7 @@ export async function runTelemetryOptimizer(): Promise<TelemetryOptimizerResult>
       // Promote winner
       await db
         .update(aiModelConfigs)
-        .set({ weight: 100, updatedAt: new Date() })
+        .set({ weight: 100, updatedAt: clock.now() })
         .where(eq(aiModelConfigs.id, winnerConfig.id));
 
       // Demote all others in the config table
@@ -237,7 +238,7 @@ export async function runTelemetryOptimizer(): Promise<TelemetryOptimizerResult>
         if (config.id !== winnerConfig.id && (config.weight ?? 0) > 50) {
           await db
             .update(aiModelConfigs)
-            .set({ weight: 50, updatedAt: new Date() })
+            .set({ weight: 50, updatedAt: clock.now() })
             .where(eq(aiModelConfigs.id, config.id));
         }
       }
@@ -305,6 +306,6 @@ export async function getTelemetryStats(): Promise<{
     stats: rawStats,
     scored,
     windowDays: LOOKBACK_DAYS,
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
   };
 }

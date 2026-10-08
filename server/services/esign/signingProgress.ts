@@ -54,6 +54,7 @@
 
 import { storage } from "../../storage";
 import type { Signature } from "@shared/schema";
+import { clock } from "../../utils/clock";
 
 /** A signer as recorded on `generated_documents.signers`. */
 export interface RosterSigner {
@@ -174,7 +175,7 @@ export function statusPatchFor(progress: SigningProgress): {
   signedAt?: Date;
 } {
   if (progress.allSigned) {
-    const now = new Date();
+    const now = clock.now();
     return { status: "signed", completedAt: now, signedAt: now };
   }
   return { status: "partially_signed" };

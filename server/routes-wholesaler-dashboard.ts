@@ -31,6 +31,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 export function registerWholesalerDashboardRoutes(app: Express): void {
   app.get(
@@ -124,7 +125,7 @@ export function registerWholesalerDashboardRoutes(app: Express): void {
           })
           .from(buyerProfiles)
           .where(eq(buyerProfiles.organizationId, orgId));
-        const ninetyDaysAgo = Date.now() - 90 * 86_400_000;
+        const ninetyDaysAgo = clock.nowMs() - 90 * 86_400_000;
         let activeBuyers = 0;
         for (const b of allBuyers) {
           const lcd = (b.engagement as any)?.lastContactDate;

@@ -6,6 +6,7 @@
 import { db } from "../db";
 import { organizations, leads, deals, userSessions, userActivationEvents } from "@shared/schema";
 import { eq, and, sql, count, gte, desc } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 // Item 241: Full funnel visualization data
 export async function getSignupFunnel(): Promise<Array<{ stage: string; count: number; dropoffPercent: number }>> {
@@ -41,9 +42,9 @@ export async function getRetentionCurves(): Promise<{
   const totalOrgs = await db.select({ count: count() }).from(organizations);
   const total = (totalOrgs[0]?.count || 1);
 
-  const d7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const d30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const d90 = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+  const d7 = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
+  const d30 = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
+  const d90 = new Date(clock.nowMs() - 90 * 24 * 60 * 60 * 1000);
 
   const [active7] = await db.select({ count: count() }).from(organizations)
     .where(gte(organizations.updatedAt, d7));

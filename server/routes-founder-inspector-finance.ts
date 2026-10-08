@@ -63,6 +63,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
 import { getUserId } from "./types/request";
+import { clock } from "./utils/clock";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Canonical provider → source-table mapping (single source of truth for the
@@ -219,7 +220,7 @@ async function upsertFounderSetting(args: {
       .set({
         value: serialised,
         valueType: args.valueType,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
         updatedBy: args.founderId,
         description: args.description ?? existing.description,
         category: args.category,
@@ -280,7 +281,7 @@ export function registerFounderInspectorFinanceRoutes(app: Express) {
         const orgId = parseInt(req.params.id, 10);
         if (!Number.isFinite(orgId)) return Errors.badRequest(res, "invalid org id");
         const days = parseDays(req.query.days, 30, 365);
-        const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        const since = new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000);
 
         const [org] = await db
           .select()
@@ -362,7 +363,7 @@ export function registerFounderInspectorFinanceRoutes(app: Express) {
           .where(
             and(
               eq(financialLedger.organizationId, orgId),
-              gte(financialLedger.postedAt, new Date(Date.now() - 190 * 24 * 60 * 60 * 1000)),
+              gte(financialLedger.postedAt, new Date(clock.nowMs() - 190 * 24 * 60 * 60 * 1000)),
             ),
           )
           .groupBy(sql`date_trunc('month', ${financialLedger.postedAt})`)
@@ -859,7 +860,7 @@ export function registerFounderInspectorFinanceRoutes(app: Express) {
           return Errors.badRequest(res, `Unknown provider '${name}'`);
         }
         const days = parseDays(req.query.days, 30, 365);
-        const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        const since = new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000);
 
         // ── Monthly spend trend (6 months) ─────────────────────────────
         const monthlyRows = await db
@@ -873,7 +874,7 @@ export function registerFounderInspectorFinanceRoutes(app: Express) {
             and(
               eq(financialLedger.provider, name),
               eq(financialLedger.category, "opex_spent"),
-              gte(financialLedger.postedAt, new Date(Date.now() - 190 * 24 * 60 * 60 * 1000)),
+              gte(financialLedger.postedAt, new Date(clock.nowMs() - 190 * 24 * 60 * 60 * 1000)),
             ),
           )
           .groupBy(sql`date_trunc('month', ${financialLedger.postedAt})`)

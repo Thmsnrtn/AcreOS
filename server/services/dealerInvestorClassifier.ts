@@ -37,6 +37,7 @@
 import { db } from "../db";
 import { deals, properties, rentalLeases } from "@shared/schema";
 import { and, eq, gte, lte, isNotNull } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 // ─── Dealer-vs-investor classification ────────────────────────────────────
 
@@ -107,7 +108,7 @@ export async function classifyDealerVsInvestor(
 ): Promise<DealerClassification> {
   const { orgId, selfReportedHoursLast12, exclusiveRealEstate } = input;
 
-  const now = new Date();
+  const now = clock.now();
   const twelveMoAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
   const twentyFourMoAgo = new Date(now.getTime() - 2 * 365 * 24 * 60 * 60 * 1000);
 

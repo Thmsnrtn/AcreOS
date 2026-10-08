@@ -14,6 +14,7 @@ import { db } from "../db";
 import { deals, properties, organizations, activityLog } from "@shared/schema";
 import { eq, and, gte, lte, isNull, ne } from "drizzle-orm";
 import { addDays, differenceInDays, format, isPast, isBefore, addHours } from "date-fns";
+import { clock } from "../utils/clock";
 
 export interface Exchange1031 {
   id?: number;
@@ -108,7 +109,7 @@ export function estimateCapitalGains(
  */
 export function getExchangeAlerts(exchange: Exchange1031): Exchange1031Alert[] {
   const alerts: Exchange1031Alert[] = [];
-  const now = new Date();
+  const now = clock.now();
 
   if (exchange.status === 'completed' || exchange.status === 'failed' || exchange.status === 'cancelled') {
     return alerts;
@@ -210,7 +211,7 @@ export function generateIdentificationLetter(
   exchange: Exchange1031,
   orgName: string
 ): string {
-  const identificationDate = format(new Date(), 'MMMM d, yyyy');
+  const identificationDate = format(clock.now(), 'MMMM d, yyyy');
   const deadline = format(exchange.identificationDeadline, 'MMMM d, yyyy');
   const closeDate = format(exchange.saleCloseDate, 'MMMM d, yyyy');
 

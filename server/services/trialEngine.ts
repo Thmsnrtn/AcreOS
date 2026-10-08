@@ -20,6 +20,7 @@ import { db } from "../db";
 import { organizations, subscriptionHistory } from "@shared/schema";
 import { and, eq, gte, inArray, isNotNull, isNull, lte, notInArray, or } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const REMINDER_EVENT = "trial_ending_reminder_sent";
 const EXPIRED_EVENT = "trial_ended_followup_sent";
@@ -35,7 +36,7 @@ export interface TrialEngineResult {
  * Prevents double-sending if the cron retries or runs twice in a day.
  */
 async function alreadyTouched(orgId: number, eventType: string): Promise<boolean> {
-  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
   const [row] = await db
     .select({ id: subscriptionHistory.id })
     .from(subscriptionHistory)
@@ -62,7 +63,7 @@ async function recordTouch(
   await db.insert(subscriptionHistory).values({
     organizationId: orgId,
     eventType,
-    eventAt: new Date(),
+    eventAt: clock.now(),
     metadata,
   });
 }
@@ -121,7 +122,7 @@ const TRIAL_ENDED_PREDICATE = or(
 );
 
 export async function runTrialExpiryCycle(): Promise<TrialEngineResult> {
-  const now = new Date();
+  const now = clock.now();
   const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
 

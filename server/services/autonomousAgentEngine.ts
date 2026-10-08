@@ -15,6 +15,7 @@ import { db } from "../db";
 import { vaAgents, agentTasks } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
+import { clock } from "../utils/clock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -383,7 +384,7 @@ Respond with exactly this JSON structure:
     if (existing) {
       await db
         .update(vaAgents)
-        .set({ autonomyLevel: level, updatedAt: new Date() })
+        .set({ autonomyLevel: level, updatedAt: clock.now() })
         .where(eq(vaAgents.id, existing.id));
     } else {
       await db.insert(vaAgents).values({
@@ -445,7 +446,7 @@ Respond with exactly this JSON structure:
         .set({
           ...(updates.autonomyLevel && { autonomyLevel: updates.autonomyLevel }),
           config: newConfig,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(vaAgents.id, existing.id));
     } else {
@@ -512,14 +513,14 @@ Respond with exactly this JSON structure:
     await db
       .update(vaAgents)
       .set({
-        lastActiveAt: new Date(),
+        lastActiveAt: clock.now(),
         metrics: {
           totalActions: (existingMetrics.totalActions || 0) + 1,
           successfulActions: (existingMetrics.successfulActions || 0) + (success ? 1 : 0),
           pendingApproval: existingMetrics.pendingApproval || 0,
           lastDayActions: (existingMetrics.lastDayActions || 0) + 1,
         },
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(vaAgents.id, config.id));
   }

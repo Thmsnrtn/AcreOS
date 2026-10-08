@@ -44,6 +44,7 @@ import { sumTodayUsd } from "../services/aiQuotaService";
 import { Errors } from "../utils/errors";
 import { logger } from "../utils/logger";
 import { BoundedMap } from "../utils/boundedMap";
+import { clock } from "../utils/clock";
 
 /**
  * Per-tier default USD/day budget. Read once on first call; can be
@@ -72,7 +73,7 @@ function isInTrial(org: { trialEndsAt?: Date | string | null; trialUsed?: boolea
   const ends = org.trialEndsAt;
   if (!ends) return false;
   const ms = typeof ends === "string" ? Date.parse(ends) : ends.getTime();
-  return Number.isFinite(ms) && ms > Date.now();
+  return Number.isFinite(ms) && ms > clock.nowMs();
 }
 
 /**
@@ -255,7 +256,7 @@ export function expensiveEndpointGuard(opts: GuardOptions) {
 }
 
 function secondsUntilUtcMidnight(): number {
-  const now = new Date();
+  const now = clock.now();
   const tomorrow = new Date(Date.UTC(
     now.getUTCFullYear(),
     now.getUTCMonth(),

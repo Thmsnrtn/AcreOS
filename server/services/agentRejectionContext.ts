@@ -34,6 +34,7 @@ import { db } from "../db";
 import { agentRejectionNotes, type AgentRejectionNote } from "@shared/schema";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const DEFAULT_LIMIT = 30;
 const SYSTEM_PROMPT_LIMIT = 12; // we don't want to swamp the context window
@@ -110,7 +111,7 @@ export async function loadRejectionContext(args: LoadRejectionContextArgs): Prom
       // Best-effort; don't block retrieval on the consumedAt write.
       void db
         .update(agentRejectionNotes)
-        .set({ consumedAt: new Date() })
+        .set({ consumedAt: clock.now() })
         .where(inArray(agentRejectionNotes.id, unconsumedIds))
         .catch((err) => {
           logger.warn(`[rejection] consumedAt mark failed for ${unconsumedIds.length} ids: ${err instanceof Error ? err.message : err}`);
@@ -143,7 +144,7 @@ function buildSystemPromptBlock(notes: AgentRejectionNote[]): string {
  * count + most-common tags + most-recent-note for one agent.
  */
 export async function getRejectionSummary(agentCodename: string, windowDays = 30) {
-  const cutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
   const rows = await db
     .select({
       tags: agentRejectionNotes.tags,

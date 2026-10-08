@@ -30,6 +30,7 @@
  */
 import type OpenAI from "openai";
 import { logAgentTrace } from "./agentLlmTraces";
+import { clock } from "../utils/clock";
 
 export interface TracedLlmCallOpts {
   agentCodename: string;
@@ -47,7 +48,7 @@ export async function tracedLlmCall(opts: TracedLlmCallOpts): Promise<{
   response: OpenAI.Chat.ChatCompletion;
   content: string;
 }> {
-  const started = Date.now();
+  const started = clock.nowMs();
   let response: OpenAI.Chat.ChatCompletion | null = null;
   let error: string | null = null;
   let content = "";
@@ -71,7 +72,7 @@ export async function tracedLlmCall(opts: TracedLlmCallOpts): Promise<{
       systemPrompt: opts.systemPrompt,
       userPrompt: opts.userPrompt,
       response: content || "",
-      latencyMs: Date.now() - started,
+      latencyMs: clock.nowMs() - started,
       inputTokens: response?.usage?.prompt_tokens,
       outputTokens: response?.usage?.completion_tokens,
       error,

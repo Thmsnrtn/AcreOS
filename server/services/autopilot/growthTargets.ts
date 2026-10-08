@@ -16,6 +16,7 @@ import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "../../db";
 import { growthTargets, type GrowthTarget } from "@shared/schema";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 export interface CountyTarget {
   state: string;
@@ -149,7 +150,7 @@ export async function markTargetDispatched(id: number, dispatchId: number | null
   try {
     await db
       .update(growthTargets)
-      .set({ status: "dispatched", dispatchedAt: new Date(), lastDispatchId: dispatchId ?? null })
+      .set({ status: "dispatched", dispatchedAt: clock.now(), lastDispatchId: dispatchId ?? null })
       .where(and(eq(growthTargets.id, id), eq(growthTargets.status, "pending")));
   } catch (err) {
     logger.warn("[growthTargets] mark dispatched failed", err instanceof Error ? err : undefined);
@@ -168,7 +169,7 @@ export async function refreshGrowthDemand(windowDays = 30): Promise<number> {
   try {
     const { publicParcelReports } = await import("@shared/schema");
     const { sql, gte } = await import("drizzle-orm");
-    const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+    const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
     const counts = await db
       .select({
         state: publicParcelReports.state,

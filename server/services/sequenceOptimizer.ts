@@ -13,6 +13,7 @@ import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
+import { clock } from "../utils/clock";
 export interface MessagePerformanceParams {
   sequenceId?: number;
   sequenceName: string;
@@ -131,7 +132,7 @@ export class SequenceOptimizerService {
 
     if (existing) {
       const updates: Partial<SequencePerformance> = {
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       };
 
       switch (event) {
@@ -418,9 +419,9 @@ Respond in JSON:
                   .filter((s: OptimizationSuggestion) => s.type === "segment")
                   .map((s: OptimizationSuggestion) => s.suggestion),
                 confidence: 0.8,
-                lastOptimizedAt: new Date().toISOString(),
+                lastOptimizedAt: clock.now().toISOString(),
               },
-              updatedAt: new Date(),
+              updatedAt: clock.now(),
             })
             .where(eq(sequencePerformance.id, record.id));
         }
@@ -559,7 +560,7 @@ Respond in JSON:
         .update(sequencePerformance)
         .set({
           bestPerformingSegments: segments.slice(0, 5),
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(sequencePerformance.id, record.id));
     }
@@ -600,7 +601,7 @@ Respond in JSON:
             replyRate: "0",
             conversionRate: "0",
             isWinner: false,
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(eq(sequencePerformance.id, existing.id));
         performanceRecordIds.push(existing.id);
@@ -641,7 +642,7 @@ Respond in JSON:
         sequenceId,
         messagePosition,
         variants: variants.map((v) => v.name),
-        startedAt: new Date().toISOString(),
+        startedAt: clock.now().toISOString(),
       },
       relatedEntityType: "sequence",
       relatedEntityId: sequenceId,
@@ -651,7 +652,7 @@ Respond in JSON:
       performanceRecordIds,
       testName: `Position ${messagePosition} A/B Test`,
       variants: variants.map((v) => v.name),
-      startedAt: new Date(),
+      startedAt: clock.now(),
     };
   }
 

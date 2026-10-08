@@ -31,6 +31,7 @@
  */
 
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const CENSUS_KEY = process.env.CENSUS_API_KEY || "";
 const CENSUS_BASE = "https://api.census.gov/data";
@@ -585,7 +586,7 @@ export async function getCountyDisasterHistory(
     const data = await resp.json();
     const disasters = (data.DisasterDeclarationsSummaries || data.data || []) as any[];
 
-    const tenYearsAgo = new Date();
+    const tenYearsAgo = clock.now();
     tenYearsAgo.setFullYear(tenYearsAgo.getFullYear() - 10);
 
     const recent10yr = disasters.filter((d: any) => {

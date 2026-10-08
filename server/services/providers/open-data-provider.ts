@@ -17,6 +17,7 @@ import type {
   ProviderHealthStatus,
 } from "./types";
 import type { LookupCategory } from "../data-source-broker";
+import { clock } from "../../utils/clock";
 
 /**
  * Broker-backed categories: each registry DataCategory in this map is fulfilled
@@ -127,7 +128,7 @@ export const openDataProvider: DataProvider = {
   },
 
   async lookup(category: DataCategory, input: LookupInput): Promise<LookupResult> {
-    const start = Date.now();
+    const start = clock.nowMs();
 
     if (input.type !== "coordinates" && input.type !== "address") {
       throw new Error(`open-data provider does not support input type: ${input.type}`);
@@ -176,9 +177,9 @@ export const openDataProvider: DataProvider = {
       category,
       confidence,
       costCents: 0,
-      fetchedAt: new Date(),
+      fetchedAt: clock.now(),
       cached: false,
-      latencyMs: Date.now() - start,
+      latencyMs: clock.nowMs() - start,
       data,
       source: SOURCE_BY_CATEGORY[category] ?? "Open Data",
       // Open-data parcel/federal layers are authoritative systems-of-record.
@@ -190,7 +191,7 @@ export const openDataProvider: DataProvider = {
   },
 
   async healthCheck(): Promise<ProviderHealthStatus> {
-    const start = Date.now();
+    const start = clock.nowMs();
     try {
       // Quick check against FEMA NFHL (reliable free endpoint). FEMA moved the
       // public NFHL service to the `/arcgis/` path; the old `/gis/nfhl/` host now
@@ -201,16 +202,16 @@ export const openDataProvider: DataProvider = {
       );
       return {
         healthy: response.ok,
-        latencyMs: Date.now() - start,
+        latencyMs: clock.nowMs() - start,
         message: response.ok ? "FEMA NFHL reachable" : `Status ${response.status}`,
-        checkedAt: new Date(),
+        checkedAt: clock.now(),
       };
     } catch (error) {
       return {
         healthy: false,
-        latencyMs: Date.now() - start,
+        latencyMs: clock.nowMs() - start,
         message: error instanceof Error ? error.message : "Health check failed",
-        checkedAt: new Date(),
+        checkedAt: clock.now(),
       };
     }
   },

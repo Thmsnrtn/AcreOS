@@ -20,6 +20,7 @@ import {
 import { getPaxControls, paxControlsRefusalMessage, type PaxControlsState } from "./paxControls";
 import { recordPaxEffect } from "./paxReceipts";
 import type { PaxStance } from "@shared/pax-controls";
+import { clock } from "../utils/clock";
 
 // Re-export the live-trigger source of truth for server-side consumers and
 // tests. The list itself lives in shared/ so the client (builder + gallery
@@ -2063,7 +2064,7 @@ class WorkflowEngine {
       status: "running",
       triggerData,
       executionLog,
-      startedAt: new Date(),
+      startedAt: clock.now(),
     });
 
     const context: WorkflowExecutionContext = {
@@ -2092,7 +2093,7 @@ class WorkflowEngine {
       );
       return storage.updateWorkflowRun(run.id, {
         status: "failed",
-        completedAt: new Date(),
+        completedAt: clock.now(),
         error:
           "Workflow could not be resumed after its wait: the saved resume point is missing. No further steps were run.",
         resumeAt: null,
@@ -2106,7 +2107,7 @@ class WorkflowEngine {
       );
       return storage.updateWorkflowRun(run.id, {
         status: "failed",
-        completedAt: new Date(),
+        completedAt: clock.now(),
         error: `Workflow ${run.workflowId} was deleted while this run was waiting. No further steps were run.`,
         resumeAt: null,
       });
@@ -2127,12 +2128,12 @@ class WorkflowEngine {
     const delayEntry = resumeState.delayActionIndex >= 0 ? executionLog[resumeState.delayActionIndex] : undefined;
     if (delayEntry && !pausedPark) {
       delayEntry.status = "completed";
-      delayEntry.completedAt = new Date().toISOString();
+      delayEntry.completedAt = clock.now().toISOString();
       delayEntry.result = {
         delayed: true,
         durable: true,
         delayMinutes: resumeState.delayMinutes,
-        resumedAt: new Date().toISOString(),
+        resumedAt: clock.now().toISOString(),
       };
     }
 
@@ -2193,7 +2194,7 @@ class WorkflowEngine {
       for (let i = startIndex; i < workflow.actions.length; i++) {
         const action = workflow.actions[i];
         executionLog[i].status = "running";
-        executionLog[i].startedAt = new Date().toISOString();
+        executionLog[i].startedAt = clock.now().toISOString();
 
         run = await storage.updateWorkflowRun(run.id, { executionLog });
 
@@ -2221,11 +2222,11 @@ class WorkflowEngine {
             // WorkflowExecutionLogEntry status union; widen locally (same
             // convention as ExtendedTriggerEvent above).
             (executionLog[i] as { status: string }).status = result.status;
-            executionLog[i].completedAt = new Date().toISOString();
+            executionLog[i].completedAt = clock.now().toISOString();
             executionLog[i].result = result;
           } else {
             executionLog[i].status = "completed";
-            executionLog[i].completedAt = new Date().toISOString();
+            executionLog[i].completedAt = clock.now().toISOString();
             executionLog[i].result = result;
 
             if (result) {
@@ -2234,7 +2235,7 @@ class WorkflowEngine {
           }
         } catch (actionError: any) {
           executionLog[i].status = "failed";
-          executionLog[i].completedAt = new Date().toISOString();
+          executionLog[i].completedAt = clock.now().toISOString();
           executionLog[i].error = actionError.message;
 
           for (let j = i + 1; j < workflow.actions.length; j++) {
@@ -2244,7 +2245,7 @@ class WorkflowEngine {
           run = await storage.updateWorkflowRun(run.id, {
             status: "failed",
             executionLog,
-            completedAt: new Date(),
+            completedAt: clock.now(),
             error: `Action ${action.id} failed: ${actionError.message}`,
           });
 
@@ -2263,7 +2264,7 @@ class WorkflowEngine {
       run = await storage.updateWorkflowRun(run.id, {
         status: gaps.length > 0 ? "completed_with_gaps" : "completed",
         executionLog,
-        completedAt: new Date(),
+        completedAt: clock.now(),
         ...(gaps.length > 0
           ? {
               error: `${gaps.length} step${gaps.length === 1 ? "" : "s"} did not run: ${gaps
@@ -2276,7 +2277,7 @@ class WorkflowEngine {
       run = await storage.updateWorkflowRun(run.id, {
         status: "failed",
         executionLog,
-        completedAt: new Date(),
+        completedAt: clock.now(),
         error: error.message,
       });
     }
@@ -2299,7 +2300,7 @@ class WorkflowEngine {
     nextActionIndex: number,
     controls: PaxControlsState,
   ): Promise<WorkflowRun> {
-    const resumeAt = controls.pausedUntil ?? new Date(Date.now() + PAUSED_RESUME_FALLBACK_MS);
+    const resumeAt = controls.pausedUntil ?? new Date(clock.nowMs() + PAUSED_RESUME_FALLBACK_MS);
     const reason = paxControlsRefusalMessage(controls);
 
     const entry = executionLog[nextActionIndex];
@@ -2367,13 +2368,13 @@ class WorkflowEngine {
     if (delayMs <= INLINE_DELAY_MAX_MS) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
       executionLog[index].status = "completed";
-      executionLog[index].completedAt = new Date().toISOString();
+      executionLog[index].completedAt = clock.now().toISOString();
       executionLog[index].result = { delayed: true, delayMinutes, durable: false };
       logger.info(`[WorkflowEngine] Delayed inline for ${delayMinutes} minute(s)`);
       return null;
     }
 
-    const resumeAt = new Date(Date.now() + delayMs);
+    const resumeAt = new Date(clock.nowMs() + delayMs);
     // TODO(tsc): "waiting" is not declared in the frozen shared
     // WorkflowExecutionLogEntry status union; widen locally.
     (executionLog[index] as { status: string }).status = "waiting";
@@ -2409,7 +2410,7 @@ class WorkflowEngine {
    */
   async resumeDueWorkflowRuns(
     limit = 25,
-    now: Date = new Date(),
+    now: Date = clock.now(),
   ): Promise<{ due: number; resumed: number; failed: number }> {
     const due = await storage.getDueWaitingWorkflowRuns(now, limit);
     let resumed = 0;
@@ -2430,7 +2431,7 @@ class WorkflowEngine {
         await storage
           .updateWorkflowRun(parked.id, {
             status: "failed",
-            completedAt: new Date(),
+            completedAt: clock.now(),
             error: `Resume after wait failed: ${error instanceof Error ? error.message : String(error)}`,
             resumeAt: null,
           })
@@ -2729,7 +2730,7 @@ class WorkflowEngine {
     const description = this.interpolateTemplate(config.description || "", context.variables);
 
     const dueDate = config.dueInDays
-      ? new Date(Date.now() + config.dueInDays * 24 * 60 * 60 * 1000)
+      ? new Date(clock.nowMs() + config.dueInDays * 24 * 60 * 60 * 1000)
       : undefined;
 
     const task = await storage.createTask({

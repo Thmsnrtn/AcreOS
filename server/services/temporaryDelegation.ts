@@ -20,6 +20,7 @@ import { db } from "../db";
 import { authorityDelegations, type AuthorityDelegation } from "@shared/schema";
 import { eq, and, gt, isNull } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface Delegation {
   id: number;
@@ -42,7 +43,7 @@ function toDelegation(row: AuthorityDelegation): Delegation {
     toLevel: row.toLevel,
     expiresAt: row.expiresAt,
     reason: row.reason,
-    isActive: row.revokedAt === null && row.expiresAt > new Date(),
+    isActive: row.revokedAt === null && row.expiresAt > clock.now(),
     createdAt: row.createdAt,
   };
 }
@@ -82,7 +83,7 @@ export async function grantTemporaryAuthority(params: {
       fromLevel: 2, // default: recommend+wait
       toLevel: params.toLevel ?? 1,
       reason: params.reason,
-      expiresAt: new Date(Date.now() + params.durationHours * 60 * 60 * 1000),
+      expiresAt: new Date(clock.nowMs() + params.durationHours * 60 * 60 * 1000),
     })
     .returning();
 
@@ -115,7 +116,7 @@ export async function checkTemporaryDelegation(
         and(
           eq(authorityDelegations.agentCodename, agentCodename),
           isNull(authorityDelegations.revokedAt),
-          gt(authorityDelegations.expiresAt, new Date()),
+          gt(authorityDelegations.expiresAt, clock.now()),
         ),
       );
     for (const row of rows) {
@@ -143,7 +144,7 @@ export async function checkTemporaryDelegation(
 export async function revokeDelegation(delegationId: number): Promise<boolean> {
   const [row] = await db
     .update(authorityDelegations)
-    .set({ revokedAt: new Date() })
+    .set({ revokedAt: clock.now() })
     .where(and(eq(authorityDelegations.id, delegationId), isNull(authorityDelegations.revokedAt)))
     .returning({ id: authorityDelegations.id, agentCodename: authorityDelegations.agentCodename });
   if (!row) return false;
@@ -158,7 +159,7 @@ export async function getActiveDelegations(): Promise<Delegation[]> {
   const rows = await db
     .select()
     .from(authorityDelegations)
-    .where(and(isNull(authorityDelegations.revokedAt), gt(authorityDelegations.expiresAt, new Date())));
+    .where(and(isNull(authorityDelegations.revokedAt), gt(authorityDelegations.expiresAt, clock.now())));
   return rows.map(toDelegation);
 }
 
@@ -168,12 +169,12 @@ export async function getActiveDelegations(): Promise<Delegation[]> {
 export async function revokeAllForAgent(agentCodename: string): Promise<number> {
   const rows = await db
     .update(authorityDelegations)
-    .set({ revokedAt: new Date() })
+    .set({ revokedAt: clock.now() })
     .where(
       and(
         eq(authorityDelegations.agentCodename, agentCodename),
         isNull(authorityDelegations.revokedAt),
-        gt(authorityDelegations.expiresAt, new Date()),
+        gt(authorityDelegations.expiresAt, clock.now()),
       ),
     )
     .returning({ id: authorityDelegations.id });

@@ -94,7 +94,7 @@ declare module "http" {
 }
 
 export function log(message: string, source = "express") {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
+  const formattedTime = clock.now().toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
@@ -201,6 +201,7 @@ app.set("trust proxy", 1);
 //   - Skip when the caller opts out via `x-no-compression` (kept for
 //     parity with the upstream `compression` middleware default behavior).
 import compression from "compression";
+import { clock } from "./utils/clock";
 const SKIP_COMPRESS_TYPE = /^(image\/|video\/|audio\/|application\/pdf|application\/zip|application\/gzip|application\/x-gzip|application\/x-bzip2|application\/x-7z-compressed|application\/octet-stream)/i;
 app.use(
   compression({

@@ -20,6 +20,7 @@ import type {
 } from "../router";
 import { averageCostCentsPerPiece, PartialMailSendError } from "../router";
 import { logger } from "../../../utils/logger";
+import { clock } from "../../../utils/clock";
 
 const POSTGRID_BASE_URL = "https://api.postgrid.com/print-mail/v1";
 
@@ -192,7 +193,7 @@ export const postgridAdapter: MailProvider = {
         }
         throw err;
       }
-      const providerPieceId = result.id ?? `postgrid_${Date.now()}`;
+      const providerPieceId = result.id ?? `postgrid_${clock.nowMs()}`;
       const cost = POSTGRID_COSTS[piece.pieceType];
 
       pieces.push({ providerPieceId, recipientRef: `${shipment.customerId}` });
@@ -216,7 +217,7 @@ export const postgridAdapter: MailProvider = {
 
     return {
       provider: "postgrid",
-      providerEventId: pieces[0]?.providerPieceId ?? `postgrid_shipment_${Date.now()}`,
+      providerEventId: pieces[0]?.providerPieceId ?? `postgrid_shipment_${clock.nowMs()}`,
       pieces,
       totalCostCents,
     };

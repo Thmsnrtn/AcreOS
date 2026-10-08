@@ -12,6 +12,7 @@ import { db } from "../db";
 import { agentActionUndoLog, campaigns } from "@shared/schema";
 import { eq, and, gte } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 type UndoFn = (originalInput: Record<string, any>) => Promise<{ success: boolean; detail: string }>;
 
@@ -30,7 +31,7 @@ registerUndo("beacon_marketing", "pause_campaign", async (input) => {
   if (!campaignId) return { success: false, detail: "No campaign ID" };
 
   await db.update(campaigns)
-    .set({ status: "active", updatedAt: new Date() })
+    .set({ status: "active", updatedAt: clock.now() })
     .where(eq(campaigns.id, campaignId));
 
   return { success: true, detail: `Campaign #${campaignId} resumed` };
@@ -54,7 +55,7 @@ export async function registerActionUndo(
 
   const undoAvailable = !!registration;
   const undoExpiry = registration?.expiryMs
-    ? new Date(Date.now() + registration.expiryMs)
+    ? new Date(clock.nowMs() + registration.expiryMs)
     : null;
 
   try {
@@ -88,7 +89,7 @@ export async function executeUndo(actionLogId: number): Promise<{
   if (!entry) return { success: false, detail: "No undo record found for this action" };
   if (!entry.undoAvailable) return { success: false, detail: "This action cannot be undone" };
   if (entry.undoExecutedAt) return { success: false, detail: "This action has already been undone" };
-  if (entry.undoExpiry && new Date() > new Date(entry.undoExpiry)) {
+  if (entry.undoExpiry && clock.now() > new Date(entry.undoExpiry)) {
     return { success: false, detail: "Undo window has expired" };
   }
 
@@ -102,7 +103,7 @@ export async function executeUndo(actionLogId: number): Promise<{
     // Record the undo
     await db.update(agentActionUndoLog)
       .set({
-        undoExecutedAt: new Date(),
+        undoExecutedAt: clock.now(),
         undoResult: result,
       })
       .where(eq(agentActionUndoLog.id, entry.id));
@@ -111,7 +112,7 @@ export async function executeUndo(actionLogId: number): Promise<{
   } catch (err: any) {
     const result = { success: false, detail: `Undo failed: ${err.message}` };
     await db.update(agentActionUndoLog)
-      .set({ undoExecutedAt: new Date(), undoResult: result })
+      .set({ undoExecutedAt: clock.now(), undoResult: result })
       .where(eq(agentActionUndoLog.id, entry.id));
     return result;
   }
@@ -142,7 +143,7 @@ export async function getUndoStatus(actionLogId: number): Promise<{
 
   return {
     undoAvailable: entry.undoAvailable,
-    expired: entry.undoExpiry ? new Date() > new Date(entry.undoExpiry) : false,
+    expired: entry.undoExpiry ? clock.now() > new Date(entry.undoExpiry) : false,
     alreadyUndone: !!entry.undoExecutedAt,
   };
 }

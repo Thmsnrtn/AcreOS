@@ -58,6 +58,7 @@ import {
   FLY_COST_PER_CUSTOMER_USD,
   COMMS_COST_PER_CUSTOMER_USD,
 } from "../services/costModel";
+import { clock } from "../utils/clock";
 
 // ─── Tunable thresholds ─────────────────────────────────────────────────────
 
@@ -173,7 +174,7 @@ function maybeAutoTunePromptCache(
       id: newId("auto"),
       kind: "prompt_cache_toggle",
       description: "Confirmed prompt-cache defaults remain enabled (saves ~30% on repeat prompts).",
-      appliedAt: new Date().toISOString(),
+      appliedAt: clock.now().toISOString(),
       metadata: { totalAiCostUsd },
     });
   }
@@ -191,7 +192,7 @@ function maybeAutoTuneLogVolume(
       id: newId("auto"),
       kind: "log_volume_tune",
       description: `Recommended log level drop from debug→info (only ${customerCount} active customers; log noise > value).`,
-      appliedAt: new Date().toISOString(),
+      appliedAt: clock.now().toISOString(),
       metadata: { customerCount, currentLevel: process.env.LOG_LEVEL },
     });
   }
@@ -199,7 +200,7 @@ function maybeAutoTuneLogVolume(
 
 // ─── Snapshot collection ────────────────────────────────────────────────────
 
-export async function collectOptimizerSnapshot(now: Date = new Date()): Promise<OptimizerSnapshot> {
+export async function collectOptimizerSnapshot(now: Date = clock.now()): Promise<OptimizerSnapshot> {
   const windowDays = 30;
   const windowStart = new Date(now.getTime() - windowDays * 86_400_000);
   const windowStartIso = windowStart.toISOString().slice(0, 10);
@@ -328,7 +329,7 @@ export async function collectOptimizerSnapshot(now: Date = new Date()): Promise<
           `${fmtUsd(estSavings)}.`,
         estimatedSavingsUsd: estSavings,
         autoApplied: autoTune,
-        appliedAt: autoTune ? new Date().toISOString() : undefined,
+        appliedAt: autoTune ? clock.now().toISOString() : undefined,
         appliedBy: autoTune ? "auto" : undefined,
         metadata: { taskType: f.taskType, currentTier: "sonnet", recommendedTier: "haiku" },
       };
@@ -533,14 +534,14 @@ export async function runCostOptimizer(): Promise<{
   autoAppliedCount: number;
   profitMarginPct: number;
 }> {
-  const startedAt = Date.now();
+  const startedAt = clock.nowMs();
   try {
     const snapshot = await collectOptimizerSnapshot();
     const runId = await persistOptimizerRun(snapshot);
     logger.info("[CostOptimizer] run complete", {
       metadata: {
         runId,
-        durationMs: Date.now() - startedAt,
+        durationMs: clock.nowMs() - startedAt,
         customerCount: snapshot.customerCount,
         mrrUsd: snapshot.mrrUsd,
         totalAiCostUsd: snapshot.totalAiCostUsd,
@@ -592,7 +593,7 @@ export async function applyRecommendation(opts: {
   recs[idx] = {
     ...rec,
     autoApplied: true,
-    appliedAt: new Date().toISOString(),
+    appliedAt: clock.now().toISOString(),
     appliedBy: opts.approverEmail,
   };
 

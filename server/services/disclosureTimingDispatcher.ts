@@ -25,6 +25,7 @@ import {
 } from "@shared/schema";
 import { and, eq, lte, sql, isNull } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface DispatchResult {
   scheduledId: string;
@@ -39,7 +40,7 @@ export async function runDisclosureTimingDispatch(): Promise<{
   failed: number;
   results: DispatchResult[];
 }> {
-  const now = new Date();
+  const now = clock.now();
   const dueRows = await db
     .select()
     .from(disclosureTimingScheduled)
@@ -128,7 +129,7 @@ export async function runDisclosureTimingDispatch(): Promise<{
             } else {
               await db
                 .update(disclosureTimingScheduled)
-                .set({ status: "sent", sentAt: new Date() })
+                .set({ status: "sent", sentAt: clock.now() })
                 .where(eq(disclosureTimingScheduled.id, row.id));
               result = { scheduledId: row.id, status: "sent" };
             }

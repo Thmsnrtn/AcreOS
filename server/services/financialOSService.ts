@@ -50,6 +50,7 @@ import { addDays, addMonths, format, differenceInDays } from "date-fns";
 
 import { calculateDealPnL as bookkeepingDealPnL, type DealExpense } from "./bookkeeping";
 import { centsFromDecimal, sumCents } from "@shared/finance/cents";
+import { clock } from "../utils/clock";
 // ---------------------------------------------------------------------------
 // 1031 Exchange Clock
 //
@@ -111,7 +112,7 @@ export function computeExchange1031Status(exchange: {
   const closingDate = new Date(exchange.relinquishedClosingDate);
   const identificationDeadline = addDays(closingDate, 45);
   const exchangeDeadline = addDays(closingDate, 180);
-  const now = new Date();
+  const now = clock.now();
 
   const daysToIdentification = Math.max(0, differenceInDays(identificationDeadline, now));
   const daysToExchange = Math.max(0, differenceInDays(exchangeDeadline, now));

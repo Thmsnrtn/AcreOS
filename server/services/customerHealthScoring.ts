@@ -17,6 +17,7 @@ import {
   churnRiskScores, activityLog,
 } from "@shared/schema";
 import { eq, and, gte, desc, count, sql } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 export interface CustomerHealth {
   orgId: number;
@@ -51,7 +52,7 @@ export async function getCustomerHealth(orgId: number): Promise<CustomerHealth |
   });
   if (!org) return null;
 
-  const now = new Date();
+  const now = clock.now();
 
   // Activity Score (0-100): based on activity recency. lastActiveAt is stamped
   // by the getOrCreateOrg heartbeat; null means no recorded activity yet (→ 999

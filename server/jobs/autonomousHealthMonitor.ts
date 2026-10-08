@@ -45,6 +45,7 @@ import { subHours, subDays } from "date-fns";
 import { clearAICache, getAICacheStats } from "../services/aiRouter";
 import { logger } from "../utils/logger";
 import { notifyOnCall } from "../services/oncall";
+import { clock } from "../utils/clock";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration — all limits are environment-variable controlled
@@ -107,7 +108,7 @@ async function createAlert(
       .where(and(
         eq(systemAlerts.title, title),
         eq(systemAlerts.status, "open"),
-        gte(systemAlerts.createdAt, subHours(new Date(), 24)),
+        gte(systemAlerts.createdAt, subHours(clock.now(), 24)),
       ))
       .limit(1);
 
@@ -137,7 +138,7 @@ async function createAlert(
 
 async function checkJobHealth(): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = [];
-  const since = subHours(new Date(), config.JOB_FAILURE_WINDOW_HOURS);
+  const since = subHours(clock.now(), config.JOB_FAILURE_WINDOW_HOURS);
 
   try {
     // Find jobs that failed 2+ times in the failure window
@@ -186,7 +187,7 @@ async function checkJobHealth(): Promise<HealthCheckResult[]> {
     }
 
     // Clean up stuck/zombie jobs older than 2 hours in running state
-    const stuckCutoff = subHours(new Date(), 2);
+    const stuckCutoff = subHours(clock.now(), 2);
     const stuck = await db.select({ id: backgroundJobs.id, jobType: backgroundJobs.type })
       .from(backgroundJobs)
       .where(and(
@@ -198,7 +199,7 @@ async function checkJobHealth(): Promise<HealthCheckResult[]> {
       await db.update(backgroundJobs)
         .set({
           status: "failed",
-          completedAt: new Date(),
+          completedAt: clock.now(),
           error: "Auto-terminated by health monitor: job ran for >2 hours without completion",
         })
         .where(sql`id IN (${stuck.map(j => j.id).join(",")})`);
@@ -232,7 +233,7 @@ async function checkAICosts(): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = [];
 
   try {
-    const now = new Date();
+    const now = clock.now();
     const oneHourAgo = subHours(now, 1);
     const oneDayAgo = subHours(now, 24);
     const sevenDaysAgo = subDays(now, 7);
@@ -364,9 +365,9 @@ async function checkPlatformHealth(): Promise<HealthCheckResult[]> {
 
   try {
     // Database connectivity check
-    const dbStart = Date.now();
+    const dbStart = clock.nowMs();
     await db.execute(sql`SELECT 1`);
-    const dbLatency = Date.now() - dbStart;
+    const dbLatency = clock.nowMs() - dbStart;
 
     if (dbLatency > 2000) {
       await createAlert(
@@ -407,7 +408,7 @@ async function checkPlatformHealth(): Promise<HealthCheckResult[]> {
     }
 
     // Check for orphaned/incomplete background jobs (started but never finished)
-    const orphanCutoff = subHours(new Date(), 6);
+    const orphanCutoff = subHours(clock.now(), 6);
     const orphanJobs = await db.select({ c: count() })
       .from(backgroundJobs)
       .where(and(
@@ -453,7 +454,7 @@ async function checkRevenueHealth(): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = [];
 
   try {
-    const now = new Date();
+    const now = clock.now();
 
     // Orgs with failed payments that haven't been dunned yet
     const failedPayments = await db.select({ c: count() })
@@ -533,7 +534,7 @@ async function notifyFounderIfNeeded(checks: HealthCheckResult[]): Promise<boole
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function runAutonomousHealthMonitor(): Promise<MonitorRunResult> {
-  const runAt = new Date();
+  const runAt = clock.now();
   logger.info("[HealthMonitor] Starting autonomous health check...");
 
   const [jobChecks, costChecks, platformChecks, revenueChecks] = await Promise.all([

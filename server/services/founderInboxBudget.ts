@@ -16,6 +16,7 @@
  * continue to exist but render filtered views of this same aggregator.
  */
 
+import { clock } from "../utils/clock";
 export type InboxSection = "red" | "amber" | "running_fine";
 
 export interface InboxItem {
@@ -87,7 +88,7 @@ export function applyBudget(
   const amberVisible = amber.slice(0, amberCap);
   const amberDeferred = amber.slice(amberCap);
 
-  const tomorrow = new Date();
+  const tomorrow = clock.now();
   tomorrow.setDate(tomorrow.getDate() + 1);
   tomorrow.setHours(0, 0, 0, 0);
   const deferred = amberDeferred.map((item) => ({ ...item, deferUntil: tomorrow }));

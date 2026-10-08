@@ -34,6 +34,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { createRateLimiter } from "./middleware/rateLimit";
 import { getClientIp } from "./utils/clientIp";
+import { clock } from "./utils/clock";
 
 const MAX_ERROR_NAME_LEN = 200;
 const MAX_ROUTE_PATH_LEN = 500;
@@ -163,7 +164,7 @@ export function registerErrorBoundaryRoutes(app: Express): void {
           return Errors.validationFailed(res, parsed.error.issues);
         }
         const { days } = parsed.data;
-        const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        const cutoff = new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000);
 
         const trips = await db
           .select()

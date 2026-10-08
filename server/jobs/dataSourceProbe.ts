@@ -23,6 +23,7 @@
 
 import { logger } from "../utils/logger";
 import type { DataCategory, LookupInput, LookupResult } from "../services/providers/types";
+import { clock } from "../utils/clock";
 
 // ── Golden fixtures ──────────────────────────────────────────────
 // Known coordinates in land-investor demo counties. Each names the category to
@@ -197,7 +198,7 @@ export async function runDataSourceProbes(): Promise<ProbeOutcome[]> {
   const outcomes: ProbeOutcome[] = [];
 
   for (const probe of GOLDEN_PROBES) {
-    const start = Date.now();
+    const start = clock.nowMs();
     let healthy = false;
     let detail: string | undefined;
     let source = `probe:${probe.label}`;
@@ -216,7 +217,7 @@ export async function runDataSourceProbes(): Promise<ProbeOutcome[]> {
       detail = err instanceof Error ? err.message.slice(0, 200) : "probe threw";
     }
 
-    const latencyMs = Date.now() - start;
+    const latencyMs = clock.nowMs() - start;
     outcomes.push({ label: probe.label, source, category: probe.category, healthy, latencyMs, detail });
 
     if (!healthy) {

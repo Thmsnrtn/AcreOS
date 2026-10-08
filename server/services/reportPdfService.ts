@@ -17,6 +17,7 @@
 import { jsPDF } from "jspdf";
 import { computeInvestorTrustScore } from "./investorNetworkService";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const GREEN: [number, number, number] = [30, 58, 30];
 const GRAY: [number, number, number] = [80, 80, 80];
@@ -97,7 +98,7 @@ export async function generatePortfolioPdf(data: PortfolioSummaryData): Promise<
   const contentWidth = pageWidth - margin * 2;
   const date = data.generatedDate
     ? new Date(data.generatedDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
-    : new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    : clock.now().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
   let y = addPageHeader(doc, `${data.orgName} — Portfolio Summary`, `Generated ${date}`, margin, pageWidth);
 
@@ -200,7 +201,7 @@ export async function generateCashFlowPdf(data: CashFlowPdfData): Promise<Buffer
   const doc = new jsPDF({ unit: "in", format: "letter" });
   const margin = 0.875;
   const pageWidth = 8.5;
-  const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const date = clock.now().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
   let y = addPageHeader(
     doc,

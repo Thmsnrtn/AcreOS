@@ -21,6 +21,7 @@ import { db } from "../db";
 import { agentEvents } from "@shared/schema";
 import { wsServer } from "../websocket";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Authority Tier Definitions ──────────────────────────────────────────────
 
@@ -139,7 +140,7 @@ class TrustAuthorityEscalation {
         newScore,
         newLabel: newTier.label,
         unlockedActions: newActions,
-        promotedAt: new Date().toISOString(),
+        promotedAt: clock.now().toISOString(),
       },
     });
 

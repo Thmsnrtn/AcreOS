@@ -29,6 +29,7 @@ import {
   type SoleneDispatchAgentRole,
 } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // openSession
@@ -228,7 +229,7 @@ export async function synthesizeSession(
     );
   }
 
-  const now = new Date();
+  const now = clock.now();
   await db
     .update(soleneReasoningSessions)
     .set({
@@ -267,7 +268,7 @@ export async function abandonSession(
     );
   }
 
-  const now = new Date();
+  const now = clock.now();
   await db
     .update(soleneReasoningSessions)
     .set({

@@ -8,6 +8,7 @@ import { logger } from "../utils/logger";
 import { DISCLAIMER_INFORMATIONAL_SCORE } from "./legalDisclaimers";
 // Type-only import (erased at build) — no runtime cycle with the enrichment stack.
 import type { EnrichmentResult } from "./propertyEnrichment";
+import { clock } from "../utils/clock";
 
 interface ScoringFactors {
   location: {
@@ -485,7 +486,7 @@ class LandCreditScoring {
           factorProvenance,
         },
         modelVersion: LCS_METHODOLOGY_VERSION,
-        validUntil: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+        validUntil: new Date(clock.nowMs() + 90 * 24 * 60 * 60 * 1000),
       });
 
       return {
@@ -778,7 +779,7 @@ class LandCreditScoring {
     if (property.purchasePrice && property.estimatedValue) {
       provenance.appreciation = measured(PROPERTY_RECORD_SOURCE);
       const appreciation = ((property.estimatedValue - property.purchasePrice) / property.purchasePrice) * 100;
-      const annualAppreciation = appreciation / ((new Date().getTime() - new Date(property.purchaseDate).getTime()) / (365 * 24 * 60 * 60 * 1000));
+      const annualAppreciation = appreciation / ((clock.now().getTime() - new Date(property.purchaseDate).getTime()) / (365 * 24 * 60 * 60 * 1000));
       
       if (annualAppreciation > 10) factors.appreciation = 95;
       else if (annualAppreciation > 7) factors.appreciation = 85;

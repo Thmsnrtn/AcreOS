@@ -128,6 +128,7 @@ import {
   returnRevokesAuthorization,
   type AchReturnCode,
 } from "./actumProcessing";
+import { clock } from "../utils/clock";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Policy constants
@@ -1168,7 +1169,7 @@ export const dbAchAutopayStore: AchAutopayStore = {
         status: "submitted",
         processorPaymentIntentId: paymentIntentId,
         submittedAt,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(achDebitAttempts.id, attemptId));
   },
@@ -1176,14 +1177,14 @@ export const dbAchAutopayStore: AchAutopayStore = {
   async markAttemptFailed(attemptId: number, failureReason: string): Promise<void> {
     await db
       .update(achDebitAttempts)
-      .set({ status: "failed", failureReason, updatedAt: new Date() })
+      .set({ status: "failed", failureReason, updatedAt: clock.now() })
       .where(eq(achDebitAttempts.id, attemptId));
   },
 
   async markAttemptCanceled(attemptId: number, reason: string): Promise<void> {
     await db
       .update(achDebitAttempts)
-      .set({ status: "canceled", failureReason: reason, updatedAt: new Date() })
+      .set({ status: "canceled", failureReason: reason, updatedAt: clock.now() })
       .where(eq(achDebitAttempts.id, attemptId));
   },
 
@@ -1207,7 +1208,7 @@ export const dbAchAutopayStore: AchAutopayStore = {
         failureReason: `ACH Return ${input.returnCode.code}: ${input.returnCode.description} — ${input.disposition.reason}`,
         nextRetryAt: input.disposition.nextRetryAt,
         reversalPaymentId: input.reversalPaymentId,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(achDebitAttempts.id, input.attemptId));
   },
@@ -1311,7 +1312,7 @@ export const dbAchAutopayStore: AchAutopayStore = {
             nextPaymentDate: nextDue,
             amortizationSchedule: updatedSchedule,
             version: (locked.version ?? 1) + 1,
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(and(eq(notes.id, note.id), eq(notes.version, locked.version ?? 1)))
           .returning();
@@ -1407,7 +1408,7 @@ export const dbAchAutopayStore: AchAutopayStore = {
             currentBalance: (restoredCents / 100).toString(),
             status: restoredCents > 0 && locked.status === "paid_off" ? "active" : locked.status,
             version: (locked.version ?? 1) + 1,
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(and(eq(notes.id, original.noteId), eq(notes.version, locked.version ?? 1)))
           .returning();
@@ -1427,7 +1428,7 @@ export const dbAchAutopayStore: AchAutopayStore = {
         status,
         revokedAt: at,
         revokedReason: reason,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(achMandates.id, mandateId));
   },
@@ -1435,14 +1436,14 @@ export const dbAchAutopayStore: AchAutopayStore = {
   async setAutopayEnabled(noteId: number, organizationId: number, enabled: boolean): Promise<void> {
     await db
       .update(notes)
-      .set({ autoPayEnabled: enabled, updatedAt: new Date() })
+      .set({ autoPayEnabled: enabled, updatedAt: clock.now() })
       .where(and(eq(notes.id, noteId), eq(notes.organizationId, organizationId)));
   },
 
   async markAttemptSettled(attemptId: number, paymentId: number, settledAt: Date): Promise<void> {
     await db
       .update(achDebitAttempts)
-      .set({ status: "succeeded", paymentId, settledAt, updatedAt: new Date() })
+      .set({ status: "succeeded", paymentId, settledAt, updatedAt: clock.now() })
       .where(eq(achDebitAttempts.id, attemptId));
   },
 };
@@ -1595,7 +1596,7 @@ export function liveAchAutopayDeps(): AchAutopayDeps {
     processor: stripeAchProcessor,
     emitPaymentReceived: liveEmitPaymentReceived,
     isSimulated: () => isCategorySimulated("stripe"),
-    now: () => new Date(),
+    now: () => clock.now(),
   };
 }
 

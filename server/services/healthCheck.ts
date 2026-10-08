@@ -1,4 +1,5 @@
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 /**
  * External Service Health Check System
  * 
@@ -31,7 +32,7 @@ class HealthCheckService {
    */
   async checkStripe(): Promise<ServiceHealth> {
     const name = 'stripe';
-    const start = Date.now();
+    const start = clock.nowMs();
     
     try {
       const stripeKey = process.env.STRIPE_SECRET_KEY;
@@ -44,11 +45,11 @@ class HealthCheckService {
       const stripe = new Stripe(stripeKey, { apiVersion: STRIPE_API_VERSION });
       
       await stripe.balance.retrieve();
-      const latency = Date.now() - start;
+      const latency = clock.nowMs() - start;
       
       return this.createHealth(name, 'healthy', latency);
     } catch (error: any) {
-      const latency = Date.now() - start;
+      const latency = clock.nowMs() - start;
       if (error.type === 'StripeAuthenticationError') {
         return this.createHealth(name, 'unavailable', latency, 'Invalid API key');
       }
@@ -70,7 +71,7 @@ class HealthCheckService {
    */
   async checkOpenAI(): Promise<ServiceHealth> {
     const name = 'openai';
-    const start = Date.now();
+    const start = clock.nowMs();
 
     try {
       const { getOpenAIClient } = await import('../utils/openaiClient');
@@ -85,11 +86,11 @@ class HealthCheckService {
       }
 
       await client.models.list();
-      const latency = Date.now() - start;
+      const latency = clock.nowMs() - start;
 
       return this.createHealth(name, 'healthy', latency);
     } catch (error: any) {
-      const latency = Date.now() - start;
+      const latency = clock.nowMs() - start;
       if (error.status === 401) {
         return this.createHealth(name, 'unavailable', latency, 'Invalid OpenRouter API key');
       }
@@ -156,7 +157,7 @@ class HealthCheckService {
    */
   async checkLob(): Promise<ServiceHealth> {
     const name = 'lob';
-    const start = Date.now();
+    const start = clock.nowMs();
     
     try {
       // LOB_API_KEY is the generic name lobService/directMail/configManager
@@ -175,7 +176,7 @@ class HealthCheckService {
         },
       });
       
-      const latency = Date.now() - start;
+      const latency = clock.nowMs() - start;
       
       if (response.ok) {
         return this.createHealth(name, 'healthy', latency);
@@ -185,7 +186,7 @@ class HealthCheckService {
         return this.createHealth(name, 'degraded', latency, `HTTP ${response.status}`);
       }
     } catch (error: any) {
-      const latency = Date.now() - start;
+      const latency = clock.nowMs() - start;
       return this.createHealth(name, 'degraded', latency, error.message);
     }
   }
@@ -195,14 +196,14 @@ class HealthCheckService {
    */
   async checkDatabase(): Promise<ServiceHealth> {
     const name = 'database';
-    const start = Date.now();
+    const start = clock.nowMs();
 
     try {
       const { db, pool } = await import('../db');
       const { sql } = await import('drizzle-orm');
 
       await db.execute(sql`SELECT 1`);
-      const latency = Date.now() - start;
+      const latency = clock.nowMs() - start;
 
       const poolStats = {
         total: pool.totalCount,
@@ -213,7 +214,7 @@ class HealthCheckService {
 
       return this.createHealth(name, 'healthy', latency, message);
     } catch (error: any) {
-      const latency = Date.now() - start;
+      const latency = clock.nowMs() - start;
       return this.createHealth(name, 'unavailable', latency, error.message);
     }
   }
@@ -223,7 +224,7 @@ class HealthCheckService {
    */
   async checkRedis(): Promise<ServiceHealth> {
     const name = 'redis';
-    const start = Date.now();
+    const start = clock.nowMs();
 
     try {
       const redisUrl = process.env.REDIS_URL;
@@ -239,12 +240,12 @@ class HealthCheckService {
       });
       await client.connect();
       await client.ping();
-      const latency = Date.now() - start;
+      const latency = clock.nowMs() - start;
       client.disconnect();
 
       return this.createHealth(name, 'healthy', latency);
     } catch (error: any) {
-      const latency = Date.now() - start;
+      const latency = clock.nowMs() - start;
       if (error.code === 'ECONNREFUSED') {
         return this.createHealth(name, 'unavailable', latency, 'Connection refused');
       }
@@ -304,10 +305,24 @@ class HealthCheckService {
   }
 
   /**
+   * Business invariants that are cheap and safe to read in production
+   * (server/services/invariantWatch.ts — the read-only half of the
+   * simulation's invariant monitor). A breach is `degraded`, never a 503.
+   */
+  async checkInvariants(): Promise<ServiceHealth[]> {
+    try {
+      const { checkProductionInvariants } = await import('./invariantWatch');
+      return await checkProductionInvariants();
+    } catch (error: unknown) {
+      return [this.createHealth('invariant:watch', 'degraded', undefined, `invariant watch unread: ${error instanceof Error ? error.message : 'failed'}`)];
+    }
+  }
+
+  /**
    * Run all health checks
    */
   async checkAll(): Promise<HealthCheckResult> {
-    const [coreChecks, dataChecks] = await Promise.all([
+    const [coreChecks, dataChecks, invariantChecks] = await Promise.all([
       Promise.all([
         this.checkDatabase(),
         this.checkRedis(),
@@ -318,8 +333,9 @@ class HealthCheckService {
         this.checkLob(),
       ]),
       this.checkDataProviders(),
+      this.checkInvariants(),
     ]);
-    const checks = [...coreChecks, ...dataChecks];
+    const checks = [...coreChecks, ...dataChecks, ...invariantChecks];
 
     checks.forEach((check: ServiceHealth) => {
       this.lastResults.set(check.name, check);
@@ -335,7 +351,7 @@ class HealthCheckService {
     return {
       overall,
       services: checks,
-      timestamp: new Date(),
+      timestamp: clock.now(),
     };
   }
 
@@ -374,7 +390,7 @@ class HealthCheckService {
     return {
       overall: this.calculateOverallStatus(services),
       services,
-      timestamp: new Date(),
+      timestamp: clock.now(),
     };
   }
 
@@ -414,16 +430,38 @@ class HealthCheckService {
       status,
       latency,
       message,
-      lastChecked: new Date(),
+      lastChecked: clock.now(),
     };
   }
 
   private consecutiveFailures = new Map<string, number>();
+  private invariantAlerted = new Set<string>();
 
   private async alertOnFailures(checks: ServiceHealth[]): Promise<void> {
     const criticalServices = new Set(["database", "redis", "stripe"]);
 
     for (const check of checks) {
+      // A business-invariant breach alerts on its FIRST observation (once per
+      // breach episode): it is a fact about what already happened, not a flaky probe.
+      if (check.name.startsWith("invariant:") && check.status === "degraded" && /breach/.test(check.message ?? "")) {
+        if (!this.invariantAlerted.has(check.name)) {
+          this.invariantAlerted.add(check.name);
+          try {
+            const { storage } = await import("../storage");
+            await storage.createSystemAlert({
+              type: "invariant_breach",
+              alertType: "invariant_breach",
+              severity: "critical",
+              title: `Business invariant breached: ${check.name.slice("invariant:".length)}`,
+              message: check.message ?? "breach",
+              status: "new",
+              metadata: { service: check.name },
+            });
+          } catch {}
+        }
+        continue;
+      }
+      if (check.name.startsWith("invariant:")) this.invariantAlerted.delete(check.name);
       if (check.status === "unavailable") {
         const failures = (this.consecutiveFailures.get(check.name) || 0) + 1;
         this.consecutiveFailures.set(check.name, failures);

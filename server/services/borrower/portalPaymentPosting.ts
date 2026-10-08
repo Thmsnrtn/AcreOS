@@ -53,6 +53,7 @@ import {
   feeFromExcessCents,
   outstandingServicedLateFeesCents,
 } from "../notes/servicedLateFees";
+import { clock } from "../../utils/clock";
 
 // ─────────────────────────────────────────────────────────────────────
 // Workflow payment events (Wave B — "wire the engine")
@@ -239,7 +240,7 @@ export async function postBorrowerPortalCheckoutPayment(
   input: PostBorrowerPortalCheckoutPaymentInput,
 ): Promise<PostBorrowerPortalCheckoutPaymentResult> {
   const { note, stripeSession, source } = input;
-  const now = input.now ?? new Date();
+  const now = input.now ?? clock.now();
 
   // ── Refusals, before any write ──────────────────────────────────────
   // `checkout.session.completed` fires for delayed-notification payment
@@ -320,7 +321,7 @@ export async function postServicedNotePayment(
   input: PostServicedNotePaymentInput,
 ): Promise<PostServicedNotePaymentResult> {
   const { note, amountCents, transactionId, source, paymentMethod } = input;
-  const now = input.now ?? new Date();
+  const now = input.now ?? clock.now();
 
   // ── Late fee — assessed, then paid only from money ABOVE the installment
   // (founder ruling 2026-09-29 #6, DEFECT-0099). A payment arriving after
@@ -449,7 +450,7 @@ export async function postServicedNotePayment(
         // the fourth follow-up).
         status: newBalanceCents <= 0 ? "paid_off" : lockedNote.status === "defaulted" ? "defaulted" : "active",
         version: (lockedNote.version ?? 1) + 1,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(
         and(

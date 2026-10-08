@@ -65,6 +65,7 @@ import {
   type TeamSystemAuditSeverity,
 } from "@shared/schema/team-system-audit";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // CONSTANTS
@@ -256,7 +257,7 @@ export function setBenchmarkFeedSourceForTest(
 
 function defaultCommitSource(sinceHours: number): CommitInfo[] {
   try {
-    const since = new Date(Date.now() - sinceHours * 60 * 60 * 1000)
+    const since = new Date(clock.nowMs() - sinceHours * 60 * 60 * 1000)
       .toISOString();
     const raw = execSync(
       `git log --since="${since}" --name-only --pretty=format:__COMMIT__%n%H%n%ct%n%s`,
@@ -428,7 +429,7 @@ export async function runTeamSystemAudit(
 ): Promise<RunTeamSystemAuditResult> {
   const scope = opts.scope;
   const dimensions = dimensionsForScope(scope);
-  const runStartedAt = new Date();
+  const runStartedAt = clock.now();
 
   const [run] = await db
     .insert(teamSystemAuditRuns)
@@ -502,7 +503,7 @@ export async function runTeamSystemAudit(
     await db
       .update(teamSystemAuditRuns)
       .set({
-        runEndedAt: new Date(),
+        runEndedAt: clock.now(),
         findingCount: findings.length,
         driftSignalEmitted: drift,
       })
@@ -528,7 +529,7 @@ export async function runTeamSystemAudit(
     await db
       .update(teamSystemAuditRuns)
       .set({
-        runEndedAt: new Date(),
+        runEndedAt: clock.now(),
         skipReason: `error: ${err instanceof Error ? err.message : String(err)}`,
       })
       .where(sql`${teamSystemAuditRuns.id} = ${runId}`);
@@ -611,7 +612,7 @@ export function scanCrossTeamHandoffs(
   audits: AuditFiringSummary,
 ): PendingTeamSystemFinding[] {
   const out: PendingTeamSystemFinding[] = [];
-  const now = Date.now();
+  const now = clock.nowMs();
   const WINDOW_MS = 24 * 60 * 60 * 1000;
 
   for (const commit of commits) {
@@ -910,7 +911,7 @@ export function scanTeamSynergy(
   const out: PendingTeamSystemFinding[] = [];
   if (commits.length === 0) return out;
   // Score cross-functional commits in two windows: this-week vs prior-week.
-  const now = Date.now();
+  const now = clock.nowMs();
   const ONE_WEEK = 7 * 24 * 60 * 60 * 1000;
   const thisWeek = commits.filter(
     (c) => now - c.timestamp.getTime() <= ONE_WEEK,
@@ -955,7 +956,7 @@ export function scanEliteBarTrajectory(
 ): PendingTeamSystemFinding[] {
   const out: PendingTeamSystemFinding[] = [];
   const PLATEAU_MS = 90 * 24 * 60 * 60 * 1000;
-  const now = Date.now();
+  const now = clock.nowMs();
   for (const bar of bars) {
     if (!bar.lastClosedAt) {
       out.push({

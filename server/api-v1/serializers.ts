@@ -15,6 +15,7 @@
  */
 
 import type { Lead, Property, WebhookSubscription } from "@shared/schema";
+import { clock } from "../utils/clock";
 
 export interface PublicLead {
   id: number;
@@ -55,8 +56,8 @@ export function serializeLead(lead: Lead): PublicLead {
     score: lead.score,
     do_not_contact: lead.doNotContact ?? false,
     tcpa_consent: lead.tcpaConsent ?? false,
-    created_at: (lead.createdAt ?? new Date()).toISOString(),
-    updated_at: (lead.updatedAt ?? new Date()).toISOString(),
+    created_at: (lead.createdAt ?? clock.now()).toISOString(),
+    updated_at: (lead.updatedAt ?? clock.now()).toISOString(),
   };
 }
 
@@ -93,8 +94,8 @@ export function serializeProperty(p: Property): PublicProperty {
     assessed_value: p.assessedValue !== null ? String(p.assessedValue) : null,
     market_value: p.marketValue !== null ? String(p.marketValue) : null,
     list_price: p.listPrice !== null ? String(p.listPrice) : null,
-    created_at: (p.createdAt ?? new Date()).toISOString(),
-    updated_at: (p.updatedAt ?? new Date()).toISOString(),
+    created_at: (p.createdAt ?? clock.now()).toISOString(),
+    updated_at: (p.updatedAt ?? clock.now()).toISOString(),
   };
 }
 

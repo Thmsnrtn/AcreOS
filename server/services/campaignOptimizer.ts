@@ -9,6 +9,7 @@ import { MODELS } from "./models";
 import { logger } from "../utils/logger";
 
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
+import { clock } from "../utils/clock";
 export interface CampaignMetrics {
   openRate: number;
   clickRate: number;
@@ -304,9 +305,9 @@ Respond in JSON format:
 
     await db.update(campaigns)
       .set({
-        lastOptimizedAt: new Date(),
+        lastOptimizedAt: clock.now(),
         optimizationScore: score,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(campaigns.id, campaign.id));
 

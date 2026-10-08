@@ -26,6 +26,7 @@ import { assertFeeSimpleOrThrow } from "../utils/landStatus";
 
 // Flood labels are read by code, not compared as strings (audit of 0e54c75).
 import { femaZoneCode, isSfhaCode } from "./data-source-broker";
+import { clock } from "../utils/clock";
 
 export const publicRecordTransaction = () =>
   sql`(${transactionTraining.transactionHash} NOT LIKE '%|%' AND ${transactionTraining.contributorOrgId} IS NULL)`;
@@ -504,7 +505,7 @@ class AcreOSValuationModel {
         modelVersion: 'hybrid_comps_ml',
         featuresUsed: adjustments.map((a) => a.factor),
         comparableCount: comparables.length,
-        validUntil: addMonths(new Date(), 3),
+        validUntil: addMonths(clock.now(), 3),
       }).returning();
 
       // Magnus §1 — capture AVM input + estimate as a training snapshot. The
@@ -519,7 +520,7 @@ class AcreOSValuationModel {
           subjectType: "property",
           subjectId: String(request.propertyId),
           orgId: Number.isFinite(orgIdNum) ? orgIdNum : null,
-          decisionAt: new Date(),
+          decisionAt: clock.now(),
           features: {
             acres: request.acres,
             location: request.location,
@@ -635,7 +636,7 @@ class AcreOSValuationModel {
         modelVersion: 'attom_avm',
         featuresUsed: [],
         comparableCount: 0,
-        validUntil: addMonths(new Date(), 3),
+        validUntil: addMonths(clock.now(), 3),
       });
     } catch {
       // Non-fatal — the valuation response is still returned.
@@ -780,7 +781,7 @@ Base your estimate on typical rural land market conditions in ${county} County, 
         modelVersion: estimateSource,
         featuresUsed: [],
         comparableCount: 0,
-        validUntil: addMonths(new Date(), 3),
+        validUntil: addMonths(clock.now(), 3),
       });
     } catch {
       // Non-fatal — continue even if save fails
@@ -797,7 +798,7 @@ Base your estimate on typical rural land market conditions in ${county} County, 
         subjectType: "property",
         subjectId: String(request.propertyId),
         orgId: Number.isFinite(orgIdNum) ? orgIdNum : null,
-        decisionAt: new Date(),
+        decisionAt: clock.now(),
         features: {
           acres: request.acres,
           location: request.location,
@@ -850,7 +851,7 @@ Base your estimate on typical rural land market conditions in ${county} County, 
   ): Promise<ValuationResult['comparables']> {
     try {
       // Get transactions within past 24 months
-      const cutoffDate = addMonths(new Date(), -24);
+      const cutoffDate = addMonths(clock.now(), -24);
 
       // transaction_training is anonymized — no organizationId, no nested
       // location, and acreage lives in the `size_acres` column (returned as a
@@ -1259,7 +1260,7 @@ Respond in JSON format: { "adjustment": number, "reasoning": string }`;
         return {
           totalTransactions: 0,
           avgDataQuality: 0,
-          dateRange: { oldest: new Date(), newest: new Date() },
+          dateRange: { oldest: clock.now(), newest: clock.now() },
           coverageByState: [],
           avgPricePerAcre: 0,
         };

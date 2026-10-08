@@ -16,6 +16,7 @@ import {
 } from "@shared/schema";
 import { eq, and, gte, lte, count, desc } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // Types
 interface VerificationResult {
@@ -70,7 +71,7 @@ registerVerifier("sophie_csm", "resolve_stale_ticket", async (input) => {
   if (!ticketId) return { success: false, detail: "No ticketId to verify" };
 
   // Count messages added since the follow-up
-  const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  const twoDaysAgo = new Date(clock.nowMs() - 48 * 60 * 60 * 1000);
   const recentMessages = await db.select({ c: count() })
     .from(supportTicketMessages)
     .where(and(
@@ -191,7 +192,7 @@ export async function scheduleVerification(
   input: Record<string, any>,
   delayMs: number
 ): Promise<void> {
-  const scheduledFor = new Date(Date.now() + delayMs);
+  const scheduledFor = new Date(clock.nowMs() + delayMs);
 
   try {
     await db.insert(outcomeVerificationQueue).values({
@@ -216,7 +217,7 @@ export async function processVerificationQueue(): Promise<{
   verified: number;
   failed: number;
 }> {
-  const now = new Date();
+  const now = clock.now();
   let processed = 0, verified = 0, failed = 0;
 
   // Get pending verifications that are due

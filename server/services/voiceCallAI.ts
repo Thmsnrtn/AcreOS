@@ -13,6 +13,7 @@ import { eq, and, desc, gte, lte, sql, avg } from "drizzle-orm";
 import { isDealStatus, validateDealTransition } from "@shared/lifecycle/pipeline-status";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 import { checkOperatorUrl } from "./providers/ssrf-guard";
 
 interface RecordCallParams {
@@ -229,7 +230,7 @@ export class VoiceCallAIService {
         transcriptFormatted,
         transcriptionProvider: "whisper",
         transcriptionConfidence: confidence.toString(),
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(callTranscripts.id, transcriptId))
       .returning();
@@ -269,7 +270,7 @@ export class VoiceCallAIService {
           summary: "No transcript available for analysis",
           sentiment: "neutral",
           sentimentScore: "0",
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(callTranscripts.id, transcriptId))
         .returning();
@@ -327,7 +328,7 @@ Respond in JSON format:
         summary,
         sentiment,
         sentimentScore: sentimentScore.toString(),
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(callTranscripts.id, transcriptId))
       .returning();
@@ -401,7 +402,7 @@ Respond in JSON format:
         const extracted = JSON.parse(extractedText);
         
         actionItems = (extracted.actionItems || []).map((item: any, idx: number) => ({
-          id: `action-${transcriptId}-${idx}-${Date.now()}`,
+          id: `action-${transcriptId}-${idx}-${clock.nowMs()}`,
           description: item.description,
           priority: item.priority || "medium",
           dueDate: item.dueDate,
@@ -417,7 +418,7 @@ Respond in JSON format:
       .update(callTranscripts)
       .set({
         actionItems,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(callTranscripts.id, transcriptId))
       .returning();
@@ -486,7 +487,7 @@ Respond in JSON format:
       .update(callTranscripts)
       .set({
         extractedData,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(callTranscripts.id, transcriptId))
       .returning();
@@ -583,7 +584,7 @@ Respond in JSON format:
       .update(callTranscripts)
       .set({
         coachingInsights,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(callTranscripts.id, transcriptId))
       .returning();
@@ -606,7 +607,7 @@ Respond in JSON format:
     }
 
     const appliedUpdates: CRMUpdate[] = [];
-    const now = new Date().toISOString();
+    const now = clock.now().toISOString();
 
     if (updates.leadUpdates) {
       const [lead] = await db
@@ -621,8 +622,8 @@ Respond in JSON format:
         if (updates.leadUpdates.notes) {
           const oldNotes = lead.notes || "";
           const newNotes = oldNotes 
-            ? `${oldNotes}\n\n[Call ${new Date().toLocaleDateString()}]\n${updates.leadUpdates.notes}`
-            : `[Call ${new Date().toLocaleDateString()}]\n${updates.leadUpdates.notes}`;
+            ? `${oldNotes}\n\n[Call ${clock.now().toLocaleDateString()}]\n${updates.leadUpdates.notes}`
+            : `[Call ${clock.now().toLocaleDateString()}]\n${updates.leadUpdates.notes}`;
           updateData.notes = newNotes;
           appliedUpdates.push({
             field: "lead.notes",
@@ -658,7 +659,7 @@ Respond in JSON format:
         }
 
         if (Object.keys(updateData).length > 0) {
-          updateData.updatedAt = new Date();
+          updateData.updatedAt = clock.now();
           await db
             .update(leads)
             .set(updateData)
@@ -710,8 +711,8 @@ Respond in JSON format:
         if (updates.dealUpdates.notes) {
           const oldNotes = deal.notes || "";
           const newNotes = oldNotes 
-            ? `${oldNotes}\n\n[Call ${new Date().toLocaleDateString()}]\n${updates.dealUpdates.notes}`
-            : `[Call ${new Date().toLocaleDateString()}]\n${updates.dealUpdates.notes}`;
+            ? `${oldNotes}\n\n[Call ${clock.now().toLocaleDateString()}]\n${updates.dealUpdates.notes}`
+            : `[Call ${clock.now().toLocaleDateString()}]\n${updates.dealUpdates.notes}`;
           updateData.notes = newNotes;
           appliedUpdates.push({
             field: "deal.notes",
@@ -738,7 +739,7 @@ Respond in JSON format:
       .update(callTranscripts)
       .set({
         crmUpdatesApplied: allUpdates,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(callTranscripts.id, transcriptId))
       .returning();
@@ -853,12 +854,12 @@ Respond in JSON format:
                 value: {
                   summary,
                   details: { transcriptId, leadId: finalTranscript.leadId, extracted },
-                  timestamp: new Date().toISOString(),
+                  timestamp: clock.now().toISOString(),
                 },
                 importance: 7,
               }).onConflictDoUpdate({
                 target: [paxMemory.organizationId, paxMemory.key, paxMemory.userId],
-                set: { value: { summary, details: { transcriptId, leadId: finalTranscript.leadId, extracted }, timestamp: new Date().toISOString() }, updatedAt: new Date() },
+                set: { value: { summary, details: { transcriptId, leadId: finalTranscript.leadId, extracted }, timestamp: clock.now().toISOString() }, updatedAt: clock.now() },
               } as any).catch(() => {});
             }
           } catch {}

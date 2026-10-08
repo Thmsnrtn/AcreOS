@@ -33,6 +33,7 @@ import {
 } from "./services/mailbox/mailboxClient";
 import { summarizeThread } from "./services/mailbox/threadSummary";
 import { getOrganizationId, getUserId, type AuthenticatedRequest } from "./types/request";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -144,7 +145,7 @@ router.post("/", async (req: AuthenticatedRequest, res: Response) => {
     const [row] = await db.transaction(async (tx) => {
       await tx
         .update(connectedMailboxes)
-        .set({ revokedAt: new Date() })
+        .set({ revokedAt: clock.now() })
         .where(
           and(
             eq(connectedMailboxes.organizationId, organizationId),
@@ -240,7 +241,7 @@ router.delete("/:id", async (req: AuthenticatedRequest, res: Response) => {
 
     const [row] = await db
       .update(connectedMailboxes)
-      .set({ revokedAt: new Date(), status: "revoked" })
+      .set({ revokedAt: clock.now(), status: "revoked" })
       .where(
         and(
           eq(connectedMailboxes.id, id),

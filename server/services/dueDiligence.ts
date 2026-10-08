@@ -14,6 +14,7 @@ import { logger } from "../utils/logger";
 
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
 import { parcelSnapshotVisibleTo, sharedSnapshotSources } from "../storage/gisRepo";
+import { clock } from "../utils/clock";
 // Cache freshness: 30 days
 const CACHE_FRESHNESS_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -315,7 +316,7 @@ async function getOrCreateParcelSnapshot(
   if (existingSnapshot) {
     // Check if snapshot is still fresh
     const fetchedAt = existingSnapshot.fetchedAt ? new Date(existingSnapshot.fetchedAt).getTime() : 0;
-    const isStale = Date.now() - fetchedAt > CACHE_FRESHNESS_MS;
+    const isStale = clock.nowMs() - fetchedAt > CACHE_FRESHNESS_MS;
     
     if (!isStale) {
       logger.info(`[DueDiligence] Cache hit for ${normalizedApn} in ${county}, ${state}`);
@@ -373,7 +374,7 @@ async function saveParcelSnapshot(
   const normalizedApn = writeRef.ref.apn;
   const normalizedCounty = writeRef.ref.county;
   const data = parcelResult.parcel.data;
-  const now = new Date();
+  const now = clock.now();
 
   try {
     const [inserted] = await db
@@ -400,7 +401,7 @@ async function saveParcelSnapshot(
         assessedValue: null,
         marketValue: null,
         taxAmount: data.taxAmount ? String(data.taxAmount) : null,
-        taxYear: new Date().getFullYear(),
+        taxYear: clock.now().getFullYear(),
         lastSalePrice: null,
         lastSaleDate: null,
         rawData: data as unknown as Record<string, unknown>,
@@ -521,7 +522,7 @@ export async function generateDueDiligenceReport(
               taxAmount: parcelResult.parcel.data.taxAmount,
               lastUpdated: parcelResult.parcel.data.lastUpdated,
             },
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(eq(properties.id, propertyId));
         
@@ -550,7 +551,7 @@ export async function generateDueDiligenceReport(
 
   // Build report sections
   const summary: DueDiligenceReportSummary = {
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
     propertyName: getPropertyName(property),
     apn: property.apn,
     address: formatAddress(property),
@@ -581,7 +582,7 @@ export async function generateDueDiligenceReport(
   const taxes: TaxInfo = {
     assessedValue: parseNumeric(property.assessedValue),
     taxAmount: parseNumeric(parcelData?.taxAmount),
-    taxYear: new Date().getFullYear(),
+    taxYear: clock.now().getFullYear(),
     taxStatus: null, // Would need tax records API
   };
 
@@ -708,7 +709,7 @@ export async function getQuickPropertySummary(
   }
 
   return {
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
     propertyName: getPropertyName(property),
     apn: property.apn,
     address: formatAddress(property),

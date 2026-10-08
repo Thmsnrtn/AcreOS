@@ -11,6 +11,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { circuitBreakerState } from "@shared/schema";
 import type { BreakerStore, BreakerSnapshot, PersistedBreakerRow, BreakerStateName } from "./circuit-breaker";
+import { clock } from "../../utils/clock";
 
 export const dbBreakerStore: BreakerStore = {
   async load(providerName: string): Promise<PersistedBreakerRow | null> {
@@ -35,8 +36,8 @@ export const dbBreakerStore: BreakerStore = {
       failures: snapshot.failures,
       openedAt: snapshot.openedAt != null ? new Date(snapshot.openedAt) : null,
       lastFailureAt: snapshot.lastFailureAt != null ? new Date(snapshot.lastFailureAt) : null,
-      halfOpenProbeAt: snapshot.state === "half_open" ? new Date() : null,
-      updatedAt: new Date(),
+      halfOpenProbeAt: snapshot.state === "half_open" ? clock.now() : null,
+      updatedAt: clock.now(),
     };
     await db
       .insert(circuitBreakerState)

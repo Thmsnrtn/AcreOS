@@ -17,6 +17,7 @@ import { dataProcessingAgreements } from "@shared/schema";
 import { inArray, desc } from "drizzle-orm";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 export function registerPublicTrustRoutes(app: Express): void {
   // ── RETIRED 2026-08-17 (OD-5): GET /api/trust/verticals ─────────────────
@@ -60,7 +61,7 @@ export function registerPublicTrustRoutes(app: Express): void {
       res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=3600");
       return res.json({
         subProcessors: rows,
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: clock.now().toISOString(),
         policyUrl: "/security",
       });
     } catch (err: unknown) {

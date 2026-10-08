@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Response } from "express";
 import { z } from "zod";
 import { insertAgentConfigSchema } from "@shared/schema";
 import { isAuthenticated, requireFounder } from "./auth";
@@ -15,10 +15,47 @@ import type { SubscriptionTier } from "./services/usageLimits";
 import { aiLimiter } from "./middleware/rateLimit";
 import { paxChatGuard } from "./middleware/expensiveEndpointGuard";
 import { requirePaxDisclosure } from "./middleware/requirePaxDisclosure";
+import { promptRedactionOf } from "./middleware/promptInjection";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { createUploadMiddleware } from "./middleware/fileUploadSecurity";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
+import { clock } from "./utils/clock";
+
+/** Did the input filter remove part of the customer's `message`? */
+function inputRedactionFor(res: Response): { instructionProbe: boolean } | null {
+  const r = promptRedactionOf(res);
+  return r && r.fields.includes("message") ? { instructionProbe: r.instructionProbe } : null;
+}
+
+/**
+ * Word a pre-call screener refusal for the customer (reason + safe
+ * alternative). Never throws: a failure here falls back to a plain refusal,
+ * because the request is refused either way.
+ */
+async function paxRefusalFor(
+  organizationId: number,
+  immutableNumber: number | null,
+  promptText: string,
+): Promise<{ kind: string; message: string }> {
+  try {
+    const [{ customerRefusalMessage }, { countContactableLeadsForPax }] = await Promise.all([
+      import("./services/paxRefusalCopy"),
+      import("./services/paxAccountReads"),
+    ]);
+    return await customerRefusalMessage(
+      organizationId,
+      { immutableNumber, promptText },
+      { countContactableLeads: countContactableLeadsForPax },
+    );
+  } catch (err) {
+    logger.warn("[AI Chat] refusal wording failed — sending the plain refusal", err instanceof Error ? err : undefined);
+    return {
+      kind: "generic",
+      message: "I can't help with that request as asked. Tell me what you're trying to get done and I'll suggest a way I can help.",
+    };
+  }
+}
 
 export function registerAIRoutes(app: Express): void {
   const api = app;
@@ -309,12 +346,15 @@ export function registerAIRoutes(app: Express): void {
           promptText: message,
         });
         if (!guard.allowed) {
-          return res.status(403).json({
-            error: "ConstitutionalRefusal",
-            message:
-              "This request was refused by the constitutional pre-call check.",
-            immutableNumber: guard.immutableNumber,
-            reasoning: guard.reasoning,
+          // The screener's decision stands; what changes is that the customer
+          // reads WHY and what Pax can do instead, as Pax's reply — not a bare
+          // "refused by the constitutional pre-call check".
+          const refusal = await paxRefusalFor(org.id, guard.immutableNumber ?? null, message);
+          return res.json({
+            response: refusal.message,
+            refused: true,
+            refusal: { kind: refusal.kind, immutableNumber: guard.immutableNumber ?? null },
+            conversationId: conversationId ?? null,
           });
         }
       } catch (err) {
@@ -333,6 +373,7 @@ export function registerAIRoutes(app: Express): void {
         agentRole,
         propertyId: propertyId ? Number(propertyId) : undefined,
         paxPromptVersion,
+        inputRedaction: inputRedactionFor(res),
       });
 
       step = "record_usage";
@@ -491,15 +532,20 @@ export function registerAIRoutes(app: Express): void {
           promptText: message,
         });
         if (!guard.allowed) {
+          // Delivered as an ordinary Pax reply. The old `event: error` frame
+          // carried no `type`, so the chat client (which reads only `data:`
+          // lines with a `type`) dropped it and showed "How can I help?" —
+          // the refusal never reached the customer at all.
+          const refusal = await paxRefusalFor(org.id, guard.immutableNumber ?? null, message);
           res.setHeader("Content-Type", "text/event-stream");
           res.setHeader("Cache-Control", "no-cache");
           res.setHeader("Connection", "keep-alive");
+          res.write(`data: ${JSON.stringify({ type: "content", content: refusal.message })}\n\n`);
           res.write(
-            `event: error\ndata: ${JSON.stringify({
-              error: "ConstitutionalRefusal",
-              message:
-                "This request was refused by the constitutional pre-call check.",
-              immutableNumber: guard.immutableNumber,
+            `data: ${JSON.stringify({
+              type: "done",
+              refused: true,
+              refusal: { kind: refusal.kind, immutableNumber: guard.immutableNumber ?? null },
             })}\n\n`,
           );
           res.end();
@@ -549,6 +595,7 @@ export function registerAIRoutes(app: Express): void {
         mentionedEntities: normalizedMentionedEntities,
         activeProjectId: activeProjectId ? Number(activeProjectId) : undefined,
         paxPromptVersion: streamPaxPromptVersion,
+        inputRedaction: inputRedactionFor(res),
       });
       
       let streamCompleted = false;
@@ -912,7 +959,7 @@ export function registerAIRoutes(app: Express): void {
   api.get("/api/ai/scheduled-tasks/pending-results", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const since = req.query.since ? new Date(req.query.since as string) : new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const since = req.query.since ? new Date(req.query.since as string) : new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
       const results = await storage.getPaxPendingTaskResults(org.id, since);
       res.json(results.map((t) => ({ id: t.id, name: t.name, lastRunAt: t.lastRunAt, lastRunConversationId: t.lastRunConversationId })));
     } catch (err: any) {
@@ -1085,7 +1132,7 @@ export function registerAIRoutes(app: Express): void {
       // Build Markdown
       const md = [
         `# ${conv.title}`,
-        `_Exported ${new Date().toLocaleDateString()} · Agent: ${conv.agentRole}_`,
+        `_Exported ${clock.now().toLocaleDateString()} · Agent: ${conv.agentRole}_`,
         "",
         ...messages.map(m => {
           const roleLabel = m.role === "user" ? "**You**" : "**Pax**";
@@ -1103,7 +1150,7 @@ export function registerAIRoutes(app: Express): void {
         const doc = new PDFDocument({ margin: 50 });
         doc.pipe(res);
         doc.fontSize(18).text(conv.title, { underline: true });
-        doc.fontSize(10).fillColor("gray").text(`Exported ${new Date().toLocaleDateString()} · Agent: ${conv.agentRole}`);
+        doc.fontSize(10).fillColor("gray").text(`Exported ${clock.now().toLocaleDateString()} · Agent: ${conv.agentRole}`);
         doc.moveDown();
         for (const m of messages) {
           doc.fontSize(11).fillColor(m.role === "user" ? "#1a56db" : "#111827").text(m.role === "user" ? "You:" : "Pax:", { continued: false });
@@ -1132,7 +1179,7 @@ export function registerAIRoutes(app: Express): void {
       const userId = user?.id || user?.id;
       const { paxNudges } = await import("@shared/schema");
       const { eq: _eq, and: _and, isNull, or: _or, lte: _lte, sql: _sql } = await import("drizzle-orm");
-      const now = new Date();
+      const now = clock.now();
       const nudges = await db.select().from(paxNudges)
         .where(_and(
           _eq(paxNudges.organizationId, org.id),
@@ -1158,7 +1205,7 @@ export function registerAIRoutes(app: Express): void {
       // walking the id space (2026-09-04).
       await db
         .update(paxNudges)
-        .set({ dismissedAt: new Date() } as any)
+        .set({ dismissedAt: clock.now() } as any)
         .where(
           _and(
             _eq(paxNudges.id, parseInt(req.params.id)),
@@ -1273,12 +1320,12 @@ export function registerAIRoutes(app: Express): void {
       const { getConnector } = await import("./services/connectors/registry");
       const def = getConnector(connectorId);
       await storage.upsertPaxConnector(org.id, connectorId, {
-        lastTestedAt: new Date(),
+        lastTestedAt: clock.now(),
       });
       res.json({
         success: false,
         verified: false,
-        testedAt: new Date(),
+        testedAt: clock.now(),
         message:
           `AcreOS cannot verify the ${def?.name ?? connectorId} connection: there is no ` +
           "adapter behind this connector to call, so a reachability check would be " +
@@ -1313,7 +1360,7 @@ export function registerAIRoutes(app: Express): void {
       // an `AVG_TOKENS_PER_CALL = 1000` fallback that priced calls carrying no
       // evidence at all.
       // Get ai_chat usage records for this month
-      const startOfMonth = new Date();
+      const startOfMonth = clock.now();
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
       

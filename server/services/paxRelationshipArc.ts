@@ -16,6 +16,7 @@ import { db } from "../db";
 import { organizations, paxMemory, deals } from "@shared/schema";
 import { eq, and, sql, gte, count } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -115,7 +116,7 @@ export async function getRelationshipState(orgId: number): Promise<RelationshipS
   }).from(organizations).where(eq(organizations.id, orgId)).limit(1);
 
   const daysOnPlatform = org?.createdAt
-    ? Math.floor((Date.now() - new Date(org.createdAt).getTime()) / 86400000)
+    ? Math.floor((clock.nowMs() - new Date(org.createdAt).getTime()) / 86400000)
     : 0;
 
   // Session count from pax memory
@@ -162,7 +163,7 @@ export async function getRelationshipState(orgId: number): Promise<RelationshipS
   return {
     orgId,
     stage,
-    stageEnteredAt: new Date().toISOString(), // would be stored in DB
+    stageEnteredAt: clock.now().toISOString(), // would be stored in DB
     sessionCount,
     dealsClosed,
     featuresUsed,

@@ -37,6 +37,7 @@ import {
   type PostOpexArgs,
 } from "./financial-ledger";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type LedgerDeadLetterKind = "revenue" | "refund" | "opex";
 
@@ -82,7 +83,7 @@ export async function recordLedgerDeadLetter(args: RecordDeadLetterArgs): Promis
         target: ledgerDeadLetters.externalEventId,
         set: {
           lastError: errorMessage,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         },
       });
     logger.warn("[ledgerDeadLetter] captured failed ledger posting", {
@@ -181,10 +182,10 @@ export async function runLedgerDeadLetterSweep(
         .update(ledgerDeadLetters)
         .set({
           status: "replayed",
-          replayedAt: new Date(),
-          lastAttemptAt: new Date(),
+          replayedAt: clock.now(),
+          lastAttemptAt: clock.now(),
           attempts: row.attempts + 1,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(ledgerDeadLetters.id, row.id));
       replayed += 1;
@@ -197,9 +198,9 @@ export async function runLedgerDeadLetterSweep(
           .set({
             status: exhausted ? "abandoned" : "pending",
             attempts,
-            lastAttemptAt: new Date(),
+            lastAttemptAt: clock.now(),
             lastError: err instanceof Error ? err.message : String(err),
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(eq(ledgerDeadLetters.id, row.id));
       } catch (updateErr) {

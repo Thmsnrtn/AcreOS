@@ -45,6 +45,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const allocateSchema = z.object({
   method: z.enum(BASIS_ALLOCATION_METHODS),
@@ -251,10 +252,10 @@ export function registerLotBasisRoutes(app: Express): void {
         const [updated] = await db
           .update(lotBasisAllocations)
           .set({
-            realizedAt: new Date(),
+            realizedAt: clock.now(),
             realizedSalePriceCents: parsed.data.salePriceCents,
             realizedCogsCents: cogsCents,
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(eq(lotBasisAllocations.id, alloc.id))
           .returning();
@@ -263,8 +264,8 @@ export function registerLotBasisRoutes(app: Express): void {
         await db.update(properties).set({
           status: "sold",
           soldPrice: String(parsed.data.salePriceCents / 100),
-          soldDate: parsed.data.closingDate ? new Date(parsed.data.closingDate) : new Date(),
-          updatedAt: new Date(),
+          soldDate: parsed.data.closingDate ? new Date(parsed.data.closingDate) : clock.now(),
+          updatedAt: clock.now(),
         }).where(and(
           eq(properties.id, childId),
           eq(properties.organizationId, orgId),

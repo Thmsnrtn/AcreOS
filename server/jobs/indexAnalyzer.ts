@@ -26,6 +26,7 @@ import { organizationIntegrations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
+import { clock } from "../utils/clock";
 
 // Was `const PLATFORM_ORG_ID = 0` — a sixth private spelling of "the platform's
 // own org", and the only one that said 0. `organizations.id` is a `serial`, so
@@ -240,7 +241,7 @@ async function saveReport(report: IndexAnalysisReport): Promise<void> {
     if (existing) {
       await db
         .update(organizationIntegrations)
-        .set({ credentials, updatedAt: new Date() })
+        .set({ credentials, updatedAt: clock.now() })
         .where(eq(organizationIntegrations.id, existing.id));
     } else {
       await db.insert(organizationIntegrations).values({
@@ -307,7 +308,7 @@ export async function runIndexAnalysis(): Promise<IndexAnalysisReport> {
   const suggestions = buildSuggestions(sequentialScans, existingIndexes, slowQueries);
 
   const report: IndexAnalysisReport = {
-    generatedAt: new Date(),
+    generatedAt: clock.now(),
     slowQueries,
     sequentialScans,
     suggestions,

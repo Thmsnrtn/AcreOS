@@ -18,6 +18,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
 import crypto from "crypto";
+import { clock } from "../utils/clock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -85,7 +86,7 @@ class AIBoardOfDirectors {
    */
   async scheduleWeeklyMeeting(): Promise<string> {
     const meetingId = `board-${crypto.randomUUID().slice(0, 8)}`;
-    const nextMonday = new Date();
+    const nextMonday = clock.now();
     nextMonday.setDate(nextMonday.getDate() + ((1 + 7 - nextMonday.getDay()) % 7 || 7));
     nextMonday.setHours(9, 0, 0, 0);
 
@@ -125,7 +126,7 @@ class AIBoardOfDirectors {
     if (!meeting) throw new Error(`Meeting ${meetingId} not found`);
 
     await db.update(boardMeetings)
-      .set({ status: "in_progress", startedAt: new Date() })
+      .set({ status: "in_progress", startedAt: clock.now() })
       .where(eq(boardMeetings.meetingId, meetingId));
 
     // 1. Gather KPI snapshot from Oracle
@@ -172,7 +173,7 @@ class AIBoardOfDirectors {
     await db.update(boardMeetings)
       .set({
         status: "completed",
-        completedAt: new Date(),
+        completedAt: clock.now(),
         kpiSnapshot,
         summary,
       })
@@ -379,7 +380,7 @@ class AIBoardOfDirectors {
         await db.update(constitutionalPrinciples)
           .set({
             violationCount: sql`${constitutionalPrinciples.violationCount} + 1`,
-            lastViolationAt: new Date(),
+            lastViolationAt: clock.now(),
           })
           .where(eq(constitutionalPrinciples.principleId, principle.principleId));
 

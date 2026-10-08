@@ -27,6 +27,7 @@ import {
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
 import { assertWritablePatch } from "../utils/patch";
+import { clock } from "../utils/clock";
 
 export const mailRepo = {
   // ============================================
@@ -67,7 +68,7 @@ export const mailRepo = {
     const conditions = [eq(emailSenderIdentities.id, id)];
     if (organizationId) conditions.push(eq(emailSenderIdentities.organizationId, organizationId));
     const [updated] = await db.update(emailSenderIdentities)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -75,7 +76,7 @@ export const mailRepo = {
 
   async setDefaultEmailSenderIdentity(this: DatabaseStorage, orgId: number, identityId: number): Promise<void> {
     await db.update(emailSenderIdentities)
-      .set({ isDefault: false, updatedAt: new Date() })
+      .set({ isDefault: false, updatedAt: clock.now() })
       .where(eq(emailSenderIdentities.organizationId, orgId));
     
     // SCOPED. Without the org predicate this UPDATE flipped `isDefault` on ANY
@@ -85,7 +86,7 @@ export const mailRepo = {
     // under. The correct shape was already in this file: see
     // `deleteEmailSenderIdentity` below, which builds its conditions with the org.
     await db.update(emailSenderIdentities)
-      .set({ isDefault: true, updatedAt: new Date() })
+      .set({ isDefault: true, updatedAt: clock.now() })
       .where(and(
         eq(emailSenderIdentities.id, identityId),
         eq(emailSenderIdentities.organizationId, orgId),
@@ -161,7 +162,7 @@ export const mailRepo = {
     const conditions = [eq(inboxMessages.id, id)];
     if (organizationId) conditions.push(eq(inboxMessages.organizationId, organizationId));
     const [updated] = await db.update(inboxMessages)
-      .set({ isRead: true, readAt: new Date(), readBy: userId })
+      .set({ isRead: true, readAt: clock.now(), readBy: userId })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -241,7 +242,7 @@ export const mailRepo = {
     const conditions = [eq(mailSenderIdentities.id, id)];
     if (organizationId) conditions.push(eq(mailSenderIdentities.organizationId, organizationId));
     const [updated] = await db.update(mailSenderIdentities)
-      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -249,14 +250,14 @@ export const mailRepo = {
 
   async setDefaultMailSenderIdentity(this: DatabaseStorage, orgId: number, id: number): Promise<void> {
     await db.update(mailSenderIdentities)
-      .set({ isDefault: false, updatedAt: new Date() })
+      .set({ isDefault: false, updatedAt: clock.now() })
       .where(eq(mailSenderIdentities.organizationId, orgId));
     
     // SCOPED — same defect as the email twin above, on the physical rail: this
     // set the return address and sender identity printed on another org's
     // outgoing mail.
     await db.update(mailSenderIdentities)
-      .set({ isDefault: true, updatedAt: new Date() })
+      .set({ isDefault: true, updatedAt: clock.now() })
       .where(and(
         eq(mailSenderIdentities.id, id),
         eq(mailSenderIdentities.organizationId, orgId),
@@ -303,7 +304,7 @@ export const mailRepo = {
     const conditions = [eq(mailingOrders.id, id)];
     if (organizationId) conditions.push(eq(mailingOrders.organizationId, organizationId));
     const [updated] = await db.update(mailingOrders)
-      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -314,14 +315,14 @@ export const mailRepo = {
       await db.update(mailingOrders)
         .set({ 
           sentPieces: sql`${mailingOrders.sentPieces} + 1`,
-          updatedAt: new Date()
+          updatedAt: clock.now()
         })
         .where(eq(mailingOrders.id, id));
     } else {
       await db.update(mailingOrders)
         .set({ 
           failedPieces: sql`${mailingOrders.failedPieces} + 1`,
-          updatedAt: new Date()
+          updatedAt: clock.now()
         })
         .where(eq(mailingOrders.id, id));
     }
@@ -352,7 +353,7 @@ export const mailRepo = {
 
   async updateMailingOrderPiece(this: DatabaseStorage, id: number, data: Partial<MailingOrderPiece>): Promise<MailingOrderPiece> {
     const [updated] = await db.update(mailingOrderPieces)
-      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: clock.now() })
       .where(eq(mailingOrderPieces.id, id))
       .returning();
     return updated;

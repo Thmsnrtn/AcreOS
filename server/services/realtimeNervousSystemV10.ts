@@ -19,6 +19,7 @@ import { realtimeEventLog, type RealtimeEvent } from "@shared/schema";
 import { eq, desc, gte, and, count, sql } from "drizzle-orm";
 import { wsServer } from "../websocket";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Event Type Registry ───────────────────────────────────────────────────
 
@@ -64,7 +65,7 @@ class RealtimeNervousSystemService {
       wsServer.broadcast(channel, event.type, {
         ...event.payload,
         agentCodename: event.agentCodename,
-        _ts: new Date().toISOString(),
+        _ts: clock.now().toISOString(),
       });
     } catch (err) {
       logger.error("[NervousSystem] WebSocket broadcast failed", err);
@@ -213,7 +214,7 @@ class RealtimeNervousSystemService {
       try {
         await this.emitSystemHeartbeat("pulse", {
           connectionCount: wsServer.getConnectionCount(),
-          timestamp: new Date().toISOString(),
+          timestamp: clock.now().toISOString(),
         });
       } catch {
         // non-critical

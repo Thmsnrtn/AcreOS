@@ -41,6 +41,7 @@ import {
   type PlatformConfig,
 } from "./listingSyndication";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Client contract (mirrors listing-syndication.tsx) ──────────────────────
 
@@ -202,7 +203,7 @@ export async function setChannelEnabled(
     .values({ organizationId: orgId, channelId, enabled })
     .onConflictDoUpdate({
       target: [syndicationChannelStates.organizationId, syndicationChannelStates.channelId],
-      set: { enabled, updatedAt: new Date() },
+      set: { enabled, updatedAt: clock.now() },
     });
 }
 
@@ -313,7 +314,7 @@ export async function syncChannels(
         listingId: r.listingId,
         listingUrl: r.listingUrl,
         status: r.success ? "active" : "failed",
-        postedAt: r.success ? new Date().toISOString() : undefined,
+        postedAt: r.success ? clock.now().toISOString() : undefined,
         error: r.success ? undefined : r.error,
       };
       if (idx >= 0) nextTargets[idx] = { ...nextTargets[idx], ...record };
@@ -322,11 +323,11 @@ export async function syncChannels(
 
     await db
       .update(propertyListings)
-      .set({ syndicationTargets: nextTargets, updatedAt: new Date() })
+      .set({ syndicationTargets: nextTargets, updatedAt: clock.now() })
       .where(and(eq(propertyListings.id, listing.id), eq(propertyListings.organizationId, orgId)));
   }
 
-  const now = new Date();
+  const now = clock.now();
   for (const id of syncable) {
     const tally = perChannel.get(id)!;
     await db

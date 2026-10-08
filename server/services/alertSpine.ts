@@ -44,6 +44,7 @@ import { logger } from "../utils/logger";
 import { notifyOnCall, type OnCallSeverity } from "./oncall";
 import { sendSolenePage } from "./solene/pagerService";
 import { recordFinding } from "./audit/domainAudit";
+import { clock } from "../utils/clock";
 
 export type AlertSpineSeverity = "critical" | "warning" | "info";
 
@@ -111,7 +112,7 @@ export async function pageCriticalThrottled(
   input: PageCriticalInput,
 ): Promise<boolean> {
   const key = `${input.source}:${input.dedupeKey}`;
-  const now = Date.now();
+  const now = clock.nowMs();
   const last = _lastPagedAt.get(key) ?? 0;
   if (now - last < ALERT_DEDUPE_WINDOW_MS) {
     return false;
@@ -255,7 +256,7 @@ export async function raiseAlert(
   // ── Policy step 3: warning + critical also land in system_alerts ─────────
   // (windowed so a flapping check doesn't spam /admin/alerts either).
   if (input.severity === "critical" || input.severity === "warning") {
-    const now = Date.now();
+    const now = clock.nowMs();
     const last = _lastSystemAlertAt.get(key) ?? 0;
     if (now - last >= ALERT_DEDUPE_WINDOW_MS) {
       _lastSystemAlertAt.set(key, now);

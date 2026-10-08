@@ -44,6 +44,7 @@ import { and, gte, lt, sql, eq, isNotNull } from "drizzle-orm";
 import { db } from "../../db";
 import { aiMessages, aiTestRuns } from "@shared/schema";
 import type { DomainDetector, FindingInput } from "../audit/domainAudit";
+import { clock } from "../../utils/clock";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -105,7 +106,7 @@ export const hallucinationSpikeDetector: DomainDetector = {
   id: "pax_hallucination_rate",
   domain: "ai",
   async run(): Promise<FindingInput[]> {
-    const now = Date.now();
+    const now = clock.nowMs();
     const recentStart = new Date(now - HALLUC_RECENT_WINDOW_MS);
     const baselineStart = new Date(now - (HALLUC_BASELINE_WINDOW_DAYS + 1) * DAY_MS);
 
@@ -212,7 +213,7 @@ export const evalPassRateRegressionDetector: DomainDetector = {
   id: "pax_eval_pass_rate",
   domain: "ai",
   async run(): Promise<FindingInput[]> {
-    const now = Date.now();
+    const now = clock.nowMs();
     const recentStart = new Date(now - EVAL_RECENT_WINDOW_DAYS * DAY_MS);
     const baselineStart = new Date(now - (EVAL_BASELINE_WINDOW_DAYS + EVAL_RECENT_WINDOW_DAYS) * DAY_MS);
 
@@ -320,7 +321,7 @@ export const costPerInteractionCreepDetector: DomainDetector = {
   id: "pax_cost_per_interaction",
   domain: "ai",
   async run(): Promise<FindingInput[]> {
-    const now = Date.now();
+    const now = clock.nowMs();
     const recentStart = new Date(now - COST_RECENT_WINDOW_DAYS * DAY_MS);
     const baselineStart = new Date(now - (COST_BASELINE_WINDOW_DAYS + COST_RECENT_WINDOW_DAYS) * DAY_MS);
 

@@ -34,8 +34,8 @@ mkdirSync(OUT, { recursive: true });
 const DB_URL = process.env.DATABASE_URL ?? "";
 // Stage 2: a per-agent founder-sim DB is allowed (acreos_founder or
 // acreos_founder_<x> / acreos_b2) so two founder sims never share a database.
-if (!/\/acreos_(founder(_\w+)?|b2)(\?|$)/.test(DB_URL)) {
-  throw new Error(`founder sim refuses DATABASE_URL=${DB_URL} (must be acreos_founder, acreos_founder_<x> or acreos_b2)`);
+if (!/\/acreos_(founder(_\w+)?|b2|simplat(_\w+)?)(\?|$)/.test(DB_URL)) {
+  throw new Error(`founder sim refuses DATABASE_URL=${DB_URL} (must be acreos_founder, acreos_founder_<x>, acreos_b2 or acreos_simplat[_<x>])`);
 }
 if (process.env.GH_TOKEN || process.env.FLY_API_TOKEN || process.env.GITHUB_TOKEN) {
   throw new Error("founder sim refuses to run with container credentials in env — launch via run-harness.sh (env -i)");
@@ -66,6 +66,32 @@ export async function resetWorld(): Promise<void> {
 export async function ageWorld(hours: number): Promise<number> {
   const r = await q1<{ n: number }>("select simsnap.age_world(($1 || ' hours')::interval) as n", [String(hours)]);
   return Number(r?.n ?? 0);
+}
+
+// ── the one clock (simplat) ──────────────────────────────────────────────────
+// When the sim DB carries simclock (tests/simulation/platform/simclock.sql) and
+// the processes share ACREOS_SIM_CLOCK_FILE, time passes by moving THE clock —
+// JS (server/utils/clock.ts) and SQL now() together — instead of shifting every
+// timestamp back. Keys that encode time (the effect key, ISO-week keys) then
+// see a real month: the 2-articles-a-month distortion came from aging the data
+// while the clock stood still.
+export const CLOCK_FILE = process.env.ACREOS_SIM_CLOCK_FILE ?? "";
+let virtualClock: boolean | null = null;
+export async function usesVirtualClock(): Promise<boolean> {
+  if (virtualClock !== null) return virtualClock;
+  if (!CLOCK_FILE) return (virtualClock = false);
+  const r = await q1<{ n: number }>("select count(*)::int as n from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'simclock' and p.proname = 'now'");
+  return (virtualClock = Number(r?.n ?? 0) > 0);
+}
+/** Put every process (and SQL) at virtual time `atMs`. */
+export async function setVirtualTime(atMs: number): Promise<number> {
+  const offsetMs = Math.round(atMs - Date.now());
+  writeFileSync(CLOCK_FILE, JSON.stringify({ offsetMs }));
+  await q("update simclock.state set offset_ms = $1 where id = 1", [offsetMs]);
+  const { setSimulatedClockOffset } = await srv<any>("utils/clock.ts");
+  setSimulatedClockOffset(0); // the harness reads the same file as web and worker
+  await new Promise((r) => setTimeout(r, 150)); // web/worker re-read the file every 100 ms
+  return offsetMs;
 }
 
 export function setStandinRules(rules: { default: string; rules?: Array<{ match: string; mode: string }> }) {
@@ -279,14 +305,32 @@ export async function defaultJobs(opts: { include?: string[]; exclude?: string[]
 
 let simHours = 0;
 const SIM_EPOCH = Date.UTC(2026, 9, 5, 0, 0, 0); // a Monday 00:00 UTC — the sim calendar
+// With the virtual clock the calendar starts at the first Monday 00:00 UTC
+// AFTER the run starts (rows seeded before it are in the past, never the future).
+let virtualEpoch: number | null = null;
+function SIM_EPOCH_MS(): number {
+  if (!CLOCK_FILE) return SIM_EPOCH;
+  if (virtualEpoch == null) {
+    const d = new Date();
+    const day = d.getUTCDay();
+    virtualEpoch = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + ((8 - day) % 7 || 7));
+  }
+  return virtualEpoch;
+}
 export function simNow(): Date {
-  return new Date(SIM_EPOCH + simHours * 3600_000);
+  return new Date(SIM_EPOCH_MS() + simHours * 3600_000);
 }
 export function simHour(): number {
   return simHours;
 }
 export function resetSimClock() {
   simHours = 0;
+}
+/** Start the virtual calendar at simNow() (call once after resetWorld, before the first step). */
+export async function startVirtualClock(): Promise<boolean> {
+  if (!(await usesVirtualClock())) return false;
+  await setVirtualTime(SIM_EPOCH_MS() + simHours * 3600_000);
+  return true;
 }
 
 /**
@@ -319,7 +363,8 @@ export async function advance(
         log.push({ h, name: j.name, ok: false, ms: Date.now() - t0, err: (e instanceof Error ? e.message : String(e)).slice(0, 300) });
       }
     }
-    await ageWorld(stepH);
+    if (await usesVirtualClock()) await setVirtualTime(SIM_EPOCH_MS() + (simHours + stepH) * 3600_000);
+    else await ageWorld(stepH);
     simHours += stepH;
   }
   return log;
@@ -475,12 +520,23 @@ export async function founderOneTimeSetup(opts: { levels?: string[] } = {}) {
     const r = await founder.post(`/api/founder/autopilot/domains/${d}/level`, { level: "execute_gated", reason: "founder one-time setup: let it act inside the gates" });
     if (r.status !== 200) throw new Error(`setup level ${d} → ${r.status} ${r.text.slice(0, 200)}`);
   }
-  const g1 = await founder.post("/api/founder/autopilot/witness-grants", { granteeId: "solene", domains: ["support"], maxCostUsd: 1, maxActions: 500, expiresInDays: 30, note: "support replies and system emails to our own customers" });
-  const g2 = await founder.post("/api/founder/autopilot/witness-grants", { granteeId: "solene", domains: ["finance"], maxCostUsd: 50, maxActions: 20, expiresInDays: 30, allowMoney: true, note: "refunds up to $50" });
-  if (g1.status !== 200 || g2.status !== 200) throw new Error(`setup grants → ${g1.status}/${g2.status} ${g1.text.slice(0, 120)} ${g2.text.slice(0, 120)}`);
+  const grants = await issueFounderGrants();
   const s = await srv<any>("services/autopilot/settings.ts");
   s.__resetSettingsCacheForTest?.();
-  return { grants: [g1.body?.grant?.id, g2.body?.grant?.id] };
+  return { grants };
+}
+
+/**
+ * The two bounded WitnessGrants (30 days each; a founder renews them monthly).
+ * Grants name the hands and the drafting roles they cover (witnessGrant.ts
+ * DELEGABLE_HANDS): Support's ticket replies + Retention's system mail, and
+ * Support's refunds of a ticket's own purchase.
+ */
+export async function issueFounderGrants(): Promise<Array<number | undefined>> {
+  const g1 = await founder.post("/api/founder/autopilot/witness-grants", { granteeId: "solene", domains: ["support"], hands: ["reply_support_ticket", "send_email"], sourceRoles: ["support", "retention"], maxCostUsd: 1, maxActions: 500, expiresInDays: 30, note: "support replies and system emails to our own customers" });
+  const g2 = await founder.post("/api/founder/autopilot/witness-grants", { granteeId: "solene", domains: ["finance"], hands: ["apply_refund"], sourceRoles: ["support"], maxCostUsd: 50, maxActions: 20, expiresInDays: 30, allowMoney: true, note: "refunds up to $50" });
+  if (g1.status !== 200 || g2.status !== 200) throw new Error(`setup grants → ${g1.status}/${g2.status} ${g1.text.slice(0, 300)} ${g2.text.slice(0, 300)}`);
+  return [g1.body?.grant?.id, g2.body?.grant?.id];
 }
 
 /** Wait (wall clock) until the worker has drained every queued/running dispatch. */

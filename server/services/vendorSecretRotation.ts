@@ -27,6 +27,7 @@
 import { db } from "../db";
 import { agentEvents, decisionsInboxItems } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const ROTATION_WARNING_DAYS = parseInt(process.env.VENDOR_SECRET_WARNING_DAYS ?? "30", 10);
 const AUTO_ROTATE = process.env.VENDOR_SECRET_AUTO_ROTATE !== "false";
@@ -60,7 +61,7 @@ async function checkStripeWebhookSecret(): Promise<VendorSecretFinding> {
   // >90 days since the last successful rotation, auto-rotate (when
   // AUTO_ROTATE=true).
   const lastRotation = await getLastRotationTimestamp("stripe_webhook");
-  const now = Date.now();
+  const now = clock.nowMs();
   const daysSinceRotation = lastRotation ? Math.floor((now - lastRotation) / 86_400_000) : null;
   const rotationDue = daysSinceRotation === null || daysSinceRotation >= 90;
 
@@ -153,7 +154,7 @@ async function checkGithubPat(): Promise<VendorSecretFinding> {
       };
     }
     const expiry = new Date(expiryHeader).getTime();
-    const days = Math.floor((expiry - Date.now()) / 86_400_000);
+    const days = Math.floor((expiry - clock.nowMs()) / 86_400_000);
     if (days < 0) {
       return {
         vendor: "github_pat",

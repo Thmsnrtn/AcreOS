@@ -44,6 +44,7 @@
 
 import { emitSubdivisionEvent } from "./workflow-engine";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /** The slice of a permit_gates row this emitter needs. Real columns only. */
 export interface PermitGateEventRow {
@@ -85,7 +86,7 @@ export interface ParentParcelInfo {
   state: string;
 }
 
-const isoDay = (): string => new Date().toISOString().slice(0, 10);
+const isoDay = (): string => clock.now().toISOString().slice(0, 10);
 
 /**
  * Honest parcel label. properties.address is nullable, so when a subdivider has

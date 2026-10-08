@@ -2,6 +2,7 @@ import crypto from "crypto";
 import type { Request, Response, NextFunction } from "express";
 import { e2eTestAuthEnabled } from "../auth/testAuth";
 import { sendError } from "../utils/errors";
+import { clock } from "../utils/clock";
 
 // ─── F-A05-1: Per-request CSP nonce ─────────────────────────────────────────
 // In production, generate a unique nonce per response and embed it in the CSP.
@@ -195,7 +196,7 @@ function timeoutForPath(path: string): number {
 }
 
 export function requestTimeout(req: Request, res: Response, next: NextFunction) {
-  const startTime = Date.now();
+  const startTime = clock.nowMs();
   const timeoutMs = timeoutForPath(req.originalUrl || req.path);
   const timeout = setTimeout(() => {
     if (!res.headersSent) {
@@ -203,7 +204,7 @@ export function requestTimeout(req: Request, res: Response, next: NextFunction) 
       logger.warn("Request timeout exceeded", {
         method: req.method,
         path: req.originalUrl || req.path,
-        duration: Date.now() - startTime,
+        duration: clock.nowMs() - startTime,
         timeoutMs,
       });
       res.status(504).json({

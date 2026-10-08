@@ -2,6 +2,7 @@ import { storage } from "../storage";
 import type { DataSource, DataSourceCache } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { safeWgs84, parseSdaColumnRows, floodZoneFromNfhl } from "./data-source-broker";
+import { clock } from "../utils/clock";
 
 interface LookupResult {
   success: boolean;
@@ -28,14 +29,14 @@ export class DataSourceLookupService {
     const cached = await storage.getDataSourceCacheEntry(lookupKey, dataSourceId);
     if (!cached || !cached.expiresAt) return undefined;
     
-    if (new Date(cached.expiresAt) < new Date()) {
+    if (new Date(cached.expiresAt) < clock.now()) {
       return undefined;
     }
     return cached;
   }
 
   private async cacheData(dataSourceId: number, lookupKey: string, data: any, state?: string, county?: string): Promise<void> {
-    const expiresAt = new Date();
+    const expiresAt = clock.now();
     expiresAt.setHours(expiresAt.getHours() + CACHE_DURATION_HOURS);
     
     await storage.createDataSourceCacheEntry({
@@ -122,7 +123,7 @@ export class DataSourceLookupService {
       throw new Error(data.error.message || "FEMA API returned an error");
     }
     
-    return floodZoneFromNfhl(data.features, new Date());
+    return floodZoneFromNfhl(data.features, clock.now());
   }
 
   /**
@@ -211,7 +212,7 @@ export class DataSourceLookupService {
         classification: null,
         percentage: 0,
         source: "NWI",
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: clock.now().toISOString(),
         details: { nearestWetland: "Unknown", watershedName: "Unknown" },
       };
     }
@@ -222,7 +223,7 @@ export class DataSourceLookupService {
       classification: firstFeature.WETLAND_TYPE || firstFeature.ATTRIBUTE,
       percentage: 100,
       source: "NWI",
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: clock.now().toISOString(),
       details: {
         wetlandType: firstFeature.WETLAND_TYPE,
         attribute: firstFeature.ATTRIBUTE,
@@ -238,7 +239,7 @@ export class DataSourceLookupService {
       classification: null,
       percentage: 0,
       source: "Default (API Unavailable)",
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: clock.now().toISOString(),
       details: { message: "Could not reach NWI wetlands service" },
     };
   }
@@ -335,7 +336,7 @@ export class DataSourceLookupService {
       hydrologicGroup: row?.hydgrpdcd || "Unknown",
       drainageClass: row?.drclassdcd || "Unknown",
       source: "USDA NRCS SSURGO",
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: clock.now().toISOString(),
     };
   }
 
@@ -408,7 +409,7 @@ export class DataSourceLookupService {
       sitesWithinRadius: sites.length,
       riskLevel: sites.length > 5 ? "elevated" : sites.length > 0 ? "low" : "none",
       source: "EPA TRI",
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: clock.now().toISOString(),
     };
   }
 }

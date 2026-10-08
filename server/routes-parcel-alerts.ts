@@ -20,6 +20,7 @@ import { db } from "./storage";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization } from "./types/request";
 import { Errors } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -72,7 +73,7 @@ router.post("/:id/read", async (req: AuthenticatedRequest, res: Response) => {
 
     const updated = await db
       .update(parcelAlerts)
-      .set({ isRead: true, readAt: new Date() })
+      .set({ isRead: true, readAt: clock.now() })
       .where(
         and(
           eq(parcelAlerts.id, id),
@@ -95,7 +96,7 @@ router.post("/read-all", async (req: AuthenticatedRequest, res: Response) => {
     const org = getOrganization(req);
     const updated = await db
       .update(parcelAlerts)
-      .set({ isRead: true, readAt: new Date() })
+      .set({ isRead: true, readAt: clock.now() })
       .where(
         and(
           eq(parcelAlerts.organizationId, org.id),

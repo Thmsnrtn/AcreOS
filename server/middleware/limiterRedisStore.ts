@@ -19,6 +19,7 @@
 import { MemoryStore, type Store, type Options, type IncrementResponse } from "express-rate-limit";
 import { getRedisClient } from "../utils/redis";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /**
  * Pure backend-selection logic, exported for unit tests: Redis is used iff
@@ -55,7 +56,7 @@ export class ResilientRedisStore implements Store {
         await redis.pexpire(fullKey, this.windowMs);
       }
       const pttl: number = await redis.pttl(fullKey);
-      const resetTime = new Date(Date.now() + (pttl > 0 ? pttl : this.windowMs));
+      const resetTime = new Date(clock.nowMs() + (pttl > 0 ? pttl : this.windowMs));
       return { totalHits, resetTime };
     } catch (err) {
       logger.warn("Redis limiter store increment failed — using in-memory fallback", {

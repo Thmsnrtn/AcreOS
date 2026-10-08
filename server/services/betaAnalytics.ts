@@ -3,6 +3,7 @@ import { sql, eq, and, gte, desc, count } from "drizzle-orm";
 import {
   pgTable, text, serial, integer, boolean, timestamp, jsonb,
 } from "drizzle-orm/pg-core";
+import { clock } from "../utils/clock";
 
 // ============================================
 // TABLE DEFINITIONS (to be pushed via drizzle-kit)
@@ -75,7 +76,7 @@ class BetaAnalyticsService {
   }
 
   async recordPageView(sessionId: number, path: string): Promise<void> {
-    const pageView = JSON.stringify({ path, timestamp: new Date().toISOString() });
+    const pageView = JSON.stringify({ path, timestamp: clock.now().toISOString() });
     await db.execute(sql`
       UPDATE user_sessions
       SET page_views = page_views || ${pageView}::jsonb
@@ -205,7 +206,7 @@ class BetaAnalyticsService {
   }
 
   async getUserHealthIndicators(): Promise<any[]> {
-    const now = new Date();
+    const now = clock.now();
     const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 

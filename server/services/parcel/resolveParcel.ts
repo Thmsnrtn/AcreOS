@@ -64,6 +64,7 @@ import type { LookupCategory } from "../data-source-broker";
 import { logShadowDiff } from "./resolveShadow";
 import { logger } from "../../utils/logger";
 import { traceAsync } from "../../tracing";
+import { clock } from "../../utils/clock";
 
 // ── Public contract ───────────────────────────────────────────
 
@@ -182,7 +183,7 @@ export async function resolveParcel(
   input: LookupInput,
   opts: ResolveParcelOptions,
 ): Promise<ResolvedParcelResult> {
-  const started = Date.now();
+  const started = clock.nowMs();
   const tier = cappedTier(opts.orgTier, opts.maxTier);
   const creditBalance = opts.creditBalance ?? 0;
 
@@ -297,7 +298,7 @@ export async function resolveParcel(
     meta: {
       successCount,
       failureCount,
-      lookupTimeMs: Date.now() - started,
+      lookupTimeMs: clock.nowMs() - started,
     },
   };
 }

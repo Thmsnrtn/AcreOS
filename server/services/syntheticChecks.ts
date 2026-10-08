@@ -24,6 +24,7 @@ import { syntheticCheckRuns, stripeProcessedEvents } from "@shared/schema";
 import { desc } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { CLERK_FAPI_ORIGIN } from "../middleware/clerkProxy";
+import { clock } from "../utils/clock";
 
 export type CheckStatus = "ok" | "degraded" | "failing";
 
@@ -36,14 +37,14 @@ export interface CheckResult {
 }
 
 async function timeIt<T>(fn: () => Promise<T>): Promise<{ result: T | null; latencyMs: number; error?: string }> {
-  const start = Date.now();
+  const start = clock.nowMs();
   try {
     const result = await fn();
-    return { result, latencyMs: Date.now() - start };
+    return { result, latencyMs: clock.nowMs() - start };
   } catch (err) {
     return {
       result: null,
-      latencyMs: Date.now() - start,
+      latencyMs: clock.nowMs() - start,
       error: err instanceof Error ? err.message : String(err),
     };
   }
@@ -83,7 +84,7 @@ async function checkStripeWebhookFreshness(): Promise<CheckResult> {
     if (!latest?.processedAt) {
       return { status: "degraded" as const, lastSeenIso: null };
     }
-    const ageHours = (Date.now() - new Date(latest.processedAt).getTime()) / (60 * 60 * 1000);
+    const ageHours = (clock.nowMs() - new Date(latest.processedAt).getTime()) / (60 * 60 * 1000);
     return {
       status: ageHours > 24 ? ("degraded" as const) : ("ok" as const),
       lastSeenIso: new Date(latest.processedAt).toISOString(),

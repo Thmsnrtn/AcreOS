@@ -29,6 +29,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { emitPlanStatusChange } from "./services/subdivisionEvents";
+import { clock } from "./utils/clock";
 
 const featureCollectionSchema = z.object({
   type: z.literal("FeatureCollection"),
@@ -211,7 +212,7 @@ export function registerSubdivisionPlanRoutes(app: Express): void {
           ));
         if (!existing) return Errors.notFound(res, "Subdivision plan");
 
-        const updates: Record<string, unknown> = { updatedAt: new Date() };
+        const updates: Record<string, unknown> = { updatedAt: clock.now() };
         if (parsed.data.name !== undefined) updates.name = parsed.data.name;
         if (parsed.data.status !== undefined) updates.status = parsed.data.status;
         if (parsed.data.notes !== undefined) updates.notes = parsed.data.notes;

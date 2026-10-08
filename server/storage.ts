@@ -1065,7 +1065,7 @@ export class DatabaseStorage implements IStorage {
     const conditions = [eq(agentConfigs.id, id)];
     if (organizationId) conditions.push(eq(agentConfigs.organizationId, organizationId));
     const [updated] = await db.update(agentConfigs)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...updates, updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -1109,7 +1109,7 @@ export class DatabaseStorage implements IStorage {
     
     // Update conversation last message time
     await db.update(conversations)
-      .set({ lastMessageAt: new Date() })
+      .set({ lastMessageAt: clock.now() })
       .where(eq(conversations.id, message.conversationId));
     
     return newMessage;
@@ -1296,7 +1296,7 @@ export class DatabaseStorage implements IStorage {
     assignedTo: number | null;
     periods: Array<{ leads: number; deals: number }>;
   }>> {
-    const now = new Date();
+    const now = clock.now();
     const periodLengthMs = Math.floor((now.getTime() - periodStart.getTime()) / periodCount);
     
     const activityResults = await db.select({
@@ -1460,8 +1460,7 @@ export class DatabaseStorage implements IStorage {
     signups30d: number;
     totalEvents: number;
   }> {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
     
     const events = await db.select()
       .from(subscriptionEvents)
@@ -1575,6 +1574,7 @@ import { vaEngineRepo, type VaEngineRepo } from "./storage/vaEngineRepo";
 import { closingServicingRepo, type ClosingServicingRepo } from "./storage/closingServicingRepo";
 import { evaluationRepo, type EvaluationRepo } from "./storage/evaluationRepo";
 import { growthConfigRepo, type GrowthConfigRepo } from "./storage/growthConfigRepo";
+import { clock } from "./utils/clock";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 export interface DatabaseStorage extends OrgRepo, TeamRepo, LeadRepo, PropertyRepo, DealRepo, NoteRepo, CampaignRepo, AuditRepo, IntegrationsRepo, CommsRepo, PaxRepo, AiRepo, AutomationRepo, MailRepo, VaRepo, DueDiligenceRepo, SupportOpsRepo, SequencesRepo, CustomizationRepo, PaymentRemindersRepo, TasksRepo, AcquisitionRepo, DocumentsRepo, EnrichmentRepo, AnalyticsRepo, PlatformOpsRepo, GisRepo, AgentWorkflowsRepo, VaEngineRepo, ClosingServicingRepo, EvaluationRepo, GrowthConfigRepo {}

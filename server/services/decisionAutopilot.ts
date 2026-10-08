@@ -18,6 +18,7 @@ import { db } from "../db";
 import { decisionPatterns, type DecisionPattern } from "@shared/schema";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
+import { clock } from "../utils/clock";
 
 // ─── Pattern Key Generation ──────────────────────────────────────────────────
 
@@ -44,7 +45,7 @@ class DecisionAutopilotService {
     recentDecisions: any;
   }): number {
     const recentDecisions = (pattern.recentDecisions as any[]) || [];
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const sevenDaysAgo = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     // Count successes (dominant action matches) with recency weighting
     // "Success" = the decision matched the dominant action pattern
@@ -133,7 +134,7 @@ class DecisionAutopilotService {
       decisionId: input.decisionId,
       action: input.action,
       context: input.context,
-      timestamp: new Date().toISOString(),
+      timestamp: clock.now().toISOString(),
     });
     if (recentDecisions.length > 30) recentDecisions.shift();
 
@@ -180,7 +181,7 @@ class DecisionAutopilotService {
         predictionConfidence: predictionConfidence.toFixed(3),
         isAutopilotEligible,
         recentDecisions,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(decisionPatterns.id, pattern.id));
   }
@@ -234,7 +235,7 @@ class DecisionAutopilotService {
       .set({
         isAutopilotActive: true,
         conditionRules: conditionRules || null,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(decisionPatterns.id, patternId));
   }
@@ -242,7 +243,7 @@ class DecisionAutopilotService {
   /** CEO disables autopilot for a pattern */
   async disableAutopilot(patternId: number): Promise<void> {
     await db.update(decisionPatterns)
-      .set({ isAutopilotActive: false, updatedAt: new Date() })
+      .set({ isAutopilotActive: false, updatedAt: clock.now() })
       .where(eq(decisionPatterns.id, patternId));
   }
 
@@ -361,7 +362,7 @@ class DecisionAutopilotService {
       for (const d of recentDecisions) {
         if (d.decisionId === decisionId) {
           d.outcome = outcome;
-          d.outcomeRecordedAt = new Date().toISOString();
+          d.outcomeRecordedAt = clock.now().toISOString();
           found = true;
           break;
         }
@@ -376,7 +377,7 @@ class DecisionAutopilotService {
         await db.update(decisionPatterns)
           .set({
             recentDecisions,
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(eq(decisionPatterns.id, pattern.id));
 
@@ -388,7 +389,7 @@ class DecisionAutopilotService {
   /** Generate a weekly summary report for the CEO briefing */
   async generateWeeklyReport(): Promise<string> {
     const all = await this.getPatterns();
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const sevenDaysAgo = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     let totalThisWeek = 0;
     let autopilotSaves = 0;

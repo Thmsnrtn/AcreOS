@@ -16,6 +16,7 @@ import {
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
 import { assertWritablePatch } from "../utils/patch";
+import { clock } from "../utils/clock";
 
 /**
  * Statuses a reminder row may sit in while it is still waiting for a rail to
@@ -29,7 +30,7 @@ const DISPATCHABLE_STATUSES = ["scheduled", "queued"] as const;
 export const paymentRemindersRepo = {
   // Payment Reminders (Finance Agent)
   async getDelinquentNotes(this: DatabaseStorage, orgId: number) {
-    const now = new Date();
+    const now = clock.now();
     return await db.select().from(notes)
       .where(and(
         eq(notes.organizationId, orgId),
@@ -45,7 +46,7 @@ export const paymentRemindersRepo = {
     // org's due reminders could be pushed past the limit by other orgs'
     // volume and silently vanish from its own list (rule-1 adjudication,
     // 2026-08-27). Platform-wide dispatch stays on getDispatchableReminders.
-    const now = new Date();
+    const now = clock.now();
     return await db.select().from(paymentReminders)
       .where(and(
         eq(paymentReminders.organizationId, organizationId),
@@ -72,7 +73,7 @@ export const paymentRemindersRepo = {
     limit = 50,
     retryWindowDays = 14,
   ) {
-    const now = new Date();
+    const now = clock.now();
     const windowStart = new Date(now.getTime() - retryWindowDays * 24 * 60 * 60 * 1000);
     // Deliberately cross-org: this is the borrower-reminder ladder's scheduled
     // sweep, which must see every org's due rungs in one pass. Routed through
@@ -197,7 +198,7 @@ export const paymentRemindersRepo = {
     const conditions = [eq(paymentReminders.id, id)];
     if (organizationId) conditions.push(eq(paymentReminders.organizationId, organizationId));
     const [updated] = await db.update(paymentReminders)
-      .set({ status: "sent", sentAt: new Date() })
+      .set({ status: "sent", sentAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -233,7 +234,7 @@ export const paymentRemindersRepo = {
       status: outcome.status,
       failureReason: outcome.status === "sent" ? null : (outcome.reason ?? null),
     };
-    if (outcome.status === "sent") updates.sentAt = new Date();
+    if (outcome.status === "sent") updates.sentAt = clock.now();
     const [updated] = await db.update(paymentReminders)
       .set(updates)
       .where(and(...conditions))
@@ -242,7 +243,7 @@ export const paymentRemindersRepo = {
   },
 
   async getNotesNeedingReminders(this: DatabaseStorage, orgId: number) {
-    const now = new Date();
+    const now = clock.now();
     const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
     const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
     
@@ -260,7 +261,7 @@ export const paymentRemindersRepo = {
   },
 
   async getNotesWithUpcomingPayments(this: DatabaseStorage, orgId: number, daysAhead: number) {
-    const now = new Date();
+    const now = clock.now();
     const futureDate = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
     
     return await db.select().from(notes)
@@ -280,7 +281,7 @@ export const paymentRemindersRepo = {
         eq(notes.status, "active")
       ));
     
-    const startOfMonth = new Date();
+    const startOfMonth = clock.now();
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
     

@@ -27,6 +27,7 @@ import { integrationStatus } from "@shared/schema";
 import { encrypt, decrypt } from "../fieldEncryption";
 import { founderAudit } from "../founderAuditService";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ─── Catalog ─────────────────────────────────────────────────────────────────
 
@@ -194,7 +195,7 @@ export async function setConnectionField(
   await db.transaction(async (tx) => {
     await tx
       .update(platformConnections)
-      .set({ revokedAt: new Date() })
+      .set({ revokedAt: clock.now() })
       .where(and(eq(platformConnections.provider, provider), eq(platformConnections.field, field), isNull(platformConnections.revokedAt)));
     await tx.insert(platformConnections).values({
       provider,
@@ -224,7 +225,7 @@ export async function disconnectProvider(provider: string, updatedBy: string): P
   if (!spec) throw new Error(`disconnectProvider: unknown provider "${provider}"`);
   const revoked = await db
     .update(platformConnections)
-    .set({ revokedAt: new Date() })
+    .set({ revokedAt: clock.now() })
     .where(and(eq(platformConnections.provider, provider), isNull(platformConnections.revokedAt)))
     .returning({ id: platformConnections.id });
   bustResolveCache();
@@ -262,7 +263,7 @@ export interface ResolvedConnectionValue {
 export async function resolveConnection(provider: string, field: string): Promise<ResolvedConnectionValue> {
   const cacheKey = `${provider}.${field}`;
   const hit = resolveCache.get(cacheKey);
-  if (hit && Date.now() - hit.at < RESOLVE_CACHE_TTL_MS) return { value: hit.value, source: hit.source };
+  if (hit && clock.nowMs() - hit.at < RESOLVE_CACHE_TTL_MS) return { value: hit.value, source: hit.source };
 
   const spec = providerSpec(provider);
   const envVar = spec?.fields.find((f) => f.name === field)?.envVar;
@@ -287,7 +288,7 @@ export async function resolveConnection(provider: string, field: string): Promis
       `[connections] resolve ${provider}.${field} failed — falling back to env: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
-  resolveCache.set(cacheKey, { at: Date.now(), ...out });
+  resolveCache.set(cacheKey, { at: clock.nowMs(), ...out });
   return out;
 }
 
@@ -405,16 +406,16 @@ export async function verifyProvider(provider: string): Promise<{ ok: boolean; d
         displayName: spec.label,
         isConfigured: result.ok,
         isCritical: false,
-        lastVerifiedAt: new Date(),
+        lastVerifiedAt: clock.now(),
         lastVerificationStatus: result.ok ? "verified" : `failed: ${result.detail.slice(0, 200)}`,
       })
       .onConflictDoUpdate({
         target: integrationStatus.integrationKey,
         set: {
           isConfigured: result.ok,
-          lastVerifiedAt: new Date(),
+          lastVerifiedAt: clock.now(),
           lastVerificationStatus: result.ok ? "verified" : `failed: ${result.detail.slice(0, 200)}`,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         },
       });
   } catch (err) {

@@ -31,6 +31,7 @@ import {
   type EnvelopeStatus,
 } from "@shared/schema/solene-capital";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 const CONTEXT_SUMMARY_MAX = 500;
 
@@ -78,7 +79,7 @@ export interface SpendSummary {
 export async function getSpendSummary(
   windowHours: number,
 ): Promise<SpendSummary> {
-  const cutoff = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - windowHours * 60 * 60 * 1000);
   try {
     const rows = await db
       .select({
@@ -124,7 +125,7 @@ export interface MonthlyEnvelopeStatus {
 
 export async function getMonthlyEnvelopeStatus(): Promise<MonthlyEnvelopeStatus> {
   const envelopeUsd = parseEnvelopeEnv();
-  const now = new Date();
+  const now = clock.now();
   const monthStart = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0),
   );
@@ -290,7 +291,7 @@ export async function getEffectiveMonthlyCapUsd(): Promise<number> {
 export async function getMonthToDateSpendForType(
   type: SoleneCapitalEventType,
 ): Promise<number> {
-  const now = new Date();
+  const now = clock.now();
   const monthStart = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0),
   );
@@ -396,7 +397,7 @@ export async function assertWithinEnsembleCap(opts?: {
     // brake with no alarm attached.)
     try {
       const { raiseAlert } = await import("../alertSpine");
-      const month = new Date().toISOString().slice(0, 7);
+      const month = clock.now().toISOString().slice(0, 7);
       await raiseAlert({
         severity: "warning",
         source: "ensemble_cap",

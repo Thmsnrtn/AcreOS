@@ -34,6 +34,7 @@ import {
   emitNoteBalloonApproaching,
   type NoteBalloonRow,
 } from "./noteEvents";
+import { clock } from "../utils/clock";
 
 export const NOTE_PAYMENT_CHANNEL = "note:payments";
 export const DUE_SOON_WINDOW_DAYS = 7;
@@ -187,7 +188,7 @@ export interface NotePaymentScanResult {
  * aggregate counts as outward senses. Best-effort throughout — a failure
  * degrades to fewer signals, never to a crash or an invented value.
  */
-export async function runNotePaymentDueScan(now: Date = new Date()): Promise<NotePaymentScanResult> {
+export async function runNotePaymentDueScan(now: Date = clock.now()): Promise<NotePaymentScanResult> {
   const result: NotePaymentScanResult = {
     scanned: 0,
     dueSoon: 0,

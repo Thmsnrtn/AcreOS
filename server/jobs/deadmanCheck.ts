@@ -57,10 +57,11 @@ import { logger } from "../utils/logger";
 import { raiseAlert, seedPageThrottle } from "../services/alertSpine";
 import { recordFinding } from "../services/audit/domainAudit";
 import { activeRosterEntries, configDormantEntries, type ConfigDormantEntry } from "./jobRegistry";
+import { clock } from "../utils/clock";
 
 // Process start time — used to avoid false-paging a job that has simply never
 // had a chance to run yet on a freshly-booted worker.
-const _processStartedAt = Date.now();
+const _processStartedAt = clock.nowMs();
 
 const DETECTOR_ID = "job_deadman";
 
@@ -78,7 +79,7 @@ export interface DeadmanResult {
  */
 export async function runJobDeadmanCheck(): Promise<DeadmanResult> {
   const entries = activeRosterEntries();
-  const now = Date.now();
+  const now = clock.nowMs();
   const uptimeMs = now - _processStartedAt;
   const dark: DeadmanResult["dark"] = [];
 

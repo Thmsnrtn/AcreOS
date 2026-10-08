@@ -35,6 +35,8 @@ import { leads, deals, properties, campaignResponses, campaignDeliveryEvents, ma
 import { shouldSimulate, recordSimulatedAction } from "./utils/simulationMode";
 import { sendOrgSMS, orgHasConnectedSmsIdentity } from "./services/smsService";
 import { salutationName } from "@shared/parcel/ownerName";
+import { CAMPAIGN_SEND_PRICE_CREDITS } from "./services/sendPricing";
+import { clock } from "./utils/clock";
 
 export function registerCampaignRoutes(app: Express): void {
   const api = app;
@@ -301,7 +303,7 @@ export function registerCampaignRoutes(app: Express): void {
         contactEmail,
         contactPhone,
         metadata,
-        responseDate: new Date(),
+        responseDate: clock.now(),
       });
       
       const response = await storage.createCampaignResponse(input);
@@ -636,7 +638,7 @@ export function registerCampaignRoutes(app: Express): void {
       const firstStep = steps.find(s => s.stepNumber === 1);
       const delayDays = firstStep?.delayDays || 0;
       
-      const nextStepScheduledAt = new Date();
+      const nextStepScheduledAt = clock.now();
       nextStepScheduledAt.setDate(nextStepScheduledAt.getDate() + delayDays);
       
       const input = insertSequenceEnrollmentSchema.parse({
@@ -947,7 +949,7 @@ export function registerCampaignRoutes(app: Express): void {
         // Update order status to in_progress when sending starts
         await storage.updateMailingOrder(mailingOrder.id, {
           status: 'sending',
-          startedAt: new Date(),
+          startedAt: clock.now(),
         });
       } catch (preSendErr) {
         if (debited) {
@@ -1127,7 +1129,7 @@ export function registerCampaignRoutes(app: Express): void {
         sentPieces: successCount,
         failedPieces: failCount,
         lobJobIds,
-        completedAt: new Date(),
+        completedAt: clock.now(),
       });
 
       // Record usage and handle refunds only if NOT using org credentials (BYOK)
@@ -1373,7 +1375,7 @@ export function registerCampaignRoutes(app: Express): void {
         return Errors.notFound(res, "Campaign");
       }
 
-      const sevenDaysAgo = new Date();
+      const sevenDaysAgo = clock.now();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
       sevenDaysAgo.setHours(0, 0, 0, 0);
 
@@ -1395,7 +1397,7 @@ export function registerCampaignRoutes(app: Express): void {
       // Fill in zero-count days so the client always gets exactly 7 data points
       const trend: { date: string; count: number }[] = [];
       for (let i = 6; i >= 0; i--) {
-        const d = new Date();
+        const d = clock.now();
         d.setDate(d.getDate() - i);
         const dateStr = d.toISOString().slice(0, 10);
         const found = rows.find((r) => r.date === dateStr);
@@ -1481,8 +1483,8 @@ export function registerCampaignRoutes(app: Express): void {
     
     res.json({
       actions: {
-        email_sent: { name: "Email", costCents: 1, description: "Per email sent" },
-        sms_sent: { name: "SMS Text", costCents: 3, description: "Per text message" },
+        email_sent: { name: "Email", costCents: CAMPAIGN_SEND_PRICE_CREDITS.email, description: "Per email sent" },
+        sms_sent: { name: "SMS Text", costCents: CAMPAIGN_SEND_PRICE_CREDITS.sms, description: "Per text message" },
         ai_chat: { name: "AI Chat", costCents: 2, description: "Per AI conversation message" },
         ai_image: { name: "AI Image", costCents: 25, description: "Per image generated" },
         pdf_generated: { name: "Document PDF", costCents: 5, description: "Per document generated" },
@@ -1558,7 +1560,7 @@ export function registerCampaignRoutes(app: Express): void {
       .update(organizations)
       .set({
         settings: sqlTag`jsonb_set(COALESCE(${organizations.settings}, '{}'), '{mailMode}', ${JSON.stringify(mode)}::jsonb)` as any,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eqOp(organizations.id, org.id));
     
@@ -2180,7 +2182,7 @@ export function registerCampaignRoutes(app: Express): void {
       // deducted UPFRONT atomically (DEFECT-0047: WHERE balance >= amount, so
       // the check and the deduct cannot race), and every send that does not go
       // out is refunded below.
-      const costPerEmail = 1; // 1 cent per email
+      const costPerEmail = CAMPAIGN_SEND_PRICE_CREDITS.email; // shared with Pax's quote (services/sendPricing)
       const chargeable = !req.isFounder && !identity.ownSesCredentials && !simulated;
       const totalCost = chargeable ? dedupedLeads.length * costPerEmail : 0;
       if (chargeable) {
@@ -2411,8 +2413,8 @@ export function registerCampaignRoutes(app: Express): void {
       // DEFECT-0047: Deduct credits UPFRONT atomically to prevent TOCTOU race.
       // MMS costs more than SMS (carrier surcharges + Twilio media hosting),
       // so charge per-recipient by whether the campaign has any media URLs.
-      const costPerSms = 3; // 3 cents per SMS
-      const costPerMms = 5; // 5 cents per MMS — per spec
+      const costPerSms = CAMPAIGN_SEND_PRICE_CREDITS.sms; // shared with Pax's quote (services/sendPricing)
+      const costPerMms = CAMPAIGN_SEND_PRICE_CREDITS.mms; // MMS carries the carrier media surcharge
       const campaignMediaUrls = (campaign as any).mediaUrls as string[] | null | undefined;
       const hasMms = !!(campaignMediaUrls && campaignMediaUrls.length > 0);
       const perRecipientCost = hasMms ? costPerMms : costPerSms;

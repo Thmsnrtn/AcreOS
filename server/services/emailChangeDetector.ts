@@ -28,6 +28,7 @@ import { chainAndInsertAuditEvent } from "../utils/auditEventsChain";
 import { eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { emailService } from "./emailService";
+import { clock } from "../utils/clock";
 
 const checkedSessions = new Set<string>();
 const MAX_CHECKED_SESSIONS = 50_000;
@@ -129,7 +130,7 @@ async function sendEmailChangeAlert(opts: {
   role: "old" | "new";
 }): Promise<void> {
   try {
-    const when = new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+    const when = clock.now().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
     const securityUrl = `${process.env.PUBLIC_APP_URL ?? "https://app.acreos.io"}/account/security`;
     const lead =
       opts.role === "old"

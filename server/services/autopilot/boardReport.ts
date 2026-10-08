@@ -9,6 +9,7 @@
  * signal. Pure → testable; the loop/narrator feeds it real values.
  */
 import type { AttentionLoad } from "./boardReserve";
+import { clock } from "../../utils/clock";
 
 export interface BoardReportInput {
   /** The brain's current top move (what it's working / would work). */
@@ -122,7 +123,7 @@ export async function buildBoardReport(): Promise<{ markdown: string; generatedA
   try {
     const { getLatestImmuneReport } = await import("./immuneResponse");
     const report = await getLatestImmuneReport();
-    if (report && Date.now() - report.ranAt.getTime() < 3 * 24 * 60 * 60 * 1000) {
+    if (report && clock.nowMs() - report.ranAt.getTime() < 3 * 24 * 60 * 60 * 1000) {
       immune = report.line;
     }
   } catch {
@@ -149,5 +150,5 @@ export async function buildBoardReport(): Promise<{ markdown: string; generatedA
     attention,
   });
   // Caller stamps the time (Date.now is unavailable in some contexts here).
-  return { markdown, generatedAt: new Date().toISOString() };
+  return { markdown, generatedAt: clock.now().toISOString() };
 }

@@ -31,6 +31,7 @@ import crypto from "node:crypto";
 import { logger } from "../utils/logger";
 import type { TaskTier } from "./aiRouter";
 import type { PromptVersionRow } from "@shared/schema";
+import { clock } from "../utils/clock";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -104,7 +105,7 @@ let cache: CacheEntry | null = null;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
 async function loadAll(force = false): Promise<CacheEntry> {
-  if (!force && cache && Date.now() - cache.loadedAt < CACHE_TTL_MS) return cache;
+  if (!force && cache && clock.nowMs() - cache.loadedAt < CACHE_TTL_MS) return cache;
   try {
     const { db } = await import("../db");
     const { promptVersions } = await import("@shared/schema");
@@ -130,13 +131,13 @@ async function loadAll(force = false): Promise<CacheEntry> {
       list.push(v);
       byName.set(v.promptName, list);
     }
-    cache = { byName, loadedAt: Date.now() };
+    cache = { byName, loadedAt: clock.nowMs() };
     return cache;
   } catch (err) {
     logger.warn("[promptRegistry] load failed — falling back to builtins", {
       metadata: { detail: err instanceof Error ? err.message : err },
     });
-    cache = { byName: new Map(), loadedAt: Date.now() };
+    cache = { byName: new Map(), loadedAt: clock.nowMs() };
     return cache;
   }
 }
@@ -292,7 +293,7 @@ export async function updateWeights(
   for (const u of updates) {
     await db
       .update(promptVersions)
-      .set({ weight: Math.max(0, Math.min(100, u.weight)), updatedAt: new Date() })
+      .set({ weight: Math.max(0, Math.min(100, u.weight)), updatedAt: clock.now() })
       .where(and(eq(promptVersions.promptName, u.promptName), eq(promptVersions.version, u.version)));
   }
   invalidateCache();
@@ -313,7 +314,7 @@ export async function recordEvalScore(
   const clamped = Math.max(0, Math.min(1, score));
   await db
     .update(promptVersions)
-    .set({ evalScore: clamped.toFixed(4), evalRunAt: new Date(), updatedAt: new Date() })
+    .set({ evalScore: clamped.toFixed(4), evalRunAt: clock.now(), updatedAt: clock.now() })
     .where(and(eq(promptVersions.promptName, promptName), eq(promptVersions.version, version)));
   invalidateCache();
 }
@@ -341,7 +342,7 @@ export async function evaluateAutoPromotion(
 ): Promise<PromotionDecision[]> {
   const minDays = opts.minDays ?? 7;
   const minImprovement = opts.minImprovement ?? 0.05;
-  const now = opts.now ?? new Date();
+  const now = opts.now ?? clock.now();
   const decisions: PromotionDecision[] = [];
 
   const c = await loadAll(true);
@@ -399,7 +400,7 @@ export async function promoteCandidate(
   // Promote candidate.
   await db
     .update(promptVersions)
-    .set({ weight: 100, isCandidate: false, updatedAt: new Date() })
+    .set({ weight: 100, isCandidate: false, updatedAt: clock.now() })
     .where(
       and(
         eq(promptVersions.promptName, promptName),
@@ -414,7 +415,7 @@ export async function promoteCandidate(
       weight: 0,
       active: false,
       promotedFrom: candidateRow?.id ?? null,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     })
     .where(
       and(eq(promptVersions.promptName, promptName), eq(promptVersions.version, prodVersion)),

@@ -45,6 +45,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { createRateLimiter } from "./middleware/rateLimit";
 import type { Lead, SkipTrace } from "@shared/schema";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -290,7 +291,7 @@ async function persistTraceResult(
 ): Promise<PersistedTrace> {
   const { results, hasAny } = toStoredResults(trace);
   const status: PersistedTrace["status"] = hasAny ? "completed" : "no_results";
-  const now = new Date();
+  const now = clock.now();
 
   await storage.createSkipTrace({
     organizationId: orgId,
@@ -340,7 +341,7 @@ function toTraceResponse(lead: Lead, trace: SkipTraceResult, persisted: Persiste
       .map((c) => ({ address: c.value, confidence: c.confidence })),
     ownerAddress: trace.owner?.address ?? null,
     leadUpdated: persisted.leadUpdated,
-    tracedAt: new Date().toISOString(),
+    tracedAt: clock.now().toISOString(),
   };
 }
 
@@ -367,7 +368,7 @@ router.post("/trace/:leadId", skipTraceLimiter, async (req: AuthenticatedRequest
     // BatchData call. cache hits inside skipTracingService still pay (we
     // charge the customer for the lookup, even when our cache absorbed the
     // provider hit — that's how the BatchData unit-economics math works).
-    const traceKey = `skip:trace:${orgId}:${leadId}:${Date.now()}`;
+    const traceKey = `skip:trace:${orgId}:${leadId}:${clock.nowMs()}`;
     const traceDebit = await poolDebit({
       organizationId: orgId,
       action: "skip_trace",
@@ -478,7 +479,7 @@ router.post("/batch", skipTraceLimiter, async (req: AuthenticatedRequest, res: R
 
     // Debit exactly the number of leads this run will attempt. Failed
     // lookups are refunded proportionally below.
-    const batchKey = `skip:batch:${orgId}:${Date.now()}`;
+    const batchKey = `skip:batch:${orgId}:${clock.nowMs()}`;
     const batchDebit = await poolDebit({
       organizationId: orgId,
       action: "skip_trace",

@@ -28,6 +28,7 @@
 import { Router, type Request, type Response } from "express";
 import { getCacheStats } from "./middleware/responseCache";
 import { metricsHandler } from "./metrics";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -57,7 +58,7 @@ export function recordRequestWithMetrics(metric: RequestMetric): void {
 }
 
 function getWindowedMetrics(windowMs: number) {
-  const cutoff = Date.now() - windowMs;
+  const cutoff = clock.nowMs() - windowMs;
   return recentRequests.filter(r => r.timestamp > cutoff);
 }
 
@@ -138,7 +139,7 @@ router.get("/summary", (req: Request, res: Response) => {
   const cacheStats = getCacheStats();
 
   res.json({
-    timestamp: new Date().toISOString(),
+    timestamp: clock.now().toISOString(),
     requests: {
       last5min: last5min.length,
       last15min: last15min.length,

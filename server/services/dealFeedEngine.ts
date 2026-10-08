@@ -22,6 +22,7 @@ import { logger } from "../utils/logger";
 import { acquisitionRadar, type ParcelData } from "./acquisitionRadar";
 import type { RadarConfig } from "@shared/schema";
 import type { BlindOfferOutcome } from "./blindOfferCalculator";
+import { clock } from "../utils/clock";
 
 // NEUTRAL_RADAR_SCORE = 50 used to live here, described as keeping the feed
 // "honest rather than crashing or fabricating a high score". It did prevent a
@@ -672,7 +673,7 @@ export async function generateDealFeed(orgId: number): Promise<DealOpportunity[]
   const top10 = rankable.slice(0, 10);
 
   // Deduplicate against yesterday's feed — same parcel shouldn't appear unless saved
-  const yesterday = subDays(new Date(), 1);
+  const yesterday = subDays(clock.now(), 1);
   const yesterdayFeed = await db
     .select()
     .from(dailyDealFeed)
@@ -723,7 +724,7 @@ export async function generateDealFeed(orgId: number): Promise<DealOpportunity[]
 // ---------------------------------------------------------------------------
 
 export async function getTodaysFeed(orgId: number): Promise<DealOpportunity[]> {
-  const today = startOfDay(new Date());
+  const today = startOfDay(clock.now());
 
   const existing = await db
     .select()
@@ -742,7 +743,7 @@ export async function getTodaysFeed(orgId: number): Promise<DealOpportunity[]> {
     if (!existing[0].viewedAt) {
       await db
         .update(dailyDealFeed)
-        .set({ viewedAt: new Date() })
+        .set({ viewedAt: clock.now() })
         .where(eq(dailyDealFeed.id, existing[0].id));
     }
     return existing[0].opportunities;

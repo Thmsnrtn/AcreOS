@@ -6,6 +6,7 @@ import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
 import { formatPaxTime, PAX_LABELS } from "@shared/pax-glossary";
 import { countPaxEffects } from "./paxReceiptsReader";
+import { clock } from "../utils/clock";
 
 /** Absolute base for the digest's deep links (same source as dunning.ts). */
 const APP_URL = process.env.APP_URL || "https://app.acreos.io";
@@ -75,7 +76,7 @@ export class DigestService {
         organizationId,
         frequency,
         emailEnabled: true,
-        createdAt: new Date(),
+        createdAt: clock.now(),
       })
       .returning();
     return sub;
@@ -84,8 +85,8 @@ export class DigestService {
   // updateSubscription deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 
   async getSubscriptionsNeedingDigest(frequency: string): Promise<Array<{ userId: string; organizationId: number }>> {
-    const now = new Date();
-    const cutoff = new Date();
+    const now = clock.now();
+    const cutoff = clock.now();
     
     if (frequency === 'daily') {
       cutoff.setDate(cutoff.getDate() - 1);
@@ -114,8 +115,8 @@ export class DigestService {
   }
 
   async generateWeeklyDigest(organizationId: number): Promise<DigestData> {
-    const end = new Date();
-    const start = new Date();
+    const end = clock.now();
+    const start = clock.now();
     start.setDate(start.getDate() - 7);
 
     const allLeads = await storage.getLeads(organizationId);
@@ -164,7 +165,7 @@ export class DigestService {
 
     // Pax: what is waiting on a tap right now, and what Pax / the org's rules
     // did over the period — every number a query over real rows.
-    const now = new Date();
+    const now = clock.now();
     const [waitingRow] = await db
       .select({
         count: sql<number>`count(*)::int`,
@@ -336,7 +337,7 @@ export class DigestService {
   async markDigestSent(userId: string, organizationId: number): Promise<void> {
     await db
       .update(digestSubscriptions)
-      .set({ lastSentAt: new Date() })
+      .set({ lastSentAt: clock.now() })
       .where(
         and(
           eq(digestSubscriptions.userId, userId),

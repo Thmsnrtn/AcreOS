@@ -22,6 +22,7 @@ import { db } from "../db";
 import { providerLookupLog } from "@shared/schema";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface LookupRecord {
   providerName: string;
@@ -123,7 +124,7 @@ export async function recordFreeMiss(args: {
 export async function freeMissesByCounty(windowDays: number = 30): Promise<
   Array<{ state: string | null; county: string | null; category: string; misses: number }>
 > {
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
   const rows = await db.execute(sql`
     SELECT state, county, category, count(*)::int AS misses
     FROM provider_lookup_log
@@ -149,7 +150,7 @@ export async function getCategoryPerformance(
   category: string,
   windowDays: number = 7,
 ): Promise<Map<string, { score: number; n: number; avgLatencyMs: number | null; costCents: number }>> {
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
   const rows = await db.execute(sql`
     SELECT
       provider_name,
@@ -198,7 +199,7 @@ export async function getProviderSummary(windowDays: number = 30): Promise<{
   totalCostCents: number;
   totalLookups: number;
 }> {
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
 
   const [byProviderRows, byCategoryRows, totalRow] = await Promise.all([
     db.execute(sql`
@@ -272,7 +273,7 @@ export async function cacheTelemetrySummary(windowDays: number = 30): Promise<{
   totalHits: number;
   totalAvoidedCostCents: number;
 }> {
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
   const rows = await db.execute(sql`
     SELECT
       COALESCE(cache_lane, 'unattributed') AS lane,

@@ -21,6 +21,7 @@ import { db } from "../db";
 import { aiCostCeilingOverrides, aiTelemetryEvents, organizations } from "@shared/schema";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const PLATFORM_DEFAULT_DAILY_CEILING_CENTS = 5000;
 const PLATFORM_DEFAULT_MONTHLY_CEILING_CENTS = 100_000;
@@ -133,7 +134,7 @@ export async function getEffectiveCeilings(orgId: number): Promise<{
 }
 
 async function sumCostCentsSince(orgId: number, sinceMs: number): Promise<number> {
-  const since = new Date(Date.now() - sinceMs);
+  const since = new Date(clock.nowMs() - sinceMs);
   const [row] = await db
     .select({
       sum: sql<string>`COALESCE(SUM(${aiTelemetryEvents.estimatedCostCents}), 0)`,
@@ -174,7 +175,7 @@ export async function getRemainingDailyBudgetCents(
 }
 
 async function sumPlatformCostCentsSince(sinceMs: number): Promise<number> {
-  const since = new Date(Date.now() - sinceMs);
+  const since = new Date(clock.nowMs() - sinceMs);
   const [row] = await db
     .select({
       sum: sql<string>`COALESCE(SUM(${aiTelemetryEvents.estimatedCostCents}), 0)`,
@@ -214,7 +215,7 @@ export async function assertWithinPlatformCostCeiling(opts?: {
 
   try {
     const dailyCents = await sumPlatformCostCentsSince(dayMs);
-    lastKnownPlatformDailyCents = { cents: dailyCents, at: Date.now() };
+    lastKnownPlatformDailyCents = { cents: dailyCents, at: clock.nowMs() };
     if (dailyCents >= effectiveCeiling) {
       throw new AiCostCeilingExceededError(0, "daily", dailyCents, effectiveCeiling);
     }
@@ -224,7 +225,7 @@ export async function assertWithinPlatformCostCeiling(opts?: {
     // against the last good total (≤10 min old) instead of disabling the
     // gate outright.
     const cached = lastKnownPlatformDailyCents;
-    if (cached && Date.now() - cached.at <= LAST_KNOWN_SPEND_TTL_MS) {
+    if (cached && clock.nowMs() - cached.at <= LAST_KNOWN_SPEND_TTL_MS) {
       if (cached.cents >= effectiveCeiling) {
         throw new AiCostCeilingExceededError(0, "daily", cached.cents, effectiveCeiling);
       }
@@ -276,7 +277,7 @@ export async function assertWithinAiCostCeiling(
 
   try {
     const dailyCents = await sumCostCentsSince(orgId, dayMs);
-    lastKnownOrgDailyCents.set(orgId, { cents: dailyCents, at: Date.now() });
+    lastKnownOrgDailyCents.set(orgId, { cents: dailyCents, at: clock.nowMs() });
     if (dailyCents >= ceilings.dailyCents) {
       throw new AiCostCeilingExceededError(orgId, "daily", dailyCents, ceilings.dailyCents);
     }
@@ -291,7 +292,7 @@ export async function assertWithinAiCostCeiling(
     // entirely on any telemetry hiccup — exactly when a runaway loop is
     // most likely to be hammering the DB.
     const cached = lastKnownOrgDailyCents.get(orgId);
-    if (cached && Date.now() - cached.at <= LAST_KNOWN_SPEND_TTL_MS) {
+    if (cached && clock.nowMs() - cached.at <= LAST_KNOWN_SPEND_TTL_MS) {
       if (cached.cents >= ceilings.dailyCents) {
         throw new AiCostCeilingExceededError(orgId, "daily", cached.cents, ceilings.dailyCents);
       }
@@ -336,7 +337,7 @@ export async function setFounderOverride(opts: {
         monthlyCeilingCents: opts.monthlyCeilingCents ?? null,
         setBy: opts.setBy,
         notes: opts.notes ?? null,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       },
     });
 }

@@ -3,6 +3,7 @@ import { organizations } from "@shared/schema";
 import { eq, and, lt, isNotNull, isNull } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const TRIAL_DURATION_DAYS = 14;
 
@@ -34,7 +35,7 @@ export async function getTrialStatus(organizationId: number): Promise<TrialStatu
     return { isTrialing: false, trialStartedAt: null, trialEndsAt: null, daysRemaining: 0, trialUsed: true, eligible: false };
   }
 
-  const now = new Date();
+  const now = clock.now();
   const isTrialing = !!(org.trialEndsAt && org.trialEndsAt > now && org.subscriptionStatus === "trialing");
   const daysRemaining = org.trialEndsAt
     ? Math.max(0, Math.ceil((org.trialEndsAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
@@ -63,7 +64,7 @@ export async function startTrial(
     throw new Error("This organization has already used its free trial.");
   }
 
-  const now = new Date();
+  const now = clock.now();
   const endsAt = new Date(now.getTime() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000);
 
   await db
@@ -92,7 +93,7 @@ export async function startTrial(
  * Should be called periodically (e.g. by the operations agent or a cron).
  */
 export async function expireTrials(): Promise<number> {
-  const now = new Date();
+  const now = clock.now();
 
   const result = await db
     .update(organizations)

@@ -7,6 +7,7 @@ import type { Organization } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { getPaxControls } from "./paxControls";
 import { PAX_LABELS, PAX_PAUSE_COPY } from "@shared/pax-glossary";
+import { clock } from "../utils/clock";
 
 // ── Schedule preset → next run time ─────────────────────────────────────────
 
@@ -97,7 +98,7 @@ function nextLocalWeekday(now: Date, targetWeekday: number, hour: number, minute
 
 export function computeNextRun(schedule: string, timezone: string): Date {
   const tz = timezone || DEFAULT_TIMEZONE;
-  const now = new Date();
+  const now = clock.now();
 
   switch (schedule) {
     case "daily_8am":
@@ -176,7 +177,7 @@ export async function executeTask(task: PaxScheduledTask, org: Organization): Pr
     return;
   }
   runningOrgs.add(org.id);
-  const startedAt = Date.now();
+  const startedAt = clock.nowMs();
   // Prefer the org-level timezone so all scheduled tasks for an org fire at consistent
   // local times. Fall back to the task's own timezone, then the platform default.
   const effectiveTimezone = org.timezone || task.timezone || DEFAULT_TIMEZONE;
@@ -189,14 +190,14 @@ export async function executeTask(task: PaxScheduledTask, org: Organization): Pr
     };
     const result = await processChat(task.prompt, org, task.userId, chatOptions);
 
-    const date = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const date = clock.now().toLocaleDateString("en-US", { month: "short", day: "numeric" });
     // The run summary leads with what is now waiting on the human — a count
     // read off the kernel's own pending artifacts — then the model's own words.
     const parked = countAsksParked(result.toolCalls);
     const summary = (parked > 0 ? `${waitingLine(parked)}. ` : "") + result.response.slice(0, 400);
 
     await storage.updatePaxScheduledTask(task.id, {
-      lastRunAt: new Date(),
+      lastRunAt: clock.now(),
       nextRunAt: computeNextRun(task.schedule, effectiveTimezone),
       lastRunConversationId: result.conversationId,
       lastRunStatus: "success",
@@ -213,11 +214,11 @@ export async function executeTask(task: PaxScheduledTask, org: Organization): Pr
     await db.insert(paxScheduledTaskRuns as any).values({
       taskId: task.id,
       organizationId: org.id,
-      runAt: new Date(),
+      runAt: clock.now(),
       status: "success",
       summary: summary,
       conversationId: result.conversationId,
-      durationMs: Date.now() - startedAt,
+      durationMs: clock.nowMs() - startedAt,
     } as any).catch(() => {});
 
     logger.info(
@@ -226,7 +227,7 @@ export async function executeTask(task: PaxScheduledTask, org: Organization): Pr
   } catch (err: any) {
     logger.error(`[pax-scheduler] Task ${task.id} "${task.name}" failed`, err);
     await storage.updatePaxScheduledTask(task.id, {
-      lastRunAt: new Date(),
+      lastRunAt: clock.now(),
       nextRunAt: computeNextRun(task.schedule, effectiveTimezone),
       lastRunStatus: "error",
       lastRunSummary: err.message?.slice(0, 200) ?? "Unknown error",
@@ -234,10 +235,10 @@ export async function executeTask(task: PaxScheduledTask, org: Organization): Pr
     await db.insert(paxScheduledTaskRuns as any).values({
       taskId: task.id,
       organizationId: org.id,
-      runAt: new Date(),
+      runAt: clock.now(),
       status: "error",
       summary: err.message?.slice(0, 200) ?? "Unknown error",
-      durationMs: Date.now() - startedAt,
+      durationMs: clock.nowMs() - startedAt,
     } as any).catch(() => {});
   } finally {
     runningOrgs.delete(org.id);
@@ -247,7 +248,7 @@ export async function executeTask(task: PaxScheduledTask, org: Organization): Pr
 // ── Scheduler job — called by the server's background loop ──────────────────
 
 export async function processPaxScheduledTasks(): Promise<void> {
-  const now = new Date();
+  const now = clock.now();
   const due = await storage.getPaxScheduledTasksDue(now);
   if (due.length === 0) return;
 
@@ -271,7 +272,7 @@ export async function processPaxScheduledTasks(): Promise<void> {
       // above says how many are waiting.
       const controls = await getPaxControls(org.id);
       if (controls.paused) {
-        const resumeAt = controls.pausedUntil ?? new Date(Date.now() + PAUSED_RETRY_MS);
+        const resumeAt = controls.pausedUntil ?? new Date(clock.nowMs() + PAUSED_RETRY_MS);
         logger.info(
           `[pax-scheduler] Skipping task ${task.id} "${task.name}" — Pax is paused for org ${org.id}` +
             (controls.checkFailed

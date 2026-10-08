@@ -33,6 +33,7 @@ import {
 } from "@shared/openData/corporaManifest";
 import { decisionsInboxService } from "../decisionsInbox";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 export interface CorpusStatusReport {
   key: string;
@@ -143,13 +144,13 @@ export async function seedOpenDataCorporaDecisionCard(): Promise<
       key: MARKER_KEY,
       scope: "global",
       scopeRef: null,
-      value: { seededAt: new Date().toISOString(), cards: 1 },
+      value: { seededAt: clock.now().toISOString(), cards: 1 },
       defaultValue: {},
       category: "cost",
       description:
         "One-shot marker: 2026-07 open-data corpora founder decision card seeded (provision object storage for Tier-2 bulk corpora, ruling #10).",
       lastChangedBy: "open-data-corpora-seed",
-      lastChangedAt: new Date(),
+      lastChangedAt: clock.now(),
     });
     logger.info(
       "[corporaStatus] seeded 1 founder decision card (2026-07 open-data corpora provisioning)",

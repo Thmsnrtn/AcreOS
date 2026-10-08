@@ -31,6 +31,7 @@ import { orgEmailIdentities } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { encrypt, decrypt } from "./fieldEncryption";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -345,10 +346,10 @@ export async function verifyIdentity(
     .update(orgEmailIdentities)
     .set({
       status: newStatus,
-      verifiedAt: newStatus === "verified" ? new Date() : null,
+      verifiedAt: newStatus === "verified" ? clock.now() : null,
       sendgridDomainId: sendgridDomainId ?? row.sendgridDomainId,
       verificationError: error ?? null,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     })
     .where(eq(orgEmailIdentities.id, identityId));
 

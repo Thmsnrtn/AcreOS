@@ -24,6 +24,7 @@ import {
 import type { DataLicense, RedistributePosture } from "./services/providers/types";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 /**
  * Plain-language description of what each source is the system-of-record for,
@@ -217,7 +218,7 @@ export function registerDataSourcesRoutes(app: Express): void {
         sources,
         classifications: CLASSIFICATION_LEGEND,
         attributions,
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: clock.now().toISOString(),
       });
     } catch (err: unknown) {
       logger.error("[trust] data-sources fetch failed", err);

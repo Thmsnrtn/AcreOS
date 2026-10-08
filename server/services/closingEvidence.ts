@@ -12,6 +12,7 @@
 import { and, eq, gte, isNotNull, isNull, or } from "drizzle-orm";
 import { db } from "../db";
 import { titleOrders } from "@shared/schema";
+import { clock } from "../utils/clock";
 
 /**
  * What the person who verified the wire records: the number they called,
@@ -79,7 +80,7 @@ export function sealWireAttestation(
     numberSource: a.numberSource.trim(),
     spokeWith: a.spokeWith.trim(),
     confirmedBy,
-    confirmedAt: new Date().toISOString(),
+    confirmedAt: clock.now().toISOString(),
   };
 }
 
@@ -102,6 +103,6 @@ export async function stampWireConfirmation(organizationId: number, dealId: numb
 export async function withdrawWireConfirmation(organizationId: number, dealId: number): Promise<void> {
   await db
     .update(titleOrders)
-    .set({ wireConfirmedAt: null, updatedAt: new Date() })
+    .set({ wireConfirmedAt: null, updatedAt: clock.now() })
     .where(and(eq(titleOrders.organizationId, organizationId), eq(titleOrders.dealId, dealId)));
 }

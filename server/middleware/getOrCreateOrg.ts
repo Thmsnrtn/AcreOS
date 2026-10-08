@@ -15,6 +15,7 @@ import { subscriptionPauseGate } from "./subscriptionPauseGate";
 import { viewerReadOnlyGate } from "./viewerReadOnlyGate";
 import { dunningAccessGate } from "./dunningAccessGate";
 import { getClerkAuth } from "../types/request";
+import { clock } from "../utils/clock";
 
 /**
  * Cookie name + options for the per-session "active organization" override.
@@ -199,8 +200,8 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
     // DEFECT-0021: Wrap org creation + team member creation in a transaction
     // so we never end up with an org that has no owner team member.
     const displayName = user.firstName || user.email || "User";
-    const slug = `org-${userId}-${Date.now()}`;
-    const now = new Date();
+    const slug = `org-${userId}-${clock.nowMs()}`;
+    const now = clock.now();
     // Trial duration must match the landing page promise. Landing copy
     // says "free for 14 days" (client/src/pages/landing/copy.ts hero.cta1)
     // and the Stripe checkout path already passes `trial_period_days: 14`
@@ -319,9 +320,9 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   // fail the request on a heartbeat write miss.
   const HEARTBEAT_MS = 15 * 60 * 1000;
   const lastActiveTs = org.lastActiveAt ? new Date(org.lastActiveAt).getTime() : 0;
-  if (Date.now() - lastActiveTs > HEARTBEAT_MS) {
+  if (clock.nowMs() - lastActiveTs > HEARTBEAT_MS) {
     db.update(organizations)
-      .set({ lastActiveAt: new Date() })
+      .set({ lastActiveAt: clock.now() })
       .where(eq(organizations.id, org.id))
       .catch((e) =>
         logger.warn("Activity heartbeat write failed (non-fatal)", {
@@ -470,7 +471,7 @@ async function provisionUser(
   try {
     if (email) {
       const emailHash = crypto.createHash("sha256").update(email).digest("hex");
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const oneHourAgo = new Date(clock.nowMs() - 60 * 60 * 1000);
       const [existing] = await db
         .select({ id: signupSignals.id })
         .from(signupSignals)

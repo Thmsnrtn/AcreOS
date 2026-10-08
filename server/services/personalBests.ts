@@ -6,6 +6,7 @@ import { db } from "../db";
 import { deals, notes } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface PersonalBest {
   metric: string;
@@ -52,7 +53,7 @@ export async function checkPersonalBests(
           metric: "highest_profit",
           value: profit,
           previousValue: prev ?? null,
-          achievedAt: new Date(),
+          achievedAt: clock.now(),
           dealId,
           label: "Highest Single-Deal Profit",
           formattedValue: fmt$(profit),
@@ -75,7 +76,7 @@ export async function checkPersonalBests(
           metric: "fastest_close",
           value: daysToClose,
           previousValue: existingFastest === Infinity ? null : existingFastest,
-          achievedAt: new Date(),
+          achievedAt: clock.now(),
           dealId,
           label: "Fastest Deal Close",
           formattedValue: `${daysToClose} days`,
@@ -99,7 +100,7 @@ export async function checkPersonalBests(
         metric: "profit_streak",
         value: currentStreak,
         previousValue: null,
-        achievedAt: new Date(),
+        achievedAt: clock.now(),
         dealId,
         label: "Profitable Deal Streak",
         formattedValue: `${currentStreak} deals`,

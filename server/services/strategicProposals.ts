@@ -42,6 +42,7 @@ import {
 import { and, desc, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { routeCriticalTask } from "./aiRouter";
+import { clock } from "../utils/clock";
 
 export interface WeeklyProposalsResult {
   weekKey: string;
@@ -58,7 +59,7 @@ export interface SynthesisResult {
 // ── Public API ──────────────────────────────────────────────────────
 
 export async function runWeeklyProposals(): Promise<WeeklyProposalsResult> {
-  const weekKey = isoWeekKey(new Date());
+  const weekKey = isoWeekKey(clock.now());
   const agents = await db
     .select()
     .from(companyAgents)
@@ -189,7 +190,7 @@ export async function resolveProposal(
     .set({
       status,
       founderFeedback: feedback ?? null,
-      resolvedAt: new Date(),
+      resolvedAt: clock.now(),
       resolvedBy: resolvedBy ?? "founder",
     })
     .where(eq(strategicProposals.id, id));
@@ -353,7 +354,7 @@ Output JSON (no code fences):
 async function buildWeeklyDomainSummary(
   agents: Array<typeof companyAgents.$inferSelect>,
 ): Promise<string> {
-  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
   const [orgStats, paymentStats, decisionStats, recentReversals] =
     await Promise.all([
       db
@@ -441,7 +442,7 @@ function resolveSynthesisMonth(explicit?: string): {
   monthStart: Date;
   monthEnd: Date;
 } {
-  const now = new Date();
+  const now = clock.now();
   let year: number, month: number;
   if (explicit) {
     const [y, m] = explicit.split("-").map((n) => parseInt(n, 10));

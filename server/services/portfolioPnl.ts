@@ -20,6 +20,7 @@ import { and, count, eq, gte, inArray, lte, sql, sum } from "drizzle-orm";
 import { centsFromDecimal } from "@shared/finance/cents";
 
 import { ACTIVE_DEAL_STATUSES, CLOSED_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
+import { clock } from "../utils/clock";
 export interface PnlPeriod {
   label: string; // "2025-Q3" or "2025-09"
   acquisitionCost: number;
@@ -292,6 +293,6 @@ export async function getPortfolioPnl(
       avgRate: Number(noteSummary?.avgRate ?? 0),
       count: Number(noteSummary?.noteCount ?? 0),
     },
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
   };
 }

@@ -13,6 +13,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, sql, ilike, inArray } from "drizzle-orm";
 import crypto from "crypto";
+import { clock } from "../utils/clock";
 
 // ─── Governance & Compliance Brain — Sovereign Company Protocol v13 ───────────
 // The compliance gate for every high-stakes action in the system.
@@ -54,7 +55,7 @@ class GovernanceBrainService {
         ruleDsl: data.ruleDsl,
         ruleConfig: data.ruleConfig ?? {},
         severity: data.severity ?? "warning",
-        effectiveDate: data.effectiveDate ?? new Date(),
+        effectiveDate: data.effectiveDate ?? clock.now(),
         sunsetDate: data.sunsetDate ?? null,
         isActive: true,
       })
@@ -72,7 +73,7 @@ class GovernanceBrainService {
     orgId?: number;
   }) {
     // Fetch all active policies whose effective date has passed and sunset hasn't
-    const now = new Date();
+    const now = clock.now();
     const activePolicies = await db
       .select()
       .from(governancePolicies)
@@ -306,7 +307,7 @@ class GovernanceBrainService {
             policyId: check.policyId,
             actionId: evaluation.actionId,
             severity: check.result === "blocked" ? "block" : "warning",
-            date: evaluation.createdAt?.toISOString() ?? new Date().toISOString(),
+            date: evaluation.createdAt?.toISOString() ?? clock.now().toISOString(),
           });
         }
       }
@@ -356,7 +357,7 @@ class GovernanceBrainService {
     orgId?: number;
   }) {
     const sandboxId = crypto.randomUUID();
-    const now = new Date();
+    const now = clock.now();
 
     // Get all active policies
     const activePolicies = await db

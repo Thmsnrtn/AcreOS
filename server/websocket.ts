@@ -18,6 +18,7 @@ import { sql, and, eq } from 'drizzle-orm';
 import { organizations, teamMembers } from '@shared/schema';
 import { logger } from "./utils/logger";
 import { isFounderEmail } from "./services/founder";
+import { clock } from "./utils/clock";
 
 /** Inline cookie parser — avoids requiring @types/cookie. */
 function parseCookies(header: string): Record<string, string> {
@@ -87,7 +88,7 @@ async function validateWsSession(
 
     const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
     const GRACE_PERIOD_MS = 30 * 1000;
-    if (!payload.sub || payload.exp * 1000 <= Date.now() - GRACE_PERIOD_MS) return null;
+    if (!payload.sub || payload.exp * 1000 <= clock.nowMs() - GRACE_PERIOD_MS) return null;
 
     // Map Clerk user id → our users row. users.id is a varchar UUID and is the
     // value stored in organizations.owner_id / team_members.user_id.
@@ -225,7 +226,7 @@ class AcreOSWebSocketServer {
         `org:${organizationId}`,
         `user:${userId}`,
       ]),
-      lastPing: Date.now(),
+      lastPing: clock.nowMs(),
     };
 
     this.clients.set(clientId, client);
@@ -235,7 +236,7 @@ class AcreOSWebSocketServer {
       type: 'connected',
       channel: 'system',
       payload: { clientId, message: 'Real-time connection established' },
-      timestamp: new Date().toISOString(),
+      timestamp: clock.now().toISOString(),
     });
 
     ws.on('message', (data: Buffer) => {
@@ -248,7 +249,7 @@ class AcreOSWebSocketServer {
     });
 
     ws.on('pong', () => {
-      client.lastPing = Date.now();
+      client.lastPing = clock.nowMs();
     });
 
     ws.on('close', () => {
@@ -269,7 +270,7 @@ class AcreOSWebSocketServer {
             type: 'subscribed',
             channel: msg.channel,
             payload: { channel: msg.channel },
-            timestamp: new Date().toISOString(),
+            timestamp: clock.now().toISOString(),
           });
         }
         break;
@@ -283,7 +284,7 @@ class AcreOSWebSocketServer {
           type: 'pong',
           channel: 'system',
           payload: {},
-          timestamp: new Date().toISOString(),
+          timestamp: clock.now().toISOString(),
         });
         break;
     }
@@ -326,7 +327,7 @@ class AcreOSWebSocketServer {
   }
 
   private pingClients(): void {
-    const now = Date.now();
+    const now = clock.nowMs();
     for (const [id, client] of this.clients) {
       // Remove clients that haven't responded to ping in 90 seconds
       if (now - client.lastPing > 90_000) {
@@ -348,7 +349,7 @@ class AcreOSWebSocketServer {
       type,
       channel,
       payload,
-      timestamp: new Date().toISOString(),
+      timestamp: clock.now().toISOString(),
     };
 
     for (const client of this.clients.values()) {

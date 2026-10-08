@@ -35,6 +35,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const DEFAULT_WINDOW_DAYS = 30;
 const MAX_WINDOW_DAYS = 365;
@@ -85,7 +86,7 @@ export function registerPaxCalibrationRoutes(app: Express) {
           ? Math.min(Math.max(1, windowRaw), MAX_WINDOW_DAYS)
           : DEFAULT_WINDOW_DAYS;
 
-        const sinceMs = Date.now() - windowDays * 24 * 60 * 60 * 1000;
+        const sinceMs = clock.nowMs() - windowDays * 24 * 60 * 60 * 1000;
         const since = new Date(sinceMs);
 
         // Pull a tight per-row projection: just the confidence + status, and
@@ -155,7 +156,7 @@ export function registerPaxCalibrationRoutes(app: Express) {
         const overallObservedRate = overallTotal > 0 ? overallAccepts / overallTotal : 0;
 
         res.json({
-          asOf: new Date().toISOString(),
+          asOf: clock.now().toISOString(),
           windowDays,
           sampleCount,
           buckets,

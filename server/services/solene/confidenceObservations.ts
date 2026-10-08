@@ -51,6 +51,7 @@ import {
 import { type SoleneDispatchAgentRole } from "@shared/schema/solene-dispatch";
 import { parseConfidence } from "./confidenceParser";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // recordObservation — fire-and-forget.
@@ -224,7 +225,7 @@ export async function getCalibrationSummary(
       return empty;
     }
     const cutoff = new Date(
-      Date.now() - windowDays * 24 * 60 * 60 * 1000,
+      clock.nowMs() - windowDays * 24 * 60 * 60 * 1000,
     );
 
     const rows = await db

@@ -15,6 +15,7 @@ import { eq, desc, sql, and, gte, inArray } from "drizzle-orm";
 import { wsServer } from "./websocket";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 export function registerSovereignIntegrationRoutes(app: Express) {
   // ─── Phase A: Job Health ───────────────────────────────────────────────────
@@ -51,8 +52,8 @@ export function registerSovereignIntegrationRoutes(app: Express) {
       // Log that a manual trigger was requested
       await db.insert(jobHealthLogs).values({
         jobName: `manual:${jobName}`,
-        runStartedAt: new Date(),
-        runCompletedAt: new Date(),
+        runStartedAt: clock.now(),
+        runCompletedAt: clock.now(),
         durationMs: 0,
         status: "manual_trigger",
       });
@@ -225,7 +226,7 @@ export function registerSovereignIntegrationRoutes(app: Express) {
           originalDecision: decision,
           overrideAction,
           reason: reason ?? "Founder override",
-          overriddenAt: new Date().toISOString(),
+          overriddenAt: clock.now().toISOString(),
         },
       }).returning();
 
@@ -315,7 +316,7 @@ export function registerSovereignIntegrationRoutes(app: Express) {
           options: options ?? ["approve", "reject"],
           participants,
           votes: {},
-          startedAt: new Date().toISOString(),
+          startedAt: clock.now().toISOString(),
           status: "voting",
         },
       }).returning();

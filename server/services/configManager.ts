@@ -14,6 +14,7 @@ import { platformConfig } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { encrypt as canonicalEncrypt, decrypt as canonicalDecrypt } from "./fieldEncryption";
+import { clock } from "../utils/clock";
 
 // ─── Encryption ──────────────────────────────────────────────────────────────
 //
@@ -91,7 +92,7 @@ export async function saveCredential(
       label: meta.label,
       isSecret: meta.isSecret ?? true,
       isRequired: meta.isRequired ?? false,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     })
     .onConflictDoUpdate({
       target: platformConfig.key,
@@ -100,7 +101,7 @@ export async function saveCredential(
         validationStatus: null,
         validationMessage: null,
         validatedAt: null,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       },
     });
 }
@@ -113,7 +114,7 @@ export async function deleteCredential(key: string): Promise<void> {
 export async function markValidated(key: string, status: "ok" | "error", message: string): Promise<void> {
   await db
     .update(platformConfig)
-    .set({ validationStatus: status, validationMessage: message, validatedAt: new Date() })
+    .set({ validationStatus: status, validationMessage: message, validatedAt: clock.now() })
     .where(eq(platformConfig.key, key));
 }
 

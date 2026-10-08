@@ -15,6 +15,7 @@
 
 import type { NeedsYouCounts } from "../../autopilot/needsYou";
 import { logger } from "../../../utils/logger";
+import { clock } from "../../../utils/clock";
 
 // ============================================================================
 // Types
@@ -80,7 +81,7 @@ export interface FounderLiveState {
 // ============================================================================
 
 export async function gatherLiveState(): Promise<FounderLiveState> {
-  const asOf = new Date().toISOString();
+  const asOf = clock.now().toISOString();
 
   // Morning pulse — the canonical senses (read-only; we never compose here,
   // a chat turn must not trigger the loop's write path).

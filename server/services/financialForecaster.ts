@@ -14,6 +14,7 @@ import { sql, gte, lte, count, sum, desc, eq, and } from "drizzle-orm";
 import { monthlyRevenueCentsFor } from "@shared/billing/tier-pricing";
 import { SUBSCRIPTION_EVENT } from "@shared/billing/subscriptionEventVocabulary";
 import { estimateMonthlyInfraUsd } from "./costModel";
+import { clock } from "../utils/clock";
 
 // A paying org is a priced tier AND an active subscription — the rule
 // unitEconomics uses per org (DEFECT-0133). The tier alone counted trialing,
@@ -62,7 +63,7 @@ export interface UnitEconomics {
  * Project MRR forward 6 months with confidence intervals.
  */
 export async function projectMRR(): Promise<MRRProjection> {
-  const now = new Date();
+  const now = clock.now();
 
   // Get monthly MRR for the last 6 months
   const monthlyData: { month: string; mrr: number }[] = [];
@@ -104,7 +105,7 @@ export async function projectMRR(): Promise<MRRProjection> {
       .limit(1);
     if (
       snapshot &&
-      Date.now() - new Date(snapshot.capturedAt).getTime() < 14 * 24 * 60 * 60 * 1000
+      clock.nowMs() - new Date(snapshot.capturedAt).getTime() < 14 * 24 * 60 * 60 * 1000
     ) {
       monthlyData[monthlyData.length - 1].mrr = Math.round(snapshot.mrrCents / 100);
     }
@@ -275,7 +276,7 @@ export async function calculateUnitEconomics(): Promise<UnitEconomics> {
   // and the rate set the lifetime and LTV below (DEFECT-0144). The rate is
   // over the customers the month started with: those still paying plus
   // those who left.
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
   const [churned] = await db.select({ c: sql<number>`count(distinct ${subscriptionEvents.organizationId})` })
     .from(subscriptionEvents)
     .innerJoin(organizations, eq(organizations.id, subscriptionEvents.organizationId))

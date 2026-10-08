@@ -15,6 +15,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { addMonths } from "./utils/dateUtils";
 import { publicRecordTransaction } from "./services/acreOSValuation";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -57,7 +58,7 @@ router.get("/benchmarks/:state/:propertyType", requireApiKey, async (req: Reques
   try {
     const { state, propertyType } = req.params;
     const { months = "12" } = req.query;
-    const since = addMonths(new Date(), -parseInt(months as string));
+    const since = addMonths(clock.now(), -parseInt(months as string));
 
     // Anonymized aggregate benchmark data from transactionTraining
     const benchmarks = await db.select({
@@ -183,7 +184,7 @@ router.post("/keys", ...founderOnly, async (req: Request, res: Response) => {
     const { generateApiKey } = await import("./services/dataApiKeys");
     const generated = generateApiKey();
     const [key] = await db.insert(systemApiKeys).values({
-      provider: provider || `partner_${Date.now()}`,
+      provider: provider || `partner_${clock.nowMs()}`,
       displayName: name,
       apiKey: null,
       keyHash: generated.hash,
@@ -209,7 +210,7 @@ router.post("/keys", ...founderOnly, async (req: Request, res: Response) => {
 router.delete("/keys/:id", ...founderOnly, async (req: Request, res: Response) => {
   try {
     await db.update(systemApiKeys)
-      .set({ isActive: false, updatedAt: new Date() })
+      .set({ isActive: false, updatedAt: clock.now() })
       .where(eq(systemApiKeys.id, parseInt(req.params.id)));
     res.json({ success: true, message: "API key revoked" });
   } catch (err: any) {

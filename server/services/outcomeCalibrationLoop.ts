@@ -21,6 +21,7 @@ import { logger } from "../utils/logger";
 import { recordScoreOutcome, runWeeklyCalibration, type CalibrationResult } from "./modelCalibration";
 
 import { ENGAGED_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
+import { clock } from "../utils/clock";
 // ── Types ───────────────────────────────────────────────────────────
 
 export interface ConfidenceInterval {
@@ -107,7 +108,7 @@ export async function onDealClosed(
 // ── Confidence Intervals ────────────────────────────────────────────
 
 export async function computeConfidenceIntervals(orgId: number): Promise<ConfidenceInterval[]> {
-  const ninetyDaysAgo = new Date(Date.now() - 90 * 86400000);
+  const ninetyDaysAgo = new Date(clock.nowMs() - 90 * 86400000);
   const dimensions = ["location", "physical", "legal", "financial", "environmental", "market"];
 
   const intervals: ConfidenceInterval[] = [];
@@ -158,7 +159,7 @@ export async function computeConfidenceIntervals(orgId: number): Promise<Confide
 // ── Backtest Accuracy ───────────────────────────────────────────────
 
 export async function runBacktestAccuracy(orgId: number): Promise<BacktestResult> {
-  const sixMonthsAgo = new Date(Date.now() - 180 * 86400000);
+  const sixMonthsAgo = new Date(clock.nowMs() - 180 * 86400000);
 
   // Get deals with associated LCS scores
   const closedDeals = await db.select({
@@ -236,7 +237,7 @@ export async function runBacktestAccuracy(orgId: number): Promise<BacktestResult
 // ── Seller Intent Calibration ───────────────────────────────────────
 
 export async function calibrateSellerIntent(orgId: number): Promise<SellerIntentCalibration> {
-  const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000);
+  const sixtyDaysAgo = new Date(clock.nowMs() - 60 * 86400000);
 
   const predictions = await db.select({
     leadId: sellerIntentPredictions.leadId,
@@ -287,7 +288,7 @@ export async function calibrateSellerIntent(orgId: number): Promise<SellerIntent
 // ── Radar Calibration ───────────────────────────────────────────────
 
 export async function calibrateRadar(orgId: number): Promise<RadarCalibration> {
-  const ninetyDaysAgo = new Date(Date.now() - 90 * 86400000);
+  const ninetyDaysAgo = new Date(clock.nowMs() - 90 * 86400000);
 
   // Get opportunity scores and match against deal outcomes
   const scores = await db.select({
@@ -370,7 +371,7 @@ export async function runFullCalibration(orgId: number): Promise<FullCalibration
     backtest,
     sellerIntent,
     radar,
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
   };
 
   logger.info("Full calibration report generated", {

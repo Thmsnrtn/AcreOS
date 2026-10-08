@@ -30,6 +30,7 @@
  */
 import { logger } from "../../utils/logger";
 import { authorizeByAnyGrant, evaluateWitnessGrant, type WitnessRequest } from "./witnessGrant";
+import { clock } from "../../utils/clock";
 
 /** The machine principal grants are issued to for autonomous operation. */
 export const AUTO_WITNESS_GRANTEE = "solene";
@@ -77,7 +78,7 @@ export async function runAutoWitnessSweep(
   opts: { granteeId?: string; now?: number } = {},
 ): Promise<AutoWitnessSweepResult> {
   const granteeId = opts.granteeId ?? AUTO_WITNESS_GRANTEE;
-  const now = opts.now ?? Date.now();
+  const now = opts.now ?? clock.nowMs();
   const result: AutoWitnessSweepResult = { considered: 0, witnessed: 0, decisions: [] };
 
   // Panic stop → the machine's hands are off, delegation included.

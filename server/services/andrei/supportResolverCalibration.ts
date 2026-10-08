@@ -47,6 +47,7 @@ import { supportTickets } from "@shared/schema";
 import { and, eq, gte, isNotNull, sql } from "drizzle-orm";
 import { logger } from "../../utils/logger";
 import { computeConfidenceBand, recordBandObservation } from "./confidenceBand";
+import { clock } from "../../utils/clock";
 
 /** The autonomous path tag every support-resolve observation carries. */
 export const SUPPORT_RESOLVE_PATH = "support_resolve" as const;
@@ -186,7 +187,7 @@ export async function gradeAutoResolvedTicket(
       .set({
         aiResolutionOutcome: outcome,
         aiResolutionReopened: outcome === "reopened" ? true : ticket.aiResolutionReopened ?? false,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(supportTickets.id, ticketId));
 
@@ -247,7 +248,7 @@ export interface SupportResolverCalibrationReport {
 export async function computeSupportResolverCalibration(
   windowDays = 60,
 ): Promise<SupportResolverCalibrationReport> {
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
 
   const rows = await db
     .select({
@@ -328,7 +329,7 @@ export async function runSupportResolverCalibrationGrader(opts: {
   windowDays?: number;
 } = {}): Promise<number> {
   const holdAfterDays = opts.holdAfterDays ?? 7;
-  const cutoff = new Date(Date.now() - holdAfterDays * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - holdAfterDays * 24 * 60 * 60 * 1000);
 
   // Backstop: any auto-resolved ticket older than the hold window that still has
   // no outcome label is presumed to have HELD (the customer didn't come back).
@@ -336,7 +337,7 @@ export async function runSupportResolverCalibrationGrader(opts: {
   try {
     const result = await db
       .update(supportTickets)
-      .set({ aiResolutionOutcome: "held", updatedAt: new Date() })
+      .set({ aiResolutionOutcome: "held", updatedAt: clock.now() })
       .where(
         and(
           eq(supportTickets.aiHandled, true),

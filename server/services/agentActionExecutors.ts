@@ -27,6 +27,7 @@ import { registerActionUndo } from "./undoRegistry";
 import { isQuietHours, shouldBreakQuietHours } from "./quietHours";
 import { logger } from "../utils/logger";
 import { resolveCodename } from "./agentCodenameAlias";
+import { clock } from "../utils/clock";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -256,7 +257,7 @@ registerExecutor("beacon_marketing", "pause_campaign", async (ctx) => {
   if (!campaign) return { success: false, detail: `Campaign #${campaignId} not found` };
 
   await db.update(campaigns)
-    .set({ status: "paused", updatedAt: new Date() })
+    .set({ status: "paused", updatedAt: clock.now() })
     .where(eq(campaigns.id, campaignId));
 
   return {
@@ -459,7 +460,7 @@ registerExecutor("forge_revenue", "extend_trial", async (ctx) => {
   const { trialService } = await import("./trialService");
   const status = await trialService.getTrialStatus(orgId);
   if (!status.isTrialing) return { success: false, detail: `Org #${orgId} is not currently trialing` };
-  const newEnd = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
+  const newEnd = new Date(clock.nowMs() + durationDays * 24 * 60 * 60 * 1000);
   await db.update(organizations).set({ trialEndsAt: newEnd }).where(eq(organizations.id, orgId));
   return { success: true, detail: `Trial extended ${durationDays} days for org #${orgId}`, metrics: { orgId, durationDays }, verifyAfterMs: durationDays * 24 * 60 * 60 * 1000 };
 });
@@ -550,7 +551,7 @@ registerExecutor("sophie_csm", "unlock_feature_temporarily", async (ctx) => {
   const { orgId, feature, durationDays = 7 } = ctx.input;
   if (!orgId || !feature) return { success: false, detail: "orgId and feature are required" };
   if (durationDays > 7) return { success: false, detail: "Governance: max temporary unlock is 7 days" };
-  const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(clock.nowMs() + durationDays * 24 * 60 * 60 * 1000);
   // Store override in org settings (featureOverrides jsonb column)
   const org = await db.query.organizations.findFirst({ where: eq(organizations.id, orgId) });
   if (!org) return { success: false, detail: `Organization #${orgId} not found` };
@@ -877,7 +878,7 @@ export async function executeAction(ctx: ActionContext): Promise<ActionResult> {
     }
   }
 
-  const startTime = Date.now();
+  const startTime = clock.nowMs();
   let result: ActionResult;
 
   try {
@@ -889,7 +890,7 @@ export async function executeAction(ctx: ActionContext): Promise<ActionResult> {
     };
   }
 
-  const durationMs = Date.now() - startTime;
+  const durationMs = clock.nowMs() - startTime;
 
   // Log to the action audit trail and capture the ID for outcome verification
   let logId: number | undefined;
@@ -917,7 +918,7 @@ export async function executeAction(ctx: ActionContext): Promise<ActionResult> {
       success: result.success,
       detail: result.detail,
       triggeredBy: ctx.triggeredBy,
-      timestamp: new Date().toISOString(),
+      timestamp: clock.now().toISOString(),
     });
   } catch {
     // WebSocket broadcast is best-effort
@@ -953,7 +954,7 @@ export async function executeAction(ctx: ActionContext): Promise<ActionResult> {
           body: result.detail,
           actionLogId: logId,
           agent: ctx.agentCodename,
-          timestamp: new Date().toISOString(),
+          timestamp: clock.now().toISOString(),
         });
       }
     } catch {

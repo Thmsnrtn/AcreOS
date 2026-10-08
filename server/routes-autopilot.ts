@@ -32,6 +32,7 @@ import {
   STANDING_ORDER_KINDS,
   type StandingOrderKind,
 } from "./services/autopilot/standingOrders";
+import { clock } from "./utils/clock";
 
 export function registerAutopilotRoutes(app: Express): void {
   // ── GET the Trust Ledger ────────────────────────────────────────────────
@@ -547,10 +548,10 @@ export function registerAutopilotRoutes(app: Express): void {
         // rule). Honest null when it has never run; an unreadable read keeps
         // the honest null too.
         const { heartbeatFrom, readLoopLastSuccess } = await import("./services/autopilot/loopHeartbeat");
-        let loop = heartbeatFrom(null, Date.now());
+        let loop = heartbeatFrom(null, clock.nowMs());
         try {
           const { db } = await import("./storage");
-          loop = heartbeatFrom(await readLoopLastSuccess(db), Date.now());
+          loop = heartbeatFrom(await readLoopLastSuccess(db), clock.nowMs());
         } catch {
           /* keep honest nulls */
         }
@@ -619,7 +620,7 @@ export function registerAutopilotRoutes(app: Express): void {
         const { db } = await import("./db");
         const { campaignDeliveryEvents, messages, offers, leads } = await import("@shared/schema");
         const { and, desc, eq, gte } = await import("drizzle-orm");
-        const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const cutoff = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
         const LIMIT = 50;
         let rows: Array<{ at: string | null; line: string }> = [];
         if (metric === "outreach") {
@@ -1009,7 +1010,7 @@ export function registerAutopilotRoutes(app: Express): void {
           sourceRoles: parsed.data.sourceRoles,
           maxCostUsd: parsed.data.maxCostUsd,
           maxActions: parsed.data.maxActions,
-          expiresAt: new Date(Date.now() + parsed.data.expiresInDays * 24 * 60 * 60 * 1000),
+          expiresAt: new Date(clock.nowMs() + parsed.data.expiresInDays * 24 * 60 * 60 * 1000),
           allowMoney: parsed.data.allowMoney,
           allowBroadcast: parsed.data.allowBroadcast,
           note: parsed.data.note ?? null,
@@ -1134,7 +1135,7 @@ function upNextLine(r: {
   const snippet = collapsed.length > 100 ? `${collapsed.slice(0, 100)}…` : collapsed;
   const kind = UP_NEXT_KIND[r.sourceType] ?? "Queued task";
   const timing =
-    r.notBeforeAt && r.notBeforeAt.getTime() > Date.now()
+    r.notBeforeAt && r.notBeforeAt.getTime() > clock.nowMs()
       ? `queued for ${formatEtTime(r.notBeforeAt)}`
       : "ready to run, waiting its turn";
   return snippet ? `${kind}: “${snippet}” — ${timing}` : `${kind} — ${timing}`;

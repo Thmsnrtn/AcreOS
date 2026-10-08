@@ -23,6 +23,7 @@ import { and, eq, gte, lt } from "drizzle-orm";
 import { db } from "../../db";
 import { uptimeSamples } from "@shared/schema";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 /** The worker writes a sample at most this often (piggybacks the 5s poll). */
 export const SAMPLE_INTERVAL_MS = 60_000; // 1 minute
@@ -88,7 +89,7 @@ let lastSampleAt = 0;
  * must never break the worker). Occasionally prunes old rows.
  */
 export async function recordUptimeSample(source = "worker"): Promise<void> {
-  const now = Date.now();
+  const now = clock.nowMs();
   if (now - lastSampleAt < SAMPLE_INTERVAL_MS) return;
   lastSampleAt = now;
   try {
@@ -118,7 +119,7 @@ async function uptimeForSource(source: string, now: number): Promise<number | nu
  * the web tier is down but the worker is alive, worker samples would mask the
  * outage — so when the external probe is enabled, it is the measure of record.
  */
-export async function getUptimePct(now = Date.now()): Promise<number | null> {
+export async function getUptimePct(now = clock.nowMs()): Promise<number | null> {
   try {
     const external = await uptimeForSource("external", now);
     if (external != null) return external;

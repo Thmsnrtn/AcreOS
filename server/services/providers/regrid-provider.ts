@@ -19,6 +19,7 @@ import type {
   ProviderHealthStatus,
   ProviderLookupContext,
 } from "./types";
+import { clock } from "../../utils/clock";
 
 const CATEGORY_COSTS: Partial<Record<DataCategory, number>> = {
   parcel_data: 3,
@@ -72,7 +73,7 @@ export const regridProvider: DataProvider = {
   },
 
   async lookup(category: DataCategory, input: LookupInput, ctx?: ProviderLookupContext): Promise<LookupResult> {
-    const start = Date.now();
+    const start = clock.nowMs();
     // R1d BYO-data-keys: the registry resolves the customer's Regrid key from
     // the canonical BYOK vault and passes it here; prefer it over the platform
     // key. It is handed to the parcel service, which calls Regrid with it — it
@@ -164,9 +165,9 @@ export const regridProvider: DataProvider = {
       category,
       confidence,
       costCents: answeredByFreeSource ? 0 : this.costPerLookupCents(category),
-      fetchedAt: new Date(),
+      fetchedAt: clock.now(),
       cached: false,
-      latencyMs: Date.now() - start,
+      latencyMs: clock.nowMs() - start,
       data,
       source: "Regrid",
       sourceAsOf: null,
@@ -177,7 +178,7 @@ export const regridProvider: DataProvider = {
   },
 
   async healthCheck(): Promise<ProviderHealthStatus> {
-    const start = Date.now();
+    const start = clock.nowMs();
     const key = await getApiKey();
 
     if (!key) {
@@ -185,7 +186,7 @@ export const regridProvider: DataProvider = {
         healthy: false,
         latencyMs: 0,
         message: "No API key configured",
-        checkedAt: new Date(),
+        checkedAt: clock.now(),
       };
     }
 
@@ -202,16 +203,16 @@ export const regridProvider: DataProvider = {
       );
       return {
         healthy: response.ok,
-        latencyMs: Date.now() - start,
+        latencyMs: clock.nowMs() - start,
         message: response.ok ? "Regrid API reachable" : `Status ${response.status}`,
-        checkedAt: new Date(),
+        checkedAt: clock.now(),
       };
     } catch (error) {
       return {
         healthy: false,
-        latencyMs: Date.now() - start,
+        latencyMs: clock.nowMs() - start,
         message: error instanceof Error ? error.message : "Health check failed",
-        checkedAt: new Date(),
+        checkedAt: clock.now(),
       };
     }
   },

@@ -87,6 +87,7 @@ import { db } from "../db";
 import { landIntelligenceReports, paidDataEvalRuns } from "@shared/schema";
 import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── The free-report projection the harness compares against ────────────────
 // We deliberately read a NARROW, decision-relevant projection out of the
@@ -559,7 +560,7 @@ export async function evaluateCorpus(opts: {
     decisionFlipRate,
     decisionFlips: flips,
     recommendation: buildBuyRecommendation(fieldDivergence, decisionFlipRate),
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
   };
 }
 

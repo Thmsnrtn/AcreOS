@@ -17,6 +17,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { autopilotSettings } from "@shared/schema";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 export interface EffectiveSettings {
   dispatchEnabled: boolean;
@@ -79,7 +80,7 @@ export function __resetSettingsCacheForTest(): void {
 }
 
 /** Read the effective settings (DB row if present, else env). Never throws. */
-export async function getEffectiveSettings(now = Date.now()): Promise<EffectiveSettings> {
+export async function getEffectiveSettings(now = clock.nowMs()): Promise<EffectiveSettings> {
   // The out-of-reach kill wins over everything, every read — never cached-on.
   if (isPanicStopped()) return ALL_OFF();
   if (cache && now - cache.at < CACHE_TTL_MS) return cache.value;
@@ -134,7 +135,7 @@ export async function setAutopilotSetting(
 ): Promise<EffectiveSettings> {
   // Explicit per-column branches (not a computed key) so the static
   // schema-column validator can resolve the references.
-  const stamp = { updatedAt: new Date(), updatedBy: updatedBy ?? null };
+  const stamp = { updatedAt: clock.now(), updatedBy: updatedBy ?? null };
   if (key === "dispatchEnabled") {
     await db
       .insert(autopilotSettings)
@@ -177,7 +178,7 @@ export async function setGrowthBudgetOverrideUsd(
     .values({ id: 1, growthBudgetOverrideUsd: clean, updatedBy: updatedBy ?? null })
     .onConflictDoUpdate({
       target: autopilotSettings.id,
-      set: { growthBudgetOverrideUsd: clean, updatedAt: new Date(), updatedBy: updatedBy ?? null },
+      set: { growthBudgetOverrideUsd: clean, updatedAt: clock.now(), updatedBy: updatedBy ?? null },
     });
   logger.warn("[autopilot/settings] growth budget cap override set", { value: clean, updatedBy });
   cache = null;

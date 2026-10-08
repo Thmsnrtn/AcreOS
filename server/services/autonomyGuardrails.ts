@@ -24,6 +24,7 @@ import { agentMemory } from "@shared/schema";
 import { logger } from "../utils/logger";
 
 import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
+import { clock } from "../utils/clock";
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const EMAIL_DAILY_LIMIT = 50;
@@ -43,7 +44,7 @@ export async function checkSendRateLimit(
   channelType: "email" | "sms"
 ): Promise<{ allowed: boolean; reason?: string }> {
   try {
-    const todayKey = `autonomous_send_log_${new Date().toISOString().slice(0, 10)}`;
+    const todayKey = `autonomous_send_log_${clock.now().toISOString().slice(0, 10)}`;
 
     const rows = await db
       .select({ value: agentMemory.value })
@@ -161,7 +162,7 @@ export async function recordAutonomousSend(
   content: string
 ): Promise<void> {
   try {
-    const todayKey = `autonomous_send_log_${new Date().toISOString().slice(0, 10)}`;
+    const todayKey = `autonomous_send_log_${clock.now().toISOString().slice(0, 10)}`;
 
     // Fetch existing log for today
     const rows = await db
@@ -185,7 +186,7 @@ export async function recordAutonomousSend(
       channelType,
       leadId,
       content: content.slice(0, 100),
-      timestamp: new Date().toISOString(),
+      timestamp: clock.now().toISOString(),
     };
 
     const updatedSends = [...existing, newEntry];
@@ -229,7 +230,7 @@ export async function generateAutonomousAuditSummary(
   hours: number = 24
 ): Promise<string> {
   try {
-    const now = new Date();
+    const now = clock.now();
     const cutoff = new Date(now.getTime() - hours * 60 * 60 * 1000);
 
     // Gather all daily log keys within the window

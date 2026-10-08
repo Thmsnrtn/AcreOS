@@ -53,6 +53,7 @@ import { getRelevantMemories, formatMemoriesForContext } from "../services/atlas
 import { logger } from "../utils/logger";
 import { orgMayActFilter } from "../services/orgOperating";
 import { splitOwnerName } from "@shared/parcel/ownerName";
+import { clock } from "../utils/clock";
 
 export const AUTONOMOUS_DEAL_MACHINE_QUEUE = "autonomous-deal-machine";
 export const MORNING_BRIEFING_QUEUE = "morning-briefing-enhanced";
@@ -73,7 +74,7 @@ interface FollowUpResult {
 async function runAutoFollowUpEngine(
   organizationId: number
 ): Promise<FollowUpResult> {
-  const now = new Date();
+  const now = clock.now();
   let leadsReengaged = 0;
   let touchesScheduled = 0;
   let campaignsCreated = 0;
@@ -198,7 +199,7 @@ async function scoreNewDealsForOrg(
   organizationId: number,
   lookbackHours: number = 24
 ): Promise<NewDealScoringResult> {
-  const cutoff = subDays(new Date(), lookbackHours / 24);
+  const cutoff = subDays(clock.now(), lookbackHours / 24);
 
   // Get newly scraped deals that match this org's criteria
   const recentDeals = await db
@@ -410,7 +411,7 @@ async function collectEnhancedBriefingData(
   const recipientEmail = owner?.email || (org as any).contactEmail;
   if (!recipientEmail) return null;
 
-  const now = new Date();
+  const now = clock.now();
   const nextWeek = addDays(now, 7);
   const todayMinus25 = subDays(now, 25);
 
@@ -747,7 +748,7 @@ function getDailyWisdom(): string {
   ];
 
   const dayOfYear = Math.floor(
-    (Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) /
+    (clock.nowMs() - new Date(clock.now().getFullYear(), 0, 0).getTime()) /
       86400000
   );
   return wisdomList[dayOfYear % wisdomList.length];
@@ -758,7 +759,7 @@ function getDailyWisdom(): string {
 // ---------------------------------------------------------------------------
 
 async function runAutonomousDealMachine(job: Job): Promise<void> {
-  const startedAt = new Date();
+  const startedAt = clock.now();
 
   const jobRecord = await db
     .insert(backgroundJobs)
@@ -811,11 +812,11 @@ async function runAutonomousDealMachine(job: Job): Promise<void> {
         .update(backgroundJobs)
         .set({
           status: "completed",
-          completedAt: new Date(),
+          completedAt: clock.now(),
           result: {
             orgsProcessed: totalOrgsProcessed,
             ...aggregateActivity,
-            durationMs: Date.now() - startedAt.getTime(),
+            durationMs: clock.nowMs() - startedAt.getTime(),
           },
         })
         .where(eq(backgroundJobs.id, bgJobId));
@@ -827,7 +828,7 @@ async function runAutonomousDealMachine(job: Job): Promise<void> {
     if (bgJobId) {
       await db
         .update(backgroundJobs)
-        .set({ status: "failed", completedAt: new Date(), error: err.message })
+        .set({ status: "failed", completedAt: clock.now(), error: err.message })
         .where(eq(backgroundJobs.id, bgJobId));
     }
     throw err;

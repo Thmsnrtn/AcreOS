@@ -28,6 +28,7 @@
 import type { DraftReturn } from "./taxEngine";
 import { humanFilingStatus } from "./taxEngine";
 import type { FilingStatus } from "./taxRules";
+import { clock } from "../../utils/clock";
 
 // ─── Safe-harbor constants ─────────────────────────────────────────────────────
 //
@@ -374,7 +375,7 @@ function buildJurisdictionRadar(
 
 export function computeEstimatedTaxRadar(input: EstimatedTaxInput): EstimatedTaxRadar {
   const { draft, taxYear, filingStatus } = input;
-  const now = input.now ?? new Date();
+  const now = input.now ?? clock.now();
   const paid = input.paid ?? [];
   const prior = input.priorYear ?? null;
 

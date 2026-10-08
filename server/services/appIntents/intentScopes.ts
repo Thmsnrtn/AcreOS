@@ -111,6 +111,24 @@ export const INTENT_META: Record<string, { door: CustomerDoor; scope: Scope | nu
   spawn_subagent: { door: "pax", scope: null },
   // Andrei E5 — general land-knowledge retrieval (read-only; no parcel writes).
   retrieve_land_knowledge: { door: "pax", scope: null },
+
+  // ── Account reads (Stage 2, 2026-10-07) ──────────────────────────────────
+  // Credits are money on the account → financial_read, the scope Billing's own
+  // reads require. Prices are the public price list applied to the org's own
+  // send rails → no gate. Campaigns, replies and sending identity are message
+  // history/config → comms_read. Team activity is an audit read → audit_read
+  // (owner / admin / attorney), so a VA cannot read what the owner did.
+  get_credits: { door: "finance", scope: "financial_read" },
+  quote_outbound_cost: { door: "deals", scope: null },
+  get_campaigns: { door: "deals", scope: "comms_read" },
+  get_inbox_replies: { door: "deals", scope: "comms_read" },
+  get_sending_identity_status: { door: "deals", scope: "comms_read" },
+  get_team_activity: { door: "today", scope: "audit_read" },
+  get_plan_limits: { door: "today", scope: null },
+  get_finance_summary: { door: "finance", scope: "financial_read" },
+  get_product_facts: { door: "pax", scope: null },
+  // Anyone in the org may ask for a person.
+  escalate_to_support: { door: "pax", scope: null },
 };
 
 /**

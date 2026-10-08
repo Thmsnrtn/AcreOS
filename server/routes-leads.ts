@@ -39,12 +39,14 @@ import { validateResponse } from "./utils/contractResponse";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 import { apnMatchForm, createParcelDedupeIndex } from "./services/leads/parcelDedupe";
 import { splitOwnerName, ownerNameFromSingleColumn } from "@shared/parcel/ownerName";
+import { CSV_IMPORT_MAX_ROWS_PER_FILE } from "@shared/product-limits";
 import {
   CSV_IMPORT_MAX_ROWS_PER_REQUEST,
   composePropertyAddress,
   parseDncFlag,
   restoreZip,
 } from "@shared/leads/csvImportMapping";
+import { clock } from "./utils/clock";
 
 // Partial update schema for PUT endpoints. The soft-delete fields are server-
 // owned: a lead is deleted and restored only through the dedicated paths
@@ -95,7 +97,8 @@ const checkDuplicatesSchema = z.object({
   { message: "At least one search field is required" }
 );
 
-const MAX_CSV_IMPORT_ROWS = 500;
+// One definition, shared with Pax's product facts (shared/product-limits.ts).
+const MAX_CSV_IMPORT_ROWS = CSV_IMPORT_MAX_ROWS_PER_FILE;
 
 /**
  * Truth-immutable (Quinn): map a real skip-trace provider result into the
@@ -293,7 +296,7 @@ export function registerLeadRoutes(app: Express): void {
   api.get("/api/leads/focus", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = req.organization;
     const allLeads = await storage.getLeads(org.id);
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const twentyFourHoursAgo = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
     
     // Score all leads and filter those not contacted in 24h
     const leadsWithScores = allLeads
@@ -354,7 +357,7 @@ export function registerLeadRoutes(app: Express): void {
   api.get("/api/leads/export", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
     const org = req.organization;
     const csv = await exportLeadsToCSV(org.id);
-    const date = new Date().toISOString().split("T")[0];
+    const date = clock.now().toISOString().split("T")[0];
     res.setHeader("Content-Type", "text/csv");
     res.setHeader("Content-Disposition", `attachment; filename="leads-${date}.csv"`);
     res.send(csv);
@@ -582,7 +585,7 @@ export function registerLeadRoutes(app: Express): void {
           subjectType: "lead",
           subjectId: String(lead.id),
           orgId: org.id,
-          decisionAt: new Date(),
+          decisionAt: clock.now(),
           features: {
             source: inputAny.source ?? null,
             campaignId: inputAny.campaignId ?? null,
@@ -796,7 +799,7 @@ export function registerLeadRoutes(app: Express): void {
     const user = req.user;
     const userId = user?.id || user?.id;
     await db.update(leads).set({
-      deletedAt: new Date(),
+      deletedAt: clock.now(),
       deletedBy: userId || null,
     }).where(and(eq(leads.id, leadId), eq(leads.organizationId, org.id)));
 
@@ -1061,7 +1064,7 @@ export function registerLeadRoutes(app: Express): void {
           );
         }
         const { channel, method, outcome } = parsed.data;
-        const now = new Date();
+        const now = clock.now();
 
         // 1) Bump lastContactedAt on the lead row. We do this even for
         //    outcome-only follow-ups (so the post-call "wrong number"
@@ -1638,7 +1641,7 @@ export function registerLeadRoutes(app: Express): void {
               source: "csv_import",
               status: "new",
               // Only ever true from a list flag; never consent.
-              ...(parseDncFlag(row.doNotContact) ? { doNotContact: true, optOutDate: new Date(), optOutReason: "import_dnc_flag" } : {}),
+              ...(parseDncFlag(row.doNotContact) ? { doNotContact: true, optOutDate: clock.now(), optOutReason: "import_dnc_flag" } : {}),
             }).returning();
             imported++;
             // One event per imported lead. See the volume note on
@@ -1922,7 +1925,7 @@ export function registerLeadRoutes(app: Express): void {
         },
         status: "processing",
         costCents: null,
-        requestedAt: new Date(),
+        requestedAt: clock.now(),
         purposeOfUse,
         justification,
         attestingUserId: userId,
@@ -1950,7 +1953,7 @@ export function registerLeadRoutes(app: Express): void {
           const updated = await storage.updateSkipTrace(skipTrace.id, {
             status: "no_results",
             provider: trace.source === "none" ? null : trace.source,
-            completedAt: new Date(),
+            completedAt: clock.now(),
           });
           return res.json(updated);
         }
@@ -1968,7 +1971,7 @@ export function registerLeadRoutes(app: Express): void {
           // service; this is the displayed unit cost, not a second charge.
           costCents: hasAny ? (trace.creditsUsed ?? 1) * creditCents : 0,
           results,
-          completedAt: new Date(),
+          completedAt: clock.now(),
         });
         return res.json(updated);
       } catch (err) {
@@ -1976,7 +1979,7 @@ export function registerLeadRoutes(app: Express): void {
         const failed = await storage.updateSkipTrace(skipTrace.id, {
           status: "failed",
           costCents: 0,
-          completedAt: new Date(),
+          completedAt: clock.now(),
         });
         return res.json(failed);
       }

@@ -11,6 +11,7 @@ import {
 import { orgHasActiveHold } from "../services/legalHold";
 import { recordDealTransitionEvidence } from "../services/dealLifecycleEvents";
 import type { DatabaseStorage } from "../storage";
+import { clock } from "../utils/clock";
 
 export const auditRepo = {
   // Audit Log (20.1)
@@ -186,17 +187,17 @@ export const auditRepo = {
   }, organizationId?: number): Promise<Lead> {
     const updates: Partial<Lead> = {
       tcpaConsent: consent.tcpaConsent,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     };
 
     if (consent.tcpaConsent) {
-      updates.consentDate = new Date();
+      updates.consentDate = clock.now();
       updates.consentSource = consent.consentSource || "manual";
       updates.optOutDate = null;
       updates.optOutReason = null;
       updates.doNotContact = false;
     } else {
-      updates.optOutDate = new Date();
+      updates.optOutDate = clock.now();
       updates.optOutReason = consent.optOutReason;
       updates.doNotContact = true;
     }

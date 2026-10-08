@@ -29,6 +29,7 @@ import {
   AGENT_CODENAMES,
 } from "./scpConfigVersioning";
 import { getEvolutionCadence } from "./scpEvolutionEngine";
+import { clock } from "../utils/clock";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -104,7 +105,7 @@ export async function promoteToGoldenCase(
     description: `CEO correction in session ${sessionId}`,
     lesson: correction,
     session_id: sessionId,
-    created_at: new Date().toISOString(),
+    created_at: clock.now().toISOString(),
   };
 
   // Store in file-based golden suite
@@ -320,7 +321,7 @@ export function executeRollback(
     });
 
     appendEvolutionLog(agent, {
-      timestamp: new Date().toISOString(),
+      timestamp: clock.now().toISOString(),
       version: fromVersion,
       session_id: `rollback-${fromVersion}-to-${toVersion}`,
       changes: ["ROLLBACK"],

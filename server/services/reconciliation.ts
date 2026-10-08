@@ -18,6 +18,7 @@ import { reconciliationRules, reconciliationRuns } from "@shared/schema";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { storage } from "../storage";
+import { clock } from "../utils/clock";
 
 export interface ReconciliationResult {
   ruleId: string;
@@ -79,7 +80,7 @@ export async function runReconciliation(): Promise<ReconciliationResult[]> {
       });
       await db
         .update(reconciliationRules)
-        .set({ lastRunAt: new Date() })
+        .set({ lastRunAt: clock.now() })
         .where(eq(reconciliationRules.id, rule.id));
     } catch (writeErr) {
       logger.warn(
@@ -159,7 +160,7 @@ export const LEDGER_AGGREGATION_KEY = "mtd_paid_ledger";
 
 /** First moment of the current UTC month — both totals window on this. */
 function utcMonthStart(): Date {
-  const start = new Date();
+  const start = clock.now();
   start.setUTCDate(1);
   start.setUTCHours(0, 0, 0, 0);
   return start;

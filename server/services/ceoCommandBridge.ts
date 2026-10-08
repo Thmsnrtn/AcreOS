@@ -20,6 +20,7 @@ import { executeAction } from "./agentActionExecutors";
 import { createPriority } from "./strategicCompass";
 import { setQuietHours } from "./quietHours";
 import { createGoal } from "./agentGoalManager";
+import { clock } from "../utils/clock";
 
 interface CommandResult {
   understood: boolean;
@@ -264,7 +265,7 @@ async function handleResumeMarketing(params: any): Promise<CommandResult> {
   let resumed = 0;
   for (const campaign of pausedCampaigns) {
     await db.update(campaigns)
-      .set({ status: "active", updatedAt: new Date() })
+      .set({ status: "active", updatedAt: clock.now() })
       .where(eq(campaigns.id, campaign.id));
     resumed++;
   }
@@ -282,7 +283,7 @@ async function handleResumeMarketing(params: any): Promise<CommandResult> {
 async function handleAgentSummary(params: any): Promise<CommandResult> {
   const agentCodename = params.agent || "sophie_csm";
   const daysBack = params.period === "month" ? 30 : params.period === "week" ? 7 : 1;
-  const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - daysBack * 24 * 60 * 60 * 1000);
 
   const actions = await db.select({
     actionName: agentActionLog.actionName,

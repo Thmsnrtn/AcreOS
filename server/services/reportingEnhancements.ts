@@ -6,6 +6,7 @@
 import { db } from "../db";
 import { deals, properties, notes, payments, leads } from "@shared/schema";
 import { eq, and, sql, count, gte, desc } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 // Item 144: Universal CSV export
 export function tableToCSV(data: any[], columns?: string[]): string {
@@ -120,12 +121,12 @@ const reportCache = new Map<string, { data: any; expiry: number }>();
 export function getCachedReport(key: string): any | null {
   const cached = reportCache.get(key);
   if (!cached) return null;
-  if (Date.now() > cached.expiry) { reportCache.delete(key); return null; }
+  if (clock.nowMs() > cached.expiry) { reportCache.delete(key); return null; }
   return cached.data;
 }
 
 export function cacheReport(key: string, data: any, ttlMs: number = 5 * 60 * 1000): void {
-  reportCache.set(key, { data, expiry: Date.now() + ttlMs });
+  reportCache.set(key, { data, expiry: clock.nowMs() + ttlMs });
 }
 
 // Item 156: Cost basis report

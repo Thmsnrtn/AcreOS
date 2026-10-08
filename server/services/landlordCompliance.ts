@@ -51,6 +51,7 @@
 // NOTICE-PERIOD RULES — pay-or-quit / cure-or-quit / termination.
 // ---------------------------------------------------------------------------
 
+import { clock } from "../utils/clock";
 export type NoticeKind =
   | "pay_or_quit"        // non-payment of rent
   | "cure_or_quit"       // lease violation — opportunity to cure
@@ -183,7 +184,7 @@ export function computeRetaliationWindow(opts: {
 } {
   const referenceDate = opts.evictionFilingDate
     ? (typeof opts.evictionFilingDate === "string" ? new Date(opts.evictionFilingDate) : opts.evictionFilingDate)
-    : (opts.now ?? new Date());
+    : (opts.now ?? clock.now());
   const code = (opts.state ?? "").toUpperCase().trim();
   const rule = RETALIATION_RULES[code] ?? null;
   const presumptionDays = rule?.presumptionDays ?? RETALIATION_DEFAULT_DAYS;
@@ -393,7 +394,7 @@ export function computeHapRecertReminder(opts: {
   shouldRemind: boolean;
   reason: string;
 } {
-  const now = opts.now ?? new Date();
+  const now = opts.now ?? clock.now();
   const start = typeof opts.leaseStartDate === "string" ? new Date(opts.leaseStartDate) : opts.leaseStartDate;
   if (Number.isNaN(start.getTime())) {
     return { nextRecertDate: "", daysUntil: -1, shouldRemind: false, reason: "invalid start date" };

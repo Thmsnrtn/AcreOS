@@ -32,6 +32,7 @@ import {
   type MlSubjectType,
 } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface RecordSnapshotArgs {
   snapshotType: MlSnapshotType;
@@ -185,8 +186,8 @@ export async function pairOutcome(args: PairOutcomeArgs): Promise<boolean> {
         subjectId,
         labels: outcomeLabels,
         features: {},
-        decisionAt: outcomeAt ?? new Date(),
-        outcomeAt: outcomeAt ?? new Date(),
+        decisionAt: outcomeAt ?? clock.now(),
+        outcomeAt: outcomeAt ?? clock.now(),
         metadata: { ...(metadata ?? {}), pairing: "outcome_only_no_decision" },
       });
     }
@@ -200,7 +201,7 @@ export async function pairOutcome(args: PairOutcomeArgs): Promise<boolean> {
     const mergedMetadata = {
       ...(open.metadata ?? {}),
       ...(metadata ?? {}),
-      paired_at: new Date().toISOString(),
+      paired_at: clock.now().toISOString(),
     };
 
     await db
@@ -208,7 +209,7 @@ export async function pairOutcome(args: PairOutcomeArgs): Promise<boolean> {
       .set({
         labels: mergedLabels,
         metadata: mergedMetadata,
-        outcomeAt: outcomeAt ?? new Date(),
+        outcomeAt: outcomeAt ?? clock.now(),
       })
       .where(eq(mlTrainingSnapshots.id, open.id));
 

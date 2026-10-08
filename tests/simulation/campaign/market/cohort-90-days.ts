@@ -41,6 +41,8 @@ import {
   ensureDefaultE2eUser, postTwilioSms, standinCalls, SimClient, giveOwnIp, type Org, type Resp, type BurdenClass, reEsc } from "./common";
 import { personaTestUserId } from "../../../../server/auth/testAuth";
 import { PAX_QUESTIONS } from "./pax-questions";
+import { ARRIVAL_25, REPLY_RATE, REPLY_MIX, MAIL_CALLBACK_RATE } from "./parameters";
+export { ARRIVAL_3, ARRIVAL_10, ARRIVAL_25, REPLY_RATE, REPLY_MIX } from "./parameters";
 import { recordMetric, recordSkip } from "../ledger";
 
 const SIM = "market-cohort";
@@ -58,10 +60,6 @@ interface Spec {
   smsVia: "byok" | "integrations-then-byok" | "starter-manual" | "none";
   upgradeWeek?: number; downgradeWeek?: number; cancelWeek?: number; exportWeek?: number; deleteWeek?: number; vas?: number; badMailForm?: boolean;
 }
-/** Arrival day on the 25-customer curve (index = spec.n - 1). Front-loaded launch, then ~2/week. */
-export const ARRIVAL_25 = [0, 0, 2, 5, 8, 11, 14, 17, 21, 24, 28, 31, 35, 38, 42, 45, 49, 52, 56, 60, 64, 68, 73, 79, 85];
-export const ARRIVAL_10 = [0, 6, 13, 20, 28, 37, 47, 57, 68, 80];
-export const ARRIVAL_3 = [0, 30, 60];
 // The first 3 and first 10 are deliberately a representative mix: the 3- and
 // 10-customer bands are the first N of this list on their own arrival curves.
 export const COHORT: Spec[] = [
@@ -91,16 +89,6 @@ export const COHORT: Spec[] = [
   { n: 24, kind: "land", businessType: "land_flipper", tier: "pro", rows: 370, smsVia: "integrations-then-byok", exportWeek: 4 },
   { n: 25, kind: "land", businessType: "land_flipper", tier: "pro", rows: 340, smsVia: "byok" },
 ];
-/** Reply mix for an SMS touch (modelled). Exact keywords only in "stop". */
-export const REPLY_RATE = 0.22;
-export const REPLY_MIX: Array<[string, number, string[]]> = [
-  ["stop", 0.18, ["STOP", "Stop", "STOP.", "unsubscribe"]],
-  ["natural-optout", 0.17, ["Please stop texting me", "Take me off your list", "Do not contact me again", "Who is this? Don't text me again or I'll report you"]],
-  ["wrong-number", 0.15, ["Wrong number", "I don't own any land, wrong person", "This isn't John"]],
-  ["interested", 0.3, ["Yes I might sell, what's your offer?", "Maybe. How much?", "Interested, call me"]],
-  ["angry", 0.2, ["How did you get my number?!", "Not selling. Leave me alone", "Scam"]],
-];
-const MAIL_CALLBACK_RATE = 0.04; // sellers who phone in after a postcard
 
 // ─── list generation (list-broker shape: what customers actually buy) ────────
 const SURN = ["SMITH", "JOHNSON", "GARCIA", "MARTINEZ", "BROWN", "LOPEZ", "DAVIS", "MILLER", "WILSON", "ANDERSON", "TAYLOR", "THOMAS", "MOORE", "JACKSON", "WHITE", "HARRIS", "CLARK", "LEWIS", "YOUNG", "NGUYEN"];

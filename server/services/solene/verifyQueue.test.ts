@@ -126,7 +126,7 @@ vi.mock("./dispatchQueue", () => ({
   }),
   // Deterministic stand-in — the real effect-key hashing is covered by
   // dispatchQueue.test.ts; here we only care that a key is supplied.
-  computeEffectKey: (p: { domain: string; moveKind: string; targetId?: string | null }) =>
+  effectKeyNow: (p: { domain: string; moveKind: string; targetId?: string | null }) =>
     `effkey:${p.domain}:${p.moveKind}:${p.targetId ?? "-"}`,
 }));
 

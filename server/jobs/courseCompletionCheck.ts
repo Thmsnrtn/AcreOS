@@ -26,6 +26,7 @@ import {
 import { eq, and, isNull } from "drizzle-orm";
 import { sendEmail } from "../services/emailService";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export const COURSE_COMPLETION_QUEUE_NAME = "course-completion-check";
 
@@ -116,7 +117,7 @@ async function processEnrollment(enrollment: any): Promise<{
     quizModules.every((q) => completedModuleIds.includes(q.id));
 
   if (allModulesDone && quizPassed && !enrollment.isCompleted) {
-    const completedAt = new Date();
+    const completedAt = clock.now();
 
     // Fetch course for title
     const [course] = await db
@@ -198,7 +199,7 @@ async function processEnrollment(enrollment: any): Promise<{
 // ---------------------------------------------------------------------------
 
 async function processCourseCompletionJob(job: Job): Promise<void> {
-  const startedAt = new Date();
+  const startedAt = clock.now();
 
   const jobRecord = await db
     .insert(backgroundJobs)
@@ -238,7 +239,7 @@ async function processCourseCompletionJob(job: Job): Promise<void> {
       }
     }
 
-    const finishedAt = new Date();
+    const finishedAt = clock.now();
     if (bgJobId) {
       await db
         .update(backgroundJobs)
@@ -256,7 +257,7 @@ async function processCourseCompletionJob(job: Job): Promise<void> {
     if (bgJobId) {
       await db
         .update(backgroundJobs)
-        .set({ status: "failed", completedAt: new Date(), error: err.message })
+        .set({ status: "failed", completedAt: clock.now(), error: err.message })
         .where(eq(backgroundJobs.id, bgJobId));
     }
     throw err;
@@ -328,5 +329,5 @@ export async function runCourseCompletionCheck(): Promise<void> {
     );
     return;
   }
-  await processCourseCompletionJob({ id: `scheduler-${Date.now()}` } as Job);
+  await processCourseCompletionJob({ id: `scheduler-${clock.nowMs()}` } as Job);
 }

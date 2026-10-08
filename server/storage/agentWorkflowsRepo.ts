@@ -31,6 +31,7 @@ import {
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
 import { assertWritablePatch } from "../utils/patch";
+import { clock } from "../utils/clock";
 
 export const agentWorkflowsRepo = {
   // Agent Tasks — extracted from the god-class 2026-09-06 alongside the
@@ -79,7 +80,7 @@ export const agentWorkflowsRepo = {
     const [updated] = await db.update(agentMemory)
       .set({
         usageCount: sql`${agentMemory.usageCount} + 1`,
-        lastUsedAt: new Date(),
+        lastUsedAt: clock.now(),
       })
       .where(and(...conditions))
       .returning();
@@ -199,7 +200,7 @@ export const agentWorkflowsRepo = {
     const conditions = [eq(workflows.id, id)];
     if (organizationId) conditions.push(eq(workflows.organizationId, organizationId));
     const [updated] = await db.update(workflows)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -213,7 +214,7 @@ export const agentWorkflowsRepo = {
 
   async toggleWorkflow(this: DatabaseStorage, orgId: number, id: number, isActive: boolean): Promise<Workflow> {
     const [updated] = await db.update(workflows)
-      .set({ isActive, updatedAt: new Date() })
+      .set({ isActive, updatedAt: clock.now() })
       .where(and(eq(workflows.id, id), eq(workflows.organizationId, orgId)))
       .returning();
     return updated;
@@ -320,7 +321,7 @@ export const agentWorkflowsRepo = {
     const conditions = [eq(scheduledTasks.id, id)];
     if (organizationId) conditions.push(eq(scheduledTasks.organizationId, organizationId));
     const [updated] = await db.update(scheduledTasks)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() } as any)
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() } as any)
       .where(and(...conditions))
       .returning();
     return updated;

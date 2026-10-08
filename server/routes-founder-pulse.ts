@@ -31,6 +31,7 @@ import {
   assembleReserveFloorCheck,
   type ReserveBucketName,
 } from "@shared/finance/reserve-floor";
+import { clock } from "./utils/clock";
 
 // ─── Autonomy Horizon scoring ──────────────────────────────────────────────
 // Charter §"Autonomy Horizon — scoring":
@@ -98,7 +99,7 @@ interface ReservesLive {
 }
 
 async function loadReservesLive(): Promise<ReservesLive> {
-  const now = new Date();
+  const now = clock.now();
   const windowStart = new Date(
     now.getTime() - RESERVE_FLOOR_RULE.trailingWindowDays * 24 * 60 * 60 * 1000,
   );
@@ -305,7 +306,7 @@ const MRR_CENTS = 0;
 const BURN_RATE_CENTS = 2400; // ~$24/mo (Fly.io + domain + misc)
 
 function getDaysInPhase(): number {
-  const now = new Date();
+  const now = clock.now();
   const diffMs = now.getTime() - PHASE_ZERO_ZERO_START.getTime();
   return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
 }
@@ -320,7 +321,7 @@ export function registerFounderPulseRoutes(app: Express) {
     requireFounder,
     async (_req: AuthenticatedRequest, res: Response) => {
       try {
-        const now = new Date();
+        const now = clock.now();
         const sha = process.env.VITE_GIT_SHA ?? "dev";
         const daysInPhase = getDaysInPhase();
         const recentCommits = getRecentCommits(5);

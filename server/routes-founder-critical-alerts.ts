@@ -22,6 +22,7 @@ import { criticalAlertAcks, notifications } from "@shared/schema";
 import { Errors } from "./utils/errors";
 import { getUserId } from "./types/request";
 import type { AuthenticatedRequest } from "./types/request";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -36,7 +37,7 @@ router.get("/", async (_req: AuthenticatedRequest, res: Response) => {
   try {
     // Show: unacked alerts (regardless of deadline state) + escalated-but-recent
     // (last 24h). Acked alerts drop off the view.
-    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const dayAgo = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
     const rows = await db
       .select({
         id: criticalAlertAcks.id,
@@ -61,7 +62,7 @@ router.get("/", async (_req: AuthenticatedRequest, res: Response) => {
       )
       .orderBy(desc(criticalAlertAcks.firedAt));
 
-    const now = Date.now();
+    const now = clock.nowMs();
     const enriched = rows.map((r) => {
       const deadline = r.ackDeadlineAt ? new Date(r.ackDeadlineAt).getTime() : null;
       const overdue = !r.ackedAt && deadline !== null && deadline < now;
@@ -83,7 +84,7 @@ router.post("/:id/ack", async (req: AuthenticatedRequest, res: Response) => {
     const userId = getUserId(req);
     const [row] = await db
       .update(criticalAlertAcks)
-      .set({ ackedAt: new Date(), ackedBy: userId })
+      .set({ ackedAt: clock.now(), ackedBy: userId })
       .where(eq(criticalAlertAcks.id, id))
       .returning();
     if (!row) return Errors.notFound(res, "Critical alert");
@@ -100,7 +101,7 @@ router.post("/:id/escalate", async (req: AuthenticatedRequest, res: Response) =>
     const target = typeof req.body?.target === "string" ? req.body.target : "primary_backup";
     const [row] = await db
       .update(criticalAlertAcks)
-      .set({ escalatedAt: new Date(), escalationTarget: target })
+      .set({ escalatedAt: clock.now(), escalationTarget: target })
       .where(eq(criticalAlertAcks.id, id))
       .returning();
     if (!row) return Errors.notFound(res, "Critical alert");
@@ -120,7 +121,7 @@ export async function registerCriticalAlert(opts: {
   severity: "P0" | "P1";
   firedAt?: Date;
 }): Promise<void> {
-  const fired = opts.firedAt ?? new Date();
+  const fired = opts.firedAt ?? clock.now();
   const deadline = new Date(fired.getTime() + thresholdMinutes(opts.severity) * 60_000);
   await db.insert(criticalAlertAcks).values({
     notificationId: opts.notificationId,

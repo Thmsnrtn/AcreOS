@@ -41,6 +41,7 @@ import {
   AGENT_CODENAMES,
   type AgentCodename,
 } from "./scpConfigVersioning";
+import { clock } from "../utils/clock";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -134,7 +135,7 @@ export function extractObservations(interaction: {
   error_messages?: string[];
 }): Observation[] {
   const observations: Observation[] = [];
-  const timestamp = new Date().toISOString();
+  const timestamp = clock.now().toISOString();
 
   // Corrections: CEO overrode or corrected the agent's output
   if (interaction.ceo_corrections?.length) {
@@ -461,7 +462,7 @@ export async function runEvolution(
   interaction: Parameters<typeof extractObservations>[0]
 ): Promise<EvolutionResult> {
   const sessionId = interaction.session_id;
-  const timestamp = new Date().toISOString();
+  const timestamp = clock.now().toISOString();
 
   // Get current version
   const currentVersion = getAgentVersion(agent);

@@ -46,6 +46,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { emailService } from "./services/emailService";
 import { costClass } from "./utils/costClass";
+import { clock } from "./utils/clock";
 
 const draftSchema = z.object({
   subject: z.string().min(1).max(255),
@@ -101,7 +102,7 @@ export function registerFounderLetterRoutes(app: Express): void {
         const id = req.params.id;
         const [updated] = await db
           .update(communityLetters)
-          .set({ publishedAt: new Date(), updatedAt: new Date() })
+          .set({ publishedAt: clock.now(), updatedAt: clock.now() })
           .where(eq(communityLetters.id, id))
           .returning();
         if (!updated) return Errors.notFound(res, "Founder letter");
@@ -163,9 +164,9 @@ export function registerFounderLetterRoutes(app: Express): void {
         const [updated] = await db
           .update(communityLetters)
           .set({
-            sentAt: new Date(),
+            sentAt: clock.now(),
             recipientCount: sent,
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(eq(communityLetters.id, id))
           .returning();

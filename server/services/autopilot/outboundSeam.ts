@@ -31,6 +31,7 @@ import { proposePendingHand } from "./pendingHands";
 import { counterpartyMatch } from "./hands/counterpartyMatch";
 import { filterSuppressed } from "../emailSuppressions";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 export interface GovernedEmailProposal {
   /** Org whose surface triggered this (recipient is an AcreOS user of it). */
@@ -134,6 +135,6 @@ export async function proposeGovernedEmail(
       refusal: "outboundSeam: freezing the send failed (pending-action store unavailable); nothing was sent or queued.",
     };
   }
-  const deduped = !!row.createdAt && row.createdAt.getTime() < Date.now() - 2_000;
+  const deduped = !!row.createdAt && row.createdAt.getTime() < clock.nowMs() - 2_000;
   return { proposed: true, pendingActionId: row.id, deduped };
 }

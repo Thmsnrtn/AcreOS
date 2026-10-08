@@ -47,6 +47,7 @@ import { publishDealLifecycle } from "./services/dealLifecycleEvents";
 // deal.assignment_pending. Both emitters are fire-and-forget and no-op unless the
 // status genuinely transitions — see services/wholesaleEvents.ts.
 import { emitContractSigned, emitAssignmentPending, type ContractSignedEvidence } from "./services/wholesaleEvents";
+import { clock } from "./utils/clock";
 
 /**
  * The evidence that a deal's purchase agreement was signed: a signed document
@@ -145,7 +146,7 @@ async function triggerDealEnrichmentAsync(
       };
       await storage.updateDeal(dealId, {
         enrichmentStatus: "completed",
-        enrichedAt: new Date(),
+        enrichedAt: clock.now(),
         enrichmentData: enrichmentPayload as any,
       }, undefined, organizationId);
       logger.info("Deal and property enrichment completed", { dealId, propertyId, organizationId, lookupTimeMs: enrichmentResult.lookupTimeMs });
@@ -607,7 +608,7 @@ export function registerDealRoutes(app: Express): void {
 
       const [updated] = await db
         .update(contractAssignments)
-        .set({ ...parsed.data, updatedAt: new Date() })
+        .set({ ...parsed.data, updatedAt: clock.now() })
         .where(and(eq(contractAssignments.id, id), eq(contractAssignments.organizationId, org.id)))
         .returning();
       if (!updated) return Errors.notFound(res, "Assignment");
@@ -922,8 +923,8 @@ export function registerDealRoutes(app: Express): void {
             // Decision was made when the offer was sent / deal entered the
             // pipeline; we don't have that timestamp readily available so
             // use createdAt as the closest proxy.
-            decisionAt: deal.createdAt ? new Date(deal.createdAt as any) : new Date(),
-            outcomeAt: new Date(),
+            decisionAt: deal.createdAt ? new Date(deal.createdAt as any) : clock.now(),
+            outcomeAt: clock.now(),
             features: {
               dealType: deal.type,
               propertyId: deal.propertyId,
@@ -954,7 +955,7 @@ export function registerDealRoutes(app: Express): void {
                 actualSalePrice: acceptedAmount,
                 dealId: deal.id,
               },
-              outcomeAt: new Date(),
+              outcomeAt: clock.now(),
             });
 
             // Feed a qualifying closed SALE into the valuation training corpus
@@ -981,7 +982,7 @@ export function registerDealRoutes(app: Express): void {
                   {
                     propertyId: String(sale.propertyId),
                     salePrice: sale.price,
-                    saleDate: sale.closingDate ?? new Date(),
+                    saleDate: sale.closingDate ?? clock.now(),
                     acres: sale.acres,
                     pricePerAcre: sale.price / sale.acres,
                     location: {
@@ -1031,7 +1032,7 @@ export function registerDealRoutes(app: Express): void {
                   dealId: deal.id,
                   acceptedAmount,
                 },
-                outcomeAt: new Date(),
+                outcomeAt: clock.now(),
               });
             }
           } catch { /* non-fatal */ }
@@ -1173,7 +1174,7 @@ export function registerDealRoutes(app: Express): void {
             subjectType: "deal",
             subjectId: String(deal.id),
             orgId: org.id,
-            decisionAt: new Date(),
+            decisionAt: clock.now(),
             features: {
               dealType: deal.type,
               propertyId: deal.propertyId,
@@ -1208,7 +1209,7 @@ export function registerDealRoutes(app: Express): void {
                     : "countered",
               acceptedAmount: deal.acceptedAmount ? parseFloat(String(deal.acceptedAmount)) : null,
             },
-            outcomeAt: new Date(),
+            outcomeAt: clock.now(),
           });
         } catch { /* non-fatal */ }
       }
@@ -1303,7 +1304,7 @@ export function registerDealRoutes(app: Express): void {
       // Save enrichment data to deal (all categories)
       const updatedDeal = await storage.updateDeal(dealId, {
         enrichmentStatus: "completed",
-        enrichedAt: new Date(),
+        enrichedAt: clock.now(),
         enrichmentData: {
           enrichedAt: enrichmentResult.enrichedAt.toISOString(),
           lookupTimeMs: enrichmentResult.lookupTimeMs,
@@ -1838,7 +1839,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
           classification: null,
           percentage: 0,
           source: "N/A",
-          lastUpdated: new Date().toISOString(),
+          lastUpdated: clock.now().toISOString(),
           details: { message: "Property has no coordinates for wetlands lookup" },
         });
       }
@@ -1874,7 +1875,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
           drainage: "unknown",
           suitability: "unknown",
           source: "N/A",
-          lastUpdated: new Date().toISOString(),
+          lastUpdated: clock.now().toISOString(),
           details: { message: "Property has no coordinates for soil data lookup" },
         });
       }
@@ -1910,7 +1911,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
           nearestSiteDistance: null,
           riskLevel: "unknown",
           source: "N/A",
-          lastUpdated: new Date().toISOString(),
+          lastUpdated: clock.now().toISOString(),
           details: { message: "Property has no coordinates for EPA data lookup" },
         });
       }
@@ -2068,7 +2069,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
             if (!Number.isNaN(parsed) && parsed > 0) {
               annualTax = parsed;
               source = `Live (${lookup.source})`;
-              lastUpdated = new Date().toISOString();
+              lastUpdated = clock.now().toISOString();
             }
           } else if (lookup && !lookup.found) {
             providerNote = lookup.error || "Parcel not found in any provider";
@@ -2119,7 +2120,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         source,
         lastUpdated,
         details: {
-          taxYear: new Date().getFullYear(),
+          taxYear: clock.now().getFullYear(),
           assessedValue,
           taxRate,
           exemptions: [],
@@ -2739,7 +2740,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         // link for the operator to paste into their own outreach.
         const { makeSigningToken } = await import("./services/signingTokens");
         const title = `Purchase Offer — ${propertyAddress || property?.apn || `Deal #${deal.id}`}`;
-        const signerId = `signer-${Date.now()}-seller`;
+        const signerId = `signer-${clock.nowMs()}-seller`;
         const signers = [
           {
             id: signerId,
@@ -2763,8 +2764,8 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
           esignProvider: "native",
           esignStatus: "pending",
           signers,
-          sentAt: new Date(),
-          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          sentAt: clock.now(),
+          expiresAt: new Date(clock.nowMs() + 30 * 24 * 60 * 60 * 1000),
         });
         const base = (process.env.APP_URL || req.headers.origin || "").toString().replace(/\/$/, "");
         const url = `${base}/sign/${genDoc.id}?s=${encodeURIComponent(signerId)}&t=${makeSigningToken(genDoc.id, signerId)}`;
@@ -2965,7 +2966,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
           ? new Date(body.disclosureAcknowledgedAt)
           : null;
       } else if (body.disclosureAcknowledged !== undefined) {
-        updates.disclosureAcknowledgedAt = body.disclosureAcknowledged ? new Date() : null;
+        updates.disclosureAcknowledgedAt = body.disclosureAcknowledged ? clock.now() : null;
       }
 
       const updated = await storage.updateDeal(dealId, updates, undefined, orgId);

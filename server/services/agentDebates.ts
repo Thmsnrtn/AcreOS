@@ -17,6 +17,7 @@ import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
 import { resolveAgentData } from "./agentDataResolvers";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Debate Participants by Category ─────────────────────────────────────────
 
@@ -255,7 +256,7 @@ Cast your vote. JSON:
         status: "decided",
         ceoDecision: decision,
         ceoReasoning: reasoning,
-        decidedAt: new Date(),
+        decidedAt: clock.now(),
       })
       .where(eq(agentDebates.id, debateId));
 

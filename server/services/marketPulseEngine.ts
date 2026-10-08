@@ -36,6 +36,7 @@ import { countyMarkets, organizations } from "@shared/schema";
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 import { getCachedLandTrend, getCachedCountySnapshot } from "./usdaNassService";
 import { buildCountyOpportunityProfile, getKnownMigrationHotspots } from "./censusDataService";
+import { clock } from "../utils/clock";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -133,7 +134,7 @@ const WEEKLY_WISDOM_POOL = [
 ];
 
 export function getWeeklyWisdom(): string {
-  const weekNumber = Math.floor(Date.now() / (7 * 24 * 60 * 60 * 1000));
+  const weekNumber = Math.floor(clock.nowMs() / (7 * 24 * 60 * 60 * 1000));
   return WEEKLY_WISDOM_POOL[weekNumber % WEEKLY_WISDOM_POOL.length];
 }
 
@@ -149,13 +150,13 @@ async function detectOpportunityWindowAlerts(
   censusProfile: any
 ): Promise<MarketPulseAlert[]> {
   const alerts: MarketPulseAlert[] = [];
-  const now = new Date();
+  const now = clock.now();
 
   // Opening: market was flat/declining, now showing early appreciation signs
   if (trend && trend.oneYearChangePercent >= 2 && trend.oneYearChangePercent <= 6
       && trend.threeYearChangePercent < 10) {
     alerts.push({
-      id: `${state}-${county}-window-opening-${Date.now()}`,
+      id: `${state}-${county}-window-opening-${clock.nowMs()}`,
       type: "opportunity_window_opening",
       county,
       state,
@@ -178,7 +179,7 @@ async function detectOpportunityWindowAlerts(
   // Closing: market appreciation accelerating — offer prices must adjust
   if (trend && trend.oneYearChangePercent > 8) {
     alerts.push({
-      id: `${state}-${county}-window-closing-${Date.now()}`,
+      id: `${state}-${county}-window-closing-${clock.nowMs()}`,
       type: "opportunity_window_closing",
       county,
       state,
@@ -207,7 +208,7 @@ function detectMigrationAlerts(
   censusProfile: any
 ): MarketPulseAlert[] {
   const alerts: MarketPulseAlert[] = [];
-  const now = new Date();
+  const now = clock.now();
 
   if (!censusProfile?.migration) return alerts;
 
@@ -219,7 +220,7 @@ function detectMigrationAlerts(
     );
 
     alerts.push({
-      id: `${state}-${county}-migration-${Date.now()}`,
+      id: `${state}-${county}-migration-${clock.nowMs()}`,
       type: "migration_acceleration",
       county,
       state,
@@ -246,7 +247,7 @@ function detectMigrationAlerts(
 
 function detectSeasonalAlerts(county: string, state: string): MarketPulseAlert[] {
   const alerts: MarketPulseAlert[] = [];
-  const now = new Date();
+  const now = clock.now();
   const month = now.getMonth() + 1; // 1-12
 
   // Best mailing seasons for land (typically Jan-Feb and Sep-Oct)
@@ -268,7 +269,7 @@ function detectSeasonalAlerts(county: string, state: string): MarketPulseAlert[]
       recommendedAction: `Launch your ${county} County campaign this month to capitalize on peak seller motivation. Aim for 1,000+ letters to generate meaningful deal flow.`,
       estimatedROIImpact: "+20-30% response rate vs. summer mailings historically",
       dataPoints: {
-        currentMonth: new Date().toLocaleDateString("en-US", { month: "long" }),
+        currentMonth: clock.now().toLocaleDateString("en-US", { month: "long" }),
         peakSeason: seasonName,
       },
       detectedAt: now.toISOString(),
@@ -281,7 +282,7 @@ function detectSeasonalAlerts(county: string, state: string): MarketPulseAlert[]
 
 function detectCompStalenessAlerts(county: string, state: string, lastCompDate?: Date): MarketPulseAlert[] {
   const alerts: MarketPulseAlert[] = [];
-  const now = new Date();
+  const now = clock.now();
 
   const daysOld = lastCompDate
     ? Math.floor((now.getTime() - lastCompDate.getTime()) / (24 * 60 * 60 * 1000))
@@ -289,7 +290,7 @@ function detectCompStalenessAlerts(county: string, state: string, lastCompDate?:
 
   if (daysOld > 90) {
     alerts.push({
-      id: `${state}-${county}-stale-comps-${Date.now()}`,
+      id: `${state}-${county}-stale-comps-${clock.nowMs()}`,
       type: "comp_staleness",
       county,
       state,
@@ -401,7 +402,7 @@ export async function generateCountyPulse(
   const pulseTrend = computePulseTrend(trend);
   const opportunityWindow = computeOpportunityWindow(pulseScore, trend);
 
-  const now = new Date();
+  const now = clock.now();
 
   return {
     county,
@@ -427,7 +428,7 @@ export async function generateMarketPulseReport(
   organizationId: number,
   targetCounties: { county: string; state: string }[]
 ): Promise<MarketPulseReport> {
-  const now = new Date();
+  const now = clock.now();
 
   // Generate pulse for all counties in parallel
   const pulseResults = await Promise.allSettled(

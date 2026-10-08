@@ -25,6 +25,7 @@ import {
 } from "@shared/schema";
 import { logger } from "../../utils/logger";
 import { outcomeOf, signalsOf, type ExperienceVote } from "./experienceLog";
+import { clock } from "../../utils/clock";
 
 /** Consecutive recent declines/failures that trigger a "stop" proposal. */
 export const DECLINE_STREAK = 3;
@@ -178,7 +179,7 @@ export async function resolvePolicyProposalForAsk(askId: number, approved: boole
 
     await db
       .update(autopilotPolicyProposals)
-      .set({ status: approved ? "approved" : "declined", resolvedAt: new Date() })
+      .set({ status: approved ? "approved" : "declined", resolvedAt: clock.now() })
       .where(eq(autopilotPolicyProposals.id, proposal.id));
 
     if (!approved) return;

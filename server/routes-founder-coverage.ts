@@ -24,6 +24,7 @@ import { dbForReads } from "./db-replica";
 import { countyDiscoveryQueue, countyGisEndpoints } from "@shared/schema";
 import { desc, sql } from "drizzle-orm";
 import { getCoverageLedger } from "./services/coverageLedger";
+import { clock } from "./utils/clock";
 
 export function registerFounderCoverageRoutes(app: Express) {
   app.get(
@@ -81,7 +82,7 @@ export function registerFounderCoverageRoutes(app: Express) {
         });
 
         return res.json({
-          asOf: new Date().toISOString(),
+          asOf: clock.now().toISOString(),
           // Coverage of the counties customers ACTUALLY touch (the metric that matters).
           demandCoverage: {
             totalCounties: ledger.totalCounties,

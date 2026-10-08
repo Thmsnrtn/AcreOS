@@ -81,6 +81,7 @@ import { cascadeResolutions, decisionsInboxItems, founderOverrides, importJobs, 
 import { getOutcomeLedgerCounts } from "../outcomeLedger";
 import { computeCognitionRoi } from "./cognitionRoi";
 import { FOUNDER_MINUTES_BUDGET } from "@sovereign/immutables";
+import { clock } from "../../utils/clock";
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -146,7 +147,7 @@ export interface TickMetric {
  * morning pulse) degrade to an explicit "unmeasured" line rather than a
  * fabricated zero.
  */
-export async function getTickMetric(now: Date = new Date()): Promise<TickMetric> {
+export async function getTickMetric(now: Date = clock.now()): Promise<TickMetric> {
   const weekStart = new Date(now.getTime() - WEEK_MS);
 
   // ── Metric (a): completed outward dispatches, trailing 7 days ────────────
@@ -290,7 +291,7 @@ export async function getTickMetric(now: Date = new Date()): Promise<TickMetric>
  * renders "unmeasured"; the arbiter fails CLOSED-quiet), never a fabricated
  * zero.
  */
-export async function countFounderDecisionsThisWeek(now: Date = new Date()): Promise<number> {
+export async function countFounderDecisionsThisWeek(now: Date = clock.now()): Promise<number> {
   const weekStart = new Date(now.getTime() - WEEK_MS);
 
   const escalationRows = await db

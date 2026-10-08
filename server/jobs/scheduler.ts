@@ -46,6 +46,7 @@ import { db } from "../db";
 import { jobLocks, jobRuns, outboxDlq } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { coerceTimerDelay } from "../utils/safeTimer";
+import { clock } from "../utils/clock";
 
 /**
  * FNV-1a 64-bit hash → signed bigint. Kept exported for existing unit tests
@@ -114,7 +115,7 @@ export async function claimJobLease(
   ownerId: string,
   ttlSeconds: number = LEASE_TTL_SECONDS,
 ): Promise<boolean> {
-  const now = new Date();
+  const now = clock.now();
   const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
 
   const updated = await db
@@ -289,7 +290,7 @@ export function scheduleSelfRescheduling(opts: SelfReschedulingOpts): () => void
       await db
         .update(jobRuns)
         .set({
-          completedAt: new Date(),
+          completedAt: clock.now(),
           status: completed.status,
           errorMessage: completed.errorMessage ?? null,
           recordsProcessed: completed.recordsProcessed ?? null,
@@ -309,7 +310,7 @@ export function scheduleSelfRescheduling(opts: SelfReschedulingOpts): () => void
         payload: { jobName: name, intervalMs, consecutiveFailures: status.consecutiveFailures },
         status: "failed",
         attempts: status.consecutiveFailures,
-        lastErrorAt: new Date(),
+        lastErrorAt: clock.now(),
         failureReason: err instanceof Error ? err.message : String(err),
       });
     } catch (dlqErr) {
@@ -324,7 +325,7 @@ export function scheduleSelfRescheduling(opts: SelfReschedulingOpts): () => void
     // job body runs OUTSIDE any transaction (no idle-in-transaction pinning),
     // a heartbeat re-extends the lease for long bodies, and completion
     // releases it. See the module header above claimJobLease for rationale.
-    status.lastRunStartedAt = new Date();
+    status.lastRunStartedAt = clock.now();
     status.lastStatus = "running";
 
     let nextDelayMs = intervalMs;
@@ -341,7 +342,7 @@ export function scheduleSelfRescheduling(opts: SelfReschedulingOpts): () => void
         });
         // Skipped tick — reset status and reschedule on the normal cadence.
         status.lastStatus = null;
-        status.lastRunCompletedAt = new Date();
+        status.lastRunCompletedAt = clock.now();
       } else {
         _inFlightJobs.add(name);
 
@@ -373,7 +374,7 @@ export function scheduleSelfRescheduling(opts: SelfReschedulingOpts): () => void
         // The body runs with NO transaction and NO advisory lock held.
         const recordsProcessed = await run();
 
-        status.lastRunCompletedAt = new Date();
+        status.lastRunCompletedAt = clock.now();
         status.lastStatus = "success";
         status.consecutiveFailures = 0;
         await updateJobRunEnd(runId, {
@@ -382,7 +383,7 @@ export function scheduleSelfRescheduling(opts: SelfReschedulingOpts): () => void
         });
       }
     } catch (err) {
-      status.lastRunCompletedAt = new Date();
+      status.lastRunCompletedAt = clock.now();
       status.lastStatus = "failure";
       status.consecutiveFailures += 1;
 

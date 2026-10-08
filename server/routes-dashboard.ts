@@ -12,7 +12,8 @@ import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
 
 import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
-const serverStartTime = Date.now();
+import { clock } from "./utils/clock";
+const serverStartTime = clock.nowMs();
 
 export function registerDashboardRoutes(app: Express): void {
   const api = app;
@@ -35,7 +36,7 @@ export function registerDashboardRoutes(app: Express): void {
       const monthsRaw = Number(req.query.months ?? 6);
       const months = Math.min(24, Math.max(1, Number.isFinite(monthsRaw) ? Math.floor(monthsRaw) : 6));
 
-      const now = new Date();
+      const now = clock.now();
       // Build [start, end) for each month, oldest first.
       const buckets: { start: Date; end: Date; month: string }[] = [];
       for (let i = months - 1; i >= 0; i--) {
@@ -123,7 +124,7 @@ export function registerDashboardRoutes(app: Express): void {
   api.get("/api/dashboard/intelligence", isAuthenticated, getOrCreateOrg, cacheResponse(60), async (req, res) => {
     try {
       const org = req.organization;
-      const now = new Date();
+      const now = clock.now();
       const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
       const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -474,7 +475,7 @@ export function registerDashboardRoutes(app: Express): void {
   api.get("/api/goals", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      const now = new Date();
+      const now = clock.now();
 
       const orgGoals = await db
         .select()
@@ -560,7 +561,7 @@ export function registerDashboardRoutes(app: Express): void {
     try {
       const org = req.organization;
       const orgId = org.id;
-      const now = new Date();
+      const now = clock.now();
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       const fortyFiveDaysAgo = new Date(now.getTime() - 45 * 24 * 60 * 60 * 1000);
 
@@ -709,7 +710,7 @@ export function registerDashboardRoutes(app: Express): void {
 
       res.json({
         priorities: priorities.slice(0, 3),
-        generatedAt: new Date().toISOString(),
+        generatedAt: clock.now().toISOString(),
         meta: {
           unscoredLeads: unscoredCount,
           staleFollowUps: staleCount,

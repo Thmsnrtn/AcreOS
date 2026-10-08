@@ -28,6 +28,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireRole } from "./middleware/roleGuard";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const reasonEnum = z.enum([
   "state_restriction",
@@ -155,7 +156,7 @@ export function registerDoubleCloseRoutes(app: Express): void {
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.flatten());
         const [row] = await db
           .update(doubleCloseDeals)
-          .set({ ...parsed.data, updatedAt: new Date() })
+          .set({ ...parsed.data, updatedAt: clock.now() })
           .where(and(eq(doubleCloseDeals.id, req.params.id), eq(doubleCloseDeals.organizationId, orgId)))
           .returning();
         if (!row) return Errors.notFound(res, "Double-close deal");

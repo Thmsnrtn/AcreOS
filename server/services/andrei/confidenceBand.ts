@@ -30,6 +30,7 @@
 // ============================================================================
 
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 export type ConfidenceBand = "high" | "moderate" | "low";
 
@@ -85,7 +86,7 @@ function ageDays(cachedAt: Date | string | null | undefined, now: Date): number 
  * Staleness can only DROP the band (older data never earns more trust).
  */
 export function computeConfidenceBand(input: ConfidenceBandInput): ConfidenceBand {
-  const now = input.now ?? new Date();
+  const now = input.now ?? clock.now();
 
   // 1. Base band from raw confidence.
   const c = typeof input.confidence === "number" && Number.isFinite(input.confidence)

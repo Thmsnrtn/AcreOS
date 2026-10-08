@@ -50,6 +50,7 @@ import { logger } from "../../utils/logger";
 // them without importing this file's db/logger dependencies. Re-exported here
 // so existing callers keep working.
 import { HARD_STOPS, HARD_STOP_SPEND_LIMIT_USD } from "./hardStops";
+import { clock } from "../../utils/clock";
 export { HARD_STOPS, HARD_STOP_SPEND_LIMIT_USD };
 
 export type GateConditionSpec =
@@ -729,7 +730,7 @@ export function resolveFireDecision(args: {
 /** How far back we read mrr_snapshots — comfortably covers a 30d held-window with weekly snapshots. */
 const HISTORY_WINDOW_DAYS = 60;
 
-export async function gatherGateInputs(now = new Date()): Promise<GateInputs> {
+export async function gatherGateInputs(now = clock.now()): Promise<GateInputs> {
   let mrrCents: number | null = null;
   let payingOrgs: number | null = null;
   try {
@@ -801,7 +802,7 @@ async function saveGateState(gate: GateDefinition, state: GateState): Promise<vo
     })
     .onConflictDoUpdate({
       target: founderSettings.key,
-      set: { value, updatedAt: new Date(), updatedBy: "gate-watcher" },
+      set: { value, updatedAt: clock.now(), updatedBy: "gate-watcher" },
     });
 }
 
@@ -825,7 +826,7 @@ export interface GateWatchResult {
  * state + a Story-readable experience row. Total: never throws (a watcher
  * that crashes silently is the failure mode this exists to kill).
  */
-export async function runGateWatch(now = new Date()): Promise<GateWatchResult> {
+export async function runGateWatch(now = clock.now()): Promise<GateWatchResult> {
   const result: GateWatchResult = {
     ranAt: now.toISOString(),
     evaluations: [],
@@ -1054,7 +1055,7 @@ async function autoExecuteStudioTrigger(
         ...o,
         status: "active",
         activatedBy: "gate-watcher",
-        activatedAt: new Date().toISOString(),
+        activatedAt: clock.now().toISOString(),
         activatedGateId: gate.id,
       };
     }

@@ -22,10 +22,11 @@ import {
 import { db } from "../../../db";
 import { registerTool } from "../tool-registry";
 import { pendingScaleUpTriggers } from "../../finance/scaleUpTriggers";
+import { clock } from "../../../utils/clock";
 
 
 function daysAgo(n: number): Date {
-  return new Date(Date.now() - n * 24 * 60 * 60 * 1000);
+  return new Date(clock.nowMs() - n * 24 * 60 * 60 * 1000);
 }
 
 // ─── 1. get_buckets ─────────────────────────────────────────────────────────
@@ -61,7 +62,7 @@ registerTool({
           profitReserve: balances.profit_reserve,
           ownerDraw: balances.owner_draw,
           opexAvailable: balances.opex_available,
-          asOf: new Date().toISOString(),
+          asOf: clock.now().toISOString(),
         },
       },
     };
@@ -461,7 +462,7 @@ registerTool({
         data: {
           db: "ok",
           ledgerFreshness: latest?.postedAt ?? null,
-          asOf: new Date().toISOString(),
+          asOf: clock.now().toISOString(),
         },
       },
     };
@@ -526,7 +527,7 @@ registerTool({
           { title: "Pending decisions", data: decisionRows },
           { title: "DLQ items", data: dlqRows },
         ],
-        asOf: new Date().toISOString(),
+        asOf: clock.now().toISOString(),
       },
     };
   },

@@ -27,6 +27,7 @@
 
 import { emitRehabEvent } from "./workflow-engine";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /** The slice of a rehab row these emitters need. Real columns only. */
 export interface RehabEventRow {
@@ -44,7 +45,7 @@ export interface RehabEventRow {
 const dollars = (cents: number | null | undefined): number | null =>
   cents == null ? null : Math.round(cents) / 100;
 
-const isoDay = (): string => new Date().toISOString().slice(0, 10);
+const isoDay = (): string => clock.now().toISOString().slice(0, 10);
 
 /**
  * Emit the fix-and-flip lifecycle event for a genuine status transition.

@@ -25,6 +25,7 @@ import { isEmptyResult, ToolLoopDetector, turnBudgetFor } from "../taskGuards";
 import { ROLE_INSTRUCTIONS } from "./instructions";
 import type { RoleWorker } from "./routing";
 import type { RoleEffect, RoleToolResult, RoleToolSchema, Briefing } from "./tools";
+import { clock } from "../../../utils/clock";
 
 export type RoleTermination =
   | "end_turn"
@@ -212,11 +213,11 @@ export async function runRoleWorkerDispatch(
   role: RoleWorker,
   opts: { model: string; apiKey: string | null; transcriptPath: string; price: (i: number, o: number) => number },
 ): Promise<RoleRunResult> {
-  const started = Date.now();
+  const started = clock.nowMs();
   const append = async (event: Record<string, unknown>) => {
     try {
       await fs.mkdir(path.dirname(opts.transcriptPath), { recursive: true });
-      await fs.appendFile(opts.transcriptPath, JSON.stringify({ ts: new Date().toISOString(), worker: role, ...event }) + "\n", "utf8");
+      await fs.appendFile(opts.transcriptPath, JSON.stringify({ ts: clock.now().toISOString(), worker: role, ...event }) + "\n", "utf8");
     } catch {
       /* transcript is best-effort */
     }
@@ -271,7 +272,7 @@ export async function runRoleWorkerDispatch(
     logger.warn(`[roleWorkers] ${role} dispatch ${row.id} threw: ${msg}`);
     r = { success: false, terminationReason: "error", finalText: msg, effects: [], turns: 0, tokenInput: 0, tokenOutput: 0, costUsd: 0 };
   }
-  const durationMs = Date.now() - started;
+  const durationMs = clock.nowMs() - started;
   await append({ event: "complete", success: r.success, terminationReason: r.terminationReason, effects: r.effects, turns: r.turns, costUsd: r.costUsd });
 
   try {

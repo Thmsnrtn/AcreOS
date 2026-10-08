@@ -26,6 +26,7 @@ import { db } from "../../db";
 import { domainAutonomyLevels } from "@shared/schema";
 import { logger } from "../../utils/logger";
 import type { AutopilotDomain, GateResult, PolicyAction } from "./policyGate";
+import { clock } from "../../utils/clock";
 
 export const DOMAIN_AUTONOMY_LEVELS = ["observe", "draft", "execute_gated", "autonomous_gated"] as const;
 export type DomainAutonomyLevel = (typeof DOMAIN_AUTONOMY_LEVELS)[number];
@@ -157,7 +158,7 @@ export async function recordCleanCycle(domain: AutopilotDomain, threshold = PROM
     if (holdForCalibration) {
       await db
         .update(domainAutonomyLevels)
-        .set({ cleanCycleCount: nextCount, updatedAt: new Date() })
+        .set({ cleanCycleCount: nextCount, updatedAt: clock.now() })
         .where(eq(domainAutonomyLevels.domain, domain));
       logger.warn("[autopilot] promotion HELD — calibration over-confident", { domain, level });
       return level;
@@ -178,7 +179,7 @@ export async function recordCleanCycle(domain: AutopilotDomain, threshold = PROM
     if (holdForQuality) {
       await db
         .update(domainAutonomyLevels)
-        .set({ cleanCycleCount: nextCount, updatedAt: new Date() })
+        .set({ cleanCycleCount: nextCount, updatedAt: clock.now() })
         .where(eq(domainAutonomyLevels.domain, domain));
       logger.warn("[autopilot] promotion HELD — decision quality below floor", { domain, level });
       return level;
@@ -199,7 +200,7 @@ export async function recordCleanCycle(domain: AutopilotDomain, threshold = PROM
     // Demotion (recordAnomaly) stays AUTOMATIC — this change only tightens.
     await db
       .update(domainAutonomyLevels)
-      .set({ cleanCycleCount: nextCount, updatedAt: new Date() })
+      .set({ cleanCycleCount: nextCount, updatedAt: clock.now() })
       .where(eq(domainAutonomyLevels.domain, domain));
     try {
       // Dynamic import keeps this module cycle-free (promotionRequest imports us).
@@ -226,7 +227,7 @@ export async function recordCleanCycle(domain: AutopilotDomain, threshold = PROM
 
   await db
     .update(domainAutonomyLevels)
-    .set({ cleanCycleCount: nextCount, updatedAt: new Date() })
+    .set({ cleanCycleCount: nextCount, updatedAt: clock.now() })
     .where(eq(domainAutonomyLevels.domain, domain));
   return level;
 }
@@ -244,7 +245,7 @@ export async function holdPromotionProgress(
 ): Promise<void> {
   await db
     .update(domainAutonomyLevels)
-    .set({ cleanCycleCount: Math.floor(threshold / 2), updatedAt: new Date() })
+    .set({ cleanCycleCount: Math.floor(threshold / 2), updatedAt: clock.now() })
     .where(eq(domainAutonomyLevels.domain, domain));
   logger.info("[autopilot] promotion held by founder — clean-cycle progress halved", { domain });
 }
@@ -262,9 +263,9 @@ export async function recordAnomaly(domain: AutopilotDomain, reason: string): Pr
     .set({
       level: demoted,
       cleanCycleCount: 0,
-      lastDemotedAt: new Date(),
+      lastDemotedAt: clock.now(),
       lastDemotionReason: reason,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     })
     .where(eq(domainAutonomyLevels.domain, domain));
   if (demoted !== current) {
@@ -331,7 +332,7 @@ export async function setDomainLevel(
   }
   const current = await getDomainLevel(domain);
   const isDemotion = levelRank(level) < levelRank(current);
-  const now = new Date();
+  const now = clock.now();
   await db
     .insert(domainAutonomyLevels)
     .values({ domain, level, cleanCycleCount: 0 })

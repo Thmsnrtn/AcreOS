@@ -19,6 +19,7 @@ import {
 } from "@shared/schema";
 import { eq, and, or, desc, sql, gte, isNull } from "drizzle-orm";
 import { unscopedForPlatformOps } from "../utils/orgScopedDb";
+import { clock } from "../utils/clock";
 
 class IntegrationFrameworkService {
 
@@ -97,7 +98,7 @@ class IntegrationFrameworkService {
       orgId?: number;
     },
   ): Promise<IntegrationExecutionLogEntry> {
-    const startTime = Date.now();
+    const startTime = clock.nowMs();
 
     // 1. Find credential for this service
     const [cred] = await db
@@ -114,7 +115,7 @@ class IntegrationFrameworkService {
       return this.logExecution(agentCodename, serviceName, method, endpoint, {
         success: false,
         error: `No credentials registered for service: ${serviceName}`,
-        latencyMs: Date.now() - startTime,
+        latencyMs: clock.nowMs() - startTime,
         orgId: params?.orgId,
       });
     }
@@ -124,7 +125,7 @@ class IntegrationFrameworkService {
       return this.logExecution(agentCodename, serviceName, method, endpoint, {
         success: false,
         error: `Agent ${agentCodename} not authorized for service ${serviceName}`,
-        latencyMs: Date.now() - startTime,
+        latencyMs: clock.nowMs() - startTime,
         orgId: params?.orgId,
       });
     }
@@ -132,11 +133,11 @@ class IntegrationFrameworkService {
     // 3. Check circuit breaker
     if (cred.circuitBreakerOpen) {
       // Check if cooldown has expired (5 minute cooldown)
-      if (cred.circuitBreakerResetAt && new Date() < cred.circuitBreakerResetAt) {
+      if (cred.circuitBreakerResetAt && clock.now() < cred.circuitBreakerResetAt) {
         return this.logExecution(agentCodename, serviceName, method, endpoint, {
           success: false,
           error: `Circuit breaker OPEN for ${serviceName} — too many failures. Resets at ${cred.circuitBreakerResetAt.toISOString()}`,
-          latencyMs: Date.now() - startTime,
+          latencyMs: clock.nowMs() - startTime,
           orgId: params?.orgId,
         });
       }
@@ -157,13 +158,13 @@ class IntegrationFrameworkService {
       return this.logExecution(agentCodename, serviceName, method, endpoint, {
         success: false,
         error: `Rate limit exceeded for ${serviceName} (${cred.rateLimitPerMinute}/min)`,
-        latencyMs: Date.now() - startTime,
+        latencyMs: clock.nowMs() - startTime,
         orgId: params?.orgId,
       });
     }
 
     // 5. Execute real HTTP request against the configured endpoint
-    const requestStart = Date.now();
+    const requestStart = clock.nowMs();
     let responseStatus = 0;
     let responseBody = "";
     let execSuccess = false;
@@ -206,7 +207,7 @@ class IntegrationFrameworkService {
       responseStatus = 503;
     }
 
-    const latencyMs = Date.now() - requestStart;
+    const latencyMs = clock.nowMs() - requestStart;
     const costCents = Math.max(1, Math.round(latencyMs / 100)); // Rough cost estimate based on latency
 
     const entry = await this.logExecution(agentCodename, serviceName, method, endpoint, {
@@ -235,7 +236,7 @@ class IntegrationFrameworkService {
 
     // 7. Update last used
     await db.update(integrationCredentials)
-      .set({ lastUsedAt: new Date() })
+      .set({ lastUsedAt: clock.now() })
       .where(eq(integrationCredentials.id, cred.id));
 
     return entry;
@@ -319,8 +320,8 @@ class IntegrationFrameworkService {
     if (!cred) throw new Error(`No credentials for service: ${serviceName}`);
 
     // Reset counter if window has passed
-    if (new Date() >= cred.rateLimitResetAt) {
-      return { allowed: true, used: 0, limit: cred.rateLimitPerMinute, resetsAt: new Date(Date.now() + 60_000) };
+    if (clock.now() >= cred.rateLimitResetAt) {
+      return { allowed: true, used: 0, limit: cred.rateLimitPerMinute, resetsAt: new Date(clock.nowMs() + 60_000) };
     }
 
     return {
@@ -424,7 +425,7 @@ class IntegrationFrameworkService {
     byService: { serviceName: string; costCents: number; calls: number }[];
     byAgent: { agentCodename: string; costCents: number; calls: number }[];
   }> {
-    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const since = new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000);
 
     const entries = await unscopedForPlatformOps(
       "what our outbound integrations cost is a COMPANY number, not a per-tenant one: every row `execute` writes lands with org_id NULL, while the only org on a founder request is the FOUNDER's own — so an org predicate would match nothing and silently empty the operator's view",
@@ -470,7 +471,7 @@ class IntegrationFrameworkService {
     totalCostCents: number;
     openCircuits: number;
   }> {
-    const todayStart = new Date();
+    const todayStart = clock.now();
     todayStart.setHours(0, 0, 0, 0);
 
     const all = await unscopedForPlatformOps(
@@ -542,14 +543,14 @@ class IntegrationFrameworkService {
   }
 
   private async consumeRateLimit(cred: IntegrationCredential): Promise<boolean> {
-    const now = new Date();
+    const now = clock.now();
 
     // Reset window if expired
     if (now >= cred.rateLimitResetAt) {
       await db.update(integrationCredentials)
         .set({
           rateLimitUsed: 1,
-          rateLimitResetAt: new Date(Date.now() + 60_000),
+          rateLimitResetAt: new Date(clock.nowMs() + 60_000),
         })
         .where(eq(integrationCredentials.id, cred.id));
       return true;
@@ -576,7 +577,7 @@ class IntegrationFrameworkService {
       .set({
         circuitBreakerFailures: newFailures,
         circuitBreakerOpen: shouldOpen,
-        circuitBreakerResetAt: shouldOpen ? new Date(Date.now() + 5 * 60 * 1000) : cred.circuitBreakerResetAt,
+        circuitBreakerResetAt: shouldOpen ? new Date(clock.nowMs() + 5 * 60 * 1000) : cred.circuitBreakerResetAt,
       })
       .where(eq(integrationCredentials.id, cred.id));
   }

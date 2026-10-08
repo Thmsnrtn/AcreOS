@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { whiteLabelService } from '../services/whiteLabelService';
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 interface WhiteLabelOrgInfo {
   orgId: number;
@@ -30,7 +31,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 function getCached(domain: string): WhiteLabelOrgInfo | null | undefined {
   const entry = domainCache.get(domain);
   if (!entry) return undefined; // cache miss
-  if (Date.now() > entry.expiresAt) {
+  if (clock.nowMs() > entry.expiresAt) {
     domainCache.delete(domain);
     return undefined; // expired
   }
@@ -40,7 +41,7 @@ function getCached(domain: string): WhiteLabelOrgInfo | null | undefined {
 function setCache(domain: string, value: WhiteLabelOrgInfo | null): void {
   domainCache.set(domain, {
     value,
-    expiresAt: Date.now() + CACHE_TTL_MS,
+    expiresAt: clock.nowMs() + CACHE_TTL_MS,
   });
 }
 

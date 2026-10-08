@@ -19,6 +19,7 @@ import { brandProfiles, cmoBudget, type BrandProfile } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "../../utils/logger";
 import { ACREOS_VOICE_POOL } from "./voicePool";
+import { clock } from "../../utils/clock";
 
 const ACREOS_SLUG = "acreos";
 
@@ -149,7 +150,7 @@ export async function seedAcreosBrandProfile(): Promise<BrandProfile> {
   if (existing) {
     const [updated] = await db
       .update(brandProfiles)
-      .set({ ...profileData, updatedAt: new Date() })
+      .set({ ...profileData, updatedAt: clock.now() })
       .where(eq(brandProfiles.id, existing.id))
       .returning();
     logger.info(`[cmo] brand profile '${ACREOS_SLUG}' updated (id=${updated.id})`);
@@ -192,7 +193,7 @@ export async function updateBrandProfile(
 ): Promise<BrandProfile> {
   const [updated] = await db
     .update(brandProfiles)
-    .set({ ...updates, updatedAt: new Date() })
+    .set({ ...updates, updatedAt: clock.now() })
     .where(eq(brandProfiles.id, id))
     .returning();
   return updated;

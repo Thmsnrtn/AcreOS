@@ -11,6 +11,7 @@ import { sanitizePromptInline } from "../utils/sanitizePrompt";
 import { getPaxControls, type PaxControlsState } from "./paxControls";
 import { recordPaxEffect } from "./paxReceipts";
 import type { PaxStance } from "@shared/pax-controls";
+import { clock } from "../utils/clock";
 
 export type ScoreFactors = {
   responseRecency?: number;
@@ -51,7 +52,7 @@ export class LeadNurturerService {
 
     const lastContact = lead.lastContactedAt || lead.createdAt;
     const daysSinceContact = lastContact 
-      ? Math.floor((Date.now() - new Date(lastContact).getTime()) / (1000 * 60 * 60 * 24))
+      ? Math.floor((clock.nowMs() - new Date(lastContact).getTime()) / (1000 * 60 * 60 * 24))
       : 30;
 
     if (lead.responses && lead.responses > 0 && daysSinceContact <= 7) {
@@ -147,7 +148,7 @@ export class LeadNurturerService {
       state: lead.state,
       nurturingStage: lead.nurturingStage,
       daysSinceLastContact: lead.lastContactedAt
-        ? Math.floor((Date.now() - new Date(lead.lastContactedAt).getTime()) / (1000 * 60 * 60 * 24))
+        ? Math.floor((clock.nowMs() - new Date(lead.lastContactedAt).getTime()) / (1000 * 60 * 60 * 24))
         : null,
     };
 
@@ -220,7 +221,7 @@ Respond in JSON format:
       .update(leads)
       .set({
         nextFollowUpAt: date,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(leads.id, leadId))
       .returning();
@@ -228,7 +229,7 @@ Respond in JSON format:
   }
 
   getNextFollowUpDate(stage: NurturingStage): Date {
-    const now = new Date();
+    const now = clock.now();
     switch (stage) {
       case "hot":
         return new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000);
@@ -263,7 +264,7 @@ Respond in JSON format:
     if (updated.nurturingStage !== stage) {
       await db
         .update(leads)
-        .set({ nurturingStage: stage, updatedAt: new Date() })
+        .set({ nurturingStage: stage, updatedAt: clock.now() })
         .where(and(eq(leads.id, lead.id), eq(leads.organizationId, lead.organizationId)));
 
       if (attribution) {
@@ -447,9 +448,9 @@ Respond in JSON format:
               await db
                 .update(leads)
                 .set({
-                  lastAIMessageAt: new Date(),
+                  lastAIMessageAt: clock.now(),
                   nextFollowUpAt: this.getNextFollowUpDate(lead.nurturingStage as NurturingStage),
-                  updatedAt: new Date(),
+                  updatedAt: clock.now(),
                 })
                 .where(eq(leads.id, lead.id));
             }
@@ -507,7 +508,7 @@ Respond in JSON format:
         scoredCount++;
       }
 
-      if (lead.nextFollowUpAt && new Date(lead.nextFollowUpAt) <= new Date()) {
+      if (lead.nextFollowUpAt && new Date(lead.nextFollowUpAt) <= clock.now()) {
         needingAttention++;
       }
     }

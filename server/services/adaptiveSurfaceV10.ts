@@ -19,6 +19,7 @@ import {
 } from "@shared/schema";
 import { eq, desc, gte, and, count, sql } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
+import { clock } from "../utils/clock";
 
 // ─── Surface Layers ────────────────────────────────────────────────────────
 
@@ -138,7 +139,7 @@ class AdaptiveSurfaceService {
    * Detect the current context and return the appropriate surface configuration.
    */
   async detectContext(): Promise<DashboardContextState> {
-    const now = new Date();
+    const now = clock.now();
     const hour = now.getHours();
     const dayOfWeek = now.getDay(); // 0 = Sunday
 
@@ -226,7 +227,7 @@ class AdaptiveSurfaceService {
 
     // Deactivate previous
     await db.update(dashboardContextStates)
-      .set({ isCurrent: false, activeUntil: new Date() })
+      .set({ isCurrent: false, activeUntil: clock.now() })
       .where(eq(dashboardContextStates.isCurrent, true));
 
     const [state] = await db.insert(dashboardContextStates).values({

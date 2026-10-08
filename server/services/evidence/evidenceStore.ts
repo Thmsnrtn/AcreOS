@@ -46,6 +46,7 @@ import {
   type ResolvedValue,
 } from "@shared/evidence/claim";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 /** Read cap — a subject with more claims than this has a runaway writer. */
 const CLAIM_READ_CAP = 2_000;
@@ -206,7 +207,7 @@ export async function resolveSubject(
   organizationId: number,
   subjectType: EvidenceSubjectType,
   subjectId: number,
-  asOf: Date = new Date(),
+  asOf: Date = clock.now(),
 ): Promise<Map<string, ResolvedValue>> {
   return resolveAll(
     await claimsForSubject(organizationId, subjectType, subjectId),
@@ -226,7 +227,7 @@ export async function resolveFact(
   subjectType: EvidenceSubjectType,
   subjectId: number,
   predicate: string,
-  asOf: Date = new Date(),
+  asOf: Date = clock.now(),
 ): Promise<ResolvedValue> {
   const claims = await claimsForPredicate(
     organizationId,

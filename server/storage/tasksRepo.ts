@@ -16,9 +16,10 @@ import {
   type InsertTask,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { clock } from "../utils/clock";
 
 function calculateNextOccurrence(date: Date | null, rule: string): Date {
-  const baseDate = date ? new Date(date) : new Date();
+  const baseDate = date ? new Date(date) : clock.now();
   const nextDate = new Date(baseDate);
   
   switch (rule) {
@@ -89,7 +90,7 @@ export const tasksRepo = {
     const conditions = [eq(tasks.id, id)];
     if (organizationId) conditions.push(eq(tasks.organizationId, organizationId));
     const [updated] = await db.update(tasks)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -107,8 +108,8 @@ export const tasksRepo = {
     const [completed] = await db.update(tasks)
       .set({
         status: "completed",
-        completedAt: new Date(),
-        updatedAt: new Date()
+        completedAt: clock.now(),
+        updatedAt: clock.now()
       })
       .where(and(...conditions))
       .returning();
@@ -145,7 +146,7 @@ export const tasksRepo = {
         eq(tasks.organizationId, organizationId),
         eq(tasks.isRecurring, true),
         eq(tasks.status, "completed"),
-        lte(tasks.nextOccurrence, new Date())
+        lte(tasks.nextOccurrence, clock.now())
       ));
   },
 

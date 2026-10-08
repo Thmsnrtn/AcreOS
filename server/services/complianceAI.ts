@@ -8,6 +8,7 @@ import { eq, and, desc, gte } from 'drizzle-orm';
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 interface RegulatoryChange {
   changeType: string;
@@ -44,7 +45,7 @@ class ComplianceAI {
         title: c.title,
         description: c.description || '',
         impactLevel: c.impactLevel || 'medium',
-        effectiveDate: c.effectiveDate || new Date(),
+        effectiveDate: c.effectiveDate || clock.now(),
         sourceUrl: c.sourceUrl || undefined,
       }));
     } catch (error) {
@@ -72,7 +73,7 @@ class ComplianceAI {
         description: change.description,
         impactLevel: change.impactLevel,
         effectiveDate: change.effectiveDate,
-        proposedDate: new Date(),
+        proposedDate: clock.now(),
         sourceUrl: change.sourceUrl || null,
         sourceDocument: null,
         status: 'active',
@@ -238,7 +239,7 @@ class ComplianceAI {
       await db.update(complianceAlerts)
         .set({
           status: 'acknowledged',
-          acknowledgedAt: new Date(),
+          acknowledgedAt: clock.now(),
           acknowledgedBy: userId,
         })
         .where(and(
@@ -285,7 +286,7 @@ class ComplianceAI {
       const rows = await db.update(complianceAlerts)
         .set({
           status: 'resolved',
-          resolvedAt: new Date(),
+          resolvedAt: clock.now(),
         })
         .where(and(
           eq(complianceAlerts.id, args.alertId),
@@ -517,7 +518,7 @@ Format as a professional report.`;
       ).length;
 
       const recentChanges = alerts.filter(a => {
-        const thirtyDaysAgo = new Date();
+        const thirtyDaysAgo = clock.now();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         return a.createdAt != null && a.createdAt >= thirtyDaysAgo;
       }).length;
@@ -572,7 +573,7 @@ Format as a professional report.`;
         a.alertType === 'action_required' && a.status === 'pending'
       ).length;
 
-      const thirtyDaysAgo = new Date();
+      const thirtyDaysAgo = clock.now();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const recentChanges = alerts.filter(a => a.createdAt != null && a.createdAt >= thirtyDaysAgo).length;
 

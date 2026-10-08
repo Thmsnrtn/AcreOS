@@ -80,6 +80,7 @@ import {
   AtlasEntityOrgMismatchError,
   assertEntityOrgFromCtx,
 } from "../assert-entity-org";
+import { clock } from "../../../utils/clock";
 
 const TXT = (markdown: string) => ({
   artifact: { type: "text" as const, markdown },
@@ -94,9 +95,9 @@ async function pollWith<T>(
   timeoutMs = FLY_VERIFY_TIMEOUT_MS,
   intervalMs = FLY_VERIFY_POLL_MS,
 ): Promise<{ ok: boolean; last: T | null }> {
-  const start = Date.now();
+  const start = clock.nowMs();
   let last: T | null = null;
-  while (Date.now() - start < timeoutMs) {
+  while (clock.nowMs() - start < timeoutMs) {
     try {
       last = await fn();
       if (predicate(last)) return { ok: true, last };
@@ -353,7 +354,7 @@ registerTool({
   }),
   async handler(args, ctx) {
     const requestId = randomBytes(16).toString("hex");
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const expiresAt = new Date(clock.nowMs() + 5 * 60 * 1000);
     await db.insert(chatSecretPasteRequests).values({
       id: requestId,
       founderUserId: ctx.founderUserId,
@@ -753,7 +754,7 @@ function slugify(s: string): string {
 }
 
 function todayDateStr(): string {
-  const d = new Date();
+  const d = clock.now();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${d.getFullYear()}-${m}-${day}`;

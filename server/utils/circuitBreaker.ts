@@ -16,6 +16,7 @@
  */
 
 import { logger } from "./logger";
+import { clock } from "./clock";
 
 type CircuitState = "CLOSED" | "OPEN" | "HALF_OPEN";
 
@@ -56,14 +57,14 @@ export class CircuitBreaker {
    *  that is returned when the circuit is open instead of throwing. */
   async call<T>(fn: () => Promise<T>, fallback?: () => T): Promise<T> {
     if (this.state === "OPEN") {
-      if (Date.now() - this.lastFailureTime >= this.resetTimeoutMs) {
+      if (clock.nowMs() - this.lastFailureTime >= this.resetTimeoutMs) {
         this.transition("HALF_OPEN");
       } else {
         logger.warn(`Circuit breaker [${this.name}] is OPEN — skipping call`, {
-          metadata: { retryAfterMs: this.resetTimeoutMs - (Date.now() - this.lastFailureTime) },
+          metadata: { retryAfterMs: this.resetTimeoutMs - (clock.nowMs() - this.lastFailureTime) },
         });
         if (fallback) return fallback();
-        throw new CircuitOpenError(this.name, this.resetTimeoutMs - (Date.now() - this.lastFailureTime));
+        throw new CircuitOpenError(this.name, this.resetTimeoutMs - (clock.nowMs() - this.lastFailureTime));
       }
     }
 
@@ -83,7 +84,7 @@ export class CircuitBreaker {
 
   /** Number of failures in the current monitoring window. */
   getFailureCount(): number {
-    const now = Date.now();
+    const now = clock.nowMs();
     this.failureTimestamps = this.failureTimestamps.filter(t => now - t < this.monitorWindowMs);
     return this.failureTimestamps.length;
   }
@@ -104,7 +105,7 @@ export class CircuitBreaker {
   }
 
   private onFailureInternal(): void {
-    const now = Date.now();
+    const now = clock.nowMs();
     this.consecutiveFailures++;
     this.lastFailureTime = now;
 

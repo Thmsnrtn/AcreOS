@@ -18,6 +18,7 @@ import { cmoAdRenders, cmoAdPerformance, founderAdAccounts } from "@shared/schem
 import { eq, and, gte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { recomputeArchetypeScores } from "../services/cmo/archetypeScorer";
+import { clock } from "../utils/clock";
 
 const META_BASE = "https://graph.facebook.com/v19.0";
 const TIKTOK_BASE = "https://business-api.tiktok.com/open_api/v1.3";
@@ -39,7 +40,7 @@ async function loadAccount(platform: "meta" | "tiktok"): Promise<PlatformAccount
 
 export async function ingestPerformanceAll(): Promise<{ ingested: number }> {
   // Live renders from the last 30 days are the universe we ingest.
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
   const liveRenders = await db
     .select()
     .from(cmoAdRenders)
@@ -92,7 +93,7 @@ async function ingestMetaForRender(renderId: string, externalCreativeId: string,
   // (the agent only creates one ad per creative). Query: insights with
   // filtering on the creative_id field.
   const since = isoDate(daysAgo(30));
-  const until = isoDate(new Date());
+  const until = isoDate(clock.now());
 
   const fields = "ad_id,impressions,clicks,spend,date_start";
   const url = `${META_BASE}/${adAccountId}/insights?level=ad&fields=${encodeURIComponent(fields)}&time_range=${encodeURIComponent(JSON.stringify({ since, until }))}&time_increment=1&filtering=${encodeURIComponent(JSON.stringify([{ field: "creative.id", operator: "EQUAL", value: externalCreativeId }]))}&access_token=${account.accessToken}`;
@@ -136,7 +137,7 @@ async function ingestMetaForRender(renderId: string, externalCreativeId: string,
           clicks,
           ctrPpm,
           cpmCents,
-          ingestedAt: new Date(),
+          ingestedAt: clock.now(),
         },
       });
     rows++;
@@ -146,7 +147,7 @@ async function ingestMetaForRender(renderId: string, externalCreativeId: string,
 
 async function ingestTiktokForRender(renderId: string, externalAdId: string, account: PlatformAccount): Promise<number> {
   const since = isoDate(daysAgo(30));
-  const until = isoDate(new Date());
+  const until = isoDate(clock.now());
 
   const url = `${TIKTOK_BASE}/report/integrated/get/?advertiser_id=${account.adAccountId}&report_type=BASIC&data_level=AUCTION_AD&dimensions=${encodeURIComponent(JSON.stringify(["ad_id", "stat_time_day"]))}&metrics=${encodeURIComponent(JSON.stringify(["impressions", "clicks", "spend", "ctr"]))}&filters=${encodeURIComponent(JSON.stringify([{ field_name: "ad_ids", filter_type: "IN", filter_value: JSON.stringify([externalAdId]) }]))}&start_date=${since}&end_date=${until}`;
 
@@ -198,7 +199,7 @@ async function ingestTiktokForRender(renderId: string, externalAdId: string, acc
           clicks,
           ctrPpm,
           cpmCents,
-          ingestedAt: new Date(),
+          ingestedAt: clock.now(),
         },
       });
     rows++;
@@ -211,5 +212,5 @@ function isoDate(d: Date): string {
 }
 
 function daysAgo(n: number): Date {
-  return new Date(Date.now() - n * 24 * 60 * 60 * 1000);
+  return new Date(clock.nowMs() - n * 24 * 60 * 60 * 1000);
 }

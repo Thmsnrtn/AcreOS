@@ -50,6 +50,7 @@ import {
 } from "@shared/schema";
 import { and, eq, lte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Account-number constants ─────────────────────────────────────────────
 // These are the canonical numbers seeded by chartOfAccountsSeed.ts. The
@@ -391,7 +392,7 @@ export async function recordStripeChargeRefunded(
  *      counter back and the next run picks up the dropped month.
  */
 export async function runRecognitionTick(
-  asOf: Date = new Date(),
+  asOf: Date = clock.now(),
 ): Promise<{ schedulesProcessed: number; entriesPosted: number; centsRecognised: number; runId: string }> {
   const asOfDate = asOf.toISOString().slice(0, 10);
 
@@ -458,7 +459,7 @@ export async function runRecognitionTick(
           .set({
             monthsRecognised: m,
             balanceRemainingCents: Math.max(0, s.balanceRemainingCents - monthlyCents),
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
             status: m >= s.monthsTotal ? "completed" : "active",
           })
           .where(eq(recognitionSchedules.id, s.id));
@@ -473,7 +474,7 @@ export async function runRecognitionTick(
     await db
       .update(recognitionRuns)
       .set({
-        runCompletedAt: new Date(),
+        runCompletedAt: clock.now(),
         schedulesProcessed,
         entriesPosted,
         centsRecognised,
@@ -484,7 +485,7 @@ export async function runRecognitionTick(
     await db
       .update(recognitionRuns)
       .set({
-        runCompletedAt: new Date(),
+        runCompletedAt: clock.now(),
         status: "failure",
         errorMessage: err instanceof Error ? err.message : String(err),
       })

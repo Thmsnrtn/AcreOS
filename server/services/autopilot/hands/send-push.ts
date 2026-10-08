@@ -10,22 +10,23 @@
 import { registerHand } from "./registry";
 import { handError, type HandResult } from "./types";
 import { sendPushToUser } from "../../pushNotificationService";
+import { clock } from "../../../utils/clock";
 
 const NAME = "send_push";
 
 async function handler(input: Record<string, unknown>): Promise<HandResult> {
-  const started = Date.now();
+  const started = clock.nowMs();
   try {
     const organizationId = typeof input.organization_id === "number" ? input.organization_id : NaN;
     const userId = String(input.user_id ?? "").trim();
     const title = String(input.title ?? "").trim();
     const body = String(input.body ?? "").trim();
     if (!Number.isFinite(organizationId) || !userId || !title || !body) {
-      return { success: false, output: "send_push: 'organization_id', 'user_id', 'title', and 'body' are required.", durationMs: Date.now() - started };
+      return { success: false, output: "send_push: 'organization_id', 'user_id', 'title', and 'body' are required.", durationMs: clock.nowMs() - started };
     }
     const url = typeof input.url === "string" ? input.url : undefined;
     const { sent, failed } = await sendPushToUser(organizationId, userId, { title, body, url });
-    return { success: sent > 0, output: JSON.stringify({ sent, failed }), durationMs: Date.now() - started };
+    return { success: sent > 0, output: JSON.stringify({ sent, failed }), durationMs: clock.nowMs() - started };
   } catch (err) {
     return handError(NAME, err, started);
   }

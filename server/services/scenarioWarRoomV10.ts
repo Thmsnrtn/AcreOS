@@ -26,6 +26,7 @@ import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
 import { resolveAgentData } from "./agentDataResolvers";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Agent Domain Mapping ──────────────────────────────────────────────────
 
@@ -221,7 +222,7 @@ Respond in JSON:
           agentAnalyses,
           recommendation: parsed.recommendation ?? parsed.summary,
           status: "completed",
-          completedAt: new Date(),
+          completedAt: clock.now(),
         })
         .where(eq(scenarioSimulations.id, scenario.id))
         .returning();
@@ -234,7 +235,7 @@ Respond in JSON:
           agentAnalyses,
           recommendation: "Consensus synthesis failed — review individual projections",
           status: "completed",
-          completedAt: new Date(),
+          completedAt: clock.now(),
         })
         .where(eq(scenarioSimulations.id, scenario.id))
         .returning();

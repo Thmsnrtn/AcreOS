@@ -11,6 +11,7 @@ import { Errors, sendError } from "./utils/errors";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { getPortfolioPnl } from "./services/portfolioPnl";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -19,7 +20,7 @@ const router = Router();
 router.get("/", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
     const org = req.organization;
-    const year = new Date().getFullYear();
+    const year = clock.now().getFullYear();
     const report = await getPortfolioPnl(org.id, new Date(year, 0, 1), new Date(year, 11, 31, 23, 59, 59));
     res.json({ report });
   } catch (err: any) {
@@ -30,7 +31,7 @@ router.get("/", isAuthenticated, getOrCreateOrg, async (req: Request, res: Respo
   // periods — registered BEFORE /:year so the literal path wins (2026-07-11 route-order sweep).
 // List available reporting years (current year minus 5)
 router.get("/periods", isAuthenticated, getOrCreateOrg, (req: Request, res: Response) => {
-  const currentYear = new Date().getFullYear();
+  const currentYear = clock.now().getFullYear();
   const years = Array.from({ length: 6 }, (_, i) => currentYear - i);
   res.json({ years });
 });

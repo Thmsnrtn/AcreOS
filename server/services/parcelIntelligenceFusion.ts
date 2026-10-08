@@ -45,6 +45,7 @@ import { recordParcelObservations } from "./data-cache/observation-log";
 import { buildCountyAgSnapshot, getCachedLandTrend } from "./usdaNassService";
 import { buildCountyOpportunityProfile, getKnownMigrationHotspots } from "./censusDataService";
 import { femaZoneCode, isSfhaCode } from "./data-source-broker";
+import { clock } from "../utils/clock";
 // NOTE: computeCountyOpportunityScore is intentionally NOT imported/used here.
 // It requires a live market feed; feeding it placeholder constants produced a
 // fabricated score (Quinn data-honesty lens, item 4). Re-introduce it only
@@ -212,7 +213,7 @@ export interface LandIntelligenceReport {
 export async function generateLandIntelligenceReport(
   input: ParcelIntelligenceInput
 ): Promise<LandIntelligenceReport> {
-  const startTime = Date.now();
+  const startTime = clock.nowMs();
   const dataSourcesQueried: string[] = [];
 
   // Run all checks in parallel for maximum speed.
@@ -334,7 +335,7 @@ export async function generateLandIntelligenceReport(
 
   // Per-field provenance (Quinn item 5). Only stamped when the DD pass actually
   // ran — an absent field means "not pulled", never a fabricated default.
-  const nowIso = new Date().toISOString();
+  const nowIso = clock.now().toISOString();
   const fieldProvenance: LandIntelligenceReport["fieldProvenance"] = dd
     ? {
         floodZone: { source: "FEMA NFHL", fetchedAt: nowIso, classification: "authoritative" },
@@ -347,9 +348,9 @@ export async function generateLandIntelligenceReport(
     : {};
 
   return {
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
     dataSourcesQueried: [...new Set(dataSourcesQueried)],
-    processingTimeMs: Date.now() - startTime,
+    processingTimeMs: clock.nowMs() - startTime,
     fieldProvenance,
     recommendation,
     confidenceScore: Math.round(lis * 0.8 + (dd ? 20 : 0)),

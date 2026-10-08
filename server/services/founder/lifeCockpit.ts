@@ -41,6 +41,7 @@ import {
   type PriorYearLiability,
   type QuarterPaidInput,
 } from "./estimatedTax";
+import { clock } from "../../utils/clock";
 
 // ─── Tax profile ───────────────────────────────────────────────────────────────
 
@@ -66,7 +67,7 @@ export async function upsertTaxProfile(input: {
   hasSpouse: boolean;
   notes?: string | null;
 }) {
-  const now = new Date();
+  const now = clock.now();
   const existing = await getTaxProfile(input.founderUserId, input.taxYear);
   if (existing) {
     const [row] = await db
@@ -223,7 +224,7 @@ export async function updateObligation(
   id: number,
   patch: { title?: string; obligationType?: string; dueDate?: Date | null; status?: string; notes?: string | null },
 ) {
-  const set: Record<string, unknown> = { updatedAt: new Date() };
+  const set: Record<string, unknown> = { updatedAt: clock.now() };
   if (patch.title !== undefined) set.title = patch.title;
   if (patch.obligationType !== undefined) set.obligationType = patch.obligationType;
   if (patch.dueDate !== undefined) set.dueDate = patch.dueDate;
@@ -333,7 +334,7 @@ export async function updateIncomeSource(
     notes?: string | null;
   },
 ) {
-  const set: Record<string, unknown> = { updatedAt: new Date() };
+  const set: Record<string, unknown> = { updatedAt: clock.now() };
   if (patch.sourceType !== undefined) set.sourceType = patch.sourceType;
   if (patch.label !== undefined) set.label = patch.label;
   if (patch.amount !== undefined) {
@@ -587,7 +588,7 @@ export async function updateReturnStatus(
   if (!RETURN_STATUSES.has(status)) return false;
   const updated = await db
     .update(founderTaxReturns)
-    .set({ status, updatedAt: new Date() })
+    .set({ status, updatedAt: clock.now() })
     .where(
       and(eq(founderTaxReturns.id, id), eq(founderTaxReturns.founderUserId, founderUserId)),
     )
@@ -700,7 +701,7 @@ export async function markEstimatedPaymentPaid(input: {
     return true;
   }
 
-  const now = new Date();
+  const now = clock.now();
   await db
     .insert(founderEstimatedPayments)
     .values({

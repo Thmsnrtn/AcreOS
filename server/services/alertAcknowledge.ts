@@ -13,20 +13,21 @@
 import { and, eq, sql } from "drizzle-orm";
 import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import { systemAlerts } from "@shared/schema";
+import { clock } from "../utils/clock";
 
 export async function acknowledgeSystemAlert(
   alertId: number,
   by: string,
   note?: Record<string, unknown>,
 ): Promise<{ success: boolean; detail: string; reason?: "not_found" | "already_handled" }> {
-  const stamp = { acknowledgedBy: by, at: new Date().toISOString(), ...(note ?? {}) };
+  const stamp = { acknowledgedBy: by, at: clock.now().toISOString(), ...(note ?? {}) };
   // System alerts are platform-level (organization_id is nullable and the
   // actors are platform agents), addressed by alert id.
   const updated = await unscopedForPlatformOps("system alert acknowledgement by alert id (platform agents)")
     .update(systemAlerts)
     .set({
       status: "acknowledged",
-      acknowledgedAt: new Date(),
+      acknowledgedAt: clock.now(),
       metadata: sql`coalesce(${systemAlerts.metadata}, '{}'::jsonb) || ${JSON.stringify({ acknowledgement: stamp })}::jsonb`,
     })
     .where(and(eq(systemAlerts.id, alertId), eq(systemAlerts.status, "new")))

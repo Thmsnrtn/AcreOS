@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { storage } from "../storage";
 import { subscriptionPeriodIso } from "../stripeClient";
 import type { Organization, SupportTicket, KnowledgeBaseArticle, TeamMember } from "@shared/schema";
+import { PLACE_TEXT } from "../services/paxPlaces";
 import { decisionsInboxService } from "../services/decisionsInbox";
 import { db } from "../db";
 import { dataSourceBroker } from "../services/data-source-broker.js";
@@ -13,7 +14,7 @@ import {
   deals, notes, tasks, campaigns, payments, teamMembers,
   activityLog, auditLog, apiUsageLogs, paxMemory, systemAlerts
 } from "@shared/schema";
-import { gte, lte } from "drizzle-orm";
+import { gte, lte, isNull } from "drizzle-orm";
 import { logger } from "../utils/logger";
 // The ONE reader of the org's Pax controls (AUTONOMY_SPEC.md §4.2) — stance
 // and pause in one call, failing CLOSED. The pause primitive is read through it.
@@ -34,6 +35,7 @@ import { validateCompliance } from "../services/complianceValidator";
 import { assertAiSpendAllowed, recordExternalAiSpend } from "../services/aiSpendGuard";
 import { serializeToolResultForModel } from "./untrustedEnvelope";
 import { subscriptionEndedPatch, subscriptionHasEnded } from "../services/borrower/servicingPhase";
+import { clock } from "../utils/clock";
 
 const MAX_TOOL_ITERATIONS = 10;
 
@@ -1889,7 +1891,7 @@ export async function executeSupportTool(
             ]);
             
             diagnosticBundle = {
-              gatheredAt: new Date().toISOString(),
+              gatheredAt: clock.now().toISOString(),
               organization: {
                 id: org.id,
                 name: org.name,
@@ -1964,7 +1966,7 @@ export async function executeSupportTool(
               assignedAgent: null,
               priority: priority,
               escalationBundle: diagnosticBundle,
-              updatedAt: new Date()
+              updatedAt: clock.now()
             })
             .where(eq(supportTickets.id, ticketId));
           
@@ -2010,12 +2012,12 @@ export async function executeSupportTool(
           organizationId: org.id,
           userId: org.ownerId,
           memoryType: "escalation",
-          key: `escalation_${Date.now()}`,
+          key: `escalation_${clock.nowMs()}`,
           value: {
             summary: `Escalated: ${reason}`,
             priority,
             hasDiagnosticBundle: !!diagnosticBundle,
-            timestamp: new Date().toISOString()
+            timestamp: clock.now().toISOString()
           } as any,
           importance: 9,
           sourceTicketId: ticketId
@@ -2079,7 +2081,7 @@ export async function executeSupportTool(
 
       case "create_followup_task": {
         const { title, description, assignee, due_days = 3 } = args;
-        const dueDate = new Date();
+        const dueDate = clock.now();
         dueDate.setDate(dueDate.getDate() + due_days);
 
         // Wired 2026-08-20. This returned `taskCreated: true` and created no
@@ -2135,14 +2137,14 @@ export async function executeSupportTool(
             organizationId: org.id,
             userId: org.ownerId,
             memoryType: "solution_tried",
-            key: `resolved_${issue_type}_${Date.now()}`,
+            key: `resolved_${issue_type}_${clock.nowMs()}`,
             value: { 
               summary: `Resolved ${issue_type} issue with: ${resolution_approach}`,
               issueType: issue_type,
               toolsUsed: tools_used,
               wasSuccessful: true,
               resolutionTimeMinutes: resolution_time_minutes,
-              timestamp: new Date().toISOString()
+              timestamp: clock.now().toISOString()
             } as any,
             importance: 7,
             sourceTicketId: ticketId
@@ -2204,7 +2206,7 @@ export async function executeSupportTool(
           }
           
           // Boost recent resolutions
-          const ageInDays = (Date.now() - (res.createdAt?.getTime() || 0)) / (1000 * 60 * 60 * 24);
+          const ageInDays = (clock.nowMs() - (res.createdAt?.getTime() || 0)) / (1000 * 60 * 60 * 24);
           if (ageInDays < 7) score += 5;
           else if (ageInDays < 30) score += 2;
           
@@ -2245,7 +2247,7 @@ export async function executeSupportTool(
             .set({
               customerRating: rating,
               customerFeedback: feedback_text || null,
-              updatedAt: new Date()
+              updatedAt: clock.now()
             })
             .where(eq(supportTickets.id, ticketId));
         }
@@ -2255,11 +2257,11 @@ export async function executeSupportTool(
           organizationId: org.id,
           userId: org.ownerId,
           memoryType: "preference",
-          key: `feedback_${Date.now()}`,
+          key: `feedback_${clock.nowMs()}`,
           value: {
             summary: `Customer rated support ${rating}/5`,
             details: { rating, feedbackText: feedback_text, resolutionHelpful: resolution_helpful, wouldRecommend: would_recommend },
-            timestamp: new Date().toISOString()
+            timestamp: clock.now().toISOString()
           } as any,
           importance: rating <= 2 ? 9 : rating >= 4 ? 6 : 7, // Higher importance for negative feedback
           sourceTicketId: ticketId
@@ -2277,7 +2279,9 @@ export async function executeSupportTool(
             rating,
             feedbackRecorded: true,
             message: feedbackMessage,
-            followUp: rating <= 2 ? "This feedback has been flagged for review by our support team." : null
+            // States only what happened: the rating is stored on the ticket,
+            // where support staff read it. Nothing else is triggered.
+            followUp: rating <= 2 ? "Your rating and comments are saved on this ticket, where the support team can see them." : null
           }
         };
       }
@@ -2286,7 +2290,7 @@ export async function executeSupportTool(
         const { issue_type, time_period = "30d" } = args;
         
         // Calculate time filter
-        const now = new Date();
+        const now = clock.now();
         const timeFilters: Record<string, Date> = {
           "7d": new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
           "30d": new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
@@ -2469,7 +2473,7 @@ export async function executeSupportTool(
           organizationId: org.id,
           userId: org.ownerId,
           memoryType: "solution_tried",
-          key: `variant_${variant_name}_${issue_type}_${Date.now()}`,
+          key: `variant_${variant_name}_${issue_type}_${clock.nowMs()}`,
           value: { 
             summary: `Tried ${variant_name} approach for ${issue_type}: ${was_successful ? "SUCCESS" : "FAILED"}`,
             issueType: issue_type,
@@ -2477,7 +2481,7 @@ export async function executeSupportTool(
             toolsUsed: tools_used,
             wasSuccessful: was_successful,
             customerEffortScore: customer_effort_score,
-            timestamp: new Date().toISOString()
+            timestamp: clock.now().toISOString()
           } as any,
           importance: was_successful ? 7 : 8, // Higher importance for failures to avoid repeating
           sourceTicketId: ticketId
@@ -2594,14 +2598,14 @@ export async function executeSupportTool(
           organizationId: org.id,
           userId: org.ownerId,
           memoryType: "context",
-          key: `proactive_warning_${warning_type}_${Date.now()}`,
+          key: `proactive_warning_${warning_type}_${clock.nowMs()}`,
           value: {
             summary: `Sent proactive warning about ${warning_type}`,
             warningType: warning_type,
             severity,
             message,
             recommendedAction: recommended_action,
-            timestamp: new Date().toISOString()
+            timestamp: clock.now().toISOString()
           } as any,
           importance: severity === "critical" ? 9 : severity === "warning" ? 7 : 5,
           sourceTicketId: ticketId
@@ -2793,13 +2797,13 @@ export async function executeSupportTool(
           organizationId: org.id,
           userId: org.ownerId,
           memoryType: "context",
-          key: `outreach_${Date.now()}`,
+          key: `outreach_${clock.nowMs()}`,
           value: {
             summary: `Scheduled proactive outreach: ${subject}`,
             outreachType: outreach_type,
             urgency,
             issueType: issue_type,
-            timestamp: new Date().toISOString()
+            timestamp: clock.now().toISOString()
           } as any,
           importance: urgency === "high" ? 8 : urgency === "medium" ? 6 : 4,
           sourceTicketId: ticketId
@@ -2972,7 +2976,7 @@ export async function executeSupportTool(
             title: "Importing Data",
             estimatedTime: "5-10 minutes",
             steps: [
-              { step: 1, action: "Navigate to Settings > Import", path: "/settings/import" },
+              { step: 1, action: `Open ${PLACE_TEXT.importExport} (or Deals → Leads → Import CSV for leads)`, path: "/settings" },
               { step: 2, action: "Select data type", options: ["leads", "properties", "contacts"], tip: "Choose what you're importing" },
               { step: 3, action: "Download template", tip: "Use our CSV template for best results" },
               { step: 4, action: "Prepare your file", tip: "Match columns to template headers" },
@@ -3001,8 +3005,8 @@ export async function executeSupportTool(
               { step: 1, action: "Navigate to Settings", path: "/settings", tip: "Click Settings in the sidebar" },
               { step: 2, action: "Review Organization settings", tip: "Company name, logo, time zone" },
               { step: 3, action: "Configure Integrations", path: "/settings/integrations", tip: "Connect external services" },
-              { step: 4, action: "Set up Team Members", path: "/settings/team", tip: "Invite team members, assign roles" },
-              { step: 5, action: "Review Subscription", path: "/settings/billing", tip: "Manage plan and payment method" }
+              { step: 4, action: "Set up Team Members", path: "/settings", tip: "Invite team members, assign roles" },
+              { step: 5, action: "Review Subscription", path: "/settings", tip: "Manage plan and payment method" }
             ],
             proTips: skill_level !== "beginner" ? ["Set up BYOK for custom API keys", "Configure custom fields for your workflow"] : []
           },
@@ -3010,7 +3014,7 @@ export async function executeSupportTool(
             title: "Managing Your Team",
             estimatedTime: "3-5 minutes",
             steps: [
-              { step: 1, action: "Navigate to Settings > Team", path: "/settings/team" },
+              { step: 1, action: `Open ${PLACE_TEXT.invite}`, path: "/settings" },
               { step: 2, action: "Click 'Invite Member'", element: "button-invite" },
               { step: 3, action: "Enter email address", tip: "They'll receive an invitation email" },
               { step: 4, action: "Assign role", options: ["Admin", "Member", "Viewer"], tip: "Roles determine what they can access" },
@@ -3966,7 +3970,7 @@ export async function executeSupportTool(
           });
           
           for (const inv of invoices.data) {
-            if (inv.status === "open" && inv.due_date && inv.due_date * 1000 < Date.now()) {
+            if (inv.status === "open" && inv.due_date && inv.due_date * 1000 < clock.nowMs()) {
               issues.push({
                 type: "past_due_invoice",
                 severity: "critical",
@@ -3987,7 +3991,7 @@ export async function executeSupportTool(
           
           const recentFailures = paymentIntents.data.filter(
             pi => pi.status === "requires_payment_method" && 
-            pi.created * 1000 > Date.now() - 7 * 24 * 60 * 60 * 1000
+            pi.created * 1000 > clock.nowMs() - 7 * 24 * 60 * 60 * 1000
           );
           
           for (const pi of recentFailures) {
@@ -4008,7 +4012,7 @@ export async function executeSupportTool(
             type: "card"
           });
           
-          const now = new Date();
+          const now = clock.now();
           for (const pm of paymentMethods.data) {
             if (pm.card) {
               const expMonth = pm.card.exp_month;
@@ -4080,14 +4084,14 @@ export async function executeSupportTool(
                 organizationId: org.id,
                 userId: org.ownerId,
                 memoryType: "issue_history",
-                key: `billing_fix_retry_${Date.now()}`,
+                key: `billing_fix_retry_${clock.nowMs()}`,
                 value: {
                   summary: `Retried payment for invoice ${invoice_id}`,
                   fixType: fix_type,
                   invoiceId: invoice_id,
                   result: invoice.status,
                   reason,
-                  timestamp: new Date().toISOString()
+                  timestamp: clock.now().toISOString()
                 } as any,
                 importance: 8,
                 sourceTicketId: ticketId
@@ -4213,7 +4217,7 @@ export async function executeSupportTool(
           }
           
           // Boost recent resolutions
-          const ageInDays = (Date.now() - (res.createdAt?.getTime() || 0)) / (1000 * 60 * 60 * 24);
+          const ageInDays = (clock.nowMs() - (res.createdAt?.getTime() || 0)) / (1000 * 60 * 60 * 24);
           if (ageInDays < 7) score += 5;
           else if (ageInDays < 30) score += 2;
           
@@ -4449,7 +4453,7 @@ export async function executeSupportTool(
           "7d": 7 * 24 * 60 * 60 * 1000
         };
         
-        const sinceTime = new Date(Date.now() - (timeRangeMap[time_range] || timeRangeMap["24h"]));
+        const sinceTime = new Date(clock.nowMs() - (timeRangeMap[time_range] || timeRangeMap["24h"]));
         
         let logs: any[] = [];
         let summary = "";
@@ -4592,7 +4596,7 @@ export async function executeSupportTool(
           "7d": 7 * 24 * 60 * 60 * 1000
         };
         
-        const sinceTime = new Date(Date.now() - (timeRangeMap[time_range] || timeRangeMap["24h"]));
+        const sinceTime = new Date(clock.nowMs() - (timeRangeMap[time_range] || timeRangeMap["24h"]));
         
         let activities: any[] = [];
         
@@ -4963,7 +4967,7 @@ export async function executeSupportTool(
         const { memory_type, key, summary, details, importance = 5, expires_in_days } = args;
         
         const expiresAt = expires_in_days 
-          ? new Date(Date.now() + expires_in_days * 24 * 60 * 60 * 1000)
+          ? new Date(clock.nowMs() + expires_in_days * 24 * 60 * 60 * 1000)
           : null;
         
         // Check if this key already exists (update instead of insert)
@@ -4981,10 +4985,10 @@ export async function executeSupportTool(
           await db.update(paxMemory)
             .set({
               memoryType: memory_type,
-              value: { summary, details, timestamp: new Date().toISOString() },
+              value: { summary, details, timestamp: clock.now().toISOString() },
               importance,
               expiresAt,
-              updatedAt: new Date()
+              updatedAt: clock.now()
             })
             .where(eq(paxMemory.id, existing[0].id));
           
@@ -5006,7 +5010,7 @@ export async function executeSupportTool(
               userId: org.ownerId,
               memoryType: memory_type,
               key,
-              value: { summary, details, timestamp: new Date().toISOString() },
+              value: { summary, details, timestamp: clock.now().toISOString() },
               importance,
               expiresAt,
               sourceTicketId: ticketId
@@ -5112,7 +5116,7 @@ export async function executeSupportTool(
         const { job_type, older_than_minutes = 30 } = args;
         const { jobQueueService } = await import("../services/jobQueue");
         
-        const cutoffTime = new Date(Date.now() - older_than_minutes * 60 * 1000);
+        const cutoffTime = new Date(clock.nowMs() - older_than_minutes * 60 * 1000);
         const jobTypes = job_type === "all" ? ["email", "webhook", "sync"] : [job_type];
         
         let totalUnlocked = 0;
@@ -5536,7 +5540,7 @@ export async function processSupportChat(
   // it gets the ceiling gate and telemetry directly.
   await assertAiSpendAllowed(org.id);
 
-  const traceStarted = Date.now();
+  const traceStarted = clock.nowMs();
   let response = await openai.chat.completions.create({
     model: "openai/gpt-4o",
     messages: chatMessages,
@@ -5561,7 +5565,7 @@ export async function processSupportChat(
       systemPrompt,
       userPrompt: message,
       response: assistantMessage.content ?? JSON.stringify(assistantMessage.tool_calls ?? ""),
-      latencyMs: Date.now() - traceStarted,
+      latencyMs: clock.nowMs() - traceStarted,
       inputTokens: response.usage?.prompt_tokens,
       outputTokens: response.usage?.completion_tokens,
       metadata: { ticketId, userId },
@@ -5621,7 +5625,10 @@ export async function processSupportChat(
     assistantMessage = response.choices[0].message;
   }
 
-  const rawFinal = assistantMessage.content || "I apologize, but I'm having trouble processing your request. Let me escalate this to our support team.";
+  // The empty-reply fallback used to say "Let me escalate this to our support
+  // team" and escalated nothing. It now says only what is true: the ticket the
+  // customer is writing in is open, and support staff read open tickets.
+  const rawFinal = assistantMessage.content || "I'm having trouble answering that right now. Your ticket stays open, and the support team can see it.";
 
   // Phase 4 W21-22 — compliance post-validator. Customer-support auto-resolver
   // routinely answers questions that brush against tax / contract / lender
@@ -5738,6 +5745,15 @@ export async function createSupportTicket(
     errorContext?: any;
     source?: string;
     autoAttachContext?: boolean;
+    /**
+     * The customer asked for a PERSON (Pax's `escalate_to_support` tool).
+     * The row is written already escalated — resolution_type 'escalated',
+     * no assigned agent — which is the shape the founder's support sense
+     * (autopilot/senses.ts readEscalatedSupportTickets) counts, and the AI
+     * first-response pass is skipped: auto-answering a request for a human
+     * would be the opposite of what was asked.
+     */
+    escalateToHuman?: boolean;
   } = {}
 ): Promise<SupportTicket> {
   // Auto-attach system context if requested or if likely to be helpful
@@ -5762,7 +5778,8 @@ export async function createSupportTicket(
     pageContext: options.pageContext,
     errorContext: Object.keys(mergedContext).length > 0 ? mergedContext : null,
     source: options.source || "in_app",
-    assignedAgent: "pax",
+    assignedAgent: options.escalateToHuman ? null : "pax",
+    resolutionType: options.escalateToHuman ? "escalated" : null,
     status: "open"
   }).returning();
   
@@ -5815,7 +5832,7 @@ Services: ${Object.entries(systemContext.serviceStatus).map(([k, v]) => `${k}:${
   // a failure here NEVER blocks (or fails) ticket creation. Bug-reporter and
   // other direct-insert paths are intentionally unaffected — only tickets minted
   // through createSupportTicket get the auto first-response.
-  void (async () => {
+  if (!options.escalateToHuman) void (async () => {
     try {
       const { resolveTicketWithPax } = await import("./paxSupportResolver");
       const result = await resolveTicketWithPax(ticket.id, org);
@@ -5828,7 +5845,7 @@ Services: ${Object.entries(systemContext.serviceStatus).map(([k, v]) => `${k}:${
         },
       });
     } catch (firstResponseErr) {
-      logger.warn("[support] AI first-response pass failed (non-fatal)", {
+      logger.warn("[support] AI first-response pass failed (non-fatal); handing the ticket to the human queue", {
         metadata: {
           ticketId: ticket.id,
           error:
@@ -5837,6 +5854,31 @@ Services: ${Object.entries(systemContext.serviceStatus).map(([k, v]) => `${k}:${
               : String(firstResponseErr),
         },
       });
+      // Nothing retries a failed pass, and the support backlog counts only
+      // escalated tickets, so a ticket left assigned to Pax with no resolution
+      // (the model was down when it was filed) was never seen again by a
+      // worker or the founder. Hand it to the human queue — only if the failed
+      // pass still holds it (Pax assigned, unresolved, still open).
+      try {
+        await db
+          .update(supportTickets)
+          .set({ resolutionType: "escalated", assignedAgent: null, status: "open", updatedAt: clock.now() })
+          .where(
+            and(
+              eq(supportTickets.id, ticket.id),
+              eq(supportTickets.organizationId, org.id),
+              eq(supportTickets.assignedAgent, "pax"),
+              isNull(supportTickets.resolutionType),
+              eq(supportTickets.status, "open"),
+            ),
+          );
+      } catch (handOffErr) {
+        logger.error(
+          "[support] could not hand a ticket with a failed first response to the human queue",
+          handOffErr instanceof Error ? handOffErr : undefined,
+          { metadata: { ticketId: ticket.id } },
+        );
+      }
     }
   })();
 

@@ -30,6 +30,7 @@ import {
 } from '../../shared/schema';
 import { eq, desc, gte, and, sql } from 'drizzle-orm';
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface RealtimeAlert {
   id: string;
@@ -127,8 +128,8 @@ class RealtimeAlertsService {
   async pushAlert(alert: Omit<RealtimeAlert, 'id' | 'createdAt' | 'read'>): Promise<RealtimeAlert> {
     const fullAlert: RealtimeAlert = {
       ...alert,
-      id: `alert_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-      createdAt: new Date().toISOString(),
+      id: `alert_${clock.nowMs()}_${Math.random().toString(36).slice(2)}`,
+      createdAt: clock.now().toISOString(),
       read: false,
     };
 
@@ -189,7 +190,7 @@ class RealtimeAlertsService {
     if (!wsServerRef) return 0;
 
     try {
-      const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000);
+      const cutoff = new Date(clock.nowMs() - 2 * 60 * 60 * 1000);
       const alerts = await db
         .select()
         .from(dealAlerts)

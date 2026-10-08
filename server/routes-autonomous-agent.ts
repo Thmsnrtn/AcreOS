@@ -34,6 +34,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { autonomousAgentEngine, type AutonomyLevel, type ActionCategory } from "./services/autonomousAgentEngine";
 import { executeAgentTask, type CoreAgentType } from "./services/core-agents";
 import { Errors } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 const CORE_AGENT_TYPES: CoreAgentType[] = ["research", "deals", "communications", "operations"];
 
@@ -238,10 +239,10 @@ export function registerAutonomousAgentRoutes(app: Express): void {
       // Mark as running
       await db
         .update(agentTasks)
-        .set({ status: "processing", startedAt: new Date(), requiresReview: false })
+        .set({ status: "processing", startedAt: clock.now(), requiresReview: false })
         .where(and(eq(agentTasks.id, taskId), eq(agentTasks.organizationId, org.id)));
 
-      const startTime = Date.now();
+      const startTime = clock.nowMs();
 
       const result = await executeAgentTask(task.agentType as CoreAgentType, {
         action: input.action,
@@ -255,7 +256,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
         },
       });
 
-      const executionTimeMs = Date.now() - startTime;
+      const executionTimeMs = clock.nowMs() - startTime;
 
       await db
         .update(agentTasks)
@@ -263,11 +264,11 @@ export function registerAutonomousAgentRoutes(app: Express): void {
           status: result.success ? "completed" : "failed",
           output: result as any,
           error: result.success ? null : (result.message || "Unknown error"),
-          completedAt: new Date(),
+          completedAt: clock.now(),
           executionTimeMs,
           requiresReview: !!result.requiresApproval,
           reviewedBy: Number.isNaN(parseInt(String(user.id), 10)) ? null : parseInt(String(user.id), 10),
-          reviewedAt: new Date(),
+          reviewedAt: clock.now(),
         })
         .where(and(eq(agentTasks.id, taskId), eq(agentTasks.organizationId, org.id)));
 

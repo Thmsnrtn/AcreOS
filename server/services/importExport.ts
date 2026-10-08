@@ -22,6 +22,7 @@ import { emitLeadCreated, emitLeadCreatedDurably } from "./leadEvents";
 // Same rule, same file, same event contract.
 import { emitPropertyCreated, emitPropertyCreatedDurably } from "./propertyEvents";
 import { emitDealCreated, emitDealCreatedDurably } from "./dealEvents";
+import { clock } from "../utils/clock";
 
 export interface ImportResult {
   totalRows: number;
@@ -392,7 +393,7 @@ export async function importLeads(
         status: row.status || "new",
         source: row.source || "import",
         notes: row.notes || null,
-        ...(parseDncFlag(row.doNotContact) ? { doNotContact: true, optOutDate: new Date(), optOutReason: "import_dnc_flag" } : {}),
+        ...(parseDncFlag(row.doNotContact) ? { doNotContact: true, optOutDate: clock.now(), optOutReason: "import_dnc_flag" } : {}),
       });
 
       if (!parseResult.success) {
@@ -1101,7 +1102,7 @@ export async function createBackupZip(organizationId: number): Promise<{
   const metadata = {
     organizationId,
     organizationName: org?.name,
-    exportedAt: new Date().toISOString(),
+    exportedAt: clock.now().toISOString(),
     version: "1.0",
     counts: {
       leads: leadsCSV.split("\n").length - 1,
@@ -1555,7 +1556,7 @@ export async function importAcquiredNotesFromCSV(
 
       // Note number — user-supplied or generated. Org-scoped uniqueness is
       // enforced at the DB index level; collisions surface as errors below.
-      const noteNumber = (row.noteNumber || "").trim() || `IMP-${Date.now()}-${i + 1}`;
+      const noteNumber = (row.noteNumber || "").trim() || `IMP-${clock.nowMs()}-${i + 1}`;
 
       const payerAddress = row.propertyAddress
         ? { line1: row.propertyAddress.trim() }

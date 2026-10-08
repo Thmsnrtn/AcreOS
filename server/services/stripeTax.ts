@@ -16,6 +16,7 @@
 
 import { logger } from "../utils/logger";
 import type { Organization } from "@shared/schema";
+import { clock } from "../utils/clock";
 
 export interface TaxAddressShape {
   line1?: string;
@@ -83,7 +84,7 @@ export async function syncTaxAddressToStripe(
       ...(org.legalEntityName ? { name: org.legalEntityName } : {}),
       metadata: {
         organizationId: String(org.id),
-        taxAddressSyncedAt: new Date().toISOString(),
+        taxAddressSyncedAt: clock.now().toISOString(),
       },
     });
 

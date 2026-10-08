@@ -38,6 +38,7 @@ import {
   formatSlopeValue,
   type TerrainSampleResult,
 } from "./terrain";
+import { clock } from "../utils/clock";
 
 /**
  * Default confidence by source authority. Federal/open system-of-record layers
@@ -472,7 +473,7 @@ export function assembleLandProfile(
     propertyId: property.id,
     latitude: lat,
     longitude: lng,
-    assembledAt: new Date().toISOString(),
+    assembledAt: clock.now().toISOString(),
     fromCache,
     gaps,
     fieldsPopulated: populated,

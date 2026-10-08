@@ -19,6 +19,7 @@ import {
   growthCampaigns,
 } from "@shared/schema";
 import { and, desc, eq, or, sql } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 export type ActionQueuePriority = "critical" | "high" | "medium" | "low";
 
@@ -45,7 +46,7 @@ export interface ActionQueueResponse {
 }
 
 export async function getActionQueueItems(): Promise<ActionQueueResponse> {
-  const now = new Date();
+  const now = clock.now();
   const in3Days = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
   const items: ActionQueueItem[] = [];
 
@@ -243,7 +244,7 @@ export async function getActionQueueAsTodos(): Promise<ActionQueueAsTodoItem[]> 
       urgency: PRIORITY_TO_URGENCY[it.priority] ?? 50,
       estimatedImpactCents: null,
       actionUrl: TYPE_TO_ROUTE[it.type](it.data ?? {}),
-      createdAt: new Date().toISOString(),
+      createdAt: clock.now().toISOString(),
       badge: it.type,
       source: "action-queue",
       rawType: it.type,

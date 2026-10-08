@@ -22,6 +22,7 @@ import { logger } from "../utils/logger";
 // fresh-insert branch below (never on the update-existing branch, or a re-run
 // re-fires) — see services/buyerEvents.ts.
 import { emitBuyerMatchCreated } from "./buyerEvents";
+import { clock } from "../utils/clock";
 
 type ProfileType = "individual" | "investor" | "developer" | "builder";
 type MatchStatus = "pending" | "presented" | "interested" | "not_interested" | "purchased";
@@ -164,7 +165,7 @@ export class BuyerMatchingAIService {
     const [updated] = await db.update(buyerProfiles)
       .set({
         ...updates,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(buyerProfiles.id, profileId))
       .returning();
@@ -281,7 +282,7 @@ export class BuyerMatchingAIService {
             matchFactors: result.matchFactors,
             matchReasons: result.matchReasons,
             potentialConcerns: result.potentialConcerns,
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(and(eq(buyerPropertyMatches.id, existing.id), eq(buyerPropertyMatches.organizationId, organizationId)))
           .returning();
@@ -394,7 +395,7 @@ export class BuyerMatchingAIService {
             matchFactors: result.matchFactors,
             matchReasons: result.matchReasons,
             potentialConcerns: result.potentialConcerns,
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(and(eq(buyerPropertyMatches.id, existing.id), eq(buyerPropertyMatches.organizationId, organizationId)))
           .returning();
@@ -792,8 +793,8 @@ export class BuyerMatchingAIService {
     const [updated] = await db.update(buyerPropertyMatches)
       .set({
         status: "presented",
-        presentedAt: new Date(),
-        updatedAt: new Date(),
+        presentedAt: clock.now(),
+        updatedAt: clock.now(),
       })
       .where(eq(buyerPropertyMatches.id, matchId))
       .returning();
@@ -820,7 +821,7 @@ export class BuyerMatchingAIService {
       .set({
         status,
         buyerResponse: response,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(buyerPropertyMatches.id, matchId))
       .returning();
@@ -873,15 +874,15 @@ export class BuyerMatchingAIService {
             value: {
               summary,
               details: { buyerProfileId: updated.buyerProfileId, propertyId: updated.propertyId, status, preferences: prefs, financial, intent },
-              timestamp: new Date().toISOString(),
+              timestamp: clock.now().toISOString(),
             },
             importance: status === "purchased" ? 9 : 7,
           }).onConflictDoUpdate({
             target: [paxMemory.organizationId, paxMemory.key, paxMemory.userId],
             set: {
-              value: { summary, details: { buyerProfileId: updated.buyerProfileId, status }, timestamp: new Date().toISOString() },
+              value: { summary, details: { buyerProfileId: updated.buyerProfileId, status }, timestamp: clock.now().toISOString() },
               importance: status === "purchased" ? 9 : 7,
-              updatedAt: new Date(),
+              updatedAt: clock.now(),
             },
           } as any).catch(() => {});
         } catch {}

@@ -20,6 +20,7 @@ import { db } from "../db";
 import { unsubscribeTokens } from "@shared/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 function mintTokenString(): string {
   return crypto.randomBytes(32).toString("hex");
@@ -108,7 +109,7 @@ export async function resolveToken(token: string): Promise<{
 export async function markTokenUsed(token: string): Promise<void> {
   await db
     .update(unsubscribeTokens)
-    .set({ usedAt: new Date() })
+    .set({ usedAt: clock.now() })
     .where(eq(unsubscribeTokens.token, token));
 }
 

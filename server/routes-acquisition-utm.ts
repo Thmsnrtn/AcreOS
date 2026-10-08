@@ -28,6 +28,7 @@ import { getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { applyReferralCode } from "./services/referralService";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -172,7 +173,7 @@ router.post("/", async (req: AuthenticatedRequest, res: Response) => {
     // avoid a TOCTOU gap.
     const updated = await db
       .update(users)
-      .set({ acquisitionUtm: cleaned, updatedAt: new Date() })
+      .set({ acquisitionUtm: cleaned, updatedAt: clock.now() })
       .where(and(eq(users.id, userId), isNull(users.acquisitionUtm)))
       .returning({ id: users.id });
 

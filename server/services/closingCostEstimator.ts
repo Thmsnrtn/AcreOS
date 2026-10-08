@@ -6,6 +6,7 @@
 
 import { getRecordingFees } from "./countyRecordingFees";
 import { STATE_DOCUMENT_CONFIGS } from "./stateDocumentConfig";
+import { clock } from "../utils/clock";
 
 export interface ClosingCostEstimate {
   recordingFee: number;
@@ -39,7 +40,7 @@ export function estimateClosingCosts(
   // Prorated taxes: annual tax ÷ 365 × days remaining in year
   let proratedTaxes = 0;
   if (annualTax && annualTax > 0) {
-    const closing = closingDate || new Date();
+    const closing = closingDate || clock.now();
     const endOfYear = new Date(closing.getFullYear(), 11, 31);
     const daysRemaining = Math.max(
       0,

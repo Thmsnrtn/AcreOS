@@ -34,6 +34,7 @@ import {
   sev1IncidentSlo,
   monthStart,
 } from "./services/reliability/sloCompute";
+import { clock } from "./utils/clock";
 
 export function registerErrorBudgetRoute(app: Express): void {
   app.get(
@@ -55,7 +56,7 @@ export function registerErrorBudgetRoute(app: Express): void {
             : "ok";
         return res.json({
           monthStart: monthStart().toISOString(),
-          generatedAt: new Date().toISOString(),
+          generatedAt: clock.now().toISOString(),
           overallStatus: worstStatus,
           slos,
         });

@@ -6,6 +6,7 @@ import { BaseAgent } from "./base-agent";
 import { db } from "../storage";
 import { sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -16,7 +17,7 @@ export class FounderDigestAgent extends BaseAgent {
   readonly intervalMs = 1 * HOUR; // Check every hour, but only generate once daily
 
   async runOnce(): Promise<void> {
-    const now = new Date();
+    const now = clock.now();
     // Generate digest around 8am (configurable via org timezone later)
     if (now.getHours() < 7 || now.getHours() > 9) return;
 
@@ -24,7 +25,7 @@ export class FounderDigestAgent extends BaseAgent {
   }
 
   private async generateDailyDigest(): Promise<void> {
-    const today = new Date();
+    const today = clock.now();
     today.setHours(0, 0, 0, 0);
 
     // Check if already generated today
@@ -35,7 +36,7 @@ export class FounderDigestAgent extends BaseAgent {
     `);
     if ((existing as any).rows?.length > 0) return;
 
-    const yesterday = new Date(Date.now() - DAY);
+    const yesterday = new Date(clock.nowMs() - DAY);
 
     // Gather data from all agents
     const [growthBrief, revenueBrief, customerDecisions, opsBrief, pendingDecisions] = await Promise.all([
@@ -59,7 +60,7 @@ export class FounderDigestAgent extends BaseAgent {
     ]);
 
     const digest = {
-      date: new Date().toISOString().split("T")[0],
+      date: clock.now().toISOString().split("T")[0],
       sections: {
         growth: {
           newSignups: Number((signups as any).rows?.[0]?.count ?? 0),
@@ -120,7 +121,7 @@ export class FounderDigestAgent extends BaseAgent {
       SELECT content FROM founder_briefs
       WHERE brief_type = 'decision'
         AND (content->>'autoApproved')::boolean = false
-        AND generated_at > ${new Date(Date.now() - 7 * DAY)}
+        AND generated_at > ${new Date(clock.nowMs() - 7 * DAY)}
       ORDER BY generated_at DESC LIMIT 10
     `);
     return ((result as any).rows ?? []).map((r: any) => r.content);

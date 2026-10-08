@@ -28,6 +28,7 @@ import {
 import { isAuthenticated, requireFounder } from "./auth";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 const RECENT_RUNS_LIMIT = 30;
 const MAX_FINDINGS_PER_QUERY = 500;
@@ -167,7 +168,7 @@ export function registerTeamSystemAuditRoutes(app: Express): void {
         }
 
         const cutoff = new Date(
-          Date.now() - FINDINGS_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+          clock.nowMs() - FINDINGS_WINDOW_DAYS * 24 * 60 * 60 * 1000,
         );
 
         // Build predicates in a Drizzle-friendly way.

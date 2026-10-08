@@ -12,6 +12,7 @@ import { costClass } from "./utils/costClass";
 import { notifyFounderOfTicket } from "./services/supportNotifications";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization, getUserId } from "./types/request";
+import { clock } from "./utils/clock";
 
 export function registerSupportTicketRoutes(app: Express): void {
   const api = app;
@@ -114,10 +115,10 @@ export function registerSupportTicketRoutes(app: Express): void {
         const firstAgentMsg = (messages as Array<{ role?: string; createdAt?: Date | string | null }>)
           .find((m) => m.role === "agent");
         sla = computeSla({
-          createdAt: ticket.createdAt ?? new Date(),
+          createdAt: ticket.createdAt ?? clock.now(),
           firstReplyAt: firstAgentMsg?.createdAt ? new Date(firstAgentMsg.createdAt) : null,
           resolvedAt: ticket.resolvedAt ?? null,
-          now: new Date(),
+          now: clock.now(),
         });
       } catch { /* SLA is best-effort metadata */ }
 
@@ -285,10 +286,10 @@ export function registerSupportTicketRoutes(app: Express): void {
         .set({
           status: "closed",
           resolution,
-          resolvedAt: new Date(),
+          resolvedAt: clock.now(),
           customerRating: rating,
           customerFeedback: feedback,
-          updatedAt: new Date()
+          updatedAt: clock.now()
         })
         .where(and(eq(supportTickets.id, ticketId), eq(supportTickets.organizationId, org.id)));
 
@@ -363,11 +364,11 @@ export function registerSupportTicketRoutes(app: Express): void {
           status: "resolved",
           resolution,
           resolutionType: "human",
-          resolvedAt: new Date(),
+          resolvedAt: clock.now(),
           resolvedBy: user.id,
           customerRating: rating,
           customerFeedback: feedback,
-          updatedAt: new Date()
+          updatedAt: clock.now()
         })
         .where(and(eq(supportTickets.id, ticketId), eq(supportTickets.organizationId, org.id)));
       
@@ -442,7 +443,7 @@ export function registerSupportTicketRoutes(app: Express): void {
               category: ticket.category,
               resolution,
               resolvedBy: user.id,
-              resolvedAt: new Date().toISOString(),
+              resolvedAt: clock.now().toISOString(),
               learningId: learningResult?.learningEntry?.id,
               crossOrgLearningId: learningResult?.crossOrgLearning?.id
             } as any,
@@ -716,7 +717,7 @@ export function registerSupportTicketRoutes(app: Express): void {
           isPublished: true,
           isDraft: false,
           draftStatus: "published",
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(knowledgeBaseArticles.id, articleId));
 
@@ -759,7 +760,7 @@ export function registerSupportTicketRoutes(app: Express): void {
           isPublished: false,
           isDraft: true,
           draftStatus: "dismissed",
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(knowledgeBaseArticles.id, articleId));
 
@@ -1134,7 +1135,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
         .set({
           status: "resolved",
           resolution: resolution || "Manually resolved by founder",
-          resolvedAt: new Date(),
+          resolvedAt: clock.now(),
           resolvedBy: "founder"
         })
         .where(eq(supportTickets.id, ticketId));
@@ -1209,7 +1210,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
           .from(activityLog)
           .where(and(
             eq(activityLog.organizationId, org.id),
-            gte(activityLog.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000))
+            gte(activityLog.createdAt, new Date(clock.nowMs() - 24 * 60 * 60 * 1000))
           ))
           .orderBy(desc(activityLog.createdAt))
           .limit(20);
@@ -1250,7 +1251,7 @@ ${actualBehavior || 'Not provided'}
         pageContext: {
           url: pageUrl,
           browserInfo,
-          timestamp: new Date().toISOString()
+          timestamp: clock.now().toISOString()
         },
         errorContext: {
           consoleErrors: consoleErrors || [],

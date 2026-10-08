@@ -32,16 +32,17 @@ import {
   costOptimizationRuns,
   organizations,
 } from "@shared/schema";
+import { clock } from "./utils/clock";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function thisMonthStart(): string {
-  const d = new Date();
+  const d = clock.now();
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-01`;
 }
 
 function nDaysAgo(n: number): string {
-  return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+  return new Date(clock.nowMs() - n * 86_400_000).toISOString().slice(0, 10);
 }
 
 function toNum(v: unknown): number {
@@ -163,7 +164,7 @@ export function registerFounderCostRoutes(app: Express): void {
         ].sort((a, b) => b.usd - a.usd);
 
         return res.json({
-          asOf: new Date().toISOString(),
+          asOf: clock.now().toISOString(),
           aiSpendThisMonth,
           aiCallsThisMonth,
           dailyTrend,

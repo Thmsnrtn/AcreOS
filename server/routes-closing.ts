@@ -13,6 +13,7 @@ import { generateClosingChecklist } from "./services/closingChecklistGenerator";
 import { dealChecklists } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import crypto from "crypto";
+import { clock } from "./utils/clock";
 
 export function registerClosingRoutes(app: Express): void {
 
@@ -107,7 +108,7 @@ export function registerClosingRoutes(app: Express): void {
         if (isWire) sealed = sealWireAttestation(verification, req.user?.id ?? null);
         if (sealed) item.verification = sealed;
         item.completed = true;
-        item.completedAt = new Date().toISOString();
+        item.completedAt = clock.now().toISOString();
       } else {
         // Untick clears BOTH vocabularies and the evidence, so neither the
         // stage gate nor a later reader treats the item as still done.
@@ -213,7 +214,7 @@ export function registerClosingRoutes(app: Express): void {
       if (!deal) return Errors.notFound(res, "Deal");
 
       const token = crypto.randomBytes(32).toString("hex");
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+      const expiresAt = new Date(clock.nowMs() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
       // Store in shared_deal_links table
       await db.execute(sql`

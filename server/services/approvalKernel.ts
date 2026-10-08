@@ -32,6 +32,7 @@ import { pendingActions, paxSends, type PendingAction } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { wsServer } from "../websocket";
 import { dispatchForTool, type PaxAskOrigin, type PaxAskSourceRef } from "@shared/pax-controls";
+import { clock } from "../utils/clock";
 
 /**
  * Tools that require an explicit human approval before execution
@@ -130,7 +131,7 @@ export async function proposePendingAction(params: {
   reason?: string | null;
 }): Promise<PendingAction> {
   const contentHash = actionContentHash(params.toolName, params.args);
-  const now = Date.now();
+  const now = clock.nowMs();
 
   const existing = await db
     .select()
@@ -454,7 +455,7 @@ export async function approvePendingAction(params: {
   if (action.status === "executed") {
     return { outcome: "already_executed", action, result: action.resultSummary ?? null };
   }
-  if (action.status === "expired" || !action.expiresAt || action.expiresAt.getTime() <= Date.now()) {
+  if (action.status === "expired" || !action.expiresAt || action.expiresAt.getTime() <= clock.nowMs()) {
     if (action.status === "pending") {
       await db
         .update(pendingActions)
@@ -491,7 +492,7 @@ export async function approvePendingAction(params: {
     .set({
       status: "approved",
       approvedByUserId: params.approvedByUserId ?? null,
-      claimedAt: new Date(),
+      claimedAt: clock.now(),
     })
     .where(
       and(
@@ -570,7 +571,7 @@ export async function approvePendingAction(params: {
   const resultSummary: Record<string, unknown> = { success: true, data: result.data ?? null };
   const executedRows = await db
     .update(pendingActions)
-    .set({ status: "executed", executedAt: new Date(), resultSummary })
+    .set({ status: "executed", executedAt: clock.now(), resultSummary })
     .where(
       and(
         eq(pendingActions.id, pendingActionId),
@@ -796,7 +797,7 @@ export async function revisePendingAction(params: {
     .where(and(eq(pendingActions.id, pendingActionId), eq(pendingActions.organizationId, organizationId)));
   const current = rows[0];
   if (!current) return { ok: false, reason: "not_found" };
-  if (current.status !== "pending" || !current.expiresAt || current.expiresAt.getTime() <= Date.now()) {
+  if (current.status !== "pending" || !current.expiresAt || current.expiresAt.getTime() <= clock.nowMs()) {
     return { ok: false, reason: "not_pending" };
   }
 
@@ -828,7 +829,7 @@ export async function revisePendingAction(params: {
           args,
           contentHash,
           status: "pending",
-          expiresAt: new Date(Date.now() + PENDING_ACTION_TTL_MS),
+          expiresAt: new Date(clock.nowMs() + PENDING_ACTION_TTL_MS),
           createdByUserId: userId,
           origin: "revised",
           sourceRef: current.sourceRef ?? null,

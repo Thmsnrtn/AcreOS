@@ -58,6 +58,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { normalizeUnitLabel } from "./routes-rentals";
+import { clock } from "./utils/clock";
 
 const unitSchema = z.object({
   // `.trim()` is load-bearing, not tidiness. Migration 0219 backfilled
@@ -371,7 +372,7 @@ export function registerRentRollImportRoutes(app: Express): void {
           }).returning();
           createdTenants++;
 
-          const startDate = u.leaseStart ?? new Date().toISOString().slice(0, 10);
+          const startDate = u.leaseStart ?? clock.now().toISOString().slice(0, 10);
           const [lease] = await tx.insert(rentalLeases).values({
             organizationId: orgId,
             propertyId: propId,
@@ -402,7 +403,7 @@ export function registerRentRollImportRoutes(app: Express): void {
           });
 
           // Seed the current-month rent charge so the ledger isn't empty.
-          const month = new Date();
+          const month = clock.now();
           const monthStart = new Date(month.getFullYear(), month.getMonth(), 1);
           await tx.insert(rentCharges).values({
             organizationId: orgId,

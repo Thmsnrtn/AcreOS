@@ -325,6 +325,7 @@ import { eq, and, desc, sql, count, sum, gte, avg } from "drizzle-orm";
 // held by the jobRuntime path during graceful shutdown.
 import { withJobLock } from "./utils/jobRuntime";
 import { secretEquals } from "./utils/secretEquals";
+import { clock } from "./utils/clock";
 
 // P0 #6 — Job-locks janitor migrated to scheduleSelfRescheduling
 // (Phase 3 Week 7-8). The borrower-session cleanup is bundled into the same
@@ -491,7 +492,7 @@ export async function registerRoutes(
         : services.some((s: any) => s.status === "outage") ? "outage" : "degraded";
       res.json({ status: overall, services, lastChecked: result.timestamp });
     } catch {
-      res.json({ status: "unknown", services: [], lastChecked: new Date() });
+      res.json({ status: "unknown", services: [], lastChecked: clock.now() });
     }
   });
 
@@ -583,7 +584,7 @@ export async function registerRoutes(
     result: { overall: string; timestamp?: unknown },
   ) => {
     if (getClerkAuth(req)?.userId) return null; // authenticated — no redaction
-    return { overall: result.overall, timestamp: result.timestamp ?? new Date() };
+    return { overall: result.overall, timestamp: result.timestamp ?? clock.now() };
   };
 
   app.get("/api/health", async (req: AuthenticatedRequest, res: Response) => {
@@ -610,7 +611,7 @@ export async function registerRoutes(
       res.status(503).json({
         overall: "degraded",
         services: [],
-        timestamp: new Date(),
+        timestamp: clock.now(),
         error: getClerkAuth(req)?.userId ? err?.message || "health check failed" : undefined,
       });
     }
@@ -636,7 +637,7 @@ export async function registerRoutes(
       res.status(503).json({
         overall: "degraded",
         services: [],
-        timestamp: new Date(),
+        timestamp: clock.now(),
         error: getClerkAuth(req)?.userId ? err?.message || "live health check failed" : undefined,
       });
     }
@@ -699,7 +700,7 @@ export async function registerRoutes(
       res.status(503).json({
         overall: "degraded",
         services: [],
-        timestamp: new Date(),
+        timestamp: clock.now(),
         version: process.env.npm_package_version || "1.0.0",
         uptime: process.uptime(),
         error: err?.message || "health check failed",
@@ -981,7 +982,7 @@ export async function registerRoutes(
         overall,
         summary: { pass, warn, fail, total: checks.length },
         checks,
-        generatedAt: new Date().toISOString(),
+        generatedAt: clock.now().toISOString(),
       });
     } catch (err: any) {
       Errors.internal(res, err);
@@ -1085,7 +1086,7 @@ export async function registerRoutes(
   // ============================================
   app.use("/api", (req: Request, res: Response, next: NextFunction) => {
     const requestId = crypto.randomUUID();
-    const startTime = Date.now();
+    const startTime = clock.nowMs();
     // @ts-expect-error -- requestId is added at runtime for request tracing
     req.requestId = requestId;
     logger.info("HTTP Request", {
@@ -1094,7 +1095,7 @@ export async function registerRoutes(
       metadata: { method: req.method, path: req.path, ip: req.ip || req.socket.remoteAddress },
     });
     res.on("finish", () => {
-      const duration = Date.now() - startTime;
+      const duration = clock.nowMs() - startTime;
       logger.info("HTTP Response", {
         requestId,
         source: "http",
@@ -1106,7 +1107,7 @@ export async function registerRoutes(
         method: req.method,
         statusCode: res.statusCode,
         durationMs: duration,
-        timestamp: Date.now(),
+        timestamp: clock.nowMs(),
       });
     });
     next();
@@ -1125,7 +1126,7 @@ export async function registerRoutes(
   api.get("/api/dashboard/stats", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     const org = req.organization;
     const key = org.id as number;
-    const now = Date.now();
+    const now = clock.nowMs();
     const cached = statsCache.get(key);
     if (cached && now - cached.ts < 30_000) {
       return res.json(cached.data);
@@ -1180,7 +1181,7 @@ export async function registerRoutes(
         return Errors.notFound(res, "lead");
       }
       
-      const now = new Date();
+      const now = clock.now();
       const lead = await storage.updateLead(leadId, { lastContactedAt: now }, org.id);
       
       // Log the action
@@ -1272,7 +1273,7 @@ export async function registerRoutes(
       
       const contactMethod = req.body.method || "manual"; // call, email, sms, manual
       const notes = req.body.notes || null;
-      const now = new Date();
+      const now = clock.now();
       
       // Update last contacted timestamp
       const updated = await storage.updateLead(leadId, {
@@ -1822,7 +1823,7 @@ export async function registerRoutes(
       const recentMoves = await storage.getAuditLogs(org.id, {
         action: "bulk_stage_update",
         entityType: "deal",
-        startDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        startDate: new Date(clock.nowMs() - 24 * 60 * 60 * 1000),
         limit: 200,
       });
       const recordedMove = new Map<number, { previousStage: string; newStage: string }>();
@@ -2197,7 +2198,7 @@ export async function registerRoutes(
       // Active organizations and subscription breakdown
       const allOrgs = await db.select().from(organizations).limit(10000);
       const activeOrgs = allOrgs.filter(o => o.subscriptionStatus === "active");
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
       const orgsCreatedLast30 = allOrgs.filter(o => o.createdAt && new Date(o.createdAt) >= thirtyDaysAgo).length;
 
       // MRR calculation — pulls prices from the canonical
@@ -2270,7 +2271,7 @@ export async function registerRoutes(
       // NPS metrics — last 90 days only so the score reflects recent
       // sentiment, not all-time. Earlier this endpoint pulled all rows; the
       // 90d window prevents one cohort from anchoring NPS forever.
-      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+      const ninetyDaysAgo = new Date(clock.nowMs() - 90 * 24 * 60 * 60 * 1000);
       const npsRows = await db.select().from(npsResponses).limit(50000);
       const recentNps = npsRows.filter(r => r.createdAt && new Date(r.createdAt) >= ninetyDaysAgo);
       const npsCount = recentNps.length;

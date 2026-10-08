@@ -20,6 +20,7 @@ import { propertyListings, type PropertyListing } from "@shared/schema";
 import { TAKE_DOWN_PLATFORMS, canonicalPlatform } from "./listingSyndication";
 import { offerabilityRefusal } from "./listability";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 type Targets = NonNullable<PropertyListing["syndicationTargets"]>;
 
@@ -82,7 +83,7 @@ export async function withdrawListingsForUnheldProperty(
       .set({
         status: propertyStatus === "sold" ? "sold" : "withdrawn",
         syndicationTargets: withdrawnTargets(listing.syndicationTargets),
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(and(eq(propertyListings.id, listing.id), eq(propertyListings.organizationId, organizationId)));
   }

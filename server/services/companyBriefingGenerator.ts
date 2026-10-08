@@ -16,13 +16,14 @@ import { eq, and, gte, desc, count, sql } from "drizzle-orm";
 import { companyAgentService } from "./companyAgents";
 import { agentCommsService } from "./agentComms";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /**
  * Generate and cache a CEO briefing.
  * Called by the daily 6:45am job and by the API endpoint.
  */
 export async function generateCompanyBriefing(): Promise<any> {
-  const now = new Date();
+  const now = clock.now();
   const yesterday = new Date(now.getTime() - 86400000);
 
   // 1. Fetch all agents

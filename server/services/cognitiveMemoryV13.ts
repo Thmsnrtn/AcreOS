@@ -13,6 +13,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, gte, lte, sql, inArray, like, isNull } from "drizzle-orm";
 import crypto from "crypto";
+import { clock } from "../utils/clock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -119,7 +120,7 @@ class CognitiveMemoryService {
       await db.update(agentEpisodicMemory).set({
         relevanceScore: sql`${agentEpisodicMemory.relevanceScore} + 2`,
         accessCount: sql`${agentEpisodicMemory.accessCount} + 1`,
-        lastAccessedAt: new Date(),
+        lastAccessedAt: clock.now(),
       }).where(inArray(agentEpisodicMemory.id, ids));
 
       await db.insert(memoryAccessLog).values(results.map((r) => ({
@@ -171,7 +172,7 @@ class CognitiveMemoryService {
         reinforcementCount: newCount,
         sourceEpisodes: mergedSources,
         confidence: Math.min(100, existing.confidence + Math.floor(10 / newCount)),
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       // The lane is repeated here deliberately: `existing.id` is only a safe
       // sole predicate because the lookup above was lane-scoped, and a
       // predicate that depends on another statement to be correct is one edit
@@ -251,7 +252,7 @@ class CognitiveMemoryService {
 
     const merged = [...new Set([...(existing.sharedWithAgents as string[]), ...withAgents])];
     const [updated] = await db.update(agentSemanticMemory).set({
-      isShared: true, sharedWithAgents: merged, updatedAt: new Date(),
+      isShared: true, sharedWithAgents: merged, updatedAt: clock.now(),
     }).where(and(eq(agentSemanticMemory.id, factId), this.factLane(orgId))).returning();
     return updated;
   }
@@ -261,7 +262,7 @@ class CognitiveMemoryService {
     agentCodename: string, key: string, value: any,
     ttlSeconds: number = 3600, sagaId?: string, orgId?: number,
   ): Promise<AgentWorkingMemoryEntry> {
-    const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
+    const expiresAt = new Date(clock.nowMs() + ttlSeconds * 1000);
     const conditions = [
       eq(agentWorkingMemoryV13.agentCodename, agentCodename),
       eq(agentWorkingMemoryV13.key, key),
@@ -295,20 +296,20 @@ class CognitiveMemoryService {
 
     const [entry] = await db.select().from(agentWorkingMemoryV13)
       .where(and(...conditions)).limit(1);
-    if (!entry || new Date(entry.expiresAt) < new Date()) return null;
+    if (!entry || new Date(entry.expiresAt) < clock.now()) return null;
     return entry;
   }
 
   /** Delete all expired working memory entries. Return count deleted. */
   async clearExpiredWorkingMemory(): Promise<number> {
     const deleted = await db.delete(agentWorkingMemoryV13)
-      .where(lte(agentWorkingMemoryV13.expiresAt, new Date())).returning();
+      .where(lte(agentWorkingMemoryV13.expiresAt, clock.now())).returning();
     return deleted.length;
   }
 
   /** The "sleep" function — consolidate recent episodes into semantic facts, apply decay. */
   async consolidateMemories(agentCodename: string): Promise<ConsolidationResult> {
-    const now = new Date();
+    const now = clock.now();
     const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     let factsCreated = 0;

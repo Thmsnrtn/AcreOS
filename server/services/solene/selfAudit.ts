@@ -100,6 +100,7 @@ import {
 import { soleneCapitalEvents } from "@shared/schema/solene-capital";
 import { getMonthlyEnvelopeStatus } from "./capitalTracker";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // CONSTANTS
@@ -344,7 +345,7 @@ export async function runSoleneAudit(
 ): Promise<RunSoleneAuditResult> {
   const scope = opts.scope;
   const windowHours = windowHoursForScope(scope, opts.windowHours);
-  const runStartedAt = new Date();
+  const runStartedAt = clock.now();
 
   const [run] = await db
     .insert(soleneAuditRuns)
@@ -357,7 +358,7 @@ export async function runSoleneAudit(
   const runId = run.id;
 
   try {
-    const cutoff = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+    const cutoff = new Date(clock.nowMs() - windowHours * 60 * 60 * 1000);
     const decisions = (await db
       .select()
       .from(soleneDecisions)
@@ -369,7 +370,7 @@ export async function runSoleneAudit(
       await db
         .update(soleneAuditRuns)
         .set({
-          runEndedAt: new Date(),
+          runEndedAt: clock.now(),
           decisionsExamined: 0,
           skipReason,
         })
@@ -438,7 +439,7 @@ export async function runSoleneAudit(
     await db
       .update(soleneAuditRuns)
       .set({
-        runEndedAt: new Date(),
+        runEndedAt: clock.now(),
         decisionsExamined: decisions.length,
         driftCount,
         findingCount: findings.length,
@@ -468,7 +469,7 @@ export async function runSoleneAudit(
     await db
       .update(soleneAuditRuns)
       .set({
-        runEndedAt: new Date(),
+        runEndedAt: clock.now(),
         skipReason: `error: ${err instanceof Error ? err.message : String(err)}`,
       })
       .where(sql`${soleneAuditRuns.id} = ${runId}`);
@@ -758,7 +759,7 @@ export async function checkCapitalOverspend(
 ): Promise<PendingFinding | null> {
   try {
     const status = await getMonthlyEnvelopeStatus();
-    const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const last24h = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
     const [row] = await db
       .select({
         sum: sql<string>`COALESCE(SUM(${soleneCapitalEvents.costUsd}), 0)`,
@@ -890,7 +891,7 @@ export async function checkReviewSkeletonStaleness(): Promise<PendingFinding | n
   try {
     const files = reviewFilesAccessor();
     if (files.length === 0) return null;
-    const cutoffMs = Date.now() - REVIEW_SKELETON_STALENESS_DAYS * 24 * 60 * 60 * 1000;
+    const cutoffMs = clock.nowMs() - REVIEW_SKELETON_STALENESS_DAYS * 24 * 60 * 60 * 1000;
     const stale = files.filter((f) => {
       if (!f.hasTodoMarker) return false;
       if (!f.generatedAt) return false;
@@ -1024,7 +1025,7 @@ function defaultSoleneSurfaceAccessor(): SoleneSurfaceFile[] {
     pathResolve(process.cwd(), "docs/company/retros"),
     pathResolve(process.cwd(), "docs/internal/morning-briefs"),
   ];
-  const cutoffMs = Date.now() - TRANSPARENCY_LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
+  const cutoffMs = clock.nowMs() - TRANSPARENCY_LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
   for (const root of candidatePaths) {
     if (!existsSync(root)) continue;
     let entries: string[] = [];
@@ -1067,7 +1068,7 @@ export function setSoleneSurfaceAccessorForTest(
 export async function checkPredictabilityDrift(): Promise<PendingFinding | null> {
   try {
     const cutoff = new Date(
-      Date.now() - PREDICTABILITY_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+      clock.nowMs() - PREDICTABILITY_WINDOW_DAYS * 24 * 60 * 60 * 1000,
     );
     const rows = await db
       .select({ pattern: soleneAuditFindings.pattern })

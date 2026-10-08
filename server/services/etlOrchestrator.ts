@@ -47,6 +47,7 @@ import {
 } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { storage } from "../storage";
+import { clock } from "../utils/clock";
 
 /**
  * A single record yielded by a provider's fetch generator.
@@ -183,7 +184,7 @@ async function deadLetterRecord(
       },
       status: "failed",
       attempts: 1,
-      lastErrorAt: new Date(),
+      lastErrorAt: clock.now(),
       failureReason: message,
     });
   } catch (dlqErr) {
@@ -341,7 +342,7 @@ export async function runJob(jobId: number): Promise<RunJobResult> {
     await db
       .update(etlRuns)
       .set({
-        completedAt: new Date(),
+        completedAt: clock.now(),
         status,
         recordsRead: stats.read,
         recordsInserted: stats.inserted,
@@ -358,18 +359,18 @@ export async function runJob(jobId: number): Promise<RunJobResult> {
         .update(etlJobs)
         .set({
           watermarkValue: maxWatermark,
-          lastSuccessAt: new Date(),
+          lastSuccessAt: clock.now(),
           lastError: null,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(etlJobs.id, job.id));
     } else {
       await db
         .update(etlJobs)
         .set({
-          lastErrorAt: new Date(),
+          lastErrorAt: clock.now(),
           lastError: errorMessage,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(etlJobs.id, job.id));
     }
@@ -429,7 +430,7 @@ function isJobDue(job: EtlJob, now: Date): boolean {
 /**
  * Fetch all active jobs that are currently due. Visible for tests.
  */
-export async function listDueJobs(now: Date = new Date()): Promise<EtlJob[]> {
+export async function listDueJobs(now: Date = clock.now()): Promise<EtlJob[]> {
   const rows = await db
     .select()
     .from(etlJobs)
@@ -445,7 +446,7 @@ export async function listDueJobs(now: Date = new Date()): Promise<EtlJob[]> {
  * can tell what happened during this tick.
  */
 export async function runDueJobs(
-  now: Date = new Date(),
+  now: Date = clock.now(),
 ): Promise<Array<{ jobName: string; status: "success" | "failure" | "skipped"; runId?: number }>> {
   const due = await listDueJobs(now);
   const results: Array<{
@@ -491,7 +492,7 @@ export async function runDueJobs(
 const ETL_INSTANCE_ID =
   typeof globalThis.crypto?.randomUUID === "function"
     ? globalThis.crypto.randomUUID()
-    : `etl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    : `etl-${clock.nowMs()}-${Math.random().toString(36).slice(2, 8)}`;
 
 // ─── DLQ replay ─────────────────────────────────────────────────────────────
 
@@ -544,7 +545,7 @@ export async function replayDlqRecord(
       .update(outboxDlq)
       .set({
         attempts: (row.attempts ?? 0) + 1,
-        lastErrorAt: new Date(),
+        lastErrorAt: clock.now(),
         failureReason: message,
       })
       .where(eq(outboxDlq.id, dlqId));

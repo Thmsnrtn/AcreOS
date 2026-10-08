@@ -37,6 +37,7 @@ import {
 } from "@shared/schema/solene-dispatch";
 import { enqueueDispatch } from "./dispatchQueue";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ----------------------------------------------------------------------------
 // proposePlan
@@ -178,7 +179,7 @@ export async function approvePlan(
     );
   }
 
-  const now = new Date();
+  const now = clock.now();
 
   // If no enqueueOptions: just record the approval. Execution is deferred.
   if (!opts.enqueueOptions) {
@@ -276,7 +277,7 @@ export async function rejectPlan(
     );
   }
 
-  const now = new Date();
+  const now = clock.now();
   await db
     .update(planProposals)
     .set({

@@ -6,6 +6,7 @@ import { BaseAgent, type AgentDecision } from "./base-agent";
 import { db } from "../storage";
 import { sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
@@ -22,7 +23,7 @@ export class OperationsAgent extends BaseAgent {
     await this.expireTrials();
 
     // Daily ops brief
-    const now = new Date();
+    const now = clock.now();
     if (now.getHours() >= 8 && now.getHours() <= 9) {
       await this.generateDailyOpsBrief();
     }
@@ -40,7 +41,7 @@ export class OperationsAgent extends BaseAgent {
           SELECT 1 FROM founder_briefs
           WHERE agent_type = 'operations'
             AND brief_type = 'source_down_alert'
-            AND generated_at > ${new Date(Date.now() - HOUR)}
+            AND generated_at > ${new Date(clock.nowMs() - HOUR)}
           LIMIT 1
         `);
 
@@ -52,7 +53,7 @@ export class OperationsAgent extends BaseAgent {
             riskLevel: "high",
             autoApproved: true,
             data: { downSources: downSources.map((s) => ({ name: s.name, error: s.error })) },
-            timestamp: new Date(),
+            timestamp: clock.now(),
           };
           await this.logDecision(decision);
           await this.storeBrief("source_down_alert", {
@@ -85,7 +86,7 @@ export class OperationsAgent extends BaseAgent {
           riskLevel: unhealthy.some((s: any) => s.status === "unavailable") ? "high" : "medium",
           autoApproved: true,
           data: { unhealthy: unhealthy.map((s: any) => ({ name: s.name, status: s.status, message: s.message })) },
-          timestamp: new Date(),
+          timestamp: clock.now(),
         };
         await this.logDecision(decision);
       }
@@ -106,7 +107,7 @@ export class OperationsAgent extends BaseAgent {
           riskLevel: "low",
           autoApproved: true,
           data: { expiredCount: expired },
-          timestamp: new Date(),
+          timestamp: clock.now(),
         });
       }
     } catch (err: any) {
@@ -115,7 +116,7 @@ export class OperationsAgent extends BaseAgent {
   }
 
   private async generateDailyOpsBrief(): Promise<void> {
-    const today = new Date();
+    const today = clock.now();
     today.setHours(0, 0, 0, 0);
     const existing = await db.execute(sql`
       SELECT 1 FROM founder_briefs
@@ -147,7 +148,7 @@ export class OperationsAgent extends BaseAgent {
     }
 
     const brief = {
-      date: new Date().toISOString().split("T")[0],
+      date: clock.now().toISOString().split("T")[0],
       dataSources: sourceHealthSummary,
       services: serviceHealthSummary,
     };

@@ -6,6 +6,7 @@
 import { db } from "../db";
 import { leads, activityLog } from "@shared/schema";
 import { eq, and, sql, gte, desc, count, isNull } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 // Item 51: Lead deduplication
 export async function findDuplicateLeads(orgId: number): Promise<Array<{ ids: number[]; matchField: string; matchValue: string }>> {
@@ -85,7 +86,7 @@ export async function calculateAvgResponseTime(orgId: number): Promise<{ avgHour
 
 // Item 55: Lead aging detection
 export async function getAgingLeads(orgId: number, daysThreshold: number = 14): Promise<any[]> {
-  const cutoff = new Date(Date.now() - daysThreshold * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - daysThreshold * 24 * 60 * 60 * 1000);
   return db.select()
     .from(leads)
     .where(and(
@@ -100,9 +101,9 @@ export async function getAgingLeads(orgId: number, daysThreshold: number = 14): 
 
 // Item 59: Auto-archive stale leads
 export async function archiveStaleLeads(orgId: number, days: number = 90): Promise<number> {
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000);
   const result = await db.update(leads)
-    .set({ status: "archived", updatedAt: new Date() } as any)
+    .set({ status: "archived", updatedAt: clock.now() } as any)
     .where(and(
       eq(leads.organizationId, orgId),
       sql`${leads.deletedAt} IS NULL`,

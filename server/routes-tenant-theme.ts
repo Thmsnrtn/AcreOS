@@ -27,6 +27,7 @@ import { getOrganization } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { requireAdminOrAbove } from "./utils/permissions";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -103,7 +104,7 @@ router.patch("/", requireAdminOrAbove(), async (req: AuthenticatedRequest, res: 
 
     await db
       .update(organizations)
-      .set({ ...update, updatedAt: new Date() })
+      .set({ ...update, updatedAt: clock.now() })
       .where(eq(organizations.id, org.id));
 
     const [row] = await db

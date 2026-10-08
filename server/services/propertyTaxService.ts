@@ -14,6 +14,7 @@ import { centsFromDecimal } from "@shared/finance/cents";
 import { notes, taxEscrowPayments, payments, properties, leads } from "@shared/schema";
 import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
 import { addDays, addMonths, isAfter, isBefore, differenceInDays, format } from "date-fns";
+import { clock } from "../utils/clock";
 
 // ============================================
 // COUNTY TAX PORTAL DIRECTORY
@@ -139,7 +140,7 @@ export async function getNoteEscrowStatus(noteId: number, orgId: number): Promis
   let recommendation = "Escrow balance on track.";
 
   if (note.taxEscrowEnabled && nextTaxDue) {
-    const daysUntilDue = differenceInDays(nextTaxDue, new Date());
+    const daysUntilDue = differenceInDays(nextTaxDue, clock.now());
     const expectedBalance = monthlyEscrow * Math.max(0, daysUntilDue / 30);
 
     if (currentBalance < annualTax) {
@@ -310,7 +311,7 @@ export async function getPortfolioTaxSummary(orgId: number): Promise<PortfolioTa
     .leftJoin(leads, eq(notes.borrowerId, leads.id))
     .where(and(eq(notes.organizationId, orgId), eq(notes.taxEscrowEnabled, true)));
 
-  const now = new Date();
+  const now = clock.now();
   const in30 = addDays(now, 30);
   const in90 = addDays(now, 90);
 

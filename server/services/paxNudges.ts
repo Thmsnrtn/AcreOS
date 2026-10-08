@@ -12,6 +12,7 @@ import {
 import { logger } from "../utils/logger";
 import { orgMayActFilter } from "./orgOperating";
 import { getPaxControls } from "./paxControls";
+import { clock } from "../utils/clock";
 
 const MAX_NUDGES_PER_ORG = 5;
 // Interval before regenerating nudges for an org (6 hours)
@@ -19,7 +20,7 @@ const REGEN_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 async function generateNudgesForOrg(org: Organization): Promise<void> {
   const orgId = org.id;
-  const now = new Date();
+  const now = clock.now();
 
   // Clear old/expired nudges first (older than 24 hours and not dismissed)
   const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);

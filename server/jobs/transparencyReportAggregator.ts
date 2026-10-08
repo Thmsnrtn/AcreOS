@@ -26,6 +26,7 @@ import { db } from "../db";
 import { logger } from "../utils/logger";
 import { transparencyReports } from "@shared/schema/transparency-reports";
 import { alignmentDetectors } from "../services/pax/alignmentDetectors";
+import { clock } from "../utils/clock";
 
 interface AggregationCounts {
   refusalCount: number;
@@ -70,7 +71,7 @@ const NOT_MEASURABLE_BIAS_FINDINGS: {
 export async function runTransparencyReportAggregation(opts: {
   endAt?: Date;
 } = {}): Promise<number | null> {
-  const endAt = opts.endAt ?? new Date();
+  const endAt = opts.endAt ?? clock.now();
   const startAt = new Date(endAt.getTime() - NINETY_DAYS_MS);
 
   try {
@@ -206,8 +207,8 @@ async function collectAlignmentDriftFindings(): Promise<Record<string, unknown>>
   for (const detector of alignmentDetectors) {
     try {
       const findings = await detector.run(db, {
-        start: new Date(Date.now() - NINETY_DAYS_MS),
-        end: new Date(),
+        start: new Date(clock.nowMs() - NINETY_DAYS_MS),
+        end: clock.now(),
       });
       out[detector.id] = {
         scope: detector.scope,
@@ -253,7 +254,7 @@ export async function checkTransparencyDraftStaleness(opts: {
   staleDays?: number;
 } = {}): Promise<boolean> {
   const staleDays = opts.staleDays ?? 30;
-  const cutoff = new Date(Date.now() - staleDays * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - staleDays * 24 * 60 * 60 * 1000);
 
   try {
     const draftRows = await db.execute(sql`
@@ -281,7 +282,7 @@ export async function checkTransparencyDraftStaleness(opts: {
 
     const oldestCreatedAt = new Date(oldestDraft.created_at);
     const daysStale = Math.floor(
-      (Date.now() - oldestCreatedAt.getTime()) / (24 * 60 * 60 * 1000),
+      (clock.nowMs() - oldestCreatedAt.getTime()) / (24 * 60 * 60 * 1000),
     );
 
     const { raiseAlert } = await import("../services/alertSpine");

@@ -51,6 +51,7 @@ import { users } from "@shared/models/auth";
 import { sendLifecycleMessage } from "../services/lifecycleProgram";
 import { logger } from "../utils/logger";
 import { orgMayActFilter } from "../services/orgOperating";
+import { clock } from "../utils/clock";
 
 const APP_URL = process.env.APP_URL || "https://app.acreos.io";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -225,7 +226,7 @@ async function ownerEmailOf(ownerId: string | null): Promise<{ email: string; us
  * One daily pass. Three bounded candidate queries (one per template key),
  * facts assembly, pure eligibility, then once-only dispatch per (org, key).
  */
-export async function runLifecycleDispatch(now: Date = new Date()): Promise<SweepCounters> {
+export async function runLifecycleDispatch(now: Date = clock.now()): Promise<SweepCounters> {
   const counters: SweepCounters = {
     candidates: 0,
     dispatched: 0,

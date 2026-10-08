@@ -19,6 +19,7 @@
 
 import { jsPDF } from "jspdf";
 import type { ComparableProperty, OfferPrices } from "./comps";
+import { clock } from "../utils/clock";
 
 export interface CmaReportData {
   // Organization
@@ -71,7 +72,7 @@ export async function generateCmaPdf(data: CmaReportData): Promise<Buffer> {
 
   const prepDate = data.preparedDate
     ? new Date(data.preparedDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
-    : new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    : clock.now().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
   // ── Header ──────────────────────────────────────────────────────────────
 

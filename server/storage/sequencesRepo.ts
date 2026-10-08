@@ -28,6 +28,7 @@ import {
   type InsertAbTestVariant,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { clock } from "../utils/clock";
 
 // sequence_steps, sequence_enrollments and ab_test_variants carry no
 // organization column: the owner is the parent sequence / A/B test. The reads
@@ -76,7 +77,7 @@ export const sequencesRepo = {
 
   async updateSequence(this: DatabaseStorage, organizationId: number, id: number, updates: Partial<InsertCampaignSequence>): Promise<CampaignSequence> {
     const [updated] = await db.update(campaignSequences)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(eq(campaignSequences.id, id), eq(campaignSequences.organizationId, organizationId)))
       .returning();
     return updated;
@@ -114,7 +115,7 @@ export const sequencesRepo = {
     const conditions = [eq(sequenceSteps.id, id), inArray(sequenceSteps.sequenceId, orgSequenceIds(organizationId))];
     if (sequenceId !== undefined) conditions.push(eq(sequenceSteps.sequenceId, sequenceId));
     const [updated] = await db.update(sequenceSteps)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -129,7 +130,7 @@ export const sequencesRepo = {
   async reorderSequenceSteps(this: DatabaseStorage, organizationId: number, sequenceId: number, stepIds: number[]): Promise<void> {
     for (let i = 0; i < stepIds.length; i++) {
       await db.update(sequenceSteps)
-        .set({ stepNumber: i + 1, updatedAt: new Date() })
+        .set({ stepNumber: i + 1, updatedAt: clock.now() })
         .where(and(
           eq(sequenceSteps.id, stepIds[i]),
           eq(sequenceSteps.sequenceId, sequenceId),
@@ -189,7 +190,7 @@ export const sequencesRepo = {
   },
 
   async getEnrollmentsDueForProcessing(this: DatabaseStorage): Promise<(SequenceEnrollment & { sequence: CampaignSequence; lead: Lead })[]> {
-    const now = new Date();
+    const now = clock.now();
     const results = await db.select({
       enrollment: sequenceEnrollments,
       sequence: campaignSequences,
@@ -215,7 +216,7 @@ export const sequencesRepo = {
 
   async updateSequenceEnrollment(this: DatabaseStorage, organizationId: number, id: number, updates: Partial<InsertSequenceEnrollment>): Promise<SequenceEnrollment> {
     const [updated] = await db.update(sequenceEnrollments)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(
         eq(sequenceEnrollments.id, id),
         inArray(sequenceEnrollments.sequenceId, orgSequenceIds(organizationId)),
@@ -237,7 +238,7 @@ export const sequencesRepo = {
   },
 
   async completeEnrollment(this: DatabaseStorage, organizationId: number, id: number): Promise<SequenceEnrollment> {
-    return this.updateSequenceEnrollment(organizationId, id, { status: "completed", completedAt: new Date() });
+    return this.updateSequenceEnrollment(organizationId, id, { status: "completed", completedAt: clock.now() });
   },
 
   async getSequenceStats(this: DatabaseStorage, orgId: number): Promise<{ sequenceId: number; name: string; totalEnrollments: number; activeEnrollments: number; completedEnrollments: number }[]> {
@@ -284,7 +285,7 @@ export const sequencesRepo = {
 
   async updateAbTest(this: DatabaseStorage, organizationId: number, id: number, updates: Partial<InsertAbTest>): Promise<AbTest> {
     const [updated] = await db.update(abTests)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(eq(abTests.id, id), eq(abTests.organizationId, organizationId)))
       .returning();
     return updated;
@@ -316,7 +317,7 @@ export const sequencesRepo = {
 
   async updateAbTestVariant(this: DatabaseStorage, organizationId: number, id: number, updates: Partial<InsertAbTestVariant>): Promise<AbTestVariant> {
     const [updated] = await db.update(abTestVariants)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(eq(abTestVariants.id, id), inArray(abTestVariants.testId, orgAbTestIds(organizationId))))
       .returning();
     return updated;

@@ -8,6 +8,7 @@ import { emailService } from "./emailService";
 import { decisionsInboxService } from "./decisionsInbox";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /**
  * Resolve a contact email for an organization. organizations has no email
@@ -36,7 +37,7 @@ async function scoreOrganization(orgId: number) {
   const org = await db.query.organizations.findFirst({ where: eq(organizations.id, orgId) });
   if (!org) return null;
 
-  const now = new Date();
+  const now = clock.now();
   const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -175,7 +176,7 @@ async function generateRetentionEmail(
 
 /** Check if we already sent an intervention to this org recently. */
 async function hasRecentIntervention(orgId: number, dayThreshold = 14): Promise<boolean> {
-  const cutoff = new Date(Date.now() - dayThreshold * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - dayThreshold * 24 * 60 * 60 * 1000);
   const recent = await db.select({ c: count() })
     .from(revenueProtectionInterventions)
     .where(and(
@@ -198,7 +199,7 @@ async function processOrganization(orgId: number): Promise<void> {
   });
   if (existingScore) {
     await db.update(churnRiskScores)
-      .set({ ...scored, scoredAt: new Date() })
+      .set({ ...scored, scoredAt: clock.now() })
       .where(eq(churnRiskScores.id, existingScore.id));
   } else {
     await db.insert(churnRiskScores).values({ ...scored });
@@ -229,7 +230,7 @@ async function processOrganization(orgId: number): Promise<void> {
         executedBy: "sophie",
         sophieMessageSubject: emailContent.subject,
         sophieMessageBody: emailContent.html,
-        emailSentAt: new Date(),
+        emailSentAt: clock.now(),
         emailDeliveryStatus: emailResult.success ? "sent" : "failed",
         outcome: "pending",
       });
@@ -266,14 +267,14 @@ async function processOrganization(orgId: number): Promise<void> {
         executedBy: "sophie",
         sophieMessageSubject: emailContent.subject,
         sophieMessageBody: emailContent.html,
-        emailSentAt: new Date(),
+        emailSentAt: clock.now(),
         emailDeliveryStatus: emailResult.success ? "sent" : "failed",
         outcome: "pending",
       }).returning();
 
       // Create follow-up task in tasks table for 7 days out
       // (non-blocking)
-      const followUpDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const followUpDate = new Date(clock.nowMs() + 7 * 24 * 60 * 60 * 1000);
       db.execute(sql`
         INSERT INTO tasks (organization_id, title, description, due_date, status, created_at, updated_at)
         VALUES (${orgId}, ${'Follow up: retention offer sent'}, ${`Check if ${org.name} responded to retention offer (intervention #${intervention.id})`}, ${followUpDate.toISOString()}, 'pending', NOW(), NOW())
@@ -305,7 +306,7 @@ async function processOrganization(orgId: number): Promise<void> {
         executedBy: "sophie",
         sophieMessageSubject: emailContent.subject,
         sophieMessageBody: emailContent.html,
-        emailSentAt: new Date(),
+        emailSentAt: clock.now(),
         emailDeliveryStatus: emailResult.success ? "sent" : "failed",
         outcome: "pending",
       });

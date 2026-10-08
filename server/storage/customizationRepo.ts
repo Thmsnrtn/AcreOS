@@ -24,6 +24,7 @@ import {
   type InsertNotificationPreference,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { clock } from "../utils/clock";
 
 export const customizationRepo = {
   // Custom Field Definitions
@@ -56,7 +57,7 @@ export const customizationRepo = {
     const conditions = [eq(customFieldDefinitions.id, id)];
     if (organizationId) conditions.push(eq(customFieldDefinitions.organizationId, organizationId));
     const [updated] = await db.update(customFieldDefinitions)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -110,7 +111,7 @@ export const customizationRepo = {
 
     if (existing) {
       const [updated] = await db.update(customFieldValues)
-        .set({ value, updatedAt: new Date() })
+        .set({ value, updatedAt: clock.now() })
         .where(eq(customFieldValues.id, existing.id))
         .returning();
       return updated;
@@ -164,7 +165,7 @@ export const customizationRepo = {
     const conditions = [eq(savedViews.id, id)];
     if (organizationId) conditions.push(eq(savedViews.organizationId, organizationId));
     const [updated] = await db.update(savedViews)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -178,14 +179,14 @@ export const customizationRepo = {
 
   async setDefaultView(this: DatabaseStorage, orgId: number, entityType: string, viewId: number): Promise<SavedView> {
     await db.update(savedViews)
-      .set({ isDefault: false, updatedAt: new Date() })
+      .set({ isDefault: false, updatedAt: clock.now() })
       .where(and(
         eq(savedViews.organizationId, orgId),
         eq(savedViews.entityType, entityType)
       ));
     
     const [updated] = await db.update(savedViews)
-      .set({ isDefault: true, updatedAt: new Date() })
+      .set({ isDefault: true, updatedAt: clock.now() })
       .where(eq(savedViews.id, viewId))
       .returning();
     return updated;
@@ -221,7 +222,7 @@ export const customizationRepo = {
     const conditions = [eq(workspacePresets.id, id)];
     if (organizationId) conditions.push(eq(workspacePresets.organizationId, organizationId));
     const [updated] = await db.update(workspacePresets)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -253,7 +254,7 @@ export const customizationRepo = {
     
     if (existing.length > 0) {
       const [updated] = await db.update(notificationPreferences)
-        .set({ ...omitProtectedFields(pref), updatedAt: new Date() })
+        .set({ ...omitProtectedFields(pref), updatedAt: clock.now() })
         .where(eq(notificationPreferences.id, existing[0].id))
         .returning();
       return updated;
@@ -267,7 +268,7 @@ export const customizationRepo = {
     const conditions = [eq(notificationPreferences.id, id)];
     if (organizationId) conditions.push(eq(notificationPreferences.organizationId, organizationId));
     const [updated] = await db.update(notificationPreferences)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;

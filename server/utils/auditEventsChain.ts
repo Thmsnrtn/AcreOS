@@ -46,6 +46,7 @@ import { asc, desc, isNotNull } from "drizzle-orm";
 import { db } from "../db";
 import { auditEvents, type AuditEvent, type InsertAuditEvent } from "@shared/schema";
 import { logger } from "./logger";
+import { clock } from "./clock";
 
 export const GENESIS_PREV_HASH = "GENESIS";
 
@@ -137,7 +138,7 @@ export async function chainAndInsertAuditEvent(
   },
 ): Promise<AuditEvent> {
   const id = entry.id ?? randomUUID();
-  const createdAt = entry.createdAt ?? new Date();
+  const createdAt = entry.createdAt ?? clock.now();
 
   const hashable: AuditEventHashable = {
     id,

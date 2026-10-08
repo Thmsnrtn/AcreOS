@@ -17,6 +17,7 @@ import { eq, desc, gte, and } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -53,7 +54,7 @@ class CEOAbsenceService {
     // Deactivate any existing absence mode
     await this.deactivate();
 
-    const endsAt = new Date(Date.now() + config.durationHours * 60 * 60 * 1000);
+    const endsAt = new Date(clock.nowMs() + config.durationHours * 60 * 60 * 1000);
     const trustBoost = config.trustBoost || 15;
     const useSmartBoost = config.smartBoost !== false;
 
@@ -88,7 +89,7 @@ class CEOAbsenceService {
 
     const [absence] = await db.insert(ceoAbsenceMode).values({
       isActive: true,
-      startedAt: new Date(),
+      startedAt: clock.now(),
       endsAt,
       trustBoost,
       batchedItems: [],
@@ -165,7 +166,7 @@ class CEOAbsenceService {
       .set({
         isActive: false,
         returnBriefing: briefing,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(ceoAbsenceMode.id, current.id));
 
@@ -178,7 +179,7 @@ class CEOAbsenceService {
     if (!current) return false;
 
     // Auto-deactivate if past end time
-    if (current.endsAt && new Date() > new Date(current.endsAt)) {
+    if (current.endsAt && clock.now() > new Date(current.endsAt)) {
       await this.deactivate();
       return false;
     }
@@ -205,7 +206,7 @@ class CEOAbsenceService {
       orderBy: [desc(ceoAbsenceMode.createdAt)],
     });
     if (!row) return null;
-    if (row.endsAt && new Date(row.endsAt).getTime() <= Date.now()) return null;
+    if (row.endsAt && new Date(row.endsAt).getTime() <= clock.nowMs()) return null;
     return row;
   }
 
@@ -224,7 +225,7 @@ class CEOAbsenceService {
     const batchedItems = [...((current.batchedItems as BatchedItem[]) || []), item];
 
     await db.update(ceoAbsenceMode)
-      .set({ batchedItems, updatedAt: new Date() })
+      .set({ batchedItems, updatedAt: clock.now() })
       .where(eq(ceoAbsenceMode.id, current.id));
   }
 
@@ -236,12 +237,12 @@ class CEOAbsenceService {
     const emergencyBreaks = [...((current.emergencyBreaks as any[]) || []), {
       agentCodename,
       reason,
-      timestamp: new Date().toISOString(),
+      timestamp: clock.now().toISOString(),
       actionTaken,
     }];
 
     await db.update(ceoAbsenceMode)
-      .set({ emergencyBreaks, updatedAt: new Date() })
+      .set({ emergencyBreaks, updatedAt: clock.now() })
       .where(eq(ceoAbsenceMode.id, current.id));
   }
 
@@ -254,7 +255,7 @@ class CEOAbsenceService {
   /** Calculate smart per-agent trust boosts based on recent performance */
   async calculateSmartTrustBoosts(configBoost: number = 15): Promise<Record<string, number>> {
     const agents = await companyAgentService.getAll();
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
     const boosts: Record<string, number> = {};
 
     for (const agent of agents) {
@@ -326,8 +327,8 @@ class CEOAbsenceService {
     const safetyScore = Math.max(0, Math.min(100, 100 - 10 * emergencies - 5 * criticalBatched));
 
     // Calculate hours remaining
-    const endsAt = current.endsAt ? new Date(current.endsAt).getTime() : Date.now();
-    const hoursRemaining = Math.max(0, Math.round((endsAt - Date.now()) / (1000 * 60 * 60)));
+    const endsAt = current.endsAt ? new Date(current.endsAt).getTime() : clock.nowMs();
+    const hoursRemaining = Math.max(0, Math.round((endsAt - clock.nowMs()) / (1000 * 60 * 60)));
 
     let recommendation: string;
     if (safetyScore >= 90) {
@@ -365,11 +366,11 @@ class CEOAbsenceService {
       };
     }
 
-    const currentEndsAt = current.endsAt ? new Date(current.endsAt) : new Date();
+    const currentEndsAt = current.endsAt ? new Date(current.endsAt) : clock.now();
     const newEndsAt = new Date(currentEndsAt.getTime() + additionalHours * 60 * 60 * 1000);
 
     await db.update(ceoAbsenceMode)
-      .set({ endsAt: newEndsAt, updatedAt: new Date() })
+      .set({ endsAt: newEndsAt, updatedAt: clock.now() })
       .where(eq(ceoAbsenceMode.id, current.id));
 
     return {
@@ -384,7 +385,7 @@ class CEOAbsenceService {
     const batchedItems = (absence.batchedItems as BatchedItem[]) || [];
     const emergencyBreaks = (absence.emergencyBreaks as any[]) || [];
     const startedAt = new Date(absence.startedAt);
-    const hoursAway = Math.round((Date.now() - startedAt.getTime()) / (1000 * 60 * 60));
+    const hoursAway = Math.round((clock.nowMs() - startedAt.getTime()) / (1000 * 60 * 60));
 
     // Get agent reports for the period
     const agents = await companyAgentService.getAll();

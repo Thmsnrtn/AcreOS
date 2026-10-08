@@ -65,6 +65,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 // ----------------------------------------------------------------------------
 // Validation
@@ -670,7 +671,7 @@ export function registerRentalRoutes(app: Express): void {
         email: parsed.data.email || null,
         phone: parsed.data.phone ?? null,
         smsConsent: parsed.data.smsConsent,
-        smsConsentAt: parsed.data.smsConsent ? new Date() : null,
+        smsConsentAt: parsed.data.smsConsent ? clock.now() : null,
         dateOfBirth: parsed.data.dateOfBirth ?? null,
         governmentIdLast4: parsed.data.governmentIdLast4 ?? null,
         status: parsed.data.status,
@@ -728,7 +729,7 @@ export function registerRentalRoutes(app: Express): void {
         }
       }
 
-      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      const updates: Record<string, unknown> = { updatedAt: clock.now() };
       for (const k of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
       }
@@ -898,7 +899,7 @@ export function registerRentalRoutes(app: Express): void {
         // NOT 'sent' — nothing was sent. adverseActionNoticeSentAt is
         // deliberately left NULL; only an actual dispatch may stamp it.
         adverseActionDeliveryStatus: "recorded",
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       }).where(eq(tenantScreenings.id, recent[0].id)).returning();
 
       // Mirror the denial onto the tenant record so list views can filter.
@@ -906,7 +907,7 @@ export function registerRentalRoutes(app: Express): void {
       // badge keys off it and must never claim a send that didn't happen.
       await db.update(tenants).set({
         status: "denied",
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       }).where(and(eq(tenants.id, req.params.id), eq(tenants.organizationId, orgId)));
 
       logger.info("[FCRA] Adverse-action notice recorded (manual delivery required — no send rail)", {
@@ -1064,7 +1065,7 @@ export function registerRentalRoutes(app: Express): void {
           tenantPortionCents: parsed.data.tenantPortionCents ?? null,
           state: parsed.data.state.toUpperCase(),
           notes: parsed.data.notes ?? null,
-          leadPaintDisclosureAttachedAt: parsed.data.leadPaintDisclosureConfirmed ? new Date() : null,
+          leadPaintDisclosureAttachedAt: parsed.data.leadPaintDisclosureConfirmed ? clock.now() : null,
         }).returning();
 
         if (parsed.data.tenantIds && parsed.data.tenantIds.length > 0) {
@@ -1119,14 +1120,14 @@ export function registerRentalRoutes(app: Express): void {
         }
       }
 
-      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      const updates: Record<string, unknown> = { updatedAt: clock.now() };
       for (const k of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {
         if (parsed.data[k] !== undefined && k !== "tenantIds" && k !== "leadPaintDisclosureConfirmed") {
           updates[k] = k === "state" ? String(parsed.data[k]).toUpperCase() : parsed.data[k];
         }
       }
       if (parsed.data.leadPaintDisclosureConfirmed === true) {
-        updates.leadPaintDisclosureAttachedAt = new Date();
+        updates.leadPaintDisclosureAttachedAt = clock.now();
       }
       const [updated] = await db.update(rentalLeases).set(updates)
         .where(and(eq(rentalLeases.id, req.params.id), eq(rentalLeases.organizationId, orgId)))
@@ -1201,11 +1202,11 @@ export function registerRentalRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
 
-      const monthStart = new Date();
+      const monthStart = clock.now();
       monthStart.setDate(1);
       const monthStartStr = monthStart.toISOString().slice(0, 10);
-      const today = new Date().toISOString().slice(0, 10);
-      const in30Days = new Date(); in30Days.setDate(in30Days.getDate() + 30);
+      const today = clock.now().toISOString().slice(0, 10);
+      const in30Days = clock.now(); in30Days.setDate(in30Days.getDate() + 30);
       const in30DaysStr = in30Days.toISOString().slice(0, 10);
 
       // Active leases count.
@@ -1306,11 +1307,11 @@ export function registerRentalRoutes(app: Express): void {
         }
       }
 
-      const newStart = parent.endDate ?? new Date().toISOString().slice(0, 10);
+      const newStart = parent.endDate ?? clock.now().toISOString().slice(0, 10);
 
       const renewed = await db.transaction(async (tx) => {
         // Mark parent as renewed.
-        await tx.update(rentalLeases).set({ status: "renewed", updatedAt: new Date() })
+        await tx.update(rentalLeases).set({ status: "renewed", updatedAt: clock.now() })
           .where(eq(rentalLeases.id, parent.id));
 
         // Carry the UNIT forward, not just its label.
@@ -1418,8 +1419,8 @@ export function registerRentalRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const within = Math.max(1, Math.min(365, parseInt(String(req.query.within ?? req.query.expiring_within ?? "60"), 10) || 60));
-      const today = new Date();
-      const horizon = new Date(); horizon.setDate(horizon.getDate() + within);
+      const today = clock.now();
+      const horizon = clock.now(); horizon.setDate(horizon.getDate() + within);
       const todayStr = today.toISOString().slice(0, 10);
       const horizonStr = horizon.toISOString().slice(0, 10);
 
@@ -1465,7 +1466,7 @@ export function registerRentalRoutes(app: Express): void {
     try {
       const orgId = getOrganizationId(req);
       const within = Math.max(1, Math.min(365, parseInt(String(req.query.within ?? "60"), 10) || 60));
-      const horizon = new Date(); horizon.setDate(horizon.getDate() + within);
+      const horizon = clock.now(); horizon.setDate(horizon.getDate() + within);
       const horizonStr = horizon.toISOString().slice(0, 10);
 
       // Annual recert anchor = the next future anniversary of start_date.
@@ -1704,7 +1705,7 @@ export function registerRentalRoutes(app: Express): void {
       const parsed = unitUpdateSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      const updates: Record<string, unknown> = { updatedAt: clock.now() };
       // Trimmed through the SAME normaliser as every other write site, so a
       // rename to " 3B" cannot slip a duplicate past the unique index.
       if (parsed.data.label !== undefined) updates.label = normalizeUnitLabel(parsed.data.label);
@@ -1726,7 +1727,7 @@ export function registerRentalRoutes(app: Express): void {
       // the lease list and on any work order generated from it.
       if (parsed.data.label !== undefined) {
         await db.update(rentalLeases)
-          .set({ unitLabel: updated.label, updatedAt: new Date() })
+          .set({ unitLabel: updated.label, updatedAt: clock.now() })
           .where(and(eq(rentalLeases.unitId, updated.id), eq(rentalLeases.organizationId, orgId)));
       }
 
@@ -1903,7 +1904,7 @@ export function registerRentalRoutes(app: Express): void {
   app.get("/api/portfolio/landlord-stats", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const orgId = getOrganizationId(req);
-      const now = new Date();
+      const now = clock.now();
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
       const yearStart = new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10);
 

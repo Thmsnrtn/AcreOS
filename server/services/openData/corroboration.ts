@@ -52,6 +52,7 @@
 
 // ─── Source labels (match the broker's provenance titles) ────────────────────
 
+import { clock } from "../../utils/clock";
 export const SOURCE_NWI = "USFWS NWI";
 export const SOURCE_SSURGO = "USDA SSURGO";
 export const SOURCE_NLCD = "MRLC NLCD";
@@ -606,6 +607,6 @@ export function corroborateParcel(inputs: CorroborationInputs): CorroborationRep
       ...inst,
       noRuleYet: true as const,
     })),
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
   };
 }

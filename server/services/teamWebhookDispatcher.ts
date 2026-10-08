@@ -17,6 +17,7 @@ import { db } from "../storage";
 import { orgIntegrationsSlack } from "@shared/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type TeamEventKey =
   | "deal_closed"
@@ -110,7 +111,7 @@ async function markDispatched(integrationId: number): Promise<void> {
   try {
     await db
       .update(orgIntegrationsSlack)
-      .set({ lastDispatchedAt: new Date(), lastError: null })
+      .set({ lastDispatchedAt: clock.now(), lastError: null })
       .where(eq(orgIntegrationsSlack.id, integrationId));
   } catch { /* non-fatal */ }
 }

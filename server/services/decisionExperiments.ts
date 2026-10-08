@@ -51,6 +51,7 @@ import {
 import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import crypto from "crypto";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface Variant {
   key: string;
@@ -165,7 +166,7 @@ export async function recordExperimentOutcome(
       .set({
         outcomeRecorded: true,
         outcomeValue: outcomeScore,
-        outcomeAt: new Date(),
+        outcomeAt: clock.now(),
       })
       .where(
         and(
@@ -325,14 +326,14 @@ export async function createExperiment(input: ExperimentInput): Promise<number> 
 export async function startExperiment(id: number) {
   await db
     .update(decisionExperiments)
-    .set({ status: "running", startedAt: new Date(), updatedAt: new Date() })
+    .set({ status: "running", startedAt: clock.now(), updatedAt: clock.now() })
     .where(eq(decisionExperiments.id, id));
 }
 
 export async function pauseExperiment(id: number) {
   await db
     .update(decisionExperiments)
-    .set({ status: "paused", updatedAt: new Date() })
+    .set({ status: "paused", updatedAt: clock.now() })
     .where(eq(decisionExperiments.id, id));
 }
 
@@ -343,8 +344,8 @@ export async function completeExperiment(id: number, winningVariant: string, not
       status: "completed",
       winningVariant,
       founderNotes: notes?.slice(0, 2000) ?? null,
-      endedAt: new Date(),
-      updatedAt: new Date(),
+      endedAt: clock.now(),
+      updatedAt: clock.now(),
     })
     .where(eq(decisionExperiments.id, id));
 }
@@ -355,8 +356,8 @@ export async function abortExperiment(id: number, notes?: string) {
     .set({
       status: "aborted",
       founderNotes: notes?.slice(0, 2000) ?? null,
-      endedAt: new Date(),
-      updatedAt: new Date(),
+      endedAt: clock.now(),
+      updatedAt: clock.now(),
     })
     .where(eq(decisionExperiments.id, id));
 }

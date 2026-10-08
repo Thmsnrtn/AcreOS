@@ -22,6 +22,7 @@ import {
   SignerRequestError,
   type ParsedSigner,
 } from "./services/esign/signerRequest";
+import { clock } from "./utils/clock";
 
 /**
  * Answer a malformed signer list with a named 400. Lives at module scope, away
@@ -180,8 +181,8 @@ async function resolveContextVariables(
   }
 
   // Standard date fields
-  ctx['today'] = formatDate(new Date(), 'MMMM d, yyyy');
-  ctx['today_short'] = formatDate(new Date(), 'MM/dd/yyyy');
+  ctx['today'] = formatDate(clock.now(), 'MMMM d, yyyy');
+  ctx['today_short'] = formatDate(clock.now(), 'MM/dd/yyyy');
 
   return ctx;
 }
@@ -205,7 +206,7 @@ export function registerDocSystemRoutes(app: Express): void {
         storage.getGeneratedDocuments(org.id, {}),
         storage.getDocumentPackages(org.id, {}),
       ]);
-      res.json({ templates, documents, packages, generatedAt: new Date().toISOString() });
+      res.json({ templates, documents, packages, generatedAt: clock.now().toISOString() });
     } catch (error: any) {
       logger.error("Documents overview error", error instanceof Error ? error : undefined);
       Errors.internal(res, error);
@@ -450,10 +451,10 @@ export function registerDocSystemRoutes(app: Express): void {
         "deal.title": "Oak Lane Property Acquisition",
         "deal.offerAmount": "$40,000",
         "deal.earnestMoney": "$1,000",
-        "deal.closingDate": new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString(),
+        "deal.closingDate": new Date(clock.nowMs() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString(),
         // Date fields
-        "date.today": new Date().toLocaleDateString(),
-        "date.current": new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+        "date.today": clock.now().toLocaleDateString(),
+        "date.current": clock.now().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
         // Note/Finance fields
         "note.principal": "$35,000",
         "note.interestRate": "9.9%",
@@ -723,7 +724,7 @@ export function registerDocSystemRoutes(app: Express): void {
         templateId,
         dealId: dealId || null,
         propertyId: propertyId || null,
-        name: name || `${template.name} - ${new Date().toLocaleDateString()}`,
+        name: name || `${template.name} - ${clock.now().toLocaleDateString()}`,
         type: template.type,
         content: generatedContent,
         variables: mergedVars,
@@ -858,7 +859,7 @@ export function registerDocSystemRoutes(app: Express): void {
         templateId,
         dealId: dealId || null,
         propertyId: propertyId || null,
-        name: name || `${template.name} - ${new Date().toLocaleDateString()}`,
+        name: name || `${template.name} - ${clock.now().toLocaleDateString()}`,
         type: template.type,
         content: generatedContent,
         variables: mergedVars,
@@ -1147,7 +1148,7 @@ export function registerDocSystemRoutes(app: Express): void {
         signatureCount: signatures.length,
         allSignatureHashesMatchCurrentContent: allHashesMatch,
         signatures: tamperEvidence,
-        certificateGeneratedAt: new Date().toISOString(),
+        certificateGeneratedAt: clock.now().toISOString(),
         certificateAuthority: "AcreOS",
       });
     } catch (error) {
@@ -1286,7 +1287,7 @@ export function registerDocSystemRoutes(app: Express): void {
         return refuseSignerRequest(res, err);
       }
 
-      const issuedAt = Date.now();
+      const issuedAt = clock.nowMs();
       const formattedSigners = parsedSigners.map((signer, index) => ({
         id: `signer-${issuedAt}-${index}`,
         name: signer.name,
@@ -1300,8 +1301,8 @@ export function registerDocSystemRoutes(app: Express): void {
         esignProvider: "native",
         esignStatus: "pending",
         signers: formattedSigners,
-        sentAt: new Date(),
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        sentAt: clock.now(),
+        expiresAt: new Date(clock.nowMs() + 30 * 24 * 60 * 60 * 1000),
       });
 
       // Per-signer signing links. The token is an HMAC over (docId,
@@ -1364,15 +1365,15 @@ export function registerDocSystemRoutes(app: Express): void {
       } catch (err) {
         return refuseSignerRequest(res, err);
       }
-      const legacyIssuedAt = Date.now();
+      const legacyIssuedAt = clock.nowMs();
 
       const updated = await storage.updateGeneratedDocument(id, {
         status: "pending_signature",
         esignProvider: "native",
         esignStatus: "pending",
         signers: legacySigners.map((s, index) => ({ ...s, id: `signer-${legacyIssuedAt}-${index}`, order: index + 1 })),
-        sentAt: new Date(),
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        sentAt: clock.now(),
+        expiresAt: new Date(clock.nowMs() + 30 * 24 * 60 * 60 * 1000),
       });
       
       res.json({

@@ -44,6 +44,7 @@ import { leads, properties, deals, countyMarkets } from "@shared/schema";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
 import { subDays, subYears, differenceInYears, differenceInDays } from "date-fns";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ---------------------------------------------------------------------------
 // Core motivation score factors & computation
@@ -655,7 +656,7 @@ export async function rescoreLeadsForOrg(organizationId: number): Promise<{
         .update(leads)
         .set({
           score: result.score,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(leads.id, lead.id));
 
@@ -690,7 +691,7 @@ export function getOptimalOutreachTiming(
   dayOfWeekRecommendation: string;
   expectedResponseRate: number;
 } {
-  const now = new Date();
+  const now = clock.now();
   const month = now.getMonth() + 1; // 1–12
   const dayOfWeek = now.getDay(); // 0=Sun, 6=Sat
 

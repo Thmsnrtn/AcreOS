@@ -38,11 +38,8 @@ import { startAcquiredNoteAgingJob } from "./acquiredNoteAging"; // acquired-not
 import { startNotePaymentDueDetectorJob, startLeaseExpiryDetectorJob } from "./expiryDetectorJobs";
 import { startBorrowerServicingJobs } from "./servicingWindDownJob";
 import { seedFounderDecisionCardsOnStartup } from "./seedFounderDecisionCards";
-import {
-  runDecisionExecutorTickBounded,
-  AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK,
-  AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK,
-} from "./decisionExecutorTick";
+import { runDecisionExecutorTickBounded, AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK, AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK } from "./decisionExecutorTick";
+import { clock } from "../utils/clock";
 
 // Auto-seed county GIS endpoints on startup
 async function seedCountyGisEndpointsOnStartup() {
@@ -107,7 +104,7 @@ async function processApiQueue() {
     }
 
     // Cleanup old completed jobs weekly
-    if (new Date().getDay() === 0) {
+    if (clock.now().getDay() === 0) {
       await apiQueueService.cleanupOldJobs(7);
     }
   } catch (err) {
@@ -534,7 +531,7 @@ async function processAutonomousDealMachine() {
     log('Autonomous deal machine nightly run started', 'deal-machine');
 
     // Check if it's morning briefing time (7 AM CT = 13 UTC)
-    const utcHour = new Date().getUTCHours();
+    const utcHour = clock.now().getUTCHours();
     if (utcHour === 13) {
       const result = await sendEnhancedMorningBriefings();
       log(`Morning briefings sent: ${result.sent}, failed: ${result.failed}`, 'deal-machine');
@@ -599,7 +596,7 @@ function startCustomerConcentrationJob() {
   log('Registering customer concentration job (daily 13:00 UTC)', 'concentration');
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     const utcHour = now.getUTCHours();
     if (utcHour === 13) {
       import('./customerConcentration').then(({ runCustomerConcentrationCheck }) => {
@@ -628,7 +625,7 @@ function startDoctrineIngestJob() {
   log('Registering doctrine corpus ingest (daily 03:00 UTC)', 'doctrine-ingest');
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 3) {
       import('../services/solene/doctrineIngest').then(({ ingestDoctrineCorpus }) => {
         withJobLock('doctrine_ingest_daily', TTL_SECONDS, async () => {
@@ -661,7 +658,7 @@ function startConnectionsSweepJob() {
   log('Registering connections sweep (Mondays 13:00 UTC)', 'connections-sweep');
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCDay() === 1 && now.getUTCHours() === 13) {
       import('../services/solene/connectionsSweep').then(({ enqueueWeeklySweep }) => {
         withJobLock('connections_sweep_weekly', TTL_SECONDS, async () => {
@@ -699,7 +696,7 @@ function startGateWatcherJob() {
   log('Registering gate watcher job (daily 09:00 UTC)', 'gate-watcher');
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 9) {
       import('../services/autopilot/gateWatcher').then(({ runGateWatch }) => {
         withJobLock('gate_watcher_daily', TTL_SECONDS, async () => {
@@ -767,7 +764,7 @@ function startApiTelemetryRollupJob() {
   log('Registering api_telemetry rollup + purge job (daily 01:00 UTC)', 'api-telemetry-rollup');
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 1 && now.getUTCMinutes() < 5) {
       void withJobLock('api_telemetry_rollup', TTL_SECONDS, async () => {
         const { runApiTelemetryRollup } = await import('../services/apiTelemetryRollup');
@@ -797,7 +794,7 @@ function startReserveFloorCheckerJob() {
   log('Registering reserve floor checker job (daily 06:30 UTC)', 'reserve-floor');
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     // Fire in the 06:30-06:34 UTC window so the 5-minute trackInterval
     // fan-out only matches one tick.
     if (now.getUTCHours() === 6 && now.getUTCMinutes() >= 30 && now.getUTCMinutes() < 35) {
@@ -912,7 +909,7 @@ function startFounderWeeklyDigestJob() {
   log('Registering founder weekly digest job (Mondays 8 AM CT)', 'founder-digest');
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     const utcHour = now.getUTCHours();
     const dayOfWeek = now.getUTCDay(); // 0=Sun, 1=Mon
 
@@ -1070,7 +1067,7 @@ function startChurnEngineJob() {
   // shot at boot and runs from a single instance during boot anyway.
   setTimeout(() => { processChurnEngine(); }, 2 * 60 * 1000);
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getHours() === 6 && now.getMinutes() < 5) {
       withJobLock("churn_engine_daily", 60 * 60, processChurnEngine).catch((err: any) => {
         log(`Churn engine lock error: ${err}`, 'churn');
@@ -1095,7 +1092,7 @@ function startFounderBriefingJob() {
   log('Starting founder daily briefing job (daily at 7am)', 'briefing');
   // Daily wall-clock 7am window — TTL = 60m covers the 5m window.
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getHours() === 7 && now.getMinutes() < 5) {
       withJobLock("founder_briefing_daily", 60 * 60, processFounderBriefing).catch((err: any) => {
         log(`Founder briefing lock error: ${err}`, 'briefing');
@@ -1137,7 +1134,7 @@ async function processAtlasMorningBrief() {
 function startAtlasMorningBriefJob() {
   log('Starting Atlas morning brief job (daily at 7am)', 'atlas-morning-brief');
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getHours() === 7 && now.getMinutes() < 5) {
       withJobLock("atlas_morning_brief_daily", 60 * 60, processAtlasMorningBrief).catch((err: any) => {
         log(`Atlas morning brief lock error: ${err}`, 'atlas-morning-brief');
@@ -1211,7 +1208,7 @@ async function processOutcomeAnalyzerJob() {
         const { db } = await import("../db");
         const { outcomeTelemetry } = await import("@shared/schema");
         const { sql: sqlOp, gte: gteOp } = await import("drizzle-orm");
-        const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const since = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
         const [{ n }] = await db
           .select({ n: sqlOp<number>`count(*)` })
           .from(outcomeTelemetry)
@@ -1242,7 +1239,7 @@ function startOutcomeAnalyzerJob() {
   // Run once 3 minutes after startup (first pass, likely few data points)
   setTimeout(() => { processOutcomeAnalyzerJob(); }, 3 * 60 * 1000);
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getHours() === 2 && now.getMinutes() < 5) {
       withJobLock('outcome_analyzer', 23 * 60 * 60, processOutcomeAnalyzerJob).catch(err => {
         log(`Outcome analyzer lock error: ${err}`, 'outcome-analyzer');
@@ -1263,7 +1260,7 @@ async function processTelemetryOptimizerJob() {
         const { db } = await import("../db");
         const { aiTelemetryEvents } = await import("@shared/schema");
         const { sql: sqlOp, gte: gteOp } = await import("drizzle-orm");
-        const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const since = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
         const [{ n }] = await db
           .select({ n: sqlOp<number>`count(*)` })
           .from(aiTelemetryEvents)
@@ -1294,7 +1291,7 @@ async function processTelemetryOptimizerJob() {
 function startTelemetryOptimizerJob() {
   log('Starting telemetry optimizer job (nightly at 3am)', 'telemetry-optimizer');
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getHours() === 3 && now.getMinutes() < 5) {
       withJobLock('telemetry_optimizer', 23 * 60 * 60, processTelemetryOptimizerJob).catch(err => {
         log(`Telemetry optimizer lock error: ${err}`, 'telemetry-optimizer');
@@ -1319,7 +1316,7 @@ async function processModelIntelligenceJob() {
 function startModelIntelligenceJob() {
   log('Starting model intelligence job (weekly Sunday 4am)', 'model-intelligence');
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     // Sunday = 0, 4am
     if (now.getDay() === 0 && now.getHours() === 4 && now.getMinutes() < 5) {
       withJobLock('model_intelligence', 6 * 24 * 60 * 60, processModelIntelligenceJob).catch(err => {
@@ -1345,7 +1342,7 @@ async function processSelfAssessmentJob() {
 function startSelfAssessmentJob() {
   log('Starting self-assessment agent job (weekly Sunday 3am)', 'self-assessment');
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     // Sunday = 0, 3am
     if (now.getDay() === 0 && now.getHours() === 3 && now.getMinutes() < 5) {
       withJobLock('self_assessment', 6 * 24 * 60 * 60, processSelfAssessmentJob).catch(err => {
@@ -1358,7 +1355,7 @@ function startSelfAssessmentJob() {
 // ── Evolution Pipeline: process pending proposals (every 6h, deploys 3-5am) ──
 async function processEvolutionPipelineJob() {
   try {
-    const now = new Date();
+    const now = clock.now();
     // Only deploy during low-traffic window: 3am-5am
     const isDeployWindow = now.getHours() >= 3 && now.getHours() < 5;
     if (!isDeployWindow) {
@@ -1413,7 +1410,7 @@ async function processCodebaseMonitorJob() {
 function startCodebaseMonitorJob() {
   log('Starting codebase monitor job (daily at 4:15am UTC)', 'codebase-monitor');
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 4 && now.getUTCMinutes() >= 15 && now.getUTCMinutes() < 20) {
       withJobLock('codebase_monitor', 23 * 60 * 60, processCodebaseMonitorJob).catch(err => {
         log(`Codebase monitor lock error: ${err}`, 'codebase-monitor');
@@ -1448,7 +1445,7 @@ async function processTelemetryDigestJob() {
 function startTelemetryDigestJob() {
   log('Starting telemetry digest job (Sundays at 8:00am UTC)', 'telemetry-digest');
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (
       now.getUTCDay() === 0 && // Sunday
       now.getUTCHours() === 8 &&
@@ -1482,7 +1479,7 @@ async function processMultiWeekPlannerJob() {
 function startMultiWeekPlannerJob() {
   log('Starting multi-week planner job (Sundays at 9:00am UTC)', 'multi-week-planner');
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (
       now.getUTCDay() === 0 && // Sunday
       now.getUTCHours() === 9 &&
@@ -1514,7 +1511,7 @@ async function processPersonalityDriftJob() {
 function startPersonalityDriftJob() {
   log('Starting personality drift sampler (Mondays at 7am UTC)', 'drift-sampler');
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCDay() === 1 && now.getUTCHours() === 7 && now.getUTCMinutes() < 5) {
       withJobLock('personality_drift', 6 * 24 * 60 * 60, processPersonalityDriftJob).catch(err => {
         log(`Personality drift lock error: ${err}`, 'drift-sampler');
@@ -1542,7 +1539,7 @@ async function processTrialExpiryJob() {
 function startTrialExpiryJob() {
   log('Starting trial-expiry job (daily at 9am UTC)', 'trial-engine');
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 9 && now.getUTCMinutes() < 5) {
       withJobLock('trial_engine', 23 * 60 * 60, processTrialExpiryJob).catch(err => {
         log(`Trial engine lock error: ${err}`, 'trial-engine');
@@ -1572,7 +1569,7 @@ async function processCustomerHealthJob() {
 function startCustomerHealthJob() {
   log('Starting customer health job (daily at 7am UTC)', 'customer-health');
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 7 && now.getUTCMinutes() < 5) {
       withJobLock('customer_health', 23 * 60 * 60, processCustomerHealthJob).catch(err => {
         log(`Customer health lock error: ${err}`, 'customer-health');
@@ -1600,7 +1597,7 @@ async function processOnboardingSchedulerJob() {
 function startOnboardingSchedulerJob() {
   log('Starting onboarding scheduler (daily at 10am UTC)', 'onboarding-scheduler');
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 10 && now.getUTCMinutes() < 5) {
       withJobLock('onboarding_scheduler', 23 * 60 * 60, processOnboardingSchedulerJob).catch(err => {
         log(`Onboarding scheduler lock error: ${err}`, 'onboarding-scheduler');
@@ -1625,7 +1622,7 @@ async function processDataRetentionJob() {
 function startDataRetentionJob() {
   log('Starting data retention job (nightly at 3:30am UTC)', 'data-retention');
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 3 && now.getUTCMinutes() >= 30 && now.getUTCMinutes() < 35) {
       withJobLock('data_retention', 23 * 60 * 60, processDataRetentionJob).catch(err => {
         log(`Data retention lock error: ${err}`, 'data-retention');
@@ -1657,7 +1654,7 @@ async function processQuarterlyAccessReview() {
 function startQuarterlyAccessReviewJob() {
   log("Starting quarterly access review job (first Tue of Jan/Apr/Jul/Oct at 14:00 UTC)", "access-review");
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 14 && now.getUTCMinutes() < 5) {
       withJobLock("access_review_quarterly", 60 * 60, processQuarterlyAccessReview).catch((err) => {
         log(`Access review lock error: ${err}`, "access-review");
@@ -1731,7 +1728,7 @@ function startPromptEvolutionJob() {
   const ONE_HOUR = 60 * 60 * 1000;
   log('Registering monthly prompt-evolution meta-agent (1st of month, 09:00 UTC)', 'sovereign');
   trackInterval(async () => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCDate() !== 1 || now.getUTCHours() !== 9) return;
     // Monthly cron — TTL = 60m (covers full 09:xx UTC window so duplicate
     // tick within the window is suppressed across workers).
@@ -1766,7 +1763,7 @@ function startOutcomeDrivenEvolutionJob() {
   const ONE_HOUR = 60 * 60 * 1000;
   log('Registering outcome-driven evolution proposer (nightly 04:00 UTC)', 'sovereign');
   trackInterval(async () => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() !== 4) return;
     // Nightly cron — TTL 60m covers the 04:xx window across workers.
     withJobLock("outcome_driven_evolution_nightly", 60 * 60, async () => {
@@ -1805,7 +1802,7 @@ function startExperimentSweepJob() {
   const ONE_HOUR = 60 * 60 * 1000;
   log('Registering experiment auto-completion sweep (Mondays 09:00 UTC)', 'sovereign');
   trackInterval(async () => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCDay() !== 1 || now.getUTCHours() !== 9) return;
     // Weekly window — TTL = 60m (covers the 09:xx UTC window).
     withJobLock("experiment_sweep_weekly", 60 * 60, async () => {
@@ -1832,7 +1829,7 @@ function startAgentMemoryConsolidationJob() {
   const ONE_HOUR = 60 * 60 * 1000;
   log('Registering agent memory consolidation (Sunday 23:00 UTC)', 'sovereign');
   trackInterval(async () => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCDay() !== 0 || now.getUTCHours() !== 23) return;
     // Weekly window — TTL = 60m (covers the 23:xx UTC window).
     withJobLock("agent_memory_consolidation_weekly", 60 * 60, async () => {
@@ -1855,7 +1852,7 @@ function startExpansionRadarJob() {
   const ONE_HOUR = 60 * 60 * 1000;
   log('Registering expansion radar (Mondays 08:00 UTC)', 'sovereign');
   trackInterval(async () => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCDay() !== 1 || now.getUTCHours() !== 8) return;
     // Weekly window — TTL = 60m (covers the 08:xx UTC window).
     withJobLock("expansion_radar_weekly", 60 * 60, async () => {
@@ -1907,7 +1904,7 @@ function startCustomerLetterJob() {
   const ONE_HOUR = 60 * 60 * 1000;
   log('Registering customer letter generator (1st of month, 15:00 UTC)', 'sovereign');
   trackInterval(async () => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCDate() !== 1 || now.getUTCHours() !== 15) return;
     // Monthly window — TTL = 60m (covers 15:xx UTC window). Per-org
     // letters are idempotent by (orgId, monthKey) but the cross-org
@@ -2033,7 +2030,7 @@ function startStrategicProposalsJobs() {
   const ONE_HOUR = 60 * 60 * 1000;
   log('Registering strategic proposals (weekly Sun 00:00 UTC + monthly synthesis 1st 10:00 UTC)', 'sovereign');
   trackInterval(async () => {
-    const now = new Date();
+    const now = clock.now();
     // Weekly: Sunday 00:xx UTC window — TTL = 60m (covers the window).
     if (now.getUTCDay() === 0 && now.getUTCHours() === 0) {
       withJobLock("strategic_proposals_weekly", 60 * 60, async () => {
@@ -2066,7 +2063,7 @@ function startFounderLetterJob() {
   const ONE_HOUR = 60 * 60 * 1000;
   log('Registering monthly founder-letter generator (1st of month, 12:00 UTC)', 'sovereign');
   trackInterval(async () => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCDate() !== 1 || now.getUTCHours() !== 12) return;
     // Monthly window — TTL = 60m (covers the 12:xx UTC window).
     withJobLock("founder_letter_monthly", 60 * 60, async () => {
@@ -2126,7 +2123,7 @@ function startOutcomeLedgerJob() {
   log('Registering outcome-ledger check-in scorer (daily 12:00 UTC)', 'outcome-ledger');
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 12) {
       import('../services/outcomeLedger').then(({ scoreDueCheckIns }) => {
         withJobLock('outcome_ledger_check_ins', TTL_SECONDS, async () => {
@@ -2154,7 +2151,7 @@ function startCompanyBriefingJob() {
   log('Registering company briefing pre-generation job (daily 6:45am CT)', 'sovereign');
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     const utcHour = now.getUTCHours();
     const utcMin = now.getUTCMinutes();
 
@@ -2206,7 +2203,7 @@ function startCompanyBriefingJob() {
               await import('../services/eventMeshPublisher').then(({ eventMeshPublisher }) => {
                 eventMeshPublisher.briefingReady(0, { type: 'morning', highlights: 'Daily briefing generated' }).catch(() => {});
               }).catch(() => {});
-              wsServer.broadcast('founder:activity', 'briefing_ready', { type: 'morning', timestamp: new Date().toISOString() });
+              wsServer.broadcast('founder:activity', 'briefing_ready', { type: 'morning', timestamp: clock.now().toISOString() });
               return result;
             }),
           );
@@ -2238,7 +2235,7 @@ function startPeriodicStatementsMonthlyJob() {
   log('Registering §1026.41 periodic statements monthly job (1st of month, 09:00 UTC)', 'compliance');
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     const dayOfMonth = now.getUTCDate();
     const utcHour = now.getUTCHours();
 
@@ -2306,7 +2303,7 @@ function startTrustEvolutionJob() {
   log('Registering trust evolution job (weekly, Sunday midnight UTC)', 'sovereign');
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     const dayOfWeek = now.getUTCDay(); // 0 = Sunday
     const utcHour = now.getUTCHours();
 
@@ -2413,7 +2410,7 @@ function startPaxContinuousAuditJob() {
   log('Registering Pax continuous-audit job (daily 04:00 UTC)', 'beatrice');
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() !== 4) return;
 
     void withJobLock('pax_continuous_audit', TTL_SECONDS, async () => {
@@ -2452,7 +2449,7 @@ function startTransparencyReportAggregationJob() {
   );
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() !== 5) return;
 
     void withJobLock('transparency_report_aggregation', TTL_SECONDS, async () => {
@@ -2498,7 +2495,7 @@ function startSoleneAuditJob() {
   );
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     // Per-week sweep: Sunday (day=0) at 23:00 UTC, within a 5-min window.
     if (now.getUTCDay() === 0 && now.getUTCHours() === 23 && now.getUTCMinutes() < 5) {
       void withJobLock('solene_audit_per_week', 60 * 60, async () => {
@@ -2557,7 +2554,7 @@ function startSoleneMorningPulseJob() {
   // persisted yet for today (UTC date), fire. withJobLock idempotently
   // handles concurrent ticks.
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() < 12) return;
     void withJobLock('solene_morning_pulse', 30 * 60, async () => {
       const { composeMorningPulse, persistMorningPulse, getLatestMorningPulse } =
@@ -2657,8 +2654,8 @@ function startSoleneLoopWatchdogJob() {
       if (v.severity !== 'healthy') {
         log(`[solene-watchdog] ${v.summary}`, 'solene-watchdog');
       }
-      if (v.shouldPageFounder && Date.now() - lastStallPageAt > SIX_HOURS) {
-        lastStallPageAt = Date.now();
+      if (v.shouldPageFounder && clock.nowMs() - lastStallPageAt > SIX_HOURS) {
+        lastStallPageAt = clock.nowMs();
         const { sendSolenePage } = await import('../services/solene/pagerService');
         await sendSolenePage({
           severity: 'critical',
@@ -2904,7 +2901,7 @@ function startSoleneWeeklyRetroJob() {
 
   const FIVE_MINUTES = 5 * 60 * 1000;
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     // Sunday = 0, hour 23, within a 5-minute window so cron drift can't miss it.
     if (now.getUTCDay() === 0 && now.getUTCHours() === 23 && now.getUTCMinutes() < 5) {
       withJobLock('solene_weekly_retro', 60 * 60, processSoleneWeeklyRetro).catch((err) => {
@@ -2961,7 +2958,7 @@ function startMonthlyTeamMemberReviewJob() {
 
   const FIVE_MINUTES = 5 * 60 * 1000;
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     // 1st of month, 09:00 UTC, ±5 minutes
     if (
       now.getUTCDate() === 1 &&
@@ -3042,7 +3039,7 @@ function startTeamSystemAuditJob() {
   );
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     // Weekly outside-in benchmark sweep: Sunday (day=0) at 04:00 UTC, within a 5-min window.
     if (
       now.getUTCDay() === 0 &&
@@ -3092,7 +3089,7 @@ function startQuarterlySoleneArcReviewJob() {
   // Months are 0-indexed: 0=Jan, 3=Apr, 6=Jul, 9=Oct.
   const QUARTER_START_MONTHS = new Set([0, 3, 6, 9]);
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (
       now.getUTCDate() === 1 &&
       QUARTER_START_MONTHS.has(now.getUTCMonth()) &&
@@ -3118,7 +3115,7 @@ function startOfacSdnRefreshJob() {
   log('Registering OFAC SDN refresh job (daily ~03:30 UTC)', 'sanctions');
   // 5-minute poll window so we don't miss the 03:30 hour due to drift.
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() !== 3 || now.getUTCMinutes() >= 35 || now.getUTCMinutes() < 30) {
       return;
     }
@@ -3151,7 +3148,7 @@ function startSanctionsListEntriesSyncJob() {
   log('Registering OFAC sanctions list-entries sync job (daily ~04:00 UTC)', 'sanctions');
   // 5-minute poll window so we don't miss the 04:00 hour due to drift.
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() !== 4 || now.getUTCMinutes() >= 5) {
       return;
     }
@@ -3195,7 +3192,7 @@ function startSanctionsListEntriesSyncJob() {
 function startIndexAnalyzerJob() {
   log('Registering DB index analyzer (daily ~02:00 UTC)', 'index-analyzer');
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() !== 2 || now.getUTCMinutes() >= 5) {
       return;
     }
@@ -3224,7 +3221,7 @@ function startIndexAnalyzerJob() {
 function startFeatureEngineeringJob() {
   log('Registering feature-engineering precompute (weekly Sun ~02:30 UTC)', 'feature-engineering');
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCDay() !== 0 || now.getUTCHours() !== 2 || now.getUTCMinutes() < 30 || now.getUTCMinutes() >= 35) {
       return;
     }
@@ -3246,7 +3243,7 @@ function startFeatureEngineeringJob() {
 function startDbBackupJob() {
   log('Registering DB backup (daily ~07:00 UTC, config-gated on DB_BACKUP_S3_BUCKET)', 'dbBackup');
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() !== 7 || now.getUTCMinutes() >= 5) {
       return;
     }
@@ -3271,7 +3268,7 @@ function startDbBackupJob() {
 function startBackupRestoreVerifyJob() {
   log('Registering backup restore-verification (weekly Sun ~05:00 UTC, config-gated on DB_BACKUP_S3_BUCKET + AWS creds)', 'backupRestoreVerify');
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCDay() !== 0 || now.getUTCHours() !== 5 || now.getUTCMinutes() >= 5) {
       return;
     }
@@ -3298,7 +3295,7 @@ function startBackupRestoreVerifyJob() {
 function startCourseCompletionCheckJob() {
   log('Registering course-completion check (daily ~08:00 UTC, config-gated on AWS_SES_FROM_EMAIL)', 'course-completion');
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() !== 8 || now.getUTCMinutes() >= 5) {
       return;
     }
@@ -3422,7 +3419,7 @@ function startSorenSeoTrackerJob() {
   );
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 6 && now.getUTCMinutes() < 5) {
       void withJobLock('soren_seo_tracker', TTL_SECONDS, async () => {
         const { trackRankings } = await import(
@@ -3454,7 +3451,7 @@ function startAnthropicWatchJob() {
   );
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 3 && now.getUTCMinutes() < 5) {
       void withJobLock('anthropic_watch', TTL_SECONDS, async () => {
         const { fetchAnthropicChangelog } = await import(
@@ -3486,7 +3483,7 @@ function startDailyAiCostGuardJob() {
     'ai-cost-guard',
   );
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 0 && now.getUTCMinutes() < 30) {
       void withJobLock('daily_ai_cost_guard', TTL_SECONDS, async () => {
         const { runDailyAiCostGuard } = await import(
@@ -3509,7 +3506,7 @@ function startNpmWatchJob() {
   );
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 4 && now.getUTCMinutes() < 5) {
       void withJobLock('npm_watch', TTL_SECONDS, async () => {
         const { fetchNpmVulnerabilities } = await import(
@@ -3555,7 +3552,7 @@ function startModelUpgradePathBackfillJob() {
   );
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 3 && now.getUTCMinutes() >= 30 && now.getUTCMinutes() < 35) {
       void withJobLock('model_upgrade_backfill', TTL_SECONDS, async () => {
         const { processUnactionedEvents } = await import(
@@ -3605,7 +3602,7 @@ function startSoleneFailureModeLibrarySeedJob() {
 
   // Daily refresh at 05:00 UTC — picks up newly-authored docs.
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 5 && now.getUTCMinutes() < 5) {
       void withJobLock('solene_failure_modes_seed', TTL_SECONDS, async () => {
         const { seedFailureModesFromDisk } = await import(
@@ -3638,7 +3635,7 @@ function startBeatriceRegWatchJob() {
   );
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 2 && now.getUTCMinutes() < 5) {
       void withJobLock('beatrice_reg_watch', TTL_SECONDS, async () => {
         const { fetchRegSources } = await import(
@@ -3680,7 +3677,7 @@ function startNpsPromptSchedulerJob() {
   log('Registering NPS prompt scheduler job (daily 04:15 UTC)', 'nps-scheduler');
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 4 && now.getUTCMinutes() >= 15 && now.getUTCMinutes() < 20) {
       void withJobLock('nps_prompt_scheduler', TTL_SECONDS, async () => {
         const { npsResponses, npsPromptQueue, teamMembers } = await import('@shared/schema');
@@ -3793,7 +3790,7 @@ function startLifecycleDispatchJob() {
   log('Registering lifecycle dispatch job (daily 15:05 UTC)', 'lifecycle');
 
   trackInterval(() => {
-    const now = new Date();
+    const now = clock.now();
     if (now.getUTCHours() === 15 && now.getUTCMinutes() >= 5 && now.getUTCMinutes() < 10) {
       void withJobLock('lifecycle_dispatch', TTL_SECONDS, async () => {
         const { runLifecycleDispatch } = await import('./lifecycleDispatch');
@@ -4578,7 +4575,7 @@ export async function runScheduledJobs(): Promise<void> {
   }) => {
     // Daily autonomous summary at 7 AM UTC (2 AM CT)
     trackInterval(() => {
-      const now = new Date();
+      const now = clock.now();
       if (now.getUTCHours() === 7 && now.getUTCMinutes() < 5) {
         withJobLock("daily_autonomous_summary", 55 * 60, generateDailyAutonomousSummary)
           .catch((err: any) => log(`Daily summary failed: ${err}`, "autonomy"));
@@ -4615,7 +4612,7 @@ export async function runScheduledJobs(): Promise<void> {
   import("../services/alertPolicy").then(({ alertPolicyService }) => {
     log("Alert policy weekly digest registered (Sundays 9am UTC)", "alert-policy");
     trackInterval(() => {
-      const now = new Date();
+      const now = clock.now();
       if (now.getUTCDay() === 0 && now.getUTCHours() === 9 && now.getUTCMinutes() < 5) {
         withJobLock("weekly_alert_digest", 55 * 60, () => alertPolicyService.sendWeeklyDigest())
           .catch((err: any) => log(`Weekly digest failed: ${err}`, "alert-policy"));
@@ -4937,7 +4934,7 @@ export async function runScheduledJobs(): Promise<void> {
             .from(dsarRequestsLifecycle)
             .where(and(
               isNull(dsarRequestsLifecycle.fulfilledAt),
-              lte(dsarRequestsLifecycle.slaDeadlineAt, new Date()),
+              lte(dsarRequestsLifecycle.slaDeadlineAt, clock.now()),
             ));
           if (overdue.length > 0) {
             log(`[DSAR] ${overdue.length} overdue requests — review at /founder/dsar/recent`, "compliance");
@@ -4979,7 +4976,7 @@ export async function runScheduledJobs(): Promise<void> {
           };
           const ladder = ["d30", "d21", "d14", "d10", "d5"] as const;
           const orgRows = await db.select().from(organizationsTbl).limit(10000);
-          const now = Date.now();
+          const now = clock.nowMs();
           for (const org of orgRows) {
             if (org.subscriptionStatus !== "active") continue;
             try {
@@ -5060,7 +5057,7 @@ export async function runScheduledJobs(): Promise<void> {
   import("../services/outcomeVerificationLoop").then(({ outcomeVerificationLoop }) => {
     log("Outcome verification loop registered (daily 2am UTC)", "outcome-verify");
     trackInterval(() => {
-      const now = new Date();
+      const now = clock.now();
       if (now.getUTCHours() === 2 && now.getUTCMinutes() < 5) {
         withJobLock("outcome_verification", 55 * 60, async () => {
           return outcomeVerificationLoop.verifyAllOrganizations();
@@ -5076,7 +5073,7 @@ export async function runScheduledJobs(): Promise<void> {
   // Daily job health log cleanup (delete rows older than 30 days)
   const runJobHealthCleanup = async () => {
     try {
-      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const cutoff = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
       await db.delete(jobHealthLogs).where(lt(jobHealthLogs.createdAt, cutoff));
     } catch (err) {
       log(`Job health log cleanup failed: ${err}`, "job-health-cleanup");
@@ -5090,7 +5087,7 @@ export async function runScheduledJobs(): Promise<void> {
   // agent_events accumulates AI action logs — keep 90 days for audit, discard older rows.
   const runAgentEventsCleanup = async () => {
     try {
-      const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+      const cutoff = new Date(clock.nowMs() - 90 * 24 * 60 * 60 * 1000);
       await db.delete(agentEvents).where(lt(agentEvents.createdAt, cutoff));
     } catch (err) {
       log(`Agent events cleanup failed: ${err}`, "agent-events-cleanup");
@@ -5240,7 +5237,7 @@ export async function runScheduledJobs(): Promise<void> {
           run: async () => {
             await withJobLock("land_profile_prewarm", 13 * 60, async () => {
               // Recently-created (last 7d), has coords, never enriched.
-              const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+              const sevenDaysAgo = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
               const pending = await db
                 .select({
                   id: properties.id,
@@ -5448,7 +5445,7 @@ export async function runScheduledJobs(): Promise<void> {
       // wall-clock time will drift if the worker restarts mid-day; that's
       // fine — archival is idempotent and cumulative.
       const FOUR_AM_INITIAL_DELAY_MS = (() => {
-        const now = new Date();
+        const now = clock.now();
         const fourAm = new Date(now);
         fourAm.setUTCHours(4, 0, 0, 0);
         if (fourAm.getTime() <= now.getTime()) {
@@ -5490,7 +5487,7 @@ export async function runScheduledJobs(): Promise<void> {
       // but we want to be early enough that morning-brief at 7am CT
       // (~13:00 UTC) sees fresh data).
       const THREE_FIFTEEN_AM_DELAY_MS = (() => {
-        const now = new Date();
+        const now = clock.now();
         const target = new Date(now);
         target.setUTCHours(3, 15, 0, 0);
         if (target.getTime() <= now.getTime()) {

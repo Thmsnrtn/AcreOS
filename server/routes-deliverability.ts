@@ -47,6 +47,7 @@ import {
   emailSuppressions,
 } from "@shared/schema";
 import { eq, sql, gte, and } from "drizzle-orm";
+import { clock } from "./utils/clock";
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -79,7 +80,7 @@ export async function computeReputation(
   deliverabilityScore: number;
   healthStatus: "healthy" | "at_risk" | "critical";
 }> {
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
 
   // We don't currently have organizationId on email_events. To approximate
   // per-org volume, we count rows in email_suppressions that were created
@@ -308,7 +309,7 @@ export function registerDeliverabilityRoutes(app: Express): void {
             };
           }),
         );
-        res.json({ orgs: rows, computedAt: new Date().toISOString() });
+        res.json({ orgs: rows, computedAt: clock.now().toISOString() });
       } catch (err) {
         return Errors.internal(res, err);
       }

@@ -36,6 +36,7 @@ import {
 import type { Artifact, BriefSection } from "@shared/founder-chat/artifacts";
 import { selectModelForTurn } from "../services/founder-chat/model-selector";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public surface
@@ -60,7 +61,7 @@ export async function runMorningBriefForFounder(
   founderUserId: string,
   opts: { now?: Date; force?: boolean } = {},
 ): Promise<MorningBriefResult> {
-  const now = opts.now ?? new Date();
+  const now = opts.now ?? clock.now();
   const threadId = await findDefaultFounderThread(founderUserId);
   if (!threadId) {
     return { founderUserId, threadId: null, skipped: "no_default_thread" };
@@ -160,7 +161,7 @@ function startOfTodayUtc(now: Date): Date {
   return d;
 }
 
-function daysAgo(n: number, now = new Date()): Date {
+function daysAgo(n: number, now = clock.now()): Date {
   return new Date(now.getTime() - n * 24 * 60 * 60 * 1000);
 }
 

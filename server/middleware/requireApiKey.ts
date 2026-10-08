@@ -24,6 +24,7 @@ import { hashApiKey, verifyHash, type ApiScope } from "../services/apiKeys";
 import { Errors } from "../utils/errors";
 import { logger } from "../utils/logger";
 import { randomUUID } from "node:crypto";
+import { clock } from "../utils/clock";
 
 declare module "express-serve-static-core" {
   interface Request {
@@ -60,7 +61,7 @@ function truncateRemote(raw: string | undefined): string | null {
 
 export function requireApiKey(requiredScope: ApiScope) {
   return async (req: Request, res: Response, next: NextFunction) => {
-    const startedAt = Date.now();
+    const startedAt = clock.nowMs();
     const requestId = (req.headers["x-request-id"] as string) || randomUUID();
     res.setHeader("X-Request-Id", requestId);
 
@@ -92,7 +93,7 @@ export function requireApiKey(requiredScope: ApiScope) {
         return Errors.unauthorized(res);
       }
 
-      if (row.expiresAt && row.expiresAt.getTime() < Date.now()) {
+      if (row.expiresAt && row.expiresAt.getTime() < clock.nowMs()) {
         return Errors.unauthorized(res);
       }
 
@@ -129,7 +130,7 @@ export function requireApiKey(requiredScope: ApiScope) {
     // to the hot path would be the kind of thing the Stripe gateway
     // would call out in a postmortem.
     res.on("finish", () => {
-      const durationMs = Date.now() - startedAt;
+      const durationMs = clock.nowMs() - startedAt;
       const apiKeyId = row!.id;
       const orgId = row!.organizationId;
       const remoteAddrPrefix = truncateRemote(
@@ -151,7 +152,7 @@ export function requireApiKey(requiredScope: ApiScope) {
         }),
         db
           .update(apiKeys)
-          .set({ lastUsedAt: new Date() })
+          .set({ lastUsedAt: clock.now() })
           .where(eq(apiKeys.id, apiKeyId)),
       ]).catch((err) => {
         logger.warn("api_key_usage log write failed", {

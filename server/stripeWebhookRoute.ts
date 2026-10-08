@@ -32,6 +32,7 @@ import { notifyOnCall } from "./services/oncall";
 import { logger } from "./utils/logger";
 import { getClientIp } from "./utils/clientIp";
 import { sendError } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 /**
  * One page per failure key per this window. The window is held in process
@@ -41,7 +42,7 @@ const STRIPE_WEBHOOK_PAGE_WINDOW_MS = 30 * 60 * 1000;
 const lastPagedAt = new Map<string, number>();
 
 /** True when this key has not paged inside the window; records the page. */
-function shouldPageStripeWebhookFailure(key: string, now: number = Date.now()): boolean {
+function shouldPageStripeWebhookFailure(key: string, now: number = clock.nowMs()): boolean {
   const last = lastPagedAt.get(key);
   if (last !== undefined && now - last < STRIPE_WEBHOOK_PAGE_WINDOW_MS) return false;
   lastPagedAt.set(key, now);
@@ -61,7 +62,7 @@ let suppressedRejectWarns = 0;
 
 function noteUnauthenticatedDelivery(reason: string): void {
   recordStripeWebhookSignatureRejected();
-  const now = Date.now();
+  const now = clock.nowMs();
   if (now - lastRejectWarnAt < REJECT_WARN_INTERVAL_MS) {
     suppressedRejectWarns++;
     return;

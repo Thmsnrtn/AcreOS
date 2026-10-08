@@ -44,6 +44,7 @@ import {
 } from "@shared/schema";
 import { and, asc, desc, eq, isNull, lte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type StepKey =
   | "day0_welcome"
@@ -121,7 +122,7 @@ export async function startJourney(organizationId: number): Promise<{
     return { journeyId: existing[0].id, created: false };
   }
 
-  const now = new Date();
+  const now = clock.now();
   const [journey] = await db
     .insert(onboardingJourneys)
     .values({
@@ -155,7 +156,7 @@ export async function sweepAndFireDueSteps(): Promise<{
   fired: number;
   failed: number;
 }> {
-  const now = new Date();
+  const now = clock.now();
   const due = await db
     .select({
       id: onboardingSteps.id,
@@ -194,7 +195,7 @@ export async function sweepAndFireDueSteps(): Promise<{
       await db
         .update(onboardingSteps)
         .set({
-          firedAt: new Date(),
+          firedAt: clock.now(),
           status: "fired",
           outcome,
         })
@@ -203,7 +204,7 @@ export async function sweepAndFireDueSteps(): Promise<{
         .update(onboardingJourneys)
         .set({
           currentStepKey: step.stepKey,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(onboardingJourneys.id, step.journeyId));
       fired++;
@@ -215,7 +216,7 @@ export async function sweepAndFireDueSteps(): Promise<{
       await db
         .update(onboardingSteps)
         .set({
-          firedAt: new Date(),
+          firedAt: clock.now(),
           status: "failed",
           outcome: { error: err?.message ?? "unknown" },
         })
@@ -374,7 +375,7 @@ async function handleWeek1Checkin(
     });
     await db
       .update(onboardingJourneys)
-      .set({ founderFlag: "escalate", updatedAt: new Date() })
+      .set({ founderFlag: "escalate", updatedAt: clock.now() })
       .where(eq(onboardingJourneys.id, journeyId));
   }
   return { intent: "week1_checkin", verdict, leadCount, dealCount };
@@ -416,8 +417,8 @@ async function handleActivationVerdict(
     .update(onboardingJourneys)
     .set({
       activationStatus: status,
-      activationDeterminedAt: new Date(),
-      updatedAt: new Date(),
+      activationDeterminedAt: clock.now(),
+      updatedAt: clock.now(),
     })
     .where(eq(onboardingJourneys.id, journeyId));
 

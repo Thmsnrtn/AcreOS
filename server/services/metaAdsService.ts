@@ -17,6 +17,7 @@ import { eq, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { emitLeadCreated } from "./leadEvents";
 import { secretEquals } from "../utils/secretEquals";
+import { clock } from "../utils/clock";
 
 const META_API_BASE = "https://graph.facebook.com/v21.0";
 
@@ -554,7 +555,7 @@ export async function sendConversionEvent(
       data: [
         {
           event_name: eventName,
-          event_time: Math.floor(Date.now() / 1000),
+          event_time: Math.floor(clock.nowMs() / 1000),
           action_source: "website",
           user_data: {
             em: hash(userData.email),

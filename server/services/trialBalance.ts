@@ -30,6 +30,7 @@
 import { db } from "../db";
 import { accountLedgerEntries, chartOfAccounts, type AccountType } from "@shared/schema";
 import { and, eq, lte, sql } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 export interface TrialBalanceRow {
   accountId: string;
@@ -134,7 +135,7 @@ export async function generateTrialBalance(
       balance,
       isBalanced: balance === 0,
     },
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
   };
 }
 

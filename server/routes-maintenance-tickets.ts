@@ -40,6 +40,7 @@ import { logger } from "./utils/logger";
 // ran because nothing emitted maintenance.request_received. This POST is the one
 // create path, so it is the emit seam. Fire-and-forget — see rentalEvents.ts.
 import { emitMaintenanceRequestReceived } from "./services/rentalEvents";
+import { clock } from "./utils/clock";
 
 const ticketSchema = z.object({
   propertyId: z.coerce.number().int().positive(),
@@ -161,13 +162,13 @@ export function registerMaintenanceTicketRoutes(app: Express): void {
       const parsed = updateSchema.safeParse(req.body);
       if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      const updates: Record<string, unknown> = { updatedAt: clock.now() };
       for (const k of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {
         if (parsed.data[k] !== undefined) updates[k] = parsed.data[k];
       }
       // Status transitions stamp timestamps.
-      if (parsed.data.status === "triaging") updates.triagedAt = new Date();
-      if (parsed.data.status === "completed") updates.completedAt = new Date();
+      if (parsed.data.status === "triaging") updates.triagedAt = clock.now();
+      if (parsed.data.status === "completed") updates.completedAt = clock.now();
 
       const [updated] = await db.update(maintenanceTickets).set(updates)
         .where(and(eq(maintenanceTickets.id, req.params.id), eq(maintenanceTickets.organizationId, orgId)))
@@ -206,8 +207,8 @@ export function registerMaintenanceTicketRoutes(app: Express): void {
       const [updated] = await db.update(maintenanceTickets).set({
         assignedContractorId: parsed.data.contractorId,
         status: "dispatched",
-        dispatchedAt: new Date(),
-        updatedAt: new Date(),
+        dispatchedAt: clock.now(),
+        updatedAt: clock.now(),
       }).where(and(
         eq(maintenanceTickets.id, req.params.id),
         eq(maintenanceTickets.organizationId, orgId),
@@ -230,11 +231,11 @@ export function registerMaintenanceTicketRoutes(app: Express): void {
 
       const [updated] = await db.update(maintenanceTickets).set({
         status: "completed",
-        completedAt: new Date(),
+        completedAt: clock.now(),
         repairNotes: parsed.data.repairNotes ?? null,
         invoiceCents: parsed.data.invoiceCents ?? null,
         invoicePaidAt: parsed.data.invoicePaidAt ? new Date(parsed.data.invoicePaidAt) : null,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       }).where(and(
         eq(maintenanceTickets.id, req.params.id),
         eq(maintenanceTickets.organizationId, orgId),

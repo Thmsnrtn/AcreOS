@@ -17,6 +17,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, isNull, sql, asc, gte, lte, count, avg } from "drizzle-orm";
 import crypto from "crypto";
+import { clock } from "../utils/clock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -104,7 +105,7 @@ class SelfHealingMeshService {
           p95: newP95.toFixed(4),
           p99: newP99.toFixed(4),
           sampleCount: existing.sampleCount + 1,
-          lastCalculatedAt: new Date(),
+          lastCalculatedAt: clock.now(),
         })
         .where(eq(agentHealthBaselines.id, existing.id))
         .returning();
@@ -120,7 +121,7 @@ class SelfHealingMeshService {
           p99: value.toFixed(4),
           sampleCount: 1,
           sampleWindow: "24h",
-          lastCalculatedAt: new Date(),
+          lastCalculatedAt: clock.now(),
         })
         .returning();
       baseline = created;
@@ -286,7 +287,7 @@ class SelfHealingMeshService {
 
     const [activated] = await db
       .update(degradationModes)
-      .set({ isCurrentMode: true, activatedAt: new Date() })
+      .set({ isCurrentMode: true, activatedAt: clock.now() })
       .where(and(
         eq(degradationModes.agentCodename, agentCodename),
         eq(degradationModes.modeName, modeName),
@@ -359,7 +360,7 @@ class SelfHealingMeshService {
 
     const matched: (typeof incidentPlaybooks.$inferSelect)[] = [];
     const actionsList: Array<{ playbookName: string; actions: any[] }> = [];
-    const now = new Date();
+    const now = clock.now();
 
     for (const playbook of enabledPlaybooks) {
       const pattern = playbook.triggerPattern as Record<string, any>;
@@ -408,7 +409,7 @@ class SelfHealingMeshService {
         config: data.config ?? {},
         durationMs: data.durationMs ?? 60000,
         status: "running",
-        startedAt: new Date(),
+        startedAt: clock.now(),
       })
       .returning();
     return experiment;
@@ -426,7 +427,7 @@ class SelfHealingMeshService {
         impactObserved: data.impactObserved,
         recoveryTimeMs: data.recoveryTimeMs,
         lessonsLearned: data.lessonsLearned ?? null,
-        completedAt: new Date(),
+        completedAt: clock.now(),
       })
       .where(eq(chaosExperiments.experimentId, experimentId))
       .returning();
@@ -486,7 +487,7 @@ class SelfHealingMeshService {
   ): Promise<typeof anomalyDetections.$inferSelect> {
     const [resolved] = await db
       .update(anomalyDetections)
-      .set({ resolvedAt: new Date(), autoResolved })
+      .set({ resolvedAt: clock.now(), autoResolved })
       .where(eq(anomalyDetections.anomalyId, anomalyId))
       .returning();
 

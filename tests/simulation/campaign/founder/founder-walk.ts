@@ -35,15 +35,7 @@ const VIEWPORTS = [
   { key: "iphone", viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 },
   { key: "desktop", viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: false, deviceScaleFactor: 1 },
 ];
-/** Terms a non-technical founder would not know. Matched case-insensitively as words. */
-const JARGON = [
-  "domain", "trust level", "witness", "witnessed", "dispatch", "autonomy", "observe", "draft", "execute_gated", "autonomous_gated",
-  "cognition", "reflex", "reflexes", "telemetry", "ETL", "envelope", "shadow", "calibration", "pre-mortem", "premortem", "council",
-  "move", "play", "playbook", "cycle", "clean cycle", "ledger", "receipt", "hash", "kernel", "operator", "SLA", "MRR", "CAC", "LTV",
-  "runway", "stabilize_reflexes", "grow_owned_channels", "deploy", "ops", "agent", "iris", "soren", "beatrice", "krieger", "sophie",
-  "pax", "solene", "hand", "hands", "pending action", "standing order", "ensemble", "cap", "quarantine", "panic", "preflight",
-  "governance", "evidence packet", "seam", "tick", "loop", "brain", "sense", "senses", "counterfactual", "efficacy", "bandit",
-];
+import { JARGON } from "../../walks/vocabulary";
 
 async function main() {
   const browser = await chromium.launch();

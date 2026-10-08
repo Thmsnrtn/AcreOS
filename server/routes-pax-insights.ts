@@ -28,6 +28,7 @@ import { summarizeAsk } from "./services/paxAskSummary";
 import { getPaxControls } from "./services/paxControls";
 import { PARKED_STATES } from "@shared/pax-controls";
 import { z } from "zod";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -83,7 +84,7 @@ router.get("/greeting", async (req, res) => {
 router.get("/insights", async (req, res) => {
   try {
     const org = req.organization;
-    const now = new Date();
+    const now = clock.now();
 
     // ── 1. Pax observations (status = 'detected', ordered severity desc, createdAt desc, limit 10) ──
     const rawObservations = await db
@@ -279,7 +280,7 @@ router.get("/insights", async (req, res) => {
 router.get("/pax-suggestions", async (req, res) => {
   try {
     const org = req.organization;
-    const now = new Date();
+    const now = clock.now();
     const seventyTwoHoursAgo = new Date(now.getTime() - 72 * 60 * 60 * 1000);
 
     // Fetch recent observations with confidence > 70 (stored as 0-100 integer)
@@ -726,7 +727,7 @@ router.get("/needs-you", async (req: AuthenticatedRequest, res) => {
     const rawLimit = Number.parseInt(String(req.query.limit ?? ""), 10);
     const limit =
       Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, NEEDS_YOU_MAX_LIMIT) : NEEDS_YOU_DEFAULT_LIMIT;
-    const now = new Date();
+    const now = clock.now();
 
     // Attribution only: the org's zone for the expiry line. A tap is the
     // human acting; the stance never gates this read.
@@ -792,7 +793,7 @@ router.patch("/nudges/:nudgeId/snooze", async (req, res) => {
     const nudgeId = parseInt(req.params.nudgeId);
     const { hours = 24 } = req.body; // default snooze 24 hours
 
-    const snoozedUntil = new Date(Date.now() + hours * 60 * 60 * 1000);
+    const snoozedUntil = new Date(clock.nowMs() + hours * 60 * 60 * 1000);
 
     await db.update(paxNudges)
       .set({
@@ -819,9 +820,9 @@ router.patch("/nudges/:nudgeId/action", async (req, res) => {
 
     await db.update(paxNudges)
       .set({
-        actionedAt: new Date(),
+        actionedAt: clock.now(),
         actionType: "actioned",
-        dismissedAt: new Date(),
+        dismissedAt: clock.now(),
       } as any)
       .where(and(
         eq(paxNudges.id as any, nudgeId),

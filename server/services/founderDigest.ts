@@ -9,6 +9,7 @@ import { getFounderEmails } from "./founder";
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { liveMrrDetail } from "./finance/runwayModel";
+import { clock } from "../utils/clock";
 
 interface DigestData {
   mrrCents: number;
@@ -24,7 +25,7 @@ interface DigestData {
 }
 
 async function gatherDigestData(): Promise<DigestData> {
-  const now = new Date();
+  const now = clock.now();
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
@@ -183,7 +184,7 @@ export const founderDigestService = {
     const bullets = await generateDigestBullets(data);
 
     const allClear = data.openDecisions === 0 && data.jobFailures24h === 0;
-    const subject = `AcreOS Daily — ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })} — ${allClear ? "All Clear" : `${data.openDecisions} item${data.openDecisions === 1 ? "" : "s"} need attention`}`;
+    const subject = `AcreOS Daily — ${clock.now().toLocaleDateString("en-US", { month: "short", day: "numeric" })} — ${allClear ? "All Clear" : `${data.openDecisions} item${data.openDecisions === 1 ? "" : "s"} need attention`}`;
 
     const html = `
       <h2>AcreOS Daily Briefing</h2>
@@ -198,7 +199,7 @@ export const founderDigestService = {
     `;
 
     const [digestRecord] = await db.insert(founderDigestHistory).values({
-      digestDate: new Date(),
+      digestDate: clock.now(),
       deliveryStatus: "pending",
       revenueBullet: bullets.revenueBullet,
       systemHealthBullet: bullets.systemHealthBullet,
@@ -235,7 +236,7 @@ export const founderDigestService = {
     await db.update(founderDigestHistory)
       .set({
         deliveryStatus: emailResult.success ? "delivered" : "failed",
-        deliveredAt: emailResult.success ? new Date() : null,
+        deliveredAt: emailResult.success ? clock.now() : null,
       })
       .where(eq(founderDigestHistory.id, digestRecord.id));
 
@@ -260,7 +261,7 @@ export async function startFounderDigestJob(
   const SEND_UTC_HOUR = 14; // 8 AM CST = 14 UTC
 
   const runCheck = async () => {
-    const utcHour = new Date().getUTCHours();
+    const utcHour = clock.now().getUTCHours();
     if (utcHour !== SEND_UTC_HOUR) return;
 
     await withJobLock("founder_digest", 23 * 60 * 60, async () => {

@@ -5,6 +5,7 @@ import { recordSourceSuccess, recordSourceFailure } from "./dataQualityMonitor";
 import { logger } from "../utils/logger";
 import { claimsFromEnrichment } from "./evidence/enrichmentToClaims";
 import { recordClaims } from "./evidence/evidenceStore";
+import { clock } from "../utils/clock";
 
 export interface EnrichmentResult {
   propertyId?: number;
@@ -284,7 +285,7 @@ export class PropertyEnrichmentService {
       forceRefresh?: boolean;
     }
   ): Promise<EnrichmentResult> {
-    const startTime = Date.now();
+    const startTime = clock.nowMs();
     const errors: Record<string, string> = {};
     
     const defaultCategories: LookupCategory[] = [
@@ -327,7 +328,7 @@ export class PropertyEnrichmentService {
       leadId: options?.leadId,
       latitude,
       longitude,
-      enrichedAt: new Date(),
+      enrichedAt: clock.now(),
       lookupTimeMs: multiResult.totalLookupTimeMs,
     };
 
@@ -708,7 +709,7 @@ export class PropertyEnrichmentService {
     // Smart 30-day refresh: skip if enriched recently and not forcing
     if (!forceRefresh && property.enrichedAt) {
       const enrichedAt = new Date(property.enrichedAt);
-      const daysSinceEnrichment = (Date.now() - enrichedAt.getTime()) / (1000 * 60 * 60 * 24);
+      const daysSinceEnrichment = (clock.nowMs() - enrichedAt.getTime()) / (1000 * 60 * 60 * 24);
       if (daysSinceEnrichment < 30) {
         logger.info(`[PropertyEnrichment] Skipping enrichment for property ${propertyId} — enriched ${Math.round(daysSinceEnrichment)} days ago (< 30 day threshold). Use forceRefresh=true to override.`);
         return (property.enrichmentData || {}) as unknown as EnrichmentResult;
@@ -880,12 +881,12 @@ export class PropertyEnrichmentService {
       await storage.updateProperty(propertyId, {
         enrichmentData: {
           ...enrichment,
-          lastEnrichedAt: new Date().toISOString(),
+          lastEnrichedAt: clock.now().toISOString(),
           completenessScore: completeness.score,
           completenessBreakdown: completeness.breakdown,
         } as any,
         enrichmentStatus: "complete",
-        enrichedAt: new Date(),
+        enrichedAt: clock.now(),
       }, organizationId);
 
       const categoriesEnriched = Object.keys(enrichment).filter(
@@ -936,7 +937,7 @@ export class PropertyEnrichmentService {
       const mergedScoreFactors = {
         ...existingScoreFactors,
         gisEnrichment: enrichment,
-        lastEnrichedAt: new Date().toISOString(),
+        lastEnrichedAt: clock.now().toISOString(),
       };
       
       await storage.updateLead(leadId, {

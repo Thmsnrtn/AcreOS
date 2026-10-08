@@ -4,6 +4,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 export async function registerEnhancementRoutes(app: Express) {
 
@@ -213,12 +214,12 @@ export async function registerEnhancementRoutes(app: Express) {
 
       // Latency probe: `SELECT 1` round-trip against whichever DB we actually
       // route reads to. Cheap and consistent across primary/replica configs.
-      const probeStart = Date.now();
+      const probeStart = clock.nowMs();
       let latencyMs: number | null = null;
       let probeError: string | null = null;
       try {
         await target.execute(sql`SELECT 1`);
-        latencyMs = Date.now() - probeStart;
+        latencyMs = clock.nowMs() - probeStart;
       } catch (err) {
         probeError = (err as Error)?.message ?? "probe failed";
       }
@@ -256,7 +257,7 @@ export async function registerEnhancementRoutes(app: Express) {
         lagSource,
         adoption: snapshotAdoption(),
         probeError,
-        checkedAt: new Date().toISOString(),
+        checkedAt: clock.now().toISOString(),
       });
     } catch (err) {
       Errors.internal(res, err);

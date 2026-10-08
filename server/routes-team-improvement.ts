@@ -27,6 +27,7 @@ import {
 import { isAuthenticated, requireFounder } from "./auth";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 const RECENT_DAYS = 30;
 const RECENT_LIMIT = 500;
@@ -47,7 +48,7 @@ export function registerTeamImprovementRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const since = new Date(Date.now() - RECENT_DAYS * 24 * 60 * 60 * 1000);
+        const since = new Date(clock.nowMs() - RECENT_DAYS * 24 * 60 * 60 * 1000);
         const conditions = [
           gte(teamImprovementOpportunities.detectedAt, since),
         ];

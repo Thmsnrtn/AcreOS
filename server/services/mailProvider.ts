@@ -2,6 +2,7 @@ import Lob from 'lob';
 import { logger } from "../utils/logger";
 import { resolvePlatformLobKey, isLiveSendArmed } from './mail/liveSendInterlock';
 import { getLobClient } from './directMailService';
+import { clock } from "../utils/clock";
 
 export enum MailProvider {
   LOB = "lob",
@@ -244,7 +245,7 @@ export async function sendLetter(options: LetterOptions): Promise<MailResult> {
       logger.info(`[Mail] MAIL_MOCK - simulating letter to ${options.to.name}`);
       return {
         success: true,
-        mailingId: `mock-letter-${Date.now()}`,
+        mailingId: `mock-letter-${clock.nowMs()}`,
         isTestMode: true,
         provider: MailProvider.LOB,
       };
@@ -273,7 +274,7 @@ export async function sendPostcard(options: PostcardOptions): Promise<MailResult
       logger.info(`[Mail] MAIL_MOCK - simulating postcard to ${options.to.name}`);
       return {
         success: true,
-        mailingId: `mock-postcard-${Date.now()}`,
+        mailingId: `mock-postcard-${clock.nowMs()}`,
         isTestMode: true,
         provider: MailProvider.LOB,
       };

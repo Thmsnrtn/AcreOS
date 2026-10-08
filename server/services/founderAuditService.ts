@@ -9,6 +9,7 @@ import { db } from "../db";
 import { auditLog } from "@shared/schema";
 import { sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type AuditSeverity = "info" | "warning" | "critical";
 export type AuditCategory =
@@ -40,7 +41,7 @@ class FounderAuditService {
     try {
       // Always log to structured output for external aggregation
       const logEntry = {
-        timestamp: new Date().toISOString(),
+        timestamp: clock.now().toISOString(),
         ...entry,
       };
 

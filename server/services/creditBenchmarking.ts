@@ -6,6 +6,7 @@ import {
 import { and, eq, inArray, lte, sql } from "drizzle-orm";
 import { consentingOrgIds } from "./sophiePrivacyGuard";
 import { MIN_DISTINCT_OPERATORS, meetsOperatorFloor } from "./dataCoop/privacyRollup";
+import { clock } from "../utils/clock";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 2026-06-10 (T0-12, docs/internal/roadmap/elevation-blueprint-2026-06-10.md):
@@ -326,7 +327,7 @@ export class CreditBenchmarkingService {
       underperformers,
       nationalComparison: { available: false, reason: NO_COHORT_DATA_REASON },
       recommendations,
-      generatedAt: new Date(),
+      generatedAt: clock.now(),
     };
   }
 

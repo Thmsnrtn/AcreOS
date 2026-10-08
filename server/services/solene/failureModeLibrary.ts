@@ -35,6 +35,7 @@ import {
 } from "@shared/schema/solene-failure-modes";
 import type { SoleneDispatchAgentRole } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // Types
@@ -91,7 +92,7 @@ const PREAMBLE_TRUNCATION_SUFFIX = "\n… [truncated]";
 
 export async function loadFailureModeLibrary(): Promise<FailureMode[]> {
   const dir = ledgerDir();
-  const now = Date.now();
+  const now = clock.nowMs();
   if (
     cache &&
     cache.ledgerDir === dir &&

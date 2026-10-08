@@ -1,4 +1,5 @@
 import { storage } from "../storage";
+import { clock } from "../utils/clock";
 
 export interface ModuleSnapshot {
   name: string;
@@ -40,12 +41,12 @@ const contextCache = new Map<number, { context: SystemContext; fetchedAt: number
 
 export async function getSystemContext(organizationId: number): Promise<SystemContext> {
   const cached = contextCache.get(organizationId);
-  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+  if (cached && clock.nowMs() - cached.fetchedAt < CACHE_TTL_MS) {
     return cached.context;
   }
 
   const context = await buildSystemContext(organizationId);
-  contextCache.set(organizationId, { context, fetchedAt: Date.now() });
+  contextCache.set(organizationId, { context, fetchedAt: clock.nowMs() });
   return context;
 }
 
@@ -54,7 +55,7 @@ export function invalidateContextCache(organizationId: number): void {
 }
 
 async function buildSystemContext(organizationId: number): Promise<SystemContext> {
-  const now = new Date();
+  const now = clock.now();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   const [org, leads, properties, deals, notes, tasks, campaigns] = await Promise.all([

@@ -46,6 +46,7 @@ import { twilioProvider } from "./comms/providers/twilio";
 // Side-effect import: ensures the Telnyx adapter registers itself with
 // the router even though no caller uses it directly today.
 import "./comms/providers/telnyx";
+import { clock } from "../utils/clock";
 
 const SMS_STOP_WORDS = new Set(["stop", "stopall", "unsubscribe", "cancel", "end", "quit"]);
 
@@ -304,7 +305,7 @@ async function smsPurposeGate(input: SendOrgSmsInput): Promise<PurposeGateVerdic
         return { allowed: true, leadId: borrower.id, recordTouch: false };
       }
       case "reply": {
-        const since = new Date(Date.now() - REPLY_WINDOW_MS);
+        const since = new Date(clock.nowMs() - REPLY_WINDOW_MS);
         const inbound = await storage.latestInboundSmsFrom(organizationId, to, since);
         if (!inbound) {
           return refuse("no inbound text from this number in the last 24 hours — a reply needs something to reply to");
@@ -463,7 +464,7 @@ export async function sendSMSToLead(
         leadId,
         channel: "sms",
         status: "active",
-        lastMessageAt: new Date(),
+        lastMessageAt: clock.now(),
       })
       .returning();
     existingConversation = newConversation;
@@ -484,7 +485,7 @@ export async function sendSMSToLead(
 
   await db
     .update(conversations)
-    .set({ lastMessageAt: new Date() })
+    .set({ lastMessageAt: clock.now() })
     .where(eq(conversations.id, existingConversation.id));
 
   return {
@@ -562,7 +563,7 @@ export async function handleIncomingSMS(
     const matchingLeads = await storage.findLeadsByPhoneLast10(organizationId, fromPhone, {
       includeDeleted: true,
     });
-    const now = new Date();
+    const now = clock.now();
     for (const lead of matchingLeads) {
       await db
         .update(leads)
@@ -679,7 +680,7 @@ export async function handleIncomingSMS(
   // Non-fatal — old hand-assigned numbers won't have a row here.
   try {
     const { attributeInbound } = await import("./comms/tracking-pool");
-    await attributeInbound(toPhone, fromPhone, new Date());
+    await attributeInbound(toPhone, fromPhone, clock.now());
   } catch (err: any) {
     logger.warn("[SMS] tracking-pool attribution failed (non-fatal)", {
       metadata: { error: err?.message },
@@ -727,7 +728,7 @@ export async function handleIncomingSMS(
         leadId,
         channel: "sms",
         status: "active",
-        lastMessageAt: new Date(),
+        lastMessageAt: clock.now(),
       })
       .returning();
     existingConversation = newConversation;
@@ -792,7 +793,7 @@ export async function handleIncomingSMS(
 
   await db
     .update(conversations)
-    .set({ lastMessageAt: new Date(), status: "active" })
+    .set({ lastMessageAt: clock.now(), status: "active" })
     .where(eq(conversations.id, existingConversation.id));
 
   // Cohesion Wave-1: nudge the org's inbox to refetch live so an inbound
@@ -814,7 +815,7 @@ export async function handleIncomingSMS(
     try {
       await db
         .update(leads)
-        .set({ status: "responded", updatedAt: new Date() })
+        .set({ status: "responded", updatedAt: clock.now() })
         .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)));
     } catch (err) {
       logger.warn(
@@ -909,9 +910,9 @@ export async function saveTwilioCredentials(
       .set({
         credentials,
         isEnabled: true,
-        lastValidatedAt: new Date(),
+        lastValidatedAt: clock.now(),
         validationError: null,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(organizationIntegrations.id, existing.id));
   } else {
@@ -920,7 +921,7 @@ export async function saveTwilioCredentials(
       provider: "twilio",
       isEnabled: true,
       credentials,
-      lastValidatedAt: new Date(),
+      lastValidatedAt: clock.now(),
     });
   }
 

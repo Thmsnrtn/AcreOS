@@ -33,6 +33,7 @@ import { logger } from "../utils/logger";
 import { selectModelForTurn } from "../services/founder-chat/model-selector";
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
+import { clock } from "../utils/clock";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Runner registry
@@ -172,7 +173,7 @@ async function providerSavingsAnalysisRunner(ctx: RunnerContext): Promise<Runner
   if (!provider) {
     return { artifacts: [{ type: "text", markdown: "**Provider savings:** no provider supplied." }] };
   }
-  const since = new Date(Date.now() - days * 86_400_000);
+  const since = new Date(clock.nowMs() - days * 86_400_000);
   try {
     const { and: andOp, eq: eqOp, gte: gteOp, sum, sql } = await import("drizzle-orm");
     const [row] = await db
@@ -231,7 +232,7 @@ async function weeklyMoneyLetterRunner(ctx: RunnerContext): Promise<RunnerResult
       artifacts: [
         {
           type: "letter_card",
-          title: `Weekly money letter — ${new Date().toISOString().slice(0, 10)}`,
+          title: `Weekly money letter — ${clock.now().toISOString().slice(0, 10)}`,
           body,
           sendTarget: "draft_only",
         },
@@ -243,7 +244,7 @@ async function weeklyMoneyLetterRunner(ctx: RunnerContext): Promise<RunnerResult
       artifacts: [
         {
           type: "letter_card",
-          title: `Weekly money letter — ${new Date().toISOString().slice(0, 10)}`,
+          title: `Weekly money letter — ${clock.now().toISOString().slice(0, 10)}`,
           body: `(LLM unavailable: ${String(err)})`,
           sendTarget: "draft_only",
         },
@@ -372,7 +373,7 @@ async function postFollowUpMessage(
       } as any);
     await db
       .update(aiConversations)
-      .set({ updatedAt: new Date() } as any)
+      .set({ updatedAt: clock.now() } as any)
       .where(eq(aiConversations.id, threadId));
   } catch (err) {
     logger.warn("[background-runner] failed to persist follow-up message", {

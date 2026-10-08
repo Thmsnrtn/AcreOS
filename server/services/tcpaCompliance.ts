@@ -4,6 +4,7 @@ import { leads, activityLog } from "@shared/schema";
 import { eq, and, ilike } from "drizzle-orm";
 import type { Lead } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── TCPA QUIET-HOURS NOTE ────────────────────────────────────────────────────
 // TCPA § 64.1200(c)(1) and most state mini-TCPAs require contact between
@@ -201,7 +202,7 @@ export function resolveZoneForPhone(
  * Intl.DateTimeFormat so DST transitions are honored (this is the only
  * correct way — manually adding a fixed UTC offset is broken twice a year).
  */
-function getLocalHourInZone(zone: string, now: Date = new Date()): { hour: number; minute: number } {
+function getLocalHourInZone(zone: string, now: Date = clock.now()): { hour: number; minute: number } {
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: zone,
@@ -366,6 +367,16 @@ const NL_OPT_OUT_PATTERNS: RegExp[] = [
   /\bdnc\b/,
   /\bleave\s+(me|us)\s+alone\b/,
   /\bwrong\s+(number|person|guy|lady)\b/,
+  // Found by the market twin's generated replies (2026-10-07):
+  /\bcease\s+(all\s+)?(contact|communications?)\b/,
+  // Identity denials — "wrong number" by another wording; whoever this is
+  // never consented, and a deceased owner's number may be reassigned.
+  /^not\s+me\b/,
+  /^this\s+(isn'?t|is\s+not)\s+[a-z]+$/,
+  /\bnever\s+heard\s+of\b/,
+  /\b(passed\s+away|is\s+deceased|has\s+died)\b/,
+  /\bi\s+(don'?t|do\s+not)\s+own\s+(any|this|that|the)\s+(land|property|lot|parcel|acres?)\b/,
+  /\bnew\s+number\b/,
 ];
 
 /** A clause that is nothing but a STOP keyword plus politeness ("stop please", "STOP!!"). */
@@ -477,7 +488,7 @@ async function applyOptKeywordToLead(
   messageSid: string,
 ): Promise<void> {
   const matched = { id: leadId };
-  const now = new Date();
+  const now = clock.now();
   if (action === 'opt_out') {
     await db
       .update(leads)
@@ -640,6 +651,16 @@ export function canSendViaChannel(
     default:
       return { allowed: false, reason: "Unknown channel" };
   }
+}
+
+/**
+ * A lead can be mailed only with a complete postal address. The direct-mail
+ * send path and Pax's lead-reachability read both ask this one predicate.
+ */
+export function hasCompleteMailingAddress<T extends Pick<Lead, 'address' | 'city' | 'state' | 'zip'>>(
+  lead: T,
+): lead is T & { address: string; city: string; state: string; zip: string } {
+  return Boolean(lead.address && lead.city && lead.state && lead.zip);
 }
 
 export function requiresTcpaConsent(channel: 'email' | 'sms' | 'direct_mail' | 'phone'): boolean {

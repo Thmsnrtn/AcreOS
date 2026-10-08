@@ -33,6 +33,7 @@ import { outboundEmailLog } from "@shared/schema";
 import { emailService, type EmailResult } from "./emailService";
 import { isSuppressed } from "./emailSuppressions";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type EmailCategory = "transactional" | "lifecycle";
 
@@ -227,7 +228,7 @@ export const EMAIL_KINDS: EmailKindRegistry = {
   founder_briefing: {
     category: "lifecycle",
     render: (p) => {
-      const date = new Date().toLocaleDateString("en-US", {
+      const date = clock.now().toLocaleDateString("en-US", {
         weekday: "long",
         month: "long",
         day: "numeric",
@@ -246,7 +247,7 @@ export const EMAIL_KINDS: EmailKindRegistry = {
       return {
         subject:
           p.subject ??
-          `AcreOS Daily Briefing — ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
+          `AcreOS Daily Briefing — ${clock.now().toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
         html: shell({
           heading: `Daily Briefing · ${date}`,
           bodyHtml:

@@ -10,6 +10,7 @@
 import { db } from "../db";
 import { agentVersions, type AgentVersion } from "@shared/schema";
 import { eq, and, desc, sql, gt } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 class AgentVersionControlService {
 
@@ -73,7 +74,7 @@ class AgentVersionControlService {
       .set({
         isActive: true,
         canaryWeight: weight,
-        deployedAt: new Date(),
+        deployedAt: clock.now(),
         rolledBackAt: null,
       })
       .where(eq(agentVersions.id, versionId))
@@ -120,7 +121,7 @@ class AgentVersionControlService {
 
     // Deactivate current
     await db.update(agentVersions)
-      .set({ isActive: false, canaryWeight: 0, rolledBackAt: new Date() })
+      .set({ isActive: false, canaryWeight: 0, rolledBackAt: clock.now() })
       .where(eq(agentVersions.id, current.id));
 
     // Find the previous version (most recent before current that was deployed)
@@ -139,7 +140,7 @@ class AgentVersionControlService {
     }
 
     const [restored] = await db.update(agentVersions)
-      .set({ isActive: true, canaryWeight: 100, deployedAt: new Date() })
+      .set({ isActive: true, canaryWeight: 100, deployedAt: clock.now() })
       .where(eq(agentVersions.id, previous.id))
       .returning();
 
@@ -284,7 +285,7 @@ class AgentVersionControlService {
 
     if (!version) throw new Error(`Version ${versionId} not found`);
 
-    const merged = { ...version.performanceMetrics, ...metrics, lastUpdated: new Date().toISOString() };
+    const merged = { ...version.performanceMetrics, ...metrics, lastUpdated: clock.now().toISOString() };
 
     const [updated] = await db.update(agentVersions)
       .set({ performanceMetrics: merged })

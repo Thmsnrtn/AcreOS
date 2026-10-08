@@ -14,6 +14,7 @@
 import { db } from "../db";
 import { leads, properties, type Lead } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 interface EnrichmentData {
   emailValid?: boolean;
@@ -83,7 +84,7 @@ export function formatPhone(phone: string | null | undefined): { formatted: stri
  */
 export function estimateOwnershipYears(
   lastTransferDate: string | null | undefined,
-  currentDate = new Date()
+  currentDate = clock.now()
 ): number | null {
   if (!lastTransferDate) return null;
 
@@ -197,7 +198,7 @@ export async function enrichLead(organizationId: number, leadId: number): Promis
     }
   }
 
-  changes.enrichedAt = new Date().toISOString();
+  changes.enrichedAt = clock.now().toISOString();
   changes.enrichmentVersion = ENRICHMENT_VERSION;
 
   // Store enrichment data (merge with existing) + the dedicated parcel columns.
@@ -205,7 +206,7 @@ export async function enrichLead(organizationId: number, leadId: number): Promis
   const newEnrichmentData = { ...existingEnrichment, ...changes };
 
   await db.update(leads)
-    .set({ enrichmentData: newEnrichmentData, ...parcelCols, updatedAt: new Date() } as any)
+    .set({ enrichmentData: newEnrichmentData, ...parcelCols, updatedAt: clock.now() } as any)
     .where(eq(leads.id, leadId));
 
   return {

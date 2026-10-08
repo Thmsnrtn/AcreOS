@@ -26,6 +26,7 @@ import {
 import { Errors, sendError } from "./utils/errors";
 import { getOrganizationId } from "./types/request";
 import { BoundedMap } from "./utils/boundedMap";
+import { clock } from "./utils/clock";
 
 /** The values `due_diligence_dossiers.priority` takes. */
 const DOSSIER_PRIORITIES = new Set(["urgent", "high", "normal", "low"]);
@@ -263,7 +264,7 @@ router.post("/public/dd-preview", async (req: Request, res: Response) => {
 
     // Rate limit: 3/day per IP, 10/day per email
     const ip = req.ip || "unknown";
-    const today = new Date().toISOString().slice(0, 10);
+    const today = clock.now().toISOString().slice(0, 10);
     const ipKey = `ip:${ip}`;
     const ipEntry = previewRateLimits.get(ipKey);
 

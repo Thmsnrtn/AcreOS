@@ -52,6 +52,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { isCalendarDate } from "@shared/dates/calendar";
+import { clock } from "./utils/clock";
 
 // ----------------------------------------------------------------------------
 // Validation
@@ -248,7 +249,7 @@ export function registerPropertyExpenseRoutes(app: Express): void {
         .where(and(eq(propertyExpenses.id, req.params.id), eq(propertyExpenses.organizationId, orgId)));
       if (!existing) return Errors.notFound(res, "Expense");
 
-      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      const updates: Record<string, unknown> = { updatedAt: clock.now() };
 
       if (parsed.data.category !== undefined) {
         updates.category = parsed.data.category;
@@ -368,7 +369,7 @@ export function registerPropertyExpenseRoutes(app: Express): void {
 
       const inserted = await db.insert(propertyExpenses).values(
         tickets.map((t) => {
-          const when = t.completedAt ?? t.submittedAt ?? new Date();
+          const when = t.completedAt ?? t.submittedAt ?? clock.now();
           return {
             organizationId: orgId,
             propertyId,

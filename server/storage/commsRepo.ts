@@ -23,6 +23,7 @@ import {
   type InsertActivityEvent,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { clock } from "../utils/clock";
 
 export const commsRepo = {
   /**
@@ -107,7 +108,7 @@ export const commsRepo = {
     const conditions = [eq(campaignResponses.id, id)];
     if (organizationId) conditions.push(eq(campaignResponses.organizationId, organizationId));
     const [response] = await db.update(campaignResponses)
-      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return response;

@@ -37,6 +37,7 @@ import {
 import { monthlyRevenueCentsFor } from "@shared/billing/tier-pricing";
 import { storage } from "../storage";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const TOP_N = 10; // top-10 orgs captured in snapshot.topOrgs
 
@@ -108,7 +109,7 @@ export async function computeCustomerConcentration(): Promise<ConcentrationResul
   }));
 
   return {
-    computedAt: new Date(),
+    computedAt: clock.now(),
     totalMrrCents,
     activeOrgCount: paying.length,
     topMrrPctSingle: Math.round(topMrrPctSingle * 100) / 100,

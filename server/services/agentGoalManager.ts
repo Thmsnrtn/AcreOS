@@ -19,6 +19,7 @@ import { eq, and, desc, ne } from "drizzle-orm";
 import { companyAgentService } from "./companyAgents";
 import { agentCommsService } from "./agentComms";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Goal CRUD ──────────────────────────────────────────────────────────────
 
@@ -44,7 +45,7 @@ export async function createGoal(params: {
     priority: params.priority || "medium",
     deadline: params.deadline,
     status: "pending",
-    progressLog: [{ timestamp: new Date().toISOString(), update: "Goal created" }],
+    progressLog: [{ timestamp: clock.now().toISOString(), update: "Goal created" }],
   }).returning({ id: agentGoals.id });
 
   // Notify the agent via comms
@@ -154,7 +155,7 @@ export async function updateGoalProgress(
 
   const currentLog = (goal.progressLog as any[]) || [];
   currentLog.push({
-    timestamp: new Date().toISOString(),
+    timestamp: clock.now().toISOString(),
     update,
     ...(metrics ? { metrics } : {}),
   });
@@ -173,7 +174,7 @@ export async function completeGoal(goalId: number, result: Record<string, any>):
     .set({
       status: "completed",
       result,
-      completedAt: new Date(),
+      completedAt: clock.now(),
     })
     .where(eq(agentGoals.id, goalId));
 }
@@ -203,7 +204,7 @@ export async function reprioritizeGoal(goalId: number, priority: string): Promis
  * Called by a background job to prevent goals from staying "in_progress" forever.
  */
 export async function checkStaleGoals(): Promise<number> {
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const oneDayAgo = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
 
   const staleGoals = await db.select()
     .from(agentGoals)

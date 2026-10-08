@@ -21,6 +21,7 @@ import {
   validateEndpoint,
   type ArcGISSearchOptions,
 } from "./arcgis-discovery";
+import { clock } from "../utils/clock";
 
 export interface DiscoveryRunResult {
   scanned: number;
@@ -101,11 +102,11 @@ export async function runCountyEndpointDiscovery(
         ownerField,
         geometryField: "geometry",
         isVerified: true,
-        lastVerified: new Date(),
+        lastVerified: clock.now(),
         isActive: true,
         errorCount: 0,
         sourceUrl: `arcgis-online:${endpoint.discoverySource}`,
-        notes: `auto-discovered ${new Date().toISOString().slice(0, 10)} — confidence ${endpoint.confidenceScore.toFixed(2)} — ${validation.message}`,
+        notes: `auto-discovered ${clock.now().toISOString().slice(0, 10)} — confidence ${endpoint.confidenceScore.toFixed(2)} — ${validation.message}`,
         contributedBy: "auto-discovery",
       });
       result.inserted += 1;

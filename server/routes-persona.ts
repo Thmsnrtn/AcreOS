@@ -30,6 +30,7 @@ import { getUserId, getOrganizationId } from "./types/request";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -86,7 +87,7 @@ router.put("/", getOrCreateOrg, async (req: AuthenticatedRequest, res: Response)
     const explicitBusinessType = parsed.data.businessType;
     await db
       .update(users)
-      .set({ persona, updatedAt: new Date() })
+      .set({ persona, updatedAt: clock.now() })
       .where(eq(users.id, userId));
 
     let organizationUpdated = false;

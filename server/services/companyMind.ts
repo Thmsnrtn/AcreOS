@@ -44,6 +44,7 @@ import {
 } from "@shared/schema";
 import { and, desc, gte, isNotNull, lte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface CompanyMindContext {
   agentCodename: string;
@@ -159,7 +160,7 @@ async function recentFounderOverrides(
   daysBack: number,
   itemType?: string,
 ): Promise<string[]> {
-  const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - daysBack * 24 * 60 * 60 * 1000);
   const rows = await db
     .select({
       agent: decisionsInboxItems.ownerAgentCodename,
@@ -211,7 +212,7 @@ async function recentHighPriorityBroadcasts(
   hoursBack: number,
   excludeAgent: string,
 ): Promise<string[]> {
-  const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - hoursBack * 60 * 60 * 1000);
   const rows = await db
     .select({
       from: agentChannelMessages.fromAgent,
@@ -246,7 +247,7 @@ async function recentHighPriorityBroadcasts(
  * patterns to avoid.
  */
 async function recentNegativeOutcomes(daysBack: number): Promise<string[]> {
-  const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - daysBack * 24 * 60 * 60 * 1000);
   const rows = await db
     .select({
       agent: decisionsInboxItems.ownerAgentCodename,
@@ -279,7 +280,7 @@ async function recentNegativeOutcomes(daysBack: number): Promise<string[]> {
 async function recentSameOrgActivity(
   organizationId: number,
 ): Promise<string | null> {
-  const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - 14 * 24 * 60 * 60 * 1000);
   const rows = await db
     .select({
       agent: decisionsInboxItems.ownerAgentCodename,
@@ -307,11 +308,11 @@ async function recentSameOrgActivity(
 }
 
 function ageInDays(d: Date): string {
-  const days = Math.max(1, Math.round((Date.now() - d.getTime()) / (24 * 60 * 60 * 1000)));
+  const days = Math.max(1, Math.round((clock.nowMs() - d.getTime()) / (24 * 60 * 60 * 1000)));
   return `${days}d ago`;
 }
 
 function ageInHours(d: Date): string {
-  const hours = Math.max(1, Math.round((Date.now() - d.getTime()) / (60 * 60 * 1000)));
+  const hours = Math.max(1, Math.round((clock.nowMs() - d.getTime()) / (60 * 60 * 1000)));
   return hours < 24 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
 }

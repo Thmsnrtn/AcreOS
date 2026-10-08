@@ -38,6 +38,7 @@ import { properties, notes, organizations, generatedDocuments, organizationInteg
 import { eq, and } from "drizzle-orm";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 const auth = [isAuthenticated, getOrCreateOrg];
 
@@ -482,7 +483,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
           listingId: r.listingId,
           listingUrl: r.listingUrl,
           status: manual ? MANUAL_POSTING : r.success ? "active" : "failed",
-          postedAt: r.success && !manual ? new Date().toISOString() : undefined,
+          postedAt: r.success && !manual ? clock.now().toISOString() : undefined,
           error: r.success ? undefined : r.error,
         };
         const idx = nextTargets.findIndex((t) => listingSyndication.canonicalPlatform(t.platform) === record.platform);
@@ -529,7 +530,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const updatedTargets = targets.map((t) =>
         t === target
           ? result.success
-            ? { ...t, status: "removed", error: undefined, removalSource: "provider" as const, removedAt: new Date().toISOString(), removedBy: req.user?.id }
+            ? { ...t, status: "removed", error: undefined, removalSource: "provider" as const, removedAt: clock.now().toISOString(), removedBy: req.user?.id }
             : { ...t, status: "withdrawal_failed", error: result.error }
           : t,
       );
@@ -547,7 +548,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   app.get("/api/bookkeeping/annual-interest-report", ...auth, async (req: Request, res: Response) => {
     try {
       const org = req.organization;
-      const taxYear = parseInt(req.query.year as string) || new Date().getFullYear() - 1;
+      const taxYear = parseInt(req.query.year as string) || clock.now().getFullYear() - 1;
       const report = await bookkeeping.generateAnnualInterestReport(org.id, taxYear);
       res.json(report);
     } catch (err: any) {
@@ -559,7 +560,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   app.get("/api/bookkeeping/1099-int", ...auth, requireQualified1099Output(), async (req: Request, res: Response) => {
     try {
       const org = req.organization;
-      const taxYear = parseInt(req.query.year as string) || new Date().getFullYear() - 1;
+      const taxYear = parseInt(req.query.year as string) || clock.now().getFullYear() - 1;
       const forms = await bookkeeping.generate1099IntForms(org.id, taxYear);
       res.json({ taxYear, forms });
     } catch (err: any) {
@@ -620,7 +621,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       }
 
       // Default: sync payments from the last 30 days (or caller-supplied fromDate)
-      const fromDate = req.body?.fromDate ? new Date(req.body.fromDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const fromDate = req.body?.fromDate ? new Date(req.body.fromDate) : new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
 
       const result = await bookkeeping.syncPaymentsToQbo(org.id, {
         accessToken: creds.accessToken,

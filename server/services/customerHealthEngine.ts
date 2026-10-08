@@ -34,6 +34,7 @@ import {
 } from "@shared/schema";
 import { and, eq, gte, sql, desc } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const POINTS = {
   usageVelocity: 25,
@@ -61,7 +62,7 @@ async function scoreUsageVelocity(orgId: number): Promise<{ pts: number; signals
   // 4-week event count (lifecycle_events) trending +/-. If we have <2
   // weeks of data, neutral score (50%). Otherwise compare last 14d vs
   // prior 14d; +50%/0%/-50% maps to full/half/zero points.
-  const now = new Date();
+  const now = clock.now();
   const fourWeeksAgo = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000);
   const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
 
@@ -163,7 +164,7 @@ async function scorePaxEngagement(orgId: number): Promise<{ pts: number; signals
   // dismissed) in the last 30d. Proxy via dismissedAt IS NULL on recent
   // nudges as a soft signal — full implementation would query a
   // separate click-through log.
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
   const [stats] = await db
     .select({
       total: sql<number>`count(*)::int`,

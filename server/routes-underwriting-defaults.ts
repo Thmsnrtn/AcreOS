@@ -24,6 +24,7 @@ import { organizations } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 // Default surface read by the client when the org hasn't customised
 // anything yet. Texas land standard, modelled after Hank's actual book.
@@ -85,7 +86,7 @@ export function registerUnderwritingDefaultsRoutes(app: Express): void {
         };
         await db
           .update(organizations)
-          .set({ underwritingDefaults: next as any, updatedAt: new Date() })
+          .set({ underwritingDefaults: next as any, updatedAt: clock.now() })
           .where(eq(organizations.id, org.id));
         logger.info("Updated org underwriting defaults", {
           orgId: org.id,

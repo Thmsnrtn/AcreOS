@@ -59,6 +59,7 @@ import {
   type AllocationResult,
   type OpenChargeForAllocation,
 } from "@shared/rental/paymentAllocation";
+import { clock } from "../../utils/clock";
 
 /**
  * The transaction handle drizzle hands to `db.transaction(tx => …)`. Derived
@@ -196,7 +197,7 @@ export async function recordRentPayment(
   // no charge was credited past its outstanding balance. Throws → rollback.
   assertAllocationBalances(input.amountCents, allocation);
 
-  const now = new Date();
+  const now = clock.now();
   const charges: ChargeAfterPayment[] = [];
 
   for (const line of allocation.allocations) {

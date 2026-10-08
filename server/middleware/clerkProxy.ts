@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { e2eTestAuthEnabled } from "../auth/testAuth";
 import { logger } from "../utils/logger";
 import { Errors } from "../utils/errors";
+import { clock } from "../utils/clock";
 
 // Clerk Frontend API origin we proxy to. Cloudflare blocks the vanity
 // clerk.acreos.io (Error 1000), so the browser talks to /__clerk and we relay
@@ -50,7 +51,7 @@ export function createClerkProxyHandler(fetchImpl: typeof fetch = fetch) {
       // across users. /v1/environment is safe to cache (instance-level / public).
       if (req.method === "GET" && clerkPath === "/v1/environment") {
         const cacheKey = `clerk:${clerkPath}`;
-        if ((globalThis as any).__clerkCache?.[cacheKey] && Date.now() - (globalThis as any).__clerkCache[cacheKey].ts < 60000) {
+        if ((globalThis as any).__clerkCache?.[cacheKey] && clock.nowMs() - (globalThis as any).__clerkCache[cacheKey].ts < 60000) {
           const cached = (globalThis as any).__clerkCache[cacheKey];
           res.setHeader("X-Clerk-Cache", "hit");
           cached.headers.forEach(([k, v]: [string, string]) => res.setHeader(k, v));
@@ -124,7 +125,7 @@ export function createClerkProxyHandler(fetchImpl: typeof fetch = fetch) {
         if (!(globalThis as any).__clerkCache) (globalThis as any).__clerkCache = {};
         const hdrs: [string, string][] = [];
         clerkRes.headers.forEach((v, k) => { if (!["transfer-encoding", "connection", "content-encoding", "content-length"].includes(k)) hdrs.push([k, v]); });
-        (globalThis as any).__clerkCache[cacheKey] = { status: clerkRes.status, headers: hdrs, body: responseBody, ts: Date.now() };
+        (globalThis as any).__clerkCache[cacheKey] = { status: clerkRes.status, headers: hdrs, body: responseBody, ts: clock.nowMs() };
       }
 
       // Final guard before the body write: the global timeout could have fired

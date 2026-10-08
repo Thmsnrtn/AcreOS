@@ -24,6 +24,7 @@ import {
   type InsertDocumentPackage,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { clock } from "../utils/clock";
 
 export const documentsRepo = {
   // Document Templates
@@ -69,7 +70,7 @@ export const documentsRepo = {
       .set({
         ...omitProtectedFields(updates),
         version: currentVersion + 1,
-        updatedAt: new Date()
+        updatedAt: clock.now()
       })
       .where(and(...conditions))
       .returning();
@@ -80,7 +81,7 @@ export const documentsRepo = {
     const conditions = [eq(documentTemplates.id, id)];
     if (organizationId) conditions.push(eq(documentTemplates.organizationId, organizationId));
     await db.update(documentTemplates)
-      .set({ isActive: false, updatedAt: new Date() })
+      .set({ isActive: false, updatedAt: clock.now() })
       .where(and(...conditions));
   },
 
@@ -530,7 +531,7 @@ Notary Public</p>
     const conditions = [eq(generatedDocuments.id, id)];
     if (organizationId) conditions.push(eq(generatedDocuments.organizationId, organizationId));
     const [updated] = await db.update(generatedDocuments)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -681,7 +682,7 @@ Notary Public</p>
     const conditions = [eq(documentPackages.id, id)];
     if (organizationId) conditions.push(eq(documentPackages.organizationId, organizationId));
     const [updated] = await db.update(documentPackages)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;

@@ -19,6 +19,7 @@ import {
   type SoleneMemoryFileRow,
 } from "@shared/schema/solene-memory-files";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ============================================
 // Types
@@ -116,7 +117,7 @@ export async function upsertMemoryFile(
   }
 
   const bodySha256 = computeBodyHash(input.body);
-  const now = new Date();
+  const now = clock.now();
   const markFromLocal = input.markedSyncedFromLocal ?? true;
 
   const existing = await db

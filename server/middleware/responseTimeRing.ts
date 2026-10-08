@@ -20,6 +20,7 @@
 
 import type { Request, Response, NextFunction } from "express";
 import { IRIS_TRACKED_ENDPOINTS } from "@shared/schema/iris-perf";
+import { clock } from "../utils/clock";
 
 const RING_CAPACITY_PER_ROUTE = 1000;
 
@@ -66,12 +67,12 @@ export function responseTimeRingMiddleware(
   const key = keyFor(req.path, req.method);
   if (!TRACKED_KEYS.has(key)) return next();
 
-  const startedAtMs = Date.now();
+  const startedAtMs = clock.nowMs();
   // process.hrtime.bigint() would be more precise but adds an import +
   // allocation each request; Date.now() resolution (1ms) is fine for
   // p50/p95/p99 buckets in the 10-1000ms range we care about.
   res.once("finish", () => {
-    const elapsed = Date.now() - startedAtMs;
+    const elapsed = clock.nowMs() - startedAtMs;
     pushObservation(key, elapsed);
   });
   return next();
@@ -80,7 +81,7 @@ export function responseTimeRingMiddleware(
 function pushObservation(key: string, durationMs: number): void {
   let ring = rings.get(key);
   if (!ring) {
-    ring = { durations: [], windowStartedAt: new Date() };
+    ring = { durations: [], windowStartedAt: clock.now() };
     rings.set(key, ring);
   }
   // Bounded ring — drop the oldest observation when full so the buffer
@@ -109,7 +110,7 @@ export interface RingSnapshot {
  * drain is recoverable (a gap in the trend chart), but double-counting
  * a slow request would silently inflate baselines.
  */
-export function drainRings(now: Date = new Date()): RingSnapshot[] {
+export function drainRings(now: Date = clock.now()): RingSnapshot[] {
   const out: RingSnapshot[] = [];
   for (const endpoint of IRIS_TRACKED_ENDPOINTS) {
     const key = keyFor(endpoint.path, endpoint.method);

@@ -38,6 +38,7 @@ import { getOrganizationId, getOrganization } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { tierForSubscriptionTier } from "@shared/billing/tier-pricing";
+import { BYOK_AI_CHANNELS, byokTierAllows } from "@shared/billing/byok-tiers";
 
 const router = Router();
 
@@ -47,7 +48,7 @@ const router = Router();
  * Starter as well. Keep in sync with AI_BYOK_CHANNELS in
  * services/byok/aiByok.ts.
  */
-const AI_CHANNELS: readonly string[] = ["anthropic", "openrouter", "openai"];
+const AI_CHANNELS: readonly string[] = BYOK_AI_CHANNELS;
 
 /**
  * Tier gate. Founder bypass is automatic because `req.isFounder` orgs are
@@ -68,11 +69,11 @@ function requireByokTier(
   if (req.isFounder) return true;
   const org = getOrganization(req);
   const tier = tierForSubscriptionTier(org.subscriptionTier);
-  const isPaid = tier === "starter" || tier === "pro" || tier === "scale";
   const aiChannelScope = channel === undefined || AI_CHANNELS.includes(channel);
 
-  if (tier === "pro" || tier === "scale") return true;
-  if (isPaid && aiChannelScope) return true;
+  // The rule itself is shared with Pax's product facts, so what Pax says a
+  // plan can connect is what this gate lets it connect.
+  if (byokTierAllows(tier, channel)) return true;
 
   Errors.forbidden(
     res,

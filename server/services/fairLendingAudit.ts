@@ -26,6 +26,7 @@ import {
 } from "@shared/schema";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const MINIMUM_SAMPLE = 30;
 const DIVERGENCE_THRESHOLD_PCT = 5;
@@ -41,7 +42,7 @@ export interface AuditOutcome {
 
 export async function runFairLendingAudit(periodKey?: string): Promise<AuditOutcome[]> {
   // Default period: previous month (audits look backward at completed data).
-  const now = new Date();
+  const now = clock.now();
   const lastMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
   const period = periodKey ?? `${lastMonth.getUTCFullYear()}-${String(lastMonth.getUTCMonth() + 1).padStart(2, "0")}`;
   const periodStart = new Date(`${period}-01T00:00:00Z`);
@@ -147,7 +148,7 @@ export async function runFairLendingAudit(periodKey?: string): Promise<AuditOutc
             approvalRateByCategory: ratesByBucket as any,
             maxDivergencePct: String(maxDivergence),
             status,
-            runAt: new Date(),
+            runAt: clock.now(),
           },
         });
 

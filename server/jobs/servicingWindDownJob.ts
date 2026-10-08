@@ -10,6 +10,7 @@
  */
 import { trackInterval, withJobLock, jobLog as log } from "../utils/jobRuntime";
 import { startServicedLateFeeJob } from "./servicedLateFeeJob";
+import { clock } from "../utils/clock";
 
 /** The borrower-servicing duties the worker runs daily (rulings #3 and #6). */
 export function startBorrowerServicingJobs() {
@@ -24,7 +25,7 @@ function startServicingWindDownJob() {
   log("Registering borrower servicing wind-down notices (daily 14:00 UTC)", "borrower-servicing");
 
   trackInterval(() => {
-    if (new Date().getUTCHours() !== 14) return;
+    if (clock.now().getUTCHours() !== 14) return;
     import("../services/borrower/servicingWindDown")
       .then(({ runServicingWindDownPass }) =>
         withJobLock("borrower_servicing_wind_down", TTL_SECONDS, async () => {

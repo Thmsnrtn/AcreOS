@@ -99,6 +99,7 @@ import {
 } from "@shared/schema/solene-audit";
 import { soleneCapitalEvents } from "@shared/schema/solene-capital";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // CONSTANTS
@@ -275,7 +276,7 @@ export async function runImprovementDetectors(opts: {
   windowDays?: number;
 } = {}): Promise<RunImprovementDetectorsResult> {
   const windowDays = opts.windowDays ?? DETECTOR_WINDOW_DAYS;
-  const detectedAt = new Date();
+  const detectedAt = clock.now();
   const since = new Date(detectedAt.getTime() - windowDays * 24 * 60 * 60 * 1000);
 
   const byDetector: Record<TeamImprovementSignalPattern, number> = {

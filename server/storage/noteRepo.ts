@@ -17,6 +17,7 @@ import { addMonths } from "../utils/dateUtils";
 import type { DatabaseStorage } from "../storage";
 import { LIST_READ_CAP, capListRead } from "./listCap";
 import { assertWritablePatch } from "../utils/patch";
+import { clock } from "../utils/clock";
 
 // Amortization helpers — co-located with notes since they're only used
 // inside createNote. Original implementations lived in server/storage.ts
@@ -161,7 +162,7 @@ export const noteRepo = {
       maturityDate: maturityDate,
       nextPaymentDate: noteData.firstPaymentDate,
       accessToken,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     };
     const [newNote] = await db.insert(notes).values(insertValues).returning();
 
@@ -229,7 +230,7 @@ export const noteRepo = {
       // Same drizzle-zod inference workaround as createNote — narrow to the
       // column's typed enum-or-null. Route-layer Zod validates before this.
       atrExemptionCode: updates.atrExemptionCode as typeof notes.$inferInsert["atrExemptionCode"],
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     };
     const [updated] = await db.update(notes)
       .set(setValues)
@@ -299,7 +300,7 @@ export const noteRepo = {
               currentBalance: String(Math.max(0, newBalance)),
               status: newBalance <= 0 ? "paid_off" : "active",
               version: (note.version ?? 1) + 1,
-              updatedAt: new Date(),
+              updatedAt: clock.now(),
             })
             .where(and(
               eq(notes.id, payment.noteId),

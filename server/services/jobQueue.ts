@@ -4,6 +4,7 @@ import { db } from "../db";
 import { backgroundJobs } from "@shared/schema";
 import { eq, inArray } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type JobType = "email" | "webhook" | "payment_sync" | "notification" | "process-offer-batch" | "lead-score-decay";
 export type JobStatus = "pending" | "processing" | "completed" | "failed" | "retrying";
@@ -133,7 +134,7 @@ async function createBullMQService(): Promise<JobQueueService> {
       options: JobQueueOptions = {}
     ): Job {
       const jobId = crypto.randomUUID();
-      const now = new Date();
+      const now = clock.now();
       const scheduledFor = options.scheduledFor || now;
       const maxAttempts = options.maxAttempts || 3;
       const delayMs = Math.max(0, scheduledFor.getTime() - now.getTime());
@@ -250,14 +251,14 @@ async function createBullMQService(): Promise<JobQueueService> {
           }
 
           job.status = "processing";
-          job.processingStartedAt = new Date();
+          job.processingStartedAt = clock.now();
           job.attempts = bullJob.attemptsMade + 1;
 
           const handler = handlers.get(job.type);
           if (!handler) {
             job.status = "failed";
             job.error = `No handler registered for job type: ${job.type}`;
-            job.completedAt = new Date();
+            job.completedAt = clock.now();
             log(`Job failed (no handler): ${jobId}`, "jobQueue");
             syncJobStatusToDb(job).catch((err: unknown) =>
               log(`DB sync failed for job ${jobId}: ${err}`, "jobQueue")
@@ -270,7 +271,7 @@ async function createBullMQService(): Promise<JobQueueService> {
             job.status = "completed";
             job.error = null;
             job.result = result;
-            job.completedAt = new Date();
+            job.completedAt = clock.now();
             log(`Job completed: ${jobId}`, "jobQueue");
             syncJobStatusToDb(job).catch((err: unknown) =>
               log(`DB sync failed for job ${jobId}: ${err}`, "jobQueue")
@@ -288,7 +289,7 @@ async function createBullMQService(): Promise<JobQueueService> {
                 1000 * Math.pow(2, job.attempts - 1),
                 60000
               );
-              job.scheduledFor = new Date(Date.now() + backoffMs);
+              job.scheduledFor = new Date(clock.nowMs() + backoffMs);
               log(
                 `Job retrying: ${jobId} (attempt ${job.attempts}/${job.maxAttempts})`,
                 "jobQueue"
@@ -296,7 +297,7 @@ async function createBullMQService(): Promise<JobQueueService> {
             } else {
               job.status = "failed";
               job.error = errorMessage;
-              job.completedAt = new Date();
+              job.completedAt = clock.now();
               log(`Job failed (max retries): ${jobId}`, "jobQueue");
             }
 
@@ -328,7 +329,7 @@ async function createBullMQService(): Promise<JobQueueService> {
               status: "pending",
               attempts: row.attempts ?? 0,
               maxAttempts: row.maxAttempts ?? 3,
-              createdAt: row.createdAt ?? new Date(),
+              createdAt: row.createdAt ?? clock.now(),
               scheduledFor: row.scheduledFor,
               error: row.error ?? null,
               result: row.result as Record<string, any> | undefined,
@@ -405,7 +406,7 @@ async function createBullMQService(): Promise<JobQueueService> {
         job.status = "pending";
         job.attempts = 0;
         job.error = null;
-        job.scheduledFor = new Date();
+        job.scheduledFor = clock.now();
 
         // Re-enqueue in BullMQ
         bullQueue
@@ -468,7 +469,7 @@ class InMemoryJobQueueService implements JobQueueService {
     options: JobQueueOptions = {}
   ): Job {
     const jobId = crypto.randomUUID();
-    const now = new Date();
+    const now = clock.now();
     const scheduledFor = options.scheduledFor || now;
     const maxAttempts = options.maxAttempts || 3;
 
@@ -533,7 +534,7 @@ class InMemoryJobQueueService implements JobQueueService {
     let failed = 0;
 
     try {
-      const now = new Date();
+      const now = clock.now();
       const jobsToProcess: string[] = [];
 
       for (const jobId of this.pendingQueue) {
@@ -569,7 +570,7 @@ class InMemoryJobQueueService implements JobQueueService {
 
   private async executeJob(job: Job): Promise<void> {
     job.status = "processing";
-    job.processingStartedAt = new Date();
+    job.processingStartedAt = clock.now();
     job.attempts++;
 
     const handler = this.handlers.get(job.type);
@@ -589,7 +590,7 @@ class InMemoryJobQueueService implements JobQueueService {
       job.status = "completed";
       job.error = null;
       job.result = result;
-      job.completedAt = new Date();
+      job.completedAt = clock.now();
       log(`Job completed: ${job.id}`, "jobQueue");
     } catch (error) {
       const errorMessage =
@@ -598,7 +599,7 @@ class InMemoryJobQueueService implements JobQueueService {
         job.status = "retrying";
         job.error = errorMessage;
         const backoffMs = Math.min(1000 * Math.pow(2, job.attempts - 1), 60000);
-        job.scheduledFor = new Date(Date.now() + backoffMs);
+        job.scheduledFor = new Date(clock.nowMs() + backoffMs);
         this.pendingQueue.push(job.id);
         log(
           `Job retrying: ${job.id} (attempt ${job.attempts}/${job.maxAttempts}, next in ${backoffMs}ms)`,
@@ -607,7 +608,7 @@ class InMemoryJobQueueService implements JobQueueService {
       } else {
         job.status = "failed";
         job.error = errorMessage;
-        job.completedAt = new Date();
+        job.completedAt = clock.now();
         log(`Job failed (max retries): ${job.id}`, "jobQueue");
       }
     }
@@ -682,7 +683,7 @@ class InMemoryJobQueueService implements JobQueueService {
           status: "pending",
           attempts: row.attempts ?? 0,
           maxAttempts: row.maxAttempts ?? 3,
-          createdAt: row.createdAt ?? new Date(),
+          createdAt: row.createdAt ?? clock.now(),
           scheduledFor: row.scheduledFor,
           error: row.error ?? null,
           result: row.result as Record<string, any> | undefined,
@@ -740,7 +741,7 @@ class InMemoryJobQueueService implements JobQueueService {
       job.status = "pending";
       job.attempts = 0;
       job.error = null;
-      job.scheduledFor = new Date();
+      job.scheduledFor = clock.now();
       this.pendingQueue.push(job.id);
       log(`Retrying failed job: ${job.id} (type: ${job.type})`, "jobQueue");
     }

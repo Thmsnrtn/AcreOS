@@ -61,6 +61,7 @@ import { SPECULATION_OUTPUT_KINDS } from "@shared/schema/solene-speculations";
 import { EVIDENCE_SOURCE_KINDS } from "@shared/schema/solene-evidence-weights";
 // The approval-card summary (amount, recipient, recurrence) — every hand is tested against it.
 import { summarizePendingHand, resolvePendingSummaryContext } from "../autopilot/pendingHandSummary";
+import { clock } from "../../utils/clock";
 
 const PROJECT_ROOT = process.env.SOLENE_DISPATCH_PROJECT_ROOT
   ? path.resolve(process.env.SOLENE_DISPATCH_PROJECT_ROOT)
@@ -762,7 +763,7 @@ export async function executeDispatchTool(
   input: Record<string, unknown>,
   ctx: DispatchToolContext = {},
 ): Promise<ToolExecutionResult> {
-  const started = Date.now();
+  const started = clock.nowMs();
   try {
     // Horizon A5 — structural read-only. Checked BEFORE anything executes so
     // a read-only dispatch (verify / self_audit_drift) is INCAPABLE of
@@ -787,7 +788,7 @@ export async function executeDispatchTool(
           `read-only dispatch (audit/verification lane — it observes, never ` +
           `mutates). Use file_read / file_list / git_status / git_diff / ` +
           `typecheck and report what you find. Refusing.`,
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
 
@@ -808,7 +809,7 @@ export async function executeDispatchTool(
           `[CONSTITUTIONAL REFUSAL] This tool call would violate ` +
           `immutable #${screen.immutableNumber}: "${screen.immutableText}". ` +
           `The call has been blocked, logged, and escalated to Solene. Refusing.`,
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
 
@@ -830,7 +831,7 @@ export async function executeDispatchTool(
             output:
               "[REFUSED] free-form `bash` is not available to autonomous dispatches. " +
               "Use run_tests, typecheck, git_status/git_diff/git_commit, or file_read/file_write/file_list.",
-            durationMs: Date.now() - started,
+            durationMs: clock.nowMs() - started,
           };
         }
         return await toolBash(input, started, ctx.untrusted);
@@ -870,7 +871,7 @@ export async function executeDispatchTool(
     return {
       success: false,
       output: `tool ${toolName} threw: ${err instanceof Error ? err.message : String(err)}`,
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   }
 }
@@ -895,7 +896,7 @@ async function executeHand(
     return {
       success: false,
       output: `unknown tool: ${toolName}`,
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   }
   if (hand.requiresApproval) {
@@ -924,7 +925,7 @@ async function executeHand(
             `[WITNESSED-SEND] '${toolName}' has been drafted and FROZEN for the ` +
             `founder's approval (pending action #${frozen.id}). Nothing was sent. ` +
             `It executes only when the founder taps Approve in /decisions.`,
-          durationMs: Date.now() - started,
+          durationMs: clock.nowMs() - started,
         };
       }
     } catch {
@@ -935,7 +936,7 @@ async function executeHand(
       output:
         `[WITNESSED-SEND] '${toolName}' requires a founder tap and cannot be ` +
         `executed directly from an autonomous dispatch. Refusing.`,
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   }
   const r = await hand.handler(input, { dispatchId: ctx.dispatchId ?? null, agentRole: ctx.agentRole });
@@ -958,7 +959,7 @@ async function toolFileRead(
   const p = String(input.path ?? "");
   const enc = String(input.encoding ?? "utf8");
   if (!p) {
-    return { success: false, output: "missing 'path'", durationMs: Date.now() - started };
+    return { success: false, output: "missing 'path'", durationMs: clock.nowMs() - started };
   }
   // SECURITY (re-audit iteration 2): refuse raw secret files unconditionally.
   // This closes the file_read bypass of the bash env-scrub (a dispatch could
@@ -970,7 +971,7 @@ async function toolFileRead(
       output:
         `[REFUSED] '${p}' is a secret-shaped file (env/key/credential). Reading raw ` +
         `secret material through this tool is not permitted. Refusing.`,
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   }
   const abs = resolveSafePath(p);
@@ -981,7 +982,7 @@ async function toolFileRead(
     return {
       success: false,
       output: `file too large: ${stat.size} > ${FILE_READ_BYTE_CAP} bytes`,
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   }
   const buf = await fs.readFile(abs);
@@ -998,10 +999,10 @@ async function toolFileRead(
           `[REFUSED] '${p}' contains credential-shaped content; refusing a raw ` +
           `base64 read (which can't be redacted). Re-read as utf8 to get a ` +
           `sanitized view.`,
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
-    return { success: true, output: buf.toString("base64"), durationMs: Date.now() - started };
+    return { success: true, output: buf.toString("base64"), durationMs: clock.nowMs() - started };
   }
   return {
     success: true,
@@ -1009,7 +1010,7 @@ async function toolFileRead(
     // above stops the obvious cases; this covers a token embedded in a
     // non-secret-named file).
     output: sanitizeToolOutput(buf.toString("utf8")),
-    durationMs: Date.now() - started,
+    durationMs: clock.nowMs() - started,
   };
 }
 
@@ -1020,13 +1021,13 @@ async function toolFileWrite(
   const p = String(input.path ?? "");
   const content = String(input.content ?? "");
   if (!p) {
-    return { success: false, output: "missing 'path'", durationMs: Date.now() - started };
+    return { success: false, output: "missing 'path'", durationMs: clock.nowMs() - started };
   }
   if (Buffer.byteLength(content, "utf8") > FILE_WRITE_BYTE_CAP) {
     return {
       success: false,
       output: `content too large: > ${FILE_WRITE_BYTE_CAP} bytes`,
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   }
   const abs = resolveSafePath(p);
@@ -1042,7 +1043,7 @@ async function toolFileWrite(
     return {
       success: false,
       output: `[REFUSED] writes into '${rel}' (git internals / CI workflows) are not permitted.`,
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   }
   await fs.mkdir(path.dirname(abs), { recursive: true });
@@ -1050,7 +1051,7 @@ async function toolFileWrite(
   return {
     success: true,
     output: `wrote ${Buffer.byteLength(content, "utf8")} bytes to ${path.relative(PROJECT_ROOT, abs)}`,
-    durationMs: Date.now() - started,
+    durationMs: clock.nowMs() - started,
     filesModified: [path.relative(PROJECT_ROOT, abs)],
   };
 }
@@ -1066,7 +1067,7 @@ async function toolFileList(
   return {
     success: true,
     output: lines.join("\n"),
-    durationMs: Date.now() - started,
+    durationMs: clock.nowMs() - started,
   };
 }
 
@@ -1077,7 +1078,7 @@ async function toolBash(
 ): Promise<ToolExecutionResult> {
   const cmd = String(input.command ?? "");
   if (!cmd.trim()) {
-    return { success: false, output: "missing 'command'", durationMs: Date.now() - started };
+    return { success: false, output: "missing 'command'", durationMs: clock.nowMs() - started };
   }
   // SECURITY (re-audit it.3): on the untrusted (autonomous) path, refuse
   // deploy/push + secret-file-read commands. The env-scrub doesn't stop these;
@@ -1095,7 +1096,7 @@ async function toolBash(
           `[REFUSED] This command is not permitted for an autonomous dispatch ` +
           `(rule: ${screen.rule}) — it would read secret material or deploy to ` +
           `production. Refusing.`,
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
   }
@@ -1182,7 +1183,7 @@ async function toolBash(
         success: code === 0,
         output: sanitizeToolOutput(out),
         truncated,
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       });
     });
 
@@ -1191,7 +1192,7 @@ async function toolBash(
       resolve({
         success: false,
         output: `spawn error: ${err.message}`,
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       });
     });
   });
@@ -1218,7 +1219,7 @@ async function toolRunTests(
       return {
         success: false,
         output: `run_tests: rejected unsafe path ${raw}: ${err instanceof Error ? err.message : String(err)}`,
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
     pathArg = ` ${shellEscape(raw)}`;
@@ -1251,7 +1252,7 @@ async function toolGitCommit(
     return {
       success: false,
       output: "git_commit: missing 'message'",
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   }
   const filesRaw = Array.isArray(input.files) ? (input.files as unknown[]) : [];
@@ -1264,7 +1265,7 @@ async function toolGitCommit(
       return {
         success: false,
         output: `git_commit: rejected unsafe path ${f}: ${err instanceof Error ? err.message : String(err)}`,
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
   }
@@ -1329,7 +1330,7 @@ function svcErr(
     output: `Error: ${toolName} failed: ${
       err instanceof Error ? err.message : String(err)
     }`,
-    durationMs: Date.now() - started,
+    durationMs: clock.nowMs() - started,
   };
 }
 
@@ -1344,7 +1345,7 @@ async function toolSendMessageToAgent(
         success: false,
         output:
           "Error: send_message_to_agent: dispatch context missing agent_role (cannot send anonymously).",
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
     const to = input.to_agent_role;
@@ -1352,7 +1353,7 @@ async function toolSendMessageToAgent(
       return {
         success: false,
         output: `Error: send_message_to_agent: invalid to_agent_role=${String(to)}`,
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
     const subject = String(input.subject ?? "");
@@ -1361,7 +1362,7 @@ async function toolSendMessageToAgent(
       return {
         success: false,
         output: "Error: send_message_to_agent: subject and body must be non-empty.",
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
     const priority =
@@ -1383,7 +1384,7 @@ async function toolSendMessageToAgent(
     return {
       success: true,
       output: JSON.stringify({ message_id: result.messageId }),
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   } catch (err) {
     return svcErr("send_message_to_agent", err, started);
@@ -1401,7 +1402,7 @@ async function toolReadAgentInbox(
         success: false,
         output:
           "Error: read_agent_inbox: dispatch context missing agent_role (cannot determine inbox owner).",
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
     const unreadOnly = input.unread_only === true;
@@ -1418,7 +1419,7 @@ async function toolReadAgentInbox(
     return {
       success: true,
       output: JSON.stringify({ messages: rows }),
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   } catch (err) {
     return svcErr("read_agent_inbox", err, started);
@@ -1436,7 +1437,7 @@ async function toolRecordDecision(
         success: false,
         output:
           "Error: record_decision: dispatch context missing agent_role (cannot tag decision).",
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
     const decisionKind = String(input.decision_kind ?? "") as any;
@@ -1461,7 +1462,7 @@ async function toolRecordDecision(
     return {
       success: true,
       output: JSON.stringify({ decision_id: decisionId }),
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   } catch (err) {
     return svcErr("record_decision", err, started);
@@ -1478,7 +1479,7 @@ async function toolRecordDecisionTrace(
       return {
         success: false,
         output: "Error: record_decision_trace: decision_id must be a positive integer.",
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
     const stepKind = String(input.step_kind ?? "") as any;
@@ -1513,7 +1514,7 @@ async function toolRecordDecisionTrace(
         trace_id: r.traceId,
         step_number: r.stepNumber,
       }),
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   } catch (err) {
     return svcErr("record_decision_trace", err, started);
@@ -1531,7 +1532,7 @@ async function toolRecordCounterfactual(
         success: false,
         output:
           "Error: record_counterfactual: dispatch context missing agent_role.",
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
     const sourceDecisionId = Number(input.source_decision_id ?? 0);
@@ -1540,7 +1541,7 @@ async function toolRecordCounterfactual(
         success: false,
         output:
           "Error: record_counterfactual: source_decision_id must be a positive integer.",
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
     const confidence = Number(input.confidence ?? 0);
@@ -1560,7 +1561,7 @@ async function toolRecordCounterfactual(
     return {
       success: true,
       output: JSON.stringify({ counterfactual_id: r.counterfactualId }),
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   } catch (err) {
     return svcErr("record_counterfactual", err, started);
@@ -1577,7 +1578,7 @@ async function toolRecordSpeculation(
       return {
         success: false,
         output: "Error: record_speculation: dispatch context missing agent_role.",
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
     const evidenceRefs = Array.isArray(input.evidence_refs)
@@ -1600,7 +1601,7 @@ async function toolRecordSpeculation(
     return {
       success: true,
       output: JSON.stringify({ speculation_id: r.speculationId }),
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   } catch (err) {
     return svcErr("record_speculation", err, started);
@@ -1635,7 +1636,7 @@ async function toolFindMatchingSpeculations(
           age_minutes: m.ageMinutes,
         })),
       }),
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   } catch (err) {
     return svcErr("find_matching_speculations", err, started);
@@ -1652,7 +1653,7 @@ async function toolAssessEvidence(
       return {
         success: false,
         output: "Error: assess_evidence: dispatch context missing agent_role.",
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
     const itemsIn = Array.isArray(input.evidence_items)
@@ -1687,7 +1688,7 @@ async function toolAssessEvidence(
         rationale: r.rationale,
         confidence: r.confidence,
       }),
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   } catch (err) {
     return svcErr("assess_evidence", err, started);
@@ -1705,7 +1706,7 @@ async function toolProposeCapability(
         success: false,
         output:
           "Error: propose_capability: dispatch context missing agent_role.",
-        durationMs: Date.now() - started,
+        durationMs: clock.nowMs() - started,
       };
     }
     const refs = Array.isArray(input.references_existing_tools)
@@ -1733,7 +1734,7 @@ async function toolProposeCapability(
     return {
       success: true,
       output: JSON.stringify({ proposal_id: r.proposalId }),
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   } catch (err) {
     return svcErr("propose_capability", err, started);

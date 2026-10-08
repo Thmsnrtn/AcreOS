@@ -35,6 +35,7 @@ import {
   WEEKLY_BUDGET_ALERT_USD,
   WEEKLY_BUDGET_CEILING_USD,
 } from "./rosyRiver";
+import { clock } from "../utils/clock";
 
 export interface WeeklyTelemetrySnapshot {
   weekStartIso: string;
@@ -72,7 +73,7 @@ export interface WeeklyTelemetrySnapshot {
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 export async function runTelemetryDigest(): Promise<WeeklyTelemetrySnapshot> {
-  const weekStart = new Date(Date.now() - ONE_WEEK_MS);
+  const weekStart = new Date(clock.nowMs() - ONE_WEEK_MS);
 
   // Spend — reuses the canonical aggregator.
   const spend = await getWeeklyAgentSpend();
@@ -243,7 +244,7 @@ export async function runTelemetryDigest(): Promise<WeeklyTelemetrySnapshot> {
  * read state without producing a notification.
  */
 export async function readTelemetrySnapshot(): Promise<WeeklyTelemetrySnapshot> {
-  const weekStart = new Date(Date.now() - ONE_WEEK_MS);
+  const weekStart = new Date(clock.nowMs() - ONE_WEEK_MS);
   const spend = await getWeeklyAgentSpend();
 
   const proposalRows = await db

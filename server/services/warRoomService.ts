@@ -24,6 +24,7 @@ import { eq, and, desc, gte } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
 import { wsServer } from "../websocket";
+import { clock } from "../utils/clock";
 
 // ─── Convening Rules ─────────────────────────────────────────────────────────
 
@@ -97,7 +98,7 @@ class WarRoomService {
     if (!rule) return null;
 
     // Don't create duplicate rooms for the same event within 1 hour
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const oneHourAgo = new Date(clock.nowMs() - 60 * 60 * 1000);
     const existing = await db.query.warRooms.findFirst({
       where: and(
         eq(warRooms.triggerEvent, eventName),
@@ -230,7 +231,7 @@ class WarRoomService {
   /** CEO joins a war room */
   async ceoJoin(roomId: number): Promise<void> {
     await db.update(warRooms)
-      .set({ ceoJoined: true, updatedAt: new Date() })
+      .set({ ceoJoined: true, updatedAt: clock.now() })
       .where(eq(warRooms.id, roomId));
 
     await this.addMessage(roomId, "ceo", "ceo_directive", "CEO has joined the war room.");
@@ -271,8 +272,8 @@ class WarRoomService {
         status: "resolved",
         resolution,
         resolvedBy,
-        resolvedAt: new Date(),
-        updatedAt: new Date(),
+        resolvedAt: clock.now(),
+        updatedAt: clock.now(),
       })
       .where(eq(warRooms.id, roomId));
 

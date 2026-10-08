@@ -25,6 +25,7 @@ import {
   PERSONAL_DATA_CATEGORIES,
   type BreachAssessment,
 } from "./services/breachNotificationTrigger";
+import { clock } from "./utils/clock";
 
 /**
  * Breach-notification wiring (2026-08-16, founder ruling "Wire
@@ -217,7 +218,7 @@ export function registerIncidentRoutes(app: Express): void {
         if (!parsed.success) {
           return Errors.validationFailed(res, parsed.error.flatten());
         }
-        const now = new Date();
+        const now = clock.now();
         const startedAt = parsed.data.startedAt ? new Date(parsed.data.startedAt) : now;
         const founderEmail = req.user?.email ?? "founder";
 
@@ -264,7 +265,7 @@ export function registerIncidentRoutes(app: Express): void {
           return Errors.validationFailed(res, parsed.error.flatten());
         }
         const id = req.params.id;
-        const now = new Date();
+        const now = clock.now();
 
         const patch: Record<string, unknown> = { updatedAt: now };
         for (const [k, v] of Object.entries(parsed.data)) {
@@ -338,7 +339,7 @@ export function registerIncidentRoutes(app: Express): void {
     requireFounder,
     async (_req: AuthenticatedRequest, res: Response) => {
       try {
-        const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+        const ninetyDaysAgo = new Date(clock.nowMs() - 90 * 24 * 60 * 60 * 1000);
         const rows = await db
           .select({
             severity: incidents.severity,
@@ -361,7 +362,7 @@ export function registerIncidentRoutes(app: Express): void {
         return res.json({
           windowDays: 90,
           bySeverity,
-          generatedAt: new Date().toISOString(),
+          generatedAt: clock.now().toISOString(),
         });
       } catch (err: unknown) {
         logger.error("[incidents] stats failed", err);

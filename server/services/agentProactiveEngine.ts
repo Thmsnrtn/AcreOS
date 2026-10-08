@@ -17,6 +17,7 @@ import { executeWithAuthority } from "./agentAuthorityGate";
 import { resolveAgentData } from "./agentDataResolvers";
 import { executeAction } from "./agentActionExecutors";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -35,7 +36,7 @@ interface ProactiveBehavior {
 const lastRun: Record<string, number> = {};
 
 function shouldRunNow(id: string, schedule: Schedule): boolean {
-  const now = Date.now();
+  const now = clock.nowMs();
   const last = lastRun[id] || 0;
   const intervals: Record<Schedule, number> = {
     every_5m: 5 * 60 * 1000,
@@ -56,7 +57,7 @@ const BEHAVIORS: ProactiveBehavior[] = [
     schedule: "hourly",
     description: "Sentinel checks for failed background jobs and flags them",
     check: async () => {
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const oneHourAgo = new Date(clock.nowMs() - 60 * 60 * 1000);
       const failures = await db.select({ jobName: jobHealthLogs.jobName, count: count() })
         .from(jobHealthLogs)
         .where(and(eq(jobHealthLogs.status, "failed"), gte(jobHealthLogs.runStartedAt, oneHourAgo)))
@@ -108,7 +109,7 @@ const BEHAVIORS: ProactiveBehavior[] = [
     schedule: "every_6h",
     description: "Sophie checks for unresolved tickets older than 24h",
     check: async () => {
-      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const oneDayAgo = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
       const stale = await db.select({ count: count() }).from(supportTickets)
         .where(and(eq(supportTickets.status, "open"), sql`${supportTickets.createdAt} < ${oneDayAgo.toISOString()}`));
       const staleCount = Number(stale[0]?.count || 0);
@@ -303,7 +304,7 @@ export async function runProactiveEngine(): Promise<{ checked: number; acted: nu
     if (!agent || agent.status !== "active") continue;
 
     checked++;
-    lastRun[behavior.id] = Date.now();
+    lastRun[behavior.id] = clock.nowMs();
 
     try {
       const { shouldAct, context } = await behavior.check();

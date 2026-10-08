@@ -33,6 +33,7 @@ import { db } from "../../db";
 import { lateFeeAssessments, paymentApplications } from "@shared/schema/reg-z";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // PURE ALGORITHM
@@ -170,7 +171,7 @@ export async function assessLateFee(
   input: AssessLateFeeInput,
 ): Promise<AssessLateFeeResult> {
   const loanType = input.loanType ?? "note";
-  const evaluationDate = input.evaluationDate ?? new Date();
+  const evaluationDate = input.evaluationDate ?? clock.now();
 
   // Idempotency check: has a fee row already been written for this cycle?
   // Include loanType — the UNIQUE index is composite (loan_id, period_start,

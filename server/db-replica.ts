@@ -30,6 +30,7 @@ import * as schema from "@shared/schema";
 import { db, dbReplica } from "./db";
 import { getSetting } from "./services/settings";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 /**
  * Unifying read-only surface returned by `dbForReads()` /
@@ -61,7 +62,7 @@ let categoryCache: CachedCategories | null = null;
  * when the replica is unset.
  */
 async function getConfiguredCategories(): Promise<string[]> {
-  const now = Date.now();
+  const now = clock.nowMs();
   if (categoryCache && categoryCache.expiresAt > now) {
     return categoryCache.value;
   }
@@ -113,7 +114,7 @@ function recordRoutingDecision(category: string, routed: "primary" | "replica"):
 
   // Emit a structured adoption-rate log at most once per minute so we
   // can verify the helper is firing without flooding the log stream.
-  const now = Date.now();
+  const now = clock.nowMs();
   if (now - lastLogAt > ADOPTION_LOG_INTERVAL_MS) {
     lastLogAt = now;
     const total = adoption.primary + adoption.replica;

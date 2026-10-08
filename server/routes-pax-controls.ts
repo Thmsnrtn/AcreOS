@@ -77,6 +77,7 @@ import { countPendingActions } from "./services/approvalKernel";
 import { recordPaxEffect } from "./services/paxReceipts";
 import { listPaxReceipts } from "./services/paxReceiptsReader";
 import { REMINDER_STATUS } from "./services/financeAgent";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -132,13 +133,13 @@ function zonedToUtc(y: number, m: number, d: number, h: number, timeZone: string
 }
 
 /** Local midnight of `now` in the zone. */
-function startOfTodayIn(timeZone: string, now: Date = new Date()): Date {
+function startOfTodayIn(timeZone: string, now: Date = clock.now()): Date {
   const p = zoneParts(now, timeZone);
   return zonedToUtc(p.y, p.m, p.d, 0, timeZone);
 }
 
 /** Tomorrow at `hour`:00 in the zone. */
-function tomorrowAtIn(hour: number, timeZone: string, now: Date = new Date()): Date {
+function tomorrowAtIn(hour: number, timeZone: string, now: Date = clock.now()): Date {
   const p = zoneParts(now, timeZone);
   return zonedToUtc(p.y, p.m, p.d + 1, hour, timeZone);
 }
@@ -337,7 +338,7 @@ async function buildControls(
   const state = await getPaxControls(orgId);
   if (state.checkFailed) return { payload: null, state };
 
-  const now = new Date();
+  const now = clock.now();
   const startOfToday = startOfTodayIn(state.timezone, now);
   const caller = await resolveCaller(req, org);
 
@@ -414,7 +415,7 @@ async function writePausedUntil(userId: string, prefs: AutonomyPreferences | nul
   if (until) pax.pausedUntil = until.toISOString();
   else delete pax.pausedUntil;
   const next: AutonomyPreferences = { ...(prefs ?? {}), pax };
-  await db.update(users).set({ autonomyPreferences: next, updatedAt: new Date() }).where(eq(users.id, userId));
+  await db.update(users).set({ autonomyPreferences: next, updatedAt: clock.now() }).where(eq(users.id, userId));
 }
 
 /** The org's owner and active members, with their preference rows — the union the primitive reads. */
@@ -472,7 +473,7 @@ router.post("/pause", async (req: AuthenticatedRequest, res: Response) => {
     if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
     const before = await getPaxControls(orgId);
-    const now = new Date();
+    const now = clock.now();
     const zone = validZone(parsed.data.timeZone) ?? before.timezone;
     const until =
       parsed.data.until === "tomorrow_8am"
@@ -533,7 +534,7 @@ router.post("/resume", async (req: AuthenticatedRequest, res: Response) => {
     const org = getOrganization(req);
     const orgId = getOrganizationId(req);
     const caller = await resolveCaller(req, org);
-    const nowMs = Date.now();
+    const nowMs = clock.nowMs();
 
     // Owner / admin: every org user's row. Member: their own row only.
     const rows = caller.isAdmin ? await orgUserRows(orgId) : [{ id: caller.userId, prefs: await readUserPrefs(caller.userId) }];
@@ -641,7 +642,7 @@ router.patch("/controls", async (req: AuthenticatedRequest, res: Response) => {
 
     await db
       .update(organizations)
-      .set({ paxControls: next.data, updatedAt: new Date() })
+      .set({ paxControls: next.data, updatedAt: clock.now() })
       .where(eq(organizations.id, orgId));
 
     logger.info("[pax-controls] Pax controls changed", {

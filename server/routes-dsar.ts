@@ -31,6 +31,7 @@ import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { auditFromRequest, AuditActions } from "./utils/auditLog";
 import { getClerkAuth, type AuthenticatedRequest } from "./types/request";
+import { clock } from "./utils/clock";
 
 // ─── Validation schemas ─────────────────────────────────────────────────────
 const dsarIntakeSchema = z.object({
@@ -219,8 +220,8 @@ export function registerDsarRoutes(app: Express): void {
         .update(dsarRequests)
         .set({
           status: "verified" as DsarStatus,
-          verifiedAt: new Date(),
-          updatedAt: new Date(),
+          verifiedAt: clock.now(),
+          updatedAt: clock.now(),
         })
         .where(eq(dsarRequests.id, row.id))
         .returning();
@@ -259,7 +260,7 @@ export function registerDsarRoutes(app: Express): void {
 
       await db
         .update(dsarRequests)
-        .set({ status: "fulfilling" as DsarStatus, updatedAt: new Date() })
+        .set({ status: "fulfilling" as DsarStatus, updatedAt: clock.now() })
         .where(eq(dsarRequests.id, row.id));
 
       await auditFromRequest(req, {
@@ -305,7 +306,7 @@ export function registerDsarRoutes(app: Express): void {
 
       await db
         .update(dsarRequests)
-        .set({ status: "fulfilling" as DsarStatus, updatedAt: new Date() })
+        .set({ status: "fulfilling" as DsarStatus, updatedAt: clock.now() })
         .where(eq(dsarRequests.id, row.id));
 
       await auditFromRequest(req, {
@@ -349,8 +350,8 @@ export function registerDsarRoutes(app: Express): void {
         .set({
           status: "denied" as DsarStatus,
           deniedReason: parsed.data.reason,
-          completedAt: new Date(),
-          updatedAt: new Date(),
+          completedAt: clock.now(),
+          updatedAt: clock.now(),
         })
         .where(eq(dsarRequests.id, row.id))
         .returning();

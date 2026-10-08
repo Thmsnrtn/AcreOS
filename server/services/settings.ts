@@ -32,6 +32,7 @@ import { db } from "../db";
 import { platformSettings, founderAudit, type PlatformSetting } from "@shared/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const CACHE_TTL_MS = 30_000;
 
@@ -189,7 +190,7 @@ export async function setSetting(args: SetSettingArgs): Promise<PlatformSetting>
       .set({
         value: args.value,
         lastChangedBy: args.founderId,
-        lastChangedAt: new Date(),
+        lastChangedAt: clock.now(),
         lastChangedNote: args.note ?? null,
       })
       .where(eq(platformSettings.id, existing.id))
@@ -209,7 +210,7 @@ export async function setSetting(args: SetSettingArgs): Promise<PlatformSetting>
         category: globalRow.category,
         description: globalRow.description,
         lastChangedBy: args.founderId,
-        lastChangedAt: new Date(),
+        lastChangedAt: clock.now(),
         lastChangedNote: args.note ?? null,
       })
       .returning();
@@ -255,7 +256,7 @@ export async function resetSetting(
       .set({
         value: row.defaultValue,
         lastChangedBy: founderId,
-        lastChangedAt: new Date(),
+        lastChangedAt: clock.now(),
         lastChangedNote: "reset to default",
       })
       .where(eq(platformSettings.id, row.id));
@@ -397,7 +398,7 @@ function buildScopeChain(scope?: SettingScope): Array<[string, string | null]> {
 function readCache<T>(key: string, scope: string, scopeRef: string | null): T | typeof SENTINEL_MISS | undefined {
   const entry = cache.get(cacheKey(key, scope, scopeRef));
   if (!entry) return undefined;
-  if (entry.expiresAt < Date.now()) {
+  if (entry.expiresAt < clock.nowMs()) {
     cache.delete(cacheKey(key, scope, scopeRef));
     return undefined;
   }
@@ -405,7 +406,7 @@ function readCache<T>(key: string, scope: string, scopeRef: string | null): T | 
 }
 
 function writeCache(key: string, scope: string, scopeRef: string | null, value: unknown): void {
-  cache.set(cacheKey(key, scope, scopeRef), { value, expiresAt: Date.now() + CACHE_TTL_MS });
+  cache.set(cacheKey(key, scope, scopeRef), { value, expiresAt: clock.nowMs() + CACHE_TTL_MS });
   // Bounded cap so a runaway never blows memory.
   if (cache.size > 5000) {
     const firstKey = cache.keys().next().value;

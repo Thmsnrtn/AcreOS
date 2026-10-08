@@ -14,6 +14,7 @@ import {
 import { eq, desc, gte, and, sql, count } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
+import { clock } from "../utils/clock";
 
 class RevenueAttributionService {
 
@@ -117,8 +118,8 @@ Respond in JSON:
    */
   async generateReport(period: "weekly" | "monthly"): Promise<RevenueAttributionReport> {
     const daysBack = period === "weekly" ? 7 : 30;
-    const periodStart = new Date(Date.now() - daysBack * 86400000);
-    const periodEnd = new Date();
+    const periodStart = new Date(clock.nowMs() - daysBack * 86400000);
+    const periodEnd = clock.now();
 
     const nodes = await db.select().from(revenueAttributionNodes)
       .where(gte(revenueAttributionNodes.createdAt, periodStart));

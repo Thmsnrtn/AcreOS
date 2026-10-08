@@ -19,6 +19,7 @@
 import { Router, type Request, type Response } from "express";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -95,7 +96,7 @@ function normalizeIndicator(raw: string | undefined): VendorIndicator {
 }
 
 async function fetchVendor(v: VendorConfig): Promise<VendorState> {
-  const fetchedAt = new Date().toISOString();
+  const fetchedAt = clock.now().toISOString();
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 5000);
@@ -145,14 +146,14 @@ function rollupOverall(states: VendorState[]): VendorStatusResponse["overall"] {
 }
 
 export async function getVendorStatus(): Promise<VendorStatusResponse> {
-  const now = Date.now();
+  const now = clock.nowMs();
   if (cached && cached.expiresAt > now) return cached.data;
 
   const results = await Promise.all(VENDORS.map(fetchVendor));
   const data: VendorStatusResponse = {
     vendors: results,
     overall: rollupOverall(results),
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
     cachedFor: Math.floor(CACHE_TTL_MS / 1000),
   };
   cached = { data, expiresAt: now + CACHE_TTL_MS };

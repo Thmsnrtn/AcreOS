@@ -18,6 +18,7 @@ import {
 } from "@shared/schema";
 import { eq, desc, gte, and, count, sql } from "drizzle-orm";
 import { ceoAbsenceService } from "./ceoAbsenceMode";
+import { clock } from "../utils/clock";
 
 // ─── Service ─────────────────────────────────────────────────────────────────
 
@@ -25,12 +26,12 @@ class FounderWellbeingService {
 
   /** Generate today's wellbeing assessment */
   async assess(): Promise<number> {
-    const now = new Date();
+    const now = clock.now();
     const today = new Date(now);
     today.setHours(0, 0, 0, 0);
 
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const weekAgo = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
+    const monthAgo = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
 
     // Count CEO overrides this week
     const [overrideResult] = await db.select({ n: count() })
@@ -68,7 +69,7 @@ class FounderWellbeingService {
     // Days since last break
     const lastAbsence = await ceoAbsenceService.getLatest();
     const daysSinceLastBreak = lastAbsence?.startedAt
-      ? Math.round((Date.now() - new Date(lastAbsence.startedAt).getTime()) / (1000 * 60 * 60 * 24))
+      ? Math.round((clock.nowMs() - new Date(lastAbsence.startedAt).getTime()) / (1000 * 60 * 60 * 24))
       : 999;
 
     const metrics = {
@@ -200,7 +201,7 @@ class FounderWellbeingService {
       suggestedAction?: string;
     }> = [];
 
-    const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000);
+    const fourHoursAgo = new Date(clock.nowMs() - 4 * 60 * 60 * 1000);
 
     // Count overrides in the last 4 hours
     const [recentOverrideResult] = await db.select({ n: count() })
@@ -214,7 +215,7 @@ class FounderWellbeingService {
     // Days since last break
     const lastAbsence = await ceoAbsenceService.getLatest();
     const daysSinceLastBreak = lastAbsence?.startedAt
-      ? Math.round((Date.now() - new Date(lastAbsence.startedAt).getTime()) / (1000 * 60 * 60 * 24))
+      ? Math.round((clock.nowMs() - new Date(lastAbsence.startedAt).getTime()) / (1000 * 60 * 60 * 24))
       : 999;
 
     if (recentOverrides > 5) {
@@ -241,7 +242,7 @@ class FounderWellbeingService {
 
   /** Suggest absence mode when the system is performing well enough */
   async suggestAbsenceMode(): Promise<string | null> {
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const weekAgo = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
 
     // Agent success rate over last 7 days
     const [successResult] = await db.select({ n: count() })
@@ -260,7 +261,7 @@ class FounderWellbeingService {
     // Days since last break
     const lastAbsence = await ceoAbsenceService.getLatest();
     const daysSinceLastBreak = lastAbsence?.startedAt
-      ? Math.round((Date.now() - new Date(lastAbsence.startedAt).getTime()) / (1000 * 60 * 60 * 24))
+      ? Math.round((clock.nowMs() - new Date(lastAbsence.startedAt).getTime()) / (1000 * 60 * 60 * 24))
       : 999;
 
     if (successRate > 85 && daysSinceLastBreak > 21) {
@@ -333,7 +334,7 @@ class FounderWellbeingService {
     peakOverrideHour: number;
     recommendation: string;
   }> {
-    const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const monthAgo = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
 
     // Query overrides grouped by hour of day
     const rows = await db.select({

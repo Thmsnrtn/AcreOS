@@ -29,6 +29,7 @@ import {
   type MassachusettsRules,
   type TaxBracket,
 } from "./taxRules";
+import { clock } from "../../utils/clock";
 
 // ─── Inputs ──────────────────────────────────────────────────────────────────
 
@@ -510,7 +511,7 @@ export function computeDraftReturn(input: TaxEngineInput): DraftReturn {
     taxYear: input.taxYear,
     filingStatus: input.filingStatus,
     state: input.state.toUpperCase(),
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
     disclaimer: DRAFT_DISCLAIMER,
     provisional: federal.provisional || (massachusetts?.provisional ?? false),
     notModeled: NOT_MODELED,

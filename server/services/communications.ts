@@ -1,7 +1,7 @@
 import { emailService } from './emailService';
 import { smsService } from './smsService';
 import { storage } from '../storage';
-import { checkTcpaConsentFromLead, canSendViaChannel, checkTcpaConsent } from './tcpaCompliance';
+import { checkTcpaConsentFromLead, canSendViaChannel, checkTcpaConsent, hasCompleteMailingAddress } from './tcpaCompliance';
 import { frequencyGateForLead, describeFrequencySkip } from './compliance/contactFrequency';
 import { lobService, LobErrorType } from './lobService';
 import { randomUUID } from 'node:crypto';
@@ -513,7 +513,7 @@ export class CommunicationsService {
       };
     }
 
-    if (!lead.address || !lead.city || !lead.state || !lead.zip) {
+    if (!hasCompleteMailingAddress(lead)) {
       return { 
         success: false, 
         channel: 'direct_mail', 

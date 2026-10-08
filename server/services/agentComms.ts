@@ -18,6 +18,7 @@
 import { db } from "../db";
 import { agentChannelMessages } from "@shared/schema";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -157,7 +158,7 @@ class AgentCommsService {
    * Get high-priority messages from the last 24 hours (for CEO Briefing highlights).
    */
   async getHighlights(hoursBack = 24) {
-    const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
+    const since = new Date(clock.nowMs() - hoursBack * 60 * 60 * 1000);
 
     return db.select()
       .from(agentChannelMessages)
@@ -175,7 +176,7 @@ class AgentCommsService {
    * Get message count by channel for the last N hours.
    */
   async getChannelActivity(hoursBack = 24): Promise<Record<string, number>> {
-    const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
+    const since = new Date(clock.nowMs() - hoursBack * 60 * 60 * 1000);
 
     const results = await db.select({
       channel: agentChannelMessages.toChannel,

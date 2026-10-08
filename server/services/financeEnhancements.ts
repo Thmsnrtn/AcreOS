@@ -6,6 +6,7 @@
 import { db } from "../db";
 import { notes, payments } from "@shared/schema";
 import { eq, and, sql, gte, lte } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 // Item 86: Payment calendar data
 export async function getPaymentCalendar(orgId: number, year: number, month: number): Promise<Array<{
@@ -28,7 +29,7 @@ export async function getPaymentCalendar(orgId: number, year: number, month: num
     const dueDay = note.firstPaymentDate ? new Date(note.firstPaymentDate).getDate() : 1;
     if (dueDay >= 1 && dueDay <= endDate.getDate()) {
       const status: "upcoming" | "received" | "late" =
-        new Date(year, month - 1, dueDay) < new Date() ? "late" : "upcoming";
+        new Date(year, month - 1, dueDay) < clock.now() ? "late" : "upcoming";
       calendar.push({
         day: dueDay,
         noteId: note.id,
@@ -76,7 +77,7 @@ export async function getCollectionRate(orgId: number, months: number = 6): Prom
   monthlyRates: Array<{ month: string; rate: number }>;
 }> {
   const monthlyRates: Array<{ month: string; rate: number }> = [];
-  const now = new Date();
+  const now = clock.now();
 
   for (let i = 0; i < months; i++) {
     const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -126,8 +127,8 @@ export async function getNoteSeasoning(orgId: number): Promise<Array<{ noteId: n
   // fabrication. We instead count completed payments and the subset that
   // posted on or before their due date.
   return Promise.all(activeNotes.map(async (note) => {
-    const created = note.createdAt ? new Date(note.createdAt) : new Date();
-    const monthsSeasoned = Math.floor((Date.now() - created.getTime()) / (30 * 24 * 60 * 60 * 1000));
+    const created = note.createdAt ? new Date(note.createdAt) : clock.now();
+    const monthsSeasoned = Math.floor((clock.nowMs() - created.getTime()) / (30 * 24 * 60 * 60 * 1000));
 
     const [tally] = await db.select({
       total: sql<number>`COUNT(*)`,

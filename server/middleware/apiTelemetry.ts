@@ -20,6 +20,7 @@
 
 import type { Request, Response, NextFunction } from "express";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 interface RouteCounters {
   count2xx: number;
@@ -49,7 +50,7 @@ const MAX_DURATIONS = 100;
 const TICK_MS = 60_000;               // flush every minute
 const FLUSH_THRESHOLD = 1_000;        // …or after 1k requests, whichever first
 let requestsSinceFlush = 0;
-let windowStartMs = Date.now();
+let windowStartMs = clock.nowMs();
 let flushTimer: NodeJS.Timeout | null = null;
 
 /**
@@ -83,7 +84,7 @@ function percentile(sorted: number[], p: number): number {
  */
 async function flushSamples(): Promise<void> {
   if (ROUTE_BUCKETS.size === 0) {
-    windowStartMs = Date.now();
+    windowStartMs = clock.nowMs();
     requestsSinceFlush = 0;
     return;
   }
@@ -93,7 +94,7 @@ async function flushSamples(): Promise<void> {
   const snapshot: Array<[string, RouteCounters]> = [...ROUTE_BUCKETS.entries()];
   ROUTE_BUCKETS.clear();
   const windowStart = new Date(windowStartMs);
-  const windowEnd = new Date();
+  const windowEnd = clock.now();
   windowStartMs = windowEnd.getTime();
   requestsSinceFlush = 0;
 
@@ -162,10 +163,10 @@ export function apiTelemetry() {
   return function (req: Request, res: Response, next: NextFunction) {
     if (!req.path?.startsWith("/api/")) return next();
 
-    const startMs = Date.now();
+    const startMs = clock.nowMs();
     res.on("finish", () => {
       try {
-        const durationMs = Date.now() - startMs;
+        const durationMs = clock.nowMs() - startMs;
         const matched = (req.route as { path?: string } | undefined)?.path;
         const fullPath = matched ? `/api${matched}` : req.originalUrl;
         const key = normalizeRoute(req.method, fullPath, matched ? `/api${matched}` : undefined);
@@ -179,8 +180,8 @@ export function apiTelemetry() {
             count5xx: 0,
             totalMs: 0,
             durations: [],
-            firstSeenMs: Date.now(),
-            lastSeenMs: Date.now(),
+            firstSeenMs: clock.nowMs(),
+            lastSeenMs: clock.nowMs(),
             costClass: req.costClass,
             orgIds: new Set<number>(),
           };
@@ -201,7 +202,7 @@ export function apiTelemetry() {
         }
 
         bucket.totalMs += durationMs;
-        bucket.lastSeenMs = Date.now();
+        bucket.lastSeenMs = clock.nowMs();
         bucket.durations.push(durationMs);
         if (bucket.durations.length > MAX_DURATIONS) bucket.durations.shift();
 
@@ -305,7 +306,7 @@ export async function getTelemetrySummaryDurable(sinceMs = 24 * 60 * 60 * 1000):
   routes: RouteSummary[];
   totals: { totalCount: number; total2xx: number; total4xx: number; total5xx: number; errorRate: number };
 }> {
-  const since = new Date(Date.now() - sinceMs);
+  const since = new Date(clock.nowMs() - sinceMs);
   let durableRows: Array<{
     route: string;
     costClass: string | null;
@@ -460,5 +461,5 @@ export async function _flushNowForTest(): Promise<void> {
 export function resetTelemetry(): void {
   ROUTE_BUCKETS.clear();
   requestsSinceFlush = 0;
-  windowStartMs = Date.now();
+  windowStartMs = clock.nowMs();
 }

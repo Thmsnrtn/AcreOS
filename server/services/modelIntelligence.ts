@@ -4,6 +4,7 @@ import { openrouterModelCatalog, aiModelConfigs } from "@shared/schema";
 import { invalidateDbModelCache } from "./aiRouter";
 import { eq, sql } from "drizzle-orm";
 import { logger } from '../utils/logger';
+import { clock } from "../utils/clock";
 
 // ============================================
 // MODEL INTELLIGENCE SERVICE
@@ -162,8 +163,8 @@ export async function syncOpenRouterCatalog(): Promise<SyncResult> {
           capabilities: [],
           isNew: true,
           isActive: true,
-          discoveredAt: new Date(),
-          updatedAt: new Date(),
+          discoveredAt: clock.now(),
+          updatedAt: clock.now(),
         })
         .onConflictDoUpdate({
           target: openrouterModelCatalog.modelId,
@@ -173,7 +174,7 @@ export async function syncOpenRouterCatalog(): Promise<SyncResult> {
             outputCostPerMillion: outputCost,
             contextWindow: model.context_length ?? null,
             isActive: true,
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           },
         });
 
@@ -194,7 +195,7 @@ export async function syncOpenRouterCatalog(): Promise<SyncResult> {
       try {
         await db
           .update(openrouterModelCatalog)
-          .set({ isActive: false, updatedAt: new Date() })
+          .set({ isActive: false, updatedAt: clock.now() })
           .where(eq(openrouterModelCatalog.id, existing.id));
         deprecated++;
       } catch (err) {
@@ -245,7 +246,7 @@ async function runSingleBenchmark(
   tier: ComplexityTier
 ): Promise<BenchmarkTierResult> {
   const prompt = BENCHMARK_PROMPTS[tier];
-  const start = Date.now();
+  const start = clock.nowMs();
 
   try {
     // Step 1: Get the model's response
@@ -263,7 +264,7 @@ async function runSingleBenchmark(
       temperature: 0.3,
     });
 
-    const latencyMs = Date.now() - start;
+    const latencyMs = clock.nowMs() - start;
     const content = response.choices[0]?.message?.content ?? "";
 
     if (!content) {
@@ -306,7 +307,7 @@ async function runSingleBenchmark(
 
     return { tier, latencyMs, score };
   } catch (err) {
-    const latencyMs = Date.now() - start;
+    const latencyMs = clock.nowMs() - start;
     const errMsg = err instanceof Error ? err.message : String(err);
     logger.warn("[model-intelligence] Benchmark failed", { metadata: { modelId, tier, error: errMsg } });
     return { tier, latencyMs, score: null, error: errMsg };
@@ -379,7 +380,7 @@ async function maybePromoteModel(
         .set({
           weight: 80,
           enabled: true,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(aiModelConfigs.id, existing[0].id));
     } else {
@@ -393,8 +394,8 @@ async function maybePromoteModel(
         taskTypes: [],
         weight: 80,
         enabled: true,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: clock.now(),
+        updatedAt: clock.now(),
       });
     }
 
@@ -479,9 +480,9 @@ export async function benchmarkNewModels(): Promise<BenchmarkSummary> {
             scoreModerate !== null ? scoreModerate.toFixed(2) : null,
           benchmarkScoreComplex:
             scoreComplex !== null ? scoreComplex.toFixed(2) : null,
-          lastBenchmarkedAt: new Date(),
+          lastBenchmarkedAt: clock.now(),
           isNew: false,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(openrouterModelCatalog.id, catalogEntry.id));
 
@@ -602,7 +603,7 @@ export async function getModelCatalogStats(): Promise<ModelCatalogStats> {
     totalActive,
     totalBenchmarked,
     pendingBenchmark,
-    generatedAt: new Date().toISOString(),
+    generatedAt: clock.now().toISOString(),
   };
 }
 
@@ -644,7 +645,7 @@ export async function runModelIntelligence(): Promise<ModelIntelligenceResult> {
     logger.error("[model-intelligence] Benchmarking run failed", err);
   }
 
-  const completedAt = new Date().toISOString();
+  const completedAt = clock.now().toISOString();
   logger.info("[model-intelligence] Weekly run complete", { metadata: { completedAt, syncDiscovered: sync.discovered, syncUpdated: sync.updated, syncDeprecated: sync.deprecated, benchmarkCompleted: benchmark.modelsCompleted, benchmarkPromoted: benchmark.modelsPromoted } });
 
   return { sync, benchmark, completedAt };

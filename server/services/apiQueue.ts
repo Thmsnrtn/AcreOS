@@ -4,6 +4,7 @@ import { eq, lt, and, or, isNull } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { logger } from "../utils/logger";
 import { assertWritablePatch } from "../utils/patch";
+import { clock } from "../utils/clock";
 
 interface RateLimitConfig {
   maxRequests: number;
@@ -39,7 +40,7 @@ export class ApiQueueService {
       status: 'pending',
       retries: 0,
       maxRetries,
-      createdAt: new Date(),
+      createdAt: clock.now(),
     });
     return id;
   }
@@ -47,7 +48,7 @@ export class ApiQueueService {
   // getJob deleted 2026-08-29 — zero callers, adversarially verified (rule-1 register close-out).
 
   async getPendingJobs(limit: number = 10) {
-    const now = new Date();
+    const now = clock.now();
     return db
       .select()
       .from(apiJobs)
@@ -74,7 +75,7 @@ export class ApiQueueService {
     const config = RATE_LIMITS[type];
     if (!config) return true;
 
-    const now = Date.now();
+    const now = clock.nowMs();
     const tracker = requestCounts[type] || { count: 0, resetAt: now + config.windowMs };
 
     if (now > tracker.resetAt) {
@@ -89,7 +90,7 @@ export class ApiQueueService {
     const config = RATE_LIMITS[type];
     if (!config) return;
 
-    const now = Date.now();
+    const now = clock.nowMs();
     if (!requestCounts[type] || now > requestCounts[type].resetAt) {
       requestCounts[type] = { count: 1, resetAt: now + config.windowMs };
     } else {
@@ -116,7 +117,7 @@ export class ApiQueueService {
         await this.updateJob(job.id, {
           status: 'completed',
           result,
-          completedAt: new Date(),
+          completedAt: clock.now(),
         });
         processed++;
       } catch (error: any) {
@@ -131,7 +132,7 @@ export class ApiQueueService {
           });
           failed++;
         } else {
-          const nextRetryAt = new Date(Date.now() + this.calculateBackoff(newRetries));
+          const nextRetryAt = new Date(clock.nowMs() + this.calculateBackoff(newRetries));
           await this.updateJob(job.id, {
             status: 'retrying',
             error: error.message,
@@ -192,7 +193,7 @@ export class ApiQueueService {
   }
 
   async cleanupOldJobs(olderThanDays: number = 7): Promise<number> {
-    const cutoffDate = new Date();
+    const cutoffDate = clock.now();
     cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
 
     // Delete completed jobs older than cutoff
@@ -207,7 +208,7 @@ export class ApiQueueService {
       .returning({ id: apiJobs.id });
 
     // Also delete failed jobs older than cutoff (after 30 days)
-    const failedCutoff = new Date();
+    const failedCutoff = clock.now();
     failedCutoff.setDate(failedCutoff.getDate() - 30);
     
     const failedResult = await db

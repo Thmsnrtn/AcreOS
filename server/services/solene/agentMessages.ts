@@ -62,6 +62,7 @@ import {
   type SoleneDispatchAgentRole,
 } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ============================================
 // Types
@@ -259,7 +260,7 @@ export async function markAsRead(messageId: number): Promise<void> {
     // Only set read_at if it's null — idempotent on re-mark.
     await db
       .update(agentMessages)
-      .set({ readAt: new Date() })
+      .set({ readAt: clock.now() })
       .where(
         and(
           eq(agentMessages.id, messageId),
@@ -294,7 +295,7 @@ export async function recordResponseSent(
   try {
     await db
       .update(agentMessages)
-      .set({ respondedAt: new Date() })
+      .set({ respondedAt: clock.now() })
       .where(eq(agentMessages.id, messageId));
     logger.info(
       `[agentMessages] response recorded original=${messageId} response=${responseMessageId}`,

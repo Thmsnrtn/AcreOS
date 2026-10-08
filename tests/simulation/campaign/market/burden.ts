@@ -34,6 +34,7 @@ import { fileURLToPath } from "node:url";
 import { q, writeJson, RUBRIC_MINUTES, type BurdenClass, reEsc } from "./common";
 import { TIER_PRICES_CENTS } from "../../../../shared/billing/tier-pricing";
 import { FIXED_COST_INPUTS_USD_MONTHLY } from "../../../../shared/schema";
+import { ARRIVAL_3, ARRIVAL_10, ARRIVAL_25 } from "./parameters";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.MARKET_OUT!;
@@ -41,10 +42,8 @@ const COHORT = process.env.COHORT_DIR ?? join(OUT, "cohort");
 const PROVIDER_LOG = join(process.env.PROVIDER_DIR ?? "", "provider-calls.jsonl");
 const L = (f: string) => (existsSync(f) ? readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []);
 
-// arrival curves, read from the cohort source (single source of truth)
-const src = readFileSync(join(HERE, "cohort-90-days.ts"), "utf8");
-const arr = (name: string): number[] => { const m = new RegExp(`export const ${reEsc(name)} = (\\[[^\\]]*\\])`).exec(src); if (!m) throw new Error(`cohort-90-days.ts no longer exports ${name}`); return JSON.parse(m[1]); };
-const CURVES: Record<number, number[]> = { 3: arr("ARRIVAL_3"), 10: arr("ARRIVAL_10"), 25: arr("ARRIVAL_25") };
+// arrival curves: the one parameter source the cohort also imports
+const CURVES: Record<number, number[]> = { 3: ARRIVAL_3, 10: ARRIVAL_10, 25: ARRIVAL_25 };
 
 const orgs: any[] = JSON.parse(readFileSync(join(COHORT, "cohort-orgs.json"), "utf8"));
 const bySlug = new Map(orgs.map((o) => [o.slug, o]));

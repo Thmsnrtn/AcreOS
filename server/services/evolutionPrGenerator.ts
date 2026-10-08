@@ -29,6 +29,7 @@ import { db } from "../db";
 import { evolutionHistory, agentTasks } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const log = (msg: string, meta?: Record<string, unknown>) =>
   logger.info(`[evolution-pr] ${msg}`, { source: "evolution-pr", metadata: meta });
@@ -132,7 +133,7 @@ export async function openPullRequestForEvolution(
         .set({
           prNumber: parsed[0].number,
           prUrl: parsed[0].url,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         } as Record<string, unknown>)
         .where(eq(evolutionHistory.id, historyId));
       return { prNumber: parsed[0].number, prUrl: parsed[0].url };
@@ -238,7 +239,7 @@ export async function openPullRequestForEvolution(
     .set({
       prNumber,
       prUrl,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     } as Record<string, unknown>)
     .where(eq(evolutionHistory.id, historyId));
 

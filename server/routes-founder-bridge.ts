@@ -43,6 +43,7 @@ import { monthlyRevenueCentsFor } from "@shared/billing/tier-pricing";
 import { logger } from "./utils/logger";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -103,7 +104,7 @@ router.get("/", async (req: AuthenticatedRequest, res: Response) => {
   }
 
   try {
-    const now = new Date();
+    const now = clock.now();
     const t30 = new Date(now.getTime() - 30 * 24 * 3_600_000);
     const t60 = new Date(now.getTime() - 60 * 24 * 3_600_000);
     const t7 = new Date(now.getTime() - 7 * 24 * 3_600_000);

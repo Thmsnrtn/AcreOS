@@ -38,6 +38,7 @@ import {
   type BillingInterval,
 } from "@shared/billing/tier-pricing";
 import type { AuthenticatedRequest } from "./types/request";
+import { clock } from "./utils/clock";
 
 // ─── Validation schemas ─────────────────────────────────────────────────────
 const upsertRuleSchema = z.object({
@@ -150,7 +151,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
 
         await db
           .update(organizations)
-          .set({ seatCount: parsed.data.seatCount, updatedAt: new Date() })
+          .set({ seatCount: parsed.data.seatCount, updatedAt: clock.now() })
           .where(eq(organizations.id, org.id));
 
         // Stripe subscription update is delegated to the existing
@@ -263,7 +264,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
               weightedAssignees: data.weightedAssignees,
               isDefault: data.isDefault,
               isActive: data.isActive,
-              updatedAt: new Date(),
+              updatedAt: clock.now(),
             })
             .where(
               and(
@@ -403,7 +404,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
               channelName: data.channelName ?? null,
               eventTypes: data.eventTypes,
               isActive: data.isActive,
-              updatedAt: new Date(),
+              updatedAt: clock.now(),
             })
             .where(and(eq(orgIntegrationsSlack.id, existing.id), eq(orgIntegrationsSlack.organizationId, org.id)))
             .returning();
@@ -475,7 +476,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
             requiresApprovalOffersOver: parsed.data.requiresApprovalOffersOver === null
               ? null
               : String(parsed.data.requiresApprovalOffersOver),
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(eq(organizations.id, org.id));
 
@@ -542,7 +543,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
             status: parsed.data.decision,
             reviewerId,
             reviewerNotes: parsed.data.notes ?? null,
-            decidedAt: new Date(),
+            decidedAt: clock.now(),
           })
           .where(and(eq(offerApprovals.id, id), eq(offerApprovals.organizationId, org.id)))
           .returning();
@@ -551,12 +552,12 @@ export function registerTeamReadinessRoutes(app: Express): void {
         if (parsed.data.decision === "approved") {
           await db
             .update(offers)
-            .set({ status: "approved", updatedAt: new Date() })
+            .set({ status: "approved", updatedAt: clock.now() })
             .where(and(eq(offers.id, existing.offerId), eq(offers.organizationId, org.id)));
         } else {
           await db
             .update(offers)
-            .set({ status: "draft", updatedAt: new Date() })
+            .set({ status: "draft", updatedAt: clock.now() })
             .where(and(eq(offers.id, existing.offerId), eq(offers.organizationId, org.id)));
         }
 
@@ -600,7 +601,7 @@ export function registerTeamReadinessRoutes(app: Express): void {
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
         const days = parsed.data.range === "7d" ? 7 : parsed.data.range === "90d" ? 90 : 30;
-        const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        const since = new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000);
 
         const performance = await getRepPerformance(org.id, since);
         return res.json({ range: parsed.data.range, since: since.toISOString(), performance });

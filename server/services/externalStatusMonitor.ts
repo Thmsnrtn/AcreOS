@@ -3,6 +3,7 @@ import { systemAlerts, organizations } from "@shared/schema";
 import { eq, and, gte, desc, sql, notInArray } from "drizzle-orm";
 import { logActivity } from "./systemActivityLogger";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 interface ServiceStatus {
   name: string;
@@ -32,12 +33,12 @@ export const externalStatusMonitor = {
       return {
         name: serviceName,
         status: "unknown",
-        lastChecked: new Date(),
+        lastChecked: clock.now(),
         message: "Unknown service"
       };
     }
     
-    const startTime = Date.now();
+    const startTime = clock.nowMs();
     
     try {
       const controller = new AbortController();
@@ -58,7 +59,7 @@ export const externalStatusMonitor = {
       });
       
       clearTimeout(timeout);
-      const latency = Date.now() - startTime;
+      const latency = clock.nowMs() - startTime;
       
       let status: ServiceStatus["status"] = "operational";
       if (response.status >= 500) {
@@ -72,7 +73,7 @@ export const externalStatusMonitor = {
       const result: ServiceStatus = {
         name: config.name,
         status,
-        lastChecked: new Date(),
+        lastChecked: clock.now(),
         latency,
         message: status === "operational" ? undefined : `HTTP ${response.status}, ${latency}ms latency`
       };
@@ -84,7 +85,7 @@ export const externalStatusMonitor = {
       const result: ServiceStatus = {
         name: config.name,
         status: error.name === "AbortError" ? "degraded" : "outage",
-        lastChecked: new Date(),
+        lastChecked: clock.now(),
         message: error.name === "AbortError" ? "Request timeout (>5s)" : error.message
       };
       
@@ -101,14 +102,14 @@ export const externalStatusMonitor = {
     });
     
     await Promise.all(checks);
-    this.lastFullCheck = Date.now();
+    this.lastFullCheck = clock.nowMs();
     
     return results;
   },
   
   async getServiceStatus(serviceName: string): Promise<ServiceStatus> {
     const cached = this.cachedStatuses.get(serviceName.toLowerCase());
-    const cacheAge = cached ? Date.now() - cached.lastChecked.getTime() : Infinity;
+    const cacheAge = cached ? clock.nowMs() - cached.lastChecked.getTime() : Infinity;
     
     if (cached && cacheAge < 60000) {
       return cached;
@@ -118,7 +119,7 @@ export const externalStatusMonitor = {
   },
   
   async getAllStatuses(): Promise<Record<string, ServiceStatus>> {
-    if (Date.now() - this.lastFullCheck < 60000 && this.cachedStatuses.size > 0) {
+    if (clock.nowMs() - this.lastFullCheck < 60000 && this.cachedStatuses.size > 0) {
       const results: Record<string, ServiceStatus> = {};
       this.cachedStatuses.forEach((status, key) => {
         results[key] = status;
@@ -162,7 +163,7 @@ export const externalStatusMonitor = {
     
     // Task #N+1 fix: Batch query to find which orgs already have a recent alert,
     // then bulk-insert only for orgs that don't, avoiding N+1 SELECT per org.
-    const cutoff = new Date(Date.now() - 60 * 60 * 1000);
+    const cutoff = new Date(clock.nowMs() - 60 * 60 * 1000);
     const alreadyNotified = await db.select({ orgId: systemAlerts.organizationId })
       .from(systemAlerts)
       .where(and(
@@ -195,7 +196,7 @@ export const externalStatusMonitor = {
   async resolveOutageNotifications(service: string): Promise<number> {
     // Task #N+1 fix: Use a single bulk UPDATE with SQL filter instead of looping N individual UPDATEs
     const updated = await db.update(systemAlerts)
-      .set({ resolvedAt: new Date(), status: "resolved" as any })
+      .set({ resolvedAt: clock.now(), status: "resolved" as any })
       .where(and(
         eq(systemAlerts.type, "external_outage" as any),
         sql`${systemAlerts.resolvedAt} IS NULL`,

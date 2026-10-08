@@ -49,6 +49,7 @@ import {
 import { mintQrCode, qrRedirectUrl, qrSigningConfigured } from "./services/mail/qrCodes";
 import { assignTrackingNumberForMailShipment } from "./services/comms/tracking-pool";
 import { registerQrRedirectRoutes } from "./routes/public-qr-redirect";
+import { clock } from "./utils/clock";
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -383,7 +384,7 @@ async function buildQuote(
   const pieces = recipientsToMailPieces(recipients, pieceType);
 
   // Recent-mail dedupe warn signal (UX-only — caller decides to warn).
-  const cutoff = new Date(Date.now() - DEDUPE_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - DEDUPE_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
   const recentlyMailedCount = recipients.filter(
     (r) => r.lastContactedAt && r.lastContactedAt >= cutoff,
   ).length;
@@ -637,7 +638,7 @@ export function registerOutreachMailRoutes(app: Express): void {
           }
         }
 
-        const leavesAt = new Date(Date.now() + HOLD_WINDOW_MINUTES * 60 * 1000);
+        const leavesAt = new Date(clock.nowMs() + HOLD_WINDOW_MINUTES * 60 * 1000);
 
         // Lens 3 (Pricing Coherence) — debit the customer's credit pool for
         // the piece count BEFORE we persist the shipment. The /credits/summary
@@ -884,7 +885,7 @@ export function registerOutreachMailRoutes(app: Express): void {
         if (existing.status !== "queued") {
           return Errors.badRequest(res, `Cannot cancel — shipment is ${existing.status}`);
         }
-        if (existing.leavesAt.getTime() <= Date.now()) {
+        if (existing.leavesAt.getTime() <= clock.nowMs()) {
           return Errors.badRequest(res, "Hold window has passed; shipment already in flight");
         }
 
@@ -892,7 +893,7 @@ export function registerOutreachMailRoutes(app: Express): void {
           .update(mailShipments)
           .set({
             status: "cancelled",
-            cancelledAt: new Date(),
+            cancelledAt: clock.now(),
             cancellationReason: typeof req.body?.reason === "string" ? req.body.reason : "user_cancelled",
           })
           .where(and(eq(mailShipments.id, idParam), eq(mailShipments.organizationId, orgId)))
@@ -1346,7 +1347,7 @@ export function registerOutreachMailRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       const orgId = getOrganizationId(req);
       const days = Math.max(1, Math.min(Number(req.query.days ?? 90) || 90, 365));
-      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+      const since = new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000);
 
       try {
         const rows = await db
@@ -1392,7 +1393,7 @@ export function registerOutreachMailRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       const orgId = getOrganizationId(req);
       const days = Math.max(30, Math.min(Number(req.query.days ?? 180) || 180, 730));
-      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+      const since = new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000);
 
       try {
         const rows = await db
@@ -1542,7 +1543,7 @@ export function registerOutreachMailRoutes(app: Express): void {
       const org = getOrganization(req);
 
       try {
-        const now = new Date();
+        const now = clock.now();
         const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
         const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 
@@ -1597,7 +1598,7 @@ export function registerOutreachMailRoutes(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       const orgId = getOrganizationId(req);
       const days = Math.max(1, Math.min(Number(req.query.days ?? 30) || 30, 365));
-      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+      const since = new Date(clock.nowMs() - days * 24 * 60 * 60 * 1000);
       const limit = Math.min(Number(req.query.limit ?? 100) || 100, 500);
       const offset = Math.max(Number(req.query.offset ?? 0) || 0, 0);
       const category = typeof req.query.category === "string" ? req.query.category : null;

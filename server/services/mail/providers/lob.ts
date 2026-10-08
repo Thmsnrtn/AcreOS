@@ -23,6 +23,7 @@ import type {
 } from "../router";
 import { averageCostCentsPerPiece, PartialMailSendError } from "../router";
 import { logger } from "../../../utils/logger";
+import { clock } from "../../../utils/clock";
 
 // Approximate Lob 2026 retail per-piece cost in cents (HTML templates).
 // Numbers used purely for routing decisions; the ledger reads its own
@@ -180,7 +181,7 @@ export const lobAdapter: MailProvider = {
 
     return {
       provider: "lob",
-      providerEventId: pieces[0]?.providerPieceId ?? `lob_shipment_${Date.now()}`,
+      providerEventId: pieces[0]?.providerPieceId ?? `lob_shipment_${clock.nowMs()}`,
       pieces,
       totalCostCents,
     };

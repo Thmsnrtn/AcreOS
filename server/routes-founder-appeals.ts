@@ -38,6 +38,7 @@ import { paxDecisionAppeals } from "@shared/schema/pax-decision-appeals";
 import { organizations } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { sendRegisteredEmail } from "./services/emailRegistry";
+import { clock } from "./utils/clock";
 
 const resolveAppealSchema = z.object({
   decision: z.enum(["upheld", "reversed"]),
@@ -223,7 +224,7 @@ export function registerFounderAppealRoutes(app: Express): void {
           );
         }
 
-        const resolvedAt = new Date();
+        const resolvedAt = clock.now();
         await db
           .update(paxDecisionAppeals)
           .set({

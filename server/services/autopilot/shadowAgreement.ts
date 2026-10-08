@@ -44,6 +44,7 @@ import {
   buildDecisionRecords,
   type DecisionRecord,
 } from "./decisionEval";
+import { clock } from "../../utils/clock";
 
 /** Resolved shadow pairs required before a promotion card may cite agreement. */
 export const SHADOW_MIN_PAIRS = 8;
@@ -169,7 +170,7 @@ export function shadowAgreementFromRecords(
   records: DecisionRecord[],
   opts: { now?: Date; windowWeeks?: number } = {},
 ): ShadowAgreement {
-  const now = opts.now ?? new Date();
+  const now = opts.now ?? clock.now();
   const windowWeeks = opts.windowWeeks ?? SHADOW_WINDOW_WEEKS;
   const windowStart = now.getTime() - windowWeeks * WEEK_MS;
 

@@ -40,6 +40,7 @@ import {
 import { logger } from "../utils/logger";
 import { aggregateAcquiredNoteInterestForYear } from "../routes-notes";
 import { decrypt as decryptField, isAnyEncryptedEnvelope } from "./fieldEncryption";
+import { clock } from "../utils/clock";
 
 export interface BatchResult {
   jobId: string;
@@ -79,7 +80,7 @@ export async function generate1099Batch(
       organizationId: orgId,
       taxYear,
       status: "running",
-      startedAt: new Date(),
+      startedAt: clock.now(),
     })
     .returning({ id: form1099Batches.id });
   const jobId = batch!.id;
@@ -92,7 +93,7 @@ export async function generate1099Batch(
         status: result.status,
         formCount: result.formCount,
         totalInterestCents: result.totalInterestCents,
-        completedAt: new Date(),
+        completedAt: clock.now(),
         resultBlob: {
           forms: result.recipientPdfs.map((r) => ({
             noteId: r.noteId,
@@ -115,7 +116,7 @@ export async function generate1099Batch(
       .set({
         status: "failure",
         errorMessage: message,
-        completedAt: new Date(),
+        completedAt: clock.now(),
       })
       .where(eq(form1099Batches.id, jobId));
     throw err;

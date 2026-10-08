@@ -16,6 +16,7 @@ import { db } from "../db";
 import { systemAlerts, organizations } from "@shared/schema";
 import { logActivity } from "./systemActivityLogger";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface JobHealth {
   name: string;
@@ -67,12 +68,12 @@ class JobSupervisor {
     this.register(name, intervalMs);
 
     return async (): Promise<T | undefined> => {
-      const start = Date.now();
+      const start = clock.nowMs();
       try {
         const result = await fn();
-        const durationMs = Date.now() - start;
+        const durationMs = clock.nowMs() - start;
         const job = this.jobs.get(name)!;
-        job.lastRunAt = new Date();
+        job.lastRunAt = clock.now();
         job.lastRunDurationMs = durationMs;
         job.lastRunSuccess = true;
         job.consecutiveFailures = 0;
@@ -80,9 +81,9 @@ class JobSupervisor {
         job.processedCount += 1;
         return result;
       } catch (err: any) {
-        const durationMs = Date.now() - start;
+        const durationMs = clock.nowMs() - start;
         const job = this.jobs.get(name)!;
-        job.lastRunAt = new Date();
+        job.lastRunAt = clock.now();
         job.lastRunDurationMs = durationMs;
         job.lastRunSuccess = false;
         job.consecutiveFailures += 1;
@@ -115,7 +116,7 @@ class JobSupervisor {
    * If a job hasn't run in HEALTH_CHECK_MULTIPLIER * intervalMs, mark degraded.
    */
   checkHealth(): void {
-    const now = Date.now();
+    const now = clock.nowMs();
     for (const [, job] of this.jobs) {
       if (job.status === "failed") continue; // already alerted
       if (!job.lastRunAt) continue; // hasn't run yet (server just started)
@@ -150,7 +151,7 @@ class JobSupervisor {
   ): void {
     this.register(name, intervalMs);
     const job = this.jobs.get(name)!;
-    job.lastRunAt = new Date();
+    job.lastRunAt = clock.now();
     job.lastRunDurationMs = durationMs ?? null;
     job.lastRunSuccess = success;
 

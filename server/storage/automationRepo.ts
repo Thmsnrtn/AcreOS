@@ -27,6 +27,7 @@ import {
   type JobCursor,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { clock } from "../utils/clock";
 
 export const automationRepo = {
   // ENHANCED TASKS (8.2)
@@ -125,7 +126,7 @@ export const automationRepo = {
       conditions.push(eq(notifications.userId, userId));
     }
     const [updated] = await db.update(notifications)
-      .set({ isRead: true, readAt: new Date() })
+      .set({ isRead: true, readAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -133,7 +134,7 @@ export const automationRepo = {
 
   async markAllNotificationsRead(this: DatabaseStorage, orgId: number, userId: string): Promise<void> {
     await db.update(notifications)
-      .set({ isRead: true, readAt: new Date() })
+      .set({ isRead: true, readAt: clock.now() })
       .where(and(
         eq(notifications.organizationId, orgId),
         eq(notifications.userId, userId),
@@ -176,8 +177,8 @@ export const automationRepo = {
         .set({
           lastProcessedId,
           status,
-          lastRunAt: new Date(),
-          updatedAt: new Date(),
+          lastRunAt: clock.now(),
+          updatedAt: clock.now(),
         })
         .where(eq(jobCursors.jobType, jobType))
         .returning();
@@ -188,7 +189,7 @@ export const automationRepo = {
           jobType,
           lastProcessedId,
           status,
-          lastRunAt: new Date(),
+          lastRunAt: clock.now(),
         })
         .returning();
       return created;
@@ -202,8 +203,8 @@ export const automationRepo = {
       const [updated] = await db.update(jobCursors)
         .set({
           status,
-          lastRunAt: new Date(),
-          updatedAt: new Date(),
+          lastRunAt: clock.now(),
+          updatedAt: clock.now(),
         })
         .where(eq(jobCursors.jobType, jobType))
         .returning();
@@ -213,7 +214,7 @@ export const automationRepo = {
         .values({
           jobType,
           status,
-          lastRunAt: new Date(),
+          lastRunAt: clock.now(),
         })
         .returning();
       return created;

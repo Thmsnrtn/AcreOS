@@ -26,6 +26,7 @@ import { jobQueueService } from "./jobQueue";
 import { logger } from "../utils/logger";
 
 import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
+import { clock } from "../utils/clock";
 const DECAY_PER_WEEK = 0.05; // 5% per week
 const DAYS_BEFORE_COLD_ALERT = 14;
 const COLD_SCORE_DROP_THRESHOLD = 20;
@@ -37,7 +38,7 @@ export async function decayOrganizationLeads(orgId: number): Promise<{
   decayed: number;
   coldAlerts: number;
 }> {
-  const now = new Date();
+  const now = clock.now();
   const weeksPerDay = 1 / 7;
 
   // Fetch all active leads with their current scores
@@ -147,8 +148,8 @@ export async function applyScoreRecovery(leadId: number, interactionType: string
 
   await db.update(leads).set({
     score: newScore,
-    lastContactedAt: new Date(),
-    updatedAt: new Date(),
+    lastContactedAt: clock.now(),
+    updatedAt: clock.now(),
   }).where(eq(leads.id, leadId));
 
   // TODO(tsc): lead_score_history has no free-text `reason` column; record the
@@ -159,7 +160,7 @@ export async function applyScoreRecovery(leadId: number, interactionType: string
     score: newScore,
     previousScore: lead.score ?? 0,
     triggerSource: "manual",
-    scoredAt: new Date(),
+    scoredAt: clock.now(),
   });
 }
 

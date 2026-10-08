@@ -16,6 +16,7 @@ import {
 import { eq, and, desc, sql, gte, count } from "drizzle-orm";
 import crypto from "crypto";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -325,7 +326,7 @@ class CollaborationProtocolService {
       .set({
         status: "consensus_reached",
         resolution,
-        resolvedAt: new Date(),
+        resolvedAt: clock.now(),
       })
       .where(eq(agentDialogues.dialogueId, dialogueId))
       .returning();
@@ -391,7 +392,7 @@ class CollaborationProtocolService {
     }
 
     if (data.status === "completed") {
-      updatePayload.completedAt = new Date();
+      updatePayload.completedAt = clock.now();
     }
 
     const [updated] = await db
@@ -511,7 +512,7 @@ class CollaborationProtocolService {
         .set({
           skillDescription: data.skillDescription,
           proficiency: data.proficiency ?? existing.proficiency,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(agentSkillRegistry.id, existing.id))
         .returning();

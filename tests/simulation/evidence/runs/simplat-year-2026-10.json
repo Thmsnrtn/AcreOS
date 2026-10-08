@@ -1,0 +1,68 @@
+{
+ "id": "simplat-year-2026-10",
+ "kind": "deterministic-sim",
+ "at": "2026-10-08",
+ "proves": [
+  "writer.publishes",
+  "ops.one-page-per-incident",
+  "tcpa.revocation",
+  "tenancy.isolation",
+  "letter.sourced-numbers",
+  "approvals.version-bound",
+  "hardstops.founder-only"
+ ],
+ "summary": {
+  "seeds": [
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "days": 365,
+  "founderMinutesPerWeek": {
+   "p10": 11,
+   "p50": 38,
+   "p90": 58.599999999999994,
+   "n": 265
+  },
+  "violations": {
+   "p10": 0,
+   "p50": 0,
+   "p90": 0,
+   "n": 5
+  },
+  "compliance": {
+   "p10": 0,
+   "p50": 0,
+   "p90": 0,
+   "n": 5
+  },
+  "support": {
+   "tickets": {
+    "p10": 78.6,
+    "p50": 82,
+    "p90": 87.4,
+    "n": 5
+   },
+   "handled": {
+    "p10": 39.8,
+    "p50": 48,
+    "p90": 50.4,
+    "n": 5
+   },
+   "escalated": {
+    "p10": 25.8,
+    "p50": 29,
+    "p90": 34.6,
+    "n": 5
+   },
+   "dropped": {
+    "p10": 5.2,
+    "p50": 7,
+    "p90": 9.2,
+    "n": 5
+   }
+  }
+ }
+}

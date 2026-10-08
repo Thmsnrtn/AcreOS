@@ -20,6 +20,7 @@ import {
 } from "@shared/schema";
 import { eq, and, gte, desc, count, sum, sql, ne } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type AgentDataResolver = () => Promise<Record<string, any>>;
 
@@ -27,7 +28,7 @@ const resolvers: Record<string, AgentDataResolver> = {};
 
 // ─── ATLAS CTO ──────────────────────────────────────────────────────────────
 resolvers.atlas_cto = async () => {
-  const now = new Date();
+  const now = clock.now();
   const yesterday = new Date(now.getTime() - 86400000);
   const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
 
@@ -72,8 +73,8 @@ resolvers.atlas_cto = async () => {
 
 // ─── SOPHIE CSM ─────────────────────────────────────────────────────────────
 resolvers.sophie_csm = async () => {
-  const yesterday = new Date(Date.now() - 86400000);
-  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
+  const yesterday = new Date(clock.nowMs() - 86400000);
+  const sevenDaysAgo = new Date(clock.nowMs() - 7 * 86400000);
 
   const [openTickets, resolvedBysophie7d, totalResolved7d, totalOrgs] = await Promise.allSettled([
     db.select({ count: count() }).from(supportTickets)
@@ -106,7 +107,7 @@ resolvers.sophie_csm = async () => {
 
 // ─── FORGE REVENUE ──────────────────────────────────────────────────────────
 resolvers.forge_revenue = async () => {
-  const now = new Date();
+  const now = clock.now();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
   const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
 
@@ -152,7 +153,7 @@ resolvers.forge_revenue = async () => {
 
 // ─── BEACON MARKETING ───────────────────────────────────────────────────────
 resolvers.beacon_marketing = async () => {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
+  const sevenDaysAgo = new Date(clock.nowMs() - 7 * 86400000);
 
   const [campaignCount, emailActivity, signups7d, orgStats] = await Promise.allSettled([
     db.select({ count: count() }).from(campaigns)
@@ -178,7 +179,7 @@ resolvers.beacon_marketing = async () => {
 
 // ─── SENTINEL DEVOPS ────────────────────────────────────────────────────────
 resolvers.sentinel_devops = async () => {
-  const yesterday = new Date(Date.now() - 86400000);
+  const yesterday = new Date(clock.nowMs() - 86400000);
 
   const [critAlerts, openAlerts, jobLogs] = await Promise.allSettled([
     db.select({ count: count() }).from(systemAlerts)
@@ -206,8 +207,8 @@ resolvers.sentinel_devops = async () => {
 
 // ─── LEDGER FINANCE ─────────────────────────────────────────────────────────
 resolvers.ledger_finance = async () => {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+  const sevenDaysAgo = new Date(clock.nowMs() - 7 * 86400000);
+  const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 86400000);
 
   const [aiCost7d, aiCost30d, revenue30d, payingOrgs] = await Promise.allSettled([
     db.select({ total: sum(apiUsageLogs.estimatedCostCents) }).from(apiUsageLogs)
@@ -240,15 +241,15 @@ resolvers.ledger_finance = async () => {
 resolvers.shield_legal = async () => {
   return {
     complianceStatus: "active",
-    lastAuditCheck: new Date().toISOString(),
+    lastAuditCheck: clock.now().toISOString(),
     note: "Compliance monitoring active. No regulatory changes detected requiring action.",
   };
 };
 
 // ─── ORACLE ANALYTICS ───────────────────────────────────────────────────────
 resolvers.oracle_analytics = async () => {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
-  const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000);
+  const sevenDaysAgo = new Date(clock.nowMs() - 7 * 86400000);
+  const fourteenDaysAgo = new Date(clock.nowMs() - 14 * 86400000);
 
   const [orgsThisWeek, orgsLastWeek, payingNow, cancelsThisWeek] = await Promise.allSettled([
     db.select({ count: count() }).from(organizations)
@@ -277,7 +278,7 @@ resolvers.oracle_analytics = async () => {
 
 // ─── COMPASS PM ─────────────────────────────────────────────────────────────
 resolvers.compass_pm = async () => {
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+  const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 86400000);
 
   const [totalRequests, recentRequests, pendingDecisions] = await Promise.allSettled([
     db.select({ count: count() }).from(featureRequests),
@@ -296,7 +297,7 @@ resolvers.compass_pm = async () => {
 
 // ─── CRUCIBLE QA ────────────────────────────────────────────────────────────
 resolvers.crucible_qa = async () => {
-  const yesterday = new Date(Date.now() - 86400000);
+  const yesterday = new Date(clock.nowMs() - 86400000);
 
   const [jobLogs] = await Promise.allSettled([
     db.select().from(jobHealthLogs)

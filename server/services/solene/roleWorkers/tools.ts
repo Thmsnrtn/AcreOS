@@ -23,6 +23,7 @@ import {
   autopilotPendingActions,
   creditTransactions,
   organizations,
+  soleneFounderAsks,
   supportTicketMessages,
   supportTickets,
 } from "@shared/schema";
@@ -60,6 +61,7 @@ export interface RoleToolContext {
 }
 
 import { SUPPORT_WORKER_AGENT, FOUNDER_AGENT } from "./routing";
+import { clock } from "../../../utils/clock";
 export { SUPPORT_WORKER_AGENT, FOUNDER_AGENT };
 
 
@@ -183,7 +185,7 @@ async function ticketInOrg(organizationId: number, ticketId: number) {
 }
 
 async function purchasesForOrg(organizationId: number) {
-  const since = new Date(Date.now() - 90 * 24 * 3600_000);
+  const since = new Date(clock.nowMs() - 90 * 24 * 3600_000);
   return unscopedForPlatformOps(PLATFORM_SUPPORT)
     .select({
       id: creditTransactions.id,
@@ -207,13 +209,10 @@ async function purchasesForOrg(organizationId: number) {
 /** Mark a ticket picked up so the backlog sense stops counting it (never overwrite a founder hand-off). */
 async function assignTicket(organizationId: number, ticketId: number, agent: string) {
   const db = unscopedForPlatformOps(PLATFORM_SUPPORT);
-  if (agent === FOUNDER_AGENT) {
-    await db.update(supportTickets).set({ assignedAgent: FOUNDER_AGENT, status: "in_progress", updatedAt: new Date() }).where(and(eq(supportTickets.id, ticketId), eq(supportTickets.organizationId, organizationId)));
-    return;
-  }
+  // (The founder hand-off is not done here: escalate_to_founder claims the ticket atomically.)
   await db
     .update(supportTickets)
-    .set({ assignedAgent: agent, status: "in_progress", updatedAt: new Date() })
+    .set({ assignedAgent: agent, status: "in_progress", updatedAt: clock.now() })
     .where(and(eq(supportTickets.id, ticketId), eq(supportTickets.organizationId, organizationId), sql`coalesce(${supportTickets.assignedAgent}, '') <> ${FOUNDER_AGENT}`));
 }
 
@@ -244,7 +243,7 @@ export interface AtRiskCustomer {
  *   trial_ending — an in-app trial ending in the next 3 days.
  * Founder orgs are never on it.
  */
-async function listAtRiskCustomers(now = new Date()): Promise<AtRiskCustomer[]> {
+async function listAtRiskCustomers(now = clock.now()): Promise<AtRiskCustomer[]> {
   const db = unscopedForPlatformOps(PLATFORM_RETENTION);
   const rows = await db.execute(sql`
     select o.id, o.name, o.dunning_stage, o.subscription_status, o.subscription_tier,
@@ -286,7 +285,7 @@ async function listAtRiskCustomers(now = new Date()): Promise<AtRiskCustomer[]> 
 }
 
 async function recentlyEmailed(organizationId: number, kind: string): Promise<boolean> {
-  const since = new Date(Date.now() - 7 * 24 * 3600_000);
+  const since = new Date(clock.nowMs() - 7 * 24 * 3600_000);
   const rows = await unscopedForPlatformOps(PLATFORM_RETENTION)
     .select({ id: autopilotPendingActions.id })
     .from(autopilotPendingActions)
@@ -454,6 +453,9 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
     for (const v of [...known]) known.add(v.replace(/\.00$/, "")).add(/\./.test(v) ? v : `${v}.00`);
     const fab = screenFabrication(message, { allowDollarFigures: [...known] });
     if (fab.length > 0) return { success: false, output: `reply_to_ticket refused by the honesty screen: ${fab.map((v) => v.message).join(" ")}` };
+    const { claimsFounderOnlyAction } = await import("../../autopilot/hardStopMoves");
+    const claimed = claimsFounderOnlyAction(message);
+    if (claimed) return { success: false, output: `reply_to_ticket refused: the reply tells the customer a founder-only action (${claimed.replace(/_/g, " ")}) was done. Only the founder does that — escalate the ticket to the founder and tell the customer it is being reviewed.` };
     const frozen = await freezeHand("support", "reply_support_ticket", { ticket_id: ticket.id, organization_id: ticket.organizationId, message, resolve: input.resolve === true }, ctx);
     if (frozen.pendingId == null) return { success: false, output: frozen.output };
     await assignTicket(ticket.organizationId, ticket.id, SUPPORT_WORKER_AGENT);
@@ -463,6 +465,43 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
   if (name === "escalate_to_founder") {
     const summary = str(input.summary).slice(0, 150) || ticket.subject;
     const why = str(input.why);
+    // The hand-off IS the claim. Two Support runs can be briefed on the same
+    // waiting ticket, and askFounder's fold is read-then-insert, so two
+    // escalations racing both opened an ask and both paged the founder. One
+    // conditional UPDATE moves the ticket to the founder; Postgres serialises
+    // the row, so only the run whose UPDATE changed it asks — and pages.
+    const claimed = await unscopedForPlatformOps(PLATFORM_SUPPORT)
+      .update(supportTickets)
+      .set({ assignedAgent: FOUNDER_AGENT, status: "in_progress", updatedAt: clock.now() })
+      .where(
+        and(
+          eq(supportTickets.id, ticket.id),
+          eq(supportTickets.organizationId, ticket.organizationId),
+          sql`coalesce(${supportTickets.assignedAgent}, '') <> ${FOUNDER_AGENT}`,
+        ),
+      )
+      .returning({ id: supportTickets.id });
+    if (claimed.length === 0) {
+      return { success: false, output: `Ticket #${ticket.id} is already with the founder — not asking or paging again. Tell the customer it is being reviewed; promise no outcome.` };
+    }
+    // Legal intake (supportLegalIntake) already put a legal ticket in front of
+    // the founder — an urgent ask and a page — when it was filed. The ticket is
+    // now his; a second ask about the same ticket would be a second page for
+    // one incident.
+    const { LEGAL_ASK_SUMMARY_PREFIX } = await import("../../supportLegalIntake");
+    const [legal] = await unscopedForPlatformOps(PLATFORM_SUPPORT)
+      .select({ id: soleneFounderAsks.id })
+      .from(soleneFounderAsks)
+      .where(
+        and(
+          sql`${soleneFounderAsks.questionSummary} like ${`${LEGAL_ASK_SUMMARY_PREFIX}:%`}`,
+          sql`${soleneFounderAsks.questionSummary} like ${`% in support ticket #${ticket.id}`}`,
+        ),
+      )
+      .limit(1);
+    if (legal) {
+      return { success: true, effect: "escalated", output: `Ticket #${ticket.id} is already in front of the founder as legal ask #${legal.id} (from intake); it is now assigned to him — no second ask or page. Tell the customer it is being reviewed; promise no outcome.` };
+    }
     const { askFounder } = await import("../founderCollab");
     const r = await askFounder({
       askingAgentRole: "general-purpose",
@@ -478,7 +517,6 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
       answerFormat: "free_text",
       urgency: /legal|lawsuit|attorney|counsel|tcpa|cease|demand letter|subpoena/i.test(`${summary} ${why} ${ticket.description}`) ? "urgent" : "normal",
     });
-    await assignTicket(ticket.organizationId, ticket.id, FOUNDER_AGENT);
     return { success: true, effect: "escalated", output: `Ticket #${ticket.id} handed to the founder (ask #${r.askId}${r.deduped ? ", already open" : ""}).` };
   }
   return { success: false, output: `unknown support tool ${name}` };
@@ -497,6 +535,9 @@ async function executeRetentionRoleTool(name: string, input: Record<string, unkn
   const { screenFabrication } = await import("../../autopilot/contentHonesty");
   const fab = screenFabrication(`${subject}\n${html}`);
   if (fab.length > 0) return { success: false, output: `email_customer refused by the honesty screen: ${fab.map((v) => v.message).join(" ")}` };
+  const { claimsFounderOnlyAction } = await import("../../autopilot/hardStopMoves");
+  const claimed = claimsFounderOnlyAction(`${subject}\n${html.replace(/<[^>]+>/g, " ")}`);
+  if (claimed) return { success: false, output: `email_customer refused: the email tells the customer a founder-only action (${claimed.replace(/_/g, " ")}) was done or will be. Pricing, legal, large spends and data deletion are the founder's alone.` };
   if (await recentlyEmailed(orgId, kind)) return { success: false, output: `email_customer refused: org #${orgId} already got a ${kind} email in the last 7 days.` };
   const { ownerEmailOf } = await import("../../autopilot/delegationRules");
   const to = await ownerEmailOf(orgId);

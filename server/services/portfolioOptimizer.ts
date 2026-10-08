@@ -7,6 +7,7 @@ import {
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 interface PropertyHolding {
   propertyId: string;
@@ -183,7 +184,7 @@ class PortfolioOptimizer {
       // Save simulation to database — map to actual schema columns
       const [simulation] = await db.insert(portfolioSimulations).values({
         organizationId,
-        name: `Monte Carlo ${new Date().toISOString().slice(0, 10)}`,
+        name: `Monte Carlo ${clock.now().toISOString().slice(0, 10)}`,
         timeHorizonMonths: yearsForward * 12,
         iterations: numSimulations,
         assumptions: {
@@ -645,7 +646,7 @@ Respond in JSON format with array of recommendations.`;
       await db.update(optimizationRecommendations)
         .set({
           status,
-          implementedAt: status === 'implemented' ? new Date() : null,
+          implementedAt: status === 'implemented' ? clock.now() : null,
         })
         .where(and(
           eq(optimizationRecommendations.id, recommendationId),

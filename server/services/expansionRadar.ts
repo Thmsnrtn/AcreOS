@@ -43,6 +43,7 @@ import {
 } from "@shared/schema";
 import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const TIER_LADDER: Record<string, string> = {
   free: "starter",
@@ -74,7 +75,7 @@ export interface CandidateScan {
 }
 
 export async function runWeeklyExpansionScan(): Promise<CandidateScan> {
-  const weekKey = isoWeekKey(new Date());
+  const weekKey = isoWeekKey(clock.now());
 
   // Skip if we've already scanned this week — idempotent.
   const existing = await db
@@ -170,7 +171,7 @@ async function scoreOrg(org: {
   signals: Record<string, any>;
   reasoning: string;
 }> {
-  const now = new Date();
+  const now = clock.now();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
   const priorThirty = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
@@ -318,7 +319,7 @@ export async function resolveExpansionCandidate(
     .set({
       status,
       founderNotes: founderNotes?.slice(0, 2000) ?? null,
-      resolvedAt: new Date(),
+      resolvedAt: clock.now(),
       resolvedBy: resolvedBy ?? "founder",
     })
     .where(eq(expansionCandidates.id, id));

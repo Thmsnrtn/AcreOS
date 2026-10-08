@@ -42,6 +42,7 @@ import { validatePaxResponse } from "./utils/validatePaxResponse";
 import { validateCompliance } from "./services/complianceValidator";
 import { recordAttemptIfDetected } from "./utils/injectionRateLimiter";
 import { poolDebit, refundPoolDebit, poolRefusalDetails } from "./services/creditPool";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -167,7 +168,7 @@ ${sanitizePrompt(rawUserPayload, { maxLength: 6000, source: "pax.draft-reply" })
     // the model call. The compliance post-validator (Opus) is bundled into
     // the same turn for billing purposes; the empirical 90th-percentile
     // cost (Sonnet + Opus passes) fits inside the 1.5-cent ai_turn_avg.
-    const aiDebitKey = `ai:draft-reply:${orgId}:${messageId}:${Date.now()}`;
+    const aiDebitKey = `ai:draft-reply:${orgId}:${messageId}:${clock.nowMs()}`;
     const aiDebit = await poolDebit({
       organizationId: orgId,
       action: "ai_turn_avg",

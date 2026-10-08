@@ -55,6 +55,7 @@ import { isSuppressed } from "./emailSuppressions";
 import { logger } from "../utils/logger";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import crypto from "node:crypto";
+import { clock } from "../utils/clock";
 
 export type LifecycleSendStatus = "queued" | "sent" | "suppressed" | "skipped";
 
@@ -190,7 +191,7 @@ export async function countWinbackTouches(
   organizationId: number,
   windowMs: number = WINBACK_THROTTLE_WINDOW_MS,
 ): Promise<number> {
-  const since = new Date(Date.now() - windowMs);
+  const since = new Date(clock.nowMs() - windowMs);
   try {
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)::int` })
@@ -458,7 +459,7 @@ export async function issueReactivationToken(params: {
   const bytes = new Uint8Array(24);
   globalThis.crypto.getRandomValues(bytes);
   const token = Buffer.from(bytes).toString("base64url");
-  const expiresAt = new Date(Date.now() + REACTIVATION_TOKEN_TTL_MS);
+  const expiresAt = new Date(clock.nowMs() + REACTIVATION_TOKEN_TTL_MS);
 
   await db.insert(reactivationTokens).values({
     organizationId: params.organizationId,
@@ -492,7 +493,7 @@ export async function verifyReactivationToken(
       .limit(1);
     if (!row) return null;
     if (row.redeemedAt) return null;
-    if (row.expiresAt.getTime() < Date.now()) return null;
+    if (row.expiresAt.getTime() < clock.nowMs()) return null;
     return {
       organizationId: row.organizationId,
       expiresAt: row.expiresAt,

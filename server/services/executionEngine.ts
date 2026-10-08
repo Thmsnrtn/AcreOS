@@ -25,6 +25,7 @@ import {
   validateDealTransition,
   validateLeadTransition,
 } from "@shared/lifecycle/pipeline-status";
+import { clock } from "../utils/clock";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -203,7 +204,7 @@ const actionRegistry: Record<string, ActionExecutor> = {
     if (!taskId) return fail("taskId required");
 
     const completedTasks = await db.update(tasks)
-      .set({ status: "completed", completedAt: new Date() })
+      .set({ status: "completed", completedAt: clock.now() })
       .where(and(eq(tasks.id, taskId), eq(tasks.organizationId, ctx.orgId)))
       .returning({ id: tasks.id });
     if (completedTasks.length === 0) return fail(`Task ${taskId} not found`);
@@ -257,8 +258,8 @@ const actionRegistry: Record<string, ActionExecutor> = {
     // Log restart intent — actual job will pick up on next scheduled run
     await db.insert(jobHealthLogs).values({
       jobName: `restart:${jobName}`,
-      runStartedAt: new Date(),
-      runCompletedAt: new Date(),
+      runStartedAt: clock.now(),
+      runCompletedAt: clock.now(),
       durationMs: 0,
       status: "restart_requested",
     });
@@ -372,7 +373,7 @@ async function logAgentAction(ctx: ExecutionContext, eventType: string, payload:
         orgId: ctx.orgId,
         chainRunId: ctx.chainRunId,
         stepIndex: ctx.stepIndex,
-        executedAt: new Date().toISOString(),
+        executedAt: clock.now().toISOString(),
       },
     });
   } catch { /* best effort */ }
@@ -402,7 +403,7 @@ async function bumpExecutionCount(agentKey: string, bucketStart: Date): Promise<
 
 async function checkRateLimit(agentCodename: string): Promise<{ allowed: boolean; reason?: string }> {
   const hourMs = 60 * 60 * 1000;
-  const bucketStart = new Date(Math.floor(Date.now() / hourMs) * hourMs);
+  const bucketStart = new Date(Math.floor(clock.nowMs() / hourMs) * hourMs);
   try {
     const globalCount = await bumpExecutionCount("__global__", bucketStart);
     if (globalCount > MAX_ACTIONS_PER_HOUR) {
@@ -470,7 +471,7 @@ async function validateSafetyGates(ctx: ExecutionContext): Promise<{ passed: boo
     try {
       const { governanceBrainService } = await import("./governanceBrainV13");
       const evaluation = await governanceBrainService.evaluateAction({
-        actionId: `exec_${Date.now()}_${ctx.agentCodename}`,
+        actionId: `exec_${clock.nowMs()}_${ctx.agentCodename}`,
         agentCodename: ctx.agentCodename,
         actionType: ctx.action,
         actionContext: { ...ctx.input, orgId: ctx.orgId },
@@ -555,7 +556,7 @@ class AutonomousExecutionEngine {
    * safety gates → execute → record outcome → feed back
    */
   async execute(ctx: ExecutionContext): Promise<ExecutionResult> {
-    const startTime = Date.now();
+    const startTime = clock.nowMs();
 
     // 1. Safety gate validation
     const gates = await validateSafetyGates(ctx);
@@ -564,7 +565,7 @@ class AutonomousExecutionEngine {
         success: false,
         output: { violations: gates.violations },
         sideEffects: [],
-        durationMs: Date.now() - startTime,
+        durationMs: clock.nowMs() - startTime,
         error: `Safety gate violations: ${gates.violations.join("; ")}`,
       };
 
@@ -591,7 +592,7 @@ class AutonomousExecutionEngine {
         success: false,
         output: { action: ctx.action, input: ctx.input, error: "no_executor_registered" },
         sideEffects: [`NOTHING executed: no executor registered for action "${ctx.action}"`],
-        durationMs: Date.now() - startTime,
+        durationMs: clock.nowMs() - startTime,
         error: "no_executor_registered",
       };
       await logAgentAction(ctx, "action_refused_no_executor", {
@@ -606,7 +607,7 @@ class AutonomousExecutionEngine {
 
     try {
       const result = await executor(ctx);
-      result.durationMs = Date.now() - startTime;
+      result.durationMs = clock.nowMs() - startTime;
 
       // 3. Record outcome for trust evolution and feedback loop
       await this.recordOutcome(ctx, result);
@@ -626,7 +627,7 @@ class AutonomousExecutionEngine {
         success: false,
         output: {},
         sideEffects: [],
-        durationMs: Date.now() - startTime,
+        durationMs: clock.nowMs() - startTime,
         error: err.message,
       };
       await this.recordOutcome(ctx, result);

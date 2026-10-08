@@ -18,6 +18,7 @@
  *     the same number the ledger shows, never a marketing figure.
  */
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 export type ReadinessStatus = "ready" | "action_needed" | "attention";
 
@@ -225,7 +226,7 @@ export async function buildStepAwayReadiness(): Promise<StepAwayReadiness> {
         checks.push({ ...base, status: "action_needed", detail: "No live delegation grants — every outward action will freeze and wait for your tap while you're away.", fix: "Issue a bounded delegation on the Control Center (start narrow: support, $5/action, small budget, short expiry)." });
       } else {
         const soonest = grants.reduce((min, g) => Math.min(min, g.expiresAt.getTime()), Infinity);
-        const daysLeft = Math.max(0, Math.floor((soonest - Date.now()) / (24 * 60 * 60 * 1000)));
+        const daysLeft = Math.max(0, Math.floor((soonest - clock.nowMs()) / (24 * 60 * 60 * 1000)));
         const budgetLeft = grants.reduce((sum, g) => sum + Math.max(0, g.maxActions - g.usedCount), 0);
         checks.push({ ...base, status: "ready", detail: `${grants.length} live grant(s), ${budgetLeft} delegated action(s) remaining; earliest expiry in ~${daysLeft} day(s).` });
       }
@@ -366,7 +367,7 @@ export async function buildStepAwayReadiness(): Promise<StepAwayReadiness> {
     const base = { key: "vendor_credentials", title: "External keys won't lapse while you're gone", critical: false, href: "/founder/autopilot/control" };
     try {
       const { imminentCredentialExpiries } = await import("../vendorCredentialExpiry");
-      const soon = imminentCredentialExpiries(new Date(), 14);
+      const soon = imminentCredentialExpiries(clock.now(), 14);
       if (soon.length === 0) {
         checks.push({ ...base, status: "ready", detail: "No configured sole-source external credential expires in the next 14 days." });
       } else {
@@ -405,7 +406,7 @@ export async function buildStepAwayReadiness(): Promise<StepAwayReadiness> {
       // DEFECT-0110: a recent drill that MISSED its RTO target is attention,
       // not ready. The verdict lives in drDrillStatus.ts so it can be tested.
       const { drDrillVerdict } = await import("./drDrillStatus");
-      checks.push({ ...base, ...drDrillVerdict(latest, new Date()) });
+      checks.push({ ...base, ...drDrillVerdict(latest, clock.now()) });
     } catch (err) {
       checks.push(attention(base, err instanceof Error ? err.message : String(err)));
     }

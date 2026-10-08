@@ -8,6 +8,7 @@ import { cacheResponse } from './middleware/responseCache';
 import { handleLandStatusError } from './utils/landStatus';
 import { poolDebit, refundPoolDebit, poolRefusalDetails } from './services/creditPool';
 import type { AuthenticatedRequest } from './types/request';
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -23,7 +24,7 @@ const router = Router();
 router.post('/generate', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = req.organization;
-    const debitKey = `avm:generate:${org.id}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+    const debitKey = `avm:generate:${org.id}:${clock.nowMs()}:${Math.random().toString(36).slice(2, 10)}`;
     const debit = await poolDebit({
       organizationId: org.id,
       action: 'ai_turn_avg',
@@ -126,7 +127,7 @@ router.post('/property/:propertyId', async (req: AuthenticatedRequest, res: Resp
       },
     };
 
-    const debitKey = `avm:property:${org.id}:${property.id}:${Date.now()}`;
+    const debitKey = `avm:property:${org.id}:${property.id}:${clock.nowMs()}`;
     const debit = await poolDebit({
       organizationId: org.id,
       action: 'ai_turn_avg',

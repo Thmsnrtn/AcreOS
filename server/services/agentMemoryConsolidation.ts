@@ -37,6 +37,7 @@ import {
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { routeCriticalTask } from "./aiRouter";
+import { clock } from "../utils/clock";
 
 interface AgentWeekSlice {
   agentCodename: string;
@@ -56,7 +57,7 @@ export interface ConsolidationResult {
 const MIN_DECISIONS_FOR_NOTE = 3;
 
 export async function runWeeklyMemoryConsolidation(): Promise<ConsolidationResult> {
-  const weekKey = isoWeekKey(new Date());
+  const weekKey = isoWeekKey(clock.now());
   const agents = await db
     .select()
     .from(companyAgents)
@@ -118,7 +119,7 @@ export async function runWeeklyMemoryConsolidation(): Promise<ConsolidationResul
 }
 
 async function buildAgentWeekSlice(agentCodename: string): Promise<AgentWeekSlice> {
-  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
   const rows = await db
     .select({
       label: decisionsInboxItems.recommendedActionLabel,

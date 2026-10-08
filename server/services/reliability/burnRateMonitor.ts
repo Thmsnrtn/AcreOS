@@ -38,6 +38,7 @@ import {
   jobSuccessBurnRate,
   type BurnRateWindow,
 } from "./sloCompute";
+import { clock } from "../../utils/clock";
 
 const HOUR_MS = 60 * 60 * 1000;
 const SIX_HOURS_MS = 6 * HOUR_MS;
@@ -114,7 +115,7 @@ async function openBurnRateIncident(
   fast: BurnRateWindow,
 ): Promise<string | null> {
   try {
-    const now = new Date();
+    const now = clock.now();
     const [row] = await db
       .insert(incidents)
       .values({

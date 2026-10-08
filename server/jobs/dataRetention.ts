@@ -8,6 +8,7 @@
 import { db } from "../db";
 import { sql, type SQL } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /**
  * Retention rules: each entry defines a table, the timestamp column to check,
@@ -84,7 +85,7 @@ export async function runDataRetention(): Promise<{
 
   for (const rule of retentionRules) {
     try {
-      const cutoff = new Date();
+      const cutoff = clock.now();
       cutoff.setDate(cutoff.getDate() - rule.retainDays);
 
       // The cutoff is a PARAMETER now, not a string interpolated into the
@@ -167,7 +168,7 @@ export interface AuditRetentionReport {
 
 export async function reportAuditEventsRetention(): Promise<AuditRetentionReport> {
   try {
-    const floorDate = new Date();
+    const floorDate = clock.now();
     floorDate.setDate(floorDate.getDate() - AUDIT_RETENTION_FLOOR_DAYS);
 
     const totalResult = await db.execute(sql.raw(`SELECT count(*)::int AS n FROM audit_events`));

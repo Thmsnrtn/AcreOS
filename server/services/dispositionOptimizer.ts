@@ -21,6 +21,7 @@ import { getOpenAIClient } from "../utils/openaiClient";
 import { getComparableProperties, ComparableProperty } from "./comps";
 import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
+import { clock } from "../utils/clock";
 
 type DispositionStrategy = "list_retail" | "sell_wholesale" | "owner_finance" | "auction" | "hold";
 type MarketingChannel = "mls" | "facebook" | "craigslist" | "landwatch" | "direct_mail" | "buyer_list";
@@ -132,7 +133,7 @@ export class DispositionOptimizerService {
     const acquisitionCost = property.purchasePrice ? parseFloat(property.purchasePrice) : 0;
     const purchaseDate = property.purchaseDate || property.createdAt;
     const holdingDays = purchaseDate 
-      ? Math.floor((Date.now() - new Date(purchaseDate).getTime()) / (1000 * 60 * 60 * 24))
+      ? Math.floor((clock.nowMs() - new Date(purchaseDate).getTime()) / (1000 * 60 * 60 * 24))
       : 0;
 
     const comps = await this.findComparables(organizationId, propertyId);
@@ -327,7 +328,7 @@ export class DispositionOptimizerService {
     }
 
     const marketCondition = await this.getMarketCondition(property.county, property.state);
-    const currentMonth = new Date().getMonth();
+    const currentMonth = clock.now().getMonth();
 
     let seasonality: string;
     let optimalListDateOffset = 0;
@@ -346,7 +347,7 @@ export class DispositionOptimizerService {
       optimalListDateOffset = 30;
     }
 
-    const optimalListDate = new Date();
+    const optimalListDate = clock.now();
     optimalListDate.setDate(optimalListDate.getDate() + optimalListDateOffset);
 
     let urgencyScore = 50;
@@ -360,7 +361,7 @@ export class DispositionOptimizerService {
 
     const acquisitionDate = property.purchaseDate || property.createdAt;
     const holdingMonths = acquisitionDate
-      ? Math.floor((Date.now() - new Date(acquisitionDate).getTime()) / (1000 * 60 * 60 * 24 * 30))
+      ? Math.floor((clock.nowMs() - new Date(acquisitionDate).getTime()) / (1000 * 60 * 60 * 24 * 30))
       : 0;
 
     let holdRecommendation: string | undefined;
@@ -445,7 +446,7 @@ export class DispositionOptimizerService {
     const acquisitionCost = property.purchasePrice ? parseFloat(property.purchasePrice) : 0;
     const purchaseDate = property.purchaseDate || property.createdAt;
     const holdingDays = purchaseDate
-      ? Math.floor((Date.now() - new Date(purchaseDate).getTime()) / (1000 * 60 * 60 * 24))
+      ? Math.floor((clock.nowMs() - new Date(purchaseDate).getTime()) / (1000 * 60 * 60 * 24))
       : 30;
 
     const annualPropertyTax = property.assessedValue 
@@ -678,7 +679,7 @@ export class DispositionOptimizerService {
       return [];
     }
 
-    const minSaleDate = addMonths(new Date(), -monthsBack);
+    const minSaleDate = addMonths(clock.now(), -monthsBack);
 
     const sizeAcres = property.sizeAcres ? parseFloat(property.sizeAcres) : 5;
     const minAcreage = sizeAcres * 0.5;
@@ -728,7 +729,7 @@ export class DispositionOptimizerService {
       let recencyWeight = 1.0;
       if (comp.saleDate) {
         const saleDate = new Date(comp.saleDate);
-        const monthsAgo = (Date.now() - saleDate.getTime()) / (1000 * 60 * 60 * 24 * 30);
+        const monthsAgo = (clock.nowMs() - saleDate.getTime()) / (1000 * 60 * 60 * 24 * 30);
         recencyWeight = Math.max(0.5, 1 - (monthsAgo / 24));
       }
 

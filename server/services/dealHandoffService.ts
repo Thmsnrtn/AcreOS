@@ -20,6 +20,7 @@ import {
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -127,7 +128,7 @@ async function saveHandoffsStore(
   if (existing) {
     await db
       .update(organizationIntegrations)
-      .set({ credentials, updatedAt: new Date() })
+      .set({ credentials, updatedAt: clock.now() })
       .where(eq(organizationIntegrations.id, existing.id));
   } else {
     await db.insert(organizationIntegrations).values({
@@ -158,7 +159,7 @@ export async function initiateHandoff(
   }));
 
   const handoff: DealHandoff = {
-    id: `handoff_${input.dealId}_${Date.now()}`,
+    id: `handoff_${input.dealId}_${clock.nowMs()}`,
     organizationId,
     dealId: input.dealId,
     fromTeamMemberId: input.fromTeamMemberId,
@@ -168,7 +169,7 @@ export async function initiateHandoff(
     status: "pending",
     notes: input.notes,
     checklist,
-    initiatedAt: new Date(),
+    initiatedAt: clock.now(),
   };
 
   // Cancel any prior pending/in_progress handoff for this deal
@@ -209,7 +210,7 @@ export async function updateHandoffChecklist(
       ? {
           ...item,
           completed,
-          completedAt: completed ? new Date() : undefined,
+          completedAt: completed ? clock.now() : undefined,
         }
       : item
   );
@@ -256,7 +257,7 @@ export async function completeHandoff(
   handoffs[idx] = {
     ...handoff,
     status: "completed",
-    completedAt: new Date(),
+    completedAt: clock.now(),
   };
 
   await saveHandoffsStore(organizationId, handoffs);

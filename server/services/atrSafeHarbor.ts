@@ -52,6 +52,7 @@ import { db } from "../db";
 import { notes } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type QmClassification =
   | "general_qm"
@@ -215,7 +216,7 @@ export function validateAtrDetermination(input: AtrDeterminationInput): void {
 export async function persistAtrDetermination(input: AtrDeterminationInput): Promise<void> {
   validateAtrDetermination(input);
 
-  const attestedAt = new Date().toISOString();
+  const attestedAt = clock.now().toISOString();
   const payload = {
     currentOrReasonablyExpectedIncomeCents: input.currentOrReasonablyExpectedIncomeCents,
     currentEmploymentStatus: input.currentEmploymentStatus,
@@ -239,7 +240,7 @@ export async function persistAtrDetermination(input: AtrDeterminationInput): Pro
       atrDetermination: payload,
       atrDeterminationCompleted: true,
       atrDeterminationCompletedAt: new Date(attestedAt),
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     })
     .where(eq(notes.id, input.noteId))
     .returning({ id: notes.id });

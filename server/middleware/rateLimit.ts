@@ -3,6 +3,7 @@ import { getRedisClient } from "../utils/redis";
 import { getClientIp } from "../utils/clientIp";
 import { logger } from "../utils/logger";
 import { e2eTestAuthEnabled } from "../auth/testAuth";
+import { clock } from "../utils/clock";
 
 // ── Rate Limit Hit Monitoring ────────────────────────────────────────────────
 // Tracks how many times each key has been rate-limited in the current hour.
@@ -14,7 +15,7 @@ const rateLimitHits = new Map<string, { count: number; windowStart: number; endp
 const HIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 function recordRateLimitHit(key: string, endpoint: string): void {
-  const now = Date.now();
+  const now = clock.nowMs();
   const entry = rateLimitHits.get(key);
 
   if (!entry || now - entry.windowStart > HIT_WINDOW_MS) {
@@ -36,7 +37,7 @@ function recordRateLimitHit(key: string, endpoint: string): void {
 
 // Cleanup rate limit hit counters hourly
 setInterval(() => {
-  const now = Date.now();
+  const now = clock.nowMs();
   for (const [key, entry] of rateLimitHits.entries()) {
     if (now - entry.windowStart > HIT_WINDOW_MS) {
       rateLimitHits.delete(key);
@@ -94,7 +95,7 @@ const rateLimitStore = new Map<string, RateLimitEntry>();
 const CLEANUP_INTERVAL = 60 * 1000;
 
 setInterval(() => {
-  const now = Date.now();
+  const now = clock.nowMs();
   const keysToDelete: string[] = [];
 
   const entries = Array.from(rateLimitStore.entries());
@@ -140,7 +141,7 @@ async function checkRateLimitRedis(
     const redis = await getRedisClient();
     if (!redis) return null; // No Redis — caller should use in-memory fallback
 
-    const now = Date.now();
+    const now = clock.nowMs();
     const windowSeconds = Math.ceil(config.windowMs / 1000);
     const fullKey = `rl:${redisKey}`;
 
@@ -169,7 +170,7 @@ function checkRateLimitInMemory(
   key: string,
   config: RateLimitConfig,
 ): RateLimitResult {
-  const now = Date.now();
+  const now = clock.nowMs();
   const windowStart = now - config.windowMs;
 
   let entry = rateLimitStore.get(key);
@@ -401,7 +402,7 @@ export function getRateLimitStats(key: string): {
     return null;
   }
 
-  const now = Date.now();
+  const now = clock.nowMs();
   // Find the maximum window among all configs
   const maxWindowMs = Math.max(
     RATE_LIMIT_CONFIGS.default.windowMs,

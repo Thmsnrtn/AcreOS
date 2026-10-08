@@ -15,6 +15,7 @@ import { healthCheckService, ServiceStatus } from "./healthCheck";
 import { getAllUsageLimits, ResourceType } from "./usageLimits";
 import { paxObserver } from "./paxObserver";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type AlertType = 'api_error' | 'sync_failure' | 'quota_warning' | 'data_issue' | 'service_degraded' | 'activity_drop' | 'error_pattern' | 'anomaly_detected';
 export type AlertSeverity = 'info' | 'warning' | 'critical';
@@ -197,7 +198,7 @@ class ProactiveMonitorService {
    */
   async logApiError(orgId: number, endpoint: string, error: string): Promise<void> {
     const cacheKey = `${orgId}:${endpoint}`;
-    const now = new Date();
+    const now = clock.now();
     const cutoff = new Date(now.getTime() - this.ERROR_WINDOW_MS);
 
     let errors = this.apiErrorCache.get(cacheKey) || [];
@@ -343,7 +344,7 @@ class ProactiveMonitorService {
         .update(systemAlerts)
         .set({
           status: 'resolved',
-          resolvedAt: new Date(),
+          resolvedAt: clock.now(),
           metadata: { resolvedBy, resolutionDetails: details }
         })
         .where(and(
@@ -528,7 +529,7 @@ class ProactiveMonitorService {
    */
   async checkActivityDrop(orgId: number): Promise<{ hasAnomaly: boolean; details?: any }> {
     try {
-      const now = new Date();
+      const now = clock.now();
       
       // Recent period: last 24 hours
       const recentStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -591,7 +592,7 @@ class ProactiveMonitorService {
    */
   async checkErrorPatterns(orgId: number): Promise<{ hasPattern: boolean; details?: any }> {
     try {
-      const now = new Date();
+      const now = clock.now();
       const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
       
       // Look for error patterns in API usage logs by checking metadata
@@ -652,7 +653,7 @@ class ProactiveMonitorService {
    */
   async checkAnomalousPatterns(orgId: number): Promise<{ hasAnomaly: boolean; details?: any }> {
     try {
-      const now = new Date();
+      const now = clock.now();
       const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
       const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
@@ -763,7 +764,7 @@ class ProactiveMonitorService {
    */
   private async cleanupOldAlerts(): Promise<number> {
     try {
-      const thirtyDaysAgo = new Date();
+      const thirtyDaysAgo = clock.now();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
       const result = await db

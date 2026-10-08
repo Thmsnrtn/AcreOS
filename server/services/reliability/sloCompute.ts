@@ -54,6 +54,7 @@ import { db } from "../../db";
 import { aiTelemetryEvents } from "@shared/schema";
 import { jobHealthLogs, incidents } from "@shared/schema";
 import { and, gte, sql } from "drizzle-orm";
+import { clock } from "../../utils/clock";
 
 // 30-day month, in milliseconds — the denominator the monthly error budget is
 // projected against. Kept explicit (not "this calendar month") so window math
@@ -109,7 +110,7 @@ export function classify(consumedPct: number): SloResult["status"] {
 }
 
 export function monthStart(): Date {
-  const d = new Date();
+  const d = clock.now();
   d.setUTCDate(1);
   d.setUTCHours(0, 0, 0, 0);
   return d;
@@ -260,7 +261,7 @@ export async function aiSuccessBurnRate(
   windowMs: number,
   windowLabel: string,
 ): Promise<BurnRateWindow> {
-  const since = new Date(Date.now() - windowMs);
+  const since = new Date(clock.nowMs() - windowMs);
   const [row] = await db
     .select({
       total: sql<number>`count(*)::int`,
@@ -284,7 +285,7 @@ export async function jobSuccessBurnRate(
   windowMs: number,
   windowLabel: string,
 ): Promise<BurnRateWindow> {
-  const since = new Date(Date.now() - windowMs);
+  const since = new Date(clock.nowMs() - windowMs);
   const [row] = await db
     .select({
       total: sql<number>`count(*)::int`,

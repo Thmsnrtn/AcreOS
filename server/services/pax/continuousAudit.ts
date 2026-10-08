@@ -240,7 +240,7 @@ export async function runPaxAudit(
   const sampleSize = opts.sampleSize ?? DEFAULT_SAMPLE_SIZE;
   const windowHours = opts.windowHours ?? DEFAULT_WINDOW_HOURS;
   const orgId = opts.orgId ?? null;
-  const runStartedAt = new Date();
+  const runStartedAt = clock.now();
 
   // Open the run row immediately so a crash mid-sample still leaves a
   // forensic trace. samplesExamined / samplesFailed get updated at the end.
@@ -271,7 +271,7 @@ export async function runPaxAudit(
       await db
         .update(paxAuditRuns)
         .set({
-          runEndedAt: new Date(),
+          runEndedAt: clock.now(),
           samplesExamined: samples.length,
           skipReason,
         })
@@ -370,7 +370,7 @@ export async function runPaxAudit(
     await db
       .update(paxAuditRuns)
       .set({
-        runEndedAt: new Date(),
+        runEndedAt: clock.now(),
         samplesExamined: samples.length,
         samplesFailed: failedSampleIds.size,
         driftSignalEmitted: drift,
@@ -398,7 +398,7 @@ export async function runPaxAudit(
     await db
       .update(paxAuditRuns)
       .set({
-        runEndedAt: new Date(),
+        runEndedAt: clock.now(),
         skipReason: `error: ${err instanceof Error ? err.message : String(err)}`,
       })
       .where(eq(paxAuditRuns.id, runId));
@@ -615,7 +615,7 @@ interface SampleArgs {
 }
 
 async function sampleOutputs(args: SampleArgs): Promise<SampledOutput[]> {
-  const cutoff = new Date(Date.now() - args.windowHours * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - args.windowHours * 60 * 60 * 1000);
 
   // Step 1: candidate messages. We pull id + conversationId + content + ts.
   // Persona + audienceScope are joined from aiConversations + organizations.
@@ -915,6 +915,7 @@ import {
   type DetectorSeverityFloor,
   alignmentDetectors as alignmentDetectorRegistry,
 } from "./alignmentDetectors";
+import { clock } from "../../utils/clock";
 
 export type { TahoeDetector as Detector, DetectorScope, DetectorSeverityFloor };
 
@@ -1014,7 +1015,7 @@ export async function walkAllOrgsForAudit(
   // message since the window cutoff. The second arm keeps a just-churned
   // org's final window inside the constitutional audit (see header).
   const windowHours = opts.windowHours ?? DEFAULT_WINDOW_HOURS;
-  const windowCutoff = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+  const windowCutoff = new Date(clock.nowMs() - windowHours * 60 * 60 * 1000);
 
   const orgsActiveInWindow = await db
     .select({ id: organizations.id })

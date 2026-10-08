@@ -15,6 +15,7 @@ import {
 import { eq, and, desc, gte, sql, count, avg } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /**
  * Thrown when a lead has no intent prediction in the calling organization —
@@ -250,7 +251,7 @@ export class SellerIntentPredictorService {
 
     const recentActivities = activities.filter(a => {
       const activityDate = new Date(a.createdAt!);
-      const daysSince = (Date.now() - activityDate.getTime()) / (1000 * 60 * 60 * 24);
+      const daysSince = (clock.nowMs() - activityDate.getTime()) / (1000 * 60 * 60 * 24);
       return daysSince <= 7;
     });
 
@@ -767,9 +768,9 @@ What negotiation approach do you recommend?`
     await db.update(sellerIntentPredictions)
       .set({
         actualOutcome: outcome,
-        outcomeRecordedAt: new Date(),
+        outcomeRecordedAt: clock.now(),
         predictionAccurate,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(and(
         eq(sellerIntentPredictions.id, prediction.id),
@@ -819,7 +820,7 @@ What negotiation approach do you recommend?`
     const verifiedPredictions = allPredictions.filter(p => p.actualOutcome !== null);
     const accuratePredictions = verifiedPredictions.filter(p => p.predictionAccurate === true);
 
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
     const recentPredictions = verifiedPredictions.filter(p => 
       p.outcomeRecordedAt && new Date(p.outcomeRecordedAt) >= thirtyDaysAgo
     );

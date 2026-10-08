@@ -30,6 +30,7 @@ import { dealChecklists, type DealChecklistItem } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { STATE_DOCUMENT_CONFIGS, getDeedTypeLabel } from "./stateDocumentConfig";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type ChecklistPhase =
   | "pre_contract"
@@ -579,7 +580,7 @@ export async function generateClosingChecklist(
     const merged = [...kept, ...generated];
     await db
       .update(dealChecklists)
-      .set({ items: merged as unknown as DealChecklistItem[], updatedAt: new Date() })
+      .set({ items: merged as unknown as DealChecklistItem[], updatedAt: clock.now() })
       .where(eq(dealChecklists.id, existing[0].id));
     logger.info("Closing checklist merged into an existing checklist", {
       dealId,

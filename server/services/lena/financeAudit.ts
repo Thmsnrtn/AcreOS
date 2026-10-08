@@ -40,6 +40,7 @@ import {
 import type { DomainDetector, FindingInput } from "../audit/domainAudit";
 import { taxReserveDetector } from "../audit/detectors/taxReserveDetector";
 import { computeRunway } from "../finance/runwayModel";
+import { clock } from "../../utils/clock";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -71,7 +72,7 @@ export const envelopeOverrunDetector: DomainDetector = {
     );
     if (limitUsd <= 0) return [];
 
-    const since = new Date(Date.now() - 30 * ONE_DAY_MS);
+    const since = new Date(clock.nowMs() - 30 * ONE_DAY_MS);
     const [row] = await db
       .select({
         total: sql<number>`COALESCE(SUM(${soleneCapitalEvents.costUsd}), 0)`.mapWith(

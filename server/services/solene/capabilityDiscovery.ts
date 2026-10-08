@@ -37,6 +37,7 @@ import {
   type SoleneDispatchAgentRole,
 } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // proposeCapability
@@ -201,7 +202,7 @@ export async function decideOnProposal(
     );
   }
 
-  const now = new Date();
+  const now = clock.now();
   await db
     .update(soleneCapabilityProposals)
     .set({

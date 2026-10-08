@@ -24,6 +24,7 @@ import { users } from "@shared/models/auth";
 import { sendEmail } from "../../emailService";
 import { filterSuppressed } from "../../emailSuppressions";
 import { logger } from "../../../utils/logger";
+import { clock } from "../../../utils/clock";
 
 const NAME = "reply_support_ticket";
 
@@ -40,24 +41,24 @@ function replyToHtml(message: string): string {
 }
 
 async function handler(input: Record<string, unknown>): Promise<HandResult> {
-  const started = Date.now();
+  const started = clock.nowMs();
   try {
     const ticketId = typeof input.ticket_id === "number" ? Math.floor(input.ticket_id) : NaN;
     const message = String(input.message ?? "").trim();
     const resolve = input.resolve === true;
     const organizationId = typeof input.organization_id === "number" ? Math.floor(input.organization_id) : NaN;
     if (!Number.isFinite(ticketId) || ticketId <= 0 || !message || !Number.isFinite(organizationId)) {
-      return { success: false, output: "reply_support_ticket: 'ticket_id', 'organization_id' and a non-empty 'message' are required.", durationMs: Date.now() - started };
+      return { success: false, output: "reply_support_ticket: 'ticket_id', 'organization_id' and a non-empty 'message' are required.", durationMs: clock.nowMs() - started };
     }
     // Platform-scope read by ticket id: the Support worker serves every
     // customer of AcreOS (the business's own support desk).
     const db = unscopedForPlatformOps("Solene support reply hand: AcreOS's own support desk answers the ticket an AcreOS customer opened (witnessed send)");
     const [ticket] = await db.select().from(supportTickets).where(and(eq(supportTickets.id, ticketId), eq(supportTickets.organizationId, organizationId))).limit(1);
     if (!ticket) {
-      return { success: false, output: `reply_support_ticket: ticket #${ticketId} not found in org ${organizationId}.`, durationMs: Date.now() - started };
+      return { success: false, output: `reply_support_ticket: ticket #${ticketId} not found in org ${organizationId}.`, durationMs: clock.nowMs() - started };
     }
     if (ticket.status === "resolved" || ticket.status === "closed") {
-      return { success: false, output: `reply_support_ticket: ticket #${ticketId} is already ${ticket.status}; not replying twice.`, durationMs: Date.now() - started };
+      return { success: false, output: `reply_support_ticket: ticket #${ticketId} is already ${ticket.status}; not replying twice.`, durationMs: clock.nowMs() - started };
     }
 
     // The canonical customer-visible writer (customerComms/supportReply.ts) —
@@ -65,14 +66,14 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
     const { postAgentSupportReply } = await import("../../customerComms/supportReply");
     const posted = await postAgentSupportReply({ ticketId, organizationId: ticket.organizationId, content: message, agentName: "Solene (support)" });
     if (!posted.posted) {
-      return { success: false, output: `reply_support_ticket: ${posted.detail}`, durationMs: Date.now() - started };
+      return { success: false, output: `reply_support_ticket: ${posted.detail}`, durationMs: clock.nowMs() - started };
     }
     await db
       .update(supportTickets)
       .set({
         status: resolve ? "resolved" : "waiting_on_customer",
-        ...(resolve ? { resolvedAt: new Date(), resolvedBy: "solene-support", resolution: message.slice(0, 2000), resolutionType: "manual" } : {}),
-        updatedAt: new Date(),
+        ...(resolve ? { resolvedAt: clock.now(), resolvedBy: "solene-support", resolution: message.slice(0, 2000), resolutionType: "manual" } : {}),
+        updatedAt: clock.now(),
       })
       .where(and(eq(supportTickets.id, ticketId), eq(supportTickets.organizationId, ticket.organizationId)));
 
@@ -119,7 +120,7 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
     return {
       success: true,
       output: JSON.stringify({ ticketId, replied: true, resolved: resolve, emailed, emailNote }),
-      durationMs: Date.now() - started,
+      durationMs: clock.nowMs() - started,
     };
   } catch (err) {
     return handError(NAME, err, started);

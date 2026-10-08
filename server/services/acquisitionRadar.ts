@@ -17,6 +17,7 @@ import { DataSourceBroker, type LookupCategory } from "./data-source-broker";
 import { getCountyMomentum, type CountyMomentum } from "./openData/countyMarketSignals";
 import { getCountyFips } from "./censusDataService";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const dataSourceBroker = new DataSourceBroker();
 
@@ -189,7 +190,7 @@ class AcquisitionRadarService {
   ): Promise<RadarConfig> {
     const [updated] = await db
       .update(radarConfigs)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...updates, updatedAt: clock.now() })
       .where(and(
         eq(radarConfigs.id, configId),
         eq(radarConfigs.organizationId, organizationId)
@@ -860,8 +861,8 @@ class AcquisitionRadarService {
           explanation: result.explanation,
           dataSources: result.dataSources as any,
           isStale: false,
-          scoredAt: new Date(),
-          updatedAt: new Date(),
+          scoredAt: clock.now(),
+          updatedAt: clock.now(),
         })
         .where(eq(opportunityScores.id, existing[0].id))
         .returning();
@@ -966,8 +967,8 @@ class AcquisitionRadarService {
         status,
         reviewNotes,
         reviewedBy,
-        reviewedAt: new Date(),
-        updatedAt: new Date(),
+        reviewedAt: clock.now(),
+        updatedAt: clock.now(),
       })
       .where(and(
         eq(opportunityScores.id, opportunityId),
@@ -1057,7 +1058,7 @@ class AcquisitionRadarService {
         .update(opportunityScores)
         .set({ 
           alertSent: true, 
-          alertSentAt: new Date() 
+          alertSentAt: clock.now() 
         })
         .where(eq(opportunityScores.id, opp.id));
 
@@ -1158,7 +1159,7 @@ class AcquisitionRadarService {
   }
 
   async markStaleOpportunities(organizationId: number, staleDays: number = 7): Promise<number> {
-    const staleDate = new Date();
+    const staleDate = clock.now();
     staleDate.setDate(staleDate.getDate() - staleDays);
 
     const result = await db

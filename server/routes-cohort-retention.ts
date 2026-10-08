@@ -21,6 +21,7 @@ import { isAuthenticated, requireFounder } from "./auth";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const RETENTION_WINDOWS = [1, 7, 30, 60, 90] as const;
 
@@ -126,7 +127,7 @@ export function registerCohortRetentionRoutes(app: Express): void {
         return res.json({
           cohorts,
           windows: [...RETENTION_WINDOWS],
-          generatedAt: new Date().toISOString(),
+          generatedAt: clock.now().toISOString(),
           note:
             cohorts.length === 0
               ? "lifecycle_events is empty for the signup stage. Wire recordLifecycleEvent() into your signup flow + run the backfill script to populate."

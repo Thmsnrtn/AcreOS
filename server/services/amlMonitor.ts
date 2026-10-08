@@ -8,6 +8,7 @@ import { db } from "../db";
 import { deals, payments, properties } from "@shared/schema";
 import { eq, and, gte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface AmlFlag {
   pattern: string;
@@ -39,7 +40,7 @@ export async function checkDealAmlPatterns(
       advisory: `AML Advisory: This transaction exceeds $10,000. ${AML_ADVISORY}`,
       dealId,
       amount: purchasePrice,
-      detectedAt: new Date(),
+      detectedAt: clock.now(),
     });
   }
 
@@ -55,7 +56,7 @@ export async function checkDealAmlPatterns(
       if (prop.length > 0 && prop[0].purchasePrice && prop[0].purchaseDate) {
         const origPrice = parseFloat(prop[0].purchasePrice);
         const daysSincePurchase = Math.floor(
-          (Date.now() - new Date(prop[0].purchaseDate).getTime()) / 86400000
+          (clock.nowMs() - new Date(prop[0].purchaseDate).getTime()) / 86400000
         );
         if (daysSincePurchase <= 30 && origPrice > 0) {
           const markup = ((purchasePrice - origPrice) / origPrice) * 100;
@@ -67,7 +68,7 @@ export async function checkDealAmlPatterns(
               advisory: `AML Advisory: Rapid flip pattern detected. ${AML_ADVISORY}`,
               dealId,
               amount: purchasePrice,
-              detectedAt: new Date(),
+              detectedAt: clock.now(),
             });
           }
         }
@@ -88,14 +89,14 @@ export async function checkDealAmlPatterns(
         description: "Purchase involves a potentially foreign entity.",
         advisory: `AML Advisory: Foreign entity involvement may require additional due diligence. ${AML_ADVISORY}`,
         dealId,
-        detectedAt: new Date(),
+        detectedAt: clock.now(),
       });
     }
   }
 
   // 4. Multiple cash purchases >$10K in 30 days (structuring awareness)
   try {
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+    const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 86400000);
     const recentDeals = await db.select().from(deals)
       .where(and(
         eq(deals.organizationId, orgId),
@@ -113,7 +114,7 @@ export async function checkDealAmlPatterns(
         advisory: `AML Advisory: Multiple transactions exceeding $10,000 aggregate. ${AML_ADVISORY}`,
         dealId,
         amount: cashTotal,
-        detectedAt: new Date(),
+        detectedAt: clock.now(),
       });
     }
   } catch {}

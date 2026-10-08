@@ -23,6 +23,7 @@ import {
   type InsertVaTemplate,
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
+import { clock } from "../utils/clock";
 
 export const vaRepo = {
   // ============================================
@@ -56,7 +57,7 @@ export const vaRepo = {
     const conditions = [eq(vaAgents.id, id)];
     if (organizationId) conditions.push(eq(vaAgents.organizationId, organizationId));
     const [updated] = await db.update(vaAgents)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -204,7 +205,7 @@ export const vaRepo = {
     const conditions = [eq(vaActions.id, id)];
     if (organizationId) conditions.push(eq(vaActions.organizationId, organizationId));
     const [updated] = await db.update(vaActions)
-      .set({ ...omitProtectedFields(safeUpdates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(safeUpdates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -217,8 +218,8 @@ export const vaRepo = {
       .set({
         status: "approved",
         approvedBy: userId,
-        approvedAt: new Date(),
-        updatedAt: new Date(),
+        approvedAt: clock.now(),
+        updatedAt: clock.now(),
       })
       .where(and(...conditions))
       .returning();
@@ -232,7 +233,7 @@ export const vaRepo = {
       .set({
         status: "rejected",
         rejectionReason: reason,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(and(...conditions))
       .returning();
@@ -273,7 +274,7 @@ export const vaRepo = {
     const conditions = [eq(vaBriefings.id, id)];
     if (organizationId) conditions.push(eq(vaBriefings.organizationId, organizationId));
     const [updated] = await db.update(vaBriefings)
-      .set({ readAt: new Date() })
+      .set({ readAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -304,7 +305,7 @@ export const vaRepo = {
     const conditions = [eq(vaCalendarEvents.id, id)];
     if (organizationId) conditions.push(eq(vaCalendarEvents.organizationId, organizationId));
     const [updated] = await db.update(vaCalendarEvents)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
@@ -337,7 +338,7 @@ export const vaRepo = {
     const conditions = [eq(vaTemplates.id, id)];
     if (organizationId) conditions.push(eq(vaTemplates.organizationId, organizationId));
     const [updated] = await db.update(vaTemplates)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;

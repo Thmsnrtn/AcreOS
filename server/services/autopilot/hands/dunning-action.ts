@@ -16,17 +16,18 @@ import { registerHand } from "./registry";
 import { handError, type HandResult } from "./types";
 import { dunningService } from "../../dunning";
 import { logger } from "../../../utils/logger";
+import { clock } from "../../../utils/clock";
 
 const NAME = "dunning_action";
 const ACTIONS = new Set(["retry", "resolve", "cancel"]);
 
 async function handler(input: Record<string, unknown>): Promise<HandResult> {
-  const started = Date.now();
+  const started = clock.nowMs();
   try {
     const eventId = typeof input.event_id === "number" ? input.event_id : NaN;
     const action = String(input.action ?? "").trim();
     if (!Number.isFinite(eventId) || !ACTIONS.has(action)) {
-      return { success: false, output: "dunning_action: 'event_id' (number) and 'action' (retry|resolve|cancel) are required.", durationMs: Date.now() - started };
+      return { success: false, output: "dunning_action: 'event_id' (number) and 'action' (retry|resolve|cancel) are required.", durationMs: clock.nowMs() - started };
     }
     let result: { success: boolean; message: string };
     if (action === "retry") result = await dunningService.retryPayment(eventId);
@@ -51,7 +52,7 @@ async function handler(input: Record<string, unknown>): Promise<HandResult> {
           ),
         );
     }
-    return { success: result.success, output: result.message, durationMs: Date.now() - started };
+    return { success: result.success, output: result.message, durationMs: clock.nowMs() - started };
   } catch (err) {
     return handError(NAME, err, started);
   }

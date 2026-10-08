@@ -36,6 +36,7 @@ import { requireQualified1099Output, QUALIFIED_1099_PAYLOAD_MARK } from "./servi
 import { db } from "./db";
 import { outbox, organizations } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -71,7 +72,7 @@ router.get("/trial-balance", async (req: AuthenticatedRequest, res: Response) =>
   if (!requireFounder(req, res)) return;
   try {
     const org = getOrganization(req);
-    const asOfRaw = (req.query.asOfDate as string) ?? new Date().toISOString().slice(0, 10);
+    const asOfRaw = (req.query.asOfDate as string) ?? clock.now().toISOString().slice(0, 10);
     const asOf = /^\d{4}-\d{2}-\d{2}$/.test(asOfRaw) ? asOfRaw : null;
     if (!asOf) {
       return Errors.badRequest(res, "asOfDate must be YYYY-MM-DD");
@@ -90,8 +91,8 @@ router.get("/general-ledger.pdf", async (req: AuthenticatedRequest, res: Respons
   if (!requireFounder(req, res)) return;
   try {
     const org = getOrganization(req);
-    const from = (req.query.from as string) ?? `${new Date().getFullYear()}-01-01`;
-    const to = (req.query.to as string) ?? new Date().toISOString().slice(0, 10);
+    const from = (req.query.from as string) ?? `${clock.now().getFullYear()}-01-01`;
+    const to = (req.query.to as string) ?? clock.now().toISOString().slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
       return Errors.badRequest(res, "from/to must be YYYY-MM-DD");
     }
@@ -122,8 +123,8 @@ router.post("/general-ledger.pdf", async (req: AuthenticatedRequest, res: Respon
   if (!requireFounder(req, res)) return;
   try {
     const org = getOrganization(req);
-    const from = (req.body?.from as string) ?? `${new Date().getFullYear()}-01-01`;
-    const to = (req.body?.to as string) ?? new Date().toISOString().slice(0, 10);
+    const from = (req.body?.from as string) ?? `${clock.now().getFullYear()}-01-01`;
+    const to = (req.body?.to as string) ?? clock.now().toISOString().slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
       return Errors.badRequest(res, "from/to must be YYYY-MM-DD");
     }
@@ -187,8 +188,8 @@ router.get("/qbo-export", async (req: AuthenticatedRequest, res: Response) => {
   if (!requireFounder(req, res)) return;
   try {
     const org = getOrganization(req);
-    const from = (req.query.from as string) ?? `${new Date().getFullYear()}-01-01`;
-    const to = (req.query.to as string) ?? new Date().toISOString().slice(0, 10);
+    const from = (req.query.from as string) ?? `${clock.now().getFullYear()}-01-01`;
+    const to = (req.query.to as string) ?? clock.now().toISOString().slice(0, 10);
     const format = ((req.query.format as string) || "json").toLowerCase();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
       return Errors.badRequest(res, "from/to must be YYYY-MM-DD");
@@ -227,7 +228,7 @@ router.post("/1099-batch", requireQualified1099Output(), async (req: Authenticat
   if (!requireOrgOwnerOrAdmin(req, res)) return;
   try {
     const org = getOrganization(req);
-    const taxYear = parseInt((req.query.taxYear as string) ?? String(new Date().getFullYear() - 1));
+    const taxYear = parseInt((req.query.taxYear as string) ?? String(clock.now().getFullYear() - 1));
     if (Number.isNaN(taxYear) || taxYear < 2000 || taxYear > 2100) {
       return Errors.badRequest(res, "taxYear must be a valid 4-digit year");
     }
@@ -337,7 +338,7 @@ router.post("/1098-batch", async (req: AuthenticatedRequest, res: Response) => {
   try {
     const org = getOrganization(req);
     const taxYear = parseInt(
-      (req.query.taxYear as string) ?? String(new Date().getFullYear() - 1),
+      (req.query.taxYear as string) ?? String(clock.now().getFullYear() - 1),
     );
     if (Number.isNaN(taxYear) || taxYear < 2000 || taxYear > 2100) {
       return Errors.badRequest(res, "taxYear must be a valid 4-digit year");
@@ -430,7 +431,7 @@ router.get("/investor-income", async (req: AuthenticatedRequest, res: Response) 
   if (!requireOrgOwnerOrAdmin(req, res)) return;
   try {
     const org = getOrganization(req);
-    const taxYear = parseInt((req.query.taxYear as string) ?? String(new Date().getFullYear() - 1));
+    const taxYear = parseInt((req.query.taxYear as string) ?? String(clock.now().getFullYear() - 1));
     if (Number.isNaN(taxYear) || taxYear < 2000 || taxYear > 2100) {
       return Errors.badRequest(res, "taxYear must be a valid 4-digit year");
     }
@@ -451,7 +452,7 @@ router.post("/investor-statements", async (req: AuthenticatedRequest, res: Respo
   if (!requireOrgOwnerOrAdmin(req, res)) return;
   try {
     const org = getOrganization(req);
-    const taxYear = parseInt((req.query.taxYear as string) ?? String(new Date().getFullYear() - 1));
+    const taxYear = parseInt((req.query.taxYear as string) ?? String(clock.now().getFullYear() - 1));
     if (Number.isNaN(taxYear) || taxYear < 2000 || taxYear > 2100) {
       return Errors.badRequest(res, "taxYear must be a valid 4-digit year");
     }

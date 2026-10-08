@@ -12,6 +12,7 @@
  * assessor is unit-tested; the gatherer raises one deduped alert on a real stall.
  */
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 /** Days of indexing grace before "0 impressions" counts as a stall. */
 export const IMPRESSION_GRACE_DAYS = 21;
@@ -88,7 +89,7 @@ export function assessFunnelHealth(inp: FunnelHealthInput): FunnelHealthResult {
  * Gather live inputs, assess, and raise ONE deduped founder alert on a genuine
  * stall. Returns the result for the daily letter. Best-effort; never throws.
  */
-export async function checkFunnelHealth(now = new Date()): Promise<FunnelHealthResult> {
+export async function checkFunnelHealth(now = clock.now()): Promise<FunnelHealthResult> {
   let publishedTotal = 0;
   let daysSinceFirstPublish: number | null = null;
   let gscImpressions: number | null = null;

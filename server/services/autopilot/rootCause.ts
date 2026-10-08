@@ -9,6 +9,7 @@
  * deterministic, testable scaffolding around it.
  */
 
+import { clock } from "../../utils/clock";
 export interface ErrorSample {
   message: string;
   /** Optional first stack frame (file:line) to disambiguate same-message errors. */
@@ -98,7 +99,7 @@ export async function runIncidentTriage(opts?: {
     const { systemAlerts, soleneDispatchQueue } = await import("@shared/schema");
     const { and, eq, gte, desc } = await import("drizzle-orm");
     const windowHours = opts?.windowHours ?? 24;
-    const since = new Date(Date.now() - windowHours * 3_600_000);
+    const since = new Date(clock.nowMs() - windowHours * 3_600_000);
 
     const rows = await db
       .select({ title: systemAlerts.title, message: systemAlerts.message })

@@ -19,6 +19,7 @@ import { logger } from "../../utils/logger";
 import { DELEGABLE_HANDS, GRANTABLE_SOURCE_ROLES, type WitnessGrant } from "./witnessGrant";
 import type { AutopilotDomain } from "./policyGate";
 import { AUTOPILOT_DOMAINS } from "./domainAutonomy";
+import { clock } from "../../utils/clock";
 
 /** The longest a grant may live. Delegation is renewed, never immortal. */
 export const MAX_GRANT_TTL_DAYS = 30;
@@ -92,7 +93,7 @@ export async function issueWitnessGrant(input: IssueGrantInput): Promise<Witness
   if (!Number.isInteger(input.maxActions) || input.maxActions <= 0) {
     throw new Error(`issueWitnessGrant: invalid maxActions=${input.maxActions}`);
   }
-  const now = Date.now();
+  const now = clock.nowMs();
   const exp = input.expiresAt.getTime();
   if (!Number.isFinite(exp) || exp <= now) {
     throw new Error("issueWitnessGrant: expiresAt must be in the future");
@@ -126,7 +127,7 @@ export async function issueWitnessGrant(input: IssueGrantInput): Promise<Witness
 export async function revokeWitnessGrant(id: number, reason: string): Promise<boolean> {
   const updated = await db
     .update(witnessGrants)
-    .set({ revoked: true, revokedAt: new Date(), revokeReason: reason.slice(0, 2000) })
+    .set({ revoked: true, revokedAt: clock.now(), revokeReason: reason.slice(0, 2000) })
     .where(eq(witnessGrants.id, id))
     .returning({ id: witnessGrants.id });
   if (updated.length > 0) {
@@ -139,7 +140,7 @@ export async function revokeWitnessGrant(id: number, reason: string): Promise<bo
 export async function revokeAllLiveGrants(reason: string): Promise<number[]> {
   const updated = await db
     .update(witnessGrants)
-    .set({ revoked: true, revokedAt: new Date(), revokeReason: reason.slice(0, 2000) })
+    .set({ revoked: true, revokedAt: clock.now(), revokeReason: reason.slice(0, 2000) })
     .where(eq(witnessGrants.revoked, false))
     .returning({ id: witnessGrants.id });
   if (updated.length > 0) logger.warn(`[witnessGrantStore] ${updated.length} grant(s) REVOKED: ${reason.slice(0, 200)}`);

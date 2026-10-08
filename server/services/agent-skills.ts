@@ -9,6 +9,7 @@ import { logger } from "../utils/logger";
 import { getPaxPauseState, paxPauseRefusalMessage } from "./paxPause";
 
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
+import { clock } from "../utils/clock";
 export type CoreAgentType = "research" | "deals" | "communications" | "operations";
 
 /**
@@ -251,7 +252,7 @@ const generateOfferSkill: Skill = {
       const offerLetter = `
 PURCHASE OFFER
 
-Date: ${new Date().toLocaleDateString()}
+Date: ${clock.now().toLocaleDateString()}
 
 To: ${sellerName}
 From: ${org?.name || "AcreOS"}
@@ -288,7 +289,7 @@ ${org?.name || "AcreOS"}
           offerPrice,
           leadId,
           propertyId,
-          generatedAt: new Date().toISOString(),
+          generatedAt: clock.now().toISOString(),
         },
         message: `Offer letter generated for $${offerPrice.toLocaleString()}`,
       };
@@ -780,7 +781,7 @@ const generateBatchOffersSkill: Skill = {
         // offer_batches has no completedAt column; generatedAt marks completion
         // of offer generation.
         status: "completed",
-        generatedAt: new Date(),
+        generatedAt: clock.now(),
       });
 
       return {
@@ -896,7 +897,7 @@ const scrubLeadListSkill: Skill = {
         validRecords: stats.valid,
         invalidAddresses: stats.invalid,
         duplicatesRemoved: stats.duplicates,
-        processedAt: new Date(),
+        processedAt: clock.now(),
       });
 
       return {
@@ -1095,7 +1096,7 @@ Owner financing terms available. Build equity while paying over time.`;
           description,
           callToAction,
           fullAd: `${headline}\n\n${description}\n\n${callToAction}`,
-          generatedAt: new Date().toISOString(),
+          generatedAt: clock.now().toISOString(),
         },
         message: `Generated ${style} ad copy for property ${propertyId}`,
       };
@@ -1165,8 +1166,8 @@ const startCollectionSequenceSkill: Skill = {
         noteId,
         status: "active",
         currentStep: 1,
-        nextStepAt: new Date(),
-        startedAt: new Date(),
+        nextStepAt: clock.now(),
+        startedAt: clock.now(),
       });
 
       return {
@@ -1210,7 +1211,7 @@ const researchCountySkill: Skill = {
 
       const existingResearch = await storage.getCountyResearch(state.toUpperCase(), county);
       
-      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const oneDayAgo = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
       if (existingResearch && existingResearch.createdAt && new Date(existingResearch.createdAt) > oneDayAgo) {
         return {
           success: true,
@@ -1228,7 +1229,7 @@ const researchCountySkill: Skill = {
         recorderUrl: null,
         recordingFees: null,
         marketData: null,
-        researchedAt: new Date().toISOString(),
+        researchedAt: clock.now().toISOString(),
       };
 
       try {
@@ -1321,7 +1322,7 @@ const prepareContractSkill: Skill = {
 
       const org = await storage.getOrganization(context.organizationId);
       const companyName = org?.name || "Land Acquisition Co.";
-      const today = new Date().toLocaleDateString();
+      const today = clock.now().toLocaleDateString();
       const buyerName = `${buyer.firstName} ${buyer.lastName}`;
       const propertyAddress = property.address || "[Property Address]";
       const propertyLegal = property.legalDescription || `APN: ${property.apn || "N/A"}`;
@@ -1420,7 +1421,7 @@ const prepareContractSkill: Skill = {
         downPayment: downPayment || 0,
         monthlyPayment: monthlyPayment || 0,
         termMonths: termMonths || 0,
-        generatedAt: new Date().toISOString(),
+        generatedAt: clock.now().toISOString(),
       };
 
       return {
@@ -1546,7 +1547,7 @@ const processPayoffSkill: Skill = {
       const { quoteServicedNotePayoff } = await import("./notes/servicedNotePayoff");
 
       const lenderTimeZone = await resolveOrgTimeZone(note.organizationId);
-      const todayIso = dayInZone(new Date(), lenderTimeZone) ?? isoDateUtc(new Date());
+      const todayIso = dayInZone(clock.now(), lenderTimeZone) ?? isoDateUtc(clock.now());
       let payoffDate: Date;
       try {
         payoffDate = parseIsoDateUtc(effectiveDate ?? todayIso);
@@ -2373,7 +2374,7 @@ const scoreLeadSkill: Skill = {
 
       // Recency — contacted in last 14 days is a positive signal
       const daysSinceContact = lead.lastContactedAt
-        ? Math.floor((Date.now() - new Date(lead.lastContactedAt).getTime()) / 86_400_000)
+        ? Math.floor((clock.nowMs() - new Date(lead.lastContactedAt).getTime()) / 86_400_000)
         : 999;
       if (daysSinceContact <= 7) {
         score += 10;
@@ -2479,7 +2480,7 @@ Do not include legal advice disclaimers inside the letter body. Keep it under 35
 
       return {
         success: true,
-        data: { propertyId, leadId, offerPrice, tone: tone || "professional", offerLetter, generatedAt: new Date().toISOString() },
+        data: { propertyId, leadId, offerPrice, tone: tone || "professional", offerLetter, generatedAt: clock.now().toISOString() },
         message: `Offer letter drafted for $${offerPrice.toLocaleString()} on ${property.address || `Property #${propertyId}`}`,
       };
     } catch (error: any) {
@@ -2522,9 +2523,9 @@ const analyzeNoteSkill: Skill = {
       const monthlyRate = interestRate / 100 / 12;
 
       // Remaining balance estimate based on payments made
-      const startDate = note.startDate ? new Date(note.startDate) : new Date();
+      const startDate = note.startDate ? new Date(note.startDate) : clock.now();
       const monthsElapsed = Math.floor(
-        (Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44)
+        (clock.nowMs() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44)
       );
       const monthsRemaining = Math.max(0, termMonths - monthsElapsed);
 
@@ -2541,7 +2542,7 @@ const analyzeNoteSkill: Skill = {
       const yield_ = remainingBalance > 0 ? ((monthlyPayment * 12 - (remainingBalance * (interestRate / 100))) / remainingBalance) * 100 : interestRate;
 
       // Delinquency
-      const today = new Date();
+      const today = clock.now();
       const nextPayment = note.nextPaymentDate ? new Date(note.nextPaymentDate) : null;
       const daysPastDue = nextPayment && nextPayment < today
         ? Math.floor((today.getTime() - nextPayment.getTime()) / 86_400_000)
@@ -2608,13 +2609,13 @@ const suggestFollowUpSkill: Skill = {
       const leadConversations = conversations.filter(c => c.leadId === leadId);
 
       const daysSinceContact = lead.lastContactedAt
-        ? Math.floor((Date.now() - new Date(lead.lastContactedAt).getTime()) / 86_400_000)
+        ? Math.floor((clock.nowMs() - new Date(lead.lastContactedAt).getTime()) / 86_400_000)
         : null;
 
       const recentReplies = activities.filter(a =>
         (a.type === "email_replied" || a.type === "sms_replied" || a.type === "call_completed") &&
         a.createdAt != null &&
-        new Date(a.createdAt) > new Date(Date.now() - 30 * 86_400_000)
+        new Date(a.createdAt) > new Date(clock.nowMs() - 30 * 86_400_000)
       );
 
       const { requireOpenAIClient } = await import("../utils/openaiClient");
@@ -2747,7 +2748,7 @@ Return a JSON object with:
           internalPropertyCount: countyProperties.length,
           avgMarketValue: avgMarketValue ? Math.round(avgMarketValue) : null,
           ...analysis,
-          generatedAt: new Date().toISOString(),
+          generatedAt: clock.now().toISOString(),
         },
         message: `Market analysis for ${county}, ${state}: ${analysis.recommendation || "See details"} — ${analysis.recommendationReason || ""}`,
       };
@@ -2885,9 +2886,9 @@ export class SkillRegistry {
       const validatedParams = skill.inputSchema.parse(params);
       logger.info(`[SkillRegistry] Executing skill: ${skillId}`, { metadata: { detail: { context: { organizationId: context.organizationId } } } });
       
-      const startTime = Date.now();
+      const startTime = clock.nowMs();
       const result = await skill.execute(validatedParams, context);
-      const duration = Date.now() - startTime;
+      const duration = clock.nowMs() - startTime;
       
       logger.info(`[SkillRegistry] Skill ${skillId} completed in ${duration}ms`, { metadata: { detail: { success: result.success } } });
       

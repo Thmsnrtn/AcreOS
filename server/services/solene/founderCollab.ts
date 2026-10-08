@@ -49,6 +49,7 @@ import {
 import type { SoleneDispatchAgentRole } from "@shared/schema/solene-dispatch";
 import { sendSolenePage } from "./pagerService";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ============================================
 // Types
@@ -172,7 +173,7 @@ export async function askFounder(
   );
   const timeoutHours =
     input.timeoutHours ?? FOUNDER_ASK_DEFAULT_TIMEOUT_HOURS;
-  const askedAt = new Date();
+  const askedAt = clock.now();
   const timeoutAt = new Date(askedAt.getTime() + timeoutHours * 60 * 60 * 1000);
 
   // ── Duplicate suppression, BEFORE the pager ──────────────────────────────
@@ -450,7 +451,7 @@ export async function answerFounderAsk(
     .update(soleneFounderAsks)
     .set({
       status: "answered",
-      answeredAt: new Date(),
+      answeredAt: clock.now(),
       answerText,
       answerChosenOptionId: chosenOptionId,
     })
@@ -629,7 +630,7 @@ export async function listOpenAsks(): Promise<FounderAskRow[]> {
  */
 export async function expireOverdueAsks(): Promise<{ expired: number }> {
   try {
-    const now = new Date();
+    const now = clock.now();
     const result = await db
       .update(soleneFounderAsks)
       .set({ status: "timed_out" })
@@ -675,7 +676,7 @@ export async function runAskEscalationLadder(
   let autoResolved = 0;
   try {
     const { ladderAction, REPAGE_HOURS } = await import("../autopilot/escalationLadder");
-    const now = Date.now();
+    const now = clock.nowMs();
     const open = await listOpenAsks();
     for (const ask of open) {
       const ageHours = (now - ask.askedAt.getTime()) / 3_600_000;
@@ -745,7 +746,7 @@ export async function supersedeAsk(
     .update(soleneFounderAsks)
     .set({
       status: "superseded",
-      answeredAt: new Date(),
+      answeredAt: clock.now(),
       answerText: `[superseded] ${reason}`.slice(0, 4000),
     })
     .where(eq(soleneFounderAsks.id, askId));

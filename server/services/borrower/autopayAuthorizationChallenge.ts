@@ -74,6 +74,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { achMandates } from "@shared/schema/ach-autopay";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 /**
  * How long a served authorization stays redeemable.
@@ -192,7 +193,7 @@ function sign(encoded: string, secret: string): string {
  */
 export function mintAutopayAuthorizationChallenge(
   binding: AutopayChallengeBinding,
-  now: Date = new Date(),
+  now: Date = clock.now(),
 ): MintedAutopayChallenge | null {
   const secret = signingSecret();
   if (!secret) return null;
@@ -248,7 +249,7 @@ function refuse(reason: AutopayChallengeRefusal): AutopayChallengeRefused {
 export function verifyAutopayAuthorizationChallenge(
   token: unknown,
   expected: AutopayChallengeBinding,
-  now: Date = new Date(),
+  now: Date = clock.now(),
 ): AutopayChallengeResult {
   if (typeof token !== "string" || token.length === 0) {
     return refuse("authorization_challenge_missing");
@@ -340,7 +341,7 @@ export async function claimAutopayAuthorizationChallenge(
   expected: AutopayChallengeBinding,
   deps: { now?: Date; lookup?: ConsumedChallengeLookup } = {},
 ): Promise<AutopayChallengeResult> {
-  const verified = verifyAutopayAuthorizationChallenge(token, expected, deps.now ?? new Date());
+  const verified = verifyAutopayAuthorizationChallenge(token, expected, deps.now ?? clock.now());
   if (!verified.ok) return verified;
 
   const lookup = deps.lookup ?? mandateChallengeLookup;

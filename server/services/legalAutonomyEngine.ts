@@ -22,6 +22,7 @@ import {
   companyAgents,
 } from "@shared/schema";
 import { eq, and, desc, lte, gte, sql, inArray, isNull } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -226,7 +227,7 @@ export class LegalAutonomyEngine {
     }
 
     // Create the legal action record
-    const actionId = `la_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const actionId = `la_${clock.nowMs()}_${Math.random().toString(36).slice(2, 8)}`;
 
     await db.insert(legalActions).values({
       actionId,
@@ -237,7 +238,7 @@ export class LegalAutonomyEngine {
       templateId,
       requestedBy: "shield_agent",
       status: "executed",
-      executedAt: new Date(),
+      executedAt: clock.now(),
       outcome: "auto_executed",
       reasoning: `Routine action auto-executed using template ${templateId} (v${template.version})`,
     });
@@ -285,7 +286,7 @@ export class LegalAutonomyEngine {
     // Classify for risk score
     const classification = await this.classifyLegalAction(actionType, {});
 
-    const actionId = `la_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const actionId = `la_${clock.nowMs()}_${Math.random().toString(36).slice(2, 8)}`;
 
     await db.insert(legalActions).values({
       actionId,
@@ -303,7 +304,7 @@ export class LegalAutonomyEngine {
       actionId,
       reviewers,
       status: "in_review",
-      createdAt: new Date(),
+      createdAt: clock.now(),
     };
   }
 
@@ -318,7 +319,7 @@ export class LegalAutonomyEngine {
   ): Promise<FounderEscalation> {
     const classification = await this.classifyLegalAction(actionType, context);
 
-    const actionId = `la_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const actionId = `la_${clock.nowMs()}_${Math.random().toString(36).slice(2, 8)}`;
 
     await db.insert(legalActions).values({
       actionId,
@@ -338,7 +339,7 @@ export class LegalAutonomyEngine {
       actionType,
       reasoning,
       context,
-      createdAt: new Date(),
+      createdAt: clock.now(),
     };
   }
 
@@ -421,21 +422,21 @@ export class LegalAutonomyEngine {
     }
 
     // Generate a confirmation reference
-    const confirmationRef = `RF-${filing.jurisdiction.toUpperCase().replace(/\s+/g, "")}-${Date.now().toString(36).toUpperCase()}`;
+    const confirmationRef = `RF-${filing.jurisdiction.toUpperCase().replace(/\s+/g, "")}-${clock.nowMs().toString(36).toUpperCase()}`;
 
     // Record the filing
     await db
       .update(regulatoryFilingCalendar)
       .set({
         status: "filed",
-        filedAt: new Date(),
+        filedAt: clock.now(),
         filedBy: "shield_agent",
         confirmationRef,
       })
       .where(eq(regulatoryFilingCalendar.id, filingId));
 
     // Also create a legal action record for audit trail
-    const actionId = `la_filing_${filingId}_${Date.now().toString(36)}`;
+    const actionId = `la_filing_${filingId}_${clock.nowMs().toString(36)}`;
 
     await db.insert(legalActions).values({
       actionId,
@@ -446,7 +447,7 @@ export class LegalAutonomyEngine {
       templateId: filing.templateId ?? null,
       requestedBy: "shield_agent",
       status: "executed",
-      executedAt: new Date(),
+      executedAt: clock.now(),
       outcome: `Filed: ${filing.filingType} in ${filing.jurisdiction}. Ref: ${confirmationRef}`,
       reasoning: `Auto-filed regulatory obligation. Due: ${filing.dueDate.toISOString()}`,
     });
@@ -462,7 +463,7 @@ export class LegalAutonomyEngine {
    * Get filings due within the specified number of days ahead.
    */
   async getUpcomingFilings(daysAhead: number): Promise<any[]> {
-    const now = new Date();
+    const now = clock.now();
     const cutoff = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
 
     const filings = await db

@@ -24,12 +24,13 @@ import { db } from "../../../db";
 import { financialLedger } from "@shared/schema";
 import { getBucketBalance } from "../../financial-ledger";
 import type { DomainDetector, FindingInput } from "../domainAudit";
+import { clock } from "../../../utils/clock";
 
 const TAX_RESERVE_TARGET_RATIO = 0.25; // mirrors settingsSeeder tax_reserve default
 
 /** Sum of category='revenue' rows posted in the trailing 12 months (cents). */
 async function trailing12moRevenueCents(): Promise<number> {
-  const since = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - 365 * 24 * 60 * 60 * 1000);
   const [row] = await db
     .select({
       total: sql<number>`COALESCE(SUM(${financialLedger.amountCents}), 0)`.mapWith(

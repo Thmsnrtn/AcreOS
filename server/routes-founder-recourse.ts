@@ -51,6 +51,7 @@ import {
   aggregateRecourseSignals,
   generateDraftReply,
 } from "./services/recourseDrafter";
+import { clock } from "./utils/clock";
 
 const sendSchema = z.object({
   // The founder's final, post-edit reply. Required — sending a blank reply
@@ -314,7 +315,7 @@ export function registerFounderRecourseRoutes(app: Express): void {
           );
         }
 
-        const sentAt = new Date();
+        const sentAt = clock.now();
         await db
           .update(recourseDrafts)
           .set({
@@ -377,7 +378,7 @@ export function registerFounderRecourseRoutes(app: Express): void {
           );
         }
 
-        const now = new Date();
+        const now = clock.now();
         await db
           .update(recourseDrafts)
           .set({ status: "dismissed", updatedAt: now })

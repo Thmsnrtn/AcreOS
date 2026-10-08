@@ -14,6 +14,7 @@
  * used by taxDelinquentPipeline.ts.
  */
 
+import { clock } from "../utils/clock";
 export interface NormalizedDelinquentRecord {
   ownerName: string;
   propertyAddress: string;
@@ -141,7 +142,7 @@ export function findAutoScrapeSource(county: string, state: string): AutoScrapeS
 export async function scrapeCountyDelinquentList(
   source: AutoScrapeSource
 ): Promise<AutoScrapeResult> {
-  const scrapedAt = new Date().toISOString();
+  const scrapedAt = clock.now().toISOString();
 
   try {
     const controller = new AbortController();
@@ -210,7 +211,7 @@ function normalizeRecord(
     county: source.county,
     countyState: `${source.county}, ${source.state}`,
     dataSourceUrl: source.socrataUrl,
-    scrapedAt: new Date().toISOString(),
+    scrapedAt: clock.now().toISOString(),
   };
 }
 
@@ -223,7 +224,7 @@ export async function scrapeAllSupportedCounties(): Promise<AutoScrapeResult[]> 
     AUTO_SCRAPE_SOURCES.map(source => scrapeCountyDelinquentList(source))
   );
   return results.map(r => r.status === "fulfilled" ? r.value : {
-    county: "Unknown", state: "", recordCount: 0, records: [], scrapedAt: new Date().toISOString(),
+    county: "Unknown", state: "", recordCount: 0, records: [], scrapedAt: clock.now().toISOString(),
     success: false, error: "Promise rejected",
   });
 }

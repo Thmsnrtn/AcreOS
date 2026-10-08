@@ -32,6 +32,7 @@ import {
 } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type PublicWebhookEventType =
   | "lead.created"
@@ -67,7 +68,7 @@ interface SignedPayload {
 export function signPayload(
   secret: string,
   payload: unknown,
-  ts = Math.floor(Date.now() / 1000),
+  ts = Math.floor(clock.nowMs() / 1000),
 ): SignedPayload {
   const body = JSON.stringify(payload);
   const mac = createHmac("sha256", secret)
@@ -149,7 +150,7 @@ export async function dispatchWebhookEvent(
   const envelope = {
     id: eventId,
     type: eventType,
-    created: Math.floor(Date.now() / 1000),
+    created: Math.floor(clock.nowMs() / 1000),
     organization_id: organizationId,
     data: payload,
   };
@@ -172,7 +173,7 @@ async function attemptDelivery(
   const isFinalAttempt = attemptNumber >= MAX_ATTEMPTS;
   const nextRetryAt =
     !result.ok && !isFinalAttempt
-      ? new Date(Date.now() + ATTEMPT_BACKOFF_SEC[attemptNumber - 1] * 1000)
+      ? new Date(clock.nowMs() + ATTEMPT_BACKOFF_SEC[attemptNumber - 1] * 1000)
       : null;
 
   await db.insert(webhookDeliveryLog).values({
@@ -187,7 +188,7 @@ async function attemptDelivery(
     responseBody: result.responseBody ?? null,
     errorMessage: result.error ?? null,
     nextRetryAt,
-    deliveredAt: result.ok ? new Date() : null,
+    deliveredAt: result.ok ? clock.now() : null,
   });
 
   if (result.ok) {
@@ -195,8 +196,8 @@ async function attemptDelivery(
       .update(webhookSubscriptions)
       .set({
         consecutiveFailures: 0,
-        lastSuccessAt: new Date(),
-        updatedAt: new Date(),
+        lastSuccessAt: clock.now(),
+        updatedAt: clock.now(),
       })
       .where(eq(webhookSubscriptions.id, sub.id));
     return;
@@ -207,8 +208,8 @@ async function attemptDelivery(
     .update(webhookSubscriptions)
     .set({
       consecutiveFailures: sql`${webhookSubscriptions.consecutiveFailures} + 1`,
-      lastFailureAt: new Date(),
-      updatedAt: new Date(),
+      lastFailureAt: clock.now(),
+      updatedAt: clock.now(),
     })
     .where(eq(webhookSubscriptions.id, sub.id))
     .returning({ count: webhookSubscriptions.consecutiveFailures });
@@ -217,7 +218,7 @@ async function attemptDelivery(
   if (failures >= AUTO_DISABLE_THRESHOLD) {
     await db
       .update(webhookSubscriptions)
-      .set({ isActive: false, updatedAt: new Date() })
+      .set({ isActive: false, updatedAt: clock.now() })
       .where(eq(webhookSubscriptions.id, sub.id));
     logger.warn("webhook subscription auto-disabled after consecutive failures", {
       metadata: {

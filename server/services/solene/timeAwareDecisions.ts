@@ -51,6 +51,7 @@ import {
 import type { SoleneDispatchAgentRole } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
 import { recordAgentDecision } from "./agentIdentity";
+import { clock } from "../../utils/clock";
 
 // ============================================================================
 // Types
@@ -121,7 +122,7 @@ function snippetForLog(s: string): string {
 
 export function computeRevisitDueAt(
   horizon: DecisionHorizon,
-  fromDate: Date = new Date(),
+  fromDate: Date = clock.now(),
 ): Date {
   const days = HORIZON_DAYS[horizon];
   // Date arithmetic via a new Date instance to avoid mutating the caller's
@@ -168,7 +169,7 @@ export async function setDecisionHorizon(
 export async function listDueForRevisit(
   opts: ListDueForRevisitOpts = {},
 ): Promise<SoleneAgentIdentityDecision[]> {
-  const cutoff = opts.cutoff ?? new Date();
+  const cutoff = opts.cutoff ?? clock.now();
   const limit =
     typeof opts.limit === "number" && opts.limit > 0
       ? Math.min(500, Math.floor(opts.limit))

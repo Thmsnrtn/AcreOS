@@ -4,6 +4,8 @@ import { logger } from "../utils/logger";
 import { shouldSimulate, recordSimulatedAction } from "../utils/simulationMode";
 import { isLiveSendArmed } from './mail/liveSendInterlock';
 import { getLobClient } from './directMailService';
+import { DIRECT_MAIL_COSTS, type MailPieceType } from "./sendPricing";
+import { clock } from "../utils/clock";
 
 async function logLobApiUsage(
   orgId: number | undefined,
@@ -25,17 +27,10 @@ async function logLobApiUsage(
   }
 }
 
-// Cost structure (in cents) - our pricing to users
-export const DIRECT_MAIL_COSTS = {
-  postcard_4x6: 75,    // $0.75 - small postcard
-  postcard_6x9: 95,    // $0.95 - standard postcard
-  postcard_6x11: 115,  // $1.15 - large postcard
-  letter_1_page: 125,  // $1.25 - single page letter
-  letter_2_page: 145,  // $1.45 - 2 page letter
-  letter_extra_page: 15, // $0.15 per additional page
-} as const;
-
-export type MailPieceType = keyof typeof DIRECT_MAIL_COSTS;
+// Cost structure (in cents) - our pricing to users. Defined in
+// ./sendPricing (the one home of every per-send price, read by Pax's quote
+// tool too) and re-exported here for the existing importers.
+export { DIRECT_MAIL_COSTS, type MailPieceType };
 export type MailMode = 'test' | 'live';
 
 export interface DirectMailRecipient {
@@ -270,7 +265,7 @@ export class DirectMailService {
       );
       return {
         id: sim.id,
-        expectedDeliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        expectedDeliveryDate: new Date(clock.nowMs() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
         isTestMode: true,
         credentialSource: "platform",
       };
@@ -390,7 +385,7 @@ export class DirectMailService {
       );
       return {
         id: sim.id,
-        expectedDeliveryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        expectedDeliveryDate: new Date(clock.nowMs() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
         isTestMode: true,
         credentialSource: "platform",
       };

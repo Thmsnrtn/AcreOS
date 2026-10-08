@@ -21,6 +21,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { Errors } from "../utils/errors";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
@@ -66,7 +67,7 @@ export function publicApiRateLimit() {
 
     const limit = apiKey.rateLimit ?? tierLimit(org.subscriptionTier);
     const key = `apikey:${apiKey.id}`;
-    const now = Date.now();
+    const now = clock.nowMs();
 
     const bucket = memBuckets.get(key) ?? { timestamps: [] };
     if (!memBuckets.has(key)) memBuckets.set(key, bucket);

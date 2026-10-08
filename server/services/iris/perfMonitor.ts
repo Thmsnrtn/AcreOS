@@ -39,6 +39,7 @@ import { soleneDispatchQueue } from "@shared/schema/solene-dispatch";
 import { drainRings } from "../../middleware/responseTimeRing";
 import { enqueueDispatch } from "../solene/dispatchQueue";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 /**
  * Severity mapping for a triggered regression. The detector → dispatch
@@ -70,7 +71,7 @@ export interface SamplePerformanceResult {
 }
 
 export async function samplePerformance(
-  now: Date = new Date(),
+  now: Date = clock.now(),
 ): Promise<SamplePerformanceResult> {
   const snapshots = drainRings(now);
   let totalObservations = 0;
@@ -161,7 +162,7 @@ export const PERF_REGRESSION_DISPATCH_PRIORITY = 1.5;
 export async function detectRegression(
   windowHours: number = IRIS_REGRESSION_THRESHOLDS.baselineWindowHours,
 ): Promise<DetectRegressionResult> {
-  const cutoff = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - windowHours * 60 * 60 * 1000);
   const regressions: PerfRegression[] = [];
   let endpointsChecked = 0;
   let endpointsSkippedNoBaseline = 0;
@@ -568,7 +569,7 @@ export async function getRecentSamples(hours: number = 48): Promise<{
   >;
   totalSamples: number;
 }> {
-  const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - hours * 60 * 60 * 1000);
   const rows = await db
     .select()
     .from(irisPerfSamples)

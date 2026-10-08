@@ -63,6 +63,7 @@ import {
   marketingSpendSummary,
   recordMarketingSpend,
 } from "./services/marketingSpend";
+import { clock } from "./utils/clock";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -90,7 +91,7 @@ function envelopeStatus(spentUsd: number, limitUsd: number): EnvelopeStatus {
 }
 
 async function sumCapitalSinceDays(days: number): Promise<number> {
-  const since = new Date(Date.now() - days * ONE_DAY_MS);
+  const since = new Date(clock.nowMs() - days * ONE_DAY_MS);
   const [row] = await db
     .select({
       sum: sql<string>`COALESCE(SUM(${soleneCapitalEvents.costUsd}), 0)`,
@@ -275,7 +276,7 @@ export function registerFounderMoneyRoutes(app: Express): void {
             and(
               gte(
                 soleneCapitalEvents.occurredAt,
-                new Date(Date.now() - 90 * ONE_DAY_MS),
+                new Date(clock.nowMs() - 90 * ONE_DAY_MS),
               ),
               sql`${soleneCapitalEvents.costUsd} > 0`,
             ),
@@ -399,7 +400,7 @@ export function registerFounderMoneyRoutes(app: Express): void {
             : null;
 
         return res.json({
-          asOf: new Date().toISOString(),
+          asOf: clock.now().toISOString(),
           blendedGrossMarginPct: rollup.totals.grossMarginPct,
           blendedGrossMarginUsd: rollup.totals.grossMarginUsd,
           totalMrrUsd: rollup.totals.totalMrrUsd,
@@ -500,7 +501,7 @@ export function registerFounderMoneyRoutes(app: Express): void {
         }
 
         return res.json({
-          asOf: new Date().toISOString(),
+          asOf: clock.now().toISOString(),
           provider: regridProvider.displayName,
           justified,
           verdict,

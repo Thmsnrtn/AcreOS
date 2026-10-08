@@ -15,6 +15,7 @@ import { systemMeta } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { addMonths } from "../utils/dateUtils";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 interface CEOReminder {
   id: string;
@@ -78,7 +79,7 @@ async function saveReminders() {
     const value = JSON.stringify(reminders);
     if (existing) {
       await db.update(systemMeta)
-        .set({ value, updatedAt: new Date() })
+        .set({ value, updatedAt: clock.now() })
         .where(eq(systemMeta.key, "ceo_reminders"));
     } else {
       await db.insert(systemMeta).values({
@@ -113,14 +114,14 @@ export async function createReminder(params: {
   await loadReminders();
 
   const reminder: CEOReminder = {
-    id: `rem_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    id: `rem_${clock.nowMs()}_${Math.random().toString(36).slice(2, 6)}`,
     message: params.message,
     dueDate: params.dueDate,
     context: params.context,
     relatedAgent: params.relatedAgent,
     relatedOrgId: params.relatedOrgId,
     status: "pending",
-    createdAt: new Date(),
+    createdAt: clock.now(),
     recurrence: params.recurrence
       ? { ...params.recurrence, occurrenceCount: 0 }
       : undefined,
@@ -142,7 +143,7 @@ export async function createReminder(params: {
  */
 export async function getDueReminders(): Promise<CEOReminder[]> {
   await loadReminders();
-  const now = new Date();
+  const now = clock.now();
   return reminders.filter(r => r.status === "pending" && r.dueDate <= now);
 }
 
@@ -198,7 +199,7 @@ export async function snoozeReminder(id: string): Promise<boolean> {
   }
 
   reminder.snoozeCount = current + 1;
-  reminder.dueDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000); // 2 days from now
+  reminder.dueDate = new Date(clock.nowMs() + 2 * 24 * 60 * 60 * 1000); // 2 days from now
   reminder.status = "pending";
 
   await saveReminders();
@@ -234,14 +235,14 @@ export async function processRecurringReminders(): Promise<CEOReminder[]> {
     const nextDue = computeNextOccurrence(reminder.dueDate, rec);
 
     const next: CEOReminder = {
-      id: `rem_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id: `rem_${clock.nowMs()}_${Math.random().toString(36).slice(2, 6)}`,
       message: reminder.message,
       dueDate: nextDue,
       context: reminder.context,
       relatedAgent: reminder.relatedAgent,
       relatedOrgId: reminder.relatedOrgId,
       status: "pending",
-      createdAt: new Date(),
+      createdAt: clock.now(),
       recurrence: {
         ...rec,
         occurrenceCount: count,
@@ -337,7 +338,7 @@ export async function getContextForReminder(reminder: CEOReminder): Promise<stri
         const activityAt = org.lastActiveAt ?? org.updatedAt;
         if (activityAt) {
           const days = Math.floor(
-            (Date.now() - new Date(activityAt).getTime()) / (24 * 60 * 60 * 1000),
+            (clock.nowMs() - new Date(activityAt).getTime()) / (24 * 60 * 60 * 1000),
           );
           parts.push(`last activity ${days} day${days !== 1 ? "s" : ""} ago`);
         }
@@ -404,7 +405,7 @@ export async function getContextForReminder(reminder: CEOReminder): Promise<stri
  * "in 3 days" → 3 days from now
  */
 export function parseRelativeDate(text: string): Date {
-  const now = new Date();
+  const now = clock.now();
   const lower = text.toLowerCase();
 
   if (lower.includes("tomorrow")) {

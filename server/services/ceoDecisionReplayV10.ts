@@ -17,6 +17,7 @@ import {
 } from "@shared/schema";
 import { eq, desc, gte, and, count, sql } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
+import { clock } from "../utils/clock";
 
 // ─── Bias Types ────────────────────────────────────────────────────────────
 
@@ -46,13 +47,13 @@ class CEODecisionReplayService {
     ceoChoice: string;
   }): Promise<number> {
     const [record] = await db.insert(ceoDecisionReplays).values({
-      originalDecisionId: `dec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      originalDecisionId: `dec_${clock.nowMs()}_${Math.random().toString(36).slice(2, 8)}`,
       decisionType: params.decisionType,
       decisionSummary: params.decisionSummary,
       originalContext: params.context,
       agentRecommendations: params.agentRecommendations,
       ceoChoice: params.ceoChoice,
-      originalDate: new Date(),
+      originalDate: clock.now(),
     }).returning();
 
     return record.id;
@@ -122,7 +123,7 @@ Respond in JSON:
         wasOptimal: parsed.wasOptimal,
         qualityScore: parsed.qualityScore,
         biasFlags: parsed.biasFlags || [],
-        replayDate: new Date(),
+        replayDate: clock.now(),
       })
       .where(eq(ceoDecisionReplays.id, decisionId))
       .returning();

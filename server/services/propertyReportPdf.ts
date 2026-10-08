@@ -21,6 +21,7 @@ import { db } from "../db";
 import { properties, parcelSnapshots, organizations } from "@shared/schema";
 import { and, desc, eq } from "drizzle-orm";
 import { parcelSnapshotVisibleTo } from "../storage/gisRepo";
+import { clock } from "../utils/clock";
 
 const PRIMARY = "#9C4221"; // terracotta — matches the AcreOS brand
 const TEXT = "#1f2937";
@@ -83,7 +84,7 @@ export async function generatePropertyReport(input: PropertyReportInput) {
   // ── Header band ──
   doc.rect(0, 0, doc.page.width, 80).fill(PRIMARY);
   doc.fillColor("#ffffff").fontSize(20).font("Helvetica-Bold").text("Property Report", 50, 30);
-  doc.fontSize(10).font("Helvetica").text(`Generated ${new Date().toLocaleDateString()} · ${org?.name ?? "AcreOS"}`, 50, 55);
+  doc.fontSize(10).font("Helvetica").text(`Generated ${clock.now().toLocaleDateString()} · ${org?.name ?? "AcreOS"}`, 50, 55);
 
   doc.moveTo(0, 80).fillColor(TEXT);
   doc.moveDown(2);

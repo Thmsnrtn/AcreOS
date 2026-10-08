@@ -33,6 +33,7 @@ import { eq, and, sql, desc, gte } from "drizzle-orm";
 import { createHash } from "crypto";
 import { logger } from "../utils/logger";
 import { addMonths } from "../utils/dateUtils";
+import { clock } from "../utils/clock";
 
 export const COUNTY_ASSESSOR_QUEUE_NAME = "county-assessor-ingest";
 
@@ -152,7 +153,7 @@ export async function fetchAttomComparables(
   }
 
   try {
-    const cutoffDate = addMonths(new Date(), -monthsBack);
+    const cutoffDate = addMonths(clock.now(), -monthsBack);
     const dateStr = cutoffDate.toISOString().split("T")[0];
 
     const url = new URL("https://api.gateway.attomdata.com/propertyapi/v1.0.0/saleshistory/detail");
@@ -435,7 +436,7 @@ async function updateCountyMarketStats(
 ): Promise<CountyMarketStats | null> {
   if (comps.length === 0) return null;
 
-  const now = new Date();
+  const now = clock.now();
   const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
   const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
   const twoYearsAgo = new Date(now.getTime() - 730 * 24 * 60 * 60 * 1000);
@@ -601,7 +602,7 @@ async function processCounty(
           VALUES
             (${hash}, ${comp.state}, ${comp.county}, 'land', ${String(comp.acreage)},
              ${String(comp.salePrice)}, ${String(comp.pricePerAcre.toFixed(2))},
-             ${comp.saleDate ? new Date(comp.saleDate) : new Date()}, ${dataQuality}, ${isOutlier}, ${comp.zoning || null})
+             ${comp.saleDate ? new Date(comp.saleDate) : clock.now()}, ${dataQuality}, ${isOutlier}, ${comp.zoning || null})
           ON CONFLICT (transaction_hash) DO NOTHING
         `);
       } catch (err: any) {
@@ -628,7 +629,7 @@ async function processCounty(
 // ---------------------------------------------------------------------------
 
 async function processCountyAssessorIngestJob(job: Job): Promise<void> {
-  const startedAt = new Date();
+  const startedAt = clock.now();
 
   const jobRecord = await db
     .insert(backgroundJobs)
@@ -648,7 +649,7 @@ async function processCountyAssessorIngestJob(job: Job): Promise<void> {
   let countiesProcessed = 0;
   let countriesFailed = 0;
 
-  const batchRun = `batch_${Date.now()}`;
+  const batchRun = `batch_${clock.nowMs()}`;
 
   // Process counties in priority order, cap at 50 per run to respect rate limits
   const batchCounties = [...TOP_LAND_COUNTIES]
@@ -681,7 +682,7 @@ async function processCountyAssessorIngestJob(job: Job): Promise<void> {
     totalDelinquentRecords: totalDelinquent,
     totalCompsIngested: totalComps,
     totalHighMotivationLeads: totalHighMotivation,
-    durationMs: Date.now() - startedAt.getTime(),
+    durationMs: clock.nowMs() - startedAt.getTime(),
   };
 
   logger.info("[CountyAssessor] Batch complete", { metadata: { detail: JSON.stringify(summary) } });
@@ -691,7 +692,7 @@ async function processCountyAssessorIngestJob(job: Job): Promise<void> {
       .update(backgroundJobs)
       .set({
         status: "completed",
-        completedAt: new Date(),
+        completedAt: clock.now(),
         result: summary,
       })
       .where(eq(backgroundJobs.id, bgJobId));

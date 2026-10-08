@@ -40,6 +40,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // State machine: pending → reviewing → approved | rejected | more_info_needed
 type VerificationStatus = "pending" | "reviewing" | "approved" | "rejected" | "more_info_needed";
@@ -221,7 +222,7 @@ export const drizzleInvestorVerificationStorage: InvestorVerificationStorage = {
   },
 
   async updateRequest(id, orgId, updates) {
-    const set: Record<string, unknown> = { updatedAt: new Date() };
+    const set: Record<string, unknown> = { updatedAt: clock.now() };
     if (updates.status !== undefined) set.status = updates.status;
     if (updates.documents !== undefined) set.documents = isoDocuments(updates.documents);
     if (updates.history !== undefined) set.history = isoHistory(updates.history);
@@ -292,7 +293,7 @@ export const drizzleInvestorVerificationStorage: InvestorVerificationStorage = {
     // admin of one org could mark another org's investor verified.
     await db
       .update(investorProfiles)
-      .set({ isVerified: true, verifiedAt: new Date() })
+      .set({ isVerified: true, verifiedAt: clock.now() })
       .where(
         and(
           eq(investorProfiles.id, investorProfileId),
@@ -345,7 +346,7 @@ export class InvestorVerificationService {
       return existing;
     }
 
-    const now = new Date();
+    const now = clock.now();
     const request = await this.storage.insertRequest({
       investorProfileId,
       orgId,
@@ -369,7 +370,7 @@ export class InvestorVerificationService {
       throw new Error(`Cannot upload documents in status: ${request.status}`);
     }
 
-    const uploadedAt = new Date();
+    const uploadedAt = clock.now();
     await this.storage.updateRequest(verificationId, orgId, {
       documents: [...request.documents, { docType, fileData, uploadedAt }],
     });
@@ -388,7 +389,7 @@ export class InvestorVerificationService {
       throw new Error(`Cannot submit from status: ${request.status}`);
     }
 
-    const submittedAt = new Date();
+    const submittedAt = clock.now();
     await this.storage.updateRequest(verificationId, orgId, {
       status: "reviewing",
       submittedAt,
@@ -420,7 +421,7 @@ export class InvestorVerificationService {
       throw new Error(`Cannot review verification in status: ${request.status}`);
     }
 
-    const reviewedAt = new Date();
+    const reviewedAt = clock.now();
     await this.storage.updateRequest(verificationId, orgId, {
       status: decision,
       reviewedAt,

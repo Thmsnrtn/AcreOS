@@ -24,6 +24,7 @@ import { fcraAttestations, tenantScreenings } from "@shared/schema";
 import { and, eq, desc } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { Errors } from "../utils/errors";
+import { clock } from "../utils/clock";
 
 export const CURRENT_FCRA_ATTESTATION_VERSION = "2026-05-08-v1";
 const ATTESTATION_TTL_DAYS = 365;
@@ -132,7 +133,7 @@ export async function getCurrentAttestation(orgId: number, userId: string) {
     .orderBy(desc(fcraAttestations.attestedAt))
     .limit(1);
   if (!row) return null;
-  const age = Date.now() - new Date(row.attestedAt).getTime();
+  const age = clock.nowMs() - new Date(row.attestedAt).getTime();
   if (age > ATTESTATION_TTL_MS) return null;
   if (row.attestationVersion !== CURRENT_FCRA_ATTESTATION_VERSION) return null;
   return row;
@@ -284,7 +285,7 @@ export async function assertScreeningPermitted(opts: {
 
   if (!requirePerLookupRow) return;
 
-  const oneHourAgo = new Date(Date.now() - 60 * 60_000);
+  const oneHourAgo = new Date(clock.nowMs() - 60 * 60_000);
   const [recent] = await db
     .select()
     .from(tenantScreenings)

@@ -20,6 +20,7 @@ import { supportSavedReplies } from "@shared/schema";
 import { Errors } from "./utils/errors";
 import { getUserId } from "./types/request";
 import type { AuthenticatedRequest } from "./types/request";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -79,7 +80,7 @@ router.patch("/:id", async (req: AuthenticatedRequest, res: Response) => {
         ...(parsed.data.name !== undefined && { name: parsed.data.name }),
         ...(parsed.data.body !== undefined && { body: parsed.data.body }),
         ...(parsed.data.organizationId !== undefined && { organizationId: parsed.data.organizationId }),
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(supportSavedReplies.id, id))
       .returning();

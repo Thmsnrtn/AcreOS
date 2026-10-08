@@ -21,6 +21,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { getClientIp, clientIpOrNull } from "./utils/clientIp";
+import { clock } from "./utils/clock";
 
 // The FULL set the schema declares (shared/schema.ts feedbackSubmissions
 // comment). Until 2026-08-27 this enum held only the last three — but the
@@ -201,7 +202,7 @@ export function registerFeedbackRoutes(app: Express): void {
           return Errors.validationFailed(res, parsed.error.flatten());
         }
         const { status } = parsed.data;
-        const now = new Date();
+        const now = clock.now();
 
         const update: Record<string, unknown> = { status };
         if (status === "read") update.readAt = now;

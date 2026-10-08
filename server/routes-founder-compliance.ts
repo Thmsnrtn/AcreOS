@@ -28,6 +28,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requireScope } from "./middleware/roleScope";
 import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 const w2ExitSchema = z.object({
   monthlyW2IncomeCents: z.number().int().min(0),
@@ -118,7 +119,7 @@ export function registerFounderComplianceRoutes(app: Express): void {
               value: String(parsed.data.value),
               unit: parsed.data.unit ?? null,
               notes: parsed.data.notes ?? null,
-              capturedAt: new Date(),
+              capturedAt: clock.now(),
             },
           })
           .returning();

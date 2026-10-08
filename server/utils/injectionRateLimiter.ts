@@ -33,6 +33,7 @@
 
 import { logger } from "./logger";
 import { detectInjectionPatterns } from "./sanitizePrompt";
+import { clock } from "./clock";
 
 // PATTERNS COME FROM THE ONE OWNER. This block used to hold a hand-copied
 // subset of server/utils/sanitizePrompt.ts's arrays — 9 markers where there were
@@ -88,7 +89,7 @@ export async function recordAttemptIfDetected(req: RateLimitInput): Promise<Rate
     return { matched: false, blocked: false, matchedPatterns: [], recentCount: 0 };
   }
 
-  const now = Date.now();
+  const now = clock.nowMs();
   const key = req.userId ?? `org:${req.organizationId ?? "anon"}`;
   const arr = counterByUser.get(key) ?? [];
   arr.push(now);

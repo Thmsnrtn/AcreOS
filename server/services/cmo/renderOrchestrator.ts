@@ -45,6 +45,7 @@ import {
   type CostBreakdown,
 } from "./costTracker";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 const ASPECT_RATIOS: Array<{ id: string; composition: string; ratio: "9:16" | "1:1" | "16:9" }> = [
   { id: "9x16", composition: "ad-9x16", ratio: "9:16" },
@@ -175,7 +176,7 @@ export async function renderScriptToBundle(input: OrchestratorInput): Promise<Or
     try {
       await db
         .update(cmoAdRenders)
-        .set({ status: "rendering", updatedAt: new Date() })
+        .set({ status: "rendering", updatedAt: clock.now() })
         .where(eq(cmoAdRenders.id, renderId));
 
       await runRemotionRender({
@@ -222,7 +223,7 @@ export async function renderScriptToBundle(input: OrchestratorInput): Promise<Or
         .set({
           status: "ready",
           manifestJson: manifest as unknown as Record<string, unknown>,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(cmoAdRenders.id, renderId))
         .returning();
@@ -236,7 +237,7 @@ export async function renderScriptToBundle(input: OrchestratorInput): Promise<Or
         .set({
           status: "error",
           errorMessage: message,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(cmoAdRenders.id, renderId));
     }
@@ -332,7 +333,7 @@ function buildManifest(args: BuildManifestArgs) {
     schema: "cmo.manifest.v1",
     renderId: args.renderId,
     trackingId: args.trackingId,
-    createdAt: new Date().toISOString(),
+    createdAt: clock.now().toISOString(),
     brand: {
       id: args.brand.id,
       slug: args.brand.slug,

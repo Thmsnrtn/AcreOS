@@ -17,6 +17,7 @@
  */
 import type { AutopilotDomain } from "../policyGate";
 import type { ProofReceipt } from "../proofReceipt";
+import { clock } from "../../../utils/clock";
 
 /** Result of a hand invocation — structurally matches the executor's ToolExecutionResult. */
 export interface HandResult {
@@ -116,6 +117,6 @@ export function handError(name: string, err: unknown, started: number): HandResu
   return {
     success: false,
     output: `Error: ${name} failed: ${err instanceof Error ? err.message : String(err)}`,
-    durationMs: Date.now() - started,
+    durationMs: clock.nowMs() - started,
   };
 }

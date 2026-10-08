@@ -17,6 +17,7 @@ import { db } from "../../db";
 import { cmoAdPerformance, cmoAdRenders, cmoScripts, cmoHookArchetypes } from "@shared/schema";
 import { eq, and, gte, sql } from "drizzle-orm";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 const ROLLING_WINDOW_DAYS = 30;
 const MIN_RENDERS_FOR_WEIGHTING = 3;
@@ -25,7 +26,7 @@ const MIN_WEIGHT = 25;
 const BASELINE_WEIGHT = 100;
 
 export async function recomputeArchetypeScores(): Promise<number> {
-  const cutoff = new Date(Date.now() - ROLLING_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(clock.nowMs() - ROLLING_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
   // Aggregate impressions + clicks + spend per archetype via JOIN to scripts
   // and ad-performance.
@@ -79,7 +80,7 @@ export async function recomputeArchetypeScores(): Promise<number> {
         spendCentsLast30d: spendCents,
         rendersLast30d,
         generationWeight: weight,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(cmoHookArchetypes.slug, row.archetype));
     updates++;

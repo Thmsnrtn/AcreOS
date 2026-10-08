@@ -55,6 +55,7 @@ import { requireEncryptionKey } from "./utils/validateEnv";
 // executor, so this never double-dispatches against either.
 import { claimNextDispatch } from "./services/solene/dispatchQueue";
 import { runDispatch } from "./services/solene/dispatchRunner";
+import { clock } from "./utils/clock";
 
 // Initialize Sentry early so unhandled errors are reported.
 initSentry();
@@ -409,7 +410,7 @@ const REAP_RUNNING_TTL_MS = parseInt(process.env.WORKER_REAP_RUNNING_TTL_MS ?? S
 
 async function reapOrphanedOutbox(): Promise<void> {
   try {
-    const cutoff = new Date(Date.now() - REAP_RUNNING_TTL_MS);
+    const cutoff = new Date(clock.nowMs() - REAP_RUNNING_TTL_MS);
     const res = await db.execute<{ id: number; event_type: string; new_status: string }>(sql`
       UPDATE outbox
       SET status = CASE
@@ -440,7 +441,7 @@ async function markSent(id: number, _result: unknown): Promise<void> {
     .update(outbox)
     .set({
       status: "sent",
-      sentAt: new Date(),
+      sentAt: clock.now(),
     })
     .where(eq(outbox.id, id));
 }
@@ -451,7 +452,7 @@ async function markFailedTransient(id: number, err: unknown): Promise<void> {
     .update(outbox)
     .set({
       status: "retry",
-      lastErrorAt: new Date(),
+      lastErrorAt: clock.now(),
       lastErrorMessage: message.slice(0, 1000),
     })
     .where(eq(outbox.id, id));
@@ -466,7 +467,7 @@ async function markFailedTerminal(
 ): Promise<void> {
   const message = err instanceof Error ? err.message : String(err);
   const truncated = message.slice(0, 1000);
-  const now = new Date();
+  const now = clock.now();
 
   // Pillar 9.1 — atomic DLQ move.  Insert into outbox_dlq + delete the
   // outbox row in a single transaction.  Either both rows transition or
@@ -535,7 +536,7 @@ async function processOne(row: {
   attempts: number;
 }): Promise<void> {
   inFlight += 1;
-  const started = Date.now();
+  const started = clock.nowMs();
   try {
     const handler = HANDLERS[row.eventType as HandledEventType];
     if (!handler) {
@@ -562,7 +563,7 @@ async function processOne(row: {
     );
     await markSent(row.id, result);
     logger.info(`[worker] ${row.eventType} #${row.id} sent`, {
-      metadata: { durationMs: Date.now() - started },
+      metadata: { durationMs: clock.nowMs() - started },
     });
   } catch (err) {
     Sentry.captureException(err, {
@@ -595,14 +596,14 @@ async function writeHeartbeat(): Promise<void> {
         id: 1,
         instanceId,
         gitSha: process.env.VITE_GIT_SHA ?? process.env.SENTRY_RELEASE ?? null,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .onConflictDoUpdate({
         target: workerHeartbeat.id,
         set: {
           instanceId,
           gitSha: process.env.VITE_GIT_SHA ?? process.env.SENTRY_RELEASE ?? null,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         },
       });
   } catch (err) {
@@ -620,8 +621,8 @@ async function pollOnce(): Promise<void> {
   await writeHeartbeat();
   // Recover rows a crashed predecessor left in 'running' — immediately on the
   // first poll after boot (the restart-after-crash case), then every 10 min.
-  if (Date.now() - lastReapAt > REAP_INTERVAL_MS) {
-    lastReapAt = Date.now();
+  if (clock.nowMs() - lastReapAt > REAP_INTERVAL_MS) {
+    lastReapAt = clock.nowMs();
     await reapOrphanedOutbox();
   }
   // Append-only liveness sample (throttled to ~1/min internally) — the history
@@ -777,8 +778,8 @@ async function shutdown(signal: string): Promise<void> {
     clearInterval(handle);
   }
 
-  const deadline = Date.now() + SHUTDOWN_GRACE_MS;
-  while ((inFlight > 0 || soleneInFlight > 0 || scheduledInFlight().length > 0) && Date.now() < deadline) {
+  const deadline = clock.nowMs() + SHUTDOWN_GRACE_MS;
+  while ((inFlight > 0 || soleneInFlight > 0 || scheduledInFlight().length > 0) && clock.nowMs() < deadline) {
     await new Promise((r) => setTimeout(r, 250));
   }
 

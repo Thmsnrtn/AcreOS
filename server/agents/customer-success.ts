@@ -7,6 +7,7 @@ import { BaseAgent, type AgentDecision } from "./base-agent";
 import { db } from "../storage";
 import { sql } from "drizzle-orm";
 import { voiceLearningService } from "../services/voiceLearning";
+import { clock } from "../utils/clock";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -25,8 +26,8 @@ export class CustomerSuccessAgent extends BaseAgent {
 
   private async checkOnboardingFollowups(): Promise<void> {
     // Find users who completed onboarding 48+ hours ago and haven't received a check-in
-    const twoDaysAgo = new Date(Date.now() - 2 * DAY);
-    const threeDaysAgo = new Date(Date.now() - 3 * DAY);
+    const twoDaysAgo = new Date(clock.nowMs() - 2 * DAY);
+    const threeDaysAgo = new Date(clock.nowMs() - 3 * DAY);
 
     const result = await db.execute(sql`
       SELECT o.id, o.name, o.owner_id,
@@ -58,7 +59,7 @@ export class CustomerSuccessAgent extends BaseAgent {
         riskLevel: "low",
         autoApproved: false,
         data: { orgId: org.id, orgName: org.name, leadCount, message },
-        timestamp: new Date(),
+        timestamp: clock.now(),
       };
 
       const autonomy = await this.getAutonomyLevel();
@@ -87,7 +88,7 @@ export class CustomerSuccessAgent extends BaseAgent {
   }
 
   private async checkNoCampaignAfterLeads(): Promise<void> {
-    const fiveDaysAgo = new Date(Date.now() - 5 * DAY);
+    const fiveDaysAgo = new Date(clock.nowMs() - 5 * DAY);
 
     const result = await db.execute(sql`
       SELECT o.id, o.name, o.owner_id,
@@ -114,7 +115,7 @@ export class CustomerSuccessAgent extends BaseAgent {
         riskLevel: "low",
         autoApproved: false,
         data: { orgId: org.id, orgName: org.name, leadCount: org.lead_count },
-        timestamp: new Date(),
+        timestamp: clock.now(),
       };
       await this.logDecision(decision);
       await this.storeBrief("campaign_nudge", { orgId: org.id });
@@ -122,7 +123,7 @@ export class CustomerSuccessAgent extends BaseAgent {
   }
 
   private async checkInactiveUsers(): Promise<void> {
-    const sevenDaysAgo = new Date(Date.now() - 7 * DAY);
+    const sevenDaysAgo = new Date(clock.nowMs() - 7 * DAY);
 
     const result = await db.execute(sql`
       SELECT o.id, o.name, o.owner_id,
@@ -155,7 +156,7 @@ export class CustomerSuccessAgent extends BaseAgent {
         riskLevel: "low",
         autoApproved: false,
         data: { orgId: org.id, orgName: org.name, leadCount: org.lead_count, dealCount: org.deal_count },
-        timestamp: new Date(),
+        timestamp: clock.now(),
       };
       await this.logDecision(decision);
       await this.storeBrief("reengagement", { orgId: org.id });
@@ -200,7 +201,7 @@ export class CustomerSuccessAgent extends BaseAgent {
           riskLevel: "low",
           autoApproved: false,
           data: { orgId: org.id, orgName: org.name, milestone },
-          timestamp: new Date(),
+          timestamp: clock.now(),
         };
         await this.logDecision(decision);
         await this.storeBrief("milestone", { orgId: org.id, milestone });

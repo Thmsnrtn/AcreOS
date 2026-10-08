@@ -34,6 +34,7 @@ import {
 } from "./proofReceipt";
 import { describeScope, scopeOrgId } from "./tenantScope";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 /** Latest receiptHash in a scope's chain, or GENESIS if the chain is empty. */
 export async function getPrevReceiptHash(scopeStr: string): Promise<string> {
@@ -54,7 +55,7 @@ export async function getPrevReceiptHash(scopeStr: string): Promise<string> {
  */
 export async function recordReceipt(
   input: Omit<ProofReceiptInput, "prevReceiptHash">,
-  issuedAt: string = new Date().toISOString(),
+  issuedAt: string = clock.now().toISOString(),
 ): Promise<ProofReceipt | null> {
   try {
     const scopeStr = describeScope(input.scope);

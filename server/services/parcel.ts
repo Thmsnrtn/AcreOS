@@ -22,6 +22,7 @@ import * as providerIntel from "./providerIntelligence";
 import { fetchGeo } from "./providers/fetchGeo";
 import { readIntegrationCredentials } from "./integrationCredentials";
 import { sharedSnapshotSources } from "../storage/gisRepo";
+import { clock } from "../utils/clock";
 
 /**
  * Founder ruling 2026-09-29 #2 — parcel data from every source, layered, with
@@ -429,7 +430,7 @@ function arcgisFeatureToParcel(
     owner: ownerOrNull(attrs[mappings.owner || endpoint.ownerField || "OWNER"]),
     ownerAddress: String(attrs[mappings.address || "SITUS"] || ""),
     taxAmount: String(attrs[mappings.taxAmount || "TAXAMT"] || ""),
-    lastUpdated: new Date().toISOString(),
+    lastUpdated: clock.now().toISOString(),
     acres: attrs[mappings.acres || "ACRES"] as number | undefined,
     // Statewide rows carry the "*" sentinel — never report it as a county name.
     county: endpoint.county === STATEWIDE_COUNTY ? undefined : endpoint.county,
@@ -527,7 +528,7 @@ async function queryArcGISEndpoint(
         await db
           .update(countyGisEndpoints)
           .set({ 
-            lastVerified: new Date(),
+            lastVerified: clock.now(),
             isVerified: true,
             errorCount: 0,
           })
@@ -629,7 +630,7 @@ export async function lookupFromCountyGISByPoint(
 
       await db
         .update(countyGisEndpoints)
-        .set({ lastVerified: new Date(), isVerified: true, errorCount: 0 })
+        .set({ lastVerified: clock.now(), isVerified: true, errorCount: 0 })
         .where(eq(countyGisEndpoints.id, endpoint.id));
 
       return { found: true, source: "county_gis", parcel };
@@ -689,7 +690,7 @@ function snapshotToResult(snapshot: {
         owner: ownerOrNull(snapshot.owner),
         ownerAddress: snapshot.ownerAddress || "",
         taxAmount: snapshot.taxAmount || "",
-        lastUpdated: snapshot.fetchedAt?.toISOString() || new Date().toISOString(),
+        lastUpdated: snapshot.fetchedAt?.toISOString() || clock.now().toISOString(),
         acres: snapshot.acres ? parseFloat(snapshot.acres) : undefined,
         county: snapshot.county,
         state: snapshot.state,
@@ -807,7 +808,7 @@ export async function lookupParcelByAPN(
       try {
         const cachedSnapshot = await storage.getParcelSnapshot(apn, state, county, CACHE_FRESHNESS_DAYS);
         if (cachedSnapshot) {
-          logger.info("[Parcel] Found in cache", { metadata: { ageDays: Math.round((Date.now() - (cachedSnapshot.fetchedAt?.getTime() || 0)) / (1000 * 60 * 60 * 24)) } });
+          logger.info("[Parcel] Found in cache", { metadata: { ageDays: Math.round((clock.nowMs() - (cachedSnapshot.fetchedAt?.getTime() || 0)) / (1000 * 60 * 60 * 24)) } });
           // Tier 2A cache telemetry. avoidedCostCents stays 0 — no provider
           // cost is provably avoided here (never invent a saving).
           void providerIntel.recordLookup({
@@ -956,7 +957,7 @@ async function lookupFromRapidAPI(
               owner: ownerOrNull(props.owner),
               ownerAddress: props.owner_address || "",
               taxAmount: props.tax_amount || "",
-              lastUpdated: new Date().toISOString(),
+              lastUpdated: clock.now().toISOString(),
               acres: props.acres || props.area_acres,
               county: county,
               state: state,
@@ -987,7 +988,7 @@ async function lookupFromRapidAPI(
             owner: ownerOrNull(data.owner),
             ownerAddress: data.owner_address || "",
             taxAmount: data.tax_amount || "",
-            lastUpdated: new Date().toISOString(),
+            lastUpdated: clock.now().toISOString(),
             acres: data.acres || data.area_acres,
             county: county,
             state: state,
@@ -1110,7 +1111,7 @@ async function lookupFromRegrid(
           owner: ownerOrNull(props.owner),
           ownerAddress: formatOwnerAddress(props as any),
           taxAmount: props.taxamt || "",
-          lastUpdated: new Date().toISOString(),
+          lastUpdated: clock.now().toISOString(),
           acres: props.ll_gisacre,
           county: props.county,
           state: props.state2,
@@ -1199,7 +1200,7 @@ async function lookupFromRegridByPoint(lat: number, lng: number, token: string):
           owner: ownerOrNull(props.owner),
           ownerAddress: formatOwnerAddress(props),
           taxAmount: props.taxamt || "",
-          lastUpdated: new Date().toISOString(),
+          lastUpdated: clock.now().toISOString(),
           acres: props.ll_gisacre,
           county: props.county,
           state: props.state2,

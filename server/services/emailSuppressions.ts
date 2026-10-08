@@ -17,6 +17,7 @@ import { emailSuppressions } from "@shared/schema";
 import { eq, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type SuppressionSource = "bounce" | "spam" | "unsubscribe" | "manual";
 
@@ -104,7 +105,7 @@ export async function recordSoftBounce(
 ): Promise<{ suppressed: boolean; strikes: number }> {
   const normalized = normalize(email);
   if (!normalized) return { suppressed: false, strikes: 0 };
-  const now = new Date();
+  const now = clock.now();
   const windowMs = SOFT_BOUNCE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
   try {

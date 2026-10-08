@@ -55,6 +55,7 @@ import {
   type SolenePipelineRow,
 } from "@shared/schema/solene-pipeline";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 // ----------------------------------------------------------------------------
 // Types
@@ -113,7 +114,7 @@ export async function openPipeline(
     );
   }
 
-  const now = new Date();
+  const now = clock.now();
   const [inserted] = await db
     .insert(solenePipelines)
     .values({
@@ -157,7 +158,7 @@ export async function advanceToDecision(
     );
   }
 
-  const now = new Date();
+  const now = clock.now();
   const durationMs = Math.max(0, now.getTime() - existing.createdAt.getTime());
 
   await db
@@ -198,7 +199,7 @@ export async function advanceToDispatch(
     );
   }
 
-  const now = new Date();
+  const now = clock.now();
 
   // Duration from previous-stage entry to now.
   // If coming from 'decision', previous-stage entry ≈ createdAt + discoveryToDecision.
@@ -249,7 +250,7 @@ export async function advanceToDelivery(
     );
   }
 
-  const now = new Date();
+  const now = clock.now();
   // Dispatch-entered-at = createdAt
   //   + (discoveryToDecision ?? 0)   (null on skip-decision path)
   //   + (decisionToDispatch ?? 0)    (null on skip-decision path)
@@ -298,7 +299,7 @@ export async function closePipeline(input: ClosePipelineInput): Promise<void> {
     );
   }
 
-  const now = new Date();
+  const now = clock.now();
   await db
     .update(solenePipelines)
     .set({
@@ -338,7 +339,7 @@ export async function abandonPipeline(
     );
   }
 
-  const now = new Date();
+  const now = clock.now();
   await db
     .update(solenePipelines)
     .set({
@@ -414,7 +415,7 @@ export async function getFunnelSummary(
     );
   }
 
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
   const rows = await db
     .select()
     .from(solenePipelines)

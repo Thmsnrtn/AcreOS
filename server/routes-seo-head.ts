@@ -34,6 +34,7 @@ import {
   type HeadSpec,
 } from "./services/seo/serverHead";
 import { finalizeShellHtml } from "./static";
+import { clock } from "./utils/clock";
 
 const SHELL_CACHE_TTL_MS = 60_000;
 let shellCache: { at: number; html: string } | null = null;
@@ -53,12 +54,12 @@ function resolveShellPath(): string | null {
 }
 
 function loadShell(): string | null {
-  if (shellCache && Date.now() - shellCache.at < SHELL_CACHE_TTL_MS) return shellCache.html;
+  if (shellCache && clock.nowMs() - shellCache.at < SHELL_CACHE_TTL_MS) return shellCache.html;
   const p = resolveShellPath();
   if (!p) return null;
   try {
     const html = fs.readFileSync(p, "utf8");
-    shellCache = { at: Date.now(), html };
+    shellCache = { at: clock.nowMs(), html };
     return html;
   } catch {
     return null;

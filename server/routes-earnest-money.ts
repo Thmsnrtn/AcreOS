@@ -36,6 +36,7 @@ import { requireRole } from "./middleware/roleGuard";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
 import { assertEntityBelongsToOrg } from "./utils/orgScope";
+import { clock } from "./utils/clock";
 
 function addDaysIso(baseIso: string, days: number): string {
   const d = new Date(baseIso);
@@ -113,7 +114,7 @@ export function registerEarnestMoneyRoutes(app: Express): void {
           90,
           Math.max(1, parseInt(String(req.query.withinDays ?? "7"), 10) || 7),
         );
-        const today = new Date().toISOString().slice(0, 10);
+        const today = clock.now().toISOString().slice(0, 10);
         const horizon = addDaysIso(today, withinDays);
 
         const rows = await db
@@ -182,7 +183,7 @@ export function registerEarnestMoneyRoutes(app: Express): void {
             inspectionPeriodDays: data.inspectionPeriodDays ?? 7,
             refundableUntilAt,
             status: "held", // assume the act of recording = at title in escrow
-            statusChangedAt: new Date(),
+            statusChangedAt: clock.now(),
             notes: data.notes ?? null,
           })
           .returning();
@@ -226,9 +227,9 @@ export function registerEarnestMoneyRoutes(app: Express): void {
         const update: Partial<typeof earnestMoneyHolds.$inferInsert> = {
           ...parsed.data,
           refundableUntilAt: derivedRefundableUntil,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         };
-        if (parsed.data.status) update.statusChangedAt = new Date();
+        if (parsed.data.status) update.statusChangedAt = clock.now();
 
         const [row] = await db
           .update(earnestMoneyHolds)
@@ -281,10 +282,10 @@ export function registerEarnestMoneyRoutes(app: Express): void {
             .update(earnestMoneyHolds)
             .set({
               status: targetStatus,
-              statusChangedAt: new Date(),
+              statusChangedAt: clock.now(),
               finalDispositionAmountCents: dispositionCents,
               notes: parsed.data.notes ?? undefined,
-              updatedAt: new Date(),
+              updatedAt: clock.now(),
             })
             .where(and(eq(earnestMoneyHolds.id, req.params.id), eq(earnestMoneyHolds.organizationId, orgId)))
             .returning();

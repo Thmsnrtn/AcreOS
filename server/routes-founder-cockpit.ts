@@ -46,6 +46,7 @@ import {
 } from "@shared/schema";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -93,8 +94,8 @@ router.get("/", async (req: Request, res: Response) => {
     if (!orgId) return sendError(res, 401, "UNAUTHORIZED", "No organization context");
 
     const windowDays = parseInt((req.query.windowDays as string) ?? "30", 10);
-    const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
-    const monthKey = new Date().toISOString().slice(0, 7); // "2026-05"
+    const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
+    const monthKey = clock.now().toISOString().slice(0, 7); // "2026-05"
 
     // Parallelize the reads.
     const [
@@ -127,7 +128,7 @@ router.get("/", async (req: Request, res: Response) => {
     const letter = letterRes.status === "fulfilled" ? letterRes.value : null;
 
     const response: CockpitResponse = {
-      generatedAt: new Date().toISOString(),
+      generatedAt: clock.now().toISOString(),
       windowDays,
       sections: {
         money: buildMoneySection(exec),
@@ -418,7 +419,7 @@ async function fetchCurrentLetter(_req: Request): Promise<{ month: string; body:
     if (!event) return null;
     const payload = event.payload as any;
     return {
-      month: payload?.monthKey ?? new Date().toISOString().slice(0, 7),
+      month: payload?.monthKey ?? clock.now().toISOString().slice(0, 7),
       body: payload?.body ?? payload?.content ?? "",
     };
   } catch {

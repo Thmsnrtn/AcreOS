@@ -12,6 +12,7 @@ import { logger } from "../utils/logger";
 import { raiseAlert } from "./alertSpine";
 
 import { CLOSED_DEAL_STATUSES, RESOLVED_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
+import { clock } from "../utils/clock";
 // ── Types ───────────────────────────────────────────────────────────
 
 interface WeightSnapshot {
@@ -195,7 +196,7 @@ function pearsonCorrelation(xs: number[], ys: number[]): number {
  * Per-org failures are isolated — one bad org never stops the sweep.
  */
 export async function runLcsCalibrationSweep(): Promise<{ orgsSwept: number; adjusted: number }> {
-  const sixMonthsAgo = new Date(Date.now() - 180 * 86400000);
+  const sixMonthsAgo = new Date(clock.nowMs() - 180 * 86400000);
   const rows = await db
     .selectDistinct({ organizationId: deals.organizationId })
     .from(deals)
@@ -226,7 +227,7 @@ export async function runLcsCalibration(orgId: number): Promise<CalibrationResul
 
   try {
     // Query closed deals with associated LCS scores
-    const sixMonthsAgo = new Date(Date.now() - 180 * 86400000);
+    const sixMonthsAgo = new Date(clock.nowMs() - 180 * 86400000);
 
     const closedDeals = await db.select({
       dealId: deals.id,
@@ -353,7 +354,7 @@ export async function runLcsCalibration(orgId: number): Promise<CalibrationResul
       weights: { ...normalized },
       correlations: { ...correlations },
       sampleSize: profitValues.length,
-      timestamp: new Date().toISOString(),
+      timestamp: clock.now().toISOString(),
     });
 
     // Keep last 50 snapshots

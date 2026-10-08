@@ -34,6 +34,7 @@ import { logger } from "../utils/logger";
 import { requireOpenAIClient } from "../utils/openaiClient";
 
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
+import { clock } from "../utils/clock";
 // ---------------------------------------------------------------------------
 // OpenRouter client
 // ---------------------------------------------------------------------------
@@ -90,7 +91,7 @@ const FORBIDDEN_PATTERNS = [
 const log = (msg: string, meta?: Record<string, unknown>) =>
   logger.info(JSON.stringify({
       level: "INFO",
-      timestamp: new Date().toISOString(),
+      timestamp: clock.now().toISOString(),
       source: "[evolution-pipeline]",
       message: msg,
       ...meta,
@@ -99,7 +100,7 @@ const log = (msg: string, meta?: Record<string, unknown>) =>
 const logError = (msg: string, meta?: Record<string, unknown>) =>
   logger.error(JSON.stringify({
       level: "ERROR",
-      timestamp: new Date().toISOString(),
+      timestamp: clock.now().toISOString(),
       source: "[evolution-pipeline]",
       message: msg,
       ...meta,
@@ -131,7 +132,7 @@ export async function checkCircuitBreaker(): Promise<boolean> {
       return true;
     }
 
-    const now = new Date();
+    const now = clock.now();
 
     // Tripped but auto-resume time has not passed
     if (breaker.resumeAt && breaker.resumeAt > now) {
@@ -149,7 +150,7 @@ export async function checkCircuitBreaker(): Promise<boolean> {
       .set({
         isTripped: false,
         consecutiveReverts: 0,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(evolutionCircuitBreaker.id, 1));
 
@@ -175,7 +176,7 @@ async function tripCircuitBreaker(reason: string): Promise<void> {
       .from(evolutionCircuitBreaker)
       .where(eq(evolutionCircuitBreaker.id, 1));
 
-    const now = new Date();
+    const now = clock.now();
     const resumeAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
     const newReverts = (existing?.consecutiveReverts ?? 0) + 1;
 
@@ -220,7 +221,7 @@ export async function resetConsecutiveReverts(): Promise<void> {
   try {
     await db
       .update(evolutionCircuitBreaker)
-      .set({ consecutiveReverts: 0, updatedAt: new Date() })
+      .set({ consecutiveReverts: 0, updatedAt: clock.now() })
       .where(eq(evolutionCircuitBreaker.id, 1));
     log("resetConsecutiveReverts — counter reset to 0");
   } catch (err) {
@@ -300,7 +301,7 @@ export async function stage1Generate(proposal: {
           status: "abandoned",
           stageFailedAt: "stage1",
           stageFailureReason: `Budget preflight: ${preflight.reason}`,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(evolutionHistory.id, historyId));
       return null;
@@ -379,7 +380,7 @@ Output ONLY the TypeScript code to add/replace, nothing else.`,
         status: "abandoned",
         stageFailedAt: "stage1",
         stageFailureReason: `OpenRouter call failed: ${String(err)}`,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(evolutionHistory.id, historyId));
     return null;
@@ -400,7 +401,7 @@ Output ONLY the TypeScript code to add/replace, nothing else.`,
           stageFailedAt: "stage1",
           stageFailureReason: reason,
           generatedCode,
-          updatedAt: new Date(),
+          updatedAt: clock.now(),
         })
         .where(eq(evolutionHistory.id, historyId));
       return null;
@@ -422,7 +423,7 @@ Output ONLY the TypeScript code to add/replace, nothing else.`,
         stageFailedAt: "stage1",
         stageFailureReason: reason,
         generatedCode,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(evolutionHistory.id, historyId));
     return null;
@@ -435,7 +436,7 @@ Output ONLY the TypeScript code to add/replace, nothing else.`,
       status: "stage1_pass",
       generatedCode,
       stagesCompleted: sql`array_append(${evolutionHistory.stagesCompleted}, 'stage1')`,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     })
     .where(eq(evolutionHistory.id, historyId));
 
@@ -491,7 +492,7 @@ Return JSON only (no prose, no fences):
         status: "abandoned",
         stageFailedAt: "stage2",
         stageFailureReason: `OpenRouter call failed: ${String(err)}`,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(evolutionHistory.id, historyId));
     return false;
@@ -521,7 +522,7 @@ Return JSON only (no prose, no fences):
         stageFailedAt: "stage2",
         stageFailureReason: "Could not parse adversarial review JSON",
         reviewModelOutput: rawContent,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(evolutionHistory.id, historyId));
     return false;
@@ -537,7 +538,7 @@ Return JSON only (no prose, no fences):
         stageFailedAt: "stage2",
         stageFailureReason: reason,
         reviewModelOutput: rawContent,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(evolutionHistory.id, historyId));
     return false;
@@ -550,7 +551,7 @@ Return JSON only (no prose, no fences):
       status: "stage2_pass",
       reviewModelOutput: rawContent,
       stagesCompleted: sql`array_append(${evolutionHistory.stagesCompleted}, 'stage2')`,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     })
     .where(eq(evolutionHistory.id, historyId));
 
@@ -614,7 +615,7 @@ Return JSON only (no prose, no fences):
         status: "abandoned",
         stageFailedAt: "stage3",
         stageFailureReason: `OpenRouter call failed: ${String(err)}`,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(evolutionHistory.id, historyId));
     return false;
@@ -644,7 +645,7 @@ Return JSON only (no prose, no fences):
         stageFailedAt: "stage3",
         stageFailureReason: "Could not parse intent verification JSON",
         intentVerificationOutput: rawContent,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(evolutionHistory.id, historyId));
     return false;
@@ -667,7 +668,7 @@ Return JSON only (no prose, no fences):
         stageFailedAt: "stage3",
         stageFailureReason: reason,
         intentVerificationOutput: rawContent,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(evolutionHistory.id, historyId));
     return false;
@@ -679,7 +680,7 @@ Return JSON only (no prose, no fences):
       status: "stage3_pass",
       intentVerificationOutput: rawContent,
       stagesCompleted: sql`array_append(${evolutionHistory.stagesCompleted}, 'stage3')`,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     })
     .where(eq(evolutionHistory.id, historyId));
 
@@ -708,7 +709,7 @@ export async function stage4StaticAnalysis(
 ): Promise<boolean> {
   log("stage4StaticAnalysis — starting", { historyId, targetFile });
 
-  const branchName = `evolution/${historyId}-${Date.now()}`;
+  const branchName = `evolution/${historyId}-${clock.nowMs()}`;
 
   // 1. Create and switch to a temporary branch
   try {
@@ -729,7 +730,7 @@ export async function stage4StaticAnalysis(
         stageFailedAt: "stage4",
         stageFailureReason: `Failed to create git branch: ${String(err)}`,
         branchName,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(evolutionHistory.id, historyId));
     return false;
@@ -764,7 +765,7 @@ export async function stage4StaticAnalysis(
         stageFailedAt: "stage4",
         stageFailureReason: `Failed to write file: ${String(err)}`,
         branchName,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(evolutionHistory.id, historyId));
     return false;
@@ -813,7 +814,7 @@ export async function stage4StaticAnalysis(
         stageFailureReason: "TypeScript compilation failed",
         staticAnalysisOutput: tscOutput.slice(0, 5000),
         branchName,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(evolutionHistory.id, historyId));
     return false;
@@ -851,7 +852,7 @@ export async function stage4StaticAnalysis(
         stageFailureReason: `Git commit failed: ${String(err)}`,
         staticAnalysisOutput: tscOutput.slice(0, 5000),
         branchName,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(evolutionHistory.id, historyId));
     return false;
@@ -866,7 +867,7 @@ export async function stage4StaticAnalysis(
       commitHash,
       staticAnalysisOutput: tscOutput.slice(0, 5000) || "(clean — no output)",
       stagesCompleted: sql`array_append(${evolutionHistory.stagesCompleted}, 'stage4')`,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     })
     .where(eq(evolutionHistory.id, historyId));
 
@@ -911,7 +912,7 @@ export async function stage5Deploy(
             .set({
               status: "pr_opened",
               stagesCompleted: sql`array_append(${evolutionHistory.stagesCompleted}, 'stage5')`,
-              updatedAt: new Date(),
+              updatedAt: clock.now(),
             })
             .where(eq(evolutionHistory.id, historyId));
           log("stage5Deploy — PR opened, awaiting founder merge", {
@@ -940,7 +941,7 @@ export async function stage5Deploy(
   // 1. Capture baseline error rate from the last hour of aiTelemetryEvents
   let baselineErrorRate = 0;
   try {
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const oneHourAgo = new Date(clock.nowMs() - 60 * 60 * 1000);
 
     // Derive a taskType filter from the target file name for correlation
     const taskTypeHint = targetFile
@@ -982,11 +983,11 @@ export async function stage5Deploy(
       .update(evolutionHistory)
       .set({
         status: "deployed",
-        deployedAt: new Date(),
+        deployedAt: clock.now(),
         errorRateBeforeDeploy: String(baselineErrorRate),
-        regressionCheckDueAt: new Date(Date.now() + REGRESSION_CHECK_DELAY_MS),
+        regressionCheckDueAt: new Date(clock.nowMs() + REGRESSION_CHECK_DELAY_MS),
         stagesCompleted: sql`array_append(${evolutionHistory.stagesCompleted}, 'stage5')`,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(evolutionHistory.id, historyId));
   } catch (err) {
@@ -1043,7 +1044,7 @@ export async function scanDueRegressionChecks(): Promise<{
     for (const row of due) {
       const claimed = await db
         .update(evolutionHistory)
-        .set({ regressionCheckDueAt: null, updatedAt: new Date() })
+        .set({ regressionCheckDueAt: null, updatedAt: clock.now() })
         .where(
           and(
             eq(evolutionHistory.id, row.id),
@@ -1096,9 +1097,9 @@ export async function scanDueRegressionChecks(): Promise<{
               .update(evolutionHistory)
               .set({
                 status: "deployed",
-                deployedAt: new Date(),
-                regressionCheckDueAt: new Date(Date.now() + REGRESSION_CHECK_DELAY_MS),
-                updatedAt: new Date(),
+                deployedAt: clock.now(),
+                regressionCheckDueAt: new Date(clock.nowMs() + REGRESSION_CHECK_DELAY_MS),
+                updatedAt: clock.now(),
               })
               .where(and(eq(evolutionHistory.id, row.id), eq(evolutionHistory.status, "pr_opened")));
             mergesDetected++;
@@ -1110,7 +1111,7 @@ export async function scanDueRegressionChecks(): Promise<{
             // Closed without merge = the founder rejected it. Terminal.
             await db
               .update(evolutionHistory)
-              .set({ status: "abandoned", updatedAt: new Date() })
+              .set({ status: "abandoned", updatedAt: clock.now() })
               .where(and(eq(evolutionHistory.id, row.id), eq(evolutionHistory.status, "pr_opened")));
             log("scanDueRegressionChecks — evolution PR closed unmerged, abandoned", {
               historyId: row.id,
@@ -1160,7 +1161,7 @@ export async function stage6RegressionCheck(historyId: number): Promise<void> {
   // 2. Check post-deploy error rate (last 30 minutes)
   let postDeployRate = 0;
   try {
-    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+    const thirtyMinutesAgo = new Date(clock.nowMs() - 30 * 60 * 1000);
 
     const [stats] = await db
       .select({
@@ -1194,7 +1195,7 @@ export async function stage6RegressionCheck(historyId: number): Promise<void> {
     .update(evolutionHistory)
     .set({
       errorRateAfterDeploy: String(postDeployRate),
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     })
     .where(eq(evolutionHistory.id, historyId));
 
@@ -1230,9 +1231,9 @@ export async function stage6RegressionCheck(historyId: number): Promise<void> {
       .update(evolutionHistory)
       .set({
         status: "reverted",
-        revertedAt: new Date(),
+        revertedAt: clock.now(),
         revertReason: "error_rate_spike",
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(evolutionHistory.id, historyId));
 
@@ -1250,7 +1251,7 @@ export async function stage6RegressionCheck(historyId: number): Promise<void> {
       .update(evolutionHistory)
       .set({
         stagesCompleted: sql`array_append(${evolutionHistory.stagesCompleted}, 'stage6')`,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(evolutionHistory.id, historyId));
   }
@@ -1304,7 +1305,7 @@ export async function processPendingProposals(): Promise<void> {
   // 3. Mark task as processing
   await db
     .update(agentTasks)
-    .set({ status: "processing", startedAt: new Date() })
+    .set({ status: "processing", startedAt: clock.now() })
     .where(eq(agentTasks.id, task.id));
 
   // Extract proposal fields from the task output (stored by selfAssessmentAgent)
@@ -1332,7 +1333,7 @@ export async function processPendingProposals(): Promise<void> {
       .set({
         status: "failed",
         error: "Proposal has no targetFile",
-        completedAt: new Date(),
+        completedAt: clock.now(),
       })
       .where(eq(agentTasks.id, task.id));
     return;
@@ -1352,7 +1353,7 @@ export async function processPendingProposals(): Promise<void> {
     // Link history row back to the agentTask
     await db
       .update(evolutionHistory)
-      .set({ proposalId: task.id, updatedAt: new Date() })
+      .set({ proposalId: task.id, updatedAt: clock.now() })
       .where(eq(evolutionHistory.id, historyId));
 
     // Stage 2: Adversarial Review
@@ -1382,7 +1383,7 @@ export async function processPendingProposals(): Promise<void> {
     // Mark agentTask as completed
     await db
       .update(agentTasks)
-      .set({ status: "completed", completedAt: new Date() })
+      .set({ status: "completed", completedAt: clock.now() })
       .where(eq(agentTasks.id, task.id));
 
     log("processPendingProposals — task COMPLETED", {
@@ -1403,7 +1404,7 @@ export async function processPendingProposals(): Promise<void> {
       .set({
         status: "failed",
         error: errorMsg,
-        completedAt: new Date(),
+        completedAt: clock.now(),
       })
       .where(eq(agentTasks.id, task.id));
   }

@@ -35,6 +35,7 @@ import {
   getUserId,
   type AuthenticatedRequest,
 } from "./types/request";
+import { clock } from "./utils/clock";
 
 const createKeySchema = z.object({
   name: z.string().min(1).max(100),
@@ -154,10 +155,10 @@ export function registerApiKeyRoutes(app: Express): void {
         const [revoked] = await db
           .update(apiKeys)
           .set({
-            revokedAt: new Date(),
+            revokedAt: clock.now(),
             revokedBy: userId,
             revokedReason: req.body?.reason ?? null,
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(
             and(
@@ -197,7 +198,7 @@ export function registerApiKeyRoutes(app: Express): void {
           .set({
             prefix: displayPrefix,
             hashedKey,
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(
             and(

@@ -49,6 +49,7 @@ import {
   type ContractKind,
   type ContractRefusal,
 } from "./services/contracts/contractAssembly";
+import { clock } from "./utils/clock";
 
 /**
  * Every refusal leaves as HTTP 422 with the machine code in `details` so the
@@ -374,7 +375,7 @@ export function registerContractChainRoutes(app: Express): void {
             .set({
               generatedDocumentId: document.id,
               status: "doc_generated",
-              updatedAt: new Date(),
+              updatedAt: clock.now(),
             })
             .where(
               and(

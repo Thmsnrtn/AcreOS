@@ -33,6 +33,7 @@ import {
   type ArbiterDecision,
   type InterruptClass,
 } from "../founderInterruptArbiter";
+import { clock } from "../../utils/clock";
 
 const DEFAULT_TOPIC = "acreos-solene-urgent-norton-9k4m7q3z";
 
@@ -129,7 +130,7 @@ export async function sendSolenePage(input: SendPageInput): Promise<SendPageResu
         reason: "interrupt arbiter unavailable — Class B fails CLOSED-quiet",
         quietHoursActive: null,
         budget: null,
-        deferUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        deferUntil: new Date(clock.nowMs() + 24 * 60 * 60 * 1000),
       };
       deliveryDetail = `interrupt arbiter ${failQuiet.outcome}: ${failQuiet.reason}`;
       await recordDeferredInterrupt(

@@ -17,6 +17,7 @@ import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
+import { clock } from "../utils/clock";
 export type AlertType = "tax_due" | "market_change" | "competitor_activity" | "maintenance" | "document_expiring" | "compliance";
 export type AlertSeverity = "low" | "medium" | "high" | "critical";
 
@@ -156,7 +157,7 @@ class PortfolioSentinelService {
 
     if (dueDiligenceData?.taxDueDate) {
       const dueDate = new Date(dueDiligenceData.taxDueDate);
-      const now = new Date();
+      const now = clock.now();
       const daysUntilDue = Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
       if (daysUntilDue <= 30 && daysUntilDue > 0) {
@@ -251,7 +252,7 @@ class PortfolioSentinelService {
 
     if (!property || !property.county || !property.state) return false;
 
-    const thirtyDaysAgo = new Date();
+    const thirtyDaysAgo = clock.now();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const recentMetrics = await db
@@ -307,8 +308,8 @@ class PortfolioSentinelService {
         )
       );
 
-    const now = new Date();
-    const thirtyDaysFromNow = new Date();
+    const now = clock.now();
+    const thirtyDaysFromNow = clock.now();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
     let alertCreated = false;
@@ -489,9 +490,9 @@ class PortfolioSentinelService {
       .update(portfolioAlerts)
       .set({
         status: "acknowledged",
-        acknowledgedAt: new Date(),
+        acknowledgedAt: clock.now(),
         acknowledgedBy: userId,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(and(eq(portfolioAlerts.id, alertId), eq(portfolioAlerts.organizationId, organizationId)))
       .returning();
@@ -504,9 +505,9 @@ class PortfolioSentinelService {
       .update(portfolioAlerts)
       .set({
         status: "resolved",
-        resolvedAt: new Date(),
+        resolvedAt: clock.now(),
         resolution,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(and(eq(portfolioAlerts.id, alertId), eq(portfolioAlerts.organizationId, organizationId)))
       .returning();
@@ -519,7 +520,7 @@ class PortfolioSentinelService {
       .update(portfolioAlerts)
       .set({
         status: "dismissed",
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(and(eq(portfolioAlerts.id, alertId), eq(portfolioAlerts.organizationId, organizationId)))
       .returning();
@@ -806,7 +807,7 @@ Provide 3-5 specific action items as a JSON array of strings.`,
     propertyId: number,
     alertType: AlertType
   ): Promise<PortfolioAlert | null> {
-    const sevenDaysAgo = new Date();
+    const sevenDaysAgo = clock.now();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
     const [existing] = await db

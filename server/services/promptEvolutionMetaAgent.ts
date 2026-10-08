@@ -40,6 +40,7 @@ import { and, desc, eq, gte, isNotNull, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { routeCriticalTask } from "./aiRouter";
 import { agentEvolutionEngine } from "./agentEvolutionEngine";
+import { clock } from "../utils/clock";
 
 export interface AgentPerformanceSlice {
   agentCodename: string;
@@ -130,7 +131,7 @@ export async function analyseAgent(
   agentCodename: string,
   windowDays: number,
 ): Promise<AgentPerformanceSlice> {
-  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const since = new Date(clock.nowMs() - windowDays * 24 * 60 * 60 * 1000);
 
   const rows = await db
     .select({

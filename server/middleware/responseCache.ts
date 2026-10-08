@@ -14,6 +14,7 @@
  */
 
 import type { Request, Response, NextFunction } from "express";
+import { clock } from "../utils/clock";
 
 interface CacheEntry {
   data: any;
@@ -30,7 +31,7 @@ const cache = new Map<string, CacheEntry>();
 const inFlight = new Map<string, Promise<any>>();
 
 function evictExpiredEntries(): void {
-  const now = Date.now();
+  const now = clock.nowMs();
   for (const [key, entry] of cache.entries()) {
     if (entry.expiresAt <= now) {
       cache.delete(key);
@@ -71,7 +72,7 @@ export function cacheResponse(ttlSeconds: number) {
     }
 
     const entry = cache.get(cacheKey);
-    if (entry && entry.expiresAt > Date.now()) {
+    if (entry && entry.expiresAt > clock.nowMs()) {
       res.setHeader("X-Cache", "HIT");
       res.json(entry.data);
       return;
@@ -105,7 +106,7 @@ export function cacheResponse(ttlSeconds: number) {
       if (res.statusCode >= 200 && res.statusCode < 300) {
         cache.set(cacheKey, {
           data,
-          expiresAt: Date.now() + ttlSeconds * 1000,
+          expiresAt: clock.nowMs() + ttlSeconds * 1000,
         });
         if (cache.size > MAX_ENTRIES) {
           evictOldestEntries();

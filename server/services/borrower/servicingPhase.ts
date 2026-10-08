@@ -28,6 +28,7 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { organizations } from "@shared/schema";
 import { db } from "../../db";
+import { clock } from "../../utils/clock";
 
 export const WIND_DOWN_DAYS = 90;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -65,7 +66,7 @@ export function servicingPhaseFor(
  * cancel restarts the clock; the notices are keyed on this date
  * (`servicingWindDown.ts`), so they go out again for the new end.
  */
-export function subscriptionEndedPatch(now: Date = new Date()): { subscriptionEndedAt: Date } {
+export function subscriptionEndedPatch(now: Date = clock.now()): { subscriptionEndedAt: Date } {
   return { subscriptionEndedAt: now };
 }
 
@@ -73,7 +74,7 @@ export function subscriptionEndedPatch(now: Date = new Date()): { subscriptionEn
  * Stamp every ended subscription that has no end date yet (lenders cancelled
  * before the column existed). Idempotent: only NULL stamps are written.
  */
-export async function stampUnstampedSubscriptionEnds(now: Date = new Date()): Promise<number> {
+export async function stampUnstampedSubscriptionEnds(now: Date = clock.now()): Promise<number> {
   const stamped = await db
     .update(organizations)
     .set({ subscriptionEndedAt: now })
@@ -88,7 +89,7 @@ export async function stampUnstampedSubscriptionEnds(now: Date = new Date()): Pr
 }
 
 /** The phase for one lender, stamping a legacy end on first sight. */
-export async function lenderServicingPhase(organizationId: number, now: Date = new Date()): Promise<ServicingPhase> {
+export async function lenderServicingPhase(organizationId: number, now: Date = clock.now()): Promise<ServicingPhase> {
   const [org] = await db
     .select({ subscriptionStatus: organizations.subscriptionStatus, subscriptionEndedAt: organizations.subscriptionEndedAt })
     .from(organizations)
@@ -122,7 +123,7 @@ export async function lenderServicingPhase(organizationId: number, now: Date = n
  * whose wind-down is over. The periodic-statements job reads this (it used to
  * select `subscription_status = 'active'` alone).
  */
-export async function orgsStillServiced(now: Date = new Date()): Promise<number[]> {
+export async function orgsStillServiced(now: Date = clock.now()): Promise<number[]> {
   await stampUnstampedSubscriptionEnds(now);
   const all = await db
     .select({

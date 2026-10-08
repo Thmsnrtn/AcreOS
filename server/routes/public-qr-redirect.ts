@@ -41,6 +41,7 @@ import {
   scanFingerprint,
   scanSuppressionReason,
 } from "../services/mail/qrCodes";
+import { clock } from "../utils/clock";
 
 /**
  * Generous but finite. A real postcard campaign produces a trickle of scans
@@ -135,7 +136,7 @@ export function registerQrRedirectRoutes(app: Express): void {
       });
 
       const counted = suppressed === null;
-      const now = new Date();
+      const now = clock.now();
 
       await db.transaction(async (tx) => {
         await tx.insert(mailQrScanEvents).values({

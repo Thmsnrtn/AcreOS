@@ -24,6 +24,7 @@ import {
   type LegacyAgentCodename,
 } from "@shared/schema/agent-codenames";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -143,7 +144,7 @@ export function resolveCodename(
       stats.byActionOverride[key] = (stats.byActionOverride[key] ?? 0) + 1;
     }
     if (stats.firstSeenAt === null) {
-      stats.firstSeenAt = new Date();
+      stats.firstSeenAt = clock.now();
     }
 
     // First-seen-per-process info log; thereafter debug.

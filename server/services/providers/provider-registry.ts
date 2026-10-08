@@ -33,6 +33,7 @@ import * as providerIntel from "../providerIntelligence";
 // is itself intelligence and is durably recorded (best-effort, never blocks
 // the lookup). No cycle: changeDetection only pulls db/schema/logger.
 import { recordCategoryChanges, pointScopeRef } from "../openData/changeDetection";
+import { clock } from "../../utils/clock";
 
 /**
  * Build a deterministic cache key from provider + category + input.
@@ -288,9 +289,9 @@ class ProviderRegistry {
 
       // ── Live lookup ────────────────────────────────────────
       try {
-        const start = Date.now();
+        const start = clock.nowMs();
         const result = await provider.lookup(category, input, apiKeyOverride ? { apiKeyOverride } : undefined);
-        const latencyMs = Date.now() - start;
+        const latencyMs = clock.nowMs() - start;
 
         this.recordSuccess(provider.name);
 
@@ -507,7 +508,7 @@ class ProviderRegistry {
           healthy: false,
           latencyMs: 0,
           message: error instanceof Error ? error.message : "Health check failed",
-          checkedAt: new Date(),
+          checkedAt: clock.now(),
         });
       }
     }
@@ -525,7 +526,7 @@ class ProviderRegistry {
 
   private getPerfScoresSync(category: DataCategory): Map<string, number> {
     const hit = this.perfCache.get(category);
-    const now = Date.now();
+    const now = clock.nowMs();
     if (!hit || now - hit.fetchedAt > this.PERF_CACHE_TTL_MS) {
       // Kick off a refresh in the background; return stale/empty for now.
       providerIntel
@@ -537,7 +538,7 @@ class ProviderRegistry {
             // — small samples are too noisy to use for routing.
             scores.set(name, s.n >= 5 ? s.score : 50);
           }
-          this.perfCache.set(category, { scores, fetchedAt: Date.now() });
+          this.perfCache.set(category, { scores, fetchedAt: clock.nowMs() });
         })
         .catch(() => {});
       return hit?.scores ?? new Map();
@@ -553,16 +554,16 @@ class ProviderRegistry {
   private readonly MRR_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
   private getTrailingMrrSync(): number {
-    const now = Date.now();
+    const now = clock.nowMs();
     if (now - this.mrrCache.fetchedAt > this.MRR_CACHE_TTL_MS) {
       import("../financialForecaster")
         .then(async ({ projectMRR }) => {
           const proj = await projectMRR();
-          this.mrrCache = { dollars: proj.currentMRR ?? 0, fetchedAt: Date.now() };
+          this.mrrCache = { dollars: proj.currentMRR ?? 0, fetchedAt: clock.nowMs() };
         })
         .catch(() => {
           // Leave the previous value; do not unlock paid data on error.
-          this.mrrCache = { ...this.mrrCache, fetchedAt: Date.now() };
+          this.mrrCache = { ...this.mrrCache, fetchedAt: clock.nowMs() };
         });
     }
     return this.mrrCache.dollars;
@@ -719,7 +720,7 @@ class ProviderRegistry {
    * Returns a fully-hydrated LookupResult or null on miss.
    */
   private async readCache(cacheKey: string): Promise<LookupResult | null> {
-    const now = new Date();
+    const now = clock.now();
 
     const [row] = await db
       .select()
@@ -743,7 +744,7 @@ class ProviderRegistry {
    * and a "may be out of date" affordance instead of as fresh.
    */
   private async readStaleCache(cacheKey: string): Promise<LookupResult | null> {
-    const now = new Date();
+    const now = clock.now();
 
     const [row] = await db
       .select()
@@ -774,7 +775,7 @@ class ProviderRegistry {
     input?: LookupInput,
   ): Promise<void> {
     const ttlMs = cacheTtlMs(category, result.source);
-    const expiresAt = new Date(Date.now() + ttlMs);
+    const expiresAt = new Date(clock.nowMs() + ttlMs);
 
     // ── Temporal Spine (ruling #9 wave 3) ────────────────────
     // Read what we previously knew for this key BEFORE the upsert replaces
@@ -817,7 +818,7 @@ class ProviderRegistry {
           responseData,
           costCents: result.costCents,
           expiresAt,
-          createdAt: new Date(),
+          createdAt: clock.now(),
         },
       });
 

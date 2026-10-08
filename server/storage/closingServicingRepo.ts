@@ -27,6 +27,7 @@ import {
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
 import { assertWritablePatch } from "../utils/patch";
+import { clock } from "../utils/clock";
 
 export const closingServicingRepo = {
   // Buyer Reservations
@@ -94,7 +95,7 @@ export const closingServicingRepo = {
 
   async updateEscrowChecklist(this: DatabaseStorage, organizationId: number, id: number, data: Partial<InsertEscrowChecklist>): Promise<EscrowChecklist | undefined> {
     const [updated] = await db.update(escrowChecklists)
-      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: clock.now() })
       .where(and(eq(escrowChecklists.id, id), eq(escrowChecklists.organizationId, organizationId)))
       .returning();
     return updated;
@@ -236,7 +237,7 @@ export const closingServicingRepo = {
 
   async updateDelinquencyEscalation(this: DatabaseStorage, organizationId: number, id: number, data: Partial<InsertDelinquencyEscalation>): Promise<DelinquencyEscalation | undefined> {
     const [updated] = await db.update(delinquencyEscalations)
-      .set({ ...omitProtectedFields(data), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(data), updatedAt: clock.now() })
       .where(and(eq(delinquencyEscalations.id, id), eq(delinquencyEscalations.organizationId, organizationId)))
       .returning();
     return updated;

@@ -40,12 +40,14 @@ import { scopeForIntent, PII_SCOPES } from "../services/appIntents/intentScopes"
 // Wave B "Wire the engine" — a lead Pax creates is a lead like any other, and
 // a status Pax moves is a status change like any other. Both fire the same
 // workflow events the human routes fire. Fire-and-forget: never throws.
+import { PLACE_TEXT } from "../services/paxPlaces";
 import { emitLeadCreated, emitLeadUpdated } from "../services/leadEvents";
 // Same reasoning for deals + properties: a deal Pax creates (including the
 // offer-letter → pipeline bridge below) is a deal like any other, and a stage
 // Pax moves is a stage change like any other.
 import { emitDealCreated, emitDealStageChanged } from "../services/dealEvents";
 import { emitPropertyCreated, emitPropertyStatusChanged } from "../services/propertyEvents";
+import { clock } from "../utils/clock";
 
 // Tool parameter schemas (OpenAI function calling format)
 export const toolDefinitions = {
@@ -58,7 +60,7 @@ export const toolDefinitions = {
   // CRM Tools
   get_leads: {
     name: "get_leads",
-    description: "Get all leads in the CRM pipeline. Returns lead name, status, source, and contact info.",
+    description: "Get leads in the CRM pipeline. Returns name, status, source, contact info, county/state, lead score and nurturing stage, and consent / do-not-contact flags. Each lead carries `reachability`: which of text, call, email and mail are actually usable now and why not (consent, do-not-contact, missing phone/email/address), and the result carries a per-channel count. Use it, never a guess, when advising how to contact someone. Filter by status, type or county.",
     parameters: {
       type: "object",
       properties: {
@@ -72,16 +74,20 @@ export const toolDefinitions = {
           enum: ["seller", "buyer"],
           description: "Filter by lead type (optional)"
         },
+        county: {
+          type: "string",
+          description: "Only leads in this county (case-insensitive; 'County' suffix optional)"
+        },
         limit: {
           type: "number",
-          description: "Maximum number of leads to return (default 10)"
+          description: "Maximum number of leads to return (default: all)"
         }
       }
     }
   },
   get_lead_details: {
     name: "get_lead_details",
-    description: "Get detailed information about a specific lead including notes and timeline.",
+    description: "Get detailed information about a specific lead including notes and timeline, and `reachability` (which of text, call, email and mail are usable now, and why not).",
     parameters: {
       type: "object",
       properties: {
@@ -936,6 +942,117 @@ export const toolDefinitions = {
       required: ["query"],
     },
   },
+
+  // ── Account reads (Stage 2, 2026-10-07) ───────────────────────────────────
+  // An oracle pass over 40 customer questions found most "partial" answers
+  // were tool gaps: nothing read credits, prices, campaigns, the inbox, team
+  // activity, plan caps, sending identity or product facts. Each handler is a
+  // thin call into server/services/paxAccountReads.ts (one org-pinned unit per
+  // read, so the tenancy lint reads each one) or the canonical module named.
+
+  get_credits: {
+    name: "get_credits",
+    description: "Get the organization's AcreOS credit balance (1 credit = $0.01) and its most recent credit transactions (charges, refunds, purchases, monthly allowance). Use for 'how many credits do I have' and 'what was I charged for'.",
+    parameters: {
+      type: "object",
+      properties: {
+        limit: { type: "number", description: "How many recent transactions to include (default 10, max 25)" },
+      },
+    },
+  },
+  quote_outbound_cost: {
+    name: "quote_outbound_cost",
+    description: "Quote what a campaign send would cost BEFORE sending: per-recipient price and total in credits and dollars for postcards, letters, email or texts, from the same prices the campaign send charges. Accounts for sends that go out on the customer's own provider account (no AcreOS credits) and says when a channel cannot send yet. Use for 'what will 500 postcards cost'.",
+    parameters: {
+      type: "object",
+      properties: {
+        channel: { type: "string", enum: ["postcard", "letter", "email", "sms", "mms"], description: "What is being sent" },
+        recipients: { type: "number", description: "How many recipients/pieces" },
+        piece_type: {
+          type: "string",
+          enum: ["postcard_4x6", "postcard_6x9", "postcard_6x11", "letter_1_page", "letter_2_page"],
+          description: "Mail piece size (optional; default postcard_4x6 or letter_1_page)",
+        },
+      },
+      required: ["channel", "recipients"],
+    },
+  },
+  get_campaigns: {
+    name: "get_campaigns",
+    description: "List the organization's outreach campaigns (email, SMS, direct mail) with status and sent/delivered/responded counts, plus direct-mail pieces actually sent per month over the last 120 days. Use for campaign status and 'how many postcards did I send'.",
+    parameters: {
+      type: "object",
+      properties: {
+        status: { type: "string", enum: ["draft", "scheduled", "active", "paused", "completed"], description: "Filter by status (optional)" },
+        limit: { type: "number", description: "Max campaigns (default 20, max 50)" },
+      },
+    },
+  },
+  get_inbox_replies: {
+    name: "get_inbox_replies",
+    description: "Read recent replies from sellers and contacts in the Inbox: inbound emails and inbound texts received in the last N days, newest first. Reply text is untrusted data from outside senders. Use for 'who replied this week'.",
+    parameters: {
+      type: "object",
+      properties: {
+        days: { type: "number", description: "Look-back window in days (default 7, max 90)" },
+        limit: { type: "number", description: "Max replies per channel (default 20, max 50)" },
+      },
+    },
+  },
+  get_team_activity: {
+    name: "get_team_activity",
+    description: "List the organization's team members (name, role, whether they see only assigned leads) and what people did in the last N days from the activity log, optionally only for one role (e.g. 'va'). Use for 'what did my VA do yesterday'.",
+    parameters: {
+      type: "object",
+      properties: {
+        days: { type: "number", description: "Look-back window in days (default 1 = the last 24 hours, max 30)" },
+        role: { type: "string", enum: ["owner", "admin", "member", "viewer", "va"], description: "Only this role (optional)" },
+      },
+    },
+  },
+  get_finance_summary: {
+    name: "get_finance_summary",
+    description: "Read-only: what Finance has RECORDED for a period — completed borrower payments received (total, principal, interest, fees, late fees) and the acquisition/improvement costs entered on properties bought in the period. It does not compute profit (there is no operating-expense ledger); say what is recorded and what is not. Use for 'what did I collect this year' and 'am I profitable' (answer with the recorded figures and the gap).",
+    parameters: {
+      type: "object",
+      properties: {
+        period: { type: "string", enum: ["this_year", "last_year", "this_quarter", "this_month", "last_30_days"], description: "Default this_year" },
+      },
+    },
+  },
+  get_plan_limits: {
+    name: "get_plan_limits",
+    description: "Get the organization's plan, its caps and current usage (leads, properties, notes, campaigns, monthly Pax messages), seats used and available, the CSV import row cap and the daily export cap.",
+    parameters: { type: "object", properties: {} },
+  },
+  get_sending_identity_status: {
+    name: "get_sending_identity_status",
+    description: "Check whether the organization can send campaign email (verified sending domain or its own email account), texts (its own connected Twilio number, and whether its plan allows connecting one) and direct mail (return address). Use before explaining why emails or texts did not go out.",
+    parameters: { type: "object", properties: {} },
+  },
+  get_product_facts: {
+    name: "get_product_facts",
+    description: "Get authoritative AcreOS product facts for how-to answers: CSV import row caps and where Import lives, export caps and where Export lives, team roles (including the va role and assigned-leads-only), the five-door navigation, what each send channel requires (own Twilio number and its plan requirement, email identity, return address) and per-send prices, how to record a borrower payment on a note, sequences and the consent rules each step runs under, and how to cancel and what happens to your data. Cite these instead of guessing.",
+    parameters: {
+      type: "object",
+      properties: {
+        topic: { type: "string", enum: ["imports", "exports", "roles", "navigation", "sending", "billing", "payments", "sequences", "cancellation", "all"], description: "Which facts (default all)" },
+      },
+    },
+  },
+  escalate_to_support: {
+    name: "escalate_to_support",
+    description: "Hand the customer's issue to the AcreOS support team as a support ticket a person will answer (it appears under Help → Support). Use ONLY when the customer asks for a human or the issue needs one (billing dispute, account problem, a bug, a request Pax cannot fulfil). Never tell the customer an issue was flagged or passed to the team unless this tool returned success.",
+    parameters: {
+      type: "object",
+      properties: {
+        subject: { type: "string", description: "One-line summary of the issue" },
+        details: { type: "string", description: "What the customer needs, in their words, plus anything Pax already checked" },
+        priority: { type: "string", enum: ["low", "normal", "high", "urgent"], description: "Default normal" },
+      },
+      required: ["subject", "details"],
+    },
+  },
 };
 
 // Tools that require user approval before execution (communication + payment
@@ -1017,6 +1134,21 @@ export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
   // Sub-agents recurse through executeTool, so their side-effecting calls hit
   // this same gate with the same org
   "spawn_subagent",
+  // Account reads (Stage 2): balance, prices, campaigns, inbox, team, limits,
+  // sending identity, product facts — reads only.
+  "get_credits",
+  "quote_outbound_cost",
+  "get_campaigns",
+  "get_inbox_replies",
+  "get_team_activity",
+  "get_plan_limits",
+  "get_finance_summary",
+  "get_sending_identity_status",
+  "get_product_facts",
+  // Reaching a person must work while Pax is paused (same rule as the support
+  // agent's escalate_to_human). It writes a support ticket, never the
+  // customer's records — registered as bookkeeping in paxPauseToolGate.test.ts.
+  "escalate_to_support",
 ]);
 
 /**
@@ -1069,7 +1201,7 @@ export interface ExecuteToolOptions {
   scheduledTask?: { id: number; name: string } | null;
 }
 
-type ToolResult = { success: boolean; data?: any; error?: string };
+type ToolResult = { success: boolean; data?: any; error?: string; reachabilitySummary?: unknown };
 
 const positiveInt = (v: unknown): number | null => {
   if (typeof v === "number" && Number.isInteger(v) && v > 0) return v;
@@ -1131,6 +1263,11 @@ function receiptEntity(
     if (n) return { entityType: type, entityId: n };
   }
   return { entityType: "organization", entityId: org.id };
+}
+
+/** "Cochise County" / " cochise " → "cochise", so a county filter matches how people type it. */
+function normalizeCountyName(v: unknown): string {
+  return typeof v === "string" ? v.trim().toLowerCase().replace(/\s+county$/, "").trim() : "";
 }
 
 // Tool executor functions
@@ -1211,7 +1348,18 @@ export async function executeTool(
         sourceRef: askSourceRef(args, options),
         reason: typeof args.reason === "string" && args.reason.length > 0 ? args.reason : null,
       });
-      return { success: true, data: pendingActionArtifact(pending) };
+      // The amount and recipient count the approval card shows, from the same
+      // pure projection (services/sendPricing.paxSendCost) the card renders —
+      // so what Pax tells the customer and what the card says are one value.
+      const artifact = pendingActionArtifact(pending);
+      try {
+        const { paxSendCost } = await import("../services/sendPricing");
+        const cost = paxSendCost(toolName, args);
+        if (cost) return { success: true, data: { ...artifact, cost } };
+      } catch {
+        /* the ask is frozen either way; a missing cost line never blocks it */
+      }
+      return { success: true, data: artifact };
     }
 
     // ── Pax pause gate (Workstream A honesty, 2026-07-29) ──────────────────
@@ -1284,7 +1432,7 @@ export async function executeTool(
               error:
                 `You do not have permission to do that here. "${toolName}" requires ` +
                 `the "${declaredScope}" permission in this workspace. An owner or ` +
-                `admin can grant it under Settings → Team.`,
+                `admin can grant it under ${PLACE_TEXT.teamRoles}.`,
             };
           }
         }
@@ -1338,6 +1486,7 @@ export async function executeTool(
     const outcome: ToolResult = await (async (): Promise<ToolResult> => {
     switch (toolName) {
       case "get_leads": {
+        const { leadReachabilityForPax, summarizeReachabilityForPax } = await import("../services/paxLeadReachability");
         const leads = await storage.getLeads(org.id);
         let filtered = leads;
         if (args.status) {
@@ -1346,9 +1495,18 @@ export async function executeTool(
         if (args.type) {
           filtered = filtered.filter(l => l.type === args.type);
         }
+        if (typeof args.county === "string" && args.county.trim()) {
+          const want = normalizeCountyName(args.county);
+          filtered = filtered.filter(l => normalizeCountyName(l.county) === want);
+        }
         if (args.limit) {
           filtered = filtered.slice(0, args.limit);
         }
+        // county, state, score and the consent flags are on the row the
+        // customer sees; an oracle pass found Pax answering "how many leads in
+        // Cochise County" and "who are my hottest leads" as unknowable because
+        // this projection dropped them (and get_lead_details one-by-one was the
+        // only way to read a DNC flag).
         return { success: true, data: filtered.map(l => ({
           id: l.id,
           name: `${l.firstName} ${l.lastName}`,
@@ -1359,16 +1517,27 @@ export async function executeTool(
           status: l.status,
           type: l.type,
           source: l.source,
+          county: l.county ?? null,
+          state: l.state ?? null,
+          score: l.score ?? null,
+          nurturingStage: l.nurturingStage ?? null,
+          doNotContact: Boolean(l.doNotContact),
+          tcpaConsent: Boolean(l.tcpaConsent),
+          // Which channels can actually reach this lead now (consent + DNC +
+          // a number/address to send to), by the send paths' own predicates.
+          reachability: leadReachabilityForPax(l),
           notes: l.notes
-        })) };
+        })), reachabilitySummary: summarizeReachabilityForPax(filtered.map(leadReachabilityForPax)) };
       }
       
       case "get_lead_details": {
+        const { leadReachabilityForPax } = await import("../services/paxLeadReachability");
         const lead = await storage.getLead(org.id, args.lead_id);
         if (!lead) return { success: false, error: "Lead not found" };
         return { success: true, data: {
           ...lead,
-          name: `${lead.firstName} ${lead.lastName}`
+          name: `${lead.firstName} ${lead.lastName}`,
+          reachability: leadReachabilityForPax(lead),
         }};
       }
       
@@ -1578,6 +1747,112 @@ export async function executeTool(
         const context = await getSystemContext(org.id);
         const formatted = formatContextForAI(context);
         return { success: true, data: { summary: formatted, raw: context } };
+      }
+
+      // ── Account reads (Stage 2) — each delegates to one org-pinned unit ──
+      case "get_credits": {
+        const { readCreditsForPax } = await import("../services/paxAccountReads");
+        return { success: true, data: await readCreditsForPax(org.id, { limit: args.limit }) };
+      }
+
+      case "quote_outbound_cost": {
+        const { quoteOutboundSend } = await import("../services/sendPricing");
+        const { readSendRails } = await import("../services/paxAccountReads");
+        const channel = String(args.channel ?? "");
+        if (!["postcard", "letter", "email", "sms", "mms"].includes(channel)) {
+          return { success: false, error: "channel must be postcard, letter, email, sms or mms" };
+        }
+        const rails = await readSendRails(org.id);
+        const quote = quoteOutboundSend({
+          channel: channel as "postcard" | "letter" | "email" | "sms" | "mms",
+          recipients: Number(args.recipients),
+          pieceType: typeof args.piece_type === "string" ? args.piece_type : null,
+          rails,
+        });
+        return { success: true, data: quote };
+      }
+
+      case "get_campaigns": {
+        const { readCampaignsForPax } = await import("../services/paxAccountReads");
+        return { success: true, data: await readCampaignsForPax(org.id, { status: args.status, limit: args.limit }) };
+      }
+
+      case "get_inbox_replies": {
+        const { readInboxRepliesForPax } = await import("../services/paxAccountReads");
+        return { success: true, data: await readInboxRepliesForPax(org.id, { days: args.days, limit: args.limit }) };
+      }
+
+      case "get_team_activity": {
+        const { readTeamActivityForPax } = await import("../services/paxAccountReads");
+        return {
+          success: true,
+          data: await readTeamActivityForPax(org.id, { days: args.days, role: args.role, ownerUserId: org.ownerId ?? null }),
+        };
+      }
+
+      case "get_finance_summary": {
+        const { readFinanceSummaryForPax } = await import("../services/paxAccountReads");
+        return { success: true, data: await readFinanceSummaryForPax(org.id, { period: args.period }) };
+      }
+
+      case "get_plan_limits": {
+        const { readPlanLimitsForPax } = await import("../services/paxAccountReads");
+        return { success: true, data: await readPlanLimitsForPax(org.id) };
+      }
+
+      case "get_sending_identity_status": {
+        const { readSendingIdentityForPax } = await import("../services/paxAccountReads");
+        return { success: true, data: await readSendingIdentityForPax(org.id, org.subscriptionTier ?? null) };
+      }
+
+      case "get_product_facts": {
+        const { getPaxProductFacts } = await import("../services/paxProductFacts");
+        return { success: true, data: await getPaxProductFacts(typeof args.topic === "string" ? args.topic : null) };
+      }
+
+      // A real hand-off, so Pax never has to promise one it cannot make. The
+      // SAME path the customer's Help → Support form uses (createSupportTicket
+      // + the founder ticket alert), written already escalated so the
+      // founder's support sense counts it.
+      case "escalate_to_support": {
+        const subject = typeof args.subject === "string" ? args.subject.trim().slice(0, 200) : "";
+        const details = typeof args.details === "string" ? args.details.trim().slice(0, 4000) : "";
+        if (!subject || !details) return { success: false, error: "subject and details are required" };
+        const userId = options?.userId ?? org.ownerId ?? null;
+        if (!userId) return { success: false, error: "No signed-in user to file the ticket for — nothing was filed." };
+        const priority = ["low", "normal", "high", "urgent"].includes(String(args.priority)) ? String(args.priority) : "normal";
+        const { createSupportTicket } = await import("./supportAgent");
+        const ticket = await createSupportTicket(org, userId, subject, details, {
+          category: "general",
+          priority,
+          source: "pax_chat",
+          escalateToHuman: true,
+        });
+        try {
+          const { notifyFounderOfTicket } = await import("../services/supportNotifications");
+          await notifyFounderOfTicket({
+            orgId: org.id,
+            orgName: org.name,
+            ticketId: ticket.id,
+            subject,
+            priority,
+            reason: "escalated",
+            escalationReason: "the customer asked Pax for a person",
+          });
+        } catch (notifyErr) {
+          logger.warn("[executeTool] escalate_to_support founder alert failed (ticket stands)", {
+            orgId: org.id,
+            metadata: { ticketId: ticket.id, error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr) },
+          });
+        }
+        return {
+          success: true,
+          data: {
+            ticketId: ticket.id,
+            status: ticket.status,
+            message: `Support ticket #${ticket.id} was filed for a person on the AcreOS team. The customer can follow it under Help → Support.`,
+          },
+        };
       }
 
       // Property CRUD
@@ -2604,7 +2879,7 @@ export async function executeTool(
             value: {
               summary: `Offer draft for deal ${deal.id}: ${offerAmountFormatted}`,
               details: { dealId: deal.id, propertyId: property.id, offerAmount: args.offerAmount, closingDays, contingencies, draftText },
-              timestamp: new Date().toISOString(),
+              timestamp: clock.now().toISOString(),
             },
             importance: 6,
           });
@@ -2760,14 +3035,14 @@ export async function executeTool(
 
       case "get_stale_leads": {
         const daysSinceContact = Number(args.daysSinceContact) || 14;
-        const cutoffDate = new Date();
+        const cutoffDate = clock.now();
         cutoffDate.setDate(cutoffDate.getDate() - daysSinceContact);
 
         const allLeads = await storage.getLeads(org.id);
         const staleLeads = allLeads.filter(lead => {
           if (["closed", "dead"].includes(lead.status)) return false;
           if (!lead.lastContactedAt && !lead.createdAt) return true;
-          const lastContact = lead.lastContactedAt || lead.createdAt || new Date();
+          const lastContact = lead.lastContactedAt || lead.createdAt || clock.now();
           return new Date(lastContact) < cutoffDate;
         });
 
@@ -2785,7 +3060,7 @@ export async function executeTool(
               lastContactedAt: l.lastContactedAt || null,
               createdAt: l.createdAt,
               daysSinceContact: Math.floor(
-                (Date.now() - new Date(l.lastContactedAt || l.createdAt || new Date()).getTime()) / (1000 * 60 * 60 * 24)
+                (clock.nowMs() - new Date(l.lastContactedAt || l.createdAt || clock.now()).getTime()) / (1000 * 60 * 60 * 24)
               ),
             })).sort((a, b) => b.daysSinceContact - a.daysSinceContact),
             message: staleLeads.length > 0

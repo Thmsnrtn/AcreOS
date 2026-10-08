@@ -24,6 +24,7 @@
 
 import { checkOperatorUrl } from "./ssrf-guard";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 
 /**
  * Contactable User-Agent. Public-data source admins who see traffic they don't
@@ -88,7 +89,7 @@ function getLimiter(host: string, ratePerSec: number, maxConcurrent: number): Ho
   if (!l) {
     l = {
       tokens: ratePerSec * 2, // start full at burst capacity
-      lastRefill: Date.now(),
+      lastRefill: clock.nowMs(),
       ratePerSec,
       capacity: ratePerSec * 2,
       inFlight: 0,
@@ -106,7 +107,7 @@ function getLimiter(host: string, ratePerSec: number, maxConcurrent: number): Ho
 }
 
 function refill(l: HostLimiter): void {
-  const now = Date.now();
+  const now = clock.nowMs();
   const elapsedSec = (now - l.lastRefill) / 1000;
   if (elapsedSec <= 0) return;
   l.tokens = Math.min(l.capacity, l.tokens + elapsedSec * l.ratePerSec);
@@ -163,7 +164,7 @@ function parseRetryAfter(res: Response): number | null {
   const asNum = Number(ra);
   if (!Number.isNaN(asNum)) return asNum * 1000;
   const asDate = Date.parse(ra);
-  if (!Number.isNaN(asDate)) return Math.max(0, asDate - Date.now());
+  if (!Number.isNaN(asDate)) return Math.max(0, asDate - clock.nowMs());
   return null;
 }
 

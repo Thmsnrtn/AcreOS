@@ -34,6 +34,7 @@ import {
   type CountyRollupMetrics,
   type PrivateDistribution,
 } from "./privacyRollup";
+import { clock } from "../../utils/clock";
 
 export interface QuarterlyReportCounty {
   state: string;
@@ -150,7 +151,7 @@ export function buildQuarterlyMarketReport(
   rollups: Array<
     Pick<CountyMarketRollup, "state" | "county" | "period" | "metrics" | "cohortSize">
   >,
-  generatedAt: Date = new Date(),
+  generatedAt: Date = clock.now(),
 ): { json: QuarterlyMarketReport; markdown: string } {
   // Group by county; keep the LATEST period's metrics verbatim and the max
   // cohort across the quarter.
@@ -243,14 +244,14 @@ export async function upsertQuarterlyMarketReportDraft(quarter: string) {
       status: "draft",
       report: json as unknown as Record<string, unknown>,
       markdown,
-      generatedAt: new Date(),
+      generatedAt: clock.now(),
     })
     .onConflictDoUpdate({
       target: [marketReportDrafts.quarter],
       set: {
         report: json as unknown as Record<string, unknown>,
         markdown,
-        generatedAt: new Date(),
+        generatedAt: clock.now(),
       },
     })
     .returning();

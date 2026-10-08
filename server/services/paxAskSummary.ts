@@ -26,6 +26,7 @@
  */
 
 import { APPROVAL_REQUIRED_TOOLS, toolChannel } from "./approvalKernel";
+import { paxSendCost, type PaxSendCost } from "./sendPricing";
 import {
   ALWAYS_ASK_SUPPORT_TOOLS,
   PARKED_STATES,
@@ -43,6 +44,7 @@ import {
   PAX_LABELS,
   PAX_STANDING_LINE,
 } from "@shared/pax-glossary";
+import { clock } from "../utils/clock";
 
 /** The columns of a pending_actions row this module reads. */
 export interface AskRow {
@@ -99,6 +101,11 @@ export interface AskSummary {
   alwaysAsks: boolean;
   waitingBecause: string;
   standingLine: string;
+  /**
+   * For a send: how many people it reaches and what AcreOS charges for it, in
+   * credits and dollars (sendPricing.paxSendCost). Null for anything else.
+   */
+  cost: PaxSendCost | null;
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim().length > 0 ? v.trim() : null);
@@ -208,7 +215,7 @@ function changeOf(args: Record<string, unknown>): Record<string, unknown> {
  * One card's worth of server-formatted truth for a pending_actions row.
  */
 export function summarizeAsk(row: AskRow, ctx: AskContext = {}): AskSummary {
-  const now = ctx.now ?? new Date();
+  const now = ctx.now ?? clock.now();
   const args = row.args ?? {};
   const group = PAX_TOOL_GROUPS[row.toolName] ?? null;
   const to = recipientOf(args);
@@ -260,5 +267,6 @@ export function summarizeAsk(row: AskRow, ctx: AskContext = {}): AskSummary {
       ? PAX_GROUP_COPY.sends.ifYouNeverTouchThis
       : `You chose ${STANCE_LABELS.ask_before_everything}.`,
     standingLine: PAX_STANDING_LINE,
+    cost: paxSendCost(row.toolName, args),
   };
 }

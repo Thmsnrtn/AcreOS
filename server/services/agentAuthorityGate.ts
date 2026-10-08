@@ -19,6 +19,7 @@ import { db } from "../db";
 import { HARD_STOP_LANE_COVERAGE } from "./autopilot/hardStops";
 import { companyAgents, agentActionLog, decisionsInboxItems } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 // ─── Trust thresholds per authority level ────────────────────────────────────
 
@@ -338,7 +339,7 @@ export async function executeWithAuthority(
   executor: () => Promise<any>,
   metadata: Partial<ActionExecution> = {}
 ): Promise<{ success: boolean; result?: any; escalated?: boolean; logId?: number }> {
-  const startTime = Date.now();
+  const startTime = clock.nowMs();
   const auth = await checkAuthority(codename, action);
 
   const baseLog: Partial<ActionExecution> = {
@@ -355,7 +356,7 @@ export async function executeWithAuthority(
       ...baseLog,
       outcome: "escalated",
       reasoning: auth.reason,
-      durationMs: Date.now() - startTime,
+      durationMs: clock.nowMs() - startTime,
     } as ActionExecution);
 
     // Create a decisions inbox item
@@ -379,7 +380,7 @@ export async function executeWithAuthority(
       ...baseLog,
       outcome: "pending",
       reasoning: `Level 2: Awaiting CEO approval. ${auth.reason}`,
-      durationMs: Date.now() - startTime,
+      durationMs: clock.nowMs() - startTime,
     } as ActionExecution);
 
     await db.insert(decisionsInboxItems).values({
@@ -409,7 +410,7 @@ export async function executeWithAuthority(
         ...baseLog,
         outcome: "escalated",
         reasoning: `Constitutional violation: ${constitutionalCheck.principle}. ${constitutionalCheck.reasoning}`,
-        durationMs: Date.now() - startTime,
+        durationMs: clock.nowMs() - startTime,
       } as ActionExecution);
       return { success: false, escalated: true, logId };
     }
@@ -420,7 +421,7 @@ export async function executeWithAuthority(
   // Level 0 or 1 — execute
   try {
     const result = await executor();
-    const durationMs = Date.now() - startTime;
+    const durationMs = clock.nowMs() - startTime;
 
     const logId = await logAction({
       ...baseLog,
@@ -452,7 +453,7 @@ export async function executeWithAuthority(
       output: { error: err.message },
       outcome: "failure",
       reasoning: `Execution failed: ${err.message}`,
-      durationMs: Date.now() - startTime,
+      durationMs: clock.nowMs() - startTime,
     } as ActionExecution);
 
     return { success: false, result: err.message, logId };

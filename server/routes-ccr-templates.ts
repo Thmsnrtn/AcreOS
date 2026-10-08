@@ -28,6 +28,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const mergeFieldSchema = z.object({
   key: z.string().min(1).max(64),
@@ -199,7 +200,7 @@ export function registerCcrTemplateRoutes(app: Express): void {
         const parsed = updateSchema.safeParse(req.body);
         if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
 
-        const updates: Record<string, unknown> = { updatedAt: new Date() };
+        const updates: Record<string, unknown> = { updatedAt: clock.now() };
         if (parsed.data.name !== undefined) updates.name = parsed.data.name;
         if (parsed.data.kind !== undefined) updates.kind = parsed.data.kind;
         if (parsed.data.state !== undefined) updates.state = parsed.data.state;

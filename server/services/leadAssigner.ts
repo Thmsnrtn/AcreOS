@@ -30,6 +30,7 @@ import {
 } from "@shared/schema";
 import { and, asc, eq } from "drizzle-orm";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface LeadForAssignment {
   state?: string | null;
@@ -172,7 +173,7 @@ async function advanceRoundRobinCursor(
       .set({
         cursorIndex: nextIdx,
         lastAssignedTo: picked,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(orgAssignmentCursor.ruleId, ruleId));
   } else {
@@ -180,7 +181,7 @@ async function advanceRoundRobinCursor(
       ruleId,
       cursorIndex: nextIdx,
       lastAssignedTo: picked,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     });
   }
 

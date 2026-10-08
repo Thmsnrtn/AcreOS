@@ -29,6 +29,7 @@ import { logger } from "../../utils/logger";
 import { sensesFromPulse, rankMoves, applyObjectiveWeighting, type RankedMove } from "../autopilot/decide";
 import { planAndAct, AUTOPILOT_DISPATCH_MAX_COST_USD } from "../autopilot/act";
 import { FOUNDER_MINUTES_BUDGET } from "@sovereign/immutables";
+import { clock } from "../../utils/clock";
 
 /**
  * Master switch for the autopilot HANDS lives in the DB (autopilot/settings,
@@ -129,7 +130,7 @@ const DEFAULT_TRIALS = 0;
 // ============================================================================
 
 export async function composeMorningPulse(): Promise<MorningPulseSnapshot> {
-  const generatedAt = new Date();
+  const generatedAt = clock.now();
   const dayLabel = renderDayLabel(generatedAt);
 
   // Each best-effort block isolates its own failure so a single bad
@@ -391,8 +392,8 @@ function hydrateRow(row: SoleneMorningPulseRow): MorningPulseSnapshot {
 // ============================================================================
 
 export async function runContinuousTick(): Promise<ContinuousTickResult> {
-  const ranAt = new Date();
-  const start = Date.now();
+  const ranAt = clock.now();
+  const start = clock.nowMs();
   let morningPulseRefreshed = false;
   let signalsScanned = 0;
   let dispatchesQueued = 0;
@@ -985,10 +986,10 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                 const cap = explorationCapForRunway(senses.envelopeStatus);
                 const verdict = governExploration(explores, recentGrowth.length, cap);
                 pickedId = verdict.mayExplore
-                  ? selectPlay(candidates, makeSeededRng(Date.now()), prior)
+                  ? selectPlay(candidates, makeSeededRng(clock.nowMs()), prior)
                   : greedyNow;
               } catch {
-                pickedId = selectPlay(candidates, makeSeededRng(Date.now()), prior);
+                pickedId = selectPlay(candidates, makeSeededRng(clock.nowMs()), prior);
               }
               const play = (pickedId && growthPlayById(pickedId)) || selectNextGrowthPlay(0);
               selectedPlayId = play.id;
@@ -1164,13 +1165,12 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           // Panel #2 — exactly-once seal: a deterministic effect-key so a
           // concurrent tick (lock-TTL lapse) or retry dedups this dispatch
           // instead of double-firing the outward effect.
-          const { computeEffectKey } = await import("./dispatchQueue");
-          const effectKey = computeEffectKey({
+          const { effectKeyNow } = await import("./dispatchQueue");
+          const effectKey = effectKeyNow({
             domain: actMove.domain,
             moveKind: actMove.kind,
             playId: selectedPlayId,
             targetId: selectedGrowthTarget ? String(selectedGrowthTarget.id) : null,
-            nowMs: Date.now(),
           });
           const outcome = budgetDeferReason
             ? ({
@@ -1507,7 +1507,7 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
 
   return {
     ranAt,
-    durationMs: Date.now() - start,
+    durationMs: clock.nowMs() - start,
     morningPulseRefreshed,
     signalsScanned,
     dispatchesQueued,
@@ -1607,7 +1607,7 @@ async function safeLoadDispatchActivity(): Promise<{
   try {
     const { listDispatches } = await import("./dispatchQueue");
     const recent = await listDispatches({ limit: 200 });
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const cutoff = clock.nowMs() - 24 * 60 * 60 * 1000;
     let completed = 0;
     let flagged = 0;
     for (const r of recent) {
@@ -1731,7 +1731,7 @@ async function safeLoadAgentActivity(): Promise<AgentActivitySummary[]> {
       "@shared/schema/solene-agent-identity"
     );
     const { gte, sql } = await import("drizzle-orm");
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const cutoff = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
     const rows = await db
       .select({
         agentRole: soleneAgentIdentityDecisions.agentRole,

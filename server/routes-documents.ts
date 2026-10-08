@@ -51,6 +51,7 @@ function lateChargeClause(note: {
 }
 
 import { Errors } from "./utils/errors";
+import { clock } from "./utils/clock";
 
 export function registerDocumentRoutes(app: Express): void {
   const api = app;
@@ -415,7 +416,7 @@ export function registerDocumentRoutes(app: Express): void {
           }
         }
         
-        const startDateStr = note.startDate ? new Date(note.startDate).toLocaleDateString() : new Date().toLocaleDateString();
+        const startDateStr = note.startDate ? new Date(note.startDate).toLocaleDateString() : clock.now().toLocaleDateString();
         
         documentTitle = `Promissory Note - ${borrowerName}`;
         documentContent = `
@@ -497,7 +498,7 @@ COUNTY OF ${property.county}
         documentContent = `
 OFFER TO PURCHASE REAL ESTATE
 
-Date: ${new Date().toLocaleDateString()}
+Date: ${clock.now().toLocaleDateString()}
 
 From: ${org.name}
 
@@ -547,7 +548,7 @@ Seller Signature (if applicable)
         title: documentTitle,
         content: documentContent,
         type,
-        generatedAt: new Date().toISOString(),
+        generatedAt: clock.now().toISOString(),
       });
     } catch (err: any) {
       Errors.internal(res, err);

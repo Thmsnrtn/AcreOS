@@ -21,6 +21,7 @@ import {
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
 import { assertWritablePatch } from "../utils/patch";
+import { clock } from "../utils/clock";
 
 export const aiRepo = {
   // AI Agent Profiles
@@ -107,7 +108,7 @@ export const aiRepo = {
     const conditions = [eq(aiConversations.id, id)];
     if (organizationId) conditions.push(eq(aiConversations.organizationId, organizationId));
     const [updated] = await db.update(aiConversations)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;

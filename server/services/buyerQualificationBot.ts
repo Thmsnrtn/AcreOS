@@ -15,6 +15,7 @@ import { generateWithAutoRouting } from "./aiRouter";
 
 // Migrated from direct OpenAI client to central aiRouter (P1-36).
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 type QualificationStatus = "pending" | "qualified" | "conditionally_qualified" | "not_qualified";
 type RiskLevel = "low" | "medium" | "high";
@@ -250,7 +251,7 @@ export class BuyerQualificationBotService {
       .set({
         checks,
         financingReadiness,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(buyerQualifications.id, qualificationId));
 
@@ -354,7 +355,7 @@ export class BuyerQualificationBotService {
     await db.update(buyerQualifications)
       .set({
         checks,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(buyerQualifications.id, qualificationId));
 
@@ -446,7 +447,7 @@ export class BuyerQualificationBotService {
     await db.update(buyerQualifications)
       .set({
         financingReadiness,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(buyerQualifications.id, qualificationId));
 
@@ -582,7 +583,7 @@ Provide 1-2 additional recommendations to improve this buyer's closing probabili
     await db.update(buyerQualifications)
       .set({
         assessment,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(buyerQualifications.id, qualificationId));
 
@@ -616,11 +617,11 @@ Provide 1-2 additional recommendations to improve this buyer's closing probabili
 
     const updateData: Partial<BuyerQualification> = {
       status,
-      updatedAt: new Date(),
+      updatedAt: clock.now(),
     };
 
     if (status === "qualified" || status === "conditionally_qualified") {
-      updateData.qualifiedAt = new Date();
+      updateData.qualifiedAt = clock.now();
       updateData.qualifiedBy = "system";
     }
 
@@ -769,7 +770,7 @@ Generate an overall recommendation.`,
       financialSummary,
       backgroundSummary,
       overallRecommendation,
-      generatedAt: new Date().toISOString(),
+      generatedAt: clock.now().toISOString(),
     };
 
     await db.insert(agentEvents).values({

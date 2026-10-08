@@ -62,6 +62,7 @@ import { db } from "../db";
 import { systemAlerts } from "@shared/schema";
 import { auditLog, AuditActions } from "../utils/auditLog";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 // ─── Deadline matrix ────────────────────────────────────────────────────────
 // hoursFromDiscovery for each jurisdiction. We keep this as a static table
@@ -292,7 +293,7 @@ function isPersonalInfoExposed(categories: PersonalDataCategory[]): boolean {
  * Never throws — failures are logged and surfaced as a critical alert.
  */
 export async function assessBreachNotification(input: BreachInput): Promise<BreachAssessment> {
-  const discoveredAt = input.discoveredAt ?? new Date();
+  const discoveredAt = input.discoveredAt ?? clock.now();
   const piExposed = isPersonalInfoExposed(input.categoriesExposed);
 
   const wantedJurisdictions = input.jurisdictions ?? ["ALL"];
@@ -312,7 +313,7 @@ export async function assessBreachNotification(input: BreachInput): Promise<Brea
         : `personal information exposed (${input.categoriesExposed.join(", ")})`;
     const hoursRemaining = Math.max(
       0,
-      Math.floor((deadlineAt.getTime() - Date.now()) / (60 * 60 * 1000)),
+      Math.floor((deadlineAt.getTime() - clock.nowMs()) / (60 * 60 * 1000)),
     );
     return {
       jurisdiction: d.jurisdiction,

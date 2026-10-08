@@ -25,6 +25,7 @@ import {
   rentPayments,
 } from "@shared/schema";
 import { and, eq, gte, sql } from "drizzle-orm";
+import { clock } from "../utils/clock";
 
 export interface VerticalPnL {
   vertical: string;
@@ -58,7 +59,7 @@ export async function aggregateMultiVerticalPnL(orgId: number): Promise<MultiVer
   const [org] = await db.select().from(organizations).where(eq(organizations.id, orgId)).limit(1);
   if (!org) throw new Error(`Organization ${orgId} not found`);
 
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
 
   const activePacks = await db
     .select()
@@ -169,7 +170,7 @@ export async function aggregateMultiVerticalPnL(orgId: number): Promise<MultiVer
   return {
     organizationId: orgId,
     organizationName: org.name,
-    asOf: new Date().toISOString(),
+    asOf: clock.now().toISOString(),
     verticals,
     consolidated,
     monthlyNetRunRateCents,

@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import { isCategorySimulated, recordSimulatedAction } from './utils/simulationMode';
+import { clock } from "./utils/clock";
 
 /**
  * Pinned Stripe API version. Phase 3 Week 10: every `new Stripe(...)` site
@@ -78,13 +79,13 @@ function wrapStripeForSimulation<T extends object>(stripe: T): T {
           // NOT NULL Postgres column. Without this the idempotency insert
           // serializes event_type as DEFAULT and fails the column constraint.
           return {
-            id: `sim_${methodName}_${Date.now().toString(36)}`,
+            id: `sim_${methodName}_${clock.nowMs().toString(36)}`,
             object: target.constructor?.name?.toLowerCase() || "object",
             type: `sim.${methodName}`,
             simulated: true,
             status: "active",
             url: `https://sim.acreos.io/stripe/${methodName}`,
-            client_secret: `sim_secret_${Date.now().toString(36)}`,
+            client_secret: `sim_secret_${clock.nowMs().toString(36)}`,
           } as any;
         };
       }

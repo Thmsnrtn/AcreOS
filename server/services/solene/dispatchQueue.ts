@@ -50,6 +50,7 @@ import {
   IDEMPOTENCY_KEY_INDEX_PREDICATE,
 } from "@shared/schema/solene-dispatch";
 import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
 import { assertWithinEnsembleCap, getMonthlyEnvelopeStatus } from "./capitalTracker";
 import {
   scoreDispatchProposal,
@@ -144,6 +145,16 @@ export function computeEffectKey(parts: {
   const bucket = Math.floor(parts.nowMs / w);
   const raw = `${parts.domain}|${parts.moveKind}|${parts.playId ?? "-"}|${parts.targetId ?? "-"}|${bucket}`;
   return createHash("sha256").update(raw, "utf8").digest("hex");
+}
+
+/**
+ * The effect key for "now" on THE clock (server/utils/clock.ts). Every caller
+ * that means "this effect, at this moment" uses this, never the wall clock: a
+ * simulated month must be a month of distinct effects, not one 30-minute
+ * bucket (tests/unit/effectKeyFollowsTheClock.test.ts).
+ */
+export function effectKeyNow(parts: Omit<Parameters<typeof computeEffectKey>[0], "nowMs">): string {
+  return computeEffectKey({ ...parts, nowMs: clock.nowMs() });
 }
 
 // ----------------------------------------------------------------------------
@@ -248,7 +259,7 @@ export async function enqueueDispatch(
     }
     const throttle = throttleForEnvelope(envelopeStatus, opts.sourceType);
     if (throttle.action === "defer") {
-      notBeforeAt = new Date(Date.now() + throttle.deferMs);
+      notBeforeAt = new Date(clock.nowMs() + throttle.deferMs);
       logger.info(
         `[dispatchQueue] throttle: deferred source=${opts.sourceType} envelope=${envelopeStatus} notBeforeAt=${notBeforeAt.toISOString()} — ${throttle.reason}`,
       );
@@ -443,7 +454,7 @@ export async function completeDispatch(
   id: number,
   result: DispatchResultInput,
 ): Promise<void> {
-  const now = new Date();
+  const now = clock.now();
   await db.transaction(async (tx) => {
     await tx
       .update(soleneDispatchQueue)
@@ -632,7 +643,7 @@ export async function failDispatch(
   opts: { status?: "failed" | "cancelled"; transient?: boolean } = {},
 ): Promise<{ requeued: boolean; attempts: number }> {
   const requestedStatus = opts.status ?? "failed";
-  const now = new Date();
+  const now = clock.now();
 
   return await db.transaction(async (tx) => {
     // Read attempts inside the transaction so the retry decision and the
@@ -786,7 +797,7 @@ export async function cancelInFlightDispatches(reason: string): Promise<number[]
     .update(soleneDispatchQueue)
     .set({
       status: "cancelled",
-      completedAt: new Date(),
+      completedAt: clock.now(),
       resultSummary: `aborted in flight: ${reason}`.slice(0, 4000),
     })
     .where(eq(soleneDispatchQueue.status, "in_progress"))
@@ -894,7 +905,7 @@ export async function cancelQueuedDispatch(
     return { ok: false, priorStatus: existing.status };
   }
 
-  const now = new Date();
+  const now = clock.now();
   const summary = reason && reason.trim().length > 0
     ? `cancelled by founder: ${reason}`.slice(0, 4000)
     : "cancelled by founder";

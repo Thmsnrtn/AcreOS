@@ -18,6 +18,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { Errors } from "./utils/errors";
 import { listActiveClaims } from "@acreos/solene";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 export function registerAgentClaimsRoutes(app: Express): void {
   app.get(
@@ -27,7 +28,7 @@ export function registerAgentClaimsRoutes(app: Express): void {
     async (_req: AuthenticatedRequest, res: Response) => {
       try {
         const claims = await listActiveClaims();
-        const now = Date.now();
+        const now = clock.nowMs();
         const enriched = claims.map((c) => {
           const claimedMs = c.claimedAt.getTime();
           const ageSeconds = Math.floor((now - claimedMs) / 1000);

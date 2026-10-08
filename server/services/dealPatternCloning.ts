@@ -13,6 +13,7 @@ import {
 import { eq, and, desc } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export interface PatternFingerprint {
   property: {
@@ -615,7 +616,7 @@ class DealPatternCloningService {
       ...(persistedEmbedding
         ? {
             embeddingVector: persistedEmbedding,
-            embeddingRefreshedAt: new Date(),
+            embeddingRefreshedAt: clock.now(),
           }
         : {}),
     };
@@ -680,7 +681,7 @@ class DealPatternCloningService {
           .set({
             timesMatched: newMatches,
             matchSuccessRate: newSuccessRate.toString(),
-            updatedAt: new Date(),
+            updatedAt: clock.now(),
           })
           .where(and(
             eq(dealPatterns.id, updated.patternId),
@@ -873,7 +874,7 @@ class DealPatternCloningService {
       .update(dealPatterns)
       .set({
         timesMatched: (patternMatch.pattern.timesMatched || 0) + 1,
-        updatedAt: new Date(),
+        updatedAt: clock.now(),
       })
       .where(eq(dealPatterns.id, patternMatch.pattern.id));
 

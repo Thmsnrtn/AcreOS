@@ -4,6 +4,7 @@
  */
 
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 interface CalendarEvent {
   summary: string;
@@ -69,7 +70,7 @@ export async function exchangeGoogleCode(code: string, redirectUri: string): Pro
     return {
       accessToken: data.access_token,
       refreshToken: data.refresh_token,
-      expiresAt: Date.now() + data.expires_in * 1000,
+      expiresAt: clock.nowMs() + data.expires_in * 1000,
     };
   } catch (err) {
     logger.error("Google OAuth exchange failed", err instanceof Error ? err : undefined);

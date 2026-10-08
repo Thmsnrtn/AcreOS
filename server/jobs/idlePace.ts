@@ -25,6 +25,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 const IDLE_PACE_CUSTOMER_THRESHOLD = Number.parseInt(
   process.env.IDLE_PACE_CUSTOMER_THRESHOLD || "5",
@@ -42,7 +43,7 @@ let cachedCount: number | null = null;
 let cachedAt = 0;
 
 async function payingOrgCount(): Promise<number> {
-  const now = Date.now();
+  const now = clock.nowMs();
   if (cachedCount !== null && now - cachedAt < COUNT_CACHE_TTL_MS) {
     return cachedCount;
   }
@@ -82,7 +83,7 @@ export async function shouldRunAtPace(
   intervalMs: number,
 ): Promise<boolean> {
   if (!(await isPlatformIdle())) return true;
-  const slot = Math.floor(Date.now() / intervalMs);
+  const slot = Math.floor(clock.nowMs() / intervalMs);
   const live = slot % IDLE_PACE_MULTIPLIER === 0;
   if (!live) {
     logger.debug(`[idlePace] ${jobName}: idle platform — skipping tick`, {

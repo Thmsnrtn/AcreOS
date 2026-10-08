@@ -25,6 +25,7 @@ import path from "node:path";
 import { desc, eq } from "drizzle-orm";
 import { db } from "../../db";
 import { founderAudit } from "@shared/schema";
+import { clock } from "../../utils/clock";
 
 const USER_MEMORY_DIR = "/Users/user/.claude/projects/-Users-user-AcreOS-AcreOS/memory";
 const PROJECT_MEMORY_FILES = [
@@ -39,9 +40,9 @@ const cache = new Map<string, { value: string; expiresAt: number }>();
 
 async function readWithCache(key: string, loader: () => Promise<string>): Promise<string> {
   const hit = cache.get(key);
-  if (hit && hit.expiresAt > Date.now()) return hit.value;
+  if (hit && hit.expiresAt > clock.nowMs()) return hit.value;
   const value = await loader();
-  cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+  cache.set(key, { value, expiresAt: clock.nowMs() + CACHE_TTL_MS });
   return value;
 }
 

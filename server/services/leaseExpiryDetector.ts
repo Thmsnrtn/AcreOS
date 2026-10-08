@@ -36,6 +36,7 @@ import {
   resolveLeaseContext,
   emitLeaseExpiryEvents,
 } from "./rentalEvents";
+import { clock } from "../utils/clock";
 
 export const LEASE_EXPIRY_CHANNEL = "lease:expiry";
 
@@ -137,7 +138,7 @@ export interface LeaseExpiryScanResult {
  * both lease workflow events for it. Best-effort throughout — a failure degrades
  * to fewer signals, never a crash or an invented value.
  */
-export async function runLeaseExpiryScan(now: Date = new Date()): Promise<LeaseExpiryScanResult> {
+export async function runLeaseExpiryScan(now: Date = clock.now()): Promise<LeaseExpiryScanResult> {
   const result: LeaseExpiryScanResult = { scanned: 0, inWindow: 0, published: 0, emitted: 0, errors: 0 };
 
   let findings: LeaseExpiryFinding[] = [];

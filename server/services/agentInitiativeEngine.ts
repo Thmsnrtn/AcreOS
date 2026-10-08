@@ -21,6 +21,7 @@ import { trustAuthorityEscalation } from "./trustAuthorityEscalation";
 import { logger } from "../utils/logger";
 
 import { ACTIVE_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
+import { clock } from "../utils/clock";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface Proposal {
@@ -46,7 +47,7 @@ const scanners: Record<string, Scanner> = {
   stale_lead_scanner: async (orgId) => {
     const proposals: Proposal[] = [];
     try {
-      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const weekAgo = new Date(clock.nowMs() - 7 * 24 * 60 * 60 * 1000);
       const staleLeads = await db.select({ id: leads.id, firstName: leads.firstName, lastName: leads.lastName })
         .from(leads)
         .where(and(
@@ -80,7 +81,7 @@ const scanners: Record<string, Scanner> = {
   deal_risk_scanner: async (orgId) => {
     const proposals: Proposal[] = [];
     try {
-      const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+      const twoWeeksAgo = new Date(clock.nowMs() - 14 * 24 * 60 * 60 * 1000);
       const staleDeals = await db.select({ id: deals.id, status: deals.status })
         .from(deals)
         .where(and(
@@ -119,7 +120,7 @@ const scanners: Record<string, Scanner> = {
     const proposals: Proposal[] = [];
     try {
       const { jobHealthLogs } = await import("@shared/schema");
-      const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const dayAgo = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
       const failures = await db
         .select({
           jobName: jobHealthLogs.jobName,
@@ -156,7 +157,7 @@ const scanners: Record<string, Scanner> = {
   overdue_task_scanner: async (orgId) => {
     const proposals: Proposal[] = [];
     try {
-      const now = new Date();
+      const now = clock.now();
       const overdueTasks = await db.select({ id: tasks.id, title: tasks.title })
         .from(tasks)
         .where(and(

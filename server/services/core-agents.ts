@@ -4,6 +4,7 @@ import { type InsertAgentMemory, type AgentMemory } from "@shared/schema";
 import { routeAITask, TaskComplexity, classifyTaskComplexity, MODEL_SIMPLE } from "./aiRouter";
 import { skillRegistry, type Skill, type SkillResult, type AgentContext as SkillAgentContext } from "./agent-skills";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 export type CoreAgentType = "research" | "deals" | "communications" | "operations";
 
@@ -419,7 +420,7 @@ export class ResearchIntelligenceAgent extends CoreAgent {
         propertyId,
         lookupResults: results,
         riskAssessment,
-        timestamp: new Date().toISOString(),
+        timestamp: clock.now().toISOString(),
       },
       actions,
     };
@@ -510,7 +511,7 @@ Provide a brief investment analysis including:
         propertyId,
         analysis,
         dueDiligenceData: dueDiligence.data,
-        timestamp: new Date().toISOString(),
+        timestamp: clock.now().toISOString(),
       },
       confidence,
       uncertaintyNote: confidence < 0.6 ? "Investment analysis confidence is low — manual review recommended" : undefined,
@@ -603,7 +604,7 @@ Create a professional, legally-minded (but not legal advice) offer letter that:
         offerPrice,
         leadId,
         propertyId,
-        generatedAt: new Date().toISOString(),
+        generatedAt: clock.now().toISOString(),
         selfCritiqueApplied: changed,
       },
       requiresApproval: true,
@@ -903,7 +904,7 @@ export class OperationsAgent extends CoreAgent {
 
   private async checkDelinquencies(context: AgentContext): Promise<AgentTaskResult> {
     const notes = await storage.getNotes(context.organizationId);
-    const today = new Date();
+    const today = clock.now();
     const delinquent: any[] = [];
 
     for (const note of notes) {
@@ -927,7 +928,7 @@ export class OperationsAgent extends CoreAgent {
       data: {
         delinquentCount: delinquent.length,
         delinquencies: delinquent,
-        checkedAt: new Date().toISOString(),
+        checkedAt: clock.now().toISOString(),
       },
     };
   }
@@ -962,7 +963,7 @@ Provide:
           type,
           severity: severity || "medium",
           message: details,
-          createdAt: new Date().toISOString(),
+          createdAt: clock.now().toISOString(),
         },
       },
     };
@@ -985,7 +986,7 @@ Provide:
           totalProperties: properties.length,
           activeDeals,
         },
-        generatedAt: new Date().toISOString(),
+        generatedAt: clock.now().toISOString(),
       },
     };
   }

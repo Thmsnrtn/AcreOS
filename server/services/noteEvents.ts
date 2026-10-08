@@ -52,6 +52,7 @@ import { db } from "../db";
 import { leads, organizations } from "@shared/schema";
 import { emitDurableNoteEvent } from "./workflow-engine";
 import { logger } from "../utils/logger";
+import { clock } from "../utils/clock";
 
 /** The balloon window: a note whose maturity is within the next 90 days (and
  * not already past) is "approaching". Deliberately the whole ≤90-day band rather
@@ -186,7 +187,7 @@ function buildBalloonPayload(
  */
 export async function emitNoteBalloonApproaching(
   row: NoteBalloonRow,
-  now: Date = new Date(),
+  now: Date = clock.now(),
   dedupeKey?: string,
 ): Promise<void> {
   const daysToBalloon = balloonDaysToMaturity(row, now);

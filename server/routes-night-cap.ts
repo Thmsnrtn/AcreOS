@@ -27,6 +27,7 @@ import {
   activityLog, organizations,
 } from "@shared/schema";
 import { logger } from "./utils/logger";
+import { clock } from "./utils/clock";
 
 const router = Router();
 
@@ -87,7 +88,7 @@ const EVENING_REVIEW_QUOTES = [
 ];
 
 function getTodaysQuote(): { quote: string; author: string } {
-  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
+  const dayOfYear = Math.floor((clock.nowMs() - new Date(clock.now().getFullYear(), 0, 0).getTime()) / 86400000);
   return EVENING_REVIEW_QUOTES[dayOfYear % EVENING_REVIEW_QUOTES.length];
 }
 
@@ -101,9 +102,9 @@ router.get("/snapshot", async (req: Request, res: Response) => {
     if (!org) return sendError(res, 401, "UNAUTHORIZED", "Organization required");
 
     const orgId = org.id;
-    const today = new Date();
+    const today = clock.now();
     today.setHours(0, 0, 0, 0);
-    const todayEnd = new Date();
+    const todayEnd = clock.now();
     todayEnd.setHours(23, 59, 59, 999);
 
     // Run all aggregations in parallel
@@ -217,7 +218,7 @@ router.get("/snapshot", async (req: Request, res: Response) => {
     const tomorrowOneThing = computeTomorrowOneThing(pipelineByStage, topLeads, monthlyPassiveIncome, monthlyExpenses);
 
     res.json({
-      generatedAt: new Date().toISOString(),
+      generatedAt: clock.now().toISOString(),
       tonightIncome: {
         totalCents: Math.round(Number(todayPayments.total) * 100),
         totalDollars: Number(todayPayments.total) || 0,

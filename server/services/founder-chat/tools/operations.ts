@@ -102,7 +102,7 @@ registerTool({
       }
       const lines = releases.map((r) => {
         const age = r.created_at
-          ? `${Math.round((Date.now() - new Date(r.created_at).getTime()) / 3_600_000)}h ago`
+          ? `${Math.round((clock.nowMs() - new Date(r.created_at).getTime()) / 3_600_000)}h ago`
           : "—";
         return `- **v${r.version}** · ${r.status} · ${age}${r.user_email ? ` · ${r.user_email}` : ""}`;
       });
@@ -531,6 +531,7 @@ import {
   getLatestEventForIssue,
   listRecentIssues,
 } from "../providers/sentry-ops";
+import { clock } from "../../../utils/clock";
 
 /** Render a small markdown table from rows. Cap at 50 rendered rows. */
 function renderRowsAsMarkdownTable(result: DbQueryResult): string {
@@ -746,7 +747,7 @@ registerTool({
         const count = i.count !== undefined ? ` · ${i.count} events` : "";
         const users = i.userCount !== undefined ? ` · ${i.userCount} users` : "";
         const lastSeen = i.lastSeen
-          ? ` · ${Math.round((Date.now() - new Date(i.lastSeen).getTime()) / 60_000)}m ago`
+          ? ` · ${Math.round((clock.nowMs() - new Date(i.lastSeen).getTime()) / 60_000)}m ago`
           : "";
         return `- \`${i.shortId ?? i.id}\` · ${i.title}${lvl}${count}${users}${lastSeen}`;
       });

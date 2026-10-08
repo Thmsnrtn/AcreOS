@@ -19,6 +19,7 @@ import {
 } from "@shared/schema";
 import type { DatabaseStorage } from "../storage";
 import { assertWritablePatch } from "../utils/patch";
+import { clock } from "../utils/clock";
 
 export const enrichmentRepo = {
   // Skip Traces
@@ -113,7 +114,7 @@ export const enrichmentRepo = {
     const conditions = [eq(propertyListings.id, id)];
     if (organizationId) conditions.push(eq(propertyListings.organizationId, organizationId));
     const [updated] = await db.update(propertyListings)
-      .set({ ...omitProtectedFields(updates), updatedAt: new Date() })
+      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
       .where(and(...conditions))
       .returning();
     return updated;
