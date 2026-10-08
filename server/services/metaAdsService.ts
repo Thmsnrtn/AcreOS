@@ -36,6 +36,25 @@ function getPixelId(): string {
   return process.env.META_PIXEL_ID || "";
 }
 
+/**
+ * A Graph API object id as a URL path segment — or null.
+ *
+ * Every id that reaches a Graph path from outside this module (a leadgen id in
+ * an anonymous webhook body, a campaign id or catalog id in a founder route) is
+ * caller-supplied, and it is concatenated into the request URL. Unvalidated, a
+ * value like `me/accounts?` or `../../v1/…` steers a request that carries the
+ * platform access token to a Graph path we never chose (server-side request
+ * forgery against our own token). Graph object ids are decimal integers, so
+ * anything else is refused, and the survivor is still URI-encoded so no path
+ * separator can ever pass through this function.
+ */
+export function graphIdSegment(raw: unknown): string | null {
+  if (typeof raw !== "string" && typeof raw !== "number") return null;
+  const s = String(raw);
+  if (!/^\d{1,32}$/.test(s)) return null;
+  return encodeURIComponent(s);
+}
+
 async function metaGet(path: string, params: Record<string, string> = {}): Promise<any> {
   const url = new URL(`${META_API_BASE}/${path}`);
   url.searchParams.set("access_token", getAccessToken());
@@ -80,9 +99,16 @@ export async function processLeadAdSubmission(
   campaignName: string
 ): Promise<{ leadId: number | null; created: boolean }> {
   // Fetch lead data from Meta API
+  const leadgenSegment = graphIdSegment(leadgenId);
+  if (!leadgenSegment) {
+    logger.warn("[meta-lead-ads] leadgen_id is not a Graph object id — not fetched", {
+      metadata: { detail: { leadgenId: String(leadgenId).slice(0, 64) } },
+    });
+    return { leadId: null, created: false };
+  }
   let leadData: any;
   try {
-    leadData = await metaGet(`${leadgenId}`, {
+    leadData = await metaGet(leadgenSegment, {
       fields: "field_data,created_time,ad_id,ad_name,campaign_id,campaign_name,form_id",
     });
   } catch (err) {
@@ -207,6 +233,8 @@ export async function syncPropertyCatalog(
   catalogId: string,
   appBaseUrl: string
 ): Promise<{ synced: number; errors: number }> {
+  const catalogSegment = graphIdSegment(catalogId);
+  if (!catalogSegment) throw new Error("catalogId is not a Graph object id");
   const orgProperties = await db
     .select()
     .from(properties)
@@ -230,7 +258,7 @@ export async function syncPropertyCatalog(
     }));
 
     try {
-      await metaPost(`${catalogId}/items_batch`, {
+      await metaPost(`${catalogSegment}/items_batch`, {
         allow_upsert: true,
         requests,
       });
@@ -426,8 +454,10 @@ export interface AdPerformanceStats {
 }
 
 export async function getAdPerformance(campaignId: string): Promise<AdPerformanceStats> {
+  const campaignSegment = graphIdSegment(campaignId);
+  if (!campaignSegment) throw new Error("campaignId is not a Graph object id");
   try {
-    const data = await metaGet(`${campaignId}/insights`, {
+    const data = await metaGet(`${campaignSegment}/insights`, {
       fields: "impressions,reach,clicks,actions,spend",
       date_preset: "last_30d",
     });

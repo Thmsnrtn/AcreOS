@@ -17,14 +17,15 @@
  * was fixed by MOVING the registration earlier. The file carries three comment
  * blocks saying so. Comments are not a gate; this file is.
  *
- * ── AND IT IS CURRENTLY SHIELDING A BUG ─────────────────────────────────────
- * `registerEliteFeatureRoutes` runs at ~2650, after the catch-all, so
- * `GET /api/webhooks/meta-lead-ads` is 401'd before its handler runs. That
- * accidentally hid a fail-open comparison in `verifyMetaWebhook` (fixed
- * 2026-08-18, `secretComparison.test.ts`) — and it also means the Meta lead-ads
- * webhook cannot function at all, because Meta's servers carry no Clerk
- * session. Moving it earlier, which is what the three comment blocks instruct,
- * is a real change with real consequences in both directions.
+ * ── IT ALSO SHIELDED A BUG, UNTIL 2026-10-08 ────────────────────────────────
+ * `registerEliteFeatureRoutes` runs after the catch-all, and used to register
+ * `GET/POST /api/webhooks/meta-lead-ads`, so both were 401'd before their
+ * handlers ran. That accidentally hid a fail-open comparison in
+ * `verifyMetaWebhook` (fixed 2026-08-18, `secretComparison.test.ts`) and a
+ * guessed destination org (DEFAULT_ORG_ID, else 1) — and meant the webhook
+ * could not function at all. Both were fixed before the pair moved ahead of
+ * the catch-all (`registerMetaLeadAdsWebhookRoutes`); the request-level proof
+ * of every provider callback is inboundWebhooksReachAnonymously.test.ts.
  *
  * ── WHAT THIS FILE DOES AND DOES NOT PROVE ──────────────────────────────────
  * It is a source-order check, not a request-level proof. It cannot tell you
