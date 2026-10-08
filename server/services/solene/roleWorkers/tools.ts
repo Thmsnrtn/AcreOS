@@ -467,6 +467,26 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
   if (name === "escalate_to_founder") {
     const summary = str(input.summary).slice(0, 150) || ticket.subject;
     const why = str(input.why);
+    // The hand-off IS the claim. Two Support runs can be briefed on the same
+    // waiting ticket, and askFounder's fold is read-then-insert, so two
+    // escalations racing both opened an ask and both paged the founder (the
+    // simulation platform's one-page-per-incident invariant caught it). One
+    // conditional UPDATE moves the ticket to the founder; Postgres serialises
+    // the row, so only the run whose UPDATE changed it asks — and pages.
+    const claimed = await unscopedForPlatformOps(PLATFORM_SUPPORT)
+      .update(supportTickets)
+      .set({ assignedAgent: FOUNDER_AGENT, status: "in_progress", updatedAt: clock.now() })
+      .where(
+        and(
+          eq(supportTickets.id, ticket.id),
+          eq(supportTickets.organizationId, ticket.organizationId),
+          sql`coalesce(${supportTickets.assignedAgent}, '') <> ${FOUNDER_AGENT}`,
+        ),
+      )
+      .returning({ id: supportTickets.id });
+    if (claimed.length === 0) {
+      return { success: false, output: `Ticket #${ticket.id} is already with the founder — not asking or paging again. Tell the customer it is being reviewed; promise no outcome.` };
+    }
     const { askFounder } = await import("../founderCollab");
     const r = await askFounder({
       askingAgentRole: "general-purpose",
@@ -482,7 +502,6 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
       answerFormat: "free_text",
       urgency: /legal|lawsuit|attorney|counsel|tcpa|cease|demand letter|subpoena/i.test(`${summary} ${why} ${ticket.description}`) ? "urgent" : "normal",
     });
-    await assignTicket(ticket.organizationId, ticket.id, FOUNDER_AGENT);
     return { success: true, effect: "escalated", output: `Ticket #${ticket.id} handed to the founder (ask #${r.askId}${r.deduped ? ", already open" : ""}).` };
   }
   return { success: false, output: `unknown support tool ${name}` };
