@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/select";
 import { UserPlus, X, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, ApiError } from "@/lib/queryClient";
 import { CopyButton } from "@/components/ui/copy-button";
 import { shortDate } from "@/lib/format";
 
@@ -75,12 +75,16 @@ export function TeamInviteCard() {
       setBulkOpen(false);
       qc.invalidateQueries({ queryKey: ["/api/organization/invitations"] });
     },
-    onError: (err: Error) =>
+    onError: (err: Error) => {
+      // A seat/plan refusal was already shown with what unlocks it (and a
+      // link) by the global mutation handler; "try again" would be wrong advice.
+      if (err instanceof ApiError && err.refusal) return;
       toast({
         title: "Couldn't send invitation",
         description: `${err.message} — your draft is preserved. Try again.`,
         variant: "destructive",
-      }),
+      });
+    },
   });
 
   const revokeMutation = useMutation({

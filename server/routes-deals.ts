@@ -12,6 +12,8 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { leadScoringService } from "./services/leadScoring";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { checkUsageLimit } from "./services/usageLimits";
+import { refusePlanLimit } from "./middleware/usageLimitGate";
+import { refusePaxCredits } from "./utils/firstRunRefusals";
 import { db, withTransaction } from "./db";
 import { outcomeTelemetry, dueDiligenceItems, deals, contractAssignments, CONTRACT_ASSIGNMENT_STATUSES, generatedDocuments } from "@shared/schema";
 import { and, eq, isNotNull, or, sql } from "drizzle-orm";
@@ -1576,15 +1578,23 @@ export function registerDealRoutes(app: Express): void {
       
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
-        return Errors.limitExceeded(res, "AI request limit reached. Upgrade to continue.", { docsSlug: "limit-ai-requests" });
+        return refusePlanLimit(res, usageCheck);
       }
 
       // Credit check for deal AI chat
       const { CreditService } = await import('./services/credits');
       const dealCreditService = new CreditService();
-      const hasCredits = await dealCreditService.hasEnoughCredits(org.id, 2);
-      if (!hasCredits) {
-        return res.status(402).json({ error: "Insufficient credits", message: "Purchase credits to use AI deal analysis." });
+      const dealChatCents = 2;
+      const credit = await dealCreditService.evaluateCredits(org.id, dealChatCents);
+      if (!credit.allowed) {
+        const balance = await dealCreditService.getBalance(org.id).catch(() => 0);
+        return refusePaxCredits(res, {
+          lane: credit.lane,
+          requiredCents: dealChatCents,
+          balanceCents: balance,
+          subscriptionTier: org.subscriptionTier,
+          byokAvailable: undefined,
+        });
       }
 
       const property = await storage.getProperty(org.id, propertyId);

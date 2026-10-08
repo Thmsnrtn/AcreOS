@@ -44,6 +44,7 @@ import {
   tokenMatchesRow,
 } from "./utils/inviteTokens";
 import { checkInviteCreateLimit, checkInviteAcceptLimit } from "./services/inviteRateLimit";
+import { refuseSeatInvite } from "./utils/firstRunRefusals";
 import { encrypt, decrypt, isEncrypted } from "./services/fieldEncryption";
 import {
   taxIdentitySchema,
@@ -1754,30 +1755,16 @@ export function registerOrganizationRoutes(app: Express): void {
           .from(invTable)
           .where(and(eq(invTable.organizationId, org.id), eq(invTable.status, "pending")));
         const projected = (activeRow?.count ?? 0) + (pendingRow?.count ?? 0) + invites.length;
-        if (!tier) {
-          return res.status(402).json({
-            error: "upgrade_required",
-            message: "Free tier cannot invite teammates. Upgrade to Pro or Scale to add seats.",
-            statusCode: 402,
-            details: { projected, seatCount, tier: null },
-          });
-        }
-        if (!canAddSeats(tier, projected)) {
-          return res.status(402).json({
-            error: "upgrade_required",
-            message: tier === "starter"
-              ? "Starter tier is single-user only. Upgrade to Pro or Scale to invite teammates."
-              : `Tier ${tier} is capped at ${projected - 1} seats. Upgrade to add more.`,
-            statusCode: 402,
-            details: { projected, seatCount, tier },
-          });
-        }
-        if (projected > seatCount) {
-          return res.status(402).json({
-            error: "seat_purchase_required",
-            message: `Inviting ${invites.length} teammate(s) would require ${projected} paid seats; you currently have ${seatCount}. Increase your seat count from billing first.`,
-            statusCode: 402,
-            details: { projected, seatCount, tier, additionalSeatsNeeded: projected - seatCount },
+        // Seat arithmetic unchanged (owner decision — see the PR notes on
+        // seat_count vs the tier's includedSeats); only the refusal copy and
+        // its next step come from refuseSeatInvite.
+        if (!tier || !canAddSeats(tier, projected) || projected > seatCount) {
+          return refuseSeatInvite(res, {
+            subscriptionTier: org.subscriptionTier,
+            tier,
+            projected,
+            seatCount,
+            inviting: invites.length,
           });
         }
       } catch (err) {

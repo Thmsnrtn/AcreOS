@@ -47,6 +47,7 @@ import { PAX_LABELS, PAX_STANDING_LINE } from "@shared/pax-glossary";
 import { useReadAloud } from "@/hooks/useReadAloud";
 import { useReadAloudPrefs } from "@/hooks/useReadAloud.prefs";
 import { apiRequest } from "@/lib/queryClient";
+import { refusalFromBody } from "@/lib/refusal";
 
 // ─── Lightweight markdown renderer ──────────────────────────────────────────
 function PaxMarkdown({ content }: { content: string }) {
@@ -792,9 +793,15 @@ export function PaxCopilotRail() {
           errBody = null;
         }
         const details = errBody?.details;
+        // A plan cap or a credit/seat refusal names its own next step; it
+        // must not read as "Rate limit reached" (which advises waiting).
+        const refusal = refusalFromBody(errBody);
         let err: string;
         let errorAction: { label: string; href: string } | undefined;
-        if (res.status === 429 && details?.reason === "byok_required") {
+        if (refusal) {
+          err = refusal.description;
+          errorAction = refusal.action;
+        } else if (res.status === 429 && details?.reason === "byok_required") {
           err = details.message
             ?? "You've used this month's included Pax turns. Add your own AI key to keep chatting without limits — your data and drafts stay fully accessible.";
           errorAction = details.byokAvailable

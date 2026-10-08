@@ -242,8 +242,9 @@ const pages = [
   ...PALETTE_EXTRAS,
 ].filter((p) => {
   // Frozen/killed routes (e.g. /marketplace, /capital-markets, /vision-ai) render
-  // NotFound via FlaggedRoute, so surfacing them here is a first-class ⌘K result
-  // that dead-ends on a 404. Filter them out to match what's actually reachable.
+  // FlaggedRoute's "not available" state, so surfacing them here is a
+  // first-class ⌘K result that dead-ends. Filter them out to match what's
+  // actually reachable.
   if (isFrozenRoute(p.path)) return false;
   if (seenPaths.has(p.path)) return false;
   seenPaths.add(p.path);

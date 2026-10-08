@@ -1,5 +1,10 @@
 import type { Response } from "express";
 import { logger } from "./logger";
+import {
+  PLAN_LIMIT_REACHED,
+  planLimitMessage,
+  type PlanLimitDetails,
+} from "@shared/billing/plan-limit-copy";
 
 /**
  * Standardized API error response shape.
@@ -237,15 +242,60 @@ export const Errors = {
     sendError(res, 410, "GONE", message, undefined, buildDocsUrl(opts));
   },
 
+  /**
+   * 429 for a throttle or allowance that is NOT a plan's resource cap.
+   *
+   * The default copy is the rate-limit voice and is right only for a real
+   * rate limit. Most callers that are not rate limits (a daily AI budget, an
+   * invite quota, a credit pool, a refund window) already describe themselves
+   * in `details.message` — or pass the sentence itself as `details` — and that
+   * sentence used to be buried under "You're sending requests faster than the
+   * system can handle" at the top level, which is the line every client shows.
+   * The caller's own sentence now wins. Plan caps use `planLimitReached`.
+   */
   limitExceeded(res: Response, details: unknown, opts?: ErrorOptions): void {
+    const own =
+      typeof details === "string"
+        ? details
+        : details && typeof details === "object" && typeof (details as { message?: unknown }).message === "string"
+          ? (details as { message: string }).message
+          : "";
     sendError(
       res,
       429,
       "LIMIT_EXCEEDED",
-      "You're sending requests faster than the system can handle. Wait a few seconds and try again.",
+      own.length > 0
+        ? own
+        : "You're sending requests faster than the system can handle. Wait a few seconds and try again.",
       details,
       buildDocsUrl(opts) ?? "/help/article/rate-limit",
     );
+  },
+
+  /**
+   * 429 `PLAN_LIMIT_REACHED` — the org is at its plan's cap for a metered
+   * resource. Not a rate limit: waiting does not clear it. The message is
+   * built from the canonical tier table (shared/billing/plan-limit-copy.ts)
+   * and names the plan that lifts the cap; `details.upgradeUrl` is the path.
+   */
+  planLimitReached(res: Response, details: PlanLimitDetails, opts?: ErrorOptions): void {
+    sendError(res, 429, PLAN_LIMIT_REACHED, planLimitMessage(details), details, buildDocsUrl(opts));
+  },
+
+  /**
+   * 402 for an action the account cannot pay for yet, with the step that
+   * unlocks it. `code` is the machine-readable reason (e.g.
+   * `PAX_CREDITS_REQUIRED`, `SEAT_PURCHASE_REQUIRED`) and `details.nextStep`
+   * is the `{ label, href }` the client renders as the call to action.
+   */
+  refusedUntil(
+    res: Response,
+    code: string,
+    message: string,
+    details: { nextStep: { label: string; href: string } } & Record<string, unknown>,
+    opts?: ErrorOptions,
+  ): void {
+    sendError(res, 402, code, message, details, buildDocsUrl(opts));
   },
 
   /**
@@ -318,6 +368,13 @@ export const Errors = {
     // shape-detection as above, so utils does not import storage.
     if (error instanceof Error && error.name === "ExportTooLargeError") {
       sendError(res, 413, "EXPORT_TOO_LARGE", error.message);
+      return;
+    }
+    // A property write carrying a value that is not a land status
+    // (utils/landStatus.ts InvalidLandStatusError) is the caller's input, not
+    // our bug: 400 with the allowed values, from any route that lands here.
+    if (error instanceof Error && error.name === "InvalidLandStatusError") {
+      sendError(res, 400, "INVALID_LAND_STATUS", error.message);
       return;
     }
     // In production we never leak the raw error to the client — it goes

@@ -22,6 +22,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requirePermission } from "./utils/permissions";
 import { Errors, sendError } from "./utils/errors";
+import { refuseCreditShortage } from "./utils/firstRunRefusals";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 import { logger } from "./utils/logger";
 import { checkUsageLimit } from "./services/usageLimits";
@@ -2068,7 +2069,15 @@ export function registerCampaignRoutes(app: Express): void {
           org.id, totalCost, `Campaign email send: ${campaign.name} (${dedupedLeads.length} recipients)`
         );
         if (!deductResult) {
-          return Errors.limitExceeded(res, { needed: totalCost, action: "email_send" }, { docsSlug: "limit-email-credits" });
+          // A credit shortage, not a rate limit — same 429 and amounts as before.
+          return refuseCreditShortage(res, {
+            status: 429,
+            what: "This email send",
+            requiredCents: totalCost,
+            balanceCents: await creditService.getBalance(org.id).catch(() => 0),
+            details: { needed: totalCost, action: "email_send" },
+            docsSlug: "limit-email-credits",
+          });
         }
       }
 
@@ -2315,7 +2324,15 @@ export function registerCampaignRoutes(app: Express): void {
           org.id, totalCost, `Campaign SMS send: ${campaign.name} (${dedupedLeads.length} recipients)`
         );
         if (!deductResult) {
-          return Errors.limitExceeded(res, { needed: totalCost, action: "sms_send" }, { docsSlug: "limit-sms-credits" });
+          // A credit shortage, not a rate limit — same 429 and amounts as before.
+          return refuseCreditShortage(res, {
+            status: 429,
+            what: "This SMS send",
+            requiredCents: totalCost,
+            balanceCents: await creditService.getBalance(org.id).catch(() => 0),
+            details: { needed: totalCost, action: "sms_send" },
+            docsSlug: "limit-sms-credits",
+          });
         }
       }
 

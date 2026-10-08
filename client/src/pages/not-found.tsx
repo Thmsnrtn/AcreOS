@@ -1,7 +1,8 @@
 /**
  * 404 — re-exports the homestead-styled NotFoundPage from
- * coverage-page.tsx so the App.tsx fallback (and any feature-flag
- * disabled-route fallback) gets the new editorial treatment.
+ * coverage-page.tsx so the App.tsx fallback gets the new editorial
+ * treatment. (A feature-flag-disabled route no longer lands here — it renders
+ * the "not available" state in components/flagged-route.tsx.)
  *
  * Kept as a separate file because App.tsx + several other call-sites
  * import `NotFound` from "@/pages/not-found".
