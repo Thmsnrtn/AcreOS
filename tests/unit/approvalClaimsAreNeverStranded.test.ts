@@ -63,7 +63,8 @@ describe("the claim leaves a timestamp, so a stranded one is findable", () => {
   it("the pending→approved claim stamps it", () => {
     const at = kernel.indexOf('status: "approved"');
     expect(at, "the claim is gone — this test reads nothing").toBeGreaterThan(-1);
-    expect(kernel.slice(at, at + 200)).toContain("claimedAt: new Date()");
+    // The claim time comes from the one server clock (server/utils/clock.ts).
+    expect(kernel.slice(at, at + 200)).toContain("claimedAt: clock.now()");
   });
 
   it("releasing a claim clears it", () => {

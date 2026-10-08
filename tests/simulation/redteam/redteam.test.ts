@@ -9,11 +9,15 @@
  *  - The working set is fully blocked; the blind held-out score is a ratchet that
  *    may only rise (BLIND_BLOCKED_FLOOR), and each miss is listed in the scorecard.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { generateAttacks, CATEGORIES } from "./generate.mjs";
 import { scoreAll } from "./score";
+import { REPO_SWEEP_TIMEOUT_MS } from "../../helpers/sweepBudget";
+
+// It walks the guards' own test files to prove the held-out set is unseen.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const BLIND_BLOCKED_FLOOR = 60; // measured 2026-10-07: 60 of 87 blind round-2 wordings blocked
 

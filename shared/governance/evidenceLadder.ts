@@ -239,7 +239,7 @@ export const CAPABILITIES: readonly Capability[] = [
   },
 ];
 
-export function rankOf(level: EvidenceLevel): number {
+export function evidenceRankOf(level: EvidenceLevel): number {
   return EVIDENCE_LEVELS.indexOf(level);
 }
 
@@ -262,9 +262,9 @@ export function evidenceSummary(registry: readonly Capability[] = CAPABILITIES):
   let highest: EvidenceLevel = "E0";
   for (const c of registry) {
     counts[c.level]++;
-    if (rankOf(c.level) > rankOf(highest)) highest = c.level;
+    if (evidenceRankOf(c.level) > evidenceRankOf(highest)) highest = c.level;
   }
-  const atLeast = (l: EvidenceLevel) => EVIDENCE_LEVELS.filter((x) => rankOf(x) >= rankOf(l)).reduce((a, x) => a + counts[x], 0);
+  const atLeast = (l: EvidenceLevel) => EVIDENCE_LEVELS.filter((x) => evidenceRankOf(x) >= evidenceRankOf(l)).reduce((a, x) => a + counts[x], 0);
   return { counts, total: registry.length, highest, provenInSimulation: atLeast("E2"), provenBeyondSimulation: atLeast("E3") };
 }
 

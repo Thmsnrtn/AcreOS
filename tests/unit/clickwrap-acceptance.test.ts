@@ -76,8 +76,9 @@ describe("Server user-creation — clickwrap timestamps", () => {
     expect(src).toContain("tosAcceptedAt:");
     expect(src).toContain("privacyAcceptedAt:");
     // The acceptedAt instant must come from the server clock, not the
-    // client. We assert a `new Date()` is allocated near the insert.
-    expect(src).toMatch(/const\s+acceptedAt\s*=\s*new Date\(\)/);
+    // client. We assert the server's one clock (server/utils/clock.ts) is
+    // read near the insert.
+    expect(src).toMatch(/const\s+acceptedAt\s*=\s*clock\.now\(\)/);
   });
 
   // The legacy server/auth/oauth.ts (Passport social-login) path was RETIRED

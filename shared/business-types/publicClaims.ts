@@ -41,7 +41,7 @@ import {
   type BusinessTypeMeta,
   type VerticalMaturity,
 } from "../business-types";
-import { CAPABILITIES, evidenceLevelOf, rankOf, type Capability } from "../governance/evidenceLadder";
+import { CAPABILITIES, evidenceLevelOf, evidenceRankOf, type Capability } from "../governance/evidenceLadder";
 
 export interface PublicClaimDemotion {
   /** Target tier. `core` is absent because this channel only ever demotes. */
@@ -111,7 +111,7 @@ export function publicMaturityOf(
   // public claim: a vertical may be called `core` to a stranger only when its
   // ladder entry is at least E1. A vertical with no evidence on the ladder is
   // never `core` publicly, whatever the registry or a demotion says.
-  if (claimed === "core" && rankOf(evidenceLevelOf(`vertical.${meta.id}`, ladder)) < rankOf("E1")) return "beta";
+  if (claimed === "core" && evidenceRankOf(evidenceLevelOf(`vertical.${meta.id}`, ladder)) < evidenceRankOf("E1")) return "beta";
   return claimed;
 }
 

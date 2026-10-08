@@ -112,7 +112,7 @@ describe("an authoritative provenance chip never dates itself by our own clock",
     const parcel = stripComments(
       readFileSync(path.join(ROOT, "server", "services", "parcel.ts"), "utf8"),
     );
-    const fetchTimeAssignments = parcel.match(/lastUpdated:\s*new Date\(\)/g) ?? [];
+    const fetchTimeAssignments = parcel.match(/lastUpdated:\s*(?:new Date\(\)|clock\.now\(\))/g) ?? [];
     expect(
       fetchTimeAssignments.length,
       "parcel.ts no longer stamps lastUpdated with the wall clock — if it now " +

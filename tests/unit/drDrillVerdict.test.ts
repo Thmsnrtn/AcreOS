@@ -31,7 +31,7 @@ describe("drDrillVerdict", () => {
   });
   it("the step-away readiness check uses this verdict (adoption, not a parallel rule)", () => {
     const src = readFileSync(resolve(__dirname, "../../server/services/autopilot/stepAwayReadiness.ts"), "utf8");
-    expect(src).toMatch(/drDrillVerdict\(latest, new Date\(\)\)/);
+    expect(src).toMatch(/drDrillVerdict\(latest, clock\.now\(\)\)/);
     expect(src).not.toMatch(/status: "ready", detail: `Last DR drill/);
   });
 });
