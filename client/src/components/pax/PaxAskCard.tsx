@@ -392,6 +392,15 @@ export default function PaxAskCard({ ask, onApprove, onReject, onRevise, compact
             {ask.from && <span>from {ask.from}</span>}
           </p>
         )}
+        {ask.cost && (
+          // Recipients + amount, server-formatted (sendPricing.paxSendCost):
+          // the tap approves a known reach at a known price.
+          <p className="text-xs text-muted-foreground" data-testid={`pax-ask-cost-${ask.id}`}>
+            <span className="tabular-nums">
+              {ask.cost.recipients} recipient{ask.cost.recipients === 1 ? "" : "s"} · {ask.cost.credits} credits ({ask.cost.dollars})
+            </span>
+          </p>
+        )}
         {editing && textKey ? (
           <div className="space-y-2 pt-1">
             <label htmlFor={`pax-ask-edit-${ask.id}`} className="sr-only">

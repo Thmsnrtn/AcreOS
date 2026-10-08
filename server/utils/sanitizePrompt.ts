@@ -261,6 +261,19 @@ export function detectInjectionPatterns(input: string): string[] {
 }
 
 /**
+ * Did this input try to read or override the assistant's own instructions?
+ * Classification only (the redaction itself is sanitizePrompt's): the chat
+ * handler uses it to tell the customer plainly "I won't share my
+ * instructions" instead of "part of your message didn't come through".
+ */
+const INSTRUCTION_PROBE =
+  /\b(?:system|hidden|secret|initial)\s+(?:prompt|instructions?|message|context)\b|\b(?:ignore|disregard|forget|override)\b[^.]{0,40}\b(?:instructions?|prompts?|rules?|context)\b/i;
+
+export function isInstructionProbe(input: string): boolean {
+  return typeof input === "string" && INSTRUCTION_PROBE.test(input);
+}
+
+/**
  * The standard system-prompt clause that pairs with sanitizePrompt(). Append
  * this to any system prompt that consumes <<USER_DATA>>-wrapped content.
  */

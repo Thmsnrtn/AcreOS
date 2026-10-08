@@ -167,3 +167,43 @@ describe("createSupportTicket — AI first-response on creation", () => {
     expect(resolveTicketWithPax).toHaveBeenCalledTimes(1);
   });
 });
+
+// Stage 2 (2026-10-07): Pax's `escalate_to_support` files through THIS path
+// with `escalateToHuman`. The customer asked for a person, so the row is born
+// escalated (the shape the founder's support sense counts:
+// resolution_type 'escalated', not resolved/closed) and the AI first-response
+// pass — which can auto-answer and RESOLVE the ticket — must not run.
+// Mutation recorded: dropping the `if (!options.escalateToHuman)` guard turns
+// "does not auto-answer" red; dropping the resolutionType write turns
+// "is born escalated" red.
+describe("createSupportTicket — escalateToHuman (Pax hand-off)", () => {
+  it("is born escalated, with no agent assigned", async () => {
+    const { createSupportTicket } = await import("../../server/ai/supportAgent");
+    await createSupportTicket(org, "user-1", "Export everything", "Customer wants a full export.", {
+      autoAttachContext: false,
+      escalateToHuman: true,
+    });
+    const row = inserted.find((i) => i.table === "support_tickets")!.values;
+    expect(row.resolutionType).toBe("escalated");
+    expect(row.assignedAgent).toBeNull();
+    expect(row.status).toBe("open");
+  });
+
+  it("does not auto-answer a request for a person", async () => {
+    const { createSupportTicket } = await import("../../server/ai/supportAgent");
+    await createSupportTicket(org, "user-1", "Talk to someone", "Please have a person call me.", {
+      autoAttachContext: false,
+      escalateToHuman: true,
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(resolveTicketWithPax).not.toHaveBeenCalled();
+  });
+
+  it("an ordinary ticket is unchanged: not escalated, Pax first", async () => {
+    const { createSupportTicket } = await import("../../server/ai/supportAgent");
+    await createSupportTicket(org, "user-1", "Map", "Blank map.", { autoAttachContext: false });
+    const row = inserted.find((i) => i.table === "support_tickets")!.values;
+    expect(row.resolutionType).toBeNull();
+    expect(row.assignedAgent).toBe("pax");
+  });
+});

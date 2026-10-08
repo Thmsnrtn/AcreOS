@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { storage } from "../storage";
 import { subscriptionPeriodIso } from "../stripeClient";
 import type { Organization, SupportTicket, KnowledgeBaseArticle, TeamMember } from "@shared/schema";
+import { PLACE_TEXT } from "../services/paxPlaces";
 import { decisionsInboxService } from "../services/decisionsInbox";
 import { db } from "../db";
 import { dataSourceBroker } from "../services/data-source-broker.js";
@@ -2273,7 +2274,9 @@ export async function executeSupportTool(
             rating,
             feedbackRecorded: true,
             message: feedbackMessage,
-            followUp: rating <= 2 ? "This feedback has been flagged for review by our support team." : null
+            // States only what happened: the rating is stored on the ticket,
+            // where support staff read it. Nothing else is triggered.
+            followUp: rating <= 2 ? "Your rating and comments are saved on this ticket, where the support team can see them." : null
           }
         };
       }
@@ -2968,7 +2971,7 @@ export async function executeSupportTool(
             title: "Importing Data",
             estimatedTime: "5-10 minutes",
             steps: [
-              { step: 1, action: "Navigate to Settings > Import", path: "/settings/import" },
+              { step: 1, action: `Open ${PLACE_TEXT.importExport} (or Deals → Leads → Import CSV for leads)`, path: "/settings" },
               { step: 2, action: "Select data type", options: ["leads", "properties", "contacts"], tip: "Choose what you're importing" },
               { step: 3, action: "Download template", tip: "Use our CSV template for best results" },
               { step: 4, action: "Prepare your file", tip: "Match columns to template headers" },
@@ -2997,8 +3000,8 @@ export async function executeSupportTool(
               { step: 1, action: "Navigate to Settings", path: "/settings", tip: "Click Settings in the sidebar" },
               { step: 2, action: "Review Organization settings", tip: "Company name, logo, time zone" },
               { step: 3, action: "Configure Integrations", path: "/settings/integrations", tip: "Connect external services" },
-              { step: 4, action: "Set up Team Members", path: "/settings/team", tip: "Invite team members, assign roles" },
-              { step: 5, action: "Review Subscription", path: "/settings/billing", tip: "Manage plan and payment method" }
+              { step: 4, action: "Set up Team Members", path: "/settings", tip: "Invite team members, assign roles" },
+              { step: 5, action: "Review Subscription", path: "/settings", tip: "Manage plan and payment method" }
             ],
             proTips: skill_level !== "beginner" ? ["Set up BYOK for custom API keys", "Configure custom fields for your workflow"] : []
           },
@@ -3006,7 +3009,7 @@ export async function executeSupportTool(
             title: "Managing Your Team",
             estimatedTime: "3-5 minutes",
             steps: [
-              { step: 1, action: "Navigate to Settings > Team", path: "/settings/team" },
+              { step: 1, action: `Open ${PLACE_TEXT.invite}`, path: "/settings" },
               { step: 2, action: "Click 'Invite Member'", element: "button-invite" },
               { step: 3, action: "Enter email address", tip: "They'll receive an invitation email" },
               { step: 4, action: "Assign role", options: ["Admin", "Member", "Viewer"], tip: "Roles determine what they can access" },
@@ -5617,7 +5620,10 @@ export async function processSupportChat(
     assistantMessage = response.choices[0].message;
   }
 
-  const rawFinal = assistantMessage.content || "I apologize, but I'm having trouble processing your request. Let me escalate this to our support team.";
+  // The empty-reply fallback used to say "Let me escalate this to our support
+  // team" and escalated nothing. It now says only what is true: the ticket the
+  // customer is writing in is open, and support staff read open tickets.
+  const rawFinal = assistantMessage.content || "I'm having trouble answering that right now. Your ticket stays open, and the support team can see it.";
 
   // Phase 4 W21-22 — compliance post-validator. Customer-support auto-resolver
   // routinely answers questions that brush against tax / contract / lender
@@ -5734,6 +5740,15 @@ export async function createSupportTicket(
     errorContext?: any;
     source?: string;
     autoAttachContext?: boolean;
+    /**
+     * The customer asked for a PERSON (Pax's `escalate_to_support` tool).
+     * The row is written already escalated — resolution_type 'escalated',
+     * no assigned agent — which is the shape the founder's support sense
+     * (autopilot/senses.ts readEscalatedSupportTickets) counts, and the AI
+     * first-response pass is skipped: auto-answering a request for a human
+     * would be the opposite of what was asked.
+     */
+    escalateToHuman?: boolean;
   } = {}
 ): Promise<SupportTicket> {
   // Auto-attach system context if requested or if likely to be helpful
@@ -5758,7 +5773,8 @@ export async function createSupportTicket(
     pageContext: options.pageContext,
     errorContext: Object.keys(mergedContext).length > 0 ? mergedContext : null,
     source: options.source || "in_app",
-    assignedAgent: "pax",
+    assignedAgent: options.escalateToHuman ? null : "pax",
+    resolutionType: options.escalateToHuman ? "escalated" : null,
     status: "open"
   }).returning();
   
@@ -5811,7 +5827,7 @@ Services: ${Object.entries(systemContext.serviceStatus).map(([k, v]) => `${k}:${
   // a failure here NEVER blocks (or fails) ticket creation. Bug-reporter and
   // other direct-insert paths are intentionally unaffected — only tickets minted
   // through createSupportTicket get the auto first-response.
-  void (async () => {
+  if (!options.escalateToHuman) void (async () => {
     try {
       const { resolveTicketWithPax } = await import("./paxSupportResolver");
       const result = await resolveTicketWithPax(ticket.id, org);

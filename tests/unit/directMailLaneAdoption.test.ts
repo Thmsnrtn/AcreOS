@@ -72,6 +72,7 @@ vi.mock("../../server/services/emailService", () => ({ emailService: { sendEmail
 vi.mock("../../server/services/smsService", () => ({ smsService: { sendSms: vi.fn() } }));
 vi.mock("../../server/services/tcpaCompliance", () => ({
   canSendViaChannel: () => ({ allowed: true }),
+  hasCompleteMailingAddress: (l: any) => Boolean(l.address && l.city && l.state && l.zip),
   checkTcpaConsent: async () => ({ allowed: true }),
   checkTcpaConsentFromLead: () => ({ allowed: true }),
 }));

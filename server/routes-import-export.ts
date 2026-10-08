@@ -31,12 +31,14 @@ import { Errors, sendError } from "./utils/errors";
 import { requirePermission } from "./utils/permissions";
 import rateLimit from "express-rate-limit";
 import { getClientIp, clientIpOrNull } from "./utils/clientIp";
+import { CSV_IMPORT_MAX_ROWS_PER_FILE, BULK_EXPORT_DAILY_CAP } from "@shared/product-limits";
 
 // Phase 4 Week 15-16 (Magdalena §1): the synchronous /api/import/:entityType
 // handler still rejects CSVs above this limit so legacy clients see a clear
 // 400 instead of timing out. New job-backed flows (POST /api/import/leads etc)
 // accept up to MAX_IMPORT_ROWS (50,000).
-const MAX_CSV_IMPORT_ROWS = 500;
+// One definition, shared with Pax's product facts (shared/product-limits.ts).
+const MAX_CSV_IMPORT_ROWS = CSV_IMPORT_MAX_ROWS_PER_FILE;
 
 const upload = createUploadMiddleware({ maxSizeMB: 5, allowedTypes: ["text"] });
 const validateCSV = validateFileMiddleware(["text"]);
@@ -58,7 +60,7 @@ const HARD_BYTE_CAP = 75 * 1024 * 1024;
 // Job-status polling (/api/export/jobs*) is deliberately NOT limited.
 const bulkExportLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000,
-  max: 5,
+  max: BULK_EXPORT_DAILY_CAP,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: any) => {
@@ -66,7 +68,7 @@ const bulkExportLimiter = rateLimit({
     const userId = req.user?.id ?? getClientIp(req);
     return `bulk-export:${orgId}:${userId}`;
   },
-  message: { message: "Bulk-export rate limit exceeded. Per-org daily cap is 5. Email support@acreos.io for one-off lifts." },
+  message: { message: `Bulk-export rate limit exceeded. The daily cap is ${BULK_EXPORT_DAILY_CAP} per person. Email support@acreos.io for one-off lifts.` },
 });
 
 /**

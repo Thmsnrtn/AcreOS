@@ -225,6 +225,19 @@ const TOOL_REGISTRY: Readonly<Record<string, ToolEntry>> = Object.fromEntries([
       "remember_fact",
       "recall_facts",
       "spawn_subagent",
+      // Stage 2 account reads (pause-safe: they only read) and the support
+      // hand-off, which files a ticket and never touches the customer's
+      // records — the same standing as the support switch's escalate_to_human.
+      "get_credits",
+      "quote_outbound_cost",
+      "get_campaigns",
+      "get_inbox_replies",
+      "get_team_activity",
+      "get_plan_limits",
+      "get_finance_summary",
+      "get_sending_identity_status",
+      "get_product_facts",
+      "escalate_to_support",
     ],
     "looks_and_drafts",
     "executeTool",

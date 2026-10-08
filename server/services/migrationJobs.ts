@@ -67,9 +67,12 @@ import {
   exportNotesToCSV,
 } from "./importExport";
 
+import { DATA_IMPORT_JOB_MAX_ROWS } from "@shared/product-limits";
+
 const deflateRaw = promisify(zlib.deflateRaw);
 
-export const MAX_IMPORT_ROWS = 50_000;
+// One definition, shared with Pax's product facts (shared/product-limits.ts).
+export const MAX_IMPORT_ROWS = DATA_IMPORT_JOB_MAX_ROWS;
 export const IMPORT_CHUNK_SIZE = 500;
 
 

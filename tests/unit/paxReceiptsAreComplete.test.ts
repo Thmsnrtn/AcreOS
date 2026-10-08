@@ -144,6 +144,9 @@ vi.mock("../../server/services/tcpaCompliance", () => ({
   checkTcpaConsentFromLead: vi.fn(() => ({ canEmail: true, canSms: true })),
   isWithinQuietHours: vi.fn(() => ({ blocked: false })),
   isWithinQuietHoursForLead: vi.fn(() => ({ blocked: false })),
+  // get_lead_details / get_leads attach per-lead reachability, which asks these two.
+  canSendViaChannel: vi.fn(() => ({ allowed: true })),
+  hasCompleteMailingAddress: vi.fn(() => true),
 }));
 vi.mock("../../server/services/aiContextAggregator", () => ({
   getSystemContext: vi.fn(),
