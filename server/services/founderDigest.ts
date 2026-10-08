@@ -3,7 +3,7 @@ import {
   organizations, founderDigestHistory, jobHealthLogs, decisionsInboxItems,
   supportTicketMessages, supportTickets, churnRiskScores, mrrSnapshots,
 } from "@shared/schema";
-import { eq, and, desc, gte, lte, count, sql, lt } from "drizzle-orm";
+import { eq, and, desc, gte, lte, count, sql } from "drizzle-orm";
 import { emailService } from "./emailService";
 import { getFounderEmails } from "./founder";
 import { requireOpenAIClient } from "../utils/openaiClient";

@@ -98,7 +98,10 @@ vi.mock("../../server/db", () => {
             }
             return Promise.resolve(undefined).then(onFulfilled);
           },
-          catch() { return chain; },
+          catch(onRejected: any) {
+            // `.catch()` on a drizzle query executes it, exactly like `.then()`.
+            return chain.then((x: any) => x).catch(onRejected);
+          },
         };
         return chain;
       },
@@ -284,5 +287,23 @@ describe("isByokEnabled / getEffectiveCredential", () => {
     const r = await getEffectiveCredential(99, "batch_skiptracing" as any);
     expect(r.source).toBe("platform");
     expect(r.credential).toBeNull();
+  });
+});
+
+describe("getByokCredential — a lookup is not a use", () => {
+  it("bumps lastUsedAt by default, and not when the caller only inspects the credential", async () => {
+    const { setByokCredential, getByokCredential } = await import("../../server/services/byok/key-vault");
+    await setByokCredential({ organizationId: 21, channel: "twilio" as any, plaintext: "AC21:tok21:+15550002121" });
+    await setByokCredential({ organizationId: 22, channel: "twilio" as any, plaintext: "AC22:tok22:+15550002222" });
+
+    expect(await getByokCredential({ organizationId: 21, channel: "twilio" as any }, { touchLastUsed: false })).toBe(
+      "AC21:tok21:+15550002121",
+    );
+    expect(await getByokCredential({ organizationId: 22, channel: "twilio" as any })).toBe("AC22:tok22:+15550002222");
+    await new Promise((r) => setTimeout(r, 0)); // the bump is fire-and-forget
+
+    const row = (org: number) => store.rows.find((r) => r.organizationId === org && r.revokedAt == null)!;
+    expect(row(21).lastUsedAt).toBeNull();
+    expect(row(22).lastUsedAt).not.toBeNull();
   });
 });

@@ -12,6 +12,9 @@
  *   1. Verifies the SNS signature with the SAME airtight verifier the inbound-
  *      email webhook uses (cert-host allowlist + canonical string + RSA verify)
  *      — see middleware/snsVerification.ts. No shared-secret to leak.
+ *      It also requires the message's TopicArn to be one of ours
+ *      (SES_EVENTS_SNS_TOPIC_ARNS, comma-separated; unset → refuse all), since
+ *      the signature alone does not identify the topic.
  *   2. Auto-confirms SubscriptionConfirmation envelopes (host-validated URL).
  *   3. Drops SNS replays by MessageId.
  *   4. Parses the inner SES notification and seeds email_suppressions:
@@ -28,8 +31,9 @@
 
 import express, { type Express, type Request, type Response } from "express";
 import {
-  type SnsMessage,
   verifySnsMessage,
+  snsTopicAllowed,
+  parseSnsEnvelope,
   confirmSubscription,
   isReplay,
 } from "./middleware/snsVerification";
@@ -239,22 +243,22 @@ export function registerSesEventRoutes(app: Express): void {
     async (req: Request, res: Response) => {
       // Parse the SNS envelope. req.body may already be an object (if some
       // upstream parser matched) or the raw string from express.text().
-      let msg: SnsMessage;
-      try {
-        const raw = req.body;
-        msg =
-          typeof raw === "string"
-            ? (JSON.parse(raw) as SnsMessage)
-            : (raw as SnsMessage);
-      } catch {
-        return Errors.badRequest(res, "Invalid SNS envelope");
-      }
-      if (!msg || typeof msg !== "object" || typeof msg.Type !== "string") {
+      const msg = parseSnsEnvelope(req.body);
+      if (msg === null || typeof msg.Type !== "string") {
         return Errors.badRequest(res, "Invalid SNS envelope");
       }
 
-      // Authenticate: verify the SNS signature. Fail-closed on any problem.
-      const verdict = await verifySnsMessage(msg);
+      // Authenticate: the topic must be one of ours (SES_EVENTS_SNS_TOPIC_ARNS)
+      // — the signature alone does not identify the topic — and the SNS
+      // signature must verify. Fail-closed on any problem.
+      const topic = snsTopicAllowed(msg.TopicArn, "SES_EVENTS_SNS_TOPIC_ARNS");
+      if (!topic.ok) {
+        logger.warn("[ses-events] SNS topic not accepted", {
+          metadata: { reason: topic.reason, messageId: msg.MessageId },
+        });
+        return Errors.unauthorized(res);
+      }
+      const verdict = await verifySnsMessage(msg, topic.pinned);
       if (!verdict.ok) {
         logger.warn("[ses-events] SNS signature invalid", {
           metadata: { reason: verdict.reason, messageId: msg.MessageId },
@@ -271,7 +275,7 @@ export function registerSesEventRoutes(app: Express): void {
       if (msg.Type === "SubscriptionConfirmation") {
         if (msg.SubscribeURL) {
           try {
-            await confirmSubscription(msg.SubscribeURL);
+            await confirmSubscription(msg.SubscribeURL, topic.pinned);
           } catch (err) {
             logger.error(
               "[ses-events] failed to confirm SNS subscription",

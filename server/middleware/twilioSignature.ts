@@ -167,18 +167,33 @@ function twilioSignatureMatches(payload: string, signature: string, authToken: s
 const OWNER_LOOKUP_REASON =
   'inbound Twilio SMS webhook: resolve which organization owns the receiving number, to verify the signature with that org\'s own token';
 
-/** Every org's own Twilio identity, from both stores, keyed by org. */
-async function loadOrgTwilioIdentities(): Promise<
-  Map<number, { phones: Map<string, TwilioNumberSource>; tokens: Set<string> }>
-> {
-  const byOrg = new Map<number, { phones: Map<string, TwilioNumberSource>; tokens: Set<string> }>();
-  const entry = (orgId: number) => {
-    let e = byOrg.get(orgId);
-    if (!e) {
-      e = { phones: new Map(), tokens: new Set() };
-      byOrg.set(orgId, e);
-    }
-    return e;
+/**
+ * Every organization that owns `toNumber`, with that org's own Twilio tokens.
+ * An empty list means no org claims the number.
+ *
+ * Reads are platform-scope (the hatch above) but MINIMAL: the result carries
+ * only the owners' own tokens, and no other org's credential outlives the
+ * match. In particular a BYOK row is decrypted only when its non-secret
+ * fingerprint (the plaintext's last four characters — the number's last four
+ * digits, since the plaintext ends with the phone) could match, and reading
+ * it never bumps that org's `lastUsedAt`: one tenant's inbound text is not a
+ * use of every other tenant's credential.
+ */
+async function resolveTwilioNumberOwners(toNumber: string): Promise<TwilioNumberOwner[]> {
+  const want = last10(toNumber);
+  if (want.length !== 10) return [];
+
+  const owners = new Map<number, TwilioNumberSource>();
+  const claim = (organizationId: number, source: TwilioNumberSource) => {
+    if (!owners.has(organizationId)) owners.set(organizationId, source);
+  };
+  // Tokens are gathered per org first and attached only to owners at the end.
+  const tokensByOrg = new Map<number, Set<string>>();
+  const addToken = (organizationId: number, token: string | null) => {
+    if (!token) return;
+    let s = tokensByOrg.get(organizationId);
+    if (!s) tokensByOrg.set(organizationId, (s = new Set()));
+    s.add(token);
   };
 
   // (a) Legacy organization_integrations row — sealed or plaintext, read the
@@ -199,59 +214,48 @@ async function loadOrgTwilioIdentities(): Promise<
       'twilio',
     );
     if (!creds) continue;
-    const e = entry(row.organizationId);
-    const token = nonEmptyString(creds.authToken);
-    if (token) e.tokens.add(token);
-    const p = last10(creds.fromPhoneNumber);
-    if (p.length === 10) e.phones.set(p, 'integration');
+    addToken(row.organizationId, nonEmptyString(creds.authToken));
+    if (last10(creds.fromPhoneNumber) === want) claim(row.organizationId, 'integration');
   }
 
   // (b) Universal-BYOK vault: plaintext "<accountSid>:<authToken>:<phoneNumber>",
   //     the format the Twilio comms provider reads. Decrypted through the
-  //     vault's own accessor, never here.
+  //     vault's own accessor, never here — and only for candidate rows.
   const byokRows = await unscopedForPlatformOps(OWNER_LOOKUP_REASON)
-    .select({ organizationId: byokCredentials.organizationId })
+    .select({
+      organizationId: byokCredentials.organizationId,
+      fingerprint: byokCredentials.credentialKeyFingerprint,
+    })
     .from(byokCredentials)
     .where(and(eq(byokCredentials.channel, 'twilio'), isNull(byokCredentials.revokedAt)));
-  if (byokRows.length > 0) {
+  const want4 = want.slice(-4);
+  const byokTokenTaken = new Set<number>();
+  const candidates = Array.from(
+    new Set(
+      byokRows
+        // A four-digit fingerprint IS the number's last four digits; any other
+        // shape cannot rule the row out, so it stays a candidate.
+        .filter((r) => !/^\d{4}$/.test(String(r.fingerprint ?? '')) || r.fingerprint === want4)
+        .map((r) => r.organizationId),
+    ),
+  );
+  if (candidates.length > 0) {
     const { getByokCredential } = await import('../services/byok/key-vault');
-    for (const orgId of Array.from(new Set(byokRows.map((r) => r.organizationId)))) {
-      const blob = await getByokCredential({ organizationId: orgId, channel: 'twilio' }).catch(() => null);
+    for (const orgId of candidates) {
+      const blob = await getByokCredential(
+        { organizationId: orgId, channel: 'twilio' },
+        { touchLastUsed: false },
+      ).catch(() => null);
       if (!blob) continue;
       const parts = blob.split(':');
       if (parts.length !== 3 || !parts.every(Boolean)) continue;
-      const e = entry(orgId);
-      e.tokens.add(parts[1]);
-      const p = last10(parts[2]);
-      if (p.length === 10) e.phones.set(p, 'byok');
+      if (last10(parts[2]) === want) claim(orgId, 'byok');
+      // Not this number and not already an owner: its token is dropped here.
+      if (!owners.has(orgId)) continue;
+      addToken(orgId, parts[1]);
+      byokTokenTaken.add(orgId);
     }
   }
-  return byOrg;
-}
-
-/**
- * Every organization that owns `toNumber`, with that org's own Twilio tokens.
- * An empty list means no org claims the number.
- */
-async function resolveTwilioNumberOwners(toNumber: string): Promise<TwilioNumberOwner[]> {
-  const want = last10(toNumber);
-  if (want.length !== 10) return [];
-
-  const identities = await loadOrgTwilioIdentities();
-  const owners = new Map<number, TwilioNumberOwner>();
-  const claim = (organizationId: number, source: TwilioNumberSource) => {
-    if (owners.has(organizationId)) return;
-    owners.set(organizationId, {
-      organizationId,
-      source,
-      authTokens: Array.from(identities.get(organizationId)?.tokens ?? []),
-    });
-  };
-
-  identities.forEach((identity, orgId) => {
-    const source = identity.phones.get(want);
-    if (source) claim(orgId, source);
-  });
 
   // (c) Numbers an org purchased through AcreOS (bought on the org's own
   //     account, so verified with that org's token).
@@ -280,7 +284,28 @@ async function resolveTwilioNumberOwners(toNumber: string): Promise<TwilioNumber
     }
   }
 
-  return Array.from(owners.values());
+  // An owner claimed through (c)/(d) may hold its vault token under a
+  // DIFFERENT number (its BYO sender) — fetch that OWNER's own token now.
+  const missing = Array.from(owners.keys()).filter(
+    (orgId) => !byokTokenTaken.has(orgId) && byokRows.some((r) => r.organizationId === orgId),
+  );
+  if (missing.length > 0) {
+    const { getByokCredential } = await import('../services/byok/key-vault');
+    for (const orgId of missing) {
+      const blob = await getByokCredential(
+        { organizationId: orgId, channel: 'twilio' },
+        { touchLastUsed: false },
+      ).catch(() => null);
+      const parts = blob ? blob.split(':') : [];
+      if (parts.length === 3 && parts.every(Boolean)) addToken(orgId, parts[1]);
+    }
+  }
+
+  return Array.from(owners.entries()).map(([organizationId, source]) => ({
+    organizationId,
+    source,
+    authTokens: Array.from(tokensByOrg.get(organizationId) ?? []),
+  }));
 }
 
 /**
