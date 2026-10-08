@@ -23,6 +23,7 @@ import {
   autopilotPendingActions,
   creditTransactions,
   organizations,
+  soleneFounderAsks,
   supportTicketMessages,
   supportTickets,
 } from "@shared/schema";
@@ -466,8 +467,7 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
     const why = str(input.why);
     // The hand-off IS the claim. Two Support runs can be briefed on the same
     // waiting ticket, and askFounder's fold is read-then-insert, so two
-    // escalations racing both opened an ask and both paged the founder (the
-    // simulation platform's one-page-per-incident invariant caught it). One
+    // escalations racing both opened an ask and both paged the founder. One
     // conditional UPDATE moves the ticket to the founder; Postgres serialises
     // the row, so only the run whose UPDATE changed it asks — and pages.
     const claimed = await unscopedForPlatformOps(PLATFORM_SUPPORT)
@@ -483,6 +483,24 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
       .returning({ id: supportTickets.id });
     if (claimed.length === 0) {
       return { success: false, output: `Ticket #${ticket.id} is already with the founder — not asking or paging again. Tell the customer it is being reviewed; promise no outcome.` };
+    }
+    // Legal intake (supportLegalIntake) already put a legal ticket in front of
+    // the founder — an urgent ask and a page — when it was filed. The ticket is
+    // now his; a second ask about the same ticket would be a second page for
+    // one incident.
+    const { LEGAL_ASK_SUMMARY_PREFIX } = await import("../../supportLegalIntake");
+    const [legal] = await unscopedForPlatformOps(PLATFORM_SUPPORT)
+      .select({ id: soleneFounderAsks.id })
+      .from(soleneFounderAsks)
+      .where(
+        and(
+          sql`${soleneFounderAsks.questionSummary} like ${`${LEGAL_ASK_SUMMARY_PREFIX}:%`}`,
+          sql`${soleneFounderAsks.questionSummary} like ${`% in support ticket #${ticket.id}`}`,
+        ),
+      )
+      .limit(1);
+    if (legal) {
+      return { success: true, effect: "escalated", output: `Ticket #${ticket.id} is already in front of the founder as legal ask #${legal.id} (from intake); it is now assigned to him — no second ask or page. Tell the customer it is being reviewed; promise no outcome.` };
     }
     const { askFounder } = await import("../founderCollab");
     const r = await askFounder({

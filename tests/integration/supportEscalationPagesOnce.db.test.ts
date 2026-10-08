@@ -4,15 +4,17 @@
  *
  * Found by the simulation platform's year runs (tests/simulation/platform):
  * the invariant monitor's one-page-per-incident check fired six times in five
- * simulated years, each a second "Support ticket #N needs you: …" page for a
- * ticket the founder had already been paged about. Two Support runs can be
- * briefed on the same waiting ticket (the briefing reads the oldest unassigned
- * ticket and claims nothing), and askFounder's fold is read-then-insert, so
- * two escalations racing both open an ask and both page.
+ * simulated years, each a second page about a legal ticket. Legal intake
+ * (supportLegalIntake) opens an urgent "Legal/compliance item … ticket #N" ask
+ * and pages when the ticket is filed; days later the Support worker met the
+ * same ticket and escalated it again — "Support ticket #N needs you". Chasing
+ * it also exposed a race of the same shape: two Support runs can be briefed on
+ * the same waiting ticket (the briefing claims nothing) and askFounder's fold
+ * is read-then-insert, so two escalations racing both asked and both paged.
  *
  * The fix makes the hand-off itself the claim: escalate_to_founder moves the
- * ticket to the founder with one conditional UPDATE, and only the run whose
- * UPDATE changed the row asks (and pages). Postgres row locking serialises
+ * ticket to the founder with one conditional UPDATE, only the run whose UPDATE
+ * changed the row may ask, and it does not ask when intake already did. Postgres row locking serialises
  * the two UPDATEs, which is exactly the property a mock cannot show — so this
  * runs on a real database built from this repo.
  */
@@ -27,6 +29,7 @@ describe.runIf(realDbAvailable)("escalating one ticket twice at once pages the f
   let tools: typeof import("../../server/services/solene/roleWorkers/tools");
   let orgId = 0;
   let ticketId = 0;
+  let legalTicketId = 0;
   const realFetch = globalThis.fetch;
 
   beforeAll(async () => {
@@ -52,7 +55,13 @@ describe.runIf(realDbAvailable)("escalating one ticket twice at once pages the f
     if (!pool) return;
     await pool.query(`DELETE FROM solene_page_events WHERE subject LIKE $1`, [`Support ticket #${ticketId} needs you:%`]);
     await pool.query(`DELETE FROM solene_founder_asks WHERE question_summary LIKE $1`, [`Support ticket #${ticketId} needs you:%`]);
-    await pool.query(`DELETE FROM support_tickets WHERE id = $1`, [ticketId]);
+    for (const id of [ticketId, legalTicketId].filter(Boolean)) {
+      await pool.query(`DELETE FROM solene_page_events WHERE subject LIKE $1`, [`%support ticket #${id}`]);
+      await pool.query(`DELETE FROM solene_founder_asks WHERE question_summary LIKE $1`, [`%support ticket #${id}`]);
+      await pool.query(`DELETE FROM solene_page_events WHERE subject LIKE $1`, [`Support ticket #${id} needs you:%`]);
+      await pool.query(`DELETE FROM solene_founder_asks WHERE question_summary LIKE $1`, [`Support ticket #${id} needs you:%`]);
+    }
+    await pool.query(`DELETE FROM support_tickets WHERE organization_id = $1`, [orgId]);
     await pool.query(`DELETE FROM organizations WHERE id = $1`, [orgId]);
   });
 
@@ -73,6 +82,32 @@ describe.runIf(realDbAvailable)("escalating one ticket twice at once pages the f
     expect([a, b].filter((r) => r.effect === "escalated").length).toBe(1);
     const other = [a, b].find((r) => r.effect !== "escalated")!;
     expect(other.output).toMatch(/already with the founder/i);
+  });
+
+  it("a legal ticket the intake already put in front of the founder is not paged a second time by the Support worker", async () => {
+    // The year runs' actual shape: legal intake (supportLegalIntake) opens an urgent
+    // ask and pages when the ticket is filed; days later the Support worker meets
+    // the same ticket and escalated it again — a second page about one incident.
+    const t = await pool.query<{ id: number }>(
+      `INSERT INTO support_tickets (organization_id, user_id, subject, description, category, status, resolution_type)
+       VALUES ($1, $2, $3, $4, 'general', 'open', 'escalated') RETURNING id`,
+      [orgId, `${tag}-owner`, `Texts ${tag}`, "Your texts violate the TCPA and my attorney will be in touch."],
+    );
+    const id = t.rows[0].id;
+    legalTicketId = id;
+    const { escalateLegalIntake } = await import("../../server/services/supportLegalIntake");
+    const intake = await escalateLegalIntake({ table: "support_tickets", recordId: id, organizationId: orgId, subject: `Texts ${tag}`, description: "Your texts violate the TCPA and my attorney will be in touch." });
+    expect(intake.escalated).toBe(true);
+    const ctx = { dispatchId: 900004, ticketId: id, organizationId: orgId } as Parameters<typeof tools.executeRoleTool>[3];
+    const r = await tools.executeRoleTool("support", "escalate_to_founder", { ticket_id: id, summary: "Legal matter raised by a customer", why: "legal" }, ctx);
+    const pages = await pool.query<{ subject: string }>(
+      `SELECT subject FROM solene_page_events WHERE subject LIKE $1 OR subject LIKE $2`,
+      [`Support ticket #${id} needs you:%`, `%support ticket #${id}`],
+    );
+    expect(pages.rows.map((p) => p.subject), `pages naming ticket #${id}`).toHaveLength(1);
+    const ticket = await pool.query<{ assigned_agent: string | null }>(`SELECT assigned_agent FROM support_tickets WHERE id = $1`, [id]);
+    expect(ticket.rows[0].assigned_agent).toBe(tools.FOUNDER_AGENT);
+    expect(r.output).toMatch(/already in front of the founder/i);
   });
 
   it("escalating a ticket that is already with the founder neither asks nor pages again", async () => {
