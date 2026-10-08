@@ -56,15 +56,14 @@ export interface Capability {
 
 const RUN_YEAR = "tests/simulation/evidence/runs/simplat-year-2026-10.json";
 const RUN_REDTEAM = "tests/simulation/evidence/runs/simplat-redteam-2026-10.json";
-const RUN_EVAL = "tests/simulation/evidence/runs/simplat-evalbank-2026-10.json";
 
 export const CAPABILITIES: readonly Capability[] = [
   {
     id: "support.tickets",
     claim: "Support tickets are answered, refunds up to $50 are made, and anything bigger or legal comes to you",
-    level: "E2",
-    proof: { unit: ["tests/unit/soleneStage2Guards.test.ts", "tests/simulation/standin/capable.test.ts"], runs: [RUN_YEAR] },
-    caveat: "proven with a scripted support brain; a real model has not been graded",
+    level: "E1",
+    proof: { unit: ["tests/unit/soleneStage2Guards.test.ts", "tests/simulation/standin/capable.test.ts"] },
+    caveat: "NOT proven by the year: every seed left 4-10 escalated tickets nobody answered or owned (each Support pass needs a founder approval and works one ticket); a real model has not been graded",
   },
   {
     id: "writer.publishes",

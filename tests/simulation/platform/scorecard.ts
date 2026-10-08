@@ -173,7 +173,9 @@ function provenByYear(): string[] {
   const zero = (inv: string) => seeds.length > 0 && seeds.every((s: any) => Number(s.invariants.byInvariant[inv] ?? 0) === 0 && Number(s.invariants.coverage?.[inv]?.checked ?? 0) > 0 && Number(s.invariants.coverage?.[inv]?.unknown ?? 0) === 0);
   const all = (f: (s: any) => boolean) => seeds.length > 0 && seeds.every(f);
   const out: string[] = [];
-  if (all((s) => s.support.handled > 0) && zero("refunds-within-rules")) out.push("support.tickets");
+  // "Support tickets are answered": a ticket nobody answered and nobody owns
+  // (dropped) falsifies it, however many others were handled.
+  if (all((s) => s.support.handled > 0 && s.support.dropped === 0) && zero("refunds-within-rules")) out.push("support.tickets");
   if (all((s) => (s.published ?? 0) > 0)) out.push("writer.publishes");
   if (zero("one-page-per-incident") && all((s) => (s.outages ?? []).length > 0)) out.push("ops.one-page-per-incident");
   if (zero("no-send-without-consent") && all((s) => s.counts.revocations > 0 && s.coverage.sends > 0)) out.push("tcpa.revocation");
