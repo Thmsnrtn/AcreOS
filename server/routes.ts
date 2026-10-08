@@ -279,7 +279,7 @@ import { registerActivationRoutes } from "./routes-activation";
 import { registerMlSnapshotsRoutes } from "./routes-ml-snapshots";
 import { registerEtlRoutes } from "./routes-etl";
 import { registerPromptVersionsRoutes } from "./routes-prompt-versions";
-import { registerEliteFeatureRoutes } from "./routes-elite-features";
+import { registerEliteFeatureRoutes, registerMetaLeadAdsWebhookRoutes } from "./routes-elite-features";
 import { registerSyndicationRoutes } from "./routes-syndication";
 import { registerCoreAIRoutes } from "./routes-core-ai";
 import { registerAutonomousAgentRoutes } from "./routes-autonomous-agent";
@@ -1647,9 +1647,9 @@ export async function registerRoutes(
   //   SendGrid     — Ed25519 signed event webhook
   //   inbound email — pinned SNS topic + SNS signature, or HMAC fallback
   //   title orders — partner API key + HMAC with that partner's own secret
-  // NOT here: GET/POST /api/webhooks/meta-lead-ads — verified, but its handler
-  // writes leads into a guessed org (DEFAULT_ORG_ID, else 1), so it stays
-  // behind the catch-all until its destination org is decided.
+  //   Meta lead ads — hub.verify_token (GET) + X-Hub-Signature-256 over the
+  //                  raw body (POST); leads land in the founder's own org via
+  //                  resolveFounderOrganization(), or are refused — never guessed
   const { registerLobWebhookRoutes } = await import("./routes/lob-webhooks");
   registerLobWebhookRoutes(app);
   registerStripeConnectWebhookRoute(app);
@@ -1658,6 +1658,7 @@ export async function registerRoutes(
   registerInboundEmailWebhookRoute(app);
   const { registerTitleOrderStatusWebhookRoute } = await import("./routes-title-partners");
   registerTitleOrderStatusWebhookRoute(app);
+  registerMetaLeadAdsWebhookRoutes(app);
 
   // EPIC Services: Seller Motivation, County Opportunity, Title Chain, Investor Network, Financial OS, Developer API
   app.use('/api', isAuthenticated, getOrCreateOrg, epicServicesRouter);
