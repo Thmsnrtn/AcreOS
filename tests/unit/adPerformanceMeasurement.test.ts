@@ -48,22 +48,22 @@ function mockMeta(resp: { ok: boolean; body: unknown }) {
 describe("an unreachable Meta API refuses instead of reporting zero", () => {
   it("THROWS RATHER THAN RETURNING $0 SPEND", async () => {
     mockMeta({ ok: false, body: { error: { message: "rate limited" } } });
-    await expect(getAdPerformance("camp_1")).rejects.toThrow(/could not be measured/);
+    await expect(getAdPerformance("120200000000001")).rejects.toThrow(/could not be measured/);
   });
 
   it("names the campaign and carries the upstream reason", async () => {
     // The founder needs to know WHICH campaign is unmeasured and why, or the
     // error is just a different kind of silence.
     mockMeta({ ok: false, body: { error: { message: "rate limited" } } });
-    await expect(getAdPerformance("camp_42")).rejects.toThrow(/camp_42/);
-    await expect(getAdPerformance("camp_42")).rejects.toThrow(/rate limited/);
+    await expect(getAdPerformance("120200000000042")).rejects.toThrow(/120200000000042/);
+    await expect(getAdPerformance("120200000000042")).rejects.toThrow(/rate limited/);
   });
 
   it("throws when the transport itself fails", async () => {
     globalThis.fetch = vi.fn(async () => {
       throw new Error("ENOTFOUND graph.facebook.com");
     }) as unknown as typeof fetch;
-    await expect(getAdPerformance("camp_1")).rejects.toThrow(/could not be measured/);
+    await expect(getAdPerformance("120200000000001")).rejects.toThrow(/could not be measured/);
   });
 });
 
@@ -73,8 +73,8 @@ describe("a real zero is still a real zero", () => {
     // suspicious" would delete a true answer: a campaign that delivered nothing
     // in the window genuinely has zero impressions.
     mockMeta({ ok: true, body: { data: [] } });
-    return expect(getAdPerformance("camp_1")).resolves.toMatchObject({
-      campaignId: "camp_1",
+    return expect(getAdPerformance("120200000000001")).resolves.toMatchObject({
+      campaignId: "120200000000001",
       impressions: 0,
       spend: 0,
       leads: 0,
@@ -96,7 +96,7 @@ describe("a real zero is still a real zero", () => {
         }],
       },
     });
-    const stats = await getAdPerformance("camp_1");
+    const stats = await getAdPerformance("120200000000001");
     expect(stats.impressions).toBe(1000);
     expect(stats.clicks).toBe(50);
     expect(stats.leads).toBe(5);

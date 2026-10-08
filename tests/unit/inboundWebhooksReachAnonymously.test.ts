@@ -191,11 +191,13 @@ const MUST_REACH_VERIFIER: Case[] = [
   {
     method: "GET",
     path: "/api/webhooks/meta-lead-ads",
-    url: "/api/webhooks/meta-lead-ads?hub.mode=subscribe&hub.verify_token=not-the-token&hub.challenge=reach-challenge",
+    url: "/api/webhooks/meta-lead-ads?hub.mode=subscribe&hub.verify_token=not-the-token&hub.challenge=8675309",
     send: (r) => r,
-    // A well-formed subscribe with the WRONG token: the token comparison is the
-    // only thing between this caller and the echoed challenge.
-    refusedByVerifier: (res) => res.status === 403 && res.text === "Forbidden" && !res.text.includes("reach-challenge"),
+    // A well-formed subscribe (numeric challenge, so the format check passes)
+    // with the WRONG token: the token comparison is the only thing between this
+    // caller and the echoed challenge.
+    refusedByVerifier: (res) =>
+      res.status === 403 && /Meta webhook verification failed/.test(msgOf(res)) && !res.text.includes("8675309"),
     why: "Meta hub.verify_token (META_WEBHOOK_VERIFY_TOKEN)",
   },
   {

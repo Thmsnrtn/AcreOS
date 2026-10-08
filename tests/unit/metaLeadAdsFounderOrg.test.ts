@@ -40,7 +40,8 @@ const env = vi.hoisted(() => {
   process.env.FOUNDER_USER_IDS = "";
   process.env.META_APP_SECRET = "meta-founder-org-test-secret";
   process.env.META_ACCESS_TOKEN = "meta-test-access-token";
-  return { secret: "meta-founder-org-test-secret" };
+  process.env.META_WEBHOOK_VERIFY_TOKEN = "meta-verify-token";
+  return { secret: "meta-founder-org-test-secret", verifyToken: "meta-verify-token" };
 });
 
 type Row = Record<string, unknown>;
@@ -155,8 +156,8 @@ const payload = JSON.stringify({
     {
       id: "page-1",
       changes: [
-        { field: "leadgen", value: { leadgen_id: "lg-1", form_id: "form-1", ad_id: "ad-1", campaign_name: "c" } },
-        { field: "leadgen", value: { leadgen_id: "lg-2", form_id: "form-1", ad_id: "ad-1", campaign_name: "c" } },
+        { field: "leadgen", value: { leadgen_id: "900000000000001", form_id: "form-1", ad_id: "ad-1", campaign_name: "c" } },
+        { field: "leadgen", value: { leadgen_id: "900000000000002", form_id: "form-1", ad_id: "ad-1", campaign_name: "c" } },
       ],
     },
   ],
@@ -241,6 +242,79 @@ describe("Meta's signature stays fail-closed", () => {
     const res = await deliver(null);
     expect(res.status).toBe(401);
     expect(store.inserted).toEqual([]);
+  });
+});
+
+describe("the GET challenge echo cannot reflect markup (anonymous since it left the catch-all)", () => {
+  const challenge = (c: string | string[], token = env.verifyToken) =>
+    request(app)
+      .get("/api/webhooks/meta-lead-ads")
+      .query({ "hub.mode": "subscribe", "hub.verify_token": token, "hub.challenge": c });
+
+  it("the right token and a numeric challenge echo it, as text/plain", async () => {
+    const res = await challenge("1158201444");
+    expect(res.status).toBe(200);
+    expect(res.text).toBe("1158201444");
+    expect(res.headers["content-type"]).toMatch(/^text\/plain/);
+  });
+
+  it("a markup challenge is refused even WITH the right token, and never echoed", async () => {
+    const res = await challenge("<script>alert(document.domain)</script>");
+    expect(res.status).toBe(403);
+    expect(res.text).not.toContain("<script");
+    expect(res.headers["content-type"]).not.toMatch(/html/);
+  });
+
+  it("an array challenge (?hub.challenge=a&hub.challenge=b) is refused", async () => {
+    const res = await challenge(["123", "<b>x</b>"]);
+    expect(res.status).toBe(403);
+    expect(res.text).not.toContain("<b>");
+  });
+
+  it("the wrong token is refused even with a numeric challenge", async () => {
+    const res = await challenge("1158201444", "not-the-token");
+    expect(res.status).toBe(403);
+    expect(res.text).not.toContain("1158201444");
+  });
+});
+
+describe("caller-supplied Graph ids cannot steer the platform-token request (SSRF)", () => {
+  const STEERING = ["me/accounts", "../../v1/act_1/campaigns", "1?access_token=x", "1#frag", "", "12/insights"];
+
+  it("a signed delivery whose leadgen_id is not a Graph id fetches nothing and writes nothing", async () => {
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    for (const bad of STEERING) {
+      fetchMock.mockClear();
+      store.inserted = [];
+      const body = JSON.stringify({ entry: [{ changes: [{ field: "leadgen", value: { leadgen_id: bad } }] }] });
+      const res = await request(app)
+        .post("/api/webhooks/meta-lead-ads")
+        .set("Content-Type", "application/json")
+        .set("X-Hub-Signature-256", sign(body))
+        .send(body);
+      expect(res.status).toBe(200);
+      expect(fetchMock, `leadgen_id ${JSON.stringify(bad)} reached graph.facebook.com`).not.toHaveBeenCalled();
+      expect(store.inserted).toEqual([]);
+    }
+  });
+
+  it("a numeric leadgen_id is fetched at exactly that Graph path", async () => {
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockClear();
+    await deliver();
+    const urls = fetchMock.mock.calls.map((c) => new URL(String(c[0])).pathname);
+    expect(urls).toEqual(["/v21.0/900000000000001", "/v21.0/900000000000002"]);
+  });
+
+  it("getAdPerformance and syncPropertyCatalog refuse a non-numeric id before any request", async () => {
+    const svc = await import("../../server/services/metaAdsService");
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockClear();
+    for (const bad of STEERING) {
+      await expect(svc.getAdPerformance(bad)).rejects.toThrow(/Graph object id/);
+      await expect(svc.syncPropertyCatalog(7, bad, "https://app.example")).rejects.toThrow(/Graph object id/);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

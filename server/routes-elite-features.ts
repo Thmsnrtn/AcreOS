@@ -362,6 +362,9 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   // open is the half-applied rule this whole block is about.
   app.get("/api/founder/meta-ads/campaigns/:campaignId/stats", ...auth, requireFounder, async (req: Request, res: Response) => {
     try {
+      if (!metaAdsService.graphIdSegment(req.params.campaignId)) {
+        return Errors.badRequest(res, "campaignId must be a Meta Graph object id (digits)");
+      }
       const stats = await metaAdsService.getAdPerformance(req.params.campaignId);
       res.json(stats);
     } catch (err: any) {
@@ -375,6 +378,9 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
     try {
       const org = req.organization;
       const { catalogId } = req.body;
+      if (!metaAdsService.graphIdSegment(catalogId)) {
+        return Errors.badRequest(res, "catalogId must be a Meta Graph object id (digits)");
+      }
       const appUrl = process.env.APP_URL || req.headers.origin as string;
       const result = await metaAdsService.syncPropertyCatalog(org.id, catalogId, appUrl);
       res.json(result);
@@ -829,16 +835,25 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
  * refused identically until the configuration is fixed.
  * Pinned by tests/unit/metaLeadAdsFounderOrg.test.ts.
  */
+/** Meta's `hub.challenge` is an integer; nothing else is ever echoed. */
+const META_CHALLENGE = /^\d{1,64}$/;
+
 export function registerMetaLeadAdsWebhookRoutes(app: Express) {
-  // Webhook verification challenge
+  // Webhook verification challenge. Anonymous by design (Meta has no session),
+  // so the echo is the reflected-XSS shape: `hub.challenge` comes from the
+  // query string and goes back in the body. Meta's challenge is an integer, so
+  // anything that is not 1–64 ASCII digits is refused BEFORE the token is
+  // even compared, and the echo is sent as text/plain, never text/html.
+  // Query values are read as strings only — `?hub.challenge=a&hub.challenge=b`
+  // parses to an array, which is not a challenge.
   app.get("/api/webhooks/meta-lead-ads", (req: Request, res: Response) => {
-    const challenge = metaAdsService.verifyMetaWebhook(
-      req.query["hub.mode"] as string,
-      req.query["hub.verify_token"] as string,
-      req.query["hub.challenge"] as string
-    );
-    if (challenge) return res.send(challenge);
-    res.status(403).send("Forbidden");
+    const q = (k: string) => (typeof req.query[k] === "string" ? (req.query[k] as string) : "");
+    const challengeParam = q("hub.challenge");
+    const challenge = META_CHALLENGE.test(challengeParam)
+      ? metaAdsService.verifyMetaWebhook(q("hub.mode"), q("hub.verify_token"), challengeParam)
+      : null;
+    if (challenge && META_CHALLENGE.test(challenge)) return res.type("text/plain").send(challenge);
+    Errors.forbidden(res, "Meta webhook verification failed");
   });
 
   // Lead Ad submission webhook. The signature check used to live inline here and
