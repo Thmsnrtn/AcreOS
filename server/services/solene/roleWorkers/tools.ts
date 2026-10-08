@@ -208,10 +208,7 @@ async function purchasesForOrg(organizationId: number) {
 /** Mark a ticket picked up so the backlog sense stops counting it (never overwrite a founder hand-off). */
 async function assignTicket(organizationId: number, ticketId: number, agent: string) {
   const db = unscopedForPlatformOps(PLATFORM_SUPPORT);
-  if (agent === FOUNDER_AGENT) {
-    await db.update(supportTickets).set({ assignedAgent: FOUNDER_AGENT, status: "in_progress", updatedAt: clock.now() }).where(and(eq(supportTickets.id, ticketId), eq(supportTickets.organizationId, organizationId)));
-    return;
-  }
+  // (The founder hand-off is not done here: escalate_to_founder claims the ticket atomically.)
   await db
     .update(supportTickets)
     .set({ assignedAgent: agent, status: "in_progress", updatedAt: clock.now() })
