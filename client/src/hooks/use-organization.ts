@@ -223,7 +223,10 @@ export interface TeamMember {
   displayName: string | null;
   role: Role;
   permissions: string[] | null;
+  /** EFFECTIVE assigned-only flag — computed by the server's resolver, the same one it enforces with. */
   viewOnlyAssignedLeads?: boolean;
+  /** The stored per-member override; null = the role's default applies. */
+  viewOnlyAssignedLeadsOverride?: boolean | null;
   isActive: boolean;
   invitedAt: string | null;
   joinedAt: string | null;
@@ -259,7 +262,7 @@ export function useUpdateTeamMemberRole() {
 // Reyna §1: per-user assigned-leads-only override.
 export function useUpdateTeamMemberViewOnly() {
   return useOptimisticUpdate<
-    { memberId: number; viewOnlyAssignedLeads: boolean },
+    { memberId: number; viewOnlyAssignedLeads: boolean | null },
     TeamMember
   >({
     mutationFn: async ({ memberId, viewOnlyAssignedLeads }) => {
@@ -272,7 +275,12 @@ export function useUpdateTeamMemberViewOnly() {
     },
     listKeys: [["/api/team"]],
     getId: ({ memberId }) => memberId,
-    buildPatch: ({ viewOnlyAssignedLeads }) => ({ viewOnlyAssignedLeads }),
+    // null clears the override; the effective value then comes back from the
+    // server (role default), so only an explicit boolean is patched in early.
+    buildPatch: ({ viewOnlyAssignedLeads }) => ({
+      viewOnlyAssignedLeadsOverride: viewOnlyAssignedLeads,
+      ...(viewOnlyAssignedLeads !== null ? { viewOnlyAssignedLeads } : {}),
+    }),
   });
 }
 

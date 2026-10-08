@@ -77,8 +77,11 @@ const ROOT = path.resolve(__dirname, "../..");
  * 111 -> 110 (DEFECT-0173): listing unpublish now passes the org to
  * updatePropertyListing.
  * 110 -> 109 (DEFECT-0173 audit): the listing PUT passes the org too.
+ * 109 -> 107 (commit 1694a0b).
+ * 107 -> 105 (VA role path): both team-member update routes pass the org to
+ * updateTeamMember.
  */
-const OMISSION_BASELINE = 107;
+const OMISSION_BASELINE = 105;
 
 /**
  * Call sites whose enclosing function never names an organization, so nothing

@@ -164,3 +164,41 @@ export async function assertUserIsOrgMember(
     .limit(1);
   return Boolean(row);
 }
+
+/**
+ * Verify a LEAD ASSIGNEE: `leads.assigned_to` stores a `team_members.id`
+ * (integer) — the list filter, the CSV importer, the rules-based auto-assigner,
+ * territory assignment, commissions and the GDPR export all read it that way.
+ *
+ * The lead create/update/bulk routes used to validate the value with
+ * `assertUserIsOrgMember`, which matches `team_members.user_id` (a users.id
+ * uuid). No integer team-member id could ever pass that check, so assignment
+ * through the API was refused for every real assignee — and the client sent a
+ * user id the integer column could not hold. This is the check for what the
+ * column actually stores.
+ *
+ * Returns `true` for null/undefined (unassigning is not an assignee to verify;
+ * whether the caller may unassign is `refuseUnpermittedAssignment`'s job).
+ * Anything else must be a positive integer naming an ACTIVE member of THIS org.
+ *
+ * idempotent: true
+ */
+export async function isAssignableLeadMember(
+  assignedTo: unknown,
+  organizationId: number,
+): Promise<boolean> {
+  if (assignedTo === null || assignedTo === undefined) return true;
+  if (typeof assignedTo !== "number" || !Number.isInteger(assignedTo) || assignedTo <= 0) return false;
+  const [row] = await db
+    .select({ id: teamMembers.id })
+    .from(teamMembers)
+    .where(
+      and(
+        eq(teamMembers.id, assignedTo),
+        eq(teamMembers.organizationId, organizationId),
+        eq(teamMembers.isActive, true),
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
+}

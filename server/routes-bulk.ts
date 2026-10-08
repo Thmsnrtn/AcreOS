@@ -14,6 +14,7 @@ import { withdrawListingsForUnheldProperty } from "./services/listingWithdrawal"
 import { Router, type Response } from "express";
 import { attachPermissionContext } from "./utils/permissions";
 import { refuseUnpermittedAssignment } from "./utils/leadAssignmentGate";
+import { refuseBulkLeadWrite } from "./utils/assignedLeadGate";
 import { db } from "./db";
 import { storage } from "./storage";
 import { leads, properties, tasks, type InsertDeal } from "@shared/schema";
@@ -21,7 +22,7 @@ import { eq, and, inArray } from "drizzle-orm";
 import { filterOutHeldIds } from "./services/legalHold";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
-import { assertUserIsOrgMember } from "./utils/orgScope";
+import { assertUserIsOrgMember, isAssignableLeadMember } from "./utils/orgScope";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
 
@@ -50,11 +51,7 @@ router.post("/leads/update", attachPermissionContext(), async (req: Authenticate
     // Lens 48 — viewOnlyAssignedLeads gate must hold on bulk paths too,
     // not just the single-record PATCH. Without this, a VA could push
     // every lead in the org to "deleted" status via /api/bulk/leads/update.
-    const context = req.permissionContext;
-    const callerId = req.user?.id ?? null;
-    if (context?.permissions.viewOnlyAssignedLeads) {
-      return Errors.forbidden(res, "Bulk lead updates are not available with assigned-only access");
-    }
+    if (refuseBulkLeadWrite(req, res)) return;
 
     // `canAssignLeads` is declared for every role and was consulted nowhere.
     // Gated by FIELD: a bulk status change is ordinary member work, and only
@@ -64,10 +61,10 @@ router.post("/leads/update", attachPermissionContext(), async (req: Authenticate
     const allowedUpdates: Record<string, unknown> = {};
     if (updates.status) allowedUpdates.status = updates.status;
     if (updates.assignedTo !== undefined) {
-      // Lens 48 — cross-tenant assignment guard.
-      if (updates.assignedTo !== null && updates.assignedTo !== "") {
-        const ok = await assertUserIsOrgMember(String(updates.assignedTo), orgId);
-        if (!ok) return Errors.badRequest(res, "assignedTo must be a member of this organization");
+      // Lens 48 — the assignee must be an active TEAM MEMBER of this org:
+      // `leads.assigned_to` stores team_members.id (see isAssignableLeadMember).
+      if (!(await isAssignableLeadMember(updates.assignedTo, orgId))) {
+        return Errors.badRequest(res, "assignedTo must be the id of an active team member of this organization");
       }
       allowedUpdates.assignedTo = updates.assignedTo;
     }
@@ -101,10 +98,7 @@ router.post("/leads/delete", attachPermissionContext(), async (req: Authenticate
     if (!parsedIds) return Errors.badRequest(res, `ids must be a non-empty array of numbers (max ${MAX_BATCH})`);
 
     // Lens 48 — same gate as /leads/update.
-    const context = req.permissionContext;
-    if (context?.permissions.viewOnlyAssignedLeads) {
-      return Errors.forbidden(res, "Bulk lead deletes are not available with assigned-only access");
-    }
+    if (refuseBulkLeadWrite(req, res, "Bulk lead deletes")) return;
 
     // Phase 3 Week 11 — FRCP 37(e) legal-hold preservation. Drop held ids
     // before bulk-DELETE; report skipped count back to the caller.

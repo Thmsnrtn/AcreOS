@@ -21,6 +21,7 @@ import { deleteOrphanPhotoAndVisionRows, ORPHAN_TARGETS } from "../../scripts/da
 import { readdirSync } from "node:fs";
 import { deleteQueuedMailFirstMailerRows } from "../../scripts/data/delete-queued-mail-first-mailer-rows";
 import { stampStatusDeletedLeads } from "../../scripts/data/stamp-status-deleted-leads";
+import { resetVaViewOnlyDefault } from "../../scripts/data/reset-va-view-only-default";
 import { stripComments, REPO_SWEEP_TIMEOUT_MS } from "../helpers/stripComments";
 
 // It reads every server/shared/client file (the "nothing reads the table" check).
@@ -275,6 +276,35 @@ describe("legacy status-deleted leads get deleted_at (audit of 9ed61f4)", () => 
     expect(w[0].sql).not.toMatch(/SET[^W]*status/);
     expect(w[0].params).toEqual([[11]]);
     expect(r.calls.map((c) => c.sql.trim().split(/\s+/)[0])).toEqual(["SELECT", "BEGIN", "UPDATE", "COMMIT"]);
+  });
+});
+
+describe("migration 0263 — VA rows still at the old view-only default go back to the role default", () => {
+  const found = [{ id: 21, organization_id: 7, view_only_assigned_leads: false }];
+  const answer = (sql: string) =>
+    /count\(\*\)/.test(sql) ? [{ n: 2 }] : /^SELECT/.test(sql.trim()) ? found : [];
+  it("a dry run counts candidates and owner-chosen rows, and writes nothing", async () => {
+    const r = recorder(answer);
+    const out = await resetVaViewOnlyDefault(r.client, { apply: false, outDir: mkdtempSync(join(tmpdir(), "va-")) });
+    expect(out).toEqual({ candidates: 1, keptExplicit: 2, exportPath: null, applied: false });
+    expect(r.writes()).toEqual([]);
+    // Only VA rows at false, and never a row whose flag an owner/admin set.
+    expect(r.calls[0].sql).toMatch(/tm\.role = 'va' AND tm\.view_only_assigned_leads = false AND NOT EXISTS/);
+    expect(r.calls[0].sql).toMatch(/changes -> 'fields' \? 'viewOnlyAssignedLeads'/);
+  });
+  it("--apply exports first, then sets NULL only for those ids, re-checking the predicate, in one transaction", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "va-"));
+    const r = recorder(answer);
+    const out = await resetVaViewOnlyDefault(r.client, { apply: true, outDir: dir });
+    expect(existsSync(out.exportPath!)).toBe(true);
+    expect(JSON.parse(readFileSync(out.exportPath!, "utf8"))).toEqual(found);
+    const w = r.writes();
+    expect(w).toHaveLength(1);
+    expect(w[0].sql).toMatch(/SET view_only_assigned_leads = NULL/);
+    expect(w[0].sql).toMatch(/tm\.role = 'va' AND tm\.view_only_assigned_leads = false/);
+    expect(w[0].sql).toMatch(/AND NOT EXISTS/);
+    expect(w[0].params).toEqual([[21]]);
+    expect(r.calls.map((c) => c.sql.trim().split(/\s+/)[0])).toEqual(["SELECT", "SELECT", "BEGIN", "UPDATE", "COMMIT"]);
   });
 });
 
