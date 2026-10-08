@@ -7,6 +7,9 @@ export default defineConfig({
     environment: "node",
     include: ["tests/simulation/**/*.spec.ts"],
     exclude: ["node_modules", "dist", "client"],
+    // Refuses to start without a reachable server and an authenticated
+    // session per persona — see the file's header for why.
+    globalSetup: ["./tests/simulation/global-setup.ts"],
     testTimeout: 60000,
     pool: "forks",
   },

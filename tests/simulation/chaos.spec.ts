@@ -10,14 +10,16 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import {
+  assertSession,
   createAuthenticatedSession,
   apiCall,
   generateCSV,
   fireConcurrent,
   type AuthSession,
 } from "./helpers";
+import { simBaseUrl } from "./target";
 
-const BASE_URL = process.env.SIM_BASE_URL ?? "http://localhost:5000";
+const BASE_URL = simBaseUrl();
 
 describe("Chaos & Adversarial Simulation", () => {
   let session: AuthSession;
@@ -25,8 +27,10 @@ describe("Chaos & Adversarial Simulation", () => {
   beforeAll(async () => {
     try {
       session = await createAuthenticatedSession("scalingOperator");
-    } catch {
-      console.warn("[chaos] Could not authenticate — is the test server running?");
+    } catch (err) {
+      // Rethrown, not warned: a suite that cannot authenticate has nothing to
+      // report, and every test below would otherwise read as a pass.
+      throw err;
     }
   }, 30_000);
 
@@ -38,7 +42,7 @@ describe("Chaos & Adversarial Simulation", () => {
     // ── CSV edge cases ─────────────────────────────────────────────────
 
     it("rejects CSV with 10,001 rows without crashing", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const csv = generateCSV(10001);
       const blob = new Blob([csv], { type: "text/csv" });
@@ -62,7 +66,7 @@ describe("Chaos & Adversarial Simulation", () => {
     });
 
     it("shows clear error for CSV with 0 rows", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const csv = "firstName,lastName,email,phone,county,state,status\n";
       const blob = new Blob([csv], { type: "text/csv" });
@@ -83,7 +87,7 @@ describe("Chaos & Adversarial Simulation", () => {
     });
 
     it("handles CSV with columns in wrong order (maps by header name)", async () => {
-      if (!session) return;
+      assertSession(session);
 
       // Reversed column order
       const csv = [
@@ -110,7 +114,7 @@ describe("Chaos & Adversarial Simulation", () => {
     });
 
     it("handles CSV with UTF-8 special characters gracefully", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const csv = [
         "firstName,lastName,email,phone,county,state,status",
@@ -137,7 +141,7 @@ describe("Chaos & Adversarial Simulation", () => {
     });
 
     it("rejects .xlsx file when .csv expected (or shows format error)", async () => {
-      if (!session) return;
+      assertSession(session);
 
       // Fake xlsx content (not valid xlsx, just wrong mimetype)
       const fakeXlsx = new Blob([new Uint8Array([0x50, 0x4b, 0x03, 0x04])], {
@@ -162,35 +166,39 @@ describe("Chaos & Adversarial Simulation", () => {
 
     // ── XSS & injection ────────────────────────────────────────────────
 
-    it("handles XSS in firstName field (no script execution)", async () => {
-      if (!session) return;
+    it("stores markup in firstName as data and serves it back as JSON", async () => {
+      assertSession(session);
+      const markup = "<script>alert('xss')</script>";
 
       const res = await apiCall("POST", "/api/leads", {
-        firstName: "<script>alert('xss')</script>",
+        firstName: markup,
         lastName: "XSSTest",
         email: "xss-test@sim-test.com",
         status: "new",
       }, session);
 
-      // Should either reject or sanitize, not 500
+      // Should either reject or store, not 500
       expect(res.status).not.toBe(500);
 
-      // If created, verify it was stored safely
+      // If created, the value is DATA: served as JSON, byte-for-byte. Escaping
+      // is the renderer's job — the API cannot know which context (HTML text,
+      // attribute, CSV, PDF) a value will reach, and mangling it on write
+      // corrupts it for every other one. That the client never renders data
+      // as HTML is held by tests/unit/noDataReachesTheDomAsHtml.test.ts.
+      // (This test previously asserted the API stripped the tag; it had never
+      // run against a server, so the expectation was never checked.)
       if (res.status === 201 || res.status === 200) {
         const id = res.body.id ?? res.body.leadId;
-        if (id) {
-          const getRes = await apiCall("GET", `/api/leads/${id}`, undefined, session);
-          if (getRes.status === 200) {
-            // Should not contain raw script tags (should be escaped or stripped)
-            const stored = JSON.stringify(getRes.body);
-            expect(stored).not.toContain("<script>");
-          }
-        }
+        expect(id, "lead creation returned no id").toBeTruthy();
+        const getRes = await apiCall("GET", `/api/leads/${id}`, undefined, session);
+        expect(getRes.status).toBe(200);
+        expect(getRes.headers["content-type"] ?? "").toMatch(/^application\/json/);
+        expect(getRes.body.firstName).toBe(markup);
       }
     });
 
     it("handles SQL injection in email field", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const res = await apiCall("POST", "/api/leads", {
         firstName: "SQLInject",
@@ -208,7 +216,7 @@ describe("Chaos & Adversarial Simulation", () => {
     });
 
     it("rejects lead with 50-character phone number", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const res = await apiCall("POST", "/api/leads", {
         firstName: "Long",
@@ -225,7 +233,7 @@ describe("Chaos & Adversarial Simulation", () => {
     // ── Invalid note data ──────────────────────────────────────────────
 
     it("rejects note with negative interest rate", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const res = await apiCall("POST", "/api/notes", {
         borrowerName: "Negative Rate",
@@ -244,7 +252,7 @@ describe("Chaos & Adversarial Simulation", () => {
     });
 
     it("rejects note with 0 term months", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const res = await apiCall("POST", "/api/notes", {
         borrowerName: "Zero Term",
@@ -262,7 +270,7 @@ describe("Chaos & Adversarial Simulation", () => {
     });
 
     it("rejects note with $0 principal", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const res = await apiCall("POST", "/api/notes", {
         borrowerName: "Zero Principal",
@@ -282,7 +290,7 @@ describe("Chaos & Adversarial Simulation", () => {
     // ── Empty campaign content ─────────────────────────────────────────
 
     it("handles campaign with empty content/subject", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const res = await apiCall("POST", "/api/campaigns", {
         name: "",
@@ -324,7 +332,7 @@ describe("Chaos & Adversarial Simulation", () => {
     });
 
     it("returns 403 for POST without CSRF token", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const res = await apiCall("POST", "/api/leads", {
         firstName: "NoCSRF",
@@ -340,7 +348,7 @@ describe("Chaos & Adversarial Simulation", () => {
     });
 
     it("returns 403 for POST with invalid CSRF token", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const res = await apiCall("POST", "/api/leads", {
         firstName: "BadCSRF",
@@ -384,7 +392,7 @@ describe("Chaos & Adversarial Simulation", () => {
 
   describe("Rate Limit & Concurrency Chaos", () => {
     it("handles 300 concurrent GET /api/leads requests without crashing", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const results = await fireConcurrent(
         300,
@@ -406,7 +414,7 @@ describe("Chaos & Adversarial Simulation", () => {
     }, 30_000);
 
     it("handles 50 concurrent POST /api/leads without duplicates or corruption", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const results = await fireConcurrent(
         50,
@@ -435,26 +443,32 @@ describe("Chaos & Adversarial Simulation", () => {
       expect(uniqueIds.size).toBe(createdIds.length);
     }, 30_000);
 
-    it("handles 10 concurrent payment recordings for same note (idempotency)", async () => {
-      if (!session) return;
+    // Named for what it does. It was titled "10 concurrent payment recordings
+    // for same note (idempotency)", but /api/finance/process runs the finance
+    // agent over the org's notes — it records no payment — and the only
+    // assertion is "no 5xx". Recording a payment needs an active note, which
+    // needs an ATR determination; payment idempotency is not exercised here.
+    it("handles 10 concurrent finance-agent runs over an org with a note", async () => {
+      assertSession(session);
 
-      // First create a note to test against
+      // First create a note to test against. Money fields are decimal
+      // strings, and the payment is computed server-side.
       const noteRes = await apiCall("POST", "/api/notes", {
         borrowerName: "Concurrency Test Borrower",
         borrowerEmail: "concurrency@sim-test.com",
-        originalBalance: 50000_00,
-        currentBalance: 50000_00,
-        interestRate: 9.0,
+        originalPrincipal: "50000.00",
+        currentBalance: "50000.00",
+        interestRate: "9.0",
         termMonths: 60,
-        monthlyPayment: 1038_00,
         startDate: "2026-01-01",
-        status: "performing",
       }, session);
 
-      if (noteRes.status !== 201 && noteRes.status !== 200) return;
+      // The concurrency check needs a note to pay; failing to create one is a
+      // failure of this test, not a reason to skip it.
+      expect([200, 201], `note creation answered ${noteRes.status}`).toContain(noteRes.status);
 
       const noteId = noteRes.body.id ?? noteRes.body.noteId;
-      if (!noteId) return;
+      expect(noteId, "note creation returned no id").toBeTruthy();
 
       // Fire 10 concurrent payment recordings
       const results = await fireConcurrent(
@@ -499,7 +513,7 @@ describe("Chaos & Adversarial Simulation", () => {
 
   describe("Graceful Degradation", () => {
     it("Pax/AI endpoints handle missing OPENAI_API_KEY gracefully", async () => {
-      if (!session) return;
+      assertSession(session);
 
       // Try to use Pax without API key configured
       const res = await apiCall("POST", "/api/ai/chat", {
@@ -522,7 +536,7 @@ describe("Chaos & Adversarial Simulation", () => {
     });
 
     it("billing endpoints handle missing STRIPE_SECRET_KEY", async () => {
-      if (!session) return;
+      assertSession(session);
 
       // Try billing-related endpoints
       const endpoints = ["/api/billing/status", "/api/billing/plans"];
@@ -534,7 +548,7 @@ describe("Chaos & Adversarial Simulation", () => {
     });
 
     it("campaign endpoints handle missing email/SMS configuration", async () => {
-      if (!session) return;
+      assertSession(session);
 
       // Try to create and activate a campaign
       const createRes = await apiCall("POST", "/api/campaigns", {
@@ -572,7 +586,7 @@ describe("Chaos & Adversarial Simulation", () => {
       const [method, path] = endpoint.split(" ");
 
       it(`${endpoint} does not return 500`, async () => {
-        if (!session && path !== "/api/health") return;
+        if (path !== "/api/health") assertSession(session);
 
         const res = await apiCall(method, path, undefined, session);
         expect(res.status).not.toBe(500);

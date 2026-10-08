@@ -44,6 +44,9 @@ services:
       SESSION_SECRET: test-session-secret-minimum-32-chars-long-enough
       APP_URL: http://localhost:5000
       DISABLE_BACKGROUND_JOBS: "1"
+      # The simulation suite signs in through the E2E test-auth identity
+      # (server/auth/testAuth.ts), which is hard-gated off on Fly.
+      E2E_TEST_AUTH: "1"
     depends_on:
       db:
         condition: service_healthy
