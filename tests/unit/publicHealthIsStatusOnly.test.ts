@@ -14,7 +14,7 @@
 import { describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { stripComments } from "../helpers/stripComments";
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
@@ -67,10 +67,11 @@ describe("every GET /api/health* registration is classified", () => {
   const root = resolve(__dirname, "../../server");
   const regs: Array<{ file: string; path: string; args: string }> = [];
   const walk = (d: string) => {
-    for (const n of readdirSync(d)) {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const n = e.name;
       const p = join(d, n);
-      if (statSync(p).isDirectory()) walk(p);
-      else if (/\.ts$/.test(n) && !/\.test\.ts$/.test(n)) {
+      if (e.isDirectory()) walk(p);
+      else if (e.isFile() && /\.ts$/.test(n) && !/\.test\.ts$/.test(n)) {
         const src = stripComments(readFileSync(p, "utf8"));
         for (const m of src.matchAll(/\b(?:app|api|router)\.get\(\s*["'](\/api\/health[^"']*)["']([^\n]*)/g)) {
           regs.push({ file: p.slice(root.length + 1), path: m[1], args: m[2] });

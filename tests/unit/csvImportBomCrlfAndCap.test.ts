@@ -173,3 +173,15 @@ describe("the 500-row cap", () => {
     expect(res.body.message).toMatch(/at most 500 rows; this one has 501.*Nothing was imported/);
   });
 });
+
+describe("header names never address the object prototype", () => {
+  it("a __proto__ / constructor / prototype header is dropped; other columns map; no row inherits from it", async () => {
+    const { parseCSV } = await import("../../server/services/importExport");
+    const rows = parseCSV("__proto__,constructor,prototype,firstName\r\n1,2,3,Ann\r\n");
+    expect(rows).toHaveLength(1);
+    expect(Object.keys(rows[0])).toEqual(["firstName"]);
+    expect(rows[0].firstName).toBe("Ann");
+    expect(Object.getPrototypeOf(rows[0])).toBe(Object.prototype);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+});

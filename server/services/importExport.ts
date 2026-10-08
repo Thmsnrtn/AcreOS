@@ -68,7 +68,13 @@ export interface ExportFilters {
  * value. The previous version split the text on newlines before looking at
  * quotes, which cut such a row in two and shifted every later column.
  */
+/** Header names that would address Object.prototype rather than a column. */
+const RESERVED_HEADER_NAMES = new Set(["__proto__", "constructor", "prototype"]);
+
 export function parseCSV(csvString: string): Array<Record<string, string>> {
+  if (typeof csvString !== "string") {
+    throw new Error("CSV input must be text");
+  }
   const records = splitCsvRecords(csvString.replace(/^\uFEFF/, ""))
     .filter((cells) => cells.some((c) => c.trim().length > 0));
   if (records.length < 2) {
@@ -79,11 +85,12 @@ export function parseCSV(csvString: string): Array<Record<string, string>> {
   const data: Array<Record<string, string>> = [];
   for (let i = 1; i < records.length; i++) {
     const values = records[i];
-    const row: Record<string, string> = {};
+    const entries: Array<[string, string]> = [];
     headers.forEach((header, idx) => {
-      row[header] = values[idx]?.trim() || "";
+      if (RESERVED_HEADER_NAMES.has(header)) return;
+      entries.push([header, values[idx]?.trim() || ""]);
     });
-    data.push(row);
+    data.push(Object.fromEntries(entries));
   }
   return data;
 }

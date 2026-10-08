@@ -141,9 +141,12 @@ describe("notifyOnCall with no founder org", () => {
     vi.doMock("../../server/services/emailService", () => ({ emailService: { sendEmail: vi.fn(async () => ({ success: true })) } }));
     vi.doMock("../../server/routes-founder-critical-alerts", () => ({ registerCriticalAlert: vi.fn(async () => undefined) }));
     process.env.FOUNDER_PRIMARY_ORG_ID = "77";
+    logger.error.mockClear();
     const { notifyOnCall } = await import("../../server/services/oncall");
-    await notifyOnCall("P1", "t", "b");
-    expect(inserts.length).toBeGreaterThan(0);
+    const r = await notifyOnCall("P1", "t", "b");
+    // When this fails, say which branch skipped the row rather than only "0".
+    const why = JSON.stringify({ result: r, errors: logger.error.mock.calls.map((c) => String(c[0])) });
+    expect(inserts.length, `no notification row was written: ${why}`).toBeGreaterThan(0);
     for (const row of inserts) expect(row.organizationId).toBe(77);
   });
 });
