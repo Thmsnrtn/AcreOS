@@ -52,6 +52,10 @@ export function getOpenAIClient(): OpenAI {
     apiKey,
     baseURL: process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
     defaultHeaders: { "HTTP-Referer": "https://acreos.fly.dev", "X-Title": "AcreOS" },
+    // S8: a short timeout — a hung provider must fail fast, not hold a
+    // customer's ticket (or a tick) for the SDK's 10-minute default.
+    timeout: 30_000,
+    maxRetries: 1,
   });
 }
 

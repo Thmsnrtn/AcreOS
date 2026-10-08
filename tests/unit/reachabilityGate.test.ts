@@ -46,11 +46,19 @@
  * `minima` from the fixture config.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
+
+// The real-repo half of this file runs the linter over the whole source tree
+// (a child process per run). Its cost scales with the repo and with machine
+// load; under a contended CPU it overran the 30s default and was KILLED —
+// which reports nothing about the gate. The sweep budget is declared, not
+// inherited (tests/helpers/sweepBudget.ts).
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const REPO_ROOT = resolve(__dirname, "..", "..");
 const LINTER = join(REPO_ROOT, "scripts", "lint-reachability.mjs");

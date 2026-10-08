@@ -32,8 +32,10 @@ mkdirSync(OUT, { recursive: true });
 
 // ── safety: this kit only ever touches the founder sim database ─────────────
 const DB_URL = process.env.DATABASE_URL ?? "";
-if (!/\/acreos_founder(\?|$)/.test(DB_URL)) {
-  throw new Error(`founder sim refuses DATABASE_URL=${DB_URL} (must be acreos_founder)`);
+// Stage 2: a per-agent founder-sim DB is allowed (acreos_founder or
+// acreos_founder_<x> / acreos_b2) so two founder sims never share a database.
+if (!/\/acreos_(founder(_\w+)?|b2)(\?|$)/.test(DB_URL)) {
+  throw new Error(`founder sim refuses DATABASE_URL=${DB_URL} (must be acreos_founder, acreos_founder_<x> or acreos_b2)`);
 }
 if (process.env.GH_TOKEN || process.env.FLY_API_TOKEN || process.env.GITHUB_TOKEN) {
   throw new Error("founder sim refuses to run with container credentials in env — launch via run-harness.sh (env -i)");
@@ -72,7 +74,10 @@ export function setStandinRules(rules: { default: string; rules?: Array<{ match:
 export function setEgressRules(rules: Record<string, string>) {
   writeFileSync(EGRESS_RULES, JSON.stringify(rules, null, 1));
 }
-export const PROVIDERS_UP = { "amazonaws.com": "mock", "twilio.com": "mock", "ntfy.sh": "mock" };
+// Stage 2: Stripe is UP in the baseline world (refunds + the ops watch's
+// balance probe answer in Stripe's shape — world-shim.mjs), so an outage is a
+// change the sim makes, not the permanent state.
+export const PROVIDERS_UP = { "amazonaws.com": "mock", "twilio.com": "mock", "ntfy.sh": "mock", "stripe.com": "mock" };
 
 function lineCount(file: string): number {
   if (!existsSync(file)) return 0;
@@ -447,4 +452,44 @@ export async function stripeWebhook(type: string, object: Record<string, unknown
     body: payload,
   });
   return { status: r.status, text: await r.text(), eventId: event.id };
+}
+
+
+// ── Stage 2: the founder's ONE-TIME setup through his own doors ──────────────
+/**
+ * What a founder who wants the business to run itself does once, on day 0,
+ * through the Controls door (each is a real founder HTTP surface):
+ *   - Dispatch ON and Publish ON (the master switches);
+ *   - growth / support / finance / deploy trusted to execute_gated (the trust
+ *     ledger's "let it act inside the gates");
+ *   - two bounded WitnessGrants so the machine can witness its own drafts
+ *     inside the founder's bounds: support replies/emails (no money, ≤ 30 days)
+ *     and refunds (money allowed, ≤ $50 each, ≤ 20 of them).
+ * Priced at 8 founder-minutes, ONCE (a 30-day grant is renewed monthly).
+ */
+export const SETUP_MINUTES = 8;
+export async function founderOneTimeSetup(opts: { levels?: string[] } = {}) {
+  await setSwitch("dispatchEnabled", true);
+  await setSwitch("publishEnabled", true);
+  for (const d of opts.levels ?? ["growth", "support", "finance", "deploy"]) {
+    const r = await founder.post(`/api/founder/autopilot/domains/${d}/level`, { level: "execute_gated", reason: "founder one-time setup: let it act inside the gates" });
+    if (r.status !== 200) throw new Error(`setup level ${d} → ${r.status} ${r.text.slice(0, 200)}`);
+  }
+  const g1 = await founder.post("/api/founder/autopilot/witness-grants", { granteeId: "solene", domains: ["support"], maxCostUsd: 1, maxActions: 500, expiresInDays: 30, note: "support replies and system emails to our own customers" });
+  const g2 = await founder.post("/api/founder/autopilot/witness-grants", { granteeId: "solene", domains: ["finance"], maxCostUsd: 50, maxActions: 20, expiresInDays: 30, allowMoney: true, note: "refunds up to $50" });
+  if (g1.status !== 200 || g2.status !== 200) throw new Error(`setup grants → ${g1.status}/${g2.status} ${g1.text.slice(0, 120)} ${g2.text.slice(0, 120)}`);
+  const s = await srv<any>("services/autopilot/settings.ts");
+  s.__resetSettingsCacheForTest?.();
+  return { grants: [g1.body?.grant?.id, g2.body?.grant?.id] };
+}
+
+/** Wait (wall clock) until the worker has drained every queued/running dispatch. */
+export async function drainDispatches(timeoutMs = 120_000): Promise<{ drained: boolean; waitedMs: number }> {
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    const r = await q1<any>("select count(*)::int n from solene_dispatch_queue where status in ('queued','in_progress') and (not_before_at is null or not_before_at < now())");
+    if (!r || r.n === 0) return { drained: true, waitedMs: Date.now() - t0 };
+    await new Promise((res) => setTimeout(res, 2000));
+  }
+  return { drained: false, waitedMs: Date.now() - t0 };
 }

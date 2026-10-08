@@ -35,7 +35,8 @@
  * shared/decisions/doNothing.ts).
  */
 
-import { and, desc, eq, lte, sql } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import { and, desc, eq, isNull, lte, sql } from "drizzle-orm";
 import { db } from "../../db";
 import {
   soleneFounderAsks,
@@ -63,6 +64,24 @@ export interface AskFounderInput {
   urgency?: SoleneFounderAskUrgency;
   /** Default 24h. Set lower for time-sensitive asks. */
   timeoutHours?: number;
+  /**
+   * Set when a YES to this ask ACTS (enqueues a move): the exact proposal that
+   * runs on approval. Such an ask folds only into the same proposal, never by
+   * summary, and its body is never rewritten after the founder can see it.
+   * `chatApprovable` is set only by server code (planAndAct) for a
+   * server-authored catalog move on the allow-list.
+   */
+  acts?: { moveKind: string; domain: string; rationale: string; chatApprovable: boolean };
+}
+
+/** The version of a card: sha256 of the body the founder reads. Pure. */
+function askBodyHash(body: string): string {
+  return createHash("sha256").update(body ?? "", "utf8").digest("hex");
+}
+
+/** The identity of an acting proposal (kind + domain + rationale). Pure. */
+function actsKeyOf(a: { moveKind: string; domain: string; rationale: string }): string {
+  return createHash("sha256").update(`${a.moveKind}\u0000${a.domain}\u0000${a.rationale}`, "utf8").digest("hex");
 }
 
 export interface AskFounderResult {
@@ -79,6 +98,14 @@ export interface AskFounderResult {
 
 export interface AnswerFounderInput {
   askId: number;
+  /**
+   * The body_hash of the card the founder (or the chat, reading it) saw. A YES
+   * to an ask that acts is refused without it, and any answer is refused when
+   * it no longer matches the stored card.
+   */
+  expectedBodyHash?: string;
+  /** Set by the chat: the guarded update then also requires chat_approvable. */
+  viaChat?: boolean;
   answerText?: string;
   chosenOptionId?: string;
 }
@@ -164,37 +191,92 @@ export async function askFounder(
   // backoff (REPAGE_HOURS), not every tick. Creating a duplicate row was never
   // the mechanism for it.
   //
-  // The key is (role, summary, body) among OPEN asks. All three are already
-  // stored, so this needs no column and no migration. It is deliberately
-  // exact rather than fuzzy: a repeated escalation reproduces its summary and
-  // body verbatim, because both are derived from the same move.
+  // The key was (role, summary, body) among OPEN asks — exact, on the theory
+  // that a repeated escalation reproduces its summary and body verbatim. It
+  // does not (see S13 below), so the key is now the summary alone.
   //
   // HONEST LIMIT: this is read-then-insert, not an atomic seal. Two ticks
   // racing could still both insert. The loop is single-tick and 30 minutes
   // apart so that race is not the observed failure; closing it properly needs
   // a unique index, which needs a migration. Stated rather than implied.
+  //
+  // S13 (Stage 2) — FOLD on the summary alone. The exact (role, summary, body)
+  // key still let the same question open twice: a re-raised escalation carries
+  // a fresh forecast/simulation line in its BODY, so the founder simulation
+  // found 4 same-summary asks open at once. The summary is what the founder
+  // reads on the card; two open cards with the same words are one question.
+  // The repeat folds into the open ask: fold_count +1, the body refreshed to
+  // the newest facts, NO new row and NO page. The original timeout stands, so
+  // the escalation ladder still bounds the pile.
+  // Asks whose YES acts fold ONLY into the same proposal (acts_key), and the
+  // fold never rewrites the card: what the founder reads is what runs.
+  // Informational asks keep the S13 summary fold (body refreshed).
+  const bodyHash = askBodyHash(input.questionBody);
+  const actsKey = input.acts ? actsKeyOf(input.acts) : null;
   const [duplicate] = await db
-    .select({ id: soleneFounderAsks.id, askedAt: soleneFounderAsks.askedAt })
+    .select({
+      id: soleneFounderAsks.id,
+      askedAt: soleneFounderAsks.askedAt,
+      questionSummary: soleneFounderAsks.questionSummary,
+      bodyHash: soleneFounderAsks.bodyHash,
+      chatApprovable: soleneFounderAsks.chatApprovable,
+    })
     .from(soleneFounderAsks)
     .where(
-      and(
-        eq(soleneFounderAsks.status, "open"),
-        eq(soleneFounderAsks.askingAgentRole, input.askingAgentRole),
-        eq(soleneFounderAsks.questionSummary, summary),
-        eq(soleneFounderAsks.questionBody, input.questionBody),
-      ),
+      actsKey
+        ? and(eq(soleneFounderAsks.status, "open"), eq(soleneFounderAsks.actsKey, actsKey))
+        : and(
+            eq(soleneFounderAsks.status, "open"),
+            eq(soleneFounderAsks.questionSummary, summary),
+            isNull(soleneFounderAsks.actsKey),
+          ),
     )
+    .orderBy(soleneFounderAsks.id)
     .limit(1);
 
   if (duplicate) {
-    logger.info("[founderCollab] ask deduped — identical question already open", {
+    const incomingChat = input.acts?.chatApprovable === true;
+    const sameCard = duplicate.questionSummary === summary && duplicate.bodyHash === bodyHash;
+    // An acting ask can only LOSE chat-approvability on a fold (existing AND
+    // incoming): a later tick that brings an objection, a risk flag or a
+    // failed check can never be laundered into a card the chat may approve.
+    const chatApprovable = actsKey ? duplicate.chatApprovable === true && incomingChat : false;
+    // An acting card that comes back DIFFERENT is replaced and its version
+    // bumped (body_hash), so any yes given to the old card is stale. When the
+    // difference is an objection — a different card (pre-mortem veto, higher
+    // risk) or chat-approvability lost — the founder is paged: an objection
+    // never arrives silently.
+    const objection = !!actsKey && (duplicate.questionSummary !== summary || (duplicate.chatApprovable === true && !incomingChat));
+    await db
+      .update(soleneFounderAsks)
+      .set({
+        foldCount: sql`${soleneFounderAsks.foldCount} + 1`,
+        lastFoldedAt: askedAt,
+        chatApprovable,
+        ...(sameCard ? {} : { questionSummary: summary, questionBody: input.questionBody, bodyHash }),
+      })
+      .where(and(eq(soleneFounderAsks.id, duplicate.id), eq(soleneFounderAsks.status, "open")));
+    let pagerFired = false;
+    let pagerEventId: number | null = null;
+    if (objection && urgency !== "low") {
+      try {
+        const page = await sendSolenePage({ severity: "urgent", subject: summary, body: input.questionBody });
+        pagerFired = true;
+        pagerEventId = page.eventId;
+      } catch (err) {
+        logger.warn("[founderCollab] pager send threw on a replaced card", err instanceof Error ? err : undefined);
+      }
+    }
+    logger.info("[founderCollab] ask folded — the same question is already open", {
       metadata: {
         askId: duplicate.id,
         askingAgentRole: input.askingAgentRole,
+        replaced: !sameCard,
+        objection,
         openForHours: Math.floor((askedAt.getTime() - duplicate.askedAt.getTime()) / 3_600_000),
       },
     });
-    return { askId: duplicate.id, pagerFired: false, pagerEventId: null, deduped: true };
+    return { askId: duplicate.id, pagerFired, pagerEventId, deduped: true };
   }
 
   // Fire pager first so we can persist its event id with the ask. urgency
@@ -237,6 +319,10 @@ export async function askFounder(
       pagerEventId,
       timeoutAt,
       urgency,
+      bodyHash,
+      actsKey,
+      actsPayload: input.acts ? { moveKind: input.acts.moveKind, domain: input.acts.domain, rationale: input.acts.rationale } : null,
+      chatApprovable: input.acts?.chatApprovable === true,
     })
     .returning({ id: soleneFounderAsks.id });
 
@@ -287,6 +373,22 @@ export async function answerFounderAsk(
     throw new Error(
       `answerFounderAsk: ask ${input.askId} is status=${ask.status} (only 'open' is answerable)`,
     );
+  }
+
+  // Version binding: an answer names the card it answers. A stale card is
+  // refused; a YES to an ask that ACTS must name it.
+  const storedHash = (ask as { bodyHash?: string | null }).bodyHash ?? null;
+  const acts = (ask as { actsPayload?: { moveKind: string; domain: string; rationale: string } | null }).actsPayload ?? null;
+  if (input.expectedBodyHash != null && input.expectedBodyHash !== storedHash) {
+    throw new Error(`answerFounderAsk: ask ${input.askId} changed since it was shown — reload it and review the current version`);
+  }
+  // Every yes/no answer to a versioned card must name the version shown — an
+  // approval acts (a move, a budget ramp, a policy), and so can a decline.
+  if (
+    (acts || (storedHash && ask.answerFormat === "yes_no")) &&
+    input.expectedBodyHash == null
+  ) {
+    throw new Error(`answerFounderAsk: ask ${input.askId} must be answered against the version that was shown`);
   }
 
   const format = ask.answerFormat as SoleneFounderAskFormat;
@@ -340,7 +442,11 @@ export async function answerFounderAsk(
     answerText = trimmedAnswer;
   }
 
-  await db
+  // The guarded UPDATE is the decision: only the answer whose UPDATE hit the
+  // row (still open, still the card it names) runs any side effect. A losing
+  // concurrent answer — the founder's tap racing the chat — throws here,
+  // before the verdict, the enqueue or a policy proposal is touched.
+  const won = await db
     .update(soleneFounderAsks)
     .set({
       status: "answered",
@@ -352,8 +458,18 @@ export async function answerFounderAsk(
       and(
         eq(soleneFounderAsks.id, input.askId),
         eq(soleneFounderAsks.status, "open"),
+        // The card answered is the card stored — a body rewritten between the
+        // read above and this write leaves the ask open.
+        ...(input.expectedBodyHash != null ? [eq(soleneFounderAsks.bodyHash, input.expectedBodyHash)] : []),
+        // A chat answer lands only on a card that is STILL chat-approvable at
+        // the instant of the write (a fold may have revoked it since the read).
+        ...(input.viaChat ? [eq(soleneFounderAsks.chatApprovable, true)] : []),
       ),
-    );
+    )
+    .returning({ id: soleneFounderAsks.id });
+  if (!Array.isArray(won) || won.length === 0) {
+    throw new Error(`answerFounderAsk: ask ${input.askId} changed or was answered elsewhere — nothing was recorded; reload and review`);
+  }
 
   logger.info("[founderCollab] ask answered", {
     askId: input.askId,
@@ -387,12 +503,21 @@ export async function answerFounderAsk(
       const { enqueueDispatch } = await import("./dispatchQueue");
       try {
         const out = await enqueueApprovedMove(input.askId, {
+          proposal: acts,
           findEscalatedMove: findEscalatedMoveForAsk,
           enqueue: enqueueDispatch,
           linkDispatch: linkExperienceDispatch,
           maxCostUsd: AUTOPILOT_DISPATCH_MAX_COST_USD,
         });
-        if (out.status !== "not_a_move") {
+        if (out.status === "hard_stop_refused") {
+          logger.warn("[founderCollab] approval of a hard-stop move recorded; the move was NOT enqueued (founder-only, forever)", {
+            metadata: { askId: input.askId },
+          });
+        } else if (out.status === "not_bound") {
+          logger.warn("[founderCollab] approval recorded, but the ask is not bound to a proposal (or names another move) — nothing was enqueued; the move will be raised again", {
+            metadata: { askId: input.askId },
+          });
+        } else if (out.status !== "not_a_move") {
           logger.info("[founderCollab] approved move enqueued", {
             metadata: { askId: input.askId, status: out.status, dispatchId: out.dispatchId },
           });

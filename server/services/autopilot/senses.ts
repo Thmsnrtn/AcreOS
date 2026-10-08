@@ -24,6 +24,7 @@ import {
 import { soleneFounderAsks } from "@shared/schema/solene-founder-collab";
 import { unscopedForPlatformOps } from "../../utils/orgScopedDb";
 import { logger } from "../../utils/logger";
+import { SUPPORT_WORKER_AGENT, FOUNDER_AGENT } from "../solene/roleWorkers/routing";
 
 /**
  * Count support cases genuinely waiting on us — status open or escalated.
@@ -55,14 +56,23 @@ async function getOpenSupportCaseCount(): Promise<number> {
  */
 export async function readEscalatedSupportTickets(
   limit = 5,
+  opts: { excludePickedUp?: boolean } = {},
 ): Promise<{ count: number; ticketIds: number[] }> {
+  // Stage 2: for the BRAIN's backlog, a ticket the Support worker already
+  // drafted a reply for (awaiting its witness) or handed to the founder (an
+  // open ask names it) is not work another support dispatch can do. The
+  // step-away check still counts every escalated ticket — a human is still
+  // waiting on each of them.
+  const pickedUp = opts.excludePickedUp
+    ? sql` and coalesce(${supportTickets.assignedAgent}, '') not in (${SUPPORT_WORKER_AGENT}, ${FOUNDER_AGENT})`
+    : sql``;
   const rows = await unscopedForPlatformOps(
     "Solene founder-brain support sense: escalated Pax tickets across every org are the company's support backlog the founder must see",
   )
     .select({ id: supportTickets.id, n: sql<number>`count(*) over ()::int` })
     .from(supportTickets)
     .where(
-      sql`${supportTickets.resolutionType} = 'escalated' and ${supportTickets.status} not in ('resolved', 'closed')`,
+      sql`${supportTickets.resolutionType} = 'escalated' and ${supportTickets.status} not in ('resolved', 'closed')${pickedUp}`,
     )
     .orderBy(supportTickets.createdAt)
     .limit(limit);
@@ -74,7 +84,7 @@ async function getEscalatedSupportTickets(
   limit = 5,
 ): Promise<{ count: number; ticketIds: number[] }> {
   try {
-    return await readEscalatedSupportTickets(limit);
+    return await readEscalatedSupportTickets(limit, { excludePickedUp: true });
   } catch (err) {
     logger.warn(
       "[autopilot/senses] escalated ticket read failed; defaulting to 0",

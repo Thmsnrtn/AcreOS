@@ -746,7 +746,12 @@ function MasterToggle({ icon: Icon, title, description, enabled, source, pending
 // pre-stop state isn't recorded anywhere), and the server says so.
 
 interface ResumeChecklistItem { label: string; ok: boolean; detail: string }
-interface ResumePreflightData { ok: boolean; items: ResumeChecklistItem[] }
+interface ResumePreflightData {
+  ok: boolean;
+  items: ResumeChecklistItem[];
+  /** S10 — present when the stop recorded what it turned off: put it all back in one confirm. */
+  restore?: { available: boolean; narration: string };
+}
 
 const RESUME_PREFLIGHT_KEY = ["/api/founder/autopilot/resume/preflight"];
 
@@ -804,6 +809,35 @@ function GuidedResumeSection({ onProgress, onDismiss }: { onProgress: () => void
 
   const allDone = doneStages.length === RESUME_STAGE_STEPS.length;
 
+  // S10 — the one-confirm restore: exactly what the stop turned off, never higher.
+  const [restored, setRestored] = useState<string | null>(null);
+  const restore = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/founder/autopilot/resume/stage", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage: "restore" }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || `Couldn't restore (${res.status})`);
+      }
+      return res.json() as Promise<{ done: boolean; narration: string }>;
+    },
+    onSuccess: (r) => {
+      if (r.done) {
+        setStageError(null);
+        setRestored(r.narration);
+        onProgress();
+        void qc.invalidateQueries({ queryKey: CONTROL_KEY });
+        void qc.invalidateQueries({ queryKey: STEP_AWAY_KEY });
+        void qc.invalidateQueries({ queryKey: RESUME_PREFLIGHT_KEY });
+      } else {
+        setStageError(r.narration);
+      }
+    },
+    onError: (err) => setStageError(err instanceof Error ? err.message : String(err)),
+  });
+
   return (
     <Card className="border-primary/40 bg-primary/5" data-testid="guided-resume">
       <CardContent className="p-4 space-y-3">
@@ -844,6 +878,27 @@ function GuidedResumeSection({ onProgress, onDismiss }: { onProgress: () => void
               </li>
             ))}
           </ul>
+        )}
+
+        {/* S10 — one confirm: put back exactly what the stop turned off. */}
+        {preflight.data?.restore?.available && !restored && (
+          <div className="rounded-card border border-border/60 bg-card p-3 space-y-2" data-testid="resume-restore">
+            <p className="text-sm font-medium text-foreground">Put everything back as it was</p>
+            <p className="text-xs text-muted-foreground">{preflight.data.restore.narration}</p>
+            <Button
+              size="sm" className="min-h-[44px]" disabled={restore.isPending}
+              onClick={() => { setStageError(null); restore.mutate(); }}
+              data-testid="resume-restore-run"
+            >
+              {restore.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Restore in one step"}
+            </Button>
+            <p className="text-micro text-muted-foreground">Or come back cautiously with the three steps below.</p>
+          </div>
+        )}
+        {restored && (
+          <p className="text-xs text-foreground/80 rounded-md bg-muted/50 border border-border px-2.5 py-2" data-testid="resume-restore-done">
+            {restored}
+          </p>
         )}
 
         {/* The three stages — unlock strictly in order. */}
@@ -888,9 +943,9 @@ function GuidedResumeSection({ onProgress, onDismiss }: { onProgress: () => void
           </p>
         )}
 
-        {allDone && (
+        {(allDone || restored) && (
           <Button size="sm" variant="outline" className="min-h-[44px]" onClick={onDismiss} data-testid="resume-dismiss">
-            Done — back online (still watching-only)
+            {restored ? "Done — back online as before the stop" : "Done — back online (still watching-only)"}
           </Button>
         )}
       </CardContent>
@@ -1423,6 +1478,8 @@ interface GrantRow {
   grantorId: string;
   granteeId: string;
   domains: string[];
+  hands?: string[];
+  sourceRoles?: string[];
   maxCostUsd: string;
   maxActions: number;
   usedCount: number;
@@ -1435,13 +1492,25 @@ interface GrantRow {
 }
 
 const GRANTS_KEY = ["/api/founder/autopilot/witness-grants"];
-const GRANT_DOMAINS = ["growth", "support", "deploy", "ops", "finance"] as const;
+/**
+ * What a grant may release: a hand drafted by a named role. The server holds
+ * the authoritative list (witnessGrant.ts DELEGABLE_HANDS) and refuses any
+ * other pair; this is only the menu. Every other hand stays a founder tap.
+ */
+const GRANT_KINDS = [
+  { key: "support_reply", label: "Support ticket replies", hand: "reply_support_ticket", role: "support", domain: "support" },
+  { key: "support_refund", label: "Support refunds (the ticket's own purchase, ≤ $50, once)", hand: "apply_refund", role: "support", domain: "finance" },
+  { key: "retention_email", label: "Retention emails to an org's owner", hand: "send_email", role: "retention", domain: "support" },
+  { key: "seam_email", label: "System emails to an org's owner", hand: "send_email", role: "outbound_seam", domain: "support" },
+] as const;
 
 function WitnessGrantsSection() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
-  const [domains, setDomains] = useState<string[]>(["support"]);
+  const [kinds, setKinds] = useState<string[]>(["support_reply"]);
+  const chosen = GRANT_KINDS.filter((k) => kinds.includes(k.key));
+  const domains = [...new Set(chosen.map((k) => k.domain))];
   const [maxCostUsd, setMaxCostUsd] = useState("5");
   const [maxActions, setMaxActions] = useState("20");
   const [expiresInDays, setExpiresInDays] = useState("7");
@@ -1466,6 +1535,8 @@ function WitnessGrantsSection() {
         body: JSON.stringify({
           granteeId: "solene",
           domains,
+          hands: [...new Set(chosen.map((k) => k.hand))],
+          sourceRoles: [...new Set(chosen.map((k) => k.role))],
           maxCostUsd: Number(maxCostUsd),
           maxActions: Number(maxActions),
           expiresInDays: Number(expiresInDays),
@@ -1526,7 +1597,7 @@ function WitnessGrantsSection() {
               {rows.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
                   No delegations. Every outward action waits for your tap — that's the default, and it never changes unless
-                  you issue a grant here. A grant is bounded (domains, per-action cost, total actions, expiry) and revocable instantly.
+                  you issue a grant here. A grant is bounded (which drafts, per-action cost, total actions, expiry) and revocable instantly.
                 </p>
               ) : (
                 <ul className="divide-y divide-border/60">
@@ -1536,7 +1607,7 @@ function WitnessGrantsSection() {
                       <li key={g.id} className="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between">
                         <div className="min-w-0">
                           <p className="text-sm text-foreground">
-                            {g.domains.map(prettyDomain).join(" · ")} — up to ${Number(g.maxCostUsd).toFixed(0)}/action
+                            {(g.hands?.length ? g.hands.join(" · ") : `${g.domains.map(prettyDomain).join(" · ")} (covers nothing — re-issue)`)} — up to ${Number(g.maxCostUsd).toFixed(0)}/action
                             <span className="text-muted-foreground"> · {g.usedCount}/{g.maxActions} used</span>
                           </p>
                           <p className="text-micro text-muted-foreground">
@@ -1563,16 +1634,16 @@ function WitnessGrantsSection() {
               {formOpen ? (
                 <div className="space-y-3 rounded-card border border-border/60 bg-muted/20 p-3">
                   <div className="flex flex-wrap gap-2">
-                    {GRANT_DOMAINS.map((d) => {
-                      const on = domains.includes(d);
+                    {GRANT_KINDS.map((k) => {
+                      const on = kinds.includes(k.key);
                       return (
                         <Button
-                          key={d} type="button" size="sm" variant={on ? "default" : "outline"} className="min-h-[36px]"
-                          onClick={() => setDomains((cur) => (on ? cur.filter((x) => x !== d) : [...cur, d]))}
+                          key={k.key} type="button" size="sm" variant={on ? "default" : "outline"} className="min-h-[36px]"
+                          onClick={() => setKinds((cur) => (on ? cur.filter((x) => x !== k.key) : [...cur, k.key]))}
                           aria-pressed={on}
-                          data-testid={`grant-domain-${d}`}
+                          data-testid={`grant-kind-${k.key}`}
                         >
-                          {prettyDomain(d)}
+                          {k.label}
                         </Button>
                       );
                     })}

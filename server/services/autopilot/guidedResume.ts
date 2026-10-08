@@ -64,6 +64,8 @@ export interface ResumeChecklistItem {
 export interface ResumePreflight {
   ok: boolean;
   items: ResumeChecklistItem[];
+  /** S10 — the one-confirm restore, when the stop recorded what it turned off. */
+  restore?: { available: boolean; narration: string };
 }
 
 export interface PreflightFacts {
@@ -193,6 +195,31 @@ export function narrateResumeStage(stage: ResumeStage, domains: StageDomainStand
   }
 }
 
+// ── S10: restore as ONE confirm ──────────────────────────────────────────────
+
+/** The one-confirm alternative to the three stages (it is not a stage). */
+export const RESTORE_PRIOR_STANDING = "restore" as const;
+
+export interface RestoreSnapshot {
+  at: string;
+  switches: { dispatchEnabled: boolean; publishEnabled: boolean; cognitionEnabled: boolean };
+  levels: Record<string, string>;
+}
+
+/** Pure: what one confirm will put back, in plain words. */
+export function narrateRestore(snap: RestoreSnapshot | null): string {
+  if (!snap) {
+    return "Nothing was recorded at the stop, so there is nothing to put back in one step — use the three stages instead.";
+  }
+  const on = Object.entries(snap.switches).filter(([, v]) => v).map(([k]) => k.replace(/Enabled$/, ""));
+  const lv = Object.entries(snap.levels).map(([d, l]) => `${d}: ${l}`).join(", ");
+  return (
+    `One confirm puts everything back exactly as it was before the stop (${snap.at}): ` +
+    `switches on — ${on.length ? on.join(", ") : "none"}; trust levels — ${lv || "none recorded"}. ` +
+    "Nothing is raised above where it stood before the stop."
+  );
+}
+
 // ── Async wrappers (best-effort reads/writes, dynamic imports) ───────────────
 
 /**
@@ -267,7 +294,53 @@ export async function resumePreflight(): Promise<ResumePreflight> {
     readiness = null;
   }
 
-  return composeResumePreflight({ envStopEngaged, stoppedAt, stoppedBy, tripReason, readiness });
+  const pre = composeResumePreflight({ envStopEngaged, stoppedAt, stoppedBy, tripReason, readiness });
+  try {
+    const { readPreStopSnapshot } = await import("./founderControls");
+    const snap = await readPreStopSnapshot();
+    pre.restore = { available: snap != null && !envStopEngaged, narration: narrateRestore(snap) };
+  } catch {
+    pre.restore = { available: false, narration: narrateRestore(null) };
+  }
+  return pre;
+}
+
+/**
+ * S10 — restore the pre-stop standing as ONE founder confirm: the switches and
+ * every domain's trust level exactly as the panic stop recorded them, never
+ * higher. Refused while the env floor is engaged, and refused (with the staged
+ * path offered) when no snapshot was recorded. Clears the snapshot on success
+ * so it can only be used once. Never throws.
+ */
+export async function restorePriorStanding(by: string): Promise<ResumeStageResult> {
+  try {
+    const { isPanicStopped } = await import("./settings");
+    if (isPanicStopped()) return { done: false, narration: ENV_STOP_ENGAGED_DETAIL };
+  } catch {
+    return { done: false, narration: "Couldn't verify the server-level stop is clear, so nothing was turned on — better to refuse than to pretend." };
+  }
+  try {
+    const { readPreStopSnapshot, clearPreStopSnapshot } = await import("./founderControls");
+    const snap = await readPreStopSnapshot();
+    if (!snap) return { done: false, narration: narrateRestore(null) };
+    const { setAutopilotSetting } = await import("./settings");
+    const { setDomainLevel, AUTOPILOT_DOMAINS, DOMAIN_AUTONOMY_LEVELS } = await import("./domainAutonomy");
+    for (const [domain, level] of Object.entries(snap.levels)) {
+      if (!(AUTOPILOT_DOMAINS as readonly string[]).includes(domain)) continue;
+      if (!(DOMAIN_AUTONOMY_LEVELS as readonly string[]).includes(level)) continue;
+      await setDomainLevel(domain as (typeof AUTOPILOT_DOMAINS)[number], level as (typeof DOMAIN_AUTONOMY_LEVELS)[number], `founder restored pre-stop standing (one confirm, ${by})`);
+    }
+    // Hands last: levels first, so nothing acts on a half-restored ledger.
+    await setAutopilotSetting("cognitionEnabled", snap.switches.cognitionEnabled, by);
+    await setAutopilotSetting("publishEnabled", snap.switches.publishEnabled, by);
+    await setAutopilotSetting("dispatchEnabled", snap.switches.dispatchEnabled, by);
+    await clearPreStopSnapshot(by);
+    logger.info("[autopilot/guidedResume] pre-stop standing restored in one confirm", { by, levels: snap.levels, switches: snap.switches });
+    return { done: true, narration: narrateRestore(snap).replace(/^One confirm puts/, "Done — put") };
+  } catch (err) {
+    logger.error("[autopilot/guidedResume] restore failed", err instanceof Error ? err : undefined);
+    return { done: false, narration: `Couldn't restore (${err instanceof Error ? err.message : String(err)}). Use the three stages instead.` };
+  }
 }
 
 /**
@@ -320,7 +393,14 @@ export async function resumeStage(stage: ResumeStage, by: string): Promise<Resum
     // stage === "dispatch" — hands on; publish deliberately untouched (see header).
     const { setAutopilotSetting } = await import("./settings");
     await setAutopilotSetting("dispatchEnabled", true, by);
-    logger.info("[autopilot/guidedResume] stage 3 — dispatch re-enabled; publish left OFF (pre-stop state unrecorded)", { by });
+    // The staged path completed: the one-confirm snapshot is now stale.
+    try {
+      const { clearPreStopSnapshot } = await import("./founderControls");
+      await clearPreStopSnapshot(by);
+    } catch {
+      /* best-effort */
+    }
+    logger.info("[autopilot/guidedResume] stage 3 — dispatch re-enabled; publish left OFF (staged path)", { by });
     return { done: true, narration: narrateResumeStage("dispatch") };
   } catch (err) {
     logger.error(`[autopilot/guidedResume] stage "${stage}" failed`, err instanceof Error ? err : undefined);

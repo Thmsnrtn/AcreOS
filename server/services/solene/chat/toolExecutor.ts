@@ -26,6 +26,12 @@ import type {
   ToolResultContentBlock,
 } from "./openRouterClient";
 import { logger } from "../../../utils/logger";
+import {
+  CHAT_BUSINESS_TOOL_NAMES,
+  CHAT_BUSINESS_TOOL_SCHEMAS,
+  businessToolNeedsConfirmation,
+  executeBusinessChatTool,
+} from "./businessTools";
 
 // ============================================================================
 // Classification sets
@@ -85,9 +91,13 @@ export const CHAT_HARD_BLOCKED_TOOLS: ReadonlySet<string> = new Set<string>([]);
  * the model express intent ("I will write this file"); the founder gates the
  * actual side-effect.
  */
-export const CHAT_TOOL_SCHEMAS = DISPATCH_TOOL_SCHEMAS.filter(
-  (t) => !CHAT_HARD_BLOCKED_TOOLS.has(t.name),
-);
+export const CHAT_TOOL_SCHEMAS = [
+  ...DISPATCH_TOOL_SCHEMAS.filter((t) => !CHAT_HARD_BLOCKED_TOOLS.has(t.name)),
+  // Stage 2 — the four founder doors as tools (businessTools.ts): the Letter,
+  // Decisions (approve/decline), Controls (budget, pause/resume, ads). Each
+  // calls the door's own service; hard-stops refuse inside the tool.
+  ...CHAT_BUSINESS_TOOL_SCHEMAS,
+];
 
 // ============================================================================
 // classifyChatTool
@@ -111,7 +121,7 @@ export function classifyChatTool(toolName: string): ChatToolDecision {
       reason: `Tool "${toolName}" requires founder approval before it can execute from the chat surface.`,
     };
   }
-  if (CHAT_AUTO_ALLOWED_TOOLS.has(toolName)) {
+  if (CHAT_AUTO_ALLOWED_TOOLS.has(toolName) || CHAT_BUSINESS_TOOL_NAMES.has(toolName)) {
     return { kind: "auto" };
   }
   // Unknown tool — treat as blocked to be safe.
@@ -200,7 +210,10 @@ export async function executeChatTool(
     };
   }
 
-  if (decision.kind === "approval_required") {
+  // A business-tool call the founder must confirm explicitly (resuming ad
+  // spending) takes the same approval path as an approval-required tool: the
+  // chat UI shows approve/reject, and only the approve route runs it.
+  if (decision.kind === "approval_required" || (CHAT_BUSINESS_TOOL_NAMES.has(input.toolName) && businessToolNeedsConfirmation(input.toolName, input.toolInput))) {
     const approvalToken = randomUUID();
     PENDING_APPROVALS.set(approvalToken, {
       approvalToken,
@@ -225,6 +238,14 @@ export async function executeChatTool(
       awaitingApproval: true,
       approvalToken,
     };
+  }
+
+  // Founder-door business tools run the door's own service (never the
+  // dispatch executor); hard-stops refuse inside them.
+  if (CHAT_BUSINESS_TOOL_NAMES.has(input.toolName)) {
+    const r = await executeBusinessChatTool(input.toolName, input.toolInput, input.founderUserId);
+    logger.info("[soleneChat] business tool executed", { toolName: input.toolName, conversationId: input.conversationId, ok: r.ok });
+    return { result: [{ type: "text", text: r.text }], awaitingApproval: false };
   }
 
   // auto-allowed — delegate to the underlying dispatch executor.

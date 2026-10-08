@@ -16,7 +16,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../../db";
 import { witnessGrants, type WitnessGrantRow } from "@shared/schema/autopilot-witness-grants";
 import { logger } from "../../utils/logger";
-import type { WitnessGrant } from "./witnessGrant";
+import { DELEGABLE_HANDS, GRANTABLE_SOURCE_ROLES, type WitnessGrant } from "./witnessGrant";
 import type { AutopilotDomain } from "./policyGate";
 import { AUTOPILOT_DOMAINS } from "./domainAutonomy";
 
@@ -27,6 +27,10 @@ export interface IssueGrantInput {
   grantorId: string;
   granteeId: string;
   domains: AutopilotDomain[];
+  /** The hands this grant releases (each must be a delegable hand). */
+  hands: string[];
+  /** The drafting roles this grant releases for (each must be grantable). */
+  sourceRoles: string[];
   maxCostUsd: number;
   maxActions: number;
   expiresAt: Date;
@@ -44,6 +48,8 @@ export function toPolicyGrant(row: WitnessGrantRow): WitnessGrant {
     granteeId: row.granteeId,
     bounds: {
       domains: (row.domains ?? []) as AutopilotDomain[],
+      hands: Array.isArray(row.hands) ? row.hands : [],
+      sourceRoles: Array.isArray(row.sourceRoles) ? row.sourceRoles : [],
       maxCostUsd: Number(row.maxCostUsd),
       maxActions: row.maxActions,
       expiresAt: row.expiresAt.toISOString(),
@@ -66,6 +72,20 @@ export async function issueWitnessGrant(input: IssueGrantInput): Promise<Witness
   if (unknown.length > 0) {
     throw new Error(`issueWitnessGrant: unknown domain(s): ${unknown.join(", ")}`);
   }
+  if (!Array.isArray(input.hands) || input.hands.length === 0) {
+    throw new Error("issueWitnessGrant: at least one hand required (a grant names exactly what it releases)");
+  }
+  const badHands = input.hands.filter((h) => !Object.prototype.hasOwnProperty.call(DELEGABLE_HANDS, h));
+  if (badHands.length > 0) {
+    throw new Error(`issueWitnessGrant: hand(s) never grant-released: ${badHands.join(", ")} — those stay a founder tap`);
+  }
+  if (!Array.isArray(input.sourceRoles) || input.sourceRoles.length === 0) {
+    throw new Error("issueWitnessGrant: at least one source role required");
+  }
+  const badRoles = input.sourceRoles.filter((r) => !GRANTABLE_SOURCE_ROLES.includes(r));
+  if (badRoles.length > 0) {
+    throw new Error(`issueWitnessGrant: unknown source role(s): ${badRoles.join(", ")}`);
+  }
   if (!Number.isFinite(input.maxCostUsd) || input.maxCostUsd <= 0) {
     throw new Error(`issueWitnessGrant: invalid maxCostUsd=${input.maxCostUsd}`);
   }
@@ -87,6 +107,8 @@ export async function issueWitnessGrant(input: IssueGrantInput): Promise<Witness
       grantorId: input.grantorId,
       granteeId: input.granteeId,
       domains: input.domains,
+      hands: [...new Set(input.hands)],
+      sourceRoles: [...new Set(input.sourceRoles)],
       maxCostUsd: input.maxCostUsd.toFixed(2),
       maxActions: input.maxActions,
       expiresAt: input.expiresAt,
@@ -96,7 +118,7 @@ export async function issueWitnessGrant(input: IssueGrantInput): Promise<Witness
     })
     .returning();
   logger.warn(
-    `[witnessGrantStore] grant #${row.id} ISSUED by ${input.grantorId} to ${input.granteeId}: domains=${input.domains.join("+")} ceiling=$${input.maxCostUsd} budget=${input.maxActions} expires=${input.expiresAt.toISOString()} money=${input.allowMoney === true ? "ALLOWED" : "denied"} broadcast=${input.allowBroadcast === true ? "ALLOWED" : "denied"}`,
+    `[witnessGrantStore] grant #${row.id} ISSUED by ${input.grantorId} to ${input.granteeId}: domains=${input.domains.join("+")} hands=${input.hands.join("+")} roles=${input.sourceRoles.join("+")} ceiling=$${input.maxCostUsd} budget=${input.maxActions} expires=${input.expiresAt.toISOString()} money=${input.allowMoney === true ? "ALLOWED" : "denied"} broadcast=${input.allowBroadcast === true ? "ALLOWED" : "denied"}`,
   );
   return row;
 }
@@ -111,6 +133,17 @@ export async function revokeWitnessGrant(id: number, reason: string): Promise<bo
     logger.warn(`[witnessGrantStore] grant #${id} REVOKED: ${reason.slice(0, 200)}`);
   }
   return updated.length > 0;
+}
+
+/** Revoke every live grant at once (the panic stop). Returns the ids revoked. */
+export async function revokeAllLiveGrants(reason: string): Promise<number[]> {
+  const updated = await db
+    .update(witnessGrants)
+    .set({ revoked: true, revokedAt: new Date(), revokeReason: reason.slice(0, 2000) })
+    .where(eq(witnessGrants.revoked, false))
+    .returning({ id: witnessGrants.id });
+  if (updated.length > 0) logger.warn(`[witnessGrantStore] ${updated.length} grant(s) REVOKED: ${reason.slice(0, 200)}`);
+  return updated.map((u) => u.id);
 }
 
 /** All grants, newest first — the Control-door ledger view. */

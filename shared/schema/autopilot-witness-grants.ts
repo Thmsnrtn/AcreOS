@@ -38,6 +38,10 @@ export const witnessGrants = pgTable(
     granteeId: text("grantee_id").notNull(),
     /** Allowlisted autopilot domains. Empty ⇒ covers NOTHING (fail-closed). */
     domains: jsonb("domains").$type<string[]>().notNull().default([]),
+    /** Allowlisted hand names. Empty ⇒ covers NOTHING (fail-closed; migration 0264). */
+    hands: jsonb("hands").$type<string[]>().notNull().default([]),
+    /** Allowlisted drafting roles (pending action source_role). Empty ⇒ covers NOTHING. */
+    sourceRoles: jsonb("source_roles").$type<string[]>().notNull().default([]),
     /** Per-action predicted-cost ceiling in USD. */
     maxCostUsd: numeric("max_cost_usd", { precision: 10, scale: 2 }).notNull(),
     /** Total actions this grant may witness over its life. */

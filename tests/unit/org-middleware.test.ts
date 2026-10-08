@@ -1,10 +1,26 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Request, Response, NextFunction } from "express";
 
 // Captures the values passed to tx.insert(organizations).values({...}) and
 // tx.insert(teamMembers).values({...}) so assertions can inspect them.
-const insertValues: any[] = [];
+// Each insert is recorded WITH its table. getOrCreateOrg also starts the
+// onboarding journey for a new customer org (fire-and-forget, Stage 2 S2),
+// and that write lands on this same fake db. Reading "the first insert"
+// positionally made the founder test read whichever insert happened first —
+// including a journey row left over from the PREVIOUS test's fire-and-forget,
+// which resolves after beforeEach cleared the list. Assertions now name the
+// table they mean, and afterEach drains the fire-and-forget.
+const inserts: Array<{ table: string; vals: any }> = [];
+const insertsInto = (table: string) => inserts.filter((i) => i.table === table).map((i) => i.vals);
 let nextOrgRow: any = { id: 2, name: "New Org", ownerId: "u" };
+
+// The S2 onboarding journey is started fire-and-forget for a new CUSTOMER org.
+// A spy, so its write can never land in another test's capture (the root
+// cause of the founder-test failure: the previous test's journey insert
+// resolved after beforeEach had cleared the list and read as "the first
+// insert"), and so the call itself is asserted.
+const journeySpy = vi.hoisted(() => vi.fn(async (_orgId: number) => ({ started: true })));
+vi.mock("../../server/services/onboardingAutonomy", () => ({ startJourney: journeySpy }));
 
 // Mock storage and db.* used by the middleware.
 vi.mock("../../server/storage", () => ({
@@ -33,9 +49,9 @@ vi.mock("../../server/storage", () => ({
 // instead of touching the real Postgres connection.
 vi.mock("../../server/db", () => {
   const fakeTx = {
-    insert: (_table: any) => ({
+    insert: (table: any) => ({
       values: (vals: any) => {
-        insertValues.push(vals);
+        inserts.push({ table: String(table?.[Symbol.for("drizzle:Name")] ?? "?"), vals });
         // Return a thenable that is also chainable with .returning() —
         // tx.insert(teamMembers).values({...}) is awaited directly, but
         // tx.insert(organizations).values({...}).returning() is also used.
@@ -68,7 +84,8 @@ describe("getOrCreateOrg middleware", () => {
   // default 10s hook timeout. Give it room.
   beforeEach(async () => {
     vi.resetModules();
-    insertValues.length = 0;
+    inserts.length = 0;
+    journeySpy.mockClear();
     nextOrgRow = { id: 2, name: "New Org", ownerId: "u" };
     // Re-import to get fresh mocks
     const storageMod = await import("../../server/storage");
@@ -77,6 +94,12 @@ describe("getOrCreateOrg middleware", () => {
     const mod = await import("../../server/middleware/getOrCreateOrg");
     getOrCreateOrg = mod.getOrCreateOrg;
   }, 30000);
+
+  /** Let fire-and-forget work (the journey start) finish inside its own test. */
+  const drain = async () => {
+    for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+  };
+  afterEach(drain);
 
   function mockReqRes(user: any = null) {
     const req = { user, session: {} } as unknown as Request;
@@ -121,8 +144,7 @@ describe("getOrCreateOrg middleware", () => {
     const { req, res, next } = mockReqRes({ id: "u2", email: "new@example.com", firstName: "Jane" });
     await getOrCreateOrg(req, res, next);
 
-    // First insert = organizations row; second = teamMembers row.
-    expect(insertValues[0]).toEqual(
+    expect(insertsInto("organizations")[0]).toEqual(
       expect.objectContaining({
         ownerId: "u2",
         subscriptionTier: "free",
@@ -130,13 +152,15 @@ describe("getOrCreateOrg middleware", () => {
         isFounder: false,
       })
     );
-    expect(insertValues[1]).toEqual(
+    expect(insertsInto("team_members")[0]).toEqual(
       expect.objectContaining({
         organizationId: 2,
         userId: "u2",
         role: "owner",
       })
     );
+    // S2: a new CUSTOMER org starts its onboarding journey.
+    await vi.waitFor(() => expect(journeySpy).toHaveBeenCalledWith(2));
     expect((req as any).organization).toBe(nextOrgRow);
     expect(next).toHaveBeenCalled();
   });
@@ -156,7 +180,7 @@ describe("getOrCreateOrg middleware", () => {
       const { req, res, next } = mockReqRes({ id: "u3", email: "founder@test.com" });
       await getOrCreateOrg(req, res, next);
 
-      expect(insertValues[0]).toEqual(
+      expect(insertsInto("organizations")[0]).toEqual(
         expect.objectContaining({
           subscriptionTier: "enterprise",
           isFounder: true,
@@ -165,6 +189,9 @@ describe("getOrCreateOrg middleware", () => {
         })
       );
       expect(next).toHaveBeenCalled();
+      // The founder's own org is not a customer: no onboarding journey.
+      await drain();
+      expect(journeySpy).not.toHaveBeenCalled();
     } finally {
       if (prev === undefined) delete process.env.FOUNDER_EMAIL;
       else process.env.FOUNDER_EMAIL = prev;
@@ -181,7 +208,7 @@ describe("getOrCreateOrg middleware", () => {
     const { req, res, next } = mockReqRes({ id: "u4", email: "user@example.com" });
     await getOrCreateOrg(req, res, next);
 
-    const orgInsert = insertValues[0];
+    const orgInsert = insertsInto("organizations")[0];
     expect(orgInsert.trialStartedAt).toBeInstanceOf(Date);
     expect(orgInsert.trialEndsAt).toBeInstanceOf(Date);
 

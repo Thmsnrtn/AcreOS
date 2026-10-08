@@ -699,20 +699,24 @@ async function runSoleneDispatchLoop(): Promise<void> {
             // T1.2: record the mechanical result FIRST, then earn/lose autonomy
             // on the RESOLVED vote (which now also respects any founder verdict +
             // real consequence already on the row), not the raw dispatch boolean.
-            const { recordDispatchSignal, getVoteForDispatch } = await import("./services/autopilot/experienceLog");
-            await recordDispatchSignal(row.id, {
-              dispatchSuccess: result.success,
-              costUsd: result.costUsd,
-            });
-            const vote = (await getVoteForDispatch(row.id)) ?? undefined;
-            const { applyAutonomyFeedback } = await import("./services/autopilot/act");
-            await applyAutonomyFeedback({
-              sourceType: row.sourceType,
-              sourceId: row.sourceId,
-              success: result.success,
-              terminationReason: result.terminationReason,
-              vote,
-            });
+            // A stale role-worker dispatch (nothing was waiting when it ran) is
+            // neither a clean cycle nor an anomaly — it earns and costs nothing.
+            if (result.terminationReason !== "no_work") {
+              const { recordDispatchSignal, getVoteForDispatch } = await import("./services/autopilot/experienceLog");
+              await recordDispatchSignal(row.id, {
+                dispatchSuccess: result.success,
+                costUsd: result.costUsd,
+              });
+              const vote = (await getVoteForDispatch(row.id)) ?? undefined;
+              const { applyAutonomyFeedback } = await import("./services/autopilot/act");
+              await applyAutonomyFeedback({
+                sourceType: row.sourceType,
+                sourceId: row.sourceId,
+                success: result.success,
+                terminationReason: result.terminationReason,
+                vote,
+              });
+            }
           } catch (fbErr) {
             logger.warn("[worker] autonomy feedback failed", fbErr instanceof Error ? fbErr : undefined);
           }

@@ -560,6 +560,13 @@ export interface DispatchToolContext {
    * one the toolset filter already removed; the dispatch continues.
    */
   readOnly?: boolean;
+  /**
+   * The role worker whose tool froze this hand (roleWorkers/tools.ts sets it;
+   * a model never can). Recorded on the pending action; a WitnessGrant may
+   * only ever release a draft whose role it names. Absent for coding
+   * dispatches and the chat — their drafts are founder-tap only.
+   */
+  sourceRole?: string;
 }
 
 /**
@@ -908,6 +915,7 @@ async function executeHand(
           await resolvePendingSummaryContext(toolName, input, hand.movesMoney === true),
         ),
         sourceDispatchId: ctx.dispatchId ?? null,
+        sourceRole: ctx.sourceRole ?? null,
       });
       if (frozen) {
         return {

@@ -38,6 +38,11 @@ export async function proposePendingHand(input: {
   domain?: string | null;
   summary?: string | null;
   sourceDispatchId?: number | null;
+  /**
+   * The role worker (or seam) that drafted it — server code sets this, never a
+   * model. Absent ⇒ no WitnessGrant may ever release the action.
+   */
+  sourceRole?: string | null;
   now?: number;
 }): Promise<AutopilotPendingAction | null> {
   try {
@@ -53,7 +58,9 @@ export async function proposePendingHand(input: {
           eq(autopilotPendingActions.status, "pending"),
         ),
       );
-    const live = existing.find((r) => r.expiresAt && r.expiresAt.getTime() > now);
+    // A draft only folds into a row with the SAME drafter: a role-drafted row
+    // must never stand in for a coding agent's identical draft, or vice versa.
+    const live = existing.find((r) => r.expiresAt && r.expiresAt.getTime() > now && (r.sourceRole ?? null) === (input.sourceRole ?? null));
     if (live) return live;
 
     const [row] = await db
@@ -65,6 +72,7 @@ export async function proposePendingHand(input: {
         domain: input.domain ?? null,
         summary: input.summary ?? null,
         sourceDispatchId: input.sourceDispatchId ?? null,
+        sourceRole: input.sourceRole ?? null,
         status: "pending",
         expiresAt: new Date(now + TTL_MS),
       })
@@ -91,6 +99,13 @@ export type ApprovalOutcome =
 export async function approvePendingHand(input: {
   id: number;
   approvedBy: string;
+  /**
+   * Set ONLY by the auto-witness sweep: the grant releasing this action. The
+   * executor then re-checks every delegated-release rule at execution (the
+   * controls, the hand/role bounds, the hand's own delegated rules) against
+   * the ROW's source_role — never a caller-supplied one.
+   */
+  delegation?: { grantId: string };
   now?: number;
 }): Promise<ApprovalOutcome> {
   const now = input.now ?? Date.now();
@@ -126,7 +141,10 @@ export async function approvePendingHand(input: {
   }
 
   // Execute EXACTLY the frozen row through the witnessed executor.
-  const result = await executeHandWitnessed(action.handName, action.args as Record<string, unknown>, input.approvedBy, { dispatchId: action.sourceDispatchId ?? null });
+  const result = await executeHandWitnessed(action.handName, action.args as Record<string, unknown>, input.approvedBy, {
+    dispatchId: action.sourceDispatchId ?? null,
+    ...(input.delegation ? { delegation: { grantId: input.delegation.grantId, sourceRole: action.sourceRole ?? null } } : {}),
+  });
   if (!result.success) {
     // Nothing sent — release the claim so the founder can retry.
     await db.update(autopilotPendingActions).set({ status: "pending", approvedBy: null }).where(and(eq(autopilotPendingActions.id, input.id), eq(autopilotPendingActions.status, "approved")));

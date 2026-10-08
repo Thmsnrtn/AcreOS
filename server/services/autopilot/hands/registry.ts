@@ -127,8 +127,36 @@ export async function executeHandWitnessed(
       };
     }
   } catch { /* settings unavailable → proceed; the gate stack still applies */ }
+
+  // A DELEGATED release (a WitnessGrant, not a founder tap) re-checks every
+  // delegated-release rule HERE, at execution: the founder's controls (dispatch
+  // off, domain paused, domain at OBSERVE), the hand/role bounds against the
+  // frozen row's source role, and the hand's own delegated rules. An approver
+  // string carrying the grant attribution is delegated even if the caller
+  // forgot to say so — fail closed.
+  const delegated = ctx.delegation != null || /via witness-grant #/.test(witnessedBy);
+  if (delegated) {
+    const refuse = (why: string): HandResult => ({
+      success: false,
+      output: `[DELEGATED-RELEASE] ${name} refused: ${why}. It waits for the founder's own tap.`,
+      durationMs: Date.now() - started,
+    });
+    try {
+      const { isDelegableDraft } = await import("../witnessGrant");
+      const role = ctx.delegation?.sourceRole ?? null;
+      if (!isDelegableDraft(name, role)) return refuse(`${name} drafted by ${role ?? "no role"} is never grant-released`);
+      const { delegationBlockedByControls, delegatedHandRefusal } = await import("../delegationRules");
+      const blocked = await delegationBlockedByControls(hand.domain);
+      if (blocked) return refuse(blocked);
+      const refused = await delegatedHandRefusal(name, input);
+      if (refused) return refuse(refused);
+    } catch (err) {
+      return refuse(`the delegated-release rules could not be verified (${err instanceof Error ? err.message : String(err)})`);
+    }
+  }
+
   logger.info(`[autopilot/hands] witnessed execution of ${name} approved by ${witnessedBy}`);
-  const result = await hand.handler(input, ctx);
+  const result = await hand.handler(input, { ...ctx, witnessedBy });
 
   // Foundry move #3: persist a tamper-evident, principal-attributed, hash-chained
   // proof-receipt for this witnessed governed action. Scope comes from the move-#2

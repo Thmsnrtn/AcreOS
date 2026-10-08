@@ -28,6 +28,7 @@ function recipientOf(input: Record<string, unknown>): string {
     if (name) return where ? `${name} (${where})` : name;
   }
   if (num(input.lead_id) != null) return `lead #${input.lead_id}`;
+  if (num(input.ticket_id) != null) return `support ticket #${input.ticket_id} (the customer who opened it)`;
   if (str(input.charge_id)) return `charge ${str(input.charge_id)}`;
   if (str(input.user_id)) return `user ${str(input.user_id)}${num(input.organization_id) != null ? ` (org ${input.organization_id})` : ""}`;
   if (num(input.event_id) != null) return `dunning event #${input.event_id}`;

@@ -11215,6 +11215,30 @@ BEGIN
     ALTER TABLE "territories" ALTER COLUMN "state_code" SET NOT NULL;
   END IF;
 END $mig0252$`,
+
+  // 0263 — Stage 2: founder pause controls (paused domains, the ad-spend
+  // switch), the panic-stop snapshot the one-confirm resume restores, and the
+  // S13 ask fold count. Mirrors migrations/0263_solene_role_workers_controls.sql.
+  `ALTER TABLE "autopilot_settings" ADD COLUMN IF NOT EXISTS "paused_domains" jsonb`,
+  `ALTER TABLE "autopilot_settings" ADD COLUMN IF NOT EXISTS "ads_enabled" boolean`,
+  `ALTER TABLE "autopilot_settings" ADD COLUMN IF NOT EXISTS "pre_stop_snapshot" jsonb`,
+  `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "fold_count" integer NOT NULL DEFAULT 0`,
+  `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "last_folded_at" timestamp with time zone`,
+
+  // 0264 — delegated releases bounded by hand and drafting role; a purchase is
+  // refunded by the autopilot exactly once. Mirrors
+  // migrations/0264_delegation_bounds_and_refund_claims.sql.
+  `ALTER TABLE "autopilot_pending_actions" ADD COLUMN IF NOT EXISTS "source_role" text`,
+  `ALTER TABLE "witness_grants" ADD COLUMN IF NOT EXISTS "hands" jsonb NOT NULL DEFAULT '[]'::jsonb`,
+  `ALTER TABLE "witness_grants" ADD COLUMN IF NOT EXISTS "source_roles" jsonb NOT NULL DEFAULT '[]'::jsonb`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "credit_txn_purchase_refund_pi_uniq" ON "credit_transactions" ("stripe_payment_intent_id") WHERE type = 'purchase_refund'`,
+
+  // 0265 — an ask whose approval acts is bound to the exact proposal and
+  // version the founder saw. Mirrors migrations/0265_founder_ask_bound_proposals.sql.
+  `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "acts_key" text`,
+  `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "acts_payload" jsonb`,
+  `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "body_hash" text`,
+  `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "chat_approvable" boolean NOT NULL DEFAULT false`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

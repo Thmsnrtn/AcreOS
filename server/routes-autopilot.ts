@@ -125,12 +125,19 @@ export function registerAutopilotRoutes(app: Express): void {
     requireFounder,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const { isResumeStage, resumeStage, RESUME_STAGES } = await import(
+        const { isResumeStage, resumeStage, RESUME_STAGES, RESTORE_PRIOR_STANDING, restorePriorStanding } = await import(
           "./services/autopilot/guidedResume"
         );
         const stage = ((req.body ?? {}) as { stage?: unknown }).stage;
+        // S10 — the one-confirm alternative: put back exactly what the stop
+        // turned off (switches + trust levels, never higher).
+        if (stage === RESTORE_PRIOR_STANDING) {
+          const result = await restorePriorStanding(getUserId(req));
+          logger.info("[autopilot] founder restored pre-stop standing", { done: result.done });
+          return res.json(result);
+        }
         if (!isResumeStage(stage)) {
-          return Errors.badRequest(res, "Invalid stage", { allowed: RESUME_STAGES });
+          return Errors.badRequest(res, "Invalid stage", { allowed: [...RESUME_STAGES, RESTORE_PRIOR_STANDING] });
         }
         const result = await resumeStage(stage, getUserId(req));
         logger.info("[autopilot] founder ran guided-resume stage", { stage, done: result.done });
@@ -278,8 +285,10 @@ export function registerAutopilotRoutes(app: Express): void {
         return Errors.badRequest(res, "value must be a boolean");
       }
       try {
-        const { setAutopilotSetting } = await import("./services/autopilot/settings");
-        const settings = await setAutopilotSetting(key, value, getUserId(req));
+        // The founder's own switch: turning dispatch back on by hand is a
+        // manual resume, which forgets the stale pre-stop snapshot.
+        const { setSwitchByFounder } = await import("./services/autopilot/founderControls");
+        const settings = await setSwitchByFounder(key, value, getUserId(req));
         return res.json({ ok: true, settings });
       } catch (err) {
         return Errors.internal(res, err);
@@ -979,6 +988,8 @@ export function registerAutopilotRoutes(app: Express): void {
       const bodySchema = z.object({
         granteeId: z.string().min(1).max(128).default("solene"),
         domains: z.array(z.enum(AUTOPILOT_DOMAINS as unknown as [string, ...string[]])).min(1),
+        hands: z.array(z.string().min(1).max(64)).min(1).max(20),
+        sourceRoles: z.array(z.string().min(1).max(64)).min(1).max(20),
         maxCostUsd: z.number().positive().finite(),
         maxActions: z.number().int().positive().max(10_000),
         expiresInDays: z.number().positive().max(30),
@@ -994,6 +1005,8 @@ export function registerAutopilotRoutes(app: Express): void {
           grantorId: getUserId(req),
           granteeId: parsed.data.granteeId,
           domains: parsed.data.domains as AutopilotDomain[],
+          hands: parsed.data.hands,
+          sourceRoles: parsed.data.sourceRoles,
           maxCostUsd: parsed.data.maxCostUsd,
           maxActions: parsed.data.maxActions,
           expiresAt: new Date(Date.now() + parsed.data.expiresInDays * 24 * 60 * 60 * 1000),

@@ -29,26 +29,31 @@ for (const line of readFileSync(join(OUT, "autonomy-ledger.jsonl"), "utf8").spli
 
 /** Smallest change → HANDLED, keyed by an event-name substring. "FOREVER" = must stay with the founder. */
 const FIX: Array<[RegExp, string]> = [
-  [/Acquire first customer/, "server/services/solene/founderCollab.ts:279 answerFounderAsk — on a 'yes' to an autopilot ask, enqueue the drafted move (deps.enqueue in act.ts:300) instead of only recording the verdict; until then every growth tick is an ask that does nothing."],
-  [/approves every ask/, "same as above (founderCollab.ts:279); and experienceLog.ts:49 must not score an approval of an action that never ran as 'success' (it is what lifted growth to autonomous_gated and printed '100% hit-rate')."],
-  [/signup stalls/, "server/services/solene/continuousLoop.ts:600 sensesFromPulse — supply activationStalled (decide.ts:132 already ranks unblock_activation) from orgs with onboarding_completed=false > 48h; also start the onboarding journey on real sign-up (middleware/getOrCreateOrg.ts:214 never calls startJourney)."],
-  [/trial ends/, "server/services/trialEngine.ts:124 — also match in-app trials (getOrCreateOrg.ts:219 creates them as subscription_status='active', tier 'free'), so ending_soon/expired emails ever fire."],
-  [/Support ticket/, "server/services/autopilot/senses.ts:29 — count support_tickets with resolution_type='escalated' (what the customer chat writes) instead of support_cases (always 0 here); then clear_support_backlog ranks and the ask names the ticket."],
-  [/Failed subscription payment/, "server/services/dunning.ts:111 — owner lookup compares users.clerk_user_id to organizations.owner_id (a users.id UUID), so every dunning email is skipped ('No billing email found'); match users.id."],
-  [/goes quiet/, "server/services/churnEngine.ts:37-38 — a paying customer silent 16 days scores 50 (< 80 alert / 85 rescue) and nothing writes autopilot_senses churn_signal (only a Stripe cancel does, webhookHandlers.ts:300); record a churn_signal at a reachable threshold."],
-  [/absent 14 days/, "fold support/dunning/legal into the ask stream (fixes above); the yes/no auto-timeout (escalationLadder) already keeps the pile bounded."],
-  [/outage: model/, "server/services/solene/continuousLoop.ts (tick) — page the founder once when model calls fail N ticks in a row; and give the operator/support OpenAI clients a short timeout (operator.ts:206 builds the client with SDK defaults)."],
-  [/outage: ses/, "emailService send failure should raise a reflex failure the tick already ranks (stabilize_reflexes) and page once."],
-  [/outage: stripe/, "billing reads already degrade honestly ('Can't verify'); page once when Stripe is unreachable for a whole day."],
+  // Stage 2 (2026-10-07) readings. A row that is HANDLED needs no fix; the
+  // text says what remains or why it stays with the founder.
+  [/owned content through the publish gate/, "— (Writer role worker → the existing publish gate; the founder's only cost is the one-time setup)."],
+  [/Empty result/, "— (taskGuards.ts: an empty answer is a failure in both runners)."],
+  [/No hard-stop crossed/, "FOREVER founder-only (pricing / legal signing / spend >$500 / customer-data deletion) — held + surfaced, never delegated."],
+  [/Acquire first customer/, "Founder absent with NO setup: growth stays at observe, so every growth tick is a draft-review ask that times out. The one-time setup (S1-team) is the fix; nothing else in code."],
+  [/approves every ask/, "— (an approval enqueues the move; the Writer runs it)."],
+  [/signup stalls/, "unblock_activation is still code work (coding agent); a Retention-style nudge to the stalled signup would turn it HANDLED."],
+  [/trial ends/, "—"],
+  [/Support ticket.*(refund80)/, "FOREVER founder (a refund over the $50 ceiling): one ask naming the ticket; the customer is told honestly."],
+  [/Support ticket.*(bug)/, "Stays with a human until there is an engineer role: the Support worker acknowledges + escalates; a coding dispatch could investigate."],
+  [/Support ticket/, "— (Support role worker; refunds ≤ $50 through apply_refund under the founder's grant)."],
+  [/Failed subscription payment/, "—"],
+  [/goes quiet/, "— (Retention role worker: win-back by system mail, under the founder's support grant)."],
+  [/absent 14 days/, "the remaining open asks are founder-only by nature (over-ceiling refund, legal) plus draft-review asks for domains he did not trust."],
+  [/outage|One page per outage/, "— (ops watch: one incident + one page per outage; recovery closes it)."],
   [/Recovery after outages/, "—"],
-  [/raising prices|\$2,000 ad|deleting customer data|counterparties|\$2,000 refund/, "FOREVER founder-only (hard-stop: pricing / spend >$500 / data deletion / platform-sender counterparty mail)."],
-  [/Panic stop/, "server/services/autopilot/panicStop.ts — also cancel in-flight dispatches (abort the runner) rather than only flipping switches."],
-  [/Resume after panic/, "FOREVER founder-only by design (guided resume); keep, but restore prior domain levels as one confirm instead of re-granting each."],
-  [/Queued growth dispatch executes/, "server/services/solene/dispatchRunner.ts — a content dispatch should not need git/a developer checkout; route growth moves to a non-coding writer that returns the <<<PUBLISH block."],
+  [/raising prices|\$2,000 ad|deleting customer data|counterparties|\$2,000 refund|invented statistics/, "FOREVER founder-only (hard-stop: pricing / spend >$500 / data deletion / platform-sender counterparty mail); fabrication is refused at the publish gate."],
+  [/Panic stop/, "—"],
+  [/Resume after panic/, "FOREVER founder-only by design (he pressed the button) — now ONE confirm that restores the prior levels + switches exactly."],
+  [/Queued growth dispatch executes/, "— (the Writer, not a coding agent)."],
   [/AI spend/, "—"],
-  [/TCPA/, "FOREVER founder (legal) — but it must REACH him: classify legal keywords on ticket intake (routes-support / supportAgent) into askFounder(urgency='urgent'); today it only lands in the off-door /api/founder/intelligence/todo."],
-  [/Legal notice/, "FOREVER founder (legal) — same intake classifier → urgent ask + page."],
-  [/Data-deletion/, "FOREVER founder (customer-data deletion hard-stop) — but surface it: compliance sense (continuousLoop.ts:1617) reads only beatrice_reg_events; count open dsar_requests / dsar_requests_lifecycle too."],
+  [/TCPA/, "FOREVER founder (legal) — reaches him as an urgent ask + page."],
+  [/Legal notice/, "FOREVER founder (legal) — urgent ask + page."],
+  [/Data-deletion/, "FOREVER founder (customer-data deletion hard-stop) — surfaced as a compliance item."],
 ];
 const fixFor = (e: string) => FIX.find(([re]) => re.test(e))?.[1] ?? "";
 
@@ -68,11 +73,15 @@ for (const r of ordered) md += `| ${r.scenario} | ${esc(r.event)} | **${r.outcom
 // "Cover" = what a responsible founder must spend finding what was DROPPED
 // (15 min investigation each, the brief's rubric).
 const find = (re: RegExp) => ordered.filter((r) => re.test(`${r.scenario} ${r.event}`));
+// Stage 2: the founder posture measured is "one-time setup, then absent"
+// (S1-team: its row already folds the setup minutes into per-week minutes).
+// Without a S1-team row the original absent-without-setup S1 is used.
+const hasTeam = [...rows.keys()].some((k) => k.startsWith("S1-team::"));
 const MIX: Array<[string, RegExp, number]> = [
-  ["Solene's own ask stream (S1, absent founder)", /S1-dispatch/, 1],
+  [hasTeam ? "Solene's own ask stream (S1-team: setup once, then absent)" : "Solene's own ask stream (S1, absent founder)", hasTeam ? /S1-team Acquire first customer/ : /S1-dispatch/, 1],
   ["New signup stalls", /signup stalls/, 1],
   ["Trial ends", /trial ends/, 0.25],
-  ["Support tickets", /Support ticket: (refund30|howdoi)/, 1],
+  ["Support tickets", /^S3 Support ticket: (refund30|howdoi)/, 1],
   ["Failed payment", /Failed subscription payment/, 0.25],
   ["Quiet paying customer", /goes quiet/, 0.25],
   ["Provider outage", /outage: model-500/, 0.25],
@@ -85,7 +94,10 @@ for (const [name, re, perWeek] of MIX) {
   const rs = find(re);
   if (rs.length === 0) { md += `| ${name} | ${perWeek} | 0 | NOT RUN | — | — |\n`; continue; }
   // S1's row is already per-week minutes; other rows are per event.
-  const e = rs.reduce((a, r) => a + (r.outcome === "ESCALATED" || r.outcome === "REFUSED-CORRECTLY" ? r.founderMinutes : 0), 0) * perWeek;
+  // Every minute a row costs the founder counts, whatever its outcome: a
+  // HANDLED ask stream still has its asks (S1-team prices them per week), and
+  // a HANDLED signup can still have put an inbox card in front of him.
+  const e = rs.reduce((a, r) => a + (r.outcome !== "DROPPED" ? r.founderMinutes : 0), 0) * perWeek;
   const c = rs.reduce((a, r) => a + (r.outcome === "DROPPED" ? 15 : 0), 0) * perWeek;
   escalated += e;
   cover += c;
@@ -93,6 +105,8 @@ for (const [name, re, perWeek] of MIX) {
 }
 md += `| **Total** | | | | **${escalated.toFixed(0)}** | **${cover.toFixed(0)}** |\n\n`;
 md += `Target: 24 min/week (1% of 40h). Escalated alone = ${escalated.toFixed(0)} min (${(escalated / 24).toFixed(1)}× target); escalated + covering what is silently dropped = ${(escalated + cover).toFixed(0)} min (${((escalated + cover) / 24).toFixed(1)}× target).\n`;
-md += "\nNote: the escalated minutes buy nothing today — approving an ask causes no action (see S6), so the honest cost of the ask stream is time spent for zero effect.\n";
+md += hasTeam
+  ? "\nNote: since Stage 1 an approval enqueues the move; since Stage 2 the move runs a role worker that does the job (an article, a reply, a refund ≤ $50, a win-back email). The escalated minutes above are decisions only the founder can make, plus the one-time setup amortised over the month.\n"
+  : "\nNote: the escalated minutes buy nothing today — approving an ask causes no action (see S6), so the honest cost of the ask stream is time spent for zero effect.\n";
 writeFileSync(join(OUT, "autonomy-ledger.md"), md);
 console.log(md);

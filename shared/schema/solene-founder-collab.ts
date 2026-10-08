@@ -26,6 +26,7 @@
 // ============================================================================
 
 import {
+  boolean,
   pgTable,
   text,
   serial,
@@ -65,6 +66,25 @@ export const soleneFounderAsks = pgTable(
     // Default ask_at + 24h, set explicitly by service.
     timeoutAt: timestamp("timeout_at", { withTimezone: true }),
     urgency: text("urgency").notNull().default("normal"), // see FOUNDER_ASK_URGENCIES
+    // Stage 2 (migration 0263) — S13 fold: a repeat of an OPEN ask with the
+    // same summary folds into it instead of opening a second row. The count
+    // says how many times it was raised again while waiting.
+    foldCount: integer("fold_count").notNull().default(0),
+    lastFoldedAt: timestamp("last_folded_at", { withTimezone: true }),
+    // Migration 0265 — asks whose YES acts (it enqueues a move):
+    //   acts_payload   the exact proposal the founder approves (move kind,
+    //                  domain, rationale) — what runs on approval, never a
+    //                  later re-read of the decision trace;
+    //   acts_key       its identity; a repeat folds only into the SAME proposal
+    //                  (summary-only folding is for informational asks);
+    //   body_hash      the version of the card; approval must name it, so a
+    //                  card that changed between read and tap is refused;
+    //   chat_approvable set only by server code for a server-authored catalog
+    //                  move on the allow-list — the chat may answer nothing else.
+    actsKey: text("acts_key"),
+    actsPayload: jsonb("acts_payload").$type<{ moveKind: string; domain: string; rationale: string }>(),
+    bodyHash: text("body_hash"),
+    chatApprovable: boolean("chat_approvable").notNull().default(false),
   },
   (t) => [
     // Founder-inbox surface: list open asks newest-first.

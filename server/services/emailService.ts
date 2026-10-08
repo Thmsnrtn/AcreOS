@@ -566,6 +566,46 @@ function encodeMimeHeader(value: string): string {
   return `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`;
 }
 
+/**
+ * Record an email TRANSPORT outcome for the reflex sense + ops watch (S8).
+ * Failures are always recorded; a success is recorded only when a failure was
+ * seen in the last 6 hours (it is the recovery signal, not a send log), and
+ * that look-up is memoised briefly so a healthy send path costs ~nothing.
+ * Best-effort: never throws, never blocks a send.
+ */
+let lastEmailFailureCheck: { at: number; recentFailure: boolean } | null = null;
+async function recordEmailTransportOutcome(status: 'success' | 'failed', error?: string): Promise<void> {
+  try {
+    const { db } = await import('../db');
+    const { jobHealthLogs } = await import('@shared/schema');
+    const { and, eq, gte } = await import('drizzle-orm');
+    const now = new Date();
+    if (status === 'success') {
+      if (!lastEmailFailureCheck || now.getTime() - lastEmailFailureCheck.at > 5 * 60_000) {
+        const rows = await db
+          .select({ id: jobHealthLogs.id })
+          .from(jobHealthLogs)
+          .where(and(eq(jobHealthLogs.jobName, 'email_send'), eq(jobHealthLogs.status, 'failed'), gte(jobHealthLogs.runStartedAt, new Date(now.getTime() - 6 * 3_600_000))))
+          .limit(1);
+        lastEmailFailureCheck = { at: now.getTime(), recentFailure: rows.length > 0 };
+      }
+      if (!lastEmailFailureCheck.recentFailure) return;
+    } else {
+      lastEmailFailureCheck = { at: now.getTime(), recentFailure: true };
+    }
+    await db.insert(jobHealthLogs).values({
+      jobName: 'email_send',
+      runStartedAt: now,
+      runCompletedAt: now,
+      durationMs: 0,
+      status,
+      errorMessage: error ? error.slice(0, 500) : null,
+    });
+  } catch {
+    /* observability must never break a send */
+  }
+}
+
 export class EmailService {
   private recentLogs: EmailLogEntry[] = [];
   private maxLogEntries = 100;
@@ -1229,6 +1269,9 @@ export class EmailService {
         });
         
         logger.info(`[EmailService] Email sent via AWS SES (${source}) to ${toAddresses.join(', ')}, MessageId: ${messageId}, attempts: ${attempts}, duration: ${durationMs}ms`);
+        // Stage 2 (S8): the first success after a recorded transport failure
+        // is the recovery signal the ops watch closes the incident on.
+        void recordEmailTransportOutcome('success');
         
         return { success: true, messageId, attempts };
       } catch (error: any) {
@@ -1269,6 +1312,15 @@ export class EmailService {
       durationMs,
     });
     
+    // Stage 2 (S8): a send that failed at the TRANSPORT (provider down,
+    // network, throttling, unknown) is a reflex failure — a job_health_logs
+    // `email_send` failed row, which the tick's reflex sense counts
+    // (stabilize_reflexes) and the ops watch turns into ONE incident + page.
+    // A recipient/sender rejection is a per-message fact, not an outage.
+    if (errorType !== 'recipient_rejected' && errorType !== 'sender_not_verified') {
+      void recordEmailTransportOutcome('failed', errorMessage);
+    }
+
     logger.error('[EmailService] Failed to send email after all attempts', undefined, { metadata: { detail: {
       error: errorMessage,
       errorType,

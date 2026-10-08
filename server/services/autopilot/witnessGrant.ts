@@ -32,6 +32,18 @@ import { HARD_STOP_SPEND_LIMIT_USD } from "./hardStops";
 export interface WitnessGrantBounds {
   /** Domains this grant covers. Empty ⇒ covers NOTHING (fail-closed default). */
   domains: AutopilotDomain[];
+  /**
+   * Hand names this grant covers. Empty or absent ⇒ covers NOTHING. A grant
+   * names the exact hands it releases — a "finance" grant is not a licence for
+   * every finance-domain hand a coding agent might draft.
+   */
+  hands?: string[];
+  /**
+   * Drafting roles this grant covers (the pending action's source_role).
+   * Empty or absent ⇒ covers NOTHING. A draft with no role (a coding dispatch,
+   * the chat) is never covered by any grant.
+   */
+  sourceRoles?: string[];
   /** Per-action predicted-cost ceiling in USD. An action above it is not covered. */
   maxCostUsd: number;
   /** Total number of actions this grant may witness over its life. */
@@ -59,6 +71,10 @@ export interface WitnessGrant {
 
 /** The minimal description of the action a grant is being asked to cover. */
 export interface WitnessRequest {
+  /** The frozen hand's name. */
+  handName: string;
+  /** Who drafted it (pending action source_role); null ⇒ no grant covers it. */
+  sourceRole: string | null;
   domain: AutopilotDomain;
   predictedCostUsd: number;
   movesMoney: boolean;
@@ -76,6 +92,32 @@ export interface WitnessGrantVerdict {
 }
 
 const DENY = (reason: string): WitnessGrantVerdict => ({ authorized: false, reason });
+
+/**
+ * The drafting roles whose frozen actions a grant may ever release, per hand.
+ * This is the role tools' rule set expressed as data: Support drafts ticket
+ * replies and refunds of its ticket's own purchases; Retention (and the
+ * governed outbound-email seam) draft system mail to an org's owner. Any hand
+ * not listed — and any role not listed for it — is founder-tap only, forever,
+ * whatever a grant names. Hand-specific execution rules (the refund's
+ * org/once/≤cost rule, the delegated email's owner-only recipient) are
+ * re-checked at execution by the hand / delegationRules.ts.
+ */
+export const DELEGABLE_HANDS: Readonly<Record<string, readonly string[]>> = {
+  reply_support_ticket: ["support"],
+  apply_refund: ["support"],
+  send_email: ["retention", "outbound_seam"],
+};
+
+/** Every role a grant may name. */
+export const GRANTABLE_SOURCE_ROLES: readonly string[] = [...new Set(Object.values(DELEGABLE_HANDS).flat())];
+
+/** True when `handName` drafted by `sourceRole` may ever be grant-released. Pure. */
+export function isDelegableDraft(handName: string, sourceRole: string | null | undefined): boolean {
+  if (!sourceRole) return false;
+  const roles = Object.prototype.hasOwnProperty.call(DELEGABLE_HANDS, handName) ? DELEGABLE_HANDS[handName] : undefined;
+  return !!roles && roles.includes(sourceRole);
+}
 
 /**
  * Decide whether `grant` authorizes `req` at instant `nowMs`. Pure + total +
@@ -96,6 +138,22 @@ export function evaluateWitnessGrant(grant: WitnessGrant, req: WitnessRequest, n
   if (!(grant.usedCount < grant.bounds.maxActions)) return DENY("grant action budget exhausted");
 
   if (!grant.bounds.domains.includes(req.domain)) return DENY(`domain "${req.domain}" not in grant`);
+
+  // The hand + drafting-role bounds. Both are allowlists that fail closed:
+  // a hand or role the grant does not NAME is not covered, a draft with no
+  // role is never covered, and a (hand, role) pair outside DELEGABLE_HANDS —
+  // the role tools' own rules about who may draft what — is never covered
+  // whatever a grant names.
+  if (!Array.isArray(grant.bounds.hands) || !grant.bounds.hands.includes(req.handName)) {
+    return DENY(`hand "${req.handName}" not in grant`);
+  }
+  if (!req.sourceRole) return DENY("draft has no source role — only a founder tap releases it");
+  if (!Array.isArray(grant.bounds.sourceRoles) || !grant.bounds.sourceRoles.includes(req.sourceRole)) {
+    return DENY(`source role "${req.sourceRole}" not in grant`);
+  }
+  if (!isDelegableDraft(req.handName, req.sourceRole)) {
+    return DENY(`${req.handName} drafted by ${req.sourceRole} is never grant-released`);
+  }
 
   // The permanent >$500 spend hard-stop binds ABOVE any grant: a founder-issued
   // grant whose maxCostUsd exceeds the hard-stop cannot authorize a spend past

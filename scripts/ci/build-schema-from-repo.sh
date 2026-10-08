@@ -55,8 +55,12 @@
 #   7. `npx tsx tests/db/soleneSensesOnBuiltSchema.ts` — Solene's senses
 #      (escalations, DSARs, stalled activation, dunning, legal asks, the loop
 #      heartbeat) and the panic-stop abort path read and write real columns.
+#   8. `npx tsx tests/db/soleneStage2OnBuiltSchema.ts` — the founder's
+#      mechanical controls (ad switch, domain pause), the ask fold, the
+#      one-confirm panic-stop restore, the Support reply hand and the ops
+#      watch's one-incident-per-outage read and write real columns.
 #
-# Steps 2-7 are the verdict; any of them failing fails the job.
+# Steps 2-8 are the verdict; any of them failing fails the job.
 #
 # Requires: DATABASE_URL, and psql (present on ubuntu-latest runners).
 # ============================================================================
@@ -82,7 +86,7 @@ if [[ "$VECTOR_OK" != "1" ]]; then
   echo "[build-schema]   it (pgvector/pgvector:pg16) rather than allowlisting the table."
 fi
 
-echo "[build-schema] 1/7 applying $(ls "$MIGRATIONS_DIR"/*.sql | wc -l) file(s) from migrations/"
+echo "[build-schema] 1/8 applying $(ls "$MIGRATIONS_DIR"/*.sql | wc -l) file(s) from migrations/"
 # LC_ALL=C: byte order, so the apply order of same-ordinal files (two 0003s,
 # three 0081s, …) is the same on every machine and locale (DEFECT-0051).
 for f in $(ls "$MIGRATIONS_DIR"/*.sql | LC_ALL=C sort); do
@@ -99,39 +103,45 @@ if [[ "$ERRORS" -gt 0 ]]; then
   grep 'ERROR:' "$LOG" | head -10 | sed 's/^/    /'
 fi
 
-echo "[build-schema] 2/7 node scripts/migrate.mjs   (the Fly release_command)"
+echo "[build-schema] 2/8 node scripts/migrate.mjs   (the Fly release_command)"
 if ! node scripts/migrate.mjs; then
   echo "[build-schema] FAIL — the release_command itself does not survive a database built from this repo." >&2
   exit 1
 fi
 
-echo "[build-schema] 3/7 node scripts/migrate.mjs --dry-run"
+echo "[build-schema] 3/8 node scripts/migrate.mjs --dry-run"
 if ! node scripts/migrate.mjs --dry-run; then
   echo "[build-schema] FAIL — statements that would not apply to the schema this repo just built." >&2
   exit 1
 fi
 
-echo "[build-schema] 4/7 npx tsx scripts/check-db-column-mirror.ts"
+echo "[build-schema] 4/8 npx tsx scripts/check-db-column-mirror.ts"
 if ! npx tsx scripts/check-db-column-mirror.ts; then
   echo "[build-schema] FAIL — shared/schema.ts declares tables or columns this repository cannot create." >&2
   exit 1
 fi
 
-echo "[build-schema] 5/7 npx tsx tests/db/paymentsInsertOnBuiltSchema.ts"
+echo "[build-schema] 5/8 npx tsx tests/db/paymentsInsertOnBuiltSchema.ts"
 if ! npx tsx tests/db/paymentsInsertOnBuiltSchema.ts; then
   echo "[build-schema] FAIL — the schema this repository builds cannot record a payment." >&2
   exit 1
 fi
 
-echo "[build-schema] 6/7 npx tsx tests/db/soleneDispatchEnqueueOnBuiltSchema.ts"
+echo "[build-schema] 6/8 npx tsx tests/db/soleneDispatchEnqueueOnBuiltSchema.ts"
 if ! npx tsx tests/db/soleneDispatchEnqueueOnBuiltSchema.ts; then
   echo "[build-schema] FAIL — the schema this repository builds cannot take a keyed Solene enqueue." >&2
   exit 1
 fi
 
-echo "[build-schema] 7/7 npx tsx tests/db/soleneSensesOnBuiltSchema.ts"
+echo "[build-schema] 7/8 npx tsx tests/db/soleneSensesOnBuiltSchema.ts"
 if ! npx tsx tests/db/soleneSensesOnBuiltSchema.ts; then
   echo "[build-schema] FAIL — Solene's senses or abort path do not read/write the schema this repository builds." >&2
+  exit 1
+fi
+
+echo "[build-schema] 8/8 npx tsx tests/db/soleneStage2OnBuiltSchema.ts"
+if ! npx tsx tests/db/soleneStage2OnBuiltSchema.ts; then
+  echo "[build-schema] FAIL — Stage 2's founder controls, ask fold, restore, reply hand or ops watch do not read/write the schema this repository builds." >&2
   exit 1
 fi
 

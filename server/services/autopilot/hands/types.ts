@@ -46,6 +46,15 @@ export interface HandContext {
   causeAllocation?: import("../proofReceipt").CauseAllocation | null;
   /** Hash of the situation/senses the decision was made under, if known. */
   situationHash?: string | null;
+  /**
+   * Present when a WitnessGrant (not a founder tap) released this execution.
+   * sourceRole is read from the frozen row. executeHandWitnessed re-checks the
+   * delegated-release rules against it; hands with delegated-only rules
+   * (send_email's owner-only recipient) read it.
+   */
+  delegation?: { grantId: string; sourceRole: string | null };
+  /** Who witnessed the execution (set by executeHandWitnessed). */
+  witnessedBy?: string;
 }
 
 export type HandHandler = (

@@ -82,6 +82,26 @@ export interface RankedMove {
  * Rank the candidate moves from the current senses. Deterministic + total —
  * always returns at least one move (optimize) so the loop never idles blindly.
  */
+/**
+ * Moves whose rationale THIS module authored from structured senses (no
+ * model-written words). Identity-based: a model cannot mint one, and any copy
+ * or rewrite of a move ({ ...m, rationale }) is not one. The record also pins
+ * the text, so a mutated rationale stops counting.
+ */
+const SERVER_AUTHORED = new WeakMap<object, string>();
+const authoredKey = (m: RankedMove) => `${m.kind}\u0000${m.domain}\u0000${m.rationale}`;
+
+/** Record a move as server-authored. Only server code that wrote its rationale calls this. */
+export function markServerAuthored<M extends RankedMove>(m: M): M {
+  SERVER_AUTHORED.set(m, authoredKey(m));
+  return m;
+}
+
+/** True only for an unmodified move a server-side author marked. Pure. */
+export function isServerAuthored(m: RankedMove): boolean {
+  return SERVER_AUTHORED.get(m) === authoredKey(m);
+}
+
 export function rankMoves(s: DecisionSenses): RankedMove[] {
   const moves: RankedMove[] = [];
 
@@ -161,7 +181,7 @@ export function rankMoves(s: DecisionSenses): RankedMove[] {
   // P5 — OPTIMIZE. The always-available default so the loop is total.
   moves.push({ priority: 5, domain: "ops", kind: "optimize", rationale: "Nothing urgent — improve a system, tighten a playbook, or reduce cost." });
 
-  return moves.sort((a, b) => a.priority - b.priority);
+  return moves.map(markServerAuthored).sort((a, b) => a.priority - b.priority);
 }
 
 /** The single highest-value move right now. */

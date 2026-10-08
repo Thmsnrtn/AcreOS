@@ -56,6 +56,9 @@ export function AnswerAskDialog({ ask, onClose, onSubmitted }: AnswerAskDialogPr
         {
           answerText: input.answerText,
           chosenOptionId: input.chosenOptionId,
+          // The version of the card on screen: the server refuses an answer
+          // to a card that changed since it was shown.
+          expectedBodyHash: ask?.bodyHash ?? undefined,
         },
       );
       if (!res.ok) {

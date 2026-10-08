@@ -1809,6 +1809,12 @@ export const creditTransactions = pgTable("credit_transactions", {
 }, (table) => [
   // Prevents double-granting monthly allowances under concurrent execution (DEFECT-0007)
   uniqueIndex("credit_txn_allowance_month_org_uniq").on(table.organizationId, table.allowanceMonth),
+  // A purchase is refunded at most ONCE by the apply_refund hand: its
+  // 'purchase_refund' row (the credits taken back) is the claim, and a second
+  // claim on the same payment fails here under any concurrency (migration 0264).
+  uniqueIndex("credit_txn_purchase_refund_pi_uniq")
+    .on(table.stripePaymentIntentId)
+    .where(sql`type = 'purchase_refund'`),
 ]);
 
 // Lens 3 (Pricing Coherence) — cache of the per-org current-month pool
@@ -9652,6 +9658,23 @@ export const autopilotSettings = pgTable("autopilot_settings", {
   // null → env SELF_PATCH_ENABLED fallback (OFF). Flipping it is a Control
   // Center tap, not a Fly secret + redeploy.
   selfPatchEnabled: boolean("self_patch_enabled"),
+  // Stage 2 (migration 0263) — founder pause controls the tick and the hands
+  // obey MECHANICALLY (not instruction-level like standing orders):
+  //   paused_domains: domains whose moves are suppressed and whose queued
+  //     dispatches were cancelled ("pause growth"). null/[] → none paused.
+  //   ads_enabled: the ad-spend switch. false → run_ad_campaign refuses and
+  //     pending ad actions are rejected ("stop spending money on ads"). null →
+  //     not set (ads are still bounded by the hand's own ceiling + a tap).
+  pausedDomains: jsonb("paused_domains").$type<string[]>(),
+  adsEnabled: boolean("ads_enabled"),
+  // What a panic stop switched off, recorded AT the stop so a resume can put
+  // it back as ONE founder confirm (S10). null → nothing recorded to restore.
+  preStopSnapshot: jsonb("pre_stop_snapshot").$type<{
+    at: string;
+    by: string;
+    switches: { dispatchEnabled: boolean; publishEnabled: boolean; cognitionEnabled: boolean };
+    levels: Record<string, string>;
+  }>(),
   updatedAt: timestamp("updated_at").defaultNow(),
   updatedBy: text("updated_by"),
 });
@@ -9785,6 +9808,12 @@ export const autopilotPendingActions = pgTable("autopilot_pending_actions", {
   summary: text("summary"),
   /** The dispatch that drafted this, for the glass-box trace. */
   sourceDispatchId: integer("source_dispatch_id"),
+  /**
+   * Which role worker (or seam) drafted it — set by server code, never by a
+   * model. NULL means nothing a WitnessGrant may release: a coding dispatch or
+   * the chat drafted it, so only a founder tap sends it (migration 0264).
+   */
+  sourceRole: text("source_role"),
   status: text("status").notNull().default("pending"), // pending | approved | rejected | executed | expired
   expiresAt: timestamp("expires_at"),
   approvedBy: text("approved_by"),

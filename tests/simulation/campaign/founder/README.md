@@ -15,6 +15,8 @@ played by local stand-ins. Nothing here talks to a real provider.
 | `s01-zero-customers.ts` | S1 (+S13): zero customers, 30 days, founder absent. Variants `dispatch` / `all-on` / `fixed-digest`. |
 | `s02-05-customer-events.ts` | S2 activation stall, S3 support tickets, S4 dunning, S5 churn. |
 | `s06-14-founder-events.ts` | S6 trusting founder, S7 absent founder, S8 outages, S9 adversarial model, S10 panic stop, S11 dispatch execution, S12 AI spend, S14 legal/compliance intake. |
+| `s01-team.ts` | Stage 2 gate (S1+S3+S11): 30 days, zero paying customers, the founder's one-time setup (`simkit.founderOneTimeSetup`: switches, trust levels, two bounded witness grants) then absent; role workers on realistic scripted answers; a trial signup's five tickets on day 2; an empty Writer answer injected on day 20. Records: content published through the publish gate, ticket handling with the $50 ceiling, no hard-stop crossed, the empty result counted as a failure. |
+| `roleScripts.ts` | Stage 2: deterministic, realistic scripted model answers for the role workers (articles that clear the publish gate — checked before they are served — and correct support handling), served by the stand-in's `canned:` mode extended with `sequence` (by assistant turn) and `cases` (by a substring of the first user message). |
 | `founder-walk.ts` | Part B: the four founder doors on iPhone + desktop viewports — visible text, screenshot, word count, jargon hits, controls < 44px. |
 | `b-chat.ts` | Part B: three plain-English requests through Solene chat and the steer box (stand-in in `script` mode — plumbing only). |
 | `ledger-table.ts` | Part C: `autonomy-ledger.jsonl` → `autonomy-ledger.md` (event × outcome × minutes, smallest fix, weekly mix vs the 24-minute target). |
@@ -44,6 +46,13 @@ reaches the app): the sim env template, then `DATABASE_URL=…/acreos_founder`,
    - `b-chat.ts`
 4. Walk (after S1, S6, S7, against the state that scenario left): `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers SIM_BASE_URL=http://localhost:5187 FOUNDER_SIM_OUT=<dir> npx tsx founder-walk.ts after-s1`
 5. Ledger: `FOUNDER_SIM_OUT=<dir> npx tsx ledger-table.ts`
+
+Stage 2 notes: any database named `acreos_founder`, `acreos_founder_<x>` or
+`acreos_b2` is accepted (one per concurrent sim). The baseline world now has
+Stripe UP (`PROVIDERS_UP` mocks `stripe.com`; world-shim answers refunds and
+the balance probe in Stripe's shape), so an outage is something a scenario
+does. The role workers are recognised by the first line of their system
+prompt, `AcreOS role worker — <Role>`.
 
 Scenarios share one database and must run one at a time. Two AcreOS servers
 must never share a port (the app binds with `reusePort: true`, so a second

@@ -107,6 +107,17 @@ export interface InductionDeps {
  * hasn't been proposed before, fire one calm founder ask + record the proposal.
  * Returns how many proposals were fired. Best-effort, never throws.
  */
+/**
+ * The card summary of a policy proposal. The PLAY names it: asks fold by
+ * summary, so two distinct trust proposals (two plays in one domain) must
+ * never share one. Pure.
+ */
+export function policyProposalSummary(kind: string, domain: string, playId: string): string {
+  return kind === "stop_play"
+    ? `Stop running the "${playId}" play?`
+    : `Trust the ${domain} domain to act more on its own? (play "${playId}")`;
+}
+
 export async function runPolicyInduction(domain: string, deps: InductionDeps): Promise<number> {
   let fired = 0;
   try {
@@ -125,9 +136,7 @@ export async function runPolicyInduction(domain: string, deps: InductionDeps): P
       const isStop = proposal.kind === "stop_play";
       const { askId } = await deps.ask({
         askingAgentRole: "general-purpose",
-        questionSummary: isStop
-          ? `Stop running the "${playId}" play?`
-          : `Trust the ${domain} domain to act more on its own?`,
+        questionSummary: policyProposalSummary(proposal.kind, domain, playId),
         questionBody: isStop
           ? `I've ${proposal.reason} for the "${playId}" play. Want me to stop proposing it? (Yes writes a standing order you can remove anytime.)`
           : `The "${playId}" play has ${proposal.reason}. Want me to grant the ${domain} domain its next autonomy level? (Yes promotes it one rung; you can pause it anytime.)`,

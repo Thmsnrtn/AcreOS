@@ -43,7 +43,15 @@ function deps(over: Partial<ActDeps> = {}): ActDeps {
 describe("autopilot act() — judgment routed through governance", () => {
   it("maps each move to the right domain + customer-facing flag", () => {
     expect(moveToPolicyAction(move({ kind: "resolve_incident" })).domain).toBe("deploy");
-    expect(moveToPolicyAction(move({ kind: "clear_support_backlog" })).isCustomerFacing).toBe(true);
+    // Stage 2: clear_support_backlog runs the Support role worker, whose every
+    // customer-facing effect is a frozen hand witnessed ONE BY ONE — so the
+    // move layer no longer adds a second, blanket tap. The binding still says
+    // truthfully that the move reaches customers; a net-new move is still
+    // witnessed at the move layer.
+    expect(bindingFor("clear_support_backlog").isCustomerFacing).toBe(true);
+    expect(bindingFor("clear_support_backlog").effectsGatedPerAction).toBe(true);
+    expect(moveToPolicyAction(move({ kind: "clear_support_backlog" })).isCustomerFacing).toBe(false);
+    expect(moveToPolicyAction(move({ kind: "clear_support_backlog", isNetNew: true })).isCustomerFacing).toBe(true);
     expect(moveToPolicyAction(move({ kind: "grow_owned_channels" })).isCustomerFacing).toBe(false);
     // unknown move falls back to the MAXIMALLY-RISKY default (T0.2 fail-closed):
     // customer-facing (→ witnessed-send) + irreversible — never the cheap tier.

@@ -129,7 +129,12 @@ export function detectDrift(
   const findings: DriftFinding[] = [];
   let bypass = 0;
   for (const e of experiences) {
-    if (e.outcome === "acted" && bindingFor(e.moveKind).isCustomerFacing) bypass += 1;
+    // Stage 2: a role-worker move (effectsGatedPerAction) acting is NOT a
+    // bypass — it only drafts, and each customer-facing effect freezes for its
+    // own witness at the hand. Every other customer-facing move still must
+    // never auto-run.
+    const b = bindingFor(e.moveKind);
+    if (e.outcome === "acted" && b.isCustomerFacing && b.effectsGatedPerAction !== true) bypass += 1;
   }
   if (bypass > 0) {
     findings.push({

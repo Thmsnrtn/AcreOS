@@ -500,6 +500,19 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
     );
   }
 
+  // Stage 2 (S8) — the Ops watch: every provider the business depends on
+  // (model, email, Stripe) is read each tick; an outage opens ONE incident and
+  // pages the founder ONCE, recovery closes it. Deterministic, no model call.
+  try {
+    const { runOpsWatch } = await import("../autopilot/opsWatch");
+    const ops = await runOpsWatch();
+    if (ops.opened.length || ops.resolved.length) {
+      logger.warn("[continuousLoop] tick: ops incidents changed", { metadata: { opened: ops.opened, resolved: ops.resolved, paged: ops.paged } });
+    }
+  } catch (err) {
+    logger.warn("[continuousLoop] tick: ops watch failed", err instanceof Error ? err : undefined);
+  }
+
   // Scan recent dispatches for flagged/failed terminal states. The
   // remediation-dispatch enqueue path is owned by Solene's reviewer
   // queue (codeReviewQueue); we only increment the scanned counter
@@ -752,7 +765,8 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           if (apiKey) {
             try {
               const OpenAImod = (await import("openai")).default;
-              const client = new OpenAImod({ apiKey, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL });
+              const { AUTOPILOT_MODEL_CLIENT_OPTS } = await import("../autopilot/operator");
+              const client = new OpenAImod({ apiKey, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, ...AUTOPILOT_MODEL_CLIENT_OPTS });
               const { tracedLlmCall } = await import("../tracedLlmCall");
               const { OPENAI_DIRECT_MODELS, openAiModelIdFor } = await import("../models");
               // The default is named for whichever provider
@@ -848,6 +862,23 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
               }
             }
           } catch { /* operator best-effort — deterministic ranking stands */ }
+          // S9 — every hard-stop proposal among the moves under consideration
+          // (an Operator net-new move need not rank first to exist) is held
+          // AND surfaced to the founder, and removed so it can never act.
+          try {
+            const { holdAndSurfaceHardStops } = await import("../autopilot/hardStopMoves");
+            const { bindingFor } = await import("../autopilot/act");
+            const { remaining, held } = await holdAndSurfaceHardStops(effectiveMoves, async (a) =>
+              askFounder({ askingAgentRole: bindingFor("unknown").agentRole, ...a, answerFormat: "yes_no", urgency: "normal" }),
+            );
+            if (held.length > 0) {
+              asksFiredToFounder += held.length;
+              logger.warn("[continuousLoop] tick: held + surfaced hard-stop proposal(s)", { metadata: { held } });
+              if (remaining.length > 0) effectiveMoves = remaining;
+            }
+          } catch (hsErr) {
+            logger.warn("[continuousLoop] tick: hard-stop screen failed", hsErr instanceof Error ? hsErr : undefined);
+          }
           try {
             const { shouldDeliberate, runCouncilPanel } = await import("../autopilot/deliberate");
             if (callModel && shouldDeliberate(effectiveMoves)) {
@@ -875,6 +906,24 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           }
 
           let actMove = effectiveMoves[0] ?? plannedTopMove;
+          // Stage 2 — the founder's mechanical controls: a paused domain / ads
+          // switched off removes those moves from consideration (the next
+          // unblocked move acts instead); planAndAct re-checks as a backstop.
+          let controlState: import("../autopilot/founderControls").ControlState | null = null;
+          try {
+            const { getControlState, firstWorkableMove } = await import("../autopilot/founderControls");
+            controlState = await getControlState();
+            // Stage 2: a move already WAITING on the founder (an open ask names
+            // it) does not hold the tick hostage. Before this, one stalled
+            // signup made unblock_activation the top move forever; every tick
+            // re-raised the same ask and growth never ran again. The question
+            // stays open (the ladder re-pages it); the loop works the next move.
+            const { listOpenAsks } = await import("./founderCollab");
+            const pick = firstWorkableMove(effectiveMoves, controlState, (await listOpenAsks()).map((a) => a.questionSummary));
+            if (pick) actMove = pick;
+          } catch (ctlErr) {
+            logger.warn("[continuousLoop] tick: founder controls read failed", ctlErr instanceof Error ? ctlErr : undefined);
+          }
           // The play this action runs (for the Experience Log / efficacy model);
           // null for moves without a play (e.g. optimize).
           let selectedPlayId: string | null = null;
@@ -887,7 +936,8 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
           if (actMove.kind === "clear_support_backlog") {
             try {
               const { supportPlayRationale } = await import("../autopilot/supportPlaybook");
-              actMove = { ...actMove, rationale: supportPlayRationale(supportBacklog) };
+              // Server-authored (a fixed template over a count): still eligible for the chat allow-list.
+              actMove = (await import("../autopilot/decide")).markServerAuthored({ ...actMove, rationale: supportPlayRationale(supportBacklog) });
               selectedPlayId = "support-triage";
             } catch (sErr) {
               logger.warn(
@@ -958,7 +1008,8 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                   selectedGrowthTarget = { id: target.id, countyLabel: target.countyLabel, state: target.state };
                 }
               }
-              actMove = { ...actMove, rationale: growthPlayRationale(play, focus) };
+              // Server-authored (a fixed play template over the focus data).
+              actMove = (await import("../autopilot/decide")).markServerAuthored({ ...actMove, rationale: growthPlayRationale(play, focus) });
               const picked = stats.find((s) => s.playId === play.id);
               logger.info("[continuousLoop] tick: growth play selected (efficacy-weighted)", {
                 play: play.id,
@@ -1093,6 +1144,22 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
             );
           }
 
+          // Stage 2: the Writer's only output is a publish, capped per day. Do
+          // not dispatch (and pay for) an article the cap would refuse, and do
+          // not stack a second Writer run on one already queued/running.
+          if (!budgetDeferReason && actMove.kind === "grow_owned_channels") {
+            try {
+              const { publishRoomToday } = await import("../autopilot/publishArtifact");
+              const room = await publishRoomToday();
+              if (!room.room) budgetDeferReason = room.reason;
+              else {
+                const { listDispatches } = await import("./dispatchQueue");
+                const live = [...(await listDispatches({ status: "queued", limit: 50 })), ...(await listDispatches({ status: "in_progress", limit: 50 }))];
+                if (live.some((d) => d.queue.sourceId === "autopilot:grow_owned_channels")) budgetDeferReason = "a Writer run is already queued";
+              }
+            } catch { /* quota read is best-effort; the publish gate still caps */ }
+          }
+
           const { simulateMove, renderSimulation } = await import("../autopilot/simulate");
           // Panel #2 — exactly-once seal: a deterministic effect-key so a
           // concurrent tick (lock-TTL lapse) or retry dedups this dispatch
@@ -1123,6 +1190,11 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                 const r = await askFounder(input);
                 return { askId: r.askId };
               },
+              blockedByControls: async (m) => {
+                if (!controlState) return null;
+                const { moveBlockedByControls } = await import("../autopilot/founderControls");
+                return moveBlockedByControls(m, controlState);
+              },
               // Honest counterfactual + history-grounded forecast on any ask.
               simulate: (m) => {
                 const sim = renderSimulation(
@@ -1140,6 +1212,15 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                 const { assessRisk, shouldEscalateForRisk } = await import("../autopilot/riskautonomy");
                 const { bindingFor } = await import("../autopilot/act");
                 const b = bindingFor(m.kind);
+                // Stage 2: a role-worker move only DRAFTS — every outward effect
+                // is gated one by one at the effect (a frozen hand awaiting a
+                // witness, or the publish gate under the founder's publish
+                // switch). The risk at THIS step is the drafting run itself:
+                // bounded cost, nothing leaves. Novelty/irreversibility belong
+                // to the effects, which are each gated where they happen.
+                if (b.effectsGatedPerAction && !m.isNetNew) {
+                  return { tier: "low" as const, reasons: ["it only drafts; every outward effect is witnessed or gated one at a time"] };
+                }
                 const a = assessRisk({
                   reversible: b.reversible, // T0.2: the real reversibility, not a customer-facing proxy
                   customerFacing: b.isCustomerFacing,

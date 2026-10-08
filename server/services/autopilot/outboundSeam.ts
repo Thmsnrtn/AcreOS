@@ -121,6 +121,10 @@ export async function proposeGovernedEmail(
     handName: "send_email",
     args,
     domain: input.domain ?? null,
+    // The governed seam is a named drafter: a grant may release its system
+    // mail only when it names "outbound_seam" (and only to the org's owner,
+    // re-checked at execution — delegationRules.ts).
+    sourceRole: "outbound_seam",
     // The canonical approval-card line (recipient · amount · recurrence).
     summary: `${input.source}: ${summarizePendingHand("send_email", args, { movesMoney: false })}`,
   });
