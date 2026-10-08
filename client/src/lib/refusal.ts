@@ -14,12 +14,7 @@
  * keeps its "slow down" copy, because for a rate limit that is the truth.
  */
 
-import {
-  PLAN_LIMIT_REACHED,
-  planLimitTitle,
-  tierDisplayName,
-  type PlanLimitDetails,
-} from "@shared/billing/plan-limit-copy";
+import { PLAN_LIMIT_REACHED } from "@shared/billing/plan-limit-code";
 
 export interface RefusalView {
   title: string;
@@ -56,14 +51,14 @@ export function refusalFromBody(body: unknown): RefusalView | null {
   const details = isObject(body.details) ? body.details : {};
 
   if (body.error === PLAN_LIMIT_REACHED) {
-    const d = details as Partial<PlanLimitDetails>;
-    const hasShape = typeof d.resourceType === "string" && typeof d.currentTier === "string";
+    const title = typeof details.title === "string" && details.title ? details.title : "Plan limit reached";
+    const nextTierName = typeof details.nextTierName === "string" && details.nextTierName ? details.nextTierName : null;
     return {
-      title: hasShape ? planLimitTitle(d as PlanLimitDetails) : "Plan limit reached",
+      title,
       description: body.message,
       action: {
-        label: d.nextTier ? `See ${tierDisplayName(d.nextTier)}` : "See plans",
-        href: safeHref(d.upgradeUrl),
+        label: nextTierName ? `See ${nextTierName}` : "See plans",
+        href: safeHref(details.upgradeUrl),
       },
     };
   }

@@ -28,8 +28,7 @@ import {
 } from "./tier-limits";
 import { TIER_PRICES_CENTS, type Tier } from "./tier-pricing";
 
-/** The `error` code of every plan-limit refusal. Distinct from `LIMIT_EXCEEDED`. */
-export const PLAN_LIMIT_REACHED = "PLAN_LIMIT_REACHED" as const;
+export { PLAN_LIMIT_REACHED } from "./plan-limit-code";
 
 /**
  * `details` payload of a plan-limit refusal. The field set is the one the
@@ -47,6 +46,9 @@ export interface PlanLimitDetails {
   nextTierLimit: number | null;
   nextTierMonthlyPriceCents: number | null;
   upgradeUrl: string;
+  /** Display copy computed server-side, so the client needs no plan tables. */
+  title: string;
+  nextTierName: string | null;
 }
 
 interface ResourceNoun {
@@ -106,6 +108,8 @@ export function planLimitDetails(input: {
     nextTierLimit: nextLimits ? (nextLimits[input.resourceType] ?? null) : null,
     nextTierMonthlyPriceCents: nextPricing?.priceMonthlyCents ?? null,
     upgradeUrl: target ? `/settings#billing?tier=${target}` : "/settings#billing",
+    title: planLimitTitle({ resourceType: input.resourceType, currentTier: input.tier }),
+    nextTierName: target ? tierDisplayName(target) : null,
   };
 }
 
@@ -146,7 +150,7 @@ export function planLimitMessage(d: PlanLimitDetails): string {
 }
 
 /** Short heading for the refusal: "Lead limit reached on Free". */
-export function planLimitTitle(d: Pick<PlanLimitDetails, "resourceType" | "currentTier">): string {
+function planLimitTitle(d: Pick<PlanLimitDetails, "resourceType" | "currentTier">): string {
   const noun = RESOURCE_NOUNS[d.resourceType] ?? { singular: "usage", plural: "usage", monthly: false };
   return `${capitalize(noun.singular)} limit reached on ${tierDisplayName(d.currentTier)}`;
 }

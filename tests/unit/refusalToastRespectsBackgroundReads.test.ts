@@ -24,7 +24,17 @@ const PLAN_BODY = {
   error: "PLAN_LIMIT_REACHED",
   message: "You've reached 50 leads on Free. Starter allows 250 leads.",
   statusCode: 429,
-  details: { resourceType: "leads", currentTier: "free", nextTier: "starter", upgradeUrl: "/settings#billing?tier=starter" },
+  // The server supplies the title and next plan's name (planLimitDetails);
+  // the client renders them as sent, so the title asserted below must be the
+  // one in this payload — not one the client recomputes.
+  details: {
+    resourceType: "leads",
+    currentTier: "free",
+    nextTier: "starter",
+    upgradeUrl: "/settings#billing?tier=starter",
+    title: "Lead limit reached on Free",
+    nextTierName: "Starter",
+  },
 };
 
 type Handler = (error: unknown, query?: unknown) => void;
@@ -46,6 +56,13 @@ describe("refusal toasts", () => {
     expect(T.toasts).toHaveLength(1);
     expect(T.toasts[0].title).toBe("Lead limit reached on Free");
     expect(T.toasts[0].description).toBe(PLAN_BODY.message);
+  });
+
+  it("the toast title is the one the server sent, not a client recomputation", () => {
+    const body = { ...PLAN_BODY, details: { ...PLAN_BODY.details, title: "Server-chosen heading", nextTierName: "Pro" } };
+    onQueryError(new ApiError(429, body.message, body as never), { meta: {} });
+    expect(T.toasts).toHaveLength(1);
+    expect(T.toasts[0].title).toBe("Server-chosen heading");
   });
 
   it("a background read stays silent, refusal or not", () => {

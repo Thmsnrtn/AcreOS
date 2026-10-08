@@ -6,7 +6,7 @@
  * fall back to free-text matching when no status is available.
  */
 
-import { PLAN_LIMIT_REACHED } from "@shared/billing/plan-limit-copy";
+import { PLAN_LIMIT_REACHED } from "@shared/billing/plan-limit-code";
 
 export type ErrorKind =
   | "unauthorized"

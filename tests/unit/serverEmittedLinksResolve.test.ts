@@ -211,8 +211,13 @@ describe("no server-emitted link points at a route a flag can hide", () => {
     const at = src.indexOf("export function FlaggedRoute(");
     expect(at, "FlaggedRoute is gone").toBeGreaterThan(-1);
     const body = src.slice(at, src.indexOf("\n}", at));
-    expect(body).toMatch(/if \(!isRouteEnabled\(route\)\) return <FeatureNotAvailable \/>;/);
-    expect(body, "the off branch renders the page").not.toMatch(/if \(!isRouteEnabled\(route\)\) return <Component/);
+    // The off branch: `if (!isRouteEnabled(route)) { … }` (or a one-line return).
+    const off = /if \(!isRouteEnabled\(route\)\)\s*(\{[\s\S]*?\n  \}|return [^;]*;)/.exec(body);
+    expect(off, "no off-flag branch found in FlaggedRoute").toBeTruthy();
+    expect(off![1], "the off branch does not render the not-available view").toMatch(/<FeatureNotAvailable\s*\/>/);
+    expect(off![1], "the off branch renders the page").not.toMatch(/<Component\b/);
+    // …and that view is the lazily loaded not-available module, not the page.
+    expect(src).toMatch(/const FeatureNotAvailable = lazy\(\(\) => import\("\.\/flagged-route-unavailable"\)\)/);
     expect(stripComments(app), "App.tsx no longer takes FlaggedRoute from its component module").toContain(
       'import { FlaggedRoute } from "@/components/flagged-route";',
     );

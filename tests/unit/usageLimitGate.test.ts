@@ -113,6 +113,9 @@ describe("usageLimitGate", () => {
       nextTierLimit: TIER_LIMITS.starter.leads,
       nextTierMonthlyPriceCents: TIER_PRICES_CENTS.starter.priceMonthlyCents,
       upgradeUrl: "/settings#billing?tier=starter",
+      // Display copy computed server-side so the client needs no plan tables.
+      title: "Lead limit reached on Free",
+      nextTierName: TIER_PRICES_CENTS.starter.displayName,
     });
   });
 

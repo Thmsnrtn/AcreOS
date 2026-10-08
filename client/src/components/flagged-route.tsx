@@ -14,31 +14,15 @@
  * is still not the thing the link promised.
  */
 
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import { Redirect } from "wouter";
-import { Clock } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { RouteFallback } from "@/components/route-fallback";
-import { EmptyState } from "@/components/empty-state";
-import { PageShell } from "@/components/page-shell";
-import { useDocumentTitle } from "@/hooks/use-document-title";
 
-function FeatureNotAvailable() {
-  useDocumentTitle("Not available");
-  return (
-    <PageShell label="Not available">
-      <EmptyState
-        icon={Clock}
-        headline="This feature isn't available"
-        subtitle="Everything else in AcreOS works as usual — pick up where you left off on Today."
-        cta={{ label: "Go to Today", href: "/today", "data-testid": "flagged-route-go-today" }}
-        actionIcon={null}
-        testId="flagged-route-unavailable"
-      />
-    </PageShell>
-  );
-}
+// The not-available view loads on demand: FlaggedRoute is in the entry
+// bundle, and the view is only needed when a flag is off.
+const FeatureNotAvailable = lazy(() => import("./flagged-route-unavailable"));
 
 export function FlaggedRoute({ route, component: Component }: { route: string; component: React.ComponentType }) {
   const { user, isLoading: authLoading } = useAuth();
@@ -49,6 +33,12 @@ export function FlaggedRoute({ route, component: Component }: { route: string; c
   }
 
   if (!user) return <Redirect to="/auth" />;
-  if (!isRouteEnabled(route)) return <FeatureNotAvailable />;
+  if (!isRouteEnabled(route)) {
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        <FeatureNotAvailable />
+      </Suspense>
+    );
+  }
   return <Component />;
 }

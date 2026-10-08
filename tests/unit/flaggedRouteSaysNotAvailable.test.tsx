@@ -68,10 +68,27 @@ async function render() {
   });
 }
 
+/**
+ * The not-available view is React.lazy-loaded (it stays out of the entry
+ * bundle), so the first paint is the Suspense fallback. Wait for the real
+ * view — bounded, so a view that never arrives fails rather than hangs.
+ */
+async function findByTestId(id: string, timeoutMs = 5000): Promise<Element | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const el = container.querySelector(`[data-testid="${id}"]`);
+    if (el) return el;
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+  }
+  return null;
+}
+
 describe("FlaggedRoute", () => {
   it("flag off: a neutral EmptyState saying the feature isn't available — not Not Found, not the page", async () => {
     await render();
-    const state = container.querySelector('[data-testid="flagged-route-unavailable"]');
+    const state = await findByTestId("flagged-route-unavailable");
     expect(state, "the not-available state did not render").not.toBeNull();
     expect(state!.textContent).toContain("This feature isn't available");
     // Read per element: textContent runs the headline into the subtitle
@@ -93,7 +110,7 @@ describe("FlaggedRoute", () => {
 
   it("flag off: the call to action goes back to Today", async () => {
     await render();
-    const cta = container.querySelector('[data-testid="flagged-route-go-today"]') as HTMLAnchorElement | null;
+    const cta = (await findByTestId("flagged-route-go-today")) as HTMLAnchorElement | null;
     expect(cta, "no call to action").not.toBeNull();
     expect(cta!.getAttribute("href")).toBe("/today");
   });
