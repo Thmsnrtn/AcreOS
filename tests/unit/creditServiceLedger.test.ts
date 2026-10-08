@@ -22,11 +22,10 @@
  *     - founder orgs bypass: zero-amount row tagged founderBypass, no
  *       balance touch, no transaction wrapper.
  *
- *   applyMonthlyAllowance (DEFECT-0007)
- *     - the (organization_id, allowance_month) unique index is the
- *       double-grant lock: on conflict the balance bump is explicitly
- *       reversed inside the same transaction and the call returns null;
- *     - an unknown tier grants nothing.
+ *   monthly allowance (was DEFECT-0007's double-grant lock)
+ *     - the grant was removed (it paid out SUBSCRIPTION_TIERS.monthlyCredits,
+ *       above the tier creditPool); pinned as absent here, gated semantically
+ *       by creditGrantPathsAreBounded.test.ts.
  *
  *   hasEnoughCredits (FRAUD-011, slice 4)
  *     - the org's own balance pays first and is never limited by the trial
@@ -223,32 +222,29 @@ describe("deductCredits inside a caller's transaction (audit of 1694a0b)", () =>
   });
 });
 
-describe("applyMonthlyAllowance — DEFECT-0007 double-grant lock", () => {
-  it("grants once: balance bump + allowance row keyed to the current month", async () => {
-    const row = await creditService.applyMonthlyAllowance(7, "free");
-    expect(row).not.toBeNull();
-    expect(state.txUpdateCalls).toBe(1); // bump only — no reversal
-    expect(state.txInsertValues[0]).toMatchObject({
-      type: "monthly_allowance",
-      amountCents: 100, // free tier's monthlyCredits from the REAL tier table
-      allowanceMonth: new Date().toISOString().slice(0, 7),
-    });
+// DEFECT-0007 pinned the double-grant lock of applyMonthlyAllowance. The
+// grant itself is gone (2026-10 cost efficiency): it credited
+// SUBSCRIPTION_TIERS.monthlyCredits — $250/mo on the $79 Scale plan, ~3x that
+// tier's whole creditPool — and had zero production callers. The invariant this
+// block protected ("an org never ends up with more allowance than the plan
+// grants") now holds by construction: no monthly grant exists. The NEW truth is
+// pinned here; the semantic gate (any grant path, under any name) lives in
+// creditGrantPathsAreBounded.test.ts.
+describe("monthly allowance grant — removed (was DEFECT-0007's double-grant lock)", () => {
+  it("neither credit service exposes a monthly-allowance grant", () => {
+    expect((creditService as any).applyMonthlyAllowance).toBeUndefined();
+    expect((usageMeteringService as any).applyMonthlyAllowance).toBeUndefined();
+    expect((usageMeteringService as any).processMonthlyAllowances).toBeUndefined();
   });
 
-  it("on the unique-index conflict, REVERSES the balance bump and returns null", async () => {
-    state.allowanceConflict = true; // another instance already granted this month
-    const row = await creditService.applyMonthlyAllowance(7, "free");
-    expect(row).toBeNull();
-    // Two updates inside the same transaction: the bump, then the explicit
-    // reversal — the org must NOT keep a double allowance.
-    expect(state.txUpdateCalls).toBe(2);
-    expect(state.txCount).toBe(1);
-  });
-
-  it("an unknown tier grants nothing", async () => {
-    const row = await creditService.applyMonthlyAllowance(7, "bogus" as any);
-    expect(row).toBeNull();
-    expect(state.txCount).toBe(0);
+  it("no CreditService/UsageMeteringService method credits a balance with no caller-supplied amount", () => {
+    // A tier grant derives its amount from the tier, so it takes no amount
+    // argument. Every remaining balance-increasing method is driven by an
+    // explicit, caller-supplied amount or a paid pack id.
+    const methods = (o: object) =>
+      Object.getOwnPropertyNames(Object.getPrototypeOf(o)).filter((n) => /monthly|grant/i.test(n));
+    expect(methods(creditService)).toEqual([]);
+    expect(methods(usageMeteringService)).toEqual([]);
   });
 });
 

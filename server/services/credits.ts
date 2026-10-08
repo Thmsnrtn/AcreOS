@@ -8,7 +8,6 @@ import {
   usageRates,
   USAGE_ACTION_TYPES,
   CREDIT_PACKS,
-  SUBSCRIPTION_TIERS,
   type CreditTransaction,
   type InsertCreditTransaction,
   type UsageRecord,
@@ -16,7 +15,6 @@ import {
   type UsageRate,
   type UsageActionType,
   type CreditPackId,
-  type SubscriptionTier,
 } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
@@ -330,63 +328,6 @@ export class CreditService {
     });
   }
 
-  async applyMonthlyAllowance(organizationId: number, tier: SubscriptionTier): Promise<CreditTransaction | null> {
-    const tierConfig = SUBSCRIPTION_TIERS[tier];
-    if (!tierConfig || !tierConfig.limits.monthlyCredits) {
-      return null;
-    }
-
-    const allowance = tierConfig.limits.monthlyCredits;
-    const currentMonth = clock.now().toISOString().slice(0, 7);
-
-    // DEFECT-0007: Use atomic INSERT ... ON CONFLICT DO NOTHING on the
-    // (organization_id, allowance_month) unique index to prevent double-granting
-    // when concurrent instances both attempt to apply the same month's allowance.
-    return await withTransaction(async (tx) => {
-      // Atomically update credit balance
-      const [updated] = await tx
-        .update(organizations)
-        .set({
-          creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${allowance}`
-        })
-        .where(eq(organizations.id, organizationId))
-        .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
-
-      const newBalance = updated?.newBalance || allowance;
-
-      // Try to insert the allowance record — if the unique constraint on
-      // (organization_id, allowance_month) conflicts, no row is returned
-      // and we know another instance already granted this month's allowance.
-      const result = await tx
-        .insert(creditTransactions)
-        .values({
-          organizationId,
-          type: "monthly_allowance",
-          amountCents: allowance,
-          balanceAfterCents: newBalance,
-          description: `Monthly credit allowance for ${tierConfig.name} plan`,
-          allowanceMonth: currentMonth,
-          metadata: { month: currentMonth },
-        })
-        .onConflictDoNothing()
-        .returning();
-
-      if (result.length === 0) {
-        // Conflict — allowance already granted this month. Roll back the balance
-        // update by reversing it (the entire transaction will handle this correctly
-        // since we're in a withTransaction block, but we explicitly undo to be safe).
-        await tx
-          .update(organizations)
-          .set({
-            creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric - ${allowance}`
-          })
-          .where(eq(organizations.id, organizationId));
-        return null;
-      }
-
-      return result[0];
-    });
-  }
 }
 
 export class UsageMeteringService {
@@ -755,99 +696,15 @@ export class UsageMeteringService {
     }
   }
 
-  // Apply monthly tier allowance to organization
-  // DEFECT-0007: Uses atomic INSERT ... ON CONFLICT DO NOTHING on the
-  // (organization_id, allowance_month) unique index to prevent double-granting.
-  async applyMonthlyAllowance(organizationId: number): Promise<CreditTransaction | null> {
-    const org = await db.query.organizations.findFirst({
-      where: eq(organizations.id, organizationId),
-    });
-
-    if (!org) return null;
-
-    const tier = (org.subscriptionTier || 'free') as SubscriptionTier;
-    const tierInfo = SUBSCRIPTION_TIERS[tier];
-    const monthlyCredits = tierInfo?.limits?.monthlyCredits || 0;
-
-    if (!tierInfo || monthlyCredits <= 0) {
-      return null;
-    }
-
-    const currentMonth = clock.now().toISOString().slice(0, 7);
-
-    return await withTransaction(async (tx) => {
-      // Update credit balance first
-      const [updated] = await tx
-        .update(organizations)
-        .set({
-          creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${monthlyCredits}`
-        })
-        .where(eq(organizations.id, organizationId))
-        .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
-
-      // Atomically try to insert the allowance record.
-      // The unique index on (organization_id, allowance_month) prevents duplicates.
-      const result = await tx
-        .insert(creditTransactions)
-        .values({
-          organizationId,
-          type: 'allowance',
-          amountCents: monthlyCredits,
-          balanceAfterCents: updated?.newBalance || monthlyCredits,
-          description: `Monthly ${tierInfo.name} tier allowance`,
-          allowanceMonth: currentMonth,
-          metadata: {
-            tier,
-            month: currentMonth,
-          },
-        })
-        .onConflictDoNothing()
-        .returning();
-
-      if (result.length === 0) {
-        // Conflict — allowance already granted this month. Reverse balance update.
-        await tx
-          .update(organizations)
-          .set({
-            creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric - ${monthlyCredits}`
-          })
-          .where(eq(organizations.id, organizationId));
-        logger.info(`Monthly allowance already applied for org ${organizationId} in ${currentMonth}, skipping`);
-        return null;
-      }
-
-      logger.info(`Applied monthly allowance: Org ${organizationId}, Tier ${tier}, Amount: $${(monthlyCredits / 100).toFixed(2)}`);
-      return result[0];
-    });
-  }
-
-  // Process all organizations for monthly allowance (called at billing cycle)
-  async processMonthlyAllowances(): Promise<{ processed: number; failed: number }> {
-    let processed = 0;
-    let failed = 0;
-
-    // Get all paid organizations
-    const paidOrgs = await db
-      .select()
-      .from(organizations)
-      .where(
-        sql`${organizations.subscriptionTier} IN ('starter', 'pro', 'scale') 
-            AND ${organizations.subscriptionStatus} = 'active'`
-      );
-
-    for (const org of paidOrgs) {
-      try {
-        await this.applyMonthlyAllowance(org.id);
-        processed++;
-      } catch (err) {
-        logger.error(`Failed to apply monthly allowance for org ${org.id}`, err);
-        failed++;
-      }
-    }
-
-    logger.info(`Monthly allowances processed: ${processed} success, ${failed} failed`);
-    return { processed, failed };
-  }
+  // A monthly "tier allowance" grant used to live here (and a sibling on
+  // CreditService): it credited SUBSCRIPTION_TIERS[tier].limits.monthlyCredits
+  // to the purchased-credit wallet for every active paid org — $250/mo on the
+  // $79 Scale plan, ~3x that tier's whole 8,000-credit pool, on the platform's
+  // dime. It had zero production callers and was removed (2026-10 cost
+  // efficiency) rather than left one wiring away from live. The plan's included
+  // usage is the tier creditPool (shared/billing/tier-limits.ts), drawn by
+  // creditPool.poolDebit — there is no second, larger grant.
+  // creditGrantPathsAreBounded.test.ts fails if any grant path returns.
 
   // Update auto-top-up settings for an organization
   async updateAutoTopUpSettings(
