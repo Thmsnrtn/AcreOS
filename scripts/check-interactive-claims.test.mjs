@@ -6,7 +6,7 @@
 // and the end-to-end CLI invocation with stdin staged-files protocol.
 // ============================================================================
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   mkdtempSync,
   rmSync,
@@ -24,6 +24,13 @@ import {
   loadActiveLocks,
   matchesPattern,
 } from "./check-interactive-claims.mjs";
+import { REPO_SWEEP_TIMEOUT_MS } from "../tests/helpers/sweepBudget";
+
+// This gate runs a script that walks the source tree, in a child process;
+// its cost scales with the repo, and under load it does not fit the
+// suite's 30s default. A killed gate reports nothing about what it guards,
+// so the budget is declared, not inherited.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPT_PATH = resolve(__dirname, "check-interactive-claims.mjs");

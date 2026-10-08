@@ -20,8 +20,9 @@ import {
   generateCSV,
   type AuthSession,
 } from "./helpers";
+import { simBaseUrl } from "./target";
 
-const BASE_URL = process.env.SIM_BASE_URL ?? "http://localhost:5000";
+const BASE_URL = simBaseUrl();
 
 // ── Health check ───────────────────────────────────────────────────────────
 

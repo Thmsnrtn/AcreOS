@@ -13,12 +13,14 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import {
+  assertSession,
   createAuthenticatedSession,
   apiCall,
   type AuthSession,
 } from "./helpers";
+import { simBaseUrl } from "./target";
 
-const BASE_URL = process.env.SIM_BASE_URL ?? "http://localhost:5000";
+const BASE_URL = simBaseUrl();
 
 /**
  * Calculate expected monthly payment using standard amortization formula.
@@ -57,9 +59,10 @@ describe("Note Nerd Nathan — API Simulation", () => {
   beforeAll(async () => {
     try {
       session = await createAuthenticatedSession("noteInvestor");
-    } catch {
-      // If auth fails (no running server), skip with a clear message
-      console.warn("[sim] Could not authenticate — is the test server running?");
+    } catch (err) {
+      // Rethrown, not warned: with no session every test below would return
+      // before asserting anything and read as a pass.
+      throw err;
     }
   }, 30_000);
 
@@ -70,27 +73,22 @@ describe("Note Nerd Nathan — API Simulation", () => {
       const cfg = noteConfigs[i];
 
       it(`creates note ${i + 1}: ${cfg.label}`, async () => {
-        if (!session) return;
-
-        const payment = calculateMonthlyPayment(cfg.principal, cfg.rate, cfg.term);
+        assertSession(session);
 
         const res = await apiCall("POST", "/api/notes", {
           borrowerName: `Borrower ${i + 1}`,
           borrowerEmail: `borrower-nathan-${i + 1}@sim-test.com`,
-          originalBalance: cfg.principal,
-          currentBalance: cfg.principal,
-          interestRate: cfg.rate,
+          // Money is decimal dollars as strings, and the monthly payment is
+          // computed by the server, never taken from the client.
+          originalPrincipal: (cfg.principal / 100).toFixed(2),
+          currentBalance: (cfg.principal / 100).toFixed(2),
+          interestRate: cfg.rate.toFixed(2),
           termMonths: cfg.term,
-          monthlyPayment: payment,
           startDate: "2026-01-01",
-          status: "performing",
         }, session);
 
-        if (res.status === 201 || res.status === 200) {
-          createdNoteIds.push(res.body.id ?? res.body.noteId);
-        }
-
-        expect(res.status).toBeLessThan(500);
+        expect([200, 201], `note creation answered ${res.status}`).toContain(res.status);
+        createdNoteIds.push(res.body.id ?? res.body.noteId);
       });
     }
   });
@@ -99,7 +97,8 @@ describe("Note Nerd Nathan — API Simulation", () => {
 
   describe("Amortization schedules are mathematically correct", () => {
     it("generates schedule for first note and verifies math", async () => {
-      if (!session || createdNoteIds.length === 0) return;
+      assertSession(session);
+      expect(createdNoteIds.length, "no note was created, so there is nothing to check").toBeGreaterThan(0);
 
       const noteId = createdNoteIds[0];
       const cfg = noteConfigs[0];
@@ -122,7 +121,7 @@ describe("Note Nerd Nathan — API Simulation", () => {
         session,
       );
 
-      if (schedRes.status !== 200) return;
+      expect(schedRes.status, "schedRes did not answer 200, so nothing below was checked").toBe(200);
 
       const schedule = schedRes.body.schedule ?? schedRes.body;
 
@@ -134,14 +133,16 @@ describe("Note Nerd Nathan — API Simulation", () => {
         // Payment amount should be within rounding tolerance
         const paymentAmount = firstPayment.payment ?? firstPayment.totalPayment ?? firstPayment.monthlyPayment;
         if (paymentAmount) {
-          expect(Math.abs(paymentAmount - expectedPayment)).toBeLessThan(200); // $2 tolerance
+          // The schedule is in dollars (decimal strings or numbers); the
+          // expectation is in cents.
+          expect(Math.abs(Number(paymentAmount) * 100 - expectedPayment)).toBeLessThan(200); // $2 tolerance
         }
 
         // Last payment should bring balance to ~$0
         const lastPayment = schedule[schedule.length - 1];
         const endingBalance = lastPayment.endingBalance ?? lastPayment.balance ?? lastPayment.remainingBalance;
         if (endingBalance !== undefined) {
-          expect(Math.abs(endingBalance)).toBeLessThan(100); // Within $1 of zero
+          expect(Math.abs(Number(endingBalance))).toBeLessThan(1); // Within $1 of zero (dollars)
         }
 
         // Total interest should be positive
@@ -154,7 +155,8 @@ describe("Note Nerd Nathan — API Simulation", () => {
     });
 
     it("verifies schedule length matches term months", async () => {
-      if (!session || createdNoteIds.length === 0) return;
+      assertSession(session);
+      expect(createdNoteIds.length, "no note was created, so there is nothing to check").toBeGreaterThan(0);
 
       const noteId = createdNoteIds[0];
       const cfg = noteConfigs[0];
@@ -174,13 +176,14 @@ describe("Note Nerd Nathan — API Simulation", () => {
 
   describe("Payment recording", () => {
     it("records a payment and reduces currentBalance", async () => {
-      if (!session || createdNoteIds.length === 0) return;
+      assertSession(session);
+      expect(createdNoteIds.length, "no note was created, so there is nothing to check").toBeGreaterThan(0);
 
       const noteId = createdNoteIds[0];
 
       // Get current balance before payment
       const beforeRes = await apiCall("GET", `/api/notes/${noteId}`, undefined, session);
-      if (beforeRes.status !== 200) return;
+      expect(beforeRes.status, "beforeRes did not answer 200, so nothing below was checked").toBe(200);
 
       const balanceBefore = beforeRes.body.currentBalance;
 
@@ -201,7 +204,7 @@ describe("Note Nerd Nathan — API Simulation", () => {
         if (afterRes.status === 200 && balanceBefore) {
           const balanceAfter = afterRes.body.currentBalance;
           if (balanceAfter !== undefined && balanceBefore !== undefined) {
-            expect(balanceAfter).toBeLessThanOrEqual(balanceBefore);
+            expect(Number(balanceAfter)).toBeLessThanOrEqual(Number(balanceBefore));
           }
         }
       }
@@ -212,7 +215,8 @@ describe("Note Nerd Nathan — API Simulation", () => {
 
   describe("Dunning state transitions", () => {
     it("dunning endpoint responds correctly", async () => {
-      if (!session || createdNoteIds.length < 2) return;
+      assertSession(session);
+      expect(createdNoteIds.length, "fewer than two notes were created").toBeGreaterThanOrEqual(2);
 
       const noteId = createdNoteIds[1]; // Use second note
 
@@ -242,7 +246,8 @@ describe("Note Nerd Nathan — API Simulation", () => {
 
   describe("Payoff quote calculation", () => {
     it("generates payoff quote with correct structure", async () => {
-      if (!session || createdNoteIds.length === 0) return;
+      assertSession(session);
+      expect(createdNoteIds.length, "no note was created, so there is nothing to check").toBeGreaterThan(0);
 
       const noteId = createdNoteIds[0];
 
@@ -254,7 +259,7 @@ describe("Note Nerd Nathan — API Simulation", () => {
         const note = noteRes.body;
         // Payoff amount should be at least the current balance
         if (note.currentBalance) {
-          expect(note.currentBalance).toBeGreaterThan(0);
+          expect(Number(note.currentBalance)).toBeGreaterThan(0);
         }
       }
     });
@@ -264,7 +269,7 @@ describe("Note Nerd Nathan — API Simulation", () => {
 
   describe("Portfolio health dashboard", () => {
     it("portfolio summary returns aggregate stats", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const res = await apiCall("GET", "/api/finance/portfolio-summary", undefined, session);
       expect(res.status).toBeLessThan(500);
@@ -285,14 +290,14 @@ describe("Note Nerd Nathan — API Simulation", () => {
     });
 
     it("delinquency endpoint responds", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const res = await apiCall("GET", "/api/finance/delinquency", undefined, session);
       expect(res.status).toBeLessThan(500);
     });
 
     it("finance health endpoint responds", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const res = await apiCall("GET", "/api/finance/health", undefined, session);
       expect(res.status).toBeLessThan(500);
@@ -303,7 +308,7 @@ describe("Note Nerd Nathan — API Simulation", () => {
 
   describe("Notes listing and individual retrieval", () => {
     it("GET /api/notes returns all created notes", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const res = await apiCall("GET", "/api/notes", undefined, session);
       expect(res.status).toBeLessThan(500);
@@ -315,7 +320,8 @@ describe("Note Nerd Nathan — API Simulation", () => {
     });
 
     it("each note is retrievable by ID", async () => {
-      if (!session || createdNoteIds.length === 0) return;
+      assertSession(session);
+      expect(createdNoteIds.length, "no note was created, so there is nothing to check").toBeGreaterThan(0);
 
       for (const noteId of createdNoteIds.slice(0, 3)) {
         const res = await apiCall("GET", `/api/notes/${noteId}`, undefined, session);

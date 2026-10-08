@@ -7,9 +7,11 @@
 
 import type { PersonaDefinition, PersonaKey } from "./personas";
 import { PERSONAS } from "./personas";
+import { simBaseUrl } from "./target";
 
 // ── Configuration ──────────────────────────────────────────────────────────
-const BASE_URL = process.env.SIM_BASE_URL ?? "http://localhost:5000";
+// Resolved once, through the one rule for where the suite may point.
+const BASE_URL = simBaseUrl();
 const CSRF_COOKIE_NAME = "csrf_token";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -41,52 +43,62 @@ export interface TimingStats {
 // ── Session Management ─────────────────────────────────────────────────────
 
 /**
- * Sign up a persona, complete onboarding, and return an authenticated session.
- * Works against a running AcreOS instance (docker-compose.test.yml).
+ * The test-auth identity a simulation persona claims.
+ *
+ * AcreOS authenticates through Clerk; there is no password signup or login
+ * endpoint. This helper used to POST to `/api/auth/signup` and
+ * `/api/auth/login` — routes that do not exist — and returned a session with
+ * an empty cookie whatever they answered. Every test then ran
+ * unauthenticated, and a test asserting "not a 500" passed on the 401. The
+ * session is now the E2E test-auth identity (server/auth/testAuth.ts, active
+ * only with E2E_TEST_AUTH=1 off Fly), and it is VERIFIED before it is returned.
+ */
+export function simPersonaSlug(personaKey: PersonaKey): string {
+  return `sim-${personaKey.toLowerCase()}`;
+}
+
+/**
+ * Claim a persona's test-auth identity, prove it is authenticated, and return
+ * the session. Throws — never returns a partial session — when the server does
+ * not accept the identity, so a suite cannot pass without having signed in.
+ * The persona's user row must exist (vitest.simulation.config.ts's global
+ * setup seeds it when a database URL is given).
  */
 export async function createAuthenticatedSession(
   personaKey: PersonaKey,
 ): Promise<AuthSession> {
   const persona = PERSONAS[personaKey];
-  const { email, password, name } = persona;
+  const sessionCookie = `__session=e2e-persona-${simPersonaSlug(personaKey)}`;
 
-  // 1. Sign up
-  const signupRes = await rawFetch("POST", "/api/auth/signup", {
-    email,
-    password,
-    name,
-  });
+  const meRes = await rawFetch("GET", "/api/auth/user", undefined, { cookie: sessionCookie, csrfToken: "" });
+  if (meRes.status !== 200 || !meRes.body?.id) {
+    throw new Error(
+      `[sim] ${personaKey}: GET /api/auth/user answered ${meRes.status} — the test-auth identity was not ` +
+        "accepted. Start the server with E2E_TEST_AUTH=1 and seed the persona users " +
+        "(SIM_DATABASE_URL=… for the global setup).",
+    );
+  }
 
-  // If already exists, try logging in
-  const loginRes =
-    signupRes.status === 201 || signupRes.status === 200
-      ? signupRes
-      : await rawFetch("POST", "/api/auth/login", { email, password });
+  // A safe request under /api issues the double-submit CSRF cookie, and
+  // GET /api/organization provisions the persona's org on first contact.
+  const orgRes = await rawFetch("GET", "/api/organization", undefined, { cookie: sessionCookie, csrfToken: "" });
+  const csrfToken = extractCsrf(orgRes.headers) || extractCsrf(meRes.headers);
+  const orgId = orgRes.body?.id;
+  if (orgRes.status !== 200 || typeof orgId !== "number" || !csrfToken) {
+    throw new Error(
+      `[sim] ${personaKey}: GET /api/organization answered ${orgRes.status} ` +
+        `(org id ${String(orgId)}, csrf ${csrfToken ? "issued" : "missing"}) — no usable session.`,
+    );
+  }
 
-  const cookie = extractSetCookie(loginRes.headers);
-  const csrfToken = extractCsrf(loginRes.headers);
+  return { cookie: `${sessionCookie}; csrf_token=${csrfToken}`, csrfToken, persona, orgId };
+}
 
-  // 2. Complete onboarding
-  await rawFetch(
-    "POST",
-    "/api/onboarding/complete",
-    {
-      orgName: `${name}'s Org`,
-      goals: ["land_flipping"],
-      targetAcreage: 100,
-      targetBudgetCents: 50000_00,
-    },
-    { cookie, csrfToken },
-  );
-
-  // 3. Get org id
-  const meRes = await rawFetch("GET", "/api/auth/user", undefined, {
-    cookie,
-    csrfToken,
-  });
-  const orgId = meRes.body?.organizationId ?? meRes.body?.orgId;
-
-  return { cookie, csrfToken, persona, orgId };
+/** A test that needs a session fails without one; it never returns early as a pass. */
+export function assertSession(session: AuthSession | undefined): asserts session is AuthSession {
+  if (!session?.cookie || typeof session.orgId !== "number") {
+    throw new Error("[sim] no authenticated session — this test cannot run, and does not pass by returning");
+  }
 }
 
 // ── API Call Wrapper ───────────────────────────────────────────────────────
@@ -286,11 +298,6 @@ async function rawFetch(
   }
 
   return { status: res.status, body: resBody, headers: res.headers };
-}
-
-function extractSetCookie(headers: Headers): string {
-  const setCookies = headers.getSetCookie?.() ?? [];
-  return setCookies.join("; ");
 }
 
 function extractCsrf(headers: Headers): string {

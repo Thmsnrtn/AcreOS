@@ -201,10 +201,10 @@ export function registerPlatformFeatureRoutes(app: Express): void {
 
       // Store tokens (simplified — in prod, exchange code for tokens via Intuit OAuth)
       await db.execute(sql`
-        INSERT INTO organization_integrations (organization_id, provider, credentials, is_active, created_at)
+        INSERT INTO organization_integrations (organization_id, provider, credentials, is_enabled, created_at)
         VALUES (${org.id}, 'quickbooks', ${JSON.stringify({ code, realmId, connectedAt: new Date().toISOString() })}, true, NOW())
         ON CONFLICT (organization_id, provider) DO UPDATE SET
-          credentials = EXCLUDED.credentials, is_active = true
+          credentials = EXCLUDED.credentials, is_enabled = true
       `);
 
       res.redirect("/settings/integrations?connected=quickbooks");
@@ -367,10 +367,10 @@ export function registerPlatformFeatureRoutes(app: Express): void {
       }
 
       await db.execute(sql`
-        INSERT INTO organization_integrations (organization_id, provider, credentials, is_active, created_at)
+        INSERT INTO organization_integrations (organization_id, provider, credentials, is_enabled, created_at)
         VALUES (${org.id}, 'google', ${JSON.stringify(tokens)}, true, NOW())
         ON CONFLICT (organization_id, provider) DO UPDATE SET
-          credentials = EXCLUDED.credentials, is_active = true
+          credentials = EXCLUDED.credentials, is_enabled = true
       `);
 
       res.redirect("/settings/integrations?connected=google");

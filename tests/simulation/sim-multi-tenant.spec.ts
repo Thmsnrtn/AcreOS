@@ -9,11 +9,23 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import {
+  assertSession,
   createAuthenticatedSession,
   apiCall,
   assertOrgIsolation,
   type AuthSession,
 } from "./helpers";
+
+/**
+ * A list body as an array. A shape this does not recognise throws: reading it
+ * as an empty list would make every "no leaked ids" assertion below true.
+ */
+function listOf(body: any, key: string): any[] {
+  if (Array.isArray(body)) return body;
+  if (Array.isArray(body?.[key])) return body[key];
+  if (Array.isArray(body?.data)) return body.data;
+  throw new Error(`[sim] unrecognised list shape (no array, no "${key}"): ${JSON.stringify(body).slice(0, 120)}`);
+}
 
 describe("Multi-Tenant Isolation — Security Simulation", () => {
   let orgA: AuthSession; // Elaine (pro tier)
@@ -32,8 +44,10 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
     try {
       orgA = await createAuthenticatedSession("enterpriseManager");
       orgB = await createAuthenticatedSession("firstTimer");
-    } catch {
-      console.warn("[sim] Could not authenticate — is the test server running?");
+    } catch (err) {
+      // Rethrown, not warned: an isolation suite that could not sign in two
+      // tenants has checked nothing, and every test below would read as a pass.
+      throw err;
     }
   }, 30_000);
 
@@ -41,7 +55,7 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
 
   describe("Seed Org A entities", () => {
     it("creates leads for Org A", async () => {
-      if (!orgA) return;
+      assertSession(orgA);
 
       for (let i = 0; i < 3; i++) {
         const res = await apiCall("POST", "/api/leads", {
@@ -61,68 +75,68 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
     });
 
     it("creates deals for Org A", async () => {
-      if (!orgA) return;
+      assertSession(orgA);
 
+      // A deal belongs to a property, so each one gets its own.
       for (let i = 0; i < 2; i++) {
+        const prop = await apiCall("POST", "/api/properties", {
+          apn: `SIM-ELAINE-DEAL-${i}-${Date.now()}`,
+          address: `${200 + i} Elaine Way`,
+          county: "Mohave",
+          state: "AZ",
+          sizeAcres: "10",
+        }, orgA);
+        expect([200, 201], `property for deal ${i} answered ${prop.status}`).toContain(prop.status);
+
         const res = await apiCall("POST", "/api/deals", {
-          name: `Elaine Deal ${i}`,
-          stage: "negotiation",
-          offerAmount: (10000 + i * 5000) * 100,
+          propertyId: prop.body.id,
+          type: "acquisition",
+          status: "negotiation",
+          offerAmount: String(10000 + i * 5000),
         }, orgA);
 
-        if (res.status === 201 || res.status === 200) {
-          const id = res.body.id ?? res.body.dealId;
-          if (id) orgAEntities.deals.push(id);
-        }
-
-        expect(res.status).toBeLessThan(500);
+        // A seed that fails must fail here, not leave the isolation checks
+        // below with nothing to probe.
+        expect([200, 201], `deal ${i} answered ${res.status}`).toContain(res.status);
+        orgAEntities.deals.push(res.body.id ?? res.body.dealId);
       }
     });
 
     it("creates properties for Org A", async () => {
-      if (!orgA) return;
+      assertSession(orgA);
 
       const res = await apiCall("POST", "/api/properties", {
+        apn: `SIM-ELAINE-${Date.now()}`,
         address: "100 Elaine Blvd",
         county: "Mohave",
         state: "AZ",
-        acreage: 40,
-        askingPrice: 50000_00,
+        sizeAcres: "40",
       }, orgA);
 
-      if (res.status === 201 || res.status === 200) {
-        const id = res.body.id ?? res.body.propertyId;
-        if (id) orgAEntities.properties.push(id);
-      }
-
-      expect(res.status).toBeLessThan(500);
+      expect([200, 201], `property creation answered ${res.status}`).toContain(res.status);
+      orgAEntities.properties.push(res.body.id ?? res.body.propertyId);
     });
 
     it("creates notes for Org A", async () => {
-      if (!orgA) return;
+      assertSession(orgA);
 
       const res = await apiCall("POST", "/api/notes", {
         borrowerName: "Elaine Borrower",
         borrowerEmail: "elaine-borrower@sim-test.com",
-        originalBalance: 30000_00,
-        currentBalance: 30000_00,
-        interestRate: 9.0,
+        // Decimal dollars as strings; the server computes the payment.
+        originalPrincipal: "30000.00",
+        currentBalance: "30000.00",
+        interestRate: "9.00",
         termMonths: 60,
-        monthlyPayment: 622_75,
         startDate: "2026-01-01",
-        status: "performing",
       }, orgA);
 
-      if (res.status === 201 || res.status === 200) {
-        const id = res.body.id ?? res.body.noteId;
-        if (id) orgAEntities.notes.push(id);
-      }
-
-      expect(res.status).toBeLessThan(500);
+      expect([200, 201], `note creation answered ${res.status}`).toContain(res.status);
+      orgAEntities.notes.push(res.body.id ?? res.body.noteId);
     });
 
     it("creates campaigns for Org A", async () => {
-      if (!orgA) return;
+      assertSession(orgA);
 
       const res = await apiCall("POST", "/api/campaigns", {
         name: "Elaine's Secret Campaign",
@@ -143,7 +157,9 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
 
   describe("Org B cannot READ Org A's entities", () => {
     it("Org B cannot read Org A's leads", async () => {
-      if (!orgA || !orgB || orgAEntities.leads.length === 0) return;
+      assertSession(orgA);
+      assertSession(orgB);
+      expect(orgAEntities.leads.length, "Org A has no leads to probe — its seed step created none").toBeGreaterThan(0);
 
       for (const id of orgAEntities.leads) {
         const res = await apiCall("GET", `/api/leads/${id}`, undefined, orgB);
@@ -152,7 +168,9 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
     });
 
     it("Org B cannot read Org A's deals", async () => {
-      if (!orgA || !orgB || orgAEntities.deals.length === 0) return;
+      assertSession(orgA);
+      assertSession(orgB);
+      expect(orgAEntities.deals.length, "Org A has no deals to probe — its seed step created none").toBeGreaterThan(0);
 
       for (const id of orgAEntities.deals) {
         const res = await apiCall("GET", `/api/deals/${id}`, undefined, orgB);
@@ -161,7 +179,9 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
     });
 
     it("Org B cannot read Org A's properties", async () => {
-      if (!orgA || !orgB || orgAEntities.properties.length === 0) return;
+      assertSession(orgA);
+      assertSession(orgB);
+      expect(orgAEntities.properties.length, "Org A has no properties to probe — its seed step created none").toBeGreaterThan(0);
 
       for (const id of orgAEntities.properties) {
         const res = await apiCall("GET", `/api/properties/${id}`, undefined, orgB);
@@ -170,7 +190,9 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
     });
 
     it("Org B cannot read Org A's notes", async () => {
-      if (!orgA || !orgB || orgAEntities.notes.length === 0) return;
+      assertSession(orgA);
+      assertSession(orgB);
+      expect(orgAEntities.notes.length, "Org A has no notes to probe — its seed step created none").toBeGreaterThan(0);
 
       for (const id of orgAEntities.notes) {
         const res = await apiCall("GET", `/api/notes/${id}`, undefined, orgB);
@@ -179,7 +201,9 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
     });
 
     it("Org B cannot read Org A's campaigns", async () => {
-      if (!orgA || !orgB || orgAEntities.campaigns.length === 0) return;
+      assertSession(orgA);
+      assertSession(orgB);
+      expect(orgAEntities.campaigns.length, "Org A has no campaigns to probe — its seed step created none").toBeGreaterThan(0);
 
       for (const id of orgAEntities.campaigns) {
         const res = await apiCall("GET", `/api/campaigns/${id}`, undefined, orgB);
@@ -192,7 +216,9 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
 
   describe("Org B cannot UPDATE Org A's entities", () => {
     it("Org B cannot update Org A's leads", async () => {
-      if (!orgA || !orgB || orgAEntities.leads.length === 0) return;
+      assertSession(orgA);
+      assertSession(orgB);
+      expect(orgAEntities.leads.length, "Org A has no leads to probe — its seed step created none").toBeGreaterThan(0);
 
       const id = orgAEntities.leads[0];
       const res = await apiCall("PUT", `/api/leads/${id}`, {
@@ -209,7 +235,9 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
     });
 
     it("Org B cannot update Org A's deals", async () => {
-      if (!orgA || !orgB || orgAEntities.deals.length === 0) return;
+      assertSession(orgA);
+      assertSession(orgB);
+      expect(orgAEntities.deals.length, "Org A has no deals to probe — its seed step created none").toBeGreaterThan(0);
 
       const id = orgAEntities.deals[0];
       const res = await apiCall("PUT", `/api/deals/${id}`, {
@@ -220,7 +248,9 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
     });
 
     it("Org B cannot update Org A's properties", async () => {
-      if (!orgA || !orgB || orgAEntities.properties.length === 0) return;
+      assertSession(orgA);
+      assertSession(orgB);
+      expect(orgAEntities.properties.length, "Org A has no properties to probe — its seed step created none").toBeGreaterThan(0);
 
       const id = orgAEntities.properties[0];
       const res = await apiCall("PUT", `/api/properties/${id}`, {
@@ -231,7 +261,9 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
     });
 
     it("Org B cannot update Org A's notes", async () => {
-      if (!orgA || !orgB || orgAEntities.notes.length === 0) return;
+      assertSession(orgA);
+      assertSession(orgB);
+      expect(orgAEntities.notes.length, "Org A has no notes to probe — its seed step created none").toBeGreaterThan(0);
 
       const id = orgAEntities.notes[0];
       const res = await apiCall("PUT", `/api/notes/${id}`, {
@@ -246,7 +278,9 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
 
   describe("Org B cannot DELETE Org A's entities", () => {
     it("Org B cannot delete Org A's leads", async () => {
-      if (!orgA || !orgB || orgAEntities.leads.length === 0) return;
+      assertSession(orgA);
+      assertSession(orgB);
+      expect(orgAEntities.leads.length, "Org A has no leads to probe — its seed step created none").toBeGreaterThan(0);
 
       const id = orgAEntities.leads[0];
       const res = await apiCall("DELETE", `/api/leads/${id}`, undefined, orgB);
@@ -259,7 +293,9 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
     });
 
     it("Org B cannot delete Org A's deals", async () => {
-      if (!orgA || !orgB || orgAEntities.deals.length === 0) return;
+      assertSession(orgA);
+      assertSession(orgB);
+      expect(orgAEntities.deals.length, "Org A has no deals to probe — its seed step created none").toBeGreaterThan(0);
 
       const id = orgAEntities.deals[0];
       const res = await apiCall("DELETE", `/api/deals/${id}`, undefined, orgB);
@@ -268,7 +304,9 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
     });
 
     it("Org B cannot delete Org A's properties", async () => {
-      if (!orgA || !orgB || orgAEntities.properties.length === 0) return;
+      assertSession(orgA);
+      assertSession(orgB);
+      expect(orgAEntities.properties.length, "Org A has no properties to probe — its seed step created none").toBeGreaterThan(0);
 
       const id = orgAEntities.properties[0];
       const res = await apiCall("DELETE", `/api/properties/${id}`, undefined, orgB);
@@ -281,12 +319,13 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
 
   describe("Org B's list endpoints don't leak Org A data", () => {
     it("Org B's lead list does not contain Org A's leads", async () => {
-      if (!orgA || !orgB) return;
+      assertSession(orgA);
+      assertSession(orgB);
 
       const res = await apiCall("GET", "/api/leads", undefined, orgB);
-      if (res.status !== 200) return;
+      expect(res.status, "Org B could not read its own list, so nothing was checked").toBe(200);
 
-      const leads = Array.isArray(res.body) ? res.body : res.body.leads ?? [];
+      const leads = listOf(res.body, "leads");
       const leakedIds = leads
         .map((l: any) => l.id)
         .filter((id: number) => orgAEntities.leads.includes(id));
@@ -295,12 +334,13 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
     });
 
     it("Org B's deal list does not contain Org A's deals", async () => {
-      if (!orgA || !orgB) return;
+      assertSession(orgA);
+      assertSession(orgB);
 
       const res = await apiCall("GET", "/api/deals", undefined, orgB);
-      if (res.status !== 200) return;
+      expect(res.status, "Org B could not read its own list, so nothing was checked").toBe(200);
 
-      const deals = Array.isArray(res.body) ? res.body : res.body.deals ?? [];
+      const deals = listOf(res.body, "deals");
       const leakedIds = deals
         .map((d: any) => d.id)
         .filter((id: number) => orgAEntities.deals.includes(id));
@@ -309,12 +349,13 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
     });
 
     it("Org B's notes list does not contain Org A's notes", async () => {
-      if (!orgA || !orgB) return;
+      assertSession(orgA);
+      assertSession(orgB);
 
       const res = await apiCall("GET", "/api/notes", undefined, orgB);
-      if (res.status !== 200) return;
+      expect(res.status, "Org B could not read its own list, so nothing was checked").toBe(200);
 
-      const notes = Array.isArray(res.body) ? res.body : res.body.notes ?? [];
+      const notes = listOf(res.body, "notes");
       const leakedIds = notes
         .map((n: any) => n.id)
         .filter((id: number) => orgAEntities.notes.includes(id));
@@ -323,12 +364,13 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
     });
 
     it("Org B's campaign list does not contain Org A's campaigns", async () => {
-      if (!orgA || !orgB) return;
+      assertSession(orgA);
+      assertSession(orgB);
 
       const res = await apiCall("GET", "/api/campaigns", undefined, orgB);
-      if (res.status !== 200) return;
+      expect(res.status, "Org B could not read its own list, so nothing was checked").toBe(200);
 
-      const campaigns = Array.isArray(res.body) ? res.body : res.body.campaigns ?? [];
+      const campaigns = listOf(res.body, "campaigns");
       const leakedIds = campaigns
         .map((c: any) => c.id)
         .filter((id: number) => orgAEntities.campaigns.includes(id));
@@ -341,7 +383,9 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
 
   describe("Full CRUD isolation via assertOrgIsolation helper", () => {
     it("leads are fully isolated", async () => {
-      if (!orgA || !orgB || orgAEntities.leads.length === 0) return;
+      assertSession(orgA);
+      assertSession(orgB);
+      expect(orgAEntities.leads.length, "Org A has no leads to probe — its seed step created none").toBeGreaterThan(0);
 
       const violations = await assertOrgIsolation(
         orgA,
@@ -354,7 +398,9 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
     });
 
     it("deals are fully isolated", async () => {
-      if (!orgA || !orgB || orgAEntities.deals.length === 0) return;
+      assertSession(orgA);
+      assertSession(orgB);
+      expect(orgAEntities.deals.length, "Org A has no deals to probe — its seed step created none").toBeGreaterThan(0);
 
       const violations = await assertOrgIsolation(
         orgA,
@@ -367,7 +413,9 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
     });
 
     it("properties are fully isolated", async () => {
-      if (!orgA || !orgB || orgAEntities.properties.length === 0) return;
+      assertSession(orgA);
+      assertSession(orgB);
+      expect(orgAEntities.properties.length, "Org A has no properties to probe — its seed step created none").toBeGreaterThan(0);
 
       const violations = await assertOrgIsolation(
         orgA,
@@ -380,7 +428,9 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
     });
 
     it("notes are fully isolated", async () => {
-      if (!orgA || !orgB || orgAEntities.notes.length === 0) return;
+      assertSession(orgA);
+      assertSession(orgB);
+      expect(orgAEntities.notes.length, "Org A has no notes to probe — its seed step created none").toBeGreaterThan(0);
 
       const violations = await assertOrgIsolation(
         orgA,
@@ -397,7 +447,8 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
 
   describe("Billing state independence", () => {
     it("Org A and Org B have independent subscription data", async () => {
-      if (!orgA || !orgB) return;
+      assertSession(orgA);
+      assertSession(orgB);
 
       const orgAUser = await apiCall("GET", "/api/auth/user", undefined, orgA);
       const orgBUser = await apiCall("GET", "/api/auth/user", undefined, orgB);
@@ -405,15 +456,12 @@ describe("Multi-Tenant Isolation — Security Simulation", () => {
       expect(orgAUser.status).toBeLessThan(500);
       expect(orgBUser.status).toBeLessThan(500);
 
-      // They should be different users/orgs
-      if (orgAUser.status === 200 && orgBUser.status === 200) {
-        const orgAId = orgAUser.body.organizationId ?? orgAUser.body.orgId;
-        const orgBId = orgBUser.body.organizationId ?? orgBUser.body.orgId;
-
-        if (orgAId && orgBId) {
-          expect(orgAId).not.toBe(orgBId);
-        }
-      }
+      // They should be different users and different orgs. The org ids come
+      // from the sessions (GET /api/organization); /api/auth/user carries no
+      // organization id, so reading it there compared undefined to undefined
+      // and the assertion never ran.
+      expect(orgAUser.body.id).not.toBe(orgBUser.body.id);
+      expect(orgA.orgId).not.toBe(orgB.orgId);
     });
   });
 });

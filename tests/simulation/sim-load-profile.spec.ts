@@ -15,6 +15,7 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import {
+  assertSession,
   createAuthenticatedSession,
   apiCall,
   fireConcurrent,
@@ -23,8 +24,9 @@ import {
   type ApiCallResult,
   type TimingStats,
 } from "./helpers";
+import { simBaseUrl } from "./target";
 
-const BASE_URL = process.env.SIM_BASE_URL ?? "http://localhost:5000";
+const BASE_URL = simBaseUrl();
 
 // ── SLA Thresholds ────────────────────────────────────────────────────────
 const READ_SLA_MS = 5_000;
@@ -171,8 +173,10 @@ describe("Load Profile Simulation", () => {
         const id = res.body?.id ?? res.body?.leadId;
         if (id) createdLeadIds.push(id);
       }
-    } catch {
-      console.warn("[load-profile] Could not authenticate — is the test server running?");
+    } catch (err) {
+      // Rethrown, not warned: a suite that cannot authenticate has nothing to
+      // report, and every test below would otherwise read as a pass.
+      throw err;
     }
   }, 60_000);
 
@@ -182,7 +186,7 @@ describe("Load Profile Simulation", () => {
 
   describe("Concurrent Session Burst", () => {
     it(`handles ${CONCURRENT_SESSIONS} concurrent GET /api/leads requests without 500 errors`, async () => {
-      if (!session) return;
+      assertSession(session);
 
       const results = await fireConcurrent(
         CONCURRENT_SESSIONS,
@@ -207,7 +211,7 @@ describe("Load Profile Simulation", () => {
     }, 60_000);
 
     it(`handles ${CONCURRENT_SESSIONS} concurrent GET /api/properties requests without 500 errors`, async () => {
-      if (!session) return;
+      assertSession(session);
 
       const results = await fireConcurrent(
         CONCURRENT_SESSIONS,
@@ -223,7 +227,7 @@ describe("Load Profile Simulation", () => {
     }, 60_000);
 
     it(`handles ${CONCURRENT_SESSIONS} concurrent GET /api/deals requests without 500 errors`, async () => {
-      if (!session) return;
+      assertSession(session);
 
       const results = await fireConcurrent(
         CONCURRENT_SESSIONS,
@@ -245,7 +249,7 @@ describe("Load Profile Simulation", () => {
 
   describe("Mixed Read/Write Workload (70/20/10)", () => {
     it("fires mixed workload batch with zero 500 errors", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const workload = buildMixedWorkload(MIXED_BATCH_SIZE);
 
@@ -298,7 +302,7 @@ describe("Load Profile Simulation", () => {
     }, 60_000);
 
     it("fires 3 sequential mixed batches without cumulative degradation", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const batchTimings: TimingStats[] = [];
 
@@ -342,7 +346,7 @@ describe("Load Profile Simulation", () => {
 
     for (const endpoint of readEndpoints) {
       it(`${endpoint.name} p95 < ${READ_SLA_MS}ms under load`, async () => {
-        if (!session) return;
+        assertSession(session);
 
         const timing = await measureEndpointTiming(
           endpoint.method,
@@ -359,7 +363,7 @@ describe("Load Profile Simulation", () => {
     }
 
     it("POST /api/leads p95 < write SLA", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const durations: number[] = [];
       for (let i = 0; i < 10; i++) {
@@ -389,8 +393,8 @@ describe("Load Profile Simulation", () => {
     }, 30_000);
 
     it("PUT /api/leads/:id p95 < write SLA", async () => {
-      if (!session) return;
-      if (createdLeadIds.length === 0) return;
+      assertSession(session);
+      expect(createdLeadIds.length, "the seed leads were not created, so there is nothing to PUT").toBeGreaterThan(0);
 
       const durations: number[] = [];
       for (let i = 0; i < Math.min(10, createdLeadIds.length); i++) {
@@ -415,7 +419,7 @@ describe("Load Profile Simulation", () => {
     }, 30_000);
 
     it("POST /api/ai/chat p95 < AI SLA (or degrades gracefully)", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const durations: number[] = [];
       for (let i = 0; i < 5; i++) {
@@ -448,7 +452,7 @@ describe("Load Profile Simulation", () => {
 
   describe("Rate Limiting Activation", () => {
     it("triggers 429 under sustained burst of GET requests", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const results = await fireConcurrent(
         RATE_LIMIT_BURST,
@@ -479,7 +483,7 @@ describe("Load Profile Simulation", () => {
     }, 60_000);
 
     it("triggers 429 under sustained burst of POST /api/ai/chat requests", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const results = await fireConcurrent(
         50,
@@ -500,7 +504,7 @@ describe("Load Profile Simulation", () => {
     }, 60_000);
 
     it("triggers 429 under sustained burst of POST /api/leads requests", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const results = await fireConcurrent(
         RATE_LIMIT_BURST,
@@ -530,7 +534,7 @@ describe("Load Profile Simulation", () => {
 
   describe("Database Connection Pool Resilience", () => {
     it("handles rapid sequential requests across multiple endpoints without pool exhaustion", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const endpoints = [
         "/api/leads",
@@ -572,7 +576,7 @@ describe("Load Profile Simulation", () => {
     });
 
     it("recovers after a burst: authenticated read still works", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const res = await apiCall("GET", "/api/leads", undefined, session);
       // Should get 200 or at worst 429, never 500
@@ -588,7 +592,7 @@ describe("Load Profile Simulation", () => {
 
   describe("Autonomous Executor Background Jobs", () => {
     it("POST /api/ai/portfolio/scan does not 500 under concurrent foreground load", async () => {
-      if (!session) return;
+      assertSession(session);
 
       // Simulate background AI scan running alongside foreground reads
       const backgroundJob = apiCall(
@@ -622,7 +626,7 @@ describe("Load Profile Simulation", () => {
     }, 60_000);
 
     it("POST /api/ai/compliance/check does not 500 alongside foreground writes", async () => {
-      if (!session) return;
+      assertSession(session);
 
       // Simulate compliance background check
       const backgroundJob = apiCall(
@@ -659,7 +663,7 @@ describe("Load Profile Simulation", () => {
     }, 60_000);
 
     it("multiple background AI operations do not starve foreground requests", async () => {
-      if (!session) return;
+      assertSession(session);
 
       // Fire several AI background operations simultaneously
       const bgOps = [
@@ -700,7 +704,7 @@ describe("Load Profile Simulation", () => {
 
   describe("Sustained Load Endurance", () => {
     it("survives 5 waves of 50-request mixed workloads without cumulative failure", async () => {
-      if (!session) return;
+      assertSession(session);
 
       const waveResults: Array<{
         wave: number;
