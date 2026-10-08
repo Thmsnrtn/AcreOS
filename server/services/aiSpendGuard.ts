@@ -74,6 +74,11 @@ export function recordExternalAiSpend(input: {
   errorMessage?: string | null;
   /** The customer's own key paid the provider — $0 platform cost. */
   byok?: boolean;
+  /**
+   * Who triggered it — 'customer' counts toward the org's monthly AI
+   * allowance (founder decision 2026-10-08); omitted/null never does.
+   */
+  origin?: AiCallOrigin | null;
 }): void {
   void (async () => {
     try {
@@ -95,6 +100,8 @@ export function recordExternalAiSpend(input: {
         ...(input.latencyMs !== undefined ? { latencyMs: Math.max(0, Math.trunc(input.latencyMs)) } : {}),
         success: input.success ?? true,
         ...(input.errorMessage ? { errorMessage: input.errorMessage.slice(0, 500) } : {}),
+        // Only an org's own call can count toward that org's allowance.
+        origin: input.orgId != null ? input.origin ?? null : null,
       });
     } catch (err) {
       logger.warn("[aiSpendGuard] failed to record external AI spend", {
@@ -199,6 +206,7 @@ function recordMeteredCall(meta: MeteredCallMeta, o: MeteredOutcome, provider: s
     success: !o.error,
     errorMessage: o.error ? (o.error instanceof Error ? o.error.message : String(o.error)) : null,
     byok: meta.byok,
+    origin: meta.origin,
   });
   void (async () => {
     try {
@@ -258,6 +266,18 @@ export async function meteredChatCompletion(
   meta: MeteredCallMeta,
   options?: OpenAI.RequestOptions,
 ): Promise<OpenAI.ChatCompletion> {
+  // The shared monthly AI allowance (founder decision 2026-10-08): past it, a
+  // customer-triggered call runs on the org's OWN key — same model, mapped to
+  // what their channel serves — or is refused recoverably (byok_required).
+  if (meta.origin === "customer" && meta.orgId != null && !meta.byok) {
+    const { enforceAiAllowance } = await import("./aiAllowance");
+    const byok = await enforceAiAllowance(meta.orgId);
+    if (byok) {
+      client = byok.client;
+      params = { ...params, model: byok.mapModel(params.model) };
+      meta = { ...meta, byok: true };
+    }
+  }
   await assertMeteredCallAllowed(meta);
   const body = withPromptCache(params);
   const started = clock.nowMs();
@@ -318,6 +338,15 @@ export async function meteredAnthropicMessage<R extends { id?: string; usage?: A
   meta: MeteredCallMeta,
   options?: Record<string, unknown>,
 ): Promise<R> {
+  // The allowance applies here too. An org's own key is an OpenAI-compatible
+  // client, so this Anthropic-SDK path cannot hand the call over to it: past
+  // the allowance a customer-triggered call is refused (byok_required) even if
+  // a key exists. Today every caller of this path is platform-internal.
+  if (meta.origin === "customer" && meta.orgId != null && !meta.byok) {
+    const { enforceAiAllowance, AiAllowanceExhaustedError } = await import("./aiAllowance");
+    const byok = await enforceAiAllowance(meta.orgId);
+    if (byok) throw new AiAllowanceExhaustedError(meta.orgId, 0, 0, true);
+  }
   await assertMeteredCallAllowed(meta);
   const body =
     typeof params.system === "string" && params.system.length >= ANTHROPIC_CACHE_MIN_CHARS

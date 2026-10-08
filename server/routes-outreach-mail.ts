@@ -1723,8 +1723,9 @@ export function registerOutreachMailRoutes(app: Express): void {
     getOrCreateOrg,
     async (req: AuthenticatedRequest, res: Response) => {
       const org = getOrganization(req);
-      const tier = (org.subscriptionTier ?? "free") as SubscriptionTier;
-      const poolSize = (TIER_LIMITS[tier] ?? TIER_LIMITS.free).creditPool;
+      // The org's REAL pool (a grandfathered Scale org keeps 8,000 until its
+      // renewal) — the same resolution the debit gate enforces.
+      const { poolMonthly: poolSize } = await poolSnapshot(org.id);
       res.json({ poolSize, examples: creditExamples(poolSize) });
     },
   );

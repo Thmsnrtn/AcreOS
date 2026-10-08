@@ -468,3 +468,34 @@ export const mailQrScanEvents = pgTable("mail_qr_scan_events", {
 export type MailQrScanEvent = typeof mailQrScanEvents.$inferSelect;
 export type InsertMailQrScanEvent = typeof mailQrScanEvents.$inferInsert;
 
+
+// ===========================
+// Credit-pool grandfathering (founder decision 2026-10-08)
+// ===========================
+//
+// Scale's included monthly credit pool moved from 8,000 to 3,000 for NEW
+// Scale customers (docs/company/founder-decisions-2026-10-08.md). Orgs that
+// were already on Scale keep their previous pool until their next renewal.
+// One row per grandfathered org: the pool it keeps and when that ends.
+// `ends_at` NULL = "until the next renewal, date not yet known" — the Stripe
+// subscription webhook stamps the current period end on the first event it
+// sees, and a renewal (invoice.paid, billing_reason subscription_cycle) ends
+// it outright. Resolved ONLY through creditPool.resolveCreditPool().
+export const creditPoolGrandfathers = pgTable("credit_pool_grandfathers", {
+  organizationId: integer("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .primaryKey(),
+  creditPool: integer("credit_pool").notNull(),
+  endsAt: timestamp("ends_at", { withTimezone: true }),
+  reason: text("reason").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// One-time billing backfills that must never re-run on a later deploy (the
+// migrate.mjs statements run on EVERY release). A row here means "done".
+export const billingOneTimeBackfills = pgTable("billing_one_time_backfills", {
+  key: text("key").primaryKey(),
+  ranAt: timestamp("ran_at", { withTimezone: true }).defaultNow().notNull(),
+  rowsAffected: integer("rows_affected"),
+});

@@ -183,9 +183,18 @@ export const aiTelemetryEvents = pgTable("ai_telemetry_events", {
   complexity: text("complexity"), // simple, moderate, complex
   success: boolean("success").default(true),
   errorMessage: text("error_message"),
+  // Who triggered the call (founder decision 2026-10-08, the shared monthly AI
+  // allowance): 'customer' = the org triggered it and it counts toward the
+  // plan's allowance; 'background' = work that serves the org but that it did
+  // not trigger (bounded by the per-org ceilings, never walls the customer).
+  // NULL = platform-internal or recorded before the column existed — never
+  // counted toward any customer's allowance.
+  origin: text("origin"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("ai_telemetry_org_idx").on(table.organizationId),
+  // The allowance read: one org's customer-triggered spend this month.
+  index("ai_telemetry_org_origin_created_idx").on(table.organizationId, table.origin, table.createdAt),
   index("ai_telemetry_created_idx").on(table.createdAt),
   index("ai_telemetry_provider_idx").on(table.provider),
 ]);

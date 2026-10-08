@@ -11239,6 +11239,43 @@ END $mig0252$`,
   `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "acts_payload" jsonb`,
   `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "body_hash" text`,
   `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "chat_approvable" boolean NOT NULL DEFAULT false`,
+
+  // 0266 — Scale credit pool 8,000 → 3,000 for NEW Scale customers; existing
+  // Scale orgs keep 8,000 until their next renewal (founder decision
+  // 2026-10-08). The backfill is guarded to run ONCE — these statements re-run
+  // on every deploy. Mirrors migrations/0266_scale_credit_pool_grandfather.sql.
+  `CREATE TABLE IF NOT EXISTS "credit_pool_grandfathers" (
+  "organization_id" integer PRIMARY KEY NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+  "credit_pool" integer NOT NULL,
+  "ends_at" timestamp with time zone,
+  "reason" text NOT NULL,
+  "created_at" timestamp with time zone DEFAULT now() NOT NULL
+)`,
+  `CREATE TABLE IF NOT EXISTS "billing_one_time_backfills" (
+  "key" text PRIMARY KEY NOT NULL,
+  "ran_at" timestamp with time zone DEFAULT now() NOT NULL,
+  "rows_affected" integer
+)`,
+  `DO $$
+DECLARE n integer;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM "billing_one_time_backfills" WHERE "key" = 'scale_credit_pool_2026_10_08') THEN
+    INSERT INTO "credit_pool_grandfathers" ("organization_id", "credit_pool", "ends_at", "reason")
+    SELECT "id", 8000, NULL, 'founder decision 2026-10-08: Scale pool 8000 -> 3000 for new customers; existing Scale keeps 8000 until next renewal'
+    FROM "organizations"
+    WHERE lower("subscription_tier") = 'scale'
+      AND "subscription_status" IN ('active', 'trialing', 'past_due')
+    ON CONFLICT ("organization_id") DO NOTHING;
+    GET DIAGNOSTICS n = ROW_COUNT;
+    INSERT INTO "billing_one_time_backfills" ("key", "rows_affected") VALUES ('scale_credit_pool_2026_10_08', n);
+    RAISE NOTICE 'scale credit pool grandfather backfill: % org(s)', n;
+  END IF;
+END $$`,
+
+  // 0267 — ai_telemetry_events.origin for the shared monthly AI allowance
+  // (founder decision 2026-10-08). Mirrors migrations/0267_ai_allowance_origin.sql.
+  `ALTER TABLE "ai_telemetry_events" ADD COLUMN IF NOT EXISTS "origin" text`,
+  `CREATE INDEX IF NOT EXISTS "ai_telemetry_org_origin_created_idx" ON "ai_telemetry_events" ("organization_id", "origin", "created_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

@@ -558,7 +558,9 @@ export class WebhookHandlers {
           const limits = {
             leads: fmt(real.leads),
             properties: fmt(real.properties),
-            ai: real.aiTurnsByokThreshold == null ? 'Unlimited' : `${fmt(real.aiTurnsByokThreshold)}/month`,
+            // The shared monthly AI allowance, in dollars of included AI
+            // (founder decision 2026-10-08) — read from the canonical limit.
+            ai: real.aiAllowanceCents == null ? 'Unlimited' : `$${(real.aiAllowanceCents / 100).toFixed(2)} of included AI/month`,
           };
 
           // Find the user's email from session metadata or org owner
@@ -573,12 +575,12 @@ export class WebhookHandlers {
                 <ul>
                   <li><strong>Leads:</strong> ${limits.leads}</li>
                   <li><strong>Properties:</strong> ${limits.properties}</li>
-                  <li><strong>AI Requests:</strong> ${limits.ai}</li>
+                  <li><strong>Included AI:</strong> ${limits.ai}</li>
                 </ul>
                 <p><a href="${process.env.APP_URL || 'https://app.acreos.io'}">Go to your dashboard</a></p>
                 <p>— The AcreOS Team</p>
               `,
-              text: `Welcome to AcreOS ${tierName}!\n\nYour plan includes:\n- Leads: ${limits.leads}\n- Properties: ${limits.properties}\n- AI Requests: ${limits.ai}\n\nGo to your dashboard: ${process.env.APP_URL || 'https://app.acreos.io'}`,
+              text: `Welcome to AcreOS ${tierName}!\n\nYour plan includes:\n- Leads: ${limits.leads}\n- Properties: ${limits.properties}\n- Included AI: ${limits.ai}\n\nGo to your dashboard: ${process.env.APP_URL || 'https://app.acreos.io'}`,
             });
             logger.info(`[webhook] Welcome email sent to ${userEmail} for ${tierName} plan`);
           }
@@ -953,6 +955,20 @@ export class WebhookHandlers {
       const org = await storage.getOrganizationByStripeCustomerId(customerId);
       if (!org) return;
 
+      // Founder decision 2026-10-08: a grandfathered credit pool (existing
+      // Scale orgs keep 8,000) lasts until the CURRENT period's end — stamp it
+      // the first time a subscription event tells us that date.
+      try {
+        const { subscriptionPeriod } = await import('./stripeClient');
+        const period = subscriptionPeriod(subscription);
+        const { stampGrandfatherPeriodEnd } = await import('./services/creditPoolGrandfather');
+        await stampGrandfatherPeriodEnd(org.id, period ? new Date(period.end * 1000) : null);
+      } catch (err) {
+        logger.warn('[webhook] credit-pool grandfather stamp skipped (non-fatal)', {
+          metadata: { orgId: org.id, error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+
       // Map Stripe status to our status
       const statusMap: Record<string, string> = {
         active: 'active',
@@ -1213,6 +1229,20 @@ export class WebhookHandlers {
       const org = await storage.getOrganizationByStripeCustomerId(customerId);
       if (!org) {
         return;
+      }
+
+      // A renewal ends any grandfathered credit pool (founder decision
+      // 2026-10-08: existing Scale orgs keep 8,000 until their next renewal).
+      if (invoice.billing_reason === 'subscription_cycle') {
+        try {
+          const { endGrandfatherAtRenewal } = await import('./services/creditPoolGrandfather');
+          const renewedAt = invoice.created ? new Date(invoice.created * 1000) : clock.now();
+          await endGrandfatherAtRenewal(org.id, renewedAt);
+        } catch (err) {
+          logger.warn('[webhook] credit-pool grandfather end skipped (non-fatal)', {
+            metadata: { orgId: org.id, error: err instanceof Error ? err.message : String(err) },
+          });
+        }
       }
 
       // Referral market-match terms (founder decision 2026-09-01): a paid

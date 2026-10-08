@@ -1,5 +1,5 @@
 import { db } from "../storage";
-import { organizations, leads, properties, notes, campaigns, usageEvents } from "@shared/schema";
+import { organizations, leads, properties, notes, campaigns, usageEvents, aiTelemetryEvents } from "@shared/schema";
 import { eq, and, gte, count, sum, ne, sql } from "drizzle-orm";
 import { realLead, realNote, realProperty } from "./onboarding/sampleFilters";
 // Lens 3 (Pricing Coherence): tier limits live in shared/billing so the
@@ -137,6 +137,30 @@ async function getMonthlyAiRequestCount(organizationId: number): Promise<number>
   return Number(result?.total ?? 0);
 }
 
+/**
+ * The org's CUSTOMER-TRIGGERED platform AI spend this calendar month, in
+ * cents — what the shared monthly AI allowance is measured against (founder
+ * decision 2026-10-08). Counts ai_telemetry_events rows with origin
+ * 'customer' only: background work the org did not trigger, platform AI, and
+ * BYOK calls ($0) never draw it down. Same month window as the turn count.
+ */
+export async function getMonthlyCustomerAiSpendCents(organizationId: number): Promise<number> {
+  const now = clock.now();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  const [result] = await db
+    .select({ cents: sql<string>`COALESCE(SUM(${aiTelemetryEvents.estimatedCostCents}), 0)` })
+    .from(aiTelemetryEvents)
+    .where(
+      and(
+        eq(aiTelemetryEvents.organizationId, organizationId),
+        eq(aiTelemetryEvents.origin, "customer"),
+        gte(aiTelemetryEvents.createdAt, monthStart),
+      ),
+    );
+  const cents = Number(result?.cents ?? 0);
+  return Number.isFinite(cents) && cents > 0 ? cents : 0;
+}
+
 export interface UsageLimitOptions {
   isFounder?: boolean;
 }
@@ -218,8 +242,11 @@ export async function getAllUsageLimits(
    * (Pax banner at ≥80%, blocked state with a CTA to /settings/byok).
    */
   aiTurns: {
+    /** Cents of customer-triggered AI used this month (shared allowance). */
     current: number;
+    /** The plan's monthly AI allowance in cents (null = no wall). */
     threshold: number | null;
+    unit: "cents";
     percentage: number | null;
     /** True at ≥ AI_TURNS_BYOK_WARN_RATIO of the threshold (not blocked yet). */
     warning: boolean;
@@ -242,7 +269,9 @@ export async function getAllUsageLimits(
     getCampaignCount(organizationId),
   ]);
 
-  // Tier 1I — BYOK threshold snapshot (reuses the same monthly turn count).
+  // The shared monthly AI allowance snapshot (founder decision 2026-10-08):
+  // measured in cents of customer-triggered AI spend, not turns.
+  const aiSpendCents = isFounder ? 0 : await getMonthlyCustomerAiSpendCents(organizationId);
   let aiByokActive = false;
   if (!isFounder) {
     try {
@@ -252,10 +281,10 @@ export async function getAllUsageLimits(
       aiByokActive = false;
     }
   }
-  const aiThreshold = limits.aiTurnsByokThreshold;
-  const aiBlocked = !isFounder && !aiByokActive && aiThreshold !== null && aiRequestCount >= aiThreshold;
+  const aiThreshold = limits.aiAllowanceCents;
+  const aiBlocked = !isFounder && !aiByokActive && aiThreshold !== null && aiSpendCents >= aiThreshold;
   const aiWarning = !isFounder && !aiByokActive && !aiBlocked && aiThreshold !== null
-    && aiRequestCount >= aiThreshold * AI_TURNS_BYOK_WARN_RATIO;
+    && aiSpendCents >= aiThreshold * AI_TURNS_BYOK_WARN_RATIO;
 
   const calculatePercentage = (current: number, limit: number | null): number | null => {
     if (limit === null) return null;
@@ -264,9 +293,11 @@ export async function getAllUsageLimits(
 
   return {
     aiTurns: {
-      current: aiRequestCount,
+      // Cents of included AI used / included this month (unit: "cents").
+      current: Math.round(aiSpendCents * 100) / 100,
       threshold: aiThreshold,
-      percentage: calculatePercentage(aiRequestCount, aiThreshold),
+      unit: "cents" as const,
+      percentage: calculatePercentage(aiSpendCents, aiThreshold),
       warning: aiWarning,
       blocked: aiBlocked,
       byokActive: aiByokActive,
@@ -323,10 +354,16 @@ export interface AiTurnGateResult {
   reason?: "byok_required";
   /** How this org's AI calls are billed/routed right now. */
   mode: "founder" | "byok" | "platform";
-  /** Pax turns consumed this calendar month. */
+  /**
+   * Customer-triggered platform AI spend this calendar month, in CENTS — the
+   * shared monthly AI allowance (founder decision 2026-10-08) is measured in
+   * cost, not turns.
+   */
   current: number;
-  /** The tier's BYOK threshold (null = no threshold for this tier). */
+  /** The tier's monthly AI allowance in cents (null = no allowance wall). */
   threshold: number | null;
+  /** The unit of current/threshold. */
+  unit: "cents";
   /** True at ≥ AI_TURNS_BYOK_WARN_RATIO of the threshold (and not blocked). */
   warning: boolean;
   /** Whether this tier can self-serve a BYOK key for AI channels. */
@@ -373,11 +410,11 @@ async function recordAiByokThresholdCrossing(args: {
       type: "ai_byok_threshold_crossed",
       alertType: "revenue_at_risk",
       severity: "warning",
-      title: "Org crossed monthly AI-turn BYOK threshold",
+      title: "Org used its monthly AI allowance",
       message:
-        `Org ${organizationId} (${tier}) used ${current} Pax turns this month — past the ` +
-        `${threshold}-turn included allotment. Without BYOK their AI calls are paused; ` +
-        `this is a prime BYOK-onboarding / expansion conversation.`,
+        `Org ${organizationId} (${tier}) used $${(current / 100).toFixed(2)} of included AI this month — ` +
+        `past the plan's $${(threshold / 100).toFixed(2)} shared monthly AI allowance. Without BYOK their ` +
+        `AI calls are paused; this is a prime BYOK-onboarding / expansion conversation.`,
       organizationId,
       relatedEntityType: "organization",
       relatedEntityId: organizationId,
@@ -409,7 +446,7 @@ export async function checkAiTurnGate(
   const isFounder = options.isFounder ?? orgIsFounder;
   const limits = isFounder ? FOUNDER_TIER_LIMITS : TIER_LIMITS[tier];
   const byokAvailable = limits.byokSupport || tier === "starter"; // AI channels open to all paid tiers
-  const threshold = limits.aiTurnsByokThreshold;
+  const threshold = limits.aiAllowanceCents;
 
   if (isFounder) {
     return {
@@ -421,6 +458,7 @@ export async function checkAiTurnGate(
       byokAvailable: true,
       byokActive: false,
       tier: "enterprise",
+      unit: "cents",
     };
   }
 
@@ -432,7 +470,7 @@ export async function checkAiTurnGate(
     byokActive = false; // lookup hiccup → platform path (threshold applies)
   }
 
-  const current = await getMonthlyAiRequestCount(organizationId);
+  const current = await getMonthlyCustomerAiSpendCents(organizationId);
 
   if (byokActive) {
     return {
@@ -444,6 +482,7 @@ export async function checkAiTurnGate(
       byokAvailable,
       byokActive: true,
       tier,
+      unit: "cents",
     };
   }
 
@@ -457,6 +496,7 @@ export async function checkAiTurnGate(
       byokAvailable,
       byokActive: false,
       tier,
+      unit: "cents",
     };
   }
 
@@ -478,6 +518,7 @@ export async function checkAiTurnGate(
     byokAvailable,
     byokActive: false,
     tier,
+    unit: "cents",
   };
 }
 

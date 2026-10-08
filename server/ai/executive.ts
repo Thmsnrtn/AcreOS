@@ -452,6 +452,9 @@ function recordPaxTelemetry(payload: {
         complexity: "moderate",
         success: true,
         errorMessage: null,
+        // A Pax turn is the org's own — it counts toward the plan's shared
+        // monthly AI allowance (founder decision 2026-10-08).
+        origin: "customer",
       });
     } catch (err) {
       logger.warn("[AI Chat] pax telemetry write failed (turn unaffected)", {

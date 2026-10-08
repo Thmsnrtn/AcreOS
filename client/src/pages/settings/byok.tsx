@@ -96,7 +96,7 @@ const CHANNEL_GROUPS: Array<{ title: string; blurb: string; channels: string[]; 
   { title: "Texts & calls", blurb: "Reach sellers by SMS and phone on your own carrier account.", channels: ["twilio", "telnyx"], icon: MessageSquare },
   { title: "Email", blurb: "Send from your verified domain for the best deliverability.", channels: ["sendgrid", "ses"], icon: Mail },
   { title: "Print & mail", blurb: "Print and post physical letters and postcards to owners.", channels: ["lob", "postgrid"], icon: Printer },
-  { title: "AI & Pax", blurb: "Power Pax with your own AI account past the included turns.", channels: ["openrouter", "anthropic", "openai"], icon: Sparkles },
+  { title: "AI & Pax", blurb: "Power Pax and every AI feature with your own AI account past the included monthly AI.", channels: ["openrouter", "anthropic", "openai"], icon: Sparkles },
   { title: "Property data", blurb: "Pull parcels, owners, comps, and skip-trace on your own data account.", channels: ["batch_skiptracing", "attom", "regrid"], icon: Database },
   { title: "Storage & maps", blurb: "Bring your own file storage and mapping tokens.", channels: ["s3", "mapbox"], icon: MapPin },
 ];

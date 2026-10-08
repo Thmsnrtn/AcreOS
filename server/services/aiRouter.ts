@@ -527,6 +527,14 @@ export interface AIRouterConfig {
    */
   skipQuota?: boolean;
   /**
+   * Who triggered the call (founder decision 2026-10-08, the shared monthly AI
+   * allowance). 'customer' counts toward the org's allowance; 'background'
+   * never does. Default: 'background' when skipQuota is set (the existing
+   * convention for cron/internal callers), otherwise 'customer' — the same
+   * split the per-org daily quota already uses for "the org's own spend".
+   */
+  origin?: "customer" | "background";
+  /**
    * Frugal Autonomy (Phase 2.1, 2026-05-25): platform-wide per-category
    * daily AI budget gate. When unset (default), every routeAITask call
    * checks today's spend in the category for task.taskType against the
@@ -1174,6 +1182,18 @@ export async function routeAITask(
     };
   }
 
+  // Resolved BEFORE the BYOK branch below sets skipQuota for its own reasons.
+  const callOrigin: "customer" | "background" = config.origin ?? (config.skipQuota ? "background" : "customer");
+
+  // Founder decision 2026-10-08 — the shared monthly AI allowance. A
+  // customer-triggered call past the org's allowance runs on the org's own AI
+  // key (exactly as chat does) or is refused with a recoverable byok_required.
+  if (config.orgId && callOrigin === "customer" && !config.byok) {
+    const { enforceAiAllowance } = await import("./aiAllowance");
+    const byok = await enforceAiAllowance(config.orgId);
+    if (byok) config = { ...config, byok };
+  }
+
   // Tier 1I — BYOK calls spend the CUSTOMER's key, not platform dollars, so
   // the platform quota / budget / cost-ceiling gates do not apply.
   if (config.byok) {
@@ -1285,7 +1305,7 @@ export async function routeAITask(
       cacheHits++;
       const cacheHitLatency = clock.nowMs() - cacheCheckStart;
       logger.info(`[AIRouter] Cache HIT (exact) for ${task.taskType}`);
-      recordAITelemetry({ orgId: config.orgId, taskType: task.taskType ?? "unknown", provider: cached.provider, model: cached.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: cacheHitLatency, cacheHit: true, complexity: task.complexity, success: true });
+      recordAITelemetry({ origin: callOrigin, orgId: config.orgId, taskType: task.taskType ?? "unknown", provider: cached.provider, model: cached.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: cacheHitLatency, cacheHit: true, complexity: task.complexity, success: true });
       // Pillar 7 — cascade telemetry: cache hits are model="cache".
       void recordCascadeCall({
         organizationId: config.orgId ?? null,
@@ -1308,7 +1328,7 @@ export async function routeAITask(
       semanticCacheHits++;
       const semanticLatency = clock.nowMs() - cacheCheckStart;
       logger.info(`[AIRouter] Cache HIT (semantic) for ${task.taskType}`);
-      recordAITelemetry({ orgId: config.orgId, taskType: task.taskType ?? "unknown", provider: semanticHit.provider, model: semanticHit.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: semanticLatency, cacheHit: true, complexity: task.complexity, success: true });
+      recordAITelemetry({ origin: callOrigin, orgId: config.orgId, taskType: task.taskType ?? "unknown", provider: semanticHit.provider, model: semanticHit.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: semanticLatency, cacheHit: true, complexity: task.complexity, success: true });
       void recordCascadeCall({
         organizationId: config.orgId ?? null,
         model: "cache",
@@ -1473,7 +1493,7 @@ export async function routeAITask(
       ?? 0;
   } catch (err: any) {
     const latencyMs = clock.nowMs() - startTime;
-    recordAITelemetry({ orgId: config.orgId, taskType: task.taskType ?? "unknown", provider, model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs, cacheHit: false, complexity: task.complexity, success: false, errorMessage: err.message });
+    recordAITelemetry({ origin: callOrigin, orgId: config.orgId, taskType: task.taskType ?? "unknown", provider, model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs, cacheHit: false, complexity: task.complexity, success: false, errorMessage: err.message });
     void recordCascadeCall({
       organizationId: config.orgId ?? null,
       model,
@@ -1630,7 +1650,7 @@ export async function routeAITask(
     });
   }
 
-  recordAITelemetry({
+  recordAITelemetry({ origin: callOrigin,
     orgId: config.orgId,
     taskType: task.taskType ?? "unknown",
     provider,
@@ -1874,6 +1894,7 @@ interface TelemetryPayload {
   complexity: string;
   success: boolean;
   errorMessage?: string;
+  origin?: "customer" | "background";
 }
 
 // ============================================
@@ -2002,6 +2023,8 @@ function recordAITelemetry(payload: TelemetryPayload): void {
         complexity: payload.complexity,
         success: payload.success,
         errorMessage: payload.errorMessage || null,
+        // Only an org's own call can count toward that org's allowance.
+        origin: payload.orgId ? payload.origin ?? null : null,
       });
     } catch (err) {
       // Telemetry is non-critical — log and continue

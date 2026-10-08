@@ -796,7 +796,7 @@ export function PaxCopilotRail() {
         let errorAction: { label: string; href: string } | undefined;
         if (res.status === 429 && details?.reason === "byok_required") {
           err = details.message
-            ?? "You've used this month's included Pax turns. Add your own AI key to keep chatting without limits — your data and drafts stay fully accessible.";
+            ?? "You've used this month's included AI. Add your own AI key to keep going without limits — your data and drafts stay fully accessible.";
           errorAction = details.byokAvailable
             ? { label: "Add your AI key", href: details.byokSettingsUrl || "/settings/byok" }
             : { label: "Upgrade plan", href: details.upgradeUrl || "/pricing" };

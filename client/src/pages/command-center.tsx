@@ -548,7 +548,7 @@ export default function CommandCenterPage() {
         if (response.status === 429 && errorData?.details?.reason === "byok_required") {
           throw new Error(
             errorData.details.message
-              ?? "You've used this month's included Pax turns. Add your own AI key in Settings → Your provider keys to keep chatting without limits.",
+              ?? "You've used this month's included AI. Add your own AI key in Settings → Your provider keys to keep going without limits.",
           );
         }
         throw new Error(errorData.error || `Request failed with status ${response.status}`);

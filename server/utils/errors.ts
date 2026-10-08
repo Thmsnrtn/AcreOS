@@ -396,6 +396,26 @@ export const Errors = {
       );
       return;
     }
+    // The shared monthly AI allowance (founder decision 2026-10-08): past it,
+    // with no own AI key, a call is refused RECOVERABLY — 429 byok_required
+    // with the path forward, never a 500. Shape-detected (utils does not
+    // import services).
+    if (error instanceof Error && (error as { code?: string }).code === "AI_ALLOWANCE_BYOK_REQUIRED") {
+      const e = error as Error & { spentCents?: number; allowanceCents?: number; byokAvailable?: boolean; byokSettingsUrl?: string };
+      this.limitExceeded(res, {
+        reason: "byok_required",
+        resourceType: "ai_requests",
+        current: e.spentCents,
+        threshold: e.allowanceCents,
+        unit: "cents",
+        remaining: 0,
+        byokAvailable: e.byokAvailable ?? true,
+        byokSettingsUrl: e.byokSettingsUrl ?? "/settings/byok",
+        message: e.message,
+        upgradeUrl: "/settings#billing",
+      }, opts);
+      return;
+    }
     // A whole-book read that refused past its ceiling (DEFECT-0170) says so:
     // "nothing was truncated, contact support" — not a generic 500. Same
     // shape-detection as above, so utils does not import storage.

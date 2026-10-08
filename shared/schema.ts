@@ -14,6 +14,7 @@ import { dealRooms } from "./schema/marketplace";
 // shapes behind organizations.pax_controls and pending_actions.origin /
 // source_ref. Type-only, so nothing here reaches the client bundle.
 import type { PaxAskOrigin, PaxAskSourceRef, PaxControls } from "./pax-controls";
+import { CREDIT_PACK_CATALOG } from "./billing/credit-packs";
 
 /**
  * Phase 3 Week 14 (Sayuri-Vatanen §1): pgvector custom column type.
@@ -3237,11 +3238,15 @@ export type UsageActionType = keyof typeof USAGE_ACTION_TYPES;
 // CREDIT PACKS
 // ============================================
 
+// Credit packs: priceCents is what the customer pays; amountCents is the
+// credits (cents of usage) the webhook grants. Derived from the canonical
+// catalogue — 1.5¢ per credit, founder decision 2026-10-08
+// (shared/billing/credit-packs.ts). Never hand-set here.
 export const CREDIT_PACKS = {
-  pack_10: { name: "$10 Credit Pack", amountCents: 1000, priceCents: 1000 },
-  pack_25: { name: "$25 Credit Pack", amountCents: 2500, priceCents: 2500 },
-  pack_50: { name: "$50 Credit Pack", amountCents: 5000, priceCents: 5000 },
-  pack_100: { name: "$100 Credit Pack", amountCents: 10000, priceCents: 10000 },
+  pack_10: { name: CREDIT_PACK_CATALOG.pack_10.name, amountCents: CREDIT_PACK_CATALOG.pack_10.credits, priceCents: CREDIT_PACK_CATALOG.pack_10.priceCents },
+  pack_25: { name: CREDIT_PACK_CATALOG.pack_25.name, amountCents: CREDIT_PACK_CATALOG.pack_25.credits, priceCents: CREDIT_PACK_CATALOG.pack_25.priceCents },
+  pack_50: { name: CREDIT_PACK_CATALOG.pack_50.name, amountCents: CREDIT_PACK_CATALOG.pack_50.credits, priceCents: CREDIT_PACK_CATALOG.pack_50.priceCents },
+  pack_100: { name: CREDIT_PACK_CATALOG.pack_100.name, amountCents: CREDIT_PACK_CATALOG.pack_100.credits, priceCents: CREDIT_PACK_CATALOG.pack_100.priceCents },
 } as const;
 
 export type CreditPackId = keyof typeof CREDIT_PACKS;

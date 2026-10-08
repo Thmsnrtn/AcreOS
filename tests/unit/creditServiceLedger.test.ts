@@ -158,13 +158,15 @@ describe("applyCreditPackPurchase — one transaction, real pack amounts", () =>
     expect(state.txInsertValues[0]).toMatchObject({
       organizationId: 7,
       type: "purchase",
-      amountCents: 2500, // pack_25 from the REAL CREDIT_PACKS table — not a guess
+      // pack_25 from the REAL CREDIT_PACKS table — not a guess. $25 at 1.5¢ per
+      // credit, rounded down (founder decision 2026-10-08): 1,666, not 2,500.
+      amountCents: 1666,
       balanceAfterCents: 5000, // the post-bump balance the UPDATE returned
       stripeCheckoutSessionId: "cs_1",
       stripePaymentIntentId: "pi_1",
       metadata: { creditPackId: "pack_25" },
     });
-    expect(row).toMatchObject({ type: "purchase", amountCents: 2500 });
+    expect(row).toMatchObject({ type: "purchase", amountCents: 1666 });
   });
 
   it("a ledger-row insert failure PROPAGATES so the transaction rolls the balance back", async () => {

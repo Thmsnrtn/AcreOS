@@ -112,7 +112,9 @@ export function usageLimitGate(resourceType: ResourceType) {
  *
  * Enforces the mandatory-BYOK-past-threshold model on AI chat turns:
  *  - founder orgs and orgs with an active AI BYOK key are never blocked
- *  - under the tier's `aiTurnsByokThreshold`: allowed (warning flag at ≥80%)
+ *  - under the tier's shared monthly AI allowance (`aiAllowanceCents`, in
+ *    cents of customer-triggered AI spend — founder decision 2026-10-08):
+ *    allowed (warning flag at ≥80%)
  *  - at/over threshold WITHOUT BYOK: 429 with `reason: "byok_required"` and
  *    a deep link to the BYOK settings surface — a structured, recoverable
  *    refusal, never a silent failure. Existing drafts/data stay readable
@@ -144,12 +146,13 @@ export function aiByokThresholdGate() {
           currentTier: gate.tier,
           current: gate.current,
           threshold: gate.threshold,
+          unit: gate.unit,
           remaining: 0,
           byokAvailable: gate.byokAvailable,
           byokSettingsUrl: "/settings/byok",
           message: gate.byokAvailable
-            ? "You've used this month's included Pax turns. Add your own Anthropic, OpenRouter, or OpenAI key in Settings → Your provider keys to keep chatting without limits — your data and drafts stay fully accessible either way."
-            : "You've used this month's included Pax turns. Upgrade your plan to unlock bring-your-own-key for unlimited Pax — your data and drafts stay fully accessible either way.",
+            ? "You've used this month's included AI. Add your own Anthropic, OpenRouter, or OpenAI key in Settings → Your provider keys to keep going without limits — your data and drafts stay fully accessible either way."
+            : "You've used this month's included AI. Upgrade your plan to unlock bring-your-own-key for unlimited AI — your data and drafts stay fully accessible either way.",
           upgradeUrl: "/settings#billing",
         });
       }

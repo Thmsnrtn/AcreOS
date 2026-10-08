@@ -8,13 +8,16 @@ import { Loader2, CreditCard, Check } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Verbs } from "@/lib/labels";
+import { CREDIT_PACK_CATALOG, CREDIT_PRICE_CENTS } from "@shared/billing/credit-packs";
 
-const CREDIT_PACKS = [
-  { id: "pack_10", name: "$10", credits: 1000, price: 10 },
-  { id: "pack_25", name: "$25", credits: 2500, price: 25 },
-  { id: "pack_50", name: "$50", credits: 5000, price: 50 },
-  { id: "pack_100", name: "$100", credits: 10000, price: 100 },
-] as const;
+// The ONE pack catalogue (shared/billing/credit-packs.ts) — the same numbers
+// the webhook grants. 1.5¢ per credit (founder decision 2026-10-08).
+const CREDIT_PACKS = Object.values(CREDIT_PACK_CATALOG).map((p) => ({
+  id: p.id,
+  name: `$${p.priceCents / 100}`,
+  credits: p.credits,
+  price: p.priceCents / 100,
+}));
 
 interface CreditPurchaseModalProps {
   open: boolean;
@@ -85,7 +88,7 @@ export function CreditPurchaseModal({ open, onOpenChange }: CreditPurchaseModalP
                 key={pack.id}
                 role="radio"
                 aria-checked={isSelected}
-                aria-label={`${pack.name} pack: ${pack.credits.toLocaleString()} credits, $${(pack.credits / 100).toFixed(0)} value`}
+                aria-label={`${pack.name} pack: ${pack.credits.toLocaleString()} credits at ${CREDIT_PRICE_CENTS}¢ per credit`}
                 tabIndex={isSelected ? 0 : -1}
                 onClick={() => setSelectedPack(pack.id)}
                 onKeyDown={(e) => {
@@ -110,7 +113,7 @@ export function CreditPurchaseModal({ open, onOpenChange }: CreditPurchaseModalP
                     {pack.credits.toLocaleString()} credits
                   </div>
                   <Badge aria-hidden="true" variant="secondary" className="mt-2 tabular-nums">
-                    ${(pack.credits / 100).toFixed(0)} value
+                    {CREDIT_PRICE_CENTS}¢ per credit
                   </Badge>
                 </CardContent>
               </Card>
