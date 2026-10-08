@@ -261,14 +261,12 @@ export function registerAiCostRoutes(app: Express): void {
           .from(aiTelemetryEvents)
           .where(gte(aiTelemetryEvents.createdAt, since24h));
         const usedCents = Number(row?.cents ?? 0);
-        const ceilingCents = (() => {
-          const fromEnv = process.env.AI_PLATFORM_DAILY_CEILING_CENTS;
-          if (fromEnv) {
-            const n = Number(fromEnv);
-            if (Number.isFinite(n) && n > 0) return n;
-          }
-          return 500;
-        })();
+        // The CANONICAL ceiling — this route used to re-derive it from the env
+        // with a stale $5 default while the enforced default was $15 and is
+        // now MRR-scaled; a status panel must show what the gate enforces.
+        const { getPlatformDailyCeiling } = await import("./services/aiCostCeiling");
+        const ceiling = await getPlatformDailyCeiling();
+        const ceilingCents = ceiling.cents;
         const alertThresholdUsd = (() => {
           const fromEnv = process.env.AI_COST_ALERT_USD_THRESHOLD;
           if (fromEnv) {
@@ -281,6 +279,7 @@ export function registerAiCostRoutes(app: Express): void {
           windowHours: 24,
           usedUsd: usedCents / 100,
           ceilingUsd: ceilingCents / 100,
+          ceilingSource: ceiling.source,
           remainingUsd: Math.max(0, (ceilingCents - usedCents) / 100),
           usedPct:
             ceilingCents > 0

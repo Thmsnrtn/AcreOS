@@ -9,7 +9,8 @@
  *
  *   boundCents = min(hardCapCents, spendRemainingCents) + aiDailyCeilingCents
  *
- *   AI side   — AI_PLATFORM_DAILY_CEILING_CENTS (default 1500 = $15/day),
+ *   AI side   — the platform AI ceiling (aiCostCeiling.getPlatformDailyCeiling:
+ *               env override, else max($15/day floor, 75% of paying MRR / 30)),
  *               the only fail-CLOSED gate in the AI cost stack
  *               (server/services/aiCostCeiling.ts).
  *   Money side — the sum of the current month's remaining per-agent budget
@@ -30,9 +31,6 @@
  */
 
 import { logger } from "../../utils/logger";
-
-/** Mirrors aiCostCeiling.ts PLATFORM_DEFAULT_DAILY_CEILING_CENTS_FALLBACK. */
-const AI_PLATFORM_DAILY_CEILING_DEFAULT_CENTS = 1500;
 
 export interface WorstDayInputs {
   /** Platform-wide fail-closed AI daily ceiling, cents. null = unreadable. */
@@ -131,13 +129,19 @@ export function composeWorstDayBound(inputs: WorstDayInputs): WorstDayBound {
  * into honest caveats), never to a fabricated zero.
  */
 export async function loadWorstDayInputs(): Promise<WorstDayInputs> {
-  // AI side — identical env semantics to aiCostCeiling.getPlatformDailyCeilingCents
-  // (which is module-private there; the default is locked by aiCostCeilingDefault.test.ts).
-  let aiDailyCeilingCents: number | null = AI_PLATFORM_DAILY_CEILING_DEFAULT_CENTS;
-  const fromEnv = process.env.AI_PLATFORM_DAILY_CEILING_CENTS;
-  if (fromEnv) {
-    const n = Number(fromEnv);
-    if (Number.isFinite(n) && n > 0) aiDailyCeilingCents = n;
+  // AI side — the CANONICAL platform ceiling (aiCostCeiling.getPlatformDailyCeiling:
+  // env override, else max(floor, share of paying MRR / 30)). Read, never
+  // re-derived: a local copy of the env rule went stale the day the default
+  // started scaling with MRR. Unreadable → null (an honest caveat), never a guess.
+  let aiDailyCeilingCents: number | null = null;
+  try {
+    const { getPlatformDailyCeilingCents } = await import("../aiCostCeiling");
+    aiDailyCeilingCents = await getPlatformDailyCeilingCents();
+  } catch (err) {
+    logger.warn(
+      "[worstDay] platform AI ceiling unreadable — AI side of the worst-day bound will be null",
+      err instanceof Error ? err : undefined,
+    );
   }
 
   // Money side — current-month envelopes + the live hard cap, via the same

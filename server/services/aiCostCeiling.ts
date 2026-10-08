@@ -62,17 +62,97 @@ let lastKnownPlatformDailyCents: { cents: number; at: number } | null = null;
 // summed soft budgets so it is the meaningful master limit, not a 100×-below
 // decorative floor.
 //
-// Default $15/day = 1500 cents (above the $10/day category budget; the per-org
-// $50/day quota is per-org, so $15 platform-wide is the binding aggregate
-// backstop under DB failure). Env-overridable.
-const PLATFORM_DEFAULT_DAILY_CEILING_CENTS_FALLBACK = 1500;
-function getPlatformDailyCeilingCents(): number {
+// Default FLOOR $15/day = 1500 cents (above the $10/day category budget; the
+// per-org $50/day quota is per-org, so $15 platform-wide is the binding
+// aggregate backstop under DB failure).
+//
+// 2026-10 cost-efficiency: the default SCALES WITH PAYING MRR. A fixed $15/day
+// is a sensible backstop at 0-5 customers and an outage at ~25-50: every
+// customer's AI pauses on a perfectly ordinary day once their summed legitimate
+// spend crosses it (audit F-16-4). The default is now
+//
+//     max(PLATFORM_DAILY_CEILING_FLOOR_CENTS, floor(payingMrrCents / 30 × share))
+//
+// with share = PLATFORM_CEILING_MRR_SHARE_DEFAULT (0.75), env-overridable via
+// AI_PLATFORM_CEILING_MRR_SHARE (0 < share ≤ 1). Why 75% of a day's MRR: the
+// tier-limits margin math bounds the worst LEGITIMATE org at ≈ 68% of its price
+// at absolute full utilization (tier-limits.ts, Scale), so a platform-wide day
+// above 75% of daily revenue is a runaway signal, never an ordinary day — while
+// a typical day sits well below it.
+//
+// Still fail-CLOSED: an MRR read error yields the FLOOR (never a larger
+// number), and the 24h-spend read posture below is unchanged. An explicit
+// AI_PLATFORM_DAILY_CEILING_CENTS still wins over everything.
+export const PLATFORM_DAILY_CEILING_FLOOR_CENTS = 1500;
+export const PLATFORM_CEILING_MRR_SHARE_DEFAULT = 0.75;
+const MRR_READ_TTL_MS = 10 * 60 * 1000;
+let mrrRead: { cents: number; at: number } | null = null;
+
+function platformCeilingMrrShare(): number {
+  const raw = process.env.AI_PLATFORM_CEILING_MRR_SHARE;
+  if (raw) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0 && n <= 1) return n;
+  }
+  return PLATFORM_CEILING_MRR_SHARE_DEFAULT;
+}
+
+/**
+ * Paying MRR in cents from the canonical reader (finance/runwayModel
+ * `liveMrrDetail` — the same source the runway, snapshot job and gate watcher
+ * read). Cached for 10 minutes so the per-call ceiling check does not add an
+ * organizations scan to every model call. Throws on read failure; the caller
+ * turns that into the floor.
+ */
+async function payingMrrCents(): Promise<number> {
+  const now = clock.nowMs();
+  if (mrrRead && now - mrrRead.at <= MRR_READ_TTL_MS) return mrrRead.cents;
+  const { liveMrrDetail } = await import("./finance/runwayModel");
+  const { cents } = await liveMrrDetail();
+  if (!Number.isFinite(cents) || cents < 0) throw new Error(`non-finite MRR read: ${cents}`);
+  mrrRead = { cents, at: now };
+  return cents;
+}
+
+/** Test seam: forget the cached MRR read. */
+export function __resetPlatformCeilingMrrCacheForTests(): void {
+  mrrRead = null;
+}
+
+/**
+ * The platform-wide daily AI ceiling in cents, and where it came from.
+ * This is THE canonical value — every surface that displays or bounds the
+ * platform ceiling (routes-ai-cost status, autopilot worstDay) reads it here.
+ */
+export async function getPlatformDailyCeiling(): Promise<{
+  cents: number;
+  source: "env_override" | "mrr_scaled" | "floor";
+  payingMrrCents: number | null;
+}> {
   const fromEnv = process.env.AI_PLATFORM_DAILY_CEILING_CENTS;
   if (fromEnv) {
     const n = Number(fromEnv);
-    if (Number.isFinite(n) && n > 0) return n;
+    if (Number.isFinite(n) && n > 0) return { cents: n, source: "env_override", payingMrrCents: null };
   }
-  return PLATFORM_DEFAULT_DAILY_CEILING_CENTS_FALLBACK;
+  let mrr: number;
+  try {
+    mrr = await payingMrrCents();
+  } catch (err) {
+    // Fail CLOSED: an unreadable MRR never grows the ceiling.
+    logger.warn(
+      "[aiCostCeiling] paying MRR unreadable — platform ceiling held at its floor",
+      err instanceof Error ? err : undefined,
+    );
+    return { cents: PLATFORM_DAILY_CEILING_FLOOR_CENTS, source: "floor", payingMrrCents: null };
+  }
+  const scaled = Math.floor((mrr / 30) * platformCeilingMrrShare());
+  return scaled > PLATFORM_DAILY_CEILING_FLOOR_CENTS
+    ? { cents: scaled, source: "mrr_scaled", payingMrrCents: mrr }
+    : { cents: PLATFORM_DAILY_CEILING_FLOOR_CENTS, source: "floor", payingMrrCents: mrr };
+}
+
+export async function getPlatformDailyCeilingCents(): Promise<number> {
+  return (await getPlatformDailyCeiling()).cents;
 }
 
 export class AiCostCeilingExceededError extends Error {
@@ -199,10 +279,10 @@ export async function assertWithinPlatformCostCeiling(opts?: {
 }): Promise<void> {
   if (process.env.AI_COST_CEILING_BYPASS === "1") return;
 
-  const ceilingCents = getPlatformDailyCeilingCents();
+  const ceilingCents = await getPlatformDailyCeilingCents();
   const dayMs = 24 * 60 * 60 * 1000;
 
-  // W4.2b — chat floor. The $15/day bucket is shared by paying-customer
+  // W4.2b — chat floor. The platform daily bucket is shared by paying-customer
   // chat AND background/autopilot loops; before this split, a runaway
   // background loop could drain the whole bucket and throttle paying
   // customers with it. Background callers (failClosed === true is how the
