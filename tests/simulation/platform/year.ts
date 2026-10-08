@@ -290,7 +290,7 @@ async function customerWeek(c: Customer, day: number, rng: Rng) {
   for (const l of c.interested.splice(0, Math.max(1, rng.poisson(spec.weekly.pipeline)))) {
     await act(c, "leads contact-event", client.post(`/api/leads/${l.id}/contact-event`, { channel: "phone", method: "manual", outcome: "warm" }), day, rng);
     if (l.phone && !c.consented.has(l.id)) {
-      const r = await act(c, "leads consent (verbal)", client.patch(`/api/leads/${l.id}/consent`, { tcpaConsent: true, consentSource: "verbal_phone_call" }), day, rng);
+      const r = await act(c, "leads consent (verbal)", client.patch(`/api/leads/${l.id}/consent`, { tcpaConsent: true, consentSource: "verbal" }), day, rng);
       if (r.status < 300) c.consented.add(l.id);
     }
     const prop = await act(c, "properties", client.post("/api/properties", { apn: l.parcel.apn, county: l.parcel.county.name, state: l.parcel.county.state, sizeAcres: String(l.parcel.acres) }), day, rng);

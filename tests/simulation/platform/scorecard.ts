@@ -54,6 +54,8 @@ const year = seeds.length ? {
   },
   complianceIncidents: dist(seeds.map((s: any) => s.complianceIncidents)),
   invariantViolations: dist(seeds.map((s: any) => s.invariants.violations)),
+  // A rule the collector could not read on some tick is UNWATCHED there: zero violations says nothing about it.
+  unwatchedTicksByInvariant: seeds.reduce((a: Record<string, number>, s: any) => { for (const [k, v] of Object.entries(s.invariants.coverage ?? {})) { const u = Number((v as any)?.unknown ?? 0); if (u > 0) a[k] = (a[k] ?? 0) + u; } return a; }, {}),
   violationsByInvariant: seeds.reduce((a: Record<string, number>, s: any) => { for (const [k, v] of Object.entries(s.invariants.byInvariant)) a[k] = (a[k] ?? 0) + Number(v); return a; }, {}),
   customers: {
     signedUp: dist(seeds.map((s: any) => s.customers.signedUp)),
@@ -116,6 +118,8 @@ if (year) {
   md.push(`- **AI cost per customer per month (cents, the app's own metering of stand-in token counts):** customer-side ${d3(year.aiCostCentsPerCustomerMonth.customer)}; Solene's platform work ${d3(year.aiCostCentsPerCustomerMonth.platform)}.`);
   const vio = Object.entries(year.violationsByInvariant).filter(([, n]) => Number(n) > 0);
   if (vio.length) md.push(`- **Which rules broke:** ${vio.map(([k, n]) => `${k} ×${n}`).join(", ")}.`);
+  const blind = Object.entries(year.unwatchedTicksByInvariant);
+  md.push(blind.length ? `- **Rules the monitor could not read** (zero violations says nothing about these): ${blind.map(([k, n]) => `${k} on ${n} daily checks`).join(", ")}.` : `- Every rule was read on every daily check.`);
   md.push("");
 }
 if (sens) {

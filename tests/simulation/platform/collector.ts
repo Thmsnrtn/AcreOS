@@ -200,7 +200,7 @@ export class Collector {
     const refunds: RefundEvent[] = [];
     try {
       const rows = await this.q<any>(
-        `select a.id, a.args, a.approved_by, a.status, a.updated_at
+        `select a.id, a.args, a.approved_by, a.status, a.executed_at
            from autopilot_pending_actions a
           where a.hand_name = 'apply_refund' and a.status = 'executed' and a.id > $1 order by a.id`, [this.lastRefundAction]);
       for (const r of rows) {
