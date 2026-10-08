@@ -15,7 +15,7 @@ import { BUSINESS_TYPES } from "@shared/models/persona-mapping";
 import { SUBSCRIPTION_TIERS } from "@shared/schema";
 import { activityLogger } from "./services/activityLogger";
 import { getAllUsageLimits, TIER_LIMITS, type SubscriptionTier } from "./services/usageLimits";
-import { getUserPermissionContext, getPermissionsForRole, resolveViewOnlyAssignedLeads, ROLES, type UserPermissionContext } from "./utils/permissions";
+import { getUserPermissionContext, resolveViewOnlyAssignedLeads, ROLES, type UserPermissionContext } from "./utils/permissions";
 import {
   getCommissionConfig,
   saveCommissionConfig,

@@ -52,6 +52,11 @@
     },
     {
       "kind": "export",
+      "id": "server/utils/permissions.ts::getPermissionsForRole",
+      "reason": "TEST-INTROSPECTION SEAM, deletion-revealed. The role table lookup is consumed inside its own module by getUserPermissionContext and effectivePermissions. Its only other production mention was an unused import in server/routes-organization.ts, removed on review (CodeQL unused-import), which revealed it as internal-only. tests/unit/permissions.test.ts pins the least-privilege shape of every role through it. REVOCATION: if a production module imports and calls it, remove this entry."
+    },
+    {
+      "kind": "export",
       "id": "server/middleware/assignedLeadScopeGate.ts::parseLeadIdSegment",
       "reason": "TEST-INTROSPECTION SEAM. The gate's id parser is consumed inside its own module by assignedLeadScopeGate, which getOrCreateOrg chains for every request, so it has no external production consumer by construction. It is exported so tests/unit/vaRolePath.test.ts can prove, over every lead-id route registration, that the gate reads each id the way the handlers' parsers do (including non-canonical spellings). REVOCATION: if a production module imports it directly, remove this entry."
     },
