@@ -74,6 +74,15 @@ interface UnitEconomicsRow {
   profitMarginUsd: number;
   profitMarginPct: number;
   consecutiveUnprofitableDays: number;
+  /** Platform cost to serve vs plan price (server: costToServeOf). null = snapshot predates it. */
+  costToServe: {
+    usd: number;
+    aiUsd: number;
+    poolProviderUsd: number;
+    shareOfPrice: number | null;
+    overAlertShare: boolean;
+    alertShare: number;
+  } | null;
   computedAt: string;
 }
 
@@ -298,6 +307,18 @@ export function UnitEconomicsContent() {
     };
   }, [data?.rows]);
 
+  // Paying customers ranked by what they cost to serve as a share of their
+  // plan price — the server decides the share and the alert line; the page
+  // only renders them.
+  const costToServeRows = useMemo(
+    () =>
+      (data?.rows ?? [])
+        .filter((r) => r.costToServe?.shareOfPrice != null)
+        .sort((a, b) => (b.costToServe!.shareOfPrice ?? 0) - (a.costToServe!.shareOfPrice ?? 0))
+        .slice(0, 10),
+    [data?.rows],
+  );
+
   return (
     <>
       <div className="mb-6 flex items-center justify-between">
@@ -496,6 +517,63 @@ export function UnitEconomicsContent() {
             </CardContent>
           </Card>
         </div>
+      ) : null}
+
+      {/* Cost to serve vs plan price (read-only) */}
+      {(data?.rows.length ?? 0) > 0 ? (
+        <Card className="mt-6" data-testid="unit-economics-cost-to-serve">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" aria-hidden />
+              Cost to serve vs plan price
+            </CardTitle>
+            <CardDescription>
+              Platform AI plus pool-funded provider cost over the window, as a share of the plan
+              price{costToServeRows[0]?.costToServe
+                ? `, flagged above ${Math.round(costToServeRows[0].costToServe.alertShare * 100)}%`
+                : ""}{" "}
+              — a prompt to look; nothing is throttled or re-priced.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {costToServeRows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No paying customer has a cost-to-serve figure yet — it appears after the next nightly
+                recompute.
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Customer</TableHead>
+                    <TableHead className="text-right">Plan</TableHead>
+                    <TableHead className="text-right">AI</TableHead>
+                    <TableHead className="text-right">Pool</TableHead>
+                    <TableHead className="text-right">Share of price</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {costToServeRows.map((r) => (
+                    <TableRow key={r.organizationId} className={r.costToServe!.overAlertShare ? "bg-destructive/5" : undefined}>
+                      <TableCell>
+                        <div className="font-medium">{r.organizationName}</div>
+                        <div className="text-xs text-muted-foreground">{r.subscriptionTier}</div>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{fmtUsd(r.mrrUsd)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{fmtUsd(r.costToServe!.aiUsd)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{fmtUsd(r.costToServe!.poolProviderUsd)}</TableCell>
+                      <TableCell
+                        className={`text-right tabular-nums ${r.costToServe!.overAlertShare ? "text-destructive" : "text-muted-foreground"}`}
+                      >
+                        {fmtPct((r.costToServe!.shareOfPrice ?? 0) * 100)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
       ) : null}
 
       {/* 90-day trend chart */}

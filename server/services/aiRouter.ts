@@ -246,6 +246,8 @@ interface QualityCheckResult {
   score: number | null;
   reason: string;
   shouldEscalate: boolean;
+  /** What the grader call itself cost (USD) — it is a paid call too. */
+  costUsd: number;
 }
 
 async function checkResponseQuality(
@@ -281,21 +283,26 @@ Respond with JSON only: {"score": <1-10>, "reason": "<one sentence>"}`;
       response_format: { type: "json_object" },
     });
 
+    // The grader is a paid call: its cost is added to the task's telemetry
+    // (it used to be dropped, so the ceilings never saw it).
+    const costUsd = check?.usage
+      ? estimateCost(MODEL_SIMPLE, check.usage.prompt_tokens ?? 0, check.usage.completion_tokens ?? 0)
+      : 0;
     // DEFECT-0111: an empty or scoreless grader reply is NOT a score of 8.
     const parsed = JSON.parse(check.choices[0]?.message?.content || "{}");
     const raw = typeof parsed.score === "number" && Number.isFinite(parsed.score) ? parsed.score : null;
     if (raw === null) {
-      return { score: null, reason: "quality not checked — the grader returned no score", shouldEscalate: false };
+      return { score: null, reason: "quality not checked — the grader returned no score", shouldEscalate: false, costUsd };
     }
     const score = Math.max(1, Math.min(10, raw));
-    return { score, reason: parsed.reason || "", shouldEscalate: score < getQualityThreshold() };
+    return { score, reason: parsed.reason || "", shouldEscalate: score < getQualityThreshold(), costUsd };
   } catch (err) {
     // The grader failed: the response's quality is UNKNOWN. Not escalated
     // (a re-ask costs money on no evidence), and not recorded as adequate.
     logger.warn("[AIRouter] quality check failed — response quality not checked", {
       metadata: { taskType: task.taskType, error: err instanceof Error ? err.message : String(err) },
     });
-    return { score: null, reason: "quality not checked — the grader failed", shouldEscalate: false };
+    return { score: null, reason: "quality not checked — the grader failed", shouldEscalate: false, costUsd: 0 };
   }
 }
 
@@ -1479,6 +1486,12 @@ export async function routeAITask(
     throw err;
   }
 
+  // Spend on calls OTHER than the one whose usage ends up in `usage` — the
+  // grader, and whichever of primary/escalated was discarded. All of it was
+  // paid for; before 2026-10 it was dropped from telemetry, so the ceilings
+  // and the per-org COGS under-counted every cascaded task.
+  let sideCallCostUsd = 0;
+
   // ── Model cascade: quality-gate escalation ───────────────────────────────────
   // Only cascade on non-complex tasks where we used a cheap model and the user
   // hasn't explicitly pinned a model.  Skipped when CASCADE_ENABLED = false.
@@ -1491,6 +1504,7 @@ export async function routeAITask(
     content.length > 20 // don't bother checking trivially short responses
   ) {
     const quality = await checkResponseQuality(task, content, client);
+    sideCallCostUsd += quality.costUsd;
 
     if (quality.shouldEscalate) {
       // Determine the next tier model
@@ -1544,16 +1558,27 @@ export async function routeAITask(
             ...((task.responseFormat === "json" || confidenceRequested) && { response_format: { type: "json_object" } }),
           });
           const escalatedContent = escalatedResponse.choices[0]?.message?.content || "";
+          const escalatedCached =
+            (escalatedResponse.usage as any)?.prompt_tokens_details?.cached_tokens
+            ?? (escalatedResponse.usage as any)?.cache_read_input_tokens
+            ?? 0;
+          const escalatedCostUsd = escalatedResponse.usage
+            ? estimateCost(escalatedModel, escalatedResponse.usage.prompt_tokens, escalatedResponse.usage.completion_tokens, escalatedCached)
+            : 0;
           if (escalatedContent.length > content.length * 0.5) {
+            // The primary answer is discarded, but it was paid for.
+            sideCallCostUsd += usage
+              ? estimateCost(model, usage.prompt_tokens, usage.completion_tokens, cachedInputTokens)
+              : 0;
             content = escalatedContent;
             usage = escalatedResponse.usage;
             finalModel = escalatedModel;
             // Read the escalated call's own cached count (its cache is
             // model-scoped and separate from the primary's).
-            cachedInputTokens =
-              (escalatedResponse.usage as any)?.prompt_tokens_details?.cached_tokens
-              ?? (escalatedResponse.usage as any)?.cache_read_input_tokens
-              ?? 0;
+            cachedInputTokens = escalatedCached;
+          } else {
+            // The escalated answer is discarded, but it was paid for.
+            sideCallCostUsd += escalatedCostUsd;
           }
         } catch (escalationErr) {
           logger.warn(`[AIRouter] Cascade escalation failed, using original response`, { metadata: { detail: escalationErr } });
@@ -1570,7 +1595,7 @@ export async function routeAITask(
   // truthful; the [byok:*] tag in the routing log preserves attribution.
   const costEstimate = config.byok
     ? 0
-    : usage ? estimateCost(finalModel, usage.prompt_tokens, usage.completion_tokens, cachedInputTokens) : 0;
+    : (usage ? estimateCost(finalModel, usage.prompt_tokens, usage.completion_tokens, cachedInputTokens) : 0) + sideCallCostUsd;
 
   // Extract the model self-reported confidence from the FINAL content (after
   // any cascade replacement). When requested but absent/malformed → honest null.
@@ -1664,7 +1689,7 @@ export async function routeAITask(
       usage.prompt_tokens || 0,
       usage.completion_tokens || 0,
       cachedInputTokens,
-    );
+    ) + sideCallCostUsd;
     // Fire-and-forget; recordUsage swallows its own errors.
     void recordUsage(config.orgId, usdAuthoritative, task.taskType ?? "unknown");
   }

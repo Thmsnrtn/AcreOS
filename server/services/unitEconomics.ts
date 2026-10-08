@@ -116,6 +116,8 @@ export interface UnitEconomicsResult {
   breakdown: {
     aiByFeature?: Record<string, { usd: number; calls: number }>;
     notes?: string[];
+    /** Cost to serve vs plan price — see costToServeOf(). */
+    costToServe?: CostToServe;
     fixedCostInputs?: {
       flyMonthlyUsd: number;
       postgresMonthlyUsd: number;
@@ -124,6 +126,98 @@ export interface UnitEconomicsResult {
       activeCustomers: number;
     };
   };
+}
+
+// ─── Cost to serve vs plan price (2026-10 cost efficiency) ──────────────────
+//
+// "What does this customer cost the PLATFORM to serve, against what their plan
+// pays?" — the per-org number the founder needs before scale makes it
+// expensive to find out. Monthly (trailing-window) platform cost =
+//
+//   AI actually billed      ai_tokens + voice ledger rows (what the gateway
+//                           and Pax post — real provider cents, BYOK = $0)
+// + pool-funded provider    opex_spent rows the plan's INCLUDED credit pool
+//   cost                    paid (sms / email / postcard / skip trace / paid
+//                           data lookups), in pool credits (1 credit ≈ $0.01
+//                           of provider cost, at p90 weights). Rows funded by
+//                           PURCHASED credits are excluded (the customer paid),
+//                           and the pool's own ai_tokens estimate is excluded
+//                           (the actual AI rows above already count it).
+//
+// It deliberately excludes the fixed-cost share (that is overhead, not this
+// customer's usage) and direct-mail ledger cost the customer funds per piece.
+//
+// ALERT (read-only): when cost to serve exceeds COST_TO_SERVE_ALERT_SHARE of
+// the plan price, a `customer_cost_to_serve_high` system alert is filed for
+// the founder. Nothing is throttled, re-priced or changed — the alert is a
+// prompt to look, and pricing stays a founder decision.
+export const COST_TO_SERVE_ALERT_SHARE = 0.5;
+
+export interface CostToServe {
+  /** Platform cost to serve this org over the window, USD. */
+  usd: number;
+  aiUsd: number;
+  poolProviderUsd: number;
+  /** usd / plan price; null when the org pays nothing (no price to compare). */
+  shareOfPrice: number | null;
+  /** shareOfPrice > COST_TO_SERVE_ALERT_SHARE. */
+  overAlertShare: boolean;
+  alertShare: number;
+}
+
+/** THE cost-to-serve rule — the compute path and the read API both use it. */
+export function costToServeOf(input: { mrrUsd: number; aiUsd: number; poolProviderUsd: number }): CostToServe {
+  const usd = round6(Math.max(0, input.aiUsd) + Math.max(0, input.poolProviderUsd));
+  const shareOfPrice = input.mrrUsd > 0 ? Math.round((usd / input.mrrUsd) * 10000) / 10000 : null;
+  return {
+    usd,
+    aiUsd: round6(Math.max(0, input.aiUsd)),
+    poolProviderUsd: round6(Math.max(0, input.poolProviderUsd)),
+    shareOfPrice,
+    overAlertShare: shareOfPrice !== null && shareOfPrice > COST_TO_SERVE_ALERT_SHARE,
+    alertShare: COST_TO_SERVE_ALERT_SHARE,
+  };
+}
+
+/**
+ * Pool-funded provider cost for one org over the window, USD: opex_spent
+ * rows the credit pool paid, excluding the purchased-credit overflow lane and
+ * the pool's estimated ai_tokens draw. One grouped scan.
+ */
+export async function poolProviderCostFor(orgId: number, since: Date): Promise<{ usd: number; byFeature: Record<string, number> }> {
+  const rows = await db
+    .select({
+      category: financialLedger.category,
+      feature: financialLedger.feature,
+      postedBy: financialLedger.postedBy,
+      totalCents: sql<number>`COALESCE(SUM(${financialLedger.amountCents}), 0)::bigint`,
+    })
+    .from(financialLedger)
+    .where(
+      and(
+        eq(financialLedger.organizationId, orgId),
+        eq(financialLedger.category, "opex_spent"),
+        gte(financialLedger.postedAt, since),
+      ),
+    )
+    .groupBy(financialLedger.category, financialLedger.feature, financialLedger.postedBy);
+  const byFeature: Record<string, number> = {};
+  let cents = 0;
+  for (const r of rows) {
+    // Re-check in code: a grouped row from any other category is not pool cost.
+    if (r.category !== "opex_spent") continue;
+    if (r.feature === "ai_tokens") continue;
+    if (typeof r.postedBy === "string" && r.postedBy.includes("purchased-overflow")) continue;
+    if (typeof r.postedBy === "string" && r.postedBy.includes(":refund")) {
+      cents -= Math.abs(toNumber(r.totalCents));
+      continue;
+    }
+    const c = Math.abs(toNumber(r.totalCents));
+    cents += c;
+    const key = r.feature ?? "unknown";
+    byFeature[key] = round6((byFeature[key] ?? 0) + c / 100);
+  }
+  return { usd: round6(Math.max(0, cents) / 100), byFeature };
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -329,6 +423,19 @@ export async function computeUnitEconomicsForOrg(
   const profitMarginUsd = round6(mrrUsd - totalCogsUsd);
   const profitMarginPct = mrrUsd > 0 ? Math.round((profitMarginUsd / mrrUsd) * 10000) / 100 : 0;
 
+  // Cost to serve vs plan price. A pool read failure must not sink the whole
+  // snapshot — the cost-to-serve figure is then reported as unknown (absent),
+  // never as a fabricated $0.
+  let costToServe: CostToServe | undefined;
+  try {
+    const pool = await poolProviderCostFor(orgId, since);
+    costToServe = costToServeOf({ mrrUsd, aiUsd: costs.aiCostUsd, poolProviderUsd: pool.usd });
+  } catch (err) {
+    logger.warn("[unitEconomics] pool cost read failed — cost to serve unknown for this snapshot", {
+      metadata: { orgId, error: (err as Error).message },
+    });
+  }
+
   const today = clock.now().toISOString().slice(0, 10);
   const prev = await previousDaySnapshot(orgId, today);
   const consecutiveUnprofitableDays = unprofitableStreak(profitMarginUsd, prev, today);
@@ -356,6 +463,7 @@ export async function computeUnitEconomicsForOrg(
     consecutiveUnprofitableDays,
     breakdown: {
       aiByFeature: costs.aiByFeature,
+      ...(costToServe ? { costToServe } : {}),
       notes: [
         "costs sourced from financial_ledger (Tier 2B one money spine); BYOK spend is not ours and is excluded",
         "revenue is list-price MRR, GROSS of Stripe processing fees; stripe_fee is not deducted anywhere in this margin, so the margin is overstated by the fee",
@@ -500,6 +608,56 @@ export async function maybeEmitUnprofitableAlert(result: UnitEconomicsResult): P
 }
 
 /**
+ * Read-only founder alert: an org whose platform cost to serve exceeds
+ * COST_TO_SERVE_ALERT_SHARE of its plan price. Deduped on an open alert, like
+ * the unprofitable alert. Files an alert and does nothing else.
+ */
+export async function maybeEmitCostToServeAlert(result: UnitEconomicsResult): Promise<boolean> {
+  const cts = result.breakdown.costToServe;
+  if (!cts || !cts.overAlertShare || cts.shareOfPrice === null) return false;
+  const existing = await db
+    .select({ id: systemAlerts.id })
+    .from(systemAlerts)
+    .where(
+      and(
+        eq(systemAlerts.alertType, "customer_cost_to_serve_high"),
+        eq(systemAlerts.organizationId, result.organizationId),
+        inArray(systemAlerts.status, ["new", "acknowledged"]),
+      ),
+    )
+    .limit(1);
+  if (existing.length > 0) return false;
+  const pct = Math.round(cts.shareOfPrice * 100);
+  const alert: InsertSystemAlert = {
+    type: "customer_cost_to_serve_high",
+    alertType: "customer_cost_to_serve_high",
+    severity: "warning",
+    title: `${result.organizationName} costs ${pct}% of its plan price to serve`,
+    message:
+      `Customer ${result.organizationName} (tier=${result.subscriptionTier}) cost $${cts.usd.toFixed(2)} ` +
+      `to serve over the last ${result.windowDays} days (AI $${cts.aiUsd.toFixed(2)}, pool-funded provider ` +
+      `cost $${cts.poolProviderUsd.toFixed(2)}) against a $${result.mrrUsd.toFixed(2)}/mo plan — ` +
+      `${pct}%, above the ${Math.round(cts.alertShare * 100)}% alert line. Read-only: nothing was throttled ` +
+      `or changed.`,
+    organizationId: result.organizationId,
+    relatedEntityType: "organization",
+    relatedEntityId: result.organizationId,
+    status: "new",
+    autoResolvable: false,
+    metadata: { costToServe: cts, mrrUsd: result.mrrUsd, windowDays: result.windowDays },
+  };
+  try {
+    await storage.createSystemAlert(alert);
+    return true;
+  } catch (err) {
+    logger.warn("[unitEconomics] failed to file cost-to-serve alert", {
+      metadata: { orgId: result.organizationId, error: (err as Error).message },
+    });
+    return false;
+  }
+}
+
+/**
  * Nightly job entry point — recomputes and persists every org's snapshot
  * and emits unprofitable alerts. Returns the number of orgs processed.
  */
@@ -534,6 +692,7 @@ export async function computeAllOrgs(): Promise<number> {
       await persistSnapshot(result);
       const fired = await maybeEmitUnprofitableAlert(result);
       if (fired) alertsFired += 1;
+      if (await maybeEmitCostToServeAlert(result)) alertsFired += 1;
       processed += 1;
     } catch (err) {
       logger.warn("[unitEconomics] per-org compute failed", {
@@ -578,6 +737,8 @@ export interface UnitEconomicsApiResponse {
     profitMarginUsd: number;
     profitMarginPct: number;
     consecutiveUnprofitableDays: number;
+    /** Platform cost to serve vs plan price; null when the snapshot predates it. */
+    costToServe: CostToServe | null;
     computedAt: string;
   }>;
   trend: Array<{
@@ -605,6 +766,7 @@ export async function readUnitEconomicsRollup(): Promise<UnitEconomicsApiRespons
       cue.profit_margin_usd,
       cue.profit_margin_pct,
       cue.consecutive_unprofitable_days,
+      cue.breakdown,
       o.name AS organization_name,
       o.subscription_tier,
       o.subscription_status
@@ -629,6 +791,12 @@ export async function readUnitEconomicsRollup(): Promise<UnitEconomicsApiRespons
     profitMarginUsd: toNumber(r.profit_margin_usd),
     profitMarginPct: toNumber(r.profit_margin_pct),
     consecutiveUnprofitableDays: r.consecutive_unprofitable_days as number,
+    // Re-projected through the canonical rule from the snapshot's persisted
+    // components, so the read API and the alert can never disagree.
+    costToServe: (() => {
+      const c = (r.breakdown as { costToServe?: CostToServe } | null)?.costToServe;
+      return c ? costToServeOf({ mrrUsd: toNumber(r.mrr_usd), aiUsd: c.aiUsd, poolProviderUsd: c.poolProviderUsd }) : null;
+    })(),
     computedAt: new Date(r.computed_at).toISOString(),
   }));
 
