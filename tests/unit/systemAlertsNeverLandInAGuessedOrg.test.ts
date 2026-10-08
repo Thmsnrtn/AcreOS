@@ -23,9 +23,22 @@ vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 
+// ONE file-level db mock whose target each test sets. Per-test doMock/doUnmock
+// raced with fire-and-forget imports left over from the previous test, which
+// could cache the real db module and let a write miss the stub.
+const dbHolder = vi.hoisted(() => ({ current: null as null | Record<string, unknown> }));
+vi.mock("../../server/db", () => ({
+  get db() {
+    return (dbHolder.current as { db: unknown } | null)?.db;
+  },
+  get pool() {
+    return (dbHolder.current as { pool: unknown } | null)?.pool;
+  },
+}));
+
 afterEach(() => {
   vi.resetModules();
-  vi.doUnmock("../../server/db");
+  dbHolder.current = null;
   vi.doUnmock("../../server/services/founder");
   delete process.env.FOUNDER_PRIMARY_ORG_ID;
 });
@@ -60,19 +73,19 @@ describe("resolving the founder org", () => {
   });
 
   it("with no env and no founder membership it is null / a typed refusal — not 1", async () => {
-    vi.doMock("../../server/db", () => emptyDb([]));
+    dbHolder.current = emptyDb([]);
     const founder = await import("../../server/services/founder");
     expect(await founder.resolveFounderPrimaryOrgId()).toBeNull();
     await expect(founder.getFounderPrimaryOrgId()).rejects.toMatchObject({ code: "FOUNDER_ORG_UNRESOLVED" });
   });
 
   it("FOUNDER_PRIMARY_ORG_ID wins when set, and a non-id value is ignored rather than coerced", async () => {
-    vi.doMock("../../server/db", () => emptyDb([]));
+    dbHolder.current = emptyDb([]);
     process.env.FOUNDER_PRIMARY_ORG_ID = "42";
     expect(await (await import("../../server/services/founder")).getFounderPrimaryOrgId()).toBe(42);
     // A fresh module (the resolution is cached per process).
     vi.resetModules();
-    vi.doMock("../../server/db", () => emptyDb([]));
+    dbHolder.current = emptyDb([]);
     process.env.FOUNDER_PRIMARY_ORG_ID = "0";
     expect(await (await import("../../server/services/founder")).resolveFounderPrimaryOrgId()).toBeNull();
   });
@@ -89,7 +102,7 @@ describe("a miss is remembered briefly", () => {
       selects++;
       return select();
     };
-    vi.doMock("../../server/db", () => db);
+    dbHolder.current = db;
     const founder = await import("../../server/services/founder");
     expect(await founder.resolveFounderPrimaryOrgId()).toBeNull();
     const after1 = selects;
@@ -109,7 +122,7 @@ describe("notifyOnCall with no founder org", () => {
     const sendEmail = vi.fn(async () => ({ success: true }));
     const registerCriticalAlert = vi.fn(async () => undefined);
     vi.doMock("../../server/utils/logger", () => ({ logger }));
-    vi.doMock("../../server/db", () => emptyDb(inserts));
+    dbHolder.current = emptyDb(inserts);
     vi.doMock("../../server/services/pushNotificationService", () => ({ sendPushToUser: sendPush }));
     vi.doMock("../../server/services/emailService", () => ({ emailService: { sendEmail } }));
     vi.doMock("../../server/routes-founder-critical-alerts", () => ({ registerCriticalAlert }));
@@ -136,7 +149,7 @@ describe("notifyOnCall with no founder org", () => {
     vi.resetModules();
     const inserts: Array<{ organizationId?: unknown }> = [];
     vi.doMock("../../server/utils/logger", () => ({ logger }));
-    vi.doMock("../../server/db", () => emptyDb(inserts));
+    dbHolder.current = emptyDb(inserts);
     vi.doMock("../../server/services/pushNotificationService", () => ({ sendPushToUser: vi.fn(async () => ({ sent: 0, failed: 0 })) }));
     vi.doMock("../../server/services/emailService", () => ({ emailService: { sendEmail: vi.fn(async () => ({ success: true })) } }));
     vi.doMock("../../server/routes-founder-critical-alerts", () => ({ registerCriticalAlert: vi.fn(async () => undefined) }));
@@ -155,7 +168,7 @@ describe("recourse sweep with no founder org", () => {
   it("does not push against a guessed org's subscriptions", async () => {
     vi.resetModules();
     vi.doMock("../../server/utils/logger", () => ({ logger }));
-    vi.doMock("../../server/db", () => emptyDb([]));
+    dbHolder.current = emptyDb([]);
     const { runRecourseSweepTick } = await import("../../server/services/recourseDrafter");
     const sendPushToUser = vi.fn(async () => ({ sent: 1, failed: 0 }));
     const r = await runRecourseSweepTick({
