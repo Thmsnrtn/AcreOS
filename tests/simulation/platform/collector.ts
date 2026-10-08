@@ -139,7 +139,8 @@ export class Collector {
     try {
       const leads = await this.q<any>("select lower(email) e, phone p from leads where email is not null or phone is not null");
       counterparties = { emails: leads.map((l) => l.e).filter(Boolean), phones: leads.map((l) => normPhone(l.p)).filter(Boolean) };
-      const customerDomains = new Set((await this.q<any>("select lower(domain) d from verified_email_domains union select lower(split_part(from_email, '@', 2)) from email_sender_identities where from_email is not null").catch(() => [])).map((r) => r.d));
+      // The customer's own sending domains: a verified domain, a sender identity, or the org's own DKIM identity (org_email_identities).
+      const customerDomains = new Set((await this.q<any>("select lower(domain) d from verified_email_domains union select lower(split_part(from_email, '@', 2)) from email_sender_identities where from_email is not null union select lower(split_part(from_address, '@', 2)) from org_email_identities where status = 'verified'").catch(() => [])).map((r) => r.d));
       const froms = new Set(providerCalls.filter((c) => c.rail === "ses" || c.rail === "sendgrid").map((c) => normEmail(String(c.from ?? ""))).filter(Boolean));
       platformSenders = [...froms].filter((f) => !customerDomains.has(f.split("@")[1] ?? ""));
       // Anyone the platform sender mails who is not an AcreOS user is a counterparty

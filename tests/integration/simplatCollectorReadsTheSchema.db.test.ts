@@ -23,6 +23,7 @@ useRealDb("simplatCollectorReadsTheSchema.db.test.ts");
 describe.runIf(realDbAvailable)("the simulation collector reads every source it claims on the real schema", () => {
   let pool: typeof import("../../server/db").pool;
   let actionId = 0;
+  let orgId = 0;
   const pi = `pi_simplat_collector_${process.pid}_${Date.now()}`;
 
   beforeAll(async () => {
@@ -37,6 +38,41 @@ describe.runIf(realDbAvailable)("the simulation collector reads every source it 
 
   afterAll(async () => {
     if (pool && actionId) await pool.query(`DELETE FROM autopilot_pending_actions WHERE id = $1`, [actionId]);
+    if (pool && orgId) {
+      await pool.query(`DELETE FROM org_email_identities WHERE organization_id = $1`, [orgId]);
+      await pool.query(`DELETE FROM organizations WHERE id = $1`, [orgId]);
+    }
+  });
+
+  it("an organization's own verified sending identity is not the platform sender", async () => {
+    // The org provisions its own DKIM identity (org_email_identities) on its own
+    // domain; mail from it is BYO, not the platform rail. The collector used to
+    // know only verified_email_domains and email_sender_identities, so the first
+    // year in which customers actually emailed their leads read every such send
+    // as the platform mailing a counterparty.
+    const { Collector } = await import("../simulation/platform/collector");
+    const org = await pool.query<{ id: number }>(`INSERT INTO organizations (name, slug, owner_id) VALUES ($1, $2, $3) RETURNING id`, [`Collector ${pi}`, `collector-${pi}`, `owner-${pi}`]);
+    orgId = org.rows[0].id;
+    await pool.query(
+      `INSERT INTO org_email_identities (organization_id, from_address, dkim_domain, dkim_selector, dkim_public_key, dkim_private_key_encrypted, spf_record, dmarc_record, status)
+       VALUES ($1, $2, $3, 'acreos', 'pk', 'enc', 'spf', 'dmarc', 'verified')`,
+      [orgId, `deals@collector-${process.pid}.example.org`, `collector-${process.pid}.example.org`],
+    );
+    const q = async (sql: string, params?: unknown[]) =>
+      /simplat\.tenant_writes/.test(sql) ? (/max\(id\)/.test(sql) ? [{ m: 0 }] : []) : (await pool.query(sql, params as any[])).rows;
+    const dir = mkdtempSync(join(tmpdir(), "simplat-collector-id-"));
+    mkdirSync(join(dir, "provider"));
+    writeFileSync(join(dir, "dbtap.jsonl"), "");
+    writeFileSync(join(dir, "egress.jsonl"), "");
+    writeFileSync(join(dir, "provider/provider-calls.jsonl"), [
+      { rail: "ses", op: "send", from: `deals@collector-${process.pid}.example.org`, to: ["seller@example.net"], at: new Date().toISOString() },
+      { rail: "ses", op: "send", from: "notifications@acreos.io", to: ["someone@example.net"], at: new Date().toISOString() },
+    ].map((x) => JSON.stringify(x)).join("\n") + "\n");
+    const c = new Collector(q as any, dir);
+    await c.init();
+    const truth = { revokedAtVirtual: new Map(), outages: [], founderTaps: [], approvalsShown: new Map(), screens: [] };
+    const o = await c.observe(new Date().toISOString(), truth as any, 0);
+    expect(o.platformSenders).toEqual(["notifications@acreos.io"]);
   });
 
   it("no DB-fed source is unread, and the executed refund is observed", async () => {
