@@ -36,27 +36,8 @@
  * Pure data + pure functions: shared/ is bundled into the client.
  */
 
-export const EVIDENCE_LEVELS = ["E0", "E1", "E2", "E3", "E4", "E5", "E6"] as const;
+const EVIDENCE_LEVELS = ["E0", "E1", "E2", "E3", "E4", "E5", "E6"] as const;
 export type EvidenceLevel = (typeof EVIDENCE_LEVELS)[number];
-
-export const EVIDENCE_LEVEL_MEANING: Record<EvidenceLevel, string> = {
-  E0: "planned",
-  E1: "unit-tested",
-  E2: "proven in a deterministic simulation",
-  E3: "proven in a simulation with a real model",
-  E4: "running in shadow on real traffic",
-  E5: "in a real pilot",
-  E6: "observed in production",
-};
-
-/** The run kinds a proving record may have, and the level each can prove. */
-export const RUN_KIND_LEVEL: Record<string, EvidenceLevel> = {
-  "deterministic-sim": "E2",
-  "real-model-sim": "E3",
-  shadow: "E4",
-  pilot: "E5",
-  production: "E6",
-};
 
 export interface Capability {
   id: string;
@@ -258,8 +239,6 @@ export const CAPABILITIES: readonly Capability[] = [
     caveat: "surfaced, not decided: the public claim is beta (OD-5)",
   },
 ];
-
-export const EVAL_RUN_RECORD = RUN_EVAL;
 
 export function rankOf(level: EvidenceLevel): number {
   return EVIDENCE_LEVELS.indexOf(level);

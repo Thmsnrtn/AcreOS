@@ -1460,8 +1460,7 @@ export class DatabaseStorage implements IStorage {
     signups30d: number;
     totalEvents: number;
   }> {
-    const thirtyDaysAgo = clock.now();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgo = new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000);
     
     const events = await db.select()
       .from(subscriptionEvents)

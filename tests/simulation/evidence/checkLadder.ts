@@ -3,7 +3,16 @@
  * points at (shared/governance/evidenceLadder.ts). Used by
  * tests/unit/evidenceLadder.test.ts on the real registry and on canaries.
  */
-import { EVIDENCE_LEVELS, RUN_KIND_LEVEL, rankOf, type Capability } from "../../../shared/governance/evidenceLadder";
+import { rankOf, type Capability, type EvidenceLevel } from "../../../shared/governance/evidenceLadder";
+
+/** The run kinds a proving record may have, and the level each can prove (the ladder's header states the same rule). */
+export const RUN_KIND_LEVEL: Record<string, EvidenceLevel> = {
+  "deterministic-sim": "E2",
+  "real-model-sim": "E3",
+  shadow: "E4",
+  pilot: "E5",
+  production: "E6",
+};
 
 export interface RunRecord {
   id: string;
@@ -22,7 +31,7 @@ export function checkLadder(registry: readonly Capability[], io: { exists: (p: s
   for (const c of registry) {
     if (seen.has(c.id)) errors.push(`${c.id}: duplicate id`);
     seen.add(c.id);
-    if (!(EVIDENCE_LEVELS as readonly string[]).includes(c.level)) { errors.push(`${c.id}: unknown level ${c.level}`); continue; }
+    if (rankOf(c.level) < 0) { errors.push(`${c.id}: unknown level ${c.level}`); continue; }
     const r = rankOf(c.level);
     if (r >= rankOf("E1")) {
       if (!c.proof.unit?.length) errors.push(`${c.id}: claims ${c.level} with no unit-test pointer`);
@@ -37,8 +46,13 @@ export function checkLadder(registry: readonly Capability[], io: { exists: (p: s
         else if (!rec.proves?.includes(c.id)) errors.push(`${c.id}: run ${p} does not list it in "proves"`);
         else if (!(rec.kind in RUN_KIND_LEVEL)) errors.push(`${c.id}: run ${p} has unknown kind ${rec.kind}`);
       }
-      const best = Math.max(-1, ...proving.filter((x) => x.rec && x.rec.proves?.includes(c.id) && x.rec.kind in RUN_KIND_LEVEL).map((x) => rankOf(RUN_KIND_LEVEL[x.rec!.kind])));
-      if (best < r) errors.push(`${c.id}: claims ${c.level} but its strongest proving run reaches ${best < 0 ? "nothing" : EVIDENCE_LEVELS[best]}`);
+      let best: EvidenceLevel | null = null;
+      for (const x of proving) {
+        if (!x.rec || !x.rec.proves?.includes(c.id) || !(x.rec.kind in RUN_KIND_LEVEL)) continue;
+        const lv = RUN_KIND_LEVEL[x.rec.kind];
+        if (best == null || rankOf(lv) > rankOf(best)) best = lv;
+      }
+      if (best == null || rankOf(best) < r) errors.push(`${c.id}: claims ${c.level} but its strongest proving run reaches ${best ?? "nothing"}`);
     }
   }
   return errors;

@@ -16,7 +16,18 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { p10p50p90 } from "../twin/rng";
 import { assumptions, PARAMS } from "../twin/parameters";
-import { CAPABILITIES, EVIDENCE_LEVEL_MEANING, evidenceSummary } from "../../../shared/governance/evidenceLadder";
+import { CAPABILITIES, evidenceSummary, type EvidenceLevel } from "../../../shared/governance/evidenceLadder";
+
+/** The ladder's levels in a layperson's words (shared/governance/evidenceLadder.ts header). */
+const EVIDENCE_LEVEL_MEANING: Record<EvidenceLevel, string> = {
+  E0: "planned",
+  E1: "unit-tested",
+  E2: "proven in a deterministic simulation",
+  E3: "proven in a simulation with a real model",
+  E4: "running in shadow on real traffic",
+  E5: "in a real pilot",
+  E6: "observed in production",
+};
 
 const argv = process.argv.slice(2);
 const list = (name: string): string[] => {
