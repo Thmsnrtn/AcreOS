@@ -49,6 +49,13 @@ export interface GroundTruth {
   founderTaps: Array<{ id: string; kind: string; at: string }>;
   approvalsShown: Map<number, { shownHash: string | null; shownActs: { moveKind: string; domain: string } | null; answer: "yes" | "no" }>;
   screens: ScreenEvent[];
+  /**
+   * Provider callbacks the harness delivered, by the tenant each was FOR. A
+   * callback carries no tenant actor (the server resolves the org from the
+   * signed To number: platform scope), so the db tap cannot judge it; where it
+   * LANDED is read on its outcome instead. Drained by each observation.
+   */
+  webhookLandings?: Array<{ forOrg: number; sid: string }>;
 }
 
 const normPhone = (s: string) => String(s ?? "").replace(/\D/g, "").slice(-10);
@@ -65,7 +72,7 @@ export class Collector {
   private seenApprovals = new Set<number>();
   private baseline: { orgs: number; users: number } | null = null;
   tick = 0;
-  readonly coverage = { queriesInspected: 0, queriesWithOrgColumn: 0, providerCalls: 0, sends: 0, screens: 0 };
+  readonly coverage = { queriesInspected: 0, queriesWithOrgColumn: 0, providerCalls: 0, sends: 0, screens: 0, webhookLandings: 0 };
 
   /** Provider and egress logs stamp the WALL clock; the DB and the twin speak virtual time. */
   constructor(private readonly q: Q, private readonly dir: string, private readonly toVirtual: (wallIso: string) => string = (x) => x) {
@@ -109,6 +116,24 @@ export class Collector {
       if (rows.length) this.lastTenantWrite = rows[rows.length - 1].id;
       tenantWrites = rows.map((r) => ({ actorOrg: r.actor_org, rowOrg: r.row_org, table: r.tbl, op: r.op }));
     } catch { unread.push("tenantWrites"); }
+    // Provider callbacks: every row a callback wrote, under the org it landed
+    // in, judged against the org it was for (no-cross-tenant reads these as
+    // writes). Inbound SMS lands in messages (matched lead), unattached
+    // inbound (no lead) or lead_consent_events (STOP).
+    const landings = truth.webhookLandings?.splice(0) ?? [];
+    if (landings.length) {
+      try {
+        const forOrg = new Map(landings.map((l) => [l.sid, l.forOrg]));
+        const rows = await this.q<any>(
+          `select external_id as sid, organization_id as org, 'messages' as tbl from messages where external_id = any($1)
+           union all select external_id, organization_id, 'unattached_inbound_messages' from unattached_inbound_messages where external_id = any($1)
+           union all select inbound_message_sid, organization_id, 'lead_consent_events' from lead_consent_events where inbound_message_sid = any($1)`,
+          [[...forOrg.keys()]],
+        );
+        for (const r of rows) tenantWrites.push({ actorOrg: forOrg.get(r.sid)!, rowOrg: Number(r.org), table: r.tbl, op: "WEBHOOK" });
+        this.coverage.webhookLandings += rows.length;
+      } catch { unread.push("tenantWrites"); }
+    }
 
     // ── provider traffic ──
     const provLines = this.prov.next();

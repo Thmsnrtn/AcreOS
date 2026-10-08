@@ -215,9 +215,13 @@ async function deliverReplies(truth: GroundTruth) {
     // states for webhooks — rather than the customer's: stamped with the
     // customer's org, the owner lookup read as that org reading every other
     // tenant's credentials. Whether the message landed in the right org is
-    // checked on its outcome (no-send-without-consent sees an ignored STOP).
+    // checked on its outcome (below; and no-send-without-consent sees an
+    // ignored STOP).
     const res = await r.c.client.call("POST", "/api/webhooks/twilio/sms", undefined, { raw: new URLSearchParams(params).toString(), noAuth: true, noCsrf: true, headers: { "content-type": "application/x-www-form-urlencoded", "x-twilio-signature": sig, "x-forwarded-proto": "https", "x-forwarded-host": "sim.acreos.test", "x-simplat-actor-org": "" } });
     counts.replies++;
+    // ...so where it landed is checked on its outcome: the collector reads the
+    // rows this MessageSid wrote and judges their org against this customer's.
+    truth.webhookLandings?.push({ forOrg: r.c.orgId, sid: params.MessageSid });
     if (r.revokes) {
       counts.revocations++;
       const key = truthKey("sms", r.lead.phone!);
@@ -383,7 +387,7 @@ async function main() {
   const monitor = new InvariantMonitor(join(OUT, "violations.jsonl"));
   const collector = new Collector(k.q, DIR, toVirtual);
   await collector.init();
-  const truth: GroundTruth = { revokedAtVirtual: new Map(), outages: [], founderTaps: [], approvalsShown: new Map(), screens: [] };
+  const truth: GroundTruth = { revokedAtVirtual: new Map(), outages: [], founderTaps: [], approvalsShown: new Map(), screens: [], webhookLandings: [] };
   const outagePlan = [
     { provider: "model_provider", names: ["model"], fromDay: Math.floor(DAYS * 0.3), hours: 24 },
     { provider: "stripe", names: ["Stripe"], fromDay: Math.floor(DAYS * 0.6), hours: 36 },
@@ -537,6 +541,8 @@ async function main() {
       tapSawOrgColumns: collector.coverage.queriesWithOrgColumn > 0,
       sendsChecked: collector.coverage.sends,
       letterRead: collector.coverage.screens,
+      // Replies delivered vs rows read back to judge where they landed.
+      webhookLandingsRead: { replies: counts.replies, rows: collector.coverage.webhookLandings },
     },
   };
   writeFileSync(join(OUT, "metrics.json"), JSON.stringify(result, null, 1));
