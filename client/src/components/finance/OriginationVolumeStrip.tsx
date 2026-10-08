@@ -58,8 +58,12 @@ export function OriginationVolumeStrip({ data, ariaLabel }: Props) {
       .map((d) => `${shortMonth(d.month)} ${usd(d.amount, { noCents: true })}`)
       .join("; ")}.`;
 
+  // tabIndex: the strip scrolls sideways on narrow screens, and a scrollable
+  // region a keyboard cannot focus cannot be scrolled at all (axe
+  // scrollable-region-focusable). The role="img" summary is what a reader
+  // hears on focus.
   return (
-    <div className="w-full overflow-x-auto" role="img" aria-label={a11ySummary}>
+    <div className="w-full overflow-x-auto" role="img" aria-label={a11ySummary} tabIndex={0}>
       <svg width={totalW} height={totalH} viewBox={`0 0 ${totalW} ${totalH}`} className="block">
         {data.map((d, i) => {
           const x = PADDING_X + i * (PANEL_W + GAP);

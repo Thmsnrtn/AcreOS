@@ -193,6 +193,13 @@
   --acr-density-4: #873922;
 }
 .dark {
+  /* Status text inks follow the dark base token. Every [data-theme] dark
+     block also redefines these, because a light [data-theme]:root block on
+     the same <html> outranks this selector — see statusInkContrast.test.ts. */
+  --acr-warn-text:   var(--acr-warn);
+  --acr-accent-text: var(--acr-accent);
+  --acr-pos-text:    var(--acr-pos);
+  --acr-neg-text:    var(--acr-neg);
   --glass-bg-light:  rgba(20, 14, 8, 0.78);
   --glass-bg-subtle: rgba(20, 14, 8, 0.60);
   --glass-bg-sm:     rgba(20, 14, 8, 0.70);
@@ -261,10 +268,13 @@
   --acr-brand-soft:   rgba(160,68,40,0.14);
   --acr-brand-soft-ink: #943F25;  /* AA on -soft: 4.56:1 */
   --acr-accent:       #B8842E;
+  --acr-accent-text:  #77551D;  /* text-acr-accent ink: AA 4.60:1 on this theme's surfaces + its /15 wash (was 2.24) */
   --acr-pos:          #5A7340;
+  --acr-pos-text:     #4B5F35;  /* text-acr-pos ink: AA 4.63:1 on this theme's surfaces + its -soft wash (was 3.49) */
   --acr-pos-soft:     rgba(90,115,64,0.14);
   --acr-pos-soft-ink: #4C6136;  /* AA on -soft: 4.55:1 */
   --acr-warn:         #B97A1E;
+  --acr-warn-text:    #7C5114;  /* text-acr-warn ink: AA 4.70:1 on this theme's surfaces + its -soft wash (was 2.44) */
   --acr-warn-soft:    rgba(185,122,30,0.14);
   --acr-warn-soft-ink: #805415;  /* AA on -soft: 4.53:1 */
   --acr-neg:          #8E2B16;
@@ -291,7 +301,7 @@
   --secondary:                   38 31% 83%;
   --secondary-foreground:        28 33% 9%;
   --muted:                       38 31% 83%;
-  --muted-foreground:            34 21% 34%;
+  --muted-foreground:            34 21% 32%;
   --accent:                      36 61% 45%;
   --accent-foreground:           41 51% 92%;
   --destructive:                 11 73% 32%;
@@ -352,13 +362,17 @@
   --acr-brand-soft:   rgba(194,96,74,0.18);
   --acr-brand-soft-ink: #CE7E6C;  /* AA on -soft: 4.55:1 */
   --acr-accent:       #D9A24A;
+  --acr-accent-text:  var(--acr-accent);  /* dark: resets the light block's ink, which shares this element — base already AA 5.77:1 here */
   --acr-pos:          #92B570;
+  --acr-pos-text:     var(--acr-pos);  /* dark: resets the light block's ink, which shares this element — base already AA 5.55:1 here */
   --acr-pos-soft:     rgba(146,181,112,0.16);
   --acr-pos-soft-ink: #92B570;  /* AA on -soft: 5.58:1 */
   --acr-warn:         #D9A24A;
+  --acr-warn-text:    var(--acr-warn);  /* dark: resets the light block's ink, which shares this element — base already AA 5.61:1 here */
   --acr-warn-soft:    rgba(217,162,74,0.16);
   --acr-warn-soft-ink: #D9A24A;  /* AA on -soft: 5.63:1 */
   --acr-neg:          #BF4C2E;
+  --acr-neg-text:     #D8785F;  /* text-acr-neg ink: AA 4.66:1 on this theme's surfaces + its -soft wash (was 2.95) */
   --acr-neg-soft:     rgba(191,76,46,0.18);
   --acr-neg-soft-ink: #D7745A;  /* AA on -soft: 4.52:1 */
   --acr-glow:         rgba(194,96,74,0.36);
@@ -454,10 +468,13 @@
   --acr-brand-soft:   rgba(194,83,28,0.14);
   --acr-brand-soft-ink: #A54718;  /* AA on -soft: 4.55:1 */
   --acr-accent:       #4C7B80;
+  --acr-accent-text:  #40686D;  /* text-acr-accent ink: AA 4.69:1 on this theme's surfaces + its /15 wash (was 3.60) */
   --acr-pos:          #3B7C2E;
+  --acr-pos-text:     #356F29;  /* text-acr-pos ink: AA 4.63:1 on this theme's surfaces + its -soft wash (was 3.90) */
   --acr-pos-soft:     rgba(59,124,46,0.14);
   --acr-pos-soft-ink: #36712A;  /* AA on -soft: 4.51:1 */
   --acr-warn:         #C48A1E;
+  --acr-warn-text:    #865E15;  /* text-acr-warn ink: AA 4.65:1 on this theme's surfaces + its -soft wash (was 2.41) */
   --acr-warn-soft:    rgba(196,138,30,0.14);
   --acr-warn-soft-ink: #886015;  /* AA on -soft: 4.52:1 */
   --acr-neg:          #B33419;
@@ -484,7 +501,7 @@
   --secondary:                   43 56.4% 89.2%;
   --secondary-foreground:        31 67.4% 8.4%;
   --muted:                       43 56.4% 89.2%;
-  --muted-foreground:            39 27.1% 37.1%;
+  --muted-foreground:            39 27.1% 36.1%;
   --accent:                      186 25.5% 40%;
   --accent-foreground:           43 100% 97.3%;
   --destructive:                 11 75.5% 40%;
@@ -541,13 +558,17 @@
   --acr-brand-soft:   rgba(237,136,82,0.16);
   --acr-brand-soft-ink: #ED8852;  /* AA on -soft: 5.18:1 */
   --acr-accent:       #7FB3B7;
+  --acr-accent-text:  var(--acr-accent);  /* dark: resets the light block's ink, which shares this element — base already AA 5.73:1 here */
   --acr-pos:          #7FCA72;
+  --acr-pos-text:     var(--acr-pos);  /* dark: resets the light block's ink, which shares this element — base already AA 6.41:1 here */
   --acr-pos-soft:     rgba(127,202,114,0.16);
   --acr-pos-soft-ink: #7FCA72;  /* AA on -soft: 6.41:1 */
   --acr-warn:         #F0BC58;
+  --acr-warn-text:    var(--acr-warn);  /* dark: resets the light block's ink, which shares this element — base already AA 6.98:1 here */
   --acr-warn-soft:    rgba(240,188,88,0.16);
   --acr-warn-soft-ink: #F0BC58;  /* AA on -soft: 6.98:1 */
   --acr-neg:          #EE8063;
+  --acr-neg-text:     var(--acr-neg);  /* dark: resets the light block's ink, which shares this element — base already AA 5.00:1 here */
   --acr-neg-soft:     rgba(238,128,99,0.16);
   --acr-neg-soft-ink: #EE8063;  /* AA on -soft: 5.00:1 */
   --acr-glow:         rgba(237,136,82,0.40);
@@ -633,6 +654,7 @@
   --acr-pos-soft:     rgba(24,98,58,0.10);
   --acr-pos-soft-ink: #18623A;  /* AA on -soft: 5.60:1 */
   --acr-warn:         #8F6A00;
+  --acr-warn-text:    #805F00;  /* text-acr-warn ink: AA 4.61:1 on this theme's surfaces + its -soft wash (was 3.88) */
   --acr-warn-soft:    rgba(143,106,0,0.10);
   --acr-warn-soft-ink: #805F00;  /* AA on -soft: 4.61:1 */
   --acr-neg:          #9E1E17;
@@ -717,13 +739,17 @@
   --acr-brand-soft:   rgba(232,81,66,0.14);
   --acr-brand-soft-ink: #EA6456;  /* AA on -soft: 4.52:1 */
   --acr-accent:       #F2EFE5;
+  --acr-accent-text:  var(--acr-accent);  /* dark: resets the light block's ink, which shares this element — base already AA 9.78:1 here */
   --acr-pos:          #5BC783;
+  --acr-pos-text:     var(--acr-pos);  /* dark: resets the light block's ink, which shares this element — base already AA 6.30:1 here */
   --acr-pos-soft:     rgba(91,199,131,0.14);
   --acr-pos-soft-ink: #5BC783;  /* AA on -soft: 6.30:1 */
   --acr-warn:         #E4B14A;
+  --acr-warn-text:    var(--acr-warn);  /* dark: resets the light block's ink, which shares this element — base already AA 6.66:1 here */
   --acr-warn-soft:    rgba(228,177,74,0.14);
   --acr-warn-soft-ink: #E4B14A;  /* AA on -soft: 6.66:1 */
   --acr-neg:          #E85142;
+  --acr-neg-text:     #EB6659;  /* text-acr-neg ink: AA 4.61:1 on this theme's surfaces + its -soft wash (was 3.98) */
   --acr-neg-soft:     rgba(232,81,66,0.14);
   --acr-neg-soft-ink: #EA6456;  /* AA on -soft: 4.52:1 */
   --acr-glow:         rgba(232,81,66,0.35);
@@ -806,9 +832,11 @@
   --acr-brand-soft-ink: #C53327;  /* AA on -soft: 4.51:1 */
   --acr-accent:       #0A0A0A;
   --acr-pos:          #1E7A3E;
+  --acr-pos-text:     #1D783D;  /* text-acr-pos ink: AA 4.61:1 on this theme's surfaces + its -soft wash (was 4.49) */
   --acr-pos-soft:     rgba(30,122,62,0.10);
   --acr-pos-soft-ink: #1D783D;  /* AA on -soft: 4.61:1 */
   --acr-warn:         #B8820E;
+  --acr-warn-text:    #8B620B;  /* text-acr-warn ink: AA 4.71:1 on this theme's surfaces + its -soft wash (was 2.91) */
   --acr-warn-soft:    rgba(184,130,14,0.10);
   --acr-warn-soft-ink: #8D640B;  /* AA on -soft: 4.58:1 */
   --acr-neg:          #B02B20;
@@ -892,13 +920,17 @@
   --acr-brand-soft:   rgba(255,74,56,0.12);
   --acr-brand-soft-ink: #FF4A38;  /* AA on -soft: 4.96:1 */
   --acr-accent:       #F4F4F4;
+  --acr-accent-text:  var(--acr-accent);  /* dark: resets the light block's ink, which shares this element — base already AA 11.32:1 here */
   --acr-pos:          #4ADE80;
+  --acr-pos-text:     var(--acr-pos);  /* dark: resets the light block's ink, which shares this element — base already AA 8.66:1 here */
   --acr-pos-soft:     rgba(74,222,128,0.12);
   --acr-pos-soft-ink: #4ADE80;  /* AA on -soft: 8.66:1 */
   --acr-warn:         #FAC84D;
+  --acr-warn-text:    var(--acr-warn);  /* dark: resets the light block's ink, which shares this element — base already AA 9.37:1 here */
   --acr-warn-soft:    rgba(250,200,77,0.12);
   --acr-warn-soft-ink: #FAC84D;  /* AA on -soft: 9.37:1 */
   --acr-neg:          #FF4A38;
+  --acr-neg-text:     var(--acr-neg);  /* dark: resets the light block's ink, which shares this element — base already AA 4.96:1 here */
   --acr-neg-soft:     rgba(255,74,56,0.12);
   --acr-neg-soft-ink: #FF4A38;  /* AA on -soft: 4.96:1 */
   --acr-glow:         rgba(255,74,56,0.45);
@@ -981,13 +1013,16 @@
   --acr-brand-soft:   rgba(61,107,47,0.14);
   --acr-brand-soft-ink: #3D6B2F;  /* AA on -soft: 4.77:1 */
   --acr-accent:       #D89528;
+  --acr-accent-text:  #875D19;  /* text-acr-accent ink: AA 4.73:1 on this theme's surfaces + its /15 wash (was 2.07) */
   --acr-pos:          #3D6B2F;
   --acr-pos-soft:     rgba(61,107,47,0.14);
   --acr-pos-soft-ink: #3D6B2F;  /* AA on -soft: 4.77:1 */
   --acr-warn:         #D89528;
+  --acr-warn-text:    #875D18;  /* text-acr-warn ink: AA 4.69:1 on this theme's surfaces + its -soft wash (was 2.05) */
   --acr-warn-soft:    rgba(216,149,40,0.16);
   --acr-warn-soft-ink: #895E19;  /* AA on -soft: 4.60:1 */
   --acr-neg:          #C85632;
+  --acr-neg-text:     #A54729;  /* text-acr-neg ink: AA 4.61:1 on this theme's surfaces + its -soft wash (was 3.37) */
   --acr-neg-soft:     rgba(200,86,50,0.14);
   --acr-neg-soft-ink: #A7482A;  /* AA on -soft: 4.52:1 */
   --acr-glow:         rgba(61,107,47,0.32);
@@ -1011,7 +1046,7 @@
   --secondary:                   69 30.2% 91.6%;
   --secondary-foreground:        109 33.3% 9.4%;
   --muted:                       69 30.2% 91.6%;
-  --muted-foreground:            87 8.2% 39.8%;
+  --muted-foreground:            87 8.2% 37.8%;
   --accent:                      37 69.3% 50.2%;
   --accent-foreground:           60 53.8% 97.5%;
   --destructive:                 14 60% 49%;
@@ -1068,13 +1103,17 @@
   --acr-brand-soft:   rgba(139,199,106,0.18);
   --acr-brand-soft-ink: #8BC76A;  /* AA on -soft: 5.47:1 */
   --acr-accent:       #F2BF55;
+  --acr-accent-text:  var(--acr-accent);  /* dark: resets the light block's ink, which shares this element — base already AA 6.70:1 here */
   --acr-pos:          #8BC76A;
+  --acr-pos-text:     var(--acr-pos);  /* dark: resets the light block's ink, which shares this element — base already AA 5.47:1 here */
   --acr-pos-soft:     rgba(139,199,106,0.18);
   --acr-pos-soft-ink: #8BC76A;  /* AA on -soft: 5.47:1 */
   --acr-warn:         #F2BF55;
+  --acr-warn-text:    var(--acr-warn);  /* dark: resets the light block's ink, which shares this element — base already AA 6.19:1 here */
   --acr-warn-soft:    rgba(242,191,85,0.18);
   --acr-warn-soft-ink: #F2BF55;  /* AA on -soft: 6.19:1 */
   --acr-neg:          #EA8460;
+  --acr-neg-text:     var(--acr-neg);  /* dark: resets the light block's ink, which shares this element — base already AA 4.51:1 here */
   --acr-neg-soft:     rgba(234,132,96,0.18);
   --acr-neg-soft-ink: #EA8460;  /* AA on -soft: 4.51:1 */
   --acr-glow:         rgba(139,199,106,0.40);
@@ -1156,10 +1195,13 @@
   --acr-brand-soft:   rgba(30,79,204,0.12);
   --acr-brand-soft-ink: #1E4FCC;  /* AA on -soft: 5.21:1 */
   --acr-accent:       #0B7A82;
+  --acr-accent-text:  #0A6B72;  /* text-acr-accent ink: AA 4.67:1 on this theme's surfaces + its /15 wash (was 3.80) */
   --acr-pos:          #0F7A4A;
+  --acr-pos-text:     #0E7144;  /* text-acr-pos ink: AA 4.67:1 on this theme's surfaces + its -soft wash (was 4.14) */
   --acr-pos-soft:     rgba(15,122,74,0.12);
   --acr-pos-soft-ink: #0E7346;  /* AA on -soft: 4.54:1 */
   --acr-warn:         #B5720A;
+  --acr-warn-text:    #8C5808;  /* text-acr-warn ink: AA 4.73:1 on this theme's surfaces + its -soft wash (was 3.09) */
   --acr-warn-soft:    rgba(181,114,10,0.12);
   --acr-warn-soft-ink: #8E5A08;  /* AA on -soft: 4.60:1 */
   --acr-neg:          #B8213B;
@@ -1243,13 +1285,17 @@
   --acr-brand-soft:   rgba(91,139,255,0.18);
   --acr-brand-soft-ink: #6592FF;  /* AA on -soft: 4.57:1 */
   --acr-accent:       #4BC3CC;
+  --acr-accent-text:  var(--acr-accent);  /* dark: resets the light block's ink, which shares this element — base already AA 6.27:1 here */
   --acr-pos:          #4CC88A;
+  --acr-pos-text:     var(--acr-pos);  /* dark: resets the light block's ink, which shares this element — base already AA 5.87:1 here */
   --acr-pos-soft:     rgba(76,200,138,0.18);
   --acr-pos-soft-ink: #4CC88A;  /* AA on -soft: 5.87:1 */
   --acr-warn:         #EAB14A;
+  --acr-warn-text:    var(--acr-warn);  /* dark: resets the light block's ink, which shares this element — base already AA 6.33:1 here */
   --acr-warn-soft:    rgba(234,177,74,0.18);
   --acr-warn-soft-ink: #EAB14A;  /* AA on -soft: 6.33:1 */
   --acr-neg:          #F1536E;
+  --acr-neg-text:     #F2647C;  /* text-acr-neg ink: AA 4.65:1 on this theme's surfaces + its -soft wash (was 4.19) */
   --acr-neg-soft:     rgba(241,83,110,0.18);
   --acr-neg-soft-ink: #F25F78;  /* AA on -soft: 4.52:1 */
   --acr-glow:         rgba(91,139,255,0.45);

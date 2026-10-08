@@ -16,6 +16,23 @@ const acrToken =
     return `color-mix(in srgb, var(${cssVar}) calc(${opacityValue} * 100%), transparent)`;
   };
 
+/**
+ * Text-only ink for a status token. `--acr-warn` (and accent/pos/neg) is a
+ * FILL colour first — dots, bars, borders, washes — and on several themes it
+ * sits far under 4.5:1 as small text on the theme's own surfaces (Bedrock
+ * light warn measured 2.44:1). Themes that need it define `--acr-<x>-text`, an
+ * AA-safe ink of the same hue; `text-acr-<x>` reads that and falls back to the
+ * base token where a theme's base already clears AA. Fills are untouched.
+ * Pinned by tests/unit/statusInkContrast.test.ts.
+ */
+const acrTextToken =
+  (textVar: string, baseVar: string) =>
+  ({ opacityValue }: { opacityValue?: string } = {}): string => {
+    const v = `var(${textVar}, var(${baseVar}))`;
+    if (!opacityValue || opacityValue.includes("var(")) return v;
+    return `color-mix(in srgb, ${v} calc(${opacityValue} * 100%), transparent)`;
+  };
+
 export default {
   darkMode: ["class"],
   content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
@@ -31,6 +48,14 @@ export default {
   },
   theme: {
     extend: {
+      textColor: {
+        acr: {
+          warn:   acrTextToken("--acr-warn-text", "--acr-warn"),
+          accent: acrTextToken("--acr-accent-text", "--acr-accent"),
+          pos:    acrTextToken("--acr-pos-text", "--acr-pos"),
+          neg:    acrTextToken("--acr-neg-text", "--acr-neg"),
+        },
+      },
       borderRadius: {
         sm:    ".1875rem", /* 3px */
         md:    ".5rem",    /* 8px */

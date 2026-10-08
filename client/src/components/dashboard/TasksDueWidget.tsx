@@ -27,7 +27,7 @@ interface TasksDashboardSummary {
 const priorityStyles: Record<string, string> = {
   urgent: "bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink",
   high: "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink",
-  medium: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
+  medium: "bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
   low: "bg-muted text-foreground dark:bg-acr-bg-sunken dark:text-muted-foreground",
 };
 

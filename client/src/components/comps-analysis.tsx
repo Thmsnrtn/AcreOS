@@ -392,7 +392,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
               </li>
               <li className="p-3 rounded-md bg-acr-accent dark:bg-acr-accent/20 border border-acr-accent dark:border-acr-accent">
                 <div className="flex items-center gap-2 mb-1">
-                  <Badge variant="outline" className="bg-acr-accent dark:bg-acr-accent/40 text-acr-accent dark:text-acr-accent border-acr-accent dark:border-acr-accent">
+                  <Badge variant="outline" className="bg-acr-accent/15 dark:bg-acr-accent/40 text-acr-accent dark:text-acr-accent border-acr-accent dark:border-acr-accent">
                     Standard
                   </Badge>
                 </div>
