@@ -190,17 +190,20 @@ function upsertAssignedColumns(lit: string): string[] {
     let i = (m.index ?? 0) + m[0].length;
     let depth = 0, start = i;
     const parts: string[] = [];
-    while (i <= lit.length) {
+    let closed = false;
+    while (i < lit.length) {
       const c = lit[i];
-      if (i === lit.length || (depth === 0 && /^\s(?:where|returning)\b/i.test(lit.slice(i, i + 11)))) {
+      if (depth === 0 && /^\s(?:where|returning)\b/i.test(lit.slice(i, i + 11))) {
         parts.push(lit.slice(start, i));
+        closed = true;
         break;
       }
       if (c === "(") depth++;
-      else if (c === ")") { if (depth === 0) { parts.push(lit.slice(start, i)); break; } depth--; }
+      else if (c === ")") { if (depth === 0) { parts.push(lit.slice(start, i)); closed = true; break; } depth--; }
       else if (c === "," && depth === 0) { parts.push(lit.slice(start, i)); start = i + 1; }
       i++;
     }
+    if (!closed) parts.push(lit.slice(start));
     for (const part of parts) {
       const a = /^\s*"?([A-Za-z_][A-Za-z0-9_]*)"?\s*=/.exec(part);
       if (a) out.push(a[1]);

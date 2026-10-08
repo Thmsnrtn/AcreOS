@@ -24,9 +24,7 @@ import {
   type ApiCallResult,
   type TimingStats,
 } from "./helpers";
-import { simBaseUrl } from "./target";
 
-const BASE_URL = simBaseUrl();
 
 // ── SLA Thresholds ────────────────────────────────────────────────────────
 const READ_SLA_MS = 5_000;

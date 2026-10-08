@@ -18,9 +18,7 @@ import {
   apiCall,
   type AuthSession,
 } from "./helpers";
-import { simBaseUrl } from "./target";
 
-const BASE_URL = simBaseUrl();
 
 /**
  * Calculate expected monthly payment using standard amortization formula.

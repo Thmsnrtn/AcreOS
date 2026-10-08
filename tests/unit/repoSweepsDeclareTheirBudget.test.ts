@@ -41,7 +41,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import { stripComments } from "../helpers/stripComments";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { glob } from "tinyglobby";
 import vitestConfig from "../../vitest.config";
@@ -151,8 +151,16 @@ function scriptIsSweep(abs: string, depth = 0): boolean {
   const cached = scriptSweeps.get(key);
   if (cached !== undefined) return cached;
   let verdict = false;
-  if (existsSync(abs) && statSync(abs).isFile()) {
-    const src = stripComments(readFileSync(abs, "utf8"));
+  // Read once, without a separate existence check: a candidate that is not a
+  // readable file (missing, or a directory) is not a sweep.
+  let raw: string | null = null;
+  try {
+    raw = readFileSync(abs, "utf8");
+  } catch {
+    raw = null;
+  }
+  if (raw !== null) {
+    const src = stripComments(raw);
     verdict = isRepoSweep(src);
     if (!verdict && depth === 0) {
       for (const m of src.matchAll(/\bfrom\s+["'](\.{1,2}\/[^"']+)["']|\bimport\(\s*["'](\.{1,2}\/[^"']+)["']\s*\)/g)) {
