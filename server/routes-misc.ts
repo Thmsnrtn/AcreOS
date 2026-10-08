@@ -17,6 +17,7 @@ import {
   type VerifiedTwilioInbound,
 } from "./middleware/twilioSignature";
 import { idempotencyMiddleware } from "./middleware/idempotency";
+import { twilioRecordingAudioUrl } from "./utils/twilioRecordingUrl";
 import { withIdempotency } from "./services/webhook-idempotency";
 import { poolDebit, refundPoolDebit, poolRefusalDetails } from "./services/creditPool";
 import {
@@ -1110,8 +1111,15 @@ export async function registerTwilioWebhookRoutes(app: Express): Promise<void> {
     }
 
     try {
-      // MP3 format requires appending .mp3 to the Twilio URL
-      const audioUrl = RecordingUrl.endsWith(".mp3") ? RecordingUrl : `${RecordingUrl}.mp3`;
+      // Only a recording on Twilio's own API host is ever downloaded; the URL
+      // is rebuilt on that host (as the .mp3 the transcriber reads) or refused.
+      const audioUrl = twilioRecordingAudioUrl(RecordingUrl);
+      if (!audioUrl) {
+        logger.warn("[Twilio Recording] RecordingUrl is not a Twilio recording — not fetched", {
+          metadata: { callSid: CallSid },
+        });
+        return;
+      }
 
       // Find the transcript that corresponds to this call
       const [transcript] = await db

@@ -49,7 +49,6 @@ import {
 import { mintQrCode, qrRedirectUrl, qrSigningConfigured } from "./services/mail/qrCodes";
 import { assignTrackingNumberForMailShipment } from "./services/comms/tracking-pool";
 import { registerQrRedirectRoutes } from "./routes/public-qr-redirect";
-import { registerLobWebhookRoutes } from "./routes/lob-webhooks";
 import { clock } from "./utils/clock";
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -474,11 +473,12 @@ export function registerOutreachMailRoutes(app: Express): void {
   // Two inbound feeds that make the attribution funnel real. Both are
   // deliberately UNAUTHENTICATED — one is scanned off a postcard by a
   // stranger, the other is a server-to-server webhook authenticated by HMAC —
-  // so each carries its own justification and its own guard rails. They are
-  // mounted here (rather than as standalone route modules in
-  // server/routes.ts) because they exist only to feed this surface.
+  // so each carries its own justification and its own guard rails. The QR
+  // redirect is mounted here because it exists only to feed this surface.
   registerQrRedirectRoutes(app);   // GET  /r/:code            — public, no auth
-  registerLobWebhookRoutes(app);   // POST /api/webhooks/lob   — HMAC-verified
+  // POST /api/webhooks/lob (HMAC-verified) is registered by registerRoutes
+  // itself, BEFORE the /api session catch-all — this registrar runs after it,
+  // where Lob's sessionless deliveries were 401'd before the HMAC check.
 
   // ── POST /api/outreach/mail/quote ────────────────────────────────────────
   app.post(

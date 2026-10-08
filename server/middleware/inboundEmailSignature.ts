@@ -5,6 +5,8 @@ import { sendError } from "../utils/errors";
 import {
   type SnsMessage,
   verifySnsMessage,
+  snsTopicAllowed,
+  parseSnsEnvelope,
   confirmSubscription,
   isReplay,
   _resetReplayCache,
@@ -41,6 +43,7 @@ export {
  *
  * Behavior:
  *   - Requests with `x-amz-sns-message-type` header are validated as SNS:
+ *       * TopicArn must be listed in INBOUND_EMAIL_SNS_TOPIC_ARNS (fail closed)
  *       * SigningCertURL host must match `^sns(\.|-fips\.|-fips-)?[a-z0-9-]+\.amazonaws\.com$`
  *       * Build canonical string per AWS spec for the message Type
  *       * Verify SHA1withRSA signature against the certificate
@@ -105,116 +108,134 @@ function verifyHmac(
 // Express middleware
 // ────────────────────────────────────────────────────────────────────────
 
+/** The SNS path: pinned topic + SNS signature, then the envelope is unwrapped. */
+async function verifySnsInbound(req: Request, res: Response, next: NextFunction): Promise<unknown> {
+  // SNS path. Body is the SNS envelope (text/plain from SNS, read as
+  // text by the route; an already-parsed object is accepted too). An
+  // unparseable body reads as an empty envelope, which names no topic
+  // and is refused by the topic check below.
+  const msg: SnsMessage = parseSnsEnvelope(req.body) ?? ({} as SnsMessage);
+
+  // The topic must be one of ours: the SNS signature alone does not
+  // identify the topic.
+  const topic = snsTopicAllowed(msg.TopicArn, "INBOUND_EMAIL_SNS_TOPIC_ARNS");
+  if (!topic.ok) {
+    logger.warn("[InboundEmailSig] SNS topic not accepted", {
+      metadata: { reason: topic.reason, messageId: msg.MessageId },
+    });
+    return sendError(res, 401, "UNAUTHORIZED", "SNS topic not accepted");
+  }
+
+  const result = await verifySnsMessage(msg, topic.pinned);
+  if (!result.ok) {
+    logger.warn("[InboundEmailSig] SNS signature invalid", {
+      metadata: { reason: result.reason, messageId: msg.MessageId },
+    });
+    return sendError(res, 401, "UNAUTHORIZED", "Invalid SNS signature");
+  }
+
+  // Replay protection
+  if (isReplay(`sns:${msg.MessageId}`)) {
+    logger.info("[InboundEmailSig] dropping duplicate SNS message", {
+      metadata: { messageId: msg.MessageId },
+    });
+    return res.status(200).json({ deduped: true });
+  }
+
+  // Handle SubscriptionConfirmation: confirm and short-circuit
+  if (msg.Type === "SubscriptionConfirmation") {
+    if (msg.SubscribeURL) {
+      try {
+        await confirmSubscription(msg.SubscribeURL, topic.pinned);
+      } catch (err) {
+        logger.error(
+          "[InboundEmailSig] failed to confirm SNS subscription",
+          err instanceof Error ? err : new Error(String(err)),
+        );
+        return sendError(res, 500, "INTERNAL_ERROR", "Subscription confirmation failed");
+      }
+    }
+    return res.status(200).json({ confirmed: true });
+  }
+
+  if (msg.Type !== "Notification") {
+    // Not something we handle (e.g. UnsubscribeConfirmation) — ack and stop.
+    return res.status(200).json({ ignored: msg.Type });
+  }
+
+  // Notification: parse inner Message into req.body for the handler.
+  let inner: unknown;
+  try {
+    inner = JSON.parse(String(msg.Message ?? "{}"));
+  } catch {
+    logger.warn("[InboundEmailSig] SNS Notification Message is not JSON");
+    return sendError(res, 400, "BAD_REQUEST", "SNS Message body is not JSON");
+  }
+  req.body = inner;
+  return next();
+}
+
+/** The HMAC fallback path (non-SNS forwarders): timestamped HMAC over the raw body. */
+async function verifyHmacInbound(req: Request, res: Response, next: NextFunction): Promise<unknown> {
+  // HMAC fallback path
+  const secret = process.env.INBOUND_EMAIL_WEBHOOK_SECRET;
+  if (!secret) {
+    logger.error(
+      "[InboundEmailSig] INBOUND_EMAIL_WEBHOOK_SECRET not set — rejecting (fail-closed)",
+    );
+    return sendError(res, 401, "UNAUTHORIZED", "Inbound email signature verification unavailable");
+  }
+
+  const timestamp = req.headers["x-acreos-timestamp"] as string | undefined;
+  const signature = req.headers["x-acreos-signature"] as string | undefined;
+  if (!timestamp || !signature) {
+    return sendError(res, 401, "UNAUTHORIZED", "Missing inbound email signature");
+  }
+
+  const rawBody = (req as unknown as { rawBody?: Buffer }).rawBody;
+  if (!rawBody || !Buffer.isBuffer(rawBody)) {
+    logger.error("[InboundEmailSig] req.rawBody missing — body parser misconfigured");
+    return sendError(res, 500, "INTERNAL_ERROR", "Server misconfigured");
+  }
+
+  const result = verifyHmac(rawBody, timestamp, signature, secret);
+  if (!result.ok) {
+    logger.warn("[InboundEmailSig] HMAC verification failed", {
+      metadata: { reason: result.reason },
+    });
+    return sendError(res, 401, "UNAUTHORIZED", "Invalid inbound email signature");
+  }
+
+  // Replay protection — prefer body.messageId, then x-acreos-message-id header
+  const headerMid = req.headers["x-acreos-message-id"] as string | undefined;
+  const bodyMid =
+    req.body && typeof req.body === "object"
+      ? ((req.body as { messageId?: unknown }).messageId as string | undefined)
+      : undefined;
+  const replayKey = bodyMid || headerMid;
+  if (replayKey && isReplay(`hmac:${replayKey}`)) {
+    logger.info("[InboundEmailSig] dropping duplicate inbound email", {
+      metadata: { messageId: replayKey },
+    });
+    return res.status(200).json({ deduped: true });
+  }
+
+  next();
+  return undefined;
+}
+
 export function verifyInboundEmailSignature(
   req: Request,
   res: Response,
   next: NextFunction,
 ): void {
+  // Two complete verifiers, each fail-closed on its own; the SNS message-type
+  // header only selects WHICH one authenticates the request. Neither reaches
+  // next() without its own check passing.
+  const verify = req.headers["x-amz-sns-message-type"] ? verifySnsInbound : verifyHmacInbound;
   void (async () => {
     try {
-      const snsType = req.headers["x-amz-sns-message-type"] as string | undefined;
-
-      if (snsType) {
-        // SNS path. Body should be the SNS envelope.
-        const msg = req.body as SnsMessage;
-        if (!msg || typeof msg !== "object") {
-          logger.warn("[InboundEmailSig] SNS body not parsed");
-          return sendError(res, 401, "UNAUTHORIZED", "Invalid SNS payload");
-        }
-
-        const result = await verifySnsMessage(msg);
-        if (!result.ok) {
-          logger.warn("[InboundEmailSig] SNS signature invalid", {
-            metadata: { reason: result.reason, messageId: msg.MessageId },
-          });
-          return sendError(res, 401, "UNAUTHORIZED", "Invalid SNS signature");
-        }
-
-        // Replay protection
-        if (isReplay(`sns:${msg.MessageId}`)) {
-          logger.info("[InboundEmailSig] dropping duplicate SNS message", {
-            metadata: { messageId: msg.MessageId },
-          });
-          return res.status(200).json({ deduped: true });
-        }
-
-        // Handle SubscriptionConfirmation: confirm and short-circuit
-        if (msg.Type === "SubscriptionConfirmation") {
-          if (msg.SubscribeURL) {
-            try {
-              await confirmSubscription(msg.SubscribeURL);
-            } catch (err) {
-              logger.error(
-                "[InboundEmailSig] failed to confirm SNS subscription",
-                err instanceof Error ? err : new Error(String(err)),
-              );
-              return sendError(res, 500, "INTERNAL_ERROR", "Subscription confirmation failed");
-            }
-          }
-          return res.status(200).json({ confirmed: true });
-        }
-
-        if (msg.Type !== "Notification") {
-          // Not something we handle (e.g. UnsubscribeConfirmation) — ack and stop.
-          return res.status(200).json({ ignored: msg.Type });
-        }
-
-        // Notification: parse inner Message into req.body for the handler.
-        let inner: unknown;
-        try {
-          inner = JSON.parse(String(msg.Message ?? "{}"));
-        } catch {
-          logger.warn("[InboundEmailSig] SNS Notification Message is not JSON");
-          return sendError(res, 400, "BAD_REQUEST", "SNS Message body is not JSON");
-        }
-        req.body = inner;
-        return next();
-      }
-
-      // HMAC fallback path
-      const secret = process.env.INBOUND_EMAIL_WEBHOOK_SECRET;
-      if (!secret) {
-        logger.error(
-          "[InboundEmailSig] INBOUND_EMAIL_WEBHOOK_SECRET not set — rejecting (fail-closed)",
-        );
-        return sendError(res, 401, "UNAUTHORIZED", "Inbound email signature verification unavailable");
-      }
-
-      const timestamp = req.headers["x-acreos-timestamp"] as string | undefined;
-      const signature = req.headers["x-acreos-signature"] as string | undefined;
-      if (!timestamp || !signature) {
-        return sendError(res, 401, "UNAUTHORIZED", "Missing inbound email signature");
-      }
-
-      const rawBody = (req as unknown as { rawBody?: Buffer }).rawBody;
-      if (!rawBody || !Buffer.isBuffer(rawBody)) {
-        logger.error("[InboundEmailSig] req.rawBody missing — body parser misconfigured");
-        return sendError(res, 500, "INTERNAL_ERROR", "Server misconfigured");
-      }
-
-      const result = verifyHmac(rawBody, timestamp, signature, secret);
-      if (!result.ok) {
-        logger.warn("[InboundEmailSig] HMAC verification failed", {
-          metadata: { reason: result.reason },
-        });
-        return sendError(res, 401, "UNAUTHORIZED", "Invalid inbound email signature");
-      }
-
-      // Replay protection — prefer body.messageId, then x-acreos-message-id header
-      const headerMid = req.headers["x-acreos-message-id"] as string | undefined;
-      const bodyMid =
-        req.body && typeof req.body === "object"
-          ? ((req.body as { messageId?: unknown }).messageId as string | undefined)
-          : undefined;
-      const replayKey = bodyMid || headerMid;
-      if (replayKey && isReplay(`hmac:${replayKey}`)) {
-        logger.info("[InboundEmailSig] dropping duplicate inbound email", {
-          metadata: { messageId: replayKey },
-        });
-        return res.status(200).json({ deduped: true });
-      }
-
-      next();
+      await verify(req, res, next);
     } catch (err) {
       logger.error(
         "[InboundEmailSig] unexpected error",

@@ -1123,107 +1123,6 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
 
-  api.post("/api/stripe/connect/webhook", express.raw({ type: "application/json" }), async (req, res) => {
-    try {
-      const { stripeConnectService } = await import("./services/stripeConnect");
-      const Stripe = require("stripe").default;
-      const { STRIPE_API_VERSION } = await import("./stripeClient");
-
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-        apiVersion: STRIPE_API_VERSION,
-        maxNetworkRetries: 3,
-      });
-      const sig = req.headers["stripe-signature"] as string;
-      // Connect webhooks use a separate endpoint secret from standard webhooks
-      const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET;
-
-      if (!webhookSecret) {
-        logger.warn("Stripe Connect webhook secret not configured (set STRIPE_CONNECT_WEBHOOK_SECRET)", {});
-        return Errors.badRequest(res, "Webhook secret not configured");
-      }
-
-      if (!sig) {
-        logger.warn("Missing Stripe signature header", {});
-        return Errors.badRequest(res, "Missing Stripe signature");
-      }
-
-      let event: any;
-
-      try {
-        // req.body is a Buffer (express.raw middleware) — pass it directly.
-        // Never JSON.stringify a Buffer before constructEvent or signature verification will fail.
-        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
-      } catch (err: any) {
-        logger.error("Webhook signature verification failed", { error: err.message });
-        return Errors.badRequest(res, `Webhook Error: ${err.message}`);
-      }
-
-      logger.info("Stripe Connect webhook event received", {
-        eventType: event.type,
-        eventId: event.id,
-        timestamp: event.created,
-      });
-
-      // Idempotency (audit F-20-1/F-20-3): atomically CLAIM the event before
-      // processing — INSERT ... ON CONFLICT DO NOTHING RETURNING. Only the
-      // instance whose insert wins proceeds; a concurrent redelivery gets no
-      // row back and skips (replaces the racy SELECT-then-INSERT). Critically,
-      // if the handler THROWS we RELEASE the claim and rethrow so Stripe
-      // redelivers — the previous code marked the event processed in a
-      // `finally` that ran even on failure, so a transient DB error left the
-      // borrower charged but the note never updated, with no retry. The
-      // platform webhook already claims-then-releases; this is its twin.
-      let claimed = false;
-      try {
-        const claimRows = await db
-          .insert(stripeProcessedEvents)
-          .values({ stripeEventId: event.id, eventType: event.type })
-          .onConflictDoNothing()
-          .returning({ id: stripeProcessedEvents.id });
-        claimed = claimRows.length > 0;
-      } catch {
-        // Table may not exist yet during migration — process without the
-        // idempotency guarantee rather than dropping the event.
-        claimed = true;
-      }
-      if (!claimed) {
-        logger.info(`[connect-webhook] Skipping duplicate event: ${event.id} (${event.type})`);
-        return res.status(200).json({ received: true, duplicate: true });
-      }
-
-      try {
-        await stripeConnectService.handleWebhookEvent(event);
-      } catch (handlerErr) {
-        // Release the claim so Stripe's bounded retry can re-claim and
-        // reprocess instead of the event being lost as a "duplicate".
-        try {
-          await db
-            .delete(stripeProcessedEvents)
-            .where(eq(stripeProcessedEvents.stripeEventId, event.id));
-        } catch (relErr) {
-          logger.error(
-            `[connect-webhook] Failed to release claim for ${event.id} after handler error`,
-            relErr instanceof Error ? relErr : undefined,
-          );
-        }
-        throw handlerErr; // → outer catch → 500 → Stripe redelivers
-      }
-
-      logger.info("Stripe Connect webhook event processed", {
-        eventType: event.type,
-        eventId: event.id,
-      });
-
-      res.status(200).json({ received: true });
-    } catch (err: any) {
-      logger.error("Stripe Connect webhook processing error", {
-        error: err.message,
-        stack: err.stack,
-      });
-      Errors.internal(res, err);
-    }
-  });
-
   // ============================================
   // SELF-SERVE CANCELLATION
   // ============================================
@@ -1696,4 +1595,133 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
 
+}
+
+
+/**
+ * POST /api/stripe/connect/webhook — events from lenders' OWN connected Stripe
+ * accounts (account status, borrower direct charges and their refunds). It
+ * records what happened on the customer's account; it moves no money and no
+ * funds transit AcreOS (be the rail, not the provider — 2026-07-29).
+ *
+ * Registered by `registerRoutes` BEFORE the `/api` session catch-all: Stripe
+ * carries no session, and behind the catch-all every delivery was 401'd before
+ * the signature check ran. Authenticated by Stripe's signature over the raw
+ * body (STRIPE_CONNECT_WEBHOOK_SECRET), fail closed. Pinned by
+ * tests/unit/inboundWebhooksReachAnonymously.test.ts.
+ */
+export function registerStripeConnectWebhookRoute(app: Express): void {
+  app.post("/api/stripe/connect/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+    try {
+      const { stripeConnectService } = await import("./services/stripeConnect");
+      const Stripe = require("stripe").default;
+      const { STRIPE_API_VERSION } = await import("./stripeClient");
+
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+        apiVersion: STRIPE_API_VERSION,
+        maxNetworkRetries: 3,
+      });
+      const sig = req.headers["stripe-signature"] as string;
+      // Connect webhooks use a separate endpoint secret from standard webhooks
+      const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET;
+
+      if (!webhookSecret) {
+        logger.warn("Stripe Connect webhook secret not configured (set STRIPE_CONNECT_WEBHOOK_SECRET)", {});
+        return Errors.badRequest(res, "Webhook secret not configured");
+      }
+
+      if (!sig) {
+        logger.warn("Missing Stripe signature header", {});
+        return Errors.badRequest(res, "Missing Stripe signature");
+      }
+
+      let event: any;
+
+      try {
+        // Verify over the EXACT bytes Stripe signed. The global express.json
+        // parser (server/index.ts) runs first for application/json and keeps
+        // those bytes as req.rawBody, leaving req.body an object that the
+        // route-level express.raw then skips — and constructEvent refuses an
+        // object outright. A Buffer req.body (raw parser won) is used as is.
+        // Never re-serialise: that changes the bytes and fails the signature.
+        const rawPayload: Buffer | undefined = Buffer.isBuffer(req.body)
+          ? req.body
+          : Buffer.isBuffer(req.rawBody)
+            ? req.rawBody
+            : undefined;
+        if (!rawPayload) {
+          logger.error("Stripe Connect webhook: raw body unavailable — refusing", {});
+          return Errors.badRequest(res, "Webhook Error: raw body unavailable");
+        }
+        event = stripe.webhooks.constructEvent(rawPayload, sig, webhookSecret);
+      } catch (err: any) {
+        logger.error("Webhook signature verification failed", { error: err.message });
+        return Errors.badRequest(res, `Webhook Error: ${err.message}`);
+      }
+
+      logger.info("Stripe Connect webhook event received", {
+        eventType: event.type,
+        eventId: event.id,
+        timestamp: event.created,
+      });
+
+      // Idempotency (audit F-20-1/F-20-3): atomically CLAIM the event before
+      // processing — INSERT ... ON CONFLICT DO NOTHING RETURNING. Only the
+      // instance whose insert wins proceeds; a concurrent redelivery gets no
+      // row back and skips (replaces the racy SELECT-then-INSERT). Critically,
+      // if the handler THROWS we RELEASE the claim and rethrow so Stripe
+      // redelivers — the previous code marked the event processed in a
+      // `finally` that ran even on failure, so a transient DB error left the
+      // borrower charged but the note never updated, with no retry. The
+      // platform webhook already claims-then-releases; this is its twin.
+      let claimed = false;
+      try {
+        const claimRows = await db
+          .insert(stripeProcessedEvents)
+          .values({ stripeEventId: event.id, eventType: event.type })
+          .onConflictDoNothing()
+          .returning({ id: stripeProcessedEvents.id });
+        claimed = claimRows.length > 0;
+      } catch {
+        // Table may not exist yet during migration — process without the
+        // idempotency guarantee rather than dropping the event.
+        claimed = true;
+      }
+      if (!claimed) {
+        logger.info(`[connect-webhook] Skipping duplicate event: ${event.id} (${event.type})`);
+        return res.status(200).json({ received: true, duplicate: true });
+      }
+
+      try {
+        await stripeConnectService.handleWebhookEvent(event);
+      } catch (handlerErr) {
+        // Release the claim so Stripe's bounded retry can re-claim and
+        // reprocess instead of the event being lost as a "duplicate".
+        try {
+          await db
+            .delete(stripeProcessedEvents)
+            .where(eq(stripeProcessedEvents.stripeEventId, event.id));
+        } catch (relErr) {
+          logger.error(
+            `[connect-webhook] Failed to release claim for ${event.id} after handler error`,
+            relErr instanceof Error ? relErr : undefined,
+          );
+        }
+        throw handlerErr; // → outer catch → 500 → Stripe redelivers
+      }
+
+      logger.info("Stripe Connect webhook event processed", {
+        eventType: event.type,
+        eventId: event.id,
+      });
+
+      res.status(200).json({ received: true });
+    } catch (err: any) {
+      logger.error("Stripe Connect webhook processing error", {
+        error: err.message,
+        stack: err.stack,
+      });
+      Errors.internal(res, err);
+    }
+  });
 }

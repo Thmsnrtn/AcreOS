@@ -49,6 +49,10 @@ export FIELD_ENCRYPTION_KEY=0000000000000000000000000000000000000000000000000000
 export SESSION_SECRET=e2e-session-secret-at-least-32-characters-long
 export INBOUND_EMAIL_SNS_ONLY=1
 export INBOUND_EMAIL_WEBHOOK_SECRET=e2e-dummy-inbound-email-webhook-secret-0123456789abcdef
+# SNS topic pins (fail closed when unset). The year posts no SES/inbound-email
+# callbacks today; pinned so a run that does reaches the verifier, not a refusal.
+export INBOUND_EMAIL_SNS_TOPIC_ARNS=arn:aws:sns:us-east-1:000000000000:simplat-inbound-email
+export SES_EVENTS_SNS_TOPIC_ARNS=arn:aws:sns:us-east-1:000000000000:simplat-ses-events
 export FOUNDER_EMAIL=founder-e2e@acreos.test
 export FOUNDER_EMAILS=founder-e2e@acreos.test
 export TWILIO_AUTH_TOKEN=e2e-dummy-twilio-token

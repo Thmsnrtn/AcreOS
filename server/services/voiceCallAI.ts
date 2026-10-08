@@ -14,6 +14,7 @@ import { isDealStatus, validateDealTransition } from "@shared/lifecycle/pipeline
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
+import { checkOperatorUrl } from "./providers/ssrf-guard";
 
 interface RecordCallParams {
   leadId: number;
@@ -163,7 +164,15 @@ export class VoiceCallAIService {
     let transcriptFormatted: TranscriptSegment[] = [];
     let confidence = 0.95;
 
-    if (openai && audioUrl) {
+    // The audio URL can come from a customer's own record; never fetch a
+    // non-https or private/loopback/metadata address from the server.
+    const audioUrlCheck = audioUrl ? checkOperatorUrl(audioUrl) : { ok: false };
+    if (audioUrl && !audioUrlCheck.ok) {
+      logger.warn("[VoiceCallAI] audio URL refused — not fetched", {
+        metadata: { transcriptId, reason: audioUrlCheck.reason },
+      });
+    }
+    if (openai && audioUrl && audioUrlCheck.ok) {
       try {
         const response = await fetch(audioUrl);
         if (response.ok) {

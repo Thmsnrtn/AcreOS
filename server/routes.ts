@@ -116,7 +116,7 @@ import dealFeedRouter from "./routes-deal-feed";
 import commentsRouter from "./routes-comments";
 
 // Phase 1: Communication features
-import { registerInboundEmailRoutes } from "./routes-inbound-email";
+import { registerInboundEmailRoutes, registerInboundEmailWebhookRoute } from "./routes-inbound-email";
 import { registerSendGridEventRoutes } from "./routes-sendgrid-events";
 import { registerSesEventRoutes } from "./routes-ses-events";
 // Eleonora deliverability — Phase 1 §10 / Week 7-8.
@@ -181,7 +181,7 @@ import { registerOutreachMailRoutes } from "./routes-outreach-mail";
 import { registerEddmRoutes } from "./routes-eddm";
 import { registerAIRoutes } from "./routes-ai";
 import aiDraftRouter from "./routes-ai-draft";
-import { registerBillingRoutes } from "./routes-billing";
+import { registerBillingRoutes, registerStripeConnectWebhookRoute } from "./routes-billing";
 import { registerSubscriptionRoutes } from "./routes-subscription";
 import { registerBorrowerRoutes } from "./routes-borrower";
 import { registerNoteRoutes } from "./routes-notes";
@@ -1640,6 +1640,26 @@ export async function registerRoutes(
   // tests/unit/inboundWebhooksReachAnonymously.test.ts boots the app to pin it.
   await registerTwilioWebhookRoutes(app);
 
+  // The other provider callbacks, for the same reason. Each authenticates the
+  // provider itself, fail closed, before it reads or writes anything:
+  //   Lob          — HMAC over timestamp + raw body (LOB_WEBHOOK_SECRET)
+  //   Stripe Connect — Stripe signature over the raw body (STRIPE_CONNECT_WEBHOOK_SECRET)
+  //   SES events   — pinned SNS topic + SNS message signature
+  //   SendGrid     — Ed25519 signed event webhook
+  //   inbound email — pinned SNS topic + SNS signature, or HMAC fallback
+  //   title orders — partner API key + HMAC with that partner's own secret
+  // NOT here: GET/POST /api/webhooks/meta-lead-ads — verified, but its handler
+  // writes leads into a guessed org (DEFAULT_ORG_ID, else 1), so it stays
+  // behind the catch-all until its destination org is decided.
+  const { registerLobWebhookRoutes } = await import("./routes/lob-webhooks");
+  registerLobWebhookRoutes(app);
+  registerStripeConnectWebhookRoute(app);
+  registerSesEventRoutes(app);
+  registerSendGridEventRoutes(app);
+  registerInboundEmailWebhookRoute(app);
+  const { registerTitleOrderStatusWebhookRoute } = await import("./routes-title-partners");
+  registerTitleOrderStatusWebhookRoute(app);
+
   // EPIC Services: Seller Motivation, County Opportunity, Title Chain, Investor Network, Financial OS, Developer API
   app.use('/api', isAuthenticated, getOrCreateOrg, epicServicesRouter);
 
@@ -2151,7 +2171,8 @@ export async function registerRoutes(
     const { registerSeoHeadRoutes } = await import("./routes-seo-head");
     registerSeoHeadRoutes(app);
     // Phase 7 Months 7: Hartwell title-partner API — POST /title-orders +
-    // inbound webhook + ALTA Pillar 2 wire instructions + partner registry.
+    // ALTA Pillar 2 wire instructions + partner registry. (Its inbound status
+    // webhook registers before the /api catch-all.)
     const { registerTitlePartnerRoutes } = await import("./routes-title-partners");
     registerTitlePartnerRoutes(app);
     // Phase 3 Week 9: AI cost ceiling + founder cost dashboard endpoints.
@@ -2750,12 +2771,9 @@ export async function registerRoutes(
   registerPlatformFeatureRoutes(app);
   // registerLeaseRoutes + registerMaintenanceRoutes removed — see import block.
 
-  // Phase 1: Communication features
+  // Phase 1: Communication features (the inbound-email, SendGrid and SES
+  // webhooks register before the /api catch-all — see registerRoutes' top).
   registerInboundEmailRoutes(app);
-  // SendGrid event webhook (Hessam §2.3) — Ed25519-signed delivery events
-  registerSendGridEventRoutes(app);
-  // SES bounce/complaint webhook (Gap 4) — SNS-signed; feeds suppression list
-  registerSesEventRoutes(app);
   // Pillar 9.1 — Founder DLQ inspection + retry/discard endpoints.
   (await import("./routes-founder-dlq")).registerFounderDlqRoutes(app);
   // Tier 3F — data co-op: Map-door county market heat (customer) + quarterly

@@ -58,6 +58,81 @@ export function _resetReplayCache(): void {
 // ────────────────────────────────────────────────────────────────────────
 
 const SNS_HOST_RE = /^sns(?:\.|-fips\.|-fips-)[a-z0-9-]+\.amazonaws\.com$/i;
+/** The path AWS serves SNS signing certificates at. */
+const SNS_CERT_PATH_RE = /^\/SimpleNotificationService-[0-9a-f]+\.pem$/i;
+
+/** An https URL on an SNS host, with no credentials, port override or fragment. */
+function snsHostUrl(raw: unknown): URL | null {
+  if (typeof raw !== "string") return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.username || url.password || url.port || url.hash) return null;
+  if (!SNS_HOST_RE.test(url.hostname)) return null;
+  return url;
+}
+
+/**
+ * One of OUR topics, as configured (never as the message states it): its ARN
+ * and the SNS endpoint of its region, both derived from the configured ARN.
+ */
+export interface PinnedSnsTopic {
+  topicArn: string;
+  host: string;
+}
+
+const CONFIGURED_ARN_RE = /^arn:aws:sns:([a-z]{2}(?:-[a-z]+)+-\d+):\d+:[A-Za-z0-9_.-]+$/;
+
+function pinnedFromConfiguredArn(arn: string): PinnedSnsTopic | null {
+  const m = CONFIGURED_ARN_RE.exec(arn);
+  return m ? { topicArn: arn, host: `sns.${m[1]}.amazonaws.com` } : null;
+}
+
+/**
+ * The URL to fetch the signing certificate from: our topic's regional SNS
+ * endpoint plus the SimpleNotificationService-<hex>.pem path the message
+ * names — and only when the message names that same endpoint. Otherwise null.
+ */
+function canonicalSnsCertUrl(raw: unknown, pinned: PinnedSnsTopic): string | null {
+  const url = snsHostUrl(raw);
+  if (!url || url.search || url.hostname.toLowerCase() !== pinned.host) return null;
+  if (!SNS_CERT_PATH_RE.test(url.pathname)) return null;
+  return `https://${pinned.host}${url.pathname}`;
+}
+
+/**
+ * The ConfirmSubscription call to make for a SubscribeURL: on our topic's
+ * regional endpoint, for our topic, carrying only the message's token — and
+ * only when the SubscribeURL is exactly that call. Otherwise null.
+ */
+function canonicalSnsSubscribeUrl(raw: unknown, pinned: PinnedSnsTopic): string | null {
+  const url = snsHostUrl(raw);
+  if (!url || url.hostname.toLowerCase() !== pinned.host || url.pathname !== "/") return null;
+  const q = url.searchParams;
+  const token = q.get("Token");
+  if (q.get("Action") !== "ConfirmSubscription" || !token || q.get("TopicArn") !== pinned.topicArn) return null;
+  return (
+    `https://${pinned.host}/?Action=ConfirmSubscription` +
+    `&TopicArn=${encodeURIComponent(pinned.topicArn)}&Token=${encodeURIComponent(token)}`
+  );
+}
+
+/** Parse an SNS envelope (SNS posts it as text/plain; a parsed object is accepted too). */
+export function parseSnsEnvelope(body: unknown): SnsMessage | null {
+  let parsed: unknown = body;
+  if (typeof body === "string") {
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      return null;
+    }
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  return parsed as SnsMessage;
+}
 
 export interface SnsMessage {
   Type: string;
@@ -124,12 +199,10 @@ async function fetchSigningCert(certUrl: string): Promise<string> {
   const cached = certCache.get(certUrl);
   if (cached) return cached;
 
-  const url = new URL(certUrl);
-  if (url.protocol !== "https:") {
-    throw new Error(`SNS SigningCertURL must use HTTPS: ${certUrl}`);
-  }
-  if (!SNS_HOST_RE.test(url.hostname)) {
-    throw new Error(`SNS SigningCertURL host not allowed: ${url.hostname}`);
+  // verifySnsMessage passes only a canonical URL (canonicalSnsCertUrl);
+  // re-check the shape here so this fetcher is never a general one.
+  if (!snsHostUrl(certUrl)) {
+    throw new Error("SNS SigningCertURL not allowed");
   }
 
   const pem: string = await new Promise((resolve, reject) => {
@@ -180,26 +253,63 @@ export function _resetTestOverrides(): void {
   subscribeConfirmer = defaultSubscribeConfirmer;
 }
 
-/** Confirm an SNS subscription by GETting the (host-validated) SubscribeURL. */
-export async function confirmSubscription(subscribeUrl: string): Promise<void> {
-  // The SubscribeURL is an sns.<region>.amazonaws.com URL; validate the host
-  // before fetching so a forged envelope can't make us GET an arbitrary URL.
-  const url = new URL(subscribeUrl);
-  if (url.protocol !== "https:" || !SNS_HOST_RE.test(url.hostname)) {
-    throw new Error(`SNS SubscribeURL host not allowed: ${url.hostname}`);
+/**
+ * Confirm an SNS subscription — only ever the ConfirmSubscription call for our
+ * own (pinned) topic on its regional endpoint (canonicalSnsSubscribeUrl).
+ * Anything else is refused without a request.
+ */
+export async function confirmSubscription(subscribeUrl: unknown, pinned: PinnedSnsTopic): Promise<void> {
+  const safeUrl = canonicalSnsSubscribeUrl(subscribeUrl, pinned);
+  if (!safeUrl) {
+    throw new Error("SNS SubscribeURL not allowed");
   }
-  await subscribeConfirmer(subscribeUrl);
+  await subscribeConfirmer(safeUrl);
 }
 
-export async function verifySnsMessage(msg: SnsMessage): Promise<{ ok: boolean; reason?: string }> {
+/**
+ * Is this SNS message from one of OUR topics?
+ *
+ * A valid SNS signature identifies Amazon SNS as the sender, not which topic
+ * the message belongs to. Each SNS-backed webhook therefore also accepts only
+ * the topic ARNs configured for it, read from its own env var
+ * (comma-separated). Fail closed: no list configured means no topic is
+ * accepted.
+ */
+export function snsTopicAllowed(
+  topicArn: unknown,
+  allowListEnvVar: string,
+): { ok: true; pinned: PinnedSnsTopic } | { ok: false; reason: string } {
+  const allowed = String(process.env[allowListEnvVar] ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (allowed.length === 0) return { ok: false, reason: `${allowListEnvVar} not set` };
+  const configured = allowed.find((a) => a === topicArn);
+  if (configured === undefined) return { ok: false, reason: "TopicArn not in allowlist" };
+  // Everything downstream (the certificate host, the confirmation call) is
+  // derived from the CONFIGURED ARN, never from the message.
+  const pinned = pinnedFromConfiguredArn(configured);
+  if (!pinned) return { ok: false, reason: `${allowListEnvVar} entry is not an SNS topic ARN` };
+  return { ok: true, pinned };
+}
+
+export async function verifySnsMessage(
+  msg: SnsMessage,
+  pinned: PinnedSnsTopic,
+): Promise<{ ok: boolean; reason?: string }> {
   if (!msg.Type || !msg.MessageId || !msg.Signature || !msg.SignatureVersion) {
     return { ok: false, reason: "missing required SNS fields" };
+  }
+  if (msg.TopicArn !== pinned.topicArn) {
+    return { ok: false, reason: "TopicArn does not match the pinned topic" };
   }
   if (msg.SignatureVersion !== "1" && msg.SignatureVersion !== "2") {
     return { ok: false, reason: `unsupported SignatureVersion ${msg.SignatureVersion}` };
   }
-  const certUrl = msg.SigningCertURL || (msg.SigningCertUrl as string | undefined);
-  if (!certUrl) return { ok: false, reason: "missing SigningCertURL" };
+  const rawCertUrl = msg.SigningCertURL || (msg.SigningCertUrl as string | undefined);
+  if (!rawCertUrl) return { ok: false, reason: "missing SigningCertURL" };
+  const certUrl = canonicalSnsCertUrl(rawCertUrl, pinned);
+  if (!certUrl) return { ok: false, reason: "SigningCertURL not allowed" };
 
   let pem: string;
   try {

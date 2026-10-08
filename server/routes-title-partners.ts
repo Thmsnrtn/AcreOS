@@ -287,92 +287,15 @@ function estimateDeliveryDate(expectedClosingDate: string): string {
 
 // ─── Route registration ─────────────────────────────────────────────────────
 
-export function registerTitlePartnerRoutes(app: Express) {
-  // ─── 1. POST /api/title-orders ───────────────────────────────────────────
-  app.post(
-    "/api/title-orders",
-    isAuthenticated,
-    getOrCreateOrg,
-    async (req: AuthenticatedRequest, res: Response) => {
-      try {
-        const orgId = getOrganizationId(req);
-        const parsed = createOrderBodySchema.safeParse(req.body);
-        if (!parsed.success) {
-          return Errors.validationFailed(res, parsed.error.issues);
-        }
-        const body = parsed.data;
-
-        // Verify the deal belongs to this org.
-        const [deal] = await db
-          .select()
-          .from(deals)
-          .where(and(eq(deals.id, body.dealId), eq(deals.organizationId, orgId)))
-          .limit(1);
-        if (!deal) {
-          return Errors.notFound(res, "Deal");
-        }
-
-        const partner = await routeTitleOrder(
-          orgId,
-          body.propertyAddress.state,
-          body.propertyAddress.county,
-          body.titleCompanyId
-        );
-
-        // An explicitly named partner the org-scoped read did not match is a
-        // 404 — never a silent downgrade to an unassigned "pending" broadcast.
-        // Naming another org's private partner must not come back 201.
-        if (body.titleCompanyId && !partner) {
-          return Errors.notFound(res, "Title partner");
-        }
-
-        const estimatedDelivery = estimateDeliveryDate(body.expectedClosingDate);
-
-        const [created] = await db
-          .insert(titleOrders)
-          .values({
-            organizationId: orgId,
-            dealId: body.dealId,
-            titlePartnerId: partner?.id ?? null,
-            status: partner ? "assigned" : "pending",
-            statusDetails: {},
-            propertyAddress: body.propertyAddress,
-            buyerInfo: body.buyerInfo,
-            sellerInfo: body.sellerInfo,
-            salePrice: String(body.salePrice),
-            expectedClosingDate: body.expectedClosingDate,
-            estimatedDeliveryDate: estimatedDelivery,
-            partnerAssignedAt: partner ? clock.now() : null,
-          })
-          .returning();
-
-        logger.info(
-          `[title-orders] created order=${created.id} org=${orgId} deal=${body.dealId} partner=${partner?.id ?? "broadcast"}`
-        );
-
-        // Best-effort outbound webhook to the partner. We don't block the
-        // response on it — partners are expected to poll if their webhook
-        // failed. (Phase 7+ will move this onto the durable outbox queue.)
-        if (partner?.webhookUrl) {
-          fireAndForgetPartnerWebhook(partner, created).catch((err) => {
-            logger.warn(
-              `[title-orders] partner notify failed order=${created.id} partner=${partner.id} err=${err?.message ?? "unknown"}`
-            );
-          });
-        }
-
-        return res.status(201).json({
-          orderId: created.id,
-          status: created.status,
-          estimatedDeliveryDate: created.estimatedDeliveryDate,
-          assignedPartnerId: partner?.id ?? null,
-        });
-      } catch (err) {
-        return Errors.internal(res, err);
-      }
-    }
-  );
-
+/**
+ * POST /api/webhooks/title-orders/:orderId/status — a title partner's status
+ * update. Registered by `registerRoutes` BEFORE the `/api` session catch-all:
+ * a partner's server carries no AcreOS session, and behind the catch-all every
+ * update was 401'd before the partner check ran. Authenticated by the
+ * partner's API key AND an HMAC over the raw body with that partner's own
+ * secret, fail closed. Pinned by tests/unit/inboundWebhooksReachAnonymously.test.ts.
+ */
+export function registerTitleOrderStatusWebhookRoute(app: Express) {
   // ─── 2. POST /api/webhooks/title-orders/:orderId/status ─────────────────
   // Raw body parser so we can verify HMAC-SHA256 over the bytes the
   // partner actually signed. Mounted as a one-off so the global JSON
@@ -414,9 +337,16 @@ export function registerTitlePartnerRoutes(app: Express) {
         const sigHeader = req.headers["x-acreos-signature"];
         const sigStr = Array.isArray(sigHeader) ? sigHeader[0] : sigHeader;
 
+        // The bytes the partner signed: a Buffer body when the route's raw
+        // parser won, otherwise req.rawBody, which the global JSON parser
+        // (server/index.ts) keeps when it parses application/json first.
+        // Re-serialising is the last resort: it can only fail a valid
+        // signature, never pass a forged one.
         const rawBody: Buffer = Buffer.isBuffer(req.body)
           ? req.body
-          : Buffer.from(JSON.stringify(req.body ?? {}));
+          : Buffer.isBuffer(req.rawBody)
+            ? req.rawBody
+            : Buffer.from(JSON.stringify(req.body ?? {}));
         if (!verifyHmac(rawBody, sigStr, secret)) {
           logger.warn(
             `[title-orders.webhook] HMAC verify failed for partner ${partner.id}`
@@ -528,6 +458,94 @@ export function registerTitlePartnerRoutes(app: Express) {
           `[title-orders.webhook] order=${orderId} partner=${partner.id} status=${body.status}`
         );
         return res.json({ ok: true, orderId, status: body.status });
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    }
+  );
+}
+
+
+export function registerTitlePartnerRoutes(app: Express) {
+  // ─── 1. POST /api/title-orders ───────────────────────────────────────────
+  app.post(
+    "/api/title-orders",
+    isAuthenticated,
+    getOrCreateOrg,
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const orgId = getOrganizationId(req);
+        const parsed = createOrderBodySchema.safeParse(req.body);
+        if (!parsed.success) {
+          return Errors.validationFailed(res, parsed.error.issues);
+        }
+        const body = parsed.data;
+
+        // Verify the deal belongs to this org.
+        const [deal] = await db
+          .select()
+          .from(deals)
+          .where(and(eq(deals.id, body.dealId), eq(deals.organizationId, orgId)))
+          .limit(1);
+        if (!deal) {
+          return Errors.notFound(res, "Deal");
+        }
+
+        const partner = await routeTitleOrder(
+          orgId,
+          body.propertyAddress.state,
+          body.propertyAddress.county,
+          body.titleCompanyId
+        );
+
+        // An explicitly named partner the org-scoped read did not match is a
+        // 404 — never a silent downgrade to an unassigned "pending" broadcast.
+        // Naming another org's private partner must not come back 201.
+        if (body.titleCompanyId && !partner) {
+          return Errors.notFound(res, "Title partner");
+        }
+
+        const estimatedDelivery = estimateDeliveryDate(body.expectedClosingDate);
+
+        const [created] = await db
+          .insert(titleOrders)
+          .values({
+            organizationId: orgId,
+            dealId: body.dealId,
+            titlePartnerId: partner?.id ?? null,
+            status: partner ? "assigned" : "pending",
+            statusDetails: {},
+            propertyAddress: body.propertyAddress,
+            buyerInfo: body.buyerInfo,
+            sellerInfo: body.sellerInfo,
+            salePrice: String(body.salePrice),
+            expectedClosingDate: body.expectedClosingDate,
+            estimatedDeliveryDate: estimatedDelivery,
+            partnerAssignedAt: partner ? clock.now() : null,
+          })
+          .returning();
+
+        logger.info(
+          `[title-orders] created order=${created.id} org=${orgId} deal=${body.dealId} partner=${partner?.id ?? "broadcast"}`
+        );
+
+        // Best-effort outbound webhook to the partner. We don't block the
+        // response on it — partners are expected to poll if their webhook
+        // failed. (Phase 7+ will move this onto the durable outbox queue.)
+        if (partner?.webhookUrl) {
+          fireAndForgetPartnerWebhook(partner, created).catch((err) => {
+            logger.warn(
+              `[title-orders] partner notify failed order=${created.id} partner=${partner.id} err=${err?.message ?? "unknown"}`
+            );
+          });
+        }
+
+        return res.status(201).json({
+          orderId: created.id,
+          status: created.status,
+          estimatedDeliveryDate: created.estimatedDeliveryDate,
+          assignedPartnerId: partner?.id ?? null,
+        });
       } catch (err) {
         return Errors.internal(res, err);
       }
