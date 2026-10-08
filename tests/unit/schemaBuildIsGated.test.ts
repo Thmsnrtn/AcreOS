@@ -26,7 +26,7 @@
  * ── WHAT THIS PINS ──────────────────────────────────────────────────────────
  * The gate is one script (`npm run db:build-from-repo`) called by BOTH
  * workflows that provision a postgres service, so the two cannot drift; the
- * script runs all four phases; the two dead spellings cannot come back
+ * script runs every phase; the two dead spellings cannot come back
  * anywhere under .github/; and the column-mirror register stays at zero.
  *
  * This test cannot run the database itself — that is the CI step's job. It
@@ -181,12 +181,20 @@ describe("the script it calls is not decorative", () => {
     expect(pkg.scripts[NPM_SCRIPT]).toContain(BUILD_SCRIPT);
   });
 
-  it("runs all four phases, in order, and each one can fail the job", () => {
+  it("runs all seven phases, in order, and each one can fail the job", () => {
     const phases = [
       { what: "migrations/*.sql", match: /psql .*-f "\$f"/ },
       { what: "the release_command", match: /if ! node scripts\/migrate\.mjs;/ },
       { what: "--dry-run", match: /if ! node scripts\/migrate\.mjs --dry-run;/ },
       { what: "the column mirror", match: new RegExp(`if ! npx tsx ${MIRROR.replace(/\//g, "\\/")};`) },
+      // 0262: a column can exist and its write still fail — the built schema
+      // must accept a real payment post (payments.transaction_id conflict target).
+      { what: "the payment-insert check", match: /if ! npx tsx tests\/db\/paymentsInsertOnBuiltSchema\.ts;/ },
+      // A keyed Solene enqueue names a partial index; the built schema must
+      // resolve it, and an approved ask must enqueue exactly once.
+      { what: "the Solene dispatch-enqueue check", match: /if ! npx tsx tests\/db\/soleneDispatchEnqueueOnBuiltSchema\.ts;/ },
+      // Solene's senses and the panic-stop abort read and write real columns.
+      { what: "the Solene senses check", match: /if ! npx tsx tests\/db\/soleneSensesOnBuiltSchema\.ts;/ },
     ];
     let cursor = -1;
     for (const p of phases) {
@@ -198,7 +206,7 @@ describe("the script it calls is not decorative", () => {
     }
     // Each gated phase exits non-zero. `set -e` is deliberately NOT used (the
     // base layer tolerates per-statement errors), so the exits must be explicit.
-    expect((sh.match(/exit 1/g) ?? []).length).toBeGreaterThanOrEqual(4);
+    expect((sh.match(/exit 1/g) ?? []).length).toBeGreaterThanOrEqual(7);
   });
 
   it("refuses to run without a database rather than passing", () => {

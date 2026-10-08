@@ -163,8 +163,10 @@ export const insertCampaignSchema = z.object({
   mediaUrls: pgTextArray().nullable().optional(),
 
   // ── Schedule ──────────────────────────────────────────────────────────────
-  // Real `Date` objects only. The dialog already does
-  // `new Date(e.target.value)` — keep it that way; a raw "2026-01-01" fails.
+  // Real `Date` objects only — a raw "2026-01-01" fails. The dialog converts
+  // its date input with `calendarDateFromInput` (client/src/lib/calendar-date.ts),
+  // which stores the picked day at 12:00 UTC so it reads back as the same day
+  // in every timezone. A planned date only: nothing sends on it.
   scheduledDate: pgTimestamp().nullable().optional(),
   completedDate: pgTimestamp().nullable().optional(),
 

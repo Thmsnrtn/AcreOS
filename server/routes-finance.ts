@@ -624,7 +624,7 @@ export function registerFinanceRoutes(app: Express): void {
     const note = await storage.getNote(org.id, noteId);
     if (!note) return Errors.notFound(res, "Note");
 
-    const reminders = await storage.getRemindersForNote(noteId);
+    const reminders = await storage.getRemindersForNote(org.id, noteId);
     res.json(reminders);
   });
 
@@ -755,7 +755,7 @@ export function registerFinanceRoutes(app: Express): void {
       const note = await storage.getNote(org.id, noteId);
       if (!note) return Errors.notFound(res, "Note");
 
-      const reminders = await storage.getRemindersForNote(noteId);
+      const reminders = await storage.getRemindersForNote(org.id, noteId);
       const daysDelinquent = note.daysDelinquent || 0;
       
       let dunningStage = "current";
@@ -859,7 +859,7 @@ export function registerFinanceRoutes(app: Express): void {
         // previously returned any org's reminders for a guessed noteId.
         const note = await storage.getNote(org.id, Number(noteId));
         if (!note) return Errors.notFound(res, "Note");
-        reminders = await storage.getRemindersForNote(Number(noteId));
+        reminders = await storage.getRemindersForNote(org.id, Number(noteId));
       } else {
         reminders = await storage.getPendingReminders(org.id, 100);
       }

@@ -1,17 +1,18 @@
 import { db } from "../db";
 import {
   organizations, founderDigestHistory, jobHealthLogs, decisionsInboxItems,
-  supportTicketMessages, supportTickets, churnRiskScores,
+  supportTicketMessages, supportTickets, churnRiskScores, mrrSnapshots,
 } from "@shared/schema";
-import { eq, and, desc, gte, count, sql, lt } from "drizzle-orm";
+import { eq, and, desc, gte, lte, count, sql } from "drizzle-orm";
 import { emailService } from "./emailService";
 import { getFounderEmails } from "./founder";
 import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
+import { liveMrrDetail } from "./finance/runwayModel";
 
 interface DigestData {
   mrrCents: number;
-  mrrLastMonthCents: number;
+  mrrLastMonthCents: number | null;
   newSignups24h: number;
   cancellations24h: number;
   openDecisions: number;
@@ -28,14 +29,25 @@ async function gatherDigestData(): Promise<DigestData> {
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
 
-  // MRR this month
-  const mrrResult = await db.select({ total: sql<number>`COALESCE(SUM(monthly_price_cents), 0)` })
-    .from(organizations)
-    .where(sql`${organizations.subscriptionStatus} IN ('active', 'trialing')`);
-  const mrrCents = Number(mrrResult[0]?.total ?? 0);
+  // MRR this month: the canonical live-MRR source (tier price x billing
+  // interval over paying orgs) shared by runway, the snapshot job and the
+  // gate watcher. organizations has no price column.
+  const { cents: mrrCents } = await liveMrrDetail();
 
-  // MRR last month (rough: use same calc — actual MRR tracking would need subscription events)
-  const mrrLastMonthCents = mrrCents; // fallback — no historical snapshot available at this layer
+  // MRR last month: the newest weekly snapshot at least 28 days old, or null
+  // when no history exists. Never substitute this month's figure.
+  let mrrLastMonthCents: number | null = null;
+  try {
+    const [snap] = await db
+      .select({ mrrCents: mrrSnapshots.mrrCents })
+      .from(mrrSnapshots)
+      .where(lte(mrrSnapshots.capturedAt, new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000)))
+      .orderBy(desc(mrrSnapshots.capturedAt))
+      .limit(1);
+    mrrLastMonthCents = snap ? snap.mrrCents : null;
+  } catch {
+    mrrLastMonthCents = null;
+  }
 
   // New signups in last 24h
   const newSignupsResult = await db.select({ c: count() })
@@ -182,7 +194,7 @@ export const founderDigestService = {
         <li>⚠️ ${bullets.topAtRiskBullet}</li>
         <li>✅ ${bullets.recommendedActionBullet}</li>
       </ul>
-      ${allClear ? '<p style="color:green;font-weight:bold;">All systems nominal. Close this email and enjoy your day.</p>' : '<p><a href="/founder-dashboard">Open Dashboard →</a></p>'}
+      ${allClear ? '<p style="color:green;font-weight:bold;">All systems nominal. Close this email and enjoy your day.</p>' : '<p><a href="/founder/decisions">Open Decisions →</a></p>'}
     `;
 
     const [digestRecord] = await db.insert(founderDigestHistory).values({

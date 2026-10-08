@@ -23,6 +23,7 @@ import { usageMeteringService, creditService } from "./services/credits";
 import { parseCSV, importLeads, exportLeadsToCSV, getExpectedColumns, type ExportFilters } from "./services/importExport";
 import { logger } from "./utils/logger";
 import { Errors } from "./utils/errors";
+import { omitSecretColumns } from "./utils/secretColumns";
 // ONE owner for the assigned-leads rule. It was hand-copied into five places
 // and missing from four write paths — see server/utils/assignedLeadGate.ts.
 import {
@@ -37,10 +38,22 @@ import { emitLeadCreated, emitLeadUpdated, safeEmitLeadEvent } from "./services/
 import { validateResponse } from "./utils/contractResponse";
 import { createUploadMiddleware, validateFileMiddleware } from "./middleware/fileUploadSecurity";
 import { apnMatchForm, createParcelDedupeIndex } from "./services/leads/parcelDedupe";
-import { splitOwnerName } from "@shared/parcel/ownerName";
+import { splitOwnerName, ownerNameFromSingleColumn } from "@shared/parcel/ownerName";
+import {
+  CSV_IMPORT_MAX_ROWS_PER_REQUEST,
+  composePropertyAddress,
+  parseDncFlag,
+  restoreZip,
+} from "@shared/leads/csvImportMapping";
 
-// Partial update schema for PUT endpoints
-const updateLeadSchema = insertLeadSchema.partial();
+// Partial update schema for PUT endpoints. The soft-delete fields are server-
+// owned: a lead is deleted and restored only through the dedicated paths
+// (DELETE /api/leads/:id, PATCH /api/leads/:id/restore, and the repository's
+// deleteLead / bulkDeleteLeads / restoreLeads), never by an edit, so a client-supplied `deletedAt`/`deletedBy` is dropped here (zod
+// strips keys a schema does not declare). insertLeadSchema already omits id,
+// organizationId and the timestamps. Pinned by
+// tests/unit/leadCreateServerFields.test.ts.
+const updateLeadSchema = insertLeadSchema.omit({ deletedAt: true, deletedBy: true }).partial();
 
 // Task #Phase5: Zod schemas for bulk operations (mirrors bulkIdsSchema in routes-properties.ts)
 const bulkLeadIdsSchema = z.object({
@@ -50,6 +63,25 @@ const bulkLeadUpdateSchema = z.object({
   ids: z.array(z.number().int().positive()).min(1, "ids must be a non-empty array"),
   updates: updateLeadSchema,
 });
+
+/**
+ * Why a bulk lead update may not touch consent, or null when it may.
+ */
+function bulkConsentRefusal(updates: Record<string, unknown>): string | null {
+  if (updates.tcpaConsent === true) {
+    return "TCPA consent cannot be granted in bulk. Record consent per lead, with its evidence, from the lead's consent panel.";
+  }
+  if (updates.consentSource != null && updates.consentSource !== "") {
+    return `A consent source ("${String(updates.consentSource)}") cannot be applied in bulk — a purchased or vendor list is not express written consent.`;
+  }
+  if (updates.consentDate != null) {
+    return "A consent date cannot be applied in bulk. Record consent per lead.";
+  }
+  if (updates.doNotContact === false || updates.optOutDate === null || updates.optOutReason === null) {
+    return "An opt-out cannot be lifted in bulk. A lead who opted out re-subscribes themselves (START / UNSTOP) or is updated one at a time.";
+  }
+  return null;
+}
 
 // Zod schemas for lead operations
 const checkDuplicatesSchema = z.object({
@@ -177,7 +209,7 @@ export function registerLeadRoutes(app: Express): void {
       const data = result.data.map(lead => {
         const { score, factors } = leadNurturerService.calculateLeadScore(lead);
         const computedStage = leadNurturerService.segmentLead(score);
-        return { ...lead, score, scoreFactors: factors, nurturingStage: computedStage };
+        return { ...omitSecretColumns(leads, lead), score, scoreFactors: factors, nurturingStage: computedStage };
       });
       return res.json({ data, total: result.total, page, pageSize, totalPages: result.totalPages });
     }
@@ -188,7 +220,7 @@ export function registerLeadRoutes(app: Express): void {
     const leadsWithScores = result.data.map(lead => {
       const { score, factors } = leadNurturerService.calculateLeadScore(lead);
       const computedStage = leadNurturerService.segmentLead(score);
-      return { ...lead, score, scoreFactors: factors, nurturingStage: computedStage };
+      return { ...omitSecretColumns(leads, lead), score, scoreFactors: factors, nurturingStage: computedStage };
     });
 
     res.json({
@@ -334,7 +366,9 @@ export function registerLeadRoutes(app: Express): void {
     if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const lead = await storage.getLead(org.id, leadId);
     if (!lead) return Errors.notFound(res, "Lead");
-    res.json(lead);
+    // Lead responses omit tax identity (ciphertext TIN and its type); the
+    // 1099/1098 paths read them server-side.
+    res.json(omitSecretColumns(leads, lead));
   });
   
 
@@ -396,11 +430,13 @@ export function registerLeadRoutes(app: Express): void {
       }
       
       // T3-3E Phase 3 — contract request validation. `leadCreateRequestSchema`
-      // is `insertLeadSchema.passthrough()`, so this is the canonical insert
-      // parse PLUS the transport-only extras the handler reads later
-      // (latitude/longitude for enrichment, consentText/pageUrl for the TCPA
-      // evidence chain). organizationId is attached from the authed org, not
-      // the wire body. On failure → 422 via Errors.validationFailed.
+      // is `insertLeadSchema.passthrough()` followed by a strip of every
+      // server-owned field, so this is the canonical insert parse PLUS the
+      // transport-only extras the handler reads later (latitude/longitude for
+      // enrichment, consentText/pageUrl for the TCPA evidence chain), and
+      // never an id, tenant key, timestamp or soft-delete field.
+      // organizationId is attached from the authed org, not the wire body.
+      // On failure → 422 via Errors.validationFailed.
       const parsedBody = createLeadContract.requestSchema.safeParse(req.body);
       if (!parsedBody.success) {
         return Errors.validationFailed(res, parsedBody.error.issues);
@@ -626,7 +662,7 @@ export function registerLeadRoutes(app: Express): void {
         .json(
           validateResponse(
             createLeadContract.responseSchema,
-            lead,
+            omitSecretColumns(leads, lead),
             "POST /api/leads",
           ),
         );
@@ -728,7 +764,7 @@ export function registerLeadRoutes(app: Express): void {
       }
       
       res.json({
-        ...lead,
+        ...omitSecretColumns(leads, lead!),
         score,
         scoreFactors: factors,
         nurturingStage,
@@ -892,6 +928,16 @@ export function registerLeadRoutes(app: Express): void {
       // Without this a restricted VA could push every lead in the org to
       // "deleted" status through an arbitrary id array.
       if (refuseBulkLeadWrite(req as AuthenticatedRequest, res)) return;
+
+      // TCPA: consent is per-lead evidence, never a list attribute. A bulk
+      // write may CLEAR consent (always safe) but may not grant it, stamp a
+      // consent source or date onto a whole list (a purchased "list_vendor"
+      // list is not prior express written consent), or lift an opt-out the
+      // lead themselves recorded. Consent is granted one lead at a time through
+      // PATCH /api/leads/:id/consent or lead creation, which capture the
+      // evidence. Checked before any write, so a refusal changes nothing.
+      const consentRefusal = bulkConsentRefusal(updates as Record<string, unknown>);
+      if (consentRefusal) return Errors.badRequest(res, consentRefusal);
 
       // Wave B — snapshot the BEFORE rows once. They serve both the W3.4
       // transition gate below and the per-lead workflow-event diff after the
@@ -1431,9 +1477,18 @@ export function registerLeadRoutes(app: Express): void {
     phone: z.string().optional(),
     email: z.string().optional(),
     apn: z.string().optional(),
+    // The parcel's situs address — NOT where mail goes. address/city/state/zip
+    // above are the owner's MAILING address (what direct mail is sent to).
+    propertyAddress: z.string().optional(),
+    propertyCity: z.string().optional(),
+    propertyState: z.string().optional(),
+    propertyZip: z.string().optional(),
+    // A list's DNC column ("Y", "true", "1", "Federal DNC"). Import may set
+    // do-not-contact; nothing on this path can grant consent.
+    doNotContact: z.string().optional(),
   });
   const csvImportBodySchema = z.object({
-    rows: z.array(csvImportRowSchema).min(1).max(MAX_CSV_IMPORT_ROWS),
+    rows: z.array(csvImportRowSchema).min(1).max(CSV_IMPORT_MAX_ROWS_PER_REQUEST),
   });
   api.post(
     "/api/leads/csv-import",
@@ -1445,6 +1500,17 @@ export function registerLeadRoutes(app: Express): void {
     async (req, res) => {
       try {
         const org = (req as AuthenticatedRequest).organization;
+        const bodyRows = (req.body ?? {}).rows;
+        if (Array.isArray(bodyRows) && bodyRows.length > CSV_IMPORT_MAX_ROWS_PER_REQUEST) {
+          // Say the limit and the way through, not "Validation failed".
+          return Errors.badRequest(
+            res,
+            `This request has ${bodyRows.length.toLocaleString()} rows; one import request takes at most ${CSV_IMPORT_MAX_ROWS_PER_REQUEST} rows. ` +
+              `The Smart CSV import sheet sends larger files in ${CSV_IMPORT_MAX_ROWS_PER_REQUEST}-row batches automatically; ` +
+              `for very large lists, the Data import page (/api/import/leads) runs the file as a background job.`,
+            { maxRowsPerRequest: CSV_IMPORT_MAX_ROWS_PER_REQUEST, rows: bodyRows.length },
+          );
+        }
         const parsed = csvImportBodySchema.safeParse(req.body ?? {});
         if (!parsed.success) {
           return Errors.badRequest(
@@ -1515,10 +1581,14 @@ export function registerLeadRoutes(app: Express): void {
           // has no first name, rather than one invented from its own words.
           let firstName = row.firstName?.trim() ?? "";
           let lastName = row.lastName?.trim() ?? "";
+          //
+          // A WHOLE-name column alone ("SMITH JOHN & MARY" on a county roll,
+          // "John Smith" from a broker) cannot say its word order, so it is
+          // kept whole as the owner's name and nothing is put in the first-name
+          // slot: a greeting then uses the whole name, never the surname.
           if ((!firstName || !lastName) && row.ownerName?.trim()) {
-            const split = splitOwnerName(row.ownerName);
-            if (!firstName && !lastName) ({ firstName, lastName } = split);
-            else if (!lastName) lastName = split.lastName;
+            if (!firstName && !lastName) ({ firstName, lastName } = ownerNameFromSingleColumn(row.ownerName));
+            else if (!lastName) lastName = splitOwnerName(row.ownerName).lastName;
           }
 
           if (!lastName) {
@@ -1556,14 +1626,19 @@ export function registerLeadRoutes(app: Express): void {
               lastName,
               email: row.email?.trim() || null,
               phone: row.phone?.trim() || null,
+              // Mailing address — the block direct mail is addressed to.
               address: row.address?.trim() || null,
               city: row.city?.trim() || null,
               state: row.state?.trim() || null,
               county: row.county?.trim() || null,
-              zip: row.zip?.trim() || null,
+              zip: row.zip?.trim() ? restoreZip(row.zip) : null,
+              // The parcel's situs, kept apart from the mailing block.
+              propertyAddress: composePropertyAddress({ ...row, propertyZip: row.propertyZip ? restoreZip(row.propertyZip) : row.propertyZip }),
               apn: apn || null,
               source: "csv_import",
               status: "new",
+              // Only ever true from a list flag; never consent.
+              ...(parseDncFlag(row.doNotContact) ? { doNotContact: true, optOutDate: new Date(), optOutReason: "import_dnc_flag" } : {}),
             }).returning();
             imported++;
             // One event per imported lead. See the volume note on

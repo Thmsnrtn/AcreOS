@@ -179,6 +179,16 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
       content: initialMessage,
     });
 
+    // Legal / compliance intake → one urgent founder ask. Never throws.
+    const { escalateLegalIntake } = await import("./supportLegalIntake");
+    await escalateLegalIntake({
+      table: "support_cases",
+      recordId: supportCase.id,
+      organizationId,
+      subject,
+      description: initialMessage,
+    });
+
     return { case: supportCase, classification };
   }
 
@@ -213,7 +223,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
       return this.escalateCase(supportCase, "Maximum AI attempts reached");
     }
 
-    await storage.updateSupportCase(caseId, {
+    await storage.updateSupportCase(organizationId, caseId, {
       aiAttempts: currentAttempts,
     });
 
@@ -288,7 +298,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
     }
 
     if (allSucceeded) {
-      await storage.updateSupportCase(supportCase.id, {
+      await storage.updateSupportCase(supportCase.organizationId, supportCase.id, {
         status: "awaiting_user",
       });
     }
@@ -458,7 +468,7 @@ Adapt this template with the specific details from the context. Be conversationa
     userMessage: string,
     organizationId: number
   ): Promise<{ response: string; actionsTaken: string[]; escalated: boolean }> {
-    const messages = await storage.getSupportMessages(supportCase.id);
+    const messages = await storage.getSupportMessages(organizationId, supportCase.id);
     const org = await storage.getOrganization(organizationId);
     const balance = await creditService.getBalance(organizationId);
 
@@ -524,7 +534,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
         aiConfidence: "0.7",
       });
 
-      await storage.updateSupportCase(supportCase.id, {
+      await storage.updateSupportCase(supportCase.organizationId, supportCase.id, {
         status: "awaiting_user",
       });
 
@@ -539,7 +549,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
     supportCase: SupportCase,
     reason: string
   ): Promise<{ response: string; actionsTaken: string[]; escalated: boolean }> {
-    await storage.updateSupportCase(supportCase.id, {
+    await storage.updateSupportCase(supportCase.organizationId, supportCase.id, {
       status: "escalated",
       escalatedAt: new Date(),
       escalationReason: reason,
@@ -598,11 +608,12 @@ In the meantime, is there anything else I can help you with?`;
   }
 
   async resolveCase(
+    organizationId: number,
     caseId: number,
     resolutionSummary: string,
     resolvedBy: string = "ai_support"
   ): Promise<SupportCase | undefined> {
-    const updated = await storage.updateSupportCase(caseId, {
+    const updated = await storage.updateSupportCase(organizationId, caseId, {
       status: "resolved",
       resolvedAt: new Date(),
       resolutionSummary,
@@ -634,8 +645,8 @@ In the meantime, is there anything else I can help you with?`;
     return updated;
   }
 
-  async rateSatisfaction(caseId: number, rating: number): Promise<void> {
-    await storage.updateSupportCase(caseId, {
+  async rateSatisfaction(organizationId: number, caseId: number, rating: number): Promise<void> {
+    await storage.updateSupportCase(organizationId, caseId, {
       userSatisfaction: rating,
       status: "closed",
     });

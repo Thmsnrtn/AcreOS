@@ -74,7 +74,7 @@ const featureGuides = [
       "Create email campaigns with templates and personalization",
       "Send SMS messages to leads with opt-in/opt-out management",
       "Launch direct mail campaigns with automated letter printing",
-      "Schedule campaigns or send immediately",
+      "Set a planned send date as a reminder, then send when you're ready (campaigns are not sent automatically)",
       "Track open rates, responses, and conversions"
     ]
   },

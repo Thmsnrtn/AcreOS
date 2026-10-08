@@ -44,6 +44,28 @@ export function splitOwnerName(raw: string): { firstName: string; lastName: stri
 }
 
 /**
+ * A list's SINGLE owner-name column, read without guessing the word order.
+ *
+ * County rolls write "SMITH JOHN & MARY" (LAST FIRST); broker exports write
+ * "John Smith". The text cannot say which, and splitOwnerName's first-space
+ * split turns the county form into firstName "SMITH" — every message then
+ * greets the owner by surname ("Hi SMITH"). So only an unambiguous form is
+ * split ("LAST, FIRST"); anything else is kept whole as the owner's name
+ * (lastName) with no first name, and the greeting uses the whole name
+ * (salutationName) instead of a surname.
+ */
+export function ownerNameFromSingleColumn(raw: string): { firstName: string; lastName: string } {
+  const name = raw.trim().replace(/\s+/g, " ");
+  if (!name) return { firstName: "", lastName: "" };
+  if (isEntityOwnerName(name)) return { firstName: "", lastName: name };
+  const comma = name.split(",");
+  if (comma.length === 2 && comma[0].trim() && comma[1].trim()) {
+    return { firstName: comma[1].trim(), lastName: comma[0].trim() };
+  }
+  return { firstName: "", lastName: name };
+}
+
+/**
  * The name a letter or message greets. An entity or single-word owner has no
  * first name (splitOwnerName), and "Dear {{firstName}}," rendered "Dear ,";
  * the whole name greets them instead ("Dear SMITH FAMILY TRUST,").

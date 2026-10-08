@@ -34,7 +34,7 @@ vi.mock("../../server/middleware/getOrCreateOrg", () => ({
 vi.mock("../../server/storage", () => ({
   storage: {
     getDeal: async (orgId: number, id: number) => (orgId === 42 && id === 4 ? { id: 4, organizationId: 42 } : undefined),
-    getDealChecklist: async () => ({ id: 1, items: h.items }),
+    getDealChecklist: async (orgId: number, dealId: number) => (orgId === 42 && dealId === 4 ? { id: 1, items: h.items } : undefined),
     updateDealChecklistItem: async (...a: unknown[]) => {
       h.order.push("write");
       return (h.updateItem as (...x: unknown[]) => unknown)(...a);
@@ -104,6 +104,7 @@ describe("PATCH /api/deals/:id/checklist/items/:itemId", () => {
     expect(h.stamp).toHaveBeenCalledWith(42, 4);
     expect(h.order).toEqual(["write", "stamp"]);
     expect(h.updateItem).toHaveBeenCalledWith(
+      42,
       4,
       "verify-wire-two-channel",
       expect.objectContaining({ checked: true, verification: expect.objectContaining({ confirmedBy: "user-a" }) }),

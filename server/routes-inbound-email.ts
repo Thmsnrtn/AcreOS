@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import express, { type Express } from "express";
 import { z } from "zod";
 import { isAuthenticated, getOrCreateOrg } from "./auth";
 import { AuthenticatedRequest, getOrganization, getOrganizationId } from "./types/request";
@@ -32,7 +32,17 @@ const inboundEmailSchema = z.object({
   inReplyTo: z.string().optional(),
 });
 
-export function registerInboundEmailRoutes(app: Express): void {
+/**
+ * POST /api/webhooks/inbound-email — SES → SNS (or HMAC-signed forwarder).
+ *
+ * Registered by `registerRoutes` BEFORE the `/api` session catch-all, apart
+ * from the authenticated thread routes below: the sender carries no session,
+ * and behind the catch-all every delivery was 401'd before its signature
+ * check ran. verifyInboundEmailSignature authenticates it (pinned SNS topic +
+ * SNS signature, or the HMAC fallback), fail closed. Pinned by
+ * tests/unit/inboundWebhooksReachAnonymously.test.ts.
+ */
+export function registerInboundEmailWebhookRoute(app: Express): void {
   // F2: refuse to mount this surface without proper secret config in prod.
   assertInboundEmailSecretsConfigured();
 
@@ -42,6 +52,9 @@ export function registerInboundEmailRoutes(app: Express): void {
   // and unwraps the SNS Notification envelope into req.body.
   app.post(
     "/api/webhooks/inbound-email",
+    // SNS posts its envelope as text/plain, which the global JSON parser
+    // skips; read it as text so the verifier can parse and check it.
+    express.text({ type: (req) => Boolean(req.headers["x-amz-sns-message-type"]), limit: "1mb" }),
     verifyInboundEmailSignature,
     async (req, res) => {
       try {
@@ -71,7 +84,9 @@ export function registerInboundEmailRoutes(app: Express): void {
       }
     },
   );
+}
 
+export function registerInboundEmailRoutes(app: Express): void {
   // Get email thread for a lead
   app.get(
     "/api/leads/:leadId/emails",

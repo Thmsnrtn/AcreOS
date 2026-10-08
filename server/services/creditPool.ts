@@ -542,7 +542,7 @@ export function poolRefusalDetails(action: CreditAction, debit: PoolDebitResult)
     purchaseAvailable: true,
     purchaseUrl: "/usage",
     message:
-      "Your monthly AcreOS credit pool is used up. Buy a credit pack on the Usage page to keep going now, add your own provider key in Settings → Your provider keys, or wait for the monthly reset.",
+      "Your monthly AcreOS credit pool is used up. Buy a credit pack in Settings → Usage & Credits to keep going now, add your own provider key in Settings → Your provider keys, or wait for the monthly reset.",
   };
 }
 

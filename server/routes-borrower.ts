@@ -2086,7 +2086,12 @@ export function registerBorrowerRoutes(app: Express): void {
   api.get("/api/borrower/messages", validateBorrowerSession, async (req, res) => {
     try {
       const session = requireBorrowerSession(req);
-      const msgs = await storage.getBorrowerMessages(session.noteId);
+      // The thread is read within the organization the session was issued
+      // for (pinned at session create and re-asserted against the note by
+      // validateBorrowerSession). A session without that pin is asked to
+      // sign in again rather than read without one.
+      if (session.organizationId == null) return Errors.unauthorized(res);
+      const msgs = await storage.getBorrowerMessages(session.organizationId, session.noteId);
       // Mark lender messages as read since borrower is viewing them
       await storage.markBorrowerMessagesRead(session.noteId, "lender");
       res.json(msgs);

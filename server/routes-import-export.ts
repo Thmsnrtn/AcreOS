@@ -69,6 +69,33 @@ const bulkExportLimiter = rateLimit({
   message: { message: "Bulk-export rate limit exceeded. Per-org daily cap is 5. Email support@acreos.io for one-off lifts." },
 });
 
+/**
+ * Consent sources that record the LEAD's own express opt-in, or an operator's
+ * per-lead attestation of one ("manual", "manual_restoration" — the lead
+ * detail's Grant / Restore buttons). Anything list-level is absent on purpose.
+ */
+const LEAD_CONSENT_EXPRESS_SOURCES: ReadonlySet<string> = new Set([
+  "website",
+  "phone_ivr",
+  "written",
+  "verbal",
+  "sms_double_optin",
+  "manual",
+  "manual_restoration",
+  "admin_manual",
+]);
+const CONSENT_EVENT_SOURCE: Record<string, "website" | "phone_ivr" | "written" | "sms_double_optin" | "admin_manual"> = {
+  website: "website",
+  phone_ivr: "phone_ivr",
+  written: "written",
+  sms_double_optin: "sms_double_optin",
+};
+const consentPatchSchema = z.object({
+  tcpaConsent: z.boolean(),
+  consentSource: z.string().trim().min(1).max(64).optional(),
+  optOutReason: z.string().max(500).optional(),
+});
+
 export function registerImportExportRoutes(app: Express): void {
   const api = app;
 
@@ -90,6 +117,7 @@ export function registerImportExportRoutes(app: Express): void {
       ],
       columnHints: NOTE_COLUMN_MAP,
     });
+  });
 
   api.get("/api/import/:entityType/columns", isAuthenticated, async (req, res) => {
     try {
@@ -375,9 +403,6 @@ export function registerImportExportRoutes(app: Express): void {
     }
   });
 
-  });
-
-
   // backup — registered BEFORE /api/export/:entityType so the literal path wins (2026-07-11 route-order sweep).
   /**
    * @deprecated Use POST /api/export/everything which returns a real ZIP
@@ -584,23 +609,56 @@ export function registerImportExportRoutes(app: Express): void {
     }
   });
 
-  api.patch("/api/leads/:id/consent", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // The single-lead consent path. Granting consent here is an operator's
+  // per-lead attestation, so the source must name how THIS lead expressly
+  // consented. A list-level source ("imported", "list_vendor", a purchased
+  // list) is not express consent and is refused: no import or vendor flag may
+  // make a lead contactable (see LEAD_CONSENT_EXPRESS_SOURCES).
+  api.patch("/api/leads/:id/consent", isAuthenticated, getOrCreateOrg, requirePermission("canEditLeads"), async (req, res) => {
     try {
       const orgId = req.organization!.id;
       const userId = req.user.id;
-      const leadId = parseInt(req.params.id);
-      const { tcpaConsent, consentSource, optOutReason } = req.body;
-      
+      const leadId = parseInt(req.params.id, 10);
+      if (!Number.isFinite(leadId)) return Errors.badRequest(res, "Invalid lead ID");
+      const parsed = consentPatchSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return Errors.badRequest(res, "Invalid consent update", parsed.error.issues.map((e) => ({ field: e.path.join("."), message: e.message })));
+      }
+      const { tcpaConsent, optOutReason } = parsed.data;
+      const consentSource = tcpaConsent ? (parsed.data.consentSource ?? "manual") : parsed.data.consentSource;
+      if (tcpaConsent && !LEAD_CONSENT_EXPRESS_SOURCES.has(consentSource as string)) {
+        return Errors.badRequest(
+          res,
+          `"${consentSource}" is not express consent from this lead. Consent can be granted only from the lead's own opt-in (${Array.from(LEAD_CONSENT_EXPRESS_SOURCES).join(", ")}); a list, vendor or import flag never grants it.`,
+        );
+      }
+
       const existingLead = await storage.getLead(orgId, leadId);
       if (!existingLead) {
         return Errors.notFound(res, "Lead");
       }
-      
+
       const updated = await storage.updateLeadConsent(leadId, {
         tcpaConsent,
         consentSource,
         optOutReason
       });
+
+      // Evidence chain: every grant through this path is a per-lead row in
+      // lead_consent_events naming who attested it.
+      if (tcpaConsent) {
+        const { recordConsentGranted } = await import("./services/consentEvents");
+        await recordConsentGranted({
+          organizationId: orgId,
+          leadId,
+          channels: ["sms", "email", "phone", "direct_mail"],
+          source: CONSENT_EVENT_SOURCE[consentSource as string] ?? "admin_manual",
+          ipAddress: clientIpOrNull(req),
+          userAgent: (req.headers["user-agent"] as string) || null,
+          recordedBy: userId ? String(userId) : null,
+          metadata: { route: "PATCH /api/leads/:id/consent", consentSource },
+        });
+      }
       
       // Log consent change in audit log
       await storage.createAuditLogEntry({

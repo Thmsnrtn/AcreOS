@@ -136,14 +136,33 @@ const src = fs.readFileSync(LINT, "utf8");
 // `lead_id = <organizationId> limit <leadId>` — another tenant's lead
 // timeline, fed into the caller's output. Pinned behaviourally by
 // tests/unit/leadActivityTenancy.test.ts.
-const BASELINE_ENTRIES = 190;
+// 2026-10-06: 190 -> 174. Sixteen method-shape entries left the register in one
+// change: the by-parent reads of vaEngineRepo (seller communications by lead,
+// ad postings by property, buyer prequalification by lead, collection
+// enrollments by note and by sequence), sequencesRepo.getAbTestByCampaign,
+// documentsRepo.getDocumentSignatures, paymentRemindersRepo.getRemindersForNote,
+// vaRepo.getVaAction, supportOpsRepo.updateSystemAlert, and five
+// dispositionOptimizer property/recommendation reads now take a REQUIRED
+// organization and carry it in the WHERE; supportOpsRepo.resolveAlert became
+// resolveAlertForPlatformOps, which states its cross-organization write through
+// unscopedForPlatformOps(reason) for the founder alert console. Pinned
+// behaviourally by tests/integration/helperOrgScope.db.test.ts.
+const BASELINE_ENTRIES = 174;
 
 /**
  * Rule 2's register, down-only for the same reasons. 63 at the moment it landed,
  * after `priceOptimizer.recordPriceOutcome` — a cross-tenant WRITE the rule
  * found on its first run — was fixed rather than admitted.
  */
-const RULE_2_BASELINE = 69;
+// 2026-10-06: 69 -> 65. portfolioSentinel's checkTaxStatus,
+// checkMarketChanges and checkCompetitorActivity, and
+// dispositionOptimizer.findComparables, read the property within the
+// organization they already took.
+// 2026-10-06: 65 -> 62. dunning.ts retryPayment / cancelCase / resolveCase
+// serve the founder dunning console; their by-id read and write of a dunning
+// event now go through unscopedForPlatformOps(reason) (counted below) instead
+// of an unstated cross-organization read.
+const RULE_2_BASELINE = 62;
 
 /**
  * THE FUNCTION SHAPE (widened 2026-08-16), the two registers this file used to
@@ -176,7 +195,9 @@ const RULE_2_BASELINE = 69;
  * forces the second half); never raise them.
  */
 const FUNCTION_RULE_1_BASELINE = 130;
-const FUNCTION_RULE_2_BASELINE = 84;
+// 2026-10-06: rule 2 84 -> 83. amlMonitor.checkDealAmlPatterns reads the deal
+// and its property within the organization it already took.
+const FUNCTION_RULE_2_BASELINE = 83;
 
 /**
  * VACUITY FLOOR for the function-shape scan, not a ratchet.
@@ -311,8 +332,42 @@ const RULE_3_CHAIN_FLOOR = 300;
  *     the same row — one allowlisted in BASELINE_OFFENDERS (now removed), one in
  *     agentActionExecutors — so the population of cross-org by-id writes to
  *     system_alerts shrank by one while becoming loud.
+ *
+ * 7 → 8 on 2026-10-06, and NOT a new exemption. Rule 2 learned to read a
+ * primary key inside a conjunction — `where(and(eq(t.id, x), eq(t.status, …)))`
+ * — which it previously could not see at all. The one hatch-rooted statement of
+ * that shape already in the tree is acknowledgeSystemAlert's `new →
+ * acknowledged` write above, whose companion by-id read was the one being
+ * counted. Same code, same reason sentence; the count rose because the gate
+ * read a statement it had been skipping.
+ *
+ * 8 → 18 on 2026-10-06, the TRUE count after the population widened, not a
+ * silencing raise. Two things moved together:
+ *
+ *   - The population. A statement rooted in the hatch with no db/tx receiver —
+ *     `unscopedForPlatformOps(reason).update(t)` — did not count as touching
+ *     its table, so a unit whose only query was such a write was never read
+ *     and its by-id predicate never reached this number. Measured with that
+ *     reading switched off: 15. Three hatch-rooted by-id statements had been
+ *     outside the count.
+ *   - The statements. Ten by-id statements were moved INTO the hatch from
+ *     forms that hid what they were: supportOpsRepo.resolveAlertForPlatformOps
+ *     (founder alert console, 1); dunning retryPayment / cancelCase /
+ *     resolveCase (founder dunning console, a read and a write each, 6 — and
+ *     three rule-2 register entries left with them); the import worker's two
+ *     settling writes on the job row it claimed from the shared queue (2);
+ *     and the inbound-number attribution stamp in tracking-pool (1). Each had
+ *     been either an unstated cross-organization statement or one predicated
+ *     on an organization read off the very row being written.
+ *
+ * 18 → 16 on 2026-10-07 (reconciliation of #327 with Stage 1). Stage 1 added a
+ * founder approval-card read of a dunning event by id (pendingHandSummary),
+ * which took the measured count to 19. Rather than raise the ceiling, the
+ * dunning console's three identical by-id reads (retryPayment / cancelCase /
+ * resolveCase) became one, dunningService.getCaseForConsole, and the approval
+ * card reads through it: same statements, same reason sentence, 16 sites.
  */
-const HATCH_EXEMPTION_CEILING = 7;
+const HATCH_EXEMPTION_CEILING = 16;
 
 /**
  * BOTH of Drizzle's query spellings reach rule 3.
@@ -1927,5 +1982,328 @@ describe("rule 3 reads BOTH of Drizzle's query spellings", () => {
       });
       expect(failed, `a correctly scoped ${id} was reported as an offender:\n${out}`).toBe(false);
     }
+  });
+});
+
+/**
+ * THE STORAGE REPOSITORY SHAPE — every org-scoped helper in server/storage/*.ts.
+ *
+ * The repositories are object literals of `async name(this: DatabaseStorage,
+ * …)` methods merged into DatabaseStorage. Every canary above is written in
+ * the service FUNCTION shape or the route-handler shape, so nothing proved the
+ * gate reads a repository method at all — and the repository is where a
+ * by-id or by-parent helper lives. Each canary below hides one defect in that
+ * shape, in a file of its own, so a rule that stops firing turns exactly one of
+ * them red:
+ *
+ *   rule 1  a helper that takes no organization and reads rows by a parent id;
+ *   rule 3  a helper that TAKES (orgId, parentId) and filters on the parent only;
+ *   rule 2  a helper that takes (orgId, id) and resolves the row by id alone;
+ *   rule 2  the same, with the id inside a conjunction that names something
+ *           other than the organization — `and(eq(t.id, id), eq(t.status, …))`.
+ *           Neither rule read that shape until 2026-10-06, and it is what an
+ *           org-scoped helper becomes when only its organization predicate is
+ *           deleted from the `and(...)`.
+ *
+ * The last case is a CLEAN repository with all four helpers scoped (one through
+ * a spread predicate list), which must PASS — so the canaries are not "any
+ * repository fails".
+ */
+describe("the tenancy lint reads storage repository methods (repository canaries)", () => {
+  const REPO_SCHEMA = [
+    'import { pgTable, serial, integer, text } from "drizzle-orm/pg-core";',
+    'export const leadNotes = pgTable("lead_notes", {',
+    '  id: serial("id").primaryKey(),',
+    '  organizationId: integer("organization_id").notNull(),',
+    '  leadId: integer("lead_id").notNull(),',
+    '  status: text("status"),',
+    "});",
+    "",
+  ].join("\n");
+
+  function repoFixture(method: string): Record<string, string> {
+    return {
+      "shared/schema.ts": REPO_SCHEMA,
+      "server/storage/__repo_canary__.ts": [
+        'import { and, eq } from "drizzle-orm";',
+        'import { db } from "../db";',
+        'import { leadNotes } from "@shared/schema";',
+        'import type { DatabaseStorage } from "../storage";',
+        "",
+        "export const canaryRepo = {",
+        method,
+        "};",
+        "",
+      ].join("\n"),
+    };
+  }
+
+  function expectRepoCaught(out: string, failed: boolean, line: RegExp, why: string) {
+    expect(failed, `${why}\nThe lint exited ZERO with the defect in the tree:\n${out}`).toBe(true);
+    expect(out, `${why}\nThe helper is not reported:\n${out}`).toMatch(line);
+    expect(out).not.toContain("[check-org-scoped-fetch] PASS");
+    // Vacuity: the fixture's table was recognised and its method was read.
+    expect(out, "the fixture's org-scoped table was not recognised").toMatch(/org-scoped tables: [1-9]/);
+    expect(out, "no repository method was read at all").toMatch(/scanned [1-9]\d* storage \+ service methods/);
+    expect(out).toContain("declarations whose body could not be located: 0");
+  }
+
+  it("rule 1: a repository helper that takes no organization", () => {
+    const { out, failed } = runOverFixture(
+      repoFixture(
+        [
+          "  async getNotesByLead(this: DatabaseStorage, leadId: number) {",
+          "    return db.select().from(leadNotes).where(eq(leadNotes.leadId, leadId));",
+          "  },",
+        ].join("\n"),
+      ),
+    );
+    expectRepoCaught(
+      out,
+      failed,
+      /\[method\] server\/storage\/__repo_canary__\.ts:\d+ — getNotesByLead\(\) touches: leadNotes/,
+      "Rule 1 did not fire on a repository method with no organization.",
+    );
+  });
+
+  it("rule 3: a helper that takes (orgId, parentId) and filters on the parent only", () => {
+    const { out, failed } = runOverFixture(
+      repoFixture(
+        [
+          "  async getNotesByLead(this: DatabaseStorage, orgId: number, leadId: number) {",
+          "    return db.select().from(leadNotes).where(eq(leadNotes.leadId, leadId));",
+          "  },",
+        ].join("\n"),
+      ),
+    );
+    expectRepoCaught(
+      out,
+      failed,
+      /server\/storage\/__repo_canary__\.ts:\d+\s+getNotesByLead\(\)\s+<- leadNotes/,
+      "Rule 3 did not fire on a repository method that accepts an organization " +
+        "and filters only on the parent id — the signature reads scoped and the " +
+        "query is not.",
+    );
+  });
+
+  it("rule 2: a helper that takes (orgId, id) and resolves the row by id alone", () => {
+    const { out, failed } = runOverFixture(
+      repoFixture(
+        [
+          "  async getNote(this: DatabaseStorage, orgId: number, id: number) {",
+          "    const [row] = await db.select().from(leadNotes).where(eq(leadNotes.id, id));",
+          "    return row;",
+          "  },",
+        ].join("\n"),
+      ),
+    );
+    expectRepoCaught(
+      out,
+      failed,
+      /\[method\] server\/storage\/__repo_canary__\.ts:\d+ — getNote\(\) on: leadNotes/,
+      "Rule 2 did not fire on a repository method that accepts an organization " +
+        "and resolves the row by primary key alone.",
+    );
+  });
+
+  it("rule 2: the id inside a conjunction that does not name the organization", () => {
+    const { out, failed } = runOverFixture(
+      repoFixture(
+        [
+          "  async updateNoteStatus(this: DatabaseStorage, orgId: number, id: number, status: string) {",
+          "    const [row] = await db.update(leadNotes).set({ status })",
+          '      .where(and(eq(leadNotes.id, id), eq(leadNotes.status, "open")))',
+          "      .returning();",
+          "    return row;",
+          "  },",
+        ].join("\n"),
+      ),
+    );
+    expectRepoCaught(
+      out,
+      failed,
+      /\[method\] server\/storage\/__repo_canary__\.ts:\d+ — updateNoteStatus\(\) on: leadNotes/,
+      "Rule 2 did not read a primary key inside `and(...)`. Rule 3 skips any " +
+        "chain that names `eq(<table>.id,` as rule 2's job, so this shape is " +
+        "read by NO rule when rule 2 misses it.",
+    );
+  });
+
+  it("rule 2: the id with a spread predicate list that does not carry the organization", () => {
+    const { out, failed } = runOverFixture(
+      repoFixture(
+        [
+          "  async closeNote(this: DatabaseStorage, orgId: number, id: number) {",
+          '    const conditions = [eq(leadNotes.status, "open")];',
+          '    const [row] = await db.update(leadNotes).set({ status: "closed" })',
+          "      .where(and(eq(leadNotes.id, id), ...conditions))",
+          "      .returning();",
+          "    return row;",
+          "  },",
+        ].join("\n"),
+      ),
+    );
+    expectRepoCaught(
+      out,
+      failed,
+      /\[method\] server\/storage\/__repo_canary__\.ts:\d+ — closeNote\(\) on: leadNotes/,
+      "Rule 2 credited a spread list that carries no organization predicate.",
+    );
+  });
+
+  it("rule 2: the id in a RELATIONAL where: and(...)", () => {
+    const { out, failed } = runOverFixture(
+      repoFixture(
+        [
+          "  async getOpenNote(this: DatabaseStorage, orgId: number, id: number) {",
+          "    return db.query.leadNotes.findFirst({",
+          '      where: and(eq(leadNotes.id, id), eq(leadNotes.status, "open")),',
+          "    });",
+          "  },",
+        ].join("\n"),
+      ),
+    );
+    expectRepoCaught(
+      out,
+      failed,
+      /\[method\] server\/storage\/__repo_canary__\.ts:\d+ — getOpenNote\(\) on: leadNotes/,
+      "Rule 2 did not read the relational spelling where: and(...).",
+    );
+  });
+
+  it("rule 2: a HOISTED id predicate used inside a conjunction", () => {
+    const { out, failed } = runOverFixture(
+      repoFixture(
+        [
+          "  async getOpenNote(this: DatabaseStorage, orgId: number, id: number) {",
+          "    const owned = eq(leadNotes.id, id);",
+          '    const [row] = await db.select().from(leadNotes).where(and(owned, eq(leadNotes.status, "open")));',
+          "    return row;",
+          "  },",
+        ].join("\n"),
+      ),
+    );
+    expectRepoCaught(
+      out,
+      failed,
+      /\[method\] server\/storage\/__repo_canary__\.ts:\d+ — getOpenNote\(\) on: leadNotes/,
+      "Rule 2 did not resolve a hoisted eq(t.id, x) named inside and(...).",
+    );
+  });
+
+  it("rule 2: a list-only conjunction whose LIST holds the id", () => {
+    const { out, failed } = runOverFixture(
+      repoFixture(
+        [
+          "  async getOpenNote(this: DatabaseStorage, orgId: number, id: number) {",
+          '    const conditions = [eq(leadNotes.id, id), eq(leadNotes.status, "open")];',
+          "    const [row] = await db.select().from(leadNotes).where(and(...conditions));",
+          "    return row;",
+          "  },",
+        ].join("\n"),
+      ),
+    );
+    expectRepoCaught(
+      out,
+      failed,
+      /\[method\] server\/storage\/__repo_canary__\.ts:\d+ — getOpenNote\(\) on: leadNotes/,
+      "Rule 2 did not look for the id inside the predicate list and(...conditions) spreads in.",
+    );
+  });
+
+  it("a conjunction whose closing paren cannot be found is COUNTED, not skipped", () => {
+    // The unit's braces balance, so the declaration is read; the and( inside
+    // it never closes, so rule 2 cannot judge that clause. It must appear on
+    // the coverage line by name rather than reading as a clean clause.
+    const { out } = runOverFixture(
+      repoFixture(
+        [
+          "  async getBroken(this: DatabaseStorage, orgId: number, id: number) {",
+          '    const [row] = await db.select().from(leadNotes).where(and(eq(leadNotes.id, id), eq(leadNotes.status, "open");',
+          "    return row;",
+          "  },",
+        ].join("\n"),
+      ),
+    );
+    expect(
+      out,
+      "an unclosed where(and(...)) clause was skipped silently instead of being counted:\n" + out,
+    ).toMatch(/declarations whose body could not be located: 1 — NOT SCANNED/);
+    expect(out).toMatch(
+      /server\/storage\/__repo_canary__\.ts::getBroken: a where\(and\(\.\.\.\)\) clause whose closing paren could not be found/,
+    );
+  });
+
+  it("a hatch-rooted WRITE by id is read and counted, even in a unit with no .from(", () => {
+    // unscopedForPlatformOps(reason).update(t) has no db/tx receiver. Until
+    // 2026-10-06 such a unit touched no table as far as the gate could tell,
+    // so its by-id predicate never reached the exemption count that
+    // HATCH_EXEMPTION_CEILING caps. It must be in the population, and counted.
+    const { out, failed } = runOverFixture(
+      repoFixture(
+        [
+          "  async closeNoteForPlatformOps(this: DatabaseStorage, id: number) {",
+          '    const [row] = await unscopedForPlatformOps("platform console: close a note by id across organizations")',
+          '      .update(leadNotes).set({ status: "closed" })',
+          "      .where(eq(leadNotes.id, id))",
+          "      .returning();",
+          "    return row;",
+          "  },",
+        ].join("\n"),
+      ),
+    );
+    expect(failed, `the sanctioned form was rejected:\n${out}`).toBe(false);
+    expect(out, "the hatch-rooted write was not read as touching its table").toMatch(
+      /touching org tables: 1, with org context: 1/,
+    );
+    expect(out, "the hatch-rooted by-id write was not counted").toMatch(
+      /rule-2 predicates exempted as sanctioned-hatch roots: 1 /,
+    );
+  });
+
+  it("a correctly scoped repository PASSES — the canaries are not 'any repository fails'", () => {
+    const { out, failed } = runOverFixture(
+      repoFixture(
+        [
+          "  async getNotesByLead(this: DatabaseStorage, orgId: number, leadId: number) {",
+          "    return db.select().from(leadNotes)",
+          "      .where(and(eq(leadNotes.leadId, leadId), eq(leadNotes.organizationId, orgId)));",
+          "  },",
+          "  async getNote(this: DatabaseStorage, orgId: number, id: number) {",
+          "    const [row] = await db.select().from(leadNotes)",
+          "      .where(and(eq(leadNotes.id, id), eq(leadNotes.organizationId, orgId)));",
+          "    return row;",
+          "  },",
+          "  async getOwnedNote(this: DatabaseStorage, orgId: number, id: number) {",
+          "    const owned = eq(leadNotes.id, id);",
+          "    const [row] = await db.select().from(leadNotes).where(and(owned, eq(leadNotes.organizationId, orgId)));",
+          "    return row;",
+          "  },",
+          "  async getListedNote(this: DatabaseStorage, orgId: number, id: number) {",
+          "    const conditions = [eq(leadNotes.id, id), eq(leadNotes.organizationId, orgId)];",
+          "    return db.query.leadNotes.findFirst({ where: and(...conditions) });",
+          "  },",
+          "  async updateNoteStatus(this: DatabaseStorage, orgId: number, id: number, status: string) {",
+          '    const conditions = [eq(leadNotes.organizationId, orgId), eq(leadNotes.status, "open")];',
+          "    const [row] = await db.update(leadNotes).set({ status })",
+          "      .where(and(eq(leadNotes.id, id), ...conditions))",
+          "      .returning();",
+          "    return row;",
+          "  },",
+        ].join("\n"),
+      ),
+    );
+    expect(failed, `a correctly scoped repository was rejected:\n${out}`).toBe(false);
+    expect(out).toContain("[check-org-scoped-fetch] PASS");
+    expect(out, "the fixture ran without the gate seeing its table").toMatch(/org-scoped tables: [1-9]/);
+    // Vacuity AND population: the five helpers were each read exactly ONCE as
+    // org-touching, org-having units. A repository file is under both the
+    // storage entry and the whole-server walk; before the walk was de-duplicated
+    // this line read 10, because every repository method was scanned twice.
+    expect(
+      out,
+      "the repository's five methods were not each read exactly once",
+    ).toMatch(/touching org tables: 5, with org context: 5/);
+    expect(out).toMatch(/scanned 5 storage \+ service methods across 1 files/);
   });
 });

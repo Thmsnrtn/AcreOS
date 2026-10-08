@@ -77,8 +77,14 @@ const ROOT = path.resolve(__dirname, "../..");
  * 111 -> 110 (DEFECT-0173): listing unpublish now passes the org to
  * updatePropertyListing.
  * 110 -> 109 (DEFECT-0173 audit): the listing PUT passes the org too.
+ * 107 -> 84 (2026-10-06): the tenant key became REQUIRED, and leads the
+ * argument list, on update/deleteSequence, update/deleteAbTest,
+ * updateSupportCase, updateDunningEvent, update/deleteDueDiligenceTemplate and
+ * update/deleteChecklistTemplate — those 23 call sites now pass it, so they
+ * left the population rather than the allowlist (supportBrain.ts's exemption
+ * went with them).
  */
-const OMISSION_BASELINE = 107;
+const OMISSION_BASELINE = 84;
 
 /**
  * Call sites whose enclosing function never names an organization, so nothing
@@ -89,7 +95,6 @@ const UNGUARDED_ALLOWLIST: Record<string, string> = {
   "server/ai/vaService.ts": "VA action bookkeeping inside the service that just created the action; the row is the one it is holding, not one addressed by request input.",
   "server/routes-admin.ts": "Platform support desk. Mounted behind isAuthenticated + requireClerkMFA on /api/admin and operates across tenants by design.",
   "server/services/notificationDispatcher.ts": "Marks the notification the dispatcher itself just delivered, by the id it minted.",
-  "server/services/supportBrain.ts": "Support-case triage, platform-ops lane (same authority as routes-admin).",
   "server/services/task-runner.ts": "Updates the scheduled task the runner is currently executing, by the id it was handed.",
 };
 
@@ -309,8 +314,9 @@ describe("the routes that were live", () => {
     const at = src.indexOf('api.post("/api/investor-profiles"');
     expect(at).toBeGreaterThan(-1);
     const handler = src.slice(at, at + 2600);
-    // The protected keys are stripped from the body before it is spread...
-    expect(handler).toMatch(/organizationId: _ignoredOrgId[\s\S]*?\.\.\.safeBody/);
+    // The body is reduced to the customer-editable columns (an allowlist that
+    // has no tenant key in it) before it is spread...
+    expect(handler).toMatch(/const safeBody = investorProfileEdits\(body\);[\s\S]*?\.\.\.safeBody/);
     // ...and the server's own value is written after the spread, not before.
     const spreadAt = handler.indexOf("...safeBody,\n            organizationId: org.id");
     expect(spreadAt, "server-owned fields must come after the spread").toBeGreaterThan(-1);

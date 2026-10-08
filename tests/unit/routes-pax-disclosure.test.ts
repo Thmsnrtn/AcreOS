@@ -18,6 +18,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
+import { getTableColumns } from "drizzle-orm";
+import { users } from "@shared/models/auth";
 
 vi.mock("../../server/utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -150,5 +152,31 @@ describe("POST /api/pax/acknowledge-disclosure", () => {
       updatedAt: null,
     };
     expect(true).toBe(true);
+  });
+});
+
+describe("POST /api/pax/acknowledge-disclosure serves the account view, not the users row", () => {
+  // The keys GET /api/auth/user serves — written out here, not imported from
+  // shared/accountViews.ts, so widening that allowlist goes red here too.
+  const EXPECTED_KEYS = ["email", "firstName", "id", "lastName", "paxDisclosureAcknowledgedAt", "persona"];
+
+  it("every column of the row is populated, and only the account-view keys are served", async () => {
+    const full: Record<string, unknown> = {};
+    for (const key of Object.keys(getTableColumns(users))) full[key] = `value-of-${key}`;
+    // Named so a rename of one of these columns empties nothing silently.
+    for (const k of ["passwordResetToken", "failedLoginAttempts", "lockedUntil", "referralCode"]) {
+      expect(Object.keys(full), k).toContain(k);
+    }
+    userRow = {
+      ...full,
+      id: "user-1",
+      email: "someone@example.com",
+      paxDisclosureAcknowledgedAt: null,
+      updatedAt: null,
+    } as unknown as UserRow;
+
+    const res = await request(makeApp()).post("/api/pax/acknowledge-disclosure").send({});
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body).sort()).toEqual(EXPECTED_KEYS);
   });
 });

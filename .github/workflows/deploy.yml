@@ -21,6 +21,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgresql://acreos:acreos@localhost:5432/acreos_test
+      # The tests that read Postgres itself (tests/helpers/realDb.ts) run against
+      # the schema this job builds, and must not skip here.
+      ACREOS_REAL_DATABASE_URL: postgresql://acreos:acreos@localhost:5432/acreos_test
+      ACREOS_REQUIRE_REAL_DB: "1"
       SESSION_SECRET: ci-session-secret-placeholder-32-chars-long
       APP_URL: http://localhost:5000
       NODE_ENV: test

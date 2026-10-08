@@ -497,8 +497,8 @@ export class VaAgentService {
     return action;
   }
 
-  async executeAction(actionId: number): Promise<VaAction> {
-    const action = await storage.getVaAction(actionId);
+  async executeAction(orgId: number, actionId: number): Promise<VaAction> {
+    const action = await storage.getVaAction(orgId, actionId);
     if (!action) {
       throw new Error(`Action ${actionId} not found`);
     }
@@ -1251,7 +1251,7 @@ Keep it concise and actionable.`;
         if (autoApproveCategories.includes(action.category)) {
           const approved = await storage.approveVaAction(action.id, "auto");
           // Re-fetch to get fresh action with approval status
-          const freshAction = await storage.getVaAction(action.id);
+          const freshAction = await storage.getVaAction(orgId, action.id);
           if (freshAction && freshAction.status === "approved") {
             const result = await this.executeAgentAction(freshAction);
             results.push({ actionId: action.id, ...result });

@@ -375,6 +375,38 @@ export async function answerFounderAsk(
         err instanceof Error ? err : undefined,
       );
     }
+    // An approved autopilot move ACTUALLY RUNS: enqueue the drafted move,
+    // exactly once (idempotency key per ask). Before this, approving recorded
+    // the verdict and nothing else, while the ask said "Approve to let it
+    // proceed". A decline or timeout never enqueues. No-op for asks that were
+    // not an autopilot move. A failure is logged loudly and surfaced to the
+    // caller rather than reading as done.
+    if (approved) {
+      const { enqueueApprovedMove, AUTOPILOT_DISPATCH_MAX_COST_USD } = await import("../autopilot/act");
+      const { findEscalatedMoveForAsk, linkExperienceDispatch } = await import("../autopilot/experienceLog");
+      const { enqueueDispatch } = await import("./dispatchQueue");
+      try {
+        const out = await enqueueApprovedMove(input.askId, {
+          findEscalatedMove: findEscalatedMoveForAsk,
+          enqueue: enqueueDispatch,
+          linkDispatch: linkExperienceDispatch,
+          maxCostUsd: AUTOPILOT_DISPATCH_MAX_COST_USD,
+        });
+        if (out.status !== "not_a_move") {
+          logger.info("[founderCollab] approved move enqueued", {
+            metadata: { askId: input.askId, status: out.status, dispatchId: out.dispatchId },
+          });
+        }
+      } catch (err) {
+        logger.error(
+          `[founderCollab] approved ask ${input.askId}: the move could NOT be enqueued`,
+          err instanceof Error ? err : undefined,
+        );
+        throw new Error(
+          `answerFounderAsk: approval recorded, but the approved action could not be queued (${err instanceof Error ? err.message : String(err)})`,
+        );
+      }
+    }
     // If this ask was a policy-induction proposal, resolve + apply it (write a
     // standing order on stop-approval, bump autonomy on trust-approval). No-op
     // otherwise.

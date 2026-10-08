@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { Errors } from './utils/errors';
 import { acquisitionRadar } from './services/acquisitionRadar';
 import { sendError } from "./utils/errors";
+import { omitServerOwnedFields } from "./utils/updatePayload";
 
 const router = Router();
 
@@ -26,7 +27,8 @@ router.put('/config/:id', async (req: Request, res: Response) => {
     const config = await acquisitionRadar.updateConfig(
       org.id,
       parseInt(req.params.id),
-      req.body
+      // The config's id and tenant key are the server's; the body edits the rest.
+      omitServerOwnedFields(req.body)
     );
     res.json({ config });
   } catch (error: any) {

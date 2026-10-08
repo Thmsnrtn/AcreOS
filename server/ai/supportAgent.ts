@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { storage } from "../storage";
 import { subscriptionPeriodIso } from "../stripeClient";
-import type { Organization, SupportTicket, KnowledgeBaseArticle } from "@shared/schema";
+import type { Organization, SupportTicket, KnowledgeBaseArticle, TeamMember } from "@shared/schema";
 import { decisionsInboxService } from "../services/decisionsInbox";
 import { db } from "../db";
 import { dataSourceBroker } from "../services/data-source-broker.js";
@@ -28,6 +28,8 @@ import { proposePendingAction, pendingActionArtifact } from "../services/approva
 import { recordPaxEffect } from "../services/paxReceipts";
 import { ALWAYS_ASK_SUPPORT_TOOLS } from "@shared/pax-controls";
 import type { ExecuteToolOptions } from "./tools";
+import { getUserPermissionContext } from "../utils/permissions";
+import { toTeamMemberView, teamViewerSeesEmails, type ViewerRole } from "@shared/accountViews";
 import { validateCompliance } from "../services/complianceValidator";
 import { assertAiSpendAllowed, recordExternalAiSpend } from "../services/aiSpendGuard";
 import { serializeToolResultForModel } from "./untrustedEnvelope";
@@ -1332,6 +1334,37 @@ function asksForCredit(toolName: string, args: Record<string, any>): boolean {
 }
 
 type SupportToolResult = { success: boolean; data?: any; error?: string };
+
+const VIEWER_ROLE_RANK: Record<ViewerRole, number> = { viewer: 0, va: 1, member: 2, admin: 3, owner: 4 };
+
+/**
+ * Who a support tool is answering, for team-roster projection: the user the
+ * call acts for, at the LEAST privileged role of everyone the call answers to
+ * (`userId` and, when set, `alsoRequireUserId`). An unidentified caller, or a
+ * role that cannot be resolved, gets the least-privileged view.
+ */
+async function supportTeamViewer(
+  org: Organization,
+  options?: ExecuteToolOptions,
+): Promise<{ userId: string; role: ViewerRole }> {
+  const ids = [options?.userId, options?.alsoRequireUserId].filter((x): x is string => typeof x === "string" && x.length > 0);
+  if (ids.length === 0) return { userId: "", role: "viewer" };
+  let role: ViewerRole = "owner";
+  for (const id of ids) {
+    let r: ViewerRole = "viewer";
+    try {
+      const context = await getUserPermissionContext({ id }, org);
+      r = context ? (context.role as ViewerRole) : org.ownerId === id ? "owner" : "viewer";
+    } catch (err) {
+      logger.warn("[support-agent] role lookup failed; serving the least-privileged team view", {
+        orgId: org.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    if ((VIEWER_ROLE_RANK[r] ?? 0) < VIEWER_ROLE_RANK[role]) role = r;
+  }
+  return { userId: ids[0], role };
+}
 
 export async function executeSupportTool(
   toolName: string,
@@ -4212,6 +4245,10 @@ export async function executeSupportTool(
       case "query_user_data": {
         const { entity, query_type, filters = {} } = args;
         const { id, status, search_term, limit = 10, include_details } = filters;
+        // Team rows are served as GET /api/team serves them to the person
+        // asking: the roster view, with teammates' email addresses only for
+        // the roles that see them there.
+        const teamViewer = entity === "team_members" ? await supportTeamViewer(org, options) : null;
         
         const entityMap: Record<string, any> = {
           leads, properties, deals, notes, tasks, campaigns, payments, 
@@ -4303,7 +4340,10 @@ export async function executeSupportTool(
               tasks: ["title", "description"],
               campaigns: ["name", "type"],
               payments: ["status"], // Limited searchable fields
-              team_members: ["name", "email", "role"]
+              // An address is searchable only by a role that may read it.
+              team_members: teamViewer && teamViewerSeesEmails(teamViewer.role)
+                ? ["display_name", "email", "role"]
+                : ["display_name", "role"],
             };
             
             const fields = searchableFields[entity] || [];
@@ -4375,6 +4415,12 @@ export async function executeSupportTool(
             summary = `Found relationships for ${entity} ${id}`;
             break;
           }
+        }
+
+        if (teamViewer) {
+          results = results.map((r) =>
+            r && typeof r === "object" && "userId" in r ? toTeamMemberView(r as TeamMember, teamViewer) : r,
+          );
         }
         
         return {
@@ -5734,6 +5780,20 @@ Services: ${Object.entries(systemContext.serviceStatus).map(([k, v]) => `${k}:${
       ticketId: ticket.id,
       role: "system",
       content: contextMessage
+    });
+  }
+
+  // Legal / compliance intake: a TCPA complaint, cease-and-desist, data-
+  // deletion request or litigation threat is a founder decision. Route it to
+  // ONE urgent founder ask before Pax's first-response pass. Never throws.
+  {
+    const { escalateLegalIntake } = await import("../services/supportLegalIntake");
+    await escalateLegalIntake({
+      table: "support_tickets",
+      recordId: ticket.id,
+      organizationId: org.id,
+      subject,
+      description,
     });
   }
 

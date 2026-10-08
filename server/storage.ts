@@ -331,7 +331,7 @@ export interface IStorage {
   createAiConversation(conv: any): Promise<any>;
   updateAiConversation(id: number, updates: any, organizationId?: number): Promise<any>;
   deleteAiConversation(id: number, organizationId?: number): Promise<void>;
-  getAiMessages(conversationId: number): Promise<any[]>;
+  getAiMessages(organizationId: number, conversationId: number): Promise<any[]>;
   createAiMessage(message: any): Promise<any>;
 
   // VA (Virtual Assistants)
@@ -344,7 +344,7 @@ export interface IStorage {
 
   // VA Actions
   getVaActions(orgId: number, options?: { agentId?: number; status?: string; limit?: number }): Promise<VaAction[]>;
-  getVaAction(id: number): Promise<VaAction | undefined>;
+  getVaAction(orgId: number, id: number): Promise<VaAction | undefined>;
   createVaAction(action: InsertVaAction): Promise<VaAction>;
   updateVaAction(id: number, updates: Partial<VaAction>): Promise<VaAction>;
   approveVaAction(id: number, userId: string): Promise<VaAction>;
@@ -395,14 +395,14 @@ export interface IStorage {
   // Seller Communications
   getSellerCommunications(orgId: number): Promise<SellerCommunication[]>;
   getSellerCommunicationById(orgId: number, id: number): Promise<SellerCommunication | undefined>;
-  getSellerCommunicationsByLead(leadId: number): Promise<SellerCommunication[]>;
+  getSellerCommunicationsByLead(orgId: number, leadId: number): Promise<SellerCommunication[]>;
   createSellerCommunication(data: InsertSellerCommunication): Promise<SellerCommunication>;
-  updateSellerCommunication(id: number, updates: Partial<InsertSellerCommunication>): Promise<SellerCommunication>;
+  updateSellerCommunication(orgId: number, id: number, updates: Partial<InsertSellerCommunication>): Promise<SellerCommunication>;
 
   // Ad Postings
   getAdPostings(orgId: number): Promise<AdPosting[]>;
   getAdPostingById(orgId: number, id: number): Promise<AdPosting | undefined>;
-  getAdPostingsByProperty(propertyId: number): Promise<AdPosting[]>;
+  getAdPostingsByProperty(orgId: number, propertyId: number): Promise<AdPosting[]>;
   createAdPosting(data: InsertAdPosting): Promise<AdPosting>;
   updateAdPosting(orgId: number, id: number, updates: Partial<InsertAdPosting>): Promise<AdPosting>;
   deleteAdPosting(orgId: number, id: number): Promise<void>;
@@ -410,7 +410,7 @@ export interface IStorage {
   // Buyer Prequalifications
   getBuyerPrequalifications(orgId: number): Promise<BuyerPrequalification[]>;
   getBuyerPrequalificationById(orgId: number, id: number): Promise<BuyerPrequalification | undefined>;
-  getBuyerPrequalificationByLead(leadId: number): Promise<BuyerPrequalification | undefined>;
+  getBuyerPrequalificationByLead(orgId: number, leadId: number): Promise<BuyerPrequalification | undefined>;
   createBuyerPrequalification(data: InsertBuyerPrequalification): Promise<BuyerPrequalification>;
   updateBuyerPrequalification(orgId: number, id: number, updates: Partial<InsertBuyerPrequalification>): Promise<BuyerPrequalification>;
   deleteBuyerPrequalification(orgId: number, id: number): Promise<void>;
@@ -426,8 +426,8 @@ export interface IStorage {
   // Collection Enrollments
   getCollectionEnrollments(orgId: number): Promise<CollectionEnrollment[]>;
   getCollectionEnrollmentById(orgId: number, id: number): Promise<CollectionEnrollment | undefined>;
-  getCollectionEnrollmentsByNote(noteId: number): Promise<CollectionEnrollment[]>;
-  getCollectionEnrollmentsBySequence(sequenceId: number): Promise<CollectionEnrollment[]>;
+  getCollectionEnrollmentsByNote(orgId: number, noteId: number): Promise<CollectionEnrollment[]>;
+  getCollectionEnrollmentsBySequence(orgId: number, sequenceId: number): Promise<CollectionEnrollment[]>;
   createCollectionEnrollment(data: InsertCollectionEnrollment): Promise<CollectionEnrollment>;
   updateCollectionEnrollment(orgId: number, id: number, updates: Partial<InsertCollectionEnrollment>): Promise<CollectionEnrollment>;
 
@@ -442,32 +442,32 @@ export interface IStorage {
   getDueDiligenceTemplates(orgId: number): Promise<DueDiligenceTemplate[]>;
   getDueDiligenceTemplate(organizationId: number, id: number): Promise<DueDiligenceTemplate | undefined>;
   createDueDiligenceTemplate(template: InsertDueDiligenceTemplate): Promise<DueDiligenceTemplate>;
-  updateDueDiligenceTemplate(id: number, updates: Partial<InsertDueDiligenceTemplate>): Promise<DueDiligenceTemplate>;
-  deleteDueDiligenceTemplate(id: number): Promise<void>;
+  updateDueDiligenceTemplate(organizationId: number, id: number, updates: Partial<InsertDueDiligenceTemplate>): Promise<DueDiligenceTemplate>;
+  deleteDueDiligenceTemplate(organizationId: number, id: number): Promise<void>;
   initializeDefaultTemplates(orgId: number): Promise<DueDiligenceTemplate[]>;
 
   // Due Diligence Items (property checklist)
-  getPropertyDueDiligence(propertyId: number): Promise<DueDiligenceItem[]>;
+  getPropertyDueDiligence(organizationId: number, propertyId: number): Promise<DueDiligenceItem[]>;
   createDueDiligenceItem(item: InsertDueDiligenceItem): Promise<DueDiligenceItem>;
-  updateDueDiligenceItem(id: number, updates: Partial<InsertDueDiligenceItem>): Promise<DueDiligenceItem>;
-  deleteDueDiligenceItem(id: number): Promise<void>;
+  updateDueDiligenceItem(organizationId: number, id: number, updates: Partial<InsertDueDiligenceItem>): Promise<DueDiligenceItem>;
+  deleteDueDiligenceItem(organizationId: number, id: number): Promise<void>;
   applyTemplateToProperty(organizationId: number, propertyId: number, templateId: number): Promise<DueDiligenceItem[]>;
 
   // Deal Checklist Templates
   getChecklistTemplates(orgId: number): Promise<ChecklistTemplate[]>;
   getChecklistTemplate(organizationId: number, id: number): Promise<ChecklistTemplate | undefined>;
   createChecklistTemplate(template: InsertChecklistTemplate): Promise<ChecklistTemplate>;
-  updateChecklistTemplate(id: number, updates: Partial<InsertChecklistTemplate>): Promise<ChecklistTemplate>;
-  deleteChecklistTemplate(id: number): Promise<void>;
+  updateChecklistTemplate(organizationId: number, id: number, updates: Partial<InsertChecklistTemplate>): Promise<ChecklistTemplate>;
+  deleteChecklistTemplate(organizationId: number, id: number): Promise<void>;
   initializeDefaultChecklistTemplates(orgId: number): Promise<ChecklistTemplate[]>;
 
   // Deal Checklists
-  getDealChecklist(dealId: number): Promise<DealChecklist | undefined>;
+  getDealChecklist(organizationId: number, dealId: number): Promise<DealChecklist | undefined>;
   createDealChecklist(checklist: InsertDealChecklist): Promise<DealChecklist>;
-  updateDealChecklist(id: number, updates: Partial<InsertDealChecklist>): Promise<DealChecklist>;
+  updateDealChecklist(organizationId: number, id: number, updates: Partial<InsertDealChecklist>): Promise<DealChecklist>;
   applyChecklistTemplateToDeal(organizationId: number, dealId: number, templateId: number): Promise<DealChecklist>;
-  updateDealChecklistItem(dealId: number, itemId: string, updates: { checked?: boolean; documentUrl?: string; checkedBy?: string; verification?: DealChecklistItem["verification"] }): Promise<DealChecklist>;
-  checkStageGate(dealId: number, toStage?: string): Promise<{ canAdvance: boolean; incompleteItems: DealChecklistItem[] }>;
+  updateDealChecklistItem(organizationId: number, dealId: number, itemId: string, updates: { checked?: boolean; documentUrl?: string; checkedBy?: string; verification?: DealChecklistItem["verification"] }): Promise<DealChecklist>;
+  checkStageGate(organizationId: number, dealId: number, toStage?: string): Promise<{ canAdvance: boolean; incompleteItems: DealChecklistItem[] }>;
 
   // Usage Records
   getUsageRecords(orgId: number, limit?: number): Promise<UsageRecord[]>;
@@ -482,16 +482,16 @@ export interface IStorage {
   getSupportCase(organizationId: number, id: number): Promise<SupportCase | undefined>;
   getSupportCaseForPlatformOps(id: number): Promise<SupportCase | undefined>;
   getSupportCases(organizationId: number, status?: string): Promise<SupportCase[]>;
-  updateSupportCase(id: number, data: Partial<InsertSupportCase>): Promise<SupportCase | undefined>;
+  updateSupportCase(organizationId: number, id: number, data: Partial<InsertSupportCase>): Promise<SupportCase | undefined>;
   getEscalatedCases(): Promise<SupportCase[]>;
 
   // Support Messages
   createSupportMessage(input: InsertSupportMessage): Promise<SupportMessage>;
-  getSupportMessages(caseId: number): Promise<SupportMessage[]>;
+  getSupportMessages(organizationId: number, caseId: number): Promise<SupportMessage[]>;
 
   // Support Actions
   createSupportAction(input: InsertSupportAction): Promise<SupportAction>;
-  getSupportActions(caseId: number): Promise<SupportAction[]>;
+  getSupportActions(organizationId: number, caseId: number): Promise<SupportAction[]>;
 
   // Support Playbooks
   getSupportPlaybooks(category?: string): Promise<SupportPlaybook[]>;
@@ -502,19 +502,19 @@ export interface IStorage {
   createDunningEvent(event: InsertDunningEvent): Promise<DunningEvent>;
   getDunningEvents(orgId: number, status?: string): Promise<DunningEvent[]>;
   getPendingDunningEvent(orgId: number, stripeInvoiceId: string): Promise<DunningEvent | undefined>;
-  updateDunningEvent(id: number, updates: Partial<InsertDunningEvent>): Promise<DunningEvent>;
+  updateDunningEvent(organizationId: number, id: number, updates: Partial<InsertDunningEvent>): Promise<DunningEvent>;
   resolveDunningEvents(orgId: number, stripeInvoiceId: string, resolutionType: string): Promise<void>;
   getOrganizationsInDunning(): Promise<Organization[]>;
 
   // System Alerts
   createSystemAlert(alert: InsertSystemAlert): Promise<SystemAlert>;
   getSystemAlerts(orgId?: number, status?: string): Promise<SystemAlert[]>;
-  updateSystemAlert(id: number, updates: Partial<InsertSystemAlert>): Promise<SystemAlert>;
+  updateSystemAlert(organizationId: number, id: number, updates: Partial<InsertSystemAlert>): Promise<SystemAlert>;
 
   // Payment Reminders (Finance Agent)
   getDelinquentNotes(orgId: number): Promise<Note[]>;
   getPendingReminders(organizationId: number, limit?: number): Promise<PaymentReminder[]>;
-  getRemindersForNote(noteId: number): Promise<PaymentReminder[]>;
+  getRemindersForNote(orgId: number, noteId: number): Promise<PaymentReminder[]>;
   createPaymentReminder(reminder: InsertPaymentReminder): Promise<PaymentReminder>;
   updatePaymentReminder(id: number, updates: Partial<InsertPaymentReminder>): Promise<PaymentReminder>;
   markReminderSent(id: number): Promise<PaymentReminder>;
@@ -536,43 +536,43 @@ export interface IStorage {
   getSequences(orgId: number): Promise<CampaignSequence[]>;
   getSequence(orgId: number, id: number): Promise<CampaignSequence | undefined>;
   createSequence(sequence: InsertCampaignSequence): Promise<CampaignSequence>;
-  updateSequence(id: number, updates: Partial<InsertCampaignSequence>): Promise<CampaignSequence>;
-  deleteSequence(id: number): Promise<void>;
+  updateSequence(organizationId: number, id: number, updates: Partial<InsertCampaignSequence>): Promise<CampaignSequence>;
+  deleteSequence(organizationId: number, id: number): Promise<void>;
 
   // Sequence Steps
-  getSequenceSteps(sequenceId: number): Promise<SequenceStep[]>;
+  getSequenceSteps(organizationId: number, sequenceId: number): Promise<SequenceStep[]>;
   createSequenceStep(step: InsertSequenceStep): Promise<SequenceStep>;
-  updateSequenceStep(id: number, updates: Partial<InsertSequenceStep>, sequenceId?: number): Promise<SequenceStep>;
-  deleteSequenceStep(id: number, sequenceId?: number): Promise<void>;
-  reorderSequenceSteps(sequenceId: number, stepIds: number[]): Promise<void>;
+  updateSequenceStep(organizationId: number, id: number, updates: Partial<InsertSequenceStep>, sequenceId?: number): Promise<SequenceStep>;
+  deleteSequenceStep(organizationId: number, id: number, sequenceId?: number): Promise<void>;
+  reorderSequenceSteps(organizationId: number, sequenceId: number, stepIds: number[]): Promise<void>;
 
   // Sequence Enrollments
-  getSequenceEnrollment(id: number): Promise<SequenceEnrollment | undefined>;
-  getSequenceEnrollments(sequenceId: number): Promise<SequenceEnrollment[]>;
-  getLeadEnrollments(leadId: number): Promise<SequenceEnrollment[]>;
+  getSequenceEnrollment(organizationId: number, id: number): Promise<SequenceEnrollment | undefined>;
+  getSequenceEnrollments(organizationId: number, sequenceId: number): Promise<SequenceEnrollment[]>;
+  getLeadEnrollments(organizationId: number, leadId: number): Promise<SequenceEnrollment[]>;
   getActiveEnrollments(orgId: number): Promise<(SequenceEnrollment & { sequence: CampaignSequence; lead: Lead })[]>;
   getEnrollmentsDueForProcessing(): Promise<(SequenceEnrollment & { sequence: CampaignSequence; lead: Lead })[]>;
   createSequenceEnrollment(enrollment: InsertSequenceEnrollment): Promise<SequenceEnrollment>;
-  updateSequenceEnrollment(id: number, updates: Partial<InsertSequenceEnrollment>): Promise<SequenceEnrollment>;
-  pauseEnrollment(id: number, reason: string): Promise<SequenceEnrollment>;
-  resumeEnrollment(id: number): Promise<SequenceEnrollment>;
-  cancelEnrollment(id: number): Promise<SequenceEnrollment>;
-  completeEnrollment(id: number): Promise<SequenceEnrollment>;
+  updateSequenceEnrollment(organizationId: number, id: number, updates: Partial<InsertSequenceEnrollment>): Promise<SequenceEnrollment>;
+  pauseEnrollment(organizationId: number, id: number, reason: string): Promise<SequenceEnrollment>;
+  resumeEnrollment(organizationId: number, id: number): Promise<SequenceEnrollment>;
+  cancelEnrollment(organizationId: number, id: number): Promise<SequenceEnrollment>;
+  completeEnrollment(organizationId: number, id: number): Promise<SequenceEnrollment>;
   getSequenceStats(orgId: number): Promise<{ sequenceId: number; name: string; totalEnrollments: number; activeEnrollments: number; completedEnrollments: number }[]>;
 
   // A/B Tests
   getAbTests(orgId: number): Promise<AbTest[]>;
   getAbTest(orgId: number, id: number): Promise<AbTest | undefined>;
-  getAbTestByCampaign(campaignId: number): Promise<AbTest | undefined>;
+  getAbTestByCampaign(orgId: number, campaignId: number): Promise<AbTest | undefined>;
   createAbTest(test: InsertAbTest): Promise<AbTest>;
-  updateAbTest(id: number, updates: Partial<InsertAbTest>): Promise<AbTest>;
-  deleteAbTest(id: number): Promise<void>;
+  updateAbTest(organizationId: number, id: number, updates: Partial<InsertAbTest>): Promise<AbTest>;
+  deleteAbTest(organizationId: number, id: number): Promise<void>;
 
   // A/B Test Variants
-  getAbTestVariants(testId: number): Promise<AbTestVariant[]>;
+  getAbTestVariants(organizationId: number, testId: number): Promise<AbTestVariant[]>;
   createAbTestVariant(variant: InsertAbTestVariant): Promise<AbTestVariant>;
-  updateAbTestVariant(id: number, updates: Partial<InsertAbTestVariant>): Promise<AbTestVariant>;
-  deleteAbTestVariant(id: number): Promise<void>;
+  updateAbTestVariant(organizationId: number, id: number, updates: Partial<InsertAbTestVariant>): Promise<AbTestVariant>;
+  deleteAbTestVariant(organizationId: number, id: number): Promise<void>;
   getAbTestWithVariants(orgId: number, testId: number): Promise<{ test: AbTest; variants: AbTestVariant[] } | undefined>;
 
   // Custom Field Definitions
@@ -683,8 +683,8 @@ export interface IStorage {
   deleteOfferTemplate(id: number): Promise<void>;
 
   // Due Diligence Checklists (Enhanced)
-  getDueDiligenceChecklist(propertyId: number): Promise<DueDiligenceChecklist | undefined>;
-  getOrCreateDueDiligenceChecklist(orgId: number, propertyId: number): Promise<DueDiligenceChecklist>;
+  getDueDiligenceChecklist(orgId: number, propertyId: number): Promise<DueDiligenceChecklist | undefined>;
+  getOrCreateDueDiligenceChecklist(orgId: number, propertyId: number): Promise<DueDiligenceChecklist | undefined>;
   updateDueDiligenceChecklist(id: number, updates: Partial<InsertDueDiligenceChecklist>, organizationId?: number): Promise<DueDiligenceChecklist>;
 
   // Skip Traces
@@ -720,7 +720,7 @@ export interface IStorage {
   getSignatures(orgId: number, documentId?: number): Promise<Signature[]>;
   getSignature(orgId: number, id: number): Promise<Signature | undefined>;
   createSignature(signature: InsertSignature): Promise<Signature>;
-  getDocumentSignatures(documentId: number): Promise<Signature[]>;
+  getDocumentSignatures(orgId: number, documentId: number): Promise<Signature[]>;
 
   // Document Version History
   createDocumentVersion(version: InsertDocumentVersion): Promise<DocumentVersion>;
@@ -822,7 +822,7 @@ export interface IStorage {
   incrementMailingOrderPieces(id: number, type: 'sent' | 'failed'): Promise<void>;
 
   // Mailing Order Pieces
-  getMailingOrderPieces(orderId: number): Promise<MailingOrderPiece[]>;
+  getMailingOrderPieces(organizationId: number, orderId: number): Promise<MailingOrderPiece[]>;
   createMailingOrderPiece(data: InsertMailingOrderPiece): Promise<MailingOrderPiece>;
   updateMailingOrderPiece(id: number, data: Partial<MailingOrderPiece>): Promise<MailingOrderPiece>;
 
@@ -931,7 +931,7 @@ export interface IStorage {
   toggleWorkflow(orgId: number, id: number, isActive: boolean): Promise<Workflow>;
 
   // Workflow Runs
-  getWorkflowRuns(workflowId: number, limit?: number): Promise<WorkflowRun[]>;
+  getWorkflowRuns(organizationId: number, workflowId: number, limit?: number): Promise<WorkflowRun[]>;
   getWorkflowRun(id: number): Promise<WorkflowRun | undefined>;
   createWorkflowRun(run: InsertWorkflowRun): Promise<WorkflowRun>;
   updateWorkflowRun(id: number, updates: Partial<InsertWorkflowRun>): Promise<WorkflowRun>;
@@ -1008,7 +1008,7 @@ export interface IStorage {
 
   // Borrower Messages
   createBorrowerMessage(data: InsertBorrowerMessage): Promise<BorrowerMessage>;
-  getBorrowerMessages(noteId: number): Promise<BorrowerMessage[]>;
+  getBorrowerMessages(orgId: number, noteId: number): Promise<BorrowerMessage[]>;
   markBorrowerMessagesRead(noteId: number, senderType: string): Promise<void>;
   countUnreadBorrowerMessages(noteId: number, senderType: string): Promise<number>;
 

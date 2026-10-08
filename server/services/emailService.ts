@@ -382,6 +382,42 @@ async function getCredentials(orgId?: number): Promise<AWSCredentials> {
   return getPlatformCredentials();
 }
 
+/**
+ * The ONE reading of "may this org send counterparty mail, and on whose
+ * account". `performSend`'s counterparty guard and the campaign pre-flight
+ * (`counterpartyEmailIdentityStatus`) both call this, so a route can refuse a
+ * batch up front by exactly the rule the transport would refuse each message
+ * by — never a second copy of it that can drift.
+ */
+async function resolveCounterpartyIdentity(organizationId: number) {
+  const [orgCreds, orgIdentity] = await Promise.all([
+    getOrgCredentials(organizationId, 'counterparty'),
+    getIdentityForSend(organizationId).catch(() => null),
+  ]);
+  return { orgCreds, orgIdentity };
+}
+
+/**
+ * Pre-flight for a bulk counterparty send.
+ *  - `canSend`: the org has its own SES keys with a verified sender, or a
+ *    verified sending domain. Without either, every counterparty message is
+ *    refused by the transport (founder decision 2026-07-17, BYO rails).
+ *  - `ownSesCredentials`: the org's OWN AWS account carries the send, so the
+ *    provider cost is the customer's, not AcreOS's.
+ */
+export async function counterpartyEmailIdentityStatus(organizationId: number): Promise<{
+  canSend: boolean;
+  ownSesCredentials: boolean;
+  verifiedDomain: boolean;
+}> {
+  const { orgCreds, orgIdentity } = await resolveCounterpartyIdentity(organizationId);
+  return {
+    canSend: !!(orgCreds || orgIdentity),
+    ownSesCredentials: !!orgCreds,
+    verifiedDomain: !!orgIdentity,
+  };
+}
+
 function createSESClient(creds: AWSCredentials): SESClient {
   return new SESClient({
     region: creds.region,
@@ -744,10 +780,7 @@ export class EmailService {
           retryable: false,
         };
       }
-      const [orgCreds, orgIdentity] = await Promise.all([
-        getOrgCredentials(options.organizationId, 'counterparty'),
-        getIdentityForSend(options.organizationId).catch(() => null),
-      ]);
+      const { orgCreds, orgIdentity } = await resolveCounterpartyIdentity(options.organizationId);
       if (!orgCreds && !orgIdentity) {
         logger.info('[EmailService] Counterparty send refused — no connected email identity', {
           metadata: { organizationId: options.organizationId },

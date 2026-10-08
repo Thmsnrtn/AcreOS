@@ -25,12 +25,16 @@ export interface DecisionSenses {
   complianceOpenCount: number;
   /** Cost/runway envelope health. */
   envelopeStatus: "green" | "amber" | "red";
-  /** Customers waiting on support. */
+  /** Customers waiting on support (support cases + escalated Pax tickets). */
   supportBacklog: number;
+  /** Escalated Pax ticket ids (oldest first) — lets an ask NAME the ticket. */
+  escalatedTicketIds?: number[];
   /** Signups in window. */
   trials: number;
   /** Trials that signed up but never hit first-value (activation stalled). */
   activationStalled: boolean;
+  /** How many signups are stalled (not onboarded 48h after signup), when measured. */
+  activationStalledCount?: number;
   /** Current MRR (real, from the onboarding/revenue funnel). */
   mrr: number;
   /** Dispatches already queued + not yet run (avoid piling on). */
@@ -110,7 +114,10 @@ export function rankMoves(s: DecisionSenses): RankedMove[] {
 
   // P2 — SERVE WAITING CUSTOMERS. Real people are waiting; that beats growth.
   if (s.supportBacklog > 0) {
-    moves.push({ priority: 2, domain: "support", kind: "clear_support_backlog", rationale: `${s.supportBacklog} customer(s) waiting on support.` });
+    // Name the escalated tickets so the founder ask points at real work.
+    const named = (s.escalatedTicketIds ?? []).map((id) => `#${id}`);
+    const naming = named.length > 0 ? ` Escalated ticket(s) waiting on a human: ${named.join(", ")}.` : "";
+    moves.push({ priority: 2, domain: "support", kind: "clear_support_backlog", rationale: `${s.supportBacklog} customer(s) waiting on support.${naming}` });
   }
 
   // P2 — RETAIN AT-RISK CUSTOMERS. A cancellation/dispute is a real customer
@@ -130,7 +137,12 @@ export function rankMoves(s: DecisionSenses): RankedMove[] {
   // P3 — UNBLOCK ACTIVATION. New signups not reaching value is a leak under any
   // growth spend — fix the bucket before pouring more in.
   if (s.activationStalled) {
-    moves.push({ priority: 3, domain: "deploy", kind: "unblock_activation", rationale: `${s.trials} trial(s) signed up but stalled before first value — fix the onboarding leak.` });
+    // Name the MEASURED stall count — not the trial total, which counts every
+    // signup in the window whether or not it stalled.
+    const stalledWhat = s.activationStalledCount != null
+      ? `${s.activationStalledCount} signup(s) still not onboarded 48h after signing up`
+      : "Signups stalled before first value";
+    moves.push({ priority: 3, domain: "deploy", kind: "unblock_activation", rationale: `${stalledWhat} — fix the onboarding leak.` });
   }
 
   // P3 — CONVERT ENDING TRIALS. A trial about to lapse is a revenue-closing
@@ -194,7 +206,7 @@ export function sensesFromPulse(
     envelopeStatus: "green" | "amber" | "red";
     dispatchesFlaggedLast24h: number;
   },
-  extra?: { supportBacklog?: number; activationStalled?: boolean; dispatchBacklog?: number },
+  extra?: { supportBacklog?: number; activationStalled?: boolean; activationStalledCount?: number; dispatchBacklog?: number; escalatedTicketIds?: number[] },
   /** Outward perception (Hands roadmap P0.2) — counts from the perception bus. */
   outward?: { emailComplaints?: number; dunningPressure?: number; churnSignals?: number; trialsEnding?: number; reflexFailures?: number; dealEvents24h?: number; notePaymentsDueSoon?: number; notePaymentsOverdue?: number },
 ): DecisionSenses {
@@ -203,8 +215,10 @@ export function sensesFromPulse(
     complianceOpenCount: pulse.complianceOpenCount,
     envelopeStatus: pulse.envelopeStatus,
     supportBacklog: extra?.supportBacklog ?? 0,
+    escalatedTicketIds: extra?.escalatedTicketIds ?? [],
     trials: pulse.trials,
     activationStalled: extra?.activationStalled ?? false,
+    activationStalledCount: extra?.activationStalledCount,
     mrr: pulse.mrr,
     dispatchBacklog: extra?.dispatchBacklog ?? 0,
     emailComplaints: outward?.emailComplaints ?? 0,

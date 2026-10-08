@@ -76,7 +76,12 @@ vi.mock("../../server/services/byok/toggle", () => ({
 
 vi.mock("../../server/services/credits", () => ({
   creditService: {
-    hasEnoughCredits: async () => state.hasCredits,
+    // Printed mail is gated on the org's OWN credit; the trial allowance never
+    // funds a posted piece. The trial-aware gate is a failure if reached.
+    hasEnoughOwnCredits: async () => state.hasCredits,
+    hasEnoughCredits: async () => {
+      throw new Error("direct mail must gate on hasEnoughOwnCredits, not the trial-aware hasEnoughCredits");
+    },
     getBalance: async () => 120,
   },
   usageMeteringService: {

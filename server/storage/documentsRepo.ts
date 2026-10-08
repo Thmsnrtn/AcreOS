@@ -558,9 +558,9 @@ Notary Public</p>
     return created;
   },
 
-  async getDocumentSignatures(this: DatabaseStorage, documentId: number) {
+  async getDocumentSignatures(this: DatabaseStorage, orgId: number, documentId: number) {
     return db.select().from(signatures)
-      .where(eq(signatures.documentId, documentId))
+      .where(and(eq(signatures.documentId, documentId), eq(signatures.organizationId, orgId)))
       .orderBy(signatures.signedAt);
   },
 

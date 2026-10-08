@@ -21,6 +21,7 @@ import { deleteOrphanPhotoAndVisionRows, ORPHAN_TARGETS } from "../../scripts/da
 import { readdirSync } from "node:fs";
 import { deleteQueuedMailFirstMailerRows } from "../../scripts/data/delete-queued-mail-first-mailer-rows";
 import { stampStatusDeletedLeads } from "../../scripts/data/stamp-status-deleted-leads";
+import { deleteChecklistsOutsidePropertyOrg } from "../../scripts/data/delete-checklists-outside-property-org";
 import { stripComments, REPO_SWEEP_TIMEOUT_MS } from "../helpers/stripComments";
 
 // It reads every server/shared/client file (the "nothing reads the table" check).
@@ -275,6 +276,34 @@ describe("legacy status-deleted leads get deleted_at (audit of 9ed61f4)", () => 
     expect(w[0].sql).not.toMatch(/SET[^W]*status/);
     expect(w[0].params).toEqual([[11]]);
     expect(r.calls.map((c) => c.sql.trim().split(/\s+/)[0])).toEqual(["SELECT", "BEGIN", "UPDATE", "COMMIT"]);
+  });
+});
+
+describe("due-diligence checklists outside their property's organization", () => {
+  const found = [{ id: 11, organization_id: 2, property_id: 5 }, { id: 12, organization_id: 3, property_id: 5 }];
+  it("a dry run counts and writes nothing", async () => {
+    const r = recorder((sql) => (/^\s*SELECT/i.test(sql) ? found : []));
+    const out = await deleteChecklistsOutsidePropertyOrg(r.client, { apply: false, outDir: mkdtempSync(join(tmpdir(), "dd-")) });
+    expect(out).toMatchObject({ count: 2, applied: false, exported: null });
+    expect(r.writes()).toEqual([]);
+    // The selection is the org mismatch against the property, nothing broader.
+    expect(r.calls[0].sql).toMatch(/c\.organization_id <> p\.organization_id/);
+  });
+  it("--apply exports first, then deletes exactly those ids and only while they still mismatch, in one transaction", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "dd-"));
+    // Row 12 moved back into its property's organization between the export
+    // and the delete: the DELETE's own predicate spares it, and the reported
+    // count is what the DELETE removed, not what the SELECT found.
+    const r = recorder((sql) => (/^\s*SELECT/i.test(sql) ? found : /^\s*DELETE/i.test(sql) ? [{ id: 11 }] : []));
+    const out = await deleteChecklistsOutsidePropertyOrg(r.client, { apply: true, outDir: dir });
+    expect(out.applied).toBe(true);
+    expect(out).toMatchObject({ count: 2, deleted: 1 });
+    expect(existsSync(out.exported!)).toBe(true);
+    expect(JSON.parse(readFileSync(out.exported!, "utf8"))).toEqual(found);
+    expect(r.calls.map((c) => c.sql.trim().split(/\s+/)[0])).toEqual(["SELECT", "BEGIN", "DELETE", "COMMIT"]);
+    const del = r.calls.find((c) => /^\s*DELETE/i.test(c.sql))!;
+    expect(del.params).toEqual([[11, 12]]);
+    expect(del.sql).toMatch(/c\.organization_id <> p\.organization_id/);
   });
 });
 

@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Settings, GripVertical, ChevronUp, ChevronDown, RotateCcw } from "lucide-react";
 import { useOrganization, useUpdateOrganization } from "@/hooks/use-organization";
 import { useToast } from "@/hooks/use-toast";
-import type { Organization } from "@shared/schema";
+import type { OrganizationView } from "@shared/accountViews";
 import { clientLogger } from "@/lib/clientLogger";
 import { Verbs } from "@/lib/labels";
 
@@ -43,7 +43,7 @@ export function getDefaultSettings(): DashboardWidgetSettings {
 
 const LOCAL_STORAGE_KEY = "dashboard-widget-settings";
 
-export function loadSettings(organization: Organization | undefined): DashboardWidgetSettings {
+export function loadSettings(organization: OrganizationView | undefined): DashboardWidgetSettings {
   const orgSettings = organization?.settings?.dashboardWidgets;
   if (orgSettings && orgSettings.order?.length > 0) {
     return orgSettings;

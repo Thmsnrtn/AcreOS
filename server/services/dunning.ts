@@ -16,6 +16,15 @@ import {
 import { users } from "@shared/models/auth";
 import { logActivity } from "./systemActivityLogger";
 import { logger } from "../utils/logger";
+import { unscopedForPlatformOps } from "../utils/orgScopedDb";
+
+// retryPayment / cancelCase / resolveCase serve the founder dunning console
+// (`/api/dunning`, requireFounder) and the autopilot dunning hand. Dunning
+// chases subscription payments TO AcreOS, so the queue belongs to no single
+// organization and these methods address an event by its id across all of
+// them — stated here through the sanctioned hatch rather than implied.
+const DUNNING_CONSOLE_REASON =
+  "founder dunning console: platform subscription-billing queue, one dunning event addressed by id";
 import { subscriptionEndedPatch, subscriptionHasEnded } from "./borrower/servicingPhase";
 
 const APP_URL = process.env.APP_URL || "https://app.acreos.io";
@@ -108,7 +117,7 @@ async function getOrgBillingEmail(org: Organization): Promise<string | null> {
     const [owner] = await db
       .select({ email: users.email })
       .from(users)
-      .where(eq(users.clerkUserId, org.ownerId))
+      .where(eq(users.id, org.ownerId))
       .limit(1);
     return owner?.email ?? null;
   } catch {
@@ -152,7 +161,14 @@ class DunningService {
       const newStage = this.calculateDunningStage(daysSinceFailure);
       const nextRetryAt = this.calculateNextRetryDate(attemptNumber);
 
-      const notificationToSend = this.getScheduledNotification(daysSinceFailure);
+      const scheduledNotification = this.getScheduledNotification(daysSinceFailure);
+
+      // Send first so the ledger records only what actually went out.
+      let notificationToSend = scheduledNotification;
+      if (scheduledNotification) {
+        const sent = await this.sendDunningEmail(org, scheduledNotification.type, amountDueCents);
+        if (!sent) notificationToSend = null;
+      }
 
       const dunningEvent: InsertDunningEvent = {
         organizationId,
@@ -190,11 +206,6 @@ class DunningService {
       }
 
       await storage.updateOrganization(organizationId, orgUpdates);
-
-      // Actually send the notification email
-      if (notificationToSend) {
-        await this.sendDunningEmail(org, notificationToSend.type, amountDueCents);
-      }
 
       if (amountDueCents >= this.HIGH_VALUE_THRESHOLD_CENTS) {
         await this.createRevenueAtRiskAlert(
@@ -248,7 +259,7 @@ class DunningService {
       const existingAlerts = await storage.getSystemAlerts(organizationId, "new");
       for (const alert of existingAlerts) {
         if (alert.alertType === "revenue_at_risk") {
-          await storage.updateSystemAlert(alert.id, {
+          await storage.updateSystemAlert(organizationId, alert.id, {
             status: "resolved",
             resolvedAt: new Date(),
           });
@@ -305,12 +316,12 @@ class DunningService {
     org: Organization,
     templateType: string,
     amountCents: number
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       const recipientEmail = await getOrgBillingEmail(org);
       if (!recipientEmail) {
         logger.warn(`[Dunning] No billing email found for org ${org.id}, skipping ${templateType} email`);
-        return;
+        return false;
       }
 
       const amountDue = `$${(amountCents / 100).toFixed(2)}`;
@@ -322,21 +333,27 @@ class DunningService {
       const template = templates[templateType as keyof typeof templates];
       if (!template) {
         logger.warn(`[Dunning] Unknown email template type: ${templateType}`);
-        return;
+        return false;
       }
 
       const { emailService } = await import("./emailService");
-      await emailService.sendEmail({
+      const result = await emailService.sendEmail({
         to: recipientEmail,
         subject: template.subject,
         html: template.html,
         text: template.text,
         transactional: true, // billing/payment-failure notice — not commercial
       });
+      if (result && result.success === false) {
+        logger.warn(`[Dunning] ${templateType} email to org ${org.id} was not delivered: ${result.error ?? "unknown"}`);
+        return false;
+      }
 
       logger.info(`[Dunning] Sent ${templateType} email to ${recipientEmail} for org ${org.id}`);
+      return true;
     } catch (error) {
       logger.error(`[Dunning] Failed to send ${templateType} email for org ${org.id}`, error);
+      return false;
     }
   }
 
@@ -552,7 +569,7 @@ class DunningService {
         try {
           await stripe.invoices.pay(latestEvent.stripeInvoiceId!);
 
-          await storage.updateDunningEvent(latestEvent.id, {
+          await storage.updateDunningEvent(org.id, latestEvent.id, {
             status: "resolved",
             resolvedAt: now,
             resolutionType: "auto_recovered",
@@ -575,7 +592,7 @@ class DunningService {
           }).catch(() => {});
         } catch (payErr: any) {
           const reason = (payErr?.message || String(payErr)).slice(0, 200);
-          await storage.updateDunningEvent(latestEvent.id, {
+          await storage.updateDunningEvent(org.id, latestEvent.id, {
             retryCount: (latestEvent.retryCount ?? 0) + 1,
             notificationsSent: [...sent, attemptMarker],
           } as any);
@@ -696,12 +713,11 @@ class DunningService {
                   );
                 } else {
                   logger.info(`[Dunning] Sending ${notification.type} notification for org ${org.id}`);
-                  await this.sendDunningEmail(org, notification.type, latestEvent.amountDueCents || 0);
-                  dispatched = true;
+                  dispatched = await this.sendDunningEmail(org, notification.type, latestEvent.amountDueCents || 0);
                 }
 
                 if (dispatched) {
-                  await storage.updateDunningEvent(latestEvent.id, {
+                  await storage.updateDunningEvent(org.id, latestEvent.id, {
                     notificationsSent: [
                       ...sentNotifications,
                       {
@@ -794,12 +810,23 @@ class DunningService {
       .limit(100);
   }
 
-  async retryPayment(eventId: number): Promise<{ success: boolean; message: string }> {
-    const [event] = await db
+  /**
+   * One dunning case, by id — the single platform read behind the founder's
+   * dunning console (retry / cancel / resolve) and the founder approval card
+   * that summarizes a pending dunning action. A dunning event is AcreOS's own
+   * subscription billing of an org; the caller holds only the event id.
+   */
+  async getCaseForConsole(eventId: number): Promise<DunningEvent | undefined> {
+    const [event] = await unscopedForPlatformOps(DUNNING_CONSOLE_REASON)
       .select()
       .from(dunningEvents)
       .where(eq(dunningEvents.id, eventId))
       .limit(1);
+    return event;
+  }
+
+  async retryPayment(eventId: number): Promise<{ success: boolean; message: string }> {
+    const event = await this.getCaseForConsole(eventId);
 
     if (!event) {
       return { success: false, message: "Dunning event not found" };
@@ -814,11 +841,10 @@ class DunningService {
       const stripe = await getUncachableStripeClient();
       await stripe.invoices.pay(event.stripeInvoiceId);
 
-      await storage.updateDunningEvent(eventId, {
-        status: "resolved",
-        resolvedAt: new Date(),
-        resolutionType: "manual_payment",
-      } as any);
+      await unscopedForPlatformOps(DUNNING_CONSOLE_REASON)
+        .update(dunningEvents)
+        .set({ status: "resolved", resolvedAt: new Date(), resolutionType: "manual_payment", updatedAt: new Date() })
+        .where(eq(dunningEvents.id, eventId));
 
       if (event.organizationId) {
         await storage.updateOrganization(event.organizationId, {
@@ -836,21 +862,16 @@ class DunningService {
   }
 
   async cancelCase(eventId: number): Promise<{ success: boolean; message: string }> {
-    const [event] = await db
-      .select()
-      .from(dunningEvents)
-      .where(eq(dunningEvents.id, eventId))
-      .limit(1);
+    const event = await this.getCaseForConsole(eventId);
 
     if (!event) {
       return { success: false, message: "Dunning event not found" };
     }
 
-    await storage.updateDunningEvent(eventId, {
-      status: "resolved",
-      resolvedAt: new Date(),
-      resolutionType: "subscription_cancelled",
-    } as any);
+    await unscopedForPlatformOps(DUNNING_CONSOLE_REASON)
+      .update(dunningEvents)
+      .set({ status: "resolved", resolvedAt: new Date(), resolutionType: "subscription_cancelled", updatedAt: new Date() })
+      .where(eq(dunningEvents.id, eventId));
 
     if (event.organizationId) {
       await storage.updateOrganization(event.organizationId, {
@@ -864,22 +885,22 @@ class DunningService {
   }
 
   async resolveCase(eventId: number, notes?: string): Promise<{ success: boolean; message: string }> {
-    const [event] = await db
-      .select()
-      .from(dunningEvents)
-      .where(eq(dunningEvents.id, eventId))
-      .limit(1);
+    const event = await this.getCaseForConsole(eventId);
 
     if (!event) {
       return { success: false, message: "Dunning event not found" };
     }
 
-    await storage.updateDunningEvent(eventId, {
-      status: "resolved",
-      resolvedAt: new Date(),
-      resolutionType: "escalated",
-      metadata: { ...(event.metadata as Record<string, unknown> || {}), resolutionNotes: notes },
-    } as any);
+    await unscopedForPlatformOps(DUNNING_CONSOLE_REASON)
+      .update(dunningEvents)
+      .set({
+        status: "resolved",
+        resolvedAt: new Date(),
+        resolutionType: "escalated",
+        metadata: { ...(event.metadata as Record<string, unknown> || {}), resolutionNotes: notes },
+        updatedAt: new Date(),
+      })
+      .where(eq(dunningEvents.id, eventId));
 
     if (event.organizationId) {
       await storage.updateOrganization(event.organizationId, {
