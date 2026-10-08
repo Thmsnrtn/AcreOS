@@ -8,7 +8,7 @@
  * integration row's plaintext `fromPhoneNumber`, so a number held in the BYOK
  * vault was never matched even when a request did get through.
  *
- * This drives the REAL route (registerMiscRoutes) and the REAL
+ * This drives the REAL route (registerTwilioWebhookRoutes) and the REAL
  * tcpaCompliance opt-out path over an in-memory db double, and asserts on the
  * lead row the route actually wrote.
  */
@@ -87,8 +87,14 @@ async function buildDb() {
             ? H.tracking.filter((r) => r.releasedAt == null)
             : [];
   return {
-    select: () => {
+    select: (cols?: Record<string, { name: string }>) => {
       let table = "";
+      // Honour a column projection the way drizzle does: { alias: column }.
+      const camel = (n: string) => n.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
+      const project = (rows: Row[]) =>
+        cols
+          ? rows.map((r) => Object.fromEntries(Object.entries(cols).map(([k, c]) => [k, r[camel(c.name)]])))
+          : rows;
       const q: any = {
         from: (t: any) => {
           table = getTableName(t);
@@ -97,7 +103,7 @@ async function buildDb() {
         where: () => q,
         limit: () => q,
         orderBy: () => q,
-        then: (res: any, rej: any) => Promise.resolve(rowsFor(table)).then(res, rej),
+        then: (res: any, rej: any) => Promise.resolve(project(rowsFor(table))).then(res, rej),
       };
       return q;
     },
@@ -156,10 +162,10 @@ function sign(token: string, params: Record<string, string>): string {
 
 let app: express.Express;
 beforeAll(async () => {
-  const { registerMiscRoutes } = await import("../../server/routes-misc");
+  const { registerTwilioWebhookRoutes } = await import("../../server/routes-misc");
   app = express();
   app.use(express.urlencoded({ extended: false }));
-  await registerMiscRoutes(app);
+  await registerTwilioWebhookRoutes(app);
 });
 
 beforeEach(() => {
@@ -285,5 +291,44 @@ describe("unmatched opt-outs are recorded", () => {
     const res = await post(params, sign(BYO_TOKEN, params));
     expect(res.status).toBe(200);
     expect(H.handleIncoming).toEqual([{ orgId: 7, body: "STOP" }]);
+  });
+});
+
+describe("owner resolution reads no more of other tenants' credentials than can match", () => {
+  // One tenant's inbound text used to decrypt EVERY org's Twilio credential and
+  // stamp every org's `lastUsedAt` (13 foreign writes per inbound SMS in the
+  // year simulation). The lookup is platform-scope by necessity — the number
+  // lives inside the ciphertext — but it must stay minimal.
+  const OTHER_LAST4_TOKEN = "byo-token-of-org-11-dddddddddddd";
+  const SAME_LAST4_TOKEN = "byo-token-of-org-12-eeeeeeeeeeee";
+
+  beforeEach(async () => {
+    H.byokRows[0].credentialKeyFingerprint = BYO_NUMBER.slice(-4);
+    // Org 11: a different number whose last four cannot match — never decrypted.
+    H.byokRows.push({ organizationId: 11, channel: "twilio", revokedAt: null, credentialKeyFingerprint: "0999" });
+    H.vault.set(11, `AC_org11:${OTHER_LAST4_TOKEN}:+15055550999`);
+    // Org 12: same last four, different number — decrypted to compare, then dropped.
+    H.byokRows.push({ organizationId: 12, channel: "twilio", revokedAt: null, credentialKeyFingerprint: BYO_NUMBER.slice(-4) });
+    H.vault.set(12, `AC_org12:${SAME_LAST4_TOKEN}:+15065550100`);
+    const { getByokCredential } = await import("../../server/services/byok/key-vault");
+    vi.mocked(getByokCredential).mockClear();
+  });
+
+  it("decrypts only fingerprint candidates, and never as a USE of the credential", async () => {
+    const params = stopTo(BYO_NUMBER, "SM_minimal");
+    const res = await post(params, sign(BYO_TOKEN, params));
+    expect(res.status).toBe(200);
+    const { getByokCredential } = await import("../../server/services/byok/key-vault");
+    const calls = vi.mocked(getByokCredential).mock.calls;
+    expect(calls.map(([a]) => a.organizationId).sort()).toEqual([12, 7].sort());
+    for (const [, opts] of calls) expect(opts).toEqual({ touchLastUsed: false });
+  });
+
+  it("a decrypted non-owner's token is dropped: it cannot deliver into its own org either", async () => {
+    const params = stopTo(BYO_NUMBER, "SM_same_last4");
+    const res = await post(params, sign(SAME_LAST4_TOKEN, params));
+    expect(res.status).toBe(401);
+    expect(H.handleIncoming).toEqual([]);
+    expect(H.leads.every((l) => l.doNotContact === false)).toBe(true);
   });
 });

@@ -124,10 +124,21 @@ export async function setByokCredential(args: SetByokCredentialArgs): Promise<By
  *
  * IMPORTANT: callers must NEVER log the returned plaintext.
  */
-export async function getByokCredential(args: {
-  organizationId: number;
-  channel: ByokChannel;
-}): Promise<string | null> {
+export async function getByokCredential(
+  args: {
+    organizationId: number;
+    channel: ByokChannel;
+  },
+  opts: {
+    /**
+     * Record this read as a USE of the org's credential (default). Pass false
+     * for a platform-scope lookup that only inspects the credential — e.g.
+     * matching an inbound number to its owner — so one tenant's traffic never
+     * stamps another tenant's "last used".
+     */
+    touchLastUsed?: boolean;
+  } = {},
+): Promise<string | null> {
   const { organizationId, channel } = args;
 
   const [row] = await db
@@ -161,6 +172,8 @@ export async function getByokCredential(args: {
     );
     return null;
   }
+
+  if (opts.touchLastUsed === false) return plaintext;
 
   // Fire-and-forget lastUsedAt bump.
   db

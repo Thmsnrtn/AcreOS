@@ -208,7 +208,15 @@ async function deliverReplies(truth: GroundTruth) {
     const url = "https://sim.acreos.test/api/webhooks/twilio/sms";
     const toSign = url + Object.keys(params).sort().reduce((s, key) => s + key + params[key], "");
     const sig = createHmac("sha1", r.c.twilioToken).update(Buffer.from(toSign, "utf-8")).digest("base64");
-    const res = await r.c.client.call("POST", "/api/webhooks/twilio/sms", undefined, { raw: new URLSearchParams(params).toString(), noAuth: true, noCsrf: true, headers: { "content-type": "application/x-www-form-urlencoded", "x-twilio-signature": sig, "x-forwarded-proto": "https", "x-forwarded-host": "sim.acreos.test" } });
+    // Twilio, not the customer, makes this request: it carries no session and
+    // no tenant. The server resolves the org from the signed `To` number, and
+    // resolving it is platform scope by construction (every org's number is a
+    // candidate). So the callback carries NO actor — the model tenant-tap.sql
+    // states for webhooks — rather than the customer's: stamped with the
+    // customer's org, the owner lookup read as that org reading every other
+    // tenant's credentials. Whether the message landed in the right org is
+    // checked on its outcome (no-send-without-consent sees an ignored STOP).
+    const res = await r.c.client.call("POST", "/api/webhooks/twilio/sms", undefined, { raw: new URLSearchParams(params).toString(), noAuth: true, noCsrf: true, headers: { "content-type": "application/x-www-form-urlencoded", "x-twilio-signature": sig, "x-forwarded-proto": "https", "x-forwarded-host": "sim.acreos.test", "x-simplat-actor-org": "" } });
     counts.replies++;
     if (r.revokes) {
       counts.revocations++;

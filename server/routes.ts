@@ -295,7 +295,7 @@ import { registerContractChainRoutes } from "./routes-contract-chain";
 import { registerAnalyticsRoutes } from "./routes-analytics";
 import { registerCommunicationRoutes } from "./routes-communications";
 import { registerVAEngineRoutes } from "./routes-va-engine";
-import { registerMiscRoutes } from "./routes-misc";
+import { registerMiscRoutes, registerTwilioWebhookRoutes } from "./routes-misc";
 import { registerSupportTicketRoutes } from "./routes-support-tickets";
 import { registerKnowledgeBaseRoutes } from "./routes-kb";
 import { registerMicroFeatureRoutes } from "./routes-micro-features";
@@ -1631,6 +1631,14 @@ export async function registerRoutes(
   // visitors before the handler ever ran — the exact trap this comment
   // block documents for /api/docs and the e-sign routes.
   registerTransparencyRoutes(app);
+
+  // Twilio callbacks (inbound SMS incl. STOP, delivery status, recording
+  // status). Twilio carries no session and each route verifies Twilio's own
+  // signature, fail closed — so they must register BEFORE the catch-all below,
+  // or it 401s every delivery before the signature check runs (and, under E2E
+  // test auth, resolves an org inside the provider's callback).
+  // tests/unit/inboundWebhooksReachAnonymously.test.ts boots the app to pin it.
+  await registerTwilioWebhookRoutes(app);
 
   // EPIC Services: Seller Motivation, County Opportunity, Title Chain, Investor Network, Financial OS, Developer API
   app.use('/api', isAuthenticated, getOrCreateOrg, epicServicesRouter);
