@@ -35,7 +35,10 @@
  * "delivered" event cannot walk a piece backwards or overwrite a real scan
  * time with a later replay.
  *
- * Mounted by `registerOutreachMailRoutes` — see the note in
+ * Registered by `registerRoutes` BEFORE the `/api` session catch-all (Lob
+ * carries no session; behind the catch-all every delivery was 401'd before
+ * the HMAC check ran — tests/unit/inboundWebhooksReachAnonymously.test.ts
+ * pins it). Lives beside the outreach-mail surface it feeds — see the note in
  * server/routes/public-qr-redirect.ts for why these live under
  * server/routes/ rather than the `server/routes-*.ts` manifest convention.
  */

@@ -17,6 +17,7 @@ import {
   type VerifiedTwilioInbound,
 } from "./middleware/twilioSignature";
 import { idempotencyMiddleware } from "./middleware/idempotency";
+import { twilioRecordingAudioUrl } from "./utils/twilioRecordingUrl";
 import { withIdempotency } from "./services/webhook-idempotency";
 import { poolDebit, refundPoolDebit, poolRefusalDetails } from "./services/creditPool";
 import {
@@ -332,222 +333,6 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
     } catch (error: any) {
       logger.error("Send SMS to lead error", error);
       Errors.badRequest(res, error.message ?? "Failed to send SMS to lead");
-    }
-  });
-
-  api.post("/api/webhooks/twilio/sms", verifyInboundTwilioSms, async (req, res) => {
-    try {
-      const { From, To, Body, MessageSid } = req.body;
-
-      if (!From || !Body || !MessageSid) {
-        return res.status(400).send("Invalid webhook payload");
-      }
-
-      // Pillar 9.5 — dedup by MessageSid. Twilio retries on 5xx and on
-      // any timeout >15s; without this dedup, transient processing slow-
-      // downs caused duplicate inbound-SMS rows in the messages table.
-      const dedupCheck = await withIdempotency(
-        "twilio",
-        MessageSid,
-        "sms.inbound",
-        async () => "ok",
-      );
-      if (dedupCheck.duplicate) {
-        logger.debug(`[Twilio Webhook] duplicate inbound SMS ${MessageSid} — already processed`);
-        return res.status(200).send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>");
-      }
-
-      logger.info(`[Twilio Webhook] Incoming SMS from ${From} to ${To}: ${Body.substring(0, 50)}...`);
-
-      // The org is the one verifyInboundTwilioSms resolved from the `To`
-      // number across EVERY place a number can be configured (integration
-      // row, BYOK vault, purchased numbers, tracking pool) and whose own token
-      // — or the platform's — verified the signature. It is never re-derived
-      // here: a second, narrower lookup is how BYO numbers went unmatched.
-      const verified = res.locals.twilioInbound as VerifiedTwilioInbound | undefined;
-      const matchingOrg =
-        verified?.organizationId != null ? { organizationId: verified.organizationId } : null;
-
-      if (matchingOrg) {
-        try {
-          // Check for STOP/START opt keywords BEFORE storing the message
-          const { processOptKeyword } = await import("./services/tcpaCompliance");
-          const optResult = await processOptKeyword(
-            matchingOrg.organizationId,
-            From,
-            Body,
-            MessageSid
-          );
-
-          if (optResult.action === 'opt_out') {
-            logger.info(`[Twilio Webhook] Opt-out received from ${From} — lead ${optResult.leadId ?? "(none matched)"} opted out`);
-            if (optResult.leadId == null) {
-              // No lead row to mark do-not-contact. Record the text itself
-              // (as an unattached inbound) so the reply gate sees the opt-out
-              // as this number's latest message and refuses to answer it
-              // (DEFECT-0104). Best-effort: the confirmation still goes out.
-              try {
-                await smsServiceModule.handleIncomingSMS(matchingOrg.organizationId, From, To, Body, MessageSid);
-              } catch (recordErr) {
-                logger.error(
-                  "[Twilio Webhook] could not record an unmatched opt-out",
-                  recordErr instanceof Error ? recordErr : undefined,
-                  { metadata: { organizationId: matchingOrg.organizationId, messageSid: MessageSid } },
-                );
-              }
-            }
-            // Respond with TCPA-required opt-out confirmation message
-            res.status(200).send(
-              '<?xml version="1.0" encoding="UTF-8"?><Response><Message>You have been unsubscribed and will receive no further messages. Reply START to re-subscribe.</Message></Response>'
-            );
-            return;
-          }
-          // A carrier-level "YES" (optResult.action === 'carrier_opt_in') is
-          // recorded by processOptKeyword but does NOT re-subscribe the lead
-          // inside AcreOS; it falls through and is stored as an ordinary reply.
-          if (optResult.action === 'opt_in') {
-            logger.info(`[Twilio Webhook] START keyword received from ${From} — lead ${optResult.leadId} opted in`);
-            res.status(200).send(
-              '<?xml version="1.0" encoding="UTF-8"?><Response><Message>You have been re-subscribed. Reply STOP at any time to unsubscribe.</Message></Response>'
-            );
-            return;
-          }
-
-          const inboundResult = await smsServiceModule.handleIncomingSMS(
-            matchingOrg.organizationId,
-            From,
-            To,
-            Body,
-            MessageSid
-          );
-          logger.info(`[Twilio Webhook] Inbound SMS stored for org ${matchingOrg.organizationId}`);
-
-          // TTFM companion metric — the org's first seller response.
-          // Opt-keyword traffic (STOP/START) returned above, and W1.4 gates
-          // on a MATCHED lead — an unattached reply from an unknown number
-          // isn't proof a seller responded. Idempotent FIRST-occurrence.
-          if (inboundResult.leadId) {
-            try {
-              const { recordActivationEventAsync } = await import("./services/activation");
-              recordActivationEventAsync({
-                orgId: matchingOrg.organizationId,
-                userId: null,
-                eventName: "first_seller_response",
-                eventValue: { channel: "sms", leadId: inboundResult.leadId },
-              });
-            } catch { /* non-fatal */ }
-          }
-        } catch (inboundError: any) {
-          logger.error("[Twilio Webhook] Error storing inbound SMS", undefined, { metadata: { detail: inboundError.message } });
-        }
-      } else {
-        logger.info("[Twilio Webhook] No matching organization found for phone", { metadata: { detail: To } });
-      }
-
-      res.status(200).send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>");
-    } catch (error: any) {
-      logger.error("Twilio webhook error", error);
-      res.status(500).send("Webhook processing error");
-    }
-  });
-
-  // POST /api/webhooks/twilio/sms-status
-  // Twilio posts delivery status updates for outbound messages here.
-  api.post("/api/webhooks/twilio/sms-status", verifyTwilioSignature, async (req, res) => {
-    res.status(200).send("OK");
-    const { MessageSid, MessageStatus, ErrorCode, ErrorMessage } = req.body;
-    if (!MessageSid || !MessageStatus) return;
-
-    // Pillar 9.5 — dedup by (MessageSid + MessageStatus). The same SMS
-    // can transition through multiple statuses (sent → delivered) so we
-    // include the status to distinguish each transition.
-    const dedup = await withIdempotency(
-      "twilio",
-      `${MessageSid}:${MessageStatus}`,
-      "sms.status",
-      async () => "ok",
-    );
-    if (dedup.duplicate) return;
-
-    try {
-      const { messages } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
-      const statusMap: Record<string, string> = {
-        sent: 'sent',
-        delivered: 'delivered',
-        failed: 'failed',
-        undelivered: 'failed',
-        read: 'delivered',
-      };
-      const mappedStatus = statusMap[MessageStatus] || MessageStatus;
-      await db.update(messages)
-        .set({ status: mappedStatus, updatedAt: new Date() } as any)
-        .where(eq(messages.externalId, MessageSid));
-
-      if (ErrorCode) {
-        logger.warn(`[Twilio] SMS ${MessageSid} error ${ErrorCode}: ${ErrorMessage}`);
-      }
-    } catch (err: any) {
-      logger.error("[Twilio SMS Status] Update failed", err);
-    }
-  });
-
-  // POST /api/webhooks/twilio/recording-status
-  // Twilio posts here when a call recording is ready.
-  // Looks up the pending transcript by CallSid, then triggers Whisper transcription.
-  api.post("/api/webhooks/twilio/recording-status", verifyTwilioSignature, async (req, res) => {
-    // Always respond 200 immediately so Twilio doesn't retry
-    res.status(200).send("OK");
-
-    const { CallSid, RecordingUrl, RecordingSid, RecordingStatus } = req.body;
-
-    if (RecordingStatus !== "completed" || !RecordingUrl || !CallSid) return;
-
-    // Pillar 9.5 — dedup by RecordingSid (Twilio's globally-unique id for
-    // the recording). Falls back to CallSid when RecordingSid is absent
-    // — older Twilio API versions on legacy accounts.
-    const recordingDedup = await withIdempotency(
-      "twilio",
-      RecordingSid || `call:${CallSid}`,
-      "recording.complete",
-      async () => "ok",
-    );
-    if (recordingDedup.duplicate) {
-      logger.debug(`[Twilio Recording] duplicate recording-status ${RecordingSid ?? CallSid}`);
-      return;
-    }
-
-    try {
-      // MP3 format requires appending .mp3 to the Twilio URL
-      const audioUrl = RecordingUrl.endsWith(".mp3") ? RecordingUrl : `${RecordingUrl}.mp3`;
-
-      // Find the transcript that corresponds to this call
-      const [transcript] = await db
-        .select()
-        .from(callTranscripts)
-        .where(eq(callTranscripts.callId, CallSid))
-        .limit(1);
-
-      if (!transcript) {
-        logger.info(`[Twilio Recording] No transcript found for CallSid ${CallSid}`);
-        return;
-      }
-
-      // Update the audioUrl on the transcript record
-      await db
-        .update(callTranscripts)
-        .set({ audioUrl })
-        .where(eq(callTranscripts.id, transcript.id));
-
-      // Trigger Whisper transcription asynchronously
-      const { voiceCallAIService } = await import("./services/voiceCallAI");
-      voiceCallAIService.transcribeCall(transcript.id, audioUrl).catch((err: any) => {
-        logger.error(`[Twilio Recording] Whisper transcription failed for transcript ${transcript.id}`, err);
-      });
-
-      logger.info(`[Twilio Recording] Queued transcription for transcript ${transcript.id} (CallSid ${CallSid})`);
-    } catch (error: any) {
-      logger.error("[Twilio Recording] Webhook error", error);
     }
   });
 
@@ -1122,4 +907,246 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
   // ============================================
 
+}
+
+
+/**
+ * Twilio's server-to-server callbacks: inbound SMS (replies AND STOP
+ * opt-outs), outbound delivery status, call-recording status.
+ *
+ * Registered by `registerRoutes` BEFORE the `/api` session catch-all
+ * (`app.use('/api', isAuthenticated, getOrCreateOrg, …)`), never from
+ * `registerMiscRoutes`, which runs after it. Twilio carries no session: behind
+ * the catch-all every callback was answered 401 before its signature check
+ * ran, and under E2E test auth the catch-all's org resolution ran inside the
+ * provider's callback. Each route authenticates itself with Twilio's
+ * signature (fail closed) and takes its org only from what that check
+ * resolved. Pinned by tests/unit/inboundWebhooksReachAnonymously.test.ts.
+ */
+export async function registerTwilioWebhookRoutes(app: Express): Promise<void> {
+  const api = app;
+  const smsServiceModule = await import("./services/smsService");
+
+  api.post("/api/webhooks/twilio/sms", verifyInboundTwilioSms, async (req, res) => {
+    try {
+      const { From, To, Body, MessageSid } = req.body;
+
+      if (!From || !Body || !MessageSid) {
+        return res.status(400).send("Invalid webhook payload");
+      }
+
+      // Pillar 9.5 — dedup by MessageSid. Twilio retries on 5xx and on
+      // any timeout >15s; without this dedup, transient processing slow-
+      // downs caused duplicate inbound-SMS rows in the messages table.
+      const dedupCheck = await withIdempotency(
+        "twilio",
+        MessageSid,
+        "sms.inbound",
+        async () => "ok",
+      );
+      if (dedupCheck.duplicate) {
+        logger.debug(`[Twilio Webhook] duplicate inbound SMS ${MessageSid} — already processed`);
+        return res.status(200).send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>");
+      }
+
+      logger.info(`[Twilio Webhook] Incoming SMS from ${From} to ${To}: ${Body.substring(0, 50)}...`);
+
+      // The org is the one verifyInboundTwilioSms resolved from the `To`
+      // number across EVERY place a number can be configured (integration
+      // row, BYOK vault, purchased numbers, tracking pool) and whose own token
+      // — or the platform's — verified the signature. It is never re-derived
+      // here: a second, narrower lookup is how BYO numbers went unmatched.
+      const verified = res.locals.twilioInbound as VerifiedTwilioInbound | undefined;
+      const matchingOrg =
+        verified?.organizationId != null ? { organizationId: verified.organizationId } : null;
+
+      if (matchingOrg) {
+        try {
+          // Check for STOP/START opt keywords BEFORE storing the message
+          const { processOptKeyword } = await import("./services/tcpaCompliance");
+          const optResult = await processOptKeyword(
+            matchingOrg.organizationId,
+            From,
+            Body,
+            MessageSid
+          );
+
+          if (optResult.action === 'opt_out') {
+            logger.info(`[Twilio Webhook] Opt-out received from ${From} — lead ${optResult.leadId ?? "(none matched)"} opted out`);
+            if (optResult.leadId == null) {
+              // No lead row to mark do-not-contact. Record the text itself
+              // (as an unattached inbound) so the reply gate sees the opt-out
+              // as this number's latest message and refuses to answer it
+              // (DEFECT-0104). Best-effort: the confirmation still goes out.
+              try {
+                await smsServiceModule.handleIncomingSMS(matchingOrg.organizationId, From, To, Body, MessageSid);
+              } catch (recordErr) {
+                logger.error(
+                  "[Twilio Webhook] could not record an unmatched opt-out",
+                  recordErr instanceof Error ? recordErr : undefined,
+                  { metadata: { organizationId: matchingOrg.organizationId, messageSid: MessageSid } },
+                );
+              }
+            }
+            // Respond with TCPA-required opt-out confirmation message
+            res.status(200).send(
+              '<?xml version="1.0" encoding="UTF-8"?><Response><Message>You have been unsubscribed and will receive no further messages. Reply START to re-subscribe.</Message></Response>'
+            );
+            return;
+          }
+          // A carrier-level "YES" (optResult.action === 'carrier_opt_in') is
+          // recorded by processOptKeyword but does NOT re-subscribe the lead
+          // inside AcreOS; it falls through and is stored as an ordinary reply.
+          if (optResult.action === 'opt_in') {
+            logger.info(`[Twilio Webhook] START keyword received from ${From} — lead ${optResult.leadId} opted in`);
+            res.status(200).send(
+              '<?xml version="1.0" encoding="UTF-8"?><Response><Message>You have been re-subscribed. Reply STOP at any time to unsubscribe.</Message></Response>'
+            );
+            return;
+          }
+
+          const inboundResult = await smsServiceModule.handleIncomingSMS(
+            matchingOrg.organizationId,
+            From,
+            To,
+            Body,
+            MessageSid
+          );
+          logger.info(`[Twilio Webhook] Inbound SMS stored for org ${matchingOrg.organizationId}`);
+
+          // TTFM companion metric — the org's first seller response.
+          // Opt-keyword traffic (STOP/START) returned above, and W1.4 gates
+          // on a MATCHED lead — an unattached reply from an unknown number
+          // isn't proof a seller responded. Idempotent FIRST-occurrence.
+          if (inboundResult.leadId) {
+            try {
+              const { recordActivationEventAsync } = await import("./services/activation");
+              recordActivationEventAsync({
+                orgId: matchingOrg.organizationId,
+                userId: null,
+                eventName: "first_seller_response",
+                eventValue: { channel: "sms", leadId: inboundResult.leadId },
+              });
+            } catch { /* non-fatal */ }
+          }
+        } catch (inboundError: any) {
+          logger.error("[Twilio Webhook] Error storing inbound SMS", undefined, { metadata: { detail: inboundError.message } });
+        }
+      } else {
+        logger.info("[Twilio Webhook] No matching organization found for phone", { metadata: { detail: To } });
+      }
+
+      res.status(200).send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>");
+    } catch (error: any) {
+      logger.error("Twilio webhook error", error);
+      res.status(500).send("Webhook processing error");
+    }
+  });
+
+  // POST /api/webhooks/twilio/sms-status
+  // Twilio posts delivery status updates for outbound messages here.
+  api.post("/api/webhooks/twilio/sms-status", verifyTwilioSignature, async (req, res) => {
+    res.status(200).send("OK");
+    const { MessageSid, MessageStatus, ErrorCode, ErrorMessage } = req.body;
+    if (!MessageSid || !MessageStatus) return;
+
+    // Pillar 9.5 — dedup by (MessageSid + MessageStatus). The same SMS
+    // can transition through multiple statuses (sent → delivered) so we
+    // include the status to distinguish each transition.
+    const dedup = await withIdempotency(
+      "twilio",
+      `${MessageSid}:${MessageStatus}`,
+      "sms.status",
+      async () => "ok",
+    );
+    if (dedup.duplicate) return;
+
+    try {
+      const { messages } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const statusMap: Record<string, string> = {
+        sent: 'sent',
+        delivered: 'delivered',
+        failed: 'failed',
+        undelivered: 'failed',
+        read: 'delivered',
+      };
+      const mappedStatus = statusMap[MessageStatus] || MessageStatus;
+      await db.update(messages)
+        .set({ status: mappedStatus, updatedAt: new Date() } as any)
+        .where(eq(messages.externalId, MessageSid));
+
+      if (ErrorCode) {
+        logger.warn(`[Twilio] SMS ${MessageSid} error ${ErrorCode}: ${ErrorMessage}`);
+      }
+    } catch (err: any) {
+      logger.error("[Twilio SMS Status] Update failed", err);
+    }
+  });
+
+  // POST /api/webhooks/twilio/recording-status
+  // Twilio posts here when a call recording is ready.
+  // Looks up the pending transcript by CallSid, then triggers Whisper transcription.
+  api.post("/api/webhooks/twilio/recording-status", verifyTwilioSignature, async (req, res) => {
+    // Always respond 200 immediately so Twilio doesn't retry
+    res.status(200).send("OK");
+
+    const { CallSid, RecordingUrl, RecordingSid, RecordingStatus } = req.body;
+
+    if (RecordingStatus !== "completed" || !RecordingUrl || !CallSid) return;
+
+    // Pillar 9.5 — dedup by RecordingSid (Twilio's globally-unique id for
+    // the recording). Falls back to CallSid when RecordingSid is absent
+    // — older Twilio API versions on legacy accounts.
+    const recordingDedup = await withIdempotency(
+      "twilio",
+      RecordingSid || `call:${CallSid}`,
+      "recording.complete",
+      async () => "ok",
+    );
+    if (recordingDedup.duplicate) {
+      logger.debug(`[Twilio Recording] duplicate recording-status ${RecordingSid ?? CallSid}`);
+      return;
+    }
+
+    try {
+      // Only a recording on Twilio's own API host is ever downloaded; the URL
+      // is rebuilt on that host (as the .mp3 the transcriber reads) or refused.
+      const audioUrl = twilioRecordingAudioUrl(RecordingUrl);
+      if (!audioUrl) {
+        logger.warn("[Twilio Recording] RecordingUrl is not a Twilio recording — not fetched", {
+          metadata: { callSid: CallSid },
+        });
+        return;
+      }
+
+      // Find the transcript that corresponds to this call
+      const [transcript] = await db
+        .select()
+        .from(callTranscripts)
+        .where(eq(callTranscripts.callId, CallSid))
+        .limit(1);
+
+      if (!transcript) {
+        logger.info(`[Twilio Recording] No transcript found for CallSid ${CallSid}`);
+        return;
+      }
+
+      // Update the audioUrl on the transcript record
+      await db
+        .update(callTranscripts)
+        .set({ audioUrl })
+        .where(eq(callTranscripts.id, transcript.id));
+
+      // Trigger Whisper transcription asynchronously
+      const { voiceCallAIService } = await import("./services/voiceCallAI");
+      voiceCallAIService.transcribeCall(transcript.id, audioUrl).catch((err: any) => {
+        logger.error(`[Twilio Recording] Whisper transcription failed for transcript ${transcript.id}`, err);
+      });
+
+      logger.info(`[Twilio Recording] Queued transcription for transcript ${transcript.id} (CallSid ${CallSid})`);
+    } catch (error: any) {
+      logger.error("[Twilio Recording] Webhook error", error);
+    }
+  });
 }
