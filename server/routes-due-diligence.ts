@@ -223,6 +223,7 @@ router.get("/dossier/:id/recommendation", isAuthenticated, getOrCreateOrg, async
     const recommendation = await dueDiligencePodService.generateRecommendation(
       scores,
       (dossier.findings ?? {}) as Parameters<typeof dueDiligencePodService.generateRecommendation>[1],
+      getOrganizationId(req),
     );
     res.json({ recommendation });
   } catch (err: any) {

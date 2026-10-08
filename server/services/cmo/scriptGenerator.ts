@@ -31,6 +31,7 @@ import {
   type CostBreakdown,
 } from "./costTracker";
 
+import { meteredChatCompletion } from "../aiSpendGuard";
 interface BrandVoiceConfig {
   provider: "elevenlabs";
   pool?: VoicePoolEntry[];
@@ -210,13 +211,13 @@ Return strict JSON only.`;
     { role: "user", content: userPrompt },
   ];
 
-  const response = await client.chat.completions.create({
+  const response = await meteredChatCompletion(client, {
     model,
     messages,
     response_format: { type: "json_object" },
     temperature: 0.85, // High enough to produce real variant diversity across N scripts
     max_tokens: 4000,
-  });
+  }, { taskType: "cmo_script_gen", orgId: null, origin: "background" });
 
   const usage = response.usage;
   const actualCostCents = estimateOpenRouterCostCents(

@@ -9,6 +9,7 @@ import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 interface PropertyHolding {
   propertyId: string;
   address: string;
@@ -516,11 +517,11 @@ Provide 3 additional strategic recommendations for portfolio optimization. Consi
 
 Respond in JSON format with array of recommendations.`;
 
-      const completion = await requireOpenAIClient().chat.completions.create({
+      const completion = await meteredChatCompletion(requireOpenAIClient(), {
         model: 'openai/gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
-      });
+      }, { taskType: "portfolio", orgId: organizationId, origin: "customer" });
 
       const aiRecommendations = JSON.parse(completion.choices[0].message.content || '{}');
       

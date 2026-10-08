@@ -47,6 +47,7 @@ import { evaluateLivePaxOutput } from "../services/aiEvalHarness";
 import { paxGuardDeflection, paxInputRedactionNote } from "./paxTurnNotes";
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "../services/aiSpendGuard";
 // Tahoe Andrei (2026-06-07): live runtime eval gate. The critical `pax_inbox`
 // forbidden-trait cases + gateOutputOrThrow ran only in CI, never on the live
 // Pax turn — so a paraphrased hallucination ("minimal flood risk" after a
@@ -80,6 +81,8 @@ async function finalizePaxOutput(params: {
   conversationId?: number;
   /** The customer's message — a count they named is theirs to name back. */
   userText?: string;
+  /** The turn runs on the org's own AI key — corrective retries are theirs too ($0 platform). */
+  byok?: boolean;
 }): Promise<string> {
   const { organizationId, toolCallsExecuted, chatMessages, client, model, conversationId } = params;
   let text = params.output;
@@ -109,11 +112,11 @@ async function finalizePaxOutput(params: {
         `or entity you cannot ground in those results. If you don't have a value, say so plainly ` +
         `and offer the paid-tier lookup path instead of guessing.`;
       try {
-        const cr = await client.chat.completions.create({
+        const cr = await meteredChatCompletion(client, {
           model,
           messages: [...chatMessages, { role: "assistant", content: text }, { role: "user", content: correctionInstruction }],
           max_tokens: 1024,
-        });
+        }, { taskType: "pax_chat", orgId: organizationId, origin: "customer", byok: params.byok });
         const corrected = cr.choices?.[0]?.message?.content?.trim();
         if (corrected) {
           const reguarded = await guardPaxOutput(guardArgs(corrected));
@@ -147,11 +150,11 @@ async function finalizePaxOutput(params: {
           `a value. Never tell the customer to buy or pass, and never guarantee a future return. ` +
           `Stay informational.`;
         try {
-          const cr = await client.chat.completions.create({
+          const cr = await meteredChatCompletion(client, {
             model,
             messages: [...chatMessages, { role: "assistant", content: text }, { role: "user", content: correctionInstruction }],
             max_tokens: 1024,
-          });
+          }, { taskType: "pax_chat", orgId: organizationId, origin: "customer", byok: params.byok });
           const corrected = cr.choices?.[0]?.message?.content?.trim();
           if (corrected) {
             const recheck = evaluateLivePaxOutput(corrected);
@@ -403,7 +406,35 @@ function recordPaxTelemetry(payload: {
   completionTokens: number;
   latencyMs: number;
   cacheHit: boolean;
+  cachedInputTokens?: number;
+  /** Provider response id — the idempotency key for the ledger debit. */
+  responseId?: string | null;
 }): void {
+  // Per-org COGS: post the same spend to ai_call_log + financial_ledger
+  // (ai_tokens) via the shared recorder, so unit economics sees Pax — the
+  // largest AI line — and not only the router's calls. A stream has no single
+  // response id, so a synthetic per-turn id keeps the ledger debit idempotent.
+  void (async () => {
+    try {
+      const { recordAiCall, complexityClassFromTaskType } = await import("../services/ai-telemetry");
+      const { randomUUID } = await import("node:crypto");
+      await recordAiCall({
+        organizationId: payload.orgId,
+        model: payload.model,
+        complexityClass: complexityClassFromTaskType("pax_chat"),
+        feature: "pax_chat",
+        promptTokens: payload.promptTokens,
+        cachedInputTokens: payload.cachedInputTokens ?? 0,
+        completionTokens: payload.completionTokens,
+        costCents: payload.estimatedCostCents,
+        latencyMs: payload.latencyMs,
+        cacheHit: false,
+        openrouterResponseId: payload.responseId ?? `pax-turn-${randomUUID()}`,
+      });
+    } catch {
+      /* recordAiCall already swallows; belt-and-suspenders */
+    }
+  })();
   void (async () => {
     try {
       const { aiTelemetryEvents } = await import("@shared/schema");
@@ -1301,7 +1332,8 @@ export async function formatFileContentFromBase64(file: { name: string; content:
 // Auto-compaction: summarize old messages when conversation grows too long
 async function compactConversationIfNeeded(
   conversationId: number,
-  messages: AiMessage[]
+  messages: AiMessage[],
+  organizationId: number,
 ): Promise<AiMessage[]> {
   if (messages.length < 20) return messages;
   const totalChars = messages.reduce((s, m) => s + (m.content?.length ?? 0), 0);
@@ -1314,14 +1346,14 @@ async function compactConversationIfNeeded(
   try {
     const { selectProviderAndModel, TaskComplexity: TC } = await import('../services/aiRouter');
     const { client: sc, model: sm } = selectProviderAndModel(TC.SIMPLE);
-    const res = await sc.chat.completions.create({
+    const res = await meteredChatCompletion(sc, {
       model: sm,
       messages: [
         { role: "system", content: "Summarize this conversation as concise bullet points. Preserve all property details, deal terms, decisions made, and action items. Be specific, not generic." },
         { role: "user", content: toCompact.map(m => `${m.role.toUpperCase()}: ${m.content?.slice(0, 600)}`).join('\n\n') }
       ],
       max_tokens: 1200
-    });
+    }, { taskType: "pax_chat", orgId: organizationId, origin: "customer" });
     const summary = res.choices[0]?.message?.content || "";
     // Store summary async (non-blocking)
     process.nextTick(() => {
@@ -1409,7 +1441,7 @@ export async function processChat(
   });
 
   let messages = await getMessages(conversation.id);
-  messages = await compactConversationIfNeeded(conversation.id, messages);
+  messages = await compactConversationIfNeeded(conversation.id, messages, org.id);
 
   // Inject property enrichment context into the system prompt when a property is open
   let _enrichCtx = "";
@@ -1668,6 +1700,17 @@ export async function processChat(
   });
 
   let response: OpenAI.ChatCompletion;
+  // Actual usage across the first call AND every tool-loop follow-up — the
+  // telemetry write below used to record only a pre-call PREDICTION for the
+  // first call, so up to ten follow-up completions per turn were invisible.
+  const turnStartedMs = clock.nowMs();
+  const turnUsage = { prompt: 0, completion: 0, cached: 0, lastId: null as string | null };
+  const addTurnUsage = (r: OpenAI.ChatCompletion) => {
+    turnUsage.prompt += r.usage?.prompt_tokens ?? 0;
+    turnUsage.completion += r.usage?.completion_tokens ?? 0;
+    turnUsage.cached += (r.usage as any)?.prompt_tokens_details?.cached_tokens ?? 0;
+    turnUsage.lastId = (r as { id?: string }).id ?? turnUsage.lastId;
+  };
   try {
     response = await createChatCompletionWithCreditRetry(client, {
       model,
@@ -1682,6 +1725,7 @@ export async function processChat(
     if (error instanceof ProviderCreditError) throw error;
     throw new Error("AI request failed. Please try again in a moment.");
   }
+  addTurnUsage(response);
 
   try {
     const { storage } = await import('../storage');
@@ -1711,20 +1755,8 @@ export async function processChat(
         promptCacheActive: _shouldCache,
       },
     });
-    // Write-through to the ceilings' ledger (2026-07 cost audit) — without
-    // this, Pax spend was invisible to the daily ceilings that gate it.
-    recordPaxTelemetry({
-      orgId: org.id,
-      model,
-      provider,
-      estimatedCostCents,
-      promptTokens: response.usage?.prompt_tokens ?? Math.round(estimatedTokens),
-      completionTokens: response.usage?.completion_tokens ?? 0,
-      latencyMs: 0,
-      cacheHit: Boolean(
-        (response.usage as any)?.prompt_tokens_details?.cached_tokens,
-      ),
-    });
+    // (The ceilings' write-through — recordPaxTelemetry — now runs once at
+    // the end of the turn with ACTUAL usage across every call; see below.)
   } catch (error) {
     logger.error('[AI Chat] Failed to log API usage', error);
   }
@@ -1788,6 +1820,7 @@ export async function processChat(
       if (error instanceof ProviderCreditError) throw error;
       throw new Error("AI request failed during processing. Please try again.");
     }
+    addTurnUsage(response);
 
     assistantMessage = response.choices[0].message;
   }
@@ -1812,6 +1845,7 @@ export async function processChat(
     model,
     conversationId: conversation.id,
     userText: message,
+    byok: !!byokChannel,
   });
 
   await createMessage({
@@ -1836,16 +1870,25 @@ export async function processChat(
     } catch (_) { /* non-blocking */ }
   });
 
-  const usage = response.usage;
   let estimatedCost: number | undefined;
-  if (usage) {
-    // Central pricing table (single source of truth) — the old local table here
-    // was missing every Anthropic model and fell back to a silent {1,3} guess.
-    estimatedCost = computeCostUsd(
+  if (turnUsage.prompt > 0 || turnUsage.completion > 0) {
+    // Central pricing table (single source of truth), over the WHOLE turn —
+    // first call + tool-loop follow-ups — with cache reads at the cached rate.
+    estimatedCost = computeCostUsd(model, turnUsage.prompt, turnUsage.completion, turnUsage.cached);
+    // Write-through to the ceilings' ledger (2026-07 cost audit) — without
+    // this, Pax spend was invisible to the daily ceilings that gate it.
+    recordPaxTelemetry({
+      orgId: org.id,
       model,
-      usage.prompt_tokens || 0,
-      usage.completion_tokens || 0,
-    );
+      provider,
+      estimatedCostCents: byokChannel ? 0 : estimatedCost * 100,
+      promptTokens: turnUsage.prompt,
+      completionTokens: turnUsage.completion,
+      cachedInputTokens: turnUsage.cached,
+      latencyMs: clock.nowMs() - turnStartedMs,
+      cacheHit: turnUsage.cached > 0,
+      responseId: turnUsage.lastId,
+    });
   }
 
   // Fire-and-forget quality scoring — never blocks the response
@@ -1860,8 +1903,8 @@ export async function processChat(
     model,
     provider,
     estimatedCost,
-    promptTokens: usage?.prompt_tokens,
-    completionTokens: usage?.completion_tokens,
+    promptTokens: turnUsage.prompt,
+    completionTokens: turnUsage.completion,
     // Batch 7 — surface the tier-gating decision so the founder dashboard
     // can render "this customer was downgraded this month" without re-running
     // the lookup.
@@ -1919,7 +1962,7 @@ export async function* processChatStream(
   });
 
   let messages = await getMessages(conversation.id);
-  messages = await compactConversationIfNeeded(conversation.id, messages);
+  messages = await compactConversationIfNeeded(conversation.id, messages, org.id);
 
   // Inject property enrichment context into the system prompt when a property is open
   let _enrichCtx = "";
@@ -2104,13 +2147,13 @@ export async function* processChatStream(
       if (model.includes('claude')) {
         // Real Claude extended thinking via OpenRouter
         // Use a non-streaming call to get native thinking content blocks
-        const thinkingResponse = await client.chat.completions.create({
+        const thinkingResponse = await meteredChatCompletion(client, {
           model,
           messages: chatMessages as any,
           max_tokens: 8000,
           // OpenRouter passes thinking param to Anthropic API (cast handles type mismatch)
           thinking: { type: "enabled", budget_tokens: 6000 },
-        } as any, { signal });
+        } as any, { taskType: "pax_chat", orgId: org.id, origin: "customer", byok: !!streamByokChannel }, { signal });
         const msgContent = (thinkingResponse as any).choices?.[0]?.message?.content;
         if (Array.isArray(msgContent)) {
           for (const block of msgContent) {
@@ -2158,6 +2201,8 @@ export async function* processChatStream(
 
   let totalPromptTokens = 0;
   let totalCompletionTokens = 0;
+  let totalCachedInputTokens = 0;
+  const streamStartedMs = clock.nowMs();
 
   while (continueLoop) {
     // The customer hung up. Stop before paying for another completion.
@@ -2237,6 +2282,7 @@ export async function* processChatStream(
       if (chunk.usage) {
         totalPromptTokens += chunk.usage.prompt_tokens || 0;
         totalCompletionTokens += chunk.usage.completion_tokens || 0;
+        totalCachedInputTokens += (chunk.usage as any).prompt_tokens_details?.cached_tokens || 0;
       }
     }
 
@@ -2399,7 +2445,7 @@ export async function* processChatStream(
         `or entity you cannot ground in those results. If you don't have a value, say so plainly ` +
         `and offer the paid-tier lookup path instead of guessing.`;
       try {
-        const correctionResponse = await client.chat.completions.create({
+        const correctionResponse = await meteredChatCompletion(client, {
           model,
           messages: [
             ...chatMessages,
@@ -2407,7 +2453,7 @@ export async function* processChatStream(
             { role: "user", content: correctionInstruction },
           ],
           max_tokens: 1024,
-        }, { signal });
+        }, { taskType: "pax_chat", orgId: org.id, origin: "customer", byok: !!streamByokChannel }, { signal });
         const corrected = correctionResponse.choices?.[0]?.message?.content?.trim();
         if (corrected) {
           const reguarded = await guardPaxOutput(streamGuardArgs(corrected));
@@ -2473,7 +2519,7 @@ export async function* processChatStream(
           `Stay informational.`;
 
         try {
-          const correctionResponse = await client.chat.completions.create({
+          const correctionResponse = await meteredChatCompletion(client, {
             model,
             messages: [
               ...chatMessages,
@@ -2481,7 +2527,7 @@ export async function* processChatStream(
               { role: "user", content: correctionInstruction },
             ],
             max_tokens: 1024,
-          }, { signal });
+          }, { taskType: "pax_chat", orgId: org.id, origin: "customer", byok: !!streamByokChannel }, { signal });
           const corrected = correctionResponse.choices?.[0]?.message?.content?.trim();
           if (corrected) {
             const recheck = evaluateLivePaxOutput(corrected);
@@ -2532,7 +2578,24 @@ export async function* processChatStream(
   let estimatedCost: number | undefined;
   if (totalPromptTokens > 0 || totalCompletionTokens > 0) {
     // Central pricing table (single source of truth) — see processChat above.
-    estimatedCost = computeCostUsd(model, totalPromptTokens, totalCompletionTokens);
+    // Prompt-cache reads bill at the cached rate (the 3-arg form charged them
+    // at full input price).
+    estimatedCost = computeCostUsd(model, totalPromptTokens, totalCompletionTokens, totalCachedInputTokens);
+    // 2026-10 cost efficiency: the STREAMING turn — the main Pax surface —
+    // never wrote ai_telemetry_events, so its spend was invisible to the
+    // ceilings that gate it and to per-org unit economics. Same write-through
+    // the non-stream path does. BYOK turns record $0 (the customer's spend).
+    recordPaxTelemetry({
+      orgId: org.id,
+      model,
+      provider,
+      estimatedCostCents: streamByokChannel ? 0 : estimatedCost * 100,
+      promptTokens: totalPromptTokens,
+      completionTokens: totalCompletionTokens,
+      cachedInputTokens: totalCachedInputTokens,
+      latencyMs: clock.nowMs() - streamStartedMs,
+      cacheHit: totalCachedInputTokens > 0,
+    });
   }
 
   yield { 

@@ -23,6 +23,7 @@ import {
   type BusinessType,
 } from "@shared/models/persona-mapping";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 export type { BusinessType };
 export { SHARED_BUSINESS_TYPES as BUSINESS_TYPES };
 
@@ -660,7 +661,7 @@ export class OnboardingService {
     }
 
     try {
-      const response = await openai.chat.completions.create({
+      const response = await meteredChatCompletion(openai, {
         model: "openai/gpt-4o",
         messages: [
           {
@@ -682,7 +683,7 @@ Generate 3 helpful tips for this step.`,
         ],
         response_format: { type: "json_object" },
         max_tokens: 500,
-      });
+      }, { taskType: "onboarding_tips", orgId, origin: "customer" });
 
       const content = response.choices[0]?.message?.content;
       if (content) {

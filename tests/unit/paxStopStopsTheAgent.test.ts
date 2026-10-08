@@ -17,8 +17,9 @@
  * the wrong thing, invisibly (2026-09-04 review, CONFIRMED).
  *
  * ── WHAT THIS PINS ──────────────────────────────────────────────────────────
- * Position, over a DERIVED population. Every `executeTool(` and every
- * `client.chat.completions.create(` inside processChatStream is enumerated
+ * Position, over a DERIVED population. Every `executeTool(` and every model
+ * call — `client.chat.completions.create(` or, since 2026-10, the metered
+ * `meteredChatCompletion(client, …)` — inside processChatStream is enumerated
  * from the source, and each one must be preceded by a cancellation check /
  * carry the signal. A tool call added next year without a guard fails here,
  * which a fixed list of call sites would not do.
@@ -97,8 +98,11 @@ describe("the agent checks whether the customer is still there", () => {
   it("every model call inside the stream carries the signal", () => {
     // Not just our loop: an in-flight completion is one already being paid
     // for, so cancellation has to reach the provider.
-    const calls = [...body.matchAll(/client\.chat\.completions\.create\(/g)];
-    expect(calls.length).toBeGreaterThanOrEqual(2);
+    // Both spellings of a model call: the raw SDK call and the metered gateway
+    // (which takes the request options as its 4th argument). Matching only the
+    // raw spelling silently dropped every metered call from the population.
+    const calls = [...body.matchAll(/client\.chat\.completions\.create\(|meteredChatCompletion\(client,/g)];
+    expect(calls.length).toBeGreaterThanOrEqual(6);
     for (const m of calls) {
       const tail = body.slice(m.index ?? 0, (m.index ?? 0) + 1400);
       expect(

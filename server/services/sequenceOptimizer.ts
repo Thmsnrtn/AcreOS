@@ -14,6 +14,7 @@ import { logger } from "../utils/logger";
 
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
 import { clock } from "../utils/clock";
+import { meteredChatCompletion } from "./aiSpendGuard";
 export interface MessagePerformanceParams {
   sequenceId?: number;
   sequenceName: string;
@@ -388,13 +389,13 @@ Respond in JSON:
 }`;
 
     try {
-      const response = await openai.chat.completions.create({
+      const response = await meteredChatCompletion(openai, {
         model: "openai/gpt-4o",
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
         max_tokens: 1500,
         response_format: { type: "json_object" },
-      });
+      }, { taskType: "outreach_sequence_optimization", orgId: organizationId, origin: "customer" });
 
       const content = response.choices[0]?.message?.content;
       if (content) {

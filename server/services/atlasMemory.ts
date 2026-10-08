@@ -19,6 +19,7 @@ import { eq, and, desc, gte, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 export type MemoryType = 'fact' | 'preference' | 'pattern' | 'goal' | 'warning';
 
 export interface MemoryEntry {
@@ -151,7 +152,8 @@ export function formatMemoriesForContext(
  */
 export async function extractMemoriesFromConversation(
   messages: Array<{ role: string; content: string }>,
-  openaiClient: { chat: { completions: { create: (opts: any) => Promise<any> } } }
+  openaiClient: { chat: { completions: { create: (opts: any) => Promise<any> } } },
+  organizationId: number | null = null,
 ): Promise<ExtractedMemory[]> {
   if (messages.length < 2) return [];
 
@@ -183,7 +185,7 @@ ${conversationText}
 EXTRACTED MEMORIES (JSON array only, no other text):`;
 
   try {
-    const response = await openaiClient.chat.completions.create({
+    const response = await meteredChatCompletion(openaiClient, {
       // Deliberately the cheap model, not the conversation's — extraction is a
       // restatement task and a Scale org's Opus turn must not drag its memory
       // pass up with it. Prefixed because the injected client is the one
@@ -196,7 +198,7 @@ EXTRACTED MEMORIES (JSON array only, no other text):`;
       temperature: 0.1,
       max_tokens: 1000,
       response_format: { type: 'json_object' },
-    });
+    }, { taskType: "atlas_memory", orgId: organizationId, origin: "background" });
 
     const raw = response.choices?.[0]?.message?.content || '{"memories":[]}';
     const parsed = JSON.parse(raw);
@@ -222,7 +224,7 @@ export async function processConversationMemories(
   agentType: string = 'atlas'
 ): Promise<number> {
   try {
-    const extracted = await extractMemoriesFromConversation(messages, openaiClient);
+    const extracted = await extractMemoriesFromConversation(messages, openaiClient, organizationId);
 
     for (const memory of extracted) {
       await storeMemory(organizationId, {

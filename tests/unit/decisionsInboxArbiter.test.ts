@@ -86,6 +86,13 @@ vi.mock("../../server/services/customerSupportAutoResolver", () => ({
   },
 }));
 
+// The feature-request triage call is metered (aiSpendGuard) and, being
+// background work, fails CLOSED when the platform ceiling is unreadable — this
+// harness has no telemetry table, so the ceiling reads as within budget here.
+vi.mock("../../server/services/aiCostCeiling", () => ({
+  assertWithinAiCostCeiling: vi.fn(async () => {}),
+}));
+
 vi.mock("../../server/utils/openaiClient", () => ({
   requireOpenAIClient: vi.fn(() => ({
     chat: {

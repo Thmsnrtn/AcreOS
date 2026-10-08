@@ -27,6 +27,7 @@ import type { RoleWorker } from "./routing";
 import type { RoleEffect, RoleToolResult, RoleToolSchema, Briefing } from "./tools";
 import { clock } from "../../../utils/clock";
 
+import { meteredAnthropicMessage } from "../../aiSpendGuard";
 export type RoleTermination =
   | "end_turn"
   | "max_turns"
@@ -234,15 +235,15 @@ export async function runRoleWorkerDispatch(
         const Anthropic = (await import("@anthropic-ai/sdk")).default;
         client = new Anthropic({ apiKey: opts.apiKey }) as unknown as typeof client;
       }
-      return client!.messages.create(
+      return meteredAnthropicMessage(client!,
         {
           model: opts.model,
           max_tokens: roleWorkerMaxTokens(role),
           system: req.system,
           messages: req.messages,
           ...(req.tools.length ? { tools: req.tools } : {}),
-        },
-        { timeout: 120_000, maxRetries: 1 },
+        }, { taskType: "solene_dispatch", orgId: null, origin: "background" },
+        { timeout: 120_000, maxRetries: 1 }
       );
     },
     buildBriefing: tools.buildBriefing,

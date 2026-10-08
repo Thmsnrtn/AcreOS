@@ -15,6 +15,7 @@ import { logger } from "../utils/logger";
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
 import { parcelSnapshotVisibleTo, sharedSnapshotSources } from "../storage/gisRepo";
 import { clock } from "../utils/clock";
+import { meteredChatCompletion } from "./aiSpendGuard";
 // Cache freshness: 30 days
 const CACHE_FRESHNESS_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -182,7 +183,7 @@ function assessRisks(property: typeof properties.$inferSelect): RiskAssessment {
   };
 }
 
-async function generateAISummary(report: Omit<DueDiligenceReport, "aiSummary">): Promise<string | undefined> {
+async function generateAISummary(report: Omit<DueDiligenceReport, "aiSummary">, organizationId: number): Promise<string | undefined> {
   try {
     const openai = requireOpenAIClient();
     
@@ -218,7 +219,7 @@ Provide a professional assessment focusing on:
 2. Key risks and concerns
 3. Recommended next steps for due diligence`;
 
-    const response = await openai.chat.completions.create({
+    const response = await meteredChatCompletion(openai, {
       model: "openai/gpt-4o",
       messages: [
         { role: "system", content: "You are a professional real estate analyst specializing in land investments." },
@@ -226,7 +227,7 @@ Provide a professional assessment focusing on:
       ],
       max_tokens: 500,
       temperature: 0.7,
-    });
+    }, { taskType: "due_diligence", orgId: organizationId, origin: "customer" });
 
     return response.choices[0]?.message?.content || undefined;
   } catch (error) {
@@ -674,7 +675,7 @@ export async function generateDueDiligenceReport(
   let aiSummary: string | undefined;
   if (includeAI) {
     try {
-      aiSummary = await generateAISummary(report);
+      aiSummary = await generateAISummary(report, organizationId);
     } catch (error) {
       errors.push(`AI summary: ${error instanceof Error ? error.message : "Unknown error"}`);
     }

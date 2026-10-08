@@ -18,6 +18,7 @@ import { addMonths } from "../utils/dateUtils";
 import { noteGracePeriodDays } from "@shared/notes/delinquency";
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 /**
  * Thrown when a note, property or forecast id does not belong to the calling
  * organization. Rendered as 404 by the routes — never 403, which would confirm
@@ -836,7 +837,7 @@ class CashFlowForecasterService {
     }
 
     try {
-      const aiInsights = await this.getAIInsights(forecast);
+      const aiInsights = await this.getAIInsights(forecast, organizationId);
       insights.push(...aiInsights);
     } catch (error) {
     }
@@ -844,14 +845,14 @@ class CashFlowForecasterService {
     return insights;
   }
 
-  private async getAIInsights(forecast: CashFlowForecast): Promise<ForecastInsight[]> {
+  private async getAIInsights(forecast: CashFlowForecast, organizationId: number): Promise<ForecastInsight[]> {
     const openai = getOpenAIClient();
     if (!openai) {
       return [];
     }
 
     try {
-      const response = await openai.chat.completions.create({
+      const response = await meteredChatCompletion(openai, {
         model: "openai/gpt-4o-mini",
         messages: [
           {
@@ -875,7 +876,7 @@ Return valid JSON array with objects containing: type (string), message (string)
         ],
         temperature: 0.3,
         max_tokens: 500,
-      });
+      }, { taskType: "cash_flow_forecast", orgId: organizationId, origin: "customer" });
 
       const content = response.choices[0]?.message?.content;
       if (content) {

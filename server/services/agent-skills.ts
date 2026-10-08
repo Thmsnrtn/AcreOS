@@ -10,6 +10,7 @@ import { getPaxPauseState, paxPauseRefusalMessage } from "./paxPause";
 
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
 import { clock } from "../utils/clock";
+import { meteredChatCompletion } from "./aiSpendGuard";
 export type CoreAgentType = "research" | "deals" | "communications" | "operations";
 
 /**
@@ -2470,11 +2471,11 @@ Include:
 
 Do not include legal advice disclaimers inside the letter body. Keep it under 350 words.`;
 
-      const response = await openai.chat.completions.create({
+      const response = await meteredChatCompletion(openai, {
         model: "openai/gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
         max_tokens: 800,
-      });
+      }, { taskType: "agent_skill", orgId: context.organizationId, origin: "customer" });
 
       const offerLetter = response.choices[0]?.message?.content || "";
 
@@ -2643,12 +2644,12 @@ Return a JSON object with:
 
 Be specific and actionable.`;
 
-      const response = await openai.chat.completions.create({
+      const response = await meteredChatCompletion(openai, {
         model: "openai/gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
         max_tokens: 400,
         response_format: { type: "json_object" },
-      });
+      }, { taskType: "agent_skill", orgId: context.organizationId, origin: "customer" });
 
       let suggestion: Record<string, any> = {};
       try {
@@ -2726,12 +2727,12 @@ Return a JSON object with:
 - recommendationReason: 1-2 sentences explaining the recommendation
 - targetExitMultiple: e.g. "2x – 3x in 12-18 months"`;
 
-      const response = await openai.chat.completions.create({
+      const response = await meteredChatCompletion(openai, {
         model: "openai/gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
         max_tokens: 500,
         response_format: { type: "json_object" },
-      });
+      }, { taskType: "agent_skill", orgId: context.organizationId, origin: "customer" });
 
       let analysis: Record<string, any> = {};
       try {

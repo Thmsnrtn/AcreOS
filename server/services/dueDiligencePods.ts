@@ -13,6 +13,7 @@ import { DataSourceBroker } from "./data-source-broker";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 const dataSourceBroker = new DataSourceBroker();
 
 /**
@@ -256,7 +257,7 @@ class DueDiligencePodService {
       await this.updateAgentStatus(dossierId, organizationId, agentsAssigned);
 
       const scores = this.calculateScores(findings);
-      const recommendation = await this.generateRecommendation(scores, findings);
+      const recommendation = await this.generateRecommendation(scores, findings, organizationId);
       
       const [updatedDossier] = await db
         .update(dueDiligenceDossiers)
@@ -816,7 +817,9 @@ class DueDiligencePodService {
 
   async generateRecommendation(
     scores: CalculatedScores,
-    findings: DossierFindings
+    findings: DossierFindings,
+    /** The dossier's org — the model call is metered against its AI ceiling. */
+    organizationId: number | null = null,
   ): Promise<{
     recommendation: string;
     reasoning: string;
@@ -890,7 +893,7 @@ Provide a recommendation (strong_buy, buy, hold, pass, or avoid) and a brief rea
 Format: RECOMMENDATION: [recommendation]
 REASONING: [reasoning]`;
 
-        const response = await openai.chat.completions.create({
+        const response = await meteredChatCompletion(openai, {
           model: "openai/gpt-4o",
           messages: [
             { role: "system", content: "You are a land investment analyst providing concise due diligence recommendations." },
@@ -898,7 +901,7 @@ REASONING: [reasoning]`;
           ],
           max_tokens: 200,
           temperature: 0.3,
-        });
+        }, { taskType: "due_diligence", orgId: organizationId, origin: "customer" });
 
         const content = response.choices[0]?.message?.content || "";
         const recMatch = content.match(/RECOMMENDATION:\s*(strong_buy|buy|hold|pass|avoid)/i);
@@ -976,7 +979,7 @@ Green Flags: ${(dossier.greenFlags as string[] || []).join(", ") || "None"}
 
 Write a professional executive summary suitable for an investor.`;
 
-        const response = await openai.chat.completions.create({
+        const response = await meteredChatCompletion(openai, {
           model: "openai/gpt-4o",
           messages: [
             { role: "system", content: "You are a real estate investment analyst writing executive summaries for property due diligence reports." },
@@ -984,7 +987,7 @@ Write a professional executive summary suitable for an investor.`;
           ],
           max_tokens: 300,
           temperature: 0.4,
-        });
+        }, { taskType: "due_diligence", orgId: dossier.organizationId, origin: "customer" });
 
         return response.choices[0]?.message?.content?.trim() || this.generateFallbackSummary(dossier, propertyInfo);
       } catch (error) {

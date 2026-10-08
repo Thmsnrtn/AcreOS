@@ -90,7 +90,9 @@ function readsBodyText(src: string): boolean {
 }
 
 /** Reaches a model. */
-const REACHES_LLM = /chat\.completions\.create|messages\.create|routeAITask\s*\(/;
+// The metered gateway (aiSpendGuard) is a way to reach a model too — a
+// population keyed only on raw SDK syntax shrinks every time a call is metered.
+const REACHES_LLM = /chat\.completions\.create|messages\.create|routeAITask\s*\(|meteredChatCompletion\s*\(|meteredAnthropicMessage\s*\(/;
 
 /** Route files that do BOTH — the population that needs a guard. */
 function llmChatRouteFiles(): string[] {

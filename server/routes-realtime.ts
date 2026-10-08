@@ -8,6 +8,7 @@ import { requireOpenAIClient } from './utils/openaiClient';
 import { logger } from './utils/logger';
 import { Errors } from './utils/errors';
 import { sendError } from "./utils/errors";
+import { meteredChatCompletion } from "./services/aiSpendGuard";
 const creditService = new CreditService();
 
 const router = Router();
@@ -71,7 +72,7 @@ Available app paths:
 
 Respond with JSON: { "reply": "...", "actionPath": "/path or null", "actionLabel": "Button label or null" }`;
 
-    const completion = await requireOpenAIClient().chat.completions.create({
+    const completion = await meteredChatCompletion(requireOpenAIClient(), {
       model: 'openai/gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
@@ -80,7 +81,7 @@ Respond with JSON: { "reply": "...", "actionPath": "/path or null", "actionLabel
       max_tokens: 300,
       temperature: 0.4,
       response_format: { type: 'json_object' },
-    });
+    }, { taskType: "command_palette", orgId: org.id, origin: "customer" });
 
     const raw = completion.choices[0].message.content || '{}';
     let parsed: any = {};

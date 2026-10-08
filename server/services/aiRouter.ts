@@ -6,6 +6,7 @@ import { computeCostUsd } from "./aiCostRates";
 // hard-codes model strings or a private cost table — both come from here so the
 // router and paxModelTier can never disagree on which Opus is "best" again.
 import { MODELS, priceFor, isKnownModel, OPENAI_DIRECT_MODELS, openAiModelIdFor } from "./models";
+import { ANTHROPIC_CACHE_MIN_CHARS } from "./promptCache";
 import { checkQuota, recordUsage, AIQuotaExceeded } from "./aiQuotaService";
 import {
   recordAiCall as recordCascadeCall,
@@ -658,13 +659,9 @@ export const MODEL_CRITICAL  = MODELS.OPUS;            // $5.00/$25.00 per M tok
 export const MODEL_VISION    = MODELS.VISION;          // $2.50/$10.00 per M tokens
 
 // Legacy aliases kept for backward compat
-// 2026-07-14 cost audit: unified prompt-cache stamping threshold (chars).
-// Stamping cache_control below a model's minimum cacheable prefix is a
-// harmless no-op (~2048 tokens on Sonnet 4.6, ~4096 on Opus 4.8/Haiku 4.5),
-// so a low uniform threshold — matching the Pax rail — beats a gate that
-// sometimes skipped large stable prompts. Module-level: shared by the
-// primary call and the cascade-escalation retry.
-const ANTHROPIC_CACHE_MIN_CHARS = 1024;
+// Prompt-cache stamping threshold: ANTHROPIC_CACHE_MIN_CHARS (promptCache.ts) —
+// shared by the primary call, the cascade-escalation retry and the metered
+// raw-call path (aiSpendGuard.meteredChatCompletion).
 
 const OPENROUTER_CHEAP_MODEL     = MODEL_SIMPLE;
 const OPENROUTER_REASONING_MODEL = MODEL_REASONING;

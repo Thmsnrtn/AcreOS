@@ -24,6 +24,7 @@ import { logger } from "../utils/logger";
 import { emitBuyerMatchCreated } from "./buyerEvents";
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 type ProfileType = "individual" | "investor" | "developer" | "builder";
 type MatchStatus = "pending" | "presented" | "interested" | "not_interested" | "purchased";
 
@@ -1028,7 +1029,7 @@ export class BuyerMatchingAIService {
     const openai = getOpenAIClient();
     if (openai && activeBuyers.length >= 5) {
       try {
-        const response = await openai.chat.completions.create({
+        const response = await meteredChatCompletion(openai, {
           model: "openai/gpt-4o",
           messages: [
             {
@@ -1049,7 +1050,7 @@ export class BuyerMatchingAIService {
           ],
           max_tokens: 200,
           temperature: 0.7,
-        });
+        }, { taskType: "buyer_matching", orgId: organizationId, origin: "customer" });
 
         analysis.aiInsights = response.choices[0]?.message?.content ?? undefined;
       } catch (error) {

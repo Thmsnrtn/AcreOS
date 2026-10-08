@@ -41,6 +41,7 @@ const CHEAP_MODEL = MODELS.DEEPSEEK_CHAT;
 import { SYSTEM_ORG_ID } from "@shared/tenancy/systemOrg";
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 const log = (msg: string, meta?: Record<string, unknown>) =>
   logger.info(JSON.stringify({
       level: "INFO",
@@ -158,11 +159,11 @@ Return a JSON array only — no prose, no markdown fences:
 
   let rawContent = "";
   try {
-    const completion = await openrouter().chat.completions.create({
+    const completion = await meteredChatCompletion(openrouter(), {
       model: ASSESSMENT_MODEL,
       messages: [{ role: "user", content: prompt }],
       max_tokens: 2000,
-    });
+    }, { taskType: "self_assessment", orgId: null, origin: "background" });
     rawContent = completion.choices[0]?.message?.content ?? "";
   } catch (err) {
     logError("analyzeToolFailures — OpenRouter call failed", {
@@ -381,11 +382,11 @@ Return a JSON array only — no prose, no markdown fences.`;
 
   let rawContent = "";
   try {
-    const completion = await openrouter().chat.completions.create({
+    const completion = await meteredChatCompletion(openrouter(), {
       model: ASSESSMENT_MODEL,
       messages: [{ role: "user", content: prompt }],
       max_tokens: 3000,
-    });
+    }, { taskType: "self_assessment", orgId: null, origin: "background" });
     rawContent = completion.choices[0]?.message?.content ?? "";
   } catch (err) {
     logError("watchTechnology — OpenRouter call failed", {

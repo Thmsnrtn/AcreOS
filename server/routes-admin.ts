@@ -47,6 +47,7 @@ import { getUserId, getOrganization, getClerkAuth, type AuthenticatedRequest } f
 import { sanitizePromptInline } from "./utils/sanitizePrompt";
 import { wrapUntrusted } from "./ai/untrustedEnvelope";
 import { clock } from "./utils/clock";
+import { meteredChatCompletion } from "./services/aiSpendGuard";
 // ── Zod validation schemas for admin endpoints ────────────────────────────────
 const createSupportCaseSchema = z.object({
   subject: z.string().min(1).max(500),
@@ -3596,7 +3597,7 @@ export function registerAdminRoutes(app: Express): void {
         const { getOpenAIClient } = await import("./utils/openaiClient");
         const openai = getOpenAIClient();
         if (openai) {
-          const completion = await openai.chat.completions.create({
+          const completion = await meteredChatCompletion(openai, {
             model: "openai/gpt-4o",
             messages: [{
               role: "user",
@@ -3614,7 +3615,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
             }],
             max_tokens: 150,
             temperature: 0.4,
-          });
+          }, { taskType: "founder_brief", orgId: null, origin: "customer" });
           summary = completion.choices[0].message.content?.trim() || summary;
         }
       } catch { /* non-fatal — use plain summary */ }
@@ -3787,7 +3788,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         `${m.role === 'user' ? 'Customer' : 'Support'}: ${m.content}`
       ).join('\n\n');
 
-      const completion = await openai.chat.completions.create({
+      const completion = await meteredChatCompletion(openai, {
         model: "openai/gpt-4o",
         messages: [{
           role: "system",
@@ -3798,7 +3799,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         }],
         temperature: 0.5,
         max_tokens: 400,
-      });
+      }, { taskType: "founder_support_draft", orgId: null, origin: "customer" });
 
       const draft = completion.choices[0].message.content?.trim() || "";
       res.json({ draft, ticketId });

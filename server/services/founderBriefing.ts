@@ -24,6 +24,7 @@ import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 const FOUNDER_EMAILS: string[] = [
   ...(process.env.FOUNDER_EMAIL ? [process.env.FOUNDER_EMAIL.trim()] : []),
   ...(process.env.FOUNDER_EMAILS
@@ -157,12 +158,12 @@ async function writeBriefingWithAI(
   ].join("\n");
 
   try {
-    const resp = await openai.chat.completions.create({
+    const resp = await meteredChatCompletion(openai, {
       model: "openai/gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.4,
       max_tokens: 300,
-    });
+    }, { taskType: "founder_brief", orgId: null, origin: "background" });
     const text = resp.choices[0]?.message?.content?.trim() ?? "";
     // Split into paragraphs
     return text.split(/\n\n+/).filter(Boolean);

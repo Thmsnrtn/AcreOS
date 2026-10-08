@@ -53,7 +53,8 @@ describe("aiSpendGuard", () => {
     recordExternalAiSpend({ orgId: 7, taskType: "support_chat", model: "gpt-4o", promptTokens: 100, completionTokens: 50 });
     await flush();
 
-    expect(computeCostUsd).toHaveBeenCalledWith("gpt-4o", 100, 50);
+    // 4th arg: prompt-cache read tokens (none here) — billed at the cached rate.
+    expect(computeCostUsd).toHaveBeenCalledWith("gpt-4o", 100, 50, 0);
     expect(valuesSpy).toHaveBeenCalledTimes(1);
     const row = valuesSpy.mock.calls[0][0] as Record<string, unknown>;
     expect(row.organizationId).toBe(7);

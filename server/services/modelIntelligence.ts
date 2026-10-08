@@ -6,6 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { logger } from '../utils/logger';
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 // ============================================
 // MODEL INTELLIGENCE SERVICE
 // Weekly job that syncs the OpenRouter model catalog,
@@ -250,7 +251,7 @@ async function runSingleBenchmark(
 
   try {
     // Step 1: Get the model's response
-    const response = await client.chat.completions.create({
+    const response = await meteredChatCompletion(client, {
       model: modelId,
       messages: [
         {
@@ -262,7 +263,7 @@ async function runSingleBenchmark(
       ],
       max_tokens: 1024,
       temperature: 0.3,
-    });
+    }, { taskType: "model_benchmark", orgId: null, origin: "background" });
 
     const latencyMs = clock.nowMs() - start;
     const content = response.choices[0]?.message?.content ?? "";
@@ -274,7 +275,7 @@ async function runSingleBenchmark(
     // Step 2: Self-score the response (same model grades its own output)
     let score: number | null = null;
     try {
-      const scoringResponse = await client.chat.completions.create({
+      const scoringResponse = await meteredChatCompletion(client, {
         model: modelId,
         messages: [
           {
@@ -290,7 +291,7 @@ async function runSingleBenchmark(
         max_tokens: 64,
         temperature: 0,
         response_format: { type: "json_object" },
-      });
+      }, { taskType: "model_benchmark", orgId: null, origin: "background" });
 
       const scoreText = scoringResponse.choices[0]?.message?.content ?? "{}";
       const parsed = JSON.parse(scoreText) as { score?: number };

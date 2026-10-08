@@ -25,6 +25,7 @@ import { logger } from "../../utils/logger";
 import { estimateOpenRouterCostCents } from "./costTracker";
 
 import { sanitizePromptInline } from "../../utils/sanitizePrompt";
+import { meteredChatCompletion } from "../aiSpendGuard";
 const SCORER_MODEL = "anthropic/claude-haiku-4.5";
 const PASS_THRESHOLD = 65;
 const RECENT_SHIPPED_LIMIT = 30;
@@ -113,7 +114,7 @@ Return strict JSON only.`;
     );
   }
 
-  const response = await client.chat.completions.create({
+  const response = await meteredChatCompletion(client, {
     model: SCORER_MODEL,
     messages: [
       { role: "system", content: systemPrompt },
@@ -122,7 +123,7 @@ Return strict JSON only.`;
     response_format: { type: "json_object" },
     temperature: 0.2, // Low temperature — we want consistent scoring
     max_tokens: 400,
-  });
+  }, { taskType: "cmo_script_gen", orgId: null, origin: "background" });
 
   const usage = response.usage;
   const costCents = estimateOpenRouterCostCents(

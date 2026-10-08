@@ -55,6 +55,7 @@ import { checkPromptAgainstConstitution } from "./preCallConstitutionalChecker";
 import { isEmptyResult, ToolLoopDetector, turnBudgetFor } from "./taskGuards";
 import { clock } from "../../utils/clock";
 
+import { meteredAnthropicMessage } from "../aiSpendGuard";
 // ----------------------------------------------------------------------------
 // Configuration
 // ----------------------------------------------------------------------------
@@ -978,7 +979,7 @@ export async function runDispatch(
           text: systemPromptParts.dynamicSuffix,
         },
       ];
-      const response = await client.messages.create(
+      const response = await meteredAnthropicMessage<Anthropic.Message>(client,
         {
           model: selectedModel,
           max_tokens: 4096,
@@ -988,8 +989,8 @@ export async function runDispatch(
           // Read-only lanes (verify / self_audit_drift) additionally lose
           // every mutating tool (Horizon A5 — structural, not prompt-level).
           tools: getDispatchToolSchemas({ untrusted: true, readOnly }) as any,
-        },
-        { timeout: remainingMs },
+        }, { taskType: "solene_dispatch", orgId: null, origin: "background" },
+        { timeout: remainingMs }
       );
 
       tokenInput += response.usage?.input_tokens ?? 0;

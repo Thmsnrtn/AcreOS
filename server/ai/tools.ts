@@ -49,6 +49,7 @@ import { emitDealCreated, emitDealStageChanged } from "../services/dealEvents";
 import { emitPropertyCreated, emitPropertyStatusChanged } from "../services/propertyEvents";
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "../services/aiSpendGuard";
 // Tool parameter schemas (OpenAI function calling format)
 export const toolDefinitions = {
   // System Context Tools
@@ -2850,7 +2851,7 @@ export async function executeTool(
         const { selectProviderAndModel, TaskComplexity } = await import("../services/aiRouter");
         const { client, model } = selectProviderAndModel(TaskComplexity.MODERATE);
 
-        const aiResponse = await client.chat.completions.create({
+        const aiResponse = await meteredChatCompletion(client, {
           model,
           messages: [
             {
@@ -2863,7 +2864,7 @@ export async function executeTool(
             }
           ],
           max_tokens: 800
-        });
+        }, { taskType: "offer_letter_draft", orgId: org.id, origin: "customer" });
 
         const draftText = aiResponse.choices[0].message.content || "";
 
@@ -3105,7 +3106,7 @@ export async function executeTool(
         const { selectProviderAndModel, TaskComplexity } = await import("../services/aiRouter");
         const { client, model } = selectProviderAndModel(TaskComplexity.SIMPLE);
 
-        const aiResponse = await client.chat.completions.create({
+        const aiResponse = await meteredChatCompletion(client, {
           model,
           messages: [
             {
@@ -3118,7 +3119,7 @@ export async function executeTool(
             }
           ],
           max_tokens: 400
-        });
+        }, { taskType: "outreach_draft", orgId: org.id, origin: "customer" });
 
         const draftMessage = aiResponse.choices[0].message.content || "";
 

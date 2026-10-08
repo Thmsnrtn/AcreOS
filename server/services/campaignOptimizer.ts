@@ -10,6 +10,7 @@ import { logger } from "../utils/logger";
 
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
 import { clock } from "../utils/clock";
+import { meteredChatCompletion } from "./aiSpendGuard";
 export interface CampaignMetrics {
   openRate: number;
   clickRate: number;
@@ -202,13 +203,13 @@ Respond in JSON format:
     } catch { /* keep default */ }
 
     try {
-      const response = await openai.chat.completions.create({
+      const response = await meteredChatCompletion(openai, {
         model,
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
         max_tokens: 1000,
         response_format: { type: "json_object" },
-      });
+      }, { taskType: "campaign_optimization", orgId: campaign.organizationId, origin: "customer" });
 
       const content = response.choices[0]?.message?.content;
       if (content) {

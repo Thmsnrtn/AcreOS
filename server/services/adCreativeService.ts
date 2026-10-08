@@ -14,6 +14,7 @@
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 export type CopyAngle = "pain_point" | "aspiration" | "social_proof" | "curiosity";
 
 export interface AdCopyVariant {
@@ -203,7 +204,7 @@ Angles to write:
 
 Make each variant distinctly different. These will run as A/B tests so they must each take a genuinely different angle, tone, and structure.`;
 
-    const completion = await openai.chat.completions.create({
+    const completion = await meteredChatCompletion(openai, {
       model: "openai/gpt-4o",
       messages: [
         { role: "system", content: systemPrompt },
@@ -212,7 +213,7 @@ Make each variant distinctly different. These will run as A/B tests so they must
       response_format: { type: "json_object" },
       temperature: 0.82,
       max_tokens: 1200,
-    });
+    }, { taskType: "ad_copy_gen", orgId: null, origin: "background" });
 
     const raw = JSON.parse(completion.choices[0].message.content || "{}");
     const list: any[] = raw.variants || (Array.isArray(raw) ? raw : []);

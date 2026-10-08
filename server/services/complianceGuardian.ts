@@ -15,6 +15,7 @@ import { logger } from "../utils/logger";
 
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
 import { clock } from "../utils/clock";
+import { meteredChatCompletion } from "./aiSpendGuard";
 export type RuleType = "subdivision" | "building" | "zoning" | "environmental" | "disclosure" | "recording" | "tax";
 export type CheckStatus = "pending" | "compliant" | "non_compliant" | "not_applicable" | "needs_review";
 
@@ -637,11 +638,11 @@ Generate a comprehensive compliance report in markdown format that includes:
 5. Recommendations for achieving full compliance
 6. Estimated timeline and costs if available`;
 
-    const response = await openai.chat.completions.create({
+    const response = await meteredChatCompletion(openai, {
       model: "openai/gpt-4o",
       messages: [{ role: "user", content: prompt }],
       max_tokens: 2000,
-    });
+    }, { taskType: "compliance", orgId: organizationId, origin: "customer" });
 
     const report = response.choices[0]?.message?.content || "Unable to generate report";
 

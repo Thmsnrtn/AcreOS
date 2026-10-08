@@ -1,6 +1,7 @@
 import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 export type CoreAgentType = "research" | "deals" | "communications" | "operations";
 
 export interface IntentClassification {
@@ -166,7 +167,7 @@ export async function classifyIntentWithAI(userMessage: string): Promise<IntentC
   }
 
   try {
-    const response = await openai.chat.completions.create({
+    const response = await meteredChatCompletion(openai, {
       model: "openai/gpt-4o",
       messages: [
         {
@@ -195,7 +196,7 @@ Respond in JSON format:
       ],
       response_format: { type: "json_object" },
       max_tokens: 200,
-    });
+    }, { taskType: "intent_routing", orgId: null, origin: "customer" });
 
     const content = response.choices[0]?.message?.content;
     if (content) {

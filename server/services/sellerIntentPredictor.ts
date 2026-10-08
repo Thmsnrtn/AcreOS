@@ -17,6 +17,7 @@ import { getOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 /**
  * Thrown when a lead has no intent prediction in the calling organization —
  * which is also the answer for a lead that is not the caller's at all. Rendered
@@ -161,7 +162,7 @@ export class SellerIntentPredictorService {
     const intentLevel = this.determineIntentLevel(intentScore);
     const confidence = this.calculateConfidence(signals);
 
-    const [recommendedApproach, approachReasoning] = await this.generateApproachRecommendation(signals, intentLevel);
+    const [recommendedApproach, approachReasoning] = await this.generateApproachRecommendation(signals, intentLevel, organizationId);
     const suggestedOfferRange = propertyId 
       ? await this.suggestOfferRange(organizationId, propertyId, signals)
       : undefined;
@@ -599,7 +600,8 @@ export class SellerIntentPredictorService {
 
   async generateApproachRecommendation(
     signals: AllSignals,
-    intentLevel: IntentLevel
+    intentLevel: IntentLevel,
+    organizationId: number | null = null,
   ): Promise<[RecommendedApproach, string]> {
     const openai = getOpenAIClient();
 
@@ -610,7 +612,7 @@ export class SellerIntentPredictorService {
     try {
       const signalsSummary = this.formatSignalsForAI(signals);
 
-      const response = await openai.chat.completions.create({
+      const response = await meteredChatCompletion(openai, {
         model: "openai/gpt-4o-mini",
         messages: [
           {
@@ -638,7 +640,7 @@ What negotiation approach do you recommend?`
         temperature: 0.3,
         max_tokens: 200,
         response_format: { type: "json_object" },
-      });
+      }, { taskType: "seller_intent", orgId: organizationId, origin: "customer" });
 
       const content = response.choices[0].message.content;
       if (content) {
