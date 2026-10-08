@@ -1227,7 +1227,7 @@ export function PaxCopilotRail() {
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="mt-auto mb-4 text-xs text-muted-foreground [writing-mode:vertical-rl] [text-orientation:mixed] rotate-180 select-none opacity-40">
+                <div className="mt-auto mb-4 text-xs text-muted-foreground [writing-mode:vertical-rl] [text-orientation:mixed] rotate-180 select-none">
                   Pax
                 </div>
               </TooltipTrigger>

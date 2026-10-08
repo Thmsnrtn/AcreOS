@@ -470,7 +470,7 @@ export default function InvestorDirectoryPage() {
               <div
                 role="region"
                 aria-label="Verification benefits"
-                className="p-3 bg-acr-accent dark:bg-acr-accent/20 rounded-card text-sm text-acr-accent dark:text-acr-accent"
+                className="p-3 bg-acr-accent/15 dark:bg-acr-accent/20 rounded-card text-sm text-acr-accent dark:text-acr-accent"
               >
                 <p className="font-medium mb-1">Verification enables:</p>
                 <ul className="space-y-0.5 text-xs list-disc pl-4">

@@ -24,7 +24,7 @@ export function TrialBanner() {
     return (
       <aside
         aria-label="Free trial available"
-        className="mx-4 mb-2 rounded-card border border-acr-accent bg-acr-accent dark:border-acr-accent dark:bg-acr-accent/50 p-3 flex items-center justify-between"
+        className="mx-4 mb-2 rounded-card border border-acr-accent bg-acr-accent/15 dark:border-acr-accent dark:bg-acr-accent/15 p-3 flex items-center justify-between"
       >
         <div className="flex items-center gap-2 text-sm">
           <Sparkles className="h-4 w-4 text-acr-accent dark:text-acr-accent" aria-hidden="true" />
@@ -35,7 +35,7 @@ export function TrialBanner() {
         <Button
           size="sm"
           variant="outline"
-          className="h-7 text-xs border-acr-accent text-acr-accent hover:bg-acr-accent dark:border-acr-accent dark:text-acr-accent"
+          className="h-7 text-xs border-acr-accent text-acr-accent hover:bg-acr-accent/15 dark:border-acr-accent dark:text-acr-accent"
           onClick={() => setLocation("/settings?tab=billing")}
         >
           Start trial

@@ -71,7 +71,7 @@ const RISK_BADGE: Record<string, string> = {
   critical: "bg-acr-neg-soft text-acr-neg-soft-ink border-acr-neg-soft dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink",
   high: "bg-acr-warn-soft text-acr-warn-soft-ink border-acr-warn-soft dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink",
   medium: "bg-acr-warn-soft text-acr-warn-soft-ink border-acr-warn-soft dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink",
-  low: "bg-acr-accent text-acr-accent border-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
+  low: "bg-acr-accent/15 text-acr-accent border-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
 };
 
 function formatItemType(type: string) {

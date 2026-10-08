@@ -1524,7 +1524,7 @@ export function Sidebar() {
             <div className="flex justify-center py-1">
               <ThemeToggle />
             </div>
-            <button aria-label="Tooltip"
+            <button aria-label="Sign out"
               onClick={() => logout()}
               data-testid="button-logout"
               className="flex items-center justify-center w-full p-2 rounded-card text-muted-foreground hover:text-destructive hover:bg-destructive/10 active:text-destructive active:bg-destructive/15 transition-colors min-h-[44px]"
@@ -2067,6 +2067,7 @@ function DesktopNavItem({
               accentClass
             )}
             onMouseEnter={onMouseEnter}
+            aria-label={label}
             data-testid={testId}
           >
             <Icon className={cn("w-4 h-4 shrink-0", iconClass)} />

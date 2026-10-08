@@ -1179,7 +1179,7 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
           <div
             role="status"
             aria-live="polite"
-            className="p-4 rounded-card bg-acr-accent dark:bg-acr-accent/30 text-acr-accent dark:text-acr-accent flex items-center gap-2"
+            className="p-4 rounded-card bg-acr-accent/15 dark:bg-acr-accent/30 text-acr-accent dark:text-acr-accent flex items-center gap-2"
           >
             <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
             Verifying your payment…

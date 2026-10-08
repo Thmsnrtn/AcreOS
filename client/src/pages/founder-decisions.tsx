@@ -120,7 +120,7 @@ function riskBadgeClass(level: string): string {
     case "high":
       return "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft dark:text-acr-warn-soft-ink";
     case "medium":
-      return "bg-acr-accent text-acr-accent dark:bg-acr-accent dark:text-acr-accent";
+      return "bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/15 dark:text-acr-accent";
     default:
       return "bg-muted text-muted-foreground";
   }

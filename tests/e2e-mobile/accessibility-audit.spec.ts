@@ -82,26 +82,12 @@ const AUDIT_PROJECTS = new Set(["iphone-14", "ipad-mini"]);
  *
  * Every other critical, on every other route, still fails.
  */
-const KNOWN_CRITICAL: Array<{ route: string; rule: string; why: string }> = [
-  {
-    route: "/inbox",
-    rule: "aria-valid-attr-value",
-    why:
-      "inbox.tsx drives two Radix <Tabs> — channel and status — as segmented " +
-      "FILTERS over one shared message list, and renders zero <TabsContent>. " +
-      "Radix therefore emits aria-controls on every trigger pointing at a panel " +
-      "that does not exist, so a reader is told 'tab, controls panel X' for a " +
-      "panel that is not in the document. Two tablists owning one list is the " +
-      "tell: these are filters, not tabs. The honest fix is to make the message " +
-      "list the actual panel, which means moving a </Tabs> down past a ~200-line " +
-      "conditional content region on a 1,400-line customer door. Swapping to " +
-      "ToggleGroup instead trades it for a visual regression (different variants, " +
-      "data-state=on vs active), and hand-rolling a radiogroup loses Radix's " +
-      "roving-tabindex keyboard behaviour — one a11y defect for another. It wants " +
-      "a visual check, so it is registered here with its selector rather than " +
-      "guessed at blind.",
-  },
-];
+// Empty since 2026-10-08. The one entry — /inbox aria-valid-attr-value, from
+// filter-style <Tabs> with no <TabsContent> — was fixed in the shared
+// components/ui/tabs.tsx (a trigger without a declared panel omits
+// aria-controls), and is pinned by tests/unit/tabsAriaControlsResolve.test.tsx.
+// The 2026-10-08 axe crawl measured zero critical violations on every route.
+const KNOWN_CRITICAL: Array<{ route: string; rule: string; why: string }> = [];
 
 async function authenticate(page: Page, session: string) {
   await page.context().addCookies([

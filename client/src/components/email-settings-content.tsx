@@ -645,7 +645,7 @@ export function EmailSettingsContent() {
                       >
                         {expandedIdentity === identity.id ? "Hide DNS" : "Show DNS"}
                       </Button>
-                      <Button aria-label="Settings"
+                      <Button aria-label="Edit reply routing"
                         size="sm"
                         variant="ghost"
                         onClick={() => setEditingRoutingId(

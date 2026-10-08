@@ -10,26 +10,83 @@ const Select = SelectPrimitive.Root
 
 const SelectGroup = SelectPrimitive.Group
 
-const SelectValue = SelectPrimitive.Value
+/** The id the enclosing trigger expects its value span to carry (see below). */
+const SelectValueIdContext = React.createContext<string | undefined>(undefined)
 
+const SelectValue = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Value>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Value>
+>(({ id, ...props }, ref) => {
+  const valueId = React.useContext(SelectValueIdContext)
+  return <SelectPrimitive.Value ref={ref} id={id ?? valueId} {...props} />
+})
+SelectValue.displayName = SelectPrimitive.Value.displayName
+
+/**
+ * A select trigger always has an accessible name.
+ *
+ * Radix renders the trigger as `<button role="combobox">`, and a combobox does
+ * NOT take its name from its content — the visible "All sources" inside it is
+ * not its name. Every trigger with no <Label htmlFor>, wrapping <label>,
+ * aria-label or aria-labelledby was announced as an unnamed control (axe
+ * `button-name`, critical: 130 nodes on 9 routes in the 2026-10 crawl, every one
+ * a filter select).
+ *
+ * When the caller supplies no label, the trigger points aria-labelledby at its
+ * own <SelectValue> span, so it is named by the value it shows — labelledby is
+ * the one path where that text counts. (Pointing at the trigger's OWN id is
+ * not equivalent: axe, like several readers, ignores a self-reference.) A caller's label always
+ * wins: an explicit aria-label/aria-labelledby is passed through untouched,
+ * and an associated <label> (checked on the DOM via `labels`, the browser's
+ * own association) suppresses the fallback so it can never override it.
+ */
 const SelectTrigger = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
+>(({ className, children, id, ...props }, ref) => {
+  const valueId = `${React.useId()}-value`
+  const innerRef = React.useRef<HTMLButtonElement | null>(null)
+  const setRefs = React.useCallback(
+    (node: HTMLButtonElement | null) => {
+      innerRef.current = node
+      if (typeof ref === "function") ref(node)
+      else if (ref) (ref as React.MutableRefObject<HTMLButtonElement | null>).current = node
+    },
+    [ref],
+  )
+  const callerNamed = props["aria-label"] != null || props["aria-labelledby"] != null
+  // Read from the DOM after commit: whether a <label> is associated, and
+  // whether the value span rendered (a trigger with custom children has none,
+  // and a labelledby pointing at nothing is its own ARIA defect).
+  const [dom, setDom] = React.useState({ labelled: false, hasValue: false })
+  React.useLayoutEffect(() => {
+    const el = innerRef.current
+    const valueEl = el?.ownerDocument.getElementById(valueId)
+    const next = {
+      labelled: (el?.labels?.length ?? 0) > 0,
+      hasValue: !!el && !!valueEl && el.contains(valueEl),
+    }
+    if (next.labelled !== dom.labelled || next.hasValue !== dom.hasValue) setDom(next)
+  })
+  const selfName = !callerNamed && !dom.labelled && dom.hasValue
+  return (
   <SelectPrimitive.Trigger
-    ref={ref}
+    ref={setRefs}
+    id={id}
+    {...(selfName ? { "aria-labelledby": valueId } : {})}
     className={cn(
-      "flex h-9 w-full items-center justify-between rounded-lg border border-input bg-background/70 px-3 py-2 text-sm ring-offset-background inset-input backdrop-blur-sm transition-all duration-150 data-[placeholder]:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:bg-background focus:border-ring/50 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
+      "flex h-9 max-sm:h-11 pointer-coarse:h-11 w-full items-center justify-between rounded-lg border border-input bg-background/70 px-3 py-2 text-sm ring-offset-background inset-input backdrop-blur-sm transition-all duration-150 data-[placeholder]:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:bg-background focus:border-ring/50 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
       className
     )}
     {...props}
   >
-    {children}
+    <SelectValueIdContext.Provider value={valueId}>{children}</SelectValueIdContext.Provider>
     <SelectPrimitive.Icon asChild>
-      <ChevronDown className="h-4 w-4 opacity-50" />
+      <ChevronDown className="h-4 w-4 opacity-50" aria-hidden="true" />
     </SelectPrimitive.Icon>
   </SelectPrimitive.Trigger>
-))
+  )
+})
 SelectTrigger.displayName = SelectPrimitive.Trigger.displayName
 
 const SelectScrollUpButton = React.forwardRef<

@@ -83,7 +83,10 @@ for (const b of blocks) {
   const mf = b.tokens.get("muted-foreground");
   const bg = b.tokens.get("background");
   if (!mf || !bg) continue;
-  const surfaces = ["background", "card", "muted", "popover"]
+  // sidebar-background: the nav rail renders muted secondary text (the org
+  // subtitle, "Sign out") on it, and on Bedrock light it was the worst surface
+  // of all (4.35:1) while every surface this list used to read passed.
+  const surfaces = ["background", "card", "muted", "popover", "sidebar-background"]
     .map((k) => b.tokens.get(k)?.hsl)
     .filter(Boolean);
   const worst = () => Math.min(...surfaces.map((s) => contrast(b.tokens.get("muted-foreground").hsl, s)));

@@ -578,3 +578,316 @@ describe("every interactive element keeps a visible focus state", () => {
     ).toBeGreaterThanOrEqual(4.5);
   });
 });
+
+/**
+ * Icon-only controls are named — read from a PARSE, over every shape.
+ *
+ * The `size="icon"` scan above is a text search for one spelling. The 2026-10
+ * axe crawl found unnamed controls it could not see, because they were not
+ * spelled that way:
+ *
+ *   - a chevron toggle `<Button size="sm">{open ? <ChevronUp/> : <ChevronDown/>}`
+ *     (marketplace bids) — icon-only, no `size="icon"`;
+ *   - toolbar buttons whose label sits in `<span className="hidden md:inline">`
+ *     with nothing in its place — icon-only on a phone (properties Export /
+ *     Import / Fetch parcels);
+ *   - the collapsed sidebar's icon links, named only by a tooltip (a tooltip is
+ *     a DESCRIPTION, rendered in a portal, never a name);
+ *   - and labels that were filled mechanically with the glyph's own component
+ *     name: `aria-label="Clock"` on a reset-to-now button, `aria-label=
+ *     "Tooltip"` on Sign out. Present, so every presence check passed; wrong,
+ *     so a listener heard "Tooltip, button".
+ *
+ * tests/helpers/iconOnlyControls.ts walks the TypeScript AST of every client
+ * module, so comments never count as a name, and models Tailwind's breakpoint
+ * visibility so `hidden sm:inline` + `sm:hidden` (a short label in place of a
+ * long one) is NOT flagged while `hidden md:inline` alone is.
+ *
+ * POPULATION: every .tsx under client/src. Floors on files, controls visited
+ * and icon-only controls found, and a per-SHAPE floor so a parser that stops
+ * recognising one shape fails here instead of reading as "that shape is
+ * clean". Each shape also has a canary fixture below that MUST be flagged.
+ */
+describe("icon-only controls are named (AST walk, every shape)", () => {
+  // Imported lazily so the sweep above does not pay for the TS parser twice.
+  const load = () => import("../helpers/iconOnlyControls");
+
+  const files = findFiles(CLIENT_SRC, ".tsx").filter((f) => !/\.test\.tsx$/.test(f));
+
+  it("every icon-only control in client/src has a real accessible name", async () => {
+    const { scanSource } = await load();
+    let visited = 0;
+    const shapes: Record<string, number> = {};
+    const unnamed: string[] = [];
+    const junk: string[] = [];
+    const opaque: string[] = [];
+    let iconOnly = 0;
+    for (const file of files) {
+      const rel = file.slice(CLIENT_SRC.length + 1);
+      const r = scanSource(rel, readFileSync(file, "utf-8"));
+      visited += r.visited;
+      iconOnly += r.iconOnly.length;
+      for (const c of r.iconOnly) {
+        for (const s of c.shapes) shapes[s] = (shapes[s] ?? 0) + 1;
+        if (!c.named) unnamed.push(`${rel}:${c.line} <${c.tag}> [${c.shapes.join(",")}]`);
+        if (c.junkLabel) junk.push(`${rel}:${c.line} aria-label="${c.label}"`);
+      }
+      for (const c of r.opaque) opaque.push(`${rel}:${c.line}`);
+    }
+
+    // Population floors — measured 2026-10-08: 711 files, 2,453 controls
+    // visited, 346 icon-only. Far below means the walk or the parser broke.
+    expect(files.length, "client/src walk found almost nothing").toBeGreaterThan(600);
+    expect(visited, "controls visited").toBeGreaterThan(2000);
+    expect(iconOnly, "icon-only controls found").toBeGreaterThan(300);
+    // Per-shape vacuity: each shape the canaries prove the walker CAN see must
+    // also be present in the real code, or it is no longer being read there.
+    const SHAPE_FLOORS: Record<string, number> = {
+      "size-icon": 150,
+      "icon-children": 80,
+      "conditional-icon": 30,
+      "responsive-label": 5,
+      "as-child": 5,
+      trigger: 5,
+      link: 2,
+    };
+    for (const [shape, floor] of Object.entries(SHAPE_FLOORS)) {
+      expect(shapes[shape] ?? 0, `shape "${shape}" — the walker stopped recognising it`).toBeGreaterThanOrEqual(floor);
+    }
+
+    expect(
+      unnamed.join("\n"),
+      "an icon-only control has no accessible name. Add aria-label (what it DOES, " +
+        "not what the glyph is called), or an sr-only span. A tooltip is not a name.",
+    ).toBe("");
+    expect(
+      junk.join("\n"),
+      "an aria-label is the name of a component inside the control (the icon, " +
+        "the Tooltip). Name the action instead.",
+    ).toBe("");
+    // Spread props could be carrying the name; the walker cannot read them.
+    // Zero on 2026-10-08 — if this grows, check each by hand, then decide.
+    expect(opaque.join("\n"), "unnamed icon-only controls whose name may arrive via {...spread}").toBe("");
+  });
+
+  /**
+   * One fixture per shape the gate relies on, each hiding the defect. Every
+   * one must be flagged; each NAMED twin must not. If the walker stops seeing a
+   * shape, its canary goes red on its own.
+   */
+  const CANARIES: Array<{ shape: string; bad: string; good: string }> = [
+    {
+      shape: "size-icon",
+      bad: `import { X } from "lucide-react"; export const A = () => <Button size="icon" onClick={() => f()}><X /></Button>;`,
+      good: `import { X } from "lucide-react"; export const A = () => <Button size="icon" aria-label="Close" onClick={() => f()}><X /></Button>;`,
+    },
+    {
+      shape: "icon-children",
+      bad: `import { Trash2 } from "lucide-react"; export const A = () => <button type="button"><Trash2 className="h-4 w-4" /></button>;`,
+      good: `import { Trash2 } from "lucide-react"; export const A = () => <button type="button" aria-label="Delete"><Trash2 /></button>;`,
+    },
+    {
+      shape: "conditional-icon",
+      bad: `import { ChevronUp, ChevronDown } from "lucide-react"; export const A = ({ o }) => <Button size="sm">{o ? <ChevronUp /> : <ChevronDown />}</Button>;`,
+      good: `import { ChevronUp, ChevronDown } from "lucide-react"; export const A = ({ o }) => <Button size="sm" aria-label={o ? "Hide" : "Show"}>{o ? <ChevronUp /> : <ChevronDown />}</Button>;`,
+    },
+    {
+      shape: "responsive-label",
+      bad: `import { Download } from "lucide-react"; export const A = () => <Button><Download /><span className="hidden md:inline">Export</span></Button>;`,
+      // A short label in place of the long one is NOT icon-only at any width.
+      good: `import { Download } from "lucide-react"; export const A = () => <Button><Download /><span className="hidden md:inline">Export CSV</span><span className="md:hidden">Export</span></Button>;`,
+    },
+    {
+      shape: "as-child",
+      bad: `import { Phone } from "lucide-react"; export const A = () => <Button asChild size="sm"><a href="tel:1"><Phone /></a></Button>;`,
+      // Slot merges the parent's props onto the child, so a name on either counts.
+      good: `import { Phone } from "lucide-react"; export const A = () => <Button asChild size="sm" aria-label="Call"><a href="tel:1"><Phone /></a></Button>;`,
+    },
+    {
+      shape: "trigger",
+      bad: `import { MoreHorizontal } from "lucide-react"; export const A = () => <DropdownMenuTrigger><MoreHorizontal /></DropdownMenuTrigger>;`,
+      good: `import { MoreHorizontal } from "lucide-react"; export const A = () => <DropdownMenuTrigger><MoreHorizontal /><span className="sr-only">More actions</span></DropdownMenuTrigger>;`,
+    },
+    {
+      shape: "link",
+      // Named only by a tooltip: the TooltipContent is a portal, not content.
+      bad: `import { Home } from "lucide-react"; export const A = () => <Tooltip><TooltipTrigger asChild><Link href="/"><Home /></Link></TooltipTrigger><TooltipContent>Home</TooltipContent></Tooltip>;`,
+      good: `import { Home } from "lucide-react"; export const A = () => <Tooltip><TooltipTrigger asChild><Link href="/" aria-label="Home"><Home /></Link></TooltipTrigger><TooltipContent>Home</TooltipContent></Tooltip>;`,
+    },
+  ];
+
+  for (const c of CANARIES) {
+    it(`canary — shape "${c.shape}" is flagged unnamed, and its named twin is not`, async () => {
+      const { scanSource } = await load();
+      const bad = scanSource("fixture.tsx", c.bad);
+      expect(bad.iconOnly.length, `the walker did not see the ${c.shape} control at all`).toBe(1);
+      expect(bad.iconOnly[0].shapes, "classified under the wrong shape").toContain(c.shape);
+      expect(bad.iconOnly[0].named, `an unnamed ${c.shape} control read as named`).toBe(false);
+      const good = scanSource("fixture.tsx", c.good);
+      expect(good.iconOnly.every((x) => x.named), `a named ${c.shape} control read as unnamed`).toBe(true);
+    });
+  }
+
+  it("canary — a comment is never a name, and a glyph's own name is junk", async () => {
+    const { scanSource } = await load();
+    const commented = scanSource(
+      "fixture.tsx",
+      `import { X } from "lucide-react"; export const A = () => <Button size="icon">{/* aria-label="Close" */}<X /></Button>;`,
+    );
+    expect(commented.iconOnly.map((x) => x.named)).toEqual([false]);
+    const junk = scanSource(
+      "fixture.tsx",
+      `import { Clock } from "lucide-react"; export const A = () => <Button aria-label="Clock" title="Reset to current time" size="sm"><Clock /></Button>;`,
+    );
+    expect(junk.iconOnly.map((x) => x.junkLabel)).toEqual([true]);
+    // ...but a label that matches its icon is not junk by itself.
+    const home = scanSource(
+      "fixture.tsx",
+      `import { Home } from "lucide-react"; export const A = () => <Link href="/" aria-label="Home"><Home /></Link>;`,
+    );
+    expect(home.iconOnly.map((x) => x.junkLabel)).toEqual([false]);
+    const tooltipJunk = scanSource(
+      "fixture.tsx",
+      `import { LogOut } from "lucide-react"; export const A = () => <button aria-label="Tooltip"><Tooltip><TooltipTrigger asChild><LogOut /></TooltipTrigger><TooltipContent>Sign out</TooltipContent></Tooltip></button>;`,
+    );
+    expect(tooltipJunk.iconOnly.map((x) => [x.named, x.junkLabel])).toEqual([[true, true]]);
+  });
+});
+
+/**
+ * Interactive primitives hold the 44px touch floor on phones AND on any coarse
+ * pointer.
+ *
+ * The crawl's most common touch-target failure was not a page: it was the
+ * shared tab trigger (32px), select trigger (36px), input (36px), toast action
+ * (32px) and the button `sm` size (42px wide for a short label). Each is fixed
+ * once, in its primitive, by a `max-sm:` arm (narrow viewports) and a
+ * `pointer-coarse:` arm (a 768px iPad still has a finger).
+ *
+ * POPULATION: (1) every `size` variant of every `cva()` in components/ui —
+ * enumerated from the parse, so a new size added without the floor fails;
+ * (2) a registry of the non-cva primitives, each of which must be found and
+ * must yield class strings (per-member vacuity).
+ */
+describe("interactive primitives hold the 44px touch floor", () => {
+  const UI = resolve(CLIENT_SRC, "components/ui");
+  const FLOOR = /^(?:min-)?h-(?:11|12|14|16|\[44px\])$/;
+  const WFLOOR = /^(?:min-)?w-(?:11|12|14|16|\[44px\])$/;
+  const ARMS = ["max-sm", "pointer-coarse"] as const;
+
+  /** For a class list, which arms lack a 44px height (and width, if fixed-width). */
+  function missingArms(classes: string): string[] {
+    const tok = classes.split(/\s+/).filter(Boolean);
+    const fixedWidth = tok.some((t) => /^w-\d+$/.test(t));
+    // A base (unprefixed) 44px+ size holds the floor at every width already.
+    const baseH = tok.some((t) => FLOOR.test(t));
+    const baseW = tok.some((t) => WFLOOR.test(t));
+    const out: string[] = [];
+    for (const arm of ARMS) {
+      const armTok = tok.filter((t) => t.startsWith(`${arm}:`)).map((t) => t.slice(arm.length + 1));
+      if (!baseH && !armTok.some((t) => FLOOR.test(t))) out.push(`${arm} height`);
+      if (fixedWidth && !baseW && !armTok.some((t) => WFLOOR.test(t))) out.push(`${arm} width`);
+    }
+    return out;
+  }
+
+  async function sizeVariants(file: string, src: string) {
+    const ts = (await import("typescript")).default;
+    const sf = ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const out: Array<{ key: string; classes: string }> = [];
+    const visit = (n: import("typescript").Node) => {
+      if (ts.isCallExpression(n) && n.expression.getText(sf) === "cva") {
+        const cfg = n.arguments[1];
+        if (cfg && ts.isObjectLiteralExpression(cfg)) {
+          const variants = cfg.properties.find((p) => p.name?.getText(sf) === "variants");
+          if (variants && ts.isPropertyAssignment(variants) && ts.isObjectLiteralExpression(variants.initializer)) {
+            const size = variants.initializer.properties.find((p) => p.name?.getText(sf) === "size");
+            if (size && ts.isPropertyAssignment(size) && ts.isObjectLiteralExpression(size.initializer)) {
+              for (const p of size.initializer.properties) {
+                if (ts.isPropertyAssignment(p) && ts.isStringLiteralLike(p.initializer)) {
+                  out.push({ key: p.name.getText(sf), classes: p.initializer.text });
+                }
+              }
+            }
+          }
+        }
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    return out;
+  }
+
+  /** The string literals inside one named component's declaration. */
+  async function componentClasses(file: string, src: string, name: string) {
+    const ts = (await import("typescript")).default;
+    const sf = ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    let decl: import("typescript").Node | undefined;
+    const find = (n: import("typescript").Node) => {
+      if ((ts.isVariableDeclaration(n) || ts.isFunctionDeclaration(n)) && n.name?.getText(sf) === name) decl = n;
+      else ts.forEachChild(n, find);
+    };
+    find(sf);
+    if (!decl) return null;
+    const lits: string[] = [];
+    const visit = (n: import("typescript").Node) => {
+      if (ts.isStringLiteralLike(n)) lits.push(n.text);
+      ts.forEachChild(n, visit);
+    };
+    visit(decl);
+    // The class list is the literal carrying the element's display/size tokens.
+    return lits.find((l) => /(^|\s)(inline-)?flex(\s|$)/.test(l)) ?? null;
+  }
+
+  it("every cva size variant in components/ui holds the floor", async () => {
+    const failures: string[] = [];
+    let n = 0;
+    for (const f of findFiles(UI, ".tsx")) {
+      for (const v of await sizeVariants(f, readFileSync(f, "utf-8"))) {
+        n += 1;
+        const miss = missingArms(v.classes);
+        if (miss.length) failures.push(`${f.slice(UI.length + 1)} size.${v.key}: missing ${miss.join(", ")}`);
+      }
+    }
+    // button (4) + toggle (3) + sidebar menu button (3) on 2026-10-08.
+    expect(n, "cva size variants found").toBeGreaterThanOrEqual(10);
+    expect(failures.join("\n"), "a size variant is under 44px on touch. Add max-sm:/pointer-coarse: min-h-11 (and min-w-11 if it is fixed-width).").toBe("");
+  });
+
+  const PRIMITIVES: Array<[file: string, component: string]> = [
+    ["tabs.tsx", "TabsTrigger"],
+    ["select.tsx", "SelectTrigger"],
+    ["input.tsx", "Input"],
+    ["toast.tsx", "ToastAction"],
+  ];
+
+  it("the registered non-cva primitives hold the floor", async () => {
+    const failures: string[] = [];
+    for (const [file, component] of PRIMITIVES) {
+      const classes = await componentClasses(file, readFileSync(resolve(UI, file), "utf-8"), component);
+      expect(classes, `${file} ${component}: declaration or its class list not found`).toBeTruthy();
+      const miss = missingArms(classes!);
+      if (miss.length) failures.push(`${file} ${component}: missing ${miss.join(", ")}`);
+    }
+    expect(failures.join("\n")).toBe("");
+  });
+
+  it("canary — the checker flags a variant or primitive without the floor", async () => {
+    expect(missingArms("h-9 px-3")).toEqual(["max-sm height", "pointer-coarse height"]);
+    expect(missingArms("h-9 w-9 max-sm:h-11 pointer-coarse:h-11")).toEqual(["max-sm width", "pointer-coarse width"]);
+    expect(missingArms("min-h-8 max-sm:min-h-11 pointer-coarse:min-h-11")).toEqual([]);
+    // A floor in a comment or on another arm does not count.
+    expect(missingArms("h-8 md:min-h-11 sm:h-11")).toEqual(["max-sm height", "pointer-coarse height"]);
+    const v = await sizeVariants(
+      "f.tsx",
+      `const x = cva("a", { variants: { size: { sm: "h-8", lg: "h-12 max-sm:h-12 pointer-coarse:h-12" } } })`,
+    );
+    expect(v.map((x) => [x.key, missingArms(x.classes).length > 0])).toEqual([["sm", true], ["lg", false]]);
+    const c = await componentClasses(
+      "f.tsx",
+      `const TabsTrigger = React.forwardRef((p, r) => <T className={cn("inline-flex h-8 items-center", p.className)} />)`,
+      "TabsTrigger",
+    );
+    expect(missingArms(c!)).toEqual(["max-sm height", "pointer-coarse height"]);
+  });
+});

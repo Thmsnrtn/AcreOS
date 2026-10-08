@@ -134,7 +134,7 @@ function getStageStyle(stage: string) {
     case "warm":
       return "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink";
     case "cold":
-      return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
+      return "bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
     default:
       return "bg-muted text-muted-foreground";
   }
@@ -2224,7 +2224,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
 
 function LeadStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    new: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
+    new: "bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
     contacting: "bg-acr-brand-soft text-acr-brand-soft-ink dark:bg-acr-brand-soft/30 dark:text-acr-brand-soft-ink",
     negotiation: "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink",
     closed: "bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink",

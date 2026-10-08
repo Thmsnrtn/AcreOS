@@ -19,7 +19,7 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { apiRequest } from "@/lib/queryClient";
 
 function RatingBadge({ rating }: { rating: string }) {
-  const colors: Record<string, string> = { AAA: "bg-acr-pos-soft text-acr-pos-soft-ink", AA: "bg-acr-accent text-acr-accent", A: "bg-acr-accent text-acr-accent", BBB: "bg-acr-warn-soft text-acr-warn-soft-ink" };
+  const colors: Record<string, string> = { AAA: "bg-acr-pos-soft text-acr-pos-soft-ink", AA: "bg-acr-accent/15 text-acr-accent", A: "bg-acr-accent/15 text-acr-accent", BBB: "bg-acr-warn-soft text-acr-warn-soft-ink" };
   return <Badge className={colors[rating] ?? "bg-muted text-muted-foreground"} aria-label={`Credit rating: ${rating}`}>{rating}</Badge>;
 }
 
