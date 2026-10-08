@@ -257,15 +257,25 @@ export class Collector {
     const key = truthKey(channel, to);
     const rev = truth.revokedAtVirtual.get(key);
     const lead = channel === "sms"
-      ? (await this.q<any>("select organization_id, do_not_contact, tcpa_consent from leads where right(regexp_replace(phone, '\\D', '', 'g'), 10) = $1 order by id desc limit 1", [normPhone(to)]))[0]
+      ? (await this.q<any>("select id, organization_id, do_not_contact, tcpa_consent from leads where right(regexp_replace(phone, '\\D', '', 'g'), 10) = $1 order by id desc limit 1", [normPhone(to)]))[0]
       : (await this.q<any>("select organization_id, do_not_contact, tcpa_consent from leads where lower(email) = $1 order by id desc limit 1", [normEmail(to)]))[0];
     // The product's own revocation record, timed (a DNC flag read now could postdate the send).
     const revokedEvent = lead ? (await this.q<any>("select min(created_at) t from lead_consent_events where organization_id = $1 and event_type = 'revoked' and lead_id in (select id from leads where organization_id = $1 and (right(regexp_replace(coalesce(phone,''), '\\D', '', 'g'), 10) = $2 or lower(coalesce(email,'')) = $3))", [lead.organization_id, normPhone(to), normEmail(to)]))[0]?.t : null;
+    // SMS consent as of the SEND, not as of this observation: a seller texted at
+    // 16:00 who answers STOP at midnight has tcpa_consent false by the time the
+    // day is observed, and that send was consented. The product's timed SMS
+    // consent record decides when it has one; otherwise the lead's flag does
+    // (a lead never granted SMS consent reads false either way).
+    let consentAtSend: boolean | null = null;
+    if (channel === "sms" && lead) {
+      const last = (await this.q<any>("select event_type from lead_consent_events where organization_id = $1 and lead_id = $2 and channels ? 'sms' and created_at <= $3 order by created_at desc, id desc limit 1", [lead.organization_id, lead.id, atVirtual]))[0]?.event_type;
+      consentAtSend = last === "granted" ? true : last === "revoked" ? false : (lead.tcpa_consent ?? null);
+    }
     return {
       channel, at: atVirtual, to, orgId: lead?.organization_id ?? null,
       // DNC with no timed revocation event would be undatable; the timed record is authoritative here.
       leadDnc: false,
-      leadConsent: channel === "sms" ? (lead?.tcpa_consent ?? null) : null,
+      leadConsent: channel === "sms" ? consentAtSend : null,
       revokedAt: earliest(rev != null ? new Date(rev).toISOString() : null, revokedEvent ? new Date(revokedEvent).toISOString() : null),
     };
   }

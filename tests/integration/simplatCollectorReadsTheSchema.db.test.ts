@@ -40,6 +40,8 @@ describe.runIf(realDbAvailable)("the simulation collector reads every source it 
   afterAll(async () => {
     if (pool && landingOrgs.length) {
       await pool.query(`DELETE FROM unattached_inbound_messages WHERE organization_id = ANY($1)`, [landingOrgs]);
+      await pool.query(`DELETE FROM lead_consent_events WHERE organization_id = ANY($1)`, [landingOrgs]);
+      await pool.query(`DELETE FROM leads WHERE organization_id = ANY($1)`, [landingOrgs]);
       await pool.query(`DELETE FROM organizations WHERE id = ANY($1)`, [landingOrgs]);
     }
     if (pool && actionId) await pool.query(`DELETE FROM autopilot_pending_actions WHERE id = $1`, [actionId]);
@@ -123,6 +125,48 @@ describe.runIf(realDbAvailable)("the simulation collector reads every source it 
     // Each landing is read once: the next tick has none pending.
     const o2 = await c.observe(new Date().toISOString(), truth as any, 0);
     expect((o2.tenantWrites ?? []).filter((w) => w.op === "WEBHOOK")).toEqual([]);
+  });
+
+  it("an SMS is judged by the consent its lead had WHEN it was sent", async () => {
+    // A seller texted at 16:00 who answers STOP at midnight has tcpa_consent
+    // false by the time the day is observed. Read as of now, that send looked
+    // like a text without consent; read as of the send, it was consented. The
+    // same reading must still catch a lead who never consented, and a send
+    // after the revocation.
+    const { Collector } = await import("../simulation/platform/collector");
+    const { checkAll, freshState } = await import("../simulation/invariants/registry");
+    const org = (await pool.query<{ id: number }>(`INSERT INTO organizations (name, slug, owner_id) VALUES ($1, $2, $3) RETURNING id`, [`Consent ${pi}`, `consent-${pi}`, `owner-consent-${pi}`])).rows[0].id;
+    landingOrgs.push(org);
+    const tail = String(process.pid).padStart(4, "0").slice(-4);
+    const phoneA = `+1520555${tail}`, phoneB = `+1602555${tail}`;
+    const lead = async (phone: string) =>
+      (await pool.query<{ id: number }>(`INSERT INTO leads (organization_id, first_name, last_name, phone, tcpa_consent, do_not_contact) VALUES ($1, 'Pat', 'Seller', $2, false, true) RETURNING id`, [org, phone])).rows[0].id;
+    const a = await lead(phoneA);
+    const b = await lead(phoneB);
+    const ev = (leadId: number, type: string, at: string) =>
+      pool.query(`INSERT INTO lead_consent_events (organization_id, lead_id, event_type, channels, source, created_at) VALUES ($1, $2, $3, '["sms","email","phone","direct_mail"]'::jsonb, $4, $5)`, [org, leadId, type, type === "revoked" ? "inbound_stop" : "written", at]);
+    await ev(a, "granted", "2026-11-26T16:00:00Z");
+    await ev(a, "revoked", "2026-12-11T00:00:00Z");
+    const q = async (sql: string, params?: unknown[]) =>
+      /simplat\.tenant_writes/.test(sql) ? (/max\(id\)/.test(sql) ? [{ m: 0 }] : []) : (await pool.query(sql, params as any[])).rows;
+    const dir = mkdtempSync(join(tmpdir(), "simplat-collector-consent-"));
+    mkdirSync(join(dir, "provider"));
+    for (const f of ["dbtap.jsonl", "egress.jsonl"]) writeFileSync(join(dir, f), "");
+    const sms = (to: string, ts: string) => ({ rail: "twilio", op: "message", to, from: "+15005550005", ts });
+    writeFileSync(join(dir, "provider/provider-calls.jsonl"), [
+      sms(phoneA, "2026-12-10T16:00:00.000Z"), // consented when sent; revoked after
+      sms(phoneA, "2026-12-12T16:00:00.000Z"), // after the revocation
+      sms(phoneB, "2026-12-10T16:00:00.000Z"), // never consented
+    ].map((x) => JSON.stringify(x)).join("\n") + "\n");
+    const c = new Collector(q as any, dir);
+    await c.init();
+    const truth = { revokedAtVirtual: new Map(), outages: [], founderTaps: [], approvalsShown: new Map(), screens: [], webhookLandings: [] };
+    const o = await c.observe("2026-12-13T00:00:00.000Z", truth as any, 0);
+    const v = checkAll(o, freshState()).violations.filter((x) => x.invariant === "no-send-without-consent").map((x) => x.evidence);
+    expect(v).toHaveLength(2);
+    expect(v.some((e) => e.includes(phoneA) && e.includes("2026-12-12"))).toBe(true);
+    expect(v.some((e) => e === `sms without consent to ${phoneB} at 2026-12-10T16:00:00.000Z`)).toBe(true);
+    expect(v.some((e) => e.includes(phoneA) && e.includes("2026-12-10"))).toBe(false);
   });
 
   it("no DB-fed source is unread, and the executed refund is observed", async () => {
