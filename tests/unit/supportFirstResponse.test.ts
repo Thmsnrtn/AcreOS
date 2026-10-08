@@ -20,6 +20,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const inserted: Array<{ table: string; values: any }> = [];
+const updated: Array<{ table: string; set: any; where: boolean }> = [];
 let nextTicketId = 100;
 
 // ── db mock: insert(...).values(...).returning() yields a ticket row ──────────
@@ -56,7 +57,15 @@ vi.mock("../../server/db", () => {
     };
     return chain;
   };
-  return { db: { insert, select } };
+  const update = (table: any) => {
+    const rec = { table: table?.__tag ?? "unknown", set: undefined as any, where: false };
+    const chain: any = {
+      set(v: any) { rec.set = v; return chain; },
+      where() { rec.where = true; updated.push(rec); return Promise.resolve(undefined); },
+    };
+    return chain;
+  };
+  return { db: { insert, select, update } };
 });
 
 // ── schema stub: tag the tables createSupportTicket touches ───────────────────
@@ -89,7 +98,7 @@ vi.mock("drizzle-orm", () => {
   const op = (..._a: any[]) => ({});
   return {
     eq: op, and: op, desc: op, ilike: op, sql: Object.assign(op, {}),
-    or: op, count: op, inArray: op, gte: op, lte: op,
+    or: op, count: op, inArray: op, gte: op, lte: op, isNull: op,
   };
 });
 
@@ -119,6 +128,7 @@ const org: any = { id: 7, name: "Acme Land Co", subscriptionTier: "starter" };
 
 beforeEach(() => {
   inserted.length = 0;
+  updated.length = 0;
   nextTicketId = 100;
   resolveTicketWithPax.mockClear();
 });
@@ -165,6 +175,32 @@ describe("createSupportTicket — AI first-response on creation", () => {
     expect(ticket.id).toBe(100);
     await new Promise((r) => setTimeout(r, 0));
     expect(resolveTicketWithPax).toHaveBeenCalledTimes(1);
+  });
+
+  // Measured by the simulation platform's year (2026-10-08): a ticket filed
+  // while the model provider was down kept assigned_agent 'pax' with no
+  // resolution for the rest of the year. Nothing retried the pass, and the
+  // support backlog (resolution_type 'escalated') never counted it, so no
+  // worker and no founder ever saw the customer. A first response that fails
+  // must hand the ticket to the human queue instead.
+  it("a first response that fails hands the ticket to the human queue", async () => {
+    resolveTicketWithPax.mockRejectedValueOnce(new Error("model down"));
+    const { createSupportTicket } = await import("../../server/ai/supportAgent");
+    await createSupportTicket(org, "user-1", "Billing", "Charge looks wrong.", { autoAttachContext: false });
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    const handOff = updated.find((u) => u.table === "support_tickets");
+    expect(handOff?.set).toMatchObject({ resolutionType: "escalated", assignedAgent: null, status: "open" });
+    // Conditional: only a ticket the failed pass still holds is handed over.
+    expect(handOff?.where).toBe(true);
+  });
+
+  it("a first response that succeeds hands nothing over", async () => {
+    const { createSupportTicket } = await import("../../server/ai/supportAgent");
+    await createSupportTicket(org, "user-1", "Map", "Blank map.", { autoAttachContext: false });
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(updated.filter((u) => u.table === "support_tickets")).toEqual([]);
   });
 });
 

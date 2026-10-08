@@ -14,7 +14,7 @@ import {
   deals, notes, tasks, campaigns, payments, teamMembers,
   activityLog, auditLog, apiUsageLogs, paxMemory, systemAlerts
 } from "@shared/schema";
-import { gte, lte } from "drizzle-orm";
+import { gte, lte, isNull } from "drizzle-orm";
 import { logger } from "../utils/logger";
 // The ONE reader of the org's Pax controls (AUTONOMY_SPEC.md §4.2) — stance
 // and pause in one call, failing CLOSED. The pause primitive is read through it.
@@ -5845,7 +5845,7 @@ Services: ${Object.entries(systemContext.serviceStatus).map(([k, v]) => `${k}:${
         },
       });
     } catch (firstResponseErr) {
-      logger.warn("[support] AI first-response pass failed (non-fatal)", {
+      logger.warn("[support] AI first-response pass failed (non-fatal); handing the ticket to the human queue", {
         metadata: {
           ticketId: ticket.id,
           error:
@@ -5854,6 +5854,31 @@ Services: ${Object.entries(systemContext.serviceStatus).map(([k, v]) => `${k}:${
               : String(firstResponseErr),
         },
       });
+      // Nothing retries a failed pass, and the support backlog counts only
+      // escalated tickets, so a ticket left assigned to Pax with no resolution
+      // (the model was down when it was filed) was never seen again by a
+      // worker or the founder. Hand it to the human queue — only if the failed
+      // pass still holds it (Pax assigned, unresolved, still open).
+      try {
+        await db
+          .update(supportTickets)
+          .set({ resolutionType: "escalated", assignedAgent: null, status: "open", updatedAt: clock.now() })
+          .where(
+            and(
+              eq(supportTickets.id, ticket.id),
+              eq(supportTickets.organizationId, org.id),
+              eq(supportTickets.assignedAgent, "pax"),
+              isNull(supportTickets.resolutionType),
+              eq(supportTickets.status, "open"),
+            ),
+          );
+      } catch (handOffErr) {
+        logger.error(
+          "[support] could not hand a ticket with a failed first response to the human queue",
+          handOffErr instanceof Error ? handOffErr : undefined,
+          { metadata: { ticketId: ticket.id } },
+        );
+      }
     }
   })();
 
