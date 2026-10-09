@@ -50,7 +50,7 @@ import { emitDealCreated, emitDealStageChanged } from "../services/dealEvents";
 import { emitPropertyCreated, emitPropertyStatusChanged } from "../services/propertyEvents";
 import { clock } from "../utils/clock";
 
-import { meteredChatCompletion } from "../services/aiSpendGuard";
+import { meteredChatCompletion, type AiCallOrigin } from "../services/aiSpendGuard";
 // Tool parameter schemas (OpenAI function calling format)
 export const toolDefinitions = {
   // System Context Tools
@@ -1159,6 +1159,11 @@ export const PAUSE_SAFE_TOOLS: ReadonlySet<string> = new Set([
  * by the borrower ladder's own gate, never by a tool call — so an origin
  * recorded on an ask row is always a value the row's type accepts.
  */
+/** The AI-allowance origin of a tool run: a person (chat, support, an approval, a revision) or no one (a schedule, an inbound signal). */
+export function aiOriginForTool(origin: ExecuteToolOrigin): AiCallOrigin {
+  return origin === "scheduled" || origin === "inbound_signal" ? "background" : "customer";
+}
+
 export type ExecuteToolOrigin = Extract<
   PaxAskOrigin,
   "chat" | "scheduled" | "inbound_signal" | "support" | "approval_replay" | "revised"
@@ -1298,6 +1303,10 @@ export async function executeTool(
     }
     const trustedApproval = options?.trustedApproval === true;
     const origin: ExecuteToolOrigin = options?.origin ?? "chat";
+    // The AI allowance counts what a PERSON triggered. A scheduled run or an
+    // inbound signal has no one waiting — it must not draw on the customer's
+    // allowance (aiOriginDeclarations.test.ts).
+    const aiOrigin: AiCallOrigin = aiOriginForTool(origin);
     const pauseSafe = PAUSE_SAFE_TOOLS.has(toolName);
 
     // ── The org's Pax controls — ONE read per invocation (spec §4.2, §4.3) ─
@@ -2865,7 +2874,7 @@ export async function executeTool(
             }
           ],
           max_tokens: 800
-        }, { taskType: "offer_letter_draft", orgId: org.id, origin: "customer" });
+        }, { taskType: "offer_letter_draft", orgId: org.id, origin: aiOrigin });
 
         const draftText = aiResponse.choices[0].message.content || "";
 
@@ -3120,7 +3129,7 @@ export async function executeTool(
             }
           ],
           max_tokens: 400
-        }, { taskType: "outreach_draft", orgId: org.id, origin: "customer" });
+        }, { taskType: "outreach_draft", orgId: org.id, origin: aiOrigin });
 
         const draftMessage = aiResponse.choices[0].message.content || "";
 

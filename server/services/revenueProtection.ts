@@ -158,7 +158,9 @@ async function generateRetentionEmail(
         instruction: "Write a 3-paragraph retention email. Paragraph 1: acknowledge their business. Paragraph 2: offer specific help. Paragraph 3: clear CTA. Keep it under 200 words. Return { subject, html }",
       }),
     }],
-  }, { orgId });
+    // AcreOS writing to its own customer on a schedule: the customer did not
+    // ask for it, so it never draws on their AI allowance.
+  }, { orgId, origin: "background" });
 
   try {
     const parsed = JSON.parse(response.content ?? "{}");
