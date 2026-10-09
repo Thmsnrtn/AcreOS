@@ -73,6 +73,17 @@ vi.mock("../../server/services/byok/dataByok", () => ({
 vi.mock("../../server/services/credits", () => ({
   creditService: { getBalance: async () => balanceCents },
 }));
+// Platform-billed residential lookups are paid through the credit-pool gate
+// (2026-10-09); `balanceCents` stands for what the org can still spend there.
+vi.mock("../../server/services/creditPool", () => ({
+  poolDebit: async (args: { action: string }) => {
+    const cents = args.action === "comps_lookup" ? 20 : 10;
+    return balanceCents >= cents
+      ? { allowed: true, debitedCents: cents, remaining: balanceCents - cents, poolMonthly: 2500, ledgerRowId: 1, overPool: false }
+      : { allowed: false, debitedCents: 0, remaining: 0, poolMonthly: 2500, ledgerRowId: null, overPool: false };
+  },
+  refundPoolDebit: async () => undefined,
+}));
 
 import { getComparableProperties, getPropertyComps } from "../../server/services/comps";
 import { RESIDENTIAL_CAPABLE_PROVIDERS } from "../../server/services/residentialComps";

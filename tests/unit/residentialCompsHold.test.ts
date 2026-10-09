@@ -423,11 +423,16 @@ describe("the seam must stay a seam", () => {
   });
 
   it("catches the allowProviders restriction being dropped", () => {
-    const seam = fs
-      .readFileSync(path.join(ROOT, "server/services/residentialComps.ts"), "utf8")
-      .replace("{ allowProviders: RESIDENTIAL_CAPABLE_PROVIDERS },", "undefined,");
-    // Assert the mutation actually mutated — a no-op mutation proves nothing.
-    expect(seam).not.toContain("{ allowProviders: RESIDENTIAL_CAPABLE_PROVIDERS },");
+    const original = fs.readFileSync(path.join(ROOT, "server/services/residentialComps.ts"), "utf8");
+    // The restriction as the seam spells it today (2026-10-09: the options
+    // object also carries poolPreDebited). The guard below checks the ORIGINAL
+    // contains it — a `not.toContain` on the mutated text alone passed
+    // trivially once the spelling changed, so the mutation silently no-op'd.
+    const RESTRICTION = "allowProviders: RESIDENTIAL_CAPABLE_PROVIDERS,";
+    expect(original).toContain(RESTRICTION);
+    const seam = original.replace(RESTRICTION, "");
+    expect(seam).not.toBe(original);
+    expect(seam).not.toContain("allowProviders");
     const res = runRealShaped({ "server/services/residentialComps.ts": seam });
     expect(res.code).toBe(1);
     expect(res.output).toContain("seam-integrity");
