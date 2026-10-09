@@ -707,6 +707,73 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "'autopilot' into a customer component goes red.",
     },
   },
+  // ── 2026-10-09 (wave W1a) ───────────────────────────────────────────────
+  {
+    id: "ai.routine-support-released-within-policy",
+    title: "Routine support is answered on policy; everything else reaches the founder",
+    statement:
+      "AcreOS's own support agent (Solene, answering AcreOS's own customers — not Pax acting for a customer) may release a support reply without a per-ticket tap only when the ticket is routine: a how-to, an account question, or a refund of $50 or less; a legal matter, money above $50, an angry or unclear ticket is held, assigned to the founder and asked once, and the policy fails closed (anything it cannot classify is held).",
+    category: "ai-surface",
+    source:
+      "docs/company/founder-decisions-2026-10-08.md, '2026-10-09 — routine support is answered without a per-ticket tap'",
+    enforcement: {
+      kind: "ratchet-test",
+      refs: [
+        "tests/unit/routineSupportAutonomy.test.ts",
+        "server/services/support/routineSupportPolicy.ts",
+        "server/services/support/routineSupportSweep.ts",
+      ],
+      note:
+        "routineSupportAutonomy.test.ts drives triageTicket/judgeDraft and the " +
+        "sweep: an unclear ticket defaulting to routine, ignoring anger, " +
+        "ignoring a legal intake, or releasing a refund over $50 each go red " +
+        "(mutation-checked 2026-10-09). A release goes through " +
+        "approvePendingHand with a named delegation grant, so it is in the " +
+        "experience log (Story) and the drift sentinel's binding; it never " +
+        "bypasses the witnessed-send kernel.",
+    },
+  },
+  {
+    id: "rails.imports-never-grant-consent",
+    title: "An imported list never carries consent",
+    statement:
+      "A list a customer imports or bulk-creates can never grant TCPA (text and call) consent — consent comes only from the person themselves, recorded with its own source and evidence; a list-level source such as 'imported' is stripped on insert and refused on update.",
+    category: "rails",
+    source:
+      "W1a item 0.2 (2026-10-09): TCPA 47 U.S.C. § 227(b) and 47 C.F.R. § 64.1200 — a purchased or uploaded list is not the called party's consent",
+    enforcement: {
+      kind: "ratchet-test",
+      refs: [
+        "tests/unit/importsNeverGrantConsent.test.ts",
+        "server/services/consentStamp.ts",
+      ],
+      note:
+        "importsNeverGrantConsent.test.ts covers the batch insert, the import " +
+        "fallback and the consent update route; removing the insert strip or " +
+        "letting the batch path stamp a grant goes red (mutation-checked).",
+    },
+  },
+  {
+    id: "rails.ai-voice-calls-need-written-consent",
+    title: "An AI or prerecorded voice call needs prior express written consent",
+    statement:
+      "No call carrying an artificial or prerecorded voice is placed unless the called party gave prior express WRITTEN consent and has not revoked it; every call declares its voice, and the comms router refuses an AI voice without that consent.",
+    category: "rails",
+    source:
+      "W1a item 8 (2026-10-09): 47 U.S.C. § 227(b); 47 C.F.R. § 64.1200(a)(2), (f)(9); FCC 24-17 (AI-generated voices are 'artificial')",
+    enforcement: {
+      kind: "ratchet-test",
+      refs: [
+        "tests/unit/aiVoiceCallNeedsWrittenConsent.test.ts",
+        "server/services/comms/aiVoiceConsent.ts",
+      ],
+      note:
+        "aiVoiceCallNeedsWrittenConsent.test.ts drives assertCallVoiceAllowed " +
+        "and scans every carrier call endpoint outside the adapters; unwiring " +
+        "the router chokepoint, accepting any consent source, or ignoring a " +
+        "revocation each go red (mutation-checked).",
+    },
+  },
 ] as const;
 
 // ── Helpers ──────────────────────────────────────────────────────────────

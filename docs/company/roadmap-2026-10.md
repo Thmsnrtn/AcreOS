@@ -318,6 +318,51 @@ A polish claim that no test or gate pins is not claimed.
 
 ---
 
+## §H The launch program (founder direction 2026-10-09)
+
+On 2026-10-09 the founder set a launch program: AcreOS launch-ready at the
+lowest cash cost. Its principles are the same as this file's:
+- spend Claude credits, not cash;
+- no fabrication;
+- verify every wave instead of trusting its report;
+- ratchets only shrink;
+- hard-stops stay founder-only.
+
+The decisions behind it are recorded in `founder-decisions-2026-10-08.md`
+(the 2026-10-09 sections).
+
+Its waves are named **LP-W0 … LP-W6** so they do not collide with §D's W10.x
+numbering.
+
+**Not resolved here: the stop rule.** LP-W2 to LP-W5 add surface, while the
+§A stop rule holds feature waves until G0's owner actions are done. The
+program is the founder's later, explicit direction, but this file records the
+tension rather than deciding it. Each feature wave below cites the gate
+criterion or the decision it serves (§G.3).
+
+| Wave | Scope | Cash | Status |
+|---|---|---|---|
+| **LP-W0** Cost efficiency | Metered AI gateway (94 → 14 direct call sites); a platform AI ceiling scaled to MRR; the dormant $250 grant removed; a cost-to-serve alert; decisions A–C and Scale's $45 allowance; mail-credit recharges granted; legacy tier names folded | $0 | built (PR #339) |
+| **LP-W1** Flawless and protected | Accessibility (93 axe issues); 8 dead ends; plain-words refusals; **support autonomy** (under 24 founder min/week); a real AI eval or an explicit NOT MEASURED; guards (AI-voice written consent, heirs' property, contract-for-deed rules, ethical outreach); CA auto-renewal; one-click full export; security baseline (2FA, sealed credentials, off-provider backup with a tested restore); strategy docs to a private repo | $0 | W1a built: the protections half, see the ledger. W1b (a11y, dead ends, refusal copy) is next |
+| **LP-W2** Data foundation | Tennessee showcase preload (vacant and rural parcels, per-fact source and confidence, GeoParquet and PMTiles on R2's free tier); an on-demand county pipeline with refusal and "request this county"; a free-county-source census; small national datasets; tax-sale source registry; MapLibre with a free basemap; data-truth warnings; an accuracy gate before anything is shown | ~$0 | planned |
+| **LP-W3** Acquisition engine | A public Tennessee parcel report and a free landlocked checker (on `publicParcelReport.ts`); sourced county guides, llms.txt and structured data; creator revenue share; a founding-member yearly offer **[F: plan and price]**; a per-parcel report **[F: price]** | $0 | planned |
+| **LP-W4** Forecasting | A monthly vintage recorder (starts the clock); a cycle-phase model with walk-forward backtests on real-time vintages, gated by the evidence ladder; seasonal priors; county-forecast slots labelled "warming up"; a fair-housing check | $0 | planned |
+| **LP-W5** Trust, giving, growth | Owner opt-out and deletion; **giving at $1 per paying member per month** with receipts and a founder cap; fraud-check signals; collateral watch; Spanish; guided A2P 10DLC; migration import; offline maps; a first-deal-in-90-days program; a real customer outcome metric | giving only | planned |
+| **LP-W6** Real-model proof | Pax, Solene and land-data explanations against a real model under the ceiling, moving evidence from E2 to E3 **[K: model API key]** | ≤ $25 | blocked on the key |
+
+**Later, gated by revenue (the self-funding rules).** Each unlocks only when
+trailing revenue covers it, and an automatic brake stops data-plane spend
+when the plane runs net-negative:
+- the four-state preload;
+- paid data;
+- the Sentinel-2 change watch;
+- "land like this";
+- the co-op;
+- marketplace (~25 customers) and API (~50), per the DO-NOT-DO ladder;
+- residential comps (its own trigger).
+
+---
+
 ## Execution ledger
 
 | Date | Wave | Commit | Red-first tests | Gate outputs | Audit verdict |

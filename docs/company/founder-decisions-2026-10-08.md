@@ -146,3 +146,79 @@ the same way as the decisions above.
 - Historical payments are **not** auto-granted.
   `scripts/billing/list-ungranted-mail-recharges.sql` (read-only) lists how
   to find the customers to make whole.
+
+## 2026-10-09 — routine support is answered without a per-ticket tap
+
+**Date:** 2026-10-09
+
+**Source:** relayed by the coordinating session.
+
+- Routine support tickets from AcreOS's own customers are answered by the
+  support agent (Solene) without the founder tapping each one:
+  - how-to questions;
+  - account questions;
+  - refunds of $50 or less (the existing `REFUND_CEILING_CENTS`).
+- Still held for the founder:
+  - anything legal (the legal-intake classifier);
+  - money above $50;
+  - an angry or upset customer;
+  - anything the policy cannot classify. It fails closed.
+- A held ticket is assigned to the founder and asked once, never repeatedly.
+- Every automatic release is recorded in the Story door as `support_auto_answer`
+  or `support_auto_refund`, and every hold as `support_held`. Each release goes
+  through the witnessed-send kernel under the named delegation
+  `policy:routine-support-2026-10-09`, so the drift sentinel and the panic stop
+  still see it.
+- **Scope.** This covers AcreOS answering its own customers. Pax acting *for* a
+  customer is unchanged: every customer-facing send still waits for a human
+  tap (`ai.customer-sends-are-witnessed`).
+- **Where it lives:**
+  - `server/services/support/routineSupportPolicy.ts` and
+    `routineSupportSweep.ts`;
+  - registry entry `ai.routine-support-released-within-policy`;
+  - ratchet `tests/unit/routineSupportAutonomy.test.ts`.
+- **Target:** under 24 founder minutes a week across a simulated year, with no
+  dropped tickets. The measured result is in `roadmap-2026-10.md` (wave W1a).
+
+## 2026-10-09 — Tennessee is the showcase state
+
+**Date:** 2026-10-09
+
+**Source:** relayed by the coordinating session.
+
+- The data-foundation wave preloads Tennessee: vacant and rural parcels from
+  the verified statewide source, with per-fact source and confidence.
+- Every other county is processed on demand. Where no free source exists,
+  the customer sees a refusal and a "request this county" option.
+- Nothing is shown to customers until a hand-checked sample passes.
+- Scheduled as wave W2 in `roadmap-2026-10.md`.
+
+## 2026-10-09 — giving: $1 per paying member per month
+
+**Date:** 2026-10-09
+
+**Source:** relayed by the coordinating session.
+
+- AcreOS gives **$1 per paying member per month**, from its own revenue, to a
+  food bank serving the member's area, matched by county.
+- The member page shows only real, receipted totals. No projected or
+  "pledged" amounts are shown as given.
+- Recurring donations run under a founder-set cap. A spend above $500 stays a
+  founder-only hard stop.
+- This is AcreOS's own money on AcreOS's own account. It is not customer money
+  and does not touch the money-custody ban.
+- Not built yet: scheduled as wave W5.
+
+## 2026-10-09 — strategy docs move to a private repo
+
+**Date:** 2026-10-09
+
+**Source:** relayed by the coordinating session.
+
+- `docs/company/` moves to a private repository once the founder creates it.
+  Engineering then removes it here and leaves a pointer.
+- **Caveat:** git history keeps every earlier copy public. Removing the
+  directory hides only future edits. The past is hidden only by making this
+  repository private, or by rewriting public history, which is not
+  recommended.
+- **Founder action:** create the private repository.
