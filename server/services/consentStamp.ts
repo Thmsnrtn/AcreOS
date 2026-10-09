@@ -29,7 +29,29 @@ import { clock } from "../utils/clock";
  * the row itself, in tcpaCompliance.ts), and a request body claiming one is
  * claiming evidence that does not exist.
  */
-const CLIENT_GRANT_SOURCES: readonly ConsentSource[] = ["website", "phone_ivr", "written", "imported", "admin_manual"];
+const CLIENT_GRANT_SOURCES: readonly ConsentSource[] = ["website", "phone_ivr", "written", "admin_manual"];
+
+/**
+ * Sources that describe a LIST, not the lead's own opt-in. An import never
+ * grants consent (doctrine; constitution `imports-never-grant-consent`): a
+ * write that names one of these as the source of a grant carries NO grant at
+ * all. It is not downgraded to the default source — that would launder a
+ * list flag into an operator attestation nobody made.
+ */
+export const LIST_LEVEL_SOURCES: ReadonlySet<string> = new Set([
+  "imported",
+  "import",
+  "csv",
+  "csv_import",
+  "bulk_import",
+  "list_vendor",
+  "purchased_list",
+  "migration",
+]);
+
+function namesListLevelSource(raw: unknown): boolean {
+  return typeof raw === "string" && LIST_LEVEL_SOURCES.has(raw.trim().toLowerCase());
+}
 
 /** The one default for a grant whose caller named no (or no valid) source. */
 export const DEFAULT_GRANT_SOURCE: ConsentSource = "admin_manual";
@@ -54,8 +76,25 @@ export function stampConsentForInsert<T extends ConsentFields>(
 ): Omit<T, "consentDate" | "consentSource"> & { consentDate?: Date; consentSource?: ConsentSource } {
   const { consentDate: _clientDate, consentSource: rawSource, ...rest } = input;
   if (rest.tcpaConsent === true) {
+    if (namesListLevelSource(rawSource)) {
+      const { tcpaConsent: _refused, ...noGrant } = rest;
+      return noGrant as typeof rest;
+    }
     return { ...rest, consentDate: now, consentSource: normalizeConsentSource(rawSource, fallback) };
   }
+  return rest;
+}
+
+/**
+ * For a row that arrives through an IMPORT (CSV, migration, a list): whatever
+ * the row says about consent is discarded. The lead lands with no consent, no
+ * consent date and no consent source; do-not-contact is untouched (an import
+ * may make a lead LESS contactable, never more).
+ */
+export function stripConsentForImport<T extends ConsentFields>(
+  row: T,
+): Omit<T, "tcpaConsent" | "consentDate" | "consentSource"> {
+  const { tcpaConsent: _c, consentDate: _d, consentSource: _s, ...rest } = row;
   return rest;
 }
 
@@ -70,6 +109,10 @@ export function stampConsentForUpdate<T extends ConsentFields>(
 ): Omit<T, "consentDate" | "consentSource"> & { consentDate?: SQL; consentSource?: SQL } {
   const { consentDate: _clientDate, consentSource: rawSource, ...rest } = updates;
   if (rest.tcpaConsent === true) {
+    if (namesListLevelSource(rawSource)) {
+      const { tcpaConsent: _refused, ...noGrant } = rest;
+      return noGrant as typeof rest;
+    }
     const source = normalizeConsentSource(rawSource, fallback);
     return {
       ...rest,

@@ -23,6 +23,7 @@ import { emitLeadCreated, emitLeadCreatedDurably } from "./leadEvents";
 import { emitPropertyCreated, emitPropertyCreatedDurably } from "./propertyEvents";
 import { emitDealCreated, emitDealCreatedDurably } from "./dealEvents";
 import { clock } from "../utils/clock";
+import { stripConsentForImport } from "./consentStamp";
 
 export interface ImportResult {
   totalRows: number;
@@ -553,8 +554,9 @@ export async function importLeads(
       // If batch fails, fall back to individual inserts for this chunk
       for (const item of chunk) {
         try {
-          // Same consent label the batch insert stamps (consentStamp.ts).
-          const single = await storage.createLead({ consentSource: "imported", ...item.data, ...item.extras, organizationId });
+          // The same no-consent row the batch insert writes (consentStamp.ts):
+          // an import never grants consent, on either path.
+          const single = await storage.createLead({ ...(stripConsentForImport({ ...item.data, ...item.extras }) as typeof item.data), organizationId });
           result.successCount++;
           if (options.durableEvents) await emitLeadCreatedDurably(organizationId, single);
           else emitLeadCreated(organizationId, single);

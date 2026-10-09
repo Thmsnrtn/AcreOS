@@ -13,7 +13,7 @@ import { assertNotUnderLegalHold, filterOutHeldIds } from "../services/legalHold
 import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../storage";
 import { LIST_READ_CAP, capListRead } from "./listCap";
 import { clock } from "../utils/clock";
-import { DEFAULT_GRANT_SOURCE, stampConsentForInsert, stampConsentForUpdate } from "../services/consentStamp";
+import { DEFAULT_GRANT_SOURCE, stampConsentForInsert, stampConsentForUpdate, stripConsentForImport } from "../services/consentStamp";
 import { leadHasOptedOut } from "../services/leadContactability";
 
 /** Refused merge: the two leads are different parcels (DEFECT-0161). */
@@ -317,7 +317,8 @@ export const leadRepo = {
     // Batch insert all leads in a single query instead of N individual inserts
     const newLeads = await db
       .insert(leads)
-      .values(leadsData.map((l) => stampConsentForInsert(leadInsertRow(l), "imported", clock.now())))
+      // The batch path is the import path: rows never carry consent.
+      .values(leadsData.map((l) => stripConsentForImport(leadInsertRow(l))))
       .returning();
     // Batch-log activity for all created leads
     if (newLeads.length > 0) {

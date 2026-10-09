@@ -200,10 +200,15 @@ export const auditRepo = {
       // text become the default), and re-granting an already-consented lead
       // keeps the ORIGINAL date and source. This used to overwrite both on
       // every grant, with whatever string the client sent.
-      const { consentDate, consentSource } = stampConsentForUpdate(
+      const stamped = stampConsentForUpdate(
         { tcpaConsent: true, consentSource: consent.consentSource },
         DEFAULT_GRANT_SOURCE,
       );
+      const { consentDate, consentSource } = stamped;
+      if (!("tcpaConsent" in stamped) || !consentDate || !consentSource) {
+        // A list-level source (an import, a vendor list) never grants consent.
+        throw new Error(`"${consent.consentSource}" is a list-level source; it cannot grant consent`);
+      }
       stamp = { consentDate: consentDate!, consentSource: consentSource! };
       updates.optOutDate = null;
       updates.optOutReason = null;

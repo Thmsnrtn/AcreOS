@@ -515,7 +515,10 @@ export function registerLeadRoutes(app: Express): void {
       // for `consentText` lives in client/src/lib/consentDisclosure.ts;
       // route handlers pass it through verbatim from req.body.
       const inputAny = input as any;
-      if (inputAny.tcpaConsent === true) {
+      // The PERSISTED row decides: a grant naming a list-level source is
+      // stamped as no grant at all (consentStamp.ts), and an evidence row for
+      // consent the lead does not have would be a fabricated grant.
+      if (inputAny.tcpaConsent === true && lead.tcpaConsent === true) {
         try {
           const { recordConsentGranted } = await import("./services/consentEvents");
           // The SAME source the lead row was stamped with (consentStamp.ts),

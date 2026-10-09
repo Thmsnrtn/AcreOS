@@ -25,7 +25,6 @@ export type ConsentSource =
   | "phone_ivr"
   | "written"
   | "sms_double_optin"
-  | "imported"
   | "inbound_stop"
   | "admin_manual";
 

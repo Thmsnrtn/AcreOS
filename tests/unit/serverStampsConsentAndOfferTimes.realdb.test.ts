@@ -125,8 +125,17 @@ describe.runIf(realDbAvailable)("server-stamped timestamps (real database)", () 
     const sneaky = await storage.updateLead(granted.id, { consentDate: new Date(OLD) } as any, ids.org);
     expect(new Date(sneaky.consentDate!).getTime()).toBe(new Date(granted.consentDate!).getTime());
 
-    const batch = await storage.createLeadsBatch([{ ...base, tcpaConsent: true, consentDate: new Date(OLD) } as any]);
-    expect(recent(batch[0].consentDate)).toBe(true);
-    expect(batch[0].consentSource).toBe("imported");
+    // The batch insert is the import path, and an import never grants
+    // consent (importsNeverGrantConsent.test.ts): a row claiming consent
+    // lands with none, no date and no source.
+    const batch = await storage.createLeadsBatch([{ ...base, tcpaConsent: true, consentDate: new Date(OLD), consentSource: "website" } as any]);
+    expect(batch[0].tcpaConsent).toBe(false);
+    expect(batch[0].consentDate).toBeNull();
+    expect(batch[0].consentSource).toBeNull();
+
+    // A client naming a list as the source of a grant gets no grant.
+    const named = await storage.createLead({ ...base, tcpaConsent: true, consentSource: "imported" } as any);
+    expect(named.tcpaConsent).toBe(false);
+    expect(named.consentDate).toBeNull();
   });
 });
