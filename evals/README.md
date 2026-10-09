@@ -25,30 +25,38 @@ npm run eval
 with overrides:
 
 ```sh
-npm run eval -- \
-  --prompts evals/golden-set.json \
-  --model claude-sonnet-4-6 \
-  --pax-prompt v3 \
-  --judge claude-haiku-4-5
+npm run eval -- --model served:free          # the model production's tier rule picks for Free
+npm run eval -- --model openai/gpt-4o        # any OpenRouter id (the vision route)
+npm run eval -- --estimate-cost              # the spend bound for one run, no calls
 ```
+
+The runner measures the SERVED path (`evals/servedPath.ts`): the system prompt
+Pax's chat composes (`composePaxSystemPrompt` over `PAX_EXECUTIVE_SYSTEM_PROMPT`,
+both imported from server code), sent over OpenRouter to the model
+`paxModelForTierAndUsage` picks for `served:<tier>` (or to an explicit id).
 
 Useful flags:
 
-- `--model` — model under test. Anthropic-native ids (`claude-sonnet-4-6`, `claude-opus-4-6`), OpenAI ids (`gpt-4o`), or OpenRouter ids (`anthropic/claude-sonnet-4-6`). The runner picks the right SDK based on which `*_API_KEY` env vars are set.
+- `--model` — `served:free|pro|scale` or an OpenRouter id (`openai/gpt-4o`). A bare
+  vendor name is refused: it is not a route customer Pax takes.
 - `--pax-prompt` — `v2` (legacy, no shape rule) or `v3` (default, with shape rule).
-- `--judge` — small/cheap model that scores the tone axis.
+- `--judge` — the OpenRouter model that scores the tone axis.
 - `--limit N` — only run the first N entries (smoke).
 - `--report-dir DIR` — where to write reports (default: `evals/reports`).
+- `--require-measured` — exit 2 instead of 0 when nothing could be measured.
 
 ## Required env
 
 | Var | Used for |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | Calling Claude models directly + tone judge |
-| `OPENAI_API_KEY` | Calling GPT models directly + tone judge |
-| `AI_INTEGRATIONS_OPENROUTER_API_KEY` | OpenRouter fallback for any model |
+| `AI_INTEGRATIONS_OPENROUTER_API_KEY` (or `OPENROUTER_API_KEY`) | the served route, and the judge |
 
-If **none** of those are set, the runner stubs the model call so the harness still exits 0 — useful for CI smoke and bootstrap. Stub responses still flow through shape and topic scoring.
+With **no** key the runner does not score. It writes `measured: false` with the
+reason, prints `NOT MEASURED`, and reports no number. (Until 2026-10-09 it stubbed
+every call and the judge, and CI printed 0.5555 on every PR as if it were a score.)
+
+Cost bound per measured 50-prompt run (repo rate table, replies at max_tokens):
+served:free ≈ $0.54, openai/gpt-4o ≈ $1.09, served:pro ≈ $1.40, served:scale ≈ $2.27.
 
 ## Output
 

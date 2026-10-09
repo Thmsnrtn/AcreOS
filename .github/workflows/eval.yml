@@ -29,16 +29,21 @@ permissions:
 jobs:
   eval:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    # Audit F-08-2: eval BOTH the default model (Sonnet) AND the model that
-    # actually serves the free trial + the most-common data_lookup_restate turn
-    # (Haiku, per shared/schema/solene-chat-config.ts + server/ai/paxModelTier.ts).
-    # An eval whose model differs from the served model gates nothing. Each
-    # matrix leg runs on its own isolated runner, so report dirs don't collide.
+    timeout-minutes: 20
+    # The SERVED model path (evals/servedPath.ts): the prompt Pax's chat
+    # composes, sent over OpenRouter to the model production's tier rule picks
+    # (served:free → the trial / Free tier) and to openai/gpt-4o (the vision
+    # route). Until 2026-10-09 this matrix named claude-sonnet-4-6 and
+    # claude-haiku-4-5 directly, ran with every model key empty, and printed a
+    # stubbed avgOverall of exactly 0.5555 on every PR. With no OpenRouter key
+    # the runner now reports NOT MEASURED and there is no score to compare.
+    # Cost bound per measured run (repo rate table, replies at max_tokens):
+    # served:free ≈ $0.54, openai/gpt-4o ≈ $1.09; doubled when the main
+    # baseline is measured too.
     strategy:
       fail-fast: false
       matrix:
-        model: ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001']
+        target: ['served:free', 'openai/gpt-4o']
     steps:
       - name: Checkout PR
         uses: actions/checkout@v7
@@ -57,50 +62,45 @@ jobs:
       - name: Run eval on PR head
         id: eval-pr
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AI_INTEGRATIONS_OPENROUTER_API_KEY: ${{ secrets.AI_INTEGRATIONS_OPENROUTER_API_KEY }}
         run: |
-          npm run eval -- --model ${{ matrix.model }} --report-dir evals/reports/pr
-          PR_SCORE=$(node -e "console.log(JSON.parse(require('fs').readFileSync('evals/reports/pr/latest.json','utf8')).totals.avgOverall.toFixed(4))")
-          echo "pr_score=$PR_SCORE" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout main into worktree
-        run: |
-          git fetch origin main --depth=1
-          git worktree add /tmp/main origin/main
+          npm run eval -- --model '${{ matrix.target }}' --report-dir evals/reports/pr
+          MEASURED=$(node -e "console.log(JSON.parse(require('fs').readFileSync('evals/reports/pr/latest.json','utf8')).measured === true)")
+          echo "measured=$MEASURED" >> "$GITHUB_OUTPUT"
+          if [ "$MEASURED" = "true" ]; then
+            PR_SCORE=$(node -e "console.log(JSON.parse(require('fs').readFileSync('evals/reports/pr/latest.json','utf8')).totals.avgOverall.toFixed(4))")
+            echo "pr_score=$PR_SCORE" >> "$GITHUB_OUTPUT"
+          else
+            echo "### AI eval (${{ matrix.target }}): NOT MEASURED" >> "$GITHUB_STEP_SUMMARY"
+            node -e "console.log(JSON.parse(require('fs').readFileSync('evals/reports/pr/latest.json','utf8')).reason)" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Run eval on main baseline
         id: eval-main
+        if: steps.eval-pr.outputs.measured == 'true'
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AI_INTEGRATIONS_OPENROUTER_API_KEY: ${{ secrets.AI_INTEGRATIONS_OPENROUTER_API_KEY }}
         run: |
-          # Re-use same node_modules; copy main's evals/ over and run.
-          mkdir -p evals/reports/main
-          if [ -f /tmp/main/evals/run-eval.ts ]; then
-            cp -r /tmp/main/evals/* evals_main_tmp/ 2>/dev/null || true
-            mkdir -p evals_main_tmp
-            cp -r /tmp/main/evals/. evals_main_tmp/
-            npx tsx evals_main_tmp/run-eval.ts --model ${{ matrix.model }} --prompts evals_main_tmp/golden-set.json --report-dir evals/reports/main || true
+          git fetch origin main --depth=1
+          git worktree add /tmp/main origin/main
+          # Only a main that has the served-path runner can be compared.
+          if [ -f /tmp/main/evals/servedPath.ts ]; then
+            ( cd /tmp/main && ln -s "$GITHUB_WORKSPACE/node_modules" node_modules && npx tsx evals/run-eval.ts --model '${{ matrix.target }}' --report-dir "$GITHUB_WORKSPACE/evals/reports/main" ) || true
           fi
-          if [ -f evals/reports/main/latest.json ]; then
+          if [ -f evals/reports/main/latest.json ] && node -e "process.exit(JSON.parse(require('fs').readFileSync('evals/reports/main/latest.json','utf8')).measured === true ? 0 : 1)"; then
             MAIN_SCORE=$(node -e "console.log(JSON.parse(require('fs').readFileSync('evals/reports/main/latest.json','utf8')).totals.avgOverall.toFixed(4))")
-          else
-            MAIN_SCORE=$(node -e "console.log(JSON.parse(require('fs').readFileSync('evals/reports/pr/latest.json','utf8')).totals.avgOverall.toFixed(4))")
+            echo "main_score=$MAIN_SCORE" >> "$GITHUB_OUTPUT"
           fi
-          echo "main_score=$MAIN_SCORE" >> "$GITHUB_OUTPUT"
 
       - name: Compute regression
         id: regression
+        if: steps.eval-main.outputs.main_score != ''
         run: |
           PR=${{ steps.eval-pr.outputs.pr_score }}
           MAIN=${{ steps.eval-main.outputs.main_score }}
           DELTA=$(node -e "console.log(((${PR} - ${MAIN}) * 100).toFixed(2))")
-          THRESHOLD=-5
           echo "delta_pct=$DELTA" >> "$GITHUB_OUTPUT"
-          PASS=$(node -e "console.log(${DELTA} >= ${THRESHOLD} ? 'true' : 'false')")
+          PASS=$(node -e "console.log(${DELTA} >= -5 ? 'true' : 'false')")
           echo "pass=$PASS" >> "$GITHUB_OUTPUT"
 
       - name: Comment on PR
@@ -108,41 +108,43 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
+            const measured = '${{ steps.eval-pr.outputs.measured }}' === 'true';
             const pr = '${{ steps.eval-pr.outputs.pr_score }}';
             const main = '${{ steps.eval-main.outputs.main_score }}';
             const delta = '${{ steps.regression.outputs.delta_pct }}';
-            const pass = '${{ steps.regression.outputs.pass }}' === 'true';
-            const emoji = pass ? '✅' : '❌';
-            const verdict = pass
-              ? `Within the 5% regression budget.`
-              : `**Regression > 5% — blocking merge.**`;
-            const body = [
-              `### ${emoji} AI eval harness — model: \`${{ matrix.model }}\``,
-              ``,
-              `| metric | value |`,
-              `| --- | --- |`,
-              `| PR score | **${pr}** |`,
-              `| main baseline | ${main} |`,
-              `| delta | ${delta}% |`,
-              ``,
-              verdict,
-              ``,
-              `Full report uploaded as a workflow artifact (\`evals/reports/pr/latest.json\`).`,
-            ].join('\n');
+            const pass = '${{ steps.regression.outputs.pass }}';
+            const target = '${{ matrix.target }}';
+            const body = !measured
+              ? [
+                  `### ⚠️ AI eval — \`${target}\`: NOT MEASURED`,
+                  ``,
+                  `No OpenRouter key is available to this job, so the served model path was not called and there is no score.`,
+                  `This is not a pass. (Before 2026-10-09 this job printed a stubbed 0.5555 here.)`,
+                ].join('\n')
+              : [
+                  `### AI eval — \`${target}\` (served path)`,
+                  ``,
+                  `| metric | value |`,
+                  `| --- | --- |`,
+                  `| PR score | **${pr}** |`,
+                  `| main baseline | ${main || 'not measured (main has no served-path runner yet)'} |`,
+                  `| delta | ${delta ? delta + '%' : 'n/a'} |`,
+                  ``,
+                  pass === 'false' ? `**Regression > 5% — blocking merge.**` : (pass === 'true' ? `Within the 5% regression budget.` : `No baseline to compare against.`),
+                ].join('\n');
             const { owner, repo } = context.repo;
-            const issue_number = context.issue.number;
-            await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            await github.rest.issues.createComment({ owner, repo, issue_number: context.issue.number, body });
 
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: eval-reports-${{ matrix.model }}
+          name: eval-reports-${{ strategy.job-index }}
           path: evals/reports
           retention-days: 14
 
       - name: Fail on regression
-        if: steps.regression.outputs.pass != 'true'
+        if: steps.regression.outputs.pass == 'false'
         run: |
           echo "Eval regression > 5% — failing."
           exit 1

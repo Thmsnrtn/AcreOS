@@ -230,6 +230,19 @@ async function main() {
   };
   const result = evaluateGate(gateInput);
 
+  // A stubbed run measured nothing: say so, and print no number that could be
+  // read as a score (the eval job printed a stubbed 0.5555 on every PR until
+  // 2026-10-09). Tests opt back in with EVAL_GATE_ENFORCE_STUB=1.
+  if (judgeMode === "stub" && process.env.EVAL_GATE_ENFORCE_STUB !== "1") {
+    console.log(
+      "\n[eval-gate] NOT MEASURED — no ANTHROPIC_API_KEY in this environment, so no model was called and no score is reported. " +
+        "The LLM-judge threshold is not enforced. Set ANTHROPIC_API_KEY (CI org secret) to run the gate.",
+    );
+    if (process.env.GITHUB_ACTIONS) console.log("::warning title=AI eval gate NOT MEASURED::no ANTHROPIC_API_KEY — the gate did not run");
+    if (args.json) console.log(JSON.stringify({ judgeMode, measured: false }, null, 2));
+    process.exit(0);
+  }
+
   console.log(
     `\n[eval-gate] avgOverall=${result.avgOverall.toFixed(3)} ` +
       `(shape=${averages.shape.toFixed(3)} topics=${averages.topics.toFixed(3)} tone=${averages.tone.toFixed(3)}) ` +
