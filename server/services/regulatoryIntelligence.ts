@@ -23,6 +23,8 @@
  *   POST /api/regulatory/analyze               — AI analysis for a deal
  */
 
+import { contractForDeedSummary } from "@shared/regulatory/sellerFinancingRules";
+
 export type WaterRightsSystem = "prior_appropriation" | "riparian" | "hybrid";
 export type SellerFinancingRisk = "low" | "medium" | "high";
 
@@ -67,7 +69,6 @@ const STATE_PROFILES: StateRegulatoryProfile[] = [
     deedTypes: ["warranty", "special_warranty", "quitclaim"],
     todDeedAvailable: true,
     contractForDeedAllowed: true,
-    contractForDeedRestrictions: "Must record within 14 days; seller must provide annual statement",
     sellerFinancingRisk: "medium",
     doddFrankExemptions: ["natural_person_3_per_year", "inherited_property"],
     usuryCeiling: 18,
@@ -91,7 +92,6 @@ const STATE_PROFILES: StateRegulatoryProfile[] = [
     deedTypes: ["warranty", "special_warranty", "quitclaim"],
     todDeedAvailable: false,
     contractForDeedAllowed: true,
-    contractForDeedRestrictions: "Installment Land Contract Act applies; buyer has right to cure default",
     sellerFinancingRisk: "medium",
     doddFrankExemptions: ["natural_person_3_per_year"],
     usuryCeiling: 18,
@@ -115,7 +115,6 @@ const STATE_PROFILES: StateRegulatoryProfile[] = [
     deedTypes: ["warranty", "limited_warranty", "quitclaim", "security_deed"],
     todDeedAvailable: true,
     contractForDeedAllowed: true,
-    contractForDeedRestrictions: "Must use specific statutory form; immediate title transfer on default",
     sellerFinancingRisk: "low",
     doddFrankExemptions: ["natural_person_3_per_year", "owner_occupant"],
     usuryCeiling: 16,
@@ -139,7 +138,6 @@ const STATE_PROFILES: StateRegulatoryProfile[] = [
     deedTypes: ["general_warranty", "special_warranty", "quitclaim"],
     todDeedAvailable: false,
     contractForDeedAllowed: true,
-    contractForDeedRestrictions: "Installment land contract; buyer builds equity immediately",
     sellerFinancingRisk: "medium",
     doddFrankExemptions: ["natural_person_3_per_year"],
     usuryCeiling: 16,
@@ -278,7 +276,6 @@ const STATE_PROFILES: StateRegulatoryProfile[] = [
     deedTypes: ["warranty", "quitclaim"],
     todDeedAvailable: true,
     contractForDeedAllowed: true,
-    contractForDeedRestrictions: "Buyer has redemption rights",
     sellerFinancingRisk: "low",
     doddFrankExemptions: ["natural_person_3_per_year", "owner_occupant"],
     usuryCeiling: undefined,
@@ -460,7 +457,14 @@ export const regulatoryIntelligenceService = {
    * Get full profile for a specific state.
    */
   getStateProfile(code: string): StateRegulatoryProfile | null {
-    return STATE_PROFILES.find(p => p.code.toUpperCase() === code.toUpperCase()) ?? null;
+    const p = STATE_PROFILES.find(p => p.code.toUpperCase() === code.toUpperCase());
+    if (!p) return null;
+    // Contract-for-deed rules come ONLY from the cited checker
+    // (shared/regulatory/sellerFinancingRules.ts). The hand-written lines
+    // that used to sit in each profile were uncited, and Texas's said
+    // "record within 14 days" where the statute says 30 (Tex. Prop. Code
+    // § 5.076). An uncovered state says "not yet covered".
+    return { ...p, contractForDeedRestrictions: contractForDeedSummary(p.code) };
   },
 
   /**

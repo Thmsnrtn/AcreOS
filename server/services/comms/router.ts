@@ -15,6 +15,7 @@
  * working-capital constraint means every fractional cent matters once
  * we're at scale, and the router is where that math gets applied.
  */
+import { assertCallVoiceAllowed, type CallVoice } from "./aiVoiceConsent";
 import type { Request } from "express";
 import { logger } from "../../utils/logger";
 import { getSetting } from "../founderSettings";
@@ -49,6 +50,12 @@ export interface SendSmsResult {
 
 export interface InitiateCallOpts {
   to: string;
+  /**
+   * Who speaks on the call. REQUIRED: an "artificial" voice (AI-generated or
+   * prerecorded) is refused at initiateCall unless the org holds prior express
+   * written consent for this number (aiVoiceConsent.ts).
+   */
+  voice: CallVoice;
   from?: string;
   organizationId?: number;
   twimlUrl?: string;
@@ -225,6 +232,9 @@ export class CommsRouter {
    * route(), but for voice.
    */
   async initiateCall(opts: InitiateCallOpts & { preferredProvider?: CommsProviderName }): Promise<InitiateCallResult & { provider: CommsProviderName }> {
+    // THE call-placing chokepoint: no provider is reached until the declared
+    // voice is allowed (an AI voice needs prior express written consent).
+    await assertCallVoiceAllowed({ voice: opts.voice, to: opts.to, organizationId: opts.organizationId });
     const enabled = opts.preferredProvider
       ? [opts.preferredProvider]
       : await getEnabledProviders();

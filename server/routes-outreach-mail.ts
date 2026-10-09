@@ -16,6 +16,8 @@
  * contract; the worker reads it.
  */
 
+import { assessHeirsProperty, HEIRS_PROPERTY_WARNING, type HeirsAssessment } from "@shared/regulatory/heirsProperty";
+import { checkOutreachTemplate, refusesSend, type OutreachFinding } from "@shared/regulatory/ethicalOutreach";
 import { limitsTierFor } from "@shared/billing/tier-limits";
 import type { Express, Response } from "express";
 import { createHash, randomUUID } from "node:crypto";
@@ -170,6 +172,8 @@ interface Recipient {
   state: string;
   zip: string;
   lastContactedAt: Date | null;
+  /** Heirs' property / partial-interest markers on the lead's record. */
+  heirs: HeirsAssessment;
 }
 
 /**
@@ -298,6 +302,7 @@ async function resolveAudience(
       state: leads.state,
       zip: leads.zip,
       lastContactedAt: leads.lastContactedAt,
+      notes: leads.notes,
     })
     .from(leads)
     .where(and(...conditions))
@@ -320,6 +325,7 @@ async function resolveAudience(
     state: r.state!,
     zip: r.zip!,
     lastContactedAt: r.lastContactedAt,
+    heirs: assessHeirsProperty({ names: [r.firstName, r.lastName, `${r.firstName ?? ""} ${r.lastName ?? ""}`], text: [r.notes] }),
   }));
 }
 
@@ -373,6 +379,16 @@ interface QuotePayload {
   alternatives: ProviderQuote[];
   recentlyMailedCount: number;
   recentlyMailedFraction: number;
+  /**
+   * Recipients whose record shows heirs' property or a partial / undivided
+   * interest (shared/regulatory/heirsProperty.ts) — warned before the send,
+   * never removed silently.
+   */
+  heirsPropertyCount: number;
+  heirsPropertyLeadIds: number[];
+  heirsPropertyWarning: string | null;
+  /** Findings of the ethical-outreach check (refuse findings block the queue). */
+  outreachCheck: OutreachFinding[];
 }
 
 async function buildQuote(
@@ -392,8 +408,18 @@ async function buildQuote(
   const recentlyMailedFraction = recipients.length > 0 ? recentlyMailedCount / recipients.length : 0;
 
   const digest = audienceDigest(recipients, pieceType, copy);
+  const heirsFlagged = recipients.filter((r) => r.heirs.flagged);
+  const heirs = {
+    // The ethical-outreach check on this copy, to this audience (an estate or
+    // heir among the recipients asks for probate care).
+    outreachCheck: checkOutreachTemplate({ text: copy ?? "", audience: { probate: heirsFlagged.length > 0 } }),
+    heirsPropertyCount: heirsFlagged.length,
+    heirsPropertyLeadIds: heirsFlagged.slice(0, 50).map((r) => r.leadId),
+    heirsPropertyWarning: heirsFlagged.length > 0 ? HEIRS_PROPERTY_WARNING : null,
+  };
   if (pieces.length === 0) {
     return {
+      ...heirs,
       audienceDigest: digest,
       pieceCount: 0,
       perPieceCents: 0,
@@ -464,6 +490,7 @@ async function buildQuote(
     alternatives: viable.filter((q) => q.provider !== provider),
     recentlyMailedCount,
     recentlyMailedFraction,
+    ...heirs,
   };
 }
 
@@ -568,6 +595,20 @@ export function registerOutreachMailRoutes(app: Express): void {
       const operationKey = typeof rawKey === "string" ? rawKey.trim() : "";
       if (!operationKey || operationKey.length > 200) {
         return Errors.badRequest(res, "An Idempotency-Key header identifying this send is required");
+      }
+
+      // The ethical-outreach check (shared/regulatory/ethicalOutreach.ts):
+      // deceptive copy — an official-notice look, a guarantee, a claimed
+      // conversation, a manufactured deadline — is refused before anything is
+      // debited or queued. Offer-basis and probate-care findings are warnings
+      // the quote already showed.
+      const outreachFindings = checkOutreachTemplate({ text: copy ?? "" });
+      if (refusesSend(outreachFindings)) {
+        return Errors.badRequest(
+          res,
+          `This copy can't be mailed: ${outreachFindings.filter((f) => f.severity === "refuse").map((f) => `"${f.match}" ${f.why}`).join("; ")}.`,
+          { outreachFindings },
+        );
       }
 
       try {

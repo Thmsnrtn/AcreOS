@@ -43,6 +43,12 @@ export interface QuoteResponse {
   alternatives: ProviderQuoteAlt[];
   recentlyMailedCount: number;
   recentlyMailedFraction: number;
+  /** Recipients whose record shows heirs' property / a partial interest (warned, never removed). */
+  heirsPropertyCount: number;
+  heirsPropertyLeadIds: number[];
+  heirsPropertyWarning: string | null;
+  /** Ethical-outreach findings on the copy: "refuse" ones block the send. */
+  outreachCheck: Array<{ rule: string; severity: "refuse" | "warn"; match: string; why: string }>;
 }
 
 export interface QueueResponse {

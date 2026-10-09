@@ -6,12 +6,15 @@
  * GET  /api/regulatory/alerts              — active alerts (optional ?state=TX)
  * GET  /api/regulatory/checklist/:state    — due diligence checklist
  * POST /api/regulatory/assess              — risk assessment for a deal
+ * POST /api/regulatory/contract-for-deed   — cited contract-for-deed rules for a deal
  */
 
 import { Router } from "express";
 import { isAuthenticated } from "./auth";
 import { regulatoryIntelligenceService } from "./services/regulatoryIntelligence";
-import { sendError } from "./utils/errors";
+import { sendError, Errors } from "./utils/errors";
+import { z } from "zod";
+import { checkContractForDeed } from "@shared/regulatory/sellerFinancingRules";
 
 const router = Router();
 
@@ -51,6 +54,25 @@ router.post("/assess", isAuthenticated, (req, res) => {
     coastal,
   });
   res.json(result);
+});
+
+// Contract-for-deed rules: cited statutes only; an uncovered state says so.
+const contractForDeedSchema = z.object({
+  state: z.string().trim().length(2),
+  purchaserResidence: z.boolean().optional(),
+  lotAcres: z.number().nonnegative().optional(),
+  deedDeliveryWithinDays: z.number().int().nonnegative().optional(),
+  sellerOwnsFreeAndClear: z.boolean().optional(),
+  percentPaid: z.number().min(0).max(100).optional(),
+  monthlyPaymentsMade: z.number().int().nonnegative().optional(),
+  yearsSinceFirstPayment: z.number().nonnegative().optional(),
+  recorded: z.boolean().optional(),
+  investorSeller: z.boolean().optional(),
+});
+router.post("/contract-for-deed", isAuthenticated, (req, res) => {
+  const parsed = contractForDeedSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return Errors.validationFailed(res, parsed.error.issues);
+  res.json(checkContractForDeed(parsed.data));
 });
 
 export default router;

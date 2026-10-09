@@ -651,6 +651,42 @@ export default function ComposeTab() {
                     </div>
                   </div>
                 )}
+                {quote.data.heirsPropertyCount > 0 && quote.data.heirsPropertyWarning && (
+                  <div
+                    className="rounded-md border border-acr-warn/40 bg-acr-warn/10 p-3 text-sm flex gap-2"
+                    role="alert"
+                    data-testid="heirs-property-warn"
+                  >
+                    <AlertTriangle className="w-4 h-4 text-acr-warn shrink-0 mt-0.5" aria-hidden="true" />
+                    <div>
+                      <p className="font-medium">
+                        {quote.data.heirsPropertyCount} of {quote.data.pieceCount} may be heirs&apos; property or a partial interest
+                      </p>
+                      <p className="text-xs text-muted-foreground">{quote.data.heirsPropertyWarning}</p>
+                    </div>
+                  </div>
+                )}
+                {(quote.data.outreachCheck ?? []).length > 0 && (
+                  <div
+                    className="rounded-md border border-acr-warn/40 bg-acr-warn/10 p-3 text-sm flex gap-2"
+                    role="alert"
+                    data-testid="outreach-check-warn"
+                  >
+                    <AlertTriangle className="w-4 h-4 text-acr-warn shrink-0 mt-0.5" aria-hidden="true" />
+                    <div>
+                      <p className="font-medium">Before this goes out</p>
+                      <ul className="text-xs text-muted-foreground list-disc pl-4">
+                        {quote.data.outreachCheck.map((f, i) => (
+                          <li key={i}>
+                            {f.severity === "refuse" ? "Can't send: " : ""}
+                            {f.match ? `"${f.match}" ` : ""}
+                            {f.why}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
               </>
             ) : null}
           </CardContent>

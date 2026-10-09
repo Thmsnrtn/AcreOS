@@ -5,6 +5,7 @@
  */
 import type { Lead } from "@shared/schema";
 import { canSendViaChannel, hasCompleteMailingAddress } from "./tcpaCompliance";
+import { assessHeirsProperty, type HeirsAssessment } from "@shared/regulatory/heirsProperty";
 
 // ── Lead reachability ────────────────────────────────────────────────────────
 
@@ -16,13 +17,15 @@ export interface LeadReachability {
   canMail: LeadChannelVerdict;
   /** Channels usable now, in plain words; empty when none. */
   usableNow: string[];
+  /** Heirs' property / partial-interest markers on the record (a warning, never a block). */
+  heirsProperty: HeirsAssessment;
   summary: string;
 }
 
 type ReachabilityLead = Pick<
   Lead,
   "tcpaConsent" | "doNotContact" | "optOutDate" | "phone" | "email" | "address" | "city" | "state" | "zip"
->;
+> & Partial<Pick<Lead, "firstName" | "lastName" | "notes">>;
 
 function verdict(
   gate: { allowed: boolean; reason?: string },
@@ -60,16 +63,19 @@ export function leadReachabilityForPax(lead: ReachabilityLead): LeadReachability
     canEmail.usable ? "email" : null,
     canMail.usable ? "mail" : null,
   ].filter((c): c is string => c !== null);
+  const heirsProperty = assessHeirsProperty({ names: [lead.firstName, lead.lastName, `${lead.firstName ?? ""} ${lead.lastName ?? ""}`], text: [lead.notes] });
+  const base =
+    usableNow.length > 0
+      ? `Reachable now by: ${usableNow.join(", ")}.`
+      : "Not reachable by any channel right now — see why on each channel.";
   return {
     canText,
     canCall,
     canEmail,
     canMail,
     usableNow,
-    summary:
-      usableNow.length > 0
-        ? `Reachable now by: ${usableNow.join(", ")}.`
-        : "Not reachable by any channel right now — see why on each channel.",
+    heirsProperty,
+    summary: heirsProperty.warning ? `${base} Before any outreach: ${heirsProperty.warning}` : base,
   };
 }
 
