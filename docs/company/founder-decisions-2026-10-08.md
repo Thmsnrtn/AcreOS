@@ -18,13 +18,14 @@ hard-stop requires. Only the founder can rescind it.
 - New Scale customers get **3,000** credits per month
   (`TIER_LIMITS.scale.creditPool`).
 - Orgs already on Scale keep **8,000 until their next renewal**:
-  - Migration 0266 records each of them once in `credit_pool_grandfathers`. A
-    `billing_one_time_backfills` row guards the backfill, because
-    `migrate.mjs` re-runs every statement on every deploy.
+  - Migration 0266 marks each of them once
+    (`organizations.credit_pool_grandfather`). A `founder_settings` marker row
+    guards the backfill, because `migrate.mjs` re-runs every statement on
+    every deploy. No table was added.
   - The Stripe webhook stamps the end date from the subscription's current
     period, and a renewal (`invoice.paid`, `subscription_cycle`) ends it.
   - Org ids are never hardcoded.
-- There is one resolver: `creditPool.resolveCreditPool()`. The debit gate, the
+- There is one rule: `creditPool.creditPoolFor()`. The debit gate, the
   pool snapshot, the mail-credits gauge and the "what costs what" card all
   read through it. The pricing page reads `TIER_LIMITS.scale.creditPool`.
 - Pinned by `tests/unit/founderDecisions20261008.test.ts`.

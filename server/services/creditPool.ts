@@ -166,46 +166,34 @@ export interface PoolDebitResult {
 }
 
 /**
- * Tiers that can carry a grandfathered pool (credit_pool_grandfathers). Only
- * Scale today: its pool moved 8,000 → 3,000 for new customers on 2026-10-08
- * and existing Scale orgs keep 8,000 until their next renewal. Listing the tier
- * keeps the extra read off every other tier's debit path; a future grandfather
- * on another tier adds it here (creditPoolGrandfather.test.ts pins the set).
+ * Tiers that can carry a grandfathered pool (organizations.credit_pool_grandfather).
+ * Only Scale today: its pool moved 8,000 → 3,000 for new customers on
+ * 2026-10-08 and orgs already on Scale keep 8,000 until their next renewal. A
+ * grandfather applies only while the org is still on such a tier.
  */
 export const GRANDFATHERED_POOL_TIERS: ReadonlySet<SubscriptionTier> = new Set<SubscriptionTier>(["scale"]);
 
 /**
- * THE monthly credit pool for an org — the tier's pool, or a grandfathered
- * pool while one is in force. Every pool read (debit gate, snapshot, the
- * customer-visible gauge and examples) goes through this.
+ * THE monthly credit pool rule — the tier's pool, or a grandfathered pool
+ * while one is in force (end unknown, or in the future). Pure. Every pool read
+ * (debit gate, snapshot, the customer-visible gauge and examples card) reaches
+ * it through fetchOrgTier().
  */
-export async function resolveCreditPool(
-  organizationId: number,
+export function creditPoolFor(
   tier: SubscriptionTier,
-): Promise<{ poolMonthly: number; grandfatheredUntil: Date | null; grandfathered: boolean }> {
+  grandfather: { pool: number | null | undefined; endsAt: Date | string | null | undefined } | null,
+  nowMs: number = clock.nowMs(),
+): { poolMonthly: number; grandfathered: boolean; grandfatheredUntil: Date | null } {
   const tierPool = TIER_LIMITS[tier].creditPool;
-  if (!GRANDFATHERED_POOL_TIERS.has(tier)) {
-    return { poolMonthly: tierPool, grandfatheredUntil: null, grandfathered: false };
+  const pool = Number(grandfather?.pool);
+  if (!GRANDFATHERED_POOL_TIERS.has(tier) || !grandfather || !Number.isFinite(pool) || pool <= 0) {
+    return { poolMonthly: tierPool, grandfathered: false, grandfatheredUntil: null };
   }
-  try {
-    const { creditPoolGrandfathers } = await import("@shared/schema");
-    const [row] = await db
-      .select({ creditPool: creditPoolGrandfathers.creditPool, endsAt: creditPoolGrandfathers.endsAt })
-      .from(creditPoolGrandfathers)
-      .where(eq(creditPoolGrandfathers.organizationId, organizationId))
-      .limit(1);
-    const pool = Number(row?.creditPool);
-    const endsAt = row?.endsAt ? new Date(row.endsAt) : null;
-    const inForce = row && Number.isFinite(pool) && pool > 0 && (endsAt === null || endsAt.getTime() > clock.nowMs());
-    if (inForce) return { poolMonthly: pool, grandfatheredUntil: endsAt, grandfathered: true };
-  } catch (err) {
-    // A grandfather read failure resolves to the tier's CURRENT pool — never a
-    // larger, unverified one.
-    logger.warn("[credit-pool] grandfather lookup failed — using the tier pool", {
-      metadata: { organizationId, detail: err instanceof Error ? err.message : String(err) },
-    });
+  const endsAt = grandfather.endsAt ? new Date(grandfather.endsAt) : null;
+  if (endsAt !== null && !(endsAt.getTime() > nowMs)) {
+    return { poolMonthly: tierPool, grandfathered: false, grandfatheredUntil: null };
   }
-  return { poolMonthly: tierPool, grandfatheredUntil: null, grandfathered: false };
+  return { poolMonthly: pool, grandfathered: true, grandfatheredUntil: endsAt };
 }
 
 async function fetchOrgTier(
@@ -215,6 +203,8 @@ async function fetchOrgTier(
     .select({
       subscriptionTier: organizations.subscriptionTier,
       isFounder: organizations.isFounder,
+      creditPoolGrandfather: organizations.creditPoolGrandfather,
+      creditPoolGrandfatherEndsAt: organizations.creditPoolGrandfatherEndsAt,
     })
     .from(organizations)
     .where(eq(organizations.id, organizationId))
@@ -227,7 +217,7 @@ async function fetchOrgTier(
   const isFounder = row.isFounder === true;
   const poolMonthly = isFounder
     ? TIER_LIMITS.enterprise.creditPool
-    : (await resolveCreditPool(organizationId, tier)).poolMonthly;
+    : creditPoolFor(tier, { pool: row.creditPoolGrandfather, endsAt: row.creditPoolGrandfatherEndsAt }).poolMonthly;
   return { tier, isFounder, poolMonthly };
 }
 

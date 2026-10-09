@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { db } from "../db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 // APPROVAL_REQUIRED_TOOLS is no longer consulted here — the Tier 1A approval
 // kernel enforces it INSIDE executeTool, so this call site cannot bypass it.
 import { executeTool, type ExecuteToolOptions, type ExecuteToolOrigin } from "./tools";
@@ -1362,7 +1362,9 @@ async function compactConversationIfNeeded(
     process.nextTick(() => {
       db.update(aiConversations)
         .set({ contextSummary: summary } as any)
-        .where(eq(aiConversations.id, conversationId))
+        // The org now reaches this function (it meters the summary call), so
+        // the write names it too — not only the verified-parent id.
+        .where(and(eq(aiConversations.id, conversationId), eq(aiConversations.organizationId, organizationId)))
         .catch(() => {});
     });
     logger.info(`[AI] Auto-compacted ${compactUpTo} messages for conversation ${conversationId}`);
@@ -1711,7 +1713,7 @@ export async function processChat(
   const addTurnUsage = (r: OpenAI.ChatCompletion) => {
     turnUsage.prompt += r.usage?.prompt_tokens ?? 0;
     turnUsage.completion += r.usage?.completion_tokens ?? 0;
-    turnUsage.cached += (r.usage as any)?.prompt_tokens_details?.cached_tokens ?? 0;
+    turnUsage.cached += r.usage?.prompt_tokens_details?.cached_tokens ?? 0;
     turnUsage.lastId = (r as { id?: string }).id ?? turnUsage.lastId;
   };
   try {
@@ -2285,7 +2287,7 @@ export async function* processChatStream(
       if (chunk.usage) {
         totalPromptTokens += chunk.usage.prompt_tokens || 0;
         totalCompletionTokens += chunk.usage.completion_tokens || 0;
-        totalCachedInputTokens += (chunk.usage as any).prompt_tokens_details?.cached_tokens || 0;
+        totalCachedInputTokens += chunk.usage.prompt_tokens_details?.cached_tokens || 0;
       }
     }
 

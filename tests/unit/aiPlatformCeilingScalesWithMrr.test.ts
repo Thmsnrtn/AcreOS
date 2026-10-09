@@ -56,7 +56,6 @@ import {
   assertWithinPlatformCostCeiling,
   getPlatformDailyCeiling,
   AiCostCeilingExceededError,
-  PLATFORM_DAILY_CEILING_FLOOR_CENTS,
   __resetPlatformCeilingMrrCacheForTests,
 } from "../../server/services/aiCostCeiling";
 
@@ -79,8 +78,9 @@ describe("platform AI ceiling scales with paying MRR (still fail-closed)", () =>
     process.env = { ...ORIG_ENV };
   });
 
-  it("the floor is $15/day", () => {
-    expect(PLATFORM_DAILY_CEILING_FLOOR_CENTS).toBe(1500);
+  it("the floor is $15/day (zero MRR)", async () => {
+    mrr(0);
+    expect(await getPlatformDailyCeiling()).toMatchObject({ cents: 1500, source: "floor" });
   });
 
   it("GROWS with MRR: 50 customers × $49 → 75% of a day's MRR", async () => {

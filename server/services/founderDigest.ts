@@ -157,7 +157,7 @@ async function generateDigestBullets(data: DigestData): Promise<{
         instruction: "Return JSON: { revenueBullet, systemHealthBullet, supportActivityBullet, topAtRiskBullet, recommendedActionBullet }. Each ≤25 words.",
       }),
     }],
-  }, { taskType: "founder_brief", orgId: null, origin: "background" });
+  }, { taskType: "founder_brief", origin: "background" });
 
   try {
     const parsed = JSON.parse(response.choices[0]?.message?.content ?? "{}");

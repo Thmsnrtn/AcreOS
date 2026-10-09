@@ -3615,7 +3615,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
             }],
             max_tokens: 150,
             temperature: 0.4,
-          }, { taskType: "founder_brief", orgId: null, origin: "customer" });
+          }, { taskType: "founder_brief", origin: "customer" });
           summary = completion.choices[0].message.content?.trim() || summary;
         }
       } catch { /* non-fatal — use plain summary */ }
@@ -3799,7 +3799,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         }],
         temperature: 0.5,
         max_tokens: 400,
-      }, { taskType: "founder_support_draft", orgId: null, origin: "customer" });
+      }, { taskType: "founder_support_draft", origin: "customer" });
 
       const draft = completion.choices[0].message.content?.trim() || "";
       res.json({ draft, ticketId });

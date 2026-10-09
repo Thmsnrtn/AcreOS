@@ -213,7 +213,7 @@ Make each variant distinctly different. These will run as A/B tests so they must
       response_format: { type: "json_object" },
       temperature: 0.82,
       max_tokens: 1200,
-    }, { taskType: "ad_copy_gen", orgId: null, origin: "background" });
+    }, { taskType: "ad_copy_gen", origin: "background" });
 
     const raw = JSON.parse(completion.choices[0].message.content || "{}");
     const list: any[] = raw.variants || (Array.isArray(raw) ? raw : []);

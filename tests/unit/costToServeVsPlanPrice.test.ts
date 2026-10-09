@@ -59,7 +59,6 @@ import {
   computeUnitEconomicsForOrg,
   maybeEmitCostToServeAlert,
   readUnitEconomicsRollup,
-  COST_TO_SERVE_ALERT_SHARE,
 } from "../../server/services/unitEconomics";
 import { monthlyRevenueCentsFor } from "@shared/billing/tier-pricing";
 
@@ -88,7 +87,7 @@ describe("costToServeOf — the canonical rule", () => {
     expect(c.usd).toBeCloseTo(14.7, 6);
     expect(c.shareOfPrice).toBeCloseTo(0.3, 4);
     expect(c.overAlertShare).toBe(false);
-    expect(c.alertShare).toBe(COST_TO_SERVE_ALERT_SHARE);
+    expect(c.alertShare).toBe(0.5); // the stated alert line: half the plan price
   });
   it("flags above the stated share, not at or below it", () => {
     expect(costToServeOf({ mrrUsd: 100, aiUsd: 50, poolProviderUsd: 0 }).overAlertShare).toBe(false);

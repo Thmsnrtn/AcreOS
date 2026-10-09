@@ -477,7 +477,7 @@ export async function checkPromptAgainstConstitution(
             content: buildUserMessage(agentRole, promptText),
           },
         ],
-      }, { taskType: "solene_precall_check", orgId: null, origin: "background" },
+      }, { taskType: "solene_precall_check", origin: "background" },
       { timeout: PRECALL_TIMEOUT_MS }
     );
 

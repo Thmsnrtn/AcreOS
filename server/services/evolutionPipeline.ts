@@ -343,7 +343,7 @@ Output ONLY the TypeScript code to add/replace, nothing else.`,
         },
       ],
       max_tokens: 4000,
-    }, { taskType: "evolution_proposal", orgId: null, origin: "background" });
+    }, { taskType: "evolution_proposal", origin: "background" });
     generatedCode = completion.choices[0]?.message?.content ?? "";
 
     // Rosy River cost ledger — write the LLM call into agent_llm_traces
@@ -480,7 +480,7 @@ Return JSON only (no prose, no fences):
         },
       ],
       max_tokens: 2000,
-    }, { taskType: "evolution_proposal", orgId: null, origin: "background" });
+    }, { taskType: "evolution_proposal", origin: "background" });
     rawContent = completion.choices[0]?.message?.content ?? "";
   } catch (err) {
     logError("stage2AdversarialReview — OpenRouter call failed", {
@@ -603,7 +603,7 @@ Return JSON only (no prose, no fences):
         },
       ],
       max_tokens: 1500,
-    }, { taskType: "evolution_proposal", orgId: null, origin: "background" });
+    }, { taskType: "evolution_proposal", origin: "background" });
     rawContent = completion.choices[0]?.message?.content ?? "";
   } catch (err) {
     logError("stage3IntentVerification — OpenRouter call failed", {

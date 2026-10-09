@@ -441,7 +441,7 @@ router.post("/stream", async (req: AuthenticatedRequest, res) => {
           messages: chatMessages,
           tools: allTools.length > 0 ? allTools : undefined,
           max_tokens: 2048,
-        }, { taskType: "founder_chat", orgId: null, origin: "customer" });
+        }, { taskType: "founder_chat", origin: "customer" });
       } catch (err: any) {
         lastError = String(err);
         logger.error("[founder-chat] LLM call failed", err);

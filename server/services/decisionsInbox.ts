@@ -393,7 +393,7 @@ export const decisionsInboxService = {
         },
       }],
       tool_choice: { type: "function", function: { name: "evaluate_feature_request" } },
-    }, { taskType: "decisions_inbox", orgId: null, origin: "background" });
+    }, { taskType: "decisions_inbox", origin: "background" });
 
     const toolCall = response.choices[0]?.message?.tool_calls?.[0];
     if (!toolCall || toolCall.type !== "function") return null;

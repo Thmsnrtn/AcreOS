@@ -151,7 +151,7 @@ export interface UnitEconomicsResult {
 // the plan price, a `customer_cost_to_serve_high` system alert is filed for
 // the founder. Nothing is throttled, re-priced or changed — the alert is a
 // prompt to look, and pricing stays a founder decision.
-export const COST_TO_SERVE_ALERT_SHARE = 0.5;
+const COST_TO_SERVE_ALERT_SHARE = 0.5;
 
 export interface CostToServe {
   /** Platform cost to serve this org over the window, USD. */

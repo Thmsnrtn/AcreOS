@@ -989,7 +989,7 @@ export async function runDispatch(
           // Read-only lanes (verify / self_audit_drift) additionally lose
           // every mutating tool (Horizon A5 — structural, not prompt-level).
           tools: getDispatchToolSchemas({ untrusted: true, readOnly }) as any,
-        }, { taskType: "solene_dispatch", orgId: null, origin: "background" },
+        }, { taskType: "solene_dispatch", origin: "background" },
         { timeout: remainingMs }
       );
 

@@ -163,7 +163,7 @@ Return a JSON array only — no prose, no markdown fences:
       model: ASSESSMENT_MODEL,
       messages: [{ role: "user", content: prompt }],
       max_tokens: 2000,
-    }, { taskType: "self_assessment", orgId: null, origin: "background" });
+    }, { taskType: "self_assessment", origin: "background" });
     rawContent = completion.choices[0]?.message?.content ?? "";
   } catch (err) {
     logError("analyzeToolFailures — OpenRouter call failed", {
@@ -386,7 +386,7 @@ Return a JSON array only — no prose, no markdown fences.`;
       model: ASSESSMENT_MODEL,
       messages: [{ role: "user", content: prompt }],
       max_tokens: 3000,
-    }, { taskType: "self_assessment", orgId: null, origin: "background" });
+    }, { taskType: "self_assessment", origin: "background" });
     rawContent = completion.choices[0]?.message?.content ?? "";
   } catch (err) {
     logError("watchTechnology — OpenRouter call failed", {

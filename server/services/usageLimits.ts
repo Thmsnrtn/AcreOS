@@ -144,7 +144,7 @@ async function getMonthlyAiRequestCount(organizationId: number): Promise<number>
  * 'customer' only: background work the org did not trigger, platform AI, and
  * BYOK calls ($0) never draw it down. Same month window as the turn count.
  */
-export async function getMonthlyCustomerAiSpendCents(organizationId: number): Promise<number> {
+async function getMonthlyCustomerAiSpendCents(organizationId: number): Promise<number> {
   const now = clock.now();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
   const [result] = await db

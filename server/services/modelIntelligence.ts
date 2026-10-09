@@ -263,7 +263,7 @@ async function runSingleBenchmark(
       ],
       max_tokens: 1024,
       temperature: 0.3,
-    }, { taskType: "model_benchmark", orgId: null, origin: "background" });
+    }, { taskType: "model_benchmark", origin: "background" });
 
     const latencyMs = clock.nowMs() - start;
     const content = response.choices[0]?.message?.content ?? "";
@@ -291,7 +291,7 @@ async function runSingleBenchmark(
         max_tokens: 64,
         temperature: 0,
         response_format: { type: "json_object" },
-      }, { taskType: "model_benchmark", orgId: null, origin: "background" });
+      }, { taskType: "model_benchmark", origin: "background" });
 
       const scoreText = scoringResponse.choices[0]?.message?.content ?? "{}";
       const parsed = JSON.parse(scoreText) as { score?: number };

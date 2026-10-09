@@ -196,7 +196,7 @@ Respond in JSON format:
       ],
       response_format: { type: "json_object" },
       max_tokens: 200,
-    }, { taskType: "intent_routing", orgId: null, origin: "customer" });
+    }, { taskType: "intent_routing", origin: "customer" });
 
     const content = response.choices[0]?.message?.content;
     if (content) {

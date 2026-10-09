@@ -125,7 +125,7 @@ export const AI_TURNS_BYOK_THRESHOLDS: Record<SubscriptionTier, number | null> =
  * 1.5¢ the credit weights carry for `ai_turn_avg` (credit-weights.ts) and the
  * threshold rationale above uses ("1,500 × 1.5¢ ≈ $22.50").
  */
-export const AI_TURN_COST_CENTS = 1.5;
+const AI_TURN_COST_CENTS = 1.5;
 
 /**
  * Founder decision 2026-10-08 — one shared monthly AI allowance per plan,
@@ -146,12 +146,12 @@ export const AI_TURN_COST_CENTS = 1.5;
  * customer off), BYOK calls (recorded at $0), and platform-internal / founder
  * AI (no org). See docs/company/founder-decisions-2026-10-08.md.
  */
-export function aiAllowanceCentsFor(turnThreshold: number | null): number | null {
+function aiAllowanceCentsFor(turnThreshold: number | null): number | null {
   if (turnThreshold === null) return null;
   return Math.floor(turnThreshold * AI_TURN_COST_CENTS);
 }
 
-export const AI_ALLOWANCE_CENTS: Record<SubscriptionTier, number | null> = {
+const AI_ALLOWANCE_CENTS: Record<SubscriptionTier, number | null> = {
   free: aiAllowanceCentsFor(AI_TURNS_BYOK_THRESHOLDS.free),
   starter: aiAllowanceCentsFor(AI_TURNS_BYOK_THRESHOLDS.starter),
   pro: aiAllowanceCentsFor(AI_TURNS_BYOK_THRESHOLDS.pro),
@@ -262,8 +262,8 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     seatPriceCents: 2500,
     // 8,000 → 3,000 for NEW Scale customers (founder decision 2026-10-08,
     // docs/company/founder-decisions-2026-10-08.md). Orgs already on Scale keep
-    // 8,000 until their next renewal via credit_pool_grandfathers — every pool
-    // read goes through creditPool.resolveCreditPool(), never this field alone.
+    // 8,000 until their next renewal via organizations.credit_pool_grandfather — every pool
+    // read goes through creditPool.creditPoolFor(), never this field alone.
     creditPool: 3000,
     aiTurnsByokThreshold: AI_TURNS_BYOK_THRESHOLDS.scale,
     aiAllowanceCents: AI_ALLOWANCE_CENTS.scale,

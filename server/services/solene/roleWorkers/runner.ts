@@ -242,7 +242,7 @@ export async function runRoleWorkerDispatch(
           system: req.system,
           messages: req.messages,
           ...(req.tools.length ? { tools: req.tools } : {}),
-        }, { taskType: "solene_dispatch", orgId: null, origin: "background" },
+        }, { taskType: "solene_dispatch", origin: "background" },
         { timeout: 120_000, maxRetries: 1 }
       );
     },

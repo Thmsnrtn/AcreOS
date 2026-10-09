@@ -163,7 +163,7 @@ async function writeBriefingWithAI(
       messages: [{ role: "user", content: prompt }],
       temperature: 0.4,
       max_tokens: 300,
-    }, { taskType: "founder_brief", orgId: null, origin: "background" });
+    }, { taskType: "founder_brief", origin: "background" });
     const text = resp.choices[0]?.message?.content?.trim() ?? "";
     // Split into paragraphs
     return text.split(/\n\n+/).filter(Boolean);

@@ -83,8 +83,8 @@ let lastKnownPlatformDailyCents: { cents: number; at: number } | null = null;
 // Still fail-CLOSED: an MRR read error yields the FLOOR (never a larger
 // number), and the 24h-spend read posture below is unchanged. An explicit
 // AI_PLATFORM_DAILY_CEILING_CENTS still wins over everything.
-export const PLATFORM_DAILY_CEILING_FLOOR_CENTS = 1500;
-export const PLATFORM_CEILING_MRR_SHARE_DEFAULT = 0.75;
+const PLATFORM_DAILY_CEILING_FLOOR_CENTS = 1500;
+const PLATFORM_CEILING_MRR_SHARE_DEFAULT = 0.75;
 const MRR_READ_TTL_MS = 10 * 60 * 1000;
 let mrrRead: { cents: number; at: number } | null = null;
 

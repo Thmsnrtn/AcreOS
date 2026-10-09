@@ -15,7 +15,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { TIER_LIMITS, AI_TURNS_BYOK_THRESHOLDS, AI_ALLOWANCE_CENTS, AI_TURN_COST_CENTS } from "@shared/billing/tier-limits";
+import { TIER_LIMITS, AI_TURNS_BYOK_THRESHOLDS } from "@shared/billing/tier-limits";
 import { CREDIT_PACK_CATALOG, creditsForPackPrice, CREDIT_PRICE_CENTS } from "@shared/billing/credit-packs";
 import { CREDIT_PACKS } from "@shared/schema";
 import { stripComments } from "../helpers/stripComments";
@@ -25,25 +25,16 @@ const read = (p: string) => fs.readFileSync(path.join(ROOT, p), "utf8");
 
 // ── A. Scale credit pool ─────────────────────────────────────────────────────
 
-const poolDb = vi.hoisted(() => ({
-  grandfatherRows: [] as unknown[],
-  throwOnGrandfather: false,
-  grandfatherReads: 0,
-}));
+const poolDb = vi.hoisted(() => ({ org: null as Record<string, unknown> | null }));
 
 vi.mock("../../server/db", async () => {
   const schema = await import("@shared/schema");
   const chain = (table: unknown) => {
+    const rows = () => (table === schema.organizations ? (poolDb.org ? [poolDb.org] : []) : [{ usedAbsCents: 0 }]);
     const c: any = {
       where: () => c,
-      limit: async () => {
-        if (table === schema.creditPoolGrandfathers) {
-          poolDb.grandfatherReads++;
-          if (poolDb.throwOnGrandfather) throw new Error("db down");
-          return poolDb.grandfatherRows;
-        }
-        return [];
-      },
+      limit: async () => rows(),
+      then: (ok: (r: unknown[]) => unknown, bad?: (e: unknown) => unknown) => Promise.resolve(rows()).then(ok, bad),
     };
     return c;
   };
@@ -54,13 +45,18 @@ vi.mock("../../server/db", async () => {
 });
 vi.mock("../../server/utils/logger", () => ({ logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 
-import { resolveCreditPool, GRANDFATHERED_POOL_TIERS } from "../../server/services/creditPool";
+import { poolSnapshot, creditPoolFor, GRANDFATHERED_POOL_TIERS } from "../../server/services/creditPool";
+
+const scaleOrg = (grandfather: number | null, endsAt: Date | null) => ({
+  subscriptionTier: "scale",
+  isFounder: false,
+  creditPoolGrandfather: grandfather,
+  creditPoolGrandfatherEndsAt: endsAt,
+});
 
 describe("A — Scale's credit pool: 3,000 for new customers, 8,000 grandfathered to renewal", () => {
   beforeEach(() => {
-    poolDb.grandfatherRows = [];
-    poolDb.throwOnGrandfather = false;
-    poolDb.grandfatherReads = 0;
+    poolDb.org = null;
   });
 
   it("the tier pool is 3,000 (other tiers unchanged)", () => {
@@ -69,39 +65,40 @@ describe("A — Scale's credit pool: 3,000 for new customers, 8,000 grandfathere
     expect(TIER_LIMITS.pro.creditPool).toBe(2500);
   });
 
-  it("a NEW Scale org (no grandfather row) gets 3,000", async () => {
-    expect((await resolveCreditPool(7, "scale")).poolMonthly).toBe(3000);
+  it("a NEW Scale org (not grandfathered) gets 3,000 — through the real pool read path", async () => {
+    poolDb.org = scaleOrg(null, null);
+    expect((await poolSnapshot(7)).poolMonthly).toBe(3000);
   });
 
   it("an existing Scale org keeps 8,000 while its grandfather is in force (end unknown or future)", async () => {
-    poolDb.grandfatherRows = [{ creditPool: 8000, endsAt: null }];
-    expect(await resolveCreditPool(7, "scale")).toMatchObject({ poolMonthly: 8000, grandfathered: true });
-    poolDb.grandfatherRows = [{ creditPool: 8000, endsAt: new Date(Date.now() + 86_400_000) }];
-    expect((await resolveCreditPool(7, "scale")).poolMonthly).toBe(8000);
+    poolDb.org = scaleOrg(8000, null);
+    expect((await poolSnapshot(7)).poolMonthly).toBe(8000);
+    poolDb.org = scaleOrg(8000, new Date(Date.now() + 86_400_000));
+    expect((await poolSnapshot(7)).poolMonthly).toBe(8000);
   });
 
   it("after the renewal the org is on 3,000", async () => {
-    poolDb.grandfatherRows = [{ creditPool: 8000, endsAt: new Date(Date.now() - 1000) }];
-    expect(await resolveCreditPool(7, "scale")).toMatchObject({ poolMonthly: 3000, grandfathered: false });
-  });
-
-  it("a grandfather read failure resolves to the CURRENT tier pool, never the larger one", async () => {
-    poolDb.throwOnGrandfather = true;
-    expect((await resolveCreditPool(7, "scale")).poolMonthly).toBe(3000);
+    poolDb.org = scaleOrg(8000, new Date(Date.now() - 1000));
+    expect((await poolSnapshot(7)).poolMonthly).toBe(3000);
   });
 
   it("a grandfather applies only while the org is on the grandfathered tier", async () => {
-    poolDb.grandfatherRows = [{ creditPool: 8000, endsAt: null }];
-    expect((await resolveCreditPool(7, "pro")).poolMonthly).toBe(2500);
-    expect(poolDb.grandfatherReads).toBe(0);
+    poolDb.org = { ...scaleOrg(8000, null), subscriptionTier: "pro" };
+    expect((await poolSnapshot(7)).poolMonthly).toBe(2500);
     expect([...GRANDFATHERED_POOL_TIERS]).toEqual(["scale"]);
   });
 
-  it("every pool read in creditPool.ts goes through the resolver (no direct TIER_LIMITS[tier].creditPool)", () => {
+  it("the pure rule: in force only with a positive pool and an end that is unknown or ahead", () => {
+    const now = Date.parse("2026-10-09T00:00:00Z");
+    expect(creditPoolFor("scale", { pool: 8000, endsAt: null }, now).poolMonthly).toBe(8000);
+    expect(creditPoolFor("scale", { pool: 8000, endsAt: new Date(now) }, now).poolMonthly).toBe(3000);
+    expect(creditPoolFor("scale", { pool: 0, endsAt: null }, now).poolMonthly).toBe(3000);
+    expect(creditPoolFor("scale", null, now).poolMonthly).toBe(3000);
+  });
+
+  it("every pool read in creditPool.ts goes through the rule (no other TIER_LIMITS[tier].creditPool)", () => {
     const code = stripComments(read("server/services/creditPool.ts"));
-    const direct = code.match(/TIER_LIMITS\[tier\]\.creditPool/g) ?? [];
-    // Exactly one: the resolver's own tier fallback.
-    expect(direct).toHaveLength(1);
+    expect(code.match(/TIER_LIMITS\[tier\]\.creditPool/g) ?? []).toHaveLength(1);
     expect(code).toMatch(/const tierPool = TIER_LIMITS\[tier\]\.creditPool;/);
   });
 
@@ -114,10 +111,11 @@ describe("A — Scale's credit pool: 3,000 for new customers, 8,000 grandfathere
   it("the backfill grandfathers EXISTING Scale orgs once — guarded against re-running on later deploys", () => {
     for (const f of ["migrations/0266_scale_credit_pool_grandfather.sql", "scripts/migrate.mjs"]) {
       const src = read(f);
-      const i = src.indexOf("scale_credit_pool_2026_10_08");
-      expect(i, `${f}: one-time guard key missing`).toBeGreaterThan(-1);
-      expect(src).toMatch(/IF NOT EXISTS \(SELECT 1 FROM "billing_one_time_backfills" WHERE "key" = 'scale_credit_pool_2026_10_08'\)/);
-      expect(src).toMatch(/SELECT "id", 8000, NULL/);
+      expect(src, `${f}: one-time guard`).toMatch(
+        /IF NOT EXISTS \(SELECT 1 FROM "founder_settings" WHERE "key" = 'billing\.backfill\.scale_credit_pool_2026_10_08'\) THEN/,
+      );
+      expect(src, `${f}: marker written in the same block`).toMatch(/INSERT INTO "founder_settings"[\s\S]*'billing\.backfill\.scale_credit_pool_2026_10_08'/);
+      expect(src).toMatch(/SET "credit_pool_grandfather" = 8000/);
     }
   });
 });
@@ -163,12 +161,13 @@ describe("B — top-up packs: same prices, 1.5¢ per credit, rounded down", () =
 
 describe("C — the allowance is each plan's turn threshold priced at 1.5¢", () => {
   it("derives starter 1,125¢ · pro 2,250¢ · scale 9,000¢ · free/enterprise none", () => {
-    expect(AI_TURN_COST_CENTS).toBe(1.5);
-    expect(AI_ALLOWANCE_CENTS).toEqual({ free: null, starter: 1125, pro: 2250, scale: 9000, enterprise: null });
+    const allowance = Object.fromEntries(
+      (["free", "starter", "pro", "scale", "enterprise"] as const).map((t) => [t, TIER_LIMITS[t].aiAllowanceCents]),
+    );
+    expect(allowance).toEqual({ free: null, starter: 1125, pro: 2250, scale: 9000, enterprise: null });
     for (const t of ["free", "starter", "pro", "scale", "enterprise"] as const) {
       const th = AI_TURNS_BYOK_THRESHOLDS[t];
-      expect(AI_ALLOWANCE_CENTS[t]).toBe(th === null ? null : Math.floor(th * 1.5));
-      expect(TIER_LIMITS[t].aiAllowanceCents).toBe(AI_ALLOWANCE_CENTS[t]);
+      expect(TIER_LIMITS[t].aiAllowanceCents).toBe(th === null ? null : Math.floor(th * 1.5));
     }
   });
 });

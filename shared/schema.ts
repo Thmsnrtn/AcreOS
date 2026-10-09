@@ -71,6 +71,14 @@ export const organizations = pgTable("organizations", {
   // /api/founder/executive-dashboard normalises yearly subscriptions to a
   // per-month figure using shared/billing/tier-pricing.ts.
   billingInterval: text("billing_interval").notNull().default("monthly"), // monthly | yearly
+  // Credit-pool grandfathering (founder decision 2026-10-08): Scale's included
+  // pool moved 8,000 → 3,000 for NEW customers; an org already on Scale keeps
+  // its previous pool until its next renewal. NULL pool = not grandfathered.
+  // NULL ends_at = "until the next renewal, date not yet known" — the Stripe
+  // webhook stamps the current period end, and a renewal ends it. Resolved
+  // ONLY through creditPool.creditPoolFor().
+  creditPoolGrandfather: integer("credit_pool_grandfather"),
+  creditPoolGrandfatherEndsAt: timestamp("credit_pool_grandfather_ends_at", { withTimezone: true }),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   creditBalance: numeric("credit_balance").default("0"), // prepaid credit balance in cents

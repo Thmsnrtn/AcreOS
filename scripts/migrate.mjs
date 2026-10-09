@@ -11244,30 +11244,23 @@ END $mig0252$`,
   // Scale orgs keep 8,000 until their next renewal (founder decision
   // 2026-10-08). The backfill is guarded to run ONCE — these statements re-run
   // on every deploy. Mirrors migrations/0266_scale_credit_pool_grandfather.sql.
-  `CREATE TABLE IF NOT EXISTS "credit_pool_grandfathers" (
-  "organization_id" integer PRIMARY KEY NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
-  "credit_pool" integer NOT NULL,
-  "ends_at" timestamp with time zone,
-  "reason" text NOT NULL,
-  "created_at" timestamp with time zone DEFAULT now() NOT NULL
-)`,
-  `CREATE TABLE IF NOT EXISTS "billing_one_time_backfills" (
-  "key" text PRIMARY KEY NOT NULL,
-  "ran_at" timestamp with time zone DEFAULT now() NOT NULL,
-  "rows_affected" integer
-)`,
+  `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "credit_pool_grandfather" integer`,
+  `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "credit_pool_grandfather_ends_at" timestamp with time zone`,
   `DO $$
 DECLARE n integer;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM "billing_one_time_backfills" WHERE "key" = 'scale_credit_pool_2026_10_08') THEN
-    INSERT INTO "credit_pool_grandfathers" ("organization_id", "credit_pool", "ends_at", "reason")
-    SELECT "id", 8000, NULL, 'founder decision 2026-10-08: Scale pool 8000 -> 3000 for new customers; existing Scale keeps 8000 until next renewal'
-    FROM "organizations"
-    WHERE lower("subscription_tier") = 'scale'
-      AND "subscription_status" IN ('active', 'trialing', 'past_due')
-    ON CONFLICT ("organization_id") DO NOTHING;
+  IF NOT EXISTS (SELECT 1 FROM "founder_settings" WHERE "key" = 'billing.backfill.scale_credit_pool_2026_10_08') THEN
+    UPDATE "organizations"
+       SET "credit_pool_grandfather" = 8000,
+           "credit_pool_grandfather_ends_at" = NULL
+     WHERE lower("subscription_tier") = 'scale'
+       AND "subscription_status" IN ('active', 'trialing', 'past_due')
+       AND "credit_pool_grandfather" IS NULL;
     GET DIAGNOSTICS n = ROW_COUNT;
-    INSERT INTO "billing_one_time_backfills" ("key", "rows_affected") VALUES ('scale_credit_pool_2026_10_08', n);
+    INSERT INTO "founder_settings" ("key", "value", "value_type", "description", "category")
+    VALUES ('billing.backfill.scale_credit_pool_2026_10_08', n::text, 'number',
+            'One-time marker: orgs grandfathered at the 8,000-credit Scale pool (founder decision 2026-10-08). Do not delete — its presence stops the backfill re-running.',
+            'billing_migration');
     RAISE NOTICE 'scale credit pool grandfather backfill: % org(s)', n;
   END IF;
 END $$`,

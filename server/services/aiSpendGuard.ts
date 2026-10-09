@@ -119,8 +119,13 @@ export type AiCallOrigin = "customer" | "background";
 export interface MeteredCallMeta {
   /** Feature tag: ai_telemetry_events.task_type and ai_call_log.feature. */
   taskType: string;
-  /** The org the spend is attributed to; null = platform-internal. */
-  orgId: number | null | undefined;
+  /**
+   * The org the spend is attributed to. OMIT it for platform-internal and
+   * founder calls — they are nobody's allowance and no org's ceiling. (Omit,
+   * don't write `orgId: null`: the org-scope lint reads an `orgId` token as
+   * org context, so a null literal would hide an unscoped unit from it.)
+   */
+  orgId?: number | null;
   /**
    * "customer": a person is waiting — a ceiling READ error fails open.
    * "background": no one is waiting — a ceiling read error fails closed.
@@ -132,7 +137,7 @@ export interface MeteredCallMeta {
 }
 
 /** Price-table id for a model as sent: direct-Anthropic ids get the catalogue prefix. */
-export function pricingModelId(model: string): string {
+function pricingModelId(model: string): string {
   return /^claude-/.test(model) ? `anthropic/${model}` : model;
 }
 
@@ -140,11 +145,8 @@ function isAnthropicModel(model: string): boolean {
   return model.startsWith("anthropic/") || model.startsWith("claude-");
 }
 
-/**
- * Enforce the cost ceilings for one metered call. Exported for callers that
- * stream (and so cannot use the wrapper) but must still be gated.
- */
-export async function assertMeteredCallAllowed(meta: MeteredCallMeta): Promise<void> {
+/** Enforce the cost ceilings for one metered call. */
+async function assertMeteredCallAllowed(meta: MeteredCallMeta): Promise<void> {
   if (meta.byok || process.env.AI_COST_CEILING_BYPASS === "1") return;
   try {
     await assertWithinAiCostCeiling(meta.orgId ?? null, meta.origin === "background" ? { failClosed: true } : undefined);
@@ -252,7 +254,9 @@ function recordMeteredCall(meta: MeteredCallMeta, o: MeteredOutcome, provider: s
 
 /** Minimal structural client — the OpenAI SDK, a BYOK client, or a test double. */
 export interface ChatCompletionsClient {
-  chat: { completions: { create: (body: any, options?: any) => Promise<any> } };
+  // `never` params: any real client's create() is assignable here (parameter
+  // contravariance), and the gateway hands it the caller's own request.
+  chat: { completions: { create: (body: never, options?: never) => Promise<unknown> } };
 }
 
 /**
@@ -282,7 +286,7 @@ export async function meteredChatCompletion(
   const body = withPromptCache(params);
   const started = clock.nowMs();
   try {
-    const response = (await client.chat.completions.create(body, options)) as OpenAI.ChatCompletion;
+    const response = (await client.chat.completions.create(body as never, options as never)) as OpenAI.ChatCompletion;
     const usage = response?.usage as (OpenAI.CompletionUsage & { cache_read_input_tokens?: number }) | undefined;
     recordMeteredCall(
       meta,
@@ -318,7 +322,7 @@ interface AnthropicUsageLike {
 
 /** Minimal structural Anthropic client. */
 export interface AnthropicMessagesClient<R> {
-  messages: { create: (body: any, options?: any) => Promise<R> };
+  messages: { create: (body: never, options?: never) => Promise<R> };
 }
 
 /**
@@ -354,7 +358,7 @@ export async function meteredAnthropicMessage<R extends { id?: string; usage?: A
       : params;
   const started = clock.nowMs();
   try {
-    const response = await client.messages.create(body, options);
+    const response = await client.messages.create(body as never, options as never);
     const u = (response?.usage ?? {}) as AnthropicUsageLike;
     const read = u.cache_read_input_tokens ?? 0;
     const written = u.cache_creation_input_tokens ?? 0;

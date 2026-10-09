@@ -1,6 +1,6 @@
 {
   "name": "openai-bypass",
-  "description": "Direct chat.completions.create() calls bypass the aiRouter cost chokepoint (per-org quota, platform daily cost ceiling, category budget, telemetry/COGS, Haiku kill-switch). Single-shot surfaces migrate to routeAITask (docs/openai-bypass-migration.md); tool-calling agents (vaService, supportAgent, executive) cannot until routeAITask gains tool support, so they use aiSpendGuard (ceiling + telemetry) and remain in this baseline. Audit F-16-1/F-08-4. Freezes the count and drives it DOWN toward the migration's 0-callsite goal; a NEW direct call now fails CI. aiRouter.ts is excluded (it IS the sanctioned caller).",
+  "description": "Direct chat.completions.create() calls bypass the aiRouter cost chokepoint (per-org quota, platform daily cost ceiling, category budget, telemetry/COGS, Haiku kill-switch). Single-shot surfaces migrate to routeAITask (docs/openai-bypass-migration.md); tool-calling agents (vaService, supportAgent, executive) cannot until routeAITask gains tool support, so they use aiSpendGuard (ceiling + telemetry) and remain in this baseline. Audit F-16-1/F-08-4. Freezes the count and drives it DOWN toward the migration's 0-callsite goal; a NEW direct call now fails CI. aiRouter.ts and aiSpendGuard.ts are excluded — together they ARE the metered gateway (routeAITask; meteredChatCompletion / meteredAnthropicMessage for raw and tool-calling calls).",
   "pattern": "chat\\.completions\\.create\\(",
   "globs": [
     "server/**/*.ts"
@@ -8,11 +8,12 @@
   "exclude": [
     "**/*.test.ts",
     "**/*.spec.ts",
-    "server/services/aiRouter.ts"
+    "server/services/aiRouter.ts",
+    "server/services/aiSpendGuard.ts"
   ],
-  "baselineCount": 82,
+  "baselineCount": 5,
   "direction": "down",
-  "lastBumpNote": "85 -> 83 on 2026-08-15: unit 116 deleted fifteen module orphans (~4,100 LOC) under the founder's 'Delete all 15' ruling — the 2 direct-OpenAI call sites lived in the deleted files. Not a typing improvement, a deletion: the cheapest way to satisfy any of these gates. Locked in per this ratchet's strictly-down rule. PRIOR NOTE — 89 -> 85 on 2026-08-13: the standalone negotiation copilot, deleted (BLOCKERS B12, founder ruling — the deletion ledger's KILL verdict, executed). services/negotiationCopilot.ts held four direct chat.completions.create() call sites, none of them routed through the aiRouter chokepoint, so a KILLed subsystem accounted for four of this ratchet's remaining bypasses — spend a per-org quota and a platform daily ceiling could not see, on a surface with no live caller. Locked in per this ratchet's strictly-down rule.",
+  "lastBumpNote": "82 -> 5 on 2026-10-09: the 2026-10 cost-efficiency work routed 76 direct chat.completions.create() call sites through the metered gateway — routeAITask, or aiSpendGuard.meteredChatCompletion for raw/tool-calling calls (ceiling before, telemetry after, prompt cache), which this text-pattern ratchet does not count. aiSpendGuard.ts (the gateway's own provider call) joins aiRouter.ts in the exclusions. The 5 that remain are the Pax main turn in server/ai/executive.ts (non-stream 402-retry helper, stream, stream retry, simulated-thinking stream; already gated by enforcePaxCostCeilings and self-metered). tests/unit/modelCallsGoThroughTheGateway.test.ts is the stricter sibling: a TypeScript parse of all of server/ over seven call shapes (references, element access, destructuring, Anthropic messages.create, embeddings/audio/images, raw HTTP to model endpoints) with an exact per-file baseline. PRIOR NOTE — 85 -> 83 on 2026-08-15: unit 116 deleted fifteen module orphans (~4,100 LOC) under the founder's 'Delete all 15' ruling — the 2 direct-OpenAI call sites lived in the deleted files. Not a typing improvement, a deletion: the cheapest way to satisfy any of these gates. Locked in per this ratchet's strictly-down rule. PRIOR NOTE — 89 -> 85 on 2026-08-13: the standalone negotiation copilot, deleted (BLOCKERS B12, founder ruling — the deletion ledger's KILL verdict, executed). services/negotiationCopilot.ts held four direct chat.completions.create() call sites, none of them routed through the aiRouter chokepoint, so a KILLed subsystem accounted for four of this ratchet's remaining bypasses — spend a per-org quota and a platform daily ceiling could not see, on a surface with no live caller. Locked in per this ratchet's strictly-down rule.",
   "minima": {
     "files": 1100
   },

@@ -123,7 +123,7 @@ Return strict JSON only.`;
     response_format: { type: "json_object" },
     temperature: 0.2, // Low temperature — we want consistent scoring
     max_tokens: 400,
-  }, { taskType: "cmo_script_gen", orgId: null, origin: "background" });
+  }, { taskType: "cmo_script_gen", origin: "background" });
 
   const usage = response.usage;
   const costCents = estimateOpenRouterCostCents(
