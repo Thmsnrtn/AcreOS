@@ -512,9 +512,20 @@ export class WebhookHandlers {
           metadata: {
             stripeSubscriptionId: subscriptionId,
             source: 'webhook:checkout.session.completed',
+            // Verification of the consumer's affirmative consent to the
+            // automatic-renewal terms (Cal. Bus. & Prof. Code § 17602(a)(6)):
+            // which terms version Checkout showed, and the session that
+            // carried the consent. Kept with the history row.
+            autoRenewalConsent: session.metadata?.auto_renewal_terms_version
+              ? { termsVersion: session.metadata.auto_renewal_terms_version, checkoutSessionId: session.id }
+              : null,
           } as any,
         });
       });
+
+      // The acknowledgment the consumer can keep (§ 17602(a)(3)): the terms,
+      // the cancellation policy and how to cancel. System lane. Never throws.
+      await WebhookHandlers.sendAutoRenewalAcknowledgment(session);
 
       logger.info(`[webhook] Subscription checkout completed: Org ${organizationId}, sub ${subscriptionId}`);
 
@@ -611,6 +622,30 @@ export class WebhookHandlers {
    * self-serve cancel path. Never throws — a reminder failure must not
    * poison webhook processing.
    */
+  static async sendAutoRenewalAcknowledgment(session: Stripe.Checkout.Session): Promise<void> {
+    try {
+      const m = session.metadata ?? {};
+      const to = session.customer_details?.email || session.customer_email || null;
+      if (!m.auto_renewal_terms_version || !to) return;
+      const priceCents = Number(m.auto_renewal_price_cents);
+      const interval = m.auto_renewal_interval === 'year' ? 'year' : m.auto_renewal_interval === 'month' ? 'month' : null;
+      if (!interval || !Number.isFinite(priceCents)) return;
+      const { autoRenewalTermsText, autoRenewalAcknowledgment } = await import('@shared/billing/autoRenewalTerms');
+      const termsText = autoRenewalTermsText({
+        planName: m.auto_renewal_plan || 'AcreOS',
+        priceCents,
+        interval,
+        currency: m.auto_renewal_currency || 'usd',
+        trialDays: Number(m.auto_renewal_trial_days) || 0,
+      });
+      const ack = autoRenewalAcknowledgment({ termsText, appUrl: process.env.APP_URL || 'https://acreos.io' });
+      const { emailService } = await import('./services/emailService');
+      await emailService.sendEmail({ to, subject: ack.subject, html: ack.html, text: ack.text, purpose: 'system' });
+    } catch (err) {
+      logger.warn('[webhook] auto-renewal acknowledgment not sent', err instanceof Error ? err : undefined);
+    }
+  }
+
   static async processUpcomingRenewal(invoice: Stripe.Invoice): Promise<void> {
     try {
       const customerId =

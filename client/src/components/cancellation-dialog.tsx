@@ -82,12 +82,22 @@ export function CancellationDialog({ open, onOpenChange, currentTier, onDowngrad
   const cancelMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/subscription/cancel", {
-        reason,
+        reason: reason || undefined,
         feedback: feedback || undefined,
       }, { idempotent: true });
-      return res.json() as Promise<{ portalUrl?: string }>;
+      return res.json() as Promise<{ portalUrl?: string; cancelled?: boolean; endsAt?: string | null }>;
     },
     onSuccess: (data) => {
+      if (data.cancelled) {
+        toast({
+          title: "Subscription cancelled",
+          description: data.endsAt
+            ? `It won't renew. You keep full access until ${new Date(data.endsAt).toLocaleDateString()}.`
+            : "It won't renew. You keep full access until the end of the period you paid for.",
+        });
+        handleClose();
+        return;
+      }
       if (data.portalUrl) {
         window.location.href = data.portalUrl;
       }
@@ -265,10 +275,9 @@ export function CancellationDialog({ open, onOpenChange, currentTier, onDowngrad
               <Button
                 type="button"
                 variant="destructive"
-                disabled={!reason}
                 onClick={() => setStep("confirm")}
               >
-                Continue to cancel
+                {reason ? "Continue to cancel" : "Skip and cancel"}
               </Button>
             </DialogFooter>
           </>

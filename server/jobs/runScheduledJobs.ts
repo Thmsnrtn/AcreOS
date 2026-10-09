@@ -1548,6 +1548,32 @@ function startTrialExpiryJob() {
   }, 5 * 60 * 1000);
 }
 
+// ── Yearly-plan renewal notice (daily 10am UTC) ─────────────────────────────
+// Cal. Bus. & Prof. Code § 17602(b)(2): 15–45 days before a yearly renewal.
+async function processAnnualRenewalNoticeJob() {
+  try {
+    const { runAnnualRenewalNotices } = await import("../services/annualRenewalNotice");
+    const r = await runAnnualRenewalNotices();
+    log(`Annual renewal notices: considered=${r.considered} sent=${r.sent} skipped=${r.skipped} failed=${r.failed}`, 'annual-renewal');
+    jobSupervisor.notifyResult('annual_renewal_notice', 24 * 60 * 60 * 1000, r.failed === 0, undefined, r.failed ? `${r.failed} notice(s) not sent` : undefined);
+  } catch (err) {
+    log(`Annual renewal notice error: ${err}`, 'annual-renewal');
+    jobSupervisor.notifyResult('annual_renewal_notice', 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startAnnualRenewalNoticeJob() {
+  log('Starting annual renewal notice job (daily at 10am UTC)', 'annual-renewal');
+  trackInterval(() => {
+    const now = clock.now();
+    if (now.getUTCHours() === 10 && now.getUTCMinutes() < 5) {
+      withJobLock('annual_renewal_notice', 23 * 60 * 60, processAnnualRenewalNoticeJob).catch(err => {
+        log(`Annual renewal notice lock error: ${err}`, 'annual-renewal');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
 // ── Pillar E / E4+E9: Customer health scoring (daily 7am UTC) ───────────────
 async function processCustomerHealthJob() {
   try {
@@ -5115,6 +5141,7 @@ export async function runScheduledJobs(): Promise<void> {
 
   // Pillar E / E1: trial expiry automation (daily 9am UTC)
   startTrialExpiryJob();
+  startAnnualRenewalNoticeJob();
 
   // Pillar E / E4+E9: customer health scoring (daily 7am UTC)
   startCustomerHealthJob();

@@ -62,7 +62,18 @@ export class StripeService {
     cancelUrl: string,
     metadata?: Record<string, string>,
     trialDays?: number,
-    options?: { couponId?: string; allowPromoCodes?: boolean; enableAch?: boolean; subscriptionMetadata?: Record<string, string> }
+    options?: {
+      couponId?: string;
+      allowPromoCodes?: boolean;
+      enableAch?: boolean;
+      subscriptionMetadata?: Record<string, string>;
+      /**
+       * The automatic-renewal terms (shared/billing/autoRenewalTerms.ts),
+       * shown beside the pay button — Cal. Bus. & Prof. Code § 17602(a)(1)
+       * wants them "in visual proximity" to the request for consent.
+       */
+      renewalTerms?: string;
+    }
   ) {
     const stripe = await getUncachableStripeClient();
     // Pillar 8.5 — yearly checkout adds ACH. ACH costs ~$0.80 vs Stripe's
@@ -89,6 +100,11 @@ export class StripeService {
       customer_update: { address: 'auto', name: 'auto' },
       tax_id_collection: { enabled: true },
     };
+
+    if (options?.renewalTerms) {
+      // Stripe caps custom text at 1,200 characters.
+      sessionConfig.custom_text = { submit: { message: options.renewalTerms.slice(0, 1200) } };
+    }
 
     // Add trial period if specified (for first-time subscribers only)
     if (trialDays && trialDays > 0) {
@@ -237,6 +253,20 @@ export class StripeService {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Self-serve cancellation (Cal. Bus. & Prof. Code § 17602(d)(1): online, at
+   * will, immediately): the subscription stops renewing and ends at the close
+   * of the paid period. Idempotent per subscription.
+   */
+  async cancelAtPeriodEnd(subscriptionId: string) {
+    const stripe = await getUncachableStripeClient();
+    return await stripe.subscriptions.update(
+      subscriptionId,
+      { cancel_at_period_end: true },
+      { idempotencyKey: idempotencyKey('cancel_at_period_end', subscriptionId) },
+    );
   }
 
   async getCustomerSubscriptions(customerId: string) {

@@ -291,6 +291,8 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "multi_week_planner", intervalMs: WEEK, critical: false },
   { name: "personality_drift", intervalMs: WEEK, critical: false },
   { name: "trial_engine", intervalMs: DAY, critical: true },
+  // Cal. Bus. & Prof. Code § 17602(b)(2) yearly-renewal notice; daily 10:00 UTC.
+  { name: "annual_renewal_notice", intervalMs: DAY, critical: true },
   { name: "customer_health", intervalMs: DAY, critical: true },
   { name: "onboarding_scheduler", intervalMs: DAY, critical: true },
   // Wall-clock daily 03:30 UTC. cron not yet consumed.

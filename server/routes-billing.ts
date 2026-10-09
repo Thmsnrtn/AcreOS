@@ -1,4 +1,5 @@
 import type { Express, Response } from "express";
+import { autoRenewalTermsText, AUTO_RENEWAL_TERMS_VERSION } from "@shared/billing/autoRenewalTerms";
 import express from "express";
 import { getOrganization, getClerkAuth, type AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
@@ -794,7 +795,8 @@ export function registerBillingRoutes(app: Express): void {
       
       // Look up active promo for this price (match by tier name in Stripe product metadata)
       // and detect yearly billing to opt the session into ACH (Pillar 8.5).
-      let checkoutOptions: { couponId?: string; allowPromoCodes?: boolean; enableAch?: boolean } = {};
+      let checkoutOptions: { couponId?: string; allowPromoCodes?: boolean; enableAch?: boolean; renewalTerms?: string } = {};
+      let renewalFacts: { planName: string; priceCents: number; interval: "year" | "month"; currency: string } | null = null;
       try {
         const price = await stripeService.getPrice(priceId);
         const tierFromMeta = (price?.metadata?.tier || price?.metadata?.plan) as string | undefined;
@@ -813,6 +815,17 @@ export function registerBillingRoutes(app: Express): void {
         if (recurringInterval === 'year') {
           checkoutOptions.enableAch = true;
         }
+        // The automatic-renewal terms beside the pay button (Cal. Bus. &
+        // Prof. Code § 17602(a)(1)), from the price being bought.
+        if ((recurringInterval === 'year' || recurringInterval === 'month') && typeof price?.unit_amount === 'number') {
+          renewalFacts = {
+            planName: (tierFromMeta ? tierFromMeta.charAt(0).toUpperCase() + tierFromMeta.slice(1) : "AcreOS"),
+            priceCents: price.unit_amount,
+            interval: recurringInterval,
+            currency: price.currency ?? "usd",
+          };
+          checkoutOptions.renewalTerms = autoRenewalTermsText({ ...renewalFacts, trialDays });
+        }
       } catch {
         // Non-fatal: proceed without promo
       }
@@ -822,7 +835,20 @@ export function registerBillingRoutes(app: Express): void {
         priceId,
         `${req.protocol}://${req.get('host')}/settings?subscription=success`,
         `${req.protocol}://${req.get('host')}/settings?subscription=cancelled`,
-        { organizationId: String(org.id) },
+        {
+          organizationId: String(org.id),
+          // Consent verification (§ 17602(a)(6)): which terms were shown.
+          ...(checkoutOptions.renewalTerms && renewalFacts
+            ? {
+                auto_renewal_terms_version: AUTO_RENEWAL_TERMS_VERSION,
+                auto_renewal_plan: renewalFacts.planName,
+                auto_renewal_price_cents: String(renewalFacts.priceCents),
+                auto_renewal_interval: renewalFacts.interval,
+                auto_renewal_currency: renewalFacts.currency,
+                auto_renewal_trial_days: String(trialDays ?? 0),
+              }
+            : {}),
+        },
         trialDays,
         checkoutOptions
       );
@@ -1193,10 +1219,12 @@ export function registerBillingRoutes(app: Express): void {
       const userId = req.user?.id;
 
       const schema = z.object({
-        reason: z.enum(["too_expensive", "not_using", "missing_features", "switching_competitor", "other"]),
+        // Optional (Cal. Bus. & Prof. Code § 17602(d)(1)): a survey may be
+        // offered, never required to cancel.
+        reason: z.enum(["too_expensive", "not_using", "missing_features", "switching_competitor", "other"]).optional(),
         feedback: z.string().optional(),
       });
-      const parsed = schema.safeParse(req.body);
+      const parsed = schema.safeParse(req.body ?? {});
       if (!parsed.success) {
         return Errors.validationFailed(res, parsed.error.issues);
       }
@@ -1208,15 +1236,17 @@ export function registerBillingRoutes(app: Express): void {
       // accepted_pause = true. Hardcoding offered_pause = true here inflated
       // the founder save-rate denominator with pause offers that never
       // happened; record it truthfully as false for this path.
-      await db.insert(cancellationSurveys).values({
-        organizationId: org.id,
-        userId,
-        reason: parsed.data.reason,
-        feedback: parsed.data.feedback,
-        previousTier: org.subscriptionTier,
-        offeredPause: false,
-        acceptedPause: false,
-      });
+      if (parsed.data.reason) {
+        await db.insert(cancellationSurveys).values({
+          organizationId: org.id,
+          userId,
+          reason: parsed.data.reason,
+          feedback: parsed.data.feedback,
+          previousTier: org.subscriptionTier,
+          offeredPause: false,
+          acceptedPause: false,
+        });
+      }
 
       // Renoir audit-log: record the user-initiated cancel intent. The
       // Stripe webhook will follow up with the confirmed cancellation event;
@@ -1264,7 +1294,18 @@ export function registerBillingRoutes(app: Express): void {
         },
       });
 
-      // If they have a Stripe subscription, redirect to portal for actual cancellation
+      // Cancel HERE, at will and immediately (Cal. Bus. & Prof. Code
+      // § 17602(d)(1)): the subscription stops renewing and ends at the close
+      // of the paid period. This used to hand the customer to the Stripe
+      // portal to cancel a second time — a further step between the click
+      // and the cancellation. The portal remains only for a customer with no
+      // subscription id on file.
+      if (org.stripeSubscriptionId) {
+        const { stripeService } = await import("./stripeService");
+        const sub: any = await stripeService.cancelAtPeriodEnd(org.stripeSubscriptionId);
+        const endsAtSec = sub?.current_period_end ?? sub?.items?.data?.[0]?.current_period_end ?? null;
+        return res.json({ cancelled: true, endsAt: endsAtSec ? new Date(endsAtSec * 1000).toISOString() : null });
+      }
       if (org.stripeCustomerId) {
         const { stripeService } = await import("./stripeService");
         const session = await stripeService.createCustomerPortalSession(
