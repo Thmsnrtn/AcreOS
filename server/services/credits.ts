@@ -210,13 +210,29 @@ export class CreditService {
   }
 
   async hasEnoughCredits(organizationId: number, requiredCents: number): Promise<boolean> {
-    if (await this.isFounder(organizationId)) return true;
+    return (await this.evaluateCredits(organizationId, requiredCents)).allowed;
+  }
+
+  /**
+   * The credit decision WITH its reason — `hasEnoughCredits` is this, reduced
+   * to the boolean. A refusal has to say what unlocks it. The org's own
+   * balance pays first in every lane, so buying credits always unblocks a
+   * refusal; `lane: "trial"` means the org is inside its trial and has also
+   * used the trial's free allowance (so the copy can say so), `"balance"` that
+   * it is past (or never had) a trial. Callers that build refusal copy read
+   * `lane` from here instead of re-deriving the rule.
+   */
+  async evaluateCredits(
+    organizationId: number,
+    requiredCents: number,
+  ): Promise<{ allowed: boolean; lane: "founder" | "trial" | "balance" }> {
+    if (await this.isFounder(organizationId)) return { allowed: true, lane: "founder" };
 
     // The org's own credit (purchased packs, allowances, top-ups) pays first,
     // and is never limited by the trial cap — that cap bounds what AcreOS
     // gives away free, not what a customer spends of their own.
     const balance = await this.getBalance(organizationId);
-    if (balance >= requiredCents) return true;
+    if (balance >= requiredCents) return { allowed: true, lane: "balance" };
 
     // Users in an active trial get free basic usage (AI chat etc.) when their
     // balance does not cover it, capped at 500 cents ($5) of trial-funded
@@ -225,14 +241,14 @@ export class CreditService {
     if (trialRemaining !== null) {
       if (requiredCents > trialRemaining) {
         logger.info(`[credits] Trial allowance exhausted for org ${organizationId}: ${TRIAL_SPENDING_CAP_CENTS - trialRemaining}¢ of ${TRIAL_SPENDING_CAP_CENTS}¢ used`);
-        return false;
+        return { allowed: false, lane: "trial" };
       }
-      return true;
+      return { allowed: true, lane: "trial" };
     }
 
     // Note: Trial tokens are for premium skills only, not basic AI chat
     // They are consumed via storage.consumeTrialToken() in skill permission checks
-    return false;
+    return { allowed: false, lane: "balance" };
   }
 
   /**

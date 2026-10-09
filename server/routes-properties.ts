@@ -5,6 +5,7 @@ import { insertPropertySchema, landStatusSchema } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
+import { refusePlanLimit } from "./middleware/usageLimitGate";
 import { usageMeteringService, creditService } from "./services/credits";
 import { parseCSV, importProperties, exportPropertiesToCSV, getExpectedColumns, type ExportFilters } from "./services/importExport";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
@@ -25,9 +26,15 @@ import { readIntegrationCredentials } from "./services/integrationCredentials";
 import { CSV_IMPORT_MAX_ROWS_PER_FILE } from "@shared/product-limits";
 import { clock } from "./utils/clock";
 
-// Partial update schema for PUT endpoints.
+// Write schemas for POST / PUT / bulk-update. `land_status` is a free-text
+// column, so drizzle-zod's insert schema accepts ANY string for it; the
+// automation gate (utils/landStatus.ts) then reads an unrecognised value as
+// "not fee", and people read it as nothing. Every route write narrows it to
+// the real statuses here, and the repository refuses the rest
+// (assertWritableLandStatus) for writers that do not come through a route.
 // insertPropertySchema already omits organizationId, so no further omit needed.
-const updatePropertySchema = insertPropertySchema.partial();
+const propertyWriteSchema = insertPropertySchema.extend({ landStatus: landStatusSchema.optional() });
+const updatePropertySchema = propertyWriteSchema.partial();
 
 // Zod schema for comps search
 const compsSearchSchema = z.object({
@@ -311,13 +318,7 @@ export function registerPropertyRoutes(app: Express): void {
       
       const usageCheck = await checkUsageLimit(org.id, "properties");
       if (!usageCheck.allowed) {
-        return res.status(429).json({
-          message: `Property limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan to add more properties.`,
-          current: usageCheck.current,
-          limit: usageCheck.limit,
-          resourceType: usageCheck.resourceType,
-          tier: usageCheck.tier,
-        });
+        return refusePlanLimit(res, usageCheck);
       }
       
       const numericFields = ["sizeAcres", "assessedValue", "marketValue", "purchasePrice", "listPrice", "soldPrice"];
@@ -342,7 +343,7 @@ export function registerPropertyRoutes(app: Express): void {
 
       // insertPropertySchema omits organizationId, so re-attach it for the
       // createProperty(InsertProperty & { organizationId }) contract.
-      const input = insertPropertySchema.parse({ ...sanitizedBody, organizationId: org.id });
+      const input = propertyWriteSchema.parse({ ...sanitizedBody, organizationId: org.id });
       const property = await storage.createProperty({ ...input, organizationId: org.id });
 
       const user = req.user;
@@ -731,13 +732,7 @@ export function registerPropertyRoutes(app: Express): void {
       if (usageCheck.limit !== null) {
         const wouldExceed = usageCheck.current + csvData.length > usageCheck.limit;
         if (wouldExceed) {
-          return res.status(429).json({
-            message: `Import would exceed your plan limit of ${usageCheck.limit} properties (current: ${usageCheck.current}, importing: ${csvData.length}). Upgrade your plan to import more properties.`,
-            current: usageCheck.current,
-            importing: csvData.length,
-            limit: usageCheck.limit,
-            tier: usageCheck.tier,
-          });
+          return refusePlanLimit(res, usageCheck, { requested: csvData.length });
         }
       }
       

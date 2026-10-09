@@ -8,7 +8,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import { AiDisclosureGate } from "@/components/onboarding/AiDisclosureDialog";
 import { useWhiteLabel } from "@/hooks/use-white-label";
-import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { telemetry } from "@/lib/telemetry";
 import { legacyAskSearch } from "@/lib/route-redirects";
 import { setSentryUser } from "@/lib/sentry";
@@ -59,6 +58,7 @@ import { usePersonaMode, isTypingTarget } from "@/hooks/use-persona-mode";
 import { useNextRoutePrefetch } from "@/hooks/use-next-route-prefetch";
 import { useRouteHeadingFocus } from "@/hooks/use-route-heading-focus";
 import { RouteFallback } from "@/components/route-fallback";
+import { FlaggedRoute } from "@/components/flagged-route";
 import { MobileBottomNav, FounderMobileBottomNav } from "@/components/mobile";
 import { useIsMobile } from "@/hooks/use-mobile";
 // Phase D — Atlas Dock follows Tom across every founder surface. Lazy
@@ -609,19 +609,8 @@ function FounderProtectedRoute({ component: Component }: { component: React.Comp
   return <Component />;
 }
 
-// Feature-flagged protected route: if the feature is disabled globally, render NotFound
-function FlaggedRoute({ route, component: Component }: { route: string; component: React.ComponentType }) {
-  const { user, isLoading: authLoading } = useAuth();
-  const { isRouteEnabled, isLoading: flagsLoading } = useFeatureFlags();
-
-  if (authLoading || flagsLoading) {
-    return <RouteFallback />;
-  }
-
-  if (!user) return <Redirect to="/auth" />;
-  if (!isRouteEnabled(route)) return <NotFound />;
-  return <Component />;
-}
+// Feature-flagged protected route: lives in @/components/flagged-route. A
+// disabled flag renders a "not available" EmptyState, not the 404 page.
 
 // Persona-gated protected route — JC#7 / VERTICAL-EXPANSION-PLAN.md primitive #3.
 // Renders the page only when the signed-in user's persona is in the allow-list;

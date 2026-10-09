@@ -9,7 +9,7 @@ import { LEAD_STATUSES, isLeadStatus, validateLeadTransition } from "@shared/lif
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
-import { usageLimitGate } from "./middleware/usageLimitGate";
+import { usageLimitGate, refusePlanLimit } from "./middleware/usageLimitGate";
 import { requireScope } from "./middleware/roleScope";
 import { leadNurturerService } from "./services/leadNurturer";
 import { leadScoringService } from "./services/leadScoring";
@@ -429,13 +429,7 @@ export function registerLeadRoutes(app: Express): void {
       
       const usageCheck = await checkUsageLimit(org.id, "leads");
       if (!usageCheck.allowed) {
-        return res.status(429).json({
-          message: `Lead limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan to add more leads.`,
-          current: usageCheck.current,
-          limit: usageCheck.limit,
-          resourceType: usageCheck.resourceType,
-          tier: usageCheck.tier,
-        });
+        return refusePlanLimit(res, usageCheck);
       }
       
       // T3-3E Phase 3 — contract request validation. `leadCreateRequestSchema`
@@ -1422,13 +1416,7 @@ export function registerLeadRoutes(app: Express): void {
       if (usageCheck.limit !== null) {
         const wouldExceed = usageCheck.current + csvData.length > usageCheck.limit;
         if (wouldExceed) {
-          return res.status(429).json({
-            message: `Import would exceed your plan limit of ${usageCheck.limit} leads (current: ${usageCheck.current}, importing: ${csvData.length}). Upgrade your plan to import more leads.`,
-            current: usageCheck.current,
-            importing: csvData.length,
-            limit: usageCheck.limit,
-            tier: usageCheck.tier,
-          });
+          return refusePlanLimit(res, usageCheck, { requested: csvData.length });
         }
       }
       
@@ -1714,12 +1702,7 @@ export function registerLeadRoutes(app: Express): void {
       if (usageCheck.limit !== null) {
         const wouldExceed = usageCheck.current + mappedData.length > usageCheck.limit;
         if (wouldExceed) {
-          return res.status(429).json({
-            message: `Import would exceed your plan limit of ${usageCheck.limit} leads`,
-            current: usageCheck.current,
-            importing: mappedData.length,
-            limit: usageCheck.limit,
-          });
+          return refusePlanLimit(res, usageCheck, { requested: mappedData.length });
         }
       }
 

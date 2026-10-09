@@ -15,7 +15,7 @@ import { requirePermission } from "./utils/permissions";
 import { requireRole } from "./middleware/roleGuard";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
-import { usageLimitGate } from "./middleware/usageLimitGate";
+import { usageLimitGate, refusePlanLimit } from "./middleware/usageLimitGate";
 import { usageMeteringService, creditService } from "./services/credits";
 import { financeAgentService } from "./services/financeAgent";
 import { exportNotesToCSV, type ExportFilters } from "./services/importExport";
@@ -200,13 +200,7 @@ export function registerFinanceRoutes(app: Express): void {
       
       const usageCheck = await checkUsageLimit(org.id, "notes");
       if (!usageCheck.allowed) {
-        return res.status(429).json({
-          message: `Note limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan to add more notes.`,
-          current: usageCheck.current,
-          limit: usageCheck.limit,
-          resourceType: usageCheck.resourceType,
-          tier: usageCheck.tier,
-        });
+        return refusePlanLimit(res, usageCheck);
       }
       
       // Usury hard block: check interest rate against state law before saving

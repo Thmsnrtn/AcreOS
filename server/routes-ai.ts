@@ -4,7 +4,8 @@ import { insertAgentConfigSchema } from "@shared/schema";
 import { isAuthenticated, requireFounder } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
-import { usageLimitGate, aiByokThresholdGate } from "./middleware/usageLimitGate";
+import { usageLimitGate, aiByokThresholdGate, refusePlanLimit } from "./middleware/usageLimitGate";
+import { refusePaxCredits } from "./utils/firstRunRefusals";
 import { usageMeteringService, creditService } from "./services/credits";
 import { processChat, processChatStream, agentProfiles, getOrCreateConversation, ProviderCreditError, PaxAiPausedError } from "./ai/executive";
 import { parsePaxPromptVersion } from "./ai/paxPromptVersions";
@@ -287,13 +288,7 @@ export function registerAIRoutes(app: Express): void {
       step = "usage_limit";
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
-        return res.status(429).json({
-          message: `Monthly Pax message limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan for more headroom.`,
-          current: usageCheck.current,
-          limit: usageCheck.limit,
-          resourceType: usageCheck.resourceType,
-          tier: usageCheck.tier,
-        });
+        return refusePlanLimit(res, usageCheck);
       }
 
       step = "credit_check";
@@ -310,13 +305,16 @@ export function registerAIRoutes(app: Express): void {
         logger.warn("[AI Chat] calculateCost failed, using default 2¢", err instanceof Error ? err : undefined);
       }
       try {
-        const hasCredits = byokMode || await creditService.hasEnoughCredits(org.id, aiChatCost);
-        if (!hasCredits) {
+        const credit = byokMode ? null : await creditService.evaluateCredits(org.id, aiChatCost);
+        if (credit && !credit.allowed) {
           const balance = await creditService.getBalance(org.id).catch(() => 0);
-          return res.status(402).json({
-            error: "Insufficient credits",
-            required: aiChatCost / 100,
-            balance: balance / 100,
+          return refusePaxCredits(res, {
+            lane: credit.lane,
+            requiredCents: aiChatCost,
+            balanceCents: balance,
+            subscriptionTier: org.subscriptionTier,
+            // Undefined when the gate failed open — the tier table decides then.
+            byokAvailable: res.locals.aiTurnGate?.byokAvailable as boolean | undefined,
           });
         }
       } catch (err) {
@@ -480,13 +478,7 @@ export function registerAIRoutes(app: Express): void {
       step = "usage_limit";
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
-        return res.status(429).json({
-          message: `Monthly Pax message limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan for more headroom.`,
-          current: usageCheck.current,
-          limit: usageCheck.limit,
-          resourceType: usageCheck.resourceType,
-          tier: usageCheck.tier,
-        });
+        return refusePlanLimit(res, usageCheck);
       }
 
       step = "credit_check";
@@ -500,13 +492,16 @@ export function registerAIRoutes(app: Express): void {
         logger.warn("[AI Chat Stream] calculateCost failed, using default 2¢", err instanceof Error ? err : undefined);
       }
       try {
-        const hasCredits = byokMode || await creditService.hasEnoughCredits(org.id, aiChatCost);
-        if (!hasCredits) {
+        const credit = byokMode ? null : await creditService.evaluateCredits(org.id, aiChatCost);
+        if (credit && !credit.allowed) {
           const balance = await creditService.getBalance(org.id).catch(() => 0);
-          return res.status(402).json({
-            error: "Insufficient credits",
-            required: aiChatCost / 100,
-            balance: balance / 100,
+          return refusePaxCredits(res, {
+            lane: credit.lane,
+            requiredCents: aiChatCost,
+            balanceCents: balance,
+            subscriptionTier: org.subscriptionTier,
+            // Undefined when the gate failed open — the tier table decides then.
+            byokAvailable: res.locals.aiTurnGate?.byokAvailable as boolean | undefined,
           });
         }
       } catch (err) {
@@ -1777,7 +1772,7 @@ export function registerAIRoutes(app: Express): void {
 
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
-        return Errors.limitExceeded(res, { message: "AI request limit reached. Upgrade to continue." });
+        return refusePlanLimit(res, usageCheck);
       }
 
       const result = await vaAgentService.processAgentTask(org.id, agentType, task);
@@ -1852,7 +1847,7 @@ export function registerAIRoutes(app: Express): void {
       const org = req.organization;
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
-        return Errors.limitExceeded(res, { message: "AI request limit reached. Upgrade to continue." });
+        return refusePlanLimit(res, usageCheck);
       }
       const briefing = await vaAgentService.generateBriefing(org.id);
       res.json(briefing);

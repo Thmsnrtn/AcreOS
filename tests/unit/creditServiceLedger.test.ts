@@ -293,6 +293,18 @@ describe("hasEnoughCredits — the FRAUD-011 trial spending cap", () => {
     expect(await creditService.hasEnoughCredits(7, 150)).toBe(true);
     expect(await creditService.hasEnoughCredits(7, 151)).toBe(false);
   });
+
+  it("evaluateCredits names the lane that decided — the Pax refusal words its remedy from it", async () => {
+    // Inside the trial the refusal must not promise that buying credits
+    // helps; past it, credits are exactly the remedy (firstRunRefusals.ts).
+    state.orgRow = activeTrial();
+    state.trialDebitsCents = 500;
+    expect(await creditService.evaluateCredits(7, 2)).toEqual({ allowed: false, lane: "trial" });
+    state.orgRow = { isFounder: false, trialEndsAt: null, creditBalance: "0" };
+    expect(await creditService.evaluateCredits(7, 2)).toEqual({ allowed: false, lane: "balance" });
+    state.orgRow = { isFounder: true };
+    expect(await creditService.evaluateCredits(7, 2)).toEqual({ allowed: true, lane: "founder" });
+  });
 });
 
 describe("checkAutoTopUp — decision only, never a charge", () => {

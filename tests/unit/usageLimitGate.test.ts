@@ -3,7 +3,8 @@
  *
  * Tests the factory middleware that enforces usage limits per resource type.
  * - Allowed scenario: next() is called
- * - Denied scenario: 429 returned with the LIMIT_EXCEEDED envelope and the
+ * - Denied scenario: 429 returned with the PLAN_LIMIT_REACHED envelope (a
+ *   plan cap, not a rate limit — planLimitIsNotARateLimit.test.ts) and the
  *   tier-diff `details` payload (Lens 3 — Pricing Coherence)
  * - Founder bypass: always allowed regardless of usage
  */
@@ -81,7 +82,7 @@ describe("usageLimitGate", () => {
     expect(res.statusCode).toBe(200);
   });
 
-  it("returns 429 with the Lens-3 tier-diff payload when limit is exceeded", async () => {
+  it("returns 429 PLAN_LIMIT_REACHED with the Lens-3 tier-diff payload when limit is exceeded", async () => {
     mockCheckUsageLimit.mockResolvedValue({
       allowed: false,
       current: 50,
@@ -99,8 +100,10 @@ describe("usageLimitGate", () => {
 
     expect(next).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(429);
-    expect(res.body.error).toBe("LIMIT_EXCEEDED");
-    expect(res.body.message).toMatch(/sending requests faster than|limit/i);
+    expect(res.body.error).toBe("PLAN_LIMIT_REACHED");
+    expect(res.body.message).toBe(
+      `You've reached ${TIER_LIMITS.free.leads} leads on Free. Starter allows ${TIER_LIMITS.starter.leads} leads.`,
+    );
     expect(res.body.details).toEqual({
       resourceType: "leads",
       currentTier: "free",
@@ -110,6 +113,9 @@ describe("usageLimitGate", () => {
       nextTierLimit: TIER_LIMITS.starter.leads,
       nextTierMonthlyPriceCents: TIER_PRICES_CENTS.starter.priceMonthlyCents,
       upgradeUrl: "/settings#billing?tier=starter",
+      // Display copy computed server-side so the client needs no plan tables.
+      title: "Lead limit reached on Free",
+      nextTierName: TIER_PRICES_CENTS.starter.displayName,
     });
   });
 

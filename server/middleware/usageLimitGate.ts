@@ -23,42 +23,43 @@ import {
   checkAiTurnGate,
   type ResourceType,
   type AiTurnGateResult,
+  type UsageLimitResult,
 } from "../services/usageLimits";
-import {
-  TIER_LIMITS,
-  nextPaidTier,
-  type SubscriptionTier,
-} from "@shared/billing/tier-limits";
-import { TIER_PRICES_CENTS, type Tier } from "@shared/billing/tier-pricing";
+import { planLimitDetails } from "@shared/billing/plan-limit-copy";
 import { Errors } from "../utils/errors";
 import { logger } from "../utils/logger";
 import type { AuthenticatedRequest } from "../types/request";
 
 /**
- * Shape of the `details` payload attached to every 429 `LIMIT_EXCEEDED`
- * response. Mirrored on the client so the upgrade toast / banner / modal
- * can render a real diff message ("Pro unlocks 500 leads vs. your 50 cap
- * at $49/mo") instead of generic "You've reached the plan limit" copy.
+ * Send the plan-limit refusal for a `checkUsageLimit` result.
  *
- * The full `Tier` price object is intentionally NOT inlined — only the
- * monthly price cents — so we don't accidentally leak Stripe price IDs
- * through the public error envelope.
+ * Every route that checks a plan cap inline answers through this, so the
+ * refusal is the same `PLAN_LIMIT_REACHED` envelope — code, message and
+ * numbers from the canonical tier table — whether the gate middleware or the
+ * handler caught it. `requested` is for bulk imports that would overshoot.
  */
-export interface LimitExceededDetails {
-  resourceType: ResourceType;
-  currentTier: SubscriptionTier;
-  currentCount: number;
-  currentLimit: number | null;
-  nextTier: SubscriptionTier | null;
-  nextTierLimit: number | null;
-  nextTierMonthlyPriceCents: number | null;
-  upgradeUrl: string;
+export function refusePlanLimit(
+  res: Response,
+  result: UsageLimitResult,
+  opts: { requested?: number } = {},
+): void {
+  Errors.planLimitReached(
+    res,
+    planLimitDetails({
+      resourceType: result.resourceType,
+      tier: result.tier,
+      current: result.current,
+      limit: result.limit,
+      requested: opts.requested,
+    }),
+  );
 }
 
 /**
  * Returns Express middleware that checks the organization's usage limit
- * for the given resource type. Returns 429 if the limit is exceeded with
- * the rich upsell payload described in {@link LimitExceededDetails}.
+ * for the given resource type. Returns 429 `PLAN_LIMIT_REACHED` if the limit
+ * is reached, with the `PlanLimitDetails` payload (shared/billing/plan-limit-copy.ts) —
+ * numbers from the canonical tier table, never restated here.
  */
 export function usageLimitGate(resourceType: ResourceType) {
   return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
@@ -74,28 +75,7 @@ export function usageLimitGate(resourceType: ResourceType) {
       });
 
       if (!result.allowed) {
-        const target = nextPaidTier(result.tier);
-        const nextLimits = target ? TIER_LIMITS[target] : null;
-        const nextPricing =
-          target && target !== "free" && target !== "enterprise"
-            ? TIER_PRICES_CENTS[target as Tier]
-            : null;
-        const upgradeUrl = target
-          ? `/settings#billing?tier=${target}`
-          : "/settings#billing";
-
-        const details: LimitExceededDetails = {
-          resourceType: result.resourceType,
-          currentTier: result.tier,
-          currentCount: result.current,
-          currentLimit: result.limit,
-          nextTier: target,
-          nextTierLimit: nextLimits ? (nextLimits[resourceType] ?? null) : null,
-          nextTierMonthlyPriceCents: nextPricing?.priceMonthlyCents ?? null,
-          upgradeUrl,
-        };
-
-        return Errors.limitExceeded(res, details);
+        return refusePlanLimit(res, result);
       }
 
       next();

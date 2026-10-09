@@ -22,6 +22,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requirePermission } from "./utils/permissions";
 import { Errors, sendError } from "./utils/errors";
+import { refuseCreditShortage } from "./utils/firstRunRefusals";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
 import { logger } from "./utils/logger";
 import { checkUsageLimit } from "./services/usageLimits";
@@ -2190,20 +2191,16 @@ export function registerCampaignRoutes(app: Express): void {
           org.id, totalCost, `Campaign email send: ${campaign.name} (${dedupedLeads.length} recipients)`
         );
         if (!deductResult) {
-          return Errors.limitExceeded(
-            res,
-            {
-              reason: "insufficient_credits",
-              needed: totalCost,
-              action: "email_send",
-              purchaseUrl: "/usage",
-              message:
-                `Not enough credits to email ${dedupedLeads.length} recipient(s) — this send needs ` +
-                `${totalCost}¢. Buy a credit pack in Settings → Usage & Credits, or connect your own email ` +
-                `sending account, and send again.`,
-            },
-            { docsSlug: "limit-email-credits" },
-          );
+          // A credit shortage, not a rate limit — same 429 and amounts as before.
+          return refuseCreditShortage(res, {
+            status: 429,
+            what: "This email send",
+            requiredCents: totalCost,
+            balanceCents: await creditService.getBalance(org.id).catch(() => 0),
+            details: { needed: totalCost, action: "email_send", recipients: dedupedLeads.length },
+            orElse: "connect your own email sending account",
+            docsSlug: "limit-email-credits",
+          });
         }
       }
 
@@ -2472,19 +2469,15 @@ export function registerCampaignRoutes(app: Express): void {
           org.id, totalCost, `Campaign SMS send: ${campaign.name} (${dedupedLeads.length} recipients)`
         );
         if (!deductResult) {
-          return Errors.limitExceeded(
-            res,
-            {
-              reason: "insufficient_credits",
-              needed: totalCost,
-              action: "sms_send",
-              purchaseUrl: "/usage",
-              message:
-                `Not enough credits to text ${dedupedLeads.length} recipient(s) — this send needs ` +
-                `${totalCost}¢. Buy a credit pack in Settings → Usage & Credits and send again.`,
-            },
-            { docsSlug: "limit-sms-credits" },
-          );
+          // A credit shortage, not a rate limit — same 429 and amounts as before.
+          return refuseCreditShortage(res, {
+            status: 429,
+            what: "This SMS send",
+            requiredCents: totalCost,
+            balanceCents: await creditService.getBalance(org.id).catch(() => 0),
+            details: { needed: totalCost, action: "sms_send", recipients: dedupedLeads.length },
+            docsSlug: "limit-sms-credits",
+          });
         }
       }
 

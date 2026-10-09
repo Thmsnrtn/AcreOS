@@ -28,7 +28,7 @@ import { randomBytes } from "crypto";
 import { z } from "zod";
 import { and, eq, isNull, sql, asc } from "drizzle-orm";
 import { db } from "./db";
-import { properties, lotBasisAllocations, notes, leads } from "@shared/schema";
+import { properties, lotBasisAllocations, notes, leads, landStatusSchema } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
 import { isAuthenticated } from "./auth";
@@ -326,7 +326,12 @@ export function registerSubdivisionRoutes(app: Express): void {
           address: lot.address ?? null,
           sizeAcres: String(lot.sizeAcres),
           zoning: lot.zoning ?? inheritedDefaults?.zoning ?? null,
-          landStatus: inheritedDefaults?.landStatus ?? parent.landStatus,
+          // A lot inherits its parent's land status — but only a real one. A
+          // legacy free-text value on the parent folds to "unknown" (the safe,
+          // automation-blocking default) rather than being copied onto N lots.
+          landStatus: landStatusSchema.safeParse(inheritedDefaults?.landStatus ?? parent.landStatus).success
+            ? (inheritedDefaults?.landStatus ?? parent.landStatus)
+            : "unknown",
           status: "owned",
           listPrice: lot.listPrice != null ? String(lot.listPrice) : null,
         }));
