@@ -207,7 +207,7 @@ export async function enrichLead(organizationId: number, leadId: number): Promis
 
   await db.update(leads)
     .set({ enrichmentData: newEnrichmentData, ...parcelCols, updatedAt: clock.now() } as any)
-    .where(eq(leads.id, leadId));
+    .where(and(eq(leads.id, leadId), eq(leads.organizationId, organizationId)));
 
   return {
     leadId,
@@ -228,7 +228,7 @@ export async function batchEnrichLeads(
 
   for (const id of leadIds) {
     try {
-      const result = await enrichLead(id, organizationId);
+      const result = await enrichLead(organizationId, id);
       results.push(result);
     } catch (err) {
       errors++;

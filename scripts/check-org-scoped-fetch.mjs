@@ -736,7 +736,6 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   // Adjudicated 2026-08-20, ledger 49.
   "server/services/founder-chat/assert-entity-org.ts::resolveEntityOrg",
   "server/services/gdprService.ts::anonymizeUser",
-  "server/services/leadEnrichment.ts::enrichLead",
   "server/services/leadQualification.ts::checkForHotLeads",
   "server/services/leadScoreDecay.ts::applyScoreRecovery",
   "server/services/mail/mailFlusher.ts::bookFreeSendAcquisitionCogs",
