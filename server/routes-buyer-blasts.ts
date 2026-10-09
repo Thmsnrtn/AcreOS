@@ -238,7 +238,10 @@ export function registerBuyerBlastRoutes(app: Express): void {
                 // identity required.
                 purpose: 'counterparty',
               } as any);
-              if (result?.success || result === undefined) {
+              // Only the transport's own `success: true` is a send. A result
+              // of `undefined` was counted sent, stamped `sent` on the
+              // recipient row, and counted toward that buyer's cadence cap.
+              if (result?.success === true) {
                 sentCount++;
                 await db
                   .update(buyerBlastRecipients)
@@ -248,7 +251,7 @@ export function registerBuyerBlastRoutes(app: Express): void {
                 failedCount++;
                 await db
                   .update(buyerBlastRecipients)
-                  .set({ status: "failed", failureReason: result?.error ?? "Unknown" })
+                  .set({ status: "failed", failureReason: result?.error ?? "The email service returned no send result" })
                   .where(and(eq(buyerBlastRecipients.blastId, blast.id), eq(buyerBlastRecipients.buyerProfileId, m.buyerId)));
               }
             } catch (sendErr: any) {

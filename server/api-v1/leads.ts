@@ -31,6 +31,7 @@ import {
 import { serializeLead } from "./serializers";
 import { dispatchWebhookEvent } from "../services/publicWebhookDispatcher";
 import { clock } from "../utils/clock";
+import { DEFAULT_GRANT_SOURCE, stampConsentForInsert, stampConsentForUpdate } from "../services/consentStamp";
 
 export const leadsV1Router = Router();
 
@@ -151,7 +152,9 @@ leadsV1Router.post(
     try {
       const [created] = await db
         .insert(leads)
-        .values({ organizationId: orgId, ...mapCreateInput(parsed.data) })
+        // Same consent stamp as every other lead writer (consentStamp.ts):
+        // a grant gets the server's clock and the default source.
+        .values(stampConsentForInsert({ organizationId: orgId, ...mapCreateInput(parsed.data) }, DEFAULT_GRANT_SOURCE))
         .returning();
 
       // Outbound webhook — best-effort, never blocks the API response.
@@ -214,7 +217,7 @@ leadsV1Router.patch(
     try {
       const [updated] = await db
         .update(leads)
-        .set({ ...patch, updatedAt: clock.now() })
+        .set({ ...stampConsentForUpdate(patch, DEFAULT_GRANT_SOURCE), updatedAt: clock.now() })
         .where(and(eq(leads.id, id), eq(leads.organizationId, orgId), isNull(leads.deletedAt)))
         .returning();
       if (!updated) return Errors.notFound(res, "Lead");

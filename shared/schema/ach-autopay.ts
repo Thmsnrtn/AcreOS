@@ -46,7 +46,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
+import { createInsertSchema } from "../db/createInsertSchema";
 import type { z } from "zod";
 import { organizations, notes, leads, payments } from "../schema";
 

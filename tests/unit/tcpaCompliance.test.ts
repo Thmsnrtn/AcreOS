@@ -160,7 +160,7 @@ describe("detectOptKeyword — CTIA STOP/START detection", () => {
 
 describe("checkTcpaConsentFromLead — the consent matrix", () => {
   it("blocks every channel when doNotContact is set (even with recorded consent)", () => {
-    const result = checkTcpaConsentFromLead({ doNotContact: true, tcpaConsent: true });
+    const result = checkTcpaConsentFromLead({ doNotContact: true, tcpaConsent: true, optOutDate: null });
     expect(result.blocked).toBe(true);
     expect(result.canEmail).toBe(false);
     expect(result.canSms).toBe(false);
@@ -169,7 +169,7 @@ describe("checkTcpaConsentFromLead — the consent matrix", () => {
   });
 
   it("without consent: only direct mail is allowed (TCPA covers calls/SMS, CAN-SPAM email)", () => {
-    const result = checkTcpaConsentFromLead({ doNotContact: false, tcpaConsent: false });
+    const result = checkTcpaConsentFromLead({ doNotContact: false, tcpaConsent: false, optOutDate: null });
     expect(result.blocked).toBe(false);
     expect(result.canDirectMail).toBe(true);
     expect(result.canSms).toBe(false);
@@ -177,8 +177,17 @@ describe("checkTcpaConsentFromLead — the consent matrix", () => {
     expect(result.canEmail).toBe(false);
   });
 
+  it("an opt-out DATE alone blocks every channel, even with consent and no DNC flag", () => {
+    // The revocation paths stamp optOutDate; an edit can clear doNotContact
+    // and leave it. Read through leadHasOptedOut (leadContactability.ts).
+    const result = checkTcpaConsentFromLead({ doNotContact: false, tcpaConsent: true, optOutDate: new Date("2026-09-01T00:00:00Z") });
+    expect(result.blocked).toBe(true);
+    expect(result.canEmail).toBe(false);
+    expect(result.canDirectMail).toBe(false);
+  });
+
   it("with consent and no DNC flag: all channels open", () => {
-    expect(checkTcpaConsentFromLead({ doNotContact: false, tcpaConsent: true })).toMatchObject({
+    expect(checkTcpaConsentFromLead({ doNotContact: false, tcpaConsent: true, optOutDate: null })).toMatchObject({
       canEmail: true,
       canSms: true,
       canCall: true,
@@ -189,7 +198,7 @@ describe("checkTcpaConsentFromLead — the consent matrix", () => {
 });
 
 describe("canSendViaChannel / requiresTcpaConsent", () => {
-  const noConsent = { doNotContact: false, tcpaConsent: false };
+  const noConsent = { doNotContact: false, tcpaConsent: false, optOutDate: null };
 
   it("mirrors the consent matrix per channel with a reason on refusal", () => {
     expect(canSendViaChannel(noConsent, "direct_mail").allowed).toBe(true);

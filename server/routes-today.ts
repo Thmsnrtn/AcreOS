@@ -41,6 +41,7 @@ import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization, getOrganizationId, getUserId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { leadHasOptedOut } from "./services/leadContactability";
 
 import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 import { clock } from "./utils/clock";
@@ -559,6 +560,7 @@ async function gatherPaxNoticed(orgId: number, now: Date): Promise<DecisionItem[
       lastContactedAt: leadsTable.lastContactedAt,
       status: leadsTable.status,
       doNotContact: leadsTable.doNotContact,
+      optOutDate: leadsTable.optOutDate,
     })
     .from(leadsTable)
     .where(and(eq(leadsTable.organizationId, orgId), sql`${leadsTable.deletedAt} IS NULL`));
@@ -566,7 +568,7 @@ async function gatherPaxNoticed(orgId: number, now: Date): Promise<DecisionItem[
   allActiveLeads
     .filter((l) => {
       if (l.status === "closed" || l.status === "dead") return false;
-      if (l.doNotContact) return false;
+      if (leadHasOptedOut(l)) return false;
       if (!l.lastContactedAt) return true;
       return new Date(l.lastContactedAt).getTime() < twentyOneDaysAgo.getTime();
     })
@@ -786,7 +788,7 @@ async function gatherAiQueue(
 
   const staleLeads = allLeads
     .filter((l) => {
-      if (l.status === "closed" || l.status === "dead" || l.doNotContact) return false;
+      if (l.status === "closed" || l.status === "dead" || leadHasOptedOut(l)) return false;
       if (!l.lastContactedAt) return true;
       const days = Math.floor((now.getTime() - new Date(l.lastContactedAt).getTime()) / DAY_MS);
       return days >= 7;

@@ -1,6 +1,6 @@
 import { pgTable, text, serial, integer, bigint, bigserial, boolean, timestamp, numeric, varchar, jsonb, index, uniqueIndex, date, real, doublePrecision, check, customType, primaryKey } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
-import { createInsertSchema } from "drizzle-zod";
+import { createInsertSchema } from "./db/createInsertSchema";
 import { z } from "zod";
 
 // W5-1 schema-split: tables now living in shared/schema/*.ts but referenced

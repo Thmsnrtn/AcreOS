@@ -86,8 +86,10 @@ const ROOT = path.resolve(__dirname, "../..");
  * went with them).
  * 84 -> 82 (VA role path, merged 2026-10-09): both team-member update routes
  * pass the org to updateTeamMember.
+ * 82 -> 81 (money/compliance honesty, merged 2026-10-09): mergeLeads passes
+ * the org to updateLead (the merge now carries opt-outs across).
  */
-const OMISSION_BASELINE = 82;
+const OMISSION_BASELINE = 81;
 
 /**
  * Call sites whose enclosing function never names an organization, so nothing

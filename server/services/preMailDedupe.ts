@@ -18,6 +18,7 @@ import { leads, properties, mailingOrderPieces, mailingOrders } from "@shared/sc
 import { and, eq, inArray, gte, isNotNull, sql } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
+import { leadHasOptedOut } from "./leadContactability";
 
 export interface PreMailDedupeInput {
   organizationId: number;
@@ -103,7 +104,7 @@ export async function runPreMailDedupe(
       state: row.state,
       zip: row.zip,
     };
-    if (row.doNotContact === true || row.optOutDate) {
+    if (leadHasOptedOut(row)) {
       skippedDnc.push(dl);
       continue;
     }

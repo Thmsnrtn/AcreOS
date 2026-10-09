@@ -9,6 +9,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { cacheResponse } from "./middleware/responseCache";
 import { runPortfolioHealthJob, getActiveAlerts, dismissAlert } from "./services/portfolioHealth";
 import { logger } from "./utils/logger";
+import { leadHasOptedOut } from "./services/leadContactability";
 import { Errors } from "./utils/errors";
 
 import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
@@ -316,7 +317,7 @@ export function registerDashboardRoutes(app: Express): void {
       // Find leads that need follow-up (not contacted in 7+ days)
       const staleLeads = allLeads
         .filter(l => {
-          if (l.status === "closed" || l.status === "dead" || l.doNotContact) return false;
+          if (l.status === "closed" || l.status === "dead" || leadHasOptedOut(l)) return false;
           if (!l.lastContactedAt) return true;
           const daysSinceContact = Math.floor((now.getTime() - new Date(l.lastContactedAt).getTime()) / (24 * 60 * 60 * 1000));
           return daysSinceContact >= 7;

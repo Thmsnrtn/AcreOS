@@ -34,7 +34,8 @@ import { clock } from "./utils/clock";
 // (assertWritableLandStatus) for writers that do not come through a route.
 // insertPropertySchema already omits organizationId, so no further omit needed.
 const propertyWriteSchema = insertPropertySchema.extend({ landStatus: landStatusSchema.optional() });
-const updatePropertySchema = propertyWriteSchema.partial();
+// deletedAt/deletedBy belong to the delete/restore paths, not a generic edit.
+const updatePropertySchema = propertyWriteSchema.partial().omit({ deletedAt: true, deletedBy: true });
 
 // Zod schema for comps search
 const compsSearchSchema = z.object({

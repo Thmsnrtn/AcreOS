@@ -518,7 +518,7 @@ export function TcpaConsentToggle({ lead }: { lead: Lead }) {
         ? {
             tcpaConsent: true,
             doNotContact: false,
-            consentSource: consentSource || "manual",
+            consentSource: consentSource || "admin_manual",
             consentDate: new Date().toISOString(),
             optOutDate: null,
             optOutReason: null,
@@ -543,7 +543,7 @@ export function TcpaConsentToggle({ lead }: { lead: Lead }) {
       <Button
         size="sm"
         variant="outline"
-        onClick={() => consentMutation.mutate({ tcpaConsent: true, consentSource: "manual_restoration" })}
+        onClick={() => consentMutation.mutate({ tcpaConsent: true, consentSource: "admin_manual" })}
         disabled={consentMutation.isPending}
         data-testid={`button-restore-consent-${lead.id}`}
       >
@@ -572,7 +572,7 @@ export function TcpaConsentToggle({ lead }: { lead: Lead }) {
   return (
     <Button
       size="sm"
-      onClick={() => consentMutation.mutate({ tcpaConsent: true, consentSource: "manual" })}
+      onClick={() => consentMutation.mutate({ tcpaConsent: true, consentSource: "admin_manual" })}
       disabled={consentMutation.isPending}
       data-testid={`button-grant-consent-${lead.id}`}
     >

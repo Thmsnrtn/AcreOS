@@ -24,6 +24,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors, sendError } from "./utils/errors";
 import { logger } from "./utils/logger";
+import { leadNotOptedOutSql } from "./services/leadContactability";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganization, getOrganizationId, getUserId } from "./types/request";
 import { db, type PrimaryDb } from "./db";
@@ -268,8 +269,7 @@ async function resolveAudience(
     // (smsService.ts, tcpaCompliance.ts). The same rule preMailDedupe.ts
     // applies; the flusher re-checks it before the provider handoff, because
     // a seller can opt out during the 30-minute hold.
-    sql`${leads.doNotContact} IS NOT TRUE`,
-    sql`${leads.optOutDate} IS NULL`,
+    leadNotOptedOutSql(),
     sql`${leads.address} IS NOT NULL`,
     sql`${leads.city} IS NOT NULL`,
     sql`${leads.state} IS NOT NULL`,

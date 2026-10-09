@@ -18,6 +18,7 @@ import { checkUsageLimit } from "./services/usageLimits";
 import { usageLimitGate, refusePlanLimit } from "./middleware/usageLimitGate";
 import { usageMeteringService, creditService } from "./services/credits";
 import { financeAgentService } from "./services/financeAgent";
+import { reminderOutcome, REMINDER_STATUS } from "./services/reminderOutcome";
 import { exportNotesToCSV, type ExportFilters } from "./services/importExport";
 import { checkUsury } from "./services/usury";
 import { logger } from "./utils/logger";
@@ -109,6 +110,41 @@ async function countSampleBook(orgId: number): Promise<{ notes: number; deals: n
     db.select({ c: count() }).from(propertiesTable).where(and(eq(propertiesTable.organizationId, orgId), sql`NOT (${realProperty()})`)),
   ]);
   return { notes: Number(n?.c ?? 0), deals: Number(d?.c ?? 0), properties: Number(p?.c ?? 0) };
+}
+
+/**
+ * The honest response for a manual reminder: what the dispatch actually did.
+ * `sent` is true only when a rail accepted the notice; `queued` when it is
+ * still in the dispatcher's hands and will go out on the next sweep (the
+ * request succeeded, nothing has been sent yet); every other status is
+ * reported as not sent, with the reason the finance agent recorded.
+ */
+export function reminderOutcomeBody(
+  action: string,
+  result: { reminderId?: number; status?: string; deliveryNote?: string },
+) {
+  const status = result.status ?? "unknown";
+  const outcome = reminderOutcome(result);
+  const sent = outcome === "delivered";
+  const queued = outcome === "queued";
+  const verb = action === "escalate" ? "Escalation notice" : "Reminder";
+  const message = sent
+    ? `${verb} sent.`
+    : queued
+      ? `${verb} queued for sending — it has not gone out yet${result.deliveryNote ? `: ${result.deliveryNote}` : "."}`
+      : status === REMINDER_STATUS.documentReady
+        ? `${verb} letter prepared — it has not been mailed.`
+        : `${verb} not sent${result.deliveryNote ? `: ${result.deliveryNote}` : ` (status: ${status}).`}`;
+  return {
+    success: sent || queued,
+    sent,
+    queued,
+    action,
+    reminderId: result.reminderId,
+    status,
+    deliveryNote: result.deliveryNote ?? null,
+    message,
+  };
 }
 
 export function registerFinanceRoutes(app: Express): void {
@@ -640,7 +676,7 @@ export function registerFinanceRoutes(app: Express): void {
         return Errors.badRequest(res, result.error);
       }
 
-      res.json({ success: true, reminderId: result.reminderId });
+      res.json(reminderOutcomeBody("send_reminder", result));
     } catch (err: any) {
       logger.error("Error sending manual reminder", err instanceof Error ? err : undefined);
       Errors.internal(res, err);
@@ -811,13 +847,12 @@ export function registerFinanceRoutes(app: Express): void {
         if (!result.success) {
           return Errors.badRequest(res, result.error);
         }
-        
-        res.json({ 
-          success: true, 
-          action,
-          reminderId: result.reminderId,
-          message: `${action === "escalate" ? "Escalated" : "Reminder sent"} successfully` 
-        });
+
+        // `result.success` means a reminder ROW was created — not that anything
+        // reached the borrower. This answered "Reminder sent successfully" for
+        // a reminder the rail refused, one with no contact on file, and a
+        // letter nobody mailed. Report the dispatch outcome instead.
+        res.json(reminderOutcomeBody(action, result));
       } else {
         const reminder = await storage.createPaymentReminder({
           organizationId: org.id,

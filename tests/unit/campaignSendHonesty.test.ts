@@ -106,6 +106,10 @@ vi.mock("../../server/storage", () => ({
   db: {
     select: () => ({ from: () => ({ where: async () => [] }) }),
     insert: () => ({ values: async (v: Record<string, unknown>) => { S.deliveryInserts.push(v); } }),
+    // Merged with #328: a failed recipient's "failed" outcome row and its
+    // refund are written in ONE transaction. Same sink; the row says failed.
+    transaction: async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({ insert: () => ({ values: async (v: Record<string, unknown>) => { S.deliveryInserts.push(v); } }) }),
   },
 }));
 
@@ -188,8 +192,12 @@ describe("send-email: do-not-contact, suppression and failed sends", () => {
     // Charged for the two attempted, refunded the one that failed: net 1¢.
     expect(S.deducted).toEqual([2]);
     expect(S.refunds).toEqual([1]);
-    // Only the real send is recorded as delivered.
-    expect(S.deliveryInserts).toEqual([expect.objectContaining({ leadId: 1, status: "sent" })]);
+    // Only the real send is recorded as delivered; the refused one is recorded
+    // as FAILED (not a delivery — it never blocks a retry).
+    expect(S.deliveryInserts).toEqual([
+      expect.objectContaining({ leadId: 1, status: "sent" }),
+      expect.objectContaining({ leadId: 3, status: "failed" }),
+    ]);
     // The response is honest about every recipient.
     expect(r.body).toMatchObject({
       success: true,
@@ -211,7 +219,7 @@ describe("send-email: do-not-contact, suppression and failed sends", () => {
     expect(r.body).toMatchObject({ success: false, sent: 0, failed: 1, chargedCents: 0 });
     expect(S.deducted).toEqual([1]);
     expect(S.refunds).toEqual([1]);
-    expect(S.deliveryInserts).toEqual([]);
+    expect(S.deliveryInserts).toEqual([expect.objectContaining({ leadId: 1, status: "failed" })]);
     expect(S.campaignUpdates).toEqual([]);
   });
 

@@ -118,17 +118,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  *                      so nothing was mailed and nothing claims it was
  *   sent               a rail accepted it
  */
-export const REMINDER_STATUS = {
-  scheduled: "scheduled",
-  queued: "queued",
-  awaitingApproval: "awaiting_approval",
-  blocked: "blocked",
-  unavailable: "unavailable",
-  documentReady: "document_ready",
-  sent: "sent",
-  failed: "failed",
-  cancelled: "cancelled",
-} as const;
+// Defined in the dependency-free reminderOutcome module so the storage layer's
+// dispatch sweep and the outcome readers share the one vocabulary.
+import { REMINDER_STATUS } from "./reminderOutcome";
+export { REMINDER_STATUS };
 
 export type ReminderChannel = "email" | "sms" | "letter";
 
