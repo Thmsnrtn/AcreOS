@@ -77,6 +77,7 @@ const ROOT = path.resolve(__dirname, "../..");
  * 111 -> 110 (DEFECT-0173): listing unpublish now passes the org to
  * updatePropertyListing.
  * 110 -> 109 (DEFECT-0173 audit): the listing PUT passes the org too.
+ * 109 -> 107 (1694a0b, third audit fixes). Re-measured 2026-10-07: 107.
  * 107 -> 84 (2026-10-06): the tenant key became REQUIRED, and leads the
  * argument list, on update/deleteSequence, update/deleteAbTest,
  * updateSupportCase, updateDunningEvent, update/deleteDueDiligenceTemplate and

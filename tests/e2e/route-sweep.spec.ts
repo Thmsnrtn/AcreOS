@@ -13,10 +13,14 @@
  * its own test so failures land surgically — you see which page broke,
  * not "the sweep failed."
  *
- * Routes are intentionally hard-coded here rather than scraped from
- * App.tsx — the scrape would couple test-runtime to component-tree
- * traversal and pull in a hundred lazy chunks. The hand-curated list is
- * the surface area we actually care about catching regressions on.
+ * THE POPULATION is derived from client/src/App.tsx (tests/helpers/
+ * clientRoutes.ts parses it with TypeScript; no component is imported, so no
+ * lazy chunk is loaded). It used to be a hand-curated list of 58 paths, and on
+ * 2026-10-07 eleven of those were not pages at all — ten had become redirects
+ * and one had no route — while 120 authenticated pages were never visited. A
+ * page added to App.tsx is now in the sweep without anyone remembering to add
+ * it; tests/unit/routeSweepPopulation.test.ts holds the floors and checks this
+ * spec still consumes the derived list.
  *
  *   npx playwright test tests/e2e/route-sweep.spec.ts
  *
@@ -27,6 +31,7 @@
 
 import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
 import { clerk, clerkSetup } from "@clerk/testing/playwright";
+import { SWEEP_FLOORS, sweepPopulation } from "../helpers/clientRoutes";
 
 test.use({ storageState: "tests/e2e/.auth/user.json" });
 test.setTimeout(90_000);
@@ -93,69 +98,10 @@ test.beforeEach(async ({ page, context }) => {
   workerTicketMinted = true;
 });
 
-const CUSTOMER_ROUTES = [
-  "/today",
-  "/pipeline",
-  "/money",
-  "/leads",
-  "/properties",
-  "/deals",
-  "/deals/discover",
-  "/contractors",
-  "/tenants",
-  "/leases",
-  "/permits",
-  "/rehabs",
-  "/tasks",
-  "/maintenance",
-  "/campaigns",
-  "/buyer-blasts",
-  "/team",
-  "/automation",
-  "/analytics",
-  "/portfolio",
-  "/cash-flow",
-  "/bookkeeping",
-  "/forecasting",
-  "/avm",
-  "/marketplace",
-  "/negotiation",
-  "/capital-markets",
-  "/market-intelligence",
-  "/decision-queue",
-  "/inbox",
-  "/account/security",
-  "/settings",
-] as const;
-
-const FOUNDER_ROUTES = [
-  "/founder",
-  "/founder/ai-observatory",
-  "/founder/financials",
-  "/founder/compliance-ops",
-  "/founder/features",
-  "/founder/keys",
-  "/founder/readiness",
-  "/founder/customers/health",
-  "/founder/growth/campaigns",
-  "/founder/telemetry",
-  "/founder/integrations",
-  "/founder/admin/costs",
-  "/founder/feedback",
-  "/founder/agent-queue",
-  "/founder/feed",
-  "/founder/beta-analytics",
-  "/founder/agents",
-  "/founder/daily-digest",
-  "/founder/decisions",
-  "/founder/letter",
-  "/founder/settings",
-  "/founder/strategy",
-  "/founder/trends",
-  "/founder/expansion",
-  "/founder/experiments",
-  "/founder/todo",
-] as const;
+const POPULATION = sweepPopulation();
+const CUSTOMER_ROUTES = POPULATION.customer;
+const FOUNDER_ROUTES = POPULATION.founder;
+const FLAGGED_ROUTES = POPULATION.flagged;
 
 /**
  * Some routes legitimately log warnings on mount (Maps tile loads,
@@ -201,7 +147,11 @@ interface SweepResult {
   hasInteractive: boolean;
 }
 
-async function sweepRoute(page: Page, path: string): Promise<SweepResult> {
+async function sweepRoute(
+  page: Page,
+  path: string,
+  opts: { notFoundIsFlagOff?: boolean } = {},
+): Promise<SweepResult> {
   const errors: string[] = [];
 
   const onConsole = (msg: ConsoleMessage) => {
@@ -250,8 +200,10 @@ async function sweepRoute(page: Page, path: string): Promise<SweepResult> {
       (await page.locator('[data-testid="page-not-found"]').count()) +
       (await page.getByText(/page not found/i).count()) +
       (await page.getByText(/^\s*404\s*$/).count());
-    if (notFound > 0) {
+    if (notFound > 0 && !opts.notFoundIsFlagOff) {
       // Permitted on /founder/* if non-founder, but the test user is a founder.
+      // On a FlaggedRoute, NotFound is what a disabled flag renders, so it is
+      // not a regression there — an error boundary or console error still is.
       errors.push(`not-found surface on ${path}`);
     }
 
@@ -266,6 +218,20 @@ async function sweepRoute(page: Page, path: string): Promise<SweepResult> {
   }
 }
 
+test("sweep · population is derived from App.tsx and floored", () => {
+  // A parser that stops matching a wrapper would empty that kind and leave a
+  // green sweep over nothing; fail the run instead.
+  expect(CUSTOMER_ROUTES.length).toBeGreaterThanOrEqual(SWEEP_FLOORS.customer);
+  expect(FOUNDER_ROUTES.length).toBeGreaterThanOrEqual(SWEEP_FLOORS.founder);
+  expect(FLAGGED_ROUTES.length).toBeGreaterThanOrEqual(SWEEP_FLOORS.flagged);
+  if (POPULATION.skipped.length) {
+    console.log(
+      `[route-sweep] not visited (${POPULATION.skipped.length}):\n` +
+        POPULATION.skipped.map((s) => `  ${s.path} — ${s.why}`).join("\n"),
+    );
+  }
+});
+
 for (const path of CUSTOMER_ROUTES) {
   test(`sweep · customer ${path}`, async ({ page }) => {
     const r = await sweepRoute(page, path);
@@ -277,6 +243,14 @@ for (const path of CUSTOMER_ROUTES) {
 for (const path of FOUNDER_ROUTES) {
   test(`sweep · founder ${path}`, async ({ page }) => {
     const r = await sweepRoute(page, path);
+    expect(r.errors, `console / pageerror on ${path}:\n${r.errors.join("\n")}`).toEqual([]);
+    expect(r.hasInteractive, `no interactive elements rendered on ${path}`).toBe(true);
+  });
+}
+
+for (const path of FLAGGED_ROUTES) {
+  test(`sweep · flagged ${path}`, async ({ page }) => {
+    const r = await sweepRoute(page, path, { notFoundIsFlagOff: true });
     expect(r.errors, `console / pageerror on ${path}:\n${r.errors.join("\n")}`).toEqual([]);
     expect(r.hasInteractive, `no interactive elements rendered on ${path}`).toBe(true);
   });

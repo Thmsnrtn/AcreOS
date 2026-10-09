@@ -11,11 +11,18 @@
  *   3. The CURRENT client/src CSS surface passes at its frozen baseline.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+// This gate runs a script that walks the source tree, in a child process;
+// its cost scales with the repo, and under load it does not fit the
+// suite's 30s default. A killed gate reports nothing about what it guards,
+// so the budget is declared, not inherited.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const REPO_ROOT = resolve(__dirname, "..", "..");
 const LINTER = join(REPO_ROOT, "scripts", "lint-css-hover.mjs");

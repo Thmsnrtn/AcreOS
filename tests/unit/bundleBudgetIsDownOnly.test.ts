@@ -9,12 +9,19 @@
  * fake build trees and prove the ceiling semantics; the last case proves CI
  * runs it at all.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import yaml from "js-yaml";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+// This gate runs a script that walks the source tree, in a child process;
+// its cost scales with the repo, and under load it does not fit the
+// suite's 30s default. A killed gate reports nothing about what it guards,
+// so the budget is declared, not inherited.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = process.cwd();
 const KB = 1024;
