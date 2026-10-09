@@ -123,7 +123,7 @@ describe("Telnyx adapter (disabled stub)", () => {
       telnyxProvider.sendSms({ to: "+1", body: "x" }),
     ).rejects.toThrow(/TELNYX_NOT_CONFIGURED/);
     await expect(telnyxProvider.rentNumber({})).rejects.toThrow(/TELNYX_NOT_CONFIGURED/);
-    await expect(telnyxProvider.initiateCall({ to: "+1" })).rejects.toThrow(
+    await expect(telnyxProvider.initiateCall({ to: "+1", voice: { kind: "human" } })).rejects.toThrow(
       /TELNYX_NOT_CONFIGURED/,
     );
     if (prev !== undefined) process.env.TELNYX_API_KEY = prev;
