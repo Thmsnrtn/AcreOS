@@ -222,7 +222,9 @@ export async function pendingHandCounters(windowHours = 168): Promise<{
   const now = clock.nowMs();
   let tapped = 0, auto = 0, expired = 0, pendingNow = 0;
   for (const r of rows) {
-    const viaGrant = (r.approvedBy ?? "").includes("via witness-grant #");
+    // Released without a founder tap: by a grant, or by the standing
+    // routine-support policy (founder decision 2026-10-09).
+    const viaGrant = (r.approvedBy ?? "").includes("via witness-grant #") || (r.approvedBy ?? "").startsWith("solene (routine-support policy");
     if (r.status === "approved" || r.status === "executed") {
       if (viaGrant) auto++; else tapped++;
     } else if (r.status === "expired" || (r.status === "pending" && (!r.expiresAt || r.expiresAt.getTime() <= now))) {

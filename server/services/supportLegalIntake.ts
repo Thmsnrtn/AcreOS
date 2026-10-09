@@ -41,7 +41,7 @@ const RULES: Array<{ kind: LegalIntakeKind; re: RegExp }> = [
 ];
 
 /** Pure: the legal kind a ticket's text carries, or null. */
-function classifyLegalIntake(text: string): { kind: LegalIntakeKind; label: string } | null {
+export function classifyLegalIntake(text: string): { kind: LegalIntakeKind; label: string } | null {
   if (!text) return null;
   for (const r of RULES) {
     if (r.re.test(text)) return { kind: r.kind, label: LABELS[r.kind] };

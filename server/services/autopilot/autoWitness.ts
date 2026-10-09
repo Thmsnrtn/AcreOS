@@ -89,6 +89,30 @@ export async function runAutoWitnessSweep(
     /* settings unavailable → continue; approvePendingHand's executor re-checks */
   }
 
+  // Founder decision 2026-10-09: routine support (how-to, account questions,
+  // refunds up to $50) is released by the standing routine-support policy,
+  // with or without any grant; non-routine support drafts are held for the
+  // founder and no grant releases them (routineSupportSweep.ts).
+  let heldForFounder = new Set<number>();
+  try {
+    const { runRoutineSupportSweep } = await import("../support/routineSupportSweep");
+    const rs = await runRoutineSupportSweep({ now });
+    heldForFounder = rs.heldForFounder;
+    result.witnessed += rs.released;
+    for (const o of rs.outcomes) {
+      result.decisions.push({
+        pendingId: o.pendingId,
+        handName: o.handName,
+        outcome: o.outcome === "released" ? "witnessed" : "skipped",
+        reason: `routine-support policy: ${o.reason}`,
+      });
+    }
+  } catch (err) {
+    // Fail closed: a support draft the policy could not judge is not released
+    // by it; the grant pass below treats it exactly as before.
+    logger.warn(`[autoWitness] routine-support sweep failed — nothing released by it: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   let grantRows;
   try {
     const { liveGrantsFor } = await import("./witnessGrantStore");
@@ -108,6 +132,7 @@ export async function runAutoWitnessSweep(
 
   const pending = await listPendingHands();
   for (const action of pending) {
+    if (heldForFounder.has(action.id)) continue; // the founder's, by the routine-support policy
     result.considered++;
     const skip = (reason: string) => {
       result.decisions.push({ pendingId: action.id, handName: action.handName, outcome: "skipped", reason });
