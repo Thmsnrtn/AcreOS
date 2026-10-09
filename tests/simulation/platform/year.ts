@@ -492,6 +492,9 @@ async function main() {
             exists (select 1 from support_ticket_messages m where m.ticket_id = t.id and m.role <> 'user') as answered,
             exists (select 1 from autopilot_pending_actions a where a.hand_name = 'reply_support_ticket' and (a.args->>'ticket_id')::int = t.id and a.status in ('pending','approved','executed')) as drafted
        from support_tickets t where t.organization_id = any($1::int[])`, [customers.map((c) => c.orgId)]);
+  // Released by the routine-support policy (founder decision 2026-10-09), no tap.
+  const autoRows = await k.q<any>("select hand_name, count(*)::int n from autopilot_pending_actions where status = 'executed' and approved_by like 'solene (routine-support policy%' group by hand_name");
+  const autoReleased = { n: autoRows.reduce((a: number, r: any) => a + r.n, 0), byHand: Object.fromEntries(autoRows.map((r: any) => [r.hand_name, r.n])) };
   const escalated = tickets.filter((t) => t.assigned_agent === "founder").length;
   const handled = tickets.filter((t) => t.assigned_agent !== "founder" && (["resolved", "closed"].includes(t.status) || t.answered || t.drafted)).length;
   const dropped = tickets.length - handled - escalated;
@@ -523,7 +526,7 @@ async function main() {
   const result = {
     seed: SEED, days: DAYS, stepHours: STEP_H, brain: BRAIN, plan: PLAN, wallSeconds: Math.round((Date.now() - t0) / 1000), setup,
     founderMinutesPerWeek: { mean: weeksTotal.reduce((a, b) => a + b, 0) / Math.max(1, weeksTotal.length), weeks: metrics.weeks, askMinutesByDriver },
-    support: { tickets: tickets.length, handled, escalated, dropped, droppedDetail: droppedDetail.slice(0, 20) },
+    support: { tickets: tickets.length, handled, escalated, dropped, droppedDetail: droppedDetail.slice(0, 20), autoReleased: autoReleased.n, autoReleasedByHand: autoReleased.byHand },
     complianceIncidents: compliance,
     invariants: summary,
     customerList: customers.map((c) => ({ slug: c.slug, persona: c.persona, orgId: c.orgId, churned: c.churnedDay != null })),

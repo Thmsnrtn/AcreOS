@@ -350,7 +350,7 @@ async function main(): Promise<void> {
       const foreignClaims = await db.select().from(creditTransactions).where(and(eq(creditTransactions.stripePaymentIntentId, `${pi}_foreign`), eq(creditTransactions.type, "purchase_refund")));
       check(
         sweep.witnessed === 0 && rows.every((r) => r.status === "pending" && r.approvedBy == null) && gAfter?.used === 0 && foreignClaims.length === 0 &&
-          sweep.decisions.filter((d) => d.handName === "apply_refund").every((d) => /^not released|no source role/.test(d.reason)),
+          sweep.decisions.filter((d) => d.handName === "apply_refund").every((d) => /^not released|no source role|^routine-support policy: /.test(d.reason)),
         `with a live finance grant, a coding-agent refund of a foreign charge and a Support refund of an already-refunded charge are NOT released and NOT executed (${sweep.decisions.filter((d) => d.handName === "apply_refund").map((d) => d.reason.slice(0, 60)).join(" | ")})`,
       );
       await db.delete(creditTransactions).where(inArray(creditTransactions.organizationId, [o.id, other.id]));

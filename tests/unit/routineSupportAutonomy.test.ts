@@ -28,6 +28,7 @@ const H = vi.hoisted(() => ({
   readFails: false,
   grants: [] as any[],
   currentTicket: 0,
+  assigned: [] as any[],
 }));
 
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
@@ -74,6 +75,7 @@ vi.mock("../../server/utils/orgScopedDb", async () => {
   };
   return {
     unscopedForPlatformOps: () => ({
+      update: () => ({ set: (v: any) => ({ where: async () => { H.assigned.push(v); } }) }),
       select: () => ({
         from: (t: any) => {
           if (H.readFails) throw new Error("db down");
@@ -113,6 +115,7 @@ beforeEach(() => {
   H.panic = false;
   H.readFails = false;
   H.grants = [];
+  H.assigned = [];
 });
 
 describe("triageTicket fails closed", () => {
@@ -206,6 +209,7 @@ describe("the sweep", () => {
     expect(H.approvals).toHaveLength(0);
     expect(H.asks).toEqual([expect.objectContaining({ questionSummary: expect.stringMatching(/^Support ticket #13 needs you/) })]);
     expect(H.stories).toEqual([expect.objectContaining({ moveKind: "support_held", outcome: "escalated" })]);
+    expect(H.assigned).toEqual([expect.objectContaining({ assignedAgent: "founder" })]);
     // a second sweep over the same held draft does not ask again
     H.priorAsks.push("13");
     await runRoutineSupportSweep();
@@ -243,5 +247,26 @@ describe("wiring: the scheduled auto-witness sweep", () => {
     const r = await runAutoWitnessSweep();
     expect(r.witnessed).toBe(0);
     expect(H.approvals).toHaveLength(0);
+  });
+});
+
+describe("the Story records of a policy release do not read as a constitutional bypass", () => {
+  // Measured 2026-10-09 in the simulated year: before this binding, every
+  // support_auto_answer row fell to DEFAULT_BINDING (customer-facing, ungated),
+  // the drift sentinel counted it as a witnessed-send bypass and tripped the
+  // PANIC STOP — 176 times, halting the autopilot for the rest of the year.
+  it("support_auto_answer / support_auto_refund are gated per action; any other unknown 'acted' move still drifts", async () => {
+    const { detectDrift } = await import("../../server/services/autopilot/safety");
+    expect(detectDrift([{ moveKind: "support_auto_answer", outcome: "acted" }, { moveKind: "support_auto_refund", outcome: "acted" }])).toEqual([]);
+    expect(detectDrift([{ moveKind: "support_auto_answer_RENAMED", outcome: "acted" }])).toHaveLength(1);
+  });
+
+  it("every moveKind the sweep writes as 'acted' is one the sentinel accepts (read from the sweep's source)", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync(require("node:path").resolve(__dirname, "../../server/services/support/routineSupportSweep.ts"), "utf8");
+    const kinds = [...src.matchAll(/"(support_[a-z_]+)"/g)].map((m) => m[1]).filter((k) => k !== "support_held");
+    expect(new Set(kinds)).toEqual(new Set(["support_auto_refund", "support_auto_answer"]));
+    const { detectDrift } = await import("../../server/services/autopilot/safety");
+    for (const k of kinds) expect(detectDrift([{ moveKind: k, outcome: "acted" }])).toEqual([]);
   });
 });

@@ -116,9 +116,27 @@ const DEFAULT_BINDING: MoveBinding = {
   reversible: false,
 };
 
+/**
+ * Story records of a SINGLE witnessed release — not autopilot moves (they are
+ * absent from MOVE_BINDINGS, so nothing ranks, dispatches or approves them).
+ * The routine-support policy (founder decision 2026-10-09,
+ * server/services/support/routineSupportSweep.ts) releases one frozen support
+ * reply or refund through approvePendingHand → executeHandWitnessed, the same
+ * per-effect witness path a grant uses, and writes one of these to the Story.
+ * The effect was witnessed at the hand, so the record is gated per action;
+ * any OTHER unknown move kind still falls to DEFAULT_BINDING (customer-facing,
+ * ungated) and an "acted" row of it is a drift.
+ */
+const WITNESSED_RELEASE_RECORDS: Record<string, MoveBinding> = {
+  support_auto_answer: { domain: "support", agentRole: "general-purpose", isCustomerFacing: true, surface: "support", reversible: false, effectsGatedPerAction: true },
+  support_auto_refund: { domain: "finance", agentRole: "general-purpose", isCustomerFacing: true, surface: "support", reversible: false, effectsGatedPerAction: true },
+};
+
 export function bindingFor(moveKind: string): MoveBinding {
   const b = MOVE_BINDINGS[moveKind];
-  if (!b) return DEFAULT_BINDING;
+  if (!b) {
+    return Object.prototype.hasOwnProperty.call(WITNESSED_RELEASE_RECORDS, moveKind) ? WITNESSED_RELEASE_RECORDS[moveKind] : DEFAULT_BINDING;
+  }
   return isRoleWorkerMove(moveKind) ? { ...b, effectsGatedPerAction: true } : b;
 }
 

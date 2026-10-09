@@ -41,5 +41,5 @@ for s in "${SEEDS[@]}"; do
   echo "$(date -u +%FT%TZ) [$INST] seed $s exit=$?" | tee -a "$SIMPLAT_DIR/montecarlo-status.txt"
   bash "$HERE/stack.sh" down >/dev/null 2>&1
 done
-[ "${SIMPLAT_KEEP_DB:-}" = "1" ] || psql "postgresql://acreos:acreos@localhost:5432/postgres" -qc "drop database if exists $SIMPLAT_DB" >/dev/null 2>&1
+[ "${SIMPLAT_KEEP_DB:-}" = "1" ] || psql "${SIMPLAT_PGBASE:-postgresql://acreos:acreos@localhost:5432}/postgres" -qc "drop database if exists $SIMPLAT_DB" >/dev/null 2>&1
 echo "$(date -u +%FT%TZ) [$INST] done"

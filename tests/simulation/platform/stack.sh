@@ -16,7 +16,8 @@
 # Environment (defaults in brackets): SIMPLAT_DIR [scratch run dir],
 # SIMPLAT_PRODLIKE [/tmp/acreos-simplat-prodlike], SIMPLAT_DB [acreos_simplat_run],
 # SIMPLAT_WEB_PORT [5400], SIMPLAT_WORKER_PORT [5401], SIMPLAT_MODEL_PORT [7900],
-# SIMPLAT_PROVIDER_PORT [7901], SIMPLAT_REDIS_DB [12], SIMPLAT_BRAIN [capable].
+# SIMPLAT_PROVIDER_PORT [7901], SIMPLAT_REDIS_DB [12], SIMPLAT_BRAIN [capable],
+# SIMPLAT_PGBASE [postgresql://acreos:acreos@localhost:5432], SIMPLAT_REDIS_HOSTPORT [localhost:6379].
 #
 # Ports are checked with lsof before anything binds; the app binds with
 # reusePort, so two servers on one port would silently share traffic.
@@ -28,7 +29,7 @@ D="${SIMPLAT_DIR:-/tmp/simplat-run}"
 P="${SIMPLAT_PRODLIKE:-/tmp/acreos-simplat-prodlike}"
 DB="${SIMPLAT_DB:-acreos_simplat_run}"
 TPL="acreos_simplat_tpl"
-PGBASE="postgresql://acreos:acreos@localhost:5432"
+PGBASE="${SIMPLAT_PGBASE:-postgresql://acreos:acreos@localhost:5432}"
 WEB="${SIMPLAT_WEB_PORT:-5400}"; WORKER="${SIMPLAT_WORKER_PORT:-5401}"
 MODEL="${SIMPLAT_MODEL_PORT:-7900}"; PROV="${SIMPLAT_PROVIDER_PORT:-7901}"
 RDB="${SIMPLAT_REDIS_DB:-12}"
@@ -77,7 +78,7 @@ export AI_INTEGRATIONS_OPENROUTER_BASE_URL=http://127.0.0.1:$MODEL/api/v1
 export SOLENE_CHAT_OPENROUTER_BASE_URL=http://127.0.0.1:$MODEL
 export AI_INTEGRATIONS_OPENAI_BASE_URL=http://127.0.0.1:$MODEL/v1
 export DATABASE_URL=$PGBASE/$DB
-export REDIS_URL=redis://localhost:6379/$RDB
+export REDIS_URL=redis://${SIMPLAT_REDIS_HOSTPORT:-localhost:6379}/$RDB
 export PORT=$WEB
 export APP_URL=http://localhost:$WEB
 export PUBLIC_APP_URL=http://localhost:$WEB
@@ -149,7 +150,7 @@ case "${1:-}" in
     psql "$PGBASE/postgres" -qc "drop database if exists $DB" -c "create database $DB template $TPL"
     psql "$PGBASE/$DB" -qc "alter database $DB set search_path = \"\$user\", public, simclock, pg_catalog" -c "update simclock.state set offset_ms = 0"
     echo '{"offsetMs":0}' > "$D/clock.json"
-    redis-cli -n "$RDB" flushdb >/dev/null
+    redis-cli -u "redis://${SIMPLAT_REDIS_HOSTPORT:-localhost:6379}/$RDB" flushdb >/dev/null
     : > "$D/dbtap.jsonl"
     echo "db $DB from $TPL"
     ;;

@@ -137,6 +137,19 @@ export async function runRoutineSupportSweep(opts: { now?: number } = {}): Promi
       note("held", verdict.reason);
       // ONE ask per ticket: askFounder folds an open ask with the same summary,
       // and the worker's own escalate_to_founder uses this summary shape.
+      // The ticket is now the founder's (as escalate_to_founder makes it):
+      // nobody else works it, and it is not counted as waiting on support.
+      if (ticket) {
+        try {
+          const { FOUNDER_AGENT } = await import("../solene/roleWorkers/routing");
+          await unscopedForPlatformOps(PLATFORM_SUPPORT)
+            .update(supportTickets)
+            .set({ assignedAgent: FOUNDER_AGENT, updatedAt: clock.now() })
+            .where(and(eq(supportTickets.id, ticket.id), eq(supportTickets.organizationId, ticket.organizationId), sql`coalesce(${supportTickets.assignedAgent}, '') <> ${FOUNDER_AGENT}`));
+        } catch (err) {
+          logger.warn(`[routineSupport] ticket #${ticket.id} not assigned to the founder: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
       if (ticket && !(await ticketAlreadyAsked(ticket.id))) {
         try {
           const { askFounder } = await import("../solene/founderCollab");
