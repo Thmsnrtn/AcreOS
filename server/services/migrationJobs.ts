@@ -51,6 +51,10 @@ import {
   messages,
   teamMembers,
   activityLog,
+  payments,
+  notePayments,
+  documentAnalysis,
+  propertyPhotos,
   type ImportJob,
   type ExportJob,
 } from "@shared/schema";
@@ -976,7 +980,9 @@ designed to be portable to other CRMs.
 - \`deals.csv\`            — acquisition / disposition deals
 - \`communications.csv\`   — email/SMS history (one row per message)
 - \`notes.csv\`            — CRM notes
+- \`payments.csv\`         — note payments (servicing ledger + acquired-note ledger)
 - \`audit-log.csv\`        — audit-event timeline
+- \`files-manifest.csv\`   — every file on record, and whether its bytes are in this archive
 - \`attachments/\`         — original files keyed by entity type + ID
 - \`schema.json\`          — export schema version + entity counts
 
@@ -998,7 +1004,7 @@ async function runExportJob(job: ExportJob): Promise<void> {
     const params = job.params ?? {};
     const includeAttachments = params.includeAttachments ?? true;
     const requestedTypes = new Set(
-      params.entityTypes ?? ["leads", "properties", "deals", "communications", "notes", "audit-log"]
+      params.entityTypes ?? FULL_EXPORT_ENTITY_TYPES
     );
 
     const orgId = job.organizationId;
@@ -1029,6 +1035,11 @@ async function runExportJob(job: ExportJob): Promise<void> {
       const csv = await buildCommunicationsCsv(orgId);
       archiveEntries.push({ name: "communications.csv", data: Buffer.from(csv, "utf8") });
       counts.communications = csv.split("\n").length - 1;
+    }
+    if (requestedTypes.has("payments")) {
+      const csv = await buildPaymentsCsv(orgId);
+      archiveEntries.push({ name: "payments.csv", data: Buffer.from(csv, "utf8") });
+      counts.payments = csv.split("\n").length - 1;
     }
     if (requestedTypes.has("audit-log")) {
       const csv = await buildAuditLogCsv(orgId);
@@ -1070,6 +1081,16 @@ async function runExportJob(job: ExportJob): Promise<void> {
       }
       counts.attachments = attachmentCount;
       counts.attachmentsMissing = attachmentsMissing;
+    }
+
+    // The files manifest: every file the org has on record — those packed
+    // above, those whose bytes are gone, and the stored documents and photos
+    // the archive references but does not carry — so the export says what
+    // exists, not only what fit.
+    if (requestedTypes.has("files-manifest")) {
+      const manifest = await buildFilesManifestCsv(orgId, archiveEntries.filter((e) => e.name.startsWith("attachments/")).map((e) => e.name));
+      archiveEntries.push({ name: "files-manifest.csv", data: Buffer.from(manifest, "utf8") });
+      counts.filesManifest = manifest.split("\n").length - 1;
     }
 
     const schemaJson = {
@@ -1195,6 +1216,49 @@ async function buildAuditLogCsv(orgId: number): Promise<string> {
       ].join(",")
     );
   }
+  return lines.join("\n");
+}
+
+/** Every entity the one-click full export carries by default. */
+export const FULL_EXPORT_ENTITY_TYPES = ["leads", "properties", "deals", "communications", "notes", "payments", "audit-log", "files-manifest"];
+
+/** Note payments: the servicing ledger (payments) and the acquired-note ledger (note_payments). */
+export async function buildPaymentsCsv(orgId: number): Promise<string> {
+  const headers = ["ledger", "id", "noteId", "paymentDate", "dueDate", "amount", "principal", "interest", "fees", "statusOrType", "method", "createdAt"];
+  const lines = [headers.join(",")];
+  const servicing = await db.select().from(payments).where(eq(payments.organizationId, orgId)).orderBy(asc(payments.id));
+  for (const r of servicing) {
+    lines.push(["servicing", r.id, r.noteId, r.paymentDate?.toISOString() ?? "", r.dueDate?.toISOString() ?? "", r.amount, r.principalAmount, r.interestAmount, Number(r.feeAmount ?? 0) + Number(r.lateFeeAmount ?? 0), r.status, csvEscape(r.paymentMethod ?? ""), r.createdAt?.toISOString() ?? ""].join(","));
+  }
+  const acquired = await db.select().from(notePayments).where(eq(notePayments.organizationId, orgId)).orderBy(asc(notePayments.paymentDate));
+  for (const r of acquired as any[]) {
+    const cents = (n: unknown) => (Number(n ?? 0) / 100).toFixed(2);
+    lines.push(["acquired_note", r.id, r.noteId, String(r.paymentDate ?? ""), "", cents(Number(r.principalCents ?? 0) + Number(r.interestCents ?? 0) + Number(r.escrowCents ?? 0) + Number(r.lateFeeCents ?? 0)), cents(r.principalCents), cents(r.interestCents), cents(r.lateFeeCents), csvEscape(String(r.paymentType ?? "")), csvEscape(String(r.paymentMethod ?? "")), r.createdAt ? new Date(r.createdAt).toISOString() : ""].join(","));
+  }
+  return lines.join("\n");
+}
+
+export async function buildFilesManifestCsv(orgId: number, packed: string[]): Promise<string> {
+  const lines = ["source,entityType,entityId,name,reference,inArchive"];
+  const packedSet = new Set(packed);
+  const imported = await db.select().from(activityLog).where(and(eq(activityLog.organizationId, orgId), eq(activityLog.action, "document_imported")));
+  for (const row of imported) {
+    const meta = (row.metadata as { filename?: string; path?: string; ref?: string } | null) ?? null;
+    if (!meta?.ref && !meta?.path) continue;
+    const safeName = (meta.filename ?? "file").replace(/[^A-Za-z0-9._-]/g, "_");
+    const name = `attachments/${row.entityType}/${row.entityId}/${safeName}`;
+    lines.push(["imported_document", row.entityType, row.entityId, csvEscape(meta.filename ?? ""), csvEscape(meta.ref ?? meta.path ?? ""), packedSet.has(name) ? "yes" : "no (bytes missing)"].join(","));
+  }
+  const analyzed = await db.select({ id: documentAnalysis.id, fileUrl: documentAnalysis.fileUrl }).from(documentAnalysis).where(eq(documentAnalysis.organizationId, orgId)).orderBy(asc(documentAnalysis.id));
+  for (const r of analyzed) if (r.fileUrl) lines.push(["analyzed_document", "document_analysis", r.id, "", csvEscape(r.fileUrl), "no (referenced)"].join(","));
+  // property_photos has no organization column: scoped through the property.
+  const photos = await db
+    .select({ id: propertyPhotos.id, propertyId: propertyPhotos.propertyId, filename: propertyPhotos.filename, storageKey: propertyPhotos.storageKey })
+    .from(propertyPhotos)
+    .innerJoin(properties, eq(properties.id, propertyPhotos.propertyId))
+    .where(eq(properties.organizationId, orgId))
+    .orderBy(asc(propertyPhotos.id));
+  for (const r of photos) lines.push(["property_photo", "property", r.propertyId, csvEscape(r.filename ?? ""), csvEscape(r.storageKey), "no (referenced)"].join(","));
   return lines.join("\n");
 }
 

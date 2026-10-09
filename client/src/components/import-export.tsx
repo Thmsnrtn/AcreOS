@@ -183,28 +183,40 @@ export function ImportExportManager() {
     },
   });
 
-  // allow-no-invalidation: read-only backup download — mutates nothing
+  // allow-no-invalidation: one-click full export — queues an export job and downloads its ZIP; mutates no cached data
+  // The full export (POST /api/export/everything): leads, properties, deals,
+  // communications, notes, payments, the audit log, attachments and a files
+  // manifest, in one ZIP. Owner/admin only (canExportData). It replaced the
+  // deprecated JSON backup, which carried neither payments nor files.
   const backupMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/export/backup", { credentials: "include" });
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to create backup");
+      const start = await apiRequest("POST", "/api/export/everything", {}, { idempotent: true });
+      const { jobId } = (await start.json()) as { jobId: number };
+      const deadline = Date.now() + 10 * 60 * 1000;
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const res = await fetch(`/api/export/jobs/${jobId}`, { credentials: "include" });
+        if (!res.ok) throw new Error("Couldn't check the export's progress");
+        const job = (await res.json()) as { status: string; errorMessage?: string | null };
+        if (job.status === "completed") break;
+        if (job.status === "failed") throw new Error(job.errorMessage || "The export failed");
+        if (Date.now() > deadline) throw new Error("The export is still running — check back in a few minutes");
       }
+      const res = await fetch(`/api/export/jobs/${jobId}/download`, { credentials: "include" });
+      if (!res.ok) throw new Error("Couldn't download the export");
       const blob = await res.blob();
-      const filename = res.headers.get("content-disposition")?.match(/filename="(.+)"/)?.[1] 
-        || "backup.json";
+      const filename = res.headers.get("content-disposition")?.match(/filename="(.+)"/)?.[1] || "acreos-export.zip";
       downloadBlob(blob, filename);
     },
     onSuccess: () => {
       toast({
-        title: "Backup created",
-        description: "Your data backup has been downloaded.",
+        title: "Export downloaded",
+        description: "Everything your organization holds in AcreOS, in one ZIP.",
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Couldn't create backup",
+        title: "Couldn't export your data",
         description: `${error.message} — your data is unchanged.`,
         variant: "destructive",
       });
@@ -648,10 +660,10 @@ export function ImportExportManager() {
             <div className="p-6 border rounded-md text-center space-y-4">
               <Database className="w-12 h-12 mx-auto text-muted-foreground" />
               <div>
-                <h3 className="font-medium text-lg">Full Data Backup</h3>
+                <h3 className="font-medium text-lg">Export everything</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Download all your organization data including leads, properties,
-                  deals, and notes in a single backup file.
+                  One ZIP with all your organization&apos;s leads, properties, deals,
+                  messages, notes, payments, the activity log, your files and a manifest of them.
                 </p>
               </div>
               <Button
@@ -665,10 +677,10 @@ export function ImportExportManager() {
                 ) : (
                   <Download className="w-4 h-4 mr-2" />
                 )}
-                Create Backup
+                Export everything
               </Button>
               <p className="text-xs text-muted-foreground">
-                The backup will be downloaded as a JSON file containing all your data.
+                Owners and admins only. Large organizations can take a few minutes; keep this page open.
               </p>
             </div>
           </TabsContent>
