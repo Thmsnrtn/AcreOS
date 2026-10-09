@@ -12,7 +12,6 @@ import { requireScope } from "./middleware/roleScope";
 import { checkUsageLimit } from "./services/usageLimits";
 import { onboardingService, type BusinessType } from "./services/onboarding";
 import { BUSINESS_TYPES } from "@shared/models/persona-mapping";
-import { SUBSCRIPTION_TIERS } from "@shared/schema";
 import { activityLogger } from "./services/activityLogger";
 import { getAllUsageLimits, TIER_LIMITS, type SubscriptionTier } from "./services/usageLimits";
 import { getUserPermissionContext, getPermissionsForRole, ROLES, type UserPermissionContext } from "./utils/permissions";
@@ -1137,7 +1136,10 @@ export function registerOrganizationRoutes(app: Express): void {
   });
   
   api.get("/api/subscription/tiers", async (req, res) => {
-    res.json(SUBSCRIPTION_TIERS);
+    // The canonical included pool, not the dead monthlyCredits catalogue
+    // number (see services/publicSubscriptionTiers.ts).
+    const { publicSubscriptionTiers } = await import("./services/publicSubscriptionTiers");
+    res.json(publicSubscriptionTiers());
   });
   
   api.get("/api/usage", isAuthenticated, getOrCreateOrg, async (req, res) => {

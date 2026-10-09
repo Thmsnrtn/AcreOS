@@ -8,6 +8,7 @@ import { realLead, realNote, realProperty } from "./onboarding/sampleFilters";
 import {
   TIER_LIMITS,
   FOUNDER_TIER_LIMITS,
+  limitsTierFor,
   PRICING_FEATURE_FLAGS,
   AI_TURNS_BYOK_WARN_RATIO,
   isTierVisible,
@@ -37,10 +38,8 @@ export interface UsageLimitResult {
 }
 
 function normalizeTier(tier: string): SubscriptionTier {
-  const normalized = tier.toLowerCase();
-  if (normalized === "professional") return "pro";
-  if (normalized in TIER_LIMITS) return normalized as SubscriptionTier;
-  return "free";
+  // The canonical fold (legacy solo/operator/empire included) — see limitsTierFor.
+  return limitsTierFor(tier);
 }
 
 async function getOrganizationTierAndFounderStatus(organizationId: number): Promise<{ tier: SubscriptionTier; isFounder: boolean; isTrialing: boolean }> {

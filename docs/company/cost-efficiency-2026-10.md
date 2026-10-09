@@ -84,9 +84,10 @@ Scale, about 3× its 8,000-credit pool). Both were removed.
 - every write that raises `creditBalance` is registered;
 - every `addCredits` call uses a bounded transaction type.
 
-**Public-claim mismatch for the founder:** `GET /api/subscription/tiers`
-(unauthenticated) still serializes `monthlyCredits: 25000` for Scale. No
-client renders it today. It was left unchanged on purpose.
+`GET /api/subscription/tiers` used to serialize `monthlyCredits: 25000` for
+Scale, a public claim with nothing behind it. Since 2026-10-09 it reports the
+canonical `creditPool`, and `monthlyCredits` has been removed from the
+catalogue.
 
 ## 5. Cost to serve per customer
 
@@ -120,10 +121,12 @@ These estimates are assumptions, not measurements.
 - **Conversation compaction.** Past 20 messages and 80k characters, it
   re-summarizes the growing first half on every turn. That costs about
   $0.001 per turn on DeepSeek; an incremental summary would remove it.
-- **Paid residential lookups (`residentialComps.ts`).** This path checks
-  affordability against the legacy credit-wallet balance, which lookups never
-  decrement, and then debits the plan pool in the provider registry's `record`
-  mode, which never refuses. While the wallet holds at least one lookup's
-  price (comps 20¢, valuation 10¢), ATTOM lookups on the platform key are
-  bounded by neither the wallet nor the pool. Other registry callers
-  (`resolveParcel`) pass a balance of 0, so they skip paid providers.
+- **Paid residential lookups (`residentialComps.ts`).** Fixed on
+  2026-10-09. The lookups now go through the fail-closed pool gate
+  (`poolDebit`, gate mode) before the vendor is called. If a lookup bills
+  nothing, the debit is refunded. The wallet-balance check was removed.
+- **Mail-credit recharges.** Fixed on 2026-10-09. They used to grant nothing;
+  see the founder-decisions page.
+- **Legacy tier names** ("solo", "operator", "empire"). Fixed on 2026-10-09.
+  They now resolve through `limitsTierFor()` for the credit pool, the AI
+  allowance and the cost ceilings.

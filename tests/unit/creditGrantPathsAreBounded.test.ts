@@ -138,6 +138,10 @@ const BALANCE_INCREMENT_REGISTER: Record<string, { count: number; why: string }>
     count: 1,
     why: "a Stripe-paid credit pack — the customer paid for every credit",
   },
+  "server/services/credits.ts::applyMailCreditRecharge": {
+    count: 1,
+    why: "a Stripe-PAID mail recharge, at 1.5¢/credit on amount_total, once per checkout session (unique index)",
+  },
   "server/services/autopilot/hands/apply-refund.ts::releaseClaim": {
     count: 1,
     why: "re-credits a clawback the same hand debited when its refund claim is released",
@@ -171,9 +175,13 @@ describe("rule A — nothing in server/ reads SUBSCRIPTION_TIERS.monthlyCredits"
   it("has zero reads", () => {
     expect(REAL.monthlyCreditsReads).toEqual([]);
   });
-  it("why it matters: the catalogue number exceeds the plan's creditPool", () => {
-    // Pinned as a fact, so a reader sees the hazard rule A defends against.
-    expect(SUBSCRIPTION_TIERS.scale.limits.monthlyCredits).toBeGreaterThan(TIER_LIMITS.scale.creditPool);
+  it("the dead catalogue number is gone from the catalogue itself (2026-10-09)", () => {
+    // It stood at 25,000 on Scale against a creditPool of 3,000 — the hazard
+    // rule A defends against. Removed outright; rule A still stops a re-read.
+    for (const tier of Object.values(SUBSCRIPTION_TIERS)) {
+      expect("monthlyCredits" in tier.limits).toBe(false);
+    }
+    expect(TIER_LIMITS.scale.creditPool).toBe(3000);
   });
 });
 

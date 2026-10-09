@@ -17,6 +17,7 @@ import {
   type CreditPackId,
 } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { creditsForPackPrice } from "@shared/billing/credit-packs";
 import { clock } from "../utils/clock";
 
 /** FRAUD-011: the most free usage a trial may consume. */
@@ -283,6 +284,64 @@ export class CreditService {
       where: eq(creditTransactions.organizationId, organizationId),
       orderBy: [desc(creditTransactions.createdAt)],
       limit,
+    });
+  }
+
+  /**
+   * Grant a PAID mail-credit recharge (POST /api/outreach/mail/credits/recharge
+   * → Stripe checkout → webhook). Exactly once per checkout session.
+   *
+   * Where the credits land: the purchased-credit balance
+   * (organizations.credit_balance). That is where mail sends spend purchased
+   * credits — poolDebit draws the plan's INCLUDED monthly pool first and, once
+   * it is exhausted, funds the send from this balance (the "purchased-overflow"
+   * lane). The balance never resets: the monthly reset applies only to the
+   * included pool (poolUsageThisMonth sums the current month and excludes
+   * purchased-overflow rows), so purchased credits do not expire.
+   *
+   * Amount: what the customer actually PAID (session.amount_total), at the
+   * canonical 1.5¢-per-credit rate, rounded down (shared/billing/credit-packs).
+   *
+   * Idempotency: the 'mail_credit_recharge' row is inserted FIRST, ON CONFLICT
+   * DO NOTHING against credit_txn_mail_recharge_session_uniq; only the insert
+   * that wins bumps the balance. A replay finds the row and grants nothing.
+   */
+  async applyMailCreditRecharge(
+    organizationId: number,
+    paidCents: number,
+    stripeSessionId: string,
+    stripePaymentIntentId?: string,
+  ): Promise<{ granted: boolean; credits: number }> {
+    const credits = creditsForPackPrice(paidCents);
+    if (credits <= 0 || !stripeSessionId) return { granted: false, credits: 0 };
+    return await withTransaction(async (tx) => {
+      const [claim] = await tx
+        .insert(creditTransactions)
+        .values({
+          organizationId,
+          type: "mail_credit_recharge",
+          amountCents: credits,
+          balanceAfterCents: 0, // set below, once the bump has landed
+          description: `Mail credit recharge — $${(paidCents / 100).toFixed(2)} at 1.5¢/credit`,
+          stripeCheckoutSessionId: stripeSessionId,
+          stripePaymentIntentId,
+          metadata: { paidCents, creditPriceCents: 1.5 },
+        })
+        .onConflictDoNothing()
+        .returning({ id: creditTransactions.id });
+      if (!claim) return { granted: false, credits };
+      const [updated] = await tx
+        .update(organizations)
+        .set({
+          creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${credits}`,
+        })
+        .where(eq(organizations.id, organizationId))
+        .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
+      await tx
+        .update(creditTransactions)
+        .set({ balanceAfterCents: updated?.newBalance ?? credits })
+        .where(and(eq(creditTransactions.id, claim.id), eq(creditTransactions.organizationId, organizationId)));
+      return { granted: true, credits };
     });
   }
 

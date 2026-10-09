@@ -1824,6 +1824,13 @@ export const creditTransactions = pgTable("credit_transactions", {
   uniqueIndex("credit_txn_purchase_refund_pi_uniq")
     .on(table.stripePaymentIntentId)
     .where(sql`type = 'purchase_refund'`),
+  // A mail-credit recharge checkout grants AT MOST ONCE: its
+  // 'mail_credit_recharge' row is the claim, keyed on the Stripe checkout
+  // session, so a webhook replay — or a second event for the same session —
+  // cannot grant again under any concurrency (migration 0268).
+  uniqueIndex("credit_txn_mail_recharge_session_uniq")
+    .on(table.stripeCheckoutSessionId)
+    .where(sql`type = 'mail_credit_recharge'`),
 ]);
 
 // Lens 3 (Pricing Coherence) — cache of the per-org current-month pool
@@ -3263,6 +3270,12 @@ export type CreditPackId = keyof typeof CREDIT_PACKS;
 // SUBSCRIPTION TIERS CONFIGURATION
 // ============================================
 
+// `limits.monthlyCredits` was REMOVED 2026-10-09. It was a dead catalogue
+// number ($250/mo on Scale, ~3x that plan's whole credit pool) that nothing
+// granted after the dormant allowance grant was deleted — yet the public
+// GET /api/subscription/tiers serialized it as if the plan included it. The
+// included monthly credits are TIER_LIMITS[*].creditPool (tier-limits.ts); the
+// public endpoint reports that (server/services/publicSubscriptionTiers.ts).
 export const SUBSCRIPTION_TIERS = {
   free: {
     name: "Free",
@@ -3275,7 +3288,6 @@ export const SUBSCRIPTION_TIERS = {
       teamMembers: 1,
       aiRequestsPerMonth: 100,
       campaigns: 1,
-      monthlyCredits: 100, // $1.00
     },
     features: ["basic_crm", "basic_inventory", "basic_notes"],
   },
@@ -3291,7 +3303,6 @@ export const SUBSCRIPTION_TIERS = {
       teamMembers: 1,
       aiRequestsPerMonth: 500,
       campaigns: 5,
-      monthlyCredits: 500, // $5.00
     },
     features: [
       "basic_crm", "basic_inventory", "basic_notes",
@@ -3325,7 +3336,6 @@ export const SUBSCRIPTION_TIERS = {
       teamMembers: 2,
       aiRequestsPerMonth: 1000,
       campaigns: 10,
-      monthlyCredits: 1000, // $10.00
     },
     features: [
       "basic_crm", "basic_inventory", "basic_notes",
@@ -3358,7 +3368,6 @@ export const SUBSCRIPTION_TIERS = {
       teamMembers: 10,
       aiRequestsPerMonth: 10000,
       campaigns: 100,
-      monthlyCredits: 5000, // $50.00
     },
     features: [
       "advanced_crm", "advanced_inventory", "advanced_notes",
@@ -3396,7 +3405,6 @@ export const SUBSCRIPTION_TIERS = {
       teamMembers: 25,
       aiRequestsPerMonth: -1,
       campaigns: -1,
-      monthlyCredits: 25000, // $250.00
     },
     features: [
       "advanced_crm", "advanced_inventory", "advanced_notes",
@@ -3435,7 +3443,6 @@ export const SUBSCRIPTION_TIERS = {
       teamMembers: -1, // unlimited seats
       aiRequestsPerMonth: -1,
       campaigns: -1,
-      monthlyCredits: 50000, // $500.00
     },
     features: [
       "advanced_crm", "advanced_inventory", "advanced_notes",

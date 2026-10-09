@@ -18,6 +18,7 @@ import path from "node:path";
 import { TIER_LIMITS, AI_TURNS_BYOK_THRESHOLDS } from "@shared/billing/tier-limits";
 import { CREDIT_PACK_CATALOG, creditsForPackPrice, CREDIT_PRICE_CENTS } from "@shared/billing/credit-packs";
 import { CREDIT_PACKS } from "@shared/schema";
+import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
 import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -159,15 +160,26 @@ describe("B — top-up packs: same prices, 1.5¢ per credit, rounded down", () =
 
 // ── C. One shared monthly AI allowance, in cents ─────────────────────────────
 
-describe("C — the allowance is each plan's turn threshold priced at 1.5¢", () => {
-  it("derives starter 1,125¢ · pro 2,250¢ · scale 9,000¢ · free/enterprise none", () => {
+describe("C — one shared monthly AI allowance per plan, in cents", () => {
+  it("starter 1,125¢ · pro 2,250¢ · scale 4,500¢ (2026-10-09) · free/enterprise none", () => {
     const allowance = Object.fromEntries(
       (["free", "starter", "pro", "scale", "enterprise"] as const).map((t) => [t, TIER_LIMITS[t].aiAllowanceCents]),
     );
-    expect(allowance).toEqual({ free: null, starter: 1125, pro: 2250, scale: 9000, enterprise: null });
-    for (const t of ["free", "starter", "pro", "scale", "enterprise"] as const) {
-      const th = AI_TURNS_BYOK_THRESHOLDS[t];
-      expect(TIER_LIMITS[t].aiAllowanceCents).toBe(th === null ? null : Math.floor(th * 1.5));
+    expect(allowance).toEqual({ free: null, starter: 1125, pro: 2250, scale: 4500, enterprise: null });
+    // Starter and pro remain their turn threshold priced at 1.5¢.
+    expect(TIER_LIMITS.starter.aiAllowanceCents).toBe(Math.floor(AI_TURNS_BYOK_THRESHOLDS.starter! * 1.5));
+    expect(TIER_LIMITS.pro.aiAllowanceCents).toBe(Math.floor(AI_TURNS_BYOK_THRESHOLDS.pro! * 1.5));
+  });
+
+  it("aiAllowanceBelowPrice — no tier's allowance reaches or exceeds its monthly price", () => {
+    for (const t of ["starter", "pro", "scale"] as const) {
+      const allowance = TIER_LIMITS[t].aiAllowanceCents;
+      expect(allowance, `${t} must have an allowance`).not.toBeNull();
+      expect(allowance!, `${t}: allowance ${allowance}¢ vs price ${TIER_PRICES_CENTS[t].priceMonthlyCents}¢`).toBeLessThan(
+        TIER_PRICES_CENTS[t].priceMonthlyCents,
+      );
     }
+    // Free costs nothing, so it may not carry a platform AI allowance wall at all.
+    expect(TIER_LIMITS.free.aiAllowanceCents).toBeNull();
   });
 });

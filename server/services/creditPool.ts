@@ -40,7 +40,7 @@
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { db, withTransaction, type PrimaryDb } from "../db";
 import { financialLedger, organizations, type ByokChannel } from "@shared/schema";
-import { TIER_LIMITS, type SubscriptionTier } from "@shared/billing/tier-limits";
+import { TIER_LIMITS, limitsTierFor, type SubscriptionTier } from "@shared/billing/tier-limits";
 // Tier 1C: creditCost moved out of shared/ (it reaches into server settings).
 import { type CreditAction } from "@shared/billing/credit-weights";
 import { creditCost } from "./creditCost";
@@ -210,10 +210,8 @@ async function fetchOrgTier(
     .where(eq(organizations.id, organizationId))
     .limit(1);
   if (!row) return { tier: "free", isFounder: false, poolMonthly: TIER_LIMITS.free.creditPool };
-  const t = (row.subscriptionTier ?? "free").toLowerCase();
-  const tier = (TIER_LIMITS as Record<string, unknown>)[t]
-    ? (t as SubscriptionTier)
-    : "free";
+  // The canonical fold: legacy solo/operator/empire get their real tier's pool.
+  const tier = limitsTierFor(row.subscriptionTier);
   const isFounder = row.isFounder === true;
   const poolMonthly = isFounder
     ? TIER_LIMITS.enterprise.creditPool

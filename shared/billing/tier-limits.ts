@@ -14,7 +14,29 @@
  * Re-exported from `server/services/usageLimits.ts` for back-compat.
  */
 
+import { tierForSubscriptionTier } from "./tier-pricing";
+
 export type SubscriptionTier = "free" | "starter" | "pro" | "scale" | "enterprise";
+
+/**
+ * THE fold from a stored `organizations.subscription_tier` value to the tier
+ * whose limits apply. Paid names — canonical AND legacy ("solo" → starter,
+ * "operator" → pro, "empire" → scale) — resolve through
+ * tier-pricing.tierForSubscriptionTier, the same alias table MRR uses, so the
+ * tier a customer is billed for is the tier whose pool, AI allowance and cost
+ * ceilings they get. "free" / "enterprise" pass through; anything else is the
+ * most conservative tier, "free". Every pool, allowance and ceiling
+ * computation resolves tiers through this (2026-10-09: a legacy "empire" org
+ * paying for Scale had been resolving to the free tier's 50-credit pool).
+ */
+export function limitsTierFor(subscriptionTier: string | null | undefined): SubscriptionTier {
+  const paid = tierForSubscriptionTier(subscriptionTier);
+  if (paid) return paid;
+  const raw = (subscriptionTier ?? "").toLowerCase();
+  if (raw === "enterprise") return "enterprise";
+  if (raw === "professional") return "pro";
+  return "free";
+}
 
 /**
  * Resource keys metered by the usage-limits system.
@@ -85,7 +107,8 @@ export interface TierLimits {
    * decision 2026-10-08). Every production AI feature the org triggers —
    * chat, document intelligence, due diligence, agent jobs, … — draws from
    * it; past it the org brings its own AI key, exactly as chat works today.
-   * Derived, never hand-set: aiTurnsByokThreshold × AI_TURN_COST_CENTS.
+   * Explicit per tier and always below the plan's monthly price — see
+   * AI_ALLOWANCE_CENTS for the figures and their rationale.
    * `null` = no allowance wall for this tier.
    */
   aiAllowanceCents: number | null;
@@ -120,24 +143,23 @@ export const AI_TURNS_BYOK_THRESHOLDS: Record<SubscriptionTier, number | null> =
   enterprise: null, // negotiated per-deal — no self-serve threshold
 };
 
-/**
- * The documented blended platform cost of one Pax turn, in cents — the same
- * 1.5¢ the credit weights carry for `ai_turn_avg` (credit-weights.ts) and the
- * threshold rationale above uses ("1,500 × 1.5¢ ≈ $22.50").
- */
-const AI_TURN_COST_CENTS = 1.5;
 
 /**
- * Founder decision 2026-10-08 — one shared monthly AI allowance per plan,
- * measured in COST (cents) rather than turns, so a long document read is not
- * counted as one chat turn. Each plan's allowance is its existing turn
- * threshold priced at the documented per-turn cost, rounded down:
+ * ONE shared monthly AI allowance per plan, in CENTS of platform AI cost
+ * (founder decisions 2026-10-08 and 2026-10-09), so a long document read is
+ * not counted as one chat turn. EXPLICIT per tier — not derived:
  *
- *   starter    750 turns × 1.5¢ = 1,125¢  ($11.25 / month)
- *   pro      1,500 turns × 1.5¢ = 2,250¢  ($22.50 / month)
- *   scale    6,000 turns × 1.5¢ = 9,000¢  ($90.00 / month — above the $79
- *                                          price; recorded for the founder)
- *   free / enterprise: no threshold → no allowance wall
+ *   starter  1,125¢  ($11.25 / month)  =   750 turns × 1.5¢  (of a $20 price)
+ *   pro      2,250¢  ($22.50 / month)  = 1,500 turns × 1.5¢  (of a $49 price)
+ *   scale    4,500¢  ($45.00 / month)  — founder decision 2026-10-09. The
+ *            turn-derived figure (6,000 × 1.5¢ = $90) was ABOVE Scale's $79
+ *            price; the rule is that an allowance stays below plan price, and
+ *            $45 is 57% of $79.
+ *   free / enterprise: no allowance wall (free: the plain ai_requests cap
+ *            governs; enterprise: negotiated per deal)
+ *
+ * Invariant (aiAllowanceBelowPrice in founderDecisions20261008.test.ts): every
+ * tier's allowance is strictly below its monthly price.
  *
  * What counts: platform AI spend the ORG TRIGGERED (ai_telemetry_events rows
  * with origin = 'customer'). What does not: background work that serves the
@@ -145,18 +167,17 @@ const AI_TURN_COST_CENTS = 1.5;
  * the per-org tier ceilings in aiCostCeiling.ts, so it can never wall the
  * customer off), BYOK calls (recorded at $0), and platform-internal / founder
  * AI (no org). See docs/company/founder-decisions-2026-10-08.md.
+ *
+ * The starter and pro figures were priced from the documented 1.5¢ blended
+ * per-turn cost (credit-weights.ts ai_turn_avg). The turn thresholds above no
+ * longer gate anything on their own — the cents allowance is the wall.
  */
-function aiAllowanceCentsFor(turnThreshold: number | null): number | null {
-  if (turnThreshold === null) return null;
-  return Math.floor(turnThreshold * AI_TURN_COST_CENTS);
-}
-
 const AI_ALLOWANCE_CENTS: Record<SubscriptionTier, number | null> = {
-  free: aiAllowanceCentsFor(AI_TURNS_BYOK_THRESHOLDS.free),
-  starter: aiAllowanceCentsFor(AI_TURNS_BYOK_THRESHOLDS.starter),
-  pro: aiAllowanceCentsFor(AI_TURNS_BYOK_THRESHOLDS.pro),
-  scale: aiAllowanceCentsFor(AI_TURNS_BYOK_THRESHOLDS.scale),
-  enterprise: aiAllowanceCentsFor(AI_TURNS_BYOK_THRESHOLDS.enterprise),
+  free: null,
+  starter: 1125,
+  pro: 2250,
+  scale: 4500,
+  enterprise: null,
 };
 
 /**

@@ -11253,7 +11253,7 @@ BEGIN
     UPDATE "organizations"
        SET "credit_pool_grandfather" = 8000,
            "credit_pool_grandfather_ends_at" = NULL
-     WHERE lower("subscription_tier") = 'scale'
+     WHERE lower("subscription_tier") IN ('scale', 'empire')
        AND "subscription_status" IN ('active', 'trialing', 'past_due')
        AND "credit_pool_grandfather" IS NULL;
     GET DIAGNOSTICS n = ROW_COUNT;
@@ -11269,6 +11269,10 @@ END $$`,
   // (founder decision 2026-10-08). Mirrors migrations/0267_ai_allowance_origin.sql.
   `ALTER TABLE "ai_telemetry_events" ADD COLUMN IF NOT EXISTS "origin" text`,
   `CREATE INDEX IF NOT EXISTS "ai_telemetry_org_origin_created_idx" ON "ai_telemetry_events" ("organization_id", "origin", "created_at")`,
+
+  // 0268 — a mail-credit recharge checkout grants exactly once. Mirrors
+  // migrations/0268_mail_credit_recharge_grant_once.sql.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "credit_txn_mail_recharge_session_uniq" ON "credit_transactions" ("stripe_checkout_session_id") WHERE type = 'mail_credit_recharge'`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

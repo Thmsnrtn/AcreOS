@@ -360,6 +360,9 @@ export class WebhookHandlers {
       if (session.metadata?.type === 'credit_purchase') {
         return WebhookHandlers.processCreditPurchase(session);
       }
+      if (session.metadata?.type === 'mail_credit_recharge') {
+        return WebhookHandlers.processMailCreditRecharge(session);
+      }
       // Vertical-pack add-on (S3) — MUST run before the generic subscription
       // branch, or the pack sub would be recorded as the org's plan sub.
       if (session.metadata?.type === 'vertical_pack') {
@@ -1472,6 +1475,32 @@ export class WebhookHandlers {
     } catch (err) {
       logger.error('[webhook] Error processing charge.succeeded', err instanceof Error ? err : undefined);
     }
+  }
+
+  /**
+   * Mail-credit recharge (POST /api/outreach/mail/credits/recharge). These
+   * checkouts used to have NO handler: the customer paid and received nothing.
+   * Grants the credits the customer PAID for, once per checkout session
+   * (creditService.applyMailCreditRecharge is idempotent on the session).
+   */
+  static async processMailCreditRecharge(session: Stripe.Checkout.Session): Promise<void> {
+    const orgId = parseInt(session.metadata?.organizationId ?? '', 10);
+    if (!Number.isFinite(orgId)) {
+      logger.error('[webhook] mail_credit_recharge session missing organizationId metadata');
+      return;
+    }
+    if (session.payment_status !== 'paid') {
+      logger.warn('[webhook] mail_credit_recharge session not paid — nothing granted', {
+        metadata: { orgId, sessionId: session.id, paymentStatus: session.payment_status },
+      });
+      return;
+    }
+    const paidCents = session.amount_total ?? 0;
+    const paymentIntentId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id;
+    const result = await creditService.applyMailCreditRecharge(orgId, paidCents, session.id, paymentIntentId);
+    logger.info('[webhook] mail credit recharge', {
+      metadata: { orgId, sessionId: session.id, paidCents, credits: result.credits, granted: result.granted },
+    });
   }
 
   static async processCreditPurchase(session: Stripe.Checkout.Session): Promise<void> {

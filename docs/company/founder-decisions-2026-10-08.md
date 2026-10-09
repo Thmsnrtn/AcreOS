@@ -59,12 +59,11 @@ per-turn cost (1.5¢, `credit-weights.ts` `ai_turn_avg`):
 |---|---|---|
 | Starter | 750 × 1.5¢ | 1,125¢ ($11.25 / month) |
 | Pro | 1,500 × 1.5¢ | 2,250¢ ($22.50 / month) |
-| Scale | 6,000 × 1.5¢ | 9,000¢ ($90.00 / month) |
+| Scale | — (see 2026-10-09 below) | 4,500¢ ($45.00 / month) |
 | Free, Enterprise | — | no allowance wall (as before) |
 
-**Note for the founder:** Scale's derived allowance ($90) is above its $79
-price. That is the arithmetic the decision specified, recorded as computed
-and not adjusted.
+Scale's derived allowance of $90 was above its $79 price. The founder replaced
+it on 2026-10-09 (below).
 
 **What counts.** Every production AI call the org triggers:
 
@@ -112,3 +111,38 @@ spend after the deploy, which errs in the customer's favour.
   Description). Code cannot change live Stripe products, and
   `server/seed-products.ts` is quarantined.
 - **No Stripe price changes** are needed for A, B or C.
+
+## 2026-10-09 — Scale's AI allowance is $45.00 / month
+
+**Date:** 2026-10-09
+
+**Source:** the founder's picker answer in the coordinating session, relayed
+the same way as the decisions above.
+
+- Scale's shared monthly AI allowance is **4,500¢ ($45.00)**, replacing the
+  turn-derived $90.
+- Starter stays at $11.25 and Pro at $22.50.
+- The allowances are now explicit per-tier cent values (`AI_ALLOWANCE_CENTS`
+  in `shared/billing/tier-limits.ts`), not derived from the turn threshold.
+- Rule: an allowance stays below its plan's monthly price. $45 is 57% of $79.
+  `aiAllowanceBelowPrice` in `tests/unit/founderDecisions20261008.test.ts`
+  fails if any tier's allowance reaches or exceeds its price.
+- **Not changed:** the Scale chat turn threshold (6,000). It no longer gates
+  anything by itself, because the gate measures cents. At the documented
+  1.5¢ blended cost per turn, Scale chat reaches the $45 cap at about 3,000
+  turns, roughly half the 6,000 threshold. The cents cap is the operative
+  wall.
+
+## 2026-10-09 — mail-credit recharges are granted
+
+**Date:** 2026-10-09
+
+**Source:** relayed by the coordinating session.
+
+- Paid mail-credit recharges now grant at 1.5¢ per credit, on the amount
+  actually paid and rounded down, exactly once per checkout session.
+- Credits go to the purchased-credit balance. Mail sends spend that balance
+  after the included monthly pool is exhausted, and it never resets.
+- Historical payments are **not** auto-granted.
+  `scripts/billing/list-ungranted-mail-recharges.sql` (read-only) lists how
+  to find the customers to make whole.

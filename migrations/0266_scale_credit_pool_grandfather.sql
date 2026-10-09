@@ -18,7 +18,7 @@ BEGIN
     UPDATE "organizations"
        SET "credit_pool_grandfather" = 8000,
            "credit_pool_grandfather_ends_at" = NULL
-     WHERE lower("subscription_tier") = 'scale'
+     WHERE lower("subscription_tier") IN ('scale', 'empire')
        AND "subscription_status" IN ('active', 'trialing', 'past_due')
        AND "credit_pool_grandfather" IS NULL;
     GET DIAGNOSTICS n = ROW_COUNT;

@@ -198,7 +198,10 @@ export async function getEffectiveCeilings(orgId: number): Promise<{
       .from(organizations)
       .where(eq(organizations.id, orgId))
       .limit(1);
-    const tier = (org?.subscriptionTier ?? "free").toLowerCase();
+    // The canonical fold: a legacy solo/operator/empire org gets its real
+    // tier's ceiling, not the platform default (or nothing).
+    const { limitsTierFor } = await import("@shared/billing/tier-limits");
+    const tier = limitsTierFor(org?.subscriptionTier ?? "free");
     const tierDefaults = TIER_CEILING_DEFAULTS[tier];
     if (tierDefaults) {
       return { ...tierDefaults, source: "tier_default" };

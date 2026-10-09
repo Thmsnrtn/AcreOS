@@ -127,22 +127,36 @@ async function residentialLookup(
     return { status: "unavailable", reason: "attom_not_connected", message: unavailableMessage };
   }
 
-  // Affordability honesty: a platform-billed ATTOM lookup debits the org
-  // credit pool (comps 20¢ / valuation 10¢). The registry would silently
-  // skip an unaffordable provider and return null; surface the real reason
-  // instead. BYOK lookups cost the platform nothing and always pass.
+  // Affordability: a platform-billed ATTOM lookup is paid from the org's
+  // credit POOL (comps 20¢ / valuation 10¢) through the same fail-closed gate
+  // every other paid action uses — poolDebit in "gate" mode, BEFORE the vendor
+  // is called. An exhausted pool (with no purchased credits to overflow into)
+  // or a debit error refuses the lookup. (2026-10-09: this used to check the
+  // legacy wallet balance, which lookups never reduced, and then record the
+  // spend against the pool in a mode that never refuses — so while the wallet
+  // held one lookup's price the lookups were capped by nothing.) BYOK lookups
+  // cost the platform nothing and are never pool-gated.
   const costCents = attomProvider.costPerLookupCents(category);
-  let creditBalance = 0;
+  let preDebit: { eventId: string; cents: number } | null = null;
   if (!byok) {
-    const { creditService } = await import("./credits");
-    creditBalance = await creditService.getBalance(organizationId).catch(() => 0);
-    if (creditBalance < costCents) {
+    const { poolDebit } = await import("./creditPool");
+    const { randomUUID } = await import("node:crypto");
+    const eventId = `residential:${category}:org:${organizationId}:${randomUUID()}`;
+    const debit = await poolDebit({
+      organizationId,
+      action: category === "comps" ? "comps_lookup" : "valuation_lookup",
+      units: 1,
+      externalEventId: eventId,
+      notes: `ATTOM residential ${category} lookup (pre-debited, ${costCents}¢ provider cost)`,
+    });
+    if (!debit.allowed) {
       return {
         status: "unavailable",
         reason: "insufficient_credits",
-        message: `Residential ${category === "comps" ? "comps" : "valuation"} lookups cost ${costCents}¢ each and your credit balance can't cover one — top up credits, or bring your own ATTOM key in Settings → Your provider keys (Property data → ATTOM Data).`,
+        message: `Residential ${category === "comps" ? "comps" : "valuation"} lookups cost ${costCents}¢ each and your credit pool can't cover one this month — top up credits, or bring your own ATTOM key in Settings → Your provider keys (Property data → ATTOM Data).`,
       };
     }
+    preDebit = { eventId, cents: debit.debitedCents };
   }
 
   const result = await providerRegistry.lookup(
@@ -151,10 +165,27 @@ async function residentialLookup(
     // "pro" is the ATTOM registration tier, not a subscription check — see
     // module header. The allowlist below is what keeps this residential-only.
     "pro",
-    creditBalance,
+    // The pool has already paid for exactly one platform lookup; BYOK pays 0.
+    byok ? 0 : costCents,
     organizationId,
-    { allowProviders: RESIDENTIAL_CAPABLE_PROVIDERS },
+    { allowProviders: RESIDENTIAL_CAPABLE_PROVIDERS, ...(byok ? {} : { poolPreDebited: true }) },
   );
+
+  // Nothing billable happened (no data, or served from cache at $0): give the
+  // pre-debit back so the customer pays only for a live vendor answer.
+  if (preDebit && preDebit.cents > 0 && (!result || result.cached || result.costCents === 0)) {
+    const { refundPoolDebit } = await import("./creditPool");
+    await refundPoolDebit({
+      organizationId,
+      originalEventId: preDebit.eventId,
+      amountCents: preDebit.cents,
+      reason: `ATTOM residential ${category}: ${!result ? "no data" : "served from cache"} — pre-debit returned`,
+    }).catch((err: unknown) =>
+      logger.warn("[residentialComps] pool refund failed (non-fatal)", {
+        metadata: { organizationId, error: err instanceof Error ? err.message : String(err) },
+      }),
+    );
+  }
 
   if (!result) {
     return {

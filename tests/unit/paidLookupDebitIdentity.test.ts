@@ -83,6 +83,15 @@ describe("one vendor call, one debit, to the org that made it", () => {
     expect(S.debits[0].externalEventId).toContain("org:7");
   });
 
+  it("a lookup the caller already paid for through the pool gate (poolPreDebited) is NOT debited again", async () => {
+    const { providerRegistry } = Registry;
+    providerRegistry.register("parcel_data", paidProvider() as never, 10);
+    await providerRegistry.lookup("parcel_data", input, "free", 1000, 7, { poolPreDebited: true });
+    expect(S.debits).toHaveLength(0);
+    await providerRegistry.lookup("parcel_data", input, "free", 1000, 7);
+    expect(S.debits).toHaveLength(1);
+  });
+
   it("two genuine calls by one org are two ledger attempts", async () => {
     const { providerRegistry } = Registry;
     providerRegistry.register("parcel_data", paidProvider() as never, 10);
