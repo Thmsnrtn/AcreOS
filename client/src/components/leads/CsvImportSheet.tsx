@@ -373,7 +373,7 @@ export function CsvImportSheet({ open, onOpenChange, onImported }: CsvImportShee
               </Button>
               <Button
                 onClick={() => importMut.mutate()}
-                disabled={importMut.isPending || mappedRows.length === 0 || mappedRows.length > CSV_IMPORT_MAX_ROWS}
+                disabled={importMut.isPending || mappedRows.length === 0}
                 data-testid="csv-importer-submit"
               >
                 {importMut.isPending

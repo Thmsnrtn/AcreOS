@@ -93,6 +93,13 @@ describe("the shapes the oracle run got wrong", () => {
     expect(leadReachabilityForPax(lead({ ...FULL_ADDR, doNotContact: true, tcpaConsent: true, phone: "1", email: "a@b.co" })).usableNow).toEqual([]);
   });
 
+  it("an opt-out on file (optOutDate, doNotContact still false) blocks every channel (#328 rule, merged)", () => {
+    const r = leadReachabilityForPax(
+      lead({ ...FULL_ADDR, tcpaConsent: true, phone: "1", email: "a@b.co", optOutDate: new Date("2026-09-01") } as never),
+    );
+    expect(r.usableNow).toEqual([]);
+  });
+
   it("an incomplete address is not mailable", () => {
     expect(leadReachabilityForPax(lead({ ...FULL_ADDR, zip: "" })).canMail.usable).toBe(false);
   });

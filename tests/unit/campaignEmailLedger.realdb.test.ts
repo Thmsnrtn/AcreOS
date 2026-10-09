@@ -18,6 +18,8 @@ vi.mock("../../server/services/activation", () => ({ recordActivationEventAsync:
 
 const S = vi.hoisted(() => ({ failFor: new Set<string>(), sentTo: [] as string[] }));
 vi.mock("../../server/services/emailService", () => ({
+  // The stack's BYO send rail asks the transport's resolver first (merged).
+  counterpartyEmailIdentityStatus: async () => ({ canSend: true, ownSesCredentials: false }),
   emailService: {
     sendEmail: async (o: { to: string }) => {
       if (S.failFor.has(o.to)) return { success: false, error: "provider rejected", errorType: "recipient_rejected" };
@@ -67,7 +69,7 @@ describe.runIf(realDbAvailable)("campaign email ledger (real database)", () => {
       .returning();
     ids.campaign = c.id;
     const mk = async (k: string, extra: Record<string, unknown> = {}) =>
-      (await db.insert(leads).values({ organizationId: org.id, firstName: k, lastName: "T", email: email(k), ...extra } as any).returning())[0].id;
+      (await db.insert(leads).values({ organizationId: org.id, firstName: k, lastName: "T", email: email(k), tcpaConsent: true, ...extra } as any).returning())[0].id;
     ids.a = await mk("a");
     ids.b = await mk("b");
     ids.c = await mk("c", { doNotContact: true });

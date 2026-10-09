@@ -21,7 +21,7 @@ export interface LeadReachability {
 
 type ReachabilityLead = Pick<
   Lead,
-  "tcpaConsent" | "doNotContact" | "phone" | "email" | "address" | "city" | "state" | "zip"
+  "tcpaConsent" | "doNotContact" | "optOutDate" | "phone" | "email" | "address" | "city" | "state" | "zip"
 >;
 
 function verdict(
