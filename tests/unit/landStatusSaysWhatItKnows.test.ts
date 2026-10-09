@@ -251,7 +251,7 @@ describe("population: writers that bypass the repository cannot store an arbitra
     "server/routes-lot-pricing.ts": "names-no-land-status",
     "server/routes-bulk.ts": "names-no-land-status",
     "server/api-v1/properties.ts": "names-no-land-status",
-    "server/services/import.ts": "names-no-land-status",
+    // server/services/import.ts was deleted as unreferenced (#328).
   };
 
   function walk(dir: string, out: string[] = []): string[] {

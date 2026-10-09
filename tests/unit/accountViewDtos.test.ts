@@ -142,7 +142,10 @@ const EXPECTED_ORG_KEYS: Record<ViewerRole, string[]> = Object.fromEntries(
     ],
   ]),
 ) as Record<ViewerRole, string[]>;
-const EXPECTED_TEAM_KEYS = ["displayName", "email", "id", "isActive", "role", "userId"];
+// The projection's columns, plus (merged with #330) the EFFECTIVE assigned-only
+// flag and its stored override — computed by the server's resolver, not
+// columns of the projection, and needed by the Settings toggle.
+const EXPECTED_TEAM_KEYS = ["displayName", "email", "id", "isActive", "role", "userId", "viewOnlyAssignedLeads", "viewOnlyAssignedLeadsOverride"];
 
 // Named so that widening an allowlist to one of these is its own red line.
 const NEVER_SERVED_USER = ["passwordResetToken", "passwordResetExpiresAt", "failedLoginAttempts", "lockedUntil"];

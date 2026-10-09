@@ -940,6 +940,14 @@ describe("request schemas never carry server-owned fields", () => {
       if (!schema) continue; // a table, a constant, a function — not a schema
       zodMembers++;
       const valid = (FIXTURES[m.key] ?? sample(schema).value) as Record<string, unknown> | undefined;
+      // A SCALAR schema (an enum or string validator a handler applies to one
+      // field, e.g. landStatusSchema since #335/#336) parses a value, not a
+      // body: it has no keys to carry. Counted as parsed — and only when it
+      // really accepts its sampled scalar, so a broken sample still fails.
+      if (valid !== undefined && valid !== null && typeof valid !== "object" && schema.safeParse(valid).success) {
+        parsed++;
+        continue;
+      }
       if (!valid || typeof valid !== "object" || !schema.safeParse(valid).success) {
         failures.push(`${m.key}: no valid body could be built — add one to FIXTURES`);
         continue;
