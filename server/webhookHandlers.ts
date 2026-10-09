@@ -553,9 +553,10 @@ export class WebhookHandlers {
           // customers were told the wrong plan on day one. Render from
           // TIER_LIMITS, the single source of truth, with unlimited (null)
           // spelled out honestly.
-          const { TIER_LIMITS } = await import('@shared/billing/tier-limits');
-          const tierKey = (org.subscriptionTier || 'starter') as keyof typeof TIER_LIMITS;
-          const real = TIER_LIMITS[tierKey] ?? TIER_LIMITS.starter;
+          // The canonical fold: a legacy solo/operator/empire org is told its
+          // real tier's limits, not the starter fallback.
+          const { TIER_LIMITS, limitsTierFor } = await import('@shared/billing/tier-limits');
+          const real = TIER_LIMITS[limitsTierFor(org.subscriptionTier || 'starter')];
           const fmt = (n: number | null | undefined): string =>
             n == null ? 'Unlimited' : n.toLocaleString('en-US');
           const limits = {
@@ -1236,11 +1237,21 @@ export class WebhookHandlers {
 
       // A renewal ends any grandfathered credit pool (founder decision
       // 2026-10-08: existing Scale orgs keep 8,000 until their next renewal).
+      // Only the PLAN subscription's renewal counts: a vertical-pack add-on on
+      // the same Stripe customer renews on its own cycle and must not end the
+      // plan's grandfathered pool early. When the org's plan subscription id is
+      // not recorded, any subscription renewal is taken as the plan's.
       if (invoice.billing_reason === 'subscription_cycle') {
         try {
-          const { endGrandfatherAtRenewal } = await import('./services/creditPoolGrandfather');
-          const renewedAt = invoice.created ? new Date(invoice.created * 1000) : clock.now();
-          await endGrandfatherAtRenewal(org.id, renewedAt);
+          const { invoiceSubscriptionId } = await import('./stripeClient');
+          const renewedSubId = invoiceSubscriptionId(invoice);
+          const planSubId = (org as { stripeSubscriptionId?: string | null }).stripeSubscriptionId ?? null;
+          const isPlanRenewal = !planSubId || !renewedSubId || renewedSubId === planSubId;
+          if (isPlanRenewal) {
+            const { endGrandfatherAtRenewal } = await import('./services/creditPoolGrandfather');
+            const renewedAt = invoice.created ? new Date(invoice.created * 1000) : clock.now();
+            await endGrandfatherAtRenewal(org.id, renewedAt);
+          }
         } catch (err) {
           logger.warn('[webhook] credit-pool grandfather end skipped (non-fatal)', {
             metadata: { orgId: org.id, error: err instanceof Error ? err.message : String(err) },

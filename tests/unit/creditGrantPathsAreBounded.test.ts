@@ -89,6 +89,26 @@ function analyze(fileName: string, text: string, f: Findings): void {
       }
     }
 
+    // Rule B, raw-SQL form (audit 2026-10-09): `SET credit_balance = … + …`
+    // in any SQL text — a tagged template or a plain string handed to a
+    // driver — is the same increment the .set() form is.
+    if (
+      ts.isNoSubstitutionTemplateLiteral(node) ||
+      ts.isTemplateExpression(node) ||
+      ts.isStringLiteral(node)
+    ) {
+      const text = ts.isTemplateExpression(node)
+        ? [node.head.text, ...node.templateSpans.map((sp) => sp.literal.text)].join("${}")
+        : node.text;
+      // SET credit_balance = <expression up to the next comma/WHERE> containing '+'
+      const m = /\bset\s+(?:[\s\S]*?,\s*)?"?credit_balance"?\s*=\s*([\s\S]*?)(?:,\s*\w+\s*=|\bwhere\b|\breturning\b|$)/i.exec(text);
+      if (m && /\+/.test(m[1])) f.balanceIncrements.push(`${fileName}::${ownerFunctionName(node)}`);
+    }
+    // Rule B, shorthand form: `.set({ creditBalance })`.
+    if (ts.isShorthandPropertyAssignment(node) && node.name.text === "creditBalance" && isInsideWriteCall(node)) {
+      f.balanceIncrements.push(`${fileName}::${ownerFunctionName(node)}`);
+    }
+
     // Rule C — addCredits callers and their transaction type.
     if (ts.isCallExpression(node)) {
       const callee = unwrap(node.expression);
@@ -236,6 +256,20 @@ describe("canaries — each defect shape is seen by the analyzer", () => {
   });
   it("B: a response object that merely reports the balance is not a write", () => {
     expect(run(`function r(org){ return { creditBalance: org.creditBalance }; }`).balanceIncrements).toEqual([]);
+  });
+  it("B: raw SQL — UPDATE organizations SET credit_balance = credit_balance + n (audit 2026-10-09)", () => {
+    const f = run(`async function g(){ await db.execute(sql\`UPDATE organizations SET credit_balance = credit_balance + \${n} WHERE id = \${id}\`); }`);
+    expect(f.balanceIncrements).toEqual(["fixture.ts::g"]);
+    const g = run(`async function h(){ await pool.query("update organizations set credit_balance = coalesce(credit_balance,0) + $1 where id = $2", [n, id]); }`);
+    expect(g.balanceIncrements).toEqual(["fixture.ts::h"]);
+  });
+  it("B: a shorthand property inside .set() (audit 2026-10-09)", () => {
+    const f = run(`async function g(){ const creditBalance = String(old + 25000); await db.update(o).set({ creditBalance }); }`);
+    expect(f.balanceIncrements).toEqual(["fixture.ts::g"]);
+  });
+  it("B: raw SQL debit or a read of credit_balance is not an increment", () => {
+    expect(run(`async function d(){ await db.execute(sql\`UPDATE organizations SET credit_balance = credit_balance - \${n}\`); }`).balanceIncrements).toEqual([]);
+    expect(run(`async function r(){ await db.execute(sql\`SELECT credit_balance + 0 FROM organizations\`); }`).balanceIncrements).toEqual([]);
   });
   it("C: a monthly grant routed through addCredits", () => {
     const f = run(`async function m(){ await creditService.addCredits(id, SUBSCRIPTION_TIERS[t].limits.monthlyCredits, "monthly_allowance", "x"); }`);

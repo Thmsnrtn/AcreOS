@@ -88,9 +88,24 @@ const SDK_SUFFIXES: Array<{ path: string[]; method: string; shape: string }> = [
   { path: ["images"], method: "edit", shape: "S3" },
   { path: ["transcriptions"], method: "create", shape: "S3" },
   { path: ["speech"], method: "create", shape: "S3" },
+  // Other spending methods on the same namespaces (audit 2026-10-09).
+  { path: ["chat", "completions"], method: "stream", shape: "S1" },
+  { path: ["chat", "completions"], method: "parse", shape: "S1" },
+  { path: ["chat", "completions"], method: "runTools", shape: "S1" },
+  { path: ["messages"], method: "stream", shape: "S2" },
+  { path: ["messages", "batches"], method: "create", shape: "S2" },
+  // Legacy completions — and any `<alias>.completions.create` where `<alias>`
+  // is a `client.chat` that escaped into a local (see S8).
+  { path: ["completions"], method: "create", shape: "S3" },
 ];
 
-const RAW_ENDPOINT = /\/v1\/(chat\/completions|messages\b|embeddings|responses\b|audio\/|images\/)/;
+/**
+ * A provider model endpoint in a string literal. Not anchored on `/v1/`: an
+ * OpenAI-compatible host without the prefix (`…/chat/completions`), a Gemini
+ * `:generateContent`, or a URL assembled from pieces (`"/v1/" + "chat/completions"`)
+ * spends exactly the same money.
+ */
+const RAW_ENDPOINT = /(\/v1\/(messages\b|embeddings|responses\b|audio\/|images\/)|\bchat\/completions\b|:(stream)?generateContent\b)/i;
 
 /** Property names along a (possibly call-/non-null-wrapped) access chain, innermost last. */
 function chainNames(e: ts.Expression): string[] {
@@ -140,6 +155,25 @@ export function findModelCalls(file: string, text: string): Hit[] {
         }
       }
     }
+    // S8: the SDK namespace `x.chat.completions` escaping the access chain —
+    // assigned, passed, or returned — so a later `alias.create(...)` is
+    // invisible to S1. (`messages` is not checked: it is an ordinary array name.)
+    if (ts.isPropertyAccessExpression(node) && endsWith(chainNames(node), ["chat", "completions"])) {
+      const p = node.parent;
+      const continued =
+        (ts.isPropertyAccessExpression(p) || ts.isElementAccessExpression(p)) && p.expression === node;
+      const wrapped = ts.isNonNullExpression(p) || ts.isParenthesizedExpression(p) || ts.isAsExpression(p);
+      const destructured = ts.isVariableDeclaration(p) && ts.isObjectBindingPattern(p.name); // S6 counts it
+      if (!continued && !wrapped && !destructured) hits.push({ file, shape: "S8", line: at(node) });
+    }
+    // S5b: a computed (non-literal) method name on chat.completions.
+    if (
+      ts.isElementAccessExpression(node) &&
+      !ts.isStringLiteralLike(node.argumentExpression) &&
+      endsWith(chainNames(node.expression), ["chat", "completions"])
+    ) {
+      hits.push({ file, shape: "S5", line: at(node) });
+    }
     // S6: const { create } = x.chat.completions / x.messages
     if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name) && node.initializer) {
       const owner = chainNames(node.initializer);
@@ -149,6 +183,7 @@ export function findModelCalls(file: string, text: string): Hit[] {
         for (const s of SDK_SUFFIXES) {
           if (s.method === key.text && endsWith(owner, s.path)) {
             hits.push({ file, shape: "S6", line: at(el) });
+            break;
           }
         }
       }
@@ -212,6 +247,37 @@ describe("ratchet — direct model calls outside the gateway may only shrink", (
   });
 });
 
+describe("canaries — equivalent representations of a model call (audit 2026-10-09)", () => {
+  // Each of these spends model money exactly like chat.completions.create, and
+  // each read as "no call" to the first version of this walker.
+  const n = (src: string) => findModelCalls("fixture.ts", src).length;
+  it("other SDK methods on the same namespaces: stream / parse / runTools / messages.stream / batches", () => {
+    expect(n(`await client.chat.completions.stream({});`)).toBe(1);
+    expect(n(`await client.beta.chat.completions.parse({});`)).toBe(1);
+    expect(n(`await client.chat.completions.runTools({});`)).toBe(1);
+    expect(n(`const s = anthropic.messages.stream({});`)).toBe(1);
+    expect(n(`await anthropic.messages.batches.create({});`)).toBe(1);
+    expect(n(`await client.completions.create({ model: "gpt-3.5-turbo-instruct", prompt: "" });`)).toBe(1);
+  });
+  it("the SDK namespace escaping into an alias, then called", () => {
+    expect(n(`const completions = client.chat.completions; await completions.create({});`)).toBeGreaterThan(0);
+    expect(n(`const c = client.chat.completions; await c.create({});`)).toBeGreaterThan(0);
+    expect(n(`const chat = client.chat; await chat.completions.create({});`)).toBeGreaterThan(0);
+  });
+  it("a computed method name on chat.completions", () => {
+    expect(n(`const m = "create"; await client.chat.completions[m]({});`)).toBe(1);
+  });
+  it("raw HTTP to a model endpoint without the /v1 prefix, or assembled from pieces", () => {
+    expect(n(`await fetch("https://api.perplexity.ai/chat/completions", {});`)).toBe(1);
+    expect(n(`await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent");`)).toBe(1);
+    expect(n(`await fetch(base + "/v1/" + "chat/completions");`)).toBe(1);
+  });
+  it("still not: an ordinary messages array, a messages[i] index, a /v1/models probe", () => {
+    expect(n(`const last = opts.messages[opts.messages.length - 1]; send(opts.messages);`)).toBe(0);
+    expect(n(`await fetch("https://api.openai.com/v1/models");`)).toBe(0);
+  });
+});
+
 describe("canaries — each extraction shape is seen; comments and strings are not calls", () => {
   const n = (src: string) => findModelCalls("fixture.ts", src).length;
   const shapes = (src: string) => findModelCalls("fixture.ts", src).map((h) => h.shape);
@@ -227,7 +293,8 @@ describe("canaries — each extraction shape is seen; comments and strings are n
     expect(shapes(`o.embeddings.create({}); o.images.generate({}); o.audio.transcriptions.create({}); o.responses.create({}); o.audio.speech.create({});`)).toEqual(["S3", "S3", "S3", "S3", "S3"]);
   });
   it("S4 a reference that is not a call (bind, alias, callback)", () => {
-    expect(n(`const f = client.chat.completions.create.bind(client.chat.completions);`)).toBe(1);
+    // The `create` reference AND the namespace passed as `this` (S8).
+    expect(n(`const f = client.chat.completions.create.bind(client.chat.completions);`)).toBe(2);
     expect(n(`run(client.chat.completions.create);`)).toBe(1);
   });
   it("S5 element access", () => {
