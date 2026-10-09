@@ -98,6 +98,7 @@ import {
 } from "@sovereign/immutables";
 import { clock } from "../../utils/clock";
 
+import { meteredAnthropicMessage } from "../aiSpendGuard";
 export const TWELVE_IMMUTABLES_VERBATIM: ReadonlyArray<{
   number: number;
   text: string;
@@ -464,7 +465,7 @@ export async function checkPromptAgainstConstitution(
         cache_control: { type: "ephemeral" as const },
       },
     ];
-    const response = await client.messages.create(
+    const response = await meteredAnthropicMessage(client,
       {
         model: PRECALL_MODEL,
         max_tokens: 256,
@@ -476,8 +477,8 @@ export async function checkPromptAgainstConstitution(
             content: buildUserMessage(agentRole, promptText),
           },
         ],
-      },
-      { timeout: PRECALL_TIMEOUT_MS },
+      }, { taskType: "solene_precall_check", origin: "background" },
+      { timeout: PRECALL_TIMEOUT_MS }
     );
 
     tokensIn = response?.usage?.input_tokens ?? 0;

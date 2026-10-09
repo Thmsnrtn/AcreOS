@@ -41,13 +41,17 @@ import {
   useRechargeCredits,
 } from "@/hooks/use-outreach-mail";
 import { formatDate, formatDateTime } from "@/lib/format";
+import { creditsForPackPrice } from "@shared/billing/credit-packs";
 
-const PACKS: Array<{ cents: number; label: string; subtitle: string }> = [
-  { cents: 2000, label: "$20", subtitle: "~2,000 credits" },
-  { cents: 5000, label: "$50", subtitle: "~5,000 credits" },
-  { cents: 10000, label: "$100", subtitle: "~10,000 credits" },
-  { cents: 25000, label: "$250", subtitle: "~25,000 credits" },
-];
+// Credits per pack come from the ONE pricing rule (1.5¢ per credit, rounded
+// down — founder decision 2026-10-08), never a hand-written count.
+const PACKS: Array<{ cents: number; label: string; subtitle: string }> = [2000, 5000, 10000, 25000].map(
+  (cents) => ({
+    cents,
+    label: `$${cents / 100}`,
+    subtitle: `${creditsForPackPrice(cents).toLocaleString()} credits`,
+  }),
+);
 
 const CATEGORY_ICONS: Record<string, typeof Mail> = {
   postcard: Mail,

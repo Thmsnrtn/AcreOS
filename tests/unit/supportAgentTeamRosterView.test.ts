@@ -65,7 +65,7 @@ vi.mock("../../server/services/decisionsInbox", () => ({ decisionsInboxService: 
 vi.mock("../../server/services/data-source-broker.js", () => ({ dataSourceBroker: {} }));
 vi.mock("../../server/services/propertyEnrichment.js", () => ({ propertyEnrichmentService: {} }));
 vi.mock("../../server/services/complianceValidator", () => ({ validateCompliance: vi.fn() }));
-vi.mock("../../server/services/aiSpendGuard", () => ({ assertAiSpendAllowed: vi.fn(), recordExternalAiSpend: vi.fn() }));
+vi.mock("../../server/services/aiSpendGuard", () => ({ assertAiSpendAllowed: vi.fn(), recordExternalAiSpend: vi.fn(), meteredChatCompletion: (c: any, p: any, _m: unknown, o?: unknown) => c.chat.completions.create(p, o) }));
 
 const { executeSupportTool } = await import("../../server/ai/supportAgent");
 

@@ -47,6 +47,7 @@ import {
 import { serializeToolResultForModel } from "./untrustedEnvelope";
 import { recordSupportResolveDecision } from "../services/andrei/supportResolverCalibration";
 import { clock } from "../utils/clock";
+import { meteredChatCompletion } from "../services/aiSpendGuard";
 
 const MAX_RESOLVE_ITERATIONS = 8;
 
@@ -161,9 +162,11 @@ export type ChatCompletionFn = (
   params: OpenAI.ChatCompletionCreateParamsNonStreaming,
 ) => Promise<OpenAI.Chat.Completions.ChatCompletion>;
 
-function defaultCompletionFn(): ChatCompletionFn {
+function defaultCompletionFn(orgId: number): ChatCompletionFn {
   const client = getOpenAIClient();
-  return (params) => client.chat.completions.create(params);
+  // Metered: ceiling before, telemetry after (support resolution is
+  // customer-triggered — a ticket the org filed).
+  return (params) => meteredChatCompletion(client, params, { taskType: "support_chat", orgId, origin: "customer" });
 }
 
 /**
@@ -198,7 +201,7 @@ export async function resolveTicketWithPax(
     requestedByUserId?: string | null;
   } = {},
 ): Promise<PaxResolveResult> {
-  const createCompletion = opts.createCompletion ?? defaultCompletionFn();
+  const createCompletion = opts.createCompletion ?? defaultCompletionFn(org.id);
   const tryGenius = opts.tryGeniusOnEscalate ?? true;
 
   const ticket = await db.query.supportTickets.findFirst({

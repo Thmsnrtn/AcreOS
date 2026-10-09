@@ -28,6 +28,7 @@ import { requireOpenAIClient } from "../utils/openaiClient";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 export interface VoiceProfile {
   organizationId: number;
   formality: 'casual' | 'professional' | 'very_formal';
@@ -143,12 +144,12 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these exact f
 }`;
 
     try {
-      const completion = await requireOpenAIClient().chat.completions.create({
+      const completion = await meteredChatCompletion(requireOpenAIClient(), {
         model: 'openai/gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 800,
         temperature: 0.3,
-      });
+      }, { taskType: "voice_learning", orgId: organizationId, origin: "customer" });
 
       const raw = completion.choices[0].message.content?.trim() || '{}';
 
@@ -292,7 +293,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these exact f
     const styleInstruction = this.buildStyleInstruction(profile);
 
     try {
-      const completion = await requireOpenAIClient().chat.completions.create({
+      const completion = await meteredChatCompletion(requireOpenAIClient(), {
         model: 'openai/gpt-4o-mini',
         messages: [
           {
@@ -306,7 +307,7 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these exact f
         ],
         max_tokens: Math.min(2000, text.length * 2),
         temperature: 0.4,
-      });
+      }, { taskType: "voice_learning", orgId: profile.organizationId, origin: "customer" });
 
       return completion.choices[0].message.content?.trim() || text;
     } catch (err) {

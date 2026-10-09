@@ -127,7 +127,11 @@ vi.mock("../../server/utils/permissions", () => ({
   attachPermissionContext: () => (_req: any, _res: any, next: any) => next(),
   requirePermission: () => (_req: any, _res: any, next: any) => next(),
 }));
-vi.mock("../../server/utils/orgScope", () => ({ assertUserIsOrgMember: vi.fn(async () => true) }));
+vi.mock("../../server/utils/orgScope", () => ({
+  assertUserIsOrgMember: vi.fn(async () => true),
+  // The VA role path (#330) checks an assignee is a member of this org.
+  isAssignableLeadMember: vi.fn(async () => true),
+}));
 vi.mock("../../server/services/usageLimits", () => ({
   checkUsageLimit: vi.fn(async () => ({ allowed: true, current: 0, limit: null })),
 }));

@@ -1,5 +1,10 @@
 import type { Response } from "express";
 import { logger } from "./logger";
+import {
+  PLAN_LIMIT_REACHED,
+  planLimitMessage,
+  type PlanLimitDetails,
+} from "@shared/billing/plan-limit-copy";
 
 /**
  * Standardized API error response shape.
@@ -318,7 +323,9 @@ export const Errors = {
    * shortfall, a daily budget. The message says WHICH limit was hit and how to
    * get past it (see `limitExceededMessage`); it used to be the rate-limit
    * sentence for all of them, so a customer out of credits or at a plan cap
-   * was told to "wait a few seconds", which never works.
+   * was told to "wait a few seconds", which never works. The caller's own
+   * sentence (`details` as a string, or `details.message`) always wins. Plan
+   * caps that should say what unlocks them use `planLimitReached`.
    */
   limitExceeded(res: Response, details: unknown, opts?: ErrorOptions): void {
     sendError(
@@ -329,6 +336,32 @@ export const Errors = {
       details,
       buildDocsUrl(opts) ?? (isRateLimitDetails(details) ? "/help/article/rate-limit" : undefined),
     );
+  },
+
+  /**
+   * 429 `PLAN_LIMIT_REACHED` — the org is at its plan's cap for a metered
+   * resource. Not a rate limit: waiting does not clear it. The message is
+   * built from the canonical tier table (shared/billing/plan-limit-copy.ts)
+   * and names the plan that lifts the cap; `details.upgradeUrl` is the path.
+   */
+  planLimitReached(res: Response, details: PlanLimitDetails, opts?: ErrorOptions): void {
+    sendError(res, 429, PLAN_LIMIT_REACHED, planLimitMessage(details), details, buildDocsUrl(opts));
+  },
+
+  /**
+   * 402 for an action the account cannot pay for yet, with the step that
+   * unlocks it. `code` is the machine-readable reason (e.g.
+   * `PAX_CREDITS_REQUIRED`, `SEAT_PURCHASE_REQUIRED`) and `details.nextStep`
+   * is the `{ label, href }` the client renders as the call to action.
+   */
+  refusedUntil(
+    res: Response,
+    code: string,
+    message: string,
+    details: { nextStep: { label: string; href: string } } & Record<string, unknown>,
+    opts?: ErrorOptions,
+  ): void {
+    sendError(res, 402, code, message, details, buildDocsUrl(opts));
   },
 
   /**
@@ -396,11 +429,49 @@ export const Errors = {
       );
       return;
     }
+    // The shared monthly AI allowance (founder decision 2026-10-08): past it,
+    // with no own AI key, a call is refused RECOVERABLY — 429 byok_required
+    // with the path forward, never a 500. Shape-detected (utils does not
+    // import services).
+    if (error instanceof Error && (error as { code?: string }).code === "AI_ALLOWANCE_BYOK_REQUIRED") {
+      const e = error as Error & { spentCents?: number; allowanceCents?: number; byokAvailable?: boolean; byokSettingsUrl?: string };
+      this.limitExceeded(res, {
+        reason: "byok_required",
+        resourceType: "ai_requests",
+        current: e.spentCents,
+        threshold: e.allowanceCents,
+        unit: "cents",
+        remaining: 0,
+        byokAvailable: e.byokAvailable ?? true,
+        byokSettingsUrl: e.byokSettingsUrl ?? "/settings/byok",
+        message: e.message,
+        upgradeUrl: "/settings#billing",
+      }, opts);
+      return;
+    }
+    // A founder-plane write with no founder organization configured
+    // (services/founder.ts FounderOrgUnresolvedError) is a deployment
+    // configuration state, not a code bug — and the refusal to guess an org is
+    // deliberate. Same shape detection.
+    if (
+      error instanceof Error &&
+      ((error as { code?: string }).code === "FOUNDER_ORG_UNRESOLVED" || error.name === "FounderOrgUnresolvedError")
+    ) {
+      this.serviceUnavailable(res, "The founder workspace isn't configured on this deployment yet.", opts);
+      return;
+    }
     // A whole-book read that refused past its ceiling (DEFECT-0170) says so:
     // "nothing was truncated, contact support" — not a generic 500. Same
     // shape-detection as above, so utils does not import storage.
     if (error instanceof Error && error.name === "ExportTooLargeError") {
       sendError(res, 413, "EXPORT_TOO_LARGE", error.message);
+      return;
+    }
+    // A property write carrying a value that is not a land status
+    // (utils/landStatus.ts InvalidLandStatusError) is the caller's input, not
+    // our bug: 400 with the allowed values, from any route that lands here.
+    if (error instanceof Error && error.name === "InvalidLandStatusError") {
+      sendError(res, 400, "INVALID_LAND_STATUS", error.message);
       return;
     }
     // In production we never leak the raw error to the client — it goes

@@ -14,7 +14,29 @@
  * Re-exported from `server/services/usageLimits.ts` for back-compat.
  */
 
+import { tierForSubscriptionTier } from "./tier-pricing";
+
 export type SubscriptionTier = "free" | "starter" | "pro" | "scale" | "enterprise";
+
+/**
+ * THE fold from a stored `organizations.subscription_tier` value to the tier
+ * whose limits apply. Paid names — canonical AND legacy ("solo" → starter,
+ * "operator" → pro, "empire" → scale) — resolve through
+ * tier-pricing.tierForSubscriptionTier, the same alias table MRR uses, so the
+ * tier a customer is billed for is the tier whose pool, AI allowance and cost
+ * ceilings they get. "free" / "enterprise" pass through; anything else is the
+ * most conservative tier, "free". Every pool, allowance and ceiling
+ * computation resolves tiers through this (2026-10-09: a legacy "empire" org
+ * paying for Scale had been resolving to the free tier's 50-credit pool).
+ */
+export function limitsTierFor(subscriptionTier: string | null | undefined): SubscriptionTier {
+  const paid = tierForSubscriptionTier(subscriptionTier);
+  if (paid) return paid;
+  const raw = (subscriptionTier ?? "").toLowerCase();
+  if (raw === "enterprise") return "enterprise";
+  if (raw === "professional") return "pro";
+  return "free";
+}
 
 /**
  * Resource keys metered by the usage-limits system.
@@ -80,6 +102,16 @@ export interface TierLimits {
    * TUNABLE — see AI_TURNS_BYOK_THRESHOLDS below for the per-tier values.
    */
   aiTurnsByokThreshold: number | null;
+  /**
+   * ONE shared monthly AI allowance, in CENTS of platform AI cost (founder
+   * decision 2026-10-08). Every production AI feature the org triggers —
+   * chat, document intelligence, due diligence, agent jobs, … — draws from
+   * it; past it the org brings its own AI key, exactly as chat works today.
+   * Explicit per tier and always below the plan's monthly price — see
+   * AI_ALLOWANCE_CENTS for the figures and their rationale.
+   * `null` = no allowance wall for this tier.
+   */
+  aiAllowanceCents: number | null;
 }
 
 /**
@@ -109,6 +141,43 @@ export const AI_TURNS_BYOK_THRESHOLDS: Record<SubscriptionTier, number | null> =
   pro: 1500,        // ~50 turns/day avg
   scale: 6000,      // multi-seat teams
   enterprise: null, // negotiated per-deal — no self-serve threshold
+};
+
+
+/**
+ * ONE shared monthly AI allowance per plan, in CENTS of platform AI cost
+ * (founder decisions 2026-10-08 and 2026-10-09), so a long document read is
+ * not counted as one chat turn. EXPLICIT per tier — not derived:
+ *
+ *   starter  1,125¢  ($11.25 / month)  =   750 turns × 1.5¢  (of a $20 price)
+ *   pro      2,250¢  ($22.50 / month)  = 1,500 turns × 1.5¢  (of a $49 price)
+ *   scale    4,500¢  ($45.00 / month)  — founder decision 2026-10-09. The
+ *            turn-derived figure (6,000 × 1.5¢ = $90) was ABOVE Scale's $79
+ *            price; the rule is that an allowance stays below plan price, and
+ *            $45 is 57% of $79.
+ *   free / enterprise: no allowance wall (free: the plain ai_requests cap
+ *            governs; enterprise: negotiated per deal)
+ *
+ * Invariant (aiAllowanceBelowPrice in founderDecisions20261008.test.ts): every
+ * tier's allowance is strictly below its monthly price.
+ *
+ * What counts: platform AI spend the ORG TRIGGERED (ai_telemetry_events rows
+ * with origin = 'customer'). What does not: background work that serves the
+ * org but that it did not trigger (origin = 'background' — bounded instead by
+ * the per-org tier ceilings in aiCostCeiling.ts, so it can never wall the
+ * customer off), BYOK calls (recorded at $0), and platform-internal / founder
+ * AI (no org). See docs/company/founder-decisions-2026-10-08.md.
+ *
+ * The starter and pro figures were priced from the documented 1.5¢ blended
+ * per-turn cost (credit-weights.ts ai_turn_avg). The turn thresholds above no
+ * longer gate anything on their own — the cents allowance is the wall.
+ */
+const AI_ALLOWANCE_CENTS: Record<SubscriptionTier, number | null> = {
+  free: null,
+  starter: 1125,
+  pro: 2250,
+  scale: 4500,
+  enterprise: null,
 };
 
 /**
@@ -149,6 +218,7 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     seatPriceCents: null,
     creditPool: 50,
     aiTurnsByokThreshold: AI_TURNS_BYOK_THRESHOLDS.free,
+    aiAllowanceCents: AI_ALLOWANCE_CENTS.free,
   },
   starter: {
     leads: 250,
@@ -170,6 +240,7 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     seatPriceCents: null,
     creditPool: 750,
     aiTurnsByokThreshold: AI_TURNS_BYOK_THRESHOLDS.starter,
+    aiAllowanceCents: AI_ALLOWANCE_CENTS.starter,
   },
   pro: {
     leads: 500,
@@ -191,6 +262,7 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     seatPriceCents: 2000, // $20/seat
     creditPool: 2500,
     aiTurnsByokThreshold: AI_TURNS_BYOK_THRESHOLDS.pro,
+    aiAllowanceCents: AI_ALLOWANCE_CENTS.pro,
   },
   scale: {
     leads: null,
@@ -209,8 +281,13 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     // exactly the teams the tier is for. See
     // docs/company/decision-memos/2026-07-08-founding-member-pricing.md).
     seatPriceCents: 2500,
-    creditPool: 8000,
+    // 8,000 → 3,000 for NEW Scale customers (founder decision 2026-10-08,
+    // docs/company/founder-decisions-2026-10-08.md). Orgs already on Scale keep
+    // 8,000 until their next renewal via organizations.credit_pool_grandfather — every pool
+    // read goes through creditPool.creditPoolFor(), never this field alone.
+    creditPool: 3000,
     aiTurnsByokThreshold: AI_TURNS_BYOK_THRESHOLDS.scale,
+    aiAllowanceCents: AI_ALLOWANCE_CENTS.scale,
   },
   enterprise: {
     leads: null,
@@ -226,6 +303,7 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     // Enterprise pools are negotiated per-deal; this is the default floor.
     creditPool: 25000,
     aiTurnsByokThreshold: AI_TURNS_BYOK_THRESHOLDS.enterprise,
+    aiAllowanceCents: AI_ALLOWANCE_CENTS.enterprise,
   },
 };
 
@@ -246,6 +324,7 @@ export const FOUNDER_TIER_LIMITS: TierLimits = {
   creditPool: 1_000_000,
   // Founders are never BYOK-walled.
   aiTurnsByokThreshold: null,
+  aiAllowanceCents: null,
 };
 
 export function isTierVisible(tier: SubscriptionTier): boolean {

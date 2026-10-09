@@ -10,6 +10,7 @@ import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 interface RegulatoryChange {
   changeType: string;
   title: string;
@@ -401,11 +402,11 @@ Include:
 Format as a professional report.`;
       }
 
-      const completion = await requireOpenAIClient().chat.completions.create({
+      const completion = await meteredChatCompletion(requireOpenAIClient(), {
         model: 'openai/gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 2000,
-      });
+      }, { taskType: "compliance", orgId: organizationId, origin: "customer" });
 
       const generated = completion.choices[0].message.content || 'Disclosure generation failed';
 

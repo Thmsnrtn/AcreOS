@@ -1,0 +1,185 @@
+/**
+ * Founder decisions of 2026-10-08 (docs/company/founder-decisions-2026-10-08.md)
+ * — pinned as behaviour, each falsifiable by putting the old value back.
+ *
+ *   A. Scale's included credit pool is 3,000 for NEW Scale customers; orgs
+ *      already on Scale keep 8,000 until their next renewal, recorded per org
+ *      (credit_pool_grandfathers) and resolved through ONE function.
+ *   B. Top-up packs sell at 1.5¢ per credit: same prices, fewer credits,
+ *      rounded down — $10 → 666, $25 → 1,666, $50 → 3,333, $100 → 6,666.
+ *   C. One shared monthly AI allowance per plan, in CENTS (turn threshold ×
+ *      1.5¢). Every customer-triggered AI feature draws from it; past it the
+ *      org's own key serves the call or it is refused recoverably; background
+ *      work the org did not trigger never counts and is never walled.
+ */
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { TIER_LIMITS, AI_TURNS_BYOK_THRESHOLDS } from "@shared/billing/tier-limits";
+import { CREDIT_PACK_CATALOG, creditsForPackPrice, CREDIT_PRICE_CENTS } from "@shared/billing/credit-packs";
+import { CREDIT_PACKS } from "@shared/schema";
+import { TIER_PRICES_CENTS } from "@shared/billing/tier-pricing";
+import { stripComments } from "../helpers/stripComments";
+
+const ROOT = path.resolve(__dirname, "../..");
+const read = (p: string) => fs.readFileSync(path.join(ROOT, p), "utf8");
+
+// ── A. Scale credit pool ─────────────────────────────────────────────────────
+
+const poolDb = vi.hoisted(() => ({ org: null as Record<string, unknown> | null }));
+
+vi.mock("../../server/db", async () => {
+  const schema = await import("@shared/schema");
+  const chain = (table: unknown) => {
+    const rows = () => (table === schema.organizations ? (poolDb.org ? [poolDb.org] : []) : [{ usedAbsCents: 0 }]);
+    const c: any = {
+      where: () => c,
+      limit: async () => rows(),
+      then: (ok: (r: unknown[]) => unknown, bad?: (e: unknown) => unknown) => Promise.resolve(rows()).then(ok, bad),
+    };
+    return c;
+  };
+  return {
+    db: { select: () => ({ from: (t: unknown) => chain(t) }) },
+    withTransaction: async (fn: (tx: unknown) => unknown) => fn({}),
+  };
+});
+vi.mock("../../server/utils/logger", () => ({ logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
+
+import { poolSnapshot, creditPoolFor, GRANDFATHERED_POOL_TIERS } from "../../server/services/creditPool";
+
+const scaleOrg = (grandfather: number | null, endsAt: Date | null) => ({
+  subscriptionTier: "scale",
+  isFounder: false,
+  creditPoolGrandfather: grandfather,
+  creditPoolGrandfatherEndsAt: endsAt,
+});
+
+describe("A — Scale's credit pool: 3,000 for new customers, 8,000 grandfathered to renewal", () => {
+  beforeEach(() => {
+    poolDb.org = null;
+  });
+
+  it("the tier pool is 3,000 (other tiers unchanged)", () => {
+    expect(TIER_LIMITS.scale.creditPool).toBe(3000);
+    expect(TIER_LIMITS.starter.creditPool).toBe(750);
+    expect(TIER_LIMITS.pro.creditPool).toBe(2500);
+  });
+
+  it("a NEW Scale org (not grandfathered) gets 3,000 — through the real pool read path", async () => {
+    poolDb.org = scaleOrg(null, null);
+    expect((await poolSnapshot(7)).poolMonthly).toBe(3000);
+  });
+
+  it("an existing Scale org keeps 8,000 while its grandfather is in force (end unknown or future)", async () => {
+    poolDb.org = scaleOrg(8000, null);
+    expect((await poolSnapshot(7)).poolMonthly).toBe(8000);
+    poolDb.org = scaleOrg(8000, new Date(Date.now() + 86_400_000));
+    expect((await poolSnapshot(7)).poolMonthly).toBe(8000);
+  });
+
+  it("after the renewal the org is on 3,000", async () => {
+    poolDb.org = scaleOrg(8000, new Date(Date.now() - 1000));
+    expect((await poolSnapshot(7)).poolMonthly).toBe(3000);
+  });
+
+  it("a grandfather applies only while the org is on the grandfathered tier", async () => {
+    poolDb.org = { ...scaleOrg(8000, null), subscriptionTier: "pro" };
+    expect((await poolSnapshot(7)).poolMonthly).toBe(2500);
+    expect([...GRANDFATHERED_POOL_TIERS]).toEqual(["scale"]);
+  });
+
+  it("the pure rule: in force only with a positive pool and an end that is unknown or ahead", () => {
+    const now = Date.parse("2026-10-09T00:00:00Z");
+    expect(creditPoolFor("scale", { pool: 8000, endsAt: null }, now).poolMonthly).toBe(8000);
+    expect(creditPoolFor("scale", { pool: 8000, endsAt: new Date(now) }, now).poolMonthly).toBe(3000);
+    expect(creditPoolFor("scale", { pool: 0, endsAt: null }, now).poolMonthly).toBe(3000);
+    expect(creditPoolFor("scale", null, now).poolMonthly).toBe(3000);
+  });
+
+  it("every pool read in creditPool.ts goes through the rule (no other TIER_LIMITS[tier].creditPool)", () => {
+    const code = stripComments(read("server/services/creditPool.ts"));
+    expect(code.match(/TIER_LIMITS\[tier\]\.creditPool/g) ?? []).toHaveLength(1);
+    expect(code).toMatch(/const tierPool = TIER_LIMITS\[tier\]\.creditPool;/);
+  });
+
+  it("the customer-visible pricing table reads the canonical tier limit", () => {
+    const pricing = stripComments(read("client/src/pages/pricing.tsx"));
+    expect(pricing).toContain("TIER_LIMITS.scale.creditPool");
+    expect(pricing).not.toMatch(/\b8,?000\b/);
+  });
+
+  it("the backfill grandfathers EXISTING Scale orgs once — guarded against re-running on later deploys", () => {
+    for (const f of ["migrations/0266_scale_credit_pool_grandfather.sql", "scripts/migrate.mjs"]) {
+      const src = read(f);
+      expect(src, `${f}: one-time guard`).toMatch(
+        /IF NOT EXISTS \(SELECT 1 FROM "founder_settings" WHERE "key" = 'billing\.backfill\.scale_credit_pool_2026_10_08'\) THEN/,
+      );
+      expect(src, `${f}: marker written in the same block`).toMatch(/INSERT INTO "founder_settings"[\s\S]*'billing\.backfill\.scale_credit_pool_2026_10_08'/);
+      expect(src).toMatch(/SET "credit_pool_grandfather" = 8000/);
+    }
+  });
+});
+
+// ── B. Credit packs at 1.5¢ per credit ───────────────────────────────────────
+
+describe("B — top-up packs: same prices, 1.5¢ per credit, rounded down", () => {
+  it("grants exactly the decided counts", () => {
+    expect(CREDIT_PRICE_CENTS).toBe(1.5);
+    expect(CREDIT_PACK_CATALOG.pack_10).toMatchObject({ priceCents: 1000, credits: 666 });
+    expect(CREDIT_PACK_CATALOG.pack_25).toMatchObject({ priceCents: 2500, credits: 1666 });
+    expect(CREDIT_PACK_CATALOG.pack_50).toMatchObject({ priceCents: 5000, credits: 3333 });
+    expect(CREDIT_PACK_CATALOG.pack_100).toMatchObject({ priceCents: 10000, credits: 6666 });
+  });
+
+  it("the webhook grant table (schema CREDIT_PACKS) IS the catalogue — prices unchanged", () => {
+    for (const id of ["pack_10", "pack_25", "pack_50", "pack_100"] as const) {
+      expect(CREDIT_PACKS[id].amountCents).toBe(CREDIT_PACK_CATALOG[id].credits);
+      expect(CREDIT_PACKS[id].priceCents).toBe(CREDIT_PACK_CATALOG[id].priceCents);
+    }
+    expect([CREDIT_PACKS.pack_10.priceCents, CREDIT_PACKS.pack_25.priceCents, CREDIT_PACKS.pack_50.priceCents, CREDIT_PACKS.pack_100.priceCents]).toEqual([1000, 2500, 5000, 10000]);
+  });
+
+  it("never promises a credit the money doesn't cover, and never shorts a whole one", () => {
+    for (let price = 1; price <= 30000; price += 7) {
+      const c = creditsForPackPrice(price);
+      expect(c * 1.5).toBeLessThanOrEqual(price);
+      expect((c + 1) * 1.5).toBeGreaterThan(price);
+    }
+  });
+
+  it("the purchase modal and the mail recharge cards read the canonical rule", () => {
+    const modal = stripComments(read("client/src/components/credit-purchase-modal.tsx"));
+    expect(modal).toContain("CREDIT_PACK_CATALOG");
+    expect(modal).not.toMatch(/credits:\s*\d/);
+    const mail = stripComments(read("client/src/pages/outreach/mail/credits.tsx"));
+    expect(mail).toContain("creditsForPackPrice(");
+    expect(mail).not.toMatch(/~?\d{1,2},\d{3} credits/);
+  });
+});
+
+// ── C. One shared monthly AI allowance, in cents ─────────────────────────────
+
+describe("C — one shared monthly AI allowance per plan, in cents", () => {
+  it("starter 1,125¢ · pro 2,250¢ · scale 4,500¢ (2026-10-09) · free/enterprise none", () => {
+    const allowance = Object.fromEntries(
+      (["free", "starter", "pro", "scale", "enterprise"] as const).map((t) => [t, TIER_LIMITS[t].aiAllowanceCents]),
+    );
+    expect(allowance).toEqual({ free: null, starter: 1125, pro: 2250, scale: 4500, enterprise: null });
+    // Starter and pro remain their turn threshold priced at 1.5¢.
+    expect(TIER_LIMITS.starter.aiAllowanceCents).toBe(Math.floor(AI_TURNS_BYOK_THRESHOLDS.starter! * 1.5));
+    expect(TIER_LIMITS.pro.aiAllowanceCents).toBe(Math.floor(AI_TURNS_BYOK_THRESHOLDS.pro! * 1.5));
+  });
+
+  it("aiAllowanceBelowPrice — no tier's allowance reaches or exceeds its monthly price", () => {
+    for (const t of ["starter", "pro", "scale"] as const) {
+      const allowance = TIER_LIMITS[t].aiAllowanceCents;
+      expect(allowance, `${t} must have an allowance`).not.toBeNull();
+      expect(allowance!, `${t}: allowance ${allowance}¢ vs price ${TIER_PRICES_CENTS[t].priceMonthlyCents}¢`).toBeLessThan(
+        TIER_PRICES_CENTS[t].priceMonthlyCents,
+      );
+    }
+    // Free costs nothing, so it may not carry a platform AI allowance wall at all.
+    expect(TIER_LIMITS.free.aiAllowanceCents).toBeNull();
+  });
+});

@@ -56,6 +56,7 @@ import { logger } from "../utils/logger";
 import { getPaxControls } from "./paxControls";
 import { recordPaxEffect } from "./paxReceipts";
 import { summarizeAsk } from "./paxAskSummary";
+import { reminderOutcome } from "./reminderOutcome";
 
 export interface ApprovedAskContext {
   org: Organization;
@@ -92,6 +93,8 @@ export async function executeApprovedAsk(
 ): Promise<ApprovedAskResult> {
   const dispatch = dispatchForTool(toolName);
   let result: ToolExecutionResult;
+  /** Overrides the receipt's verb when the effect is not the ask's own verb. */
+  let receiptDescription: string | null = null;
 
   switch (dispatch) {
     case "executeTool": {
@@ -120,7 +123,27 @@ export async function executeApprovedAsk(
       // sendManualReminder validates it against its own union.
       const kind = (typeof args.type === "string" ? args.type : "due") as ReminderType;
       const sent = await financeAgentService.sendManualReminder(noteId, ctx.org.id, kind);
-      result = { success: sent.success, data: sent, error: sent.error };
+      // `sent.success` means a reminder ROW was created, not that the borrower
+      // was reached. Recording the ask as executed on that wrote a "Send a
+      // borrower payment reminder" receipt for reminders the rail refused, had
+      // no contact for, or only prepared as a letter.
+      //   delivered → executed.
+      //   queued    → executed too: the dispatcher still owns it and will send
+      //               it. Releasing it for retry made the re-tap create a
+      //               second reminder row — a duplicate notice. The receipt
+      //               says "queued", never "sent".
+      //   not sent  → a failure carrying the finance agent's reason; the
+      //               kernel releases the ask instead of closing it.
+      const outcome = sent.success ? reminderOutcome(sent) : "not_sent";
+      if (outcome === "queued") receiptDescription = "Queued a borrower payment reminder for sending";
+      result =
+        outcome !== "not_sent"
+          ? { success: true, data: { ...sent, outcome } }
+          : {
+              success: false,
+              data: sent,
+              error: sent.error ?? sent.deliveryNote ?? `The reminder was not delivered (status: ${sent.status ?? "unknown"}).`,
+            };
       break;
     }
     default: {
@@ -158,7 +181,7 @@ export async function executeApprovedAsk(
       tool: toolName,
       entityType: "pending_action",
       entityId: ctx.pendingActionId,
-      description: summary.verb,
+      description: receiptDescription ?? summary.verb,
       after: summary.change?.after ?? args,
       pendingActionId: ctx.pendingActionId,
       witnessed: true,

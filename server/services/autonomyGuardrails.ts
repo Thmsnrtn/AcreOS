@@ -22,6 +22,7 @@ import { db } from "../db";
 import { eq, and } from "drizzle-orm";
 import { agentMemory } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { leadHasOptedOut } from "./leadContactability";
 
 import { TERMINAL_LEAD_STATUSES } from "@shared/lifecycle/pipeline-status";
 import { clock } from "../utils/clock";
@@ -117,14 +118,12 @@ export async function checkTcpaBeforeSend(
       return { allowed: false, reason: `Lead ${leadId} not found in this organization` };
     }
 
-    // Hard DNC flag
-    if (lead.doNotContact) {
-      return { allowed: false, reason: "Lead is marked do-not-contact" };
-    }
-
-    // Opted out
-    if (lead.optOutDate) {
-      return { allowed: false, reason: "Lead has opted out of communications" };
+    // Opt-out — the shared rule (doNotContact OR optOutDate).
+    if (leadHasOptedOut(lead)) {
+      return {
+        allowed: false,
+        reason: lead.doNotContact ? "Lead is marked do-not-contact" : "Lead has opted out of communications",
+      };
     }
 
     // TCPA consent required for SMS

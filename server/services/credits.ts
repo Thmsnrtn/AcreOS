@@ -8,7 +8,6 @@ import {
   usageRates,
   USAGE_ACTION_TYPES,
   CREDIT_PACKS,
-  SUBSCRIPTION_TIERS,
   type CreditTransaction,
   type InsertCreditTransaction,
   type UsageRecord,
@@ -16,9 +15,9 @@ import {
   type UsageRate,
   type UsageActionType,
   type CreditPackId,
-  type SubscriptionTier,
 } from "@shared/schema";
 import { logger } from "../utils/logger";
+import { creditsForPackPrice } from "@shared/billing/credit-packs";
 import { clock } from "../utils/clock";
 
 /** FRAUD-011: the most free usage a trial may consume. */
@@ -211,13 +210,29 @@ export class CreditService {
   }
 
   async hasEnoughCredits(organizationId: number, requiredCents: number): Promise<boolean> {
-    if (await this.isFounder(organizationId)) return true;
+    return (await this.evaluateCredits(organizationId, requiredCents)).allowed;
+  }
+
+  /**
+   * The credit decision WITH its reason — `hasEnoughCredits` is this, reduced
+   * to the boolean. A refusal has to say what unlocks it. The org's own
+   * balance pays first in every lane, so buying credits always unblocks a
+   * refusal; `lane: "trial"` means the org is inside its trial and has also
+   * used the trial's free allowance (so the copy can say so), `"balance"` that
+   * it is past (or never had) a trial. Callers that build refusal copy read
+   * `lane` from here instead of re-deriving the rule.
+   */
+  async evaluateCredits(
+    organizationId: number,
+    requiredCents: number,
+  ): Promise<{ allowed: boolean; lane: "founder" | "trial" | "balance" }> {
+    if (await this.isFounder(organizationId)) return { allowed: true, lane: "founder" };
 
     // The org's own credit (purchased packs, allowances, top-ups) pays first,
     // and is never limited by the trial cap — that cap bounds what AcreOS
     // gives away free, not what a customer spends of their own.
     const balance = await this.getBalance(organizationId);
-    if (balance >= requiredCents) return true;
+    if (balance >= requiredCents) return { allowed: true, lane: "balance" };
 
     // Users in an active trial get free basic usage (AI chat etc.) when their
     // balance does not cover it, capped at 500 cents ($5) of trial-funded
@@ -226,14 +241,14 @@ export class CreditService {
     if (trialRemaining !== null) {
       if (requiredCents > trialRemaining) {
         logger.info(`[credits] Trial allowance exhausted for org ${organizationId}: ${TRIAL_SPENDING_CAP_CENTS - trialRemaining}¢ of ${TRIAL_SPENDING_CAP_CENTS}¢ used`);
-        return false;
+        return { allowed: false, lane: "trial" };
       }
-      return true;
+      return { allowed: true, lane: "trial" };
     }
 
     // Note: Trial tokens are for premium skills only, not basic AI chat
     // They are consumed via storage.consumeTrialToken() in skill permission checks
-    return false;
+    return { allowed: false, lane: "balance" };
   }
 
   /**
@@ -288,6 +303,64 @@ export class CreditService {
     });
   }
 
+  /**
+   * Grant a PAID mail-credit recharge (POST /api/outreach/mail/credits/recharge
+   * → Stripe checkout → webhook). Exactly once per checkout session.
+   *
+   * Where the credits land: the purchased-credit balance
+   * (organizations.credit_balance). That is where mail sends spend purchased
+   * credits — poolDebit draws the plan's INCLUDED monthly pool first and, once
+   * it is exhausted, funds the send from this balance (the "purchased-overflow"
+   * lane). The balance never resets: the monthly reset applies only to the
+   * included pool (poolUsageThisMonth sums the current month and excludes
+   * purchased-overflow rows), so purchased credits do not expire.
+   *
+   * Amount: what the customer actually PAID (session.amount_total), at the
+   * canonical 1.5¢-per-credit rate, rounded down (shared/billing/credit-packs).
+   *
+   * Idempotency: the 'mail_credit_recharge' row is inserted FIRST, ON CONFLICT
+   * DO NOTHING against credit_txn_mail_recharge_session_uniq; only the insert
+   * that wins bumps the balance. A replay finds the row and grants nothing.
+   */
+  async applyMailCreditRecharge(
+    organizationId: number,
+    paidCents: number,
+    stripeSessionId: string,
+    stripePaymentIntentId?: string,
+  ): Promise<{ granted: boolean; credits: number }> {
+    const credits = creditsForPackPrice(paidCents);
+    if (credits <= 0 || !stripeSessionId) return { granted: false, credits: 0 };
+    return await withTransaction(async (tx) => {
+      const [claim] = await tx
+        .insert(creditTransactions)
+        .values({
+          organizationId,
+          type: "mail_credit_recharge",
+          amountCents: credits,
+          balanceAfterCents: 0, // set below, once the bump has landed
+          description: `Mail credit recharge — $${(paidCents / 100).toFixed(2)} at 1.5¢/credit`,
+          stripeCheckoutSessionId: stripeSessionId,
+          stripePaymentIntentId,
+          metadata: { paidCents, creditPriceCents: 1.5 },
+        })
+        .onConflictDoNothing()
+        .returning({ id: creditTransactions.id });
+      if (!claim) return { granted: false, credits };
+      const [updated] = await tx
+        .update(organizations)
+        .set({
+          creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${credits}`,
+        })
+        .where(eq(organizations.id, organizationId))
+        .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
+      await tx
+        .update(creditTransactions)
+        .set({ balanceAfterCents: updated?.newBalance ?? credits })
+        .where(and(eq(creditTransactions.id, claim.id), eq(creditTransactions.organizationId, organizationId)));
+      return { granted: true, credits };
+    });
+  }
+
   async applyCreditPackPurchase(
     organizationId: number,
     packId: CreditPackId,
@@ -330,63 +403,6 @@ export class CreditService {
     });
   }
 
-  async applyMonthlyAllowance(organizationId: number, tier: SubscriptionTier): Promise<CreditTransaction | null> {
-    const tierConfig = SUBSCRIPTION_TIERS[tier];
-    if (!tierConfig || !tierConfig.limits.monthlyCredits) {
-      return null;
-    }
-
-    const allowance = tierConfig.limits.monthlyCredits;
-    const currentMonth = clock.now().toISOString().slice(0, 7);
-
-    // DEFECT-0007: Use atomic INSERT ... ON CONFLICT DO NOTHING on the
-    // (organization_id, allowance_month) unique index to prevent double-granting
-    // when concurrent instances both attempt to apply the same month's allowance.
-    return await withTransaction(async (tx) => {
-      // Atomically update credit balance
-      const [updated] = await tx
-        .update(organizations)
-        .set({
-          creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${allowance}`
-        })
-        .where(eq(organizations.id, organizationId))
-        .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
-
-      const newBalance = updated?.newBalance || allowance;
-
-      // Try to insert the allowance record — if the unique constraint on
-      // (organization_id, allowance_month) conflicts, no row is returned
-      // and we know another instance already granted this month's allowance.
-      const result = await tx
-        .insert(creditTransactions)
-        .values({
-          organizationId,
-          type: "monthly_allowance",
-          amountCents: allowance,
-          balanceAfterCents: newBalance,
-          description: `Monthly credit allowance for ${tierConfig.name} plan`,
-          allowanceMonth: currentMonth,
-          metadata: { month: currentMonth },
-        })
-        .onConflictDoNothing()
-        .returning();
-
-      if (result.length === 0) {
-        // Conflict — allowance already granted this month. Roll back the balance
-        // update by reversing it (the entire transaction will handle this correctly
-        // since we're in a withTransaction block, but we explicitly undo to be safe).
-        await tx
-          .update(organizations)
-          .set({
-            creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric - ${allowance}`
-          })
-          .where(eq(organizations.id, organizationId));
-        return null;
-      }
-
-      return result[0];
-    });
-  }
 }
 
 export class UsageMeteringService {
@@ -755,99 +771,15 @@ export class UsageMeteringService {
     }
   }
 
-  // Apply monthly tier allowance to organization
-  // DEFECT-0007: Uses atomic INSERT ... ON CONFLICT DO NOTHING on the
-  // (organization_id, allowance_month) unique index to prevent double-granting.
-  async applyMonthlyAllowance(organizationId: number): Promise<CreditTransaction | null> {
-    const org = await db.query.organizations.findFirst({
-      where: eq(organizations.id, organizationId),
-    });
-
-    if (!org) return null;
-
-    const tier = (org.subscriptionTier || 'free') as SubscriptionTier;
-    const tierInfo = SUBSCRIPTION_TIERS[tier];
-    const monthlyCredits = tierInfo?.limits?.monthlyCredits || 0;
-
-    if (!tierInfo || monthlyCredits <= 0) {
-      return null;
-    }
-
-    const currentMonth = clock.now().toISOString().slice(0, 7);
-
-    return await withTransaction(async (tx) => {
-      // Update credit balance first
-      const [updated] = await tx
-        .update(organizations)
-        .set({
-          creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${monthlyCredits}`
-        })
-        .where(eq(organizations.id, organizationId))
-        .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
-
-      // Atomically try to insert the allowance record.
-      // The unique index on (organization_id, allowance_month) prevents duplicates.
-      const result = await tx
-        .insert(creditTransactions)
-        .values({
-          organizationId,
-          type: 'allowance',
-          amountCents: monthlyCredits,
-          balanceAfterCents: updated?.newBalance || monthlyCredits,
-          description: `Monthly ${tierInfo.name} tier allowance`,
-          allowanceMonth: currentMonth,
-          metadata: {
-            tier,
-            month: currentMonth,
-          },
-        })
-        .onConflictDoNothing()
-        .returning();
-
-      if (result.length === 0) {
-        // Conflict — allowance already granted this month. Reverse balance update.
-        await tx
-          .update(organizations)
-          .set({
-            creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric - ${monthlyCredits}`
-          })
-          .where(eq(organizations.id, organizationId));
-        logger.info(`Monthly allowance already applied for org ${organizationId} in ${currentMonth}, skipping`);
-        return null;
-      }
-
-      logger.info(`Applied monthly allowance: Org ${organizationId}, Tier ${tier}, Amount: $${(monthlyCredits / 100).toFixed(2)}`);
-      return result[0];
-    });
-  }
-
-  // Process all organizations for monthly allowance (called at billing cycle)
-  async processMonthlyAllowances(): Promise<{ processed: number; failed: number }> {
-    let processed = 0;
-    let failed = 0;
-
-    // Get all paid organizations
-    const paidOrgs = await db
-      .select()
-      .from(organizations)
-      .where(
-        sql`${organizations.subscriptionTier} IN ('starter', 'pro', 'scale') 
-            AND ${organizations.subscriptionStatus} = 'active'`
-      );
-
-    for (const org of paidOrgs) {
-      try {
-        await this.applyMonthlyAllowance(org.id);
-        processed++;
-      } catch (err) {
-        logger.error(`Failed to apply monthly allowance for org ${org.id}`, err);
-        failed++;
-      }
-    }
-
-    logger.info(`Monthly allowances processed: ${processed} success, ${failed} failed`);
-    return { processed, failed };
-  }
+  // A monthly "tier allowance" grant used to live here (and a sibling on
+  // CreditService): it credited SUBSCRIPTION_TIERS[tier].limits.monthlyCredits
+  // to the purchased-credit wallet for every active paid org — $250/mo on the
+  // $79 Scale plan, ~3x that tier's whole 8,000-credit pool, on the platform's
+  // dime. It had zero production callers and was removed (2026-10 cost
+  // efficiency) rather than left one wiring away from live. The plan's included
+  // usage is the tier creditPool (shared/billing/tier-limits.ts), drawn by
+  // creditPool.poolDebit — there is no second, larger grant.
+  // creditGrantPathsAreBounded.test.ts fails if any grant path returns.
 
   // Update auto-top-up settings for an organization
   async updateAutoTopUpSettings(

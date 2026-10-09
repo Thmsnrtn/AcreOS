@@ -47,6 +47,7 @@ import { PAX_LABELS, PAX_STANDING_LINE } from "@shared/pax-glossary";
 import { useReadAloud } from "@/hooks/useReadAloud";
 import { useReadAloudPrefs } from "@/hooks/useReadAloud.prefs";
 import { apiRequest } from "@/lib/queryClient";
+import { refusalFromBody } from "@/lib/refusal";
 
 // ─── Lightweight markdown renderer ──────────────────────────────────────────
 function PaxMarkdown({ content }: { content: string }) {
@@ -792,18 +793,27 @@ export function PaxCopilotRail() {
           errBody = null;
         }
         const details = errBody?.details;
+        // A plan cap or a credit/seat refusal names its own next step; it
+        // must not read as "Rate limit reached" (which advises waiting).
+        const refusal = refusalFromBody(errBody);
         let err: string;
         let errorAction: { label: string; href: string } | undefined;
-        if (res.status === 429 && details?.reason === "byok_required") {
+        if (refusal) {
+          err = refusal.description;
+          errorAction = refusal.action;
+        } else if (res.status === 429 && details?.reason === "byok_required") {
           err = details.message
-            ?? "You've used this month's included Pax turns. Add your own AI key to keep chatting without limits — your data and drafts stay fully accessible.";
+            ?? "You've used this month's included AI. Add your own AI key to keep going without limits — your data and drafts stay fully accessible.";
           errorAction = details.byokAvailable
             ? { label: "Add your AI key", href: details.byokSettingsUrl || "/settings/byok" }
             : { label: "Upgrade plan", href: details.upgradeUrl || "/pricing" };
         } else if (res.status === 429) {
           err = "Rate limit reached. Please try again shortly.";
         } else if (res.status === 402) {
-          err = "Insufficient credits.";
+          err = typeof errBody?.message === "string" ? errBody.message : "Insufficient credits.";
+        } else if (res.status === 503 && typeof errBody?.message === "string") {
+          // e.g. no AI provider configured — the server says exactly what.
+          err = errBody.message;
         } else {
           err = "Pax couldn't reach us. Try again, or reload the chat.";
         }
@@ -1227,7 +1237,7 @@ export function PaxCopilotRail() {
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="mt-auto mb-4 text-xs text-muted-foreground [writing-mode:vertical-rl] [text-orientation:mixed] rotate-180 select-none opacity-40">
+                <div className="mt-auto mb-4 text-xs text-muted-foreground [writing-mode:vertical-rl] [text-orientation:mixed] rotate-180 select-none">
                   Pax
                 </div>
               </TooltipTrigger>

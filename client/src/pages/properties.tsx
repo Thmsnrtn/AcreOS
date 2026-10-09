@@ -517,6 +517,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                 onClick={handleExport} 
                 disabled={isExporting}
                 className="min-h-[44px] pointer-fine:md:min-h-9"
+                aria-label="Export CSV"
                 data-testid="button-export-properties"
               >
                 {isExporting ? <Loader2 className="w-4 h-4 md:mr-2 animate-spin" /> : <Download className="w-4 h-4 md:mr-2" />}
@@ -526,6 +527,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                 variant="outline" 
                 onClick={() => setIsImportOpen(true)}
                 className="min-h-[44px] pointer-fine:md:min-h-9"
+                aria-label="Import CSV"
                 data-testid="button-import-properties"
               >
                 <Upload className="w-4 h-4 md:mr-2" />
@@ -536,6 +538,7 @@ export default function PropertiesPage({ embedded = false }: { embedded?: boolea
                 onClick={() => fetchAllParcels()}
                 disabled={isFetchingAllParcels}
                 className="min-h-[44px] pointer-fine:md:min-h-9"
+                aria-label={isFetchingAllParcels ? "Fetching parcel boundaries" : "Fetch parcel boundaries"}
                 data-testid="button-fetch-all-parcels"
               >
                 {isFetchingAllParcels ? <Loader2 className="w-4 h-4 md:mr-2 animate-spin" /> : <MapIcon className="w-4 h-4 md:mr-2" />}
@@ -1145,7 +1148,7 @@ function PropertyCard({ property, onDelete }: {
                 {usd(Math.round(Number(property.marketValue) / Number(property.sizeAcres)), { noCents: true })}/acre
               </span>
               {property.createdAt && (
-                <span className="ml-auto text-muted-foreground/70">
+                <span className="ml-auto text-muted-foreground">
                   {Math.floor((Date.now() - new Date(property.createdAt).getTime()) / 86400000)}d in portfolio
                 </span>
               )}

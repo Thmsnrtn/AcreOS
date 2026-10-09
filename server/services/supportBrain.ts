@@ -114,8 +114,9 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
         model: brainModel(),
         systemPrompt,
         userPrompt: safeMessage,
-        call: () =>
-          getOpenAI().chat.completions.create({
+        client: getOpenAI(),
+        origin: "customer",
+        request: {
             model: brainModel(),
             messages: [
               { role: "system", content: systemPrompt },
@@ -123,7 +124,7 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
             ],
             temperature: 0.3,
             response_format: { type: "json_object" },
-          }),
+          },
       });
 
       const result = JSON.parse(content || "{}");
@@ -439,8 +440,9 @@ Adapt this template with the specific details from the context. Be conversationa
         systemPrompt,
         userPrompt: "Generate the response message.",
         metadata: { playbookSlug: playbook.slug, actionsTaken },
-        call: () =>
-          getOpenAI().chat.completions.create({
+        client: getOpenAI(),
+        origin: "customer",
+        request: {
             model: brainModel(),
             messages: [
               { role: "system", content: systemPrompt },
@@ -448,7 +450,7 @@ Adapt this template with the specific details from the context. Be conversationa
             ],
             temperature: 0.7,
             max_tokens: 300,
-          }),
+          },
       });
 
       return (
@@ -511,13 +513,14 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
         model: brainModel(),
         systemPrompt,
         userPrompt: userMessage,
-        call: () =>
-          getOpenAI().chat.completions.create({
+        client: getOpenAI(),
+        origin: "customer",
+        request: {
             model: brainModel(),
             messages: [{ role: "system", content: systemPrompt }, ...chatHistory],
             temperature: 0.7,
             max_tokens: 400,
-          }),
+          },
       });
 
       const validated = validatePaxResponse(

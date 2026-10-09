@@ -102,14 +102,37 @@ export function useUsageLimits() {
   });
 }
 
+/**
+ * A failed plan-catalog read, carrying the HTTP status and the server's own
+ * message. It used to throw "Failed to fetch products" — words QueryErrorState
+ * classifies as a NETWORK failure ("Offline"), so a deployment with no Stripe
+ * configured (503 SERVICE_UNAVAILABLE) told the customer their connection was
+ * down, and retried a state no retry can change.
+ */
+export class StripeProductsError extends Error {
+  constructor(readonly status: number, serverMessage: string) {
+    super(`${status}: ${serverMessage}`);
+    this.name = "StripeProductsError";
+  }
+  get unavailable(): boolean {
+    return this.status === 503;
+  }
+}
+
 export function useStripeProducts() {
-  return useQuery<StripeProduct[]>({
+  return useQuery<StripeProduct[], Error>({
     queryKey: ["/api/stripe/products"],
     queryFn: async () => {
       const res = await fetch("/api/stripe/products", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch products");
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { message?: unknown } | null;
+        const message = typeof body?.message === "string" && body.message ? body.message : "Plans couldn't be loaded.";
+        throw new StripeProductsError(res.status, message);
+      }
       return res.json();
     },
+    // An unconfigured billing provider does not come back by retrying.
+    retry: (failureCount, error) => !(error instanceof StripeProductsError && error.unavailable) && failureCount < 1,
   });
 }
 
@@ -221,6 +244,10 @@ export function useUserPermissions() {
 // caller's role does not see teammates' addresses (their own is always set).
 export interface TeamMember extends Omit<TeamMemberView, "role"> {
   role: Role;
+  /** EFFECTIVE assigned-only flag — computed by the server's resolver, the same one it enforces with. */
+  viewOnlyAssignedLeads?: boolean;
+  /** The stored per-member override; null = the role's default applies. */
+  viewOnlyAssignedLeadsOverride?: boolean | null;
 }
 
 export function useTeamMembers() {
@@ -253,7 +280,7 @@ export function useUpdateTeamMemberRole() {
 // Reyna §1: per-user assigned-leads-only override.
 export function useUpdateTeamMemberViewOnly() {
   return useOptimisticUpdate<
-    { memberId: number; viewOnlyAssignedLeads: boolean },
+    { memberId: number; viewOnlyAssignedLeads: boolean | null },
     TeamMember
   >({
     mutationFn: async ({ memberId, viewOnlyAssignedLeads }) => {
@@ -266,7 +293,12 @@ export function useUpdateTeamMemberViewOnly() {
     },
     listKeys: [["/api/team"]],
     getId: ({ memberId }) => memberId,
-    buildPatch: ({ viewOnlyAssignedLeads }) => ({ viewOnlyAssignedLeads }),
+    // null clears the override; the effective value then comes back from the
+    // server (role default), so only an explicit boolean is patched in early.
+    buildPatch: ({ viewOnlyAssignedLeads }) => ({
+      viewOnlyAssignedLeadsOverride: viewOnlyAssignedLeads,
+      ...(viewOnlyAssignedLeads !== null ? { viewOnlyAssignedLeads } : {}),
+    }),
   });
 }
 
@@ -355,11 +387,11 @@ export function getRoleBadgeStyle(role: string): string {
     case "admin":
       return "bg-acr-brand-soft text-acr-brand-soft-ink dark:bg-acr-brand-soft/30 dark:text-acr-brand-soft-ink";
     case "member":
-      return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
+      return "bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
     case "viewer":
       return "bg-muted text-foreground dark:bg-acr-bg-sunken dark:text-muted-foreground";
     case "va":
-      return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
+      return "bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
     default:
       return "bg-muted text-foreground dark:bg-acr-bg-sunken dark:text-muted-foreground";
   }

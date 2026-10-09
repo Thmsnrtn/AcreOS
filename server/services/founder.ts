@@ -7,6 +7,8 @@
  * OR their Clerk user ID matches FOUNDER_USER_IDS. Both are env-driven, no DB seed.
  */
 
+import { clock } from "../utils/clock";
+
 // Founder emails from environment variables only
 // Set FOUNDER_EMAIL (single) and/or FOUNDER_EMAILS (comma-separated) in your .env
 const PRIMARY_FOUNDER_EMAIL = (process.env.FOUNDER_EMAIL || "").trim().toLowerCase();
@@ -202,42 +204,75 @@ export async function resolveFounderOrganization(): Promise<FounderOrgResolution
 }
 
 /**
- * Resolve the founder's primary organization id — the LENIENT accessor.
+ * Resolve the founder's primary organization id. Used by services and
+ * routes that need an `organizationId` for inserts but aren't run in the
+ * context of a specific tenant (on-call alerts, founder-only collaboration /
+ * agent lifecycle / trust events). Defers first to resolveFounderOrganization
+ * (the strict canonical rule above); otherwise reads `FOUNDER_PRIMARY_ORG_ID` from env if
+ * set; otherwise looks up the founder's org via users → teamMembers. Cached
+ * after the first SUCCESSFUL resolution.
  *
- * Used by services and routes that need an `organizationId` for founder-only
- * system rows (collaboration / agent lifecycle / trust events) and must never
- * blow up on a NOT NULL constraint. It defers to `resolveFounderOrganization`
- * — the canonical rule — whenever that names an org, and only otherwise falls
- * back to `FOUNDER_PRIMARY_ORG_ID`, the founder's first membership, and
- * finally 1. Those fallbacks are GUESSES: never use this accessor to route
- * third-party or customer-visible data (inbound leads, mail, money) — use
- * `resolveFounderOrganization` and refuse on `ok: false`. Cached after first
- * resolution.
+ * NO HARD-CODED FALLBACK (2026-10-07). This used to resolve to org 1 when
+ * neither source answered, "so callers never blow up on a NOT NULL
+ * organization_id constraint". On any database where row 1 is a customer —
+ * a fresh deploy, staging, a restore — that wrote the platform's system
+ * alerts, agent events and on-call pages INTO A CUSTOMER'S WORKSPACE, where
+ * that customer could read them. A row with nowhere legitimate to go is not
+ * written; the caller is told (`FounderOrgUnresolvedError`), logs, and the
+ * `acreos_founder_org_unresolved_total` counter moves.
  */
 let _cachedFounderOrgId: number | null = null;
+/** Until when a failed lookup is remembered (the env var is still read first). */
+let _unresolvedUntil = 0;
+const UNRESOLVED_CACHE_MS = 60_000;
 
-export async function getFounderPrimaryOrgId(): Promise<number> {
+/** No founder org could be resolved — neither FOUNDER_PRIMARY_ORG_ID nor a founder membership. */
+class FounderOrgUnresolvedError extends Error {
+  readonly code = "FOUNDER_ORG_UNRESOLVED";
+  constructor() {
+    super(
+      "No founder organization is configured: set FOUNDER_PRIMARY_ORG_ID, or make a FOUNDER_EMAILS user a member of the founder's organization.",
+    );
+    this.name = "FounderOrgUnresolvedError";
+  }
+}
+
+/**
+ * The founder's primary org id, or `null` when none can be resolved. Never a
+ * guess. Prefer this where "no founder org" has a sensible branch (skip and
+ * report); use `getFounderPrimaryOrgId()` where it is an error.
+ */
+export async function resolveFounderPrimaryOrgId(): Promise<number | null> {
   if (_cachedFounderOrgId !== null) return _cachedFounderOrgId;
 
-  const canonical = await resolveFounderOrganization();
-  if (canonical.ok) {
-    _cachedFounderOrgId = canonical.organizationId;
-    return _cachedFounderOrgId;
+  // Inside the miss window the lookups are not repeated (the env var below is
+  // still read, so setting it takes effect at once).
+  const inMissWindow = clock.nowMs() < _unresolvedUntil;
+  if (!inMissWindow) {
+    const canonical = await resolveFounderOrganization();
+    if (canonical.ok) {
+      _cachedFounderOrgId = canonical.organizationId;
+      return _cachedFounderOrgId;
+    }
   }
 
   const fromEnv = process.env.FOUNDER_PRIMARY_ORG_ID;
   if (fromEnv) {
-    const parsed = parseInt(fromEnv, 10);
-    if (Number.isFinite(parsed)) {
+    const parsed = Number(fromEnv);
+    if (Number.isInteger(parsed) && parsed > 0) {
       _cachedFounderOrgId = parsed;
       return parsed;
     }
   }
 
+  // A miss is remembered briefly, so callers on hot paths do not re-query the
+  // users/teamMembers lookup on every call while no founder org exists.
+  if (inMissWindow) return null;
+
   try {
     const { db } = await import("../db");
     const { users, teamMembers } = await import("@shared/schema");
-    const { eq, inArray } = await import("drizzle-orm");
+    const { inArray } = await import("drizzle-orm");
     const founderEmails = getFounderEmails();
     if (founderEmails.length > 0) {
       const founderUsers = await db
@@ -259,11 +294,19 @@ export async function getFounderPrimaryOrgId(): Promise<number> {
       }
     }
   } catch {
-    /* fall through to sentinel */
+    /* unresolved — reported below */
   }
 
-  // Last-resort fallback so a missing migration / fresh DB doesn't crash
-  // an insert. Production has org id 1 as the founder workspace.
-  _cachedFounderOrgId = 1;
-  return 1;
+  _unresolvedUntil = clock.nowMs() + UNRESOLVED_CACHE_MS;
+  void import("../metrics")
+    .then((m) => m.recordFounderOrgUnresolved())
+    .catch(() => {});
+  return null;
+}
+
+/** As `resolveFounderPrimaryOrgId`, but throws `FounderOrgUnresolvedError` instead of answering null. */
+export async function getFounderPrimaryOrgId(): Promise<number> {
+  const id = await resolveFounderPrimaryOrgId();
+  if (id === null) throw new FounderOrgUnresolvedError();
+  return id;
 }

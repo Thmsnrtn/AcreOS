@@ -129,8 +129,8 @@ async function sequenceFacts() {
     ["sms", "text"],
     ["direct_mail", "mail"],
   ] as const;
-  const noConsent = { tcpaConsent: false, doNotContact: false };
-  const dnc = { tcpaConsent: true, doNotContact: true };
+  const noConsent = { tcpaConsent: false, doNotContact: false, optOutDate: null };
+  const dnc = { tcpaConsent: true, doNotContact: true, optOutDate: null };
   const needConsent = channels.filter(([c]) => !canSendViaChannel(noConsent, c).allowed).map(([, n]) => n);
   const noConsentOk = channels.filter(([c]) => canSendViaChannel(noConsent, c).allowed).map(([, n]) => n);
   const dncBlocked = channels.filter(([c]) => !canSendViaChannel(dnc, c).allowed).map(([, n]) => n);

@@ -1,6 +1,6 @@
 import { pgTable, text, serial, integer, bigint, bigserial, boolean, timestamp, numeric, varchar, jsonb, index, uniqueIndex, date, real, doublePrecision, check, customType, primaryKey } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
-import { createInsertSchema } from "drizzle-zod";
+import { createInsertSchema } from "./db/createInsertSchema";
 import { z } from "zod";
 
 // W5-1 schema-split: tables now living in shared/schema/*.ts but referenced
@@ -14,6 +14,7 @@ import { dealRooms } from "./schema/marketplace";
 // shapes behind organizations.pax_controls and pending_actions.origin /
 // source_ref. Type-only, so nothing here reaches the client bundle.
 import type { PaxAskOrigin, PaxAskSourceRef, PaxControls } from "./pax-controls";
+import { CREDIT_PACK_CATALOG } from "./billing/credit-packs";
 
 /**
  * Phase 3 Week 14 (Sayuri-Vatanen §1): pgvector custom column type.
@@ -70,6 +71,14 @@ export const organizations = pgTable("organizations", {
   // /api/founder/executive-dashboard normalises yearly subscriptions to a
   // per-month figure using shared/billing/tier-pricing.ts.
   billingInterval: text("billing_interval").notNull().default("monthly"), // monthly | yearly
+  // Credit-pool grandfathering (founder decision 2026-10-08): Scale's included
+  // pool moved 8,000 → 3,000 for NEW customers; an org already on Scale keeps
+  // its previous pool until its next renewal. NULL pool = not grandfathered.
+  // NULL ends_at = "until the next renewal, date not yet known" — the Stripe
+  // webhook stamps the current period end, and a renewal ends it. Resolved
+  // ONLY through creditPool.creditPoolFor().
+  creditPoolGrandfather: integer("credit_pool_grandfather"),
+  creditPoolGrandfatherEndsAt: timestamp("credit_pool_grandfather_ends_at", { withTimezone: true }),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   creditBalance: numeric("credit_balance").default("0"), // prepaid credit balance in cents
@@ -450,10 +459,15 @@ export const teamMembers = pgTable("team_members", {
   displayName: text("display_name"),
   role: text("role").notNull().default("member"), // owner | admin | member | viewer | va
   permissions: jsonb("permissions").$type<string[]>(),
-  // Per-user assigned-leads-only flag. Honored when role === 'va' (or when
-  // an admin opts a member into restricted visibility). When true, every
-  // leads query MUST add `WHERE assignedTo = teamMember.id`.
-  viewOnlyAssignedLeads: boolean("view_only_assigned_leads").notNull().default(false),
+  // Per-member OVERRIDE of the role's assigned-leads-only default. NULL means
+  // "no override — use the role's default" (`va` → true), which is what every
+  // new row gets; an owner/admin sets true/false deliberately. The effective
+  // value is computed in ONE place, `resolveViewOnlyAssignedLeads` in
+  // server/utils/permissions.ts — never read this column as the answer. When
+  // effective, every lead read/write is limited to `assignedTo = teamMember.id`.
+  // Nullable since migration 0269 (previously NOT NULL DEFAULT false, which
+  // took precedence over the role default).
+  viewOnlyAssignedLeads: boolean("view_only_assigned_leads"),
   isActive: boolean("is_active").notNull().default(true),
   invitedAt: timestamp("invited_at").defaultNow(),
   joinedAt: timestamp("joined_at"),
@@ -1815,6 +1829,13 @@ export const creditTransactions = pgTable("credit_transactions", {
   uniqueIndex("credit_txn_purchase_refund_pi_uniq")
     .on(table.stripePaymentIntentId)
     .where(sql`type = 'purchase_refund'`),
+  // A mail-credit recharge checkout grants AT MOST ONCE: its
+  // 'mail_credit_recharge' row is the claim, keyed on the Stripe checkout
+  // session, so a webhook replay — or a second event for the same session —
+  // cannot grant again under any concurrency (migration 0268).
+  uniqueIndex("credit_txn_mail_recharge_session_uniq")
+    .on(table.stripeCheckoutSessionId)
+    .where(sql`type = 'mail_credit_recharge'`),
 ]);
 
 // Lens 3 (Pricing Coherence) — cache of the per-org current-month pool
@@ -3237,11 +3258,15 @@ export type UsageActionType = keyof typeof USAGE_ACTION_TYPES;
 // CREDIT PACKS
 // ============================================
 
+// Credit packs: priceCents is what the customer pays; amountCents is the
+// credits (cents of usage) the webhook grants. Derived from the canonical
+// catalogue — 1.5¢ per credit, founder decision 2026-10-08
+// (shared/billing/credit-packs.ts). Never hand-set here.
 export const CREDIT_PACKS = {
-  pack_10: { name: "$10 Credit Pack", amountCents: 1000, priceCents: 1000 },
-  pack_25: { name: "$25 Credit Pack", amountCents: 2500, priceCents: 2500 },
-  pack_50: { name: "$50 Credit Pack", amountCents: 5000, priceCents: 5000 },
-  pack_100: { name: "$100 Credit Pack", amountCents: 10000, priceCents: 10000 },
+  pack_10: { name: CREDIT_PACK_CATALOG.pack_10.name, amountCents: CREDIT_PACK_CATALOG.pack_10.credits, priceCents: CREDIT_PACK_CATALOG.pack_10.priceCents },
+  pack_25: { name: CREDIT_PACK_CATALOG.pack_25.name, amountCents: CREDIT_PACK_CATALOG.pack_25.credits, priceCents: CREDIT_PACK_CATALOG.pack_25.priceCents },
+  pack_50: { name: CREDIT_PACK_CATALOG.pack_50.name, amountCents: CREDIT_PACK_CATALOG.pack_50.credits, priceCents: CREDIT_PACK_CATALOG.pack_50.priceCents },
+  pack_100: { name: CREDIT_PACK_CATALOG.pack_100.name, amountCents: CREDIT_PACK_CATALOG.pack_100.credits, priceCents: CREDIT_PACK_CATALOG.pack_100.priceCents },
 } as const;
 
 export type CreditPackId = keyof typeof CREDIT_PACKS;
@@ -3250,6 +3275,12 @@ export type CreditPackId = keyof typeof CREDIT_PACKS;
 // SUBSCRIPTION TIERS CONFIGURATION
 // ============================================
 
+// `limits.monthlyCredits` was REMOVED 2026-10-09. It was a dead catalogue
+// number ($250/mo on Scale, ~3x that plan's whole credit pool) that nothing
+// granted after the dormant allowance grant was deleted — yet the public
+// GET /api/subscription/tiers serialized it as if the plan included it. The
+// included monthly credits are TIER_LIMITS[*].creditPool (tier-limits.ts); the
+// public endpoint reports that (server/services/publicSubscriptionTiers.ts).
 export const SUBSCRIPTION_TIERS = {
   free: {
     name: "Free",
@@ -3262,7 +3293,6 @@ export const SUBSCRIPTION_TIERS = {
       teamMembers: 1,
       aiRequestsPerMonth: 100,
       campaigns: 1,
-      monthlyCredits: 100, // $1.00
     },
     features: ["basic_crm", "basic_inventory", "basic_notes"],
   },
@@ -3278,7 +3308,6 @@ export const SUBSCRIPTION_TIERS = {
       teamMembers: 1,
       aiRequestsPerMonth: 500,
       campaigns: 5,
-      monthlyCredits: 500, // $5.00
     },
     features: [
       "basic_crm", "basic_inventory", "basic_notes",
@@ -3312,7 +3341,6 @@ export const SUBSCRIPTION_TIERS = {
       teamMembers: 2,
       aiRequestsPerMonth: 1000,
       campaigns: 10,
-      monthlyCredits: 1000, // $10.00
     },
     features: [
       "basic_crm", "basic_inventory", "basic_notes",
@@ -3345,7 +3373,6 @@ export const SUBSCRIPTION_TIERS = {
       teamMembers: 10,
       aiRequestsPerMonth: 10000,
       campaigns: 100,
-      monthlyCredits: 5000, // $50.00
     },
     features: [
       "advanced_crm", "advanced_inventory", "advanced_notes",
@@ -3383,7 +3410,6 @@ export const SUBSCRIPTION_TIERS = {
       teamMembers: 25,
       aiRequestsPerMonth: -1,
       campaigns: -1,
-      monthlyCredits: 25000, // $250.00
     },
     features: [
       "advanced_crm", "advanced_inventory", "advanced_notes",
@@ -3422,7 +3448,6 @@ export const SUBSCRIPTION_TIERS = {
       teamMembers: -1, // unlimited seats
       aiRequestsPerMonth: -1,
       campaigns: -1,
-      monthlyCredits: 50000, // $500.00
     },
     features: [
       "advanced_crm", "advanced_inventory", "advanced_notes",
@@ -12585,7 +12610,12 @@ export type AgentRuntimeStateEntry = typeof agentRuntimeState.$inferSelect;
 
 export const eventMeshEvents = pgTable("event_mesh_events", {
   id: serial("id").primaryKey(),
-  eventId: text("event_id").notNull().unique(),
+  // Named for what migrations/0017_v12_real_runtime.sql actually creates:
+  // an inline `UNIQUE` gets Postgres's `<table>_<col>_key`, while a bare
+  // `.unique()` declares Drizzle's `<table>_<col>_unique` — so a database built
+  // from this repo never matched its own schema (drizzle-kit would drop and
+  // re-add the constraint). scripts/check-constraint-names.ts holds the class.
+  eventId: text("event_id").notNull().unique("event_mesh_events_event_id_key"),
   channel: text("channel").notNull(),
   eventType: text("event_type").notNull(),
   priority: integer("priority").notNull().default(5),

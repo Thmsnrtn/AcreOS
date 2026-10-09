@@ -57,7 +57,11 @@ function walk(dir: string, out: string[] = []): string[] {
 describe("the kill-switch is part of its column's contract", () => {
   const schema = fs.readFileSync(path.join(ROOT, "shared/schema.ts"), "utf8");
   const at = schema.indexOf('export const organizations = pgTable("organizations"');
-  const table = schema.slice(at, at + 9000);
+  // The table's own span — up to the next top-level export — not a fixed
+  // character window: a 9,000-char window silently stopped short of the
+  // settings column when two columns were added above it (2026-10-09).
+  const end = schema.indexOf("\nexport const ", at + 1);
+  const table = schema.slice(at, end > at ? end : undefined);
 
   it("finds the organizations table (vacuity guard)", () => {
     expect(at, "organizations table not found — renamed?").toBeGreaterThan(-1);

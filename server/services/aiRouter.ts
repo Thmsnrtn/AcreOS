@@ -6,6 +6,7 @@ import { computeCostUsd } from "./aiCostRates";
 // hard-codes model strings or a private cost table — both come from here so the
 // router and paxModelTier can never disagree on which Opus is "best" again.
 import { MODELS, priceFor, isKnownModel, OPENAI_DIRECT_MODELS, openAiModelIdFor } from "./models";
+import { ANTHROPIC_CACHE_MIN_CHARS } from "./promptCache";
 import { checkQuota, recordUsage, AIQuotaExceeded } from "./aiQuotaService";
 import {
   recordAiCall as recordCascadeCall,
@@ -245,6 +246,8 @@ interface QualityCheckResult {
   score: number | null;
   reason: string;
   shouldEscalate: boolean;
+  /** What the grader call itself cost (USD) — it is a paid call too. */
+  costUsd: number;
 }
 
 async function checkResponseQuality(
@@ -280,21 +283,26 @@ Respond with JSON only: {"score": <1-10>, "reason": "<one sentence>"}`;
       response_format: { type: "json_object" },
     });
 
+    // The grader is a paid call: its cost is added to the task's telemetry
+    // (it used to be dropped, so the ceilings never saw it).
+    const costUsd = check?.usage
+      ? estimateCost(MODEL_SIMPLE, check.usage.prompt_tokens ?? 0, check.usage.completion_tokens ?? 0)
+      : 0;
     // DEFECT-0111: an empty or scoreless grader reply is NOT a score of 8.
     const parsed = JSON.parse(check.choices[0]?.message?.content || "{}");
     const raw = typeof parsed.score === "number" && Number.isFinite(parsed.score) ? parsed.score : null;
     if (raw === null) {
-      return { score: null, reason: "quality not checked — the grader returned no score", shouldEscalate: false };
+      return { score: null, reason: "quality not checked — the grader returned no score", shouldEscalate: false, costUsd };
     }
     const score = Math.max(1, Math.min(10, raw));
-    return { score, reason: parsed.reason || "", shouldEscalate: score < getQualityThreshold() };
+    return { score, reason: parsed.reason || "", shouldEscalate: score < getQualityThreshold(), costUsd };
   } catch (err) {
     // The grader failed: the response's quality is UNKNOWN. Not escalated
     // (a re-ask costs money on no evidence), and not recorded as adequate.
     logger.warn("[AIRouter] quality check failed — response quality not checked", {
       metadata: { taskType: task.taskType, error: err instanceof Error ? err.message : String(err) },
     });
-    return { score: null, reason: "quality not checked — the grader failed", shouldEscalate: false };
+    return { score: null, reason: "quality not checked — the grader failed", shouldEscalate: false, costUsd: 0 };
   }
 }
 
@@ -519,6 +527,14 @@ export interface AIRouterConfig {
    */
   skipQuota?: boolean;
   /**
+   * Who triggered the call (founder decision 2026-10-08, the shared monthly AI
+   * allowance). 'customer' counts toward the org's allowance; 'background'
+   * never does. Default: 'background' when skipQuota is set (the existing
+   * convention for cron/internal callers), otherwise 'customer' — the same
+   * split the per-org daily quota already uses for "the org's own spend".
+   */
+  origin?: "customer" | "background";
+  /**
    * Frugal Autonomy (Phase 2.1, 2026-05-25): platform-wide per-category
    * daily AI budget gate. When unset (default), every routeAITask call
    * checks today's spend in the category for task.taskType against the
@@ -658,13 +674,9 @@ export const MODEL_CRITICAL  = MODELS.OPUS;            // $5.00/$25.00 per M tok
 export const MODEL_VISION    = MODELS.VISION;          // $2.50/$10.00 per M tokens
 
 // Legacy aliases kept for backward compat
-// 2026-07-14 cost audit: unified prompt-cache stamping threshold (chars).
-// Stamping cache_control below a model's minimum cacheable prefix is a
-// harmless no-op (~2048 tokens on Sonnet 4.6, ~4096 on Opus 4.8/Haiku 4.5),
-// so a low uniform threshold — matching the Pax rail — beats a gate that
-// sometimes skipped large stable prompts. Module-level: shared by the
-// primary call and the cascade-escalation retry.
-const ANTHROPIC_CACHE_MIN_CHARS = 1024;
+// Prompt-cache stamping threshold: ANTHROPIC_CACHE_MIN_CHARS (promptCache.ts) —
+// shared by the primary call, the cascade-escalation retry and the metered
+// raw-call path (aiSpendGuard.meteredChatCompletion).
 
 const OPENROUTER_CHEAP_MODEL     = MODEL_SIMPLE;
 const OPENROUTER_REASONING_MODEL = MODEL_REASONING;
@@ -1005,6 +1017,22 @@ export function selectProviderAndModel(
   throw new NoAIProviderError("No AI providers available - configure OPENROUTER_API_KEY or OPENAI_API_KEY");
 }
 
+/**
+ * Can a platform AI turn be routed at all? Decided by the SAME function that
+ * routes it — selectProviderAndModel throws NoAIProviderError exactly when no
+ * provider key is configured — so a pre-flight check cannot disagree with the
+ * turn it guards.
+ */
+export function isAiProviderConfigured(): boolean {
+  try {
+    selectProviderAndModel(TaskComplexity.SIMPLE);
+    return true;
+  } catch (err) {
+    if (err instanceof NoAIProviderError) return false;
+    throw err;
+  }
+}
+
 export async function selectProviderAndModelAsync(
   complexity: TaskComplexity,
   taskType: string,
@@ -1170,6 +1198,18 @@ export async function routeAITask(
     };
   }
 
+  // Resolved BEFORE the BYOK branch below sets skipQuota for its own reasons.
+  const callOrigin: "customer" | "background" = config.origin ?? (config.skipQuota ? "background" : "customer");
+
+  // Founder decision 2026-10-08 — the shared monthly AI allowance. A
+  // customer-triggered call past the org's allowance runs on the org's own AI
+  // key (exactly as chat does) or is refused with a recoverable byok_required.
+  if (config.orgId && callOrigin === "customer" && !config.byok) {
+    const { enforceAiAllowance } = await import("./aiAllowance");
+    const byok = await enforceAiAllowance(config.orgId);
+    if (byok) config = { ...config, byok };
+  }
+
   // Tier 1I — BYOK calls spend the CUSTOMER's key, not platform dollars, so
   // the platform quota / budget / cost-ceiling gates do not apply.
   if (config.byok) {
@@ -1281,7 +1321,7 @@ export async function routeAITask(
       cacheHits++;
       const cacheHitLatency = clock.nowMs() - cacheCheckStart;
       logger.info(`[AIRouter] Cache HIT (exact) for ${task.taskType}`);
-      recordAITelemetry({ orgId: config.orgId, taskType: task.taskType ?? "unknown", provider: cached.provider, model: cached.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: cacheHitLatency, cacheHit: true, complexity: task.complexity, success: true });
+      recordAITelemetry({ origin: callOrigin, orgId: config.orgId, taskType: task.taskType ?? "unknown", provider: cached.provider, model: cached.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: cacheHitLatency, cacheHit: true, complexity: task.complexity, success: true });
       // Pillar 7 — cascade telemetry: cache hits are model="cache".
       void recordCascadeCall({
         organizationId: config.orgId ?? null,
@@ -1304,7 +1344,7 @@ export async function routeAITask(
       semanticCacheHits++;
       const semanticLatency = clock.nowMs() - cacheCheckStart;
       logger.info(`[AIRouter] Cache HIT (semantic) for ${task.taskType}`);
-      recordAITelemetry({ orgId: config.orgId, taskType: task.taskType ?? "unknown", provider: semanticHit.provider, model: semanticHit.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: semanticLatency, cacheHit: true, complexity: task.complexity, success: true });
+      recordAITelemetry({ origin: callOrigin, orgId: config.orgId, taskType: task.taskType ?? "unknown", provider: semanticHit.provider, model: semanticHit.model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs: semanticLatency, cacheHit: true, complexity: task.complexity, success: true });
       void recordCascadeCall({
         organizationId: config.orgId ?? null,
         model: "cache",
@@ -1469,7 +1509,7 @@ export async function routeAITask(
       ?? 0;
   } catch (err: any) {
     const latencyMs = clock.nowMs() - startTime;
-    recordAITelemetry({ orgId: config.orgId, taskType: task.taskType ?? "unknown", provider, model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs, cacheHit: false, complexity: task.complexity, success: false, errorMessage: err.message });
+    recordAITelemetry({ origin: callOrigin, orgId: config.orgId, taskType: task.taskType ?? "unknown", provider, model, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCostCents: 0, latencyMs, cacheHit: false, complexity: task.complexity, success: false, errorMessage: err.message });
     void recordCascadeCall({
       organizationId: config.orgId ?? null,
       model,
@@ -1481,6 +1521,12 @@ export async function routeAITask(
     });
     throw err;
   }
+
+  // Spend on calls OTHER than the one whose usage ends up in `usage` — the
+  // grader, and whichever of primary/escalated was discarded. All of it was
+  // paid for; before 2026-10 it was dropped from telemetry, so the ceilings
+  // and the per-org COGS under-counted every cascaded task.
+  let sideCallCostUsd = 0;
 
   // ── Model cascade: quality-gate escalation ───────────────────────────────────
   // Only cascade on non-complex tasks where we used a cheap model and the user
@@ -1494,6 +1540,7 @@ export async function routeAITask(
     content.length > 20 // don't bother checking trivially short responses
   ) {
     const quality = await checkResponseQuality(task, content, client);
+    sideCallCostUsd += quality.costUsd;
 
     if (quality.shouldEscalate) {
       // Determine the next tier model
@@ -1547,16 +1594,27 @@ export async function routeAITask(
             ...((task.responseFormat === "json" || confidenceRequested) && { response_format: { type: "json_object" } }),
           });
           const escalatedContent = escalatedResponse.choices[0]?.message?.content || "";
+          const escalatedCached =
+            (escalatedResponse.usage as any)?.prompt_tokens_details?.cached_tokens
+            ?? (escalatedResponse.usage as any)?.cache_read_input_tokens
+            ?? 0;
+          const escalatedCostUsd = escalatedResponse.usage
+            ? estimateCost(escalatedModel, escalatedResponse.usage.prompt_tokens, escalatedResponse.usage.completion_tokens, escalatedCached)
+            : 0;
           if (escalatedContent.length > content.length * 0.5) {
+            // The primary answer is discarded, but it was paid for.
+            sideCallCostUsd += usage
+              ? estimateCost(model, usage.prompt_tokens, usage.completion_tokens, cachedInputTokens)
+              : 0;
             content = escalatedContent;
             usage = escalatedResponse.usage;
             finalModel = escalatedModel;
             // Read the escalated call's own cached count (its cache is
             // model-scoped and separate from the primary's).
-            cachedInputTokens =
-              (escalatedResponse.usage as any)?.prompt_tokens_details?.cached_tokens
-              ?? (escalatedResponse.usage as any)?.cache_read_input_tokens
-              ?? 0;
+            cachedInputTokens = escalatedCached;
+          } else {
+            // The escalated answer is discarded, but it was paid for.
+            sideCallCostUsd += escalatedCostUsd;
           }
         } catch (escalationErr) {
           logger.warn(`[AIRouter] Cascade escalation failed, using original response`, { metadata: { detail: escalationErr } });
@@ -1573,7 +1631,7 @@ export async function routeAITask(
   // truthful; the [byok:*] tag in the routing log preserves attribution.
   const costEstimate = config.byok
     ? 0
-    : usage ? estimateCost(finalModel, usage.prompt_tokens, usage.completion_tokens, cachedInputTokens) : 0;
+    : (usage ? estimateCost(finalModel, usage.prompt_tokens, usage.completion_tokens, cachedInputTokens) : 0) + sideCallCostUsd;
 
   // Extract the model self-reported confidence from the FINAL content (after
   // any cascade replacement). When requested but absent/malformed → honest null.
@@ -1608,7 +1666,7 @@ export async function routeAITask(
     });
   }
 
-  recordAITelemetry({
+  recordAITelemetry({ origin: callOrigin,
     orgId: config.orgId,
     taskType: task.taskType ?? "unknown",
     provider,
@@ -1667,7 +1725,7 @@ export async function routeAITask(
       usage.prompt_tokens || 0,
       usage.completion_tokens || 0,
       cachedInputTokens,
-    );
+    ) + sideCallCostUsd;
     // Fire-and-forget; recordUsage swallows its own errors.
     void recordUsage(config.orgId, usdAuthoritative, task.taskType ?? "unknown");
   }
@@ -1852,6 +1910,7 @@ interface TelemetryPayload {
   complexity: string;
   success: boolean;
   errorMessage?: string;
+  origin?: "customer" | "background";
 }
 
 // ============================================
@@ -1980,6 +2039,8 @@ function recordAITelemetry(payload: TelemetryPayload): void {
         complexity: payload.complexity,
         success: payload.success,
         errorMessage: payload.errorMessage || null,
+        // Only an org's own call can count toward that org's allowance.
+        origin: payload.orgId ? payload.origin ?? null : null,
       });
     } catch (err) {
       // Telemetry is non-critical — log and continue

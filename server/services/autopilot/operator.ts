@@ -227,13 +227,14 @@ export async function buildOperatorModelCall(): Promise<((prompt: string) => Pro
           purpose: "operator",
           model,
           userPrompt: prompt,
-          call: () =>
-            client.chat.completions.create({
+          client: client,
+        origin: "background",
+        request: {
               model,
               temperature: 0.3,
               max_tokens: 2000,
               messages: [{ role: "user", content: prompt }],
-            }),
+            },
         })
       ).content;
   } catch {

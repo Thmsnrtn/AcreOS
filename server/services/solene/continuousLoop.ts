@@ -786,13 +786,14 @@ export async function runContinuousTick(): Promise<ContinuousTickResult> {
                     purpose: "deliberation",
                     model,
                     userPrompt: prompt,
-                    call: () =>
-                      client.chat.completions.create({
+                    client: client,
+        origin: "background",
+        request: {
                         model,
                         temperature: 0.2,
                         max_tokens: 300,
                         messages: [{ role: "user", content: prompt }],
-                      }),
+                      },
                   })
                 ).content;
               // T2.1: bound cognition to a per-tick ceiling so wiring the

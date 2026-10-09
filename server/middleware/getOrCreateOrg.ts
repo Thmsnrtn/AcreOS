@@ -13,6 +13,7 @@ import { signupLimiter } from "./authPathLimits";
 import { computeReqIpBucket, recordSignalsNotEmitted } from "./botSignals";
 import { subscriptionPauseGate } from "./subscriptionPauseGate";
 import { viewerReadOnlyGate } from "./viewerReadOnlyGate";
+import { assignedLeadScopeGate } from "./assignedLeadScopeGate";
 import { dunningAccessGate } from "./dunningAccessGate";
 import { getClerkAuth } from "../types/request";
 import { clock } from "../utils/clock";
@@ -375,9 +376,16 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   // roleGuard.ts as "read-only across the CRM" and nothing enforced it, and a
   // role-level rule belongs at the one chokepoint rather than on sixty handlers
   // where the sixty-first would be open by default.
+  //
+  // The ASSIGNED-LEAD scope gate chains fourth, as the CONTINUATION of the
+  // viewer gate: by-id lead routes are scoped to the caller's assigned leads
+  // when they are restricted to them (a VA by default). Same reason again —
+  // the lead-id routes span a dozen files, so the rule lives at the chokepoint.
   return subscriptionPauseGate(req, res, () =>
     dunningAccessGate(req, res, () => {
-      void viewerReadOnlyGate(req, res, next);
+      void viewerReadOnlyGate(req, res, () => {
+        void assignedLeadScopeGate(req, res, next);
+      });
     }),
   );
 }

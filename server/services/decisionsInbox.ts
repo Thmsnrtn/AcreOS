@@ -17,6 +17,7 @@ import {
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 /**
  * The per-class "If you do nothing" sentence (founder-trust audit 2026-07-28).
  * Lives in shared/decisions/doNothing.ts — a pure, dependency-free module
@@ -360,7 +361,7 @@ export const decisionsInboxService = {
     if (!request) return null;
 
     // Use OpenAI to evaluate impact and duplicates
-    const response = await requireOpenAIClient().chat.completions.create({
+    const response = await meteredChatCompletion(requireOpenAIClient(), {
       model: "openai/gpt-4o-mini",
       response_format: { type: "json_object" },
       messages: [{
@@ -392,7 +393,7 @@ export const decisionsInboxService = {
         },
       }],
       tool_choice: { type: "function", function: { name: "evaluate_feature_request" } },
-    });
+    }, { taskType: "decisions_inbox", origin: "background" });
 
     const toolCall = response.choices[0]?.message?.tool_calls?.[0];
     if (!toolCall || toolCall.type !== "function") return null;

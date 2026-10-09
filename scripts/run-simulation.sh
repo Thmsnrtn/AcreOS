@@ -12,7 +12,12 @@
 #
 # Environment:
 #   ANTHROPIC_API_KEY — enables Layer 3 LLM exploration (optional)
-#   SIM_BASE_URL     — override app URL (default: http://localhost:5000)
+#   SIM_BASE_URL     — override app URL (default: http://localhost:5000; a
+#                      non-local host is refused unless SIM_ALLOW_REMOTE_BASE_URL=1)
+#   SIM_DATABASE_URL — the database the vitest global setup seeds persona users
+#                      into (default: the compose stack's db on localhost:5433).
+#                      DATABASE_URL is never read for this, and only a local
+#                      host is accepted — see tests/simulation/target.ts.
 
 set -euo pipefail
 
@@ -23,6 +28,7 @@ REPORTS_DIR="$ROOT_DIR/tests/simulation/reports"
 REPORT_OUTPUT="$ROOT_DIR/tests/simulation/simulation-report.md"
 
 export SIM_BASE_URL="${SIM_BASE_URL:-http://localhost:5000}"
+export SIM_DATABASE_URL="${SIM_DATABASE_URL:-postgresql://acreos_test:acreos_test@localhost:5433/acreos_test}"
 
 # Track whether we started docker so we know to tear it down
 DOCKER_STARTED=0
@@ -104,7 +110,7 @@ npx playwright test tests/simulation/sim-*.spec.ts \
 
 echo ""
 echo "═══ Step 4: Layer 2 — Chaos & adversarial tests ═══"
-npx vitest run tests/simulation/chaos.spec.ts --reporter=json \
+npm run --silent test:chaos -- --reporter=json \
   2>/dev/null \
   | tee "$REPORTS_DIR/chaos-results.json" || {
   log "Some chaos tests failed (continuing pipeline)"

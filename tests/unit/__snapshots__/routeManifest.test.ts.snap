@@ -144,6 +144,7 @@ exports[`route manifest > snapshot: sorted manifest file paths (additions/remova
   "routes-founder-studio.ts",
   "routes-founder-vendor-status.ts",
   "routes-gdpr.ts",
+  "routes-health.ts",
   "routes-import-export.ts",
   "routes-inbound-email.ts",
   "routes-incidents.ts",

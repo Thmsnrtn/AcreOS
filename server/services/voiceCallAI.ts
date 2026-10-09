@@ -16,6 +16,7 @@ import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 import { checkOperatorUrl } from "./providers/ssrf-guard";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 interface RecordCallParams {
   leadId: number;
   dealId?: number;
@@ -284,7 +285,7 @@ export class VoiceCallAIService {
 
     if (openai) {
       try {
-        const response = await openai.chat.completions.create({
+        const response = await meteredChatCompletion(openai, {
           model: "openai/gpt-4o",
           messages: [
             {
@@ -307,7 +308,7 @@ Respond in JSON format:
             },
           ],
           response_format: { type: "json_object" },
-        });
+        }, { taskType: "voice_call_analysis", orgId: transcript.organizationId, origin: "background" });
 
         const analysisText = response.choices[0]?.message?.content || "{}";
         const analysis = JSON.parse(analysisText);
@@ -366,7 +367,7 @@ Respond in JSON format:
     const openai = getOpenAIClient();
     if (openai && transcriptText && !transcriptText.includes("[Transcription placeholder")) {
       try {
-        const response = await openai.chat.completions.create({
+        const response = await meteredChatCompletion(openai, {
           model: "openai/gpt-4o",
           messages: [
             {
@@ -396,7 +397,7 @@ Respond in JSON format:
             },
           ],
           response_format: { type: "json_object" },
-        });
+        }, { taskType: "voice_call_analysis", orgId: transcript.organizationId, origin: "background" });
 
         const extractedText = response.choices[0]?.message?.content || "{}";
         const extracted = JSON.parse(extractedText);
@@ -443,7 +444,7 @@ Respond in JSON format:
     const openai = getOpenAIClient();
     if (openai && transcriptText && !transcriptText.includes("[Transcription placeholder")) {
       try {
-        const response = await openai.chat.completions.create({
+        const response = await meteredChatCompletion(openai, {
           model: "openai/gpt-4o",
           messages: [
             {
@@ -474,7 +475,7 @@ Respond in JSON format:
             },
           ],
           response_format: { type: "json_object" },
-        });
+        }, { taskType: "voice_call_analysis", orgId: transcript.organizationId, origin: "background" });
 
         const extractedText = response.choices[0]?.message?.content || "{}";
         extractedData = JSON.parse(extractedText);
@@ -535,7 +536,7 @@ Respond in JSON format:
     const openai = getOpenAIClient();
     if (openai && transcriptText && !transcriptText.includes("[Transcription placeholder")) {
       try {
-        const response = await openai.chat.completions.create({
+        const response = await meteredChatCompletion(openai, {
           model: "openai/gpt-4o",
           messages: [
             {
@@ -562,7 +563,7 @@ Respond in JSON format:
             },
           ],
           response_format: { type: "json_object" },
-        });
+        }, { taskType: "voice_call_analysis", orgId: transcript.organizationId, origin: "background" });
 
         const insightsText = response.choices[0]?.message?.content || "{}";
         const aiInsights = JSON.parse(insightsText);

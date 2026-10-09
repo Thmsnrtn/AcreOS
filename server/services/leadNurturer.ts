@@ -192,14 +192,15 @@ Respond in JSON format:
         model: "openai/gpt-4o",
         userPrompt: prompt,
         metadata: { leadStage: context.nurturingStage, leadType: context.type },
-        call: () =>
-          openai.chat.completions.create({
+        client: openai,
+        origin: "background",
+        request: {
             model: "openai/gpt-4o",
             messages: [{ role: "user", content: prompt }],
             temperature: 0.7,
             max_tokens: 500,
             response_format: { type: "json_object" },
-          }),
+          },
       });
 
       if (content) {

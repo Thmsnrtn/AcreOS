@@ -110,6 +110,10 @@ describe("an empty body refuses instead of sending the campaign's name", () => {
   it("the direct-mail path still reads content, as it always did", () => {
     // The control. It was correct before this change and must stay correct —
     // and its correctness is the evidence that `content` is the right column.
-    expect(CODE).toMatch(/front:\s*campaign\.content/);
+    // It now reads it once into `mailContent` (and refuses when it is empty
+    // instead of printing a placeholder), then prints exactly that.
+    expect(CODE).toMatch(/const mailContent = \(campaign\.content \?\? ""\)\.trim\(\)/);
+    expect(CODE).toMatch(/front:\s*mailContent/);
+    expect(CODE).toMatch(/file:\s*mailContent/);
   });
 });

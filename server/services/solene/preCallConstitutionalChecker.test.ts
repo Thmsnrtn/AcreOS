@@ -91,6 +91,17 @@ let nextViolationId = 5000;
 // db is a single drizzle-pg facade. The schema constants imported from the
 // service determine which target table a given .insert(...) hits. We
 // disambiguate by reading the `_.name` symbol drizzle attaches to each table.
+// The checker's model call is metered (aiSpendGuard): a background call fails
+// CLOSED when the platform ceiling is unreadable, and this harness has no
+// telemetry table — so the ceiling reads as within budget, and the cascade
+// telemetry sink is a no-op.
+vi.mock("../aiCostCeiling", () => ({ assertWithinAiCostCeiling: vi.fn(async () => {}) }));
+vi.mock("../ai-telemetry", () => ({
+  recordAiCall: vi.fn(async () => {}),
+  complexityClassFromTaskType: () => "other",
+  classifyError: () => "unknown",
+}));
+
 vi.mock("../../db", () => {
   const db = {
     insert: (table: any) => ({

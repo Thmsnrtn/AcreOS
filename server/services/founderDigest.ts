@@ -11,6 +11,7 @@ import { logger } from "../utils/logger";
 import { liveMrrDetail } from "./finance/runwayModel";
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 interface DigestData {
   mrrCents: number;
   mrrLastMonthCents: number | null;
@@ -135,7 +136,7 @@ async function generateDigestBullets(data: DigestData): Promise<{
   topAtRiskBullet: string;
   recommendedActionBullet: string;
 }> {
-  const response = await requireOpenAIClient().chat.completions.create({
+  const response = await meteredChatCompletion(requireOpenAIClient(), {
     model: "openai/gpt-4o-mini",
     response_format: { type: "json_object" },
     messages: [{
@@ -156,7 +157,7 @@ async function generateDigestBullets(data: DigestData): Promise<{
         instruction: "Return JSON: { revenueBullet, systemHealthBullet, supportActivityBullet, topAtRiskBullet, recommendedActionBullet }. Each ≤25 words.",
       }),
     }],
-  });
+  }, { taskType: "founder_brief", origin: "background" });
 
   try {
     const parsed = JSON.parse(response.choices[0]?.message?.content ?? "{}");

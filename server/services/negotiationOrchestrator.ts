@@ -13,6 +13,7 @@ import { logger } from "../utils/logger";
 import { wrapUntrustedFields } from "../ai/untrustedEnvelope";
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 interface SellerProfile {
   motivation: 'distressed' | 'motivated' | 'neutral' | 'passive';
   urgency: number; // 0-100
@@ -79,11 +80,11 @@ ${sellerCommunication.join('\n\n')}
 
 Respond in JSON format.`;
 
-      const completion = await requireOpenAIClient().chat.completions.create({
+      const completion = await meteredChatCompletion(requireOpenAIClient(), {
         model: 'openai/gpt-4o',
         messages: [{ role: 'user', content: analysisPrompt }],
         response_format: { type: 'json_object' },
-      });
+      }, { taskType: "negotiation", orgId: Number(organizationId), origin: "customer" });
 
       const analysis = JSON.parse(completion.choices[0].message.content || '{}');
 
@@ -193,11 +194,11 @@ Provide:
 
 Respond in JSON format.`;
 
-      const reasoning = await requireOpenAIClient().chat.completions.create({
+      const reasoning = await meteredChatCompletion(requireOpenAIClient(), {
         model: 'openai/gpt-4o',
         messages: [{ role: 'user', content: reasoningPrompt }],
         response_format: { type: 'json_object' },
-      });
+      }, { taskType: "negotiation", orgId: Number(organizationId), origin: "customer" });
 
       const reasoningData = JSON.parse(reasoning.choices[0].message.content || '{}');
 
@@ -564,10 +565,10 @@ Create a professional, persuasive script (200-300 words) that:
 
 Tone should match the ${sellerProfile.communicationStyle} communication style.`;
 
-      const completion = await requireOpenAIClient().chat.completions.create({
+      const completion = await meteredChatCompletion(requireOpenAIClient(), {
         model: 'openai/gpt-4o',
         messages: [{ role: 'user', content: prompt }],
-      });
+      }, { taskType: "negotiation", orgId: Number(organizationId), origin: "customer" });
 
       return completion.choices[0].message.content || '';
     } catch (error) {
@@ -910,12 +911,12 @@ build_negotiation_plan as your final tool to produce the structured output.`,
     try {
       // Agentic loop: let the model call tools until it's done
       for (let round = 0; round < 6; round++) {
-        const response = await requireOpenAIClient().chat.completions.create({
+        const response = await meteredChatCompletion(requireOpenAIClient(), {
           model: 'openai/gpt-4o',
           messages,
           tools,
           tool_choice: 'auto',
-        });
+        }, { taskType: "negotiation", orgId: Number(organizationId), origin: "customer" });
 
         const choice = response.choices[0];
         messages.push(choice.message);

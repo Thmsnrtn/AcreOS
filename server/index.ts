@@ -15,6 +15,8 @@ import { metricsHandler } from "./metrics";
 import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./utils/logger";
 import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
 import { terminalErrorHandler } from "./middleware/terminalErrorHandler";
+import { installBodyParsers } from "./middleware/bodyParsing";
+import { createGracefulShutdown, drainTimeoutFrom } from "./utils/gracefulShutdown";
 import { metricsMiddleware } from "./middleware/metrics";
 import { telemetryMiddleware } from "./middleware/telemetry";
 import { responseTimeRingMiddleware } from "./middleware/responseTimeRing";
@@ -228,17 +230,10 @@ app.use(sanitizeQueryParams);
 // Stripe webhook: raw body, mounted before express.json — see stripeWebhookRoute.ts.
 mountStripeWebhook(app);
 
-// Task #204: enforce request body size limits to prevent payload-based DoS
-app.use(
-  express.json({
-    limit: "1mb",
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    },
-  }),
-);
-
-app.use(express.urlencoded({ extended: false, limit: "1mb" }));
+// Task #204: enforce request body size limits to prevent payload-based DoS.
+// Also refuses (422) a body carrying U+0000 in any string, which Postgres
+// text/jsonb cannot store — see server/middleware/bodyParsing.ts.
+installBodyParsers(app);
 app.use(cookieParser());
 
 // Sentry's express ERROR handler is registered AFTER routes (see below,
@@ -658,47 +653,34 @@ app.use("/mcp", mcpLimiter);
         })();
       }
 
-      // Task #201: Graceful shutdown — drain open connections and checkpoint jobs
-      // Fly.io sends SIGTERM before replacing an instance. We close the HTTP server
-      // so no new connections are accepted, then wait briefly for in-flight requests
-      // to complete before exiting.
-      const gracefulShutdown = (signal: string) => {
-        log(`Received ${signal} — beginning graceful shutdown`, "shutdown");
+      // Task #201: Graceful shutdown — Fly sends SIGTERM before replacing an
+      // instance. Stop schedulers, stop accepting connections, let in-flight
+      // requests finish (bounded), close the WebSocket server and DB pools,
+      // exit. The sequence lives in server/utils/gracefulShutdown.ts, where
+      // gracefulShutdownDrains.test.ts drives it against a real http.Server.
+      const gracefulShutdown = createGracefulShutdown({
+        server: httpServer,
+        stopSchedulers: () => {
+          const intervals = ((globalThis as any).__bgIntervals || []) as NodeJS.Timeout[];
+          for (const handle of intervals) clearInterval(handle);
+          log(`Cleared ${intervals.length} background intervals`, "shutdown");
+          // Self-rescheduling jobs (server/jobs/scheduler.ts) are not intervals.
+          void import("./jobs/scheduler")
+            .then(({ cancelAllScheduledJobs }) => cancelAllScheduledJobs())
+            .catch((err) => log(`cancelAllScheduledJobs failed: ${err}`, "shutdown"));
+        },
+        closeExtras: [() => wsServer.shutdown()],
+        closeDb: async () => {
+          const { pool, replicaPool } = await import("./db");
+          await Promise.allSettled([pool.end(), replicaPool.end()]);
+        },
+        drainTimeoutMs: drainTimeoutFrom(process.env.SHUTDOWN_DRAIN_TIMEOUT_MS),
+        exit: (code) => process.exit(code),
+        log: (message) => log(message, "shutdown"),
+      });
 
-        // Clear all background job intervals to stop new work
-        for (const handle of (globalThis as any).__bgIntervals || []) {
-          clearInterval(handle);
-        }
-        log(`Cleared ${((globalThis as any).__bgIntervals || []).length} background intervals`, "shutdown");
-
-        httpServer.close((err) => {
-          if (err) {
-            log(`HTTP server close error: ${err}`, "shutdown");
-          } else {
-            log("HTTP server closed — all connections drained", "shutdown");
-          }
-          // Drain database connection pools before exiting
-          const { pool, replicaPool } = require("./db");
-          Promise.allSettled([pool.end(), replicaPool.end()]).then(() => {
-            log("Database pools drained", "shutdown");
-          }).catch(() => {});
-
-          // Give in-flight work 5 seconds to complete
-          setTimeout(() => {
-            log("Graceful shutdown complete", "shutdown");
-            process.exit(0);
-          }, 5000);
-        });
-
-        // Force-exit after 30 seconds to prevent hanging
-        setTimeout(() => {
-          log("Force exiting after 30s shutdown timeout", "shutdown");
-          process.exit(1);
-        }, 30000).unref();
-      };
-
-      process.once("SIGTERM", () => gracefulShutdown("SIGTERM"));
-      process.once("SIGINT", () => gracefulShutdown("SIGINT"));
+      process.once("SIGTERM", () => void gracefulShutdown("SIGTERM"));
+      process.once("SIGINT", () => void gracefulShutdown("SIGINT"));
 
       // trackInterval is defined at module scope — all jobs already use it
 

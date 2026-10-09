@@ -5,6 +5,7 @@ import { eq, and, ilike } from "drizzle-orm";
 import type { Lead } from "@shared/schema";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
+import { leadHasOptedOut } from "./leadContactability";
 
 // ─── TCPA QUIET-HOURS NOTE ────────────────────────────────────────────────────
 // TCPA § 64.1200(c)(1) and most state mini-TCPAs require contact between
@@ -445,7 +446,7 @@ export async function processOptKeyword(
     // that are currently opted out get the record — for anyone else "yes" is
     // just an answer.
     const opted = (await storage.findLeadsByPhoneLast10(organizationId, phone, { includeDeleted: true }))
-      .filter((l) => l.doNotContact);
+      .filter((l) => leadHasOptedOut(l));
     for (const lead of opted) {
       await db.insert(activityLog).values({
         organizationId,
@@ -525,7 +526,10 @@ async function applyOptKeywordToLead(
   } else {
     await db
       .update(leads)
-      .set({ doNotContact: false, tcpaConsent: true, consentDate: now, consentSource: 'sms_double_optin', updatedAt: now })
+      // Re-consent clears BOTH opt-out flags: clearing doNotContact alone left
+      // optOutDate set, and every opt-out check (leadHasOptedOut) still read
+      // the lead as opted out — re-consent stranded it.
+      .set({ doNotContact: false, optOutDate: null, optOutReason: null, tcpaConsent: true, consentDate: now, consentSource: 'sms_double_optin', updatedAt: now })
       .where(and(eq(leads.id, matched.id), eq(leads.organizationId, organizationId)));
 
     await db.insert(activityLog).values({
@@ -552,15 +556,23 @@ async function applyOptKeywordToLead(
   }
 }
 
-export function checkTcpaConsentFromLead(lead: Pick<Lead, 'tcpaConsent' | 'doNotContact'>): TcpaCheckResult {
-  if (lead.doNotContact) {
+/**
+ * The opt-out flags are REQUIRED here, both of them: a caller that builds a
+ * partial lead must carry `optOutDate` too, or this reads an opted-out lead as
+ * contactable (it read `doNotContact` alone until 2026-10; see
+ * leadContactability.ts).
+ */
+export type ConsentFlags = Pick<Lead, 'tcpaConsent' | 'doNotContact' | 'optOutDate'>;
+
+export function checkTcpaConsentFromLead(lead: ConsentFlags): TcpaCheckResult {
+  if (leadHasOptedOut(lead)) {
     return {
       canEmail: false,
       canSms: false,
       canCall: false,
       canDirectMail: false,
       blocked: true,
-      reason: "Lead has opted out of all communications (doNotContact is true)",
+      reason: "Lead has opted out of all communications (do not contact / opt-out on file)",
     };
   }
 
@@ -626,7 +638,7 @@ export async function tcpaGateForSms(
 }
 
 export function canSendViaChannel(
-  lead: Pick<Lead, 'tcpaConsent' | 'doNotContact'>,
+  lead: ConsentFlags,
   channel: 'email' | 'sms' | 'direct_mail' | 'phone'
 ): { allowed: boolean; reason?: string } {
   const consent = checkTcpaConsentFromLead(lead);

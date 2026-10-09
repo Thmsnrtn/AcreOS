@@ -134,7 +134,7 @@ function getStageStyle(stage: string) {
     case "warm":
       return "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink";
     case "cold":
-      return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
+      return "bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
     default:
       return "bg-muted text-muted-foreground";
   }
@@ -518,7 +518,7 @@ export function TcpaConsentToggle({ lead }: { lead: Lead }) {
         ? {
             tcpaConsent: true,
             doNotContact: false,
-            consentSource: consentSource || "manual",
+            consentSource: consentSource || "admin_manual",
             consentDate: new Date().toISOString(),
             optOutDate: null,
             optOutReason: null,
@@ -543,7 +543,7 @@ export function TcpaConsentToggle({ lead }: { lead: Lead }) {
       <Button
         size="sm"
         variant="outline"
-        onClick={() => consentMutation.mutate({ tcpaConsent: true, consentSource: "manual_restoration" })}
+        onClick={() => consentMutation.mutate({ tcpaConsent: true, consentSource: "admin_manual" })}
         disabled={consentMutation.isPending}
         data-testid={`button-restore-consent-${lead.id}`}
       >
@@ -572,7 +572,7 @@ export function TcpaConsentToggle({ lead }: { lead: Lead }) {
   return (
     <Button
       size="sm"
-      onClick={() => consentMutation.mutate({ tcpaConsent: true, consentSource: "manual" })}
+      onClick={() => consentMutation.mutate({ tcpaConsent: true, consentSource: "admin_manual" })}
       disabled={consentMutation.isPending}
       data-testid={`button-grant-consent-${lead.id}`}
     >
@@ -1399,8 +1399,8 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                         <SelectItem value="all">All assignees</SelectItem>
                         <SelectItem value="unassigned">Unassigned</SelectItem>
                         {teamMembers.map((member) => (
-                          <SelectItem key={member.userId} value={member.userId}>
-                            {member.displayName || member.email || member.userId}
+                          <SelectItem key={member.id} value={String(member.id)}>
+                            {member.displayName || member.email || `Member #${member.id}`}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -1504,8 +1504,8 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                               <SelectItem value="all">All assignees</SelectItem>
                               <SelectItem value="unassigned">Unassigned</SelectItem>
                               {teamMembers.map((member) => (
-                                <SelectItem key={member.userId} value={member.userId}>
-                                  {member.displayName || member.email || member.userId}
+                                <SelectItem key={member.id} value={String(member.id)}>
+                                  {member.displayName || member.email || `Member #${member.id}`}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -2224,7 +2224,7 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
 
 function LeadStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    new: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
+    new: "bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
     contacting: "bg-acr-brand-soft text-acr-brand-soft-ink dark:bg-acr-brand-soft/30 dark:text-acr-brand-soft-ink",
     negotiation: "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink",
     closed: "bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink",

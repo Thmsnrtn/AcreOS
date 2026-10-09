@@ -232,6 +232,7 @@ vi.mock("../../server/utils/permissions", () => ({
 }));
 vi.mock("../../server/utils/orgScope", () => ({
   assertUserIsOrgMember: vi.fn(async () => true),
+  isAssignableLeadMember: vi.fn(async () => true),
 }));
 vi.mock("../../server/services/usageLimits", () => ({
   checkUsageLimit: vi.fn(async () => ({ allowed: true, current: 0, limit: null })),

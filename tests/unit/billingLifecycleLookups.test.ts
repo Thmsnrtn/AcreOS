@@ -147,7 +147,9 @@ describe("every hasEnoughCredits caller is classified", () => {
   const callers = walk(path.join(ROOT, "server"))
     .map((f) => path.relative(ROOT, f))
     .filter((f) => f !== "server/services/credits.ts")
-    .filter((f) => /\.hasEnough(Own)?Credits\(/.test(src(f)));
+    // evaluateCredits (#335) is the same decision with its lane — a caller of
+    // it is in the population exactly like a hasEnoughCredits caller.
+    .filter((f) => /\.(hasEnough(Own)?Credits|evaluateCredits)\(/.test(src(f)));
 
   it("the population is the classified set (a new caller must be classified)", () => {
     expect(callers.sort()).toEqual(Object.keys(CLASSIFIED).sort());

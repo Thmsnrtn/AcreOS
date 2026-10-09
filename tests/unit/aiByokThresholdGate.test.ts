@@ -7,6 +7,9 @@
  *   1. Threshold constants stay generous AND margin-positive per tier.
  *   2. checkAiTurnGate: under-threshold allowed; warning at ≥80%;
  *      at/past threshold without BYOK → blocked with reason "byok_required";
+ *      since the founder decision of 2026-10-08 the gate measures the ONE
+ *      shared monthly AI allowance in CENTS of customer-triggered AI spend
+ *      (threshold × 1.5¢), not turns — the same wall, the same BYOK path;
  *      with an active AI key → allowed/unlimited (mode "byok"); founders
  *      are never gated.
  *   3. checkUsageLimit lifts the ai_requests cap when an AI BYOK key is
@@ -56,6 +59,9 @@ describe("AI_TURNS_BYOK_THRESHOLDS — tunable economics constants", () => {
 const state = {
   orgRow: { subscriptionTier: "pro", subscriptionStatus: "active", isFounder: false, trialEndsAt: null } as any,
   monthlyTurns: 0,
+  /** Customer-triggered AI spend this month, cents (the allowance measure). */
+  monthlySpendCents: 0,
+  wheres: [] as unknown[],
   byokChannel: null as string | null,
   alertInserts: 0,
 };
@@ -67,6 +73,7 @@ function mockModules() {
     properties: { organizationId: "props.org" },
     notes: { organizationId: "notes.org" },
     usageEvents: { organizationId: "ue.org", eventType: "ue.type", quantity: "ue.qty", createdAt: "ue.created" },
+    aiTelemetryEvents: { organizationId: "ate.org", origin: "ate.origin", createdAt: "ate.created", estimatedCostCents: "ate.cost" },
     systemAlerts: { id: "sa.id", organizationId: "sa.org", type: "sa.type", createdAt: "sa.created" },
   }));
 
@@ -78,20 +85,24 @@ function mockModules() {
     sum: () => ({ op: "sum" }),
     inArray: (a: any, b: any) => ({ op: "inArray", a, b }),
     isNull: (a: any) => ({ op: "isNull", a }),
+    sql: (strings: TemplateStringsArray, ...vals: any[]) => ({ op: "sql", strings, vals }),
   }));
 
   vi.doMock("../../server/storage", () => ({
     db: {
       select: () => ({
         from: () => ({
-          where: () =>
-            Promise.resolve([
+          where: (cond: unknown) => {
+            state.wheres.push(cond);
+            return Promise.resolve([
               {
                 ...state.orgRow,
                 total: state.monthlyTurns,
                 count: state.monthlyTurns,
+                cents: String(state.monthlySpendCents),
               },
-            ]),
+            ]);
+          },
         }),
       }),
       insert: () => ({
@@ -118,31 +129,35 @@ beforeEach(() => {
   vi.resetModules();
   state.orgRow = { subscriptionTier: "pro", subscriptionStatus: "active", isFounder: false, trialEndsAt: null };
   state.monthlyTurns = 0;
+  state.monthlySpendCents = 0;
+  state.wheres = [];
   state.byokChannel = null;
   state.alertInserts = 0;
 });
 
-describe("checkAiTurnGate — the Tier 1I gate", () => {
-  it("under threshold → allowed, mode platform, no warning", async () => {
-    state.monthlyTurns = 100;
+describe("checkAiTurnGate — the shared monthly AI allowance (cents)", () => {
+  // Pro: 1,500 turns × 1.5¢ = 2,250¢ ($22.50). Starter: 750 × 1.5¢ = 1,125¢.
+  it("under the allowance → allowed, mode platform, no warning", async () => {
+    state.monthlySpendCents = 100;
     const { checkAiTurnGate } = await importGate();
     const r = await checkAiTurnGate(1);
     expect(r.allowed).toBe(true);
     expect(r.mode).toBe("platform");
     expect(r.warning).toBe(false);
-    expect(r.threshold).toBe(1500);
+    expect(r.threshold).toBe(2250);
+    expect(r.unit).toBe("cents");
   });
 
-  it("at ≥80% of threshold → allowed with warning flag", async () => {
-    state.monthlyTurns = 1200; // exactly 80% of pro's 1500
+  it("at ≥80% of the allowance → allowed with warning flag", async () => {
+    state.monthlySpendCents = 1800; // exactly 80% of pro's 2,250¢
     const { checkAiTurnGate } = await importGate();
     const r = await checkAiTurnGate(1);
     expect(r.allowed).toBe(true);
     expect(r.warning).toBe(true);
   });
 
-  it("at/past threshold WITHOUT BYOK → blocked with reason byok_required", async () => {
-    state.monthlyTurns = 1500;
+  it("at/past the allowance WITHOUT BYOK → blocked with reason byok_required", async () => {
+    state.monthlySpendCents = 2250;
     const { checkAiTurnGate } = await importGate();
     const r = await checkAiTurnGate(1);
     expect(r.allowed).toBe(false);
@@ -151,9 +166,21 @@ describe("checkAiTurnGate — the Tier 1I gate", () => {
     expect(r.byokActive).toBe(false);
   });
 
+  it("measures COST, not turns: many cheap turns stay under, few dear calls cross", async () => {
+    state.monthlyTurns = 99999; // the old turn count no longer decides
+    state.monthlySpendCents = 50;
+    const { checkAiTurnGate } = await importGate();
+    expect((await checkAiTurnGate(1)).allowed).toBe(true);
+    vi.resetModules();
+    state.monthlyTurns = 3;
+    state.monthlySpendCents = 2300; // three long document reads
+    const g2 = await importGate();
+    expect((await g2.checkAiTurnGate(1)).allowed).toBe(false);
+  });
+
   it("Starter is also BYOK-eligible when blocked (AI channels open to all paid tiers)", async () => {
     state.orgRow.subscriptionTier = "starter";
-    state.monthlyTurns = 750;
+    state.monthlySpendCents = 1125;
     const { checkAiTurnGate } = await importGate();
     const r = await checkAiTurnGate(1);
     expect(r.allowed).toBe(false);
@@ -161,8 +188,8 @@ describe("checkAiTurnGate — the Tier 1I gate", () => {
     expect(r.byokAvailable).toBe(true);
   });
 
-  it("past threshold WITH an active AI key → allowed, unlimited, mode byok", async () => {
-    state.monthlyTurns = 99999;
+  it("past the allowance WITH an active AI key → allowed, unlimited, mode byok", async () => {
+    state.monthlySpendCents = 99999;
     state.byokChannel = "anthropic";
     const { checkAiTurnGate } = await importGate();
     const r = await checkAiTurnGate(1);
@@ -171,17 +198,26 @@ describe("checkAiTurnGate — the Tier 1I gate", () => {
     expect(r.byokActive).toBe(true);
   });
 
-  it("free tier has no BYOK threshold — the plain ai_requests cap governs", async () => {
+  it("free tier has no allowance wall — the plain ai_requests cap governs", async () => {
     state.orgRow.subscriptionTier = "free";
-    state.monthlyTurns = 70;
+    state.monthlySpendCents = 70;
     const { checkAiTurnGate } = await importGate();
     const r = await checkAiTurnGate(1);
     expect(r.allowed).toBe(true);
     expect(r.threshold).toBeNull();
   });
 
+  it("counts ONLY customer-triggered spend (origin = 'customer') — background never draws it down", async () => {
+    state.monthlySpendCents = 10;
+    const { checkAiTurnGate } = await importGate();
+    await checkAiTurnGate(1);
+    const spendWhere = state.wheres.find((w) => JSON.stringify(w).includes("ate.origin"));
+    expect(spendWhere, "the allowance read must filter on origin").toBeDefined();
+    expect(JSON.stringify(spendWhere)).toContain(JSON.stringify({ op: "eq", a: "ate.origin", b: "customer" }));
+  });
+
   it("founders are never gated", async () => {
-    state.monthlyTurns = 999999;
+    state.monthlySpendCents = 999999;
     const { checkAiTurnGate } = await importGate();
     const r = await checkAiTurnGate(1, { isFounder: true });
     expect(r.allowed).toBe(true);

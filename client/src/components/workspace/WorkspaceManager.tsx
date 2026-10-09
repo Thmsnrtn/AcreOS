@@ -128,6 +128,7 @@ export function WorkspaceManager() {
             variant="outline" 
             size="sm" 
             className="gap-2"
+            aria-label={currentPreset?.name ? `Workspace: ${currentPreset.name}` : "Workspaces"}
             data-testid="workspace-dropdown-trigger"
           >
             <LayoutGrid className="h-4 w-4" />

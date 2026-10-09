@@ -40,7 +40,7 @@
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { db, withTransaction, type PrimaryDb } from "../db";
 import { financialLedger, organizations, type ByokChannel } from "@shared/schema";
-import { TIER_LIMITS, type SubscriptionTier } from "@shared/billing/tier-limits";
+import { TIER_LIMITS, limitsTierFor, type SubscriptionTier } from "@shared/billing/tier-limits";
 // Tier 1C: creditCost moved out of shared/ (it reaches into server settings).
 import { type CreditAction } from "@shared/billing/credit-weights";
 import { creditCost } from "./creditCost";
@@ -165,23 +165,58 @@ export interface PoolDebitResult {
   fundedBy?: "purchased_credits";
 }
 
+/**
+ * Tiers that can carry a grandfathered pool (organizations.credit_pool_grandfather).
+ * Only Scale today: its pool moved 8,000 → 3,000 for new customers on
+ * 2026-10-08 and orgs already on Scale keep 8,000 until their next renewal. A
+ * grandfather applies only while the org is still on such a tier.
+ */
+export const GRANDFATHERED_POOL_TIERS: ReadonlySet<SubscriptionTier> = new Set<SubscriptionTier>(["scale"]);
+
+/**
+ * THE monthly credit pool rule — the tier's pool, or a grandfathered pool
+ * while one is in force (end unknown, or in the future). Pure. Every pool read
+ * (debit gate, snapshot, the customer-visible gauge and examples card) reaches
+ * it through fetchOrgTier().
+ */
+export function creditPoolFor(
+  tier: SubscriptionTier,
+  grandfather: { pool: number | null | undefined; endsAt: Date | string | null | undefined } | null,
+  nowMs: number = clock.nowMs(),
+): { poolMonthly: number; grandfathered: boolean; grandfatheredUntil: Date | null } {
+  const tierPool = TIER_LIMITS[tier].creditPool;
+  const pool = Number(grandfather?.pool);
+  if (!GRANDFATHERED_POOL_TIERS.has(tier) || !grandfather || !Number.isFinite(pool) || pool <= 0) {
+    return { poolMonthly: tierPool, grandfathered: false, grandfatheredUntil: null };
+  }
+  const endsAt = grandfather.endsAt ? new Date(grandfather.endsAt) : null;
+  if (endsAt !== null && !(endsAt.getTime() > nowMs)) {
+    return { poolMonthly: tierPool, grandfathered: false, grandfatheredUntil: null };
+  }
+  return { poolMonthly: pool, grandfathered: true, grandfatheredUntil: endsAt };
+}
+
 async function fetchOrgTier(
   organizationId: number,
-): Promise<{ tier: SubscriptionTier; isFounder: boolean }> {
+): Promise<{ tier: SubscriptionTier; isFounder: boolean; poolMonthly: number }> {
   const [row] = await db
     .select({
       subscriptionTier: organizations.subscriptionTier,
       isFounder: organizations.isFounder,
+      creditPoolGrandfather: organizations.creditPoolGrandfather,
+      creditPoolGrandfatherEndsAt: organizations.creditPoolGrandfatherEndsAt,
     })
     .from(organizations)
     .where(eq(organizations.id, organizationId))
     .limit(1);
-  if (!row) return { tier: "free", isFounder: false };
-  const t = (row.subscriptionTier ?? "free").toLowerCase();
-  const tier = (TIER_LIMITS as Record<string, unknown>)[t]
-    ? (t as SubscriptionTier)
-    : "free";
-  return { tier, isFounder: row.isFounder === true };
+  if (!row) return { tier: "free", isFounder: false, poolMonthly: TIER_LIMITS.free.creditPool };
+  // The canonical fold: legacy solo/operator/empire get their real tier's pool.
+  const tier = limitsTierFor(row.subscriptionTier);
+  const isFounder = row.isFounder === true;
+  const poolMonthly = isFounder
+    ? TIER_LIMITS.enterprise.creditPool
+    : creditPoolFor(tier, { pool: row.creditPoolGrandfather, endsAt: row.creditPoolGrandfatherEndsAt }).poolMonthly;
+  return { tier, isFounder, poolMonthly };
 }
 
 /** The ledger feature a pool-funded refund is written under (refundPoolDebit). */
@@ -224,7 +259,7 @@ async function poolUsageThisMonth(organizationId: number, tx: PrimaryDb = db): P
  * the client gauge optimistically.
  */
 export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
-  const { tier, isFounder: dbIsFounder } = await fetchOrgTier(args.organizationId);
+  const { tier, isFounder: dbIsFounder, poolMonthly: resolvedPool } = await fetchOrgTier(args.organizationId);
   const isFounder = args.isFounder ?? dbIsFounder;
 
   // Founders never draw from the pool. Return a sentinel result so callers
@@ -271,7 +306,7 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
     }
     if (active === null) {
       if ((args.enforce ?? "gate") === "gate") {
-        const poolMonthly = TIER_LIMITS[tier].creditPool;
+        const poolMonthly = resolvedPool;
         return {
           allowed: false,
           debitedCents: 0,
@@ -286,7 +321,7 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
       active = false;
     }
     if (active) {
-      const poolMonthly = TIER_LIMITS[tier].creditPool;
+      const poolMonthly = resolvedPool;
       return {
         allowed: true,
         debitedCents: 0,
@@ -305,7 +340,7 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
   const cents = Math.max(0, Math.ceil(rawCost));
 
   if (cents === 0) {
-    const poolMonthly = TIER_LIMITS[tier].creditPool;
+    const poolMonthly = resolvedPool;
     const used = await poolUsageThisMonth(args.organizationId);
     return {
       allowed: true,
@@ -338,7 +373,7 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
     // pushes PAST the pool — the generous boundary edge, flagged overPool);
     // refused once used >= pool. Idempotency (ON CONFLICT on
     // external_event_id) is unchanged.
-    const poolMonthlyForGate = TIER_LIMITS[tier].creditPool;
+    const poolMonthlyForGate = resolvedPool;
     const monthStart = new Date(Date.UTC(clock.now().getUTCFullYear(), clock.now().getUTCMonth(), 1));
     const uniqueFeatures = Array.from(new Set(Object.values(POOL_FEATURE_FOR_ACTION)));
 
@@ -472,7 +507,7 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
         .returning({ id: financialLedger.id });
     }
 
-    const poolMonthly = TIER_LIMITS[tier].creditPool;
+    const poolMonthly = resolvedPool;
     // On the caller's transaction when there is one: the row just written is
     // not yet visible to the global connection (audit of 1694a0b).
     const usedAfter = await poolUsageThisMonth(args.organizationId, q);
@@ -489,7 +524,7 @@ export async function poolDebit(args: PoolDebitArgs): Promise<PoolDebitResult> {
     };
   } catch (err) {
     logger.error("[credit-pool] debit failed", err instanceof Error ? err : undefined);
-    const poolMonthly = TIER_LIMITS[tier].creditPool;
+    const poolMonthly = resolvedPool;
     if (enforce === "record") {
       // Post-hoc recorder — the spend already happened; nothing to refuse.
       return {
@@ -685,13 +720,13 @@ export async function refundPoolDebit(args: {
 export async function poolSnapshot(
   organizationId: number,
 ): Promise<{ poolMonthly: number; used: number; remaining: number; tier: SubscriptionTier; isFounder: boolean }> {
-  const { tier, isFounder } = await fetchOrgTier(organizationId);
+  const { tier, isFounder, poolMonthly: resolvedPool } = await fetchOrgTier(organizationId);
   if (isFounder) {
     // Founders never draw from the pool (poolDebit bypasses them).
     const poolMonthly = TIER_LIMITS.enterprise.creditPool;
     return { poolMonthly, used: 0, remaining: poolMonthly, tier, isFounder };
   }
-  const poolMonthly = TIER_LIMITS[tier].creditPool;
+  const poolMonthly = resolvedPool;
   // The SAME sum the gate enforces (refunds netted, every pool feature).
   const used = await poolUsageThisMonth(organizationId);
   return { poolMonthly, used, remaining: Math.max(0, poolMonthly - used), tier, isFounder };

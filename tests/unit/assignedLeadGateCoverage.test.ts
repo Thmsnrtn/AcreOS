@@ -231,9 +231,24 @@ describe("the rule has ONE owner", () => {
     expect(gate).toMatch(/assignedTo == null \|\|/);
   });
 
-  it("compares as strings, so a numeric id never mismatches a string one", () => {
-    const gate = code("server/utils/assignedLeadGate.ts");
-    expect(gate).toMatch(/String\(assignedTo\) !== String\(callerId\)/);
+  it("compares the assignee with the caller's TEAM MEMBER id, not their user id", async () => {
+    // This assertion used to pin `String(assignedTo) !== String(callerId)` with
+    // callerId = req.user.id — a users.id uuid compared against
+    // leads.assigned_to, which stores team_members.id. They could never be
+    // equal, so an assigned-only caller could write none of their own leads.
+    // Rewritten to the behaviour: same team member → writable; the user id
+    // happening to equal the assignee proves nothing.
+    const { assertAssignedLeadWritable } = await import("../../server/utils/assignedLeadGate");
+    const res = () => {
+      const r: any = {};
+      r.status = () => r;
+      r.json = () => r;
+      return r;
+    };
+    const req = (teamMemberId: number, userId: string) =>
+      ({ user: { id: userId }, permissionContext: { teamMemberId, permissions: { viewOnlyAssignedLeads: true } } }) as never;
+    expect(assertAssignedLeadWritable(req(7, "uuid-a"), res(), { assignedTo: 7 })).toBe(false);
+    expect(assertAssignedLeadWritable(req(7, "8"), res(), { assignedTo: 8 })).toBe(true);
   });
 
   it("names the restriction, never the ids, so the error is not a probe", () => {

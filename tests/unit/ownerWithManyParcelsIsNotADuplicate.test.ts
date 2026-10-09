@@ -26,6 +26,11 @@ vi.mock("../../server/db", () => ({
   },
 }));
 
+vi.mock("../../server/services/legalHold", () => ({
+  assertNotUnderLegalHold: vi.fn(async () => undefined),
+  filterOutHeldIds: vi.fn(async (_o: number, _t: string, ids: number[]) => ids),
+}));
+
 import { findDuplicateClusters } from "../../server/services/leadDedupeScanner";
 import { areDistinctParcels } from "../../server/services/leads/parcelDedupe";
 

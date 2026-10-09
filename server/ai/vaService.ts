@@ -6,7 +6,7 @@ import { serializeToolResultForModel, USER_DATA_SYSTEM_CLAUSE } from "./untruste
 import type { Organization, VaAgent, VaAction, InsertVaAction, InsertVaBriefing } from "@shared/schema";
 import { validateAtlasOutput, AtlasOutputType } from "./validators";
 import { logger } from "../utils/logger";
-import { assertAiSpendAllowed, recordExternalAiSpend } from "../services/aiSpendGuard";
+import { assertAiSpendAllowed, meteredChatCompletion } from "../services/aiSpendGuard";
 import { OPENAI_DIRECT_MODELS, openAiModelIdFor } from "../services/models";
 import { clock } from "../utils/clock";
 
@@ -682,13 +682,12 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
     // records its spend to telemetry so it counts toward that ceiling + COGS.
     await assertAiSpendAllowed(orgId);
 
-    let response = await getOpenAI().chat.completions.create({
+    let response = await meteredChatCompletion(getOpenAI(), {
       model: vaModel(),
       messages,
       tools: tools.length > 0 ? tools : undefined,
       max_tokens: 2048
-    });
-    recordExternalAiSpend({ orgId, taskType: `va_agent_${agentType}`, model: vaModel(), promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
+    }, { taskType: `va_agent_${agentType}`, orgId, origin: "customer" });
 
     let assistantMessage = response.choices[0].message;
 
@@ -720,13 +719,12 @@ ${USER_DATA_SYSTEM_CLAUSE}`;
       messages.push(assistantMessage as any);
       messages.push(...toolResults);
 
-      response = await getOpenAI().chat.completions.create({
+      response = await meteredChatCompletion(getOpenAI(), {
         model: vaModel(),
         messages,
         tools: tools.length > 0 ? tools : undefined,
         max_tokens: 2048
-      });
-      recordExternalAiSpend({ orgId, taskType: `va_agent_${agentType}`, model: vaModel(), promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
+      }, { taskType: `va_agent_${agentType}`, orgId, origin: "customer" });
 
       assistantMessage = response.choices[0].message;
     }
@@ -861,7 +859,7 @@ Generate a briefing with:
 
 Keep it concise and actionable.`;
 
-    const response = await getOpenAI().chat.completions.create({
+    const response = await meteredChatCompletion(getOpenAI(), {
       model: vaModel(),
       messages: [
         { 
@@ -871,8 +869,7 @@ Keep it concise and actionable.`;
         { role: "user", content: briefingPrompt }
       ],
       max_tokens: 1500
-    });
-    recordExternalAiSpend({ orgId, taskType: "va_briefing", model: vaModel(), promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
+    }, { taskType: "va_briefing", orgId, origin: "customer" });
 
     const content = response.choices[0].message.content || "";
     

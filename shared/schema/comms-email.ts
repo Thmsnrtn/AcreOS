@@ -20,7 +20,7 @@
  */
 import { pgTable, text, serial, integer, bigserial, boolean, timestamp, numeric, varchar, jsonb, index, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { createInsertSchema } from "drizzle-zod";
+import { createInsertSchema } from "../db/createInsertSchema";
 import { z } from "zod";
 import { campaigns, conversations, leads, organizations, teamMembers } from "../schema";
 

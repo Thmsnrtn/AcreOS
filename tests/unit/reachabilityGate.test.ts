@@ -47,17 +47,16 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
-import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 
-// The real-repo half of this file runs the linter over the whole source tree
-// (a child process per run). Its cost scales with the repo and with machine
-// load; under a contended CPU it overran the 30s default and was KILLED —
-// which reports nothing about the gate. The sweep budget is declared, not
-// inherited (tests/helpers/sweepBudget.ts).
+// This gate runs a script that walks the source tree, in a child process;
+// its cost scales with the repo, and under load it does not fit the
+// suite's 30s default. A killed gate reports nothing about what it guards,
+// so the budget is declared, not inherited.
 vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const REPO_ROOT = resolve(__dirname, "..", "..");

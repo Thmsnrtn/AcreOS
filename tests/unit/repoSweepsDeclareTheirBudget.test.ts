@@ -40,8 +40,11 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { stripComments } from "../helpers/stripComments";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
+import { glob } from "tinyglobby";
+import vitestConfig from "../../vitest.config";
 // This gate walks the source tree; its cost scales with the repo, and under the
 // coverage run it does not fit the suite’s 30s default. A killed gate reports
 // nothing about what it guards, so the budget is declared, not inherited.
@@ -50,12 +53,28 @@ vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = process.cwd();
 
+/**
+ * THE POPULATION is every file vitest runs, not every file under tests/.
+ *
+ * vitest.config.ts includes every `.test.ts`, `.test.tsx` and `.test.mjs` file
+ * in the repository; this walk used to read tests/ alone and only `.test.ts(x)`, so a
+ * sweep living beside its subject — scripts/check-interactive-claims.test.mjs
+ * spawns its gate over a scratch repo — was a member nobody could see. The
+ * directories skipped here are the config's own `exclude` list plus `.git`.
+ * Fixture and snapshot directories are NOT skipped: vitest runs a test file
+ * wherever it sits, so a sweep under fixtures/ is still a sweep. The walk is
+ * checked against vitest's own resolution of the config in the first test.
+ */
+const VITEST_EXCLUDED_DIRS = ["node_modules", "dist", "client", ".claude", ".git"];
 function walkTests(dir: string, out: string[] = []): string[] {
-  for (const e of readdirSync(dir)) {
-    if (["node_modules", "fixtures", "__snapshots__"].includes(e)) continue;
-    const abs = path.join(dir, e);
-    if (statSync(abs).isDirectory()) walkTests(abs, out);
-    else if (/\.test\.tsx?$/.test(e)) out.push(abs);
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (VITEST_EXCLUDED_DIRS.includes(e.name)) continue;
+    // Symlinks are not followed: the repo root holds a self-referencing link,
+    // and a linked file is the same file vitest already reaches by its path.
+    if (e.isSymbolicLink()) continue;
+    const abs = path.join(dir, e.name);
+    if (e.isDirectory()) walkTests(abs, out);
+    else if (/\.test\.(?:tsx?|mjs)$/.test(e.name)) out.push(abs);
   }
   return out;
 }
@@ -107,15 +126,94 @@ function isRepoSweep(src: string): boolean {
  */
 const DELEGATED_SWEEPS = ["tests/unit/doctrineIngest.test.ts"];
 
+/**
+ * The fourth way to sweep: run a gate SCRIPT that sweeps, in a child process.
+ *
+ * Missed until 2026-10-07. tests/unit/reachabilityGate.test.ts runs
+ * scripts/lint-reachability.mjs over the real repository three times; one of
+ * those calls carried its own 120s budget and the other two inherited the 30s
+ * default and timed out under load. The test itself never calls readdirSync —
+ * the child does — so the predicate above, which reads only the test's own
+ * source, could not see any of the ten tests of this shape.
+ *
+ * Derived, not listed: a test that imports node:child_process and names a file
+ * under scripts/ whose source (or a relative module it imports) walks the tree.
+ * Read comment-stripped, so a script NAMED in a header comment — every one of
+ * these tests describes its gate in prose — is not a spawn of it.
+ */
+const SCRIPT_REF = [
+  /["'`](?:\.\.\/)*(scripts\/[\w./-]+\.(?:mjs|cjs|js|ts))["'`]/g,
+  /["'`]scripts["'`]\s*,\s*["'`]([\w.-]+\.(?:mjs|cjs|js|ts))["'`]/g,
+];
+const scriptSweeps = new Map<string, boolean>();
+function scriptIsSweep(abs: string, depth = 0): boolean {
+  const key = `${abs}#${depth}`;
+  const cached = scriptSweeps.get(key);
+  if (cached !== undefined) return cached;
+  let verdict = false;
+  // Read once, without a separate existence check: a candidate that is not a
+  // readable file (missing, or a directory) is not a sweep.
+  let raw: string | null = null;
+  try {
+    raw = readFileSync(abs, "utf8");
+  } catch {
+    raw = null;
+  }
+  if (raw !== null) {
+    const src = stripComments(raw);
+    verdict = isRepoSweep(src);
+    if (!verdict && depth === 0) {
+      for (const m of src.matchAll(/\bfrom\s+["'](\.{1,2}\/[^"']+)["']|\bimport\(\s*["'](\.{1,2}\/[^"']+)["']\s*\)/g)) {
+        const rel = m[1] ?? m[2];
+        const base = path.resolve(path.dirname(abs), rel);
+        const candidates = [base, ...[".mjs", ".js", ".ts", ".cjs"].map((x) => base + x)];
+        if (candidates.some((c) => scriptIsSweep(c, depth + 1))) { verdict = true; break; }
+      }
+    }
+  }
+  scriptSweeps.set(key, verdict);
+  return verdict;
+}
+function spawnsRepoSweep(rawSrc: string, testAbs: string): boolean {
+  const src = stripComments(rawSrc);
+  if (!/["'](?:node:)?child_process["']/.test(src)) return false;
+  const named = new Set<string>();
+  for (const re of SCRIPT_REF) for (const m of src.matchAll(re)) {
+    const ref = m[1];
+    named.add(path.join(ROOT, ref.startsWith("scripts/") ? ref : path.join("scripts", ref)));
+  }
+  // A test living in scripts/ reaches its gate by a sibling path.
+  if (path.dirname(testAbs) === path.join(ROOT, "scripts")) {
+    for (const m of src.matchAll(/["'`](?:\.\/)?([\w.-]+\.(?:mjs|cjs|js))["'`]/g)) named.add(path.join(ROOT, "scripts", m[1]));
+  }
+  return [...named].some((abs) => scriptIsSweep(abs));
+}
+
 const DECLARATION = "vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS })";
 
-const testFiles = walkTests(path.join(ROOT, "tests"));
+const testFiles = walkTests(ROOT);
+const spawnedSweeps = testFiles.filter((abs) => spawnsRepoSweep(readFileSync(abs, "utf8"), abs));
 const sweeps = [
   ...testFiles.filter((abs) => isRepoSweep(readFileSync(abs, "utf8"))),
+  ...spawnedSweeps,
   ...DELEGATED_SWEEPS.map((rel) => path.join(ROOT, rel)),
 ].filter((abs, i, all) => all.indexOf(abs) === i);
 
 describe("every repo-wide sweep declares its budget", () => {
+  it("the walk reads exactly the files vitest runs", async () => {
+    // The same call vitest makes to find test files (tinyglobby, the config's
+    // own include/exclude, dot files on, no directory expansion). If the walk
+    // above skips a directory vitest does not — or misses an extension vitest
+    // includes — the two sets differ and this fails, naming the files.
+    const t = (vitestConfig as { test?: { include?: string[]; exclude?: string[] } }).test ?? {};
+    expect(t.include?.length, "vitest.config.ts declares no include").toBeGreaterThan(0);
+    const vitestFiles = await glob(t.include!, { dot: true, cwd: ROOT, ignore: t.exclude ?? [], expandDirectories: false });
+    const walked = new Set(testFiles.map((f) => path.relative(ROOT, f)));
+    const resolved = new Set(vitestFiles);
+    expect([...resolved].filter((f) => !walked.has(f)).sort(), "vitest runs these; the walk never reads them").toEqual([]);
+    expect([...walked].filter((f) => !resolved.has(f)).sort(), "the walk reads these; vitest does not run them").toEqual([]);
+  });
+
   it("the population is real and was derived, not typed out", () => {
     expect(testFiles.length, "the test walk found almost nothing").toBeGreaterThan(500);
     expect(
@@ -141,6 +239,9 @@ describe("every repo-wide sweep declares its budget", () => {
       // the half of the population the old predicate could not express.
       "tests/unit/routeManifest.test.ts",
       "tests/unit/schemaDrift.test.ts",
+      // Sweeps by spawning a gate script over the real repository — the shape
+      // that timed out with no budget before the child-process predicate.
+      "tests/unit/reachabilityGate.test.ts",
     ]) {
       expect(rel, `${known} sweeps the repo but fell out of the derived set`).toContain(known);
     }
@@ -165,6 +266,23 @@ describe("every repo-wide sweep declares its budget", () => {
     expect(isRepoSweep("vi.mock('node:fs', () => ({ readdirSync: vi.fn() }))")).toBe(false);
     expect(isRepoSweep("const walk = (n: any) => n.queryChunks.forEach(walk);")).toBe(false);
     expect(isRepoSweep('const files = readdirSync(dir);')).toBe(true);
+  });
+
+  it("a test that spawns a sweeping script is a sweep; one that only names it is not", () => {
+    const at = path.join(ROOT, "tests/unit/fixture.test.ts");
+    const spawn = 'import { spawnSync } from "node:child_process";\n';
+    // scripts/lint-reachability.mjs walks the tree itself.
+    expect(spawnsRepoSweep(spawn + 'const L = join(ROOT, "scripts", "lint-reachability.mjs"); spawnSync("node", [L]);', at)).toBe(true);
+    expect(spawnsRepoSweep(spawn + 'spawnSync("node", ["scripts/lint-reachability.mjs"]);', at)).toBe(true);
+    // Named only in a comment: prose about a gate is not a run of it.
+    expect(spawnsRepoSweep(spawn + '// runs scripts/lint-reachability.mjs\nspawnSync("echo", []);', at)).toBe(false);
+    // Names the script but never reaches child_process.
+    expect(spawnsRepoSweep('const L = "scripts/lint-reachability.mjs";', at)).toBe(false);
+    // A script that does not walk the tree is not a sweep to spawn.
+    expect(spawnsRepoSweep(spawn + 'spawnSync("node", ["scripts/does-not-exist.mjs"]);', at)).toBe(false);
+    // Population floor for this shape, so a predicate that stops matching
+    // fails here instead of shrinking the set to the readdirSync members.
+    expect(spawnedSweeps.length, "the child-process predicate matched almost nothing").toBeGreaterThanOrEqual(8);
   });
 
   it("each one declares REPO_SWEEP_TIMEOUT_MS", () => {

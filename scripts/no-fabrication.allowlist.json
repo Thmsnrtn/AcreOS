@@ -223,14 +223,14 @@
     },
     {
       "file": "server/services/portfolioOptimizer.ts",
-      "line": 109,
+      "line": 110,
       "category": "algo",
       "note": "Box-Muller / Monte-Carlo sampler u1 \u2014 randomness is the optimization algorithm.",
       "match": "const u1 = Math.random();"
     },
     {
       "file": "server/services/portfolioOptimizer.ts",
-      "line": 110,
+      "line": 111,
       "category": "algo",
       "note": "Box-Muller / Monte-Carlo sampler u2 \u2014 randomness is the optimization algorithm.",
       "match": "const u2 = Math.random();"

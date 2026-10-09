@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import type { AuthenticatedRequest } from "./types/request";
-import { isAuthenticated } from "./auth";
+import { isAuthenticated, requireFounder } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
@@ -187,7 +187,9 @@ export async function registerEnhancementRoutes(app: Express) {
   // ── Performance (Domain L) ──
 
   // Item 220: Deep health check
-  app.get("/api/health/deep", async (_req, res) => {
+  // Founder-only (2026-10-07): DB/Redis/memory/provider internals are not a
+  // public probe — public health is status-only (server/routes.ts).
+  app.get("/api/health/deep", isAuthenticated, requireFounder, async (_req, res) => {
     try {
       const { deepHealthCheck } = await import("./services/performanceEnhancements");
       const health = await deepHealthCheck();
@@ -203,7 +205,7 @@ export async function registerEnhancementRoutes(app: Express) {
   // never depend on the auth middleware whose failure it exists to explain.
 
   // Pillar 8.6 — read replica health check
-  app.get("/api/health/replica", async (_req, res) => {
+  app.get("/api/health/replica", isAuthenticated, requireFounder, async (_req, res) => {
     try {
       const { sql } = await import("drizzle-orm");
       const { db, dbReplica } = await import("./db");

@@ -168,6 +168,25 @@ export const stripeWebhookSignatureRejectedTotal = new Counter({
   registers: [registry],
 });
 
+// ── Founder-plane alert routing ────────────────────────────────────────────
+// System alerts with no tenant context (on-call pages, agent events) go to the
+// founder's org. When no founder org can be resolved they are NOT written
+// anywhere — they used to fall back to org 1, i.e. into whichever customer
+// holds row 1 — and this counter is how that gap stays visible.
+
+const founderOrgUnresolvedTotal = new Counter({
+  name: "acreos_founder_org_unresolved_total",
+  help: "Times a founder-scoped write found no founder organization (FOUNDER_PRIMARY_ORG_ID unset and no founder membership) and wrote nothing instead of guessing an org.",
+  registers: [registry],
+});
+
+const founderAlertUndeliverableTotal = new Counter({
+  name: "acreos_founder_alert_undeliverable_total",
+  help: "On-call / founder alerts that could not be anchored to a founder organization, labelled by source: oncall | recourse.",
+  labelNames: ["source"] as const,
+  registers: [registry],
+});
+
 // ── Public parcel reports (Tier 3A) ─────────────────────────────────────────
 // /p/:state/:county/:apn permalinks. `generated` is the cost-bearing event
 // (upstream county-GIS + free-geo lookups happen); everything else is a DB
@@ -227,6 +246,16 @@ export function recordJobRun(
   if (status === "success" && Number.isFinite(durationSeconds) && durationSeconds >= 0) {
     jobDurationSeconds.observe({ job_name: name }, durationSeconds);
   }
+}
+
+/** A founder-scoped write found no founder org and wrote nothing. Called from services/founder.ts. */
+export function recordFounderOrgUnresolved(): void {
+  founderOrgUnresolvedTotal.inc();
+}
+
+/** A founder alert had nowhere legitimate to be anchored. */
+export function recordFounderAlertUndeliverable(source: "oncall" | "recourse"): void {
+  founderAlertUndeliverableTotal.inc({ source });
 }
 
 /** Record a Stripe webhook failure. Called from the webhook route's catch block. */

@@ -28,6 +28,7 @@ import { assertFeeSimpleOrThrow } from "../utils/landStatus";
 import { femaZoneCode, isSfhaCode } from "./data-source-broker";
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 export const publicRecordTransaction = () =>
   sql`(${transactionTraining.transactionHash} NOT LIKE '%|%' AND ${transactionTraining.contributorOrgId} IS NULL)`;
 
@@ -473,7 +474,8 @@ class AcreOSValuationModel {
       const aiEnhancement = await this.getAIValuationEnhancement(
         request,
         comparables,
-        adjustedValue
+        adjustedValue,
+        Number(organizationId),
       );
 
       const finalValue = adjustedValue * (1 + aiEnhancement.adjustment / 100);
@@ -718,12 +720,12 @@ Return ONLY a JSON object with this exact format (no markdown, no explanation):
 
 Base your estimate on typical rural land market conditions in ${county} County, ${state}. Be conservative.`;
 
-        const completion = await requireOpenAIClient().chat.completions.create({
+        const completion = await meteredChatCompletion(requireOpenAIClient(), {
           model: 'openai/gpt-4o-mini',
           messages: [{ role: 'user', content: prompt }],
           temperature: 0.2,
           max_tokens: 200,
-        });
+        }, { taskType: "valuation", orgId: Number(organizationId), origin: "customer" });
 
         const raw = completion.choices[0]?.message?.content?.trim() || '';
         const parsed = JSON.parse(raw);
@@ -1096,7 +1098,8 @@ Base your estimate on typical rural land market conditions in ${county} County, 
   private async getAIValuationEnhancement(
     request: ValuationRequest,
     comparables: ValuationResult['comparables'],
-    preliminaryValue: number
+    preliminaryValue: number,
+    organizationId: number,
   ): Promise<{ adjustment: number; reasoning: string }> {
     try {
       const prompt = `You are a land valuation expert analyzing a property in ${request.location.county}, ${request.location.state}.
@@ -1126,11 +1129,11 @@ Consider factors like:
 
 Respond in JSON format: { "adjustment": number, "reasoning": string }`;
 
-      const completion = await requireOpenAIClient().chat.completions.create({
+      const completion = await meteredChatCompletion(requireOpenAIClient(), {
         model: 'openai/gpt-4o',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
-      });
+      }, { taskType: "valuation", orgId: organizationId, origin: "customer" });
 
       const result = JSON.parse(completion.choices[0].message.content || '{}');
       

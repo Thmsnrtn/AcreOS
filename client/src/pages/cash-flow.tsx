@@ -52,7 +52,7 @@ const URGENCY_STYLES: Record<string, string> = {
   critical: 'bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink',
   high: 'bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink',
   medium: 'bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink',
-  low: 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent',
+  low: 'bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent',
 };
 
 const IMPACT_STYLES: Record<string, string> = {
@@ -63,7 +63,7 @@ const IMPACT_STYLES: Record<string, string> = {
 
 const PATTERN_STYLES: Record<string, { label: string; color: string; icon: JSX.Element }> = {
   consistent: { label: 'Consistent', color: 'bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink', icon: <CheckCircle className="w-4 h-4" aria-hidden="true" /> },
-  improving: { label: 'Improving', color: 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent', icon: <TrendingUp className="w-4 h-4" aria-hidden="true" /> },
+  improving: { label: 'Improving', color: 'bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent', icon: <TrendingUp className="w-4 h-4" aria-hidden="true" /> },
   declining: { label: 'Declining', color: 'bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink', icon: <TrendingDown className="w-4 h-4" aria-hidden="true" /> },
   erratic: { label: 'Erratic', color: 'bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink', icon: <AlertTriangle className="w-4 h-4" aria-hidden="true" /> },
 };

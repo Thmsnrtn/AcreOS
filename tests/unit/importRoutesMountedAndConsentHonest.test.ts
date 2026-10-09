@@ -91,7 +91,6 @@ vi.mock("../../server/services/consentEvents", () => ({
 vi.mock("../../server/services/leadEvents", () => ({ emitLeadCreated: vi.fn(), emitLeadCreatedDurably: vi.fn() }));
 
 import { registerImportExportRoutes } from "../../server/routes-import-export";
-import { importLeads as legacyImportLeads } from "../../server/services/import";
 import { importLeads } from "../../server/services/importExport";
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 
@@ -239,21 +238,8 @@ describe("PATCH /api/leads/:id/consent grants only express, per-lead consent", (
 });
 
 describe("an import never grants consent, and honours do-not-contact", () => {
-  it("services/import.ts: a consent column becomes a note, never consent", async () => {
-    const r = await legacyImportLeads(
-      [
-        { firstName: "Ann", lastName: "Lee", tcpaConsent: "true", doNotContact: "false" },
-        { firstName: "Bo", lastName: "Ray", tcpaConsent: "false", doNotContact: "true" },
-      ],
-      7,
-    );
-    expect(r.successCount).toBe(2);
-    expect(H.state.txInserts).toHaveLength(2);
-    expect(H.state.txInserts.map((v) => v.tcpaConsent)).toEqual([false, false]);
-    expect(H.state.txInserts[0].notes).toMatch(/claimed TCPA consent.*Not recorded as consent/);
-    expect(H.state.txInserts[1].doNotContact).toBe(true);
-  });
-
+  // services/import.ts (the legacy importer) was deleted as unreferenced
+  // (#328); importExport.ts is the one import path, pinned below.
   it("services/importExport.ts: a DNC column sets do-not-contact; a consent column is ignored", async () => {
     const r = await importLeads(
       [

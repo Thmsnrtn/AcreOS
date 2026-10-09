@@ -77,6 +77,7 @@ import { wrapUntrusted, wrapUntrustedFields } from "./ai/untrustedEnvelope";
 import "./services/founder-chat/tools";
 import { clock } from "./utils/clock";
 
+import { meteredChatCompletion } from "./services/aiSpendGuard";
 // Phase D — the chat client sends a structured pageContext (currentPath
 // plus already-resolved entity hints from useFounderChat/use-page-context).
 // All fields optional; the server's buildFounderToolContext re-derives
@@ -435,12 +436,12 @@ router.post("/stream", async (req: AuthenticatedRequest, res) => {
 
       let completion: OpenAI.ChatCompletion;
       try {
-        completion = await client.chat.completions.create({
+        completion = await meteredChatCompletion(client, {
           model,
           messages: chatMessages,
           tools: allTools.length > 0 ? allTools : undefined,
           max_tokens: 2048,
-        });
+        }, { taskType: "founder_chat", origin: "customer" });
       } catch (err: any) {
         lastError = String(err);
         logger.error("[founder-chat] LLM call failed", err);

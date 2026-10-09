@@ -117,6 +117,12 @@ interface Registration {
  */
 export interface RegistryLookupOptions {
   allowProviders?: readonly string[];
+  /**
+   * The caller already paid the platform cost of ONE lookup from the org's
+   * credit pool through the fail-closed gate (poolDebit "gate" mode) — the
+   * registry must not debit it again post-hoc. Set by residentialComps.
+   */
+  poolPreDebited?: boolean;
 }
 
 // ── Circuit breaker constants ─────────────────────────────────
@@ -330,7 +336,7 @@ class ProviderRegistry {
         // Awaited: a fire-and-forget debit let the caller act on (and a
         // concurrent lookup spend) a balance the debit had not reached yet.
         // A debit failure still never fails the lookup the customer asked for.
-        if (!byokServed && chargedCents > 0 && organizationId && !finalResult.cached) {
+        if (!byokServed && chargedCents > 0 && organizationId && !finalResult.cached && !opts?.poolPreDebited) {
           await this.debitPaidLookup(organizationId, category, provider.name, chargedCents, input).catch(
             (debitErr) =>
               logger.warn(`Credit debit error (non-fatal)`, {

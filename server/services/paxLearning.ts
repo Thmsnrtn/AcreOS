@@ -12,6 +12,7 @@ import { consentingOrgIds, sophiePrivacyGuard } from "./sophiePrivacyGuard";
 import { meetsOperatorFloor } from "./dataCoop/privacyRollup";
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 /**
  * A cross-org learning may be shown to (or acted on for) another org only
  * when MIN_DISTINCT_OPERATORS orgs that CURRENTLY consent contributed to it
@@ -104,7 +105,7 @@ export const paxLearningService = {
         return { learned: false, error: "Already learned from this ticket" };
       }
       
-      const response = await requireOpenAIClient().chat.completions.create({
+      const response = await meteredChatCompletion(requireOpenAIClient(), {
         model: "openai/gpt-4o",
         messages: [
           {
@@ -136,7 +137,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
           }
         ],
         response_format: { type: "json_object" }
-      });
+      }, { taskType: "support_learning", orgId: organizationId, origin: "background" });
       
       const learning = JSON.parse(response.choices[0].message.content || "{}");
       

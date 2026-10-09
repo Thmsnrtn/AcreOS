@@ -9,6 +9,7 @@ import { smsService, sendOrgSMS } from "../services/smsService";
 import { getComparableProperties } from "../services/comps";
 import {
   checkTcpaConsentFromLead,
+  type ConsentFlags,
   isWithinQuietHours,
   isWithinQuietHoursForLead,
 } from "../services/tcpaCompliance";
@@ -49,6 +50,7 @@ import { emitDealCreated, emitDealStageChanged } from "../services/dealEvents";
 import { emitPropertyCreated, emitPropertyStatusChanged } from "../services/propertyEvents";
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "../services/aiSpendGuard";
 // Tool parameter schemas (OpenAI function calling format)
 export const toolDefinitions = {
   // System Context Tools
@@ -2360,14 +2362,14 @@ export async function executeTool(
 
       case "send_email": {
         let toEmail: string | undefined;
-        let leadForCompliance: { tcpaConsent: boolean | null; doNotContact: boolean | null } | null = null;
+        let leadForCompliance: ConsentFlags | null = null;
 
         if (args.lead_id) {
           const lead = await storage.getLead(org.id, args.lead_id);
           if (!lead) return { success: false, error: "Lead not found" };
           if (!lead.email) return { success: false, error: "Lead does not have an email address" };
           toEmail = lead.email;
-          leadForCompliance = { tcpaConsent: lead.tcpaConsent, doNotContact: lead.doNotContact };
+          leadForCompliance = { tcpaConsent: lead.tcpaConsent, doNotContact: lead.doNotContact, optOutDate: lead.optOutDate };
         } else if (args.email) {
           toEmail = args.email;
         } else {
@@ -2440,14 +2442,14 @@ export async function executeTool(
 
       case "send_sms": {
         let toPhone: string | undefined;
-        let leadForCompliance: { tcpaConsent: boolean | null; doNotContact: boolean | null } | null = null;
+        let leadForCompliance: ConsentFlags | null = null;
 
         if (args.lead_id) {
           const lead = await storage.getLead(org.id, args.lead_id);
           if (!lead) return { success: false, error: "Lead not found" };
           if (!lead.phone) return { success: false, error: "Lead does not have a phone number" };
           toPhone = lead.phone;
-          leadForCompliance = { tcpaConsent: lead.tcpaConsent, doNotContact: lead.doNotContact };
+          leadForCompliance = { tcpaConsent: lead.tcpaConsent, doNotContact: lead.doNotContact, optOutDate: lead.optOutDate };
           // Lead-aware quiet hours (uses lead.timezone when present).
           const qh = isWithinQuietHoursForLead(lead as any);
           if (qh.blocked) {
@@ -2850,7 +2852,7 @@ export async function executeTool(
         const { selectProviderAndModel, TaskComplexity } = await import("../services/aiRouter");
         const { client, model } = selectProviderAndModel(TaskComplexity.MODERATE);
 
-        const aiResponse = await client.chat.completions.create({
+        const aiResponse = await meteredChatCompletion(client, {
           model,
           messages: [
             {
@@ -2863,7 +2865,7 @@ export async function executeTool(
             }
           ],
           max_tokens: 800
-        });
+        }, { taskType: "offer_letter_draft", orgId: org.id, origin: "customer" });
 
         const draftText = aiResponse.choices[0].message.content || "";
 
@@ -3105,7 +3107,7 @@ export async function executeTool(
         const { selectProviderAndModel, TaskComplexity } = await import("../services/aiRouter");
         const { client, model } = selectProviderAndModel(TaskComplexity.SIMPLE);
 
-        const aiResponse = await client.chat.completions.create({
+        const aiResponse = await meteredChatCompletion(client, {
           model,
           messages: [
             {
@@ -3118,7 +3120,7 @@ export async function executeTool(
             }
           ],
           max_tokens: 400
-        });
+        }, { taskType: "outreach_draft", orgId: org.id, origin: "customer" });
 
         const draftMessage = aiResponse.choices[0].message.content || "";
 

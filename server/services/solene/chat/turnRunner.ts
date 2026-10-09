@@ -236,7 +236,8 @@ export async function* runTurn(
 
   // ── 4. Platform-wide cost ceiling backstop ────────────────────────────────
   // Every Solene chat turn passes through the hard $X/day platform cap
-  // (AI_PLATFORM_DAILY_CEILING_CENTS, default $5/day). Without this, founder
+  // (aiCostCeiling.getPlatformDailyCeiling: AI_PLATFORM_DAILY_CEILING_CENTS if
+  // set, else max($15/day, 75% of paying MRR / 30)). Without this, founder
   // chat could quietly blow past the daily budget — Tom's $30/day surprise
   // surfaced in the 2026-06-05 audit. Founder org id is unknown at this
   // layer, so we use the platform-only ceiling path (orgId=null).

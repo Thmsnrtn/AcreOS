@@ -6,6 +6,7 @@ import { logger } from "../utils/logger";
 import { assertWritablePatch } from "../utils/patch";
 import { clock } from "../utils/clock";
 
+import { meteredChatCompletion } from "./aiSpendGuard";
 interface RateLimitConfig {
   maxRequests: number;
   windowMs: number;
@@ -154,10 +155,10 @@ export class ApiQueueService {
         const { requireOpenAIClient } = await import('../utils/openaiClient');
         const openai = requireOpenAIClient();
         if (job.operation === 'chat') {
-          const response = await openai.chat.completions.create({
+          const response = await meteredChatCompletion(openai, {
             model: payload.model || 'gpt-4o-mini',
             messages: payload.messages || [],
-          });
+          }, { taskType: "api_queue_chat", orgId: job.organizationId, origin: "background" });
           return response.choices[0]?.message?.content;
         }
         throw new Error(`Unknown OpenAI operation: ${job.operation}`);

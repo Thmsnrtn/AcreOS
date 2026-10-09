@@ -468,3 +468,4 @@ export const mailQrScanEvents = pgTable("mail_qr_scan_events", {
 export type MailQrScanEvent = typeof mailQrScanEvents.$inferSelect;
 export type InsertMailQrScanEvent = typeof mailQrScanEvents.$inferInsert;
 
+

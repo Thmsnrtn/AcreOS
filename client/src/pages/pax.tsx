@@ -212,10 +212,14 @@ interface UsageLimitsResponse {
   usage: {
     ai_requests: { current: number; limit: number | null; percentage: number | null };
   };
-  /** Tier 1I — monthly AI-turn BYOK threshold snapshot. */
+  /**
+   * The shared monthly AI allowance snapshot (founder decision 2026-10-08):
+   * current/threshold are CENTS of included AI used / included this month.
+   */
   aiTurns?: {
     current: number;
     threshold: number | null;
+    unit?: "cents";
     percentage: number | null;
     warning: boolean;
     blocked: boolean;
@@ -223,6 +227,11 @@ interface UsageLimitsResponse {
     byokAvailable: boolean;
     byokSettingsUrl: string;
   };
+}
+
+/** Allowance amounts arrive in cents; shown as dollars. */
+function fmtAllowance(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
 }
 
 function PaxDailyCapBadge() {
@@ -258,7 +267,7 @@ function PaxDailyCapBadge() {
             : "mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-acr-warn/40 bg-acr-warn-soft px-3 py-2"
         }
         role={blocked ? "alert" : "status"}
-        aria-label={`Pax included AI usage: ${aiTurns.current} of ${aiTurns.threshold} turns this month`}
+        aria-label={`Included AI usage: ${fmtAllowance(aiTurns.current)} of ${fmtAllowance(aiTurns.threshold)} this month`}
       >
         <div className="flex items-center gap-2 text-sm">
           <Sparkles
@@ -266,7 +275,7 @@ function PaxDailyCapBadge() {
             aria-hidden="true"
           />
           <span className={blocked ? "font-medium tabular-nums text-acr-neg" : "font-medium tabular-nums text-acr-warn"}>
-            {aiTurns.current}/{aiTurns.threshold} included turns this month
+            {fmtAllowance(aiTurns.current)} of {fmtAllowance(aiTurns.threshold)} included AI this month
           </span>
           <span className={blocked ? "text-acr-neg" : "text-acr-warn"}>
             {blocked
@@ -359,7 +368,7 @@ function PaxDailyCapBadge() {
 
 function AiChatGuard({ children }: { children: React.ReactNode }) {
   const { data: healthData, isLoading } = useQuery<{ services: HealthService[] }>({
-    queryKey: ["/api/health/cached"],
+    queryKey: ["/api/system/health"],
   });
 
   // Platform AI is OpenRouter-only — the tiered router (SIMPLE → DeepSeek,
@@ -530,7 +539,7 @@ export default function PaxPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/pax/needs-you/count"] }),
       queryClient.invalidateQueries({ queryKey: ["/api/usage"] }),
       queryClient.invalidateQueries({ queryKey: ["/api/ai/conversations"] }),
-      queryClient.invalidateQueries({ queryKey: ["/api/health/cached"] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/system/health"] }),
     ]);
   };
   useEffect(() => {

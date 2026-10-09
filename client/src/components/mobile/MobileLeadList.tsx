@@ -118,7 +118,7 @@ function MobileLeadRow({
             }
           }}
           aria-label={`Open lead ${fullName}`}
-          className="flex items-start justify-between gap-3 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+          className="flex min-h-11 items-start justify-between gap-3 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
         >
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -173,7 +173,7 @@ function MobileLeadRow({
                   startedAt: Date.now(),
                 });
               }}
-              className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-md bg-primary/10 text-primary text-sm font-medium active:bg-primary/20"
+              className="flex-1 h-11 flex items-center justify-center gap-1.5 rounded-md bg-primary/10 text-primary text-sm font-medium active:bg-primary/20"
               data-testid={`mobile-lead-call-${l.id}`}
             >
               <Phone className="h-3.5 w-3.5" /> Call
@@ -192,7 +192,7 @@ function MobileLeadRow({
                   startedAt: Date.now(),
                 });
               }}
-              className="flex-1 h-9 flex items-center justify-center gap-1.5 rounded-md bg-muted text-foreground text-sm font-medium active:bg-muted/70"
+              className="flex-1 h-11 flex items-center justify-center gap-1.5 rounded-md bg-muted text-foreground text-sm font-medium active:bg-muted/70"
               data-testid={`mobile-lead-sms-${l.id}`}
             >
               <MessageSquare className="h-3.5 w-3.5" /> Text
@@ -328,7 +328,7 @@ export function MobileLeadList() {
             aria-selected={filter === f.id}
             onClick={() => setFilter(f.id)}
             className={cn(
-              "h-8 px-3 rounded-full text-xs font-medium whitespace-nowrap flex items-center gap-1 transition-colors",
+              "h-11 min-w-11 px-3 rounded-full text-xs font-medium whitespace-nowrap flex items-center gap-1 transition-colors",
               filter === f.id
                 ? "bg-primary text-primary-foreground"
                 : "bg-muted text-foreground/80 active:bg-muted/70",

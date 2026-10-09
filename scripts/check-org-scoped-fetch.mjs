@@ -305,9 +305,13 @@ const BASELINE_OFFENDERS = new Set([
   "server/services/priceOptimizer.ts::incorporateMarketTrends",
   "server/services/proactiveMonitor.ts::autoResolveAlertsByMetadata",
   "server/services/proactiveMonitor.ts::cleanupOldAlerts",
-  "server/services/voiceCallAI.ts::extractActionItems",
-  "server/services/voiceCallAI.ts::extractKeyData",
-  "server/services/voiceCallAI.ts::generateCoachingInsights",
+  // voiceCallAI.ts::extractActionItems / extractKeyData / generateCoachingInsights
+  // MOVED to BASELINE_UNUSED_ORG 2026-10-09 — not fixed, RECLASSIFIED. Their
+  // model calls are now metered (aiSpendGuard), attributing spend to
+  // transcript.organizationId, which gives the units an org token; the gate
+  // now reads them exactly like their siblings analyzeTranscript /
+  // processCallComplete (rule 2: has an org, resolves the transcript by id).
+  // Same three methods, same risk, one register over — the totals are unchanged.
   // whiteLabelService.ts::listTenants was REMOVED 2026-09-04 — it had never
   // been an offender. It reads `where(eq(whiteLabelConfigs.parentOrganizationId,
   // parentOrganizationId))`, which is exactly right; ORG_CONTEXT_RE was
@@ -413,6 +417,10 @@ const BASELINE_UNUSED_ORG = new Set([
   "server/services/sequenceOptimizer.ts::runABTest",
   "server/services/voiceCallAI.ts::analyzeTranscript",
   "server/services/voiceCallAI.ts::applyCRMUpdates",
+  // ↓ three reclassified from BASELINE_OFFENDERS on 2026-10-09 (see the note there).
+  "server/services/voiceCallAI.ts::extractActionItems",
+  "server/services/voiceCallAI.ts::extractKeyData",
+  "server/services/voiceCallAI.ts::generateCoachingInsights",
   "server/services/voiceCallAI.ts::processCallComplete",
   "server/services/voiceCallAI.ts::transcribeCall",
   "server/storage/agentWorkflowsRepo.ts::getWorkflowById",
@@ -728,7 +736,6 @@ const BASELINE_FUNCTION_UNUSED_ORG = new Set([
   // Adjudicated 2026-08-20, ledger 49.
   "server/services/founder-chat/assert-entity-org.ts::resolveEntityOrg",
   "server/services/gdprService.ts::anonymizeUser",
-  "server/services/leadEnrichment.ts::enrichLead",
   "server/services/leadQualification.ts::checkForHotLeads",
   "server/services/leadScoreDecay.ts::applyScoreRecovery",
   "server/services/mail/mailFlusher.ts::bookFreeSendAcquisitionCogs",

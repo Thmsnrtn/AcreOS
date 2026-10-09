@@ -28,11 +28,18 @@
  *      re-baselined away within a week.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+// This gate runs a script that walks the source tree, in a child process;
+// its cost scales with the repo, and under load it does not fit the
+// suite's 30s default. A killed gate reports nothing about what it guards,
+// so the budget is declared, not inherited.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.resolve(__dirname, "../..");
 const SCRIPT = path.join(ROOT, "scripts/check-residential-comps-hold.mjs");
@@ -423,11 +430,16 @@ describe("the seam must stay a seam", () => {
   });
 
   it("catches the allowProviders restriction being dropped", () => {
-    const seam = fs
-      .readFileSync(path.join(ROOT, "server/services/residentialComps.ts"), "utf8")
-      .replace("{ allowProviders: RESIDENTIAL_CAPABLE_PROVIDERS },", "undefined,");
-    // Assert the mutation actually mutated — a no-op mutation proves nothing.
-    expect(seam).not.toContain("{ allowProviders: RESIDENTIAL_CAPABLE_PROVIDERS },");
+    const original = fs.readFileSync(path.join(ROOT, "server/services/residentialComps.ts"), "utf8");
+    // The restriction as the seam spells it today (2026-10-09: the options
+    // object also carries poolPreDebited). The guard below checks the ORIGINAL
+    // contains it — a `not.toContain` on the mutated text alone passed
+    // trivially once the spelling changed, so the mutation silently no-op'd.
+    const RESTRICTION = "allowProviders: RESIDENTIAL_CAPABLE_PROVIDERS,";
+    expect(original).toContain(RESTRICTION);
+    const seam = original.replace(RESTRICTION, "");
+    expect(seam).not.toBe(original);
+    expect(seam).not.toContain("allowProviders");
     const res = runRealShaped({ "server/services/residentialComps.ts": seam });
     expect(res.code).toBe(1);
     expect(res.output).toContain("seam-integrity");

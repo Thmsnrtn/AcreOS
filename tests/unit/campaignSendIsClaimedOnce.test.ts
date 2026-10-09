@@ -54,7 +54,9 @@ vi.mock("../../server/services/directMail", () => ({
 }));
 vi.mock("../../server/storage", () => ({
   storage: {
-    getCampaign: async () => ({ id: 3, name: "Fall letters", type: "direct_mail" }),
+    // Content is required now: a campaign without it is refused before the
+    // claim rather than mailed with placeholder text.
+    getCampaign: async () => ({ id: 3, name: "Fall letters", type: "direct_mail", content: "<p>Hi</p>" }),
     getDefaultMailSenderIdentity: async () => ({
       id: 1, name: "Acme", status: "verified", companyName: "Acme Land", addressLine1: "1 Main", city: "Austin", state: "TX", zipCode: "78701", country: "US",
     }),

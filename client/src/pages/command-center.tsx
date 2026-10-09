@@ -59,6 +59,8 @@ import { formatDate } from "@/lib/format";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { ReadAloudButton } from "@/components/ReadAloudButton";
 import { useAuth } from "@/hooks/use-auth";
+import { refusalFromBody } from "@/lib/refusal";
+import { ToastAction } from "@/components/ui/toast";
 // The founder-only AI console (VA roster, background services, AI ops).
 // It moved out of this file 2026-09-04 — same panels, same queries, same
 // isFounder guard below; it just no longer sits inside the customer's door.
@@ -529,26 +531,44 @@ export default function CommandCenterPage() {
         signal,
       });
 
-      if (response.status === 402) {
-        toast({
-          title: "Insufficient AI credits",
-          description: "Please add credits to continue using the AI assistant. Visit Settings to purchase more.",
-          variant: "destructive",
-        });
-        setInput(message);
-        setIsStreaming(false);
-        setActiveSkill(null);
-        return;
-      }
-
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        // A plan cap or a credit refusal names what unlocks it — show that
+        // step, and keep the draft so nothing typed is lost.
+        const refusal = refusalFromBody(errorData);
+        if (refusal || response.status === 402) {
+          toast({
+            title: refusal?.title ?? "Insufficient AI credits",
+            description:
+              refusal?.description ??
+              "Please add credits to continue using the AI assistant. Visit Settings to purchase more.",
+            variant: "destructive",
+            ...(refusal
+              ? {
+                  action: (
+                    <ToastAction
+                      altText={refusal.action.label}
+                      onClick={() => {
+                        window.location.href = refusal.action.href;
+                      }}
+                    >
+                      {refusal.action.label}
+                    </ToastAction>
+                  ),
+                }
+              : {}),
+          });
+          setInput(message);
+          setIsStreaming(false);
+          setActiveSkill(null);
+          return;
+        }
         // Tier 1I — BYOK-required refusal: surface the structured message
         // (it explains the recovery path) instead of a generic failure.
         if (response.status === 429 && errorData?.details?.reason === "byok_required") {
           throw new Error(
             errorData.details.message
-              ?? "You've used this month's included Pax turns. Add your own AI key in Settings → Your provider keys to keep chatting without limits.",
+              ?? "You've used this month's included AI. Add your own AI key in Settings → Your provider keys to keep going without limits.",
           );
         }
         throw new Error(errorData.error || `Request failed with status ${response.status}`);

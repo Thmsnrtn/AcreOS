@@ -54,7 +54,9 @@ import {
 import { checkPromptAgainstConstitution } from "./preCallConstitutionalChecker";
 import { isEmptyResult, ToolLoopDetector, turnBudgetFor } from "./taskGuards";
 import { clock } from "../../utils/clock";
+import { runtimeTeamStatePath } from "./teamState";
 
+import { meteredAnthropicMessage } from "../aiSpendGuard";
 // ----------------------------------------------------------------------------
 // Configuration
 // ----------------------------------------------------------------------------
@@ -88,9 +90,11 @@ const MEMORY_DIR =
 // scripts/regenerate-team-state.mjs). Injected into the system prompt so
 // every dispatched agent knows who else is in flight, what's queued, and
 // what working-tree surfaces other agents are currently mutating.
-const TEAM_STATE_PATH =
-  process.env.SOLENE_DISPATCH_TEAM_STATE_PATH ??
-  path.resolve(process.cwd(), "docs/internal/solene-team-state.md");
+// The RUNTIME copy (server/services/solene/teamState.ts) — the regenerator no
+// longer writes the tracked docs/ file. Deliberately NO fallback to the tracked
+// copy: its AUTO block is a months-old snapshot, and a stale map is worse than
+// none (it encourages dispatch collisions). Missing → the fallback string.
+const TEAM_STATE_PATH = runtimeTeamStatePath();
 
 // Cap the team-state preamble at 8 KB. The file is normally well under
 // this; this protects against runaway regeneration putting the whole
@@ -978,7 +982,7 @@ export async function runDispatch(
           text: systemPromptParts.dynamicSuffix,
         },
       ];
-      const response = await client.messages.create(
+      const response = await meteredAnthropicMessage<Anthropic.Message>(client,
         {
           model: selectedModel,
           max_tokens: 4096,
@@ -988,8 +992,8 @@ export async function runDispatch(
           // Read-only lanes (verify / self_audit_drift) additionally lose
           // every mutating tool (Horizon A5 — structural, not prompt-level).
           tools: getDispatchToolSchemas({ untrusted: true, readOnly }) as any,
-        },
-        { timeout: remainingMs },
+        }, { taskType: "solene_dispatch", origin: "background" },
+        { timeout: remainingMs }
       );
 
       tokenInput += response.usage?.input_tokens ?? 0;

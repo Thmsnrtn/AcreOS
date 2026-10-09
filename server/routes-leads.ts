@@ -8,8 +8,9 @@ import { insertLeadSchema, leads, properties, deals } from "@shared/schema";
 import { LEAD_STATUSES, isLeadStatus, validateLeadTransition } from "@shared/lifecycle/pipeline-status";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { idempotencyMiddleware } from "./middleware/idempotency";
 import { checkUsageLimit } from "./services/usageLimits";
-import { usageLimitGate } from "./middleware/usageLimitGate";
+import { usageLimitGate, refusePlanLimit } from "./middleware/usageLimitGate";
 import { requireScope } from "./middleware/roleScope";
 import { leadNurturerService } from "./services/leadNurturer";
 import { leadScoringService } from "./services/leadScoring";
@@ -22,6 +23,8 @@ import { requirePermission } from "./utils/permissions";
 import { usageMeteringService, creditService } from "./services/credits";
 import { parseCSV, importLeads, exportLeadsToCSV, getExpectedColumns, type ExportFilters } from "./services/importExport";
 import { logger } from "./utils/logger";
+import { DEFAULT_GRANT_SOURCE } from "./services/consentStamp";
+import type { ConsentSource } from "./services/consentEvents";
 import { Errors } from "./utils/errors";
 import { omitSecretColumns } from "./utils/secretColumns";
 // ONE owner for the assigned-leads rule. It was hand-copied into five places
@@ -30,7 +33,7 @@ import {
   assertAssignedLeadWritable,
   refuseBulkLeadWrite,
 } from "./utils/assignedLeadGate";
-import { assertUserIsOrgMember } from "./utils/orgScope";
+import { isAssignableLeadMember } from "./utils/orgScope";
 import { createLeadContract } from "@shared/contracts";
 // Wave B "Wire the engine" — lead.* workflow events. Fire-and-forget: these
 // helpers never throw, so an automation failure can never fail a lead write.
@@ -293,9 +296,15 @@ export function registerLeadRoutes(app: Express): void {
   });
 
   // Focus List: Top 10 leads not contacted in last 24 hours
-  api.get("/api/leads/focus", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/leads/focus", isAuthenticated, getOrCreateOrg, attachPermissionContext(), async (req, res) => {
     const org = req.organization;
-    const allLeads = await storage.getLeads(org.id);
+    const context = req.permissionContext as UserPermissionContext | undefined;
+    // The focus list is a lead list like GET /api/leads: an assigned-only
+    // caller's focus is drawn from their own leads only.
+    const allLeads = await storage.getLeads(
+      org.id,
+      context?.permissions.viewOnlyAssignedLeads ? { assignedTo: context.teamMemberId } : undefined,
+    );
     const twentyFourHoursAgo = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
     
     // Score all leads and filter those not contacted in 24h
@@ -417,19 +426,19 @@ export function registerLeadRoutes(app: Express): void {
   // zod validation (positive ints, primaryId !== duplicateId) was ported into
   // the live handler rather than lost. Do not re-add it here.
 
-  api.post("/api/leads", isAuthenticated, getOrCreateOrg, attachPermissionContext(), requireScope("deal_write"), usageLimitGate("leads"), async (req, res) => {
+  // Idempotency-Key honoured (2026-10-07): a client that retries a create
+  // after a timeout gets the first response replayed instead of a second lead.
+  // After getOrCreateOrg (the key is scoped by org) and after the scope check
+  // (a replay is only served to a caller allowed to create); before the usage
+  // gate, so a retry of a create that succeeded is replayed rather than
+  // refused for the very lead it created.
+  api.post("/api/leads", isAuthenticated, getOrCreateOrg, attachPermissionContext(), requireScope("deal_write"), idempotencyMiddleware, usageLimitGate("leads"), async (req, res) => {
     try {
       const org = req.organization;
       
       const usageCheck = await checkUsageLimit(org.id, "leads");
       if (!usageCheck.allowed) {
-        return res.status(429).json({
-          message: `Lead limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan to add more leads.`,
-          current: usageCheck.current,
-          limit: usageCheck.limit,
-          resourceType: usageCheck.resourceType,
-          tier: usageCheck.tier,
-        });
+        return refusePlanLimit(res, usageCheck);
       }
       
       // T3-3E Phase 3 — contract request validation. `leadCreateRequestSchema`
@@ -450,12 +459,10 @@ export function registerLeadRoutes(app: Express): void {
         state?: string | null;
       };
 
-      // Lens 48 — assignedTo from body must point at an active member
-      // of the requesting org. Otherwise an attacker can create a lead
-      // "assigned" to a user in another tenant.
-      if ((input as any).assignedTo != null) {
-        const ok = await assertUserIsOrgMember(String((input as any).assignedTo), org.id);
-        if (!ok) return Errors.badRequest(res, "assignedTo must be a member of this organization");
+      // Lens 48 — assignedTo must name an active TEAM MEMBER of this org
+      // (`leads.assigned_to` stores team_members.id — see isAssignableLeadMember).
+      if (!(await isAssignableLeadMember(input.assignedTo, org.id))) {
+        return Errors.badRequest(res, "assignedTo must be the id of an active team member of this organization");
       }
 
       // A caller who NAMED an assignee is making an assignment decision; one
@@ -511,20 +518,15 @@ export function registerLeadRoutes(app: Express): void {
       if (inputAny.tcpaConsent === true) {
         try {
           const { recordConsentGranted } = await import("./services/consentEvents");
-          const sourceRaw = (inputAny.consentSource ?? "website") as string;
-          const allowedSources = new Set([
-            "website",
-            "phone_ivr",
-            "written",
-            "sms_double_optin",
-            "imported",
-            "admin_manual",
-          ]);
+          // The SAME source the lead row was stamped with (consentStamp.ts),
+          // read back from the persisted row — the event used to default to
+          // "website" while the row defaulted to "admin_manual", so one grant
+          // carried two different sources.
           await recordConsentGranted({
             organizationId: org.id,
             leadId: lead.id,
             channels: ["sms", "email", "phone", "direct_mail"],
-            source: (allowedSources.has(sourceRaw) ? sourceRaw : "admin_manual") as any,
+            source: (lead.consentSource ?? DEFAULT_GRANT_SOURCE) as ConsentSource,
             consentText: (req.body.consentText ?? req.body.consent_text ?? null) as string | null,
             checkboxChecked:
               typeof req.body.consentCheckboxChecked === "boolean"
@@ -711,14 +713,10 @@ export function registerLeadRoutes(app: Express): void {
         }
       }
 
-      // Lens 48 — `assignedTo` from body must point at a member of the
-      // requesting org. Without this check a customer admin could assign
-      // a lead to a user in a different tenant (creating dangling
-      // notifications + reporting confusion).
-      if ((validated as any).assignedTo != null) {
-        const targetUserId = String((validated as any).assignedTo);
-        const ok = await assertUserIsOrgMember(targetUserId, org.id);
-        if (!ok) return Errors.badRequest(res, "assignedTo must be a member of this organization");
+      // Lens 48 — `assignedTo` must name an active TEAM MEMBER of this org
+      // (`leads.assigned_to` stores team_members.id — see isAssignableLeadMember).
+      if (!(await isAssignableLeadMember(validated.assignedTo, org.id))) {
+        return Errors.badRequest(res, "assignedTo must be the id of an active team member of this organization");
       }
 
       const lead = await storage.updateLead(leadId, validated, org.id);
@@ -941,6 +939,14 @@ export function registerLeadRoutes(app: Express): void {
       // evidence. Checked before any write, so a refusal changes nothing.
       const consentRefusal = bulkConsentRefusal(updates as Record<string, unknown>);
       if (consentRefusal) return Errors.badRequest(res, consentRefusal);
+
+      // A bulk assignment is the same decision as a single one: it needs
+      // `canAssignLeads`, and the assignee must be a team member of this org —
+      // the same two checks as the single-lead PUT.
+      if (refuseUnpermittedAssignment(req as AuthenticatedRequest, res, updates, "Bulk lead assignment")) return;
+      if (!(await isAssignableLeadMember(updates.assignedTo, org.id))) {
+        return Errors.badRequest(res, "assignedTo must be the id of an active team member of this organization");
+      }
 
       // Wave B — snapshot the BEFORE rows once. They serve both the W3.4
       // transition gate below and the per-lead workflow-event diff after the
@@ -1414,13 +1420,7 @@ export function registerLeadRoutes(app: Express): void {
       if (usageCheck.limit !== null) {
         const wouldExceed = usageCheck.current + csvData.length > usageCheck.limit;
         if (wouldExceed) {
-          return res.status(429).json({
-            message: `Import would exceed your plan limit of ${usageCheck.limit} leads (current: ${usageCheck.current}, importing: ${csvData.length}). Upgrade your plan to import more leads.`,
-            current: usageCheck.current,
-            importing: csvData.length,
-            limit: usageCheck.limit,
-            tier: usageCheck.tier,
-          });
+          return refusePlanLimit(res, usageCheck, { requested: csvData.length });
         }
       }
       
@@ -1510,8 +1510,8 @@ export function registerLeadRoutes(app: Express): void {
             res,
             `This request has ${bodyRows.length.toLocaleString()} rows; one import request takes at most ${CSV_IMPORT_MAX_ROWS_PER_REQUEST} rows. ` +
               `The Smart CSV import sheet sends larger files in ${CSV_IMPORT_MAX_ROWS_PER_REQUEST}-row batches automatically; ` +
-              `for very large lists, the Data import page (/api/import/leads) runs the file as a background job.`,
-            { maxRowsPerRequest: CSV_IMPORT_MAX_ROWS_PER_REQUEST, rows: bodyRows.length },
+              `for very large lists, the Data import page (/api/import/leads) runs the file as a background job. Nothing was imported.`,
+            { maxRowsPerRequest: CSV_IMPORT_MAX_ROWS_PER_REQUEST, maxRows: CSV_IMPORT_MAX_ROWS_PER_REQUEST, rows: bodyRows.length },
           );
         }
         const parsed = csvImportBodySchema.safeParse(req.body ?? {});
@@ -1706,12 +1706,7 @@ export function registerLeadRoutes(app: Express): void {
       if (usageCheck.limit !== null) {
         const wouldExceed = usageCheck.current + mappedData.length > usageCheck.limit;
         if (wouldExceed) {
-          return res.status(429).json({
-            message: `Import would exceed your plan limit of ${usageCheck.limit} leads`,
-            current: usageCheck.current,
-            importing: mappedData.length,
-            limit: usageCheck.limit,
-          });
+          return refusePlanLimit(res, usageCheck, { requested: mappedData.length });
         }
       }
 

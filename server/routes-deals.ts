@@ -12,6 +12,8 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { leadScoringService } from "./services/leadScoring";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { checkUsageLimit } from "./services/usageLimits";
+import { refusePlanLimit } from "./middleware/usageLimitGate";
+import { refusePaxCredits } from "./utils/firstRunRefusals";
 import { db, withTransaction } from "./db";
 import { outcomeTelemetry, dueDiligenceItems, deals, contractAssignments, CONTRACT_ASSIGNMENT_STATUSES, generatedDocuments } from "@shared/schema";
 import { and, eq, isNotNull, or, sql } from "drizzle-orm";
@@ -94,7 +96,8 @@ async function getDueDiligenceItemOrgScoped(itemId: number, orgId: number) {
 }
 
 // Partial update schema for PUT endpoints
-const updateDealSchema = insertDealSchema.partial();
+// deletedAt/deletedBy belong to the delete/restore paths, not a generic edit.
+const updateDealSchema = insertDealSchema.partial().omit({ deletedAt: true, deletedBy: true });
 
 // Task 211: Offer amount validation constants
 const MIN_OFFER_AMOUNT = 0;         // exclusive lower bound
@@ -507,7 +510,9 @@ export function registerDealRoutes(app: Express): void {
   // ── W6.1 — contract assignments (the wholesaler's defining mechanic) ──────
   // Record: original contract (this deal) → end buyer → fee → assignment doc.
   // The e-sign pipeline already exists (Assignment Contract system template,
-  // /api/documents/generate, request-signature with the state-disclosure
+  // POST /api/generated-documents — NOT /api/documents/generate, whose template
+  // handler never served a request and was deleted 2026-10-07 — request-signature
+  // with the state-disclosure
   // gate); these endpoints add the missing assignment RECORD so the fee is
   // real data instead of the netProfit proxy.
   const assignmentCreateSchema = z.object({
@@ -1577,15 +1582,23 @@ export function registerDealRoutes(app: Express): void {
       
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
-        return Errors.limitExceeded(res, "AI request limit reached. Upgrade to continue.", { docsSlug: "limit-ai-requests" });
+        return refusePlanLimit(res, usageCheck);
       }
 
       // Credit check for deal AI chat
       const { CreditService } = await import('./services/credits');
       const dealCreditService = new CreditService();
-      const hasCredits = await dealCreditService.hasEnoughCredits(org.id, 2);
-      if (!hasCredits) {
-        return res.status(402).json({ error: "Insufficient credits", message: "Purchase credits to use AI deal analysis." });
+      const dealChatCents = 2;
+      const credit = await dealCreditService.evaluateCredits(org.id, dealChatCents);
+      if (!credit.allowed) {
+        const balance = await dealCreditService.getBalance(org.id).catch(() => 0);
+        return refusePaxCredits(res, {
+          lane: credit.lane,
+          requiredCents: dealChatCents,
+          balanceCents: balance,
+          subscriptionTier: org.subscriptionTier,
+          byokAvailable: undefined,
+        });
       }
 
       const property = await storage.getProperty(org.id, propertyId);

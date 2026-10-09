@@ -13,6 +13,7 @@ import { touchClerkSession as refreshSessionCookie } from "@/lib/clerk-touch";
 import { TIER_LIMITS, nextPaidTier as computeNextPaidTier, type SubscriptionTier, type TierLimits } from "@shared/billing/tier-limits";
 import { TIER_PRICES_CENTS, type Tier } from "@shared/billing/tier-pricing";
 import { usd } from "@/lib/format";
+import { refusalFromBody, type RefusalView } from "@/lib/refusal";
 
 // Per-request timeout (ms). Short enough that a stalled endpoint
 // surfaces as a retry-able error rather than a perpetual spinner; long
@@ -46,13 +47,39 @@ export class ApiError extends Error {
   status: number;
   body: ApiErrorBody | null;
   docsUrl?: string;
+  /**
+   * Set when the body is a refusal that names its own next step (a plan
+   * limit, Pax credits, teammate seats — see `@/lib/refusal`). The global
+   * query / mutation handlers toast it with that step instead of generic copy
+   * (a background read stays silent, as for any other failure).
+   */
+  refusal: RefusalView | null;
   constructor(status: number, message: string, body: ApiErrorBody | null) {
     super(`${status}: ${message}`);
     this.name = "ApiError";
     this.status = status;
     this.body = body;
     this.docsUrl = body?.docsUrl;
+    this.refusal = refusalFromBody(body);
   }
+}
+
+function toastRefusal(refusal: RefusalView): void {
+  toast({
+    title: refusal.title,
+    description: refusal.description,
+    variant: "destructive",
+    action: React.createElement(
+      ToastAction as any,
+      {
+        altText: refusal.action.label,
+        onClick: () => {
+          window.location.href = refusal.action.href;
+        },
+      },
+      refusal.action.label,
+    ) as any,
+  });
 }
 
 /**
@@ -230,6 +257,10 @@ async function throwIfResNotOk(res: Response) {
 
     // Use the parsed message if available, otherwise fall back to raw text
     const errorMessage = parsed?.message ?? text;
+    // A refusal that names its way forward (PLAN_LIMIT_REACHED, Pax credits,
+    // seats) carries it on `refusal`; the query/mutation handlers below show
+    // it — after their background-read and 403/404 suppression, which this
+    // layer cannot see.
     throw new ApiError(res.status, errorMessage, parsed);
   }
 }
@@ -240,6 +271,7 @@ function handleQueryError(error: unknown, query?: { meta?: Record<string, unknow
   if (isAuthError(err)) {
     return;
   }
+
 
   // A BACKGROUND read (a polled badge, an ambient panel) that fails is an
   // unknown, rendered as such where it lives — not an interruption. Without
@@ -259,6 +291,13 @@ function handleQueryError(error: unknown, query?: { meta?: Record<string, unknow
   // network) still toast.
   if (err.message.includes("404") || err.message.includes("403")) {
     clientLogger.error("[Query Error — suppressed toast]", err);
+    return;
+  }
+
+  // A refusal names its own next step — show that, not the generic copy.
+  if (err instanceof ApiError && err.refusal) {
+    toastRefusal(err.refusal);
+    clientLogger.warn("[Query Error — refusal shown]", err);
     return;
   }
 
@@ -299,6 +338,13 @@ function handleMutationError(error: unknown): void {
       description: "Your session has expired. Please sign in again.",
       variant: "destructive",
     });
+    return;
+  }
+
+  // A refusal names its own next step — show that, not the generic copy.
+  if (err instanceof ApiError && err.refusal) {
+    toastRefusal(err.refusal);
+    clientLogger.warn("[Mutation Error — refusal shown]", err);
     return;
   }
 

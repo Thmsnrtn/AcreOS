@@ -18,6 +18,7 @@ import { logger } from "../utils/logger";
 
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
 import { clock } from "../utils/clock";
+import { meteredChatCompletion } from "./aiSpendGuard";
 export type AlertType = "tax_due" | "market_change" | "competitor_activity" | "maintenance" | "document_expiring" | "compliance";
 export type AlertSeverity = "low" | "medium" | "high" | "critical";
 
@@ -625,7 +626,7 @@ class PortfolioSentinelService {
     }
 
     try {
-      const response = await openai.chat.completions.create({
+      const response = await meteredChatCompletion(openai, {
         model: "openai/gpt-4o",
         messages: [
           {
@@ -659,7 +660,7 @@ Provide a 2-3 paragraph summary with specific recommendations.`,
           },
         ],
         max_completion_tokens: 500,
-      });
+      }, { taskType: "portfolio", orgId: organizationId, origin: "customer" });
 
       return response.choices[0]?.message?.content || this.generateFallbackSummary(activeAlerts);
     } catch (error) {
@@ -698,7 +699,7 @@ Provide a 2-3 paragraph summary with specific recommendations.`,
     }
 
     try {
-      const response = await openai.chat.completions.create({
+      const response = await meteredChatCompletion(openai, {
         model: "openai/gpt-4o",
         messages: [
           {
@@ -721,7 +722,7 @@ Provide 3-5 specific action items as a JSON array of strings.`,
         ],
         max_completion_tokens: 300,
         response_format: { type: "json_object" },
-      });
+      }, { taskType: "portfolio", orgId: organizationId, origin: "customer" });
 
       const content = response.choices[0]?.message?.content;
       if (content) {

@@ -1653,8 +1653,14 @@ export function registerIntegrationRoutes(app: Express): void {
     }
   });
 
-  api.get("/api/system/health", async (req, res) => {
+  // The SIGNED-IN health view (2026-10-07): the per-service list that used to
+  // ride on the public /api/health/cached now lives here, behind a session —
+  // the System health card, Pax's provider check and the campaign channel
+  // picker read it. Public health is status-only (server/routes.ts).
+  api.get("/api/system/health", isAuthenticated, async (req, res) => {
     try {
+      const { healthCheckService } = await import("./services/healthCheck");
+      const snapshot = healthCheckService.getLastResults() || (await healthCheckService.checkAll());
       const checks = {
         database: false,
         timestamp: clock.now().toISOString(),
@@ -1672,7 +1678,10 @@ export function registerIntegrationRoutes(app: Express): void {
       
       res.json({
         status: checks.database ? 'healthy' : 'degraded',
-        checks
+        checks,
+        overall: snapshot.overall,
+        services: snapshot.services,
+        timestamp: snapshot.timestamp,
       });
     } catch (err: any) {
       Errors.internal(res, err);

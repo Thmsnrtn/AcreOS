@@ -41,11 +41,13 @@ const buttonVariants = cva(
         // is explicitly pill (lg). Prior values (rounded-lg / rounded-md
         // / rounded-full mixed across sizes) created three shapes inside
         // the same primitive.
-        default: "min-h-9 max-sm:min-h-11 pointer-coarse:min-h-11 rounded-card px-4 py-2",
+        default: "min-h-9 max-sm:min-h-11 pointer-coarse:min-h-11 max-sm:min-w-11 pointer-coarse:min-w-11 rounded-card px-4 py-2",
+        // min-w-11 on the same arms: the floor is 44 in BOTH dimensions, and
+        // a short label ("OK", a retry glyph) measured 42px wide.
         // max-sm:min-h-11 = 44px on mobile — Apple HIG / WCAG 2.5.5 minimum.
         // Previously min-h-10 (40px), 4px below the HIG threshold.
-        sm: "min-h-8 max-sm:min-h-11 pointer-coarse:min-h-11 rounded-card px-3 text-xs",
-        lg: "min-h-10 max-sm:min-h-12 pointer-coarse:min-h-11 rounded-full px-8",
+        sm: "min-h-8 max-sm:min-h-11 pointer-coarse:min-h-11 max-sm:min-w-11 pointer-coarse:min-w-11 rounded-card px-3 text-xs",
+        lg: "min-h-10 max-sm:min-h-12 pointer-coarse:min-h-11 max-sm:min-w-11 pointer-coarse:min-w-11 rounded-full px-8",
         icon: "h-9 w-9 max-sm:h-11 max-sm:w-11 pointer-coarse:h-11 pointer-coarse:w-11 rounded-card",
       },
     },

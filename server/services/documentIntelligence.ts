@@ -40,6 +40,7 @@ import { USER_DATA_SYSTEM_CLAUSE } from '../utils/sanitizePrompt';
 
 import { sanitizePromptInline } from "../utils/sanitizePrompt";
 import { clock } from "../utils/clock";
+import { meteredChatCompletion } from "./aiSpendGuard";
 /**
  * Unit 112: uploaded document text is the textbook indirect-injection vector —
  * an attacker authors the PDF, the customer uploads it, and the model reads it
@@ -277,7 +278,7 @@ export class DocumentIntelligenceService {
     const openai = getOpenAIClient();
     if (openai && fileUrl) {
       try {
-        const response = await openai.chat.completions.create({
+        const response = await meteredChatCompletion(openai, {
           model: "openai/gpt-4o",
           messages: [
             {
@@ -295,7 +296,7 @@ export class DocumentIntelligenceService {
             },
           ],
           max_tokens: 4000,
-        });
+        }, { taskType: "document_intelligence", orgId: organizationId, origin: "customer" });
 
         const extractedText = response.choices[0]?.message?.content || "";
 
@@ -331,7 +332,7 @@ export class DocumentIntelligenceService {
     const prompt = this.getParsingPrompt(documentType);
 
     try {
-      const response = await openai.chat.completions.create({
+      const response = await meteredChatCompletion(openai, {
         model: "openai/gpt-4o",
         messages: [
           {
@@ -347,7 +348,7 @@ Return a JSON object with the extracted data. Be precise with amounts, dates, an
         ],
         response_format: { type: "json_object" },
         max_tokens: 2000,
-      });
+      }, { taskType: "document_intelligence", orgId: organizationId, origin: "customer" });
 
       const content = response.choices[0]?.message?.content || "{}";
       const parsed = JSON.parse(content) as ExtractedData;
@@ -406,7 +407,7 @@ Return a JSON object with the extracted data. Be precise with amounts, dates, an
     }
 
     try {
-      const response = await openai.chat.completions.create({
+      const response = await meteredChatCompletion(openai, {
         model: "openai/gpt-4o",
         messages: [
           {
@@ -426,7 +427,7 @@ Return a JSON object with a "keyTerms" array containing objects with:
         ],
         response_format: { type: "json_object" },
         max_tokens: 1500,
-      });
+      }, { taskType: "document_intelligence", orgId: organizationId, origin: "customer" });
 
       const content = response.choices[0]?.message?.content || "{}";
       const parsed = JSON.parse(content);
@@ -455,7 +456,7 @@ Return a JSON object with a "keyTerms" array containing objects with:
     }
 
     try {
-      const response = await openai.chat.completions.create({
+      const response = await meteredChatCompletion(openai, {
         model: "openai/gpt-4o",
         messages: [
           {
@@ -476,7 +477,7 @@ Look for: missing signatures, unclear terms, unusual clauses, title issues, lien
         ],
         response_format: { type: "json_object" },
         max_tokens: 1500,
-      });
+      }, { taskType: "document_intelligence", orgId: organizationId, origin: "customer" });
 
       const content = response.choices[0]?.message?.content || "{}";
       const parsed = JSON.parse(content);
@@ -559,7 +560,7 @@ Look for: missing signatures, unclear terms, unusual clauses, title issues, lien
 
     if (openai && differences.length > 0) {
       try {
-        const response = await openai.chat.completions.create({
+        const response = await meteredChatCompletion(openai, {
           model: "openai/gpt-4o",
           messages: [
             {
@@ -572,7 +573,7 @@ Look for: missing signatures, unclear terms, unusual clauses, title issues, lien
             },
           ],
           max_tokens: 300,
-        });
+        }, { taskType: "document_intelligence", orgId: organizationId, origin: "customer" });
 
         summary = response.choices[0]?.message?.content || summary;
       } catch (error) {
@@ -634,7 +635,7 @@ Look for: missing signatures, unclear terms, unusual clauses, title issues, lien
     };
 
     try {
-      const response = await openai.chat.completions.create({
+      const response = await meteredChatCompletion(openai, {
         model: "openai/gpt-4o",
         messages: [
           {
@@ -647,7 +648,7 @@ Look for: missing signatures, unclear terms, unusual clauses, title issues, lien
           },
         ],
         max_tokens: 500,
-      });
+      }, { taskType: "document_intelligence", orgId: organizationId, origin: "customer" });
 
       return response.choices[0]?.message?.content || "Unable to generate summary.";
     } catch (error) {

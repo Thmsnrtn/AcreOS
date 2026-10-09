@@ -19,12 +19,31 @@
  *      agent's spend shows in /founder/financials COGS AND counts toward the
  *      ceiling's own 24h sum (without this the ceiling can't see this spend).
  *
- * The full migration (these agents through a tool-aware router) remains the
- * real unblock; it is tracked in docs/openai-bypass-migration.md.
+ * 2026-10 cost efficiency — THE METERED RAW-CALL PATH. `meteredChatCompletion`
+ * and `meteredAnthropicMessage` below are the tool-aware half of the one
+ * metered gateway (routeAITask is the other half, for message-in/text-out
+ * tasks). A raw provider call made through them gets, with no change to its
+ * request, its loop, or its model:
+ *   1. the platform + per-org cost ceiling BEFORE the call (customer-facing
+ *      callers fail open on a ceiling READ error, background callers fail
+ *      closed — the same posture split routeAITask and the dispatch worker use);
+ *   2. cost telemetry AFTER it — an ai_telemetry_events row (what the ceilings
+ *      and the daily guard sum) and an ai_call_log row + financial_ledger
+ *      ai_tokens debit via ai-telemetry.recordAiCall (what per-org unit
+ *      economics reads), costed with prompt-cache reads at the cached rate;
+ *   3. Anthropic prompt caching on a long stable system prompt (stamped only
+ *      where absent; OpenAI models cache automatically on the provider side).
+ * BYOK calls (the customer's own key paid) skip the ceilings and record $0.
+ *
+ * Every production model call in server/ must go through routeAITask or one of
+ * these; tests/unit/modelCallsGoThroughTheGateway.test.ts ratchets the rest.
  */
 
+import type OpenAI from "openai";
 import { assertWithinAiCostCeiling } from "./aiCostCeiling";
 import { computeCostUsd } from "./aiCostRates";
+import { ANTHROPIC_CACHE_MIN_CHARS } from "./promptCache";
+import { clock } from "../utils/clock";
 import { logger } from "../utils/logger";
 
 /**
@@ -48,13 +67,25 @@ export function recordExternalAiSpend(input: {
   provider?: string;
   promptTokens?: number;
   completionTokens?: number;
+  /** Prompt-cache READ tokens (included in promptTokens), billed at the cached rate. */
+  cachedInputTokens?: number;
+  latencyMs?: number;
   success?: boolean;
+  errorMessage?: string | null;
+  /** The customer's own key paid the provider — $0 platform cost. */
+  byok?: boolean;
+  /**
+   * Who triggered it — 'customer' counts toward the org's monthly AI
+   * allowance (founder decision 2026-10-08); omitted/null never does.
+   */
+  origin?: AiCallOrigin | null;
 }): void {
   void (async () => {
     try {
       const promptTokens = Math.max(0, Math.trunc(input.promptTokens ?? 0));
       const completionTokens = Math.max(0, Math.trunc(input.completionTokens ?? 0));
-      const usd = computeCostUsd(input.model, promptTokens, completionTokens);
+      const cachedInputTokens = Math.max(0, Math.trunc(input.cachedInputTokens ?? 0));
+      const usd = input.byok ? 0 : computeCostUsd(input.model, promptTokens, completionTokens, cachedInputTokens);
       const { db } = await import("../db");
       const { aiTelemetryEvents } = await import("@shared/schema");
       await db.insert(aiTelemetryEvents).values({
@@ -66,7 +97,11 @@ export function recordExternalAiSpend(input: {
         completionTokens,
         totalTokens: promptTokens + completionTokens,
         estimatedCostCents: (usd * 100).toFixed(4),
+        ...(input.latencyMs !== undefined ? { latencyMs: Math.max(0, Math.trunc(input.latencyMs)) } : {}),
         success: input.success ?? true,
+        ...(input.errorMessage ? { errorMessage: input.errorMessage.slice(0, 500) } : {}),
+        // Only an org's own call can count toward that org's allowance.
+        origin: input.orgId != null ? input.origin ?? null : null,
       });
     } catch (err) {
       logger.warn("[aiSpendGuard] failed to record external AI spend", {
@@ -74,4 +109,279 @@ export function recordExternalAiSpend(input: {
       });
     }
   })();
+}
+
+// ─── The metered raw-call path ─────────────────────────────────────────────
+
+/** Who triggered the call — decides the ceiling's read-error posture. */
+export type AiCallOrigin = "customer" | "background";
+
+export interface MeteredCallMeta {
+  /** Feature tag: ai_telemetry_events.task_type and ai_call_log.feature. */
+  taskType: string;
+  /**
+   * The org the spend is attributed to. OMIT it for platform-internal and
+   * founder calls — they are nobody's allowance and no org's ceiling. (Omit,
+   * don't write `orgId: null`: the org-scope lint reads an `orgId` token as
+   * org context, so a null literal would hide an unscoped unit from it.)
+   */
+  orgId?: number | null;
+  /**
+   * "customer": a person is waiting — a ceiling READ error fails open.
+   * "background": no one is waiting — a ceiling read error fails closed.
+   * An exceeded ceiling refuses in both.
+   */
+  origin: AiCallOrigin;
+  /** The customer's own key serves this call: no ceilings, $0 recorded. */
+  byok?: boolean;
+}
+
+/** Price-table id for a model as sent: direct-Anthropic ids get the catalogue prefix. */
+function pricingModelId(model: string): string {
+  return /^claude-/.test(model) ? `anthropic/${model}` : model;
+}
+
+function isAnthropicModel(model: string): boolean {
+  return model.startsWith("anthropic/") || model.startsWith("claude-");
+}
+
+/** Enforce the cost ceilings for one metered call. */
+async function assertMeteredCallAllowed(meta: MeteredCallMeta): Promise<void> {
+  if (meta.byok || process.env.AI_COST_CEILING_BYPASS === "1") return;
+  try {
+    await assertWithinAiCostCeiling(meta.orgId ?? null, meta.origin === "background" ? { failClosed: true } : undefined);
+  } catch (err) {
+    if ((err as { code?: string })?.code === "AI_COST_CEILING_EXCEEDED") throw err;
+    if (meta.origin === "background") throw err;
+    logger.warn("[aiSpendGuard] cost ceiling unreadable for a customer-facing call — allowing", {
+      metadata: { taskType: meta.taskType, detail: err instanceof Error ? err.message : String(err) },
+    });
+  }
+}
+
+/**
+ * Stamp an Anthropic cache breakpoint on a long system message that has none.
+ * Pure; returns the params unchanged when not eligible. Exported for tests.
+ */
+export function withPromptCache<P extends { model: string; messages: readonly unknown[] }>(params: P): P {
+  if (!isAnthropicModel(params.model)) return params;
+  let stamped = false;
+  const messages = params.messages.map((m) => {
+    const msg = m as { role?: string; content?: unknown; cache_control?: unknown };
+    if (
+      !stamped &&
+      msg.role === "system" &&
+      typeof msg.content === "string" &&
+      msg.content.length >= ANTHROPIC_CACHE_MIN_CHARS &&
+      msg.cache_control === undefined
+    ) {
+      stamped = true;
+      return { ...msg, cache_control: { type: "ephemeral" } };
+    }
+    return m;
+  });
+  return stamped ? { ...params, messages } : params;
+}
+
+interface MeteredOutcome {
+  model: string;
+  promptTokens: number;
+  cachedInputTokens: number;
+  completionTokens: number;
+  latencyMs: number;
+  responseId: string | null;
+  error: unknown;
+}
+
+function recordMeteredCall(meta: MeteredCallMeta, o: MeteredOutcome, provider: string): void {
+  const priced = pricingModelId(o.model);
+  const usd = meta.byok || o.error ? 0 : computeCostUsd(priced, o.promptTokens, o.completionTokens, o.cachedInputTokens);
+  recordExternalAiSpend({
+    orgId: meta.orgId ?? null,
+    taskType: meta.taskType,
+    model: priced,
+    provider,
+    promptTokens: o.promptTokens,
+    completionTokens: o.completionTokens,
+    cachedInputTokens: o.cachedInputTokens,
+    latencyMs: o.latencyMs,
+    success: !o.error,
+    errorMessage: o.error ? (o.error instanceof Error ? o.error.message : String(o.error)) : null,
+    byok: meta.byok,
+    origin: meta.origin,
+  });
+  void (async () => {
+    try {
+      const { recordAiCall, complexityClassFromTaskType, classifyError } = await import("./ai-telemetry");
+      await recordAiCall({
+        organizationId: meta.orgId ?? null,
+        model: priced,
+        complexityClass: complexityClassFromTaskType(meta.taskType),
+        feature: meta.taskType,
+        promptTokens: o.promptTokens,
+        cachedInputTokens: o.cachedInputTokens,
+        completionTokens: o.completionTokens,
+        costCents: usd * 100,
+        latencyMs: o.latencyMs,
+        cacheHit: false,
+        errorClass: o.error ? classifyError(o.error) : null,
+        openrouterResponseId: o.error ? null : o.responseId,
+      });
+    } catch (err) {
+      logger.warn("[aiSpendGuard] ai_call_log write skipped", {
+        metadata: { detail: err instanceof Error ? err.message : String(err) },
+      });
+    }
+  })();
+  if (!o.error) {
+    logger.info("[ai-cost]", {
+      metadata: {
+        surface: "aiSpendGuard",
+        taskType: meta.taskType,
+        origin: meta.origin,
+        model: priced,
+        orgId: meta.orgId ?? null,
+        inputTokens: o.promptTokens,
+        cachedInputTokens: o.cachedInputTokens,
+        outputTokens: o.completionTokens,
+        costUsd: Number(usd.toFixed(4)),
+        latencyMs: o.latencyMs,
+        byok: !!meta.byok,
+      },
+    });
+  }
+}
+
+/** Minimal structural client — the OpenAI SDK, a BYOK client, or a test double. */
+export interface ChatCompletionsClient {
+  // `never` params: any real client's create() is assignable here (parameter
+  // contravariance), and the gateway hands it the caller's own request.
+  chat: { completions: { create: (body: never, options?: never) => Promise<unknown> } };
+}
+
+/**
+ * A raw (tool-calling capable) OpenAI-compatible chat completion, metered:
+ * ceiling before, telemetry after, Anthropic prompt cache stamped. The request
+ * is otherwise passed through untouched — same model, same tools, same client.
+ */
+export async function meteredChatCompletion(
+  client: ChatCompletionsClient,
+  params: OpenAI.ChatCompletionCreateParamsNonStreaming,
+  meta: MeteredCallMeta,
+  options?: OpenAI.RequestOptions,
+): Promise<OpenAI.ChatCompletion> {
+  // The shared monthly AI allowance (founder decision 2026-10-08): past it, a
+  // customer-triggered call runs on the org's OWN key — same model, mapped to
+  // what their channel serves — or is refused recoverably (byok_required).
+  if (meta.origin === "customer" && meta.orgId != null && !meta.byok) {
+    const { enforceAiAllowance } = await import("./aiAllowance");
+    const byok = await enforceAiAllowance(meta.orgId);
+    if (byok) {
+      client = byok.client;
+      params = { ...params, model: byok.mapModel(params.model) };
+      meta = { ...meta, byok: true };
+    }
+  }
+  await assertMeteredCallAllowed(meta);
+  const body = withPromptCache(params);
+  const started = clock.nowMs();
+  try {
+    const response = (await client.chat.completions.create(body as never, options as never)) as OpenAI.ChatCompletion;
+    const usage = response?.usage as (OpenAI.CompletionUsage & { cache_read_input_tokens?: number }) | undefined;
+    recordMeteredCall(
+      meta,
+      {
+        model: params.model,
+        promptTokens: usage?.prompt_tokens ?? 0,
+        cachedInputTokens: usage?.prompt_tokens_details?.cached_tokens ?? usage?.cache_read_input_tokens ?? 0,
+        completionTokens: usage?.completion_tokens ?? 0,
+        latencyMs: clock.nowMs() - started,
+        responseId: (response as { id?: string } | undefined)?.id ?? null,
+        error: null,
+      },
+      "openrouter",
+    );
+    return response;
+  } catch (err) {
+    recordMeteredCall(
+      meta,
+      { model: params.model, promptTokens: 0, cachedInputTokens: 0, completionTokens: 0, latencyMs: clock.nowMs() - started, responseId: null, error: err },
+      "openrouter",
+    );
+    throw err;
+  }
+}
+
+/** Anthropic SDK usage block (cache fields are not in every SDK type yet). */
+interface AnthropicUsageLike {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number | null;
+  cache_creation_input_tokens?: number | null;
+}
+
+/** Minimal structural Anthropic client. */
+export interface AnthropicMessagesClient<R> {
+  messages: { create: (body: never, options?: never) => Promise<R> };
+}
+
+/**
+ * A raw Anthropic Messages API call, metered. A plain-string `system` at or
+ * above the cache threshold is sent as one text block with an ephemeral cache
+ * breakpoint (identical text, so identical behaviour); an array `system` is
+ * left exactly as the caller built it.
+ *
+ * Cost: Anthropic reports `input_tokens` EXCLUDING cache reads and writes, so
+ * the prompt total is input + cache_read + cache_creation, with cache_read
+ * billed at the cached rate. (Cache WRITES bill at 1.25x input; they are costed
+ * at 1x here — a slight undercount on the first call of a 5-minute window.)
+ */
+export async function meteredAnthropicMessage<R extends { id?: string; usage?: AnthropicUsageLike | null }>(
+  client: AnthropicMessagesClient<R>,
+  params: { model: string; system?: unknown; [k: string]: unknown },
+  meta: MeteredCallMeta,
+  options?: Record<string, unknown>,
+): Promise<R> {
+  // The allowance applies here too. An org's own key is an OpenAI-compatible
+  // client, so this Anthropic-SDK path cannot hand the call over to it: past
+  // the allowance a customer-triggered call is refused (byok_required) even if
+  // a key exists. Today every caller of this path is platform-internal.
+  if (meta.origin === "customer" && meta.orgId != null && !meta.byok) {
+    const { enforceAiAllowance, AiAllowanceExhaustedError } = await import("./aiAllowance");
+    const byok = await enforceAiAllowance(meta.orgId);
+    if (byok) throw new AiAllowanceExhaustedError(meta.orgId, 0, 0, true);
+  }
+  await assertMeteredCallAllowed(meta);
+  const body =
+    typeof params.system === "string" && params.system.length >= ANTHROPIC_CACHE_MIN_CHARS
+      ? { ...params, system: [{ type: "text", text: params.system, cache_control: { type: "ephemeral" } }] }
+      : params;
+  const started = clock.nowMs();
+  try {
+    const response = await client.messages.create(body as never, options as never);
+    const u = (response?.usage ?? {}) as AnthropicUsageLike;
+    const read = u.cache_read_input_tokens ?? 0;
+    const written = u.cache_creation_input_tokens ?? 0;
+    recordMeteredCall(
+      meta,
+      {
+        model: params.model,
+        promptTokens: (u.input_tokens ?? 0) + read + written,
+        cachedInputTokens: read,
+        completionTokens: u.output_tokens ?? 0,
+        latencyMs: clock.nowMs() - started,
+        responseId: response?.id ?? null,
+        error: null,
+      },
+      "anthropic",
+    );
+    return response;
+  } catch (err) {
+    recordMeteredCall(
+      meta,
+      { model: params.model, promptTokens: 0, cachedInputTokens: 0, completionTokens: 0, latencyMs: clock.nowMs() - started, responseId: null, error: err },
+      "anthropic",
+    );
+    throw err;
+  }
 }

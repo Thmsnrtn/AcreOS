@@ -32,7 +32,7 @@ import type { ExecuteToolOptions } from "./tools";
 import { getUserPermissionContext } from "../utils/permissions";
 import { toTeamMemberView, teamViewerSeesEmails, type ViewerRole } from "@shared/accountViews";
 import { validateCompliance } from "../services/complianceValidator";
-import { assertAiSpendAllowed, recordExternalAiSpend } from "../services/aiSpendGuard";
+import { assertAiSpendAllowed, meteredChatCompletion } from "../services/aiSpendGuard";
 import { serializeToolResultForModel } from "./untrustedEnvelope";
 import { subscriptionEndedPatch, subscriptionHasEnded } from "../services/borrower/servicingPhase";
 import { clock } from "../utils/clock";
@@ -3374,7 +3374,7 @@ export async function executeSupportTool(
         
         try {
           const openai = getOpenAIClient();
-          const response = await openai.chat.completions.create({
+          const response = await meteredChatCompletion(openai, {
             model: "openai/gpt-4o",
             messages: [
               {
@@ -3398,7 +3398,7 @@ export async function executeSupportTool(
             ],
             response_format: { type: "json_object" },
             max_tokens: 1000
-          });
+          }, { taskType: "support_chat", orgId: org.id, origin: "customer" });
           
           const analysis = JSON.parse(response.choices[0].message.content || "{}");
           
@@ -5541,13 +5541,12 @@ export async function processSupportChat(
   await assertAiSpendAllowed(org.id);
 
   const traceStarted = clock.nowMs();
-  let response = await openai.chat.completions.create({
+  let response = await meteredChatCompletion(openai, {
     model: "openai/gpt-4o",
     messages: chatMessages,
     tools,
     tool_choice: "auto"
-  });
-  recordExternalAiSpend({ orgId: org.id, taskType: "support_chat", model: "openai/gpt-4o", promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
+  }, { taskType: "support_chat", orgId: org.id, origin: "customer" });
 
   let assistantMessage = response.choices[0].message;
 
@@ -5614,13 +5613,12 @@ export async function processSupportChat(
     chatMessages.push(assistantMessage as any);
     chatMessages.push(...toolResults);
 
-    response = await openai.chat.completions.create({
+    response = await meteredChatCompletion(openai, {
       model: "openai/gpt-4o",
       messages: chatMessages,
       tools,
       tool_choice: "auto"
-    });
-    recordExternalAiSpend({ orgId: org.id, taskType: "support_chat", model: "openai/gpt-4o", promptTokens: response.usage?.prompt_tokens, completionTokens: response.usage?.completion_tokens });
+    }, { taskType: "support_chat", orgId: org.id, origin: "customer" });
 
     assistantMessage = response.choices[0].message;
   }

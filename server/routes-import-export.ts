@@ -645,7 +645,7 @@ export function registerImportExportRoutes(app: Express): void {
         tcpaConsent,
         consentSource,
         optOutReason
-      });
+      }, orgId);
 
       // Evidence chain: every grant through this path is a per-lead row in
       // lead_consent_events naming who attested it.

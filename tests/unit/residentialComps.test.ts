@@ -9,10 +9,13 @@
  *     — never a land comp, never an invented value;
  *   - keyed (platform or BYOK) → a provider-registry lookup with the right
  *     category, restricted to residential-capable providers (["attom"]);
- *   - BYOK bypasses the credit-balance gate (the customer pays their
- *     vendor directly — R1d);
- *   - platform-billed with an empty pool → honest insufficient-credits
- *     refusal, not a silent null;
+ *   - BYOK bypasses the pool gate (the customer pays their vendor
+ *     directly — R1d);
+ *   - platform-billed lookups go through the SAME fail-closed pool gate as
+ *     every other paid action (poolDebit "gate" mode, before the vendor is
+ *     called); an exhausted pool refuses — never the legacy wallet balance,
+ *     which lookups never reduced (2026-10-09). A lookup that bills nothing
+ *     (no data, cache hit) returns its pre-debit;
  *   - defensive ATTOM payload extraction never fabricates fields.
  *
  * Plus the RESIDENTIAL_BUSINESS_TYPES membership pin (persona-mapping is
@@ -23,11 +26,19 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ── Mock state (factories read these lazily) ─────────────────────────────
 let connectedProviders = new Set<string>();
 let platformKeyed = false;
-let balanceCents = 0;
+/** Credits the org can still spend (pool + purchased overflow). */
+let poolRemaining = 0;
 let orgRows: Array<{ onboardingData: unknown }> = [];
 
 const lookupMock = vi.fn();
-const getBalanceMock = vi.fn(async () => balanceCents);
+const getBalanceMock = vi.fn(async () => 0);
+const poolDebitMock = vi.fn(async (args: { action: string }) => {
+  const cents = args.action === "comps_lookup" ? 20 : 10;
+  return poolRemaining >= cents
+    ? { allowed: true, debitedCents: cents, remaining: poolRemaining - cents, poolMonthly: 2500, ledgerRowId: 1, overPool: false }
+    : { allowed: false, debitedCents: 0, remaining: 0, poolMonthly: 2500, ledgerRowId: null, overPool: false, reason: "pool_exhausted" };
+});
+const refundMock = vi.fn(async () => undefined);
 
 vi.mock("../../server/utils/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -66,6 +77,10 @@ vi.mock("../../server/services/byok/dataByok", () => ({
 vi.mock("../../server/services/credits", () => ({
   creditService: { getBalance: (...args: unknown[]) => getBalanceMock(...(args as [])) },
 }));
+vi.mock("../../server/services/creditPool", () => ({
+  poolDebit: (args: { action: string }) => poolDebitMock(args),
+  refundPoolDebit: (...args: unknown[]) => refundMock(...(args as [])),
+}));
 
 import {
   getResidentialComps,
@@ -102,7 +117,9 @@ const OK_RESULT = {
 beforeEach(() => {
   connectedProviders = new Set();
   platformKeyed = false;
-  balanceCents = 0;
+  poolRemaining = 0;
+  poolDebitMock.mockClear();
+  refundMock.mockClear();
   orgRows = [];
   lookupMock.mockReset();
   getBalanceMock.mockClear();
@@ -141,7 +158,7 @@ describe("seam honesty — unkeyed → explicit unavailable, exact message", () 
 describe("seam routing — keyed → registry lookup restricted to residential-capable providers", () => {
   it("platform-keyed comps: registry lookup with category comps + allowProviders ['attom']", async () => {
     platformKeyed = true;
-    balanceCents = 100;
+    poolRemaining = 100;
     lookupMock.mockResolvedValue({ ...OK_RESULT });
 
     const outcome = await getResidentialComps(42, SUBJECT);
@@ -151,26 +168,28 @@ describe("seam routing — keyed → registry lookup restricted to residential-c
     expect(category).toBe("comps");
     expect(input).toEqual({ type: "coordinates", latitude: SUBJECT.latitude, longitude: SUBJECT.longitude });
     expect(tier).toBe("pro"); // ATTOM's registration tier — access is key+metering-governed
-    expect(balance).toBe(100);
+    expect(balance).toBe(20); // the one lookup the pool just paid for
     expect(orgId).toBe(42);
-    expect(opts).toEqual({ allowProviders: RESIDENTIAL_CAPABLE_PROVIDERS });
+    expect(opts).toEqual({ allowProviders: RESIDENTIAL_CAPABLE_PROVIDERS, poolPreDebited: true });
+    expect(poolDebitMock).toHaveBeenCalledTimes(1);
+    expect(poolDebitMock.mock.calls[0][0]).toMatchObject({ organizationId: 42, action: "comps_lookup", units: 1 });
     expect(RESIDENTIAL_CAPABLE_PROVIDERS).toEqual(["attom"]);
   });
 
   it("valuation uses the valuation category with the same restriction", async () => {
     platformKeyed = true;
-    balanceCents = 100;
+    poolRemaining = 100;
     lookupMock.mockResolvedValue({ ...OK_RESULT, category: "valuation" });
 
     const outcome = await getResidentialValuation(42, SUBJECT);
     expect(outcome.status).toBe("ok");
     expect(lookupMock.mock.calls[0][0]).toBe("valuation");
-    expect(lookupMock.mock.calls[0][5]).toEqual({ allowProviders: ["attom"] });
+    expect(lookupMock.mock.calls[0][5]).toEqual({ allowProviders: ["attom"], poolPreDebited: true });
   });
 
   it("address subjects map to the address LookupInput", async () => {
     platformKeyed = true;
-    balanceCents = 100;
+    poolRemaining = 100;
     lookupMock.mockResolvedValue({ ...OK_RESULT });
 
     await getResidentialComps(42, {
@@ -192,20 +211,20 @@ describe("seam routing — keyed → registry lookup restricted to residential-c
   it("BYOK ('attom' channel) works without a platform key and bypasses the balance gate", async () => {
     connectedProviders = new Set(["attom"]);
     platformKeyed = false;
-    balanceCents = 0; // empty pool — BYOK lookups are free to the platform
+    poolRemaining = 0; // empty pool — BYOK lookups are free to the platform
     lookupMock.mockResolvedValue({ ...OK_RESULT });
 
     const outcome = await getResidentialComps(42, SUBJECT);
     expect(outcome.status).toBe("ok");
     if (outcome.status !== "ok") throw new Error("unreachable");
     expect(outcome.byok).toBe(true);
-    expect(getBalanceMock).not.toHaveBeenCalled(); // no pool gate on BYOK
+    expect(poolDebitMock).not.toHaveBeenCalled(); // no pool gate on BYOK
     expect(lookupMock).toHaveBeenCalledTimes(1);
   });
 
   it("platform-billed with an empty pool → honest insufficient-credits refusal, registry never called", async () => {
     platformKeyed = true;
-    balanceCents = 5; // < 20¢ comps cost
+    poolRemaining = 5; // < 20¢ comps cost — the pool gate refuses
     const outcome = await getResidentialComps(42, SUBJECT);
     expect(outcome.status).toBe("unavailable");
     if (outcome.status !== "unavailable") throw new Error("unreachable");
@@ -214,9 +233,31 @@ describe("seam routing — keyed → registry lookup restricted to residential-c
     expect(lookupMock).not.toHaveBeenCalled();
   });
 
+  it("an exhausted POOL refuses even when the legacy wallet balance is large — the wallet is not the gate", async () => {
+    platformKeyed = true;
+    poolRemaining = 0;
+    getBalanceMock.mockResolvedValue(1_000_000); // the old gate would have passed this forever
+    const outcome = await getResidentialValuation(42, SUBJECT);
+    expect(outcome.status).toBe("unavailable");
+    expect(lookupMock).not.toHaveBeenCalled();
+    expect(getBalanceMock).not.toHaveBeenCalled();
+  });
+
+  it("a lookup that bills nothing (no data / cache hit) returns its pre-debit to the pool", async () => {
+    platformKeyed = true;
+    poolRemaining = 100;
+    lookupMock.mockResolvedValue({ ...OK_RESULT, cached: true, costCents: 0 });
+    await getResidentialComps(42, SUBJECT);
+    expect(refundMock).toHaveBeenCalledTimes(1);
+    refundMock.mockClear();
+    lookupMock.mockResolvedValue({ ...OK_RESULT, cached: false, costCents: 20 });
+    await getResidentialComps(42, SUBJECT);
+    expect(refundMock).not.toHaveBeenCalled();
+  });
+
   it("registry null (provider failed / circuit open) → honest no_data, never a fabricated result", async () => {
     platformKeyed = true;
-    balanceCents = 100;
+    poolRemaining = 100;
     lookupMock.mockResolvedValue(null);
     const outcome = await getResidentialComps(42, SUBJECT);
     expect(outcome.status).toBe("no_data");

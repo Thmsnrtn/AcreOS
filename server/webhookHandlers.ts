@@ -360,6 +360,9 @@ export class WebhookHandlers {
       if (session.metadata?.type === 'credit_purchase') {
         return WebhookHandlers.processCreditPurchase(session);
       }
+      if (session.metadata?.type === 'mail_credit_recharge') {
+        return WebhookHandlers.processMailCreditRecharge(session);
+      }
       // Vertical-pack add-on (S3) — MUST run before the generic subscription
       // branch, or the pack sub would be recorded as the org's plan sub.
       if (session.metadata?.type === 'vertical_pack') {
@@ -550,15 +553,18 @@ export class WebhookHandlers {
           // customers were told the wrong plan on day one. Render from
           // TIER_LIMITS, the single source of truth, with unlimited (null)
           // spelled out honestly.
-          const { TIER_LIMITS } = await import('@shared/billing/tier-limits');
-          const tierKey = (org.subscriptionTier || 'starter') as keyof typeof TIER_LIMITS;
-          const real = TIER_LIMITS[tierKey] ?? TIER_LIMITS.starter;
+          // The canonical fold: a legacy solo/operator/empire org is told its
+          // real tier's limits, not the starter fallback.
+          const { TIER_LIMITS, limitsTierFor } = await import('@shared/billing/tier-limits');
+          const real = TIER_LIMITS[limitsTierFor(org.subscriptionTier || 'starter')];
           const fmt = (n: number | null | undefined): string =>
             n == null ? 'Unlimited' : n.toLocaleString('en-US');
           const limits = {
             leads: fmt(real.leads),
             properties: fmt(real.properties),
-            ai: real.aiTurnsByokThreshold == null ? 'Unlimited' : `${fmt(real.aiTurnsByokThreshold)}/month`,
+            // The shared monthly AI allowance, in dollars of included AI
+            // (founder decision 2026-10-08) — read from the canonical limit.
+            ai: real.aiAllowanceCents == null ? 'Unlimited' : `$${(real.aiAllowanceCents / 100).toFixed(2)} of included AI/month`,
           };
 
           // Find the user's email from session metadata or org owner
@@ -573,12 +579,12 @@ export class WebhookHandlers {
                 <ul>
                   <li><strong>Leads:</strong> ${limits.leads}</li>
                   <li><strong>Properties:</strong> ${limits.properties}</li>
-                  <li><strong>AI Requests:</strong> ${limits.ai}</li>
+                  <li><strong>Included AI:</strong> ${limits.ai}</li>
                 </ul>
                 <p><a href="${process.env.APP_URL || 'https://app.acreos.io'}">Go to your dashboard</a></p>
                 <p>— The AcreOS Team</p>
               `,
-              text: `Welcome to AcreOS ${tierName}!\n\nYour plan includes:\n- Leads: ${limits.leads}\n- Properties: ${limits.properties}\n- AI Requests: ${limits.ai}\n\nGo to your dashboard: ${process.env.APP_URL || 'https://app.acreos.io'}`,
+              text: `Welcome to AcreOS ${tierName}!\n\nYour plan includes:\n- Leads: ${limits.leads}\n- Properties: ${limits.properties}\n- Included AI: ${limits.ai}\n\nGo to your dashboard: ${process.env.APP_URL || 'https://app.acreos.io'}`,
             });
             logger.info(`[webhook] Welcome email sent to ${userEmail} for ${tierName} plan`);
           }
@@ -953,6 +959,20 @@ export class WebhookHandlers {
       const org = await storage.getOrganizationByStripeCustomerId(customerId);
       if (!org) return;
 
+      // Founder decision 2026-10-08: a grandfathered credit pool (existing
+      // Scale orgs keep 8,000) lasts until the CURRENT period's end — stamp it
+      // the first time a subscription event tells us that date.
+      try {
+        const { subscriptionPeriod } = await import('./stripeClient');
+        const period = subscriptionPeriod(subscription);
+        const { stampGrandfatherPeriodEnd } = await import('./services/creditPoolGrandfather');
+        await stampGrandfatherPeriodEnd(org.id, period ? new Date(period.end * 1000) : null);
+      } catch (err) {
+        logger.warn('[webhook] credit-pool grandfather stamp skipped (non-fatal)', {
+          metadata: { orgId: org.id, error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+
       // Map Stripe status to our status
       const statusMap: Record<string, string> = {
         active: 'active',
@@ -1215,6 +1235,30 @@ export class WebhookHandlers {
         return;
       }
 
+      // A renewal ends any grandfathered credit pool (founder decision
+      // 2026-10-08: existing Scale orgs keep 8,000 until their next renewal).
+      // Only the PLAN subscription's renewal counts: a vertical-pack add-on on
+      // the same Stripe customer renews on its own cycle and must not end the
+      // plan's grandfathered pool early. When the org's plan subscription id is
+      // not recorded, any subscription renewal is taken as the plan's.
+      if (invoice.billing_reason === 'subscription_cycle') {
+        try {
+          const { invoiceSubscriptionId } = await import('./stripeClient');
+          const renewedSubId = invoiceSubscriptionId(invoice);
+          const planSubId = (org as { stripeSubscriptionId?: string | null }).stripeSubscriptionId ?? null;
+          const isPlanRenewal = !planSubId || !renewedSubId || renewedSubId === planSubId;
+          if (isPlanRenewal) {
+            const { endGrandfatherAtRenewal } = await import('./services/creditPoolGrandfather');
+            const renewedAt = invoice.created ? new Date(invoice.created * 1000) : clock.now();
+            await endGrandfatherAtRenewal(org.id, renewedAt);
+          }
+        } catch (err) {
+          logger.warn('[webhook] credit-pool grandfather end skipped (non-fatal)', {
+            metadata: { orgId: org.id, error: err instanceof Error ? err.message : String(err) },
+          });
+        }
+      }
+
       // Referral market-match terms (founder decision 2026-09-01): a paid
       // invoice is the referee's reward moment and starts the referrer's
       // 30-day retention clock. Idempotent inside markReferralPaid — Stripe
@@ -1442,6 +1486,32 @@ export class WebhookHandlers {
     } catch (err) {
       logger.error('[webhook] Error processing charge.succeeded', err instanceof Error ? err : undefined);
     }
+  }
+
+  /**
+   * Mail-credit recharge (POST /api/outreach/mail/credits/recharge). These
+   * checkouts used to have NO handler: the customer paid and received nothing.
+   * Grants the credits the customer PAID for, once per checkout session
+   * (creditService.applyMailCreditRecharge is idempotent on the session).
+   */
+  static async processMailCreditRecharge(session: Stripe.Checkout.Session): Promise<void> {
+    const orgId = parseInt(session.metadata?.organizationId ?? '', 10);
+    if (!Number.isFinite(orgId)) {
+      logger.error('[webhook] mail_credit_recharge session missing organizationId metadata');
+      return;
+    }
+    if (session.payment_status !== 'paid') {
+      logger.warn('[webhook] mail_credit_recharge session not paid — nothing granted', {
+        metadata: { orgId, sessionId: session.id, paymentStatus: session.payment_status },
+      });
+      return;
+    }
+    const paidCents = session.amount_total ?? 0;
+    const paymentIntentId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id;
+    const result = await creditService.applyMailCreditRecharge(orgId, paidCents, session.id, paymentIntentId);
+    logger.info('[webhook] mail credit recharge', {
+      metadata: { orgId, sessionId: session.id, paidCents, credits: result.credits, granted: result.granted },
+    });
   }
 
   static async processCreditPurchase(session: Stripe.Checkout.Session): Promise<void> {

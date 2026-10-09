@@ -7,7 +7,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
-import { enrichLead, batchEnrichLeads, calculateContactCompleteness } from "./services/leadEnrichment";
+import { enrichLead, batchEnrichLeads, calculateContactCompleteness, LeadNotFoundForEnrichmentError } from "./services/leadEnrichment";
 import { db } from "./db";
 import { leads } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
@@ -26,6 +26,7 @@ router.post("/:id/enrich", async (req: Request, res: Response) => {
     const result = await enrichLead(org.id, leadId);
     res.json(result);
   } catch (err) {
+    if (err instanceof LeadNotFoundForEnrichmentError) return Errors.notFound(res, "Lead");
     Errors.internal(res, err);
   }
 });

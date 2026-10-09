@@ -8,6 +8,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
+import { stampOfferInsert, stampOfferUpdate } from "../services/offerTimestamps";
 import {
   marketingLists,
   offerBatches,
@@ -122,13 +123,20 @@ export const vaEngineRepo = {
   },
 
   async createOffer(this: DatabaseStorage, data: InsertOffer): Promise<Offer> {
-    const [created] = await db.insert(offers).values(data).returning();
+    // sent_at / responded_at are the server's, on the transition (offerTimestamps.ts).
+    const [created] = await db
+      .insert(offers)
+      .values(stampOfferInsert(data, { sentAt: offers.sentAt, respondedAt: offers.respondedAt }))
+      .returning();
     return created;
   },
 
   async updateOffer(this: DatabaseStorage, orgId: number, id: number, updates: Partial<InsertOffer>): Promise<Offer> {
     const [updated] = await db.update(offers)
-      .set({ ...omitProtectedFields(updates), updatedAt: clock.now() })
+      .set({
+        ...stampOfferUpdate(omitProtectedFields(updates), { sentAt: offers.sentAt, respondedAt: offers.respondedAt }),
+        updatedAt: clock.now(),
+      })
       .where(and(eq(offers.id, id), eq(offers.organizationId, orgId)))
       .returning();
     return updated;

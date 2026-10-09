@@ -2986,6 +2986,12 @@ $mig0262$`,
 
   // team_members: VA flag (0054 part 2)
   `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS view_only_assigned_leads BOOLEAN NOT NULL DEFAULT FALSE`,
+  // 0269 — the flag is a per-member OVERRIDE; NULL = the role's default (va →
+  // assigned-only). Must follow the ADD above so a fresh build ends nullable.
+  // Column definition only — existing rows are not rewritten by a deploy
+  // (scripts/data/reset-va-view-only-default.ts is the founder-run reset).
+  `ALTER TABLE "team_members" ALTER COLUMN "view_only_assigned_leads" DROP NOT NULL`,
+  `ALTER TABLE "team_members" ALTER COLUMN "view_only_assigned_leads" DROP DEFAULT`,
 
   // signatures: tamper-evidence (0033)
   `ALTER TABLE signatures ADD COLUMN IF NOT EXISTS document_content_hash text`,
@@ -11239,6 +11245,40 @@ END $mig0252$`,
   `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "acts_payload" jsonb`,
   `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "body_hash" text`,
   `ALTER TABLE "solene_founder_asks" ADD COLUMN IF NOT EXISTS "chat_approvable" boolean NOT NULL DEFAULT false`,
+
+  // 0266 — Scale credit pool 8,000 → 3,000 for NEW Scale customers; existing
+  // Scale orgs keep 8,000 until their next renewal (founder decision
+  // 2026-10-08). The backfill is guarded to run ONCE — these statements re-run
+  // on every deploy. Mirrors migrations/0266_scale_credit_pool_grandfather.sql.
+  `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "credit_pool_grandfather" integer`,
+  `ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "credit_pool_grandfather_ends_at" timestamp with time zone`,
+  `DO $$
+DECLARE n integer;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM "founder_settings" WHERE "key" = 'billing.backfill.scale_credit_pool_2026_10_08') THEN
+    UPDATE "organizations"
+       SET "credit_pool_grandfather" = 8000,
+           "credit_pool_grandfather_ends_at" = NULL
+     WHERE lower("subscription_tier") IN ('scale', 'empire')
+       AND "subscription_status" IN ('active', 'trialing', 'past_due')
+       AND "credit_pool_grandfather" IS NULL;
+    GET DIAGNOSTICS n = ROW_COUNT;
+    INSERT INTO "founder_settings" ("key", "value", "value_type", "description", "category")
+    VALUES ('billing.backfill.scale_credit_pool_2026_10_08', n::text, 'number',
+            'One-time marker: orgs grandfathered at the 8,000-credit Scale pool (founder decision 2026-10-08). Do not delete — its presence stops the backfill re-running.',
+            'billing_migration');
+    RAISE NOTICE 'scale credit pool grandfather backfill: % org(s)', n;
+  END IF;
+END $$`,
+
+  // 0267 — ai_telemetry_events.origin for the shared monthly AI allowance
+  // (founder decision 2026-10-08). Mirrors migrations/0267_ai_allowance_origin.sql.
+  `ALTER TABLE "ai_telemetry_events" ADD COLUMN IF NOT EXISTS "origin" text`,
+  `CREATE INDEX IF NOT EXISTS "ai_telemetry_org_origin_created_idx" ON "ai_telemetry_events" ("organization_id", "origin", "created_at")`,
+
+  // 0268 — a mail-credit recharge checkout grants exactly once. Mirrors
+  // migrations/0268_mail_credit_recharge_grant_once.sql.
+  `CREATE UNIQUE INDEX IF NOT EXISTS "credit_txn_mail_recharge_session_uniq" ON "credit_transactions" ("stripe_checkout_session_id") WHERE type = 'mail_credit_recharge'`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

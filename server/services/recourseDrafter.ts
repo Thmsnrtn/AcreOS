@@ -536,12 +536,23 @@ export async function runRecourseSweepTick(
   if (result.drafted > 0) {
     try {
       const [orgId, founderUserIds] = await Promise.all([
-        deps.getFounderPrimaryOrgId().catch(() => 1),
+        // No fallback org: a push anchored to a guessed org (it was 1) looks
+        // up THAT org's subscriptions. Unresolved → no push, reported.
+        deps.getFounderPrimaryOrgId().catch(() => null),
         deps.getFounderUserIds().catch(() => [] as string[]),
       ]);
+      if (orgId === null) {
+        logger.error("[recourse] drafts are ready but no founder organization is configured — founder push skipped");
+        try {
+          const { recordFounderAlertUndeliverable } = await import("../metrics");
+          recordFounderAlertUndeliverable("recourse");
+        } catch {
+          /* metrics are best-effort */
+        }
+      }
       const many = result.drafted !== 1;
-      for (const userId of founderUserIds) {
-        const r = await deps.sendPushToUser(orgId, userId, {
+      for (const userId of orgId === null ? [] : founderUserIds) {
+        const r = await deps.sendPushToUser(orgId!, userId, {
           title: "A customer needs a personal reply",
           body: many
             ? `${result.drafted} drafts are ready in your recourse queue — send them before the hour is out.`

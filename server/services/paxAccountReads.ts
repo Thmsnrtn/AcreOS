@@ -47,6 +47,7 @@ import { storage } from "../storage";
 import { byokTierAllows } from "@shared/billing/byok-tiers";
 import { tierForSubscriptionTier } from "@shared/billing/tier-pricing";
 import { clock } from "../utils/clock";
+import { resolveViewOnlyAssignedLeads } from "../utils/permissions";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -349,7 +350,10 @@ export async function readTeamActivityForPax(
       name: m.displayName || m.email || `member #${m.id}`,
       role: m.role,
       active: m.isActive,
-      seesOnlyAssignedLeads: m.viewOnlyAssignedLeads,
+      // The EFFECTIVE flag — the stored column is an override (NULL = the
+      // role's default; a VA defaults to assigned-only), resolved by the same
+      // function the server enforces with.
+      seesOnlyAssignedLeads: resolveViewOnlyAssignedLeads(m.role ?? "", m.viewOnlyAssignedLeads),
       joinedAt: iso(m.joinedAt),
       invitedAt: iso(m.invitedAt),
     })),

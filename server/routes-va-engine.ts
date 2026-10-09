@@ -339,8 +339,9 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
                 ? "The seller accepted the offer. Nothing about the forecast is measured yet — profit and ROI are known only after close and resale."
                 : "The seller rejected the offer.",
             actuals: [],
-            // The moment it was OBSERVED. `respondedAt` is the seller's own
-            // response time when the caller supplied one; otherwise now. It is
+            // The moment it was OBSERVED. `respondedAt` is stamped by the
+            // server on the transition to a response status (a client-sent
+            // value is discarded — offerTimestamps.ts); otherwise now. It is
             // never back-dated to the offer's creation, which would make every
             // response look instant.
             observedAt: offer?.respondedAt ? new Date(offer.respondedAt) : clock.now(),

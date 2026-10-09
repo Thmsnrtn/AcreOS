@@ -25,7 +25,7 @@ import {
   primaryKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { createInsertSchema } from "drizzle-zod";
+import { createInsertSchema } from "../db/createInsertSchema";
 import { z } from "zod";
 import { organizations, dataSources } from "../schema";
 
@@ -87,6 +87,43 @@ export const AI_FEATURES = [
   "campaign_optimization",
   // Compliance / regulatory watch
   "regwatch_summary",
+  // 2026-10 cost efficiency — features metered through the gateway
+  // (aiSpendGuard.meteredChatCompletion / meteredAnthropicMessage) that used to
+  // call providers directly and so never reached ai_call_log at all.
+  "support_chat",
+  "support_classify",
+  "support_playbook_response",
+  "support_contextual_response",
+  "support_learning",
+  "va_agent",
+  "va_briefing",
+  "document_intelligence",
+  "due_diligence",
+  "offer_letter_draft",
+  "negotiation",
+  "valuation",
+  "compliance",
+  "onboarding_tips",
+  "portfolio",
+  "seller_intent",
+  "voice_learning",
+  "voice_call_analysis",
+  "agent_skill",
+  "cash_flow_forecast",
+  "buyer_matching",
+  "intent_routing",
+  "atlas_memory",
+  "command_palette",
+  "api_queue_chat",
+  // Platform-internal / founder-side (not any customer's spend)
+  "solene_dispatch",
+  "solene_precall_check",
+  "operator",
+  "deliberation",
+  "decisions_inbox",
+  "founder_chat",
+  "founder_support_draft",
+  "model_benchmark",
   // Misc / fallback
   "ad_hoc",
   "unknown",
@@ -126,6 +163,7 @@ export function coerceAiFeature(input: string | undefined | null): AiFeature {
   if (lower.startsWith("cmo_")) return "cmo_script_gen";
   if (lower.startsWith("outreach_")) return "outreach_personalization";
   if (lower.startsWith("lead_")) return "lead_nurturing";
+  if (lower.startsWith("va_agent_")) return "va_agent";
   return "unknown";
 }
 
@@ -145,9 +183,18 @@ export const aiTelemetryEvents = pgTable("ai_telemetry_events", {
   complexity: text("complexity"), // simple, moderate, complex
   success: boolean("success").default(true),
   errorMessage: text("error_message"),
+  // Who triggered the call (founder decision 2026-10-08, the shared monthly AI
+  // allowance): 'customer' = the org triggered it and it counts toward the
+  // plan's allowance; 'background' = work that serves the org but that it did
+  // not trigger (bounded by the per-org ceilings, never walls the customer).
+  // NULL = platform-internal or recorded before the column existed — never
+  // counted toward any customer's allowance.
+  origin: text("origin"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("ai_telemetry_org_idx").on(table.organizationId),
+  // The allowance read: one org's customer-triggered spend this month.
+  index("ai_telemetry_org_origin_created_idx").on(table.organizationId, table.origin, table.createdAt),
   index("ai_telemetry_created_idx").on(table.createdAt),
   index("ai_telemetry_provider_idx").on(table.provider),
 ]);
