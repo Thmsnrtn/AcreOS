@@ -1,10 +1,11 @@
 /**
  * The assigned-leads gate — ONE owner for a rule that had drifted.
  *
- * `team_members.viewOnlyAssignedLeads` is a per-user restriction an org owner
- * sets deliberately (and which is forced on for the `va` role). It means what it
- * says: that person may see and act on the leads assigned to them, and no
- * others.
+ * The effective assigned-only flag (`resolveViewOnlyAssignedLeads` in
+ * permissions.ts: the `va` role's default, or a per-member override an owner
+ * sets deliberately) means what it says: that person may see and act on the
+ * leads assigned to them, and no others. By-id READS are held to the same rule
+ * at the `getOrCreateOrg` chokepoint (middleware/assignedLeadScopeGate.ts).
  *
  * WHY THIS FILE EXISTS
  * --------------------
@@ -67,13 +68,33 @@ export function assertAssignedLeadWritable(
   lead: { assignedTo?: unknown } | null | undefined,
 ): boolean {
   if (!isAssignedOnlyCaller(req)) return false;
-  const assignedTo = lead?.assignedTo;
-  const callerId = req.user?.id ?? null;
-  if (assignedTo == null || String(assignedTo) !== String(callerId)) {
+  if (!isLeadAssignedToCaller(req, lead)) {
     Errors.forbidden(res, "You can only modify leads assigned to you");
     return true;
   }
   return false;
+}
+
+/**
+ * Is this lead assigned to the calling team member?
+ *
+ * `leads.assigned_to` stores a `team_members.id` (an integer — the list filter,
+ * importer and auto-assigner all write and read it that way), so the caller's
+ * identity here is `permissionContext.teamMemberId`, NOT `req.user.id` (a
+ * users.id uuid). Comparing against the user id meant the two could never be
+ * equal: an assigned-only caller could write none of their own leads.
+ *
+ * A missing team-member id is "not theirs" — the caller's identity could not be
+ * established, and the safe answer to that is no.
+ */
+function isLeadAssignedToCaller(
+  req: AuthenticatedRequest,
+  lead: { assignedTo?: unknown } | null | undefined,
+): boolean {
+  const memberId = req.permissionContext?.teamMemberId;
+  const assignedTo = lead?.assignedTo;
+  if (assignedTo == null || memberId == null) return false;
+  return Number(assignedTo) === memberId;
 }
 
 /**

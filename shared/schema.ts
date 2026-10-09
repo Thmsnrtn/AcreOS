@@ -459,10 +459,15 @@ export const teamMembers = pgTable("team_members", {
   displayName: text("display_name"),
   role: text("role").notNull().default("member"), // owner | admin | member | viewer | va
   permissions: jsonb("permissions").$type<string[]>(),
-  // Per-user assigned-leads-only flag. Honored when role === 'va' (or when
-  // an admin opts a member into restricted visibility). When true, every
-  // leads query MUST add `WHERE assignedTo = teamMember.id`.
-  viewOnlyAssignedLeads: boolean("view_only_assigned_leads").notNull().default(false),
+  // Per-member OVERRIDE of the role's assigned-leads-only default. NULL means
+  // "no override — use the role's default" (`va` → true), which is what every
+  // new row gets; an owner/admin sets true/false deliberately. The effective
+  // value is computed in ONE place, `resolveViewOnlyAssignedLeads` in
+  // server/utils/permissions.ts — never read this column as the answer. When
+  // effective, every lead read/write is limited to `assignedTo = teamMember.id`.
+  // Nullable since migration 0269 (previously NOT NULL DEFAULT false, which
+  // took precedence over the role default).
+  viewOnlyAssignedLeads: boolean("view_only_assigned_leads"),
   isActive: boolean("is_active").notNull().default(true),
   invitedAt: timestamp("invited_at").defaultNow(),
   joinedAt: timestamp("joined_at"),

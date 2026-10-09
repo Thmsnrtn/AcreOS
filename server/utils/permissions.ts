@@ -140,9 +140,9 @@ const ROLE_PERMISSIONS: Record<Role, RolePermissions> = {
     viewOnlyAssignedLeads: false,
   },
   // Reyna §1: `va` role is operationally a member with the assigned-leads-only
-  // flag defaulted on. The flag can be toggled per-user from the Settings UI
-  // (e.g. trusted VA gets the full pool); the canonical source of truth is
-  // team_members.view_only_assigned_leads.
+  // flag defaulted on. The flag can be overridden per-user from the Settings UI
+  // (e.g. trusted VA gets the full pool) via team_members.view_only_assigned_leads
+  // (NULL = this default); the effective value is resolveViewOnlyAssignedLeads.
   va: {
     canAccessSettings: false,
     canManageBilling: false,
@@ -253,6 +253,42 @@ export function getRoleColor(role: string): string {
   }
 }
 
+/**
+ * The effective "assigned leads only" flag for a team member — the ONE place
+ * it is computed.
+ *
+ * `team_members.view_only_assigned_leads` is a per-member OVERRIDE, and NULL
+ * means "no override: use the role's default" (migration 0269; previously the
+ * column was `NOT NULL DEFAULT false`, so a stored `false` took precedence over
+ * the `va` role's default of `true`).
+ *
+ *   - an explicit boolean wins (an owner/admin chose it on purpose);
+ *   - NULL / absent falls back to the role table (`va` → true; `owner`,
+ *     `admin`, `member` → false);
+ *   - an `owner` is never restricted. The toggle route already refuses to
+ *     restrict an owner; holding it here as well means a member who carried an
+ *     override when promoted to owner cannot end up an owner who sees nothing.
+ */
+export function resolveViewOnlyAssignedLeads(
+  role: string,
+  stored: boolean | null | undefined,
+): boolean {
+  const r = normalizeRole(role);
+  if (r === "owner") return false;
+  if (typeof stored === "boolean") return stored;
+  return ROLE_PERMISSIONS[r].viewOnlyAssignedLeads;
+}
+
+/** The permissions a team member actually has: role table + the per-member override. */
+export function effectivePermissions(
+  teamMember: { role: string; viewOnlyAssignedLeads?: boolean | null },
+): RolePermissions {
+  return {
+    ...getPermissionsForRole(teamMember.role),
+    viewOnlyAssignedLeads: resolveViewOnlyAssignedLeads(teamMember.role, teamMember.viewOnlyAssignedLeads),
+  };
+}
+
 export interface UserPermissionContext {
   userId: string;
   organizationId: number;
@@ -286,18 +322,11 @@ export async function getUserPermissionContext(
 
   const role = normalizeRole(teamMember.role);
 
-  // Reyna §1: per-user `viewOnlyAssignedLeads` override. Default permissions
-  // come from the role table; if the team_members row has the flag set
-  // explicitly (true OR false), that wins. This is what lets an admin trust
-  // a specific VA with the full lead pool, or restrict a regular member
-  // who works narrowly with one campaign.
-  const basePermissions = getPermissionsForRole(role);
-  const perUserFlag = (teamMember as any).viewOnlyAssignedLeads;
-  const permissions: RolePermissions = {
-    ...basePermissions,
-    viewOnlyAssignedLeads:
-      typeof perUserFlag === "boolean" ? perUserFlag : basePermissions.viewOnlyAssignedLeads,
-  };
+  // ONE rule for the effective assigned-only flag — see
+  // resolveViewOnlyAssignedLeads. /api/me/permissions serialises this same
+  // context, so what the client is told and what the server enforces cannot
+  // be computed two ways.
+  const permissions = effectivePermissions(teamMember);
 
   return {
     userId,

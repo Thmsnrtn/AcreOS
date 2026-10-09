@@ -97,6 +97,7 @@ vi.mock("../../server/storage", () => ({ storage: { getDefaultMailSenderIdentity
 vi.mock("../../server/utils/permissions", () => ({
   getPermissionsForRole: () => ({ viewOnlyAssignedLeads: false, canImportData: true, canExportData: true, canManageTeam: true, canManageBilling: true, canAssignLeads: true, canEditLeads: true }),
   getRoleLabel: (r: string) => r,
+  resolveViewOnlyAssignedLeads: (_role: string, stored: boolean | null | undefined) => stored === true,
 }));
 
 import * as reads from "../../server/services/paxAccountReads";

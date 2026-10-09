@@ -84,8 +84,10 @@ const ROOT = path.resolve(__dirname, "../..");
  * update/deleteChecklistTemplate — those 23 call sites now pass it, so they
  * left the population rather than the allowlist (supportBrain.ts's exemption
  * went with them).
+ * 84 -> 82 (VA role path, merged 2026-10-09): both team-member update routes
+ * pass the org to updateTeamMember.
  */
-const OMISSION_BASELINE = 84;
+const OMISSION_BASELINE = 82;
 
 /**
  * Call sites whose enclosing function never names an organization, so nothing

@@ -1399,8 +1399,8 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                         <SelectItem value="all">All assignees</SelectItem>
                         <SelectItem value="unassigned">Unassigned</SelectItem>
                         {teamMembers.map((member) => (
-                          <SelectItem key={member.userId} value={member.userId}>
-                            {member.displayName || member.email || member.userId}
+                          <SelectItem key={member.id} value={String(member.id)}>
+                            {member.displayName || member.email || `Member #${member.id}`}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -1504,8 +1504,8 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
                               <SelectItem value="all">All assignees</SelectItem>
                               <SelectItem value="unassigned">Unassigned</SelectItem>
                               {teamMembers.map((member) => (
-                                <SelectItem key={member.userId} value={member.userId}>
-                                  {member.displayName || member.email || member.userId}
+                                <SelectItem key={member.id} value={String(member.id)}>
+                                  {member.displayName || member.email || `Member #${member.id}`}
                                 </SelectItem>
                               ))}
                             </SelectContent>

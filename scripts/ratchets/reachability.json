@@ -57,6 +57,21 @@
     },
     {
       "kind": "export",
+      "id": "server/utils/permissions.ts::getPermissionsForRole",
+      "reason": "TEST-INTROSPECTION SEAM, deletion-revealed. The role table lookup is consumed inside its own module by getUserPermissionContext and effectivePermissions. Its only other production mention was an unused import in server/routes-organization.ts, removed on review (CodeQL unused-import), which revealed it as internal-only. tests/unit/permissions.test.ts pins the least-privilege shape of every role through it. REVOCATION: if a production module imports and calls it, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/middleware/assignedLeadScopeGate.ts::parseLeadIdSegment",
+      "reason": "TEST-INTROSPECTION SEAM. The gate's id parser is consumed inside its own module by assignedLeadScopeGate, which getOrCreateOrg chains for every request, so it has no external production consumer by construction. It is exported so tests/unit/vaRolePath.test.ts can prove, over every lead-id route registration, that the gate reads each id the way the handlers' parsers do (including non-canonical spellings). REVOCATION: if a production module imports it directly, remove this entry."
+    },
+    {
+      "kind": "export",
+      "id": "server/utils/permissions.ts::effectivePermissions",
+      "reason": "TEST-INTROSPECTION SEAM. The role-default resolver is consumed inside its own module by getUserPermissionContext, which every permission check reads, so it has no external production consumer by construction. It is exported so tests/unit/vaRolePath.test.ts can pin the role default and the explicit override per role directly. REVOCATION: if a production module imports it directly, remove this entry."
+    },
+    {
+      "kind": "export",
       "id": "server/services/investorVerification.ts::InvestorVerificationService",
       "reason": "Exported for the injectable-storage seam the module header describes; production consumes the singleton declared four lines below it (`export const investorVerificationService = new InvestorVerificationService()`), so the class has no EXTERNAL production consumer by construction and never can. It was not on this list before unit 53 for a reason worth recording: its only \"consumer\" was a STALE COMMENT — `// TODO(tsc): InvestorVerificationService exposes no listAllVerifications()` in routes-investor-verification.ts. This linter tokenises identifiers across production files and never distinguishes code from prose, so a comment naming a symbol makes it look reached. (The same mechanism, from the other side, is why scripts/check-org-scoped-fetch.mjs is now in SYMBOL_REGISTERS: its tenancy debt register named a module orphan and resurrected it.) Unit 53 deleted that TODO (it was false: the DB-backing wave HAD added listVerifications(orgId), which is now wired), and the deletion revealed the export. Deletion-revealed, not built-unwired — the same category the table-count notes below already carve out. Verified by re-adding the comment: the gate goes back to PASS at 654 with no code change."
     },

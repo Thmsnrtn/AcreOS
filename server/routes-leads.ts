@@ -30,7 +30,7 @@ import {
   assertAssignedLeadWritable,
   refuseBulkLeadWrite,
 } from "./utils/assignedLeadGate";
-import { assertUserIsOrgMember } from "./utils/orgScope";
+import { isAssignableLeadMember } from "./utils/orgScope";
 import { createLeadContract } from "@shared/contracts";
 // Wave B "Wire the engine" — lead.* workflow events. Fire-and-forget: these
 // helpers never throw, so an automation failure can never fail a lead write.
@@ -293,9 +293,15 @@ export function registerLeadRoutes(app: Express): void {
   });
 
   // Focus List: Top 10 leads not contacted in last 24 hours
-  api.get("/api/leads/focus", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/leads/focus", isAuthenticated, getOrCreateOrg, attachPermissionContext(), async (req, res) => {
     const org = req.organization;
-    const allLeads = await storage.getLeads(org.id);
+    const context = req.permissionContext as UserPermissionContext | undefined;
+    // The focus list is a lead list like GET /api/leads: an assigned-only
+    // caller's focus is drawn from their own leads only.
+    const allLeads = await storage.getLeads(
+      org.id,
+      context?.permissions.viewOnlyAssignedLeads ? { assignedTo: context.teamMemberId } : undefined,
+    );
     const twentyFourHoursAgo = new Date(clock.nowMs() - 24 * 60 * 60 * 1000);
     
     // Score all leads and filter those not contacted in 24h
@@ -450,12 +456,10 @@ export function registerLeadRoutes(app: Express): void {
         state?: string | null;
       };
 
-      // Lens 48 — assignedTo from body must point at an active member
-      // of the requesting org. Otherwise an attacker can create a lead
-      // "assigned" to a user in another tenant.
-      if ((input as any).assignedTo != null) {
-        const ok = await assertUserIsOrgMember(String((input as any).assignedTo), org.id);
-        if (!ok) return Errors.badRequest(res, "assignedTo must be a member of this organization");
+      // Lens 48 — assignedTo must name an active TEAM MEMBER of this org
+      // (`leads.assigned_to` stores team_members.id — see isAssignableLeadMember).
+      if (!(await isAssignableLeadMember(input.assignedTo, org.id))) {
+        return Errors.badRequest(res, "assignedTo must be the id of an active team member of this organization");
       }
 
       // A caller who NAMED an assignee is making an assignment decision; one
@@ -711,14 +715,10 @@ export function registerLeadRoutes(app: Express): void {
         }
       }
 
-      // Lens 48 — `assignedTo` from body must point at a member of the
-      // requesting org. Without this check a customer admin could assign
-      // a lead to a user in a different tenant (creating dangling
-      // notifications + reporting confusion).
-      if ((validated as any).assignedTo != null) {
-        const targetUserId = String((validated as any).assignedTo);
-        const ok = await assertUserIsOrgMember(targetUserId, org.id);
-        if (!ok) return Errors.badRequest(res, "assignedTo must be a member of this organization");
+      // Lens 48 — `assignedTo` must name an active TEAM MEMBER of this org
+      // (`leads.assigned_to` stores team_members.id — see isAssignableLeadMember).
+      if (!(await isAssignableLeadMember(validated.assignedTo, org.id))) {
+        return Errors.badRequest(res, "assignedTo must be the id of an active team member of this organization");
       }
 
       const lead = await storage.updateLead(leadId, validated, org.id);
@@ -941,6 +941,14 @@ export function registerLeadRoutes(app: Express): void {
       // evidence. Checked before any write, so a refusal changes nothing.
       const consentRefusal = bulkConsentRefusal(updates as Record<string, unknown>);
       if (consentRefusal) return Errors.badRequest(res, consentRefusal);
+
+      // A bulk assignment is the same decision as a single one: it needs
+      // `canAssignLeads`, and the assignee must be a team member of this org —
+      // the same two checks as the single-lead PUT.
+      if (refuseUnpermittedAssignment(req as AuthenticatedRequest, res, updates, "Bulk lead assignment")) return;
+      if (!(await isAssignableLeadMember(updates.assignedTo, org.id))) {
+        return Errors.badRequest(res, "assignedTo must be the id of an active team member of this organization");
+      }
 
       // Wave B — snapshot the BEFORE rows once. They serve both the W3.4
       // transition gate below and the per-lead workflow-event diff after the

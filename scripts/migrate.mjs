@@ -2986,6 +2986,12 @@ $mig0262$`,
 
   // team_members: VA flag (0054 part 2)
   `ALTER TABLE team_members ADD COLUMN IF NOT EXISTS view_only_assigned_leads BOOLEAN NOT NULL DEFAULT FALSE`,
+  // 0269 — the flag is a per-member OVERRIDE; NULL = the role's default (va →
+  // assigned-only). Must follow the ADD above so a fresh build ends nullable.
+  // Column definition only — existing rows are not rewritten by a deploy
+  // (scripts/data/reset-va-view-only-default.ts is the founder-run reset).
+  `ALTER TABLE "team_members" ALTER COLUMN "view_only_assigned_leads" DROP NOT NULL`,
+  `ALTER TABLE "team_members" ALTER COLUMN "view_only_assigned_leads" DROP DEFAULT`,
 
   // signatures: tamper-evidence (0033)
   `ALTER TABLE signatures ADD COLUMN IF NOT EXISTS document_content_hash text`,

@@ -19,6 +19,7 @@
 import { describe, it, expect, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/stripComments";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -188,27 +189,33 @@ describe("it cannot fail open", () => {
 });
 
 describe("it runs at the one chokepoint", () => {
-  const src = fs.readFileSync(
-    path.join(ROOT, "server/middleware/getOrCreateOrg.ts"),
-    "utf8",
+  // Comment-stripped: the file's own comments name these gates, and a comment
+  // naming a call must not satisfy an assertion about the call.
+  const src = stripComments(
+    fs.readFileSync(path.join(ROOT, "server/middleware/getOrCreateOrg.ts"), "utf8"),
   );
 
   it("is chained from getOrCreateOrg, alongside the other mutation gates", () => {
     // A role-level rule belongs at the one place that resolves the org, not on
     // sixty handlers where the sixty-first would be open by default.
-    expect(src).toContain("viewerReadOnlyGate(req, res, next)");
     expect(src).toContain("subscriptionPauseGate(req, res");
     expect(src).toContain("dunningAccessGate(req, res");
+    // Its continuation IS the assigned-lead scope gate (chained fourth): the
+    // scope gate runs only when this one passes. Calling the two side by side
+    // would run the scope gate after a refusal and call next() twice.
+    expect(src).toMatch(
+      /viewerReadOnlyGate\(req,\s*res,\s*\(\)\s*=>\s*\{\s*void\s+assignedLeadScopeGate\(req,\s*res,\s*next\);?\s*\}\s*\)/,
+    );
   });
 
   it("runs LAST of the three, so a paused org is refused for the pause reason", () => {
     // Ordering changes which message a caller sees, and the pause/dunning
     // reasons are more actionable than "your access is read-only".
     expect(src.indexOf("subscriptionPauseGate(req, res")).toBeLessThan(
-      src.indexOf("viewerReadOnlyGate(req, res, next)"),
+      src.indexOf("viewerReadOnlyGate(req, res, "),
     );
     expect(src.indexOf("dunningAccessGate(req, res")).toBeLessThan(
-      src.indexOf("viewerReadOnlyGate(req, res, next)"),
+      src.indexOf("viewerReadOnlyGate(req, res, "),
     );
   });
 

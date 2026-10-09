@@ -80,17 +80,18 @@ export function LeadDetailContent({
 
   const leadName = `${lead.firstName} ${lead.lastName}`.trim();
 
+  // `lead.assignedTo` is a TEAM MEMBER id (team_members.id), not a user id —
+  // the server validates and filters on exactly that.
   const currentAssigneeName = (() => {
     if (!lead.assignedTo) return "Unassigned";
-    const userIdStr = String(lead.assignedTo);
-    const member = teamMembers?.find((m) => m.userId === userIdStr);
-    return member?.displayName || member?.email || userIdStr;
+    const member = teamMembers?.find((m) => m.id === Number(lead.assignedTo));
+    return member?.displayName || member?.email || `Member #${lead.assignedTo}`;
   })();
 
-  const handleAssignmentChange = (userId: string) => {
+  const handleAssignmentChange = (memberId: string) => {
     setIsAssigning(true);
     updateLead(
-      { id: lead.id, assignedTo: userId === "unassigned" ? null : userId } as any,
+      { id: lead.id, assignedTo: memberId === "unassigned" ? null : Number(memberId) } as any,
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
@@ -108,11 +109,10 @@ export function LeadDetailContent({
     );
   };
 
-  const getAssigneeName = (userId: string | number | null | undefined) => {
-    if (!userId) return "Unassigned";
-    const userIdStr = String(userId);
-    const member = teamMembers?.find((m) => m.userId === userIdStr);
-    return member?.displayName || member?.email || userIdStr;
+  const getAssigneeName = (memberId: string | number | null | undefined) => {
+    if (!memberId) return "Unassigned";
+    const member = teamMembers?.find((m) => m.id === Number(memberId));
+    return member?.displayName || member?.email || `Member #${memberId}`;
   };
 
   return (
@@ -331,7 +331,7 @@ export function LeadDetailContent({
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-4">
                     <span className="text-sm text-muted-foreground">Assigned to</span>
-                    {userPermissions?.permissions.canManageTeam ? (
+                    {userPermissions?.permissions.canAssignLeads ? (
                       <Select
                         value={lead.assignedTo ? String(lead.assignedTo) : "unassigned"}
                         onValueChange={handleAssignmentChange}
@@ -347,8 +347,8 @@ export function LeadDetailContent({
                         <SelectContent>
                           <SelectItem value="unassigned">Unassigned</SelectItem>
                           {teamMembers?.map((member) => (
-                            <SelectItem key={member.userId} value={member.userId}>
-                              {member.displayName || member.email || member.userId}
+                            <SelectItem key={member.id} value={String(member.id)}>
+                              {member.displayName || member.email || `Member #${member.id}`}
                             </SelectItem>
                           ))}
                         </SelectContent>

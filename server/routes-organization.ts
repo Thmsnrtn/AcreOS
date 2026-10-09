@@ -14,7 +14,7 @@ import { onboardingService, type BusinessType } from "./services/onboarding";
 import { BUSINESS_TYPES } from "@shared/models/persona-mapping";
 import { activityLogger } from "./services/activityLogger";
 import { getAllUsageLimits, TIER_LIMITS, type SubscriptionTier } from "./services/usageLimits";
-import { getUserPermissionContext, getPermissionsForRole, ROLES, type UserPermissionContext } from "./utils/permissions";
+import { getUserPermissionContext, resolveViewOnlyAssignedLeads, ROLES, type UserPermissionContext } from "./utils/permissions";
 import {
   getCommissionConfig,
   saveCommissionConfig,
@@ -121,6 +121,25 @@ async function viewerRoleFor(req: AuthenticatedRequest): Promise<ViewerRole> {
     return "viewer";
   }
   return req.user?.id && org.ownerId === req.user.id ? "owner" : "viewer";
+}
+
+/**
+ * A team-member row as the client should read it. `viewOnlyAssignedLeads` is
+ * the EFFECTIVE value (resolveViewOnlyAssignedLeads — the same function the
+ * server enforces with), because the stored column is an override that is NULL
+ * for "use the role default"; rendering NULL as "off" would show a VA as
+ * unrestricted while the server restricts them. The stored override travels
+ * alongside as `viewOnlyAssignedLeadsOverride` for the Settings control.
+ */
+function withEffectiveViewOnly<T extends { role: string; viewOnlyAssignedLeads: boolean | null } | undefined>(
+  member: T,
+): T {
+  if (!member) return member;
+  return {
+    ...member,
+    viewOnlyAssignedLeads: resolveViewOnlyAssignedLeads(member.role, member.viewOnlyAssignedLeads),
+    viewOnlyAssignedLeadsOverride: member.viewOnlyAssignedLeads,
+  };
 }
 
 export function registerOrganizationRoutes(app: Express): void {
@@ -1192,7 +1211,18 @@ export function registerOrganizationRoutes(app: Express): void {
       const org = getOrganization(authed);
       const viewer = { userId: getUserId(authed), role: await viewerRoleFor(authed) };
       const members = await storage.getTeamMembers(org.id);
-      res.json(members.map((member) => toTeamMemberView(member, viewer)));
+      // The per-caller projection, plus the EFFECTIVE assigned-only flag and
+      // its stored override (withEffectiveViewOnly) for the Settings control.
+      res.json(
+        members.map((member) => {
+          const effective = withEffectiveViewOnly(member);
+          return {
+            ...toTeamMemberView(member, viewer),
+            viewOnlyAssignedLeads: effective.viewOnlyAssignedLeads,
+            viewOnlyAssignedLeadsOverride: member.viewOnlyAssignedLeads,
+          };
+        }),
+      );
     } catch (err) {
       Errors.internal(res, err);
     }
@@ -1257,16 +1287,19 @@ export function registerOrganizationRoutes(app: Express): void {
       return Errors.badRequest(res, "Cannot remove the only owner. Transfer ownership first.");
     }
 
-    // When assigning the `va` role, default the assigned-leads-only flag on.
-    // When moving away from `va`, leave the per-user flag alone — admins may
-    // have explicitly toggled it for a member and we don't want to silently
-    // clear that intent.
-    const updates: Partial<InsertTeamMember> = { role } as any;
-    if (role === "va" && !((targetMember as any).viewOnlyAssignedLeads)) {
-      (updates as any).viewOnlyAssignedLeads = true;
+    // When assigning the `va` role, a stored `false` is cleared to NULL so the
+    // va default (assigned leads only) applies — the same effective result the
+    // old "force true" gave, without turning the role default into a sticky
+    // per-member override. When moving away from `va`, leave the per-member
+    // value alone — admins may have explicitly set it and we don't want to
+    // silently clear that intent. The effective value is always
+    // resolveViewOnlyAssignedLeads (server/utils/permissions.ts).
+    const updates: Partial<InsertTeamMember> = { role };
+    if (role === "va" && targetMember.viewOnlyAssignedLeads === false) {
+      updates.viewOnlyAssignedLeads = null;
     }
 
-    const updated = await storage.updateTeamMember(memberId, updates);
+    const updated = await storage.updateTeamMember(memberId, updates, org.id);
 
     try {
       const user = req.user;
@@ -1310,15 +1343,16 @@ export function registerOrganizationRoutes(app: Express): void {
       metadata: { fromRole: targetMember.role, toRole: role },
     });
 
-    res.json(updated);
+    res.json(withEffectiveViewOnly(updated));
   });
 
-  // Reyna §1: per-user assigned-leads-only toggle. Admin/owner can flip the
-  // flag for any non-owner team member. The default is set automatically
-  // when assigning the `va` role above; this endpoint exists for the
-  // Settings → Members "VA can see all leads" override.
+  // Reyna §1: per-user assigned-leads-only override. Admin/owner can set it
+  // for any non-owner team member: true / false is a deliberate override,
+  // null clears it back to the role's default (va → assigned leads only).
+  // This endpoint exists for the Settings → Members "VA can see all leads"
+  // override.
   const viewOnlyToggleSchema = z.object({
-    viewOnlyAssignedLeads: z.boolean(),
+    viewOnlyAssignedLeads: z.boolean().nullable(),
   });
 
   api.patch(
@@ -1349,9 +1383,11 @@ export function registerOrganizationRoutes(app: Express): void {
         );
       }
 
-      const updated = await storage.updateTeamMember(memberId, {
-        viewOnlyAssignedLeads: parsed.data.viewOnlyAssignedLeads,
-      } as Partial<InsertTeamMember>);
+      const updated = await storage.updateTeamMember(
+        memberId,
+        { viewOnlyAssignedLeads: parsed.data.viewOnlyAssignedLeads },
+        org.id,
+      );
 
       try {
         const user = req.user;
@@ -1362,10 +1398,7 @@ export function registerOrganizationRoutes(app: Express): void {
           entityType: "team_member",
           entityId: memberId,
           changes: {
-            before: {
-              viewOnlyAssignedLeads:
-                (targetMember as any).viewOnlyAssignedLeads ?? false,
-            },
+            before: { viewOnlyAssignedLeads: targetMember.viewOnlyAssignedLeads },
             after: { viewOnlyAssignedLeads: parsed.data.viewOnlyAssignedLeads },
             fields: ["viewOnlyAssignedLeads"],
           },
@@ -1377,7 +1410,7 @@ export function registerOrganizationRoutes(app: Express): void {
         /* non-fatal */
       }
 
-      res.json(updated);
+      res.json(withEffectiveViewOnly(updated));
     },
   );
 
@@ -2078,6 +2111,11 @@ export function registerOrganizationRoutes(app: Express): void {
           email: userEmail || null,
           displayName: user?.firstName || user?.email || null,
           role: invite.role,
+          // No per-member override: the invited role's default applies
+          // (resolveViewOnlyAssignedLeads — a VA reads only assigned leads).
+          // Written explicitly so the row never depends on a column default;
+          // the old NOT NULL DEFAULT false silently overrode the va default.
+          viewOnlyAssignedLeads: null,
           isActive: true,
           joinedAt: clock.now(),
         });
