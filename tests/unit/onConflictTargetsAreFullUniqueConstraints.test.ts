@@ -103,7 +103,10 @@ const TARGETED_SITE_FLOOR: Record<ConflictSite["kind"], number> = {
   onConflictDoUpdate: 72,
   "raw-sql": 11,
 };
-const UNTARGETED_DO_NOTHING_FLOOR = 32;
+// 32 -> 30 on 2026-10-09: the two monthly-allowance grants in
+// server/services/credits.ts (each an untargeted onConflictDoNothing on
+// credit_transactions) were DELETED — genuinely removed sites, not a parser miss.
+const UNTARGETED_DO_NOTHING_FLOOR = 30;
 
 /** The writers this gate exists for — named, so losing one is visible. */
 const PAYMENT_WRITERS = [

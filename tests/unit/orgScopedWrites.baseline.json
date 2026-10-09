@@ -1,5 +1,5 @@
 {
-  "server/ai/executive.ts::update::aiConversations": 2,
+  "server/ai/executive.ts::update::aiConversations": 1,
   "server/ai/paxSupportResolver.ts::update::supportTickets": 2,
   "server/ai/supportAgent.ts::update::paxMemory": 1,
   "server/ai/supportAgent.ts::update::supportTickets": 2,
