@@ -18,6 +18,7 @@ import { paxChatGuard } from "./middleware/expensiveEndpointGuard";
 import { requirePaxDisclosure } from "./middleware/requirePaxDisclosure";
 import { promptRedactionOf } from "./middleware/promptInjection";
 import { Errors } from "./utils/errors";
+import { isAiProviderConfigured } from "./services/aiRouter";
 import { logger } from "./utils/logger";
 import { createUploadMiddleware } from "./middleware/fileUploadSecurity";
 import { getOrganizationId, type AuthenticatedRequest } from "./types/request";
@@ -56,6 +57,14 @@ async function paxRefusalFor(
       message: "I can't help with that request as asked. Tell me what you're trying to get done and I'll suggest a way I can help.",
     };
   }
+}
+
+/** 503 in the standard shape: no platform AI provider is configured. */
+function refuseNoAiProvider(res: Response): void {
+  Errors.serviceUnavailable(
+    res,
+    "Pax isn't available: no AI provider is configured on this deployment. Nothing was sent or charged.",
+  );
 }
 
 export function registerAIRoutes(app: Express): void {
@@ -285,6 +294,11 @@ export function registerAIRoutes(app: Express): void {
       }
       const { message, conversationId, agentRole, propertyId } = parsed.data;
 
+      // No AI provider configured → a clear 503, BEFORE any side effect (the
+      // usage counter, the stored user message). It was a 500: the provider
+      // selector's typed NoAIProviderError was re-wrapped as a plain Error.
+      if (!isAiProviderConfigured()) return refuseNoAiProvider(res);
+
       step = "usage_limit";
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
@@ -394,12 +408,13 @@ export function registerAIRoutes(app: Express): void {
     } catch (error: any) {
       if (error instanceof ProviderCreditError) {
         logger.error(`[AI Chat] provider out of credits at step=${step}`, error);
-        return res.status(402).json({
-          error: "provider_credits_insufficient",
-          message:
-            "The AI provider is temporarily out of credits. We've been notified — please try again shortly.",
-          details: { affordableTokens: error.affordableTokens },
-        });
+        // AcreOS's PROVIDER account is out of credits — a dependency outage,
+        // not the customer's balance. It was a 402, which the client renders
+        // as "Insufficient credits." to a customer who has plenty.
+        return Errors.serviceUnavailable(
+          res,
+          "The AI provider is temporarily out of credits. We've been notified — please try again shortly.",
+        );
       }
       if (error instanceof PaxAiPausedError) {
         // Daily AI cost ceiling exhausted (2026-07 cost audit) — friendly
@@ -459,6 +474,11 @@ export function registerAIRoutes(app: Express): void {
         return Errors.validationFailed(res, parsed.error.issues);
       }
       const { message, conversationId, agentRole, files, propertyId: streamPropertyId, mentionedEntities, activeProjectId } = parsed.data;
+
+      // Same pre-flight as /api/ai/chat — and here it is the only point a
+      // status code can still say so: once the SSE headers go out, every
+      // failure is a 200 with an error event.
+      if (!isAiProviderConfigured()) return refuseNoAiProvider(res);
 
       // Normalize request shapes into the ChatOptions contract: FileAttachment
       // carries a numeric `size`, and mentionedEntities require numeric id +

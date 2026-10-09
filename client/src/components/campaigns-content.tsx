@@ -1306,7 +1306,7 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
   const { toast } = useToast();
   const [selectedTemplate, setSelectedTemplate] = useState<string>("");
   const { data: healthData } = useQuery<{ services: HealthService[] }>({
-    queryKey: ['/api/health/cached'],
+    queryKey: ['/api/system/health'],
   });
   // Cycle 5 r4 Ty: show the live lead count next to the recipient
   // selector so the user knows what list they're about to mail to.

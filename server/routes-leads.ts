@@ -8,6 +8,7 @@ import { insertLeadSchema, leads, properties, deals } from "@shared/schema";
 import { LEAD_STATUSES, isLeadStatus, validateLeadTransition } from "@shared/lifecycle/pipeline-status";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { idempotencyMiddleware } from "./middleware/idempotency";
 import { checkUsageLimit } from "./services/usageLimits";
 import { usageLimitGate, refusePlanLimit } from "./middleware/usageLimitGate";
 import { requireScope } from "./middleware/roleScope";
@@ -425,7 +426,13 @@ export function registerLeadRoutes(app: Express): void {
   // zod validation (positive ints, primaryId !== duplicateId) was ported into
   // the live handler rather than lost. Do not re-add it here.
 
-  api.post("/api/leads", isAuthenticated, getOrCreateOrg, attachPermissionContext(), requireScope("deal_write"), usageLimitGate("leads"), async (req, res) => {
+  // Idempotency-Key honoured (2026-10-07): a client that retries a create
+  // after a timeout gets the first response replayed instead of a second lead.
+  // After getOrCreateOrg (the key is scoped by org) and after the scope check
+  // (a replay is only served to a caller allowed to create); before the usage
+  // gate, so a retry of a create that succeeded is replayed rather than
+  // refused for the very lead it created.
+  api.post("/api/leads", isAuthenticated, getOrCreateOrg, attachPermissionContext(), requireScope("deal_write"), idempotencyMiddleware, usageLimitGate("leads"), async (req, res) => {
     try {
       const org = req.organization;
       
@@ -1503,8 +1510,8 @@ export function registerLeadRoutes(app: Express): void {
             res,
             `This request has ${bodyRows.length.toLocaleString()} rows; one import request takes at most ${CSV_IMPORT_MAX_ROWS_PER_REQUEST} rows. ` +
               `The Smart CSV import sheet sends larger files in ${CSV_IMPORT_MAX_ROWS_PER_REQUEST}-row batches automatically; ` +
-              `for very large lists, the Data import page (/api/import/leads) runs the file as a background job.`,
-            { maxRowsPerRequest: CSV_IMPORT_MAX_ROWS_PER_REQUEST, rows: bodyRows.length },
+              `for very large lists, the Data import page (/api/import/leads) runs the file as a background job. Nothing was imported.`,
+            { maxRowsPerRequest: CSV_IMPORT_MAX_ROWS_PER_REQUEST, maxRows: CSV_IMPORT_MAX_ROWS_PER_REQUEST, rows: bodyRows.length },
           );
         }
         const parsed = csvImportBodySchema.safeParse(req.body ?? {});

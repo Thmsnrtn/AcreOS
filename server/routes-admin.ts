@@ -2486,6 +2486,8 @@ export function registerAdminRoutes(app: Express): void {
 
       res.json(result);
     } catch (err: any) {
+      const { respondToEnrichmentRefusal } = await import("./utils/enrichmentRefusal");
+      if (respondToEnrichmentRefusal(res, err)) return;
       logger.error("Property enrichment error", { error: err.message, propertyId: req.body?.propertyId });
       Errors.internal(res, err);
     }

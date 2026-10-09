@@ -185,6 +185,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-founder-studio-dials.ts", mountPath: null, kind: "register", export: "registerFounderStudioDialRoutes" },
   { file: "routes-founder-vendor-status.ts", mountPath: "/api/founder/vendor-status", kind: "router", export: "default" },
   { file: "routes-gdpr.ts", mountPath: "/api/privacy", kind: "router", export: "default" },
+  { file: "routes-health.ts", mountPath: null, kind: "register", export: "registerPublicHealthRoutes" },
   { file: "routes-import-export.ts", mountPath: null, kind: "register", export: "registerImportExportRoutes" },
   { file: "routes-inbound-email.ts", mountPath: null, kind: "register", export: "registerInboundEmailRoutes" },
   { file: "routes-incidents.ts", mountPath: null, kind: "register", export: "registerIncidentRoutes" },

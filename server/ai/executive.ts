@@ -21,6 +21,7 @@ import {
   classifyFromMessages,
   TaskComplexity,
   AIProvider,
+  NoAIProviderError,
 } from "../services/aiRouter";
 import { buildConnectorContextBlock } from "../services/connectors/registry";
 import mammoth from "mammoth";
@@ -514,6 +515,10 @@ function getChatProviderAndModel(complexity: TaskComplexity): { client: OpenAI; 
     return result;
   } catch (error: any) {
     logger.error('[AI Chat] Failed to get AI provider', error);
+    // Keep the typed refusal: Errors.internal maps NoAIProviderError to a 503.
+    // Re-wrapping it in a plain Error is what made "no provider configured"
+    // answer 500.
+    if (error instanceof NoAIProviderError) throw error;
     throw new Error("AI service not available. Please check configuration.");
   }
 }
@@ -1614,6 +1619,7 @@ export async function processChat(
       || result.model;
   } catch (error: any) {
     logger.error('[AI Chat] Failed to get AI provider', error);
+    if (error instanceof NoAIProviderError) throw error;
     throw new Error("AI service temporarily unavailable. Please try again.");
   }
 

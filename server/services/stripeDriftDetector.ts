@@ -193,9 +193,12 @@ export async function runStripeDriftJob(): Promise<{ findings: DriftFinding[]; r
   logger.warn(`[stripe-drift] ${findings.length} findings`);
 
   try {
-    const { getFounderPrimaryOrgId } = await import("./founder");
-    const orgId = await getFounderPrimaryOrgId();
-    await db.insert(agentEvents).values({
+    // No founder org → no agent_events row (it is org-scoped, and guessing an
+    // org put it in a customer's workspace); the founder inbox item below is
+    // not org-scoped and still lands.
+    const { resolveFounderPrimaryOrgId } = await import("./founder");
+    const orgId = await resolveFounderPrimaryOrgId();
+    if (orgId !== null) await db.insert(agentEvents).values({
       organizationId: orgId,
       eventType: "stripe_drift_detected",
       eventSource: "stripe_drift_detector",

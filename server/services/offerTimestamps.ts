@@ -15,6 +15,7 @@
  */
 import { sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import { clock } from "../utils/clock";
 
 const OFFER_RESPONSE_STATUSES: ReadonlySet<string> = new Set([
   "accepted",
@@ -46,7 +47,7 @@ function strip<T extends Stampable>(input: T, cols: StampColumns) {
 }
 
 /** For an INSERT: a row created already in a stamped status gets the server's clock. */
-export function stampOfferInsert<T extends Stampable>(input: T, cols: StampColumns, now: Date = new Date()) {
+export function stampOfferInsert<T extends Stampable>(input: T, cols: StampColumns, now: Date = clock.now()) {
   const out: Record<string, unknown> = strip(input, cols);
   for (const k of stampKinds(input.status, cols)) out[k] = now;
   return out as Omit<T, "sentAt" | "respondedAt" | "deliveredAt"> & Partial<Record<"sentAt" | "respondedAt" | "deliveredAt", Date>>;

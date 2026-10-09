@@ -102,14 +102,37 @@ export function useUsageLimits() {
   });
 }
 
+/**
+ * A failed plan-catalog read, carrying the HTTP status and the server's own
+ * message. It used to throw "Failed to fetch products" — words QueryErrorState
+ * classifies as a NETWORK failure ("Offline"), so a deployment with no Stripe
+ * configured (503 SERVICE_UNAVAILABLE) told the customer their connection was
+ * down, and retried a state no retry can change.
+ */
+export class StripeProductsError extends Error {
+  constructor(readonly status: number, serverMessage: string) {
+    super(`${status}: ${serverMessage}`);
+    this.name = "StripeProductsError";
+  }
+  get unavailable(): boolean {
+    return this.status === 503;
+  }
+}
+
 export function useStripeProducts() {
-  return useQuery<StripeProduct[]>({
+  return useQuery<StripeProduct[], Error>({
     queryKey: ["/api/stripe/products"],
     queryFn: async () => {
       const res = await fetch("/api/stripe/products", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch products");
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { message?: unknown } | null;
+        const message = typeof body?.message === "string" && body.message ? body.message : "Plans couldn't be loaded.";
+        throw new StripeProductsError(res.status, message);
+      }
       return res.json();
     },
+    // An unconfigured billing provider does not come back by retrying.
+    retry: (failureCount, error) => !(error instanceof StripeProductsError && error.unavailable) && failureCount < 1,
   });
 }
 

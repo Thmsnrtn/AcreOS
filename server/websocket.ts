@@ -429,6 +429,10 @@ class AcreOSWebSocketServer {
     }
     for (const client of this.clients.values()) {
       client.ws.close();
+      // A peer that never answers the close frame would hold its socket — and
+      // the HTTP server's close() — open; cut it after a short grace.
+      const ws = client.ws;
+      setTimeout(() => ws.terminate(), 500).unref?.();
     }
     this.clients.clear();
     this.wss?.close();

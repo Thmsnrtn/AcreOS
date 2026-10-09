@@ -449,6 +449,17 @@ export const Errors = {
       }, opts);
       return;
     }
+    // A founder-plane write with no founder organization configured
+    // (services/founder.ts FounderOrgUnresolvedError) is a deployment
+    // configuration state, not a code bug — and the refusal to guess an org is
+    // deliberate. Same shape detection.
+    if (
+      error instanceof Error &&
+      ((error as { code?: string }).code === "FOUNDER_ORG_UNRESOLVED" || error.name === "FounderOrgUnresolvedError")
+    ) {
+      this.serviceUnavailable(res, "The founder workspace isn't configured on this deployment yet.", opts);
+      return;
+    }
     // A whole-book read that refused past its ceiling (DEFECT-0170) says so:
     // "nothing was truncated, contact support" — not a generic 500. Same
     // shape-detection as above, so utils does not import storage.

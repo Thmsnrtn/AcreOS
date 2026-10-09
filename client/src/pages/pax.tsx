@@ -368,7 +368,7 @@ function PaxDailyCapBadge() {
 
 function AiChatGuard({ children }: { children: React.ReactNode }) {
   const { data: healthData, isLoading } = useQuery<{ services: HealthService[] }>({
-    queryKey: ["/api/health/cached"],
+    queryKey: ["/api/system/health"],
   });
 
   // Platform AI is OpenRouter-only — the tiered router (SIMPLE → DeepSeek,
@@ -539,7 +539,7 @@ export default function PaxPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/pax/needs-you/count"] }),
       queryClient.invalidateQueries({ queryKey: ["/api/usage"] }),
       queryClient.invalidateQueries({ queryKey: ["/api/ai/conversations"] }),
-      queryClient.invalidateQueries({ queryKey: ["/api/health/cached"] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/system/health"] }),
     ]);
   };
   useEffect(() => {

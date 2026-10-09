@@ -25,6 +25,7 @@
 import { Router, type Request, type Response } from "express";
 import { Errors, sendError } from "./utils/errors";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
+import { enrichmentRefusalOf, respondToEnrichmentRefusal } from "./utils/enrichmentRefusal";
 import { db } from "./db";
 import { properties } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
@@ -50,6 +51,7 @@ router.post("/:id/enrich", async (req: Request, res: Response) => {
     const result = await propertyEnrichmentService.enrichProperty(org.id, propertyId);
     res.json(result);
   } catch (err: any) {
+    if (respondToEnrichmentRefusal(res, err)) return;
     Errors.internal(res, err);
   }
 });
@@ -69,11 +71,21 @@ router.post("/bulk-enrich", async (req: Request, res: Response) => {
     const ids: number[] = Array.isArray(propertyIds)
       ? propertyIds.map((p: any) => Number(p)).filter((n) => Number.isFinite(n)).slice(0, Math.min(limit, 50))
       : [];
+    // One record without coordinates used to 500 the whole batch (and lose
+    // the ones already enriched from the response). A refusal is now reported
+    // per item in `skipped`; any other failure still fails the request.
     const results = [];
+    const skipped: Array<{ propertyId: number; reason: string; message: string }> = [];
     for (const id of ids) {
-      results.push(await propertyEnrichmentService.enrichProperty(org.id, id));
+      try {
+        results.push(await propertyEnrichmentService.enrichProperty(org.id, id));
+      } catch (err) {
+        const refusal = enrichmentRefusalOf(err);
+        if (!refusal) throw err;
+        skipped.push(refusal);
+      }
     }
-    res.json({ results, count: results.length });
+    res.json({ results, count: results.length, skipped });
   } catch (err: any) {
     Errors.internal(res, err);
   }
@@ -99,6 +111,7 @@ router.get("/:id/enrichment", async (req: Request, res: Response) => {
     const enrichmentData = await propertyEnrichmentService.enrichProperty(org.id, propertyId);
     res.json({ propertyId, enrichment: enrichmentData });
   } catch (err: any) {
+    if (respondToEnrichmentRefusal(res, err)) return;
     Errors.internal(res, err);
   }
 });

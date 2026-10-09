@@ -322,11 +322,14 @@ export async function runVendorSecretRotationWatcher(): Promise<{
   }
 
   try {
-    const { getFounderPrimaryOrgId } = await import("./founder");
-    const orgId = await getFounderPrimaryOrgId();
+    // No founder org → no agent_events row (it is org-scoped, and guessing an
+    // org put it in a customer's workspace); the founder inbox item below is
+    // not org-scoped and still lands.
+    const { resolveFounderPrimaryOrgId } = await import("./founder");
+    const orgId = await resolveFounderPrimaryOrgId();
 
     for (const f of surfaceable) {
-      await db.insert(agentEvents).values({
+      if (orgId !== null) await db.insert(agentEvents).values({
         organizationId: orgId,
         eventType: f.status === "expired" ? "secret_revoked" : "secret_warning",
         eventSource: "vendor_secret_rotation",

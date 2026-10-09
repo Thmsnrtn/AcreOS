@@ -70,12 +70,29 @@ export async function notifyOnCall(
   });
 
   // Resolve founder targets up front so each channel can reuse them.
-  let orgId: number;
+  //
+  // NO ORG FALLBACK. This used to fall back to org 1, which on any database
+  // where row 1 is a customer put a P0 page — title, body, error text — into
+  // that customer's notification bell. With no founder org there is nowhere
+  // legitimate to anchor the in-app row or the push subscription lookup, so
+  // those channels are skipped, loudly (error log + metric); the email channel
+  // needs no org and still goes out.
+  let orgId: number | null = null;
   let founderUserIds: string[] = [];
   try {
     orgId = await getFounderPrimaryOrgId();
-  } catch {
-    orgId = 1; // matches getFounderPrimaryOrgId's own last-resort fallback
+  } catch (err) {
+    orgId = null;
+    logger.error(
+      `[OnCall] ${severity} "${title}" has no founder organization to land in — in-app row, push and ack-timer skipped; set FOUNDER_PRIMARY_ORG_ID`,
+      err instanceof Error ? err : undefined,
+    );
+    try {
+      const { recordFounderAlertUndeliverable } = await import("../metrics");
+      recordFounderAlertUndeliverable("oncall");
+    } catch {
+      /* metrics are best-effort */
+    }
   }
   try {
     founderUserIds = await getFounderUserIds();
@@ -87,13 +104,15 @@ export async function notifyOnCall(
   // Created first so the ack-timer (FK) and founder-bell have a record even if
   // push + email both fail. Each founder user gets their own row; we keep the
   // first id for the ack-timer.
-  const recipients = founderUserIds.length > 0 ? founderUserIds : ["founder"];
+  const anchorOrgId = orgId;
+  const recipients = anchorOrgId === null ? [] : founderUserIds.length > 0 ? founderUserIds : ["founder"];
   for (const userId of recipients) {
+    if (anchorOrgId === null) break;
     try {
       const [row] = await db
         .insert(notifications)
         .values({
-          organizationId: orgId,
+          organizationId: anchorOrgId,
           userId,
           type: "system_alert",
           title: `[${severity}] ${title}`,
@@ -110,9 +129,10 @@ export async function notifyOnCall(
   // ── Channel 1 (PRIMARY): VAPID push to the founder's phone ───────────────
   // Works on a locked iPhone via the installed PWA — the only channel that
   // wakes a sleeping founder.
-  for (const userId of founderUserIds) {
+  for (const userId of anchorOrgId === null ? [] : founderUserIds) {
+    if (anchorOrgId === null) break;
     try {
-      const r = await sendPushToUser(orgId, userId, {
+      const r = await sendPushToUser(anchorOrgId, userId, {
         title: `🔴 ${severity}: ${title}`,
         body,
         // `/founder/intelligence` has no <Route> — this woke a founder at 3am
@@ -156,7 +176,7 @@ export async function notifyOnCall(
         subject: `🔴 [${severity}] AcreOS On-Call — ${title}`,
         html,
         text: `${severity}: ${title}\n\n${body}\n\nOpen cockpit: ${appUrl}/founder/intelligence`,
-        organizationId: orgId,
+        organizationId: orgId ?? undefined,
       });
       result.emailSent = r.success;
     } catch (err) {
