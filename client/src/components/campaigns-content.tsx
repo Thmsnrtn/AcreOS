@@ -45,7 +45,7 @@ const campaignTypes = [
 
 const statusColors: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
-  scheduled: 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent',
+  scheduled: 'bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent',
   active: 'bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink',
   paused: 'bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink',
   completed: 'bg-acr-brand-soft text-acr-brand-soft-ink dark:bg-acr-brand-soft/30 dark:text-acr-brand-soft-ink',
@@ -256,7 +256,7 @@ function SparklineTrend({ campaignId }: { campaignId: number }) {
 const priorityConfig: Record<string, { label: string; className: string }> = {
   high: { label: "High", className: "bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink" },
   medium: { label: "Medium", className: "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink" },
-  low: { label: "Low", className: "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent" },
+  low: { label: "Low", className: "bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent" },
 };
 
 const typeIcons: Record<string, React.ReactNode> = {
@@ -480,7 +480,7 @@ function MailModeIndicator() {
                 <p className="font-medium">
                   {isTestMode ? 'Test mode' : 'Live mode'}
                 </p>
-                <Badge className={isTestMode ? 'bg-acr-accent text-acr-accent' : 'bg-acr-pos-soft text-acr-pos-soft-ink'}>
+                <Badge className={isTestMode ? 'bg-acr-accent/15 text-acr-accent' : 'bg-acr-pos-soft text-acr-pos-soft-ink'}>
                   {isTestMode ? 'Safe' : 'Active'}
                 </Badge>
               </div>

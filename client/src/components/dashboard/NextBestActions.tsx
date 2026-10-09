@@ -45,7 +45,7 @@ function getPriorityStyle(priority: string) {
     case "medium":
       return "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink border-acr-warn-soft dark:border-acr-warn-soft";
     default:
-      return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent border-acr-accent dark:border-acr-accent";
+      return "bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent border-acr-accent dark:border-acr-accent";
   }
 }
 

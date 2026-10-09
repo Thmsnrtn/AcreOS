@@ -77,8 +77,12 @@ export function SmallMultipleTwelveMonth({ data, delinquencyRate, ariaLabel }: P
       )
       .join("; ")}.`;
 
+  // tabIndex: the strip scrolls sideways on narrow screens, and a scrollable
+  // region a keyboard cannot focus cannot be scrolled at all (axe
+  // scrollable-region-focusable). The role="img" summary is what a reader
+  // hears on focus.
   return (
-    <div className="w-full overflow-x-auto" role="img" aria-label={a11ySummary}>
+    <div className="w-full overflow-x-auto" role="img" aria-label={a11ySummary} tabIndex={0}>
       <svg
         width={totalW}
         height={totalH}

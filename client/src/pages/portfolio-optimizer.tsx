@@ -61,7 +61,7 @@ import {
 
 const ACTION_STYLES: Record<string, { color: string; icon: JSX.Element }> = {
   sell: { color: 'bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink', icon: <TrendingDown className="w-4 h-4" /> },
-  hold: { color: 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent', icon: <Shield className="w-4 h-4" /> },
+  hold: { color: 'bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent', icon: <Shield className="w-4 h-4" /> },
   refinance: { color: 'bg-acr-brand-soft text-acr-brand-soft-ink dark:bg-acr-brand-soft/30 dark:text-acr-brand-soft-ink', icon: <RefreshCw className="w-4 h-4" /> },
   develop: { color: 'bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink', icon: <TrendingUp className="w-4 h-4" /> },
   subdivide: { color: 'bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink', icon: <Layers className="w-4 h-4" /> },

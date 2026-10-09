@@ -632,7 +632,7 @@ function SunControlPanel({
             </>
           )}
         </Button>
-        <Button aria-label="Clock"
+        <Button aria-label="Reset to current time"
           size="sm"
           variant="ghost"
           className="h-7 text-xs px-2"

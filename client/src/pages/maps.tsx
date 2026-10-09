@@ -1297,7 +1297,7 @@ export default function MapsPage() {
               />
             )}
             {showBuyerDemandHeatmap && (
-              <Badge className="text-micro shrink-0 bg-acr-accent text-acr-accent hidden md:flex">
+              <Badge className="text-micro shrink-0 bg-acr-accent/15 text-acr-accent hidden md:flex">
                 <Users className="w-2.5 h-2.5 mr-1" /> Demand
               </Badge>
             )}

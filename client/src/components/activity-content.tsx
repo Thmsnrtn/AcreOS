@@ -30,7 +30,7 @@ const entityTypeIcons: Record<string, any> = {
 };
 
 const entityTypeColors: Record<string, string> = {
-  lead: "bg-acr-accent text-acr-accent dark:bg-acr-accent dark:text-acr-accent",
+  lead: "bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/15 dark:text-acr-accent",
   property: "bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft dark:text-acr-pos-soft-ink",
   deal: "bg-acr-brand-soft text-acr-brand-soft-ink dark:bg-acr-brand-soft dark:text-acr-brand-soft-ink",
   payment: "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft dark:text-acr-warn-soft-ink",

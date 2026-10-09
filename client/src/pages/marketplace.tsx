@@ -102,7 +102,7 @@ function ListingStatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     active: 'bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink',
     under_offer: 'bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink',
-    sold: 'bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent',
+    sold: 'bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent',
     expired: 'bg-muted text-muted-foreground',
     cancelled: 'bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink',
   };
@@ -366,7 +366,14 @@ function ListingBidsRow({ listing, orgId }: { listing: any; orgId?: number }) {
     <>
       <TableRow>
         <TableCell>
-          <Button variant="ghost" size="sm" className="h-6 px-1.5" onClick={() => setOpen((p) => !p)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-1.5"
+            onClick={() => setOpen((p) => !p)}
+            aria-expanded={open}
+            aria-label={open ? "Hide bids" : "Show bids"}
+          >
             {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           </Button>
         </TableCell>

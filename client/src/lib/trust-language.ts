@@ -97,7 +97,7 @@ export function trustLabel(score: number): string {
  */
 export function trustBadgeColor(score: number): string {
   if (score >= 90) return "bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink";
-  if (score >= 75) return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
+  if (score >= 75) return "bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
   if (score >= 60) return "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink";
   if (score >= 40) return "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink";
   return "bg-acr-neg-soft text-acr-neg-soft-ink dark:bg-acr-neg-soft/30 dark:text-acr-neg-soft-ink";

@@ -355,11 +355,11 @@ export function getRoleBadgeStyle(role: string): string {
     case "admin":
       return "bg-acr-brand-soft text-acr-brand-soft-ink dark:bg-acr-brand-soft/30 dark:text-acr-brand-soft-ink";
     case "member":
-      return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
+      return "bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
     case "viewer":
       return "bg-muted text-foreground dark:bg-acr-bg-sunken dark:text-muted-foreground";
     case "va":
-      return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
+      return "bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
     default:
       return "bg-muted text-foreground dark:bg-acr-bg-sunken dark:text-muted-foreground";
   }

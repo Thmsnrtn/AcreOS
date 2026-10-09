@@ -25,7 +25,7 @@ function SeverityBadge({ severity }: { severity: string }) {
     critical: "bg-acr-neg-soft text-acr-neg-soft-ink",
     high: "bg-acr-warn-soft text-acr-warn-soft-ink",
     medium: "bg-acr-warn-soft text-acr-warn-soft-ink",
-    low: "bg-acr-accent text-acr-accent",
+    low: "bg-acr-accent/15 text-acr-accent",
   };
   const label = SEVERITY_LABEL[severity] ?? severity;
   return (
@@ -367,7 +367,7 @@ const COMPLIANCE_DEADLINES = [
 ];
 
 const CATEGORY_COLORS: Record<string, string> = {
-  "Federal Tax": "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
+  "Federal Tax": "bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent",
   "Tax Strategy": "bg-acr-pos-soft text-acr-pos-soft-ink dark:bg-acr-pos-soft/30 dark:text-acr-pos-soft-ink",
   "RESPA": "bg-acr-brand-soft text-acr-brand-soft-ink dark:bg-acr-brand-soft/30 dark:text-acr-brand-soft-ink",
   "TCPA": "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink",

@@ -171,7 +171,7 @@ function NewChannelDialog({ onCreated }: { onCreated: () => void }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button type="button" className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-3 py-1 mt-1 w-full">
+        <button type="button" className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-3 py-1 mt-1 w-full max-sm:min-h-11 pointer-coarse:min-h-11">
           <Plus className="w-3 h-3" aria-hidden="true" /> New channel
         </button>
       </DialogTrigger>

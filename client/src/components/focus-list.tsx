@@ -36,7 +36,7 @@ function getStageStyle(stage: string) {
     case "warm":
       return "bg-acr-warn-soft text-acr-warn-soft-ink dark:bg-acr-warn-soft/30 dark:text-acr-warn-soft-ink";
     case "cold":
-      return "bg-acr-accent text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
+      return "bg-acr-accent/15 text-acr-accent dark:bg-acr-accent/30 dark:text-acr-accent";
     default:
       return "bg-muted text-foreground dark:bg-acr-bg-sunken dark:text-muted-foreground";
   }

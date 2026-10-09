@@ -65,8 +65,11 @@ function getRetentionColor(rate: number): string {
   if (rate >= 0.5) return "bg-acr-pos text-white";
   if (rate >= 0.3) return "bg-acr-pos text-white";
   if (rate >= 0.2) return "bg-acr-pos text-white";
-  if (rate >= 0.1) return "bg-acr-pos text-acr-pos";
-  if (rate > 0) return "bg-acr-pos-soft text-acr-pos-soft-ink";
+  if (rate >= 0.1) return "bg-acr-pos-soft text-acr-pos-soft-ink";
+  // A lighter wash than the band above keeps a visible step between the two.
+  // Lighter, not darker: the -soft-ink is AA-pinned against the -soft wash, and
+  // only a fainter wash keeps it there (a stronger one drops it under 4.5:1).
+  if (rate > 0) return "bg-acr-pos/5 text-acr-pos-soft-ink";
   return "bg-muted text-muted-foreground";
 }
 
