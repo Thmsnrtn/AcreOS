@@ -2,7 +2,7 @@
  * Billing/lifecycle lookups: founder digest MRR, in-app trial cohort, quiet
  * paying customers, and the trial allowance on cost-bearing actions.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { PgDialect } from "drizzle-orm/pg-core";
@@ -15,9 +15,15 @@ vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 const ROOT = path.resolve(__dirname, "../..");
 const src = (rel: string) => stripComments(fs.readFileSync(path.join(ROOT, rel), "utf8"));
 
+const S = vi.hoisted(() => ({
+  inserted: [] as any[],
+  snapshot: null as null | { mrrCents: number },
+  // trial-cohort mode: every select resolves to no rows and its where() is captured
+  trialWheres: null as null | any[],
+}));
+
 // ─── 2. founder digest ───────────────────────────────────────────────────────
 describe("founder digest MRR", () => {
-  const S = vi.hoisted(() => ({ inserted: [] as any[], snapshot: null as null | { mrrCents: number } }));
 
   vi.mock("../../server/utils/logger", () => ({
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -42,7 +48,13 @@ describe("founder digest MRR", () => {
       });
     return {
       db: {
-        select: (cols?: any) => (cols && "mrrCents" in cols ? chain(S.snapshot ? [S.snapshot] : []) : chain([{ c: 0, total: 0 }])),
+        select: (cols?: any) => {
+          if (S.trialWheres) {
+            const captured = S.trialWheres;
+            return { from: () => ({ where: (w: any) => { captured.push(w); return Promise.resolve([]); } }) };
+          }
+          return cols && "mrrCents" in cols ? chain(S.snapshot ? [S.snapshot] : []) : chain([{ c: 0, total: 0 }]);
+        },
         insert: () => ({ values: (v: any) => { S.inserted.push(v); return chain([{ id: 1 }]); } }),
         update: () => chain([]),
         query: {
@@ -55,7 +67,11 @@ describe("founder digest MRR", () => {
     };
   });
 
-  beforeEach(() => { S.inserted.length = 0; S.snapshot = null; });
+  beforeEach(() => { S.inserted.length = 0; S.snapshot = null; S.trialWheres = null; });
+  // generate() leaves fire-and-forget imports in flight (aiSpendGuard's
+  // telemetry write imports ./ai-telemetry and its graph). Nothing from one
+  // test may still be loading modules when the next one starts.
+  afterEach(async () => { await vi.dynamicImportSettled(); });
 
   it("reports MRR from the canonical source, never from a column organizations lacks", async () => {
     const { founderDigestService } = await import("../../server/services/founderDigest");
@@ -81,20 +97,27 @@ describe("founder digest MRR", () => {
 });
 
 // ─── 3. in-app trial cohort ──────────────────────────────────────────────────
+// This used to vi.resetModules() and doMock the db, which re-evaluated the
+// whole @shared/schema graph. shared/schema.ts and shared/schema/*.ts import
+// each other, and the module runner treats a cyclic module that is still
+// evaluating as "circular" for EVERY importer — it hands out the partial
+// exports object. An unawaited import still in flight from the digest tests
+// (fire-and-forget telemetry) could start that re-evaluation first; trialEngine
+// then received a schema with no `organizations` yet and threw at module load
+// ("Cannot read properties of undefined (reading 'subscriptionStatus')"), only
+// when load made the stray import slow enough to straddle the reset. The test
+// now reuses the file's one db mock, so the schema is evaluated once and
+// never concurrently.
 describe("trial engine cohort", () => {
   it("both cohorts render a predicate that admits an active free-tier in-app trial", async () => {
-    vi.resetModules();
     const captured: any[] = [];
-    vi.doMock("../../server/db", () => ({
-      db: {
-        select: () => ({ from: () => ({ where: (w: any) => { captured.push(w); return Promise.resolve([]); } }) }),
-      },
-    }));
-    vi.doMock("../../server/utils/logger", () => ({
-      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-    }));
-    const { runTrialExpiryCycle } = await import("../../server/services/trialEngine");
-    await runTrialExpiryCycle();
+    S.trialWheres = captured;
+    try {
+      const { runTrialExpiryCycle } = await import("../../server/services/trialEngine");
+      await runTrialExpiryCycle();
+    } finally {
+      S.trialWheres = null;
+    }
     expect(captured.length).toBeGreaterThanOrEqual(2);
     const dialect = new PgDialect();
     for (const w of captured) {
@@ -106,6 +129,11 @@ describe("trial engine cohort", () => {
       expect(params).toContain("active");
       expect(params).toContain("free");
     }
+  });
+
+  it("the file never re-evaluates the module graph mid-run", () => {
+    const self = src("tests/unit/billingLifecycleLookups.test.ts");
+    expect(self).not.toMatch(/vi\.resetModules\(/);
   });
 });
 
