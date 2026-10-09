@@ -858,7 +858,8 @@ export async function checkTwilioConfiguration(organizationId: number): Promise<
     return { configured: false, error: "Twilio credentials not configured" };
   }
 
-  const creds = twilioIntegration.credentials as any;
+  const { readIntegrationCredentials } = await import("./integrationCredentials");
+  const creds = (readIntegrationCredentials(twilioIntegration, organizationId, "twilio check") ?? {}) as any;
   if (!creds.accountSid || !creds.authToken || !creds.fromPhoneNumber) {
     return { configured: false, error: "Twilio credentials incomplete" };
   }
@@ -903,7 +904,10 @@ export async function saveTwilioCredentials(
     )
     .limit(1);
 
-  const credentials = { accountSid, authToken, fromPhoneNumber };
+  // Sealed like every other connected-account credential in this column
+  // (integrationCredentials.ts). This path wrote the auth token in the clear.
+  const { sealIntegrationCredentials } = await import("./integrationCredentials");
+  const credentials = sealIntegrationCredentials({ accountSid, authToken, fromPhoneNumber }, organizationId);
 
   if (existing) {
     await db

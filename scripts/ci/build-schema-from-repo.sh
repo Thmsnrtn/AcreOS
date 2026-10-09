@@ -90,7 +90,7 @@ if [[ "$VECTOR_OK" != "1" ]]; then
   echo "[build-schema]   it (pgvector/pgvector:pg16) rather than allowlisting the table."
 fi
 
-echo "[build-schema] 1/9 applying $(ls "$MIGRATIONS_DIR"/*.sql | wc -l) file(s) from migrations/"
+echo "[build-schema] 1/10 applying $(ls "$MIGRATIONS_DIR"/*.sql | wc -l) file(s) from migrations/"
 # LC_ALL=C: byte order, so the apply order of same-ordinal files (two 0003s,
 # three 0081s, …) is the same on every machine and locale (DEFECT-0051).
 for f in $(ls "$MIGRATIONS_DIR"/*.sql | LC_ALL=C sort); do
@@ -107,52 +107,67 @@ if [[ "$ERRORS" -gt 0 ]]; then
   grep 'ERROR:' "$LOG" | head -10 | sed 's/^/    /'
 fi
 
-echo "[build-schema] 2/9 node scripts/migrate.mjs   (the Fly release_command)"
+echo "[build-schema] 2/10 node scripts/migrate.mjs   (the Fly release_command)"
 if ! node scripts/migrate.mjs; then
   echo "[build-schema] FAIL — the release_command itself does not survive a database built from this repo." >&2
   exit 1
 fi
 
-echo "[build-schema] 3/9 node scripts/migrate.mjs --dry-run"
+echo "[build-schema] 3/10 node scripts/migrate.mjs --dry-run"
 if ! node scripts/migrate.mjs --dry-run; then
   echo "[build-schema] FAIL — statements that would not apply to the schema this repo just built." >&2
   exit 1
 fi
 
-echo "[build-schema] 4/9 npx tsx scripts/check-db-column-mirror.ts"
+echo "[build-schema] 4/10 npx tsx scripts/check-db-column-mirror.ts"
 if ! npx tsx scripts/check-db-column-mirror.ts; then
   echo "[build-schema] FAIL — shared/schema.ts declares tables or columns this repository cannot create." >&2
   exit 1
 fi
 
-echo "[build-schema] 5/9 npx tsx tests/db/paymentsInsertOnBuiltSchema.ts"
+echo "[build-schema] 5/10 npx tsx tests/db/paymentsInsertOnBuiltSchema.ts"
 if ! npx tsx tests/db/paymentsInsertOnBuiltSchema.ts; then
   echo "[build-schema] FAIL — the schema this repository builds cannot record a payment." >&2
   exit 1
 fi
 
-echo "[build-schema] 6/9 npx tsx tests/db/soleneDispatchEnqueueOnBuiltSchema.ts"
+echo "[build-schema] 6/10 npx tsx tests/db/soleneDispatchEnqueueOnBuiltSchema.ts"
 if ! npx tsx tests/db/soleneDispatchEnqueueOnBuiltSchema.ts; then
   echo "[build-schema] FAIL — the schema this repository builds cannot take a keyed Solene enqueue." >&2
   exit 1
 fi
 
-echo "[build-schema] 7/9 npx tsx tests/db/soleneSensesOnBuiltSchema.ts"
+echo "[build-schema] 7/10 npx tsx tests/db/soleneSensesOnBuiltSchema.ts"
 if ! npx tsx tests/db/soleneSensesOnBuiltSchema.ts; then
   echo "[build-schema] FAIL — Solene's senses or abort path do not read/write the schema this repository builds." >&2
   exit 1
 fi
 
-echo "[build-schema] 8/9 npx tsx tests/db/soleneStage2OnBuiltSchema.ts"
+echo "[build-schema] 8/10 npx tsx tests/db/soleneStage2OnBuiltSchema.ts"
 if ! npx tsx tests/db/soleneStage2OnBuiltSchema.ts; then
   echo "[build-schema] FAIL — Stage 2's founder controls, ask fold, restore, reply hand or ops watch do not read/write the schema this repository builds." >&2
   exit 1
 fi
 
-echo "[build-schema] 9/9 npx tsx scripts/check-constraint-names.ts"
+echo "[build-schema] 9/10 npx tsx scripts/check-constraint-names.ts"
 if ! npx tsx scripts/check-constraint-names.ts; then
   echo "[build-schema] FAIL — unique constraints in the built database drift from the names shared/schema.ts declares." >&2
   exit 1
 fi
+
+echo "[build-schema] 10/10 scripts/db-backup.sh → scripts/db-restore.sh round trip"
+# The off-provider backup and its proven restore (docs/runbooks/09-*): dump the
+# built database, restore it into a fresh one, and require every table's
+# count to match. A backup that cannot be restored is not a backup.
+BK_DIR="$(mktemp -d)"
+RESTORE_DB="$(python3 -c 'import sys,urllib.parse as u; print((u.urlparse(sys.argv[1]).path or "/").lstrip("/") + "_restore_check")' "$DATABASE_URL")"
+RESTORE_URL="$(python3 -c 'import sys,urllib.parse as u; p=u.urlparse(sys.argv[1]); print(u.urlunparse(p._replace(path="/"+sys.argv[2])))' "$DATABASE_URL" "$RESTORE_DB")"
+if ! bash scripts/db-backup.sh "$BK_DIR" || ! RESTORE_URL="$RESTORE_URL" bash scripts/db-restore.sh "$(ls "$BK_DIR"/*.dump)"; then
+  echo "[build-schema] FAIL — the backup did not restore into a fresh database with every count intact." >&2
+  rm -rf "$BK_DIR"
+  exit 1
+fi
+rm -rf "$BK_DIR"
+psql "$(python3 -c 'import sys,urllib.parse as u; p=u.urlparse(sys.argv[1]); print(u.urlunparse(p._replace(path="/postgres")))' "$DATABASE_URL")" -X -q -c "drop database if exists \"$RESTORE_DB\"" || true
 
 echo "[build-schema] PASS — the schema this repository describes is the schema it can build."

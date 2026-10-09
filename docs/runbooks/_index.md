@@ -12,6 +12,7 @@ Operational runbooks for AcreOS. Each is a Symptom → Diagnose → Fix → Veri
 6. [Stripe webhook replay](./06-stripe-webhook-replay.md) — manual replay, signature debugging
 7. [Database restore from snapshot](./07-database-restore-from-snapshot.md) — Fly Postgres snapshot restore (links to Boniface drill doc)
 8. [Founder out of office](./08-founder-out-of-office.md) — escalation rotation, who handles what
+9. [Off-provider backup and a provable restore](./09-off-provider-backup-and-restore.md) — `scripts/db-backup.sh` / `scripts/db-restore.sh`
 
 ## Other operational runbooks
 

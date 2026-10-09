@@ -64,7 +64,10 @@ async function getOrgTwilioCredentials(organizationId: number): Promise<TwilioCr
     )
     .limit(1);
   if (!row || !row.credentials) return null;
-  const creds = row.credentials as any;
+  // Sealed rows decrypt; a legacy plaintext row still reads (and the next
+  // save seals it) — integrationCredentials.readIntegrationCredentials.
+  const { readIntegrationCredentials } = await import("../../integrationCredentials");
+  const creds = (readIntegrationCredentials(row, organizationId, "twilio byok") ?? {}) as any;
   if (!creds.accountSid || !creds.authToken || !creds.fromPhoneNumber) return null;
   return {
     accountSid: creds.accountSid,
