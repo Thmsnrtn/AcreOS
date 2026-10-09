@@ -105,21 +105,31 @@ async function sendTrialEmail(
  * getOrCreateOrg grants those as subscription_status='active', tier 'free',
  * with trial_ends_at set and no Stripe subscription.
  */
-const IN_APP_TRIAL = and(
-  eq(organizations.subscriptionStatus, "active"),
-  or(isNull(organizations.subscriptionTier), eq(organizations.subscriptionTier, "free")),
-  isNull(organizations.stripeSubscriptionId),
-);
-const IN_TRIAL_PREDICATE = or(
-  isNull(organizations.subscriptionStatus),
-  inArray(organizations.subscriptionStatus, ["trialing", "trial", ""]),
-  IN_APP_TRIAL,
-);
-const TRIAL_ENDED_PREDICATE = or(
-  isNull(organizations.subscriptionStatus),
-  notInArray(organizations.subscriptionStatus, ["active", "past_due"]),
-  IN_APP_TRIAL,
-);
+// Built on call, not at module load: a module-level predicate reads
+// `organizations` during import, so any importer that receives the schema
+// while it is still evaluating (shared/schema.ts and shared/schema/*.ts import
+// each other) throws before a single trial is looked at.
+function inAppTrial() {
+  return and(
+    eq(organizations.subscriptionStatus, "active"),
+    or(isNull(organizations.subscriptionTier), eq(organizations.subscriptionTier, "free")),
+    isNull(organizations.stripeSubscriptionId),
+  );
+}
+function inTrialPredicate() {
+  return or(
+    isNull(organizations.subscriptionStatus),
+    inArray(organizations.subscriptionStatus, ["trialing", "trial", ""]),
+    inAppTrial(),
+  );
+}
+function trialEndedPredicate() {
+  return or(
+    isNull(organizations.subscriptionStatus),
+    notInArray(organizations.subscriptionStatus, ["active", "past_due"]),
+    inAppTrial(),
+  );
+}
 
 export async function runTrialExpiryCycle(): Promise<TrialEngineResult> {
   const now = clock.now();
@@ -143,7 +153,7 @@ export async function runTrialExpiryCycle(): Promise<TrialEngineResult> {
         isNotNull(organizations.trialEndsAt),
         gte(organizations.trialEndsAt, now),
         lte(organizations.trialEndsAt, in24h),
-        IN_TRIAL_PREDICATE,
+        inTrialPredicate(),
       ),
     );
 
@@ -185,7 +195,7 @@ export async function runTrialExpiryCycle(): Promise<TrialEngineResult> {
         isNotNull(organizations.trialEndsAt),
         lte(organizations.trialEndsAt, now),
         gte(organizations.trialEndsAt, sixHoursAgo),
-        TRIAL_ENDED_PREDICATE,
+        trialEndedPredicate(),
       ),
     );
 
