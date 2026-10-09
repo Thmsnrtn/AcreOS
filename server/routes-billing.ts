@@ -294,7 +294,9 @@ export function registerBillingRoutes(app: Express): void {
           type: 'credit_purchase',
           packId,
           amountCents: String(pack.amountCents),
-        }
+        },
+        // One purchase intent per client action (stripeService.creditCheckoutIdempotencyKey).
+        req.get('Idempotency-Key') ?? null,
       );
       
       res.json({ checkoutUrl: session.url });

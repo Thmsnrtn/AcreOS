@@ -1,4 +1,5 @@
 import { useState, useId } from "react";
+import { beginPurchaseIntent, settlePurchaseIntent } from "@/lib/purchaseIntent";
 import { useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -32,7 +33,14 @@ export function CreditPurchaseModal({ open, onOpenChange }: CreditPurchaseModalP
   // allow-no-invalidation: redirects to Stripe checkout (window.location.href) — cache resets on return
   const purchaseMutation = useMutation({
     mutationFn: async (packId: string) => {
-      const res = await apiRequest("POST", "/api/credits/purchase", { packId }, { idempotent: true });
+      const scope = `credits:${packId}`;
+      const intent = beginPurchaseIntent(scope);
+      let res: Response;
+      try {
+        res = await apiRequest("POST", "/api/credits/purchase", { packId }, { idempotencyKey: intent });
+      } finally {
+        settlePurchaseIntent(scope);
+      }
       if (!res.ok) {
         const error = await res.json();
         throw new Error(error.message || "Failed to create checkout session");

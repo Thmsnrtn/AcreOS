@@ -1708,6 +1708,9 @@ export function registerOutreachMailRoutes(app: Express): void {
             type: "mail_credit_recharge",
             packCents: String(packCents),
           },
+          // One purchase intent per client action: a double-click folds, a
+          // second deliberate pack goes through (stripeService).
+          req.get("Idempotency-Key") ?? null,
         );
 
         res.json({ checkoutUrl: session.url });

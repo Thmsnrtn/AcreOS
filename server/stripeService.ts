@@ -10,6 +10,34 @@ function idempotencyKey(operation: string, ...seeds: (string | number | undefine
   return crypto.createHash('sha256').update(data).digest('hex').slice(0, 64);
 }
 
+/**
+ * The idempotency key of ONE credit purchase intent.
+ *
+ * It used to be customer + pack + org, so Stripe (which keeps keys 24h)
+ * answered a second deliberate purchase of the same pack — a second $20 mail
+ * pack the same afternoon — with the FIRST, already-paid session: the
+ * customer could not buy the same pack twice in a day. The key now includes
+ * the purchase intent: the client's Idempotency-Key for that purchase action
+ * (it holds one key while a purchase is in flight, so a double-click sends
+ * the same one), or, when a caller sends none, a 10-second window — wide
+ * enough to fold a double-click, far narrower than any deliberate re-buy.
+ */
+export const CREDIT_CHECKOUT_DEDUPE_WINDOW_MS = 10_000;
+const PURCHASE_INTENT_SHAPE = /^[A-Za-z0-9_-]{8,128}$/;
+export function creditCheckoutIdempotencyKey(input: {
+  customerId: string;
+  packId: string;
+  organizationId: string;
+  purchaseIntent?: string | null;
+  nowMs?: number;
+}): string {
+  const intent =
+    typeof input.purchaseIntent === "string" && PURCHASE_INTENT_SHAPE.test(input.purchaseIntent)
+      ? `intent:${input.purchaseIntent}`
+      : `window:${Math.floor((input.nowMs ?? clock.nowMs()) / CREDIT_CHECKOUT_DEDUPE_WINDOW_MS)}`;
+  return idempotencyKey("credit_checkout", input.customerId, input.packId, input.organizationId, intent);
+}
+
 export class StripeService {
   async createCustomer(email: string | null, userId: string, name?: string) {
     // users.email is nullable. A null email is omitted rather than sent as the
@@ -100,7 +128,8 @@ export class StripeService {
     packName: string,
     successUrl: string,
     cancelUrl: string,
-    metadata: Record<string, string>
+    metadata: Record<string, string>,
+    purchaseIntent?: string | null,
   ) {
     const stripe = await getUncachableStripeClient();
     return await stripe.checkout.sessions.create({
@@ -126,7 +155,14 @@ export class StripeService {
       // Phase 3 W10 — Stripe Tax on credit purchases too.
       automatic_tax: { enabled: true },
       customer_update: { address: 'auto', name: 'auto' },
-    }, { idempotencyKey: idempotencyKey('credit_checkout', customerId, packId, metadata?.organizationId || '') });
+    }, {
+      idempotencyKey: creditCheckoutIdempotencyKey({
+        customerId,
+        packId,
+        organizationId: metadata?.organizationId || '',
+        purchaseIntent,
+      }),
+    });
   }
 
   async createCustomerPortalSession(customerId: string, returnUrl: string) {

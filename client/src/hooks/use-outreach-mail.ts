@@ -4,6 +4,7 @@
  * a single source of truth for query keys + cache invalidation.
  */
 
+import { beginPurchaseIntent, settlePurchaseIntent } from "@/lib/purchaseIntent";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -498,13 +499,21 @@ export function useRechargeCredits() {
   // allow-no-invalidation: returns a Stripe checkout URL the browser navigates away to
   return useMutation<{ checkoutUrl: string }, Error, { packCents: number }>({
     mutationFn: async ({ packCents }) => {
-      const res = await apiRequest(
-        "POST",
-        "/api/outreach/mail/credits/recharge",
-        { packCents },
-        { idempotent: true },
-      );
-      return res.json();
+      // One intent while this pack's purchase is in flight: a double-click
+      // folds into one checkout, a later deliberate re-buy is a new one.
+      const scope = `mail-credits:${packCents}`;
+      const intent = beginPurchaseIntent(scope);
+      try {
+        const res = await apiRequest(
+          "POST",
+          "/api/outreach/mail/credits/recharge",
+          { packCents },
+          { idempotencyKey: intent },
+        );
+        return res.json();
+      } finally {
+        settlePurchaseIntent(scope);
+      }
     },
   });
 }
