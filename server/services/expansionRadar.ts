@@ -32,6 +32,8 @@
  * Cost: no LLM calls — pure data rules. Free to run weekly.
  */
 
+import { limitsTierFor } from "@shared/billing/tier-limits";
+import { TIER_PRICES_CENTS as CANONICAL_TIER_PRICES, tierForSubscriptionTier } from "@shared/billing/tier-pricing";
 import { db } from "../db";
 import {
   expansionCandidates,
@@ -53,17 +55,13 @@ const TIER_LADDER: Record<string, string> = {
   // enterprise intentionally omitted — no higher tier, renewal-talk instead
 };
 
-// Tier prices in cents. MUST match /pricing page values. When the
-// pricing page changes, update these too — the expansion-radar MRR
-// lift estimates are rendered to the founder and customer-facing
-// upgrade offers use the delta.
-const TIER_PRICES_CENTS: Record<string, number> = {
-  free: 0,
-  starter: 2000,   // $20/mo — was $49 (mismatch with pricing page)
-  pro: 4900,       // $49/mo — was $99
-  scale: 7900,     // $79/mo — was $199
-  enterprise: 19900, // $199 — not listed on pricing page; custom quote
-};
+// Monthly list price in cents, from THE price table (shared/billing/
+// tier-pricing.ts). Free is $0; enterprise is a custom quote with no list
+// price, so a lift toward it is unknown and reported as 0, never invented.
+function listPriceCents(tier: string): number {
+  const paid = tierForSubscriptionTier(tier);
+  return paid ? CANONICAL_TIER_PRICES[paid].priceMonthlyCents : 0;
+}
 
 const CANDIDATE_THRESHOLD = 60;
 
@@ -110,14 +108,16 @@ export async function runWeeklyExpansionScan(): Promise<CandidateScan> {
 
   for (const org of orgs) {
     // Skip enterprise — no tier to propose.
-    const proposedTier = TIER_LADDER[org.subscriptionTier];
+    // Legacy stored names (solo/operator/empire) fold to the tier billed.
+    const currentTier = limitsTierFor(org.subscriptionTier);
+    const proposedTier = TIER_LADDER[currentTier];
     if (!proposedTier) continue;
 
     const { score, signals, reasoning } = await scoreOrg(org);
     if (score < CANDIDATE_THRESHOLD) continue;
 
-    const currentPrice = TIER_PRICES_CENTS[org.subscriptionTier] ?? 0;
-    const proposedPrice = TIER_PRICES_CENTS[proposedTier] ?? 0;
+    const currentPrice = listPriceCents(currentTier);
+    const proposedPrice = listPriceCents(proposedTier);
     const lift = Math.max(0, proposedPrice - currentPrice);
 
     scored.push({

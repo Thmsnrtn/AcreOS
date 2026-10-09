@@ -30,6 +30,8 @@ import {
 import type { DatabaseStorage } from "../storage";
 import { assertWritablePatch } from "../utils/patch";
 import { clock } from "../utils/clock";
+import { limitsTierFor } from "@shared/billing/tier-limits";
+import { monthlyRevenueCentsFor, type BillingInterval } from "@shared/billing/tier-pricing";
 
 export const supportOpsRepo = {
   // Usage Records
@@ -338,7 +340,8 @@ export const supportOpsRepo = {
     const allTeamMembers = await db.select().from(teamMembers).limit(50000);
     
     const orgsByTier = allOrgs.reduce((acc, org) => {
-      acc[org.subscriptionTier] = (acc[org.subscriptionTier] || 0) + 1;
+      const tier = limitsTierFor(org.subscriptionTier);
+      acc[tier] = (acc[tier] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
@@ -369,13 +372,11 @@ export const supportOpsRepo = {
 
     const totalMrr = allOrgs.reduce((sum, org) => {
       if (org.subscriptionStatus !== 'active') return sum;
-      const tierPrices: Record<string, number> = { free: 0, starter: 4900, pro: 9900, scale: 19900 };
-      return sum + (tierPrices[org.subscriptionTier] || 0);
+      return sum + monthlyRevenueCentsFor(org.subscriptionTier, (org.billingInterval as BillingInterval) ?? "monthly");
     }, 0);
 
     const mrrAtRisk = orgsInDunning.reduce((sum, org) => {
-      const tierPrices: Record<string, number> = { free: 0, starter: 4900, pro: 9900, scale: 19900 };
-      return sum + (tierPrices[org.subscriptionTier] || 0);
+      return sum + monthlyRevenueCentsFor(org.subscriptionTier, (org.billingInterval as BillingInterval) ?? "monthly");
     }, 0);
 
     const allAgentTasks = await db.select().from(agentTasks)

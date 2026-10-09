@@ -5,19 +5,18 @@
 import { BaseAgent, type AgentDecision } from "./base-agent";
 import { db } from "../storage";
 import { sql } from "drizzle-orm";
-import { TIER_LIMITS, type SubscriptionTier } from "../services/usageLimits";
+import { TIER_LIMITS } from "../services/usageLimits";
+import { limitsTierFor } from "@shared/billing/tier-limits";
+import { tierForSubscriptionTier } from "@shared/billing/tier-pricing";
+import { liveMrrDetail } from "../services/finance/runwayModel";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
-const TIER_PRICES: Record<string, number> = {
-  starter: 2000,
-  pro: 4900,
-  scale: 39900,
-  enterprise: 79900,
-};
+/** The tiers an upgrade nudge can move up from. */
+const NUDGE_TIERS = new Set(["free", "starter", "pro"]);
 
 export class RevenueAgent extends BaseAgent {
   readonly name = "revenue";
@@ -45,12 +44,14 @@ export class RevenueAgent extends BaseAgent {
       FROM organizations o
       WHERE o.is_founder = false
         AND o.subscription_status = 'active'
-        AND o.subscription_tier IN ('free', 'starter', 'pro')
-      LIMIT 100
+      LIMIT 500
     `);
 
     for (const org of (orgs as any).rows ?? []) {
-      const tier = org.subscription_tier as SubscriptionTier;
+      // Stored tier names include legacy ones (solo/operator/empire): fold
+      // them through THE limits fold, never index TIER_LIMITS raw.
+      const tier = limitsTierFor(org.subscription_tier);
+      if (!NUDGE_TIERS.has(tier)) continue;
       const limits = TIER_LIMITS[tier];
       if (!limits) continue;
 
@@ -150,13 +151,13 @@ export class RevenueAgent extends BaseAgent {
       GROUP BY subscription_tier
     `);
 
-    let mrr = 0;
-    let payingCustomers = 0;
+    // MRR from the canonical live source (tier price x billing interval,
+    // legacy names folded) — the same number runway and the digest show.
+    const { cents: mrr, payingOrgs: payingCustomers } = await liveMrrDetail();
+    const breakdown = new Map<string, number>();
     for (const row of (paying as any).rows ?? []) {
-      const price = TIER_PRICES[row.subscription_tier] || 0;
-      const cnt = Number(row.count || 0);
-      mrr += price * cnt;
-      payingCustomers += cnt;
+      const tier = tierForSubscriptionTier(row.subscription_tier) ?? limitsTierFor(row.subscription_tier);
+      breakdown.set(tier, (breakdown.get(tier) ?? 0) + Number(row.count || 0));
     }
     const arpu = payingCustomers > 0 ? Math.round(mrr / payingCustomers) : 0;
 
@@ -167,10 +168,7 @@ export class RevenueAgent extends BaseAgent {
       payingCustomers,
       arpuCents: arpu,
       arpuFormatted: `$${(arpu / 100).toFixed(2)}`,
-      tierBreakdown: ((paying as any).rows ?? []).map((r: any) => ({
-        tier: r.subscription_tier,
-        count: Number(r.count),
-      })),
+      tierBreakdown: Array.from(breakdown, ([tier, count]) => ({ tier, count })),
     };
 
     await this.storeBrief("weekly", brief);

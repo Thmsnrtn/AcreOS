@@ -358,7 +358,8 @@ export const TIER_UPGRADE_LADDER: readonly SubscriptionTier[] = [
  * because they can't be "upgraded" by the gate.
  */
 export function nextPaidTier(current: string | null | undefined): SubscriptionTier | null {
-  const cur = (current ?? "free").toLowerCase() as SubscriptionTier;
+  // Fold legacy names first: a stored "solo" is Starter, not "unknown → free".
+  const cur = limitsTierFor(current);
   const idx = TIER_UPGRADE_LADDER.indexOf(cur);
   // Unknown tier → start from free. Founders / enterprise → no upgrade.
   if (cur === "enterprise") return null;

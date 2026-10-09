@@ -52,6 +52,7 @@ import { ProviderSettings } from "@/components/provider-settings";
 import { AICostDashboard } from "@/components/ai-cost-dashboard";
 import { SettingsQuickFind } from "@/components/settings/SettingsQuickFind";
 import { TeamInviteCard } from "@/components/settings/TeamInviteCard";
+
 // Monolith split (T3 census W1-2) — per-tab sections live in their own
 // modules under pages/settings/, mirroring the existing 8 routed subpages.
 import { StripeConnectSettings, SeatManagement } from "@/pages/settings/billing-sections";
@@ -67,6 +68,7 @@ import { PersonaPanel } from "@/components/settings/persona-panel";
 import { NotificationQuietHours } from "@/components/settings/notification-quiet-hours";
 import { PreferencesCard } from "@/components/preferences-card";
 import { PlanComparisonModal, type TierKey } from "@/components/tier-upgrade-panel";
+import { limitsTierFor } from "@shared/billing/tier-limits";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
 // R4: Clerk-native MFA management — replaces the deleted in-house TOTP flow.
@@ -82,6 +84,13 @@ import { useDocumentTitle } from "@/hooks/use-document-title";
 import "./today.css";
 import { formatDate } from "@/lib/format";
 import { Verbs } from "@/lib/labels";
+
+
+/** The plan picker's current tier: legacy stored names folded; enterprise shows as Scale's ladder top. */
+function currentTierKey(stored: string | null | undefined): TierKey {
+  const t = limitsTierFor(stored);
+  return t === "enterprise" ? "scale" : t;
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 // IA collapse — Phase 2 Week 4 (P1-26 / Reyna §2). 17 tabs → 7 canonical
@@ -1782,7 +1791,7 @@ export default function Settings() {
           setShowPlanComparison(false);
           setPlanPickerHighlight(null);
         }}
-        currentTier={(organization?.subscriptionTier || "free") as TierKey}
+        currentTier={currentTierKey(organization?.subscriptionTier)}
         highlightedTier={planPickerHighlight}
       />
     </PageShell>

@@ -1,3 +1,4 @@
+import { limitsTierFor } from "@shared/billing/tier-limits";
 import type { Express, Response } from "express";
 import { z } from "zod";
 import { insertAgentConfigSchema } from "@shared/schema";
@@ -1414,7 +1415,7 @@ export function registerAIRoutes(app: Express): void {
       const org = req.organization;
       const user = req.user;
       const isFounder = user?.id === 'founder' || org?.stripeCustomerId?.includes('founder');
-      const tier = (org?.subscriptionTier || 'free') as SubscriptionTier;
+      const tier: SubscriptionTier = limitsTierFor(org?.subscriptionTier);
       
       const { getAvailableActions, SKILL_ACTIONS } = await import('./services/skill-permissions');
       const { insights, actions, lockedActions } = getAvailableActions(tier, isFounder);
@@ -1447,7 +1448,7 @@ export function registerAIRoutes(app: Express): void {
       const { actionId } = parsed.data;
       
       const isFounder = user?.id === 'founder' || org?.stripeCustomerId?.includes('founder');
-      const tier = (org?.subscriptionTier || 'free') as SubscriptionTier;
+      const tier: SubscriptionTier = limitsTierFor(org?.subscriptionTier);
       
       const { checkSkillPermission } = await import('./services/skill-permissions');
       const result = checkSkillPermission(actionId, tier, isFounder);
@@ -1502,7 +1503,7 @@ export function registerAIRoutes(app: Express): void {
         : classifyIntentSimple(message);
 
       const isFounder = user?.id === 'founder' || org?.stripeCustomerId?.includes('founder');
-      const tier = (org?.subscriptionTier || 'free') as SubscriptionTier;
+      const tier: SubscriptionTier = limitsTierFor(org?.subscriptionTier);
       const trialTokens = await storage.getTrialTokens(org.id);
       
       // Permission check for gated actions
@@ -1566,7 +1567,7 @@ export function registerAIRoutes(app: Express): void {
       const org = req.organization;
       const user = req.user;
       const isFounder = user?.id === 'founder' || org?.stripeCustomerId?.includes('founder');
-      const tier = (org?.subscriptionTier || 'free') as SubscriptionTier;
+      const tier: SubscriptionTier = limitsTierFor(org?.subscriptionTier);
       const trialTokens = await storage.getTrialTokens(org.id);
       
       const { getAvailableActions } = await import('./services/skill-permissions');
@@ -1608,7 +1609,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const org = req.organization;
       const trialTokens = await storage.getTrialTokens(org.id);
-      const tier = (org?.subscriptionTier || 'free') as SubscriptionTier;
+      const tier: SubscriptionTier = limitsTierFor(org?.subscriptionTier);
       
       res.json({
         trialTokens,

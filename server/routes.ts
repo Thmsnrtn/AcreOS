@@ -1,4 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
+import { limitsTierFor } from "@shared/billing/tier-limits";
 import { type AuthenticatedRequest } from "./types/request";
 import express from "express";
 import type { Server } from "http";
@@ -2172,7 +2173,8 @@ export async function registerRoutes(
 
       // Tier breakdown
       const tierBreakdown = activeOrgs.reduce((acc, org) => {
-        acc[org.subscriptionTier] = (acc[org.subscriptionTier] || 0) + 1;
+        const tier = limitsTierFor(org.subscriptionTier);
+        acc[tier] = (acc[tier] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
 

@@ -16,6 +16,7 @@
  * contract; the worker reads it.
  */
 
+import { limitsTierFor } from "@shared/billing/tier-limits";
 import type { Express, Response } from "express";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -606,7 +607,7 @@ export function registerOutreachMailRoutes(app: Express): void {
         // poolRefusalDetails' shape (one refusal component client-side) but
         // points at the plan comparison, not BYOK — the wedge's job is to
         // convert, not to dead-end.
-        const orgTier = ((org.subscriptionTier ?? "free").toLowerCase()) as SubscriptionTier;
+        const orgTier: SubscriptionTier = limitsTierFor(org.subscriptionTier);
         if (!req.isFounder && orgTier === "free") {
           const used = await freeTierPiecesUsed(org.id);
           const remainingPieces = Math.max(0, FREE_TIER_LIFETIME_PIECES - used);

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useOrganization, useUpdateOrganization } from "@/hooks/use-organization";
-import { TIER_LIMITS, type SubscriptionTier } from "@shared/billing/tier-limits";
+import { TIER_LIMITS, limitsTierFor } from "@shared/billing/tier-limits";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -108,7 +108,7 @@ export function GettingStartedChecklist() {
   // W2.1 (activation wedge, preserved): every tier can reach the mailer step.
   // Free-tier orgs see wedge-flavored copy for the campaign item — the server
   // caps the pieces (FREE_TIER_LIFETIME_PIECES on the queue route).
-  const tier = (organization?.subscriptionTier as SubscriptionTier | undefined) ?? "free";
+  const tier = limitsTierFor(organization?.subscriptionTier);
   const campaignsAllowed = TIER_LIMITS[tier]?.campaigns !== 0;
   const items = campaignsAllowed
     ? verticalItems

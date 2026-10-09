@@ -1,3 +1,4 @@
+import { limitsTierFor } from "@shared/billing/tier-limits";
 import type { Express, Response, NextFunction } from "express";
 import { withdrawnTargets, OCCUPIED_TARGET_STATUSES, MANUAL_POSTING } from "./services/listingWithdrawal";
 import { offerabilityRefusal } from "./services/listability";
@@ -1115,7 +1116,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
 
         // ── Plan-tier gate: marketplace_syndication is Scale+ only.
         // Lower tiers can still preview (dryRun) but real fan-out is blocked.
-        const tier = (org.subscriptionTier ?? "free") as SubscriptionTier;
+        const tier = limitsTierFor(org.subscriptionTier);
         const tierFeatures: readonly string[] =
           SUBSCRIPTION_TIERS[tier]?.features ?? [];
         const hasSyndicationFeature = tierFeatures.includes(

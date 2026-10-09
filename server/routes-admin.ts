@@ -1,4 +1,6 @@
 import type { Express, Request, Response, NextFunction, RequestHandler } from "express";
+import { limitsTierFor } from "@shared/billing/tier-limits";
+import { monthlyRevenueCentsFor, type BillingInterval } from "@shared/billing/tier-pricing";
 import { maskAdAccountSecret } from "./services/founderAdAccountSecrets";
 import { omitSecretColumns } from "./utils/secretColumns";
 import { storage, db } from "./storage";
@@ -84,6 +86,14 @@ const coordinatesEnrichSchema = z.object({ latitude: z.coerce.number(), longitud
 const aiModelCreateSchema = z.object({ provider: z.string().min(1), modelId: z.string().min(1), displayName: z.string().min(1), costPerMillionInput: z.coerce.number().optional(), costPerMillionOutput: z.coerce.number().optional(), maxTokens: z.coerce.number().int().optional() });
 const aiModelUpdateSchema = aiModelCreateSchema.partial();
 // ─────────────────────────────────────────────────────────────────────────────
+
+
+/** One org's monthly revenue in DOLLARS from THE price table: legacy tier
+ *  names folded, yearly normalised, enterprise (custom quote) $0 — never a
+ *  hand-written price list. */
+function orgMrrDollars(o: { subscriptionTier: string | null; billingInterval?: string | null }): number {
+  return monthlyRevenueCentsFor(o.subscriptionTier, (o.billingInterval as BillingInterval) ?? "monthly") / 100;
+}
 
 export function registerAdminRoutes(app: Express): void {
   const api = app;
@@ -3559,6 +3569,7 @@ export function registerAdminRoutes(app: Express): void {
           name: organizations.name,
           subscriptionTier: organizations.subscriptionTier,
           subscriptionStatus: organizations.subscriptionStatus,
+          billingInterval: organizations.billingInterval,
           dunningStage: organizations.dunningStage,
           createdAt: organizations.createdAt,
         }).from(organizations),
@@ -3574,9 +3585,9 @@ export function registerAdminRoutes(app: Express): void {
           .from(growthCampaigns),
       ]);
 
-      const tierPrices: Record<string, number> = { free: 0, starter: 49, pro: 149, scale: 399, enterprise: 799 };
-      const paidOrgs = orgRows.filter(o => o.subscriptionStatus === 'active' && o.subscriptionTier !== 'free');
-      const totalMrr = paidOrgs.reduce((sum, o) => sum + (tierPrices[o.subscriptionTier as string] || 0), 0);
+      // THE price table, legacy tier names folded, yearly normalised (dollars).
+      const paidOrgs = orgRows.filter(o => o.subscriptionStatus === 'active' && orgMrrDollars(o) > 0);
+      const totalMrr = paidOrgs.reduce((sum, o) => sum + orgMrrDollars(o), 0);
       const newSignups24h = orgRows.filter(o => new Date(o.createdAt as any) > since24h).length;
       const atRiskOrgs = orgRows.filter(o => ['restricted', 'suspended'].includes(o.dunningStage as string)).length;
       const unresolvedAlerts = alertRows.length;
@@ -3639,6 +3650,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         name: organizations.name,
         subscriptionTier: organizations.subscriptionTier,
         subscriptionStatus: organizations.subscriptionStatus,
+        billingInterval: organizations.billingInterval,
         dunningStage: organizations.dunningStage,
         trialEndsAt: organizations.trialEndsAt,
         isFounder: organizations.isFounder,
@@ -3653,8 +3665,6 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         .groupBy(systemAlerts.organizationId);
 
       const alertMap = new Map(alertCounts.map(r => [r.orgId, Number(r.count)]));
-
-      const tierPrices: Record<string, number> = { free: 0, starter: 49, pro: 149, scale: 399, enterprise: 799 };
 
       const result = orgs.map(org => {
         let score = 100;
@@ -3709,7 +3719,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
           healthScore: score,
           healthStatus: status,
           issues,
-          mrr: tierPrices[org.subscriptionTier as string] || 0,
+          mrr: org.subscriptionStatus === 'active' ? orgMrrDollars(org) : 0,
           createdAt: org.createdAt,
         };
       });
@@ -3839,28 +3849,26 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   /** MRR waterfall — breakdown by tier with at-risk flagging */
   api.get("/api/founder/revenue/waterfall", isAuthenticated, isFounderAdmin, async (_req, res) => {
     try {
-      const tierPrices: Record<string, number> = { free: 0, starter: 49, pro: 149, scale: 399, enterprise: 799 };
-
       const orgRows = await db.select({
         subscriptionTier: organizations.subscriptionTier,
         subscriptionStatus: organizations.subscriptionStatus,
+        billingInterval: organizations.billingInterval,
         dunningStage: organizations.dunningStage,
       }).from(organizations);
 
       const tiers = ['free', 'starter', 'pro', 'scale', 'enterprise'] as const;
       const tierData = tiers.map(tier => {
-        const tierOrgs = orgRows.filter(o => o.subscriptionTier === tier);
+        const tierOrgs = orgRows.filter(o => limitsTierFor(o.subscriptionTier) === tier);
         const active = tierOrgs.filter(o => o.subscriptionStatus === 'active' && !['restricted', 'suspended'].includes(o.dunningStage as string));
         const atRisk = tierOrgs.filter(o => ['restricted', 'suspended', 'past_due'].includes(o.dunningStage as string) || o.subscriptionStatus === 'past_due');
-        const price = tierPrices[tier];
         return {
           tier,
           label: tier.charAt(0).toUpperCase() + tier.slice(1),
           count: tierOrgs.length,
           activeCount: active.length,
           atRiskCount: atRisk.length,
-          mrr: active.length * price,
-          atRiskMrr: atRisk.length * price,
+          mrr: active.reduce((sum, o) => sum + orgMrrDollars(o), 0),
+          atRiskMrr: atRisk.reduce((sum, o) => sum + orgMrrDollars(o), 0),
         };
       });
 
@@ -4767,11 +4775,8 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
       // MRR & customer metrics
       const allOrgs = await db.select().from(organizations).limit(10000);
-      const paidOrgs = allOrgs.filter(o => o.subscriptionTier && o.subscriptionTier !== "free");
-      const tierPricing: Record<string, number> = {
-        sprout: 29, starter: 59, pro: 179, scale: 449, enterprise: 899,
-      };
-      const mrr = paidOrgs.reduce((sum, o) => sum + (tierPricing[o.subscriptionTier || ""] || 0), 0);
+      const paidOrgs = allOrgs.filter(o => o.subscriptionStatus === "active" && orgMrrDollars(o) > 0);
+      const mrr = paidOrgs.reduce((sum, o) => sum + orgMrrDollars(o), 0);
 
       // New signups this month vs last
       const newThisMonth = allOrgs.filter(o => o.createdAt && new Date(o.createdAt) >= thirtyDaysAgo).length;
