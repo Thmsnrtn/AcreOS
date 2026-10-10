@@ -90,6 +90,18 @@ export const staggerItem: Variants = {
   },
 };
 
+/**
+ * Rows past this index render without the entrance fade. A 40-row list at a
+ * 50 ms stagger is still fading in two seconds after it mounts: the last rows
+ * are half-transparent text a reader (and axe) cannot make out, which the
+ * 2026-10-10 persona walks measured as 50 contrast failures on Today. The first
+ * screenful still staggers in; the rest are simply there.
+ */
+export const STAGGER_CAP = 8;
+export function staggerItemAt(index: number): Variants | undefined {
+  return index < STAGGER_CAP ? staggerItem : undefined;
+}
+
 // Page-route transition. Backed by motion-tokens' variantPageFade — re-exported
 // here so existing imports of `pageTransition` from "@/lib/animations" keep
 // working unchanged.

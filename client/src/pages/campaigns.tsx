@@ -1,6 +1,7 @@
 import { Target, TestTube, GitBranch } from "lucide-react";
 import { useState, useEffect } from "react";
 import { PageShell } from "@/components/page-shell";
+import { DoorSections, DEALS_SECTIONS } from "@/components/door-sections";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CampaignsContent } from "@/components/campaigns-content";
 import { AbTestsContent } from "@/components/ab-tests-content";
@@ -66,6 +67,8 @@ export default function MarketingHub() {
             </div>
           </div>
         </div>
+
+        <DoorSections door="Deals" sections={DEALS_SECTIONS} />
 
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
             <TabsList className="w-full md:w-auto overflow-x-auto flex" data-testid="marketing-hub-tabs">

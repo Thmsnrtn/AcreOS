@@ -34,29 +34,43 @@ const VIEWPORTS = [
   { key: "desktop", viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: false, deviceScaleFactor: 1 },
 ] as const;
 
-interface Task { who: string; question: string; start: string; /** Names a person would click, in order of preference. */ via: string[]; target: RegExp }
+interface Task {
+  who: string; question: string; start: string;
+  /** Names a person would click, in order of preference. */ via: string[];
+  /** Words on screen that show the walker reached the place. */ target: RegExp;
+  /**
+   * The CONTROL that does the job, by role and accessible name. Text on a page
+   * is not a finished job — a word in a toast or a campaign name matched the
+   * old text-only target — so a customer job passes only when a visible,
+   * enabled control with this name is on the screen as well.
+   */
+  control?: { role: "button" | "link" | "tab" | "heading" | "textbox"; name: RegExp };
+}
 const FOUNDER_DOOR_NAMES = ["The Letter", "Decisions", "Controls", "Story"];
 const FOUNDER_TASKS: Task[] = LETTER_QUESTIONS.map((q) => ({ who: "founder", question: q.question, start: "/founder", via: FOUNDER_DOOR_NAMES, target: q.onScreen }));
 const CUSTOMER_TASKS: Record<string, Task[]> = {
   // Targets are the words of the CONTROL that does the job (Pax's own place facts
   // name them: paxProductFacts.ts PLACES), not a word that merely appears nearby.
+  // Each of the eight jobs that were dead ends on 2026-10-08 (import + postcards
+  // on phone, postcards on desktop, record a payment on both, invite on phone,
+  // see the VA's work on both) carries a `control` assertion.
   land_flipper: [
-    { who: "land flipper", question: "Import my list of owners", start: "/today", via: ["Deals", "Leads", "Import"], target: /import csv|import tax list|import leads/i },
-    { who: "land flipper", question: "Send postcards to my leads", start: "/today", via: ["Deals", "Outreach", "Campaigns", "New campaign"], target: /direct mail|postcards?\b/i },
+    { who: "land flipper", question: "Import my list of owners", start: "/today", via: ["Deals", "Leads", "Import"], target: /import csv|import tax list|import leads/i, control: { role: "button", name: /^\s*import (csv|a list|tax list|leads)/i } },
+    { who: "land flipper", question: "Send postcards to my leads", start: "/today", via: ["Deals", "Outreach", "Campaigns", "New campaign"], target: /direct mail|postcards?\b/i, control: { role: "button", name: /^\s*new campaign/i } },
     { who: "land flipper", question: "Read what sellers texted back", start: "/today", via: ["Inbox"], target: /\binbox\b[\s\S]{0,400}(repl|message|conversation)/i },
   ],
   note_investor: [
-    { who: "note investor", question: "Record a borrower payment", start: "/today", via: ["Finance", "Notes"], target: /record payment/i },
+    { who: "note investor", question: "Record a borrower payment", start: "/today", via: ["Finance", "Notes"], target: /record payment/i, control: { role: "button", name: /^\s*record payment\s*$/i } },
     { who: "note investor", question: "See which notes are late", start: "/today", via: ["Finance", "Notes", "Delinquent"], target: /delinquen|past due|days late/i },
   ],
   va_team: [
-    { who: "VA-run team", question: "Invite my VA", start: "/today", via: ["Settings", "Organization", "Team", "Members"], target: /invite (a )?(member|teammate|team member|user)|send invit/i },
-    { who: "VA-run team", question: "See what my VA did today", start: "/today", via: ["Activity", "Settings"], target: /team activity|activity log|what your team did/i },
+    { who: "VA-run team", question: "Invite my VA", start: "/today", via: ["Settings", "Organization", "Team", "Members"], target: /invite (a )?(member|teammate|team member|user)|send invit/i, control: { role: "textbox", name: /^\s*email/i } },
+    { who: "VA-run team", question: "See what my VA did today", start: "/today", via: ["Activity", "Settings", "Organization"], target: /team activity|activity log|what your team did/i, control: { role: "heading", name: /^\s*team activity\s*$/i } },
   ],
 };
 const CLICK_BUDGET = 4;
 
-interface PageAudit { url: string; viewport: string; axeSerious: number; axeCritical: number; axeRules: string[]; unlabelled: string[]; jargon: Record<string, number>; emptyNoCta: string[] }
+interface PageAudit { url: string; viewport: string; axeSerious: number; axeCritical: number; axeRules: string[]; axeNodes: string[]; unlabelled: string[]; jargon: Record<string, number>; emptyNoCta: string[] }
 const audits = new Map<string, PageAudit>();
 
 async function audit(page: Page, viewport: string, customer: boolean): Promise<void> {
@@ -65,12 +79,17 @@ async function audit(page: Page, viewport: string, customer: boolean): Promise<v
   if (audits.has(key)) return;
   let serious = 0, critical = 0;
   const rules: string[] = [];
+  const nodes: string[] = [];
   try {
     const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
     for (const v of r.violations) {
       if (v.impact === "serious") serious += v.nodes.length;
       if (v.impact === "critical") critical += v.nodes.length;
-      if (v.impact === "serious" || v.impact === "critical") rules.push(`${v.id} (${v.nodes.length})`);
+      if (v.impact === "serious" || v.impact === "critical") {
+        rules.push(`${v.id} (${v.nodes.length})`);
+        // The element, not just the rule: a count nobody can locate is a count nobody fixes.
+        for (const n of v.nodes) nodes.push(`${v.id} @ ${n.target.join(" ")} :: ${(n.html ?? "").replace(/\s+/g, " ").slice(0, 160)} :: ${(n.failureSummary ?? "").replace(/\s+/g, " ").slice(0, 200)}`);
+      }
     }
   } catch (e) { rules.push(`axe failed: ${String(e).slice(0, 80)}`); }
   const dom = await page.evaluate(() => {
@@ -98,7 +117,25 @@ async function audit(page: Page, viewport: string, customer: boolean): Promise<v
     const n = (dom.text.match(new RegExp(`\\b${term.split(/[-_]/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[-_ ]")}s?\\b`, "gi")) ?? []).length;
     if (n) jargon[term] = n;
   }
-  audits.set(key, { url, viewport, axeSerious: serious, axeCritical: critical, axeRules: rules, unlabelled: dom.unlabelled, jargon, emptyNoCta: dom.emptyNoCta });
+  audits.set(key, { url, viewport, axeSerious: serious, axeCritical: critical, axeRules: rules, axeNodes: nodes, unlabelled: dom.unlabelled, jargon, emptyNoCta: dom.emptyNoCta });
+}
+
+/** The job is done-able here: the words are on screen AND the control that does it is visible (and enabled). */
+async function reached(page: Page, t: Task): Promise<boolean> {
+  if (!t.target.test(await visibleText(page))) return false;
+  if (!t.control) return true;
+  const el = page.getByRole(t.control.role, { name: t.control.name }).first();
+  if (!(await el.isVisible().catch(() => false))) return false;
+  return t.control.role === "heading" ? true : await el.isEnabled().catch(() => false); // a textbox: enabled means it takes input
+}
+
+/**
+ * Lists fade in (staggerItem); an axe pass taken mid-fade reads the blended
+ * colour and reports contrast the finished page does not have. Wait for every
+ * running animation to finish (bounded) before auditing.
+ */
+async function settleAnimations(page: Page): Promise<void> {
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running"), null, { timeout: 6_000 }).catch(() => {});
 }
 
 let shot = 0;
@@ -113,8 +150,9 @@ async function walkTask(page: Page, t: Task, viewport: string, customer: boolean
   const clicks: string[] = [];
   await page.goto(`${BASE}${t.start}`, { waitUntil: "networkidle", timeout: 45_000 }).catch(() => {});
   await page.waitForTimeout(1200);
+  await settleAnimations(page);
   await audit(page, viewport, customer);
-  if (t.target.test(await visibleText(page))) return { ...base(t, viewport), answered: true, seconds: (Date.now() - t0) / 1000, clicks };
+  if (await reached(page, t)) return { ...base(t, viewport), answered: true, seconds: (Date.now() - t0) / 1000, clicks };
   for (const name of t.via) {
     if (clicks.length >= CLICK_BUDGET) break;
     let target = null;
@@ -133,8 +171,9 @@ async function walkTask(page: Page, t: Task, viewport: string, customer: boolean
     clicks.push(name);
     await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => {});
     await page.waitForTimeout(1000);
+    await settleAnimations(page);
     await audit(page, viewport, customer);
-    if (t.target.test(await visibleText(page))) return { ...base(t, viewport), answered: true, seconds: (Date.now() - t0) / 1000, clicks };
+    if (await reached(page, t)) return { ...base(t, viewport), answered: true, seconds: (Date.now() - t0) / 1000, clicks };
   }
   return { ...base(t, viewport), answered: false, seconds: (Date.now() - t0) / 1000, clicks, deadEnd: page.url().replace(BASE, "") };
 }

@@ -22,7 +22,7 @@ import { SwipeableCard } from "@/components/mobile/SwipeableCard";
 import PaxAskCard from "@/components/pax/PaxAskCard";
 import { usePaxAskActions, type PaxAskItem } from "@/hooks/usePaxNeedsYou";
 import { lightImpact } from "@/lib/haptics";
-import { staggerContainer, staggerItem } from "@/lib/animations";
+import { staggerContainer, staggerItemAt } from "@/lib/animations";
 import { Verbs } from "@/lib/labels";
 import {
   Sparkles,
@@ -497,7 +497,7 @@ export function DecisionQueue({
             initial="hidden"
             animate="visible"
           >
-            {visible.map((item) => {
+            {visible.map((item, index) => {
               const SourceIcon = sourceIcon[item.source];
               const isKeyboardActiveAsk = item.id === activeId;
               // Host 3 of 4: an ask is answered on its own card, in place.
@@ -506,7 +506,7 @@ export function DecisionQueue({
                   <motion.li
                     key={item.id}
                     role="listitem"
-                    variants={staggerItem}
+                    variants={staggerItemAt(index)}
                     tabIndex={isKeyboardActiveAsk ? -1 : undefined}
                     data-keyboard-active={isKeyboardActiveAsk ? "true" : undefined}
                     className={isKeyboardActiveAsk ? "rounded-card ring-2 ring-ring outline-none" : undefined}
@@ -551,7 +551,7 @@ export function DecisionQueue({
                 <motion.li
                   key={item.id}
                   role="listitem"
-                  variants={staggerItem}
+                  variants={staggerItemAt(index)}
                   // Roving keyboard focus (J/K): the active row takes
                   // programmatic focus so screen readers announce it and
                   // Enter opens it. tabIndex -1 keeps Tab order unchanged.

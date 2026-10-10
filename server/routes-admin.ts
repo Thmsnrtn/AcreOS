@@ -4163,14 +4163,20 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   });
 
   // ─── Activity / Audit Log ───────────────────────────────────────────────────
-  // GET /api/org/activity-log — last 50 entries for this org
+  // GET /api/org/activity-log — last 50 entries for this org.
+  // `?userId=` narrows to one person's rows (Settings → Organization → Team
+  // activity: "what did my VA do"). It only narrows: the org filter is
+  // unconditional, so another org's user id simply matches nothing.
   api.get("/api/org/activity-log", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
+      const userId = typeof req.query.userId === "string" && req.query.userId.length > 0 && req.query.userId.length <= 200
+        ? req.query.userId
+        : undefined;
       const rows = await db
         .select()
         .from(auditLog)
-        .where(eq(auditLog.organizationId, org.id))
+        .where(and(eq(auditLog.organizationId, org.id), userId ? eq(auditLog.userId, userId) : undefined))
         .orderBy(desc(auditLog.createdAt))
         .limit(50);
       res.json(rows);

@@ -183,6 +183,15 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
   }, []);
   const [selectedNote, setSelectedNote] = useState<NoteWithDetails | null>(null);
   const [deletingNote, setDeletingNote] = useState<NoteWithDetails | null>(null);
+  // Recording a borrower payment from the Notes list itself. It used to need
+  // three taps the persona walks never found (open a note → scroll → Record
+  // payment), on phone AND desktop; now it is one button on the door's page.
+  const [isPickPaymentOpen, setIsPickPaymentOpen] = useState(false);
+  const [paymentNote, setPaymentNote] = useState<NoteWithDetails | null>(null);
+  const { data: financePermissions } = useUserPermissions();
+  // Same rule as the note drawer and the server: owner or admin only.
+  const mayRecordPayments = financePermissions?.role === "owner" || financePermissions?.role === "admin";
+  const recordPaymentFromList = useRecordPayment();
   const [isExporting, setIsExporting] = useState(false);
   const [isQboSyncing, setIsQboSyncing] = useState(false);
   const { mutate: deleteNote, isPending: isDeleting } = useDeleteNote();
@@ -412,6 +421,15 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
                 {isQboSyncing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" /> : <RefreshCw className="w-4 h-4 mr-2" aria-hidden="true" />}
                 Sync to QuickBooks
               </Button>
+              {mayRecordPayments && (
+                <Button
+                  variant="outline"
+                  onClick={() => setIsPickPaymentOpen(true)}
+                  data-testid="button-record-payment-from-list"
+                >
+                  <Receipt className="w-4 h-4 mr-2" aria-hidden="true" /> Record payment
+                </Button>
+              )}
               <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                 <DialogTrigger asChild>
                   <Button data-testid="button-create-note">
@@ -728,6 +746,28 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
               <FinanceBook notes={enrichedNotes} />
             </TabsContent>
           </Tabs>
+
+      <PickNoteForPaymentDialog
+        open={isPickPaymentOpen}
+        onOpenChange={setIsPickPaymentOpen}
+        notes={activeNotes}
+        loading={isLoading}
+        onPick={(note) => {
+          setIsPickPaymentOpen(false);
+          setPaymentNote(note);
+        }}
+        onCreateNote={() => {
+          setIsPickPaymentOpen(false);
+          setIsCreateOpen(true);
+        }}
+      />
+      {paymentNote && (
+        <RecordPaymentModal
+          note={paymentNote}
+          recordPayment={recordPaymentFromList}
+          onClose={() => setPaymentNote(null)}
+        />
+      )}
 
       {selectedNote && (
         <NoteDetailDrawer
@@ -1763,6 +1803,91 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
 
       </div>
     </div>
+  );
+}
+
+/**
+ * Step one of recording a payment from the Notes list: which note. With no
+ * active note there is nothing to record against, and the dialog says so and
+ * offers the way forward (create one) instead of a dead button.
+ */
+function PickNoteForPaymentDialog({
+  open,
+  onOpenChange,
+  notes,
+  loading,
+  onPick,
+  onCreateNote,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  notes: NoteWithDetails[];
+  loading: boolean;
+  onPick: (note: NoteWithDetails) => void;
+  onCreateNote: () => void;
+}) {
+  const [noteId, setNoteId] = useState<string>("");
+  useEffect(() => {
+    if (!open) setNoteId("");
+  }, [open]);
+  const labelOf = (n: NoteWithDetails) =>
+    `${n.borrower ? `${n.borrower.firstName} ${n.borrower.lastName}` : n.borrowerId ? `Borrower #${n.borrowerId}` : "Unassigned borrower"} · Note #${n.id} · ${usd(Number(n.currentBalance || 0))} owed`;
+  const chosen = notes.find((n) => String(n.id) === noteId) ?? null;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[480px]" data-testid="dialog-pick-note-for-payment">
+        <DialogHeader>
+          <DialogTitle>Record payment</DialogTitle>
+          <DialogDescription>
+            {notes.length > 0
+              ? "Pick the note the borrower paid on. You enter the amount next."
+              : "A payment is recorded against a note, and there is no active note yet."}
+          </DialogDescription>
+        </DialogHeader>
+        {loading ? (
+          <Skeleton className="h-11 w-full" announceText="Loading your notes" />
+        ) : notes.length > 0 ? (
+          <div className="space-y-2">
+            <Label htmlFor="select-payment-note">Note</Label>
+            <Select value={noteId} onValueChange={setNoteId}>
+              <SelectTrigger id="select-payment-note" className="min-h-11" data-testid="select-payment-note">
+                <SelectValue placeholder="Choose a note" />
+              </SelectTrigger>
+              <SelectContent>
+                {notes.map((n) => (
+                  <SelectItem key={n.id} value={String(n.id)}>
+                    {labelOf(n)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Create the note (or import your notes) first; its payments are recorded here from then on.
+          </p>
+        )}
+        <DialogFooter className="gap-2">
+          <Button variant="outline" className="min-h-11" onClick={() => onOpenChange(false)}>
+            {Verbs.CANCEL}
+          </Button>
+          {notes.length > 0 ? (
+            <Button
+              className="min-h-11"
+              disabled={!chosen}
+              onClick={() => chosen && onPick(chosen)}
+              data-testid="button-continue-record-payment"
+            >
+              Continue
+            </Button>
+          ) : (
+            <Button className="min-h-11" onClick={onCreateNote} data-testid="button-create-note-for-payment">
+              <Plus className="w-4 h-4 mr-2" aria-hidden="true" /> Create a note
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

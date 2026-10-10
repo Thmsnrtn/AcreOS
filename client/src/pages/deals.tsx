@@ -1,4 +1,5 @@
 import { PageShell } from "@/components/page-shell";
+import { DoorSections, DEALS_SECTIONS } from "@/components/door-sections";
 import { ForecastCalibration } from "@/components/deals/ForecastCalibration";
 import { plural, usd } from "@/lib/format";
 import "./today.css";
@@ -534,6 +535,8 @@ export default function DealsPage({ embedded = false }: { embedded?: boolean }) 
               </ResponsiveModal>
             </div>
           </div>
+
+          {!embedded && <DoorSections door="Deals" sections={DEALS_SECTIONS} />}
 
           <DisclaimerBanner type="deals" />
 

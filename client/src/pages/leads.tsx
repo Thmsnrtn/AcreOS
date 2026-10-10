@@ -1,4 +1,5 @@
 import { PageShell } from "@/components/page-shell";
+import { DoorSections, DEALS_SECTIONS } from "@/components/door-sections";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useTerm } from "@/hooks/use-persona";
 import { plural, formatDate } from "@/lib/format";
@@ -1282,6 +1283,8 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
               />
             </div>
           </div>
+
+          {!embedded && <DoorSections door="Deals" sections={DEALS_SECTIONS} />}
 
           {/* Lead Quality Tier Distribution */}
           {leads && (leads as LeadWithScore[]).length > 0 && (() => {

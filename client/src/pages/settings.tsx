@@ -52,6 +52,7 @@ import { ProviderSettings } from "@/components/provider-settings";
 import { AICostDashboard } from "@/components/ai-cost-dashboard";
 import { SettingsQuickFind } from "@/components/settings/SettingsQuickFind";
 import { TeamInviteCard } from "@/components/settings/TeamInviteCard";
+import { TeamActivityCard } from "@/components/settings/TeamActivityCard";
 
 // Monolith split (T3 census W1-2) — per-tab sections live in their own
 // modules under pages/settings/, mirroring the existing 8 routed subpages.
@@ -466,30 +467,13 @@ export default function Settings() {
              one keystroke without scanning tab labels. */}
           <SettingsQuickFind onJump={(tab) => handleTabChange(tab)} />
 
-          {/* Mobile jump-menu — 17 tabs grouped into six clusters via Radix
-             SelectGroup. Group labels make the long list scannable at 375px
-             rather than a flat alphabetical-ish run. Desktop unchanged. */}
-          <div className="md:hidden mb-4">
-            <Select value={activeTab} onValueChange={handleTabChange}>
-              <SelectTrigger className="w-full" aria-label="Settings section">
-                <SelectValue placeholder="Choose a section" />
-              </SelectTrigger>
-              <SelectContent>
-                {/* IA collapse — 7 canonical buckets. Legacy values
-                    auto-rewrite via LEGACY_TO_CANONICAL. */}
-                <SelectItem value="account">Account</SelectItem>
-                <SelectItem value="security">Security</SelectItem>
-                <SelectItem value="organization">Organization</SelectItem>
-                <SelectItem value="billing">Billing</SelectItem>
-                <SelectItem value="tax-compliance">Tax &amp; Compliance</SelectItem>
-                <SelectItem value="notifications">Notifications</SelectItem>
-                <SelectItem value="integrations">{PAX_SETTINGS_COPY.bucketLabel}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
+          {/* The section tabs show on every device. A phone used to get a
+             one-line jump-menu instead, which hid the seven section names
+             behind a control labelled with the CURRENT section — the persona
+             walks could not find Organization (invite a teammate, see what
+             the team did) on a phone at all. The row scrolls sideways. */}
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-            <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 hidden md:block">
+            <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
               {/* IA collapse — 17 tabs → 7 canonical buckets (P1-26 / Reyna §2).
                   See LEGACY_TO_CANONICAL above for the migration map; old
                   hashes auto-rewrite so deep links keep working. */}
@@ -1096,6 +1080,8 @@ export default function Settings() {
                   )}
                 </CardContent>
               </Card>
+
+              <TeamActivityCard />
 
               {/*
                 Blanco §1: Co-Owners section. Owner-only management. The

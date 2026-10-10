@@ -22,6 +22,8 @@ import {
   MessageSquare,
   Flame,
   X,
+  Upload,
+  Users,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -32,6 +34,10 @@ import { cn } from "@/lib/utils";
 import { VirtualList } from "@/components/virtual-list";
 import { apiRequest } from "@/lib/queryClient";
 import PostCallSheet, { setPendingContactEvent } from "@/components/mobile/PostCallSheet";
+import { CsvImportSheet } from "@/components/leads/CsvImportSheet";
+import { DoorSections, DEALS_SECTIONS } from "@/components/door-sections";
+import { EmptyState } from "@/components/empty-state";
+import { QueryErrorState } from "@/components/query-error-state";
 
 type FilterKey = "all" | "hot" | "new" | "responded";
 
@@ -246,6 +252,9 @@ export function MobileLeadList() {
 
   const [filter, setFilter] = useState<FilterKey>("all");
   const [q, setQ] = useState("");
+  // Importing a list is the first job a land flipper does on a phone; it used
+  // to be desktop-only (the persona walks found it a dead end at /leads).
+  const [importOpen, setImportOpen] = useState(false);
   const listHeight = useMobileListHeight();
 
   const filtered = useMemo(() => {
@@ -286,6 +295,21 @@ export function MobileLeadList() {
 
   return (
     <div className="space-y-3" data-testid="mobile-lead-list">
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="acr-cc-greeting text-2xl" data-testid="text-page-title">Leads</h1>
+        <Button
+          variant="outline"
+          className="min-h-11 shrink-0"
+          onClick={() => setImportOpen(true)}
+          data-testid="mobile-lead-import"
+        >
+          <Upload className="h-4 w-4 mr-2" aria-hidden="true" />
+          Import CSV
+        </Button>
+      </div>
+      <DoorSections door="Deals" sections={DEALS_SECTIONS} />
+      <CsvImportSheet open={importOpen} onOpenChange={setImportOpen} onImported={() => void refetch()} />
+
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden />
@@ -349,43 +373,34 @@ export function MobileLeadList() {
           ))}
         </div>
       ) : error ? (
-        <Card className="p-8 text-center">
-          <div className="text-sm font-medium">Couldn't load leads</div>
-          <div className="text-xs text-muted-foreground mt-1">
-            Network or session issue. Pull down or try again.
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-4"
-            onClick={() => refetch()}
-            data-testid="mobile-lead-list-retry"
-          >
-            Try again
-          </Button>
-        </Card>
+        <QueryErrorState
+          error={error as Error}
+          onRetry={() => void refetch()}
+          compact
+          title="Couldn't load your leads"
+          description="Your leads are unchanged — this is a loading problem. Try again."
+          testId="mobile-lead-list-error"
+        />
       ) : filtered.length === 0 ? (
-        <Card className="p-8 text-center">
-          <div className="text-sm font-medium">
-            {leads.length === 0 ? "No leads yet" : "No leads match"}
-          </div>
-          <div className="text-xs text-muted-foreground mt-1">
-            {q || filter !== "all"
-              ? "Clear the search or change the filter."
-              : "Capture your first lead with the Quick add button below."}
-          </div>
-          {(q || filter !== "all") && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-4"
-              onClick={() => { setQ(""); setFilter("all"); }}
-              data-testid="mobile-lead-list-clear-filters"
-            >
-              Clear filters
-            </Button>
-          )}
-        </Card>
+        leads.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            headline="No leads yet"
+            subtitle="Import the owner list you pulled from the county, or add one seller with the Quick add button."
+            cta={{ label: "Import a list", onClick: () => setImportOpen(true), "data-testid": "mobile-lead-empty-import" }}
+            actionIcon={Upload}
+            testId="mobile-lead-list-empty"
+          />
+        ) : (
+          <EmptyState
+            icon={Search}
+            headline="No leads match"
+            subtitle="Clear the search or change the filter to see the rest of your list."
+            cta={{ label: "Clear filters", onClick: () => { setQ(""); setFilter("all"); }, "data-testid": "mobile-lead-list-clear-filters" }}
+            actionIcon={null}
+            testId="mobile-lead-list-no-match"
+          />
+        )
       ) : (
         <VirtualList
           items={filtered}
