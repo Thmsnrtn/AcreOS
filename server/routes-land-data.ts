@@ -30,7 +30,13 @@ import { parcelTruths } from "@shared/landData/parcelTruths";
 import { taxSaleSourcesFor } from "@shared/landData/taxSaleSources";
 import type { ParcelFactSet } from "@shared/landData/parcelFacts";
 import { STATEWIDE_PARCEL_ENDPOINTS } from "./services/statewideParcelEndpoints";
-import { enqueueCountyProcessing, getCountyJob, OWNED_SNAPSHOT_SOURCE } from "./services/landData/countyPipeline";
+import {
+  enqueueCountyProcessing,
+  getCountyJob,
+  normalizeCountyName,
+  ownedApn,
+  OWNED_SNAPSHOT_SOURCE,
+} from "./services/landData/countyPipeline";
 import {
   NATIONAL_DATASET_CATEGORIES,
   nationalDatasetReadiness,
@@ -183,8 +189,10 @@ export function registerLandDataRoutes(app: Express) {
     const parsed = countySchema.extend({ apn: z.string().trim().min(1).max(120) }).safeParse(req.query);
     if (!parsed.success) return Errors.validationFailed(res, parsed.error);
     try {
-      const county = parsed.data.county.toLowerCase().replace(/ county$/i, "").trim();
-      const apn = parsed.data.apn.toUpperCase();
+      const county = normalizeCountyName(parsed.data.county);
+      // The same canonical APN form the pipeline stored (parcelRef.ts).
+      const apn = ownedApn(parsed.data.state, county, parsed.data.apn);
+      if (!apn) return Errors.badRequest(res, "That parcel id is not usable.");
       // Current id OR any id this parcel carried before (the crosswalk), so a
       // renumbered parcel still resolves to the same land.
       const [row] = await db

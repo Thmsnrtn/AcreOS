@@ -197,6 +197,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-kb.ts", mountPath: null, kind: "register", export: "registerKnowledgeBaseRoutes" },
   { file: "routes-kpis.ts", mountPath: "/api/kpis", kind: "router", export: "default" },
   { file: "routes-land-credit.ts", mountPath: "/api/land-credit", kind: "router", export: "default" },
+  { file: "routes-land-data.ts", mountPath: null, kind: "register", export: "registerLandDataRoutes" },
   { file: "routes-lead-enrichment.ts", mountPath: "/api/leads", kind: "router", export: "default" },
   { file: "routes-leads.ts", mountPath: null, kind: "register", export: "registerLeadRoutes" },
   { file: "routes-legal-holds.ts", mountPath: null, kind: "register", export: "registerLegalHoldRoutes" },

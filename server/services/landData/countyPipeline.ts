@@ -32,6 +32,16 @@ import { computeParcelFacts, gisAcres, type ParcelInput, type ParcelContext } fr
 import { areaBbox, areaCentroid, areaSqM, type AreaGeometry } from "./geometry";
 import { newParcelKey, reconcileCrosswalk, type KeyedRecord } from "@shared/landData/parcelCrosswalk";
 import type { ParcelFactSet } from "@shared/landData/parcelFacts";
+import { normalizeParcelRef } from "@shared/parcel/parcelRef";
+
+/**
+ * The stored id of an owned parcel: the canonical natural-key APN form
+ * (shared/parcel/parcelRef.ts), so the lookup route finds what was stored.
+ */
+export function ownedApn(state: string, county: string, sourceId: string): string | null {
+  const ref = normalizeParcelRef({ state, county, apn: sourceId });
+  return ref.ok ? ref.ref.apn : null;
+}
 
 // ── Resource caps (1 GB worker) ────────────────────────────────────────────
 
@@ -414,10 +424,17 @@ async function liveDeps(job: CountyJob, ep: EndpointView, countyWhere: string | 
           .where(and(isNull(parcelSnapshots.organizationId), eq(parcelSnapshots.source, OWNED_SNAPSHOT_SOURCE), eq(parcelSnapshots.parcelKey, p.parcelKey)))
           .limit(1);
         const prevHistory = Array.isArray(existing?.rawData?.sourceIdHistory) ? (existing!.rawData!.sourceIdHistory as string[]) : [];
-        const history = Array.from(new Set([...prevHistory, p.sourceParcelId.toUpperCase()]));
+        const apn = ownedApn(job.state, job.county, p.sourceParcelId);
+        if (!apn) {
+          // An id the canonical natural key refuses cannot be found again —
+          // skipped (and logged), never stored under a guessed key.
+          logger.warn("[countyPipeline] parcel skipped — unusable parcel id", { metadata: { county: job.county, state: job.state } });
+          continue;
+        }
+        const history = Array.from(new Set([...prevHistory, apn]));
         const values = {
           organizationId: null,
-          apn: p.sourceParcelId.toUpperCase(),
+          apn,
           state: job.state,
           county: job.county,
           source: OWNED_SNAPSHOT_SOURCE,

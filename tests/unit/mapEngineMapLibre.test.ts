@@ -8,10 +8,13 @@
  * Mapbox Static Images API. A vacuity floor pins that the walk still finds the
  * three map surfaces (property map, EDDM map, subdivision editor).
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS, stripComments } from "../helpers/stripComments";
+
+// Strips every client/src file — declared budget, not the 30s default.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const root = path.resolve(__dirname, "../..");
 const clientSrc = path.join(root, "client/src");
