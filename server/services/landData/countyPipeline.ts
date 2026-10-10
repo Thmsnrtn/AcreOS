@@ -33,6 +33,7 @@ import { areaBbox, areaCentroid, areaSqM, type AreaGeometry } from "./geometry";
 import { newParcelKey, reconcileCrosswalk, type KeyedRecord } from "@shared/landData/parcelCrosswalk";
 import type { ParcelFactSet } from "@shared/landData/parcelFacts";
 import { normalizeParcelRef } from "@shared/parcel/parcelRef";
+import { TN_PUBLIC_PARCEL_SERVICE } from "./tnParcelSources";
 
 /**
  * The stored id of an owned parcel: the canonical natural-key APN form
@@ -51,6 +52,8 @@ export const MAX_CONCURRENT_COUNTIES = 1;
 export const PAGE_SIZE = 250;
 /** Pages per worker tick (≤ 2,000 parcels), then yield until the next tick. */
 const MAX_PAGES_PER_TICK = 8;
+/** Consecutive failed ticks before a county is marked failed. */
+const MAX_CONSECUTIVE_FAILURES = 5;
 
 /** parcel_snapshots.source of a KEPT parcel (never a cache row). */
 export const OWNED_SNAPSHOT_SOURCE = "owned_pipeline";
@@ -92,6 +95,34 @@ const STATEWIDE_COUNTY_FIELD: Record<string, string> = { TN: "COUNTY_NAME" };
 
 /** Register keys of the statewide parcel services (see data-licenses.ts). */
 const STATEWIDE_LICENSE_SOURCE: Record<string, string> = { TN: "TN Property Boundaries Public Use service" };
+
+/**
+ * Licence-register keys of known parcel SERVICES, by URL. The refusal is about
+ * the source, not the row that carries it: discovery-on-miss can insert a
+ * statewide service as a county row, and a reviewer can mark that row
+ * redistributable — the register still decides.
+ */
+const LICENSED_SERVICES: Array<{ url: string; licenseSource: string }> = [
+  { url: TN_PUBLIC_PARCEL_SERVICE.layerUrl, licenseSource: TN_PUBLIC_PARCEL_SERVICE.licenseSource },
+];
+
+/** host + path up to the service type, lowercased: ".../FeatureServer/0/" → ".../featureserver". */
+function serviceIdentity(url: string): string {
+  let u: URL;
+  try {
+    u = new URL(url.trim());
+  } catch {
+    return url.trim().toLowerCase();
+  }
+  const path = u.pathname.toLowerCase().replace(/\/+$/, "");
+  const m = /^(.*\/(?:featureserver|mapserver|imageserver))(?:\/\d+)?(?:\/.*)?$/.exec(path);
+  return `${u.hostname.toLowerCase()}${m ? m[1] : path}`;
+}
+
+function licenseSourceForUrl(url: string): string | null {
+  const id = serviceIdentity(url);
+  return LICENSED_SERVICES.find((s) => serviceIdentity(s.url) === id)?.licenseSource ?? null;
+}
 
 export function normalizeCountyName(c: string): string {
   return (c || "").toLowerCase().replace(/ county$/i, "").replace(/-/g, " ").trim();
@@ -146,7 +177,8 @@ export function decideCountyProcessing(
   // Storing a copy IS redistribution: the endpoint's own reviewed posture
   // must allow it, and so must the licence register entry it will cite.
   const rowAllows = ep.redistributable === "yes" || ep.redistributable === "attribution";
-  if (!rowAllows || (ep.licenseSource !== null && !mayCacheAndRedistribute(ep.licenseSource))) {
+  const licences = [ep.licenseSource, licenseSourceForUrl(ep.baseUrl)].filter((l): l is string => l !== null);
+  if (!rowAllows || licences.some((l) => !mayCacheAndRedistribute(l))) {
     return {
       action: "refuse",
       code: "terms_forbid_storing",
@@ -259,7 +291,8 @@ export async function getCountyJob(state: string, county: string): Promise<Count
 
 export interface SourceFeature {
   objectId: number;
-  geometry: AreaGeometry;
+  /** null when the source row has no shape — skipped, but the cursor moves past it. */
+  geometry: AreaGeometry | null;
   attributes: Record<string, unknown>;
 }
 
@@ -298,12 +331,19 @@ export async function processCountyPage(
   const feats = await deps.fetchPage(job.nextOffset);
   if (feats.length === 0) return { stored: 0, lastObjectId: job.nextOffset, done: true };
 
-  const inputs: Array<{ f: SourceFeature; sourceId: string; centroid: [number, number]; sqm: number }> = [];
+  const inputs: Array<{ f: SourceFeature & { geometry: AreaGeometry }; sourceId: string; centroid: [number, number]; sqm: number }> = [];
   for (const f of feats) {
     const sourceId = String(f.attributes[fields.apn] ?? "").trim();
-    if (!sourceId) continue; // an unidentifiable parcel cannot be keyed — skipped, counted below
-    inputs.push({ f, sourceId, centroid: areaCentroid(f.geometry) as [number, number], sqm: areaSqM(f.geometry) });
+    if (!sourceId) continue; // an unidentifiable parcel cannot be keyed — skipped
+    const geometry = f.geometry;
+    if (!geometry) continue; // no shape, nothing to compute facts on — skipped
+    inputs.push({ f: { ...f, geometry }, sourceId, centroid: areaCentroid(geometry) as [number, number], sqm: areaSqM(geometry) });
   }
+  // The cursor is the source's own object id, so it moves past skipped rows too.
+  const lastObjectId = Math.max(...feats.map((f) => f.objectId));
+  // A non-empty page never ends the county: servers cap a page at their own
+  // maxRecordCount (often below PAGE_SIZE). Only an empty page does.
+  if (inputs.length === 0) return { stored: 0, lastObjectId, done: false };
   const pts = inputs.flatMap((i) => [areaBbox(i.f.geometry)]);
   const bbox: Bbox = [
     Math.min(...pts.map((b) => b[0])), Math.min(...pts.map((b) => b[1])),
@@ -342,7 +382,7 @@ export async function processCountyPage(
     };
   });
   await deps.save(out);
-  return { stored: out.length, lastObjectId: Math.max(...feats.map((f) => f.objectId)), done: feats.length < PAGE_SIZE };
+  return { stored: out.length, lastObjectId, done: false };
 }
 
 // ── Live deps ──────────────────────────────────────────────────────────────
@@ -378,9 +418,13 @@ async function liveDeps(job: CountyJob, ep: EndpointView, countyWhere: string | 
       if (!res.ok) throw new Error(`page HTTP ${res.status}`);
       const body = (await res.json()) as { features?: Array<{ geometry: { type: string; coordinates: unknown } | null; properties: Record<string, unknown> }>; error?: { message?: string } };
       if (body.error) throw new Error(body.error.message ?? "ArcGIS error");
-      return (body.features ?? [])
-        .filter((f) => f.geometry && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon"))
-        .map((f) => ({ objectId: Number(f.properties[oid]), geometry: f.geometry as unknown as AreaGeometry, attributes: f.properties }));
+      // Every row is returned (a shapeless one with geometry null) so the
+      // cursor advances past it and a short page is not mistaken for the end.
+      return (body.features ?? []).map((f) => ({
+        objectId: Number(f.properties[oid]),
+        geometry: f.geometry && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon") ? (f.geometry as unknown as AreaGeometry) : null,
+        attributes: f.properties,
+      }));
     },
     loadContext: (bbox) =>
       loadParcelContext(bbox, retrievedOn, {
@@ -494,7 +538,7 @@ export async function runCountyPipelineTick(): Promise<{ county: string | null; 
   let stored = 0;
   let offset = job.ownedNextOffset;
   try {
-    await setJob({ ownedStatus: "processing", ownedStartedAt: job.ownedStartedAt ?? clock.now(), ownedAttempts: job.ownedAttempts + 1 });
+    await setJob({ ownedStatus: "processing", ownedStartedAt: job.ownedStartedAt ?? clock.now() });
     const { deps, fields } = await liveDeps(job, decision.endpoint, decision.countyWhere, retrievedOn);
     for (let page = 0; page < MAX_PAGES_PER_TICK; page++) {
       const r = await processCountyPage({ state: job.state, county: job.county, countyFips: null, nextOffset: offset }, fields, deps);
@@ -502,7 +546,10 @@ export async function runCountyPipelineTick(): Promise<{ county: string | null; 
       offset = r.lastObjectId;
       await db
         .update(countyDiscoveryQueue)
-        .set({ ownedNextOffset: offset, ownedParcelsStored: sql`${countyDiscoveryQueue.ownedParcelsStored} + ${r.stored}`, updatedAt: clock.now() })
+        // A page that landed resets the failure count: ownedAttempts counts
+        // CONSECUTIVE failures, so a long county is not condemned by one
+        // transient error after many good ticks.
+        .set({ ownedNextOffset: offset, ownedParcelsStored: sql`${countyDiscoveryQueue.ownedParcelsStored} + ${r.stored}`, ownedAttempts: 0, updatedAt: clock.now() })
         .where(eq(countyDiscoveryQueue.id, job.id));
       if (r.done) {
         await setJob({ ownedStatus: "complete", ownedCompletedAt: clock.now() });
@@ -512,7 +559,10 @@ export async function runCountyPipelineTick(): Promise<{ county: string | null; 
     return { county: job.county, stored, outcome: "partial" };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await setJob({ ownedStatus: job.ownedAttempts + 1 >= 5 ? "failed" : "processing", ownedLastError: message.slice(0, 500) });
+    // Re-read the count: pages that landed earlier in this tick reset it.
+    const [now] = await db.select({ attempts: countyDiscoveryQueue.ownedAttempts }).from(countyDiscoveryQueue).where(eq(countyDiscoveryQueue.id, job.id));
+    const attempts = (now?.attempts ?? job.ownedAttempts) + 1;
+    await setJob({ ownedStatus: attempts >= MAX_CONSECUTIVE_FAILURES ? "failed" : "processing", ownedAttempts: attempts, ownedLastError: message.slice(0, 500) });
     logger.warn("[countyPipeline] tick failed", { metadata: { county: job.county, state: job.state, error: message } });
     return { county: job.county, stored, outcome: "error" };
   }

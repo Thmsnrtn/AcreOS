@@ -210,6 +210,17 @@ describe("county pipeline — refusal is decided before any fetch", () => {
     expect(decideCountyProcessing("TN", "DeKalb", [sw])).toMatchObject({ code: "terms_forbid_storing" });
   });
 
+  it("the TN non-commercial service is refused by its URL, whatever row carries it", () => {
+    // The refusal is about the SOURCE, not the row shape: discovery-on-miss can
+    // insert the same statewide service as a COUNTY row, and a reviewer can
+    // mark it redistributable. Neither may make it storable.
+    const tnUrl = "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/";
+    const asCounty = ep({ baseUrl: tnUrl, redistributable: "yes", licenseSource: null });
+    expect(decideCountyProcessing("TN", "DeKalb", [asCounty])).toMatchObject({ code: "terms_forbid_storing" });
+    const asStatewideUnmapped = ep({ county: "*", baseUrl: tnUrl.toUpperCase(), redistributable: "yes", licenseSource: null });
+    expect(decideCountyProcessing("TN", "DeKalb", [asStatewideUnmapped])).toMatchObject({ code: "terms_forbid_storing" });
+  });
+
   it("a reviewed county row is processed; a statewide one needs a verified county field", () => {
     expect(decideCountyProcessing("TN", "DeKalb", [ep({})])).toMatchObject({ action: "process", countyWhere: null });
     const sw = ep({ county: "*", state: "XX", licenseSource: null });
@@ -229,11 +240,47 @@ describe("county pipeline — refusal is decided before any fetch", () => {
         save: async (ps) => { saved.push(...ps); },
       },
     );
-    expect(r).toEqual({ stored: 3, lastObjectId: 12, done: true });
+    // A non-empty page never ends the county: a server whose maxRecordCount
+    // is below PAGE_SIZE returns short pages mid-county. Only an empty page does.
+    expect(r).toEqual({ stored: 3, lastObjectId: 12, done: false });
     expect(saved.map((s) => s.parcelKey)).toEqual(["TN-47041-G0", "TN-47041-G1", "TN-47041-G2"]);
     // No layers → every fact refuses honestly rather than defaulting.
     expect(saved[0].facts.buildable_acres.status).toBe("unavailable");
     expect(saved[0].facts.road_frontage_m.status).toBe("unavailable");
+  });
+});
+
+describe("county pipeline — paging", () => {
+  const ctx: ParcelContext = { roads: null, wetlands: null, flood: null, publicLands: null, transmission: null, towns: null, slope: null };
+  const deps = (pages: Array<Array<{ objectId: number; geometry: AreaGeometry | null; attributes: Record<string, unknown> }>>) => {
+    const saved: any[] = [];
+    let i = 0;
+    return {
+      saved,
+      deps: {
+        fetchPage: async () => pages[i++] ?? [],
+        loadContext: async () => ctx,
+        existingNear: async () => [],
+        save: async (ps: any[]) => { saved.push(...ps); },
+      },
+    };
+  };
+
+  it("a parcel with no geometry is skipped, and the cursor still moves past it", async () => {
+    const page = [
+      { objectId: 1, geometry: sampleGeoms[0], attributes: { GISLINK: "A" } },
+      { objectId: 2, geometry: null, attributes: { GISLINK: "B" } },
+    ];
+    const { saved, deps: d } = deps([page]);
+    const r = await processCountyPage({ state: "TN", county: "dekalb", countyFips: "47041", nextOffset: 0 }, { apn: "GISLINK", keep: [] }, d as any);
+    expect(r).toEqual({ stored: 1, lastObjectId: 2, done: false });
+    expect(saved.map((s) => s.sourceParcelId)).toEqual(["A"]);
+  });
+
+  it("only an empty page completes the county", async () => {
+    const { deps: d } = deps([]);
+    const r = await processCountyPage({ state: "TN", county: "dekalb", countyFips: "47041", nextOffset: 7 }, { apn: "GISLINK", keep: [] }, d as any);
+    expect(r).toEqual({ stored: 0, lastObjectId: 7, done: true });
   });
 });
 
