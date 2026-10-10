@@ -730,7 +730,35 @@ export const CONSTITUTION: readonly ConstitutionInvariant[] = [
         "(mutation-checked 2026-10-09). A release goes through " +
         "approvePendingHand with a named delegation grant, so it is in the " +
         "experience log (Story) and the drift sentinel's binding; it never " +
-        "bypasses the witnessed-send kernel.",
+        "bypasses the witnessed-send kernel. 2026-10-10: the support domain " +
+        "is SEEDED at execute_gated (domainAutonomy DEFAULT_DOMAIN_LEVEL), so " +
+        "the triage pass that drafts replies no longer waits on a founder tap; " +
+        "each reply it drafts still passes this policy one at a time.",
+    },
+  },
+  {
+    id: "ai.digest-lane-runs-only-reversible-work",
+    title: "Routine reversible work runs and is digested; anything else asks first",
+    statement:
+      "Routine, reversible autopilot moves in ops and deploy run inside the gate stack without a per-move ask and are listed in the founder's weekly digest (Decisions door) with an undo; a move that cannot be undone, reaches a customer without a per-effect witness, is new, or is any hard stop (pricing, legal signing, spend over $500, customer-data deletion) still asks the founder first.",
+    category: "ai-surface",
+    source:
+      "docs/company/founder-decisions-2026-10-08.md, '2026-10-10 — routine reversible autopilot moves run and are digested'",
+    enforcement: {
+      kind: "ratchet-test",
+      refs: [
+        "tests/unit/digestLaneRunsOnlyReversibleWork.test.ts",
+        "server/services/autopilot/act.ts",
+        "server/services/autopilot/weeklyAutopilotDigest.ts",
+      ],
+      note:
+        "digestLaneRunsOnlyReversibleWork.test.ts routes the forbidden shapes " +
+        "INTO the digest path (a gate stubbed to pass): an irreversible move " +
+        "tagged ops, an unknown kind, and each of the four hard-stop classes " +
+        "worded as a routine ops move; each must ask and enqueue nothing. " +
+        "Mutation-checked 2026-10-10: removing the reversibility check, the " +
+        "hard-stop check, or the planAndAct call each turns it red; seeding " +
+        "a literal level instead of DEFAULT_DOMAIN_LEVEL turns it red.",
     },
   },
   {

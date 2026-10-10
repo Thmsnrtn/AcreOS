@@ -150,6 +150,21 @@ const previewSchema = quoteSchema.extend({
   limit: z.number().int().positive().max(200).optional(),
 });
 
+/**
+ * The copy behind a mail template id for this org: the latest copy snapshot
+ * of a shipment the org sent under that id (templates are not stored apart
+ * from the shipments that used them). Org-scoped; null when none.
+ */
+async function latestTemplateCopy(organizationId: number, templateId: number): Promise<string | null> {
+  const [row] = await db
+    .select({ copy: mailShipments.copySnapshot })
+    .from(mailShipments)
+    .where(and(eq(mailShipments.organizationId, organizationId), eq(mailShipments.templateId, templateId), sql`${mailShipments.copySnapshot} IS NOT NULL`))
+    .orderBy(desc(mailShipments.queuedAt))
+    .limit(1);
+  return row?.copy ?? null;
+}
+
 const queueSchema = z.object({
   audienceFilter: audienceFilterSchema,
   pieceType: z.enum(PIECE_TYPES),
@@ -602,7 +617,15 @@ export function registerOutreachMailRoutes(app: Express): void {
       // conversation, a manufactured deadline — is refused before anything is
       // debited or queued. Offer-basis and probate-care findings are warnings
       // the quote already showed.
-      const outreachFindings = checkOutreachTemplate({ text: copy ?? "" });
+      // A template id names copy this org mailed before (there is no separate
+      // template store: the template's copy is the latest copy snapshot sent
+      // under that id). That copy is checked too, so choosing a template can
+      // never carry deceptive copy past the check the typed copy faces.
+      const templateCopy = templateId != null ? await latestTemplateCopy(org.id, templateId) : null;
+      const outreachFindings = [
+        ...checkOutreachTemplate({ text: copy ?? "" }),
+        ...(templateCopy ? checkOutreachTemplate({ text: templateCopy }) : []),
+      ];
       if (refusesSend(outreachFindings)) {
         return Errors.badRequest(
           res,

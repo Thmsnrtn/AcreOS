@@ -116,8 +116,12 @@ describe("the annual-notice job", () => {
     const { JOB_ROSTER } = (await import("../../server/jobs/jobRegistry")) as any;
     const roster = (JOB_ROSTER ?? []).map((j: any) => j.name);
     expect(roster).toContain("annual_renewal_notice");
-    const sched = fs.readFileSync(path.join(root, "server/jobs/runScheduledJobs.ts"), "utf8");
-    expect(sched).toMatch(/withJobLock\('annual_renewal_notice'/);
-    expect(sched).toMatch(/^\s*startAnnualRenewalNoticeJob\(\);/m);
+    const strip = (await import("../helpers/stripComments")).stripComments;
+    const mod = strip(fs.readFileSync(path.join(root, "server/jobs/subscriptionLifecycleJobs.ts"), "utf8"));
+    expect(mod).toMatch(/withJobLock\("annual_renewal_notice"/);
+    // started by the module's entry point, which the scheduler starts
+    expect(mod).toMatch(/export function startSubscriptionLifecycleJobs\(\) \{[^}]*startAnnualRenewalNoticeJob\(\);/);
+    const sched = strip(fs.readFileSync(path.join(root, "server/jobs/runScheduledJobs.ts"), "utf8"));
+    expect(sched).toMatch(/^\s*startSubscriptionLifecycleJobs\(\);/m);
   });
 });

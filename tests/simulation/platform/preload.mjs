@@ -44,6 +44,22 @@ if (TAP_LOG && (ROLE === "web" || ROLE === "worker")) {
 
   // ── pg tap ──
   const pg = require("pg");
+  // Pool.query runs client.query inside pool.connect's callback, and when the
+  // pool is saturated that callback fires from ANOTHER request's release() —
+  // so the query ran in the releasing request's async context and was charged
+  // to that tenant. Measured 2026-10-10 (W1a): every "org 7 read org 6 rows"
+  // finding came from one long-lived org-7 chat context, on queries already
+  // scoped to the right org (`where organization_id = $1`). Bind the callback
+  // to its CALLER's context so the tap attributes each query to the request
+  // that issued it; a genuine cross-tenant read still shows, now under the
+  // right actor.
+  {
+    const { AsyncResource } = require("node:async_hooks");
+    const origConnect = pg.Pool.prototype.connect;
+    pg.Pool.prototype.connect = function (cb) {
+      return typeof cb === "function" ? origConnect.call(this, AsyncResource.bind(cb)) : origConnect.call(this);
+    };
+  }
   const stats = { role: ROLE, pid: process.pid, inspected: 0, withOrgColumn: 0, foreignReads: 0, writesTagged: 0 };
   const flush = () => { if (TAP_STATS) try { fs.writeFileSync(`${TAP_STATS}.${ROLE}.json`, JSON.stringify({ ...stats, at: new Date().toISOString() })); } catch { /* best effort */ } };
   setInterval(flush, 1000).unref();

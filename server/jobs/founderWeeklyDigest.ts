@@ -656,7 +656,22 @@ function trendColor(pct: number, positiveIsGood = true): string {
   return good ? "#059669" : "#dc2626";
 }
 
-function generateDigestEmail(data: WeeklyDigestData, appUrl: string): string {
+/** What ran without asking this week (founder decision 2026-10-10), grouped by kind. Escaped. */
+function ranOnItsOwnBlock(items: Array<{ moveKind: string; domain: string; undone: boolean }>, appUrl: string): string {
+  if (items.length === 0) return "";
+  const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string);
+  const counts = new Map<string, number>();
+  for (const it of items) if (!it.undone) counts.set(`${it.moveKind.replace(/_/g, " ")} (${it.domain})`, (counts.get(`${it.moveKind.replace(/_/g, " ")} (${it.domain})`) ?? 0) + 1);
+  const rows = [...counts.entries()].map(([k, n]) => `<li>${esc(k)}${n > 1 ? ` × ${n}` : ""}</li>`).join("");
+  return `
+<div style="margin-bottom:20px;">
+  <h2 style="font-size:15px;color:#374151;margin-bottom:8px;">Ran on its own this week (${items.length})</h2>
+  <ul style="font-size:13px;color:#374151;margin:0 0 8px 18px;padding:0;">${rows}</ul>
+  <p style="font-size:12px;color:#6b7280;margin:0;">Routine, reversible work only. Each item has an undo in <a href="${appUrl}/founder/decisions">Decisions</a>.</p>
+</div>`;
+}
+
+function generateDigestEmail(data: WeeklyDigestData, appUrl: string, ranOnItsOwn: Array<{ moveKind: string; domain: string; undone: boolean }> = []): string {
   const vibeColors = { green: "#059669", yellow: "#d97706", red: "#dc2626" };
   const vibeEmoji = { green: "🟢", yellow: "🟡", red: "🔴" };
   const vibeColor = vibeColors[data.overallVibe];
@@ -863,6 +878,8 @@ ${data.anomalies.length > 0 ? `
   ${actionItems}
 </div>
 
+${ranOnItsOwnBlock(ranOnItsOwn, appUrl)}
+
 <!-- Growth Highlights -->
 ${data.growth.highActivityOrgs.length > 0 ? `
 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;">
@@ -911,7 +928,14 @@ export async function sendFounderWeeklyDigest(): Promise<{ sent: number; failed:
   try {
     const data = await collectWeeklyData();
     const appUrl = process.env.APP_URL || "https://app.acreos.io";
-    const html = generateDigestEmail(data, appUrl);
+    let ranOnItsOwn: Array<{ moveKind: string; domain: string; undone: boolean }> = [];
+    try {
+      const { getWeeklyAutopilotDigest } = await import("../services/autopilot/weeklyAutopilotDigest");
+      ranOnItsOwn = (await getWeeklyAutopilotDigest()).items;
+    } catch (err) {
+      logger.warn("[FounderDigest] weekly autopilot digest read failed — section omitted", err instanceof Error ? err : undefined);
+    }
+    const html = generateDigestEmail(data, appUrl, ranOnItsOwn);
 
     const vibeLabel = { green: "All Clear", yellow: "Review Needed", red: "Action Required" }[data.overallVibe];
     const subjectEmoji = { green: "🟢", yellow: "🟡", red: "🔴" }[data.overallVibe];
@@ -923,7 +947,7 @@ export async function sendFounderWeeklyDigest(): Promise<{ sent: number; failed:
           to: email,
           subject,
           html,
-          text: `AcreOS Weekly Digest (${data.weekOf})\n\nStatus: ${data.overallVibe.toUpperCase()} — ${data.vibeStatement}\n\nRevenue: ${fmtCents(data.revenue.estimatedMrrCents)} MRR | AI Cost: ${fmtCents(data.aiCosts.totalCostCentsThisWeek)}/wk | ${data.automation.successRate.toFixed(0)}% job success rate\n\nFounder actions needed: ${data.founderActions.length}\n\nOpen dashboard: ${appUrl}/founder/intelligence`,
+          text: `AcreOS Weekly Digest (${data.weekOf})\n\nStatus: ${data.overallVibe.toUpperCase()} — ${data.vibeStatement}\n\nRevenue: ${fmtCents(data.revenue.estimatedMrrCents)} MRR | AI Cost: ${fmtCents(data.aiCosts.totalCostCentsThisWeek)}/wk | ${data.automation.successRate.toFixed(0)}% job success rate\n\nFounder actions needed: ${data.founderActions.length}\n\nRan on its own this week: ${ranOnItsOwn.length} (undo in Decisions: ${appUrl}/founder/decisions)\n\nOpen dashboard: ${appUrl}/founder/intelligence`,
         });
         sent++;
         logger.info(`[FounderDigest] Sent weekly digest to ${email}`);

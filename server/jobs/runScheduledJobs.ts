@@ -37,6 +37,7 @@ import { startAcquiredNoteAgingJob } from "./acquiredNoteAging"; // acquired-not
 // buy_and_hold beta→core registration (audit Wave 1).
 import { startNotePaymentDueDetectorJob, startLeaseExpiryDetectorJob } from "./expiryDetectorJobs";
 import { startBorrowerServicingJobs } from "./servicingWindDownJob";
+import { startSubscriptionLifecycleJobs } from "./subscriptionLifecycleJobs";
 import { seedFounderDecisionCardsOnStartup } from "./seedFounderDecisionCards";
 import { runDecisionExecutorTickBounded, AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK, AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK } from "./decisionExecutorTick";
 import { clock } from "../utils/clock";
@@ -1515,60 +1516,6 @@ function startPersonalityDriftJob() {
     if (now.getUTCDay() === 1 && now.getUTCHours() === 7 && now.getUTCMinutes() < 5) {
       withJobLock('personality_drift', 6 * 24 * 60 * 60, processPersonalityDriftJob).catch(err => {
         log(`Personality drift lock error: ${err}`, 'drift-sampler');
-      });
-    }
-  }, 5 * 60 * 1000);
-}
-
-// ── Pillar E / E1: Trial expiry automation (daily 9am UTC) ──────────────────
-async function processTrialExpiryJob() {
-  try {
-    const { runTrialExpiryCycle } = await import("../services/trialEngine");
-    const result = await runTrialExpiryCycle();
-    log(
-      `Trial engine: reminders=${result.remindersSent}, followups=${result.followupsSent}, skipped=${result.skipped}`,
-      'trial-engine',
-    );
-    jobSupervisor.notifyResult('trial_engine', 24 * 60 * 60 * 1000, true);
-  } catch (err) {
-    log(`Trial engine error: ${err}`, 'trial-engine');
-    jobSupervisor.notifyResult('trial_engine', 24 * 60 * 60 * 1000, false, undefined, String(err));
-  }
-}
-
-function startTrialExpiryJob() {
-  log('Starting trial-expiry job (daily at 9am UTC)', 'trial-engine');
-  trackInterval(() => {
-    const now = clock.now();
-    if (now.getUTCHours() === 9 && now.getUTCMinutes() < 5) {
-      withJobLock('trial_engine', 23 * 60 * 60, processTrialExpiryJob).catch(err => {
-        log(`Trial engine lock error: ${err}`, 'trial-engine');
-      });
-    }
-  }, 5 * 60 * 1000);
-}
-
-// ── Yearly-plan renewal notice (daily 10am UTC) ─────────────────────────────
-// Cal. Bus. & Prof. Code § 17602(b)(2): 15–45 days before a yearly renewal.
-async function processAnnualRenewalNoticeJob() {
-  try {
-    const { runAnnualRenewalNotices } = await import("../services/annualRenewalNotice");
-    const r = await runAnnualRenewalNotices();
-    log(`Annual renewal notices: considered=${r.considered} sent=${r.sent} skipped=${r.skipped} failed=${r.failed}`, 'annual-renewal');
-    jobSupervisor.notifyResult('annual_renewal_notice', 24 * 60 * 60 * 1000, r.failed === 0, undefined, r.failed ? `${r.failed} notice(s) not sent` : undefined);
-  } catch (err) {
-    log(`Annual renewal notice error: ${err}`, 'annual-renewal');
-    jobSupervisor.notifyResult('annual_renewal_notice', 24 * 60 * 60 * 1000, false, undefined, String(err));
-  }
-}
-
-function startAnnualRenewalNoticeJob() {
-  log('Starting annual renewal notice job (daily at 10am UTC)', 'annual-renewal');
-  trackInterval(() => {
-    const now = clock.now();
-    if (now.getUTCHours() === 10 && now.getUTCMinutes() < 5) {
-      withJobLock('annual_renewal_notice', 23 * 60 * 60, processAnnualRenewalNoticeJob).catch(err => {
-        log(`Annual renewal notice lock error: ${err}`, 'annual-renewal');
       });
     }
   }, 5 * 60 * 1000);
@@ -5140,8 +5087,7 @@ export async function runScheduledJobs(): Promise<void> {
   startPersonalityDriftJob();
 
   // Pillar E / E1: trial expiry automation (daily 9am UTC)
-  startTrialExpiryJob();
-  startAnnualRenewalNoticeJob();
+  startSubscriptionLifecycleJobs();
 
   // Pillar E / E4+E9: customer health scoring (daily 7am UTC)
   startCustomerHealthJob();

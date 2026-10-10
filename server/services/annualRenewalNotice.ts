@@ -34,7 +34,15 @@ async function defaultDeps(): Promise<AnnualNoticeDeps> {
   const { ownerEmailOf } = await import("./autopilot/delegationRules");
   const { emailService } = await import("./emailService");
   return {
-    getSubscription: (id) => stripeService.getSubscription(id) as any,
+    // The period end lives on the subscription ITEM in this Stripe API version.
+    getSubscription: async (id) => {
+      const s = await stripeService.getSubscription(id);
+      if (!s) return null;
+      return {
+        cancel_at_period_end: s.cancel_at_period_end,
+        items: { data: s.items.data.map((i) => ({ current_period_end: i.current_period_end, price: { unit_amount: i.price.unit_amount, currency: i.price.currency } })) },
+      };
+    },
     ownerEmail: ownerEmailOf,
     send: (o) => emailService.sendEmail({ to: o.to, subject: o.subject, html: o.html, text: o.text, purpose: "system", organizationId: o.organizationId, idempotencyKey: o.idempotencyKey }),
   };

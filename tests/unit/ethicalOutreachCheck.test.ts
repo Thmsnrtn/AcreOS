@@ -46,11 +46,11 @@ describe("the rules", () => {
 });
 
 // ── adoption: the mail queue refuses deceptive copy before any debit ────────
-const Q = vi.hoisted(() => ({ writes: 0 }));
+const Q = vi.hoisted(() => ({ writes: 0, reads: [] as any[][] }));
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock("../../server/db", () => {
   const chain = (): any => {
-    const c: any = { select: () => c, from: () => c, where: () => c, orderBy: () => c, limit: () => c, then: (ok: any, no: any) => Promise.resolve([]).then(ok, no) };
+    const c: any = { select: () => c, from: () => c, where: () => c, orderBy: () => c, limit: () => c, then: (ok: any, no: any) => Promise.resolve(Q.reads.shift() ?? []).then(ok, no) };
     return c;
   };
   return {
@@ -83,6 +83,39 @@ describe("adoption", () => {
     expect(res.status, JSON.stringify(res.body)).toBe(400);
     expect(res.body.message).toMatch(/can't be mailed/);
     expect(Q.writes).toBe(0);
+  });
+
+  it("a send by template id has the TEMPLATE's copy checked: deceptive template copy is refused though the typed copy is clean", async () => {
+    const express = (await import("express")).default;
+    const request = (await import("supertest")).default;
+    const { registerOutreachMailRoutes } = await import("../../server/routes-outreach-mail");
+    const app = express();
+    app.use(express.json());
+    registerOutreachMailRoutes(app as any);
+    Q.writes = 0;
+    Q.reads = [[{ copy: "OFFICIAL NOTICE regarding your parcel. Respond within 48 hours or lose this offer." }]];
+    const res = await request(app)
+      .post("/api/outreach/mail/queue")
+      .set("Idempotency-Key", "k-2")
+      .send({ audienceFilter: { states: ["TN"] }, pieceType: "postcard_4x6", speed: "standard", templateId: 3, expectedAudienceDigest: "x" });
+    expect(res.status, JSON.stringify(res.body)).toBe(400);
+    expect(res.body.message).toMatch(/can't be mailed/);
+    expect(Q.writes).toBe(0);
+  });
+
+  it("control: an honest template's copy is not refused by the check", async () => {
+    const express = (await import("express")).default;
+    const request = (await import("supertest")).default;
+    const { registerOutreachMailRoutes } = await import("../../server/routes-outreach-mail");
+    const app = express();
+    app.use(express.json());
+    registerOutreachMailRoutes(app as any);
+    Q.reads = [[{ copy: "We buy land in your county. Our offer is based on recent nearby sales; no obligation." }]];
+    const res = await request(app)
+      .post("/api/outreach/mail/queue")
+      .set("Idempotency-Key", "k-3")
+      .send({ audienceFilter: { states: ["TN"] }, pieceType: "postcard_4x6", speed: "standard", templateId: 3, expectedAudienceDigest: "x" });
+    expect(res.body.message ?? "").not.toMatch(/can't be mailed/);
   });
 
   it("the quote carries the findings for the copy", async () => {

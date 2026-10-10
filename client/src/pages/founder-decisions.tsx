@@ -727,6 +727,87 @@ interface DefectsResponse {
  * loading the asks can never hide it. The founder resolves each one after
  * checking Stripe; the payment is still never refunded again.
  */
+interface WeeklyDigestItem {
+  experienceId: number;
+  moveKind: string;
+  domain: string;
+  at: string | null;
+  dispatchStatus: string | null;
+  summary: string | null;
+  undone: boolean;
+  undo: "cancel" | "ask_first" | null;
+}
+
+/**
+ * What ran without asking this week (founder decision 2026-10-10): routine,
+ * reversible ops/deploy moves and routine support. Each item has an undo —
+ * it cancels work that has not finished, or, for work that already ran, makes
+ * that domain ask first next time (the effect itself is not reversed; the
+ * button says so).
+ */
+function WeeklyDigestSection() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data, isLoading, isError, refetch } = useQuery<{ since: string; items: WeeklyDigestItem[] }>({
+    queryKey: ["/api/founder/autopilot/weekly-digest"],
+    staleTime: 60_000,
+  });
+  const undo = useMutation({
+    mutationFn: async (experienceId: number) => {
+      const res = await apiRequest("POST", `/api/founder/autopilot/weekly-digest/${experienceId}/undo`, {});
+      if (!res.ok) throw new Error(`Couldn't undo (${res.status})`);
+      return (await res.json()) as { message: string };
+    },
+    onSuccess: (r) => {
+      void queryClient.invalidateQueries({ queryKey: ["/api/founder/autopilot/weekly-digest"] });
+      toast({ title: "Undone", description: r.message });
+    },
+    onError: (err) => toast({ title: "Couldn't undo", description: err instanceof Error ? err.message : String(err), variant: "destructive" }),
+  });
+  if (isLoading) return <Skeleton className="h-24 w-full" />;
+  if (isError) {
+    return <QueryErrorState error={new Error("The weekly digest could not be loaded")} title="Ran on its own this week" onRetry={() => void refetch()} />;
+  }
+  const items = data?.items ?? [];
+  if (items.length === 0) return null;
+  return (
+    <Card data-testid="decisions-weekly-digest">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Ran on its own this week ({items.length})</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {items.map((it) => (
+          <div key={it.experienceId} className="flex items-center justify-between gap-3">
+            <p className="text-sm text-foreground min-w-0">
+              {it.moveKind.replace(/_/g, " ")} · {it.domain}
+              {it.at ? <span className="text-muted-foreground"> · {relative(it.at)}</span> : null}
+              {it.summary ? <span className="block text-xs text-muted-foreground truncate">{it.summary}</span> : null}
+            </p>
+            {it.undone ? (
+              <Badge variant="outline" className="shrink-0">Undone</Badge>
+            ) : it.undo ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0"
+                onClick={() => undo.mutate(it.experienceId)}
+                disabled={undo.isPending}
+                aria-label={`Undo ${it.moveKind.replace(/_/g, " ")}`}
+                title={it.undo === "cancel" ? "Cancels it before it finishes" : "It already ran; this makes the domain ask you first next time"}
+              >
+                {it.undo === "cancel" ? "Undo (cancel)" : "Undo (ask first)"}
+              </Button>
+            ) : null}
+          </div>
+        ))}
+        <p className="text-xs text-muted-foreground">
+          Only routine, reversible work runs without asking. Anything that can't be undone, reaches a customer without a per-reply check, or is a hard stop still asks you first.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 function UncertainRefundsSection() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -1217,6 +1298,7 @@ export default function FounderDecisionsPage() {
       {/* Open agent questions — same renders-only-when-waiting contract. */}
       <UncertainRefundsSection />
       <OpenAsksSection />
+      <WeeklyDigestSection />
 
       {/* A failed read is not an empty queue (DEFECT-0167): the list below
           rendered the "needs you" bucket's empty text on a failed request. */}
