@@ -94,10 +94,6 @@ export function judgeRefusal(text: string): PlainVerdict {
   return { plain: problems.length === 0, problems };
 }
 
-export function isPlainRefusal(text: string): boolean {
-  return judgeRefusal(text).plain;
-}
-
 /**
  * The human text inside what a tool returned to a model. Tool results are JSON
  * by protocol; the words a person ends up reading are the `error` (or
@@ -146,9 +142,10 @@ export function toolFailure(what: string, unlock = "Try again in a minute; if it
  * Every way a run of Solene's or a role worker's can stop, in the founder's
  * words. Keyed by the `terminationReason` unions in
  * server/services/solene/dispatchRunner.ts and roleWorkers/runner.ts — the
- * gate parses both unions and fails on a reason with no entry here.
+ * gate parses both unions and fails on a reason that projects to the generic
+ * sentence (GENERIC_STOP) instead of its own.
  */
-export const RUN_STOP_WORDS: Record<string, RefusalParts> = {
+const RUN_STOP_WORDS: Record<string, RefusalParts> = {
   end_turn: { what: "The run finished", why: "It reached the end of the job", unlock: "Nothing to do" },
   max_turns: { what: "The run stopped before finishing", why: "It used every step it is allowed for one job without completing it", unlock: "Open it to see how far it got, then run it again from Controls with a narrower ask" },
   cost_cap: { what: "The run stopped before finishing", why: "It reached the spending cap set for a single job", unlock: "Run it again from Controls, or raise that job's cap there if it is worth more" },
@@ -165,6 +162,7 @@ export const RUN_STOP_WORDS: Record<string, RefusalParts> = {
   publish_gate_blocked: { what: "Nothing was published", why: "The piece failed the publishing check for claims, links or made-up facts", unlock: "Open it to see what the check caught; it will try again with a new piece" },
 };
 
+/** The sentence for a stop reason with no words of its own. */
 const GENERIC_STOP: RefusalParts = {
   what: "The run stopped before finishing",
   why: "It recorded a technical reason that has no plain description yet",

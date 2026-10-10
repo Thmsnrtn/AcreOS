@@ -1,0 +1,8 @@
+{
+  "note": "The persona walks' ratchet (persona-walks.ts exits non-zero when a number grows). Every number may only go down; pinned in tests/unit/personaWalksGuardTheJobs.test.ts. 2026-10-08: 93 axe nodes, 8 dead ends, 7 unlabelled, 3 empty states without a call to action. emptyStatesWithoutCta 2 = the founder Letter's 'Errors (24h)' tile subtitle 'no traffic yet' on phone and desktop, a stat with no data rather than an empty list.",
+  "axeSeriousCritical": 0,
+  "deadEnds": 0,
+  "unlabelled": 0,
+  "emptyStatesWithoutCta": 2,
+  "pagesFloor": 18
+}

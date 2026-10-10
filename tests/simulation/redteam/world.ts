@@ -14,7 +14,9 @@
  * And whether each refusal the product returned is readable by a person.
  */
 import { readFileSync, existsSync } from "node:fs";
-import { isPlainRefusal, refusalTextOf, dispatchOutcomeInWords } from "../../../shared/refusal/plainRefusal";
+import { judgeRefusal, refusalTextOf, dispatchOutcomeInWords } from "../../../shared/refusal/plainRefusal";
+
+const isPlainRefusal = (t: string) => judgeRefusal(t).plain;
 
 type Q = <T = any>(sql: string, params?: unknown[]) => Promise<T[]>;
 

@@ -37,7 +37,7 @@
  * Mutations run against this file (each went red — recorded in the commit):
  *   1. tools.ts: a lead lookup back to `return { success: false, error: "Lead not found" }`.
  *   2. supportAgent.ts: `return toolFailure(...)` back to `{ success: false, error: error.message }`.
- *   3. plainRefusal.ts: delete RUN_STOP_WORDS.empty_result.
+ *   3. plainRefusal.ts: delete RUN_STOP_WORDS.empty_result (it falls to the generic sentence).
  *   4. routes-dispatch.ts: drop the `outcomeInWords` property.
  *   5. remove server/ai/supportAgent.ts from COVERED (discovery names it).
  */
@@ -47,13 +47,13 @@ import path from "node:path";
 import ts from "typescript";
 import {
   judgeRefusal,
-  isPlainRefusal,
   refusalTextOf,
   plainRefusal,
   dispatchOutcomeInWords,
-  RUN_STOP_WORDS,
   toolFailure,
 } from "../../shared/refusal/plainRefusal";
+
+const isPlainRefusal = (t: string) => judgeRefusal(t).plain;
 import { scanRefusals, countRefusalObjects } from "../helpers/refusalPopulation";
 import { listServerSources, parseSource, rel, REPO_ROOT } from "../helpers/serverPopulation";
 import { PAX_PAUSE_COPY } from "../../shared/pax-glossary";
@@ -299,9 +299,10 @@ describe("Story: a failed or cancelled run reads in plain words", () => {
   });
 
   it("every way a run can stop has its own plain words", () => {
-    const missing = [...new Set(reasons)].filter((r) => !(r in RUN_STOP_WORDS));
+    // A reason with no words of its own falls to the generic sentence.
+    const generic = dispatchOutcomeInWords("failed", "terminated: not_a_real_reason — detail");
+    const missing = [...new Set(reasons)].filter((r) => dispatchOutcomeInWords("failed", `terminated: ${r} — detail`) === generic);
     expect(missing, "add RUN_STOP_WORDS entries for these").toEqual([]);
-    for (const [k, parts] of Object.entries(RUN_STOP_WORDS)) expect(judgeRefusal(plainRefusal(parts)), k).toEqual({ plain: true, problems: [] });
   });
 
   it("every stored shape of a failed or cancelled run projects to plain words", () => {
@@ -341,6 +342,6 @@ describe("Story: a failed or cancelled run reads in plain words", () => {
       ts.forEachChild(n, v2);
     };
     v2(world);
-    expect([...calls]).toEqual(expect.arrayContaining(["dispatchOutcomeInWords", "isPlainRefusal", "refusalTextOf"]));
+    expect([...calls]).toEqual(expect.arrayContaining(["dispatchOutcomeInWords", "judgeRefusal", "refusalTextOf"]));
   });
 });

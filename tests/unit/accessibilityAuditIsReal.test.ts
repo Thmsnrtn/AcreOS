@@ -49,6 +49,9 @@ const WORKFLOW = stripYamlComments(
   fs.readFileSync(path.join(ROOT, ".github/workflows/e2e-mobile.yml"), "utf8"),
 );
 
+/** Sum of a11y-serious-baseline.json — may only go down. */
+const SERIOUS_BASELINE_TOTAL = 0;
+
 describe("the accessibility audit is capable of failing", () => {
   it("axe is a declared dependency, not an optional import", () => {
     const deps = { ...PKG.dependencies, ...PKG.devDependencies };
@@ -187,6 +190,28 @@ describe("the accessibility audit is capable of failing", () => {
       expect(SPEC).toMatch(/no longer violates \$\{rule\}/);
       expect(SPEC).toMatch(/critical\.some\(\(v\) => v\.id === rule\)/);
     }
+  });
+
+  it("serious violations are a ratchet with a measured baseline that only shrinks", () => {
+    // The first audit reported serious findings without gating them, pending a
+    // measurement. The 2026-10-10 run is that measurement; the spec now fails
+    // any (project, route) over its line in a11y-serious-baseline.json.
+    expect(SPEC).toContain("a11y-serious-baseline.json");
+    expect(SPEC).toMatch(/seriousNodes[\s\S]{0,400}\.toBeLessThanOrEqual\(allowed\)/);
+    // A route missing from the file is held to ZERO, not skipped.
+    expect(SPEC).toMatch(/SERIOUS_BASELINE\[[^\]]+\]\s*\?\?\s*0/);
+    const file = JSON.parse(fs.readFileSync(path.join(ROOT, "tests/e2e-mobile/a11y-serious-baseline.json"), "utf8"));
+    const total = Object.values(file.baseline as Record<string, number>).reduce((a, b) => a + b, 0);
+    // Pinned: raising any line means raising this number in review, in the open.
+    expect(total, "the serious-violation baseline changed — it may only go DOWN; lower this pin with it").toBe(SERIOUS_BASELINE_TOTAL);
+    for (const k of Object.keys(file.baseline)) {
+      const [project] = k.split("|");
+      expect(SPEC, `${k} names a project the audit does not run`).toMatch(new RegExp(`"${project}"`));
+    }
+  });
+
+  it("the audit waits for entrance animations before reading contrast", () => {
+    expect(SPEC).toMatch(/document\.getAnimations\(\)\.every\(/);
   });
 
   it("the spec that never audited anything stays deleted", () => {

@@ -220,5 +220,16 @@ async function main() {
   };
   writeFileSync(join(OUT, "walks.json"), JSON.stringify(summary, null, 1));
   console.log(JSON.stringify({ pages: summary.pages, axe: summary.axeViolations, unlabelled: summary.unlabelled, deadEnds: summary.deadEnds, emptyNoCta: summary.emptyStatesWithoutCta.length }));
+  // The ratchet (walks/walk-baseline.json): every number may only go down. A
+  // walk over its baseline exits non-zero and names what grew.
+  const baseline = JSON.parse(readFileSync(new URL("./walk-baseline.json", import.meta.url), "utf8")) as Record<string, number>;
+  const now: Record<string, number> = { axeSeriousCritical: summary.axeViolations, deadEnds: summary.deadEnds, unlabelled: summary.unlabelled, emptyStatesWithoutCta: summary.emptyStatesWithoutCta.length };
+  const grew = Object.entries(now).filter(([k, v]) => v > (baseline[k] ?? 0));
+  if (summary.pages < (baseline.pagesFloor ?? 0)) grew.push(["pagesFloor", summary.pages]);
+  if (grew.length) {
+    console.error(`walk ratchet: ${grew.map(([k, v]) => `${k} ${v} > ${baseline[k]}`).join("; ")}`);
+    for (const r of results.filter((x) => !x.answered)) console.error(`  dead end: [${r.viewport}] ${r.who}: ${r.question} at ${r.deadEnd}`);
+    process.exitCode = 1;
+  }
 }
 main().catch((e) => { console.error(e); process.exit(1); });

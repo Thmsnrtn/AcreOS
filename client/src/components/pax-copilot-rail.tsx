@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 import { useBrandName } from "@/hooks/use-white-label";
 import { useToast } from "@/hooks/use-toast";
 import { usePaxRail } from "@/contexts/pax-rail-context";
-import { ToolCallStream, type ToolEvent, parseToolResultSummary } from "@/components/tool-call-stream";
+import { ToolCallStream, type ToolEvent, parseToolResultSummary, toolResultRefused } from "@/components/tool-call-stream";
 import { PaxArtifact, type PaxArtifactData } from "@/components/pax-artifact";
 import { PaxCommandPalette, PaxSlashPicker, type SlashCommand } from "@/components/pax-command-palette";
 import { PaxEntityPicker, type MentionedEntity } from "@/components/pax-entity-picker";
@@ -610,6 +610,7 @@ export function PaxCopilotRail() {
                 args: typeof tc.arguments === "string" ? JSON.parse(tc.arguments) : tc.arguments,
                 status: "done" as const,
                 resultSummary: parseToolResultSummary(tc.name, tc.result),
+                refused: toolResultRefused(tc.result),
               }))
             : [],
         }));
@@ -899,7 +900,7 @@ export function PaxCopilotRail() {
                     ...prev,
                     [asstId]: (prev[asstId] ?? []).map((e) =>
                       e.id === evtId
-                        ? { ...e, status: "done" as const, resultSummary: summary, diffBefore, diffAfter }
+                        ? { ...e, status: "done" as const, resultSummary: summary, refused: toolResultRefused(data.toolCall.result), diffBefore, diffAfter }
                         : e
                     ),
                   }));

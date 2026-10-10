@@ -1217,7 +1217,7 @@ export function Sidebar() {
             >
               <Search className="w-3.5 h-3.5 shrink-0" />
               <span className="flex-1 text-left truncate">Search or jump to…</span>
-              <span className="hidden md:inline-flex items-center gap-0.5 text-micro text-muted-foreground/70">
+              <span className="hidden md:inline-flex items-center gap-0.5 text-micro text-muted-foreground">
                 <kbd className="px-1 rounded bg-background/60 border border-sidebar-border font-sans">⌘</kbd>
                 <kbd className="px-1 rounded bg-background/60 border border-sidebar-border font-sans">K</kbd>
               </span>
@@ -1232,7 +1232,7 @@ export function Sidebar() {
             >
               <Send className="w-3.5 h-3.5 shrink-0" />
               <span className="flex-1 text-left truncate">Quick offer</span>
-              <span className="hidden md:inline-flex items-center gap-0.5 text-micro text-muted-foreground/70">
+              <span className="hidden md:inline-flex items-center gap-0.5 text-micro text-muted-foreground">
                 <kbd className="px-1 rounded bg-background/60 border border-sidebar-border font-sans">⌘</kbd>
                 <kbd className="px-1 rounded bg-background/60 border border-sidebar-border font-sans">O</kbd>
               </span>
@@ -1460,7 +1460,7 @@ export function Sidebar() {
                         <span className="font-medium">
                           {expandedOverflow.has(module.id) ? "Less" : "More"}
                         </span>
-                        <span className="text-caption text-muted-foreground/70 ml-auto tabular-nums">
+                        <span className="text-caption text-muted-foreground ml-auto tabular-nums">
                           {module.overflow!.length}
                         </span>
                       </button>
@@ -1780,7 +1780,7 @@ export function Sidebar() {
                         <span className="font-medium text-sm">
                           {expandedOverflow.has(module.id) ? "Less" : "More"}
                         </span>
-                        <span className="text-xs text-muted-foreground/70 ml-auto tabular-nums">
+                        <span className="text-xs text-muted-foreground ml-auto tabular-nums">
                           {module.overflow!.length}
                         </span>
                       </button>

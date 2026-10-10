@@ -1,4 +1,5 @@
 import { useState, type ElementType } from "react";
+import { judgeRefusal, refusalTextOf } from "@shared/refusal/plainRefusal";
 import {
   Users, UserPlus, RefreshCw, Mail, MessageSquare, MapPin, Search,
   FileText, TrendingUp, Calculator, ClipboardList, CheckSquare,
@@ -15,6 +16,8 @@ export interface ToolEvent {
   name: string;
   args?: Record<string, any>;
   resultSummary?: string;
+  /** The tool refused or failed (`success: false`); its summary is the refusal sentence. */
+  refused?: boolean;
   status: ToolStatus;
   diffBefore?: Record<string, any>;
   diffAfter?: Record<string, any>;
@@ -80,7 +83,13 @@ function resultToSummary(name: string, result: any): string {
     // by the next line, which made Pax look broken. Emit "→ no data"
     // when the tool reports success with an empty payload.
     if (parsed?.success === true && (parsed?.data === null || parsed?.data?.enrichment === null)) return "no data";
-    if (parsed?.success === false) return "failed";
+    // A refused tool shows its own sentence — what happened, why, what
+    // unlocks it — when it is plain words (shared/refusal/plainRefusal);
+    // never a bare "failed" with nothing a person can act on.
+    if (parsed?.success === false) {
+      const words = refusalTextOf(JSON.stringify(parsed));
+      return judgeRefusal(words).plain ? words : "did not go through";
+    }
     if (parsed?.success) return "done";
     if (parsed?.id) return `created #${parsed.id}`;
     if (parsed?.count !== undefined) return `${parsed.count} records`;
@@ -132,7 +141,7 @@ function ToolCard({ event }: ToolCardProps) {
       >
         <button
           type="button"
-          className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left"
+          className="w-full flex flex-wrap items-center gap-2 px-2.5 py-1.5 text-left"
           onClick={() => setExpanded((v) => !v)}
         >
           {/* Status indicator */}
@@ -155,9 +164,15 @@ function ToolCard({ event }: ToolCardProps) {
           )}
 
           {event.resultSummary && event.status === "done" && !showDiff && (
-            <span className="text-acr-pos dark:text-acr-pos ml-auto flex-shrink-0">
-              → {event.resultSummary}
-            </span>
+            event.refused ? (
+              <span className="basis-full text-muted-foreground" data-testid="tool-refusal-words">
+                {event.resultSummary}
+              </span>
+            ) : (
+              <span className="text-acr-pos dark:text-acr-pos ml-auto flex-shrink-0">
+                → {event.resultSummary}
+              </span>
+            )
           )}
 
           {expanded
@@ -207,4 +222,14 @@ export function ToolCallStream({ events, className }: ToolCallStreamProps) {
 /** Parse a raw tool_result value and return a human-friendly summary string */
 export function parseToolResultSummary(toolName: string, result: any): string {
   return resultToSummary(toolName, result);
+}
+
+/** Whether a tool result is a refusal or failure (`success: false`). */
+export function toolResultRefused(result: unknown): boolean {
+  try {
+    const parsed = typeof result === "string" ? JSON.parse(result) : result;
+    return !!parsed && typeof parsed === "object" && (parsed as { success?: unknown }).success === false;
+  } catch {
+    return false;
+  }
 }
