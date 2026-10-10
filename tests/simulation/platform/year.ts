@@ -385,6 +385,9 @@ async function main() {
   const setup = await k.founderOneTimeSetup();
   const jobs = await k.defaultJobs();
   const monitor = new InvariantMonitor(join(OUT, "violations.jsonl"));
+  // The stand-in's call log is shared by every seed an instance runs: read only this run's lines.
+  const standinCalls = join(DIR, "standin", "calls.jsonl");
+  const standinCallsStart = existsSync(standinCalls) ? readFileSync(standinCalls, "utf8").split("\n").filter(Boolean).length : 0;
   const collector = new Collector(k.q, DIR, toVirtual);
   await collector.init();
   const truth: GroundTruth = { revokedAtVirtual: new Map(), outages: [], founderTaps: [], approvalsShown: new Map(), screens: [], webhookLandings: [] };
@@ -555,6 +558,12 @@ async function main() {
   const summary = monitor.summary();
   const compliance = monitor.violations.filter((v) => ["no-send-without-consent", "no-platform-counterparty-mail", "customer-money-not-on-platform"].includes(v.invariant)).length;
   const weeksTotal = metrics.weeks.map((w) => w.total);
+  // Vacuity: every worker the run reached was modelled by the brain (workerCoverage.ts).
+  const { workerCoverage } = await import("./workerCoverage");
+  const callRows = (existsSync(standinCalls) ? readFileSync(standinCalls, "utf8").split("\n").filter(Boolean).slice(standinCallsStart) : [])
+    .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+    .filter(Boolean);
+  const coverage = workerCoverage(callRows);
   const result = {
     seed: SEED, days: DAYS, stepHours: STEP_H, brain: BRAIN, plan: PLAN, wallSeconds: Math.round((Date.now() - t0) / 1000), setup,
     founderMinutesPerWeek: { mean: weeksTotal.reduce((a, b) => a + b, 0) / Math.max(1, weeksTotal.length), weeks: metrics.weeks, askMinutesByDriver },
@@ -565,7 +574,7 @@ async function main() {
     customers: { signedUp: customers.length, activated, churned: counts.churned, byPersona: Object.fromEntries((["land_flipper", "note_investor", "va_team"] as const).map((p) => [p, customers.filter((c) => c.persona === p).length])) },
     aiCost: { customerCentsPerCustomerMonth: aiCustomerCents / Math.max(1, customerMonths), platformCentsPerCustomerMonth: aiPlatformCents / Math.max(1, customerMonths), customerMonths },
     published: Number((await k.q1<any>("select count(*)::int n from marketing_artifacts"))?.n ?? 0),
-    counts, friction, diag,
+    counts, friction, diag, workerCoverage: coverage,
     jobs: Object.entries(jobLog.reduce((a: Record<string, { runs: number; failed: number; lastErr?: string }>, l) => { const b = (a[l.name] ??= { runs: 0, failed: 0 }); b.runs++; if (!l.ok) { b.failed++; b.lastErr = l.err; } return a; }, {})),
     coverage: collector.coverage,
     outages: truth.outages,
@@ -581,6 +590,11 @@ async function main() {
     },
   };
   writeFileSync(join(OUT, "metrics.json"), JSON.stringify(result, null, 1));
+  if (BRAIN !== "adversarial" && coverage.failing.length > 0) {
+    console.error(`UNMODELLED WORKER — the brain skipped worker calls, so this run measures the stand-in, not the business:\n  ${coverage.failing.join("\n  ")}`);
+    await k.shutdown(1);
+    return;
+  }
   if (BRAIN === "adversarial") {
     const { scoreRedteamWorld } = await import("../redteam/world");
     const { scoreAll } = await import("../redteam/score");
