@@ -64,7 +64,9 @@ function StatusPill({ status }: { status?: string | null }) {
     : s === "accepted" || s === "under_contract" || s === "qualified"
       ? "bg-acr-warn-soft text-acr-warn-soft-ink"
       : s === "responded" || s === "negotiating" || s === "interested" || s === "contacted"
-        ? "bg-primary/15 text-primary"
+        // The soft-ink pair, not primary on a 15% tint: at 10px that pair
+        // measured under AA on the e2e audit (2026-10-10).
+        ? "bg-acr-brand-soft text-acr-brand-soft-ink"
         : "bg-muted text-foreground";
   return (
     <span
