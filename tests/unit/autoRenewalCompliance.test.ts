@@ -100,6 +100,8 @@ describe("the annual-notice job", () => {
     const r1 = await runAnnualRenewalNotices({ deps, nowMs: now });
     expect(r1.sent).toBe(1);
     expect(sent[0].subject).toMatch(/renews on/);
+    // Keyed per org and period, so a crash between send and history row replays rather than resends.
+    expect(sent[0]).toEqual(expect.objectContaining({ organizationId: 1, idempotencyKey: `annual-renewal-notice:1:${(now + 20 * DAY) / 1000}` }));
     expect(J.inserted[0]).toEqual(expect.objectContaining({ organizationId: 1, eventType: "annual_renewal_notice_sent" }));
     // Next day: the history row for this period exists → nothing more.
     J.orgs = [J.orgs[0]];

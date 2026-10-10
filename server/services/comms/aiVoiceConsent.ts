@@ -37,9 +37,9 @@ export class AiVoiceConsentRequiredError extends Error {
 }
 
 /** The consent language must name the thing consented to. */
-export const ARTIFICIAL_VOICE_CONSENT_TEXT = /\b(?:artificial|prerecorded|pre-recorded|automated|AI[- ]generated|synthetic|computer[- ]generated)\b[\s\S]{0,40}\bvoice|\bvoice\b[\s\S]{0,40}\b(?:artificial|prerecorded|pre-recorded|AI[- ]generated|synthetic)\b/i;
+const ARTIFICIAL_VOICE_CONSENT_TEXT = /\b(?:artificial|prerecorded|pre-recorded|automated|AI[- ]generated|synthetic|computer[- ]generated)\b[\s\S]{0,40}\bvoice|\bvoice\b[\s\S]{0,40}\b(?:artificial|prerecorded|pre-recorded|AI[- ]generated|synthetic)\b/i;
 
-export function digitsOf(phone: string): string {
+function digitsOf(phone: string): string {
   const d = phone.replace(/[^0-9]/g, "");
   return d.length === 11 && d.startsWith("1") ? d.slice(1) : d;
 }

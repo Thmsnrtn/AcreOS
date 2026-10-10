@@ -13,6 +13,7 @@
  * call-creation endpoint — so no second path to a phone can skip the gate.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
@@ -39,6 +40,8 @@ vi.mock("../../server/services/founderSettings", () => ({ getSetting: async () =
 
 import { CommsRouter, type CommsProvider } from "../../server/services/comms/router";
 import { AiVoiceConsentRequiredError, hasWrittenArtificialVoiceConsent } from "../../server/services/comms/aiVoiceConsent";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const placed: any[] = [];
 const twilio: CommsProvider = {

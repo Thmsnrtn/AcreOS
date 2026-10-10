@@ -30,7 +30,7 @@ import {
 
 const PLATFORM_SUPPORT = "routine-support policy: AcreOS's own support desk reads the ticket a frozen support reply answers (AcreOS operating itself)";
 /** The pseudo-grant id carried into the executor so it re-checks every delegated-release rule. */
-export const ROUTINE_SUPPORT_RELEASE_ID = "policy:routine-support-2026-10-09";
+const ROUTINE_SUPPORT_RELEASE_ID = "policy:routine-support-2026-10-09";
 
 export interface RoutineSupportOutcome {
   pendingId: number;

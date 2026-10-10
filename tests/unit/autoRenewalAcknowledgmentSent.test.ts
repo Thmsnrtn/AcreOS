@@ -10,10 +10,11 @@ describe("sendAutoRenewalAcknowledgment", () => {
     await WebhookHandlers.sendAutoRenewalAcknowledgment({
       id: "cs_1",
       customer_details: { email: "o@x.test" },
-      metadata: { auto_renewal_terms_version: "v", auto_renewal_plan: "Pro", auto_renewal_price_cents: "49000", auto_renewal_interval: "year", auto_renewal_currency: "usd", auto_renewal_trial_days: "0" },
+      metadata: { organizationId: "7", auto_renewal_terms_version: "v", auto_renewal_plan: "Pro", auto_renewal_price_cents: "49000", auto_renewal_interval: "year", auto_renewal_currency: "usd", auto_renewal_trial_days: "0" },
     } as any);
     expect(H.sent).toHaveLength(1);
-    expect(H.sent[0]).toEqual(expect.objectContaining({ to: "o@x.test", purpose: "system" }));
+    // One per checkout session: a redelivered webhook replays through the outward-action boundary.
+    expect(H.sent[0]).toEqual(expect.objectContaining({ to: "o@x.test", purpose: "system", organizationId: 7, idempotencyKey: "auto-renewal-ack:cs_1" }));
     expect(H.sent[0].text).toMatch(/renews automatically every year at \$490\.00/);
     expect(H.sent[0].text).toMatch(/How to cancel/);
   });

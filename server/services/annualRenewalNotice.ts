@@ -20,13 +20,13 @@ import { unscopedForPlatformOps } from "../utils/orgScopedDb";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
 
-export const ANNUAL_NOTICE_EVENT = "annual_renewal_notice_sent";
+const ANNUAL_NOTICE_EVENT = "annual_renewal_notice_sent";
 const REASON = "annual renewal notice: AcreOS reads its own yearly subscribers to send the renewal notice the auto-renewal law requires (AcreOS operating itself)";
 
 export interface AnnualNoticeDeps {
   getSubscription: (id: string) => Promise<{ current_period_end?: number; cancel_at_period_end?: boolean; items?: { data?: Array<{ current_period_end?: number; price?: { unit_amount?: number | null; currency?: string } }> } } | null>;
   ownerEmail: (orgId: number) => Promise<string | null>;
-  send: (o: { to: string; subject: string; html: string; text: string }) => Promise<unknown>;
+  send: (o: { to: string; subject: string; html: string; text: string; organizationId: number; idempotencyKey: string }) => Promise<unknown>;
 }
 
 async function defaultDeps(): Promise<AnnualNoticeDeps> {
@@ -36,7 +36,7 @@ async function defaultDeps(): Promise<AnnualNoticeDeps> {
   return {
     getSubscription: (id) => stripeService.getSubscription(id) as any,
     ownerEmail: ownerEmailOf,
-    send: (o) => emailService.sendEmail({ ...o, purpose: "system" }),
+    send: (o) => emailService.sendEmail({ to: o.to, subject: o.subject, html: o.html, text: o.text, purpose: "system", organizationId: o.organizationId, idempotencyKey: o.idempotencyKey }),
   };
 }
 
@@ -71,7 +71,9 @@ export async function runAnnualRenewalNotices(opts: { deps?: AnnualNoticeDeps; n
       }
       const planName = (o.tier ?? "AcreOS").charAt(0).toUpperCase() + (o.tier ?? "AcreOS").slice(1);
       const notice = annualRenewalNotice({ planName, renewsOn: new Date(renewsAtMs), amountCents: amount, currency: item?.price?.currency, appUrl: process.env.APP_URL || "https://acreos.io" });
-      await deps.send({ to, ...notice });
+      // Keyed by org and period: a job that crashes after the send and before the
+      // history row replays the next day instead of sending twice.
+      await deps.send({ to, ...notice, organizationId: o.id, idempotencyKey: `annual-renewal-notice:${o.id}:${periodEndSec}` });
       await db.insert(subscriptionHistory).values({
         organizationId: o.id,
         eventType: ANNUAL_NOTICE_EVENT,

@@ -11,6 +11,7 @@
  *   second deliberate purchase (new intent, or a later window) → a new one
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
@@ -32,6 +33,8 @@ vi.mock("../../server/stripeClient", () => ({
 import { StripeService, creditCheckoutIdempotencyKey, CREDIT_CHECKOUT_DEDUPE_WINDOW_MS } from "../../server/stripeService";
 import { setSimulatedClockOffset } from "../../server/utils/clock";
 import { beginPurchaseIntent, settlePurchaseIntent } from "../../client/src/lib/purchaseIntent";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const svc = new StripeService();
 const buy = (intent?: string | null, pack = "mail-credits-2000") =>

@@ -35,8 +35,8 @@ export const ROUTINE_SUPPORT_DECISION = "founder decision 2026-10-09: routine su
 /** The approver attribution on a release (the audit / receipt / Story read it). */
 export const ROUTINE_SUPPORT_APPROVER = "solene (routine-support policy, founder decision 2026-10-09)";
 /** The hands this policy may ever release, and the only drafting role. */
-export const ROUTINE_SUPPORT_HANDS = ["reply_support_ticket", "apply_refund"] as const;
-export const ROUTINE_SUPPORT_ROLE = "support";
+const ROUTINE_SUPPORT_HANDS = ["reply_support_ticket", "apply_refund"] as const;
+const ROUTINE_SUPPORT_ROLE = "support";
 
 export type RoutineKind = "how_to" | "account" | "small_refund";
 export type FounderReason =

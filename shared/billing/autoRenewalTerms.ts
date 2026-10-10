@@ -31,8 +31,8 @@ export const ANNUAL_NOTICE_MIN_DAYS = 15;
 export const ANNUAL_NOTICE_MAX_DAYS = 45;
 /** Send inside the window with slack on both sides of a missed job run. */
 export const ANNUAL_NOTICE_TARGET_DAYS = 30;
-export const CANCEL_PATH = "/settings?tab=billing";
-export const SUPPORT_CONTACT = "support@acreos.io";
+const CANCEL_PATH = "/settings?tab=billing";
+const SUPPORT_CONTACT = "support@acreos.io";
 
 export type RenewalInterval = "month" | "year";
 

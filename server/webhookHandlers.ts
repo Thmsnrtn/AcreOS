@@ -640,7 +640,9 @@ export class WebhookHandlers {
       });
       const ack = autoRenewalAcknowledgment({ termsText, appUrl: process.env.APP_URL || 'https://acreos.io' });
       const { emailService } = await import('./services/emailService');
-      await emailService.sendEmail({ to, subject: ack.subject, html: ack.html, text: ack.text, purpose: 'system' });
+      const organizationId = Number(m.organizationId) || undefined;
+      // One acknowledgment per checkout session: a redelivered webhook replays, it does not resend.
+      await emailService.sendEmail({ to, subject: ack.subject, html: ack.html, text: ack.text, purpose: 'system', organizationId, idempotencyKey: `auto-renewal-ack:${session.id}` });
     } catch (err) {
       logger.warn('[webhook] auto-renewal acknowledgment not sent', err instanceof Error ? err : undefined);
     }

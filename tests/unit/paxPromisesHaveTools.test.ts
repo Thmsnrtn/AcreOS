@@ -44,6 +44,9 @@ const code = (rel: string) => stripCommentsPreservingLines(fs.readFileSync(path.
 /** Every file whose text instructs a Pax model or is read by a customer as Pax. */
 const PROMPT_POPULATION = [
   "server/ai/executive.ts",
+  // The executive system prompt moved here on 2026-10-09 so the eval can
+  // compose the served prompt without loading executive.ts's providers.
+  "server/ai/paxExecutivePrompt.ts",
   "server/ai/paxPromptVersions.ts",
   "server/ai/paxTurnNotes.ts",
   "server/ai/tools.ts",
@@ -60,7 +63,9 @@ const TOOL_SWITCHES = ["server/ai/tools.ts", "server/ai/supportAgent.ts"] as con
 
 /** Files whose Pax prompts name tools for the model to call. */
 const PROMPTS_NAMING_TOOLS: Array<{ file: string; from: string; to: string }> = [
-  { file: "server/ai/executive.ts", from: "export const agentProfiles = {", to: "export type AgentRole" },
+  // executive.ts's agentProfiles now IMPORT the executive prompt (below) and
+  // name only a couple of tools themselves; the prompt text is read where it lives.
+  { file: "server/ai/paxExecutivePrompt.ts", from: "export const PAX_EXECUTIVE_SYSTEM_PROMPT = `", to: "`;" },
   { file: "server/ai/supportAgent.ts", from: "export const PAX_SYSTEM_PROMPT = `", to: "`;" },
 ];
 
@@ -195,7 +200,7 @@ describe("rule 2 — every tool a Pax prompt names is dispatched", () => {
 
 describe("rule 3 — the executive prompt tells Pax to offer only what a tool can do", () => {
   it("states the limit, and names the tool that totals Finance", () => {
-    const src = code("server/ai/executive.ts");
+    const src = code("server/ai/paxExecutivePrompt.ts");
     expect(src).toMatch(/Offer only computations a tool can do/);
     expect(src).toMatch(/get_finance_summary/);
   });

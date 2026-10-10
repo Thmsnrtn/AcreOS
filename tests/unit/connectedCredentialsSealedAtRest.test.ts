@@ -15,10 +15,13 @@
  * config writer.
  */
 import { describe, expect, it, vi } from "vitest";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import ts from "typescript";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const H = vi.hoisted(() => ({ writes: [] as any[], row: null as any }));
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));

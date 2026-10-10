@@ -397,6 +397,13 @@
       "category": "jitter",
       "note": "WebSocket reconnect backoff jitter (0.5x-1.5x). Without it every tab that lost the same server reconnects on the same millisecond and the herd knocks it over again. Nothing customer-visible is derived from it.",
       "match": "const jittered = reconnectDelay * (0.5 + Math.random());"
+    },
+    {
+      "file": "client/src/lib/purchaseIntent.ts",
+      "line": 16,
+      "category": "id",
+      "note": "Purchase-intent idempotency key fallback when crypto.randomUUID is unavailable \u2014 entropy for uniqueness, not a fact.",
+      "match": "  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;"
     }
   ]
 }

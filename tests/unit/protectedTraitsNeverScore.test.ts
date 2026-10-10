@@ -44,10 +44,11 @@ function protectedTraitHits(source: string): string[] {
 /**
  * Each exemption is pinned to its EXACT number of matching lines: the
  * exemption covers those lines, not the file. A new protected-trait line in
- * an exempt file (executive.ts is a prompt file) raises the count and fails.
+ * an exempt file (paxExecutivePrompt.ts is a prompt file) raises the count and fails.
  */
 const EXEMPT: Record<string, { reason: string; lines: number }> = {
-  "server/ai/executive.ts": { reason: "portfolio note AGE in months (a loan's age), not a person's", lines: 1 },
+  // Moved with the executive prompt on 2026-10-09 (executive.ts -> paxExecutivePrompt.ts).
+  "server/ai/paxExecutivePrompt.ts": { reason: "portfolio note AGE in months (a loan's age), not a person's", lines: 1 },
   "server/services/andrei/confidenceBand.ts": { reason: "age of a data point in days (staleness)", lines: 2 },
   "server/services/autopilot/dealActions.ts": { reason: "days since first contact", lines: 1 },
   "server/services/autopilot/loopStall.ts": { reason: "milliseconds since dispatch", lines: 2 },
