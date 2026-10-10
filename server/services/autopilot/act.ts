@@ -646,6 +646,22 @@ export interface AutonomyFeedbackDeps {
 
 const defaultFeedbackDeps: AutonomyFeedbackDeps = { recordCleanCycle, recordAnomaly };
 
+/**
+ * Whether a finished run should earn or cost its domain autonomy. Pure.
+ *   - "no_work": a stale role-worker dispatch (nothing was waiting) — neither.
+ *   - requeued: a provider blip before any tool ran is requeued with backoff
+ *     (dispatchRunner's transient classification); the SAME dispatch runs
+ *     again and its final attempt is what counts. Charging the blip as well
+ *     demoted support and growth to DRAFT on one simulated provider outage
+ *     (2026-10-10), though every one of those dispatches then completed.
+ * A terminal failure still costs autonomy exactly as before.
+ */
+export function autonomyFeedbackApplies(run: { terminationReason?: string; statusAfterRun?: string | null }): boolean {
+  if (run.terminationReason === "no_work") return false;
+  if (run.statusAfterRun === "queued") return false;
+  return true;
+}
+
 /** True when a dispatch was initiated by the autopilot (vs. founder/manual/etc). */
 export function isAutopilotDispatch(d: { sourceType: string; sourceId: string }): boolean {
   return d.sourceType === "auto_dispatch" && d.sourceId.startsWith(AUTOPILOT_SOURCE_PREFIX);
