@@ -33,6 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { STYLE_URLS } from "@/lib/map-engine";
+import { drawStylesForMapLibre } from "@/lib/map-draw-styles";
 
 // mapbox-gl-draw finds the map canvas and control containers by class name;
 // MapLibre uses the maplibregl- prefix. Point the draw tools at it once.
@@ -184,6 +185,9 @@ export function SubdivisionPlanEditor({ planId, defaultCenter }: Props) {
       displayControlsDefault: false,
       controls: { polygon: true, line_string: true, trash: true },
       defaultMode: "simple_select",
+      // MapLibre rejects the default theme's bare dash arrays (the line
+      // layers never existed); see map-draw-styles.ts.
+      styles: drawStylesForMapLibre(),
     });
 
     map.addControl(draw as any);

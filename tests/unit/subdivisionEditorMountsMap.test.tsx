@@ -19,6 +19,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const mapCtor = vi.hoisted(() => vi.fn());
+const drawCtor = vi.hoisted(() => vi.fn());
 
 vi.mock("maplibre-gl", () => {
   class FakeMap {
@@ -41,7 +42,11 @@ vi.mock("maplibre-gl", () => {
 vi.mock("maplibre-gl/dist/maplibre-gl.css", () => ({}));
 vi.mock("maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url", () => ({ default: "/worker.js" }));
 vi.mock("@mapbox/mapbox-gl-draw", () => ({
-  default: class { static constants = { classes: {} as Record<string, string> }; add() { return []; } getAll() { return { type: "FeatureCollection", features: [] }; } deleteAll() {} set() {} setFeatureProperty() {} },
+  default: class {
+    static constants = { classes: {} as Record<string, string> };
+    static lib = { theme: [{ id: "gl-draw-lines", paint: { "line-dasharray": ["case", ["==", 1, 1], [0.2, 2], [2, 0]] } }] };
+    constructor(opts: unknown) { drawCtor(opts); }
+    add() { return []; } getAll() { return { type: "FeatureCollection", features: [] }; } deleteAll() {} set() {} setFeatureProperty() {} },
 }));
 vi.mock("@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css", () => ({}));
 vi.mock("maplibre-contour", () => ({ default: {} }));
@@ -55,6 +60,7 @@ afterEach(() => {
   host?.remove();
   vi.unstubAllGlobals();
   mapCtor.mockReset();
+  drawCtor.mockReset();
 });
 
 describe("SubdivisionPlanEditor", () => {
@@ -94,5 +100,9 @@ describe("SubdivisionPlanEditor", () => {
     expect(mapCtor, "the editor never constructed its map").toHaveBeenCalledTimes(1);
     const container = mapCtor.mock.calls[0][0].container as HTMLElement;
     expect(host.contains(container), "the map was built on a detached container").toBe(true);
+    // The draw tools get MapLibre-valid styles, not mapbox-gl-draw's default
+    // theme (whose bare dash arrays MapLibre rejects).
+    expect(drawCtor).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(drawCtor.mock.calls[0][0].styles)).toContain('["literal",[0.2,2]]');
   });
 });
