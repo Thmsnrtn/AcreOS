@@ -160,7 +160,7 @@ export async function executeBusinessChatTool(
         // into an ask, it is the founder's own tap. The classifier below is
         // defence in depth.
         if (ask.chatApprovable !== true || isUndelegableAsk(ask)) {
-          return { ok: false, text: plainRefusal({ what: `I did not answer ask #${askId} ("${ask.questionSummary}")`, why: "It is founder-only — a hard-stop, a new kind of move, a money decision, or a legal or data matter — so only your own tap counts", unlock: "Tap it yourself on the Decisions door" }) };
+          return { ok: false, text: plainRefusal({ what: `I did not answer ask #${askId} ("${plainStageWords(ask.questionSummary)}")`, why: "It is founder-only — a hard-stop, a new kind of move, a money decision, or a legal or data matter — so only your own tap counts", unlock: "Tap it yourself on the Decisions door" }) };
         }
         // Bound to the version the founder was SHOWN (list_open_asks), never
         // to whatever the card says at this instant.

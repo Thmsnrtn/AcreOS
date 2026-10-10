@@ -2400,7 +2400,7 @@ export async function executeTool(
 
         const isConfigured = await emailService.isConfigured(org.id);
         if (!isConfigured) {
-          return toolRefusal({ what: "The email was not sent", why: "This account has no email sending identity connected yet", unlock: "Connect your own email under Settings → Integrations, then send again" });
+          return toolRefusal({ what: "The email was not sent", why: "This account has no email sending identity connected yet", unlock: "Connect your own email account in Settings, then send again" });
         }
 
         const htmlContent = args.message;
@@ -2415,7 +2415,7 @@ export async function executeTool(
         // Honor the daily envelope, TCPA, and the send audit trail.
         const rateCheck = await checkSendRateLimit(org.id, "email");
         if (!rateCheck.allowed) {
-          return toolRefusal({ what: "The email was not sent", why: "Today's sending limit for this account is reached", unlock: "It can go out tomorrow, or change the daily limit in Pax settings" });
+          return toolRefusal({ what: "The email was not sent", why: `${rateCheck.reason ?? "Today's sending limit for this account is reached"}`, unlock: "It can go out tomorrow, or change the daily limit in Pax settings" });
         }
 
         if (args.lead_id) {
@@ -2423,7 +2423,7 @@ export async function executeTool(
           // resolve against another org's consent record.
           const tcpaCheck = await checkTcpaBeforeSend(org.id, args.lead_id);
           if (!tcpaCheck.allowed) {
-            return toolRefusal({ what: "The email was not sent", why: "The consent check for this lead did not pass", unlock: "Open the lead to see their consent, and record it there if they gave it" });
+            return toolRefusal({ what: "The email was not sent", why: `${tcpaCheck.reason ?? "The consent check for this lead did not pass"}`, unlock: "Open the lead to see their consent, and record it there if they gave it" });
           }
         }
 
@@ -2453,7 +2453,7 @@ export async function executeTool(
           return toolRefusal({
             what: "The email was not sent",
             why: "Your email provider did not accept it",
-            unlock: "Check the address on the lead's page and your email connection under Settings → Integrations, then try again",
+            unlock: "Check the address on the lead's page and your email connection in Settings, then try again",
           });
         }
         return { success: true, data: { messageId: result.messageId, message: "Email sent successfully" } };
@@ -2502,14 +2502,14 @@ export async function executeTool(
         // daily envelope + TCPA + the send audit trail.
         const smsRateCheck = await checkSendRateLimit(org.id, "sms");
         if (!smsRateCheck.allowed) {
-          return toolRefusal({ what: "The text was not sent", why: "Today's sending limit for this account is reached", unlock: "It can go out tomorrow, or change the daily limit in Pax settings" });
+          return toolRefusal({ what: "The text was not sent", why: `${smsRateCheck.reason ?? "Today's sending limit for this account is reached"}`, unlock: "It can go out tomorrow, or change the daily limit in Pax settings" });
         }
 
         if (args.lead_id) {
           // 2026-06-10 (T0-5): org-scoped TCPA lookup, same as send_email.
           const tcpaCheck = await checkTcpaBeforeSend(org.id, args.lead_id);
           if (!tcpaCheck.allowed) {
-            return toolRefusal({ what: "The text was not sent", why: "The consent check for this lead did not pass", unlock: "Open the lead to see their consent, and record it there if they gave it" });
+            return toolRefusal({ what: "The text was not sent", why: `${tcpaCheck.reason ?? "The consent check for this lead did not pass"}`, unlock: "Open the lead to see their consent, and record it there if they gave it" });
           }
         }
 
@@ -2542,7 +2542,7 @@ export async function executeTool(
           return toolRefusal({
             what: "The text was not sent",
             why: "Your texting provider did not accept it",
-            unlock: "Check the number on the lead's page and your texting connection under Settings → Integrations, then try again",
+            unlock: "Check the number on the lead's page and your texting connection in Settings, then try again",
           });
         }
         return { success: true, data: { messageId: result.messageId, message: "SMS sent successfully" } };

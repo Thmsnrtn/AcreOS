@@ -3768,7 +3768,7 @@ export async function executeSupportTool(
           return toolRefusal({
             what: "Billing was not re-synced",
             why: "This account has no billing record yet, which is normal before a first payment",
-            unlock: "Choose a plan under Settings → Billing, and billing will be set up from there",
+            unlock: `Choose a plan under ${PLACE_TEXT.plans}, and billing will be set up from there`,
           });
         }
         
@@ -3891,7 +3891,7 @@ export async function executeSupportTool(
           };
         } catch (err: any) {
           logger.warn("[support-tool] subscription read failed", { metadata: { err: err instanceof Error ? err.message : String(err) } });
-          return toolFailure("Your subscription details did not load", "Try again in a minute, or open Settings → Billing to see them yourself");
+          return toolFailure("Your subscription details did not load", `Try again in a minute, or open ${PLACE_TEXT.plans} to see them yourself`);
         }
       }
       
@@ -3947,7 +3947,7 @@ export async function executeSupportTool(
           };
         } catch (err: any) {
           logger.warn("[support-tool] payment history read failed", { metadata: { err: err instanceof Error ? err.message : String(err) } });
-          return toolFailure("Your payment history did not load", "Try again in a minute, or open Settings → Billing to see it yourself");
+          return toolFailure("Your payment history did not load", `Try again in a minute, or open ${PLACE_TEXT.plans} to see it yourself`);
         }
       }
       
@@ -4057,7 +4057,7 @@ export async function executeSupportTool(
           };
         } catch (err: any) {
           logger.warn("[support-tool] billing issue check failed", { metadata: { err: err instanceof Error ? err.message : String(err) } });
-          return toolFailure("The billing check did not finish", "Try again in a minute, or open Settings → Billing to see your invoices yourself");
+          return toolFailure("The billing check did not finish", `Try again in a minute, or open ${PLACE_TEXT.plans} to see your invoices yourself`);
         }
       }
       
@@ -4065,7 +4065,7 @@ export async function executeSupportTool(
         const { fix_type, invoice_id, reason } = args;
         
         if (!org.stripeCustomerId) {
-          return toolRefusal({ what: "No billing fix was made", why: "This account has no billing record yet, which is normal before a first payment", unlock: "Choose a plan under Settings → Billing, and billing will be set up from there" });
+          return toolRefusal({ what: "No billing fix was made", why: "This account has no billing record yet, which is normal before a first payment", unlock: `Choose a plan under ${PLACE_TEXT.plans}, and billing will be set up from there` });
         }
         
         try {
@@ -4078,7 +4078,7 @@ export async function executeSupportTool(
           switch (fix_type) {
             case "retry_payment": {
               if (!invoice_id) {
-                return toolRefusal({ what: "The payment was not retried", why: "I need to know which invoice to retry", unlock: "Open Settings → Billing, find the unpaid invoice, and tell me its number" });
+                return toolRefusal({ what: "The payment was not retried", why: "I need to know which invoice to retry", unlock: `Open ${PLACE_TEXT.plans}, find the unpaid invoice, and tell me its number` });
               }
               
               const invoice = await stripe.invoices.pay(invoice_id);
@@ -4141,7 +4141,7 @@ export async function executeSupportTool(
             
             case "cancel_pending_invoice": {
               if (!invoice_id) {
-                return toolRefusal({ what: "The invoice was not cancelled", why: "I need to know which invoice to cancel", unlock: "Open Settings → Billing, find the invoice, and tell me its number" });
+                return toolRefusal({ what: "The invoice was not cancelled", why: "I need to know which invoice to cancel", unlock: `Open ${PLACE_TEXT.plans}, find the invoice, and tell me its number` });
               }
               
               const invoice = await stripe.invoices.voidInvoice(invoice_id);

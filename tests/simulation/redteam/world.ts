@@ -37,11 +37,17 @@ export function readableRefusal(t: string): boolean {
   return isPlainRefusal(refusalTextOf(t));
 }
 
-/** A tool answer that refused: `success: false` in the JSON, or refusal words in plain text. */
+/**
+ * A tool answer that refused. A JSON result says so itself (`success: false`);
+ * a JSON result that SUCCEEDED is not a refusal, however its text reads ("held
+ * for approval — nothing executes until…" matched the word list and was
+ * counted as an unreadable refusal before 2026-10-10). Plain text falls back
+ * to refusal words.
+ */
 function isToolRefusal(t: string): boolean {
   try {
     const o = JSON.parse(t);
-    if (o && typeof o === "object" && (o as { success?: unknown }).success === false) return true;
+    if (o && typeof o === "object" && "success" in o) return (o as { success?: unknown }).success === false;
   } catch { /* plain text */ }
   return /refus|not one of|not yours|is not|over the|limit|cannot|can't|not found|denied|blocked|only/i.test(t);
 }
