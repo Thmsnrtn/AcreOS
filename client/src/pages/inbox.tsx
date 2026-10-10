@@ -173,7 +173,7 @@ function EmailMessageRow({
     <div
       data-testid={`inbox-message-row-${message.id}`}
       onClick={onSelect}
-      className={`group flex items-start gap-3 p-3 cursor-pointer border-b transition-colors focus-within:ring-2 focus-within:ring-ring focus-within:ring-inset ${
+      className={`group flex items-start gap-3 p-3 cursor-pointer border-b transition-colors ${
         isSelected
           ? "bg-[color:var(--acr-brand-soft)]"
           : message.isRead
@@ -190,7 +190,7 @@ function EmailMessageRow({
           e.stopPropagation();
           onSelect();
         }}
-        className="flex flex-1 min-w-0 items-start gap-3 text-left focus-visible:outline-none"
+        className="flex flex-1 min-w-0 items-start gap-3 text-left rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
       <Avatar className="h-9 w-9 flex-shrink-0">
         <AvatarFallback className="text-xs">
