@@ -155,6 +155,7 @@ describe("getCorporaStatus — never overstates", () => {
     objectKey: "tn/2026-10-10/tn-parcel-facts.parquet",
     bytes: 197817,
     sha256: "a".repeat(64),
+    bucket: "https://example.r2.cloudflarestorage.com/acreos-open-data",
   };
 
   it("a valid receipt makes exactly its own corpus 'ingested'", () => {
@@ -170,6 +171,16 @@ describe("getCorporaStatus — never overstates", () => {
     for (const bad of [{ ...receipt, bytes: 0 }, { ...receipt, sha256: "nope" }, { ...receipt, objectKey: "" }]) {
       expect(getCorporaStatus(configuredEnv, [bad]).some((r) => r.ingestStatus === "ingested")).toBe(false);
     }
+  });
+
+  it("a receipt counts only for the bucket that confirmed it", () => {
+    // Receipts live in the database; the bucket lives in env. Repointing the
+    // deploy at a new, empty bucket must not inherit the old bucket's bytes,
+    // and a receipt that names no bucket proves nothing about this one.
+    const elsewhere = { ...configuredEnv, OPEN_DATA_BUCKET_NAME: "a-new-empty-bucket" };
+    expect(getCorporaStatus(elsewhere, [receipt]).some((r) => r.ingestStatus === "ingested")).toBe(false);
+    const { bucket: _b, ...unnamed } = receipt;
+    expect(getCorporaStatus(configuredEnv, [unnamed as typeof receipt]).some((r) => r.ingestStatus === "ingested")).toBe(false);
   });
 
   it("the vocabulary has 'ingested', and the static manifest never claims it", () => {

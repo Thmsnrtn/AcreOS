@@ -165,7 +165,11 @@ export function SubdivisionPlanEditor({ planId, defaultCenter }: Props) {
     onError: (err: any) => toast({ title: "Save failed", description: err.message, variant: "destructive" }),
   });
 
-  // Initialize map + draw once.
+  // Initialize map + draw once the container exists. While the plan loads the
+  // component renders a Skeleton and the ref is null, so this must re-run when
+  // the plan arrives — with `[]` deps it ran only on that first, loading
+  // render and the editor never built a map.
+  const planReady = !!planQuery.data;
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
@@ -209,7 +213,7 @@ export function SubdivisionPlanEditor({ planId, defaultCenter }: Props) {
     };
     // activeKind intentionally not in deps — handled by ref pattern below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [planReady]);
 
   // Mirror activeKind into a ref so the draw.create handler picks up the
   // latest value without re-binding.

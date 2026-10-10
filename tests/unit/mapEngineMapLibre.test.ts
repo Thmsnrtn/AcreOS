@@ -82,6 +82,48 @@ describe("map engine — MapLibre + free basemaps", () => {
     expect(deps["maplibre-gl"]).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
+  it("the MapLibre worker is bundled and its URL set before any map is built", () => {
+    // maplibre-gl 6 is ESM and finds its worker at new URL("./maplibre-gl-worker.mjs",
+    // import.meta.url). Vite does not emit that file, so in a production build
+    // the URL 404s, "Worker failed to load", and every map stays blank (no
+    // vector tile or GeoJSON is ever parsed). The engine must hand MapLibre a
+    // worker Vite bundled itself, and every file that builds a map must load
+    // the engine first.
+    const engine = stripComments(readFileSync(path.join(clientSrc, "lib/map-engine.ts"), "utf8"));
+    const m = /import\s+(\w+)\s+from\s+["']maplibre-gl\/dist\/maplibre-gl-worker\.mjs\?worker&url["']/.exec(engine);
+    expect(m, "map-engine.ts must import the worker with ?worker&url").toBeTruthy();
+    expect(engine).toMatch(new RegExp(`maplibregl\\.setWorkerUrl\\(${m![1]}\\)`));
+    for (const { f, src } of mapFiles) {
+      if (f.endsWith("map-engine.ts")) continue;
+      expect(src, `${f} builds maps but does not load the engine (which sets the worker URL)`).toMatch(/from\s+["']@\/lib\/map-engine["']/);
+    }
+  });
+
+  it("every symbol layer names a font the glyph server has", () => {
+    // A symbol layer with no text-font falls back to MapLibre's default stack
+    // ("Open Sans Regular,Arial Unicode MS Regular"), which OpenFreeMap does
+    // not serve: the glyph request 404s and the labels never draw (measured in
+    // a browser on the property map's APN labels, W2 audit 2026-10-10).
+    let symbolLayers = 0;
+    for (const { f, src } of mapFiles) {
+      const re = /type:\s*["']symbol["']/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(src))) {
+        symbolLayers++;
+        // The layer object literal around this `type`: back to its opening
+        // `{` at depth 0, forward to its matching `}`.
+        let i = m.index, depth = 0;
+        for (; i > 0; i--) { const c = src[i]; if (c === "}") depth++; else if (c === "{") { if (depth === 0) break; depth--; } }
+        let j = m.index; depth = 0;
+        for (; j < src.length; j++) { const c = src[j]; if (c === "{") depth++; else if (c === "}") { if (depth === 0) break; depth--; } }
+        const layer = src.slice(i, j + 1);
+        if (!/["']text-field["']/.test(layer)) continue;
+        expect(layer, `${f}: a symbol layer with text but no text-font`).toMatch(/["']text-font["']\s*:\s*LABEL_FONT(_ITALIC)?\b/);
+      }
+    }
+    expect(symbolLayers, "the walk found no symbol layers — the scan stopped reading").toBeGreaterThanOrEqual(2);
+  });
+
   it("the CSP lets the browser reach the new tile hosts", () => {
     const csp = stripComments(readFileSync(path.join(root, "server/middleware/security.ts"), "utf8"));
     for (const host of ["tiles.openfreemap.org", "basemap.nationalmap.gov", "imagery.nationalmap.gov", "s3.amazonaws.com"]) {

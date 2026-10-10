@@ -5019,7 +5019,7 @@ export const countyDiscoveryQueue = pgTable("county_discovery_queue", {
   ownedCompletedAt: timestamp("owned_completed_at"),
   // Bucket-confirmed uploads of this county's artifacts (GeoParquet/PMTiles):
   // the ONLY evidence getCorporaStatus() accepts for "ingested".
-  ownedArtifacts: jsonb("owned_artifacts").$type<Array<{ corpusKey: string; objectKey: string; bytes: number; sha256: string; etag: string | null; uploadedAt: string }>>(),
+  ownedArtifacts: jsonb("owned_artifacts").$type<Array<{ corpusKey: string; objectKey: string; bytes: number; sha256: string; bucket?: string; etag: string | null; uploadedAt: string }>>(),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

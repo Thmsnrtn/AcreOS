@@ -28,6 +28,7 @@ import {
   applySolarSky,
   buildingsSourceAvailable,
   contourTileUrl,
+  LABEL_FONT,
   LABEL_FONT_ITALIC,
   naipStaticImageUrl,
   lngLatToMercator,
@@ -1847,6 +1848,9 @@ export function PropertyMap({
         source: "labels",
         layout: {
           "text-field": ["get", "apn"],
+          // The glyph server only has the engine's fonts; MapLibre's default
+          // stack 404s there and the labels never draw.
+          "text-font": LABEL_FONT,
           "text-size": 12,
           "text-anchor": "center",
           "text-allow-overlap": false,

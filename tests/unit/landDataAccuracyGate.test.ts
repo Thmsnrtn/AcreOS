@@ -149,6 +149,17 @@ describe("accuracy gate — a 'passed' fact is measured, not trusted", () => {
     });
   }
 
+  it("the bar is policy, not self-declared: ≥ 90% agreement on ≥ 10 parcels", () => {
+    // Fixed numbers, not read from the entry under test: an entry that lowers
+    // its own threshold or minimum sample must turn this red, not ride along.
+    for (const key of PARCEL_FACT_KEYS) {
+      const e = FACT_ACCURACY[key];
+      if (e.status !== "passed") continue;
+      expect(e.threshold, `${key} threshold`).toBeGreaterThanOrEqual(0.9);
+      expect(e.minSample, `${key} minSample`).toBeGreaterThanOrEqual(10);
+    }
+  });
+
   it("every 'passed' fact has a check in this test (no unverifiable pass)", () => {
     for (const key of PARCEL_FACT_KEYS) {
       if (isFactPublishable(key)) expect(AGREES[key], key).toBeTruthy();
@@ -166,6 +177,33 @@ describe("the customer sees only gated facts", () => {
       expect(shown.has(key), key).toBe(isFactPublishable(key));
     }
     expect(proj.withheld.map((w) => w.key).sort()).toEqual(PARCEL_FACT_KEYS.filter((k) => !isFactPublishable(k)).sort());
+  });
+
+  it("every shown fact, on every sample parcel, carries dated sources and a confidence", () => {
+    for (const p of fx.parcels) {
+      const { facts } = factsFor(p);
+      for (const f of projectFactsForCustomer(facts).shown) {
+        if (f.status !== "computed") continue;
+        expect(f.confidence, `${p.parcelKey} ${f.key}`).toMatch(/^(high|medium|low)$/);
+        expect(f.sources.length, `${p.parcelKey} ${f.key} has no source`).toBeGreaterThan(0);
+        for (const s of f.sources) {
+          expect(s.retrievedOn, `${p.parcelKey} ${f.key}`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+          expect(s.url, `${p.parcelKey} ${f.key}`).toMatch(/^https:\/\//);
+        }
+      }
+    }
+  });
+
+  it("a computed fact without dated sources or a confidence is withheld, not shown bare", () => {
+    const stripped = { ...facts, road_frontage_m: { ...facts.road_frontage_m, sources: [] } } as ParcelFactSet;
+    const proj = projectFactsForCustomer(stripped);
+    expect(proj.shown.map((f) => f.key)).not.toContain("road_frontage_m");
+    expect(proj.withheld.map((w) => w.key)).toContain("road_frontage_m");
+    const undated = {
+      ...facts,
+      public_land_adjacent: { ...facts.public_land_adjacent, sources: facts.public_land_adjacent.sources.map((s) => ({ ...s, retrievedOn: "" })) },
+    } as ParcelFactSet;
+    expect(projectFactsForCustomer(undated).shown.map((f) => f.key)).not.toContain("public_land_adjacent");
   });
 
   it("the real route serializer goes through the projection (adoption, not a parallel rule)", async () => {

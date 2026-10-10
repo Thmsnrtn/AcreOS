@@ -133,6 +133,19 @@ export function projectFactsForCustomer(facts: Partial<ParcelFactSet>): Customer
       });
       continue;
     }
+    // A computed fact reaches a customer only with its provenance: at least
+    // one source, each with a retrieval date, and a confidence from the rubric.
+    if (f.status === "computed") {
+      const dated = f.sources.length > 0 && f.sources.every((s) => /^\d{4}-\d{2}-\d{2}$/.test(s.retrievedOn ?? ""));
+      if (!dated || !f.confidence) {
+        out.withheld.push({
+          key,
+          label: PARCEL_FACT_LABELS[key],
+          reason: "Not shown: this value arrived without a dated source and a confidence.",
+        });
+        continue;
+      }
+    }
     out.shown.push(f as ParcelFactSet[ParcelFactKey]);
   }
   return out;

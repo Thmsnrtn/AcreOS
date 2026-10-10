@@ -293,14 +293,15 @@ describe("open-data bucket — no receipt without the bucket's confirmation", ()
   });
 
   it("returns a receipt with the SHA-256 when HEAD confirms the byte count", async () => {
-    const client: ObjectStoreClient = { put: async () => ({ etag: '"x"' }), headBytes: async () => body.length };
+    const client: ObjectStoreClient = { bucket: "https://e/b", put: async () => ({ etag: '"x"' }), headBytes: async () => body.length };
     const r = await uploadAndConfirm(client, "statewide-parcels-bulk", "tn/a.parquet", body, "application/octet-stream");
     expect(r.bytes).toBe(body.length);
     expect(r.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(r.bucket).toBe("https://e/b");
   });
 
   it("throws (no receipt) when the bucket reports a different size", async () => {
-    const client: ObjectStoreClient = { put: async () => ({ etag: null }), headBytes: async () => body.length - 1 };
+    const client: ObjectStoreClient = { bucket: "https://e/b", put: async () => ({ etag: null }), headBytes: async () => body.length - 1 };
     await expect(uploadAndConfirm(client, "statewide-parcels-bulk", "tn/a.parquet", body, "x")).rejects.toThrow(/not ingested/);
   });
 });

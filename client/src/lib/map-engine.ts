@@ -24,6 +24,15 @@
 
 import * as maplibregl from "maplibre-gl";
 import type { StyleSpecification, Map as MapLibreMap, RasterDEMSourceSpecification } from "maplibre-gl";
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
+
+// maplibre-gl 6 looks for its worker beside its own module
+// (new URL("./maplibre-gl-worker.mjs", import.meta.url)). Vite never emits
+// that file, so in a production build the request 404s, "Worker failed to
+// load", and no vector tile or GeoJSON is ever parsed — every map is blank.
+// Hand MapLibre a worker Vite bundled itself. Every file that builds a map
+// imports this module, so this runs before the first Map exists.
+maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
 export { maplibregl };
 

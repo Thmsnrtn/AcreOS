@@ -52,11 +52,22 @@ export interface CorpusUploadReceipt {
   objectKey: string;
   bytes: number;
   sha256: string;
+  /** The bucket that confirmed the bytes: bucketIdentity() of its config. */
+  bucket: string;
 }
 
-/** A receipt counts only if it names real bytes with a real digest. */
-function isValidReceipt(r: CorpusUploadReceipt): boolean {
-  return r.bytes > 0 && /^[0-9a-f]{64}$/.test(r.sha256) && r.objectKey.length > 0;
+/** "<endpoint>/<bucket name>" — what a receipt names and what env configures. */
+export function bucketIdentity(endpoint: string, name: string): string {
+  return `${endpoint.trim().replace(/\/+$/, "")}/${name.trim()}`;
+}
+
+/**
+ * A receipt counts only if it names real bytes with a real digest, confirmed
+ * by THE bucket this deploy is configured for — receipts live in the database
+ * and outlive a change of bucket; the bytes do not move with them.
+ */
+function isValidReceipt(r: CorpusUploadReceipt, configured: string): boolean {
+  return r.bytes > 0 && /^[0-9a-f]{64}$/.test(r.sha256) && r.objectKey.length > 0 && r.bucket === configured;
 }
 
 /** All four OPEN_DATA_BUCKET_* keys must be non-empty for storage to count. */
@@ -76,11 +87,12 @@ export function getCorporaStatus(
   receipts: readonly CorpusUploadReceipt[] = [],
 ): CorpusStatusReport[] {
   const configured = isBucketConfigured(env);
+  const bucket = configured ? bucketIdentity(env.OPEN_DATA_BUCKET_ENDPOINT ?? "", env.OPEN_DATA_BUCKET_NAME ?? "") : "";
   return TIER2_CORPORA.map((corpus) => {
     if (!configured) {
       return { key: corpus.key, ingestStatus: "not_provisioned" as const, reason: STORAGE_NOT_PROVISIONED };
     }
-    const mine = receipts.filter((r) => r.corpusKey === corpus.key && isValidReceipt(r));
+    const mine = receipts.filter((r) => r.corpusKey === corpus.key && isValidReceipt(r, bucket));
     if (mine.length > 0) {
       const bytes = mine.reduce((n, r) => n + r.bytes, 0);
       return {

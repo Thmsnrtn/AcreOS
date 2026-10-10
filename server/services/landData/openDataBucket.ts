@@ -10,7 +10,7 @@
 
 import { createHash } from "node:crypto";
 import { OPEN_DATA_BUCKET_ENV_KEYS } from "@shared/openData/corporaManifest";
-import type { CorpusUploadReceipt } from "../openData/corporaStatus";
+import { bucketIdentity, type CorpusUploadReceipt } from "../openData/corporaStatus";
 import { logger } from "../../utils/logger";
 import { clock } from "../../utils/clock";
 
@@ -37,6 +37,8 @@ export interface UploadReceipt extends CorpusUploadReceipt {
 
 /** Minimal client surface — injectable so the confirm-before-receipt rule is testable. */
 export interface ObjectStoreClient {
+  /** bucketIdentity() of the bucket this client writes to — named on every receipt. */
+  bucket: string;
   put(key: string, body: Buffer, contentType: string): Promise<{ etag: string | null }>;
   headBytes(key: string): Promise<number | null>;
 }
@@ -50,6 +52,7 @@ export async function s3ClientFor(cfg: BucketConfig): Promise<ObjectStoreClient>
     credentials: { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secret },
   });
   return {
+    bucket: bucketIdentity(cfg.endpoint, cfg.bucket),
     async put(key, body, contentType) {
       const r = await s3.send(new PutObjectCommand({ Bucket: cfg.bucket, Key: key, Body: body, ContentType: contentType }));
       return { etag: r.ETag ?? null };
@@ -83,7 +86,7 @@ export async function uploadAndConfirm(
   if (landed !== body.length) {
     throw new Error(`bucket reports ${landed ?? "no"} bytes for ${objectKey}, expected ${body.length} — not ingested`);
   }
-  return { corpusKey, objectKey, bytes: body.length, sha256, etag, uploadedAt: clock.now() };
+  return { corpusKey, objectKey, bytes: body.length, sha256, bucket: client.bucket, etag, uploadedAt: clock.now() };
 }
 
 /**
@@ -97,7 +100,7 @@ export async function recordReceipt(state: string, county: string, r: UploadRece
   const where = and(eq(countyDiscoveryQueue.state, state.toUpperCase()), eq(countyDiscoveryQueue.county, county.toLowerCase().replace(/ county$/i, "").trim()));
   const [row] = await db.select({ artifacts: countyDiscoveryQueue.ownedArtifacts }).from(countyDiscoveryQueue).where(where).limit(1);
   if (!row) throw new Error(`no coverage row for ${county}, ${state} — request the county before recording its artifacts`);
-  const entry = { corpusKey: r.corpusKey, objectKey: r.objectKey, bytes: r.bytes, sha256: r.sha256, etag: r.etag, uploadedAt: r.uploadedAt.toISOString() };
+  const entry = { corpusKey: r.corpusKey, objectKey: r.objectKey, bytes: r.bytes, sha256: r.sha256, bucket: r.bucket, etag: r.etag, uploadedAt: r.uploadedAt.toISOString() };
   const kept = (row.artifacts ?? []).filter((a) => !(a.objectKey === r.objectKey && a.sha256 === r.sha256));
   await db.update(countyDiscoveryQueue).set({ ownedArtifacts: [...kept, entry] }).where(where);
 }
@@ -112,7 +115,7 @@ export async function loadIngestReceipts(): Promise<CorpusUploadReceipt[]> {
       .select({ artifacts: countyDiscoveryQueue.ownedArtifacts })
       .from(countyDiscoveryQueue)
       .where(isNotNull(countyDiscoveryQueue.ownedArtifacts));
-    return rows.flatMap((r) => (r.artifacts ?? []).map((a) => ({ corpusKey: a.corpusKey, objectKey: a.objectKey, bytes: a.bytes, sha256: a.sha256 })));
+    return rows.flatMap((r) => (r.artifacts ?? []).map((a) => ({ corpusKey: a.corpusKey, objectKey: a.objectKey, bytes: a.bytes, sha256: a.sha256, bucket: a.bucket ?? "" })));
   } catch (err) {
     logger.warn("[openDataBucket] receipts unreadable — reporting none", {
       metadata: { error: err instanceof Error ? err.message : String(err) },
