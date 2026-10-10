@@ -16,7 +16,7 @@
 
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { isAuthenticated } from "./auth/clerkAuth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import type { AuthenticatedRequest } from "./types/request";
@@ -168,7 +168,9 @@ export function registerLandDataRoutes(app: Express) {
       const [row] = await db
         .select()
         .from(parcelSnapshots)
-        .where(and(eq(parcelSnapshots.source, OWNED_SNAPSHOT_SOURCE), eq(parcelSnapshots.parcelKey, key)))
+        // Owned parcels are GLOBAL public-record rows (organization_id NULL):
+        // never another tenant's data.
+        .where(and(isNull(parcelSnapshots.organizationId), eq(parcelSnapshots.source, OWNED_SNAPSHOT_SOURCE), eq(parcelSnapshots.parcelKey, key)))
         .limit(1);
       if (!row) return Errors.notFound(res, "Parcel");
       res.json(serializeOwnedParcelForCustomer(ownedViewOf(row)));
@@ -190,6 +192,7 @@ export function registerLandDataRoutes(app: Express) {
         .from(parcelSnapshots)
         .where(
           and(
+            isNull(parcelSnapshots.organizationId),
             eq(parcelSnapshots.source, OWNED_SNAPSHOT_SOURCE),
             eq(parcelSnapshots.state, parsed.data.state.toUpperCase()),
             eq(parcelSnapshots.county, county),

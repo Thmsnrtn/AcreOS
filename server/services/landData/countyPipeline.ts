@@ -20,7 +20,7 @@
  * The reason is stored on the row and shown to the customer verbatim.
  */
 
-import { and, desc, eq, sql, inArray } from "drizzle-orm";
+import { and, desc, eq, sql, inArray, isNull } from "drizzle-orm";
 import { db } from "../../db";
 import { countyDiscoveryQueue, countyGisEndpoints, parcelSnapshots } from "@shared/schema";
 import { logger } from "../../utils/logger";
@@ -387,6 +387,8 @@ async function liveDeps(job: CountyJob, ep: EndpointView, countyWhere: string | 
         .from(parcelSnapshots)
         .where(
           and(
+            // Owned parcels are GLOBAL public-record rows (organization_id NULL).
+            isNull(parcelSnapshots.organizationId),
             eq(parcelSnapshots.source, OWNED_SNAPSHOT_SOURCE),
             eq(parcelSnapshots.state, job.state),
             eq(parcelSnapshots.county, job.county),
@@ -409,7 +411,7 @@ async function liveDeps(job: CountyJob, ep: EndpointView, countyWhere: string | 
         const [existing] = await db
           .select({ id: parcelSnapshots.id, rawData: parcelSnapshots.rawData })
           .from(parcelSnapshots)
-          .where(and(eq(parcelSnapshots.source, OWNED_SNAPSHOT_SOURCE), eq(parcelSnapshots.parcelKey, p.parcelKey)))
+          .where(and(isNull(parcelSnapshots.organizationId), eq(parcelSnapshots.source, OWNED_SNAPSHOT_SOURCE), eq(parcelSnapshots.parcelKey, p.parcelKey)))
           .limit(1);
         const prevHistory = Array.isArray(existing?.rawData?.sourceIdHistory) ? (existing!.rawData!.sourceIdHistory as string[]) : [];
         const history = Array.from(new Set([...prevHistory, p.sourceParcelId.toUpperCase()]));
@@ -437,7 +439,12 @@ async function liveDeps(job: CountyJob, ep: EndpointView, countyWhere: string | 
           expiresAt: null,
           updatedAt: now,
         };
-        if (existing) await db.update(parcelSnapshots).set(values).where(eq(parcelSnapshots.id, existing.id));
+        if (existing) {
+          await db
+            .update(parcelSnapshots)
+            .set(values)
+            .where(and(eq(parcelSnapshots.id, existing.id), isNull(parcelSnapshots.organizationId)));
+        }
         else await db.insert(parcelSnapshots).values(values);
       }
     },

@@ -10,9 +10,9 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Info, ShieldAlert } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 import { PARCEL_FACT_LABELS, type ParcelFactKey } from "@shared/landData/parcelFacts";
 import type { ParcelTruth } from "@shared/landData/parcelTruths";
 
@@ -97,7 +97,16 @@ export function ParcelFactsPanel({ state, county, apn }: { state: string; county
           <li key={f.key} className="text-xs">
             <div className="flex items-center justify-between gap-2">
               <span className="font-medium">{PARCEL_FACT_LABELS[f.key]}</span>
-              {f.confidence && <Badge variant="outline">{f.confidence} confidence</Badge>}
+              {f.status === "computed" && f.sources[0] && (
+                // The shared provenance chip. A "high" rubric fact reads from an
+                // authoritative layer finer than the fact's tolerance; medium and
+                // low are derived estimates (shared/landData/parcelFacts.ts).
+                <DataProvenanceChip
+                  source={f.sources.map((s) => s.name).join(" + ")}
+                  sourceAsOf={f.sources[0].retrievedOn}
+                  classification={f.confidence === "high" ? "authoritative" : "estimate"}
+                />
+              )}
             </div>
             <p>{f.status === "computed" ? formatValue(f) : f.reason}</p>
             <p className="text-muted-foreground">

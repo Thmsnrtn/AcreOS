@@ -3726,7 +3726,7 @@ export function StaticPropertyMap({
           />
         </svg>
       )}
-      <span className="absolute bottom-1 right-1 rounded bg-background/70 px-1 text-micro text-muted-foreground">
+      <span className="absolute bottom-1 right-1 rounded bg-surface-sheer px-1 text-micro text-muted-foreground">
         {NAIP_ATTRIBUTION}
       </span>
       {/* Approximate-extent honesty badge — the static image can't draw a dashed

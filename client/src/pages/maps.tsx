@@ -920,7 +920,7 @@ function PropertyIntelligencePanel({
         </div>
 
         {/* W2 land facts — owned-parcel facts that passed the accuracy gate,
-            each with source, date and confidence, plus the data truths. */}
+            each with its source and date, plus the data truths. */}
         {property.apn && property.state && property.county && (
           <div className="pt-2">
             <p className="text-micro font-medium uppercase tracking-wide text-muted-foreground mb-1">Land facts</p>

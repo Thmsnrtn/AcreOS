@@ -111,6 +111,16 @@
         "line": 205,
         "reason": "Companion visual of the line-204 datum: the hand-rolled bar's fill width IS the same fixture percent (HERO_DEMO_FIXTURES.comp.confidenceWidth = '87%'), in the same aria-hidden, 'Example'-chipped marketing card. It stands or falls with line 204 — migrating only the bar to DataConfidenceBadge has the identical blockers (required `sources` prop with no honest value → fabricated telemetry in a portale"
       }
+    ],
+    "client/src/components/maps/ParcelFactsPanel.tsx": [
+      {
+        "line": 23,
+        "reason": "Type field only: the parcel-facts API names the W2 fact rubric (high/medium/low, shared/landData/parcelFacts.ts) `confidence`. Nothing is rendered from this line."
+      },
+      {
+        "line": 107,
+        "reason": "Not an inline render: the rubric is mapped onto the shared DataProvenanceChip's classification (high = authoritative layer finer than the fact's tolerance; medium/low = estimate). The chip is the only provenance UI this file renders — this is the migration target, not ad-hoc confidence UI."
+      }
     ]
   },
   "mechanicalBaseline": {
@@ -130,6 +140,7 @@
     "client/src/components/founder/ForecastPanel.tsx": 2,
     "client/src/components/founder/SwipeDecisionCard.tsx": 1,
     "client/src/components/layout-sidebar.tsx": 1,
+    "client/src/components/maps/ParcelFactsPanel.tsx": 2,
     "client/src/components/modals/quick-offer-modal.tsx": 4,
     "client/src/components/parcels/arv-calculator.tsx": 5,
     "client/src/components/parcels/land-snapshot.tsx": 1,
