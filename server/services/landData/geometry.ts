@@ -53,7 +53,7 @@ export function localProjection(lng0: number, lat0: number): LocalProjection {
   };
 }
 
-export function polygonsOf(g: AreaGeometry): PolygonCoords[] {
+function polygonsOf(g: AreaGeometry): PolygonCoords[] {
   return g.type === "Polygon" ? [g.coordinates] : g.coordinates;
 }
 
@@ -61,7 +61,7 @@ export function linesOf(g: LineGeometry): Position[][] {
   return g.type === "LineString" ? [g.coordinates] : g.coordinates;
 }
 
-export function bboxOfPositions(pts: Iterable<Position>): [number, number, number, number] {
+function bboxOfPositions(pts: Iterable<Position>): [number, number, number, number] {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const [x, y] of pts) {
     if (x < minX) minX = x;
@@ -160,11 +160,6 @@ export function pointInProjectedArea(x: number, y: number, a: ProjectedArea): bo
   return false;
 }
 
-export function pointInArea(p: Position, g: AreaGeometry): boolean {
-  const proj = localProjection(p[0], p[1]);
-  return pointInProjectedArea(0, 0, projectArea(g, proj));
-}
-
 function pointSegDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
   const dx = bx - ax, dy = by - ay;
   const len2 = dx * dx + dy * dy;
@@ -187,7 +182,7 @@ export function distToPolylinesXY(x: number, y: number, lines: Array<Array<[numb
 }
 
 /** Rings of a projected area as closed polylines (for boundary distance). */
-export function areaBoundaryLines(a: ProjectedArea): Array<Array<[number, number]>> {
+function areaBoundaryLines(a: ProjectedArea): Array<Array<[number, number]>> {
   const out: Array<Array<[number, number]>> = [];
   for (const poly of a.polys) for (const ring of poly) out.push(ring);
   return out;

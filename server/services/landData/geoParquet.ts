@@ -110,7 +110,7 @@ const SCHEMA_DEF = {
   geometry: { type: "BYTE_ARRAY" },
 } as const;
 
-export function geoMetadata(rows: OwnedParcelRow[]): string {
+function geoMetadata(rows: OwnedParcelRow[]): string {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   const types = new Set<string>();
   for (const r of rows) {

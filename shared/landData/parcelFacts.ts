@@ -127,9 +127,3 @@ export function unavailable<K extends ParcelFactKey>(
 ): UnavailableFact<K> {
   return { key, status: "unavailable", value: null, confidence: null, reason, method, sources };
 }
-
-export function isComputed<K extends ParcelFactKey>(
-  f: ComputedFact<K> | UnavailableFact<K>,
-): f is ComputedFact<K> {
-  return f.status === "computed";
-}

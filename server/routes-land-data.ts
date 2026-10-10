@@ -24,8 +24,8 @@ import { getOrganizationId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { db } from "./db";
 import { parcelSnapshots, type ParcelSnapshot } from "@shared/schema";
-import { COUNTY_SOURCE_CENSUS } from "@shared/landData/countySourceCensus";
-import { projectFactsForCustomer } from "@shared/landData/factAccuracyGate";
+import { COUNTY_SOURCE_CENSUS, censusRowFor } from "@shared/landData/countySourceCensus";
+import { FACT_ACCURACY, projectFactsForCustomer } from "@shared/landData/factAccuracyGate";
 import { parcelTruths } from "@shared/landData/parcelTruths";
 import { taxSaleSourcesFor } from "@shared/landData/taxSaleSources";
 import type { ParcelFactSet } from "@shared/landData/parcelFacts";
@@ -93,8 +93,13 @@ export function serializeOwnedParcelForCustomer(row: OwnedParcelView) {
     source: { name: row.sourceName, retrievedAt: row.retrievedAt },
     gisAcres: row.gisAcres,
     deededAcres: row.deededAcres,
-    facts: projection.shown,
+    // Each shown fact carries the accuracy sample that let it through.
+    facts: projection.shown.map((f) => {
+      const a = FACT_ACCURACY[f.key];
+      return { ...f, accuracy: { check: a.check, sampleSize: a.sampleSize ?? 0, agreed: a.agreed ?? 0, verifiedOn: a.verifiedOn ?? null } };
+    }),
     withheldFacts: projection.withheld,
+    countyCoverage: censusRowFor(row.state, row.county)?.coverage ?? null,
     truths: parcelTruths({
       state: row.state,
       county: row.county,

@@ -59,7 +59,15 @@ export interface StateCensus {
   rows: CensusRow[];
 }
 
-export const COUNTY_SOURCE_CENSUS: readonly StateCensus[] = [tnCensus as StateCensus];
+/**
+ * The census as served. Each row's coverage is RE-DERIVED from its sources
+ * on load (deriveCoverage), so a hand-edited JSON row can never claim more
+ * coverage than its own sources prove.
+ */
+export const COUNTY_SOURCE_CENSUS: readonly StateCensus[] = [tnCensus as StateCensus].map((c) => ({
+  ...c,
+  rows: c.rows.map((r) => ({ ...r, coverage: deriveCoverage(r.sources) })),
+}));
 
 export const COVERAGE_LABELS: Record<CountyCoverage, string> = {
   storable_with_manual_download: "Free source, terms allow storing (manual download)",

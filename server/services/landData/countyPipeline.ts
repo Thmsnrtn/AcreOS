@@ -40,7 +40,7 @@ export const MAX_CONCURRENT_COUNTIES = 1;
 /** Features per ArcGIS page — one page is one neighbourhood context load. */
 export const PAGE_SIZE = 250;
 /** Pages per worker tick (≤ 2,000 parcels), then yield until the next tick. */
-export const MAX_PAGES_PER_TICK = 8;
+const MAX_PAGES_PER_TICK = 8;
 
 /** parcel_snapshots.source of a KEPT parcel (never a cache row). */
 export const OWNED_SNAPSHOT_SOURCE = "owned_pipeline";
@@ -78,10 +78,10 @@ const JOB_COLUMNS = {
  * Statewide layers carry many counties; storing one county needs a VERIFIED
  * county field. Only fields read from the live layer metadata appear here.
  */
-export const STATEWIDE_COUNTY_FIELD: Record<string, string> = { TN: "COUNTY_NAME" };
+const STATEWIDE_COUNTY_FIELD: Record<string, string> = { TN: "COUNTY_NAME" };
 
 /** Register keys of the statewide parcel services (see data-licenses.ts). */
-export const STATEWIDE_LICENSE_SOURCE: Record<string, string> = { TN: "TN Property Boundaries Public Use service" };
+const STATEWIDE_LICENSE_SOURCE: Record<string, string> = { TN: "TN Property Boundaries Public Use service" };
 
 export function normalizeCountyName(c: string): string {
   return (c || "").toLowerCase().replace(/ county$/i, "").replace(/-/g, " ").trim();

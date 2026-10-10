@@ -157,7 +157,7 @@ export function arcgisBboxQueryUrl(src: ArcgisLayerSource, bbox: Bbox, offset: n
 }
 
 /** Hard ceiling on features per layer per neighbourhood read (memory bound). */
-export const MAX_FEATURES_PER_LAYER = 20_000;
+const MAX_FEATURES_PER_LAYER = 20_000;
 
 export async function fetchArcgisBbox(
   src: ArcgisLayerSource,
@@ -192,38 +192,38 @@ const isArea = (g: GeoJsonFeature["geometry"]): g is AreaGeometry =>
   !!g && (g.type === "Polygon" || g.type === "MultiPolygon");
 const str = (v: unknown): string => (v === null || v === undefined ? "" : String(v));
 
-export function toRoads(fs: GeoJsonFeature[]): RoadFeature[] {
+function toRoads(fs: GeoJsonFeature[]): RoadFeature[] {
   return fs.filter((f) => isLine(f.geometry)).map((f) => ({
     geometry: f.geometry as LineGeometry,
     mtfcc: str(f.properties?.MTFCC),
     name: str(f.properties?.NAME) || null,
   }));
 }
-export function toAreas(fs: GeoJsonFeature[]): AreaFeature[] {
+function toAreas(fs: GeoJsonFeature[]): AreaFeature[] {
   return fs.filter((f) => isArea(f.geometry)).map((f) => ({ geometry: f.geometry as AreaGeometry }));
 }
-export function toFlood(fs: GeoJsonFeature[]): FloodFeature[] {
+function toFlood(fs: GeoJsonFeature[]): FloodFeature[] {
   return fs.filter((f) => isArea(f.geometry)).map((f) => ({
     geometry: f.geometry as AreaGeometry,
     sfha: str(f.properties?.SFHA_TF) === "T",
     zone: str(f.properties?.FLD_ZONE),
   }));
 }
-export function toPublicLands(fs: GeoJsonFeature[]): PublicLandFeature[] {
+function toPublicLands(fs: GeoJsonFeature[]): PublicLandFeature[] {
   return fs.filter((f) => isArea(f.geometry)).map((f) => ({
     geometry: f.geometry as AreaGeometry,
     name: str(f.properties?.Unit_Nm) || "Unnamed public unit",
     manager: str(f.properties?.Mang_Name) || "Unknown manager",
   }));
 }
-export function toTowns(fs: GeoJsonFeature[]): TownFeature[] {
+function toTowns(fs: GeoJsonFeature[]): TownFeature[] {
   return fs.filter((f) => isArea(f.geometry)).map((f) => ({
     geometry: f.geometry as AreaGeometry,
     name: str(f.properties?.NAME),
   }));
 }
 
-export function sourceFor(key: LandContextSourceKey | "3dep", retrievedOn: string, sourceAsOf: string | null = null): FactSource {
+function sourceFor(key: LandContextSourceKey | "3dep", retrievedOn: string, sourceAsOf: string | null = null): FactSource {
   const name = key === "3dep" ? "USGS 3DEP" : LAND_CONTEXT_SOURCES[key].licenseSource;
   const url = key === "3dep" ? THREEDEP_13_BASE : LAND_CONTEXT_SOURCES[key].layerUrl;
   return { name, url, retrievedOn, sourceAsOf };

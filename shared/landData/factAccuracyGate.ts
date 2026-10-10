@@ -34,8 +34,6 @@ export interface FactAccuracyEntry {
   noSampleReason?: string;
 }
 
-export const ACCURACY_SAMPLE_FIXTURE = "tests/fixtures/land-data/tn-accuracy-sample.json";
-
 export const FACT_ACCURACY: Record<ParcelFactKey, FactAccuracyEntry> = {
   road_frontage_m: {
     fact: "road_frontage_m",
@@ -110,10 +108,6 @@ export const FACT_ACCURACY: Record<ParcelFactKey, FactAccuracyEntry> = {
       "The owner mailing state comes from the Comptroller's assessment roll, which is a manual download not yet loaded; the public service carries no mailing address.",
   },
 };
-
-export function isFactPublishable(key: ParcelFactKey): boolean {
-  return FACT_ACCURACY[key]?.status === "passed";
-}
 
 export interface CustomerFactProjection {
   shown: Array<ParcelFactSet[ParcelFactKey]>;

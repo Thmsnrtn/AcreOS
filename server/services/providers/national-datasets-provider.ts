@@ -45,8 +45,8 @@ const SOURCE: Record<NationalDatasetCategory, string> = {
   protected_lands_padus: "USGS PAD-US",
 };
 
-export const LODES_YEAR = 2023;
-export const ACS_YEAR = 2023;
+const LODES_YEAR = 2023;
+const ACS_YEAR = 2023;
 const TDOT_TRAFFIC_POINTS = "https://services2.arcgis.com/nf3p7v7Zy4fTOh6M/arcgis/rest/services/Traffic_Points/FeatureServer/0";
 const FEMA_MHP = "https://services.arcgis.com/XG15cJAlne2vxtgt/arcgis/rest/services/Mobile_Home_Parks_RAPT/FeatureServer/2";
 const PADUS_FEE = "https://services.arcgis.com/v01gqwM5QqNysAAi/arcgis/rest/services/Fee_Managers_PADUS/FeatureServer/0";
@@ -84,7 +84,7 @@ async function getJson<T = ArcgisJson>(url: string, init: Parameters<typeof fetc
 }
 
 /** County FIPS (5 digits) at a point, from Census TIGERweb. */
-export async function countyFipsAt(lat: number, lng: number): Promise<{ fips: string; name: string }> {
+async function countyFipsAt(lat: number, lng: number): Promise<{ fips: string; name: string }> {
   const q = new URLSearchParams({
     geometry: `${lng},${lat}`,
     geometryType: "esriGeometryPoint",

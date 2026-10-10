@@ -22,12 +22,11 @@ import path from "node:path";
 import { computeParcelFacts, type ParcelContext } from "../../server/services/landData/computeParcelFacts";
 import { slopeSamplerFromGrids, type ElevationGrid } from "../../server/services/landData/dem";
 import { areaCentroid } from "../../server/services/landData/geometry";
-import {
-  ACCURACY_SAMPLE_FIXTURE,
-  FACT_ACCURACY,
-  isFactPublishable,
-  projectFactsForCustomer,
-} from "@shared/landData/factAccuracyGate";
+import { FACT_ACCURACY, projectFactsForCustomer } from "@shared/landData/factAccuracyGate";
+
+const ACCURACY_SAMPLE_FIXTURE = "tests/fixtures/land-data/tn-accuracy-sample.json";
+/** The gate's rule, restated by the test as the oracle the projection must match. */
+const isFactPublishable = (k: ParcelFactKey) => FACT_ACCURACY[k].status === "passed";
 import { PARCEL_FACT_KEYS, type ParcelFactKey, type ParcelFactSet } from "@shared/landData/parcelFacts";
 
 const root = path.resolve(__dirname, "../..");
@@ -150,9 +149,9 @@ describe("accuracy gate — a 'passed' fact is measured, not trusted", () => {
     });
   }
 
-  it("a fact with no sample is not publishable", () => {
+  it("every 'passed' fact has a check in this test (no unverifiable pass)", () => {
     for (const key of PARCEL_FACT_KEYS) {
-      expect(isFactPublishable(key), key).toBe(FACT_ACCURACY[key].status === "passed" && !!AGREES[key]);
+      if (isFactPublishable(key)) expect(AGREES[key], key).toBeTruthy();
     }
   });
 });
@@ -187,5 +186,7 @@ describe("the customer sees only gated facts", () => {
     expect(servedKeys).toEqual(PARCEL_FACT_KEYS.filter((k) => isFactPublishable(k)).sort());
     expect(servedKeys).not.toContain("out_of_state_owner");
     expect(servedKeys).not.toContain("distance_to_transmission_km");
+    // Each served fact carries the sample that let it through.
+    for (const f of out.facts) expect(f.accuracy.sampleSize, f.key).toBe(FACT_ACCURACY[f.key as ParcelFactKey].sampleSize);
   });
 });

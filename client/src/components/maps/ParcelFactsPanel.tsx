@@ -24,6 +24,7 @@ interface ShownFact {
   method: string;
   reason?: string;
   sources: Array<{ name: string; url: string; retrievedOn: string }>;
+  accuracy?: { check: string; sampleSize: number; agreed: number; verifiedOn: string | null };
 }
 
 interface LookupResponse {
@@ -102,6 +103,11 @@ export function ParcelFactsPanel({ state, county, apn }: { state: string; county
             <p className="text-muted-foreground">
               {f.sources.map((s) => `${s.name}, retrieved ${s.retrievedOn}`).join(" · ")}
             </p>
+            {f.accuracy && f.accuracy.sampleSize > 0 && (
+              <p className="text-muted-foreground" title={f.accuracy.check}>
+                Checked against the source on {f.accuracy.agreed} of {f.accuracy.sampleSize} sampled parcels.
+              </p>
+            )}
           </li>
         ))}
         {p.withheldFacts.map((w) => (

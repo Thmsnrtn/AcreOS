@@ -17,8 +17,8 @@
  * Pure and browser-safe.
  */
 
-export const CENTROID_TOLERANCE_M = 5;
-export const AREA_TOLERANCE_RATIO = 0.02;
+const CENTROID_TOLERANCE_M = 5;
+const AREA_TOLERANCE_RATIO = 0.02;
 
 export interface CrosswalkRecord {
   /** County source id (e.g. TN GISLINK). */
@@ -53,7 +53,7 @@ function metresBetween(a: [number, number], b: [number, number]): number {
   return Math.hypot(x, y) * R;
 }
 
-export function sameLand(a: CrosswalkRecord, b: CrosswalkRecord): boolean {
+function sameLand(a: CrosswalkRecord, b: CrosswalkRecord): boolean {
   if (metresBetween(a.centroid, b.centroid) > CENTROID_TOLERANCE_M) return false;
   const big = Math.max(a.areaSqM, b.areaSqM);
   if (big === 0) return false;

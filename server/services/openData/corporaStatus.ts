@@ -55,7 +55,7 @@ export interface CorpusUploadReceipt {
 }
 
 /** A receipt counts only if it names real bytes with a real digest. */
-export function isValidReceipt(r: CorpusUploadReceipt): boolean {
+function isValidReceipt(r: CorpusUploadReceipt): boolean {
   return r.bytes > 0 && /^[0-9a-f]{64}$/.test(r.sha256) && r.objectKey.length > 0;
 }
 

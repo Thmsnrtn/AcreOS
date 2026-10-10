@@ -45,15 +45,15 @@ import {
 // ── Tunables (documented, test-pinned) ─────────────────────────────────────
 
 /** A road centerline this close to the parcel line counts as touching it. */
-export const FRONTAGE_TOLERANCE_M = 20;
+const FRONTAGE_TOLERANCE_M = 20;
 /** Frontage shorter than this is treated as a corner touch, not access. */
-export const MIN_ACCESS_FRONTAGE_M = 6;
+const MIN_ACCESS_FRONTAGE_M = 6;
 /** Ground steeper than this (percent rise) is not counted as buildable. */
-export const BUILDABLE_MAX_SLOPE_PCT = 15;
+const BUILDABLE_MAX_SLOPE_PCT = 15;
 /** Public land within this distance of the parcel line counts as adjacent. */
-export const PUBLIC_LAND_ADJACENCY_M = 30;
+const PUBLIC_LAND_ADJACENCY_M = 30;
 /** Cap on buildable-area sample points per parcel (memory/time bound). */
-export const MAX_BUILDABLE_SAMPLES = 40_000;
+const MAX_BUILDABLE_SAMPLES = 40_000;
 
 /**
  * TIGER MTFCC road classes that give a parcel legal-access potential. S1100
@@ -61,7 +61,7 @@ export const MAX_BUILDABLE_SAMPLES = 40_000;
  * interstate does not give driveway rights. Private roads (S1740), 4WD
  * trails (S1500), alleys, walkways and parking lots do not either.
  */
-export const ACCESS_ROAD_MTFCC: ReadonlySet<string> = new Set(["S1200", "S1400", "S1640"]);
+const ACCESS_ROAD_MTFCC: ReadonlySet<string> = new Set(["S1200", "S1400", "S1640"]);
 
 // ── Input shapes ───────────────────────────────────────────────────────────
 

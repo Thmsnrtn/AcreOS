@@ -18,7 +18,7 @@ export const THREEDEP_13_BASE =
   "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/current";
 
 /** The 1°×1° tile name holding a point: named for its NORTH-WEST corner. */
-export function threeDepTileFor(lng: number, lat: number): string {
+function threeDepTileFor(lng: number, lat: number): string {
   const n = Math.floor(lat) + 1;
   const w = Math.floor(-lng) + 1;
   const ns = n >= 0 ? `n${String(n).padStart(2, "0")}` : `s${String(-n).padStart(2, "0")}`;
@@ -26,7 +26,7 @@ export function threeDepTileFor(lng: number, lat: number): string {
   return `${ns}${ew}`;
 }
 
-export function threeDepTileUrl(tile: string): string {
+function threeDepTileUrl(tile: string): string {
   return `${THREEDEP_13_BASE}/${tile}/USGS_13_${tile}.tif`;
 }
 
@@ -50,7 +50,7 @@ const R = 6_371_008.8;
 const DEG = Math.PI / 180;
 
 /** Horn slope (percent) at a grid cell; null at the edge or on no-data. */
-export function hornSlopePct(g: ElevationGrid, col: number, row: number): number | null {
+function hornSlopePct(g: ElevationGrid, col: number, row: number): number | null {
   if (col < 1 || row < 1 || col >= g.width - 1 || row >= g.height - 1) return null;
   const z = (c: number, r: number) => g.data[r * g.width + c];
   const vals: number[] = [];
