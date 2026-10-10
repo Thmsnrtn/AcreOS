@@ -1,6 +1,6 @@
 /**
- * Subdivision plan editor — mapbox-gl-draw on top of property-map's
- * existing infrastructure (CT-2).
+ * Subdivision plan editor — mapbox-gl-draw (engine-neutral drawing tools,
+ * MIT) on a MapLibre map over NAIP imagery (CT-2; MapLibre since W2).
  *
  * Brigid §1.2: "Multiple plans per parcel ('Plan A — 12 lots,' 'Plan B
  * — 8 lots, two estate'), so I can A/B them. Earl will redline whichever
@@ -19,7 +19,8 @@
 import { useProperty } from "@/hooks/use-properties";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import mapboxgl from "mapbox-gl";
+import * as mapboxgl from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 import * as turf from "@turf/turf";
@@ -31,7 +32,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import { mapboxToken } from "@/lib/map-engine";
+import { STYLE_URLS } from "@/lib/map-engine";
+
+// mapbox-gl-draw finds the map canvas and control containers by class name;
+// MapLibre uses the maplibregl- prefix. Point the draw tools at it once.
+const drawClasses = (MapboxDraw as unknown as { constants: { classes: Record<string, string> } }).constants.classes;
+drawClasses.CANVAS = "maplibregl-canvas";
+drawClasses.CONTROL_BASE = "maplibregl-ctrl";
+drawClasses.CONTROL_PREFIX = "maplibregl-ctrl-";
+drawClasses.CONTROL_GROUP = "maplibregl-ctrl-group";
+drawClasses.ATTRIBUTION = "maplibregl-ctrl-attrib";
 
 interface PlanResponse {
   plan: {
@@ -159,18 +169,9 @@ export function SubdivisionPlanEditor({ planId, defaultCenter }: Props) {
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    // The token comes from the one canonical reader (map-engine.ts). This
-    // component once read the legacy VITE_MAPBOX_TOKEN name — so even a
-    // correctly configured deploy rendered a silent gray map here. Without a
-    // token we don't construct the map at all; the render below shows an
-    // honest "map unavailable" state instead.
-    const token = mapboxToken();
-    if (!token) return;
-    (mapboxgl.accessToken as any) = token;
-
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: "mapbox://styles/mapbox/satellite-streets-v12",
+      style: STYLE_URLS.satellite,
       center: defaultCenter ?? [-98.5, 39.8],
       zoom: defaultCenter ? 16 : 4,
     });
@@ -386,15 +387,7 @@ export function SubdivisionPlanEditor({ planId, defaultCenter }: Props) {
             </Button>
           </div>
         </div>
-        {mapboxToken() ? (
-          <div ref={containerRef} className="h-96 w-full rounded-md border" />
-        ) : (
-          // Customer-safe honest state (mirrors property-map.tsx): no env-var
-          // names on a customer surface — the cause lives in the deploy config.
-          <div className="h-96 w-full rounded-md border flex items-center justify-center text-center text-muted-foreground p-6">
-            <p>The drawing map isn't available right now — your plan data is safe and saving still works.</p>
-          </div>
-        )}
+        <div ref={containerRef} className="h-96 w-full rounded-md border" />
         <p className="text-xs text-muted-foreground">
           Use the polygon tool on the map controls to draw lots. Use the line tool for roads.
           The trash icon deletes selected features. Plan-level summary (lot count, total acres,

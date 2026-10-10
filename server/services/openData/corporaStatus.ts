@@ -2,19 +2,17 @@
  * Tier-2 corpora status — never overstates (founder ruling 2026-07-28 #10).
  *
  * getCorporaStatus() is the ONE honest answer to "what open-data corpora do
- * we own?": it reads the manifest (shared/openData/corporaManifest.ts) plus
- * the OPEN_DATA_BUCKET_* env keys and reports, per corpus, exactly one of:
+ * we own?": it reads the manifest (shared/openData/corporaManifest.ts), the
+ * OPEN_DATA_BUCKET_* env keys and the upload RECEIPTS, and reports per corpus:
  *
  *  - "not_provisioned"                     — no object storage configured
- *    (today's state for everything; reason is the verbatim
- *    STORAGE_NOT_PROVISIONED sentinel), or
- *  - "storage_configured_pipeline_pending" — the founder set all four bucket
- *    keys, but NO ingestion pipeline exists in this repo yet, so nothing has
- *    been ingested and nothing may claim otherwise.
- *
- * There is deliberately NO "ingested" state this wave — with zero ingestion
- * code, no code path could truthfully report it (no-fabrication doctrine,
- * same as the dormant-watchdog scaffolding, ruling #8).
+ *    (reason is the verbatim STORAGE_NOT_PROVISIONED sentinel);
+ *  - "storage_configured_pipeline_pending" — the four bucket keys are set but
+ *    no upload receipt exists for this corpus, so nothing has been ingested;
+ *  - "ingested"                            — the bucket is configured AND at
+ *    least one receipt shows bytes the bucket itself confirmed (HEAD after
+ *    PUT, byte count + SHA-256). W2 shipped the first ingestion code (the
+ *    Tennessee parcel-fact pipeline); a receipt is the only path to this state.
  *
  * This file also carries the one-shot founder decision card asking the
  * founder to provision the storage — the seed rides the established
@@ -46,7 +44,20 @@ export interface CorpusStatusReport {
  * pipeline does not — so still nothing is ingested.
  */
 export const PIPELINE_PENDING_REASON =
-  "object storage configured — ingestion pipeline not yet built, nothing has been ingested" as const;
+  "object storage configured — no upload receipt for this corpus yet, nothing has been ingested" as const;
+
+/** One confirmed upload (a row of open_data_ingest_receipts). */
+export interface CorpusUploadReceipt {
+  corpusKey: string;
+  objectKey: string;
+  bytes: number;
+  sha256: string;
+}
+
+/** A receipt counts only if it names real bytes with a real digest. */
+export function isValidReceipt(r: CorpusUploadReceipt): boolean {
+  return r.bytes > 0 && /^[0-9a-f]{64}$/.test(r.sha256) && r.objectKey.length > 0;
+}
 
 /** All four OPEN_DATA_BUCKET_* keys must be non-empty for storage to count. */
 export function isBucketConfigured(
@@ -56,20 +67,30 @@ export function isBucketConfigured(
 }
 
 /**
- * Per-corpus status, never overstated. Pure function of manifest + env —
- * no I/O, no caching, nothing to drift.
+ * Per-corpus status, never overstated. Pure function of manifest + env +
+ * receipts — no I/O, nothing to drift. A receipt without configured storage
+ * does not count (the bucket it names is not one this deploy can reach).
  */
 export function getCorporaStatus(
   env: Record<string, string | undefined> = process.env,
+  receipts: readonly CorpusUploadReceipt[] = [],
 ): CorpusStatusReport[] {
   const configured = isBucketConfigured(env);
-  return TIER2_CORPORA.map((corpus) => ({
-    key: corpus.key,
-    ingestStatus: configured
-      ? ("storage_configured_pipeline_pending" as const)
-      : ("not_provisioned" as const),
-    reason: configured ? PIPELINE_PENDING_REASON : STORAGE_NOT_PROVISIONED,
-  }));
+  return TIER2_CORPORA.map((corpus) => {
+    if (!configured) {
+      return { key: corpus.key, ingestStatus: "not_provisioned" as const, reason: STORAGE_NOT_PROVISIONED };
+    }
+    const mine = receipts.filter((r) => r.corpusKey === corpus.key && isValidReceipt(r));
+    if (mine.length > 0) {
+      const bytes = mine.reduce((n, r) => n + r.bytes, 0);
+      return {
+        key: corpus.key,
+        ingestStatus: "ingested" as const,
+        reason: `${mine.length} object(s), ${bytes} bytes confirmed by the bucket`,
+      };
+    }
+    return { key: corpus.key, ingestStatus: "storage_configured_pipeline_pending" as const, reason: PIPELINE_PENDING_REASON };
+  });
 }
 
 // ── One-shot founder decision card: provision the storage ────────────────

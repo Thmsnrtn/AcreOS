@@ -14352,3 +14352,7 @@ export * from "./schema/platform-runtime";
 export * from "./schema/billing-platform";
 export * from "./schema/crm-workspace";
 export * from "./schema/parcel-data";
+
+// W2 land-data foundation (migration 0270): on-demand county pipeline,
+// owned parcels + facts, parcel-id crosswalk, bucket upload receipts.
+export * from "./schema/land-data";

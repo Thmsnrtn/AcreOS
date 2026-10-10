@@ -59,7 +59,6 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   const scriptSrcSources = [
     "'self'",
     "https://js.stripe.com",
-    "https://api.mapbox.com",
     "https://*.clerk.accounts.dev",
     "https://challenges.cloudflare.com",
     // PostHog ships array.js + config from a CDN subdomain
@@ -87,15 +86,17 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "default-src 'self'",
     `script-src ${scriptSrcSources.join(" ")}`,
     // Fonts are self-hosted from /fonts/* per design-system §0.1 — no
-    // runtime Google Fonts CDN. Mapbox CSS still required for tile styling.
-    `style-src 'self' 'unsafe-inline' https://api.mapbox.com`,
+    // runtime Google Fonts CDN. The map engine (MapLibre) CSS is bundled.
+    `style-src 'self' 'unsafe-inline'`,
     "img-src 'self' data: blob: https: http:",
     "font-src 'self' data:",
     // F-D09: Sentry ingest endpoints must be in connect-src or every event
     // POST is refused and the dashboard sees nothing. Whitelist the wildcard
     // (Sentry assigns per-org subdomains like o4511…ingest.us.sentry.io).
     // PostHog ingest + asset CDN: wildcard covers us/eu/asset subdomains.
-    "connect-src 'self' https://api.stripe.com https://api.mapbox.com https://events.mapbox.com https://*.clerk.accounts.dev https://*.clerk.dev https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io https://*.i.posthog.com wss: ws:",
+    // Map engine (W2): OpenFreeMap vector tiles/styles/glyphs, USGS The
+    // National Map NAIP imagery, and the AWS terrain DEM tiles.
+    "connect-src 'self' https://api.stripe.com https://tiles.openfreemap.org https://basemap.nationalmap.gov https://imagery.nationalmap.gov https://s3.amazonaws.com https://*.clerk.accounts.dev https://*.clerk.dev https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io https://*.i.posthog.com wss: ws:",
     "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://*.clerk.accounts.dev https://challenges.cloudflare.com",
     "worker-src 'self' blob:",
     "object-src 'none'",

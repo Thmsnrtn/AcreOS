@@ -363,6 +363,17 @@ export async function lookupFromCountyGIS(
   try {
     const normalizedCounty = county.toLowerCase().replace(/ county$/i, "").trim();
     const normalizedState = state.toUpperCase();
+
+    // W2 on-demand county pipeline: a search in a county is demand for owning
+    // that county's free parcels. Records the job (or the honest refusal)
+    // once and bumps demand after; fire-and-forget, never blocks the lookup.
+    void import("./landData/countyPipeline")
+      .then(({ enqueueCountyProcessing }) => enqueueCountyProcessing(normalizedState, normalizedCounty))
+      .catch((err) =>
+        logger.warn("[CountyGIS] county pipeline enqueue failed", {
+          metadata: { county, state, error: err instanceof Error ? err.message : String(err) },
+        }),
+      );
     
     // Single efficient query to find matching endpoint
     const endpoints = await db

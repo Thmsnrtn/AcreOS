@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from "react";
-import mapboxgl from "mapbox-gl";
+import * as mapboxgl from "maplibre-gl";
 import { MapPin, Maximize2, Minimize2, Mountain, Satellite, Map as MapIcon, Play, Pause, Layers, ChevronDown, ChevronUp, Loader2, Ruler, Square, Camera, Download, X, Clipboard, MapPinned, BarChart3, CircleDot, Database, Box, TreePine, Tractor, Sun, Clock, Wind, Compass, TrendingUp, TrendingDown, Minus as MinusIcon, RefreshCw, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,20 +20,27 @@ import { clientLogger } from "@/lib/clientLogger";
 import { okOrThrow } from "@/lib/fetch-honesty";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { OverlayLegend } from "@/components/maps/OverlayLegend";
-import { STYLE_URLS, isMapEngineConfigured, mapboxToken, type MapStyleName } from "@/lib/map-engine";
-import "mapbox-gl/dist/mapbox-gl.css";
+import {
+  STYLE_URLS,
+  isMapEngineConfigured,
+  ensureDemSource,
+  safeBeforeId,
+  applySolarSky,
+  buildingsSourceAvailable,
+  contourTileUrl,
+  LABEL_FONT_ITALIC,
+  naipStaticImageUrl,
+  lngLatToMercator,
+  NAIP_ATTRIBUTION,
+  type MapStyleName,
+} from "@/lib/map-engine";
+import "maplibre-gl/dist/maplibre-gl.css";
 import { formatDate } from "@/lib/format";
 import { Verbs } from "@/lib/labels";
 
-const MAPBOX_TOKEN = mapboxToken();
-
-if (MAPBOX_TOKEN) {
-  mapboxgl.accessToken = MAPBOX_TOKEN;
-}
-
 type MapStyle = MapStyleName;
 
-const MAP_STYLES: Record<MapStyle, string> = STYLE_URLS;
+const MAP_STYLES = STYLE_URLS;
 
 // FEMA migrated the public NFHL service off the old "gis" + "nfhl" path (now
 // a WebSEAL gateway that returns an HTML error page) to `/arcgis/` — same fix
@@ -990,40 +997,14 @@ export function PropertyMap({
     const center = map.current.getCenter();
     const solar = calculateSolarPosition(center.lat, center.lng, hour);
 
-    // Update sky atmosphere sun position
-    if (map.current.getLayer("sky")) {
-      // Mapbox sky-atmosphere-sun: [azimuth°, altitude°]
-      // azimuth: 0=N, 90=E; altitude: 0=horizon, 90=zenith
-      const clampedAlt = Math.max(-10, solar.altitude);
-      map.current.setPaintProperty("sky", "sky-atmosphere-sun", [
-        solar.azimuth,
-        clampedAlt,
-      ]);
-      // Dim sky at night, brighten during day
-      const sunIntensity = solar.isDaytime
-        ? Math.min(20, 5 + solar.altitude * 0.3)
-        : 0.5;
-      map.current.setPaintProperty("sky", "sky-atmosphere-sun-intensity", sunIntensity);
-
-      // Atmospheric haze based on sun angle
-      const haze = solar.phase === "night" ? 0.1 :
-        solar.phase === "golden" ? 0.6 : 0.35;
-      map.current.setPaintProperty("sky", "sky-atmosphere-halo-color", `rgba(255,220,120,${haze})`);
-    }
-  }, [mapLoaded]);
+    // MapLibre's style-level sky follows the sun's altitude.
+    if (enable3DTerrain) applySolarSky(map.current, solar);
+  }, [mapLoaded, enable3DTerrain]);
 
   // ── Hypsometric hillshade layer ─────────────────────────────────────────────
   const addHypsometricLayer = useCallback(() => {
     if (!map.current) return;
-    if (!map.current.getSource("mapbox-dem")) {
-      map.current.addSource("mapbox-dem-hyp", {
-        type: "raster-dem",
-        url: "mapbox://mapbox.mapbox-terrain-dem-v1",
-        tileSize: 512,
-        maxzoom: 14,
-      });
-    }
-    const demSource = map.current.getSource("mapbox-dem") ? "mapbox-dem" : "mapbox-dem-hyp";
+    const demSource = ensureDemSource(map.current);
     if (!map.current.getLayer("hypsometric-hillshade")) {
       map.current.addLayer(
         {
@@ -1039,7 +1020,7 @@ export function PropertyMap({
             "hillshade-illumination-anchor": "map",
           },
         },
-        "waterway-label"
+        safeBeforeId(map.current, "waterway-label")
       );
     }
   }, []);
@@ -1054,7 +1035,7 @@ export function PropertyMap({
   const addSlopeGradientLayer = useCallback(() => {
     if (!map.current) return;
     // Use a steep-slope-accentuated hillshade as a slope proxy
-    const demSource = map.current.getSource("mapbox-dem") ? "mapbox-dem" : "mapbox-dem-hyp";
+    const demSource = ensureDemSource(map.current);
     if (!map.current.getLayer("slope-gradient")) {
       map.current.addLayer(
         {
@@ -1070,7 +1051,7 @@ export function PropertyMap({
             "hillshade-illumination-anchor": "viewport",
           },
         },
-        "waterway-label"
+        safeBeforeId(map.current, "waterway-label")
       );
     }
   }, []);
@@ -1201,17 +1182,19 @@ export function PropertyMap({
     if (!map.current) return;
     if (map.current.getLayer("osm-3d-buildings")) return;
     const firstSymbolId = map.current.getStyle()?.layers?.find(l => l.type === "symbol")?.id;
+    // OpenMapTiles buildings (vector basemaps). The imagery style has no
+    // building source — the toggle is a no-op there rather than an error.
+    if (!buildingsSourceAvailable(map.current)) return;
     map.current.addLayer({
       id: "osm-3d-buildings",
-      source: "composite",
+      source: "openmaptiles",
       "source-layer": "building",
-      filter: ["==", "extrude", "true"],
       type: "fill-extrusion",
       minzoom: 14,
       paint: {
         "fill-extrusion-color": ["case", ["boolean", ["feature-state", "hover"], false], "#ddd", "#aaa"],
-        "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 14, 0, 14.05, ["get", "height"]],
-        "fill-extrusion-base": ["interpolate", ["linear"], ["zoom"], 14, 0, 14.05, ["get", "min_height"]],
+        "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 14, 0, 14.05, ["coalesce", ["get", "render_height"], 0]],
+        "fill-extrusion-base": ["interpolate", ["linear"], ["zoom"], 14, 0, 14.05, ["coalesce", ["get", "render_min_height"], 0]],
         "fill-extrusion-opacity": 0.65,
       },
     }, firstSymbolId);
@@ -1222,35 +1205,40 @@ export function PropertyMap({
     if (map.current.getLayer("osm-3d-buildings")) map.current.removeLayer("osm-3d-buildings");
   }, []);
 
-  const addTerrainContoursLayer = useCallback(() => {
+  const addTerrainContoursLayer = useCallback(async () => {
     if (!map.current) return;
-    if (map.current.getSource("mapbox-terrain-contours")) return;
-    map.current.addSource("mapbox-terrain-contours", {
+    if (map.current.getSource("terrain-contours")) return;
+    // Contours generated in the browser from the shared DEM (maplibre-contour)
+    // — the same tiles that drive 3D terrain, no contour tileset needed.
+    const url = await contourTileUrl();
+    if (!map.current || map.current.getSource("terrain-contours")) return;
+    map.current.addSource("terrain-contours", {
       type: "vector",
-      url: "mapbox://mapbox.mapbox-terrain-v2",
+      tiles: [url],
+      maxzoom: 15,
     });
     map.current.addLayer({
       id: "terrain-contour-lines",
       type: "line",
-      source: "mapbox-terrain-contours",
+      source: "terrain-contours",
       "source-layer": "contour",
       layout: { "line-join": "round", "line-cap": "round" },
       paint: {
         "line-color": "#c6a35e",
-        "line-width": ["match", ["get", "index"], [1, 2], 0.6, 1.0],
+        "line-width": ["match", ["get", "level"], 1, 1.0, 0.6],
         "line-opacity": 0.7,
       },
     });
     map.current.addLayer({
       id: "terrain-contour-labels",
       type: "symbol",
-      source: "mapbox-terrain-contours",
+      source: "terrain-contours",
       "source-layer": "contour",
-      filter: [">", ["get", "index"], 0],
+      filter: [">", ["get", "level"], 0],
       layout: {
         "symbol-placement": "line",
-        "text-field": ["concat", ["get", "ele"], "m"],
-        "text-font": ["DIN Offc Pro Italic", "Arial Unicode MS Regular"],
+        "text-field": ["concat", ["number-format", ["get", "ele"], {}], "m"],
+        "text-font": LABEL_FONT_ITALIC,
         "text-size": 10,
       },
       paint: {
@@ -1265,7 +1253,7 @@ export function PropertyMap({
     if (!map.current) return;
     if (map.current.getLayer("terrain-contour-labels")) map.current.removeLayer("terrain-contour-labels");
     if (map.current.getLayer("terrain-contour-lines")) map.current.removeLayer("terrain-contour-lines");
-    if (map.current.getSource("mapbox-terrain-contours")) map.current.removeSource("mapbox-terrain-contours");
+    if (map.current.getSource("terrain-contours")) map.current.removeSource("terrain-contours");
   }, []);
 
   const addArcGISOverlayLayer = useCallback((id: string, url: string) => {
@@ -1414,14 +1402,14 @@ export function PropertyMap({
       }
       map.current.easeTo({ pitch: 55, bearing: -20, duration: 800 });
       // Boost terrain exaggeration
-      map.current.setTerrain({ source: "mapbox-dem", exaggeration: 2.5 });
+      map.current.setTerrain({ source: ensureDemSource(map.current), exaggeration: 2.5 });
     } else {
       if (map.current.getLayer("property-extrusion")) {
         map.current.setLayoutProperty("property-extrusion", "visibility", "none");
       }
       if (map.current.getLayer("property-fill")) map.current.setLayoutProperty("property-fill", "visibility", "visible");
       map.current.easeTo({ pitch: 0, bearing: 0, duration: 800 });
-      map.current.setTerrain({ source: "mapbox-dem", exaggeration: 1.5 });
+      map.current.setTerrain({ source: ensureDemSource(map.current), exaggeration: 1.5 });
     }
   }, [is3DExtrudeMode, mapLoaded]);
 
@@ -1879,35 +1867,13 @@ export function PropertyMap({
   const setup3DTerrain = useCallback(() => {
     if (!map.current || !enable3DTerrain) return;
 
-    if (!map.current.getSource("mapbox-dem")) {
-      map.current.addSource("mapbox-dem", {
-        type: "raster-dem",
-        url: "mapbox://mapbox.mapbox-terrain-dem-v1",
-        tileSize: 512,
-        maxzoom: 14,
-      });
-    }
+    map.current.setTerrain({ source: ensureDemSource(map.current), exaggeration: 1.5 });
 
-    map.current.setTerrain({ source: "mapbox-dem", exaggeration: 1.5 });
-
-    // Initialize sky with real-time solar position
-    if (!map.current.getLayer("sky")) {
-      const center = map.current.getCenter();
-      const currentHour = new Date().getHours() + new Date().getMinutes() / 60;
-      const solar = calculateSolarPosition(center.lat, center.lng, currentHour);
-      const sunIntensity = solar.isDaytime
-        ? Math.min(20, 5 + solar.altitude * 0.3)
-        : 0.5;
-      map.current.addLayer({
-        id: "sky",
-        type: "sky",
-        paint: {
-          "sky-type": "atmosphere",
-          "sky-atmosphere-sun": [solar.azimuth, Math.max(-10, solar.altitude)],
-          "sky-atmosphere-sun-intensity": sunIntensity,
-        },
-      });
-    }
+    // Sky from the real-time solar position (MapLibre style-level sky).
+    const center = map.current.getCenter();
+    const now = new Date();
+    const currentHour = now.getHours() + now.getMinutes() / 60;
+    applySolarSky(map.current, calculateSolarPosition(center.lat, center.lng, currentHour));
   }, [enable3DTerrain]);
 
   const changeMapStyle = useCallback((style: MapStyle) => {
@@ -2432,7 +2398,7 @@ export function PropertyMap({
 
   if (!isMapEngineConfigured()) {
     // Customer-safe: never render env-var names or engine internals on a
-    // customer surface (a customer seeing VITE_MAPBOX_ACCESS_TOKEN concludes
+    // customer surface (a customer seeing an env-var name concludes
     // the product is half-built). The real cause is logged, never shown.
     return (
       <Card className="flex items-center justify-center" style={{ height }}>
@@ -2448,11 +2414,6 @@ export function PropertyMap({
             <RefreshCw className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
             {Verbs.RETRY}
           </Button>
-          {import.meta.env.DEV && (
-            <p className="text-micro mt-3 opacity-70">
-              dev: configure VITE_MAPBOX_ACCESS_TOKEN
-            </p>
-          )}
         </CardContent>
       </Card>
     );
@@ -3402,7 +3363,7 @@ export function SinglePropertyMap({
     // Build satellite 3D map with terrain
     const mapInstance = new mapboxgl.Map({
       container: mapContainer.current,
-      style: "mapbox://styles/mapbox/satellite-streets-v12",
+      style: STYLE_URLS.satellite,
       center: [centroid.lng, centroid.lat],
       zoom: 15.5,
       pitch: enable3DTerrain ? 50 : 0,
@@ -3431,30 +3392,10 @@ export function SinglePropertyMap({
 
       // 3D Terrain + Sky
       if (enable3DTerrain) {
-        if (!mapInstance.getSource("mapbox-dem")) {
-          mapInstance.addSource("mapbox-dem", {
-            type: "raster-dem",
-            url: "mapbox://mapbox.mapbox-terrain-dem-v1",
-            tileSize: 512,
-            maxzoom: 14,
-          });
-        }
-        mapInstance.setTerrain({ source: "mapbox-dem", exaggeration: 1.4 });
-
-        if (!mapInstance.getLayer("sky")) {
-          const currentHour = new Date().getHours() + new Date().getMinutes() / 60;
-          const solar = calculateSolarPosition(centroid.lat, centroid.lng, currentHour);
-          mapInstance.addLayer({
-            id: "sky",
-            type: "sky",
-            paint: {
-              "sky-type": "atmosphere",
-              "sky-atmosphere-sun": [solar.azimuth, Math.max(-10, solar.altitude)],
-              "sky-atmosphere-sun-intensity": solar.isDaytime
-                ? Math.min(18, 4 + solar.altitude * 0.25) : 0.5,
-            },
-          });
-        }
+        mapInstance.setTerrain({ source: ensureDemSource(mapInstance), exaggeration: 1.4 });
+        const now = new Date();
+        const currentHour = now.getHours() + now.getMinutes() / 60;
+        applySolarSky(mapInstance, calculateSolarPosition(centroid.lat, centroid.lng, currentHour));
       }
 
       const geojsonData: GeoJSON.FeatureCollection = {
@@ -3686,62 +3627,35 @@ export function StaticPropertyMap({
     );
   }
 
-  // Simplify coordinates for URL (take every Nth point to reduce URL length)
-  const simplifyCoordinates = (coords: number[][], maxPoints: number = 50): number[][] => {
-    if (coords.length <= maxPoints) return coords;
-    const step = Math.ceil(coords.length / maxPoints);
-    const simplified = coords.filter((_, i) => i % step === 0);
-    // Ensure the polygon is closed
-    if (simplified.length > 0 && 
-        (simplified[0][0] !== simplified[simplified.length - 1][0] || 
-         simplified[0][1] !== simplified[simplified.length - 1][1])) {
-      simplified.push(simplified[0]);
-    }
-    return simplified;
-  };
-
-  // Build path overlay for the boundary (using Mapbox path syntax)
-  // Format: path-{strokeWidth}+{strokeColor}-{fillOpacity}+{fillColor}({coordinates})
-  const coords = boundary.coordinates[0] || [];
-  const simplifiedCoords = simplifyCoordinates(coords);
-  
-  // Create a path string: lng,lat,lng,lat,...
-  const pathCoords = simplifiedCoords.map(([lng, lat]) => `${lng.toFixed(5)},${lat.toFixed(5)}`).join(',');
-  
-  // Use GeoJSON overlay for more accurate rendering
-  const geojsonOverlay = {
-    type: "Feature",
-    properties: {
-      "stroke": "#ef4444",
-      "stroke-width": 3,
-      "stroke-opacity": 1,
-      "fill": "#22c55e",
-      "fill-opacity": 0.4
-    },
-    geometry: {
-      type: "Polygon",
-      coordinates: [simplifiedCoords]
-    }
-  };
-
-  // URL-encode the GeoJSON
-  const encodedGeojson = encodeURIComponent(JSON.stringify(geojsonOverlay));
-
-  // Calculate dimensions (Mapbox Static API has limits)
+  // Static aerial: a NAIP image for the parcel's padded extent (USGS The
+  // National Map image service, public domain), with the boundary drawn on
+  // top as SVG in the same Web Mercator frame — no Static Images API, no token.
+  const ring = (boundary.coordinates[0] || []) as number[][];
   const pixelHeight = parseInt(height) || 200;
-  const pixelWidth = Math.min(width, 1280); // Max 1280px
+  const pixelWidth = Math.min(width, 1280);
   const safeHeight = Math.min(pixelHeight, 1280);
-
-  // The static image uses Mapbox's Static Images API for its GeoJSON overlay.
-  // Without a token there is no URL, and the unconfigured state above shows.
-  const staticMapUrl = MAPBOX_TOKEN
-    ? `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/geojson(${encodedGeojson})/auto/${pixelWidth}x${safeHeight}@2x?access_token=${MAPBOX_TOKEN}&padding=60`
-    : "";
-
-  // Fallback URL without GeoJSON overlay (just satellite view centered on property)
-  const fallbackUrl = MAPBOX_TOKEN
-    ? `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/${centroid.lng},${centroid.lat},16/${pixelWidth}x${safeHeight}@2x?access_token=${MAPBOX_TOKEN}`
-    : "";
+  const merc = ring.map(([lng, lat]) => lngLatToMercator(lng, lat));
+  const fitExtent = (pts: Array<[number, number]>, padRatio: number, minSpanM: number) => {
+    const xs = pts.map((p) => p[0]);
+    const ys = pts.map((p) => p[1]);
+    let [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    let w = Math.max(minSpanM, (maxX - minX) * (1 + padRatio));
+    let h = Math.max(minSpanM, (maxY - minY) * (1 + padRatio));
+    const aspect = pixelWidth / safeHeight;
+    if (w / h < aspect) w = h * aspect; else h = w / aspect;
+    [minX, maxX, minY, maxY] = [cx - w / 2, cx + w / 2, cy - h / 2, cy + h / 2];
+    return [minX, minY, maxX, maxY] as [number, number, number, number];
+  };
+  const centroidMerc = lngLatToMercator(centroid.lng, centroid.lat);
+  const extent = merc.length >= 3 ? fitExtent(merc, 0.6, 120) : fitExtent([centroidMerc], 0, 800);
+  const imgW = Math.min(2048, pixelWidth * 2);
+  const imgH = Math.min(2048, safeHeight * 2);
+  const staticMapUrl = naipStaticImageUrl(extent, imgW, imgH);
+  const fallbackUrl = naipStaticImageUrl(fitExtent([centroidMerc], 0, 800), imgW, imgH);
+  const svgPoints = merc.map(([x, y]) => `${x.toFixed(1)},${(-y).toFixed(1)}`).join(" ");
+  const viewBox = `${extent[0]} ${-extent[3]} ${extent[2] - extent[0]} ${extent[3] - extent[1]}`;
+  const strokeM = (extent[2] - extent[0]) / 250;
 
   if (imageError) {
     return (
@@ -3797,6 +3711,24 @@ export function StaticPropertyMap({
           setIsLoading(false);
         }}
       />
+      {merc.length >= 3 && (
+        <svg
+          className="absolute inset-0 w-full h-full pointer-events-none"
+          viewBox={viewBox}
+          preserveAspectRatio="xMidYMid slice"
+          aria-hidden="true"
+        >
+          <polygon
+            points={svgPoints}
+            className="fill-primary/30 stroke-destructive"
+            strokeWidth={strokeM}
+            strokeDasharray={isApproximate ? `${strokeM * 3} ${strokeM * 2}` : undefined}
+          />
+        </svg>
+      )}
+      <span className="absolute bottom-1 right-1 rounded bg-background/70 px-1 text-micro text-muted-foreground">
+        {NAIP_ATTRIBUTION}
+      </span>
       {/* Approximate-extent honesty badge — the static image can't draw a dashed
           stroke, so we say it plainly: this footprint is inferred, not surveyed. */}
       {isApproximate && !isLoading && (

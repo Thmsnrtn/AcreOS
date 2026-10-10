@@ -1875,10 +1875,10 @@
     min-width: 44px;
   }
 
-  /* Mapbox GL ships 29×29px control buttons (zoom, compass, geolocate) —
+  /* MapLibre GL ships 29×29px control buttons (zoom, compass, geolocate) —
      under the 44px Apple-HIG floor. Lift them on coarse pointers only so
      the desktop map keeps its compact chrome. */
-  .mapboxgl-ctrl-group button {
+  .maplibregl-ctrl-group button {
     min-height: 44px;
     min-width: 44px;
   }

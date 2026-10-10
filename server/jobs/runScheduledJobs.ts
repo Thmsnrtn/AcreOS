@@ -5168,6 +5168,31 @@ export async function runScheduledJobs(): Promise<void> {
     log(`Failed to import discovery-on-miss queue drain: ${err}`, "data");
   });
 
+  // ─── W2 — on-demand county parcel pipeline (10m) ─────────────────────
+  // Drains county_parcel_jobs (created by the first customer search in a
+  // county) one county at a time — MAX_CONCURRENT_COUNTIES = 1 via this lock,
+  // ≤ MAX_PAGES_PER_TICK × PAGE_SIZE parcels per tick — so the 1 GB worker
+  // stays safe. Refusals (no free source / terms forbid storing) are decided
+  // and recorded, never worked around.
+  import("../services/landData/countyPipeline").then(({ runCountyPipelineTick }) => {
+    import("./scheduler").then(({ scheduleSelfRescheduling }) => {
+      log("County parcel pipeline registered (self-rescheduling, 10m)", "data");
+      scheduleSelfRescheduling({
+        name: "county_parcel_pipeline",
+        intervalMs: 10 * 60 * 1000,
+        initialDelayMs: 7 * 60 * 1000,
+        run: async () => {
+          await withJobLock("county_parcel_pipeline", 9 * 60, async () => {
+            const r = await runCountyPipelineTick();
+            if (r.county) log(`[county-pipeline] county=${r.county} stored=${r.stored} outcome=${r.outcome}`, "data");
+          });
+        },
+      });
+    });
+  }).catch((err) => {
+    log(`Failed to register county parcel pipeline: ${err}`, "data");
+  });
+
   // ─── Maren/Iris — LandProfile cache pre-warm backfill (15m) ──────────
   // Belt-and-suspenders for the property-create pre-warm hook: catches
   // imported / bulk-added parcels (and any create whose fire-and-forget

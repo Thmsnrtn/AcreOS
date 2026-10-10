@@ -103,7 +103,15 @@ export type DataCategory =
   // Broadband Data Collection availability. Both free/open; never billed
   // (creditActionForCategory returns null for them).
   | "wildfire_hazard"
-  | "broadband";
+  | "broadband"
+  // W2 small national datasets (national-datasets-provider.ts). Free,
+  // public-domain or attribution-only; never billed.
+  | "fair_market_rent"
+  | "acs_county_profile"
+  | "jobs_lehd"
+  | "traffic_counts"
+  | "manufactured_home_parks"
+  | "protected_lands_padus";
 
 // ── Subscription Tiers ────────────────────────────────────────
 

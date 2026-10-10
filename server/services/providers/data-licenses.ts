@@ -217,6 +217,107 @@ export const DATA_LICENSE_REGISTER: Record<string, DataLicenseEntry> = {
     lastReviewed: "2026-07-28",
     reviewedBy: "Iris",
   },
+  // ── W2 land-data foundation (2026-10-10). Each entry records the terms
+  // text that was read, not a guess; robots.txt was checked for every host.
+  "USGS PAD-US": {
+    source: "USGS PAD-US",
+    license: "public-domain-usgov",
+    redistributable: "yes",
+    attributionText: "Public lands: USGS Gap Analysis Project, Protected Areas Database of the United States (PAD-US) 4.1",
+    termsUrl: "https://www.usgs.gov/programs/gap-analysis-project/science/pad-us-data-overview",
+    lastReviewed: "2026-10-10",
+    reviewedBy: "W2 build agent",
+  },
+  // The state's own per-county shapefile download — its page states "The
+  // shapefile data can be used in a commercial application." The download is
+  // a form (no automated or recurring extracts are offered), so a person
+  // fetches it; the loader ingests the file. Founder to confirm the reading.
+  "TN Comptroller parcel download": {
+    source: "TN Comptroller parcel download",
+    license: "county-tos",
+    redistributable: "attribution",
+    attributionText: "Parcels: Tennessee Comptroller of the Treasury, Division of Property Assessments",
+    termsUrl:
+      "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+    lastReviewed: "2026-10-10",
+    reviewedBy: "W2 build agent (founder to confirm)",
+  },
+  // The TNMap "Property Boundaries Public Use" feature service. Its item
+  // description says "This service is not intended for commercial use" and
+  // points commercial users to the download above — so nothing from it may be
+  // stored or re-served. Used only for small, labelled verification samples.
+  "TN Property Boundaries Public Use service": {
+    source: "TN Property Boundaries Public Use service",
+    license: "county-tos",
+    redistributable: "no",
+    attributionText: "Parcels: Tennessee Comptroller of the Treasury / TNMap",
+    termsUrl: "https://www.arcgis.com/home/item.html?id=e356f1a241844d6f9025f2fa4e977df3",
+    lastReviewed: "2026-10-10",
+    reviewedBy: "W2 build agent",
+  },
+  "TDOT Traffic Counts": {
+    source: "TDOT Traffic Counts",
+    license: "county-tos",
+    redistributable: "attribution",
+    attributionText: "Traffic counts: Tennessee Department of Transportation",
+    termsUrl: "https://www.arcgis.com/home/item.html?id=59838882a69d426286670dcd25d90e15",
+    lastReviewed: "2026-10-10",
+    reviewedBy: "W2 build agent",
+  },
+  "HUD Fair Market Rents": {
+    source: "HUD Fair Market Rents",
+    license: "public-domain-usgov",
+    redistributable: "yes",
+    attributionText: "Fair Market Rents: U.S. Department of Housing and Urban Development (HUD USER)",
+    termsUrl: "https://www.huduser.gov/portal/dataset/fmr-api.html",
+    lastReviewed: "2026-10-10",
+    reviewedBy: "W2 build agent",
+  },
+  "Census LEHD LODES": {
+    source: "Census LEHD LODES",
+    license: "public-domain-usgov",
+    redistributable: "yes",
+    attributionText: "Jobs: U.S. Census Bureau, LEHD Origin-Destination Employment Statistics (LODES 8)",
+    termsUrl: "https://lehd.ces.census.gov/data/",
+    lastReviewed: "2026-10-10",
+    reviewedBy: "W2 build agent",
+  },
+  "FEMA Mobile Home Parks (RAPT)": {
+    source: "FEMA Mobile Home Parks (RAPT)",
+    license: "public-domain-usgov",
+    redistributable: "yes",
+    attributionText: "Manufactured-home parks: FEMA Resilience Analysis and Planning Tool (from HIFLD)",
+    termsUrl: "https://www.arcgis.com/home/item.html?id=2ba2e5e2007f4a159d4dfab8534beed3",
+    lastReviewed: "2026-10-10",
+    reviewedBy: "W2 build agent",
+  },
+  "USDA NAIP": {
+    source: "USDA NAIP",
+    license: "public-domain-usgov",
+    redistributable: "yes",
+    attributionText: "Imagery: USDA FSA National Agriculture Imagery Program, via USGS The National Map",
+    termsUrl: "https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits",
+    lastReviewed: "2026-10-10",
+    reviewedBy: "W2 build agent",
+  },
+  "OpenFreeMap": {
+    source: "OpenFreeMap",
+    license: "odbl",
+    redistributable: "attribution",
+    attributionText: "© OpenMapTiles © OpenStreetMap contributors (OpenFreeMap)",
+    termsUrl: "https://openfreemap.org/",
+    lastReviewed: "2026-10-10",
+    reviewedBy: "W2 build agent",
+  },
+  "AWS Terrain Tiles": {
+    source: "AWS Terrain Tiles",
+    license: "public-domain-usgov",
+    redistributable: "attribution",
+    attributionText: "Terrain: Mapzen terrain tiles (USGS 3DEP, SRTM and others) via AWS Open Data",
+    termsUrl: "https://github.com/tilezen/joerd/blob/master/docs/attribution.md",
+    lastReviewed: "2026-10-10",
+    reviewedBy: "W2 build agent",
+  },
   // Umbrella name for mixed federal/open delegated lookups whose specific
   // source the broker does not surface a single canonical name for. All are
   // public-domain federal works (§105) → redistributable.

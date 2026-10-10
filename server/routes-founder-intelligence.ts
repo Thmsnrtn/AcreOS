@@ -4314,7 +4314,8 @@ router.get("/data-plane", requireFounder, async (_req: Request, res: Response) =
         //    Reasons pass through VERBATIM to the client.
         readDataPlaneSection(async () => {
           const { getCorporaStatus } = await import("./services/openData/corporaStatus");
-          return { corpora: getCorporaStatus() };
+          const { loadIngestReceipts } = await import("./services/landData/openDataBucket");
+          return { corpora: getCorporaStatus(process.env, await loadIngestReceipts()) };
         }),
 
         // 5) GIS discovery queue — endpoints found but not yet reviewed.

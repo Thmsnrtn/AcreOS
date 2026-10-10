@@ -1,7 +1,7 @@
 /**
  * /outreach/mail · EDDM map tab (Pillar 3 Tab 4).
  *
- * Full-screen interactive Mapbox surface for painting USPS carrier-route
+ * Full-screen interactive map surface for painting USPS carrier-route
  * selections, with optional parcel overlay. Selection drives a live cost
  * summary ($0.31/household per Pillar 3 cost weights) and a Queue button
  * that calls /api/outreach/mail/eddm/queue and switches to the In-Flight
@@ -13,12 +13,12 @@
  * The production wire-up lands when USPS BCG permitting trips at $1k MRR.
  * See routes-eddm.ts for the server side.
  *
- * Engine choice: Mapbox, as everywhere in the app — EDDM benefits from
- * Mapbox's data pipeline.
+ * Engine: MapLibre GL on the free OpenFreeMap streets basemap, as everywhere
+ * in the app (client/src/lib/map-engine.ts).
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import mapboxgl from "mapbox-gl";
+import * as mapboxgl from "maplibre-gl";
 import { motion } from "framer-motion";
 import {
   Loader2,
@@ -45,10 +45,9 @@ import {
   useEddmRoutes,
   type EddmRouteFeature,
 } from "@/hooks/use-outreach-mail";
-import "mapbox-gl/dist/mapbox-gl.css";
-import { mapboxToken } from "@/lib/map-engine";
+import "maplibre-gl/dist/maplibre-gl.css";
+import { STYLE_URLS } from "@/lib/map-engine";
 
-const MAPBOX_TOKEN = mapboxToken();
 
 // Per Pillar 3 cost weights — 31¢/piece for EDDM postcards.
 const EDDM_PER_PIECE_CENTS = 31;
@@ -66,7 +65,7 @@ const DENSITY_TOKENS = [
 
 // GL paint colors — resolved at layer-creation time from CSS vars so the map
 // follows the active theme (mirrors getDealStatusColor in pages/maps.tsx).
-// Mapbox paint expressions need concrete color strings; CSS var() cannot
+// Map paint expressions need concrete color strings; CSS var() cannot
 // resolve inside WebGL. Like maps.tsx, GL layers painted before a theme
 // switch keep their colors until the surface remounts — shared limitation.
 function resolveMapColors() {
@@ -135,21 +134,14 @@ export default function EddmTab() {
   );
   const queueMutation = useEddmQueue();
 
-  // ── Initialize Mapbox once ──────────────────────────────────────────────
+  // ── Initialize the map once ─────────────────────────────────────────────
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
-    if (!MAPBOX_TOKEN) {
-      setTokenError(
-        "VITE_MAPBOX_ACCESS_TOKEN is not configured. The EDDM map requires Mapbox.",
-      );
-      return;
-    }
-    mapboxgl.accessToken = MAPBOX_TOKEN;
 
     try {
       const map = new mapboxgl.Map({
         container: mapContainerRef.current,
-        style: "mapbox://styles/mapbox/streets-v12",
+        style: STYLE_URLS.streets,
         center: [-98.0, 30.5],
         zoom: 6,
       });

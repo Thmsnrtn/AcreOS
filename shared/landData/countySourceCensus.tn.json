@@ -1,0 +1,3165 @@
+{
+ "state": "TN",
+ "builtOn": "2026-10-10",
+ "rows": [
+  {
+   "state": "TN",
+   "countyFips": "47001",
+   "county": "Anderson",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 36465,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47003",
+   "county": "Bedford",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 24062,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47005",
+   "county": "Benton",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 16495,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47007",
+   "county": "Bledsoe",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 11373,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47009",
+   "county": "Blount",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 66575,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47011",
+   "county": "Bradley",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 51023,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47013",
+   "county": "Campbell",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 27573,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47015",
+   "county": "Cannon",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 8508,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47017",
+   "county": "Carroll",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 19949,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47019",
+   "county": "Carter",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 32005,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47021",
+   "county": "Cheatham",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 21804,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47023",
+   "county": "Chester",
+   "maintainedBy": "county",
+   "coverage": "unverified_candidates",
+   "sources": [
+    {
+     "kind": "county_service",
+     "publisher": "ArcGIS Online owner \"BG26028@tn.gov_TDEC\" (not confirmed as the county)",
+     "url": "https://services5.arcgis.com/bPacKTm9cauMXVfn/arcgis/rest/services/LH_Parcel_FP/FeatureServer",
+     "commercialUse": "unstated",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "not reviewed",
+     "verification": "unverified",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "county_service",
+     "publisher": "ArcGIS Online owner \"andrew.mcdonagh\" (not confirmed as the county)",
+     "url": "https://services5.arcgis.com/bPacKTm9cauMXVfn/arcgis/rest/services/CumminsParcels/FeatureServer",
+     "commercialUse": "unstated",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "not reviewed",
+     "verification": "unverified",
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47025",
+   "county": "Claiborne",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 22522,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47027",
+   "county": "Clay",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 7135,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47029",
+   "county": "Cocke",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 25266,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47031",
+   "county": "Coffee",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 32710,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47033",
+   "county": "Crockett",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 10163,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47035",
+   "county": "Cumberland",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 65771,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47037",
+   "county": "Davidson",
+   "maintainedBy": "county",
+   "coverage": "lookup_only",
+   "sources": [
+    {
+     "kind": "county_service",
+     "publisher": "Metro Nashville (ArcGIS org owner 'Nashville')",
+     "url": "https://services2.arcgis.com/HdTo6HJqh92wn4D8/arcgis/rest/services/Parcels_view/FeatureServer/0",
+     "commercialUse": "unstated",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "Item licence: \"Metro's Open Data Executive Order provides the policy and guidance governing the portal\" — the order itself was not read in this pass.",
+     "verification": "verified_live",
+     "liveParcelCount": 287316,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47039",
+   "county": "Decatur",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 14112,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47041",
+   "county": "DeKalb",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 18325,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47043",
+   "county": "Dickson",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 28412,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47045",
+   "county": "Dyer",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 21595,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47047",
+   "county": "Fayette",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 26371,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47049",
+   "county": "Fentress",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 16408,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47051",
+   "county": "Franklin",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 26824,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47053",
+   "county": "Gibson",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 30831,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47055",
+   "county": "Giles",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 18826,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47057",
+   "county": "Grainger",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 15587,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47059",
+   "county": "Greene",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 43074,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47061",
+   "county": "Grundy",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 11967,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47063",
+   "county": "Hamblen",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 30904,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47065",
+   "county": "Hamilton",
+   "maintainedBy": "county",
+   "coverage": "unverified_candidates",
+   "sources": [
+    {
+     "kind": "county_service",
+     "publisher": "ArcGIS Online owner \"NHunt73\" (not confirmed as the county)",
+     "url": "https://services.arcgis.com/UnTXoPXBYERF0OH6/arcgis/rest/services/Hamilton_County_Parcels_owned_by_University_of_Tennessee_(2025)/FeatureServer",
+     "commercialUse": "unstated",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "not reviewed",
+     "verification": "unverified",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "county_service",
+     "publisher": "ArcGIS Online owner \"BG26028@tn.gov_TDEC\" (not confirmed as the county)",
+     "url": "https://services5.arcgis.com/bPacKTm9cauMXVfn/arcgis/rest/services/LH_Parcel_FP/FeatureServer",
+     "commercialUse": "unstated",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "not reviewed",
+     "verification": "unverified",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "county_service",
+     "publisher": "ArcGIS Online owner \"hgc668_IGTLab\" (not confirmed as the county)",
+     "url": "https://services.arcgis.com/UnTXoPXBYERF0OH6/arcgis/rest/services/UTC_Parcels_2024/FeatureServer",
+     "commercialUse": "unstated",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "not reviewed",
+     "verification": "unverified",
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47067",
+   "county": "Hancock",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 6153,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47069",
+   "county": "Hardeman",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 20295,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47071",
+   "county": "Hardin",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 28565,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47073",
+   "county": "Hawkins",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 36562,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47075",
+   "county": "Haywood",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 11388,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47077",
+   "county": "Henderson",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 18063,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47079",
+   "county": "Henry",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 25998,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47081",
+   "county": "Hickman",
+   "maintainedBy": "county",
+   "coverage": "unverified_candidates",
+   "sources": [
+    {
+     "kind": "county_service",
+     "publisher": "ArcGIS Online owner \"BG26028@tn.gov_TDEC\" (not confirmed as the county)",
+     "url": "https://services5.arcgis.com/bPacKTm9cauMXVfn/arcgis/rest/services/LH_Parcel_FP/FeatureServer",
+     "commercialUse": "unstated",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "not reviewed",
+     "verification": "unverified",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "county_service",
+     "publisher": "ArcGIS Online owner \"andrew.mcdonagh\" (not confirmed as the county)",
+     "url": "https://services5.arcgis.com/bPacKTm9cauMXVfn/arcgis/rest/services/CumminsParcels/FeatureServer",
+     "commercialUse": "unstated",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "not reviewed",
+     "verification": "unverified",
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47083",
+   "county": "Houston",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 6634,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47085",
+   "county": "Humphreys",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 13764,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47087",
+   "county": "Jackson",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 9020,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47089",
+   "county": "Jefferson",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 34851,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47091",
+   "county": "Johnson",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 14180,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47093",
+   "county": "Knox",
+   "maintainedBy": "county",
+   "coverage": "unverified_candidates",
+   "sources": [
+    {
+     "kind": "county_service",
+     "publisher": "ArcGIS Online owner \"BG26028@tn.gov_TDEC\" (not confirmed as the county)",
+     "url": "https://services5.arcgis.com/bPacKTm9cauMXVfn/arcgis/rest/services/LH_Parcel_FP/FeatureServer",
+     "commercialUse": "unstated",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "not reviewed",
+     "verification": "unverified",
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47095",
+   "county": "Lake",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 3905,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47097",
+   "county": "Lauderdale",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 13797,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47099",
+   "county": "Lawrence",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 25786,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47101",
+   "county": "Lewis",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 8705,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47103",
+   "county": "Lincoln",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 19967,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47105",
+   "county": "Loudon",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 36399,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47111",
+   "county": "Macon",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 14433,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47113",
+   "county": "Madison",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 49503,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47115",
+   "county": "Marion",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 22228,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47117",
+   "county": "Marshall",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 19513,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47119",
+   "county": "Maury",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 52683,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47107",
+   "county": "McMinn",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 31388,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47109",
+   "county": "McNairy",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 19265,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47121",
+   "county": "Meigs",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 9471,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47123",
+   "county": "Monroe",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 30099,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47125",
+   "county": "Montgomery",
+   "maintainedBy": "county",
+   "coverage": "no_source_found",
+   "sources": []
+  },
+  {
+   "state": "TN",
+   "countyFips": "47127",
+   "county": "Moore",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 4260,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47129",
+   "county": "Morgan",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 14388,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47131",
+   "county": "Obion",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 20057,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47133",
+   "county": "Overton",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 15539,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47135",
+   "county": "Perry",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 9843,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47137",
+   "county": "Pickett",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 5926,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47139",
+   "county": "Polk",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 13117,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47141",
+   "county": "Putnam",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 38429,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47143",
+   "county": "Rhea",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 21501,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47145",
+   "county": "Roane",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 35837,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47147",
+   "county": "Robertson",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 37749,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47149",
+   "county": "Rutherford",
+   "maintainedBy": "county",
+   "coverage": "unverified_candidates",
+   "sources": [
+    {
+     "kind": "county_service",
+     "publisher": "ArcGIS Online owner \"GBLee2\" (not confirmed as the county)",
+     "url": "https://services5.arcgis.com/A5C0MR9xfkxVRwat/arcgis/rest/services/Parcel_Data/FeatureServer",
+     "commercialUse": "unstated",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "not reviewed",
+     "verification": "unverified",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "county_service",
+     "publisher": "ArcGIS Online owner \"BG26028@tn.gov_TDEC\" (not confirmed as the county)",
+     "url": "https://services5.arcgis.com/bPacKTm9cauMXVfn/arcgis/rest/services/LH_Parcel_FP/FeatureServer",
+     "commercialUse": "unstated",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "not reviewed",
+     "verification": "unverified",
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47151",
+   "county": "Scott",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 15354,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47153",
+   "county": "Sequatchie",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 12664,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47155",
+   "county": "Sevier",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 70701,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47157",
+   "county": "Shelby",
+   "maintainedBy": "county",
+   "coverage": "unverified_candidates",
+   "sources": [
+    {
+     "kind": "county_service",
+     "publisher": "ArcGIS Online owner \"ColliervilleGIS\" (not confirmed as the county)",
+     "url": "https://services1.arcgis.com/sRmcNvrTVX9Y0AgX/arcgis/rest/services/Certified_Parcels/FeatureServer",
+     "commercialUse": "unstated",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "not reviewed",
+     "verification": "unverified",
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47159",
+   "county": "Smith",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 12091,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47161",
+   "county": "Stewart",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 12508,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47163",
+   "county": "Sullivan",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 78811,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47165",
+   "county": "Sumner",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 86607,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47167",
+   "county": "Tipton",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 30129,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47169",
+   "county": "Trousdale",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 5463,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47171",
+   "county": "Unicoi",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 10301,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47173",
+   "county": "Union",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 14722,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47175",
+   "county": "Van Buren",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 7334,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47177",
+   "county": "Warren",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 23835,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47179",
+   "county": "Washington",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 60962,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47181",
+   "county": "Wayne",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 13014,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47183",
+   "county": "Weakley",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 20191,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47185",
+   "county": "White",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 17834,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47187",
+   "county": "Williamson",
+   "maintainedBy": "county",
+   "coverage": "unverified_candidates",
+   "sources": [
+    {
+     "kind": "county_service",
+     "publisher": "ArcGIS Online owner \"BG26028@tn.gov_TDEC\" (not confirmed as the county)",
+     "url": "https://services5.arcgis.com/bPacKTm9cauMXVfn/arcgis/rest/services/LH_Parcel_FP/FeatureServer",
+     "commercialUse": "unstated",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "not reviewed",
+     "verification": "unverified",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "county_service",
+     "publisher": "ArcGIS Online owner \"andrew.mcdonagh\" (not confirmed as the county)",
+     "url": "https://services5.arcgis.com/bPacKTm9cauMXVfn/arcgis/rest/services/CumminsParcels/FeatureServer",
+     "commercialUse": "unstated",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "not reviewed",
+     "verification": "unverified",
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  },
+  {
+   "state": "TN",
+   "countyFips": "47189",
+   "county": "Wilson",
+   "maintainedBy": "state",
+   "coverage": "storable_with_manual_download",
+   "sources": [
+    {
+     "kind": "state_download",
+     "publisher": "Tennessee Comptroller of the Treasury",
+     "url": "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
+     "licenseSource": "TN Comptroller parcel download",
+     "commercialUse": "permitted",
+     "mayStore": true,
+     "automatedDownload": false,
+     "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
+     "verification": "terms_read",
+     "checkedOn": "2026-10-10"
+    },
+    {
+     "kind": "state_public_service",
+     "publisher": "Tennessee Comptroller / TNMap",
+     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
+     "licenseSource": "TN Property Boundaries Public Use service",
+     "commercialUse": "prohibited",
+     "mayStore": false,
+     "automatedDownload": true,
+     "terms": "\"This service is not intended for commercial use.\"",
+     "verification": "verified_live",
+     "liveParcelCount": 66872,
+     "checkedOn": "2026-10-10"
+    }
+   ]
+  }
+ ]
+}

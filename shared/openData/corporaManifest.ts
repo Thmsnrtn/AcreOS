@@ -10,14 +10,19 @@
  * + open-data-program.md), never invented here.
  *
  * HONESTY CONTRACT (no-fabrication doctrine, same as the watchdog scaffolding,
- * ruling #8): object storage is NOT provisioned and no ingestion pipeline
- * exists. Every entry's ingestStatus is "not_provisioned" and stays that way
- * until real bytes actually land in a real bucket. approxSizeGB is null
- * wherever the research doc states no per-corpus total — a null is honest,
- * a guessed number is fabrication.
+ * ruling #8). Static entries stay "not_provisioned": a manifest line is not
+ * evidence that bytes exist anywhere. approxSizeGB is null wherever the
+ * research doc states no per-corpus total — a null is honest, a guessed
+ * number is fabrication.
  *
- * There is deliberately NO "ingested" status in this wave's vocabulary:
- * with no ingestion code in the repo, no code path could truthfully claim it.
+ * W2 (2026-10-10) shipped the first real ingestion code (the Tennessee
+ * parcel-fact pipeline: GeoParquet + PMTiles, uploaded to the OPEN_DATA_BUCKET
+ * by server/services/landData/openDataBucket.ts). So the vocabulary now has an
+ * "ingested" status — but it is NEVER written into this file. It is DERIVED
+ * by getCorporaStatus() from an upload receipt: an object the bucket itself
+ * confirmed (HEAD after PUT, byte count and SHA-256 recorded in
+ * open_data_ingest_receipts). No receipt, no "ingested".
+ */
  */
 
 /**
@@ -41,15 +46,17 @@ export type CorpusLicense =
   | "state-public-record";
 
 /**
- * The ONLY statuses that exist this wave. "not_provisioned" = no object
- * storage configured; "storage_configured_pipeline_pending" = the founder set
- * the OPEN_DATA_BUCKET_* keys but no ingestion pipeline exists yet, so nothing
- * has been ingested. An "ingested" status is deliberately absent — it may only
- * be added in the wave that ships real ingestion code.
+ * Corpus status vocabulary:
+ *  - "not_provisioned": no object storage configured;
+ *  - "storage_configured_pipeline_pending": the OPEN_DATA_BUCKET_* keys are
+ *    set but no upload receipt exists for this corpus;
+ *  - "ingested": at least one upload receipt for this corpus — bytes the
+ *    bucket confirmed. Reachable ONLY through getCorporaStatus(receipts).
  */
 export type CorpusIngestStatus =
   | "not_provisioned"
-  | "storage_configured_pipeline_pending";
+  | "storage_configured_pipeline_pending"
+  | "ingested";
 
 export interface CorpusManifestEntry {
   /** Stable kebab-case id — never reused, never renamed. */
@@ -70,7 +77,10 @@ export interface CorpusManifestEntry {
   refreshCadence: string;
   /** One sentence: what owning this corpus unlocks for the platform. */
   whatItUnlocks: string;
-  /** All "not_provisioned" today — storage does not exist yet. */
+  /**
+   * Static entries are always "not_provisioned": the manifest is not evidence.
+   * The live status (including "ingested") comes from getCorporaStatus().
+   */
   ingestStatus: "not_provisioned";
 }
 
@@ -82,7 +92,7 @@ export const STORAGE_NOT_PROVISIONED =
   "object storage not provisioned — set OPEN_DATA_BUCKET_* to arm the ingestion pipeline" as const;
 
 /**
- * The env keys the FUTURE ingestion pipeline will read (any S3-compatible
+ * The env keys the ingestion pipeline reads (any S3-compatible
  * store — R2, S3, etc.; ~$10–30/mo at full corpus scale per the program
  * research). All four must be set before storage counts as configured.
  * Documented (commented out) in .env.example.

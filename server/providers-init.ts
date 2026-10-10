@@ -8,6 +8,7 @@ import { countyGisProvider } from "./services/providers/county-gis-provider";
 import { regridProvider } from "./services/providers/regrid-provider";
 import { attomProvider } from "./services/providers/attom-provider";
 import { batchdataProvider } from "./services/providers/batchdata-provider";
+import { nationalDatasetsProvider } from "./services/providers/national-datasets-provider";
 import { logger } from "./utils/logger";
 
 export function initializeProviders(): void {
@@ -48,6 +49,12 @@ export function initializeProviders(): void {
   // the registry is safe even before the operator provisions credentials.
   for (const category of batchdataProvider.categories) {
     providerRegistry.register(category, batchdataProvider, 40);
+  }
+
+  // National open datasets (W2) — free tier, the only provider for its six
+  // categories (HUD FMR, ACS, LEHD, TDOT traffic, FEMA MHP, PAD-US).
+  for (const category of nationalDatasetsProvider.categories) {
+    providerRegistry.register(category, nationalDatasetsProvider, 10);
   }
 
   logger.info("Data providers initialized", { source: "providers-init" });
