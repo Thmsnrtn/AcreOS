@@ -16,21 +16,21 @@
 
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { isAuthenticated } from "./auth/clerkAuth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { db } from "./db";
-import { ownedParcels, parcelIdCrosswalk } from "@shared/schema";
+import { parcelSnapshots, type ParcelSnapshot } from "@shared/schema";
 import { COUNTY_SOURCE_CENSUS } from "@shared/landData/countySourceCensus";
 import { projectFactsForCustomer } from "@shared/landData/factAccuracyGate";
 import { parcelTruths } from "@shared/landData/parcelTruths";
 import { taxSaleSourcesFor } from "@shared/landData/taxSaleSources";
 import type { ParcelFactSet } from "@shared/landData/parcelFacts";
 import { STATEWIDE_PARCEL_ENDPOINTS } from "./services/statewideParcelEndpoints";
-import { enqueueCountyProcessing, getCountyJob } from "./services/landData/countyPipeline";
+import { enqueueCountyProcessing, getCountyJob, OWNED_SNAPSHOT_SOURCE } from "./services/landData/countyPipeline";
 import {
   NATIONAL_DATASET_CATEGORIES,
   nationalDatasetReadiness,
@@ -49,19 +49,38 @@ const pointSchema = z.object({
   state: z.string().trim().length(2).optional(),
 });
 
-/** Serialize an owned parcel for a customer: gated facts + truths. Exported for the gate test. */
-export function serializeOwnedParcelForCustomer(row: {
+/** The owned-parcel fields a customer view needs, from a parcel_snapshots row. */
+export interface OwnedParcelView {
   parcelKey: string;
   state: string;
   county: string;
   sourceParcelId: string;
   sourceName: string;
-  retrievedAt: Date;
+  retrievedAt: Date | null;
   gisAcres: number;
   deededAcres: number | null;
   facts: unknown;
   attributes: unknown;
-}) {
+}
+
+export function ownedViewOf(row: ParcelSnapshot): OwnedParcelView {
+  const raw = (row.rawData ?? {}) as Record<string, unknown>;
+  return {
+    parcelKey: row.parcelKey ?? "",
+    state: row.state,
+    county: row.county,
+    sourceParcelId: row.apn,
+    sourceName: typeof raw.sourceName === "string" ? raw.sourceName : "unknown",
+    retrievedAt: row.fetchedAt ?? null,
+    gisAcres: Number(row.acres ?? 0),
+    deededAcres: typeof raw.deededAcres === "number" ? raw.deededAcres : null,
+    facts: row.facts,
+    attributes: raw.attributes ?? {},
+  };
+}
+
+/** Serialize an owned parcel for a customer: gated facts + truths. Exported for the gate test. */
+export function serializeOwnedParcelForCustomer(row: OwnedParcelView) {
   const facts = (row.facts ?? {}) as Partial<ParcelFactSet>;
   const projection = projectFactsForCustomer(facts);
   const attrs = (row.attributes ?? {}) as Record<string, unknown>;
@@ -124,13 +143,13 @@ export function registerLandDataRoutes(app: Express) {
     if (!parsed.success) return Errors.validationFailed(res, parsed.error);
     try {
       const job = await getCountyJob(parsed.data.state, parsed.data.county);
-      if (!job) return res.json({ status: "not_requested", refusalReason: null, parcelsStored: 0 });
+      if (!job || !job.ownedStatus) return res.json({ status: "not_requested", refusalReason: null, parcelsStored: 0 });
       res.json({
-        status: job.status,
-        refusalReason: job.refusalReason,
-        parcelsStored: job.parcelsStored,
-        demandCount: job.demandCount,
-        completedAt: job.completedAt,
+        status: job.ownedStatus,
+        refusalReason: job.ownedRefusalReason,
+        parcelsStored: job.ownedParcelsStored,
+        demandCount: job.ownedDemand,
+        completedAt: job.ownedCompletedAt,
       });
     } catch (err) {
       return Errors.internal(res, err);
@@ -141,9 +160,13 @@ export function registerLandDataRoutes(app: Express) {
     const key = String(req.params.parcelKey ?? "").slice(0, 200);
     if (!key) return Errors.badRequest(res, "A parcel key is required.");
     try {
-      const [row] = await db.select().from(ownedParcels).where(eq(ownedParcels.parcelKey, key)).limit(1);
+      const [row] = await db
+        .select()
+        .from(parcelSnapshots)
+        .where(and(eq(parcelSnapshots.source, OWNED_SNAPSHOT_SOURCE), eq(parcelSnapshots.parcelKey, key)))
+        .limit(1);
       if (!row) return Errors.notFound(res, "Parcel");
-      res.json(serializeOwnedParcelForCustomer(row));
+      res.json(serializeOwnedParcelForCustomer(ownedViewOf(row)));
     } catch (err) {
       return Errors.internal(res, err);
     }
@@ -154,27 +177,31 @@ export function registerLandDataRoutes(app: Express) {
     if (!parsed.success) return Errors.validationFailed(res, parsed.error);
     try {
       const county = parsed.data.county.toLowerCase().replace(/ county$/i, "").trim();
-      const [xw] = await db
-        .select({ parcelKey: parcelIdCrosswalk.parcelKey })
-        .from(parcelIdCrosswalk)
+      const apn = parsed.data.apn.toUpperCase();
+      // Current id OR any id this parcel carried before (the crosswalk), so a
+      // renumbered parcel still resolves to the same land.
+      const [row] = await db
+        .select()
+        .from(parcelSnapshots)
         .where(
           and(
-            eq(parcelIdCrosswalk.state, parsed.data.state.toUpperCase()),
-            eq(parcelIdCrosswalk.county, county),
-            eq(parcelIdCrosswalk.sourceParcelId, parsed.data.apn),
+            eq(parcelSnapshots.source, OWNED_SNAPSHOT_SOURCE),
+            eq(parcelSnapshots.state, parsed.data.state.toUpperCase()),
+            eq(parcelSnapshots.county, county),
+            sql`(${parcelSnapshots.apn} = ${apn} OR jsonb_exists(${parcelSnapshots.rawData}->'sourceIdHistory', ${apn}))`,
           ),
         )
         .limit(1);
-      if (!xw) {
+      if (!row) {
         const job = await getCountyJob(parsed.data.state, county);
         return res.json({
           found: false,
-          county: job ? { status: job.status, refusalReason: job.refusalReason, parcelsStored: job.parcelsStored } : { status: "not_requested", refusalReason: null, parcelsStored: 0 },
+          county: job?.ownedStatus
+            ? { status: job.ownedStatus, refusalReason: job.ownedRefusalReason, parcelsStored: job.ownedParcelsStored }
+            : { status: "not_requested", refusalReason: null, parcelsStored: 0 },
         });
       }
-      const [row] = await db.select().from(ownedParcels).where(eq(ownedParcels.parcelKey, xw.parcelKey)).limit(1);
-      if (!row) return res.json({ found: false, county: null });
-      res.json({ found: true, parcel: serializeOwnedParcelForCustomer(row) });
+      res.json({ found: true, parcel: serializeOwnedParcelForCustomer(ownedViewOf(row)) });
     } catch (err) {
       return Errors.internal(res, err);
     }

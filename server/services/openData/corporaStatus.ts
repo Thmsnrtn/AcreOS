@@ -46,7 +46,7 @@ export interface CorpusStatusReport {
 export const PIPELINE_PENDING_REASON =
   "object storage configured — no upload receipt for this corpus yet, nothing has been ingested" as const;
 
-/** One confirmed upload (a row of open_data_ingest_receipts). */
+/** One confirmed upload (an entry of county_discovery_queue.owned_artifacts). */
 export interface CorpusUploadReceipt {
   corpusKey: string;
   objectKey: string;

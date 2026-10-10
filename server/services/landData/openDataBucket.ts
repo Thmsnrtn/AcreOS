@@ -86,28 +86,33 @@ export async function uploadAndConfirm(
   return { corpusKey, objectKey, bytes: body.length, sha256, etag, uploadedAt: clock.now() };
 }
 
-export async function recordReceipt(r: UploadReceipt): Promise<void> {
+/**
+ * Record a confirmed upload on its county's coverage row (owned_artifacts):
+ * the county's artifacts and their receipts live with the county.
+ */
+export async function recordReceipt(state: string, county: string, r: UploadReceipt): Promise<void> {
   const { db } = await import("../../db");
-  const { openDataIngestReceipts } = await import("@shared/schema");
-  await db
-    .insert(openDataIngestReceipts)
-    .values({ corpusKey: r.corpusKey, objectKey: r.objectKey, bytes: r.bytes, sha256: r.sha256, etag: r.etag, uploadedAt: r.uploadedAt })
-    .onConflictDoNothing();
+  const { countyDiscoveryQueue } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+  const where = and(eq(countyDiscoveryQueue.state, state.toUpperCase()), eq(countyDiscoveryQueue.county, county.toLowerCase().replace(/ county$/i, "").trim()));
+  const [row] = await db.select({ artifacts: countyDiscoveryQueue.ownedArtifacts }).from(countyDiscoveryQueue).where(where).limit(1);
+  if (!row) throw new Error(`no coverage row for ${county}, ${state} — request the county before recording its artifacts`);
+  const entry = { corpusKey: r.corpusKey, objectKey: r.objectKey, bytes: r.bytes, sha256: r.sha256, etag: r.etag, uploadedAt: r.uploadedAt.toISOString() };
+  const kept = (row.artifacts ?? []).filter((a) => !(a.objectKey === r.objectKey && a.sha256 === r.sha256));
+  await db.update(countyDiscoveryQueue).set({ ownedArtifacts: [...kept, entry] }).where(where);
 }
 
 /** Receipts for getCorporaStatus(); an unreadable table degrades to "none". */
 export async function loadIngestReceipts(): Promise<CorpusUploadReceipt[]> {
   try {
     const { db } = await import("../../db");
-    const { openDataIngestReceipts } = await import("@shared/schema");
-    return await db
-      .select({
-        corpusKey: openDataIngestReceipts.corpusKey,
-        objectKey: openDataIngestReceipts.objectKey,
-        bytes: openDataIngestReceipts.bytes,
-        sha256: openDataIngestReceipts.sha256,
-      })
-      .from(openDataIngestReceipts);
+    const { countyDiscoveryQueue } = await import("@shared/schema");
+    const { isNotNull } = await import("drizzle-orm");
+    const rows = await db
+      .select({ artifacts: countyDiscoveryQueue.ownedArtifacts })
+      .from(countyDiscoveryQueue)
+      .where(isNotNull(countyDiscoveryQueue.ownedArtifacts));
+    return rows.flatMap((r) => (r.artifacts ?? []).map((a) => ({ corpusKey: a.corpusKey, objectKey: a.objectKey, bytes: a.bytes, sha256: a.sha256 })));
   } catch (err) {
     logger.warn("[openDataBucket] receipts unreadable — reporting none", {
       metadata: { error: err instanceof Error ? err.message : String(err) },

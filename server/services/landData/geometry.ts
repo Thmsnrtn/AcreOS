@@ -208,7 +208,7 @@ function segmentsIntersect(
  * overlap or touch. Used for public-land adjacency.
  */
 export function areaToAreaDistance(a: ProjectedArea, b: ProjectedArea): number {
-  // Overlap: any vertex of one inside the other, or any edge crossing.
+  // Overlap = a vertex of one inside the other, or an edge crossing.
   const aLines = areaBoundaryLines(a);
   const bLines = areaBoundaryLines(b);
   for (const l of aLines) for (const [x, y] of l) if (pointInProjectedArea(x, y, b)) return 0;

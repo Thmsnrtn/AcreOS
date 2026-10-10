@@ -59,30 +59,32 @@ function lat2y(lat: number, z: number) {
 export interface PmtilesResult { bytes: Buffer; tileCount: number; bbox: [number, number, number, number] }
 
 export async function buildPmtiles(
-  fc: { type: "FeatureCollection"; features: Array<{ type: "Feature"; geometry: any; properties: Record<string, unknown> }> },
+  fc: { type: "FeatureCollection"; features: Array<{ type: "Feature"; geometry: { type: string; coordinates: unknown }; properties: Record<string, unknown> }> },
   opts: PmtilesBuildOptions,
 ): Promise<PmtilesResult> {
   const { GeoJSONVT } = await import("@maplibre/geojson-vt");
   const { fromGeojsonVt } = await import("@maplibre/vt-pbf");
 
   let minX = 180, minY = 90, maxX = -180, maxY = -90;
-  const walk = (c: any) => {
-    if (typeof c[0] === "number") {
-      minX = Math.min(minX, c[0]); maxX = Math.max(maxX, c[0]);
-      minY = Math.min(minY, c[1]); maxY = Math.max(maxY, c[1]);
-    } else c.forEach(walk);
+  const walk = (c: unknown) => {
+    const arr = c as unknown[];
+    if (typeof arr[0] === "number") {
+      const [x, y] = arr as number[];
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    } else arr.forEach(walk);
   };
   for (const f of fc.features) walk(f.geometry.coordinates);
   if (fc.features.length === 0) throw new Error("refusing to build an empty PMTiles archive");
 
-  const index = new GeoJSONVT(fc as any, { maxZoom: opts.maxZoom, indexMaxZoom: opts.maxZoom, tolerance: 3, extent: 4096, buffer: 64 });
+  const index = new GeoJSONVT(fc as unknown as GeoJSON.FeatureCollection, { maxZoom: opts.maxZoom, indexMaxZoom: opts.maxZoom, tolerance: 3, extent: 4096, buffer: 64 });
   const tiles: Array<{ tileId: number; data: Buffer }> = [];
   for (let z = opts.minZoom; z <= opts.maxZoom; z++) {
     for (let x = lon2x(minX, z); x <= lon2x(maxX, z); x++) {
       for (let y = lat2y(maxY, z); y <= lat2y(minY, z); y++) {
         const t = index.getTile(z, x, y);
         if (!t || t.features.length === 0) continue;
-        const pbf = fromGeojsonVt({ [opts.layerName]: t } as any, { version: 2, extent: 4096 });
+        const pbf = fromGeojsonVt({ [opts.layerName]: t } as unknown as Parameters<typeof fromGeojsonVt>[0], { version: 2, extent: 4096 });
         tiles.push({ tileId: zxyToTileId(z, x, y), data: gzipSync(Buffer.from(pbf)) });
       }
     }

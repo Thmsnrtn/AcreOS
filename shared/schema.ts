@@ -5003,6 +5003,24 @@ export const countyDiscoveryQueue = pgTable("county_discovery_queue", {
   lastResult: text("last_result"), // human-readable outcome of the last attempt
   resolvedEndpointId: integer("resolved_endpoint_id").references(() => countyGisEndpoints.id), // set when status=resolved
 
+  // ── W2 on-demand OWNERSHIP of the county's free parcels (migration 0270) ──
+  // A second lifecycle on the same per-county coverage row: discovery finds a
+  // source; ownership pulls it, computes facts and keeps the parcels (as
+  // parcel_snapshots rows with source "owned_pipeline"). null = never asked.
+  // pending → processing → (complete | refused | failed)
+  ownedStatus: text("owned_status"),
+  ownedRefusalReason: text("owned_refusal_reason"), // shown to the customer verbatim
+  ownedDemand: integer("owned_demand").notNull().default(0), // customer searches in this county
+  ownedNextOffset: integer("owned_next_offset").notNull().default(0), // resume point (last object id)
+  ownedParcelsStored: integer("owned_parcels_stored").notNull().default(0),
+  ownedAttempts: integer("owned_attempts").notNull().default(0),
+  ownedLastError: text("owned_last_error"),
+  ownedStartedAt: timestamp("owned_started_at"),
+  ownedCompletedAt: timestamp("owned_completed_at"),
+  // Bucket-confirmed uploads of this county's artifacts (GeoParquet/PMTiles):
+  // the ONLY evidence getCorporaStatus() accepts for "ingested".
+  ownedArtifacts: jsonb("owned_artifacts").$type<Array<{ corpusKey: string; objectKey: string; bytes: number; sha256: string; etag: string | null; uploadedAt: string }>>(),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -14352,7 +14370,3 @@ export * from "./schema/platform-runtime";
 export * from "./schema/billing-platform";
 export * from "./schema/crm-workspace";
 export * from "./schema/parcel-data";
-
-// W2 land-data foundation (migration 0270): on-demand county pipeline,
-// owned parcels + facts, parcel-id crosswalk, bucket upload receipts.
-export * from "./schema/land-data";

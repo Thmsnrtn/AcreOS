@@ -189,15 +189,18 @@ export function SubdivisionPlanEditor({ planId, defaultCenter }: Props) {
     drawRef.current = draw;
 
     const onChange = () => setDirty(true);
-    map.on("draw.create", (e: any) => {
+    // mapbox-gl-draw fires its own event names, which MapLibre's typed
+    // event map does not list; the runtime accepts any string.
+    const onDraw = map.on.bind(map) as unknown as (type: string, fn: (e: any) => void) => void;
+    onDraw("draw.create", (e: any) => {
       // Tag new features with the active kind.
       for (const f of e.features) {
         if (f && f.id) draw.setFeatureProperty(f.id as string, "kind", activeKind);
       }
       setDirty(true);
     });
-    map.on("draw.update", onChange);
-    map.on("draw.delete", onChange);
+    onDraw("draw.update", onChange);
+    onDraw("draw.delete", onChange);
 
     return () => {
       map.remove();

@@ -22,7 +22,7 @@
  * and maplibre-gl 6.11.1 (no advisory at install, 2026-10-10).
  */
 
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import type { StyleSpecification, Map as MapLibreMap, RasterDEMSourceSpecification } from "maplibre-gl";
 
 export { maplibregl };

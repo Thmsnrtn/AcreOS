@@ -250,7 +250,18 @@ export const parcelSnapshots = pgTable("parcel_snapshots", {
   // Cache management
   fetchedAt: timestamp("fetched_at").defaultNow(),
   expiresAt: timestamp("expires_at"),
-  
+
+  // ── W2 owned parcels (migration 0270) ──
+  // Rows with source = "owned_pipeline" are the KEPT copy of a county's free
+  // parcels (the on-demand county pipeline), not a lookup cache: they carry a
+  // stable AcreOS parcel key (survives county renumbering — prior county ids
+  // live in raw_data.sourceIdHistory) and the derived facts. Cache readers
+  // never serve them (sharedSnapshotSources excludes the source) and the
+  // lookup cache upsert never overwrites them.
+  parcelKey: text("parcel_key"),
+  facts: jsonb("facts").$type<Record<string, unknown>>(),
+  factsComputedAt: timestamp("facts_computed_at"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

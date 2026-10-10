@@ -208,7 +208,7 @@ describe(".env.example — the future pipeline's keys are documented", () => {
 
   it("says 'ingested' needs a bucket-confirmed receipt", () => {
     expect(envExample).toMatch(/"ingested" ONLY after/);
-    expect(envExample).toMatch(/open_data_ingest_receipts/);
+    expect(envExample).toMatch(/owned_artifacts/);
   });
 });
 

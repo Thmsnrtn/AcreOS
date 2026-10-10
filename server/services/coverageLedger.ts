@@ -203,6 +203,8 @@ export async function getCoverageLedger(): Promise<CoverageLedger> {
              lower(regexp_replace(regexp_replace(trim(${parcelSnapshots.county}), ' county$', '', 'i'), '-', ' ', 'g')) AS county
       FROM ${parcelSnapshots}
       WHERE ${parcelSnapshots.state} IS NOT NULL AND ${parcelSnapshots.county} IS NOT NULL
+        -- W2 kept parcels are one row per parcel, not customer demand.
+        AND ${parcelSnapshots.source} <> 'owned_pipeline'
     )
     SELECT state, county, COUNT(*)::int AS demand
     FROM demand

@@ -66,12 +66,21 @@ export function nationalDatasetReadiness(
   return null;
 }
 
-async function getJson(url: string, init: Parameters<typeof fetchGeo>[1] = {}): Promise<any> {
+/** An ArcGIS-style JSON reply: features with attributes, or an error. */
+interface ArcgisJson {
+  features?: Array<{ attributes: Record<string, unknown> }>;
+  error?: { message?: string };
+  [k: string]: unknown;
+}
+
+async function getJson<T = ArcgisJson>(url: string, init: Parameters<typeof fetchGeo>[1] = {}): Promise<T> {
   const res = await fetchGeo(url, { timeoutMs: 30_000, ...init });
   if (!res.ok) throw new Error(`${new URL(url).host} HTTP ${res.status}`);
-  const body = await res.json();
-  if (body?.error) throw new Error(`${new URL(url).host}: ${body.error.message ?? "error"}`);
-  return body;
+  const body = (await res.json()) as { error?: { message?: string } } | null;
+  if (body && typeof body === "object" && !Array.isArray(body) && body.error) {
+    throw new Error(`${new URL(url).host}: ${body.error.message ?? "error"}`);
+  }
+  return body as T;
 }
 
 /** County FIPS (5 digits) at a point, from Census TIGERweb. */
@@ -86,7 +95,7 @@ export async function countyFipsAt(lat: number, lng: number): Promise<{ fips: st
     f: "json",
   });
   const j = await getJson(`${TIGER_COUNTIES}/query?${q}`);
-  const a = j.features?.[0]?.attributes;
+  const a = j.features?.[0]?.attributes as { GEOID?: string; BASENAME?: string } | undefined;
   if (!a?.GEOID) throw new Error("no county at this point (TIGERweb)");
   return { fips: String(a.GEOID), name: String(a.BASENAME) };
 }
@@ -124,7 +133,7 @@ async function lodesFor(stateAbbr: string): Promise<Map<string, number>> {
       const url = `https://lehd.ces.census.gov/data/lodes/LODES8/${st}/wac/${st}_wac_S000_JT00_${LODES_YEAR}.csv.gz`;
       const res = await fetchGeo(url, { timeoutMs: 60_000 });
       if (!res.ok || !res.body) throw new Error(`LODES ${st} ${LODES_YEAR} HTTP ${res.status}`);
-      const gunzip = Readable.fromWeb(res.body as any).pipe(createGunzip());
+      const gunzip = Readable.fromWeb(res.body as unknown as Parameters<typeof Readable.fromWeb>[0]).pipe(createGunzip());
       return aggregateLodesByCounty(createInterface({ input: gunzip, crlfDelay: Infinity }));
     })();
     lodesByState.set(st, p);
@@ -183,9 +192,10 @@ export const nationalDatasetsProvider: DataProvider = {
     switch (cat) {
       case "fair_market_rent": {
         const { fips } = await countyFipsAt(lat, lng);
-        const j = await getJson(`https://www.huduser.gov/hudapi/public/fmr/data/${fips}99999`, {
-          headers: { Authorization: `Bearer ${process.env.HUD_USER_API_TOKEN}` },
-        });
+        const j = await getJson<{ data?: { year?: string; area_name?: string; basicdata?: unknown } }>(
+          `https://www.huduser.gov/hudapi/public/fmr/data/${fips}99999`,
+          { headers: { Authorization: `Bearer ${process.env.HUD_USER_API_TOKEN}` } },
+        );
         const d = j.data;
         if (!d?.basicdata) throw new Error("HUD returned no FMR for this county");
         return result(cat, { countyFips: fips, year: d.year ?? null, areaName: d.area_name ?? null, basicdata: d.basicdata }, start, null);
@@ -194,8 +204,8 @@ export const nationalDatasetsProvider: DataProvider = {
         const { fips } = await countyFipsAt(lat, lng);
         const vars = ["NAME", "B01003_001E", "B19013_001E", "B25064_001E"];
         const q = new URLSearchParams({ get: vars.join(","), for: `county:${fips.slice(2)}`, in: `state:${fips.slice(0, 2)}`, key: String(process.env.CENSUS_API_KEY) });
-        const rows = await getJson(`https://api.census.gov/data/${ACS_YEAR}/acs/acs5?${q}`);
-        const [h, v] = rows as string[][];
+        const rows = await getJson<string[][]>(`https://api.census.gov/data/${ACS_YEAR}/acs/acs5?${q}`);
+        const [h, v] = rows;
         const at = (k: string) => (v ? Number(v[h.indexOf(k)]) : NaN);
         return result(
           cat,
@@ -219,10 +229,11 @@ export const nationalDatasetsProvider: DataProvider = {
           outFields: "ON_ROAD,AADT,AADTYEAR,LATITUDE,LONGITUDE", returnGeometry: "false", f: "json",
         });
         const j = await getJson(`${TDOT_TRAFFIC_POINTS}/query?${q}`);
-        const stations = (j.features ?? []).map((f: any) => f.attributes);
+        type Station = { ON_ROAD: string; AADT: number; AADTYEAR: number; LATITUDE: number; LONGITUDE: number };
+        const stations = (j.features ?? []).map((f) => f.attributes as unknown as Station);
         if (stations.length === 0) throw new Error("no TDOT count station within 3 km");
-        const d = (s: any) => Math.hypot((s.LONGITUDE - lng) * Math.cos((lat * Math.PI) / 180), s.LATITUDE - lat) * 111_320;
-        stations.sort((a: any, b: any) => d(a) - d(b));
+        const d = (s: Station) => Math.hypot((s.LONGITUDE - lng) * Math.cos((lat * Math.PI) / 180), s.LATITUDE - lat) * 111_320;
+        stations.sort((a, b) => d(a) - d(b));
         const s = stations[0];
         return result(cat, { road: s.ON_ROAD, aadt: s.AADT, year: s.AADTYEAR, distanceM: Math.round(d(s)), stationsWithin3km: stations.length }, start, null);
       }
@@ -233,7 +244,7 @@ export const nationalDatasetsProvider: DataProvider = {
           outFields: "NAME,UNITS,SOURCEDATE", returnGeometry: "false", f: "json",
         });
         const j = await getJson(`${FEMA_MHP}/query?${q}`);
-        const parks = (j.features ?? []).map((f: any) => ({ name: f.attributes.NAME, units: f.attributes.UNITS, sourceDate: f.attributes.SOURCEDATE }));
+        const parks = (j.features ?? []).map((f) => ({ name: f.attributes.NAME, units: f.attributes.UNITS, sourceDate: f.attributes.SOURCEDATE }));
         return result(cat, { radiusMiles: 5, count: parks.length, parks: parks.slice(0, 25) }, start, null);
       }
       case "protected_lands_padus": {
@@ -244,7 +255,7 @@ export const nationalDatasetsProvider: DataProvider = {
           outFields: "Unit_Nm,Mang_Name,Pub_Access", returnGeometry: "false", f: "json",
         });
         const j = await getJson(`${PADUS_FEE}/query?${q}`);
-        const units = (j.features ?? []).map((f: any) => ({ name: f.attributes.Unit_Nm, manager: f.attributes.Mang_Name, publicAccess: f.attributes.Pub_Access }));
+        const units = (j.features ?? []).map((f) => ({ name: f.attributes.Unit_Nm, manager: f.attributes.Mang_Name, publicAccess: f.attributes.Pub_Access }));
         return result(cat, { radiusM: 1000, units }, start, null);
       }
     }

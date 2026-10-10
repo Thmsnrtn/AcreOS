@@ -133,8 +133,23 @@ export function geoMetadata(rows: OwnedParcelRow[]): string {
   });
 }
 
-async function parquetLib(): Promise<any> {
-  const mod: any = await import("parquetjs-lite");
+/** The slice of parquetjs-lite this module uses (the package ships no types). */
+interface ParquetLib {
+  ParquetSchema: new (def: unknown) => unknown;
+  ParquetWriter: {
+    openFile(schema: unknown, path: string): Promise<{ setMetadata(k: string, v: string): void; appendRow(r: unknown): Promise<void>; close(): Promise<void> }>;
+  };
+  ParquetReader: {
+    openFile(path: string): Promise<{
+      getMetadata(): Record<string, string>;
+      getCursor(): { next(): Promise<Record<string, unknown> | null> };
+      close(): Promise<void>;
+    }>;
+  };
+}
+
+async function parquetLib(): Promise<ParquetLib> {
+  const mod = (await import("parquetjs-lite")) as { default?: ParquetLib } & ParquetLib;
   return mod.default ?? mod;
 }
 
@@ -158,14 +173,14 @@ export interface LoadedGeoParquet {
 export async function readGeoParquet(filePath: string): Promise<LoadedGeoParquet> {
   const parquet = await parquetLib();
   const reader = await parquet.ParquetReader.openFile(filePath);
-  const meta = reader.getMetadata() as Record<string, string>;
+  const meta = reader.getMetadata();
   if (!meta.geo) throw new Error("not a GeoParquet file: no 'geo' metadata");
   const geo = JSON.parse(meta.geo);
   const cursor = reader.getCursor();
   const rows: OwnedParcelRow[] = [];
-  let rec: any;
-  while ((rec = await cursor.next())) {
-    rows.push({ ...rec, deeded_acres: rec.deeded_acres ?? null, geometry: decodeWkb(Buffer.from(rec.geometry)) });
+  for (let rec = await cursor.next(); rec; rec = await cursor.next()) {
+    const r = rec as unknown as Omit<OwnedParcelRow, "geometry"> & { geometry: Uint8Array };
+    rows.push({ ...r, deeded_acres: r.deeded_acres ?? null, geometry: decodeWkb(Buffer.from(r.geometry)) });
   }
   await reader.close();
   return { geo, rows };

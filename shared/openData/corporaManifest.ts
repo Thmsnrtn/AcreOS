@@ -21,7 +21,7 @@
  * "ingested" status — but it is NEVER written into this file. It is DERIVED
  * by getCorporaStatus() from an upload receipt: an object the bucket itself
  * confirmed (HEAD after PUT, byte count and SHA-256 recorded in
- * open_data_ingest_receipts). No receipt, no "ingested".
+ * county_discovery_queue.owned_artifacts). No receipt, no "ingested".
  */
 
 /**

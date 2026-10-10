@@ -499,6 +499,7 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   { name: "outcome_verification", intervalMs: DAY, critical: false },
   { name: "county_endpoint_discovery", intervalMs: WEEK, critical: false },
   { name: "county_discovery_queue_drain", intervalMs: 30 * MIN, critical: false },
+  { name: "county_parcel_pipeline", intervalMs: 10 * MIN, critical: false },
   { name: "land_profile_prewarm", intervalMs: 15 * MIN, critical: false },
   { name: "stripe_drift_detector", intervalMs: DAY, critical: true },
   { name: "vendor_secret_rotation", intervalMs: DAY, critical: false },

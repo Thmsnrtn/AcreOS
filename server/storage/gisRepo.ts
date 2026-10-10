@@ -6,7 +6,7 @@
 // DatabaseStorage.prototype at construction time; `this` refers to the full
 // DatabaseStorage instance.
 
-import { and, asc, desc, eq, gte, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { omitProtectedFields } from "../utils/updatePayload";
 import { db } from "../db";
 import {
@@ -410,7 +410,10 @@ export const gisRepo = {
         and(
           sql`UPPER(${parcelSnapshots.apn}) = ${ref.ref.apn}`,
           eq(parcelSnapshots.state, ref.ref.state),
-          countyMatches(ref.ref.county)
+          countyMatches(ref.ref.county),
+          // A kept W2 parcel ("owned_pipeline") is not a cache row: the
+          // lookup cache must never overwrite it.
+          ne(parcelSnapshots.source, "owned_pipeline"),
         )
       )
       .limit(1);

@@ -1,12 +1,16 @@
 /**
  * On-demand county pipeline (W2 task 1), run on the existing worker.
  *
- * The first customer search in a county creates a county_parcel_jobs row.
+ * The first customer search in a county starts the county's OWNERSHIP
+ * lifecycle on its coverage row (county_discovery_queue.owned_* — discovery
+ * finds a source, ownership keeps its parcels; no new table, by the
+ * table-count ratchet).
  * The worker drains ONE county at a time (the 1 GB machine's safety margin):
  * it pages the county's free source through fetchGeo, normalizes each parcel,
  * assigns a stable parcel_key through the crosswalk, computes the derived
- * facts for the page's neighbourhood, and stores everything in owned_parcels —
- * kept, not re-fetched per lookup.
+ * facts for the page's neighbourhood, and stores everything as
+ * parcel_snapshots rows with source "owned_pipeline" — kept, not re-fetched
+ * per lookup, and never served or overwritten by the lookup cache.
  *
  * Refusal is a first-class outcome, decided BEFORE a byte is fetched:
  *   - no free source for the county         → refused; the miss is recorded
@@ -16,15 +20,9 @@
  * The reason is stored on the row and shown to the customer verbatim.
  */
 
-import { and, desc, eq, sql, gte, lte, inArray } from "drizzle-orm";
+import { and, desc, eq, sql, inArray } from "drizzle-orm";
 import { db } from "../../db";
-import {
-  countyGisEndpoints,
-  countyParcelJobs,
-  ownedParcels,
-  parcelIdCrosswalk,
-  type CountyParcelJob,
-} from "@shared/schema";
+import { countyDiscoveryQueue, countyGisEndpoints, parcelSnapshots } from "@shared/schema";
 import { logger } from "../../utils/logger";
 import { clock } from "../../utils/clock";
 import { fetchGeo } from "../providers/fetchGeo";
@@ -43,6 +41,38 @@ export const MAX_CONCURRENT_COUNTIES = 1;
 export const PAGE_SIZE = 250;
 /** Pages per worker tick (≤ 2,000 parcels), then yield until the next tick. */
 export const MAX_PAGES_PER_TICK = 8;
+
+/** parcel_snapshots.source of a KEPT parcel (never a cache row). */
+export const OWNED_SNAPSHOT_SOURCE = "owned_pipeline";
+
+/** The ownership lifecycle columns of one county's coverage row. */
+export interface CountyJob {
+  id: number;
+  state: string;
+  county: string;
+  ownedStatus: string | null;
+  ownedRefusalReason: string | null;
+  ownedDemand: number;
+  ownedNextOffset: number;
+  ownedParcelsStored: number;
+  ownedAttempts: number;
+  ownedStartedAt: Date | null;
+  ownedCompletedAt: Date | null;
+}
+
+const JOB_COLUMNS = {
+  id: countyDiscoveryQueue.id,
+  state: countyDiscoveryQueue.state,
+  county: countyDiscoveryQueue.county,
+  ownedStatus: countyDiscoveryQueue.ownedStatus,
+  ownedRefusalReason: countyDiscoveryQueue.ownedRefusalReason,
+  ownedDemand: countyDiscoveryQueue.ownedDemand,
+  ownedNextOffset: countyDiscoveryQueue.ownedNextOffset,
+  ownedParcelsStored: countyDiscoveryQueue.ownedParcelsStored,
+  ownedAttempts: countyDiscoveryQueue.ownedAttempts,
+  ownedStartedAt: countyDiscoveryQueue.ownedStartedAt,
+  ownedCompletedAt: countyDiscoveryQueue.ownedCompletedAt,
+};
 
 /**
  * Statewide layers carry many counties; storing one county needs a VERIFIED
@@ -161,45 +191,56 @@ export async function enqueueCountyProcessing(state: string, county: string): Pr
   const c = normalizeCountyName(county);
   const decision = decideCountyProcessing(st, c, await endpointViews(st));
   const refused = decision.action === "refuse";
-  const [row] = await db
-    .insert(countyParcelJobs)
-    .values({
-      state: st,
-      county: c,
-      status: refused ? "refused" : "pending",
-      refusalReason: refused ? decision.reason : null,
-      sourceEndpointId: refused ? null : decision.endpoint.id,
-      sourceUrl: refused ? null : decision.endpoint.baseUrl,
-    })
-    .onConflictDoUpdate({
-      target: [countyParcelJobs.state, countyParcelJobs.county],
-      set: {
-        demandCount: sql`${countyParcelJobs.demandCount} + 1`,
-        // A refused county is re-decided on fresh demand (a source may have
-        // been reviewed since); a complete or running one is left alone.
-        status: sql`CASE WHEN ${countyParcelJobs.status} = 'refused' THEN ${refused ? "refused" : "pending"} ELSE ${countyParcelJobs.status} END`,
-        refusalReason: sql`CASE WHEN ${countyParcelJobs.status} = 'refused' THEN ${refused ? decision.reason : null} ELSE ${countyParcelJobs.refusalReason} END`,
-        updatedAt: clock.now(),
-      },
-    })
-    .returning({ status: countyParcelJobs.status, refusalReason: countyParcelJobs.refusalReason, demandCount: countyParcelJobs.demandCount });
+  const nextStatus = refused ? "refused" : "pending";
+  const nextReason = refused ? decision.reason : null;
 
   if (refused && decision.code === "no_free_source") {
+    // The demand signal: creates or bumps the discovery row for this county.
     const { enqueueCountyForDiscovery } = await import("../coverageLedger");
     await enqueueCountyForDiscovery(st, c).catch((err) =>
       logger.warn("[countyPipeline] discovery demand signal failed", {
         metadata: { state: st, county: c, error: err instanceof Error ? err.message : String(err) },
       }),
     );
+  } else {
+    // A county with a known source still gets its coverage row, marked
+    // resolved for discovery (there is nothing to discover).
+    await db
+      .insert(countyDiscoveryQueue)
+      .values({
+        state: st,
+        county: c,
+        status: "resolved",
+        resolvedEndpointId: decision.action === "process" ? decision.endpoint.id : null,
+        lastResult: "source already known (W2 ownership request)",
+      })
+      .onConflictDoNothing();
   }
-  return { status: row?.status ?? "unknown", refusalReason: row?.refusalReason ?? null, demandCount: row?.demandCount ?? 0 };
+
+  const [row] = await db
+    .update(countyDiscoveryQueue)
+    .set({
+      ownedDemand: sql`${countyDiscoveryQueue.ownedDemand} + 1`,
+      // Never asked, or refused before: decide afresh (a source may have been
+      // reviewed since). Running or complete: leave it alone.
+      ownedStatus: sql`CASE WHEN ${countyDiscoveryQueue.ownedStatus} IS NULL OR ${countyDiscoveryQueue.ownedStatus} = 'refused' THEN ${nextStatus} ELSE ${countyDiscoveryQueue.ownedStatus} END`,
+      ownedRefusalReason: sql`CASE WHEN ${countyDiscoveryQueue.ownedStatus} IS NULL OR ${countyDiscoveryQueue.ownedStatus} = 'refused' THEN ${nextReason} ELSE ${countyDiscoveryQueue.ownedRefusalReason} END`,
+      updatedAt: clock.now(),
+    })
+    .where(and(eq(countyDiscoveryQueue.state, st), eq(countyDiscoveryQueue.county, c)))
+    .returning({
+      status: countyDiscoveryQueue.ownedStatus,
+      refusalReason: countyDiscoveryQueue.ownedRefusalReason,
+      demandCount: countyDiscoveryQueue.ownedDemand,
+    });
+  return { status: row?.status ?? nextStatus, refusalReason: row?.refusalReason ?? nextReason, demandCount: row?.demandCount ?? 0 };
 }
 
-export async function getCountyJob(state: string, county: string): Promise<CountyParcelJob | null> {
+export async function getCountyJob(state: string, county: string): Promise<CountyJob | null> {
   const [row] = await db
-    .select()
-    .from(countyParcelJobs)
-    .where(and(eq(countyParcelJobs.state, state.toUpperCase()), eq(countyParcelJobs.county, normalizeCountyName(county))))
+    .select(JOB_COLUMNS)
+    .from(countyDiscoveryQueue)
+    .where(and(eq(countyDiscoveryQueue.state, state.toUpperCase()), eq(countyDiscoveryQueue.county, normalizeCountyName(county))))
     .limit(1);
   return row ?? null;
 }
@@ -220,6 +261,8 @@ export interface StoredParcel {
   gisAcres: number;
   deededAcres: number | null;
   facts: ParcelFactSet;
+  /** Non-personal mapped source fields (FieldMap.keep). */
+  attributes: Record<string, unknown>;
   how: "same_id" | "renumbered" | "new";
 }
 
@@ -284,6 +327,7 @@ export async function processCountyPage(
       gisAcres: gisAcres(i.f.geometry),
       deededAcres: input.deededAcres ?? null,
       facts: computeParcelFacts(input, ctx),
+      attributes: Object.fromEntries(fields.keep.filter((k) => k in i.f.attributes).map((k) => [k, i.f.attributes[k]])),
       how: a.how,
     };
   });
@@ -293,7 +337,7 @@ export async function processCountyPage(
 
 // ── Live deps ──────────────────────────────────────────────────────────────
 
-async function liveDeps(job: CountyParcelJob, ep: EndpointView, countyWhere: string | null, retrievedOn: string): Promise<{ deps: PageDeps; fields: FieldMap }> {
+async function liveDeps(job: CountyJob, ep: EndpointView, countyWhere: string | null, retrievedOn: string): Promise<{ deps: PageDeps; fields: FieldMap }> {
   const layerUrl = `${ep.baseUrl.replace(/\/$/, "")}/${ep.layerId ?? "0"}`;
   const metaRes = await fetchGeo(`${layerUrl}?f=json`, { timeoutMs: 30_000 });
   if (!metaRes.ok) throw new Error(`layer metadata HTTP ${metaRes.status}`);
@@ -322,11 +366,11 @@ async function liveDeps(job: CountyParcelJob, ep: EndpointView, countyWhere: str
       });
       const res = await fetchGeo(`${layerUrl}/query?${params}`, { timeoutMs: 60_000, ratePerSec: 1, maxConcurrentPerHost: 1 });
       if (!res.ok) throw new Error(`page HTTP ${res.status}`);
-      const body = (await res.json()) as { features?: Array<{ geometry: any; properties: Record<string, unknown> }>; error?: { message?: string } };
+      const body = (await res.json()) as { features?: Array<{ geometry: { type: string; coordinates: unknown } | null; properties: Record<string, unknown> }>; error?: { message?: string } };
       if (body.error) throw new Error(body.error.message ?? "ArcGIS error");
       return (body.features ?? [])
         .filter((f) => f.geometry && (f.geometry.type === "Polygon" || f.geometry.type === "MultiPolygon"))
-        .map((f) => ({ objectId: Number(f.properties[oid]), geometry: f.geometry as AreaGeometry, attributes: f.properties }));
+        .map((f) => ({ objectId: Number(f.properties[oid]), geometry: f.geometry as unknown as AreaGeometry, attributes: f.properties }));
     },
     loadContext: (bbox) =>
       loadParcelContext(bbox, retrievedOn, {
@@ -336,60 +380,65 @@ async function liveDeps(job: CountyParcelJob, ep: EndpointView, countyWhere: str
           }),
       }),
     async existingNear(b) {
+      const lng = sql`(${parcelSnapshots.centroid}->>'lng')::float8`;
+      const lat = sql`(${parcelSnapshots.centroid}->>'lat')::float8`;
       const rows = await db
-        .select({
-          parcelKey: ownedParcels.parcelKey,
-          sourceId: ownedParcels.sourceParcelId,
-          lng: ownedParcels.centroidLng,
-          lat: ownedParcels.centroidLat,
-          geometry: ownedParcels.geometry,
-        })
-        .from(ownedParcels)
+        .select({ parcelKey: parcelSnapshots.parcelKey, sourceId: parcelSnapshots.apn, centroid: parcelSnapshots.centroid, boundary: parcelSnapshots.boundary })
+        .from(parcelSnapshots)
         .where(
           and(
-            eq(ownedParcels.state, job.state),
-            eq(ownedParcels.county, job.county),
-            gte(ownedParcels.centroidLng, b[0]),
-            lte(ownedParcels.centroidLng, b[2]),
-            gte(ownedParcels.centroidLat, b[1]),
-            lte(ownedParcels.centroidLat, b[3]),
+            eq(parcelSnapshots.source, OWNED_SNAPSHOT_SOURCE),
+            eq(parcelSnapshots.state, job.state),
+            eq(parcelSnapshots.county, job.county),
+            sql`${lng} BETWEEN ${b[0]} AND ${b[2]}`,
+            sql`${lat} BETWEEN ${b[1]} AND ${b[3]}`,
           ),
         );
-      return rows.map((r) => ({
-        parcelKey: r.parcelKey,
-        sourceId: r.sourceId,
-        centroid: [r.lng, r.lat] as [number, number],
-        areaSqM: areaSqM(r.geometry as AreaGeometry),
-      }));
+      return rows
+        .filter((r) => r.parcelKey && r.centroid && r.boundary)
+        .map((r) => ({
+          parcelKey: r.parcelKey!,
+          sourceId: r.sourceId,
+          centroid: [r.centroid!.lng, r.centroid!.lat] as [number, number],
+          areaSqM: areaSqM(r.boundary as AreaGeometry),
+        }));
     },
     async save(parcels) {
       const now = clock.now();
       for (const p of parcels) {
+        const [existing] = await db
+          .select({ id: parcelSnapshots.id, rawData: parcelSnapshots.rawData })
+          .from(parcelSnapshots)
+          .where(and(eq(parcelSnapshots.source, OWNED_SNAPSHOT_SOURCE), eq(parcelSnapshots.parcelKey, p.parcelKey)))
+          .limit(1);
+        const prevHistory = Array.isArray(existing?.rawData?.sourceIdHistory) ? (existing!.rawData!.sourceIdHistory as string[]) : [];
+        const history = Array.from(new Set([...prevHistory, p.sourceParcelId.toUpperCase()]));
         const values = {
-          parcelKey: p.parcelKey,
+          organizationId: null,
+          apn: p.sourceParcelId.toUpperCase(),
           state: job.state,
           county: job.county,
-          sourceParcelId: p.sourceParcelId,
-          sourceName: ep.licenseSource ?? `County GIS endpoint #${ep.id}`,
-          sourceUrl: layerUrl,
-          retrievedAt: now,
-          geometry: p.geometry,
-          centroidLng: p.centroid[0],
-          centroidLat: p.centroid[1],
-          gisAcres: p.gisAcres,
-          deededAcres: p.deededAcres,
-          facts: p.facts,
+          source: OWNED_SNAPSHOT_SOURCE,
+          sourceId: p.sourceParcelId,
+          boundary: p.geometry,
+          centroid: { lng: p.centroid[0], lat: p.centroid[1] },
+          acres: String(p.gisAcres),
+          rawData: {
+            sourceName: ep.licenseSource ?? `County GIS endpoint #${ep.id}`,
+            sourceUrl: layerUrl,
+            deededAcres: p.deededAcres,
+            attributes: p.attributes,
+            sourceIdHistory: history,
+          },
+          parcelKey: p.parcelKey,
+          facts: p.facts as unknown as Record<string, unknown>,
           factsComputedAt: now,
+          fetchedAt: now,
+          expiresAt: null,
           updatedAt: now,
         };
-        await db.insert(ownedParcels).values(values).onConflictDoUpdate({ target: ownedParcels.parcelKey, set: values });
-        await db
-          .insert(parcelIdCrosswalk)
-          .values({ parcelKey: p.parcelKey, state: job.state, county: job.county, sourceParcelId: p.sourceParcelId, firstSeenAt: now, lastSeenAt: now })
-          .onConflictDoUpdate({
-            target: [parcelIdCrosswalk.state, parcelIdCrosswalk.county, parcelIdCrosswalk.sourceParcelId, parcelIdCrosswalk.parcelKey],
-            set: { lastSeenAt: now },
-          });
+        if (existing) await db.update(parcelSnapshots).set(values).where(eq(parcelSnapshots.id, existing.id));
+        else await db.insert(parcelSnapshots).values(values);
       }
     },
   };
@@ -402,54 +451,44 @@ async function liveDeps(job: CountyParcelJob, ep: EndpointView, countyWhere: str
  */
 export async function runCountyPipelineTick(): Promise<{ county: string | null; stored: number; outcome: string }> {
   const [job] = await db
-    .select()
-    .from(countyParcelJobs)
-    .where(inArray(countyParcelJobs.status, ["pending", "processing"]))
-    .orderBy(desc(countyParcelJobs.demandCount))
+    .select(JOB_COLUMNS)
+    .from(countyDiscoveryQueue)
+    .where(inArray(countyDiscoveryQueue.ownedStatus, ["pending", "processing"]))
+    .orderBy(desc(countyDiscoveryQueue.ownedDemand))
     .limit(1);
   if (!job) return { county: null, stored: 0, outcome: "idle" };
+  const setJob = (v: Partial<typeof countyDiscoveryQueue.$inferInsert>) =>
+    db.update(countyDiscoveryQueue).set({ ...v, updatedAt: clock.now() }).where(eq(countyDiscoveryQueue.id, job.id));
 
   const decision = decideCountyProcessing(job.state, job.county, await endpointViews(job.state));
   if (decision.action === "refuse") {
-    await db
-      .update(countyParcelJobs)
-      .set({ status: "refused", refusalReason: decision.reason, updatedAt: clock.now() })
-      .where(eq(countyParcelJobs.id, job.id));
+    await setJob({ ownedStatus: "refused", ownedRefusalReason: decision.reason });
     return { county: job.county, stored: 0, outcome: `refused:${decision.code}` };
   }
 
   const retrievedOn = clock.now().toISOString().slice(0, 10);
   let stored = 0;
-  let offset = job.nextOffset;
+  let offset = job.ownedNextOffset;
   try {
-    await db
-      .update(countyParcelJobs)
-      .set({ status: "processing", startedAt: job.startedAt ?? clock.now(), attempts: job.attempts + 1, updatedAt: clock.now() })
-      .where(eq(countyParcelJobs.id, job.id));
+    await setJob({ ownedStatus: "processing", ownedStartedAt: job.ownedStartedAt ?? clock.now(), ownedAttempts: job.ownedAttempts + 1 });
     const { deps, fields } = await liveDeps(job, decision.endpoint, decision.countyWhere, retrievedOn);
     for (let page = 0; page < MAX_PAGES_PER_TICK; page++) {
       const r = await processCountyPage({ state: job.state, county: job.county, countyFips: null, nextOffset: offset }, fields, deps);
       stored += r.stored;
       offset = r.lastObjectId;
       await db
-        .update(countyParcelJobs)
-        .set({ nextOffset: offset, parcelsStored: sql`${countyParcelJobs.parcelsStored} + ${r.stored}`, updatedAt: clock.now() })
-        .where(eq(countyParcelJobs.id, job.id));
+        .update(countyDiscoveryQueue)
+        .set({ ownedNextOffset: offset, ownedParcelsStored: sql`${countyDiscoveryQueue.ownedParcelsStored} + ${r.stored}`, updatedAt: clock.now() })
+        .where(eq(countyDiscoveryQueue.id, job.id));
       if (r.done) {
-        await db
-          .update(countyParcelJobs)
-          .set({ status: "complete", completedAt: clock.now(), updatedAt: clock.now() })
-          .where(eq(countyParcelJobs.id, job.id));
+        await setJob({ ownedStatus: "complete", ownedCompletedAt: clock.now() });
         return { county: job.county, stored, outcome: "complete" };
       }
     }
     return { county: job.county, stored, outcome: "partial" };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await db
-      .update(countyParcelJobs)
-      .set({ status: job.attempts + 1 >= 5 ? "failed" : "processing", lastError: message.slice(0, 500), updatedAt: clock.now() })
-      .where(eq(countyParcelJobs.id, job.id));
+    await setJob({ ownedStatus: job.ownedAttempts + 1 >= 5 ? "failed" : "processing", ownedLastError: message.slice(0, 500) });
     logger.warn("[countyPipeline] tick failed", { metadata: { county: job.county, state: job.state, error: message } });
     return { county: job.county, stored, outcome: "error" };
   }
