@@ -166,15 +166,14 @@ function EmailMessageRow({
   const rowAriaLabel = `${message.isRead ? "Read" : "Unread"} email from ${senderLabel}: ${subjectLabel}`;
 
   return (
+    // The row itself is not a button: it holds the star and archive buttons,
+    // and a button inside a button is invisible to screen readers (axe
+    // nested-interactive). The open-the-message target is the inner button;
+    // the row keeps a mouse click on its padding for convenience.
     <div
       data-testid={`inbox-message-row-${message.id}`}
-      role="button"
-      tabIndex={0}
-      aria-label={rowAriaLabel}
-      aria-current={isSelected ? "true" : undefined}
       onClick={onSelect}
-      onKeyDown={(e) => handleRowKeyDown(e, onSelect)}
-      className={`group flex items-start gap-3 p-3 cursor-pointer border-b transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${
+      className={`group flex items-start gap-3 p-3 cursor-pointer border-b transition-colors focus-within:ring-2 focus-within:ring-ring focus-within:ring-inset ${
         isSelected
           ? "bg-[color:var(--acr-brand-soft)]"
           : message.isRead
@@ -182,6 +181,17 @@ function EmailMessageRow({
             : "bg-acr-brand-soft/30 hover:bg-acr-brand-soft/50"
       }`}
     >
+      <button
+        type="button"
+        data-testid={`button-open-email-${message.id}`}
+        aria-label={rowAriaLabel}
+        aria-current={isSelected ? "true" : undefined}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect();
+        }}
+        className="flex flex-1 min-w-0 items-start gap-3 text-left focus-visible:outline-none"
+      >
       <Avatar className="h-9 w-9 flex-shrink-0">
         <AvatarFallback className="text-xs">
           {getInitials(message.senderName, message.senderEmail)}
@@ -218,6 +228,7 @@ function EmailMessageRow({
           )}
         </div>
       </div>
+      </button>
 
       {/* Fast-action row — visible on group-hover (desktop) or when row
           has focus (keyboard). On touch devices (which never fire hover)
@@ -1454,7 +1465,7 @@ export default function InboxPage() {
                       <div className="px-3 py-2 border-b bg-[color:var(--acr-bg-sunken)]">
                         <h2 className="text-section-h2 text-[color:var(--acr-ink-2)]">
                           {BUCKET_LABELS[bucket]}
-                          <span className="text-caption font-normal text-[color:var(--acr-ink-3)] ml-2">
+                          <span className="text-caption font-normal text-[color:var(--acr-ink-2)] ml-2">
                             {items.length} message{items.length !== 1 ? "s" : ""}{narrativeSuffix}
                           </span>
                         </h2>
