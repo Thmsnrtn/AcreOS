@@ -211,7 +211,19 @@ describe("the accessibility audit is capable of failing", () => {
   });
 
   it("the audit waits for entrance animations before reading contrast", () => {
-    expect(SPEC).toMatch(/document\.getAnimations\(\)\.every\(/);
+    // Not a one-shot "no animation running" check: that passed before the
+    // cards mounted and was blind to JS-driven fades. The audit must wait for
+    // finite animations AND a visual signature stable over several samples,
+    // and must FAIL (not swallow) a page that never settles.
+    const settle = SPEC.slice(SPEC.indexOf("async function settleVisuals"), SPEC.indexOf("async function settleOnly"));
+    expect(settle.length, "settleVisuals is gone from the audit").toBeGreaterThan(0);
+    expect(settle).toMatch(/getAnimations\(\)/);
+    expect(settle).toMatch(/getComputedTiming\(\)\.endTime !== Infinity/);
+    expect(settle).toMatch(/getComputedStyle\(el\)/);
+    expect(settle).toMatch(/stable >= need/);
+    expect(settle).toMatch(/\.catch\(\(err: unknown\) => \{\s*throw new Error/);
+    expect(SPEC).toMatch(/SETTLE_STABLE_SAMPLES = [2-9]/);
+    expect(SPEC).toMatch(/await settle\(page\);\s*\n[\s\S]{0,800}new AxeBuilder/);
   });
 
   it("the spec that never audited anything stays deleted", () => {

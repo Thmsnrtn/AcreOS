@@ -123,12 +123,70 @@ async function authenticate(page: Page, session: string) {
 
 async function settle(page: Page) {
   await settleOnly(page);
-  // Lists fade in (staggerItem). An axe pass taken mid-fade reads blended,
-  // half-transparent text and reports contrast the finished page does not
-  // have — the 2026-10-10 persona walks measured 50 such nodes on Today.
+  await settleVisuals(page);
+}
+
+/**
+ * Lists fade in (staggerItem). An axe pass taken mid-fade reads blended,
+ * half-transparent text and reports contrast the finished page does not have
+ * — the 2026-10-10 persona walks measured 50 such nodes on Today, and webkit
+ * on PR #341 measured 68–70 on Today's decision cards.
+ *
+ * A single `getAnimations().every(not running)` check was not enough, for
+ * three reasons this wait closes:
+ *   1. It passed INSTANTLY when the cards had not mounted yet (their data was
+ *      still loading): zero animations is "every animation finished". The
+ *      cards then mounted and faded in under axe.
+ *   2. framer-motion drives some fades from JS frames, which never appear in
+ *      document.getAnimations() at all.
+ *   3. Any infinite animation (a skeleton pulse, a live dot) is "running"
+ *      forever, so the check always hit its timeout — whose error was
+ *      swallowed, so the audit read the page at an arbitrary moment.
+ *
+ * So: the page is settled when no FINITE animation is running AND every
+ * element's computed opacity and transform under main has stayed identical
+ * across several consecutive samples (elements an infinite animation is
+ * driving are left out of the signature). A page that never settles fails,
+ * loudly — an audit of a moving page is not an audit.
+ */
+const SETTLE_STABLE_SAMPLES = 4;
+const SETTLE_POLL_MS = 200;
+
+async function settleVisuals(page: Page) {
   await page
-    .waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running"), null, { timeout: 6_000 })
-    .catch(() => {});
+    .waitForFunction(
+      ({ need }) => {
+        const w = window as unknown as { __a11ySettle?: { sig: string; stable: number } };
+        const anims = document.getAnimations();
+        const finiteRunning = anims.some(
+          (a) => a.playState === "running" && a.effect?.getComputedTiming().endTime !== Infinity,
+        );
+        const looping = anims
+          .filter((a) => a.effect?.getComputedTiming().endTime === Infinity)
+          .map((a) => (a.effect as KeyframeEffect | null)?.target)
+          .filter((t): t is Element => t instanceof Element);
+        const root = document.querySelector("main, [role='main']") ?? document.body;
+        const parts: string[] = [];
+        root.querySelectorAll("*").forEach((el) => {
+          if (looping.some((t) => t === el || t.contains(el))) return;
+          const cs = getComputedStyle(el);
+          parts.push(`${cs.opacity}|${cs.transform}|${cs.color}|${cs.backgroundColor}`);
+        });
+        const sig = `${parts.length}:${parts.join(";")}`;
+        const prev = w.__a11ySettle;
+        const stable = !finiteRunning && prev?.sig === sig ? prev.stable + 1 : 0;
+        w.__a11ySettle = { sig, stable };
+        return stable >= need;
+      },
+      { need: SETTLE_STABLE_SAMPLES },
+      { polling: SETTLE_POLL_MS, timeout: 15_000 },
+    )
+    .catch((err: unknown) => {
+      throw new Error(
+        `the page never stopped moving (no ${SETTLE_STABLE_SAMPLES} identical samples ${SETTLE_POLL_MS} ms apart in 15 s), ` +
+          `so a contrast audit of it would measure a frame, not the page: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
 }
 
 async function settleOnly(page: Page) {
