@@ -109,7 +109,11 @@ const REGISTER: Record<string, [number, SendClass]> = {
   // mail to the lender's counterparty, sent only from the lender's identity.
   "server/services/borrower/servicingWindDown.ts": [1, "system-mail"],
   "server/services/borrower/servicingWindDownBorrowerNotice.ts": [1, "counterparty-byo"],
-  "server/webhookHandlers.ts": [3, "system-mail"],
+  // +1 on 2026-10-09: the auto-renewal acknowledgment (Cal. Bus. & Prof. Code
+  // § 17602(a)(3)) — AcreOS's own mail to its own subscriber, system lane.
+  "server/webhookHandlers.ts": [4, "system-mail"],
+  // 2026-10-09: the yearly pre-renewal notice (§ 17602(a)(8), (b)(2)), system lane.
+  "server/services/annualRenewalNotice.ts": [1, "system-mail"],
   "server/worker.ts": [1, "system-mail"],
 };
 

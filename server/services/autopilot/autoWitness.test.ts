@@ -65,6 +65,15 @@ vi.mock("./hands", () => ({
   getHand: (name: string) => HAND_SPECS[name],
 }));
 
+// ── routine-support policy pass (founder decision 2026-10-09) ────────────────
+// It runs first and has its own suite (tests/unit/routineSupportAutonomy.test.ts).
+// Here it releases nothing and holds only what a test puts in `heldBySupport`,
+// so the grant pass below is the unit under test.
+let heldBySupport = new Set<number>();
+vi.mock("../support/routineSupportSweep", () => ({
+  runRoutineSupportSweep: vi.fn(async () => ({ considered: 0, released: 0, held: heldBySupport.size, heldForFounder: heldBySupport, outcomes: [] })),
+}));
+
 import { runAutoWitnessSweep, predictedCostUsdFromArgs, AUTO_WITNESS_GRANTEE } from "./autoWitness";
 
 const NOW = Date.parse("2026-07-03T12:00:00Z");
@@ -104,6 +113,7 @@ beforeEach(() => {
   handRefusal = null;
   grants = [];
   pending = [];
+  heldBySupport = new Set();
   vi.clearAllMocks();
   consumeGrantUseMock.mockResolvedValue(true);
   approveMock.mockResolvedValue({ outcome: "executed" as const, result: { success: true } });
@@ -297,5 +307,24 @@ describe("runAutoWitnessSweep — hand, role and control bounds", () => {
     pending = [{ id: 16, handName: "send_email", args: { to: "owner@x.com" } }];
     await runAutoWitnessSweep({ now: NOW });
     expect(approveMock.mock.calls[0][0]).toMatchObject({ id: 16, delegation: { grantId: "1" } });
+  });
+});
+
+describe("runAutoWitnessSweep — the routine-support policy's holds", () => {
+  it("a support draft the policy held for the founder is not released by any grant", async () => {
+    grants = [makeGrant()];
+    pending = [{ id: 41, handName: "send_email", args: { to: "a@b.co", subject: "s", body: "b" } }];
+    heldBySupport = new Set([41]);
+    const r = await runAutoWitnessSweep({ now: NOW });
+    expect(approveMock).not.toHaveBeenCalled();
+    expect(r.witnessed).toBe(0);
+  });
+
+  it("the same draft, not held, is released by the same grant (the hold is what stopped it)", async () => {
+    grants = [makeGrant()];
+    pending = [{ id: 41, handName: "send_email", args: { to: "a@b.co", subject: "s", body: "b" } }];
+    const r = await runAutoWitnessSweep({ now: NOW });
+    expect(approveMock).toHaveBeenCalledTimes(1);
+    expect(r.witnessed).toBe(1);
   });
 });
