@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { formatDate } from "@/lib/format";
 import {
   Dialog,
   DialogContent,
@@ -92,7 +93,7 @@ export function CancellationDialog({ open, onOpenChange, currentTier, onDowngrad
         toast({
           title: "Subscription cancelled",
           description: data.endsAt
-            ? `It won't renew. You keep full access until ${new Date(data.endsAt).toLocaleDateString()}.`
+            ? `It won't renew. You keep full access until ${formatDate(data.endsAt)}.`
             : "It won't renew. You keep full access until the end of the period you paid for.",
         });
         handleClose();
