@@ -11,9 +11,11 @@
  *     doc citation — never with a guess.
  *  3. getCorporaStatus() never overstates: with no bucket configured every
  *     reason is the verbatim STORAGE_NOT_PROVISIONED sentinel; with all four
- *     OPEN_DATA_BUCKET_* keys set the status is at most
- *     storage_configured_pipeline_pending — an "ingested" status does not
- *     exist this wave (no ingestion code exists in the repo).
+ *     OPEN_DATA_BUCKET_* keys set but no receipt the status is
+ *     storage_configured_pipeline_pending. W2 shipped real ingestion code, so
+ *     "ingested" now exists — reachable ONLY from a valid upload receipt
+ *     (bytes > 0, a SHA-256, an object key) with storage configured, and
+ *     never written statically into the manifest.
  *  4. The four env keys are documented (commented) in .env.example.
  *  5. The seed is actually wired into the seedFounderDecisionCards boot hook.
  */
@@ -33,6 +35,7 @@ import {
   isBucketConfigured,
   PIPELINE_PENDING_REASON,
 } from "../../server/services/openData/corporaStatus";
+import { stripComments } from "../helpers/stripComments";
 
 const root = path.resolve(__dirname, "../..");
 
@@ -137,7 +140,7 @@ describe("getCorporaStatus — never overstates", () => {
     }
   });
 
-  it("all keys set → storage_configured_pipeline_pending with an honest nothing-ingested reason — NEVER 'ingested'", () => {
+  it("all keys set, no receipt → storage_configured_pipeline_pending with an honest nothing-ingested reason", () => {
     expect(isBucketConfigured(configuredEnv)).toBe(true);
     const reports = getCorporaStatus(configuredEnv);
     for (const r of reports) {
@@ -147,20 +150,45 @@ describe("getCorporaStatus — never overstates", () => {
     }
   });
 
-  it("the status vocabulary has no 'ingested' member this wave (no ingestion code exists)", () => {
-    // Source-shape: the shared enum is the only status vocabulary, and it
-    // must not contain an ingested/complete state until real ingestion ships.
-    const manifestSrc = readFileSync(
-      path.join(root, "shared/openData/corporaManifest.ts"),
-      "utf-8",
-    );
+  const receipt = {
+    corpusKey: "statewide-parcels-bulk",
+    objectKey: "tn/2026-10-10/tn-parcel-facts.parquet",
+    bytes: 197817,
+    sha256: "a".repeat(64),
+  };
+
+  it("a valid receipt makes exactly its own corpus 'ingested'", () => {
+    const reports = getCorporaStatus(configuredEnv, [receipt]);
+    for (const r of reports) {
+      expect(r.ingestStatus, r.key).toBe(r.key === "statewide-parcels-bulk" ? "ingested" : "storage_configured_pipeline_pending");
+    }
+    expect(reports.find((r) => r.key === "statewide-parcels-bulk")!.reason).toMatch(/197817 bytes confirmed by the bucket/);
+  });
+
+  it("a receipt never counts without configured storage, or without real bytes and a digest", () => {
+    expect(getCorporaStatus(emptyEnv, [receipt]).every((r) => r.ingestStatus === "not_provisioned")).toBe(true);
+    for (const bad of [{ ...receipt, bytes: 0 }, { ...receipt, sha256: "nope" }, { ...receipt, objectKey: "" }]) {
+      expect(getCorporaStatus(configuredEnv, [bad]).some((r) => r.ingestStatus === "ingested")).toBe(false);
+    }
+  });
+
+  it("the vocabulary has 'ingested', and the static manifest never claims it", () => {
+    const manifestSrc = readFileSync(path.join(root, "shared/openData/corporaManifest.ts"), "utf-8");
     const enumBlock = manifestSrc.slice(
       manifestSrc.indexOf("export type CorpusIngestStatus"),
       manifestSrc.indexOf("export interface CorpusManifestEntry"),
     );
     expect(enumBlock).toContain('"not_provisioned"');
     expect(enumBlock).toContain('"storage_configured_pipeline_pending"');
-    expect(enumBlock).not.toMatch(/"ingested"|"ingesting"|"complete"/);
+    expect(enumBlock).toContain('"ingested"');
+    // Every static entry is not_provisioned (the type pins it too), and the
+    // only writer of "ingested" in the status module is the receipt branch.
+    for (const c of TIER2_CORPORA) expect(c.ingestStatus).toBe("not_provisioned");
+    const statusSrc = stripComments(
+      readFileSync(path.join(root, "server/services/openData/corporaStatus.ts"), "utf-8"),
+    );
+    expect(statusSrc.match(/"ingested"/g)?.length).toBe(1);
+    expect(statusSrc).toMatch(/if \(mine\.length > 0\)[\s\S]{0,200}"ingested"/);
   });
 });
 
@@ -178,8 +206,9 @@ describe(".env.example — the future pipeline's keys are documented", () => {
     expect(envExample).toMatch(/S3-compatible/);
   });
 
-  it("admits no ingestion pipeline exists yet", () => {
-    expect(envExample).toMatch(/no ingestion pipeline exists yet/i);
+  it("says 'ingested' needs a bucket-confirmed receipt", () => {
+    expect(envExample).toMatch(/"ingested" ONLY after/);
+    expect(envExample).toMatch(/open_data_ingest_receipts/);
   });
 });
 

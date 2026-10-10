@@ -1,0 +1,259 @@
+/**
+ * W2 land-data pipeline — artifacts, loader, crosswalk, refusals, uploads.
+ *
+ *  - GeoParquet: written, read back, geometry identical, "geo" metadata valid.
+ *  - PMTiles: written, read back with the `pmtiles` reader the client uses,
+ *    a tile under a parcel decodes to MVT features carrying only gated facts.
+ *  - Shapefile loader: the Lambert Conformal Conic inverse reproduces the
+ *    EPSG Guidance Note 7-2 worked example; a polygon .shp/.dbf round-trips.
+ *  - Crosswalk: a renumbered parcel keeps its key; a split gets a new one.
+ *  - County pipeline: refusal before any fetch for each refusal reason;
+ *    a page is keyed, faceted and saved.
+ *  - Upload: no receipt unless the bucket confirms the byte count.
+ */
+import { describe, expect, it, vi } from "vitest";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+vi.mock("../../server/db", () => ({ db: {} }));
+
+import { writeGeoParquet, readGeoParquet, encodeWkb, decodeWkb, type OwnedParcelRow } from "../../server/services/landData/geoParquet";
+import { buildPmtiles } from "../../server/services/landData/pmtilesWriter";
+import { lccInverse, readDbf, readShpPolygons } from "../../server/services/landData/shapefile";
+import { areaSqM, areaCentroid, type AreaGeometry } from "../../server/services/landData/geometry";
+import { reconcileCrosswalk, newParcelKey } from "@shared/landData/parcelCrosswalk";
+import {
+  decideCountyProcessing,
+  processCountyPage,
+  PAGE_SIZE,
+  MAX_CONCURRENT_COUNTIES,
+  type EndpointView,
+} from "../../server/services/landData/countyPipeline";
+import { uploadAndConfirm, bucketConfigFromEnv, type ObjectStoreClient } from "../../server/services/landData/openDataBucket";
+import type { ParcelContext } from "../../server/services/landData/computeParcelFacts";
+
+const root = path.resolve(__dirname, "../..");
+const fx = JSON.parse(readFileSync(path.join(root, "tests/fixtures/land-data/tn-accuracy-sample.json"), "utf8"));
+const sampleGeoms: AreaGeometry[] = fx.parcels.slice(0, 3).map((p: any) => p.geometry);
+
+describe("GeoParquet writer + loader", () => {
+  it("round-trips rows and geometry exactly, with GeoParquet 1.1 metadata", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "w2-pq-"));
+    try {
+      const rows: OwnedParcelRow[] = sampleGeoms.map((g, i) => ({
+        parcel_key: `TN-47041-${i}`, state: "TN", county_fips: "47041", county: "DeKalb",
+        source_parcel_id: String(i), source_name: "TN Comptroller parcel download", retrieved_on: "2026-10-10",
+        gis_acres: areaSqM(g) / 4046.8564224, deeded_acres: i === 0 ? null : 5,
+        facts_json: JSON.stringify({ i }), truths_json: "[]", geometry: g,
+      }));
+      const file = path.join(dir, "t.parquet");
+      await writeGeoParquet(file, rows);
+      const back = await readGeoParquet(file);
+      expect(back.rows).toHaveLength(3);
+      expect(back.geo.version).toBe("1.1.0");
+      expect(back.geo.primary_column).toBe("geometry");
+      expect(back.geo.columns.geometry.encoding).toBe("WKB");
+      back.rows.forEach((r, i) => {
+        expect(r.geometry).toEqual(rows[i].geometry);
+        expect(r.deeded_acres).toBe(rows[i].deeded_acres);
+        expect(r.parcel_key).toBe(rows[i].parcel_key);
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("WKB encode/decode is lossless for Polygon and MultiPolygon", () => {
+    const multi: AreaGeometry = { type: "MultiPolygon", coordinates: [(sampleGeoms[1] as any).coordinates ?? (sampleGeoms[1] as any).coordinates[0], [[[0, 0], [1, 0], [1, 1], [0, 0]]]] } as any;
+    for (const g of [...sampleGeoms, multi]) expect(decodeWkb(encodeWkb(g))).toEqual(g);
+  });
+});
+
+describe("PMTiles writer + loader", () => {
+  it("archive opens with the pmtiles reader and a tile decodes to MVT features", async () => {
+    const fc = {
+      type: "FeatureCollection" as const,
+      features: sampleGeoms.map((g, i) => ({ type: "Feature" as const, geometry: g, properties: { parcel_key: `k${i}`, access: "public_road_contact" } })),
+    };
+    const out = await buildPmtiles(fc, { layerName: "parcels", minZoom: 10, maxZoom: 14, name: "t", description: "t", attribution: "t" });
+    expect(out.tileCount).toBeGreaterThan(0);
+    const { PMTiles } = await import("pmtiles");
+    const bytes = out.bytes;
+    const arch = new PMTiles({
+      getKey: () => "t",
+      getBytes: async (o: number, l: number) => ({ data: bytes.buffer.slice(bytes.byteOffset + o, bytes.byteOffset + o + l) }),
+    } as any);
+    const h = await arch.getHeader();
+    expect([h.minZoom, h.maxZoom, h.tileType]).toEqual([10, 14, 1]);
+    const [cx, cy] = areaCentroid(sampleGeoms[0]);
+    const z = 14, n = 2 ** z;
+    const x = Math.floor(((cx + 180) / 360) * n);
+    const y = Math.floor(((1 - Math.log(Math.tan((cy * Math.PI) / 180) + 1 / Math.cos((cy * Math.PI) / 180)) / Math.PI) / 2) * n);
+    const tile = await arch.getZxy(z, x, y);
+    expect(tile?.data.byteLength).toBeGreaterThan(0);
+    const { VectorTile } = await import("@mapbox/vector-tile");
+    const pbf: any = await import("pbf");
+    const vt = new VectorTile(new (pbf.PbfReader ?? pbf.default)(new Uint8Array(tile!.data)));
+    expect(vt.layers.parcels.length).toBeGreaterThan(0);
+    expect(vt.layers.parcels.feature(0).properties.access).toBe("public_road_contact");
+  });
+
+  it("refuses to build an empty archive", async () => {
+    await expect(
+      buildPmtiles({ type: "FeatureCollection", features: [] }, { layerName: "p", minZoom: 1, maxZoom: 2, name: "", description: "", attribution: "" }),
+    ).rejects.toThrow(/empty/);
+  });
+});
+
+describe("Comptroller shapefile loader", () => {
+  it("LCC inverse reproduces the EPSG Guidance Note 7-2 worked example (Texas South Central, NAD27)", () => {
+    const inv = lccInverse({
+      a: 6378206.4, invF: 294.9786982, lat1: 28 + 23 / 60, lat2: 30 + 17 / 60, lat0: 27 + 50 / 60, lon0: -99,
+      falseE: 2000000, falseN: 0, unitToMetre: 0.3048006096,
+    });
+    const [lon, lat] = inv(2963503.91, 254759.8);
+    expect(lon).toBeCloseTo(-96, 6);
+    expect(lat).toBeCloseTo(28.5, 6);
+  });
+
+  it("reads a polygon .shp (ring orientation → outer/hole) and its .dbf", () => {
+    // Build a one-record polygon shapefile in memory: outer CW square + CCW hole.
+    const outer = [[0, 0], [0, 10], [10, 10], [10, 0], [0, 0]];
+    const hole = [[2, 2], [4, 2], [4, 4], [2, 4], [2, 2]];
+    const pts = [...outer, ...hole];
+    const content = 4 + 32 + 4 + 4 + 2 * 4 + pts.length * 16;
+    const shp = Buffer.alloc(100 + 8 + content);
+    shp.writeInt32BE(9994, 0);
+    shp.writeInt32BE(shp.length / 2, 24);
+    shp.writeInt32LE(1000, 28);
+    shp.writeInt32LE(5, 32);
+    shp.writeInt32BE(1, 100);
+    shp.writeInt32BE(content / 2, 104);
+    let o = 108;
+    shp.writeInt32LE(5, o); o += 4 + 32;
+    shp.writeInt32LE(2, o); o += 4;
+    shp.writeInt32LE(pts.length, o); o += 4;
+    shp.writeInt32LE(0, o); o += 4;
+    shp.writeInt32LE(outer.length, o); o += 4;
+    for (const [x, y] of pts) { shp.writeDoubleLE(x, o); shp.writeDoubleLE(y, o + 8); o += 16; }
+    const geoms = readShpPolygons(shp, (x, y) => [x, y]);
+    expect(geoms).toHaveLength(1);
+    expect(geoms[0]!.type).toBe("Polygon");
+    expect((geoms[0] as any).coordinates).toHaveLength(2);
+
+    // dBASE: one C field GISLINK(10) and one N field DEEDAC(8).
+    const header = 32 + 32 * 2 + 1;
+    const recLen = 1 + 10 + 8;
+    const dbf = Buffer.alloc(header + recLen + 1);
+    dbf.writeUInt8(3, 0);
+    dbf.writeUInt32LE(1, 4);
+    dbf.writeUInt16LE(header, 8);
+    dbf.writeUInt16LE(recLen, 10);
+    dbf.write("GISLINK", 32, "latin1"); dbf.write("C", 32 + 11, "latin1"); dbf.writeUInt8(10, 32 + 16);
+    dbf.write("DEEDAC", 64, "latin1"); dbf.write("N", 64 + 11, "latin1"); dbf.writeUInt8(8, 64 + 16);
+    dbf.writeUInt8(0x0d, header - 1);
+    dbf.write(" ", header, "latin1");
+    dbf.write("021045    ".padEnd(10), header + 1, "latin1");
+    dbf.write("    6.14", header + 11, "latin1");
+    expect(readDbf(dbf)).toEqual([{ GISLINK: "021045", DEEDAC: 6.14 }]);
+  });
+});
+
+describe("parcel-id crosswalk", () => {
+  const g = sampleGeoms[0];
+  const rec = (sourceId: string, geom: AreaGeometry) => ({ sourceId, centroid: areaCentroid(geom) as [number, number], areaSqM: areaSqM(geom) });
+  const mint = (sid: string) => newParcelKey("TN", "47041", sid);
+
+  it("a renumbered parcel keeps its key and records the alias", () => {
+    const prev = [{ ...rec("OLD-1", g), parcelKey: "TN-47041-OLD-1" }];
+    const r = reconcileCrosswalk(prev, [rec("NEW-9", g)], mint);
+    expect(r.assigned).toEqual([{ sourceId: "NEW-9", parcelKey: "TN-47041-OLD-1", how: "renumbered" }]);
+    expect(r.aliases).toEqual([{ parcelKey: "TN-47041-OLD-1", previousSourceId: "OLD-1", newSourceId: "NEW-9" }]);
+  });
+
+  it("a split (shape changed) gets a new key and retires the old one", () => {
+    const prev = [{ ...rec("A", g), parcelKey: "TN-47041-A" }];
+    const half = { ...rec("A", g), areaSqM: rec("A", g).areaSqM / 2 };
+    const r = reconcileCrosswalk(prev, [half], mint);
+    expect(r.assigned[0].how).toBe("new");
+    expect(r.retired).toEqual(["TN-47041-A"]);
+  });
+});
+
+describe("county pipeline — refusal is decided before any fetch", () => {
+  const ep = (o: Partial<EndpointView>): EndpointView => ({
+    id: 1, state: "TN", county: "dekalb", baseUrl: "https://example.test/FeatureServer", layerId: "0",
+    isActive: true, redistributable: "attribution", licenseSource: null, ...o,
+  });
+
+  it("caps concurrency at one county and pages small", () => {
+    expect(MAX_CONCURRENT_COUNTIES).toBe(1);
+    expect(PAGE_SIZE).toBeLessThanOrEqual(500);
+  });
+
+  it("no endpoint → refused as no_free_source", () => {
+    const d = decideCountyProcessing("TN", "DeKalb County", []);
+    expect(d).toMatchObject({ action: "refuse", code: "no_free_source" });
+  });
+
+  it("an inactive endpoint → review_pending", () => {
+    expect(decideCountyProcessing("TN", "DeKalb", [ep({ isActive: false })])).toMatchObject({ code: "review_pending" });
+  });
+
+  it("an un-reviewed county row → terms_forbid_storing", () => {
+    expect(decideCountyProcessing("TN", "DeKalb", [ep({ redistributable: "review-required" })])).toMatchObject({ code: "terms_forbid_storing" });
+  });
+
+  it("the TN statewide service is refused: its terms say not for commercial use", () => {
+    const sw = ep({ county: "*", redistributable: "attribution", licenseSource: "TN Property Boundaries Public Use service" });
+    expect(decideCountyProcessing("TN", "DeKalb", [sw])).toMatchObject({ code: "terms_forbid_storing" });
+  });
+
+  it("a reviewed county row is processed; a statewide one needs a verified county field", () => {
+    expect(decideCountyProcessing("TN", "DeKalb", [ep({})])).toMatchObject({ action: "process", countyWhere: null });
+    const sw = ep({ county: "*", state: "XX", licenseSource: null });
+    expect(decideCountyProcessing("XX", "Any", [sw])).toMatchObject({ code: "no_county_filter" });
+  });
+
+  it("processes a page: keys through the crosswalk, computes facts, saves", async () => {
+    const saved: any[] = [];
+    const ctx: ParcelContext = { roads: null, wetlands: null, flood: null, publicLands: null, transmission: null, towns: null, slope: null };
+    const r = await processCountyPage(
+      { state: "TN", county: "dekalb", countyFips: "47041", nextOffset: 0 },
+      { apn: "GISLINK", acres: "DEEDAC", keep: [] },
+      {
+        fetchPage: async () => sampleGeoms.map((g, i) => ({ objectId: 10 + i, geometry: g, attributes: { GISLINK: `G${i}`, DEEDAC: 5 } })),
+        loadContext: async () => ctx,
+        existingNear: async () => [],
+        save: async (ps) => { saved.push(...ps); },
+      },
+    );
+    expect(r).toEqual({ stored: 3, lastObjectId: 12, done: true });
+    expect(saved.map((s) => s.parcelKey)).toEqual(["TN-47041-G0", "TN-47041-G1", "TN-47041-G2"]);
+    // No layers → every fact refuses honestly rather than defaulting.
+    expect(saved[0].facts.buildable_acres.status).toBe("unavailable");
+    expect(saved[0].facts.road_frontage_m.status).toBe("unavailable");
+  });
+});
+
+describe("open-data bucket — no receipt without the bucket's confirmation", () => {
+  const body = Buffer.from("parquet bytes");
+
+  it("bucket config needs all four keys", () => {
+    expect(bucketConfigFromEnv({})).toBeNull();
+    expect(bucketConfigFromEnv({ OPEN_DATA_BUCKET_ENDPOINT: "e", OPEN_DATA_BUCKET_NAME: "b", OPEN_DATA_BUCKET_ACCESS_KEY_ID: "k" })).toBeNull();
+  });
+
+  it("returns a receipt with the SHA-256 when HEAD confirms the byte count", async () => {
+    const client: ObjectStoreClient = { put: async () => ({ etag: '"x"' }), headBytes: async () => body.length };
+    const r = await uploadAndConfirm(client, "statewide-parcels-bulk", "tn/a.parquet", body, "application/octet-stream");
+    expect(r.bytes).toBe(body.length);
+    expect(r.sha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("throws (no receipt) when the bucket reports a different size", async () => {
+    const client: ObjectStoreClient = { put: async () => ({ etag: null }), headBytes: async () => body.length - 1 };
+    await expect(uploadAndConfirm(client, "statewide-parcels-bulk", "tn/a.parquet", body, "x")).rejects.toThrow(/not ingested/);
+  });
+});

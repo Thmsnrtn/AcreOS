@@ -213,7 +213,8 @@ async function main() {
   const tile = await archive.getZxy(z, tx, ty);
   if (!tile || tile.data.byteLength === 0) throw new Error("PMTiles loader found no tile under the first parcel");
   const { VectorTile } = await import("@mapbox/vector-tile");
-  const Pbf = (await import("pbf")).default;
+  const pbfMod: any = await import("pbf");
+  const Pbf = pbfMod.PbfReader ?? pbfMod.default;
   const vt = new VectorTile(new Pbf(new Uint8Array(tile.data)));
   const layer = vt.layers.parcels;
   if (!layer || layer.length === 0) throw new Error("PMTiles tile has no parcels layer");

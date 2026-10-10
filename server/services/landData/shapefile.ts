@@ -115,7 +115,7 @@ export function unprojectFromPrj(wkt: string): Unproject {
 function signedArea(r: Position[]): number {
   let s = 0;
   for (let i = 0, j = r.length - 1; i < r.length; j = i++) s += (r[j][0] - r[i][0]) * (r[j][1] + r[i][1]);
-  return s / 2; // > 0 = clockwise in a y-up plane
+  return s / 2; // < 0 = clockwise in a y-up plane (shapefile outer ring)
 }
 
 function inRing(p: Position, r: Position[]): boolean {
@@ -155,7 +155,7 @@ export function readShpPolygons(buf: Buffer, unproject: Unproject): Array<AreaGe
       // coordinates). Each hole joins the outer ring that contains it.
       const outers: Position[][][] = [];
       const holes: Position[][] = [];
-      for (const r of rings) (signedArea(r) > 0 ? outers.push([r]) : holes.push(r));
+      for (const r of rings) (signedArea(r) < 0 ? outers.push([r]) : holes.push(r));
       for (const h of holes) {
         const host = outers.find((poly) => inRing(h[0], poly[0]));
         if (host) host.push(h);

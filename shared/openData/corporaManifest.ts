@@ -23,7 +23,6 @@
  * confirmed (HEAD after PUT, byte count and SHA-256 recorded in
  * open_data_ingest_receipts). No receipt, no "ingested".
  */
- */
 
 /**
  * License classes, mirrored from docs/company/open-data-maps.md /

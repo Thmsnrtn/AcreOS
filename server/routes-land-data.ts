@@ -5,6 +5,8 @@
  *   POST /api/land-data/counties/process         a customer search in a county → pipeline job (or refusal)
  *   GET  /api/land-data/counties/:state/:county  that county's pipeline status
  *   GET  /api/land-data/parcels/:parcelKey       an owned parcel's GATED facts + data-truth warnings
+ *   GET  /api/land-data/parcel-lookup            the same, found by state + county + county parcel id
+ *                                                (through the crosswalk, so a renumbered id still resolves)
  *   GET  /api/land-data/national/:category       one small national dataset at a point (provider registry)
  *
  * Facts reach the customer ONLY through projectFactsForCustomer() — the
@@ -14,14 +16,14 @@
 
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { isAuthenticated } from "./auth/clerkAuth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
 import { Errors } from "./utils/errors";
 import { db } from "./db";
-import { ownedParcels } from "@shared/schema";
+import { ownedParcels, parcelIdCrosswalk } from "@shared/schema";
 import { COUNTY_SOURCE_CENSUS } from "@shared/landData/countySourceCensus";
 import { projectFactsForCustomer } from "@shared/landData/factAccuracyGate";
 import { parcelTruths } from "@shared/landData/parcelTruths";
@@ -142,6 +144,37 @@ export function registerLandDataRoutes(app: Express) {
       const [row] = await db.select().from(ownedParcels).where(eq(ownedParcels.parcelKey, key)).limit(1);
       if (!row) return Errors.notFound(res, "Parcel");
       res.json(serializeOwnedParcelForCustomer(row));
+    } catch (err) {
+      return Errors.internal(res, err);
+    }
+  });
+
+  app.get("/api/land-data/parcel-lookup", isAuthenticated, getOrCreateOrg, async (req: AuthenticatedRequest, res: Response) => {
+    const parsed = countySchema.extend({ apn: z.string().trim().min(1).max(120) }).safeParse(req.query);
+    if (!parsed.success) return Errors.validationFailed(res, parsed.error);
+    try {
+      const county = parsed.data.county.toLowerCase().replace(/ county$/i, "").trim();
+      const [xw] = await db
+        .select({ parcelKey: parcelIdCrosswalk.parcelKey })
+        .from(parcelIdCrosswalk)
+        .where(
+          and(
+            eq(parcelIdCrosswalk.state, parsed.data.state.toUpperCase()),
+            eq(parcelIdCrosswalk.county, county),
+            eq(parcelIdCrosswalk.sourceParcelId, parsed.data.apn),
+          ),
+        )
+        .limit(1);
+      if (!xw) {
+        const job = await getCountyJob(parsed.data.state, county);
+        return res.json({
+          found: false,
+          county: job ? { status: job.status, refusalReason: job.refusalReason, parcelsStored: job.parcelsStored } : { status: "not_requested", refusalReason: null, parcelsStored: 0 },
+        });
+      }
+      const [row] = await db.select().from(ownedParcels).where(eq(ownedParcels.parcelKey, xw.parcelKey)).limit(1);
+      if (!row) return res.json({ found: false, county: null });
+      res.json({ found: true, parcel: serializeOwnedParcelForCustomer(row) });
     } catch (err) {
       return Errors.internal(res, err);
     }

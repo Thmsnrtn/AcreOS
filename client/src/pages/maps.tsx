@@ -50,6 +50,7 @@ import {
   Loader2,
   HelpCircle,
   Flame,
+  MapPinned,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -72,6 +73,8 @@ import { usePersona } from "@/hooks/use-persona";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { RequestCountyCTA } from "@/components/maps/RequestCountyCTA";
 import { MarketHeatPanel } from "@/components/maps/MarketHeatPanel";
+import { LandCoveragePanel } from "@/components/maps/LandCoveragePanel";
+import { ParcelFactsPanel } from "@/components/maps/ParcelFactsPanel";
 import {
   RadarChart,
   Radar,
@@ -916,6 +919,15 @@ function PropertyIntelligencePanel({
           </div>
         </div>
 
+        {/* W2 land facts — owned-parcel facts that passed the accuracy gate,
+            each with source, date and confidence, plus the data truths. */}
+        {property.apn && property.state && property.county && (
+          <div className="pt-2">
+            <p className="text-micro font-medium uppercase tracking-wide text-muted-foreground mb-1">Land facts</p>
+            <ParcelFactsPanel state={property.state} county={property.county} apn={property.apn} />
+          </div>
+        )}
+
         {/* Utilities & Access — tri-state. An UNPULLED flag reads "Unknown",
             never "None": we don't imply a parcel lacks road/water/power when
             we simply haven't looked it up. */}
@@ -1440,6 +1452,29 @@ export default function MapsPage() {
               ))}
             </SelectContent>
           </Select>
+
+          {/* Free parcel coverage — the county source census, behind the Map door */}
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label="Open free parcel coverage"
+                className="gap-1.5 shrink-0 min-h-11 min-w-11 sm:min-w-0 pointer-fine:sm:min-h-9 pointer-fine:sm:h-7 text-xs px-2.5"
+              >
+                <MapPinned className="w-4 h-4 sm:w-3.5 sm:h-3.5" aria-hidden="true" />
+                <span className="hidden sm:inline">Coverage</span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-96 max-w-full overflow-y-auto">
+              <SheetHeader>
+                <SheetTitle className="text-sm">Free parcel coverage</SheetTitle>
+              </SheetHeader>
+              <div className="mt-3">
+                <LandCoveragePanel />
+              </div>
+            </SheetContent>
+          </Sheet>
 
           {/* Filters drawer */}
           <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>

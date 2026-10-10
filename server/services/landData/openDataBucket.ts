@@ -9,12 +9,13 @@
  */
 
 import { createHash } from "node:crypto";
-import { db } from "../../db";
-import { openDataIngestReceipts } from "@shared/schema";
 import { OPEN_DATA_BUCKET_ENV_KEYS } from "@shared/openData/corporaManifest";
-import { isBucketConfigured, type CorpusUploadReceipt } from "../openData/corporaStatus";
+import type { CorpusUploadReceipt } from "../openData/corporaStatus";
 import { logger } from "../../utils/logger";
 import { clock } from "../../utils/clock";
+
+// The DB is imported lazily so the showcase builder (a CLI that may run
+// without DATABASE_URL) can use the upload path without opening a pool.
 
 export interface BucketConfig {
   endpoint: string;
@@ -24,8 +25,8 @@ export interface BucketConfig {
 }
 
 export function bucketConfigFromEnv(env: Record<string, string | undefined> = process.env): BucketConfig | null {
-  if (!isBucketConfigured(env)) return null;
   const [endpoint, bucket, accessKeyId, secret] = OPEN_DATA_BUCKET_ENV_KEYS.map((k) => (env[k] ?? "").trim());
+  if (!endpoint || !bucket || !accessKeyId || !secret) return null;
   return { endpoint, bucket, accessKeyId, secret };
 }
 
@@ -86,6 +87,8 @@ export async function uploadAndConfirm(
 }
 
 export async function recordReceipt(r: UploadReceipt): Promise<void> {
+  const { db } = await import("../../db");
+  const { openDataIngestReceipts } = await import("@shared/schema");
   await db
     .insert(openDataIngestReceipts)
     .values({ corpusKey: r.corpusKey, objectKey: r.objectKey, bytes: r.bytes, sha256: r.sha256, etag: r.etag, uploadedAt: r.uploadedAt })
@@ -95,6 +98,8 @@ export async function recordReceipt(r: UploadReceipt): Promise<void> {
 /** Receipts for getCorporaStatus(); an unreadable table degrades to "none". */
 export async function loadIngestReceipts(): Promise<CorpusUploadReceipt[]> {
   try {
+    const { db } = await import("../../db");
+    const { openDataIngestReceipts } = await import("@shared/schema");
     return await db
       .select({
         corpusKey: openDataIngestReceipts.corpusKey,
