@@ -283,7 +283,8 @@ describe("an identified caller is held to the scope the intent declares", () => 
     );
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/permission/i);
-    expect(result.error).toMatch(/deal_write/);
+    // The scope is machine-readable beside the plain sentence, not in it.
+    expect((result as { requiredScope?: string }).requiredScope).toBe("deal_write");
   });
 
   it("PERMITS a member the same intent — the gate is not a blanket deny", async () => {
@@ -311,7 +312,7 @@ describe("an identified caller is held to the scope the intent declares", () => 
       { userId: "user_bk" },
     );
     expect(denied.success).toBe(false);
-    expect(denied.error).toMatch(/comms_write/);
+    expect((denied as { requiredScope?: string }).requiredScope).toBe("comms_write");
   });
 
   it("the org OWNER passes without a team_members row", async () => {
@@ -346,7 +347,7 @@ describe("an UNIDENTIFIED caller may act as the org, except for PII", () => {
     asRole(null);
     const result = await executeTool("batch_leads_skip_trace", {}, org);
     expect(result.success).toBe(false);
-    expect(result.error).toMatch(/tenant_pii_write/);
+    expect((result as { requiredScope?: string }).requiredScope).toBe("tenant_pii_write");
   });
 });
 

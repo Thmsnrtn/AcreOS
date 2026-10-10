@@ -15,6 +15,7 @@
  * these handlers are thin: zod-validate, call the service, shape the response.
  */
 
+import { dispatchOutcomeInWords } from "@shared/refusal/plainRefusal";
 import type { Express, Response } from "express";
 import { z } from "zod";
 import { isAuthenticated, requireFounder } from "./auth";
@@ -88,6 +89,10 @@ function shapeDispatchRow(
     startedAt: q.startedAt,
     completedAt: q.completedAt,
     resultSummary: q.resultSummary,
+    // What the founder reads about a failed or cancelled run: what happened,
+    // why, and what unlocks it, in plain words (shared/refusal/plainRefusal).
+    // `resultSummary` stays as the technical note behind it.
+    outcomeInWords: dispatchOutcomeInWords(q.status, q.resultSummary),
     resultFullPath: q.resultFullPath,
     enqueuedBy: q.enqueuedBy,
     // Retry telemetry (step-away gap #3): how many runs actually started, when

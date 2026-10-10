@@ -12,7 +12,9 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { generatePaxBank } from "./paxBank";
-import { judgeBank } from "./judges";
+import { judgeBank, J2_numbers, J3_behaviour } from "./judges";
+import fs from "node:fs";
+import path from "node:path";
 import { referenceAnswer, corruptedAnswer, capableAnswer } from "./answerers";
 import { generateSoleneBank, referenceSolene, corruptedSolene, judgeSolene } from "./soleneBank";
 import { LETTER_QUESTIONS } from "./letterQuestions";
@@ -42,6 +44,74 @@ describe("Pax bank", () => {
     const r = judgeBank(pax, (q) => capableAnswer(pax.find((x) => x.id === q.id)!));
     expect(r.total).toBe(pax.length);
     expect(r.agreement).toBeGreaterThan(0);
+  });
+});
+
+describe("judge agreement is a measure, not a coincidence of defaults", () => {
+  // 2026-10-08: 11.5% agreement on the 312 questions. Two judges PASSED any
+  // answer their method had nothing to say about (J2: no numbers → pass; J3:
+  // 20 characters → pass), so they "disagreed" with the rubric on every
+  // deflection. A judge with nothing to check now abstains, and agreement is
+  // measured over the answers at least two judges voted on.
+  const brain = judgeBank(pax, (q) => capableAnswer(pax.find((x) => x.id === q.id)!));
+
+  it("the scripted brain's answers get a verdict the judges agree on, on the working set", () => {
+    expect(brain.judged, "agreement must be over most of the bank, not a sliver").toBeGreaterThan(pax.length * 0.9);
+    expect(brain.workingAgreement).toBeGreaterThanOrEqual(0.7);
+  });
+
+  it("every disagreement is surfaced with each judge's verdict and reason", () => {
+    expect(brain.disagreements.length).toBeGreaterThan(0); // the judges are not one judge three times
+    for (const d of brain.disagreements) {
+      const voting = Object.values(d.verdicts).filter((v) => !v.abstain);
+      expect(voting.some((v) => v.pass) && voting.some((v) => !v.pass), d.id).toBe(true);
+      for (const v of voting) expect(v.why.length, d.id).toBeGreaterThan(3);
+    }
+  });
+
+  it("a judge abstains only when its method has nothing to check", () => {
+    const deflection = "I can help with that. Most of what you need is behind the five doors on the left.";
+    const money = pax.find((q) => q.category === "money" && q.rubric.numbers?.required.length === 0)!;
+    // Before: J2 passed this ("no unsourced numbers") and J3 passed it ("answers").
+    expect(J2_numbers(deflection, money.rubric, money.text).abstain).toBe(true);
+    expect(J3_behaviour(deflection, money.rubric, money.text).pass).toBe(false);
+    // A product question answered with "ask a lawyer" is a deflection, even if it names a page.
+    const howto = pax.find((q) => q.category === "how-to")!;
+    expect(J3_behaviour("For your situation please check with a licensed attorney; see /settings.", howto.rubric, howto.text)).toMatchObject({ pass: false, why: expect.stringMatching(/deflect/) });
+    // A stated wrong figure is a vote, not an abstention.
+    expect(J2_numbers("That costs $9.99.", money.rubric, money.text)).toMatchObject({ pass: false });
+    expect(J2_numbers("That costs $9.99.", money.rubric, money.text).abstain).toBeUndefined();
+  });
+});
+
+describe("the held-out set is unread by the code it judges", () => {
+  const ROOT = path.resolve(__dirname, "../../..");
+  const brainSrc = fs.readFileSync(path.join(ROOT, "tests/simulation/standin/brains/capable.mjs"), "utf8");
+  const held = pax.filter((q) => q.heldOut);
+
+  it("the brain imports nothing from the eval banks", () => {
+    expect(brainSrc).not.toMatch(/from\s+["'][^"']*evals\//);
+    expect(brainSrc).not.toMatch(/paxBank|soleneBank|letterQuestions/);
+  });
+
+  it("no held-out question's wording appears in the brain", () => {
+    expect(held.length).toBeGreaterThan(50);
+    const lower = brainSrc.toLowerCase();
+    const leaked = [...new Set(held.map((q) => q.template))].filter((t) => t.length > 20 && lower.includes(t.toLowerCase().replace(/\{c\}/g, "").slice(0, 30)));
+    expect(leaked).toEqual([]);
+  });
+
+  it("the brain is asked the question text alone — never its id, template or split", () => {
+    const answererSrc = fs.readFileSync(path.join(ROOT, "tests/simulation/evals/answerers.ts"), "utf8");
+    const body = answererSrc.slice(answererSrc.indexOf("export function capableAnswer"));
+    expect(body).toMatch(/content: q\.text/);
+    expect(body).not.toMatch(/q\.(heldOut|template|id|rubric|facts)\b/);
+  });
+
+  it("the judges never branch on the split, the id or the template", () => {
+    const judgeSrc = fs.readFileSync(path.join(ROOT, "tests/simulation/evals/judges.ts"), "utf8");
+    const judges = judgeSrc.slice(judgeSrc.indexOf("export const J1_rubric"), judgeSrc.indexOf("export const JUDGES"));
+    expect(judges).not.toMatch(/heldOut|\.template|\.id\b/);
   });
 });
 

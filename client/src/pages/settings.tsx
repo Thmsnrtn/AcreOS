@@ -1188,10 +1188,28 @@ export default function Settings() {
                           })}
                         </TableBody>
                       </Table>
-                    ) : (
+                    ) : teamMembers && teamMembers.length > 1 ? (
                       <p className="text-muted-foreground text-sm">
-                        No co-owners yet. Co-owners must already be team members.
+                        No co-owners yet. Pick a team member below to add one.
                       </p>
+                    ) : (
+                      <EmptyState
+                        icon={Crown}
+                        headline="No co-owners yet"
+                        subtitle="A co-owner must be on your team first. Invite them above, then add them here."
+                        cta={{
+                          label: "Invite a teammate",
+                          onClick: () => {
+                            const input = document.querySelector<HTMLInputElement>('[data-testid="input-invite-email"]');
+                            input?.scrollIntoView({ behavior: "smooth", block: "center" });
+                            input?.focus({ preventScroll: true });
+                          },
+                          "data-testid": "empty-co-owners-invite",
+                        }}
+                        actionIcon={null}
+                        className="py-6"
+                        testId="empty-co-owners"
+                      />
                     )}
 
                     {teamMembers && teamMembers.length > 1 && (

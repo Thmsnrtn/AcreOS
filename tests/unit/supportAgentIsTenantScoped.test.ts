@@ -135,7 +135,9 @@ describe("a ticket from another organization is refused at the chokepoint", () =
     expect(checkAt, "the guard no longer refuses a ticket that does not exist").toBeGreaterThan(-1);
     const block = src.slice(checkAt, checkAt + 700);
     expect(block).toContain("owner.organizationId !== org.id");
-    expect(block).toMatch(/return \{\s*success: false/);
+    // A refusal is returned either raw or through the plain-words builder
+    // (toolRefusal → { success: false, … }, refusalsArePlainWords.test.ts).
+    expect(block).toMatch(/return (?:\{\s*success: false|toolRefusal\()/);
   });
 
   it("founders keep cross-org access, matching the rule the resolver route applies", () => {

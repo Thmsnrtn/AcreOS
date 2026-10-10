@@ -1,6 +1,7 @@
 import { storage } from "../storage";
 import type { Organization } from "@shared/schema";
-import { DEAL_STATUSES, OPENING_DEAL_STATUSES, validateDealTransition, validateLeadTransition } from "@shared/lifecycle/pipeline-status";
+import { DEAL_STATUSES, LEAD_STATUSES, OPENING_DEAL_STATUSES, validateDealTransition, validateLeadTransition } from "@shared/lifecycle/pipeline-status";
+import { toolRefusal, toolFailure, plainStageWords, type RefusalParts } from "@shared/refusal/plainRefusal";
 import { getSystemContext, formatContextForAI, invalidateContextCache } from "../services/aiContextAggregator";
 import { lookupParcelByAPN } from "../services/parcel";
 import { generateOfferSuggestions, generateOfferLetter } from "../services/aiOfferService";
@@ -1208,7 +1209,7 @@ export interface ExecuteToolOptions {
   scheduledTask?: { id: number; name: string } | null;
 }
 
-type ToolResult = { success: boolean; data?: any; error?: string; reachabilitySummary?: unknown };
+type ToolResult = { success: boolean; data?: any; error?: string; reachabilitySummary?: unknown; refusal?: RefusalParts; requiredScope?: string };
 
 const positiveInt = (v: unknown): number | null => {
   if (typeof v === "number" && Number.isInteger(v) && v > 0) return v;
@@ -1283,7 +1284,7 @@ export async function executeTool(
   args: Record<string, any>,
   org: Organization,
   options?: ExecuteToolOptions
-): Promise<{ success: boolean; data?: any; error?: string }> {
+): Promise<{ success: boolean; data?: any; error?: string; refusal?: RefusalParts; requiredScope?: string }> {
   try {
     // ── Witnessed-send kernel gate (2026-06-10, T0-1 elevation blueprint) ──
     // `_approved` used to be an ordinary tool arg, which meant (a) the MODEL
@@ -1438,12 +1439,15 @@ export async function executeTool(
               orgId: org.id,
               metadata: { toolName, declaredScope, identified: Boolean(callerId) },
             });
+            // The scope stays machine-readable beside the sentence; the words a
+            // person reads name the role, not the permission's code name.
             return {
-              success: false,
-              error:
-                `You do not have permission to do that here. "${toolName}" requires ` +
-                `the "${declaredScope}" permission in this workspace. An owner or ` +
-                `admin can grant it under ${PLACE_TEXT.teamRoles}.`,
+              ...toolRefusal({
+                what: "I did not do that",
+                why: "Your role on this team does not have permission for it",
+                unlock: `Ask an owner or admin to change your role under ${PLACE_TEXT.teamRoles}`,
+              }),
+              requiredScope: declaredScope,
             };
           }
         }
@@ -1476,10 +1480,10 @@ export async function executeTool(
         metadata: { toolName },
       });
       return {
-        success: false,
+        success: false as const,
         error:
-          "I can't run a skip trace from chat. Skip-tracing is regulated under " +
-          "the FCRA: it needs a permissible purpose, a written justification, " +
+          "I can't run a skip trace from chat. Skip-tracing is regulated by federal " +
+          "credit-reporting law: it needs a permissible purpose, a written justification, " +
           "and a current annual attestation from the person requesting it — and " +
           "those have to come from you, not from me. Run it from the lead's page " +
           "(Deals → the lead → Skip trace), which records all three.",
@@ -1544,7 +1548,7 @@ export async function executeTool(
       case "get_lead_details": {
         const { leadReachabilityForPax } = await import("../services/paxLeadReachability");
         const lead = await storage.getLead(org.id, args.lead_id);
-        if (!lead) return { success: false, error: "Lead not found" };
+        if (!lead) return toolRefusal({ what: "No lead with that number is in this account", why: "It may have been deleted, merged, or the number came from another list", unlock: "Search your leads by name or address to find the one you mean" });
         return { success: true, data: {
           ...lead,
           name: `${lead.firstName} ${lead.lastName}`,
@@ -1556,9 +1560,9 @@ export async function executeTool(
         const leadBeforeUpdate = await storage.getLead(org.id, args.lead_id);
         // The lead state machine, as every other writer (audit of 9ed61f4:
         // this wrote any string the model supplied).
-        if (!leadBeforeUpdate) return { success: false, error: `Lead ${args.lead_id} not found` };
+        if (!leadBeforeUpdate) return toolRefusal({ what: "No lead with that number is in this account", why: "It may have been deleted, merged, or the number came from another list", unlock: "Search your leads by name or address to find the one you mean" });
         const leadRefusal = validateLeadTransition(leadBeforeUpdate.status, String(args.status));
-        if (leadRefusal) return { success: false, error: `${leadRefusal}.` };
+        if (leadRefusal) return toolRefusal({ what: "The lead's status was not changed", why: `${plainStageWords(leadRefusal)}`, unlock: `Pick one of these stages: ${LEAD_STATUSES.map(plainStageWords).join(", ")}` });
         const updated = await storage.updateLead(args.lead_id, {
           status: args.status,
           notes: args.notes
@@ -1637,7 +1641,7 @@ export async function executeTool(
       
       case "get_property_details": {
         const property = await storage.getProperty(org.id, args.property_id);
-        if (!property) return { success: false, error: "Property not found" };
+        if (!property) return toolRefusal({ what: "No property with that number is in this account", why: "It may have been deleted, or the number came from another list", unlock: "Search your properties by APN or address to find the one you mean" });
         return { success: true, data: property };
       }
       
@@ -1701,7 +1705,7 @@ export async function executeTool(
         });
         if (!amortValidation.valid) {
           logger.warn("[calculate_amortization] Validation failed", { metadata: { errors: amortValidation.errors } });
-          return { success: false, error: `Amortization calculation failed validation: ${amortValidation.errors.join("; ")}` };
+          return toolRefusal({ what: "The payment schedule was not worked out", why: "The loan amount, rate or term given do not add up to a schedule that checks out", unlock: "Check the principal, the yearly rate and the number of months, then ask again" });
         }
         if (amortValidation.warnings.length > 0) {
           logger.warn("[calculate_amortization] Validation warnings", { metadata: { warnings: amortValidation.warnings } });
@@ -1732,7 +1736,7 @@ export async function executeTool(
         });
         if (!cfValidation.valid) {
           logger.warn("[get_cashflow_summary] Validation failed", { metadata: { errors: cfValidation.errors } });
-          return { success: false, error: `Cash flow summary failed validation: ${cfValidation.errors.join("; ")}` };
+          return toolRefusal({ what: "The cash-flow summary was not produced", why: "The note totals did not pass the arithmetic check, so showing them could mislead you", unlock: "Open Finance → Notes to see each note's balance and payment, or try again in a minute" });
         }
         if (cfValidation.warnings.length > 0) {
           logger.warn("[get_cashflow_summary] Validation warnings", { metadata: { warnings: cfValidation.warnings } });
@@ -1771,7 +1775,7 @@ export async function executeTool(
         const { readSendRails } = await import("../services/paxAccountReads");
         const channel = String(args.channel ?? "");
         if (!["postcard", "letter", "email", "sms", "mms"].includes(channel)) {
-          return { success: false, error: "channel must be postcard, letter, email, sms or mms" };
+          return toolRefusal({ what: "No price was quoted", why: "That is not a way AcreOS sends", unlock: "Ask for a postcard, a letter, an email, a text, or a picture text" });
         }
         const rails = await readSendRails(org.id);
         const quote = quoteOutboundSend({
@@ -1828,9 +1832,9 @@ export async function executeTool(
       case "escalate_to_support": {
         const subject = typeof args.subject === "string" ? args.subject.trim().slice(0, 200) : "";
         const details = typeof args.details === "string" ? args.details.trim().slice(0, 4000) : "";
-        if (!subject || !details) return { success: false, error: "subject and details are required" };
+        if (!subject || !details) return toolRefusal({ what: "No support ticket was filed", why: "A ticket needs a short subject and a description of the problem", unlock: "Tell me what went wrong in a sentence or two and I will file it" });
         const userId = options?.userId ?? org.ownerId ?? null;
-        if (!userId) return { success: false, error: "No signed-in user to file the ticket for — nothing was filed." };
+        if (!userId) return toolRefusal({ what: "No support ticket was filed", why: "There is no signed-in person on this account to file it for", unlock: "Sign in again, then ask me to file it, or use Help → Support" });
         const priority = ["low", "normal", "high", "urgent"].includes(String(args.priority)) ? String(args.priority) : "normal";
         const { createSupportTicket } = await import("./supportAgent");
         const ticket = await createSupportTicket(org, userId, subject, details, {
@@ -1962,10 +1966,11 @@ export async function executeTool(
         // stages goes through (audit of 1694a0b).
         const openingStages: readonly string[] = OPENING_DEAL_STATUSES;
         if (args.status && !openingStages.includes(String(args.status))) {
-          return {
-            success: false,
-            error: `A new deal starts at ${openingStages.join(", ")}. Create it there, then move it to "${args.status}" with update_deal.`,
-          };
+          return toolRefusal({
+            what: "The deal was not created",
+            why: `A new deal starts at ${openingStages.map(plainStageWords).join(" or ")}, not at ${plainStageWords(String(args.status))}`,
+            unlock: "Create it at the first stage, then move it forward once it is there",
+          });
         }
         const deal = await storage.createDeal({
           organizationId: org.id,
@@ -1995,9 +2000,9 @@ export async function executeTool(
         // The state machine, as every other writer (audit of 9ed61f4: this
         // wrote any string the model supplied).
         if (dealUpdates.status !== undefined) {
-          if (!dealBeforeUpdate) return { success: false, error: `Deal ${args.deal_id} not found` };
+          if (!dealBeforeUpdate) return toolRefusal({ what: "No deal with that number is in this account", why: "It may have been deleted, or the number came from another list", unlock: "Open Deals to find the one you mean" });
           const refusal = validateDealTransition(dealBeforeUpdate.status, String(dealUpdates.status));
-          if (refusal) return { success: false, error: `${refusal}. Valid deal stages: ${DEAL_STATUSES.join(", ")}.` };
+          if (refusal) return toolRefusal({ what: "The deal's stage was not changed", why: `${plainStageWords(refusal)}`, unlock: `Pick one of these stages: ${DEAL_STATUSES.map(plainStageWords).join(", ")}` });
         }
         const dealBefore: Record<string, any> = {};
         const dealAfter: Record<string, any> = {};
@@ -2056,7 +2061,7 @@ export async function executeTool(
         // this; these two were missing it. getTask is org-scoped.
         const existingTask = await storage.getTask(org.id, args.task_id);
         if (!existingTask) {
-          return { success: false, error: `Task ${args.task_id} not found` };
+          return toolRefusal({ what: "No task with that number is in this account", why: "It may have been completed and cleared, or the number came from another list", unlock: "Open Today to see your open tasks and pick the one you mean" });
         }
         const taskUpdates: Record<string, any> = {};
         if (args.status) taskUpdates.status = args.status;
@@ -2072,7 +2077,7 @@ export async function executeTool(
         // Org precheck (audit F-23-3) — see update_task.
         const existingTask = await storage.getTask(org.id, args.task_id);
         if (!existingTask) {
-          return { success: false, error: `Task ${args.task_id} not found` };
+          return toolRefusal({ what: "No task with that number is in this account", why: "It may have been completed and cleared, or the number came from another list", unlock: "Open Today to see your open tasks and pick the one you mean" });
         }
         const task = await storage.updateTask(args.task_id, { status: "completed" }, org.id);
         invalidateContextCache(org.id);
@@ -2155,7 +2160,7 @@ export async function executeTool(
       case "create_properties_batch": {
         const propertiesToCreate = args.properties || [];
         if (!Array.isArray(propertiesToCreate) || propertiesToCreate.length === 0) {
-          return { success: false, error: "No properties provided to create" };
+          return toolRefusal({ what: "No properties were created", why: "The request did not include any parcels", unlock: "Paste the APNs with their county and state, and I will add them" });
         }
 
         const results: Array<{ success: boolean; apn: string; propertyId?: number; hasBoundary?: boolean; error?: string }> = [];
@@ -2163,7 +2168,7 @@ export async function executeTool(
         for (const prop of propertiesToCreate) {
           try {
             if (!prop.apn || !prop.county || !prop.state) {
-              results.push({ success: false, apn: prop.apn || "unknown", error: "Missing required fields (apn, county, state)" });
+              results.push({ ...toolRefusal({ what: "This parcel was not added", why: "It needs its APN, county and state, and one of them is missing", unlock: "Add the missing part and ask again" }), apn: prop.apn || "(no APN)" });
               continue;
             }
 
@@ -2212,7 +2217,8 @@ export async function executeTool(
             
             results.push({ success: true, apn: prop.apn, propertyId: property.id, hasBoundary });
           } catch (err: any) {
-            results.push({ success: false, apn: prop.apn, error: err.message });
+            logger.warn("[create_properties_batch] one parcel failed", { metadata: { apn: prop.apn, err: err instanceof Error ? err.message : String(err) } });
+            results.push({ ...toolFailure("This parcel was not added"), apn: prop.apn });
           }
         }
 
@@ -2236,14 +2242,14 @@ export async function executeTool(
 
       case "generate_offer": {
         const property = await storage.getProperty(org.id, args.property_id);
-        if (!property) return { success: false, error: "Property not found" };
+        if (!property) return toolRefusal({ what: "No property with that number is in this account", why: "It may have been deleted, or the number came from another list", unlock: "Search your properties by APN or address to find the one you mean" });
         if (!property.county || !property.state) {
-          return { success: false, error: "Property is missing county or state information required for offer analysis" };
+          return toolRefusal({ what: "No offer was worked out", why: "This property has no county or state on file, and offers are priced from the county's numbers", unlock: "Add the county and state on the property's page, then ask again" });
         }
 
         const sizeAcres = Number(property.sizeAcres);
         if (isNaN(sizeAcres) || sizeAcres <= 0) {
-          return { success: false, error: "Property is missing valid acreage information required for offer analysis" };
+          return toolRefusal({ what: "No offer was worked out", why: "This property has no acreage on file, and offers are priced per acre", unlock: "Add the acreage on the property's page, then ask again" });
         }
 
         const propertyData = {
@@ -2274,20 +2280,20 @@ export async function executeTool(
               logger.warn("[generate_offer] Offer suggestion failed validation", {
                 metadata: { strategy: suggestion.strategyName, errors: offerValidation.errors },
               });
-              return { success: false, error: `Offer suggestion "${suggestion.strategyName}" failed validation: ${offerValidation.errors.join("; ")}` };
+              return toolRefusal({ what: "No offer was suggested", why: "The offer worked out did not pass the sanity check on its amount, so it was not shown", unlock: "Check the property's acreage and recent sales, then ask again" });
             }
           }
         }
-        return {
-          success: result.success,
-          data: result.success ? result : undefined,
-          error: result.error
-        };
+        if (!result.success) {
+          logger.warn("[generate_offer] offer engine failed", { metadata: { err: result.error } });
+          return toolFailure("No offer was worked out");
+        }
+        return { success: true, data: result };
       }
 
       case "generate_offer_letter": {
         const property = await storage.getProperty(org.id, args.property_id);
-        if (!property) return { success: false, error: "Property not found" };
+        if (!property) return toolRefusal({ what: "No property with that number is in this account", why: "It may have been deleted, or the number came from another list", unlock: "Search your properties by APN or address to find the one you mean" });
 
         const propertyData = {
           id: property.id,
@@ -2362,11 +2368,11 @@ export async function executeTool(
           }
         }
 
-        return { 
-          success: result.success, 
-          data: result.success ? { letter: result.letter, subject: result.subject, dealId: pipelineDealId } : undefined,
-          error: result.error 
-        };
+        if (!result.success) {
+          logger.warn("[generate_offer_letter] letter writer failed", { metadata: { err: result.error } });
+          return toolFailure("The offer letter was not written");
+        }
+        return { success: true, data: { letter: result.letter, subject: result.subject, dealId: pipelineDealId } };
       }
 
       case "send_email": {
@@ -2375,26 +2381,26 @@ export async function executeTool(
 
         if (args.lead_id) {
           const lead = await storage.getLead(org.id, args.lead_id);
-          if (!lead) return { success: false, error: "Lead not found" };
-          if (!lead.email) return { success: false, error: "Lead does not have an email address" };
+          if (!lead) return toolRefusal({ what: "No lead with that number is in this account", why: "It may have been deleted, merged, or the number came from another list", unlock: "Search your leads by name or address to find the one you mean" });
+          if (!lead.email) return toolRefusal({ what: "The email was not sent", why: "This lead has no email address on file", unlock: "Add their email on the lead's page, or reach them by mail or text instead" });
           toEmail = lead.email;
           leadForCompliance = { tcpaConsent: lead.tcpaConsent, doNotContact: lead.doNotContact, optOutDate: lead.optOutDate };
         } else if (args.email) {
           toEmail = args.email;
         } else {
-          return { success: false, error: "Either lead_id or email is required" };
+          return toolRefusal({ what: "The email was not sent", why: "It needs a lead or an email address to go to", unlock: "Tell me which lead to email" });
         }
 
         if (leadForCompliance) {
           const compliance = checkTcpaConsentFromLead(leadForCompliance);
           if (!compliance.canEmail) {
-            return { success: false, error: `Cannot send email: ${compliance.reason}` };
+            return toolRefusal({ what: "The email was not sent", why: "This lead has not given consent to be emailed, or has asked not to be contacted", unlock: "Record their consent on the lead's page if they gave it, or reach them by mail instead" });
           }
         }
 
         const isConfigured = await emailService.isConfigured(org.id);
         if (!isConfigured) {
-          return { success: false, error: "Email service not configured. Please set up AWS SES credentials in Settings." };
+          return toolRefusal({ what: "The email was not sent", why: "This account has no email sending identity connected yet", unlock: "Connect your own email under Settings → Integrations, then send again" });
         }
 
         const htmlContent = args.message;
@@ -2409,7 +2415,7 @@ export async function executeTool(
         // Honor the daily envelope, TCPA, and the send audit trail.
         const rateCheck = await checkSendRateLimit(org.id, "email");
         if (!rateCheck.allowed) {
-          return { success: false, error: rateCheck.reason ?? "Daily send envelope reached" };
+          return toolRefusal({ what: "The email was not sent", why: "Today's sending limit for this account is reached", unlock: "It can go out tomorrow, or change the daily limit in Pax settings" });
         }
 
         if (args.lead_id) {
@@ -2417,7 +2423,7 @@ export async function executeTool(
           // resolve against another org's consent record.
           const tcpaCheck = await checkTcpaBeforeSend(org.id, args.lead_id);
           if (!tcpaCheck.allowed) {
-            return { success: false, error: `Cannot send email: ${tcpaCheck.reason}` };
+            return toolRefusal({ what: "The email was not sent", why: "The consent check for this lead did not pass", unlock: "Open the lead to see their consent, and record it there if they gave it" });
           }
         }
 
@@ -2442,11 +2448,15 @@ export async function executeTool(
           );
         }
 
-        return {
-          success: result.success,
-          data: result.success ? { messageId: result.messageId, message: "Email sent successfully" } : undefined,
-          error: result.error 
-        };
+        if (!result.success) {
+          logger.warn("[send_email] provider refused the send", { metadata: { err: result.error } });
+          return toolRefusal({
+            what: "The email was not sent",
+            why: "Your email provider did not accept it",
+            unlock: "Check the address on the lead's page and your email connection under Settings → Integrations, then try again",
+          });
+        }
+        return { success: true, data: { messageId: result.messageId, message: "Email sent successfully" } };
       }
 
       case "send_sms": {
@@ -2455,35 +2465,35 @@ export async function executeTool(
 
         if (args.lead_id) {
           const lead = await storage.getLead(org.id, args.lead_id);
-          if (!lead) return { success: false, error: "Lead not found" };
-          if (!lead.phone) return { success: false, error: "Lead does not have a phone number" };
+          if (!lead) return toolRefusal({ what: "No lead with that number is in this account", why: "It may have been deleted, merged, or the number came from another list", unlock: "Search your leads by name or address to find the one you mean" });
+          if (!lead.phone) return toolRefusal({ what: "The text was not sent", why: "This lead has no phone number on file", unlock: "Add their number on the lead's page, or reach them by mail instead" });
           toPhone = lead.phone;
           leadForCompliance = { tcpaConsent: lead.tcpaConsent, doNotContact: lead.doNotContact, optOutDate: lead.optOutDate };
           // Lead-aware quiet hours (uses lead.timezone when present).
           const qh = isWithinQuietHoursForLead(lead as any);
           if (qh.blocked) {
-            return { success: false, error: `TCPA quiet hours: ${qh.reason}` };
+            return toolRefusal({ what: "The text was not sent", why: "It is outside the hours the law allows texting this person — 8 AM to 9 PM their time", unlock: "Send it again during those hours, or let me schedule it" });
           }
         } else if (args.phone_number) {
           toPhone = args.phone_number;
           // Phone-only path — area-code quiet-hours fallback.
           const qh = isWithinQuietHours(args.phone_number);
           if (qh.blocked) {
-            return { success: false, error: `TCPA quiet hours: ${qh.reason}` };
+            return toolRefusal({ what: "The text was not sent", why: "It is outside the hours the law allows texting this person — 8 AM to 9 PM their time", unlock: "Send it again during those hours, or let me schedule it" });
           }
         } else {
-          return { success: false, error: "Either lead_id or phone_number is required" };
+          return toolRefusal({ what: "The text was not sent", why: "It needs a lead or a phone number to go to", unlock: "Tell me which lead to text" });
         }
 
         if (leadForCompliance) {
           const compliance = checkTcpaConsentFromLead(leadForCompliance);
           if (!compliance.canSms) {
-            return { success: false, error: `Cannot send SMS: ${compliance.reason}` };
+            return toolRefusal({ what: "The text was not sent", why: "This lead has not given consent to be texted, or has asked not to be contacted", unlock: "Record their consent on the lead's page if they gave it, or reach them by mail instead" });
           }
         }
 
         if (!toPhone) {
-          return { success: false, error: "Phone number not available" };
+          return toolRefusal({ what: "The text was not sent", why: "There is no phone number to send it to", unlock: "Add the number on the lead's page, then send again" });
         }
 
         // ── Guarded send — reached ONLY after a human tap ─────────────────────
@@ -2492,14 +2502,14 @@ export async function executeTool(
         // daily envelope + TCPA + the send audit trail.
         const smsRateCheck = await checkSendRateLimit(org.id, "sms");
         if (!smsRateCheck.allowed) {
-          return { success: false, error: smsRateCheck.reason ?? "Daily send envelope reached" };
+          return toolRefusal({ what: "The text was not sent", why: "Today's sending limit for this account is reached", unlock: "It can go out tomorrow, or change the daily limit in Pax settings" });
         }
 
         if (args.lead_id) {
           // 2026-06-10 (T0-5): org-scoped TCPA lookup, same as send_email.
           const tcpaCheck = await checkTcpaBeforeSend(org.id, args.lead_id);
           if (!tcpaCheck.allowed) {
-            return { success: false, error: `Cannot send SMS: ${tcpaCheck.reason}` };
+            return toolRefusal({ what: "The text was not sent", why: "The consent check for this lead did not pass", unlock: "Open the lead to see their consent, and record it there if they gave it" });
           }
         }
 
@@ -2527,18 +2537,22 @@ export async function executeTool(
           await recordAutonomousSend(org.id, "sms", args.lead_id ?? 0, args.message ?? "");
         }
 
-        return {
-          success: result.success,
-          data: result.success ? { messageId: result.messageId, message: "SMS sent successfully" } : undefined,
-          error: result.error
-        };
+        if (!result.success) {
+          logger.warn("[send_sms] provider refused the send", { metadata: { err: result.error } });
+          return toolRefusal({
+            what: "The text was not sent",
+            why: "Your texting provider did not accept it",
+            unlock: "Check the number on the lead's page and your texting connection under Settings → Integrations, then try again",
+          });
+        }
+        return { success: true, data: { messageId: result.messageId, message: "SMS sent successfully" } };
       }
 
       case "run_comps_analysis": {
         const property = await storage.getProperty(org.id, args.property_id);
-        if (!property) return { success: false, error: "Property not found" };
+        if (!property) return toolRefusal({ what: "No property with that number is in this account", why: "It may have been deleted, or the number came from another list", unlock: "Search your properties by APN or address to find the one you mean" });
         if (!property.latitude || !property.longitude) {
-          return { success: false, error: "Property does not have coordinates for comps analysis" };
+          return toolRefusal({ what: "No comparable sales were pulled", why: "This property has no map location on file, and comps are found by distance", unlock: "Open the property on the Map to set its location, then ask again" });
         }
 
         const radiusMiles = args.radius_miles || 5;
@@ -2556,14 +2570,17 @@ export async function executeTool(
           org.id
         );
 
-        return { 
-          success: result.success, 
-          data: result.success ? {
+        if (!result.success) {
+          logger.warn("[get_comparable_sales] comps lookup failed", { metadata: { err: result.error } });
+          return toolFailure("No comparable sales were pulled");
+        }
+        return {
+          success: true,
+          data: {
             comparables: result.comps,
             marketAnalysis: result.marketAnalysis,
             count: result.comps.length,
-          } : undefined,
-          error: result.error 
+          },
         };
       }
 
@@ -2600,7 +2617,7 @@ export async function executeTool(
         });
         if (!roiValidation.valid) {
           logger.warn("[calculate_roi] Validation failed", { metadata: { errors: roiValidation.errors } });
-          return { success: false, error: `ROI calculation failed validation: ${roiValidation.errors.join("; ")}` };
+          return toolRefusal({ what: "The return was not worked out", why: "The figures given do not add up to a return that checks out", unlock: "Check the purchase price, costs and sale price, then ask again" });
         }
         if (roiValidation.warnings.length > 0) {
           logger.warn("[calculate_roi] Validation warnings", { metadata: { warnings: roiValidation.warnings } });
@@ -2662,7 +2679,7 @@ export async function executeTool(
         });
         if (!scheduleValidation.valid) {
           logger.warn("[calculate_payment_schedule] Validation failed", { metadata: { errors: scheduleValidation.errors } });
-          return { success: false, error: `Payment schedule failed validation: ${scheduleValidation.errors.join("; ")}` };
+          return toolRefusal({ what: "The payment schedule was not worked out", why: "The loan terms given do not add up to a schedule that checks out", unlock: "Check the principal, the yearly rate and the number of months, then ask again" });
         }
         if (scheduleValidation.warnings.length > 0) {
           logger.warn("[calculate_payment_schedule] Validation warnings", { metadata: { warnings: scheduleValidation.warnings } });
@@ -2673,9 +2690,9 @@ export async function executeTool(
 
       case "research_property": {
         const property = await storage.getProperty(org.id, args.property_id);
-        if (!property) return { success: false, error: "Property not found" };
+        if (!property) return toolRefusal({ what: "No property with that number is in this account", why: "It may have been deleted, or the number came from another list", unlock: "Search your properties by APN or address to find the one you mean" });
         if (!property.latitude || !property.longitude) {
-          return { success: false, error: "Property does not have coordinates for research" };
+          return toolRefusal({ what: "The property was not researched", why: "It has no map location on file, and the research is done by location", unlock: "Open the property on the Map to set its location, then ask again" });
         }
 
         const lat = Number(property.latitude);
@@ -2705,7 +2722,7 @@ export async function executeTool(
 
       case "get_property_enrichment": {
         const property = await storage.getProperty(org.id, args.property_id);
-        if (!property) return { success: false, error: "Property not found" };
+        if (!property) return toolRefusal({ what: "No property with that number is in this account", why: "It may have been deleted, or the number came from another list", unlock: "Search your properties by APN or address to find the one you mean" });
 
         const enrichmentData = (property as any).enrichmentData;
         if (!enrichmentData) {
@@ -2767,7 +2784,7 @@ export async function executeTool(
         const url = args.url as string;
         logger.info(`[browse_web] Starting browse for URL: ${url}`);
         if (!url || (!url.startsWith("http://") && !url.startsWith("https://"))) {
-          return { success: false, error: "Invalid URL. Must start with http:// or https://" };
+          return toolRefusal({ what: "The page was not opened", why: "That is not a web address I can open", unlock: "Paste the full address, starting with https://" });
         }
 
         // Tier 1B — shared SSRF guard at the tool boundary (same validateUrl
@@ -2786,7 +2803,7 @@ export async function executeTool(
             logger.warn("[browse_web] URL blocked by SSRF guard", {
               metadata: { orgId: org.id, reason: ssrfErr.message },
             });
-            return { success: false, error: `URL blocked: ${ssrfErr.message}` };
+            return toolRefusal({ what: "The page was not opened", why: "That address points inside a private network, which I am not allowed to reach", unlock: "Use a public web address instead" });
           }
           throw ssrfErr;
         }
@@ -2798,7 +2815,7 @@ export async function executeTool(
           logger.warn("[browse_web] URL blocked by domain policy", {
             metadata: { orgId: org.id, reason: policy.reason },
           });
-          return { success: false, error: `URL blocked: ${policy.reason}` };
+          return toolRefusal({ what: "The page was not opened", why: "That website is not on the list of sites I may visit", unlock: "Open it yourself in your browser, or ask about a public records site instead" });
         }
 
         const browserAutomation = await import("../services/browserAutomation");
@@ -2812,7 +2829,7 @@ export async function executeTool(
         logger.info(`[browse_web] Result: success=${result.success}, title="${result.title}", contentLen=${result.content?.length}, error=${result.error}`);
         
         if (!result.success) {
-          return { success: false, error: result.error || "Failed to load page" };
+          return toolRefusal({ what: "The page did not load", why: "The website did not answer, or refused the visit", unlock: "Try again in a minute, or open it yourself in your browser" });
         }
         
         return {
@@ -2831,9 +2848,9 @@ export async function executeTool(
       
       case "draft_offer": {
         const deal = await storage.getDeal(org.id, Number(args.dealId));
-        if (!deal) return { success: false, error: "Deal not found" };
+        if (!deal) return toolRefusal({ what: "No deal with that number is in this account", why: "It may have been deleted, or the number came from another list", unlock: "Open Deals to find the one you mean" });
         const property = await storage.getProperty(org.id, deal.propertyId);
-        if (!property) return { success: false, error: "Property not found for this deal" };
+        if (!property) return toolRefusal({ what: "No offer was drafted", why: "This deal has no property attached", unlock: "Attach the property on the deal's page, then ask again" });
 
         // Validate the offer amount before drafting
         const draftOfferValidation = validateAtlasOutput(AtlasOutputType.OFFER_AMOUNT, {
@@ -2841,7 +2858,7 @@ export async function executeTool(
         });
         if (!draftOfferValidation.valid) {
           logger.warn("[draft_offer] Offer amount validation failed", { metadata: { errors: draftOfferValidation.errors, dealId: deal.id } });
-          return { success: false, error: `Offer amount validation failed: ${draftOfferValidation.errors.join("; ")}` };
+          return toolRefusal({ what: "No offer was drafted", why: "The offer amount did not pass the sanity check — it is missing, negative or far outside the deal's numbers", unlock: "Give the offer amount in dollars and ask again" });
         }
 
         const closingDays = args.closingDays || 30;
@@ -2939,10 +2956,10 @@ export async function executeTool(
         // Validate the entity exists and belongs to this org
         if (entityType === "lead") {
           const lead = await storage.getLead(org.id, entityId);
-          if (!lead) return { success: false, error: "Lead not found" };
+          if (!lead) return toolRefusal({ what: "No lead with that number is in this account", why: "It may have been deleted, merged, or the number came from another list", unlock: "Search your leads by name or address to find the one you mean" });
         } else if (entityType === "deal") {
           const deal = await storage.getDeal(org.id, entityId);
-          if (!deal) return { success: false, error: "Deal not found" };
+          if (!deal) return toolRefusal({ what: "No deal with that number is in this account", why: "It may have been deleted, or the number came from another list", unlock: "Open Deals to find the one you mean" });
         }
 
         const task = await storage.createTask({
@@ -2976,9 +2993,9 @@ export async function executeTool(
 
       case "run_comps": {
         const property = await storage.getProperty(org.id, Number(args.propertyId));
-        if (!property) return { success: false, error: "Property not found" };
+        if (!property) return toolRefusal({ what: "No property with that number is in this account", why: "It may have been deleted, or the number came from another list", unlock: "Search your properties by APN or address to find the one you mean" });
         if (!property.county || !property.state) {
-          return { success: false, error: "Property is missing county or state information" };
+          return toolRefusal({ what: "The property was not looked up", why: "It has no county or state on file", unlock: "Add the county and state on the property's page, then ask again" });
         }
 
         // Query all sold/listed properties in same county+state for this org as internal comps
@@ -3083,7 +3100,7 @@ export async function executeTool(
 
       case "draft_outreach_message": {
         const lead = await storage.getLead(org.id, Number(args.leadId));
-        if (!lead) return { success: false, error: "Lead not found" };
+        if (!lead) return toolRefusal({ what: "No lead with that number is in this account", why: "It may have been deleted, merged, or the number came from another list", unlock: "Search your leads by name or address to find the one you mean" });
 
         const messageType = args.messageType as "email" | "sms" | "voicemail_script";
         const sellerName = `${lead.firstName} ${lead.lastName}`.trim();
@@ -3186,7 +3203,7 @@ export async function executeTool(
       case "spawn_subagent": {
         const currentDepth = (org as any).__subAgentDepth ?? 0;
         if (currentDepth >= 2) {
-          return { success: false, error: "Sub-agent depth limit reached (max 2)" };
+          return toolRefusal({ what: "That step was not started", why: "It would have handed the job to a helper inside a helper, and two levels is the most allowed", unlock: "Ask for the result directly, in one request" });
         }
         const { processChat } = await import("./executive");
         const subOrg = { ...org, __subAgentDepth: currentDepth + 1 } as any;
@@ -3211,9 +3228,10 @@ export async function executeTool(
           // filters this tool out when the flag is off, but if it's ever
           // invoked anyway, refuse rather than answer ungrounded.
           return {
-            success: false,
+            success: false as const,
             error:
-              "Land-knowledge retrieval is not enabled. Answer from retrieved parcel facts only.",
+              "Land knowledge is not turned on for this account, so I did not look it up. " +
+              "Ask about the parcel's own records instead, which I can read.",
           };
         }
         const { retrieveLandKnowledge, buildLandKnowledgePayload } =
@@ -3290,7 +3308,7 @@ export async function executeTool(
       }
 
       default:
-        return { success: false, error: `Unknown tool: ${toolName}` };
+        return toolRefusal({ what: "That action does not exist", why: "I tried to use an action AcreOS does not have", unlock: "Ask again in other words, and I will use one it does have" });
     }
     })();
 
@@ -3325,7 +3343,8 @@ export async function executeTool(
 
     return outcome;
   } catch (error: any) {
-    return { success: false, error: error.message };
+    logger.warn("[executeTool] tool threw", { metadata: { toolName, err: error instanceof Error ? error.message : String(error) } });
+    return toolFailure("That action did not finish");
   }
 }
 

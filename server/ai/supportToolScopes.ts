@@ -106,20 +106,23 @@ export function supportScopeFor(toolName: string): Scope | undefined {
   return SUPPORT_TOOL_SCOPES[toolName];
 }
 
-/** Refusal for a side-effecting support tool nobody classified. */
-export function undeclaredSupportScopeMessage(toolName: string): string {
+/**
+ * Refusal for a side-effecting support tool nobody classified. Plain words
+ * (tests/unit/refusalsArePlainWords.test.ts): the tool's code name and the
+ * file that declares scopes are for the log, not for the customer the support
+ * model is talking to.
+ */
+export function undeclaredSupportScopeMessage(_toolName: string): string {
   return (
-    `"${toolName}" changes something and has no declared permission, so it was not run. ` +
-    `A side-effecting support capability must name the permission it requires ` +
-    `(server/ai/supportToolScopes.ts) before Pax can use it.`
+    "That was not run. It would change your account, and it has not been cleared for me to do on my own. " +
+    "Reply here and a person on our team will do it for you."
   );
 }
 
 /** Refusal for a caller who does not hold the tool's declared scope. */
-export function supportScopeRefusalMessage(toolName: string, scope: Scope): string {
+export function supportScopeRefusalMessage(_toolName: string, _scope: Scope): string {
   return (
-    `You do not have permission to do that here. "${toolName}" requires the ` +
-    `"${scope}" permission in this workspace. An owner or admin can grant it ` +
-    `under ${PLACE_TEXT.teamRoles}.`
+    "I did not do that. Your role on this team does not have permission for it. " +
+    `Ask an owner or admin to change your role under ${PLACE_TEXT.teamRoles}.`
   );
 }

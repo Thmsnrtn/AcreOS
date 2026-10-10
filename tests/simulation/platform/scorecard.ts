@@ -146,7 +146,7 @@ if (scorecard.redteam) {
   md.push("");
 }
 if (evals) {
-  md.push(`## Question banks`, "", `- Pax: ${evals.pax?.total} generated questions (${evals.pax?.heldOut} held out); scripted judges agree on ${r1((evals.pax?.agreement ?? 0) * 100)}% of answers; ${evals.pax?.disagreements} disagreements surfaced. Held-out pass rate ${r1((evals.pax?.heldOutPassRate ?? 0) * 100)}%.`);
+  md.push(`## Question banks`, "", `- Pax: ${evals.pax?.total} generated questions (${evals.pax?.heldOut} held out); scripted judges agree on ${r1((evals.pax?.agreement ?? 0) * 100)}% of the answers at least two judges voted on (working set ${r1((evals.pax?.workingAgreement ?? 0) * 100)}%, held out ${r1((evals.pax?.heldOutAgreement ?? 0) * 100)}%); ${evals.pax?.disagreements} disagreements surfaced${evals.pax?.disagreementsFile ? ` (${evals.pax.disagreementsFile})` : ""}. Held-out pass rate ${r1((evals.pax?.heldOutPassRate ?? 0) * 100)}%.`);
   md.push(`- Solene: ${evals.solene?.total} questions and commands; agreement ${r1((evals.solene?.agreement ?? 0) * 100)}%; held-out pass rate ${r1((evals.solene?.heldOutPassRate ?? 0) * 100)}%.`, `- Real-model judging was not run (no paid model calls in this run).`, "");
 }
 if (walks) {

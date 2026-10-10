@@ -18,6 +18,7 @@
  * Reads are platform-scope by design: the support desk and the retention desk
  * serve every AcreOS customer (AcreOS operating itself — Level-1 work).
  */
+import { plainRefusal, plainStageWords } from "@shared/refusal/plainRefusal";
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import {
   autopilotPendingActions,
@@ -375,28 +376,28 @@ export async function executeRoleTool(
 ): Promise<RoleToolResult> {
   try {
     if (!roleToolSchemas(role).some((t) => t.name === name)) {
-      return { success: false, output: `${name} is not one of the ${role} worker's tools.` };
+      return { success: false, output: plainRefusal({ what: "That action was not run", why: `It is not one of the actions a ${role} run may take`, unlock: "Use one of the actions listed for this run" }) };
     }
     if (role === "support") return await executeSupportRoleTool(name, input, ctx);
     if (role === "retention") return await executeRetentionRoleTool(name, input, ctx);
-    return { success: false, output: `${role} has no tools.` };
+    return { success: false, output: plainRefusal({ what: "No action was run", why: `A ${role} run has no actions it may take`, unlock: "Answer in words only, and leave anything that needs doing to the founder" }) };
   } catch (err) {
     logger.warn(`[roleWorkers] ${role}.${name} threw`, err instanceof Error ? err : undefined);
-    return { success: false, output: `${name} failed: ${err instanceof Error ? err.message : String(err)}` };
+    return { success: false, output: plainRefusal({ what: "That action did not finish", why: "The system hit a problem on our side; the details are in the log", unlock: "Try once more; if it fails again, escalate the ticket to the founder" }) };
   }
 }
 
 async function executeSupportRoleTool(name: string, input: Record<string, unknown>, ctx: RoleToolContext): Promise<RoleToolResult> {
   // Bound to the briefed ticket: one ticket, one org, per run.
   if (ctx.ticketId == null || ctx.organizationId == null) {
-    return { success: false, output: "This Support run was not briefed on a ticket; no ticket tool may act." };
+    return { success: false, output: plainRefusal({ what: "No ticket action was run", why: "This run was not given a ticket to work on", unlock: "End the run; the next run is briefed with its ticket" }) };
   }
   const ticketId = num(input.ticket_id);
   if (ticketId !== ctx.ticketId) {
-    return { success: false, output: `You are working ticket #${ctx.ticketId} only — ticket #${input.ticket_id} is not yours in this run.` };
+    return { success: false, output: plainRefusal({ what: `Nothing was done to ticket #${String(input.ticket_id)}`, why: `This run works ticket #${ctx.ticketId} only`, unlock: `Act on ticket #${ctx.ticketId}, or end the run` }) };
   }
   const ticket = await ticketInOrg(ctx.organizationId, ctx.ticketId);
-  if (!ticket) return { success: false, output: `ticket #${input.ticket_id} not found.` };
+  if (!ticket) return { success: false, output: plainRefusal({ what: `Nothing was done to ticket #${String(input.ticket_id)}`, why: "There is no such ticket on this customer's account", unlock: "End the run and leave a note for the founder" }) };
 
   if (name === "list_recent_purchases") {
     const rows = await purchasesForOrg(ticket.organizationId);
@@ -411,12 +412,12 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
   if (name === "refund_purchase") {
     const amount = num(input.amount_cents);
     const pi = str(input.payment_intent_id);
-    if (!pi || !Number.isFinite(amount) || amount <= 0) return { success: false, output: "refund_purchase: payment_intent_id and a positive amount_cents are required." };
+    if (!pi || !Number.isFinite(amount) || amount <= 0) return { success: false, output: plainRefusal({ what: "No refund was drafted", why: "A refund needs the purchase it reverses and an amount above zero", unlock: "List the recent purchases, then refund one of them by its id and amount" }) };
     if (amount > REFUND_CEILING_CENTS) {
-      return { success: false, output: `refund_purchase refused: $${(amount / 100).toFixed(2)} is over the $${(REFUND_CEILING_CENTS / 100).toFixed(2)} limit. Escalate this ticket to the founder.` };
+      return { success: false, output: plainRefusal({ what: "No refund was drafted", why: `$${(amount / 100).toFixed(2)} is over the $${(REFUND_CEILING_CENTS / 100).toFixed(2)} a support reply may refund`, unlock: "Escalate this ticket to the founder, and tell the customer it is being reviewed" }) };
     }
     const purchase = (await purchasesForOrg(ticket.organizationId)).find((p) => p.paymentIntentId === pi);
-    if (!purchase) return { success: false, output: `refund_purchase refused: ${pi} is not a purchase this ticket's organization made in the last 90 days.` };
+    if (!purchase) return { success: false, output: plainRefusal({ what: "No refund was drafted", why: "That is not a purchase this customer made in the last 90 days", unlock: "List the recent purchases and pick one of them, or escalate the ticket to the founder" }) };
     // Never refund the same payment twice: anything already drafted, approved
     // or executed against it counts toward what it cost.
     const prior = await unscopedForPlatformOps(PLATFORM_SUPPORT)
@@ -430,8 +431,8 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
         ),
       );
     const already = prior.reduce((a, r) => a + Number((r.args as { amount_cents?: number } | null)?.amount_cents ?? 0), 0);
-    if (already > 0) return { success: false, output: `refund_purchase refused: $${(already / 100).toFixed(2)} of ${pi} is already refunded or awaiting its witness — never twice.` };
-    if (amount > purchase.amountCents) return { success: false, output: `refund_purchase refused: $${(amount / 100).toFixed(2)} is more than the purchase ($${(purchase.amountCents / 100).toFixed(2)}).` };
+    if (already > 0) return { success: false, output: plainRefusal({ what: "No refund was drafted", why: `$${(already / 100).toFixed(2)} of that purchase is already refunded or waiting for approval, and a purchase is never refunded twice`, unlock: "Tell the customer the refund is already being processed" }) };
+    if (amount > purchase.amountCents) return { success: false, output: plainRefusal({ what: "No refund was drafted", why: `$${(amount / 100).toFixed(2)} is more than the purchase itself ($${(purchase.amountCents / 100).toFixed(2)})`, unlock: "Refund at most what the customer paid" }) };
     const frozen = await freezeHand("support", "apply_refund", { charge_id: pi, amount_cents: amount, reason: `ticket #${ticket.id}: ${str(input.reason).slice(0, 300)}`, organization_id: ticket.organizationId }, ctx);
     if (frozen.pendingId == null) return { success: false, output: frozen.output };
     return { success: true, effect: "drafted_refund", output: `Refund of $${(amount / 100).toFixed(2)} drafted (pending action #${frozen.pendingId}); it goes out once witnessed. Do not tell the customer it has already been refunded — say it is being processed.` };
@@ -439,7 +440,7 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
 
   if (name === "reply_to_ticket") {
     const message = str(input.message);
-    if (!message) return { success: false, output: "reply_to_ticket: message is required." };
+    if (!message) return { success: false, output: plainRefusal({ what: "No reply was drafted", why: "The reply was empty", unlock: "Write the reply to the customer and send it again" }) };
     // The honesty screen, with the amounts this ticket is ABOUT allowed: a
     // dollar figure the customer wrote, or one of their own purchases, is a
     // fact of the case, not an invented statistic.
@@ -452,10 +453,10 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
     }
     for (const v of [...known]) known.add(v.replace(/\.00$/, "")).add(/\./.test(v) ? v : `${v}.00`);
     const fab = screenFabrication(message, { allowDollarFigures: [...known] });
-    if (fab.length > 0) return { success: false, output: `reply_to_ticket refused by the honesty screen: ${fab.map((v) => v.message).join(" ")}` };
+    if (fab.length > 0) return { success: false, output: plainRefusal({ what: "No reply was drafted", why: `The honesty check caught something the reply states without a source: ${fab.map((v) => v.message).join(" ")}`, unlock: "Rewrite the reply without it and send it again" }) };
     const { claimsFounderOnlyAction } = await import("../../autopilot/hardStopMoves");
     const claimed = claimsFounderOnlyAction(message);
-    if (claimed) return { success: false, output: `reply_to_ticket refused: the reply tells the customer a founder-only action (${claimed.replace(/_/g, " ")}) was done. Only the founder does that — escalate the ticket to the founder and tell the customer it is being reviewed.` };
+    if (claimed) return { success: false, output: plainRefusal({ what: "No reply was drafted", why: `It tells the customer a founder-only action (${claimed.replace(/_/g, " ")}) was done, and only the founder does that`, unlock: "Escalate the ticket to the founder and tell the customer it is being reviewed" }) };
     const frozen = await freezeHand("support", "reply_support_ticket", { ticket_id: ticket.id, organization_id: ticket.organizationId, message, resolve: input.resolve === true }, ctx);
     if (frozen.pendingId == null) return { success: false, output: frozen.output };
     await assignTicket(ticket.organizationId, ticket.id, SUPPORT_WORKER_AGENT);
@@ -482,7 +483,7 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
       )
       .returning({ id: supportTickets.id });
     if (claimed.length === 0) {
-      return { success: false, output: `Ticket #${ticket.id} is already with the founder — not asking or paging again. Tell the customer it is being reviewed; promise no outcome.` };
+      return { success: false, output: plainRefusal({ what: `Ticket #${ticket.id} was not escalated again`, why: "It is already with the founder, so asking or paging twice would only repeat it", unlock: "Tell the customer it is being reviewed, and promise no outcome" }) };
     }
     // Legal intake (supportLegalIntake) already put a legal ticket in front of
     // the founder — an urgent ask and a page — when it was filed. The ticket is
@@ -519,32 +520,32 @@ async function executeSupportRoleTool(name: string, input: Record<string, unknow
     });
     return { success: true, effect: "escalated", output: `Ticket #${ticket.id} handed to the founder (ask #${r.askId}${r.deduped ? ", already open" : ""}).` };
   }
-  return { success: false, output: `unknown support tool ${name}` };
+  return { success: false, output: plainRefusal({ what: "That action does not exist", why: "It is not one of the actions a support run may take", unlock: "Use one of the actions listed for this run" }) };
 }
 
 async function executeRetentionRoleTool(name: string, input: Record<string, unknown>, ctx: RoleToolContext): Promise<RoleToolResult> {
-  if (name !== "email_customer") return { success: false, output: `unknown retention tool ${name}` };
+  if (name !== "email_customer") return { success: false, output: plainRefusal({ what: "That action does not exist", why: "It is not one of the actions a retention run may take", unlock: "Use the email action listed for this run" }) };
   const orgId = num(input.organization_id);
   const kind = str(input.kind);
   const subject = str(input.subject);
   const html = str(input.html);
-  if (!Number.isFinite(orgId) || !subject || !html) return { success: false, output: "email_customer: organization_id, kind, subject and html are required." };
+  if (!Number.isFinite(orgId) || !subject || !html) return { success: false, output: plainRefusal({ what: "No email was drafted", why: "It needs the customer's account number, the kind of email, a subject and a body", unlock: "Fill in all four and send it again" }) };
   const eligible = (await listAtRiskCustomers()).find((c) => c.organizationId === orgId);
-  if (!eligible) return { success: false, output: `email_customer refused: org #${orgId} is not on today's at-risk list.` };
-  if (eligible.kind !== kind) return { success: false, output: `email_customer refused: org #${orgId} is eligible for ${eligible.kind}, not ${kind}.` };
+  if (!eligible) return { success: false, output: plainRefusal({ what: `No email was drafted for account #${orgId}`, why: "That account is not on today's list of customers at risk", unlock: "Email only the accounts in this run's briefing" }) };
+  if (eligible.kind !== kind) return { success: false, output: plainRefusal({ what: `No email was drafted for account #${orgId}`, why: `Its briefing calls for a ${plainStageWords(eligible.kind)} email, not a ${plainStageWords(kind)} one`, unlock: `Send the ${plainStageWords(eligible.kind)} email instead` }) };
   const { screenFabrication } = await import("../../autopilot/contentHonesty");
   const fab = screenFabrication(`${subject}\n${html}`);
-  if (fab.length > 0) return { success: false, output: `email_customer refused by the honesty screen: ${fab.map((v) => v.message).join(" ")}` };
+  if (fab.length > 0) return { success: false, output: plainRefusal({ what: "No email was drafted", why: `The honesty check caught something the email states without a source: ${fab.map((v) => v.message).join(" ")}`, unlock: "Rewrite it without that and send it again" }) };
   const { claimsFounderOnlyAction } = await import("../../autopilot/hardStopMoves");
   const claimed = claimsFounderOnlyAction(`${subject}\n${html.replace(/<[^>]+>/g, " ")}`);
-  if (claimed) return { success: false, output: `email_customer refused: the email tells the customer a founder-only action (${claimed.replace(/_/g, " ")}) was done or will be. Pricing, legal, large spends and data deletion are the founder's alone.` };
-  if (await recentlyEmailed(orgId, kind)) return { success: false, output: `email_customer refused: org #${orgId} already got a ${kind} email in the last 7 days.` };
+  if (claimed) return { success: false, output: plainRefusal({ what: "No email was drafted", why: `It tells the customer a founder-only action (${claimed.replace(/_/g, " ")}) was done or will be — pricing, legal, large spends and data deletion are the founder's alone`, unlock: "Rewrite it without that promise and send it again" }) };
+  if (await recentlyEmailed(orgId, kind)) return { success: false, output: plainRefusal({ what: `No email was drafted for account #${orgId}`, why: `It already got a ${plainStageWords(kind)} email in the last 7 days`, unlock: "Leave it for now; it can be emailed again after a week" }) };
   const { ownerEmailOf } = await import("../../autopilot/delegationRules");
   const to = await ownerEmailOf(orgId);
-  if (!to) return { success: false, output: `email_customer refused: no owner email on file for org #${orgId}.` };
+  if (!to) return { success: false, output: plainRefusal({ what: `No email was drafted for account #${orgId}`, why: "The account has no owner email on file", unlock: "Leave it for the founder to reach another way" }) };
   const { filterSuppressed } = await import("../../emailSuppressions");
   const { allowed } = await filterSuppressed([to]);
-  if (allowed.length === 0) return { success: false, output: `email_customer refused: the owner of org #${orgId} has unsubscribed. Not emailing.` };
+  if (allowed.length === 0) return { success: false, output: plainRefusal({ what: `No email was drafted for account #${orgId}`, why: "The owner has unsubscribed from our email", unlock: "Leave it; an unsubscribed owner is never emailed" }) };
   const frozen = await freezeHand("retention", "send_email", { to, subject, html, organization_id: orgId, retention_kind: kind }, ctx);
   if (frozen.pendingId == null) return { success: false, output: frozen.output };
   return { success: true, effect: "drafted_email", output: `${kind} email to org #${orgId}'s owner drafted (pending action #${frozen.pendingId}); it goes out once witnessed.` };

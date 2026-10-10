@@ -18,6 +18,7 @@
  * matter, and set_budget refuses any amount over the $500 limit. Those stay a
  * tap on the founder's own door.
  */
+import { plainRefusal, plainStageWords } from "@shared/refusal/plainRefusal";
 import { HARD_STOP_SPEND_LIMIT_USD } from "../../autopilot/hardStops";
 import { founderOnlyClassForMove, hardStopForMove, isMoneyShaped } from "../../autopilot/hardStopMoves";
 import { bindingFor, isKnownMoveKind } from "../../autopilot/act";
@@ -147,34 +148,34 @@ export async function executeBusinessChatTool(
       case "answer_ask": {
         const askId = typeof input.ask_id === "number" ? Math.floor(input.ask_id) : NaN;
         const decision = input.decision === "approve" ? "yes" : input.decision === "decline" ? "no" : null;
-        if (!Number.isFinite(askId) || !decision) return { ok: false, text: "answer_ask needs ask_id and decision approve|decline." };
+        if (!Number.isFinite(askId) || !decision) return { ok: false, text: plainRefusal({ what: "I did not answer the ask", why: "I need to know which ask it is and whether you approve or decline it", unlock: "Tell me the ask number and say approve or decline" }) };
         const { getAsk, answerFounderAsk } = await import("../founderCollab");
         const ask = await getAsk(askId);
-        if (!ask) return { ok: false, text: `Ask #${askId} does not exist.` };
-        if (ask.status !== "open") return { ok: false, text: `Ask #${askId} is already ${ask.status}.` };
-        if (ask.answerFormat !== "yes_no") return { ok: false, text: `Ask #${askId} needs a written answer — answer it on the Decisions door.` };
+        if (!ask) return { ok: false, text: plainRefusal({ what: `I did not answer ask #${askId}`, why: "There is no ask with that number", unlock: "Open the Decisions door to see the asks that are open" }) };
+        if (ask.status !== "open") return { ok: false, text: plainRefusal({ what: `I did not answer ask #${askId}`, why: `It is already ${plainStageWords(ask.status)}, so there is nothing left to decide`, unlock: "Open the Decisions door if you want to see how it was settled" }) };
+        if (ask.answerFormat !== "yes_no") return { ok: false, text: plainRefusal({ what: `I did not answer ask #${askId}`, why: "It needs a written answer, not a yes or no", unlock: "Answer it in your own words on the Decisions door" }) };
         // STRUCTURAL: the chat answers only an ask the server bound to a
         // server-authored catalog move on the allow-list (chat_approvable,
         // set by planAndAct — never by a model). Whatever words a model wrote
         // into an ask, it is the founder's own tap. The classifier below is
         // defence in depth.
         if (ask.chatApprovable !== true || isUndelegableAsk(ask)) {
-          return { ok: false, text: `Ask #${askId} ("${ask.questionSummary}") is founder-only and un-delegable (a hard-stop, a net-new move, a money or finance decision, or a legal/data matter). I did not answer it; tap it yourself on the Decisions door.` };
+          return { ok: false, text: plainRefusal({ what: `I did not answer ask #${askId} ("${ask.questionSummary}")`, why: "It is founder-only — a hard-stop, a new kind of move, a money decision, or a legal or data matter — so only your own tap counts", unlock: "Tap it yourself on the Decisions door" }) };
         }
         // Bound to the version the founder was SHOWN (list_open_asks), never
         // to whatever the card says at this instant.
         const version = typeof input.version === "string" ? input.version : "";
-        if (!version) return { ok: false, text: `Ask #${askId}: show the founder the card first (list_open_asks) and answer with the version you showed.` };
-        if (version !== ask.bodyHash) return { ok: false, text: `Ask #${askId} changed since you showed it — show the current card to the founder before answering.` };
+        if (!version) return { ok: false, text: plainRefusal({ what: `I did not answer ask #${askId}`, why: "I have not shown you its card in this conversation yet, and an answer must match the card you saw", unlock: "Ask me to list the open asks first, then tell me your answer" }) };
+        if (version !== ask.bodyHash) return { ok: false, text: plainRefusal({ what: `I did not answer ask #${askId}`, why: "It changed after I showed it to you, so your answer may not fit it any more", unlock: "Ask me to show the current card, then answer again" }) };
         await answerFounderAsk({ askId, answerText: decision, expectedBodyHash: version, viaChat: true });
         logger.info("[soleneChat] business tool answered an ask", { metadata: { askId, decision, founderUserId } });
         return { ok: true, text: `Ask #${askId} ${decision === "yes" ? "approved — an approved autopilot move is queued to run" : "declined — it stays held"}.` };
       }
       case "set_budget": {
         const usd = typeof input.monthly_usd === "number" ? input.monthly_usd : NaN;
-        if (!Number.isFinite(usd) || usd < 0) return { ok: false, text: "set_budget needs monthly_usd ≥ 0." };
+        if (!Number.isFinite(usd) || usd < 0) return { ok: false, text: plainRefusal({ what: "The budget was not changed", why: "I need a monthly amount in dollars, zero or more", unlock: "Tell me the monthly amount, or say zero to go back to the default" }) };
         if (usd > HARD_STOP_SPEND_LIMIT_USD) {
-          return { ok: false, text: `$${usd} is over the $${HARD_STOP_SPEND_LIMIT_USD} hard-stop — a budget that large is founder-only and un-delegable. Set it yourself on the Controls door.` };
+          return { ok: false, text: plainRefusal({ what: "The budget was not changed", why: `$${usd} is over the $${HARD_STOP_SPEND_LIMIT_USD} hard-stop, and a budget that large is founder-only — it cannot be handed to me`, unlock: "Set it yourself on the Controls door" }) };
         }
         const { setGrowthBudgetOverrideUsd } = await import("../../autopilot/settings");
         const s = await setGrowthBudgetOverrideUsd(usd === 0 ? null : usd, founderUserId);
@@ -183,12 +184,12 @@ export async function executeBusinessChatTool(
       case "pause":
       case "resume": {
         const { isPausable, setPaused } = await import("../../autopilot/founderControls");
-        if (!isPausable(input.target)) return { ok: false, text: `Unknown target — use one of ${PAUSE_TARGETS.join(", ")}.` };
+        if (!isPausable(input.target)) return { ok: false, text: plainRefusal({ what: "Nothing was paused or resumed", why: "I did not recognise what you want switched", unlock: `Name one of these: ${PAUSE_TARGETS.map(plainStageWords).join(", ")}` }) };
         // Turning ad spending back ON is never a model's reading of a chat
         // line: it runs only after the founder's explicit confirmation (the
         // chat surface's approve control — toolExecutor / the approve route).
         if (name === "resume" && input.target === "ads" && opts.confirmed !== true) {
-          return { ok: false, text: "Resuming ad spending needs your explicit confirmation — nothing changed. Confirm it with the approve control on this message." };
+          return { ok: false, text: plainRefusal({ what: "Ad spending was not turned back on", why: "Turning it on needs your explicit confirmation, not my reading of a message", unlock: "Confirm it with the approve control on this message" }) };
         }
         const r = await setPaused(input.target, name === "pause", founderUserId);
         if (r.target === "ads") {
@@ -217,10 +218,10 @@ export async function executeBusinessChatTool(
         };
       }
       default:
-        return { ok: false, text: `unknown business tool ${name}` };
+        return { ok: false, text: plainRefusal({ what: "That action does not exist", why: "I tried to use an action this chat does not have", unlock: "Ask again in other words, and I will use one it does have" }) };
     }
   } catch (err) {
     logger.warn(`[soleneChat] business tool ${name} failed`, err instanceof Error ? err : undefined);
-    return { ok: false, text: `${name} failed: ${err instanceof Error ? err.message : String(err)}` };
+    return { ok: false, text: plainRefusal({ what: "That did not finish", why: "The system hit a problem on our side; the details are in the log", unlock: "Try again in a minute; if it keeps failing, open the Story door to see what broke" }) };
   }
 }

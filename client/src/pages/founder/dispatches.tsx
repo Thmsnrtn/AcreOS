@@ -78,6 +78,8 @@ interface DispatchRow {
   startedAt: string | null;
   completedAt: string | null;
   resultSummary: string | null;
+  /** A failed or cancelled run's outcome in plain words (server: dispatchOutcomeInWords). */
+  outcomeInWords?: string | null;
   resultFullPath: string | null;
   enqueuedBy: string | null;
   // reviewStatus is not currently in shapeDispatchRow (server frozen),
@@ -579,9 +581,9 @@ function TerminalRow({ dispatch: d }: { dispatch: DispatchRow }) {
         <td className="px-3 py-2 font-mono align-top">{d.agentRole}</td>
         <td
           className="px-3 py-2 max-w-md text-foreground/80 align-top"
-          title={d.resultSummary ?? d.result?.errorMessage ?? ""}
+          title={d.outcomeInWords ?? d.resultSummary ?? d.result?.errorMessage ?? ""}
         >
-          {truncate(d.resultSummary ?? d.result?.errorMessage ?? null, 80)}
+          {truncate(d.outcomeInWords ?? d.resultSummary ?? d.result?.errorMessage ?? null, 80)}
         </td>
         <td className="px-3 py-2 text-right align-top">
           {fmtCost(d.result?.costUsd)}
@@ -647,10 +649,19 @@ function TerminalRow({ dispatch: d }: { dispatch: DispatchRow }) {
               </pre>
             </div>
 
+            {d.outcomeInWords && (
+              <div data-testid={`dispatch-outcome-words-${d.id}`}>
+                <div className="uppercase tracking-wide text-muted-foreground text-xs mb-1">
+                  What happened
+                </div>
+                <p className="text-sm text-foreground">{d.outcomeInWords}</p>
+              </div>
+            )}
+
             {d.resultSummary && (
               <div>
                 <div className="uppercase tracking-wide text-muted-foreground text-xs mb-1">
-                  Result summary
+                  {d.outcomeInWords ? "Technical note" : "Result summary"}
                 </div>
                 <pre className="text-xs font-mono bg-muted/40 rounded p-2 max-h-64 overflow-auto whitespace-pre-wrap">
                   {d.resultSummary}

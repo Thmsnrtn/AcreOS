@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { toolRefusal, toolFailure, type RefusalParts } from "@shared/refusal/plainRefusal";
 import { storage } from "../storage";
 import { subscriptionPeriodIso } from "../stripeClient";
 import type { Organization, SupportTicket, KnowledgeBaseArticle, TeamMember } from "@shared/schema";
@@ -1339,7 +1340,7 @@ function asksForCredit(toolName: string, args: Record<string, any>): boolean {
   return toolName === "apply_billing_fix" && args?.fix_type === "apply_credit";
 }
 
-type SupportToolResult = { success: boolean; data?: any; error?: string };
+type SupportToolResult = { success: boolean; data?: any; error?: string; refusal?: RefusalParts; requiredScope?: string };
 
 const VIEWER_ROLE_RANK: Record<ViewerRole, number> = { viewer: 0, va: 1, member: 2, admin: 3, owner: 4 };
 
@@ -1386,7 +1387,7 @@ export async function executeSupportTool(
         orgId: org.id,
         metadata: { ticketId: ticketId ?? null },
       });
-      return { success: false, error: APPLY_CREDIT_REFUSAL };
+      return { success: false as const, error: APPLY_CREDIT_REFUSAL };
     }
 
     const trustedApproval = options?.trustedApproval === true;
@@ -1421,10 +1422,11 @@ export async function executeSupportTool(
           orgId: org.id,
           metadata: { toolName, ticketId, ticketOrgId: owner?.organizationId ?? null },
         });
-        return {
-          success: false,
-          error: `Ticket #${ticketId} is not in this workspace, so nothing was run.`,
-        };
+        return toolRefusal({
+          what: `Nothing was run for ticket #${ticketId}`,
+          why: "That ticket is not in this account's support history",
+          unlock: "Use a ticket number from this account's own support history",
+        });
       }
     }
 
@@ -1546,7 +1548,7 @@ export async function executeSupportTool(
           orgId: org.id,
           metadata: { toolName, declaredScope, subjectCount: subjects.length },
         });
-        return { success: false, error: supportScopeRefusalMessage(toolName, declaredScope) };
+        return { success: false, error: supportScopeRefusalMessage(toolName, declaredScope), requiredScope: declaredScope };
       }
     }
 
@@ -1759,7 +1761,7 @@ export async function executeSupportTool(
         const { issue_type, confirm } = args;
         
         if (!confirm) {
-          return { success: false, error: "Please confirm the fix before applying" };
+          return toolRefusal({ what: "The fix was not applied", why: "It changes your account, so it needs your go-ahead first", unlock: "Say yes to apply it, and I will run it" });
         }
         
         let fixResult = { applied: false, description: "" };
@@ -1802,7 +1804,7 @@ export async function executeSupportTool(
             break;
             
           default:
-            return { success: false, error: `Fix type '${issue_type}' is not yet implemented` };
+            return toolRefusal({ what: "That fix was not applied", why: "It is not one of the fixes I can run myself", unlock: "Reply here and a person on our team will look at it" });
         }
         
         return { success: true, data: fixResult };
@@ -3028,10 +3030,11 @@ export async function executeSupportTool(
         const tutorial = tutorials[topic];
         
         if (!tutorial) {
-          return {
-            success: false,
-            error: `Tutorial not found for topic: ${topic}`
-          };
+          return toolRefusal({
+            what: "There is no walkthrough on that topic",
+            why: "It is not one of the guides written so far",
+            unlock: "Ask the question in your own words and I will answer it directly, or open Help",
+          });
         }
         
         // Enhance with user context if provided
@@ -3257,7 +3260,7 @@ export async function executeSupportTool(
           success: result.learned,
           data: result.learned 
             ? { message: "Successfully learned from human resolution", entry: result.learningEntry }
-            : { error: result.error }
+            : { reason: "Nothing was learned from that ticket; it may not have a person's resolution on it yet." }
         };
       }
       
@@ -3311,10 +3314,11 @@ export async function executeSupportTool(
             authenticatedOrgId: org.id,
             unauthorizedOrgIds,
           });
-          return {
-            success: false,
-            error: `Bulk fix rejected: cannot apply fixes to organizations outside your own (org ${org.id}). Unauthorized org IDs: ${unauthorizedOrgIds.join(", ")}`
-          };
+          return toolRefusal({
+            what: "The fix was not applied",
+            why: "It named accounts other than yours, and a fix here only ever touches your own account",
+            unlock: "Ask for the fix on your own account only",
+          });
         }
 
         const { paxLearningService } = await import("../services/paxLearning");
@@ -3412,10 +3416,8 @@ export async function executeSupportTool(
             }
           };
         } catch (error: any) {
-          return {
-            success: false,
-            error: `Failed to analyze screenshot: ${error.message}`
-          };
+          logger.warn("[support-tool] screenshot analysis failed", { metadata: { err: error instanceof Error ? error.message : String(error) } });
+          return toolFailure("The screenshot was not read");
         }
       }
       
@@ -3709,7 +3711,7 @@ export async function executeSupportTool(
           success: resolved,
           data: resolved 
             ? { alertId: alert_id, resolved: true, details: resolution_details }
-            : { error: "Alert not found or already resolved" }
+            : { reason: "That alert was not resolved: it is already resolved, or it is not on this account." }
         };
       }
       
@@ -3763,10 +3765,11 @@ export async function executeSupportTool(
         const { sync_type } = args;
         
         if (!org.stripeCustomerId) {
-          return {
-            success: false,
-            error: "This organization doesn't have a Stripe customer ID configured."
-          };
+          return toolRefusal({
+            what: "Billing was not re-synced",
+            why: "This account has no billing record yet, which is normal before a first payment",
+            unlock: "Choose a plan under Settings → Billing, and billing will be set up from there",
+          });
         }
         
         try {
@@ -3821,10 +3824,8 @@ export async function executeSupportTool(
             data: syncResults
           };
         } catch (err: any) {
-          return {
-            success: false,
-            error: `Stripe sync failed: ${err.message}`
-          };
+          logger.warn("[support-tool] billing re-sync failed", { metadata: { err: err instanceof Error ? err.message : String(err) } });
+          return toolFailure("Billing was not re-synced");
         }
       }
       
@@ -3889,7 +3890,8 @@ export async function executeSupportTool(
             }
           };
         } catch (err: any) {
-          return { success: false, error: `Failed to fetch subscription: ${err.message}` };
+          logger.warn("[support-tool] subscription read failed", { metadata: { err: err instanceof Error ? err.message : String(err) } });
+          return toolFailure("Your subscription details did not load", "Try again in a minute, or open Settings → Billing to see them yourself");
         }
       }
       
@@ -3944,7 +3946,8 @@ export async function executeSupportTool(
             }
           };
         } catch (err: any) {
-          return { success: false, error: `Failed to fetch payment history: ${err.message}` };
+          logger.warn("[support-tool] payment history read failed", { metadata: { err: err instanceof Error ? err.message : String(err) } });
+          return toolFailure("Your payment history did not load", "Try again in a minute, or open Settings → Billing to see it yourself");
         }
       }
       
@@ -4053,7 +4056,8 @@ export async function executeSupportTool(
             }
           };
         } catch (err: any) {
-          return { success: false, error: `Failed to check billing issues: ${err.message}` };
+          logger.warn("[support-tool] billing issue check failed", { metadata: { err: err instanceof Error ? err.message : String(err) } });
+          return toolFailure("The billing check did not finish", "Try again in a minute, or open Settings → Billing to see your invoices yourself");
         }
       }
       
@@ -4061,7 +4065,7 @@ export async function executeSupportTool(
         const { fix_type, invoice_id, reason } = args;
         
         if (!org.stripeCustomerId) {
-          return { success: false, error: "No Stripe customer configured for this organization." };
+          return toolRefusal({ what: "No billing fix was made", why: "This account has no billing record yet, which is normal before a first payment", unlock: "Choose a plan under Settings → Billing, and billing will be set up from there" });
         }
         
         try {
@@ -4074,7 +4078,7 @@ export async function executeSupportTool(
           switch (fix_type) {
             case "retry_payment": {
               if (!invoice_id) {
-                return { success: false, error: "Invoice ID required for payment retry" };
+                return toolRefusal({ what: "The payment was not retried", why: "I need to know which invoice to retry", unlock: "Open Settings → Billing, find the unpaid invoice, and tell me its number" });
               }
               
               const invoice = await stripe.invoices.pay(invoice_id);
@@ -4132,12 +4136,12 @@ export async function executeSupportTool(
               // fix_type enum no longer offers it. The label stays so the
               // classification ratchets still see it; the body refuses and
               // touches nothing — no Stripe balance, no memory row.
-              return { success: false, error: APPLY_CREDIT_REFUSAL };
+              return { success: false as const, error: APPLY_CREDIT_REFUSAL };
             }
             
             case "cancel_pending_invoice": {
               if (!invoice_id) {
-                return { success: false, error: "Invoice ID required to cancel" };
+                return toolRefusal({ what: "The invoice was not cancelled", why: "I need to know which invoice to cancel", unlock: "Open Settings → Billing, find the invoice, and tell me its number" });
               }
               
               const invoice = await stripe.invoices.voidInvoice(invoice_id);
@@ -4153,10 +4157,11 @@ export async function executeSupportTool(
             }
             
             default:
-              return { success: false, error: `Unknown fix type: ${fix_type}` };
+              return toolRefusal({ what: "No billing fix was made", why: "That is not one of the billing fixes I can run", unlock: "Reply here and a person on our team will look at it" });
           }
         } catch (err: any) {
-          return { success: false, error: `Billing fix failed: ${err.message}` };
+          logger.warn("[support-tool] billing fix failed", { metadata: { err: err instanceof Error ? err.message : String(err) } });
+          return toolFailure("The billing fix did not go through", "Nothing was charged by it. Try again in a minute, or reply here and a person will look");
         }
       }
       
@@ -4265,7 +4270,7 @@ export async function executeSupportTool(
         
         const table = entityMap[entity];
         if (!table) {
-          return { success: false, error: `Unknown entity: ${entity}` };
+          return toolRefusal({ what: "Nothing was looked up", why: "That is not a kind of record I can read", unlock: "Ask about your leads, properties, deals, notes, tasks, campaigns, payments or team" });
         }
         
         let results: any[] = [];
@@ -4305,7 +4310,7 @@ export async function executeSupportTool(
           }
           
           case "by_id": {
-            if (!id) return { success: false, error: "id filter required for by_id query" };
+            if (!id) return toolRefusal({ what: "Nothing was looked up", why: "I need the record's number to find it", unlock: "Tell me the number of the record you mean" });
             results = await db.select()
               .from(table)
               .where(and(eq(table.organizationId, org.id), eq(table.id, id)))
@@ -4315,7 +4320,7 @@ export async function executeSupportTool(
           }
           
           case "by_status": {
-            if (!status) return { success: false, error: "status filter required for by_status query" };
+            if (!status) return toolRefusal({ what: "Nothing was looked up", why: "I need the status to filter by", unlock: "Tell me which status you want, such as new or closed" });
             const conditions = [eq(table.organizationId, org.id)];
             if (table.status) conditions.push(eq(table.status, status));
             
@@ -4336,7 +4341,7 @@ export async function executeSupportTool(
           }
           
           case "search": {
-            if (!search_term) return { success: false, error: "search_term filter required for search query" };
+            if (!search_term) return toolRefusal({ what: "Nothing was searched", why: "I need words to search for", unlock: "Tell me a name, address or word to look for" });
             const searchLower = `%${search_term.toLowerCase()}%`;
             
             // Define searchable fields per entity type
@@ -4356,7 +4361,7 @@ export async function executeSupportTool(
             
             const fields = searchableFields[entity] || [];
             if (fields.length === 0) {
-              return { success: false, error: `Search not supported for entity: ${entity}` };
+              return toolRefusal({ what: "Nothing was searched", why: "That kind of record cannot be searched by words", unlock: "Ask for it by its number instead, or ask about your leads, properties or deals" });
             }
             
             // Build search conditions using parameterized SQL (fields are from whitelist, search_term is parameterized)
@@ -4383,14 +4388,14 @@ export async function executeSupportTool(
           }
           
           case "relationships": {
-            if (!id) return { success: false, error: "id filter required for relationships query" };
+            if (!id) return toolRefusal({ what: "Nothing was looked up", why: "I need the record's number to find what it is linked to", unlock: "Tell me the number of the record you mean" });
             
             // Get the main record
             const [record] = await db.select()
               .from(table)
               .where(and(eq(table.organizationId, org.id), eq(table.id, id)));
             
-            if (!record) return { success: false, error: `No ${entity} found with id ${id}` };
+            if (!record) return toolRefusal({ what: `No record with number ${id} is in this account`, why: "It may have been deleted, or the number came from another list", unlock: "Search by name or address instead" });
             
             const relationships: Record<string, any> = { record: { id: record.id, name: (record as any).name || (record as any).title } };
             
@@ -4898,7 +4903,7 @@ export async function executeSupportTool(
         
         const tree = decisionTrees[issue_type];
         if (!tree) {
-          return { success: false, error: `Unknown issue type: ${issue_type}. Valid types: ${Object.keys(decisionTrees).join(", ")}` };
+          return toolRefusal({ what: "There is no troubleshooting guide for that", why: "It is not one of the problems a step-by-step guide is written for", unlock: "Describe what you see in your own words and I will work through it with you" });
         }
         
         return {
@@ -5294,7 +5299,7 @@ export async function executeSupportTool(
           headers: { "User-Agent": "AcreOS Real Estate Platform", "Accept-Language": "en" },
           signal: AbortSignal.timeout(10000),
         });
-        if (!res.ok) return { success: false, error: `Nominatim error: ${res.status}` };
+        if (!res.ok) return toolRefusal({ what: "The address was not found on the map", why: "The map lookup service did not answer", unlock: "Try again in a minute, or search the address on the Map yourself" });
         const data = await res.json();
         return { success: true, data: data.map((r: any) => ({
           displayName: r.display_name,
@@ -5311,13 +5316,13 @@ export async function executeSupportTool(
           headers: { "User-Agent": "AcreOS Real Estate Platform", "Accept-Language": "en" },
           signal: AbortSignal.timeout(10000),
         });
-        if (!res.ok) return { success: false, error: `Nominatim error: ${res.status}` };
+        if (!res.ok) return toolRefusal({ what: "The address was not found on the map", why: "The map lookup service did not answer", unlock: "Try again in a minute, or search the address on the Map yourself" });
         const data = await res.json();
         return { success: true, data: { displayName: data.display_name, address: data.address } };
       }
 
       default:
-        return { success: false, error: `Unknown support tool: ${toolName}` };
+        return toolRefusal({ what: "That action does not exist", why: "I tried to use an action support does not have", unlock: "Ask again in other words, and I will use one it does have" });
     }
     })();
 
@@ -5347,7 +5352,7 @@ export async function executeSupportTool(
     return outcome;
   } catch (error: any) {
     logger.error(`[support-tool] Error executing ${toolName}`, error);
-    return { success: false, error: error.message };
+    return toolFailure("That action did not finish");
   }
 }
 

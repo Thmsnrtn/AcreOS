@@ -39,3 +39,10 @@ export const CUSTOMER_AUDIT_ROUTES = [
   ...CUSTOMER_DOOR_ROUTES,
   ...CUSTOMER_TOP_BAR_ROUTES,
 ] as const;
+
+/**
+ * Sections behind the Deals door the persona walks reach (DEALS_SECTIONS in
+ * client/src/components/door-sections.tsx): the land flipper's import and
+ * postcard jobs live here. Audited because the walks walk them.
+ */
+export const CUSTOMER_SECTION_ROUTES = ["/leads", "/campaigns"] as const;

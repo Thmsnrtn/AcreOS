@@ -211,6 +211,7 @@ describe("Support runs are bound to one ticket (one org per model context)", () 
     expect(other.output).toMatch(/ticket #4 only/);
     const unbound = await executeRoleTool("support", "list_recent_purchases", { ticket_id: 4 }, { dispatchId: 1 });
     expect(unbound.success).toBe(false);
-    expect(unbound.output).toMatch(/not briefed on a ticket/);
+    // Plain words since 2026-10-10 (refusalsArePlainWords.test.ts): "not given a ticket".
+    expect(unbound.output).toMatch(/not given a ticket/);
   });
 });

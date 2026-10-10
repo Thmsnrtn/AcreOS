@@ -68,9 +68,9 @@ const REFUSAL_JARGON = [
  * phrase that names when it unlocks. A refusal with none of these is a wall.
  */
 const UNLOCK_CUES =
-  /(?:^|[.!?]\s+|,\s+(?:or|and)\s+|—\s*)(?:add|ask|open|check|try|search|pick|choose|connect|upgrade|contact|use|create|import|invite|set up|turn on|turn off|reply|wait|go to|visit|update|enter|confirm|record|give|send|switch|remove|call|review|approve|run|retry|save|attach|fill in|share|tell|keep|start|sign in|reconnect|look|read|resend|buy|top up|change)\b/i;
+  /(?:^|[.!?]\s+|,\s+(?:or|and)\s+|—\s*)(?:add|ask|open|check|try|search|pick|choose|connect|upgrade|contact|use|create|import|invite|set up|turn on|turn off|reply|wait|go to|visit|update|enter|confirm|record|give|send|switch|remove|call|review|approve|run|retry|save|attach|fill in|share|tell|keep|start|sign in|reconnect|look|read|resend|buy|top up|change|resume|say|tell me|describe|paste|let me|sign up|log in|name|tap|answer|set|leave|end|act|escalate|list|rewrite|write|refund|email|text|mail|find|move|attach|go back|queue)\b/i;
 const UNLOCK_PHRASES =
-  /\b(?:to unlock|unlocks? (?:it|this)|once (?:you|it|the|your)|when (?:you|it|the|your)|you can\b|you'll need to|nothing (?:to do|else is needed)|it will (?:retry|run|try) again|will run again|is retried)\b/i;
+  /\b(?:to unlock|unlocks? (?:it|this)|once (?:you|it|the|your)|when (?:you|it|the|your)|you can\b|you'll need to|nothing (?:to do|else is needed)|it will (?:retry|run|try) again|will run again|is retried|(?:a person|someone|the team|our team|we) will (?:review|look|reply|get back|do it|follow up)|will hear back)\b/i;
 
 export interface PlainVerdict {
   plain: boolean;
@@ -113,6 +113,11 @@ export function refusalTextOf(toolText: string): string {
     /* not JSON after all — judged as is, and fails as raw */
   }
   return t;
+}
+
+/** A stored stage or status as words: "under_contract" → "under contract". */
+export function plainStageWords(s: string): string {
+  return String(s).replace(/_/g, " ");
 }
 
 // ── Tool results ────────────────────────────────────────────────────────────

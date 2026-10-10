@@ -41,13 +41,19 @@ const result = {
     byCategory: pax.reduce((a: Record<string, number>, q) => ((a[q.category] = (a[q.category] ?? 0) + 1), a), {}),
     reference: { passRate: ref.passRate, agreement: ref.agreement },
     corrupted: { passRate: bad.passRate, agreement: bad.agreement },
-    scriptedBrain: { passRate: brain.passRate, heldOutPassRate: brain.heldOutPassRate, agreement: brain.agreement, byCategory: brain.byCategory },
-    app: app ? { answered: app.total, passRate: app.passRate, heldOutPassRate: app.heldOutPassRate, agreement: app.agreement, disagreements: app.disagreements.slice(0, 10) } : null,
+    scriptedBrain: { passRate: brain.passRate, heldOutPassRate: brain.heldOutPassRate, agreement: brain.agreement, workingAgreement: brain.workingAgreement, heldOutAgreement: brain.heldOutAgreement, judged: brain.judged, byCategory: brain.byCategory },
+    app: app ? { answered: app.total, passRate: app.passRate, heldOutPassRate: app.heldOutPassRate, agreement: app.agreement, workingAgreement: app.workingAgreement, heldOutAgreement: app.heldOutAgreement, disagreements: app.disagreements.slice(0, 10) } : null,
     // the headline numbers the scorecard prints: the scripted brain's
-    agreement: brain.agreement, disagreements: brain.disagreements.length, heldOutPassRate: brain.heldOutPassRate, sampleDisagreements: brain.disagreements.slice(0, 8),
+    agreement: brain.agreement, workingAgreement: brain.workingAgreement, heldOutAgreement: brain.heldOutAgreement,
+    disagreements: brain.disagreements.length, heldOutPassRate: brain.heldOutPassRate, sampleDisagreements: brain.disagreements.slice(0, 8),
+    // Every disagreement, one per line, next to evals.json: a disagreement is a
+    // question for a person (is the rubric wrong, or the answer?), so all of
+    // them are kept, not a sample.
+    disagreementsFile: out.replace(/\.json$/, "") + ".disagreements.jsonl",
   },
   solene: { total: sol.length, heldOut: sol.filter((s) => s.heldOut).length, reference: sRef, corrupted: { passRate: sBad.passRate, agreement: sBad.agreement }, agreement: sRef.agreement, heldOutPassRate: sRef.heldOutPassRate },
   realModel: "not run (no paid model calls in this task); realJudge.ts refuses to start without SIMPLAT_REAL_JUDGE and a ceiling",
 };
 writeFileSync(out, JSON.stringify(result, null, 1));
+writeFileSync(result.pax.disagreementsFile, [...brain.disagreements.map((d) => ({ answerer: "scriptedBrain", ...d })), ...(app?.disagreements ?? []).map((d) => ({ answerer: "app", ...d }))].map((d) => JSON.stringify(d)).join("\n") + "\n");
 console.log(JSON.stringify({ pax: { total: result.pax.total, heldOut: result.pax.heldOut, brain: result.pax.scriptedBrain.passRate, app: result.pax.app?.passRate ?? null }, solene: { total: result.solene.total } }));

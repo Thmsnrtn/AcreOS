@@ -90,7 +90,7 @@ export function TeamActivityCard() {
   return (
     <Card data-testid="card-team-activity">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle role="heading" aria-level={2} className="flex items-center gap-2">
           <History className="w-5 h-5" aria-hidden="true" />
           Team activity
         </CardTitle>

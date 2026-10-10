@@ -45,7 +45,26 @@
 
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { CUSTOMER_AUDIT_ROUTES, FOUNDER_DOOR_ROUTES } from "./door-routes";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { CUSTOMER_AUDIT_ROUTES, CUSTOMER_SECTION_ROUTES, FOUNDER_DOOR_ROUTES } from "./door-routes";
+
+/**
+ * SERIOUS VIOLATIONS — a ratchet, per project and route, that may only shrink.
+ *
+ * The first version of this file reported serious violations without gating
+ * them ("a threshold invented without a measurement is the same fiction this
+ * file replaces"). The measurement now exists: a11y-serious-baseline.json holds
+ * the count of serious axe NODES per `<project>|<route>` from the 2026-10-10
+ * run, after the persona-walk fixes. A run over its baseline fails. A route
+ * that improves must have its line lowered in the same commit — the unit test
+ * tests/unit/accessibilityAuditIsReal.test.ts pins the file's total, so the
+ * numbers cannot drift up quietly. A route missing from the file has a
+ * baseline of ZERO: a new page starts clean.
+ */
+const SERIOUS_BASELINE: Record<string, number> = JSON.parse(
+  readFileSync(path.join(process.cwd(), "tests/e2e-mobile/a11y-serious-baseline.json"), "utf8"),
+).baseline;
 
 /** WCAG 2.0/2.1 level A and AA — the conformance target, not "everything axe knows". */
 const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
@@ -103,6 +122,16 @@ async function authenticate(page: Page, session: string) {
 }
 
 async function settle(page: Page) {
+  await settleOnly(page);
+  // Lists fade in (staggerItem). An axe pass taken mid-fade reads blended,
+  // half-transparent text and reports contrast the finished page does not
+  // have — the 2026-10-10 persona walks measured 50 such nodes on Today.
+  await page
+    .waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running"), null, { timeout: 6_000 })
+    .catch(() => {});
+}
+
+async function settleOnly(page: Page) {
   await page
     .locator('[data-testid="app-loading"]')
     .waitFor({ state: "detached", timeout: 20_000 })
@@ -190,6 +219,16 @@ async function auditRoute(page: Page, route: string, testInfo: import("@playwrig
     ),
   });
 
+  // The serious ratchet: nodes, not rules — one more unlabelled control on a
+  // page is one more barrier, even under a rule that already fired there.
+  const seriousNodes = serious.reduce((n, v) => n + v.nodes.length, 0);
+  const allowed = SERIOUS_BASELINE[`${testInfo.project.name}|${route}`] ?? 0;
+  expect(
+    seriousNodes,
+    `${route} (${testInfo.project.name}) has ${seriousNodes} serious axe nodes; its baseline is ${allowed}. ` +
+      "Fix the new ones (the log above names each element). The baseline only goes down.",
+  ).toBeLessThanOrEqual(allowed);
+
   const registered = KNOWN_CRITICAL.filter((k) => k.route === route).map((k) => k.rule);
   const unregistered = critical.filter((v) => !registered.includes(v.id));
 
@@ -220,7 +259,7 @@ test.describe("WCAG A/AA — the five customer doors", () => {
     await authenticate(page, "e2e-a11y-customer");
   });
 
-  for (const route of CUSTOMER_AUDIT_ROUTES) {
+  for (const route of [...CUSTOMER_AUDIT_ROUTES, ...CUSTOMER_SECTION_ROUTES]) {
     test(`no critical accessibility violations on ${route}`, async ({ page }, testInfo) => {
       await auditRoute(page, route, testInfo);
     });
