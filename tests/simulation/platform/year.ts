@@ -509,11 +509,25 @@ async function main() {
   // Founder minutes by what asked for them (the drivers the sensitivity analysis varies).
   const allAsks = await k.q<any>("select question_summary, question_body, answer_format, acts_payload is not null as acts, urgency from solene_founder_asks");
   const driverOf = (a: any): string =>
-    /^Support ticket #/.test(a.question_summary) ? (/refund/i.test(`${a.question_summary} ${a.question_body}`) ? "ticket: refund over ceiling" : /legal|lawsuit|tcpa|cease/i.test(a.question_body) ? "ticket: legal" : /delet/i.test(a.question_body) ? "ticket: data deletion" : "ticket: bug / other")
+    /^Support ticket #/.test(a.question_summary) ? ticketDriver(`${a.question_summary}\n${a.question_body ?? ""}`)
     : a.acts ? "autopilot move approval"
     : /policy|trust|autonomy|level/i.test(a.question_summary) ? "autonomy / policy proposal"
     : /budget|spend/i.test(a.question_summary) ? "budget"
     : "other ask";
+  // Label a ticket ask by WHY it reached the founder. The routine-support
+  // policy's ask states it ("Why this is yours: <reason>"); its body also
+  // quotes the policy ("refunds up to $50"), so a bare /refund/ match labelled
+  // EVERY held ticket a refund over the ceiling (46 a seed against ~12 real
+  // $80 refunds, measured 2026-10-10).
+  function ticketDriver(text: string): string {
+    const why = /Why this is yours: ([a-z_]+)/.exec(text)?.[1];
+    if (why) return why === "money_over_ceiling" ? "ticket: refund over ceiling" : `ticket: ${why.replace(/_/g, " ")}`;
+    const amounts = [...text.matchAll(/\$(\d[\d,]*(?:\.\d{2})?)/g)].map((m) => Number(m[1].replace(/,/g, "")));
+    if (/refund/i.test(text.split("\n").slice(0, 2).join(" ")) && amounts.some((n) => n > 50)) return "ticket: refund over ceiling";
+    if (/legal|lawsuit|tcpa|cease/i.test(text)) return "ticket: legal";
+    if (/delet/i.test(text)) return "ticket: data deletion";
+    return "ticket: bug / other";
+  }
   const askMinutesByDriver: Record<string, { n: number; minutes: number }> = {};
   for (const a of allAsks) {
     const d = driverOf(a);
