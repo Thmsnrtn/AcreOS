@@ -113,3 +113,29 @@ export function sealIntegrationCredentials(
 ): { encrypted: string } {
   return { encrypted: encryptJsonCredentials(credentials, organizationId) };
 }
+
+/**
+ * Read a store that keeps a JSON document (not a provider key) in this column:
+ * commission plans and records, territory definitions. Since 2026-10-10 these
+ * are SEALED with sealIntegrationCredentials like any credential. Before that
+ * the row said `{ encrypted: "<plain JSON>" }` — labelled encrypted, never
+ * encrypted. That legacy shape is still read (a value that is a JSON object
+ * cannot be an envelope), and the next save seals it. Top-level legacy fields
+ * (`config`, `records`, `territories`) merge in through readIntegrationCredentials.
+ */
+export function readSealedStore<T extends CredentialBag = CredentialBag>(
+  integration: IntegrationLike | null | undefined,
+  organizationId: number,
+  label: string,
+): T | null {
+  const enc = (integration?.credentials as { encrypted?: unknown } | null | undefined)?.encrypted;
+  if (typeof enc === "string" && enc.trimStart().startsWith("{")) {
+    try {
+      const legacy: unknown = JSON.parse(enc);
+      if (legacy && typeof legacy === "object") return legacy as T;
+    } catch {
+      /* not legacy JSON — treat as an envelope below */
+    }
+  }
+  return readIntegrationCredentials<T>(integration, organizationId, label);
+}

@@ -35,6 +35,41 @@ import {
 import { clock } from "./utils/clock";
 
 export function registerAutopilotRoutes(app: Express): void {
+  // ── The weekly digest (founder decision 2026-10-10) ─────────────────────
+  // What ran without asking this week (routine reversible ops/deploy moves and
+  // routine support), each with an undo. Rendered behind the Decisions door.
+  app.get(
+    "/api/founder/autopilot/weekly-digest",
+    isAuthenticated,
+    requireFounder,
+    async (_req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { getWeeklyAutopilotDigest } = await import("./services/autopilot/weeklyAutopilotDigest");
+        return res.json(await getWeeklyAutopilotDigest());
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
+  app.post(
+    "/api/founder/autopilot/weekly-digest/:experienceId/undo",
+    isAuthenticated,
+    requireFounder,
+    async (req: AuthenticatedRequest, res: Response) => {
+      const experienceId = Number(req.params.experienceId);
+      if (!Number.isInteger(experienceId) || experienceId <= 0) return Errors.badRequest(res, "Invalid digest item");
+      try {
+        const { undoDigestItem } = await import("./services/autopilot/weeklyAutopilotDigest");
+        const r = await undoDigestItem(experienceId, getUserId(req));
+        if (!r.ok) return Errors.badRequest(res, r.reason);
+        return res.json(r);
+      } catch (err) {
+        return Errors.internal(res, err);
+      }
+    },
+  );
+
   // ── GET the Trust Ledger ────────────────────────────────────────────────
   app.get(
     "/api/founder/autopilot/trust-ledger",

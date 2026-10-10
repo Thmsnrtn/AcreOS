@@ -58,12 +58,43 @@ describe("the Twilio save seals; its readers unseal", () => {
   });
 });
 
+describe("stores that kept plain JSON under `encrypted` now really seal it", () => {
+  it("territories: the saved row holds an envelope, not the JSON, and reads back; the legacy plain shape still reads", async () => {
+    process.env.ENCRYPTION_KEY ||= "0".repeat(64);
+    process.env.FIELD_ENCRYPTION_KEY ||= "0".repeat(64);
+    H.row = null;
+    const t = await import("../../server/services/territoryService");
+    const territory = { id: "t1", name: "Hill Country", priority: 1, counties: ["Travis"], assignees: [] } as any;
+    await t.upsertTerritory(9, territory);
+    const stored = H.writes.at(-1).credentials as { encrypted: string };
+    expect(Object.keys(stored)).toEqual(["encrypted"]);
+    expect(stored.encrypted).not.toContain("Hill Country");
+    expect(() => JSON.parse(stored.encrypted)).toThrow();
+    expect((await t.getTerritories(9)).map((x) => x.name)).toEqual(["Hill Country"]);
+    // A row written before the fix: plain JSON under `encrypted`.
+    H.row = { id: 1, organizationId: 9, credentials: { encrypted: JSON.stringify({ territories: [{ ...territory, name: "Legacy" }] }) } };
+    expect((await t.getTerritories(9)).map((x) => x.name)).toEqual(["Legacy"]);
+  });
+
+  it("commission config: sealed on save, read back through the seal", async () => {
+    H.row = null;
+    const c = await import("../../server/services/commissionService");
+    const config = { tiers: [{ upTo: null, rate: 0.03 }], label: "Plan-XYZ" } as any;
+    await c.saveCommissionConfig(9, config);
+    const stored = H.writes.at(-1).credentials as { encrypted: string };
+    expect(Object.keys(stored)).toEqual(["encrypted"]);
+    expect(stored.encrypted).not.toContain("Plan-XYZ");
+    expect(await c.getCommissionConfig(9)).toEqual(config);
+  });
+});
+
 describe("population: every credentials write is sealed or named non-secret config", () => {
   const ROOT = path.resolve(__dirname, "../..");
   /** Writers whose `credentials` holds configuration, not a secret (reviewed 2026-10-09). */
   const NON_SECRET_CONFIG: Record<string, string> = {
-    "server/services/commissionService.ts": "commission plan config",
-    "server/services/territoryService.ts": "territory definitions",
+    // commissionService and territoryService left this list on 2026-10-10: they
+    // wrote { encrypted: "<plain JSON>" } — labelled encrypted, never encrypted.
+    // They now seal (readSealedStore / sealIntegrationCredentials).
     "server/services/dealHandoffService.ts": "deal handoff records",
     "server/jobs/indexAnalyzer.ts": "index-analyzer findings",
     "server/services/stripeConnect.ts": "the connected account id (acct_…) — an identifier, not a secret; no customer key is stored",

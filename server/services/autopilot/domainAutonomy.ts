@@ -108,12 +108,40 @@ export function gateResultForLevel(level: DomainAutonomyLevel): GateResult {
 
 // ── DB-backed state machine ──────────────────────────────────────────────────
 
-/** Seed every domain at the safe default (observe) if not already present. */
+/**
+ * The level a domain is SEEDED at when it has no row yet. Observe (sensing
+ * only) everywhere, except where a dated founder decision set it higher:
+ *   support — execute_gated (founder decisions 2026-10-09 and 2026-10-10:
+ *             routine support is answered without a per-ticket tap). The
+ *             triage pass only drafts; every reply or refund it drafts is
+ *             still released one at a time by the routine-support policy
+ *             (routine only, refunds ≤ $50, legal/angry/unclear held) or by
+ *             the founder.
+ *   ops, deploy — execute_gated (founder decision 2026-10-10: routine,
+ *             reversible autopilot moves run and are listed in the weekly
+ *             digest with an undo, instead of asking one by one). In these two
+ *             domains act.ts still asks first for any move that cannot be
+ *             undone or reaches a customer (digestLaneRefusal), and every hard
+ *             stop is held before the gate stack runs.
+ * The earned-autonomy circuit breaker is unchanged: a failed action demotes a
+ * domain one level, and the panic stop quarantines every domain to observe.
+ * Seeding never overwrites an existing row, so a running install keeps the
+ * level it has until the founder sets it (Controls).
+ */
+export const DEFAULT_DOMAIN_LEVEL: Readonly<Record<AutopilotDomain, DomainAutonomyLevel>> = {
+  growth: "observe",
+  support: "execute_gated",
+  deploy: "execute_gated",
+  ops: "execute_gated",
+  finance: "observe",
+};
+
+/** Seed every domain at its default (DEFAULT_DOMAIN_LEVEL) if not already present. */
 export async function ensureDomainsSeeded(): Promise<void> {
   for (const domain of AUTOPILOT_DOMAINS) {
     await db
       .insert(domainAutonomyLevels)
-      .values({ domain, level: "observe", cleanCycleCount: 0 })
+      .values({ domain, level: DEFAULT_DOMAIN_LEVEL[domain], cleanCycleCount: 0 })
       .onConflictDoNothing({ target: domainAutonomyLevels.domain });
   }
 }

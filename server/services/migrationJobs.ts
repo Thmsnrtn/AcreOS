@@ -1231,7 +1231,7 @@ export async function buildPaymentsCsv(orgId: number): Promise<string> {
     lines.push(["servicing", r.id, r.noteId, r.paymentDate?.toISOString() ?? "", r.dueDate?.toISOString() ?? "", r.amount, r.principalAmount, r.interestAmount, Number(r.feeAmount ?? 0) + Number(r.lateFeeAmount ?? 0), r.status, csvEscape(r.paymentMethod ?? ""), r.createdAt?.toISOString() ?? ""].join(","));
   }
   const acquired = await db.select().from(notePayments).where(eq(notePayments.organizationId, orgId)).orderBy(asc(notePayments.paymentDate));
-  for (const r of acquired as any[]) {
+  for (const r of acquired) {
     const cents = (n: unknown) => (Number(n ?? 0) / 100).toFixed(2);
     lines.push(["acquired_note", r.id, r.noteId, String(r.paymentDate ?? ""), "", cents(Number(r.principalCents ?? 0) + Number(r.interestCents ?? 0) + Number(r.escrowCents ?? 0) + Number(r.lateFeeCents ?? 0)), cents(r.principalCents), cents(r.interestCents), cents(r.lateFeeCents), csvEscape(String(r.paymentType ?? "")), csvEscape(String(r.paymentMethod ?? "")), r.createdAt ? new Date(r.createdAt).toISOString() : ""].join(","));
   }

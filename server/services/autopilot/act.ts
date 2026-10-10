@@ -132,6 +132,29 @@ const WITNESSED_RELEASE_RECORDS: Record<string, MoveBinding> = {
   support_auto_refund: { domain: "finance", agentRole: "general-purpose", isCustomerFacing: true, surface: "support", reversible: false, effectsGatedPerAction: true },
 };
 
+/**
+ * The digest lane (founder decision 2026-10-10). Ops and deploy are seeded at
+ * execute_gated (domainAutonomy DEFAULT_DOMAIN_LEVEL), so a routine move there
+ * that clears the whole gate stack RUNS instead of asking, and the founder sees
+ * it in the weekly digest with an undo (weeklyAutopilotDigest.ts). The decision
+ * covers routine, REVERSIBLE moves only, so inside these domains a move that
+ * cannot be undone or that reaches a customer without a per-effect witness
+ * still asks first — even when every gate passed. This only ever tightens.
+ * Hard stops never get this far (planAndAct holds them before the gate stack).
+ */
+const DIGEST_LANE_DOMAINS: ReadonlySet<string> = new Set(["ops", "deploy"]);
+
+/** Why this move must ask first despite a passing gate, or null when it may run and be digested. Pure. */
+export function digestLaneRefusal(move: RankedMove): string | null {
+  const b = bindingFor(move.kind);
+  if (!DIGEST_LANE_DOMAINS.has(b.domain) && !DIGEST_LANE_DOMAINS.has(move.domain)) return null;
+  if (hardStopForMove(move)) return "it is a hard stop — only the founder can do it";
+  if (move.isNetNew) return "it is a new kind of move nobody has approved before";
+  if (!b.reversible) return "it can't be undone, so the weekly digest's undo could not reverse it";
+  if (b.isCustomerFacing && b.effectsGatedPerAction !== true) return "it reaches a customer";
+  return null;
+}
+
 export function bindingFor(moveKind: string): MoveBinding {
   const b = MOVE_BINDINGS[moveKind];
   if (!b) {
@@ -340,6 +363,32 @@ export async function planAndAct(
 
     // ── pass → the action is fully cleared; enqueue the governed dispatch. ──
     if (decision.decision === "pass") {
+      // Digest lane (founder decision 2026-10-10): in ops/deploy only a
+      // reversible, internal move runs unasked; anything else asks first.
+      const notForDigest = digestLaneRefusal(move);
+      if (notForDigest) {
+        const { askId } = await deps.ask({
+          askingAgentRole: binding.agentRole,
+          questionSummary: `Approve a ${binding.domain} action: ${move.kind}`,
+          questionBody: [
+            move.rationale,
+            "",
+            `This would normally run on its own and appear in your weekly digest, but ${notForDigest}.`,
+            "",
+            "Approve to let the system carry this out — approving queues it to run.",
+          ].join("\n"),
+          answerFormat: "yes_no",
+          urgency: "normal",
+          acts: { moveKind: move.kind, domain: binding.domain, rationale: move.rationale, chatApprovable: false },
+        });
+        return {
+          status: "escalated",
+          move,
+          askId,
+          verdict: { escalate: true, action: "founder_ask", urgency: "normal", reason: notForDigest },
+          gate: { decision: "escalate", decidedBy: "digest_lane" },
+        };
+      }
       // Risk-calibrated autonomy (cheap, deterministic, FIRST): even in a
       // trusted domain, a high-risk action (novel / irreversible / expensive)
       // escalates for a human tap rather than auto-running.

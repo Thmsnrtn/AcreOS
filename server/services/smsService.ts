@@ -859,7 +859,7 @@ export async function checkTwilioConfiguration(organizationId: number): Promise<
   }
 
   const { readIntegrationCredentials } = await import("./integrationCredentials");
-  const creds = (readIntegrationCredentials(twilioIntegration, organizationId, "twilio check") ?? {}) as any;
+  const creds: { accountSid?: string; authToken?: string; fromPhoneNumber?: string } = readIntegrationCredentials<{ accountSid?: string; authToken?: string; fromPhoneNumber?: string }>(twilioIntegration, organizationId, "twilio check") ?? {};
   if (!creds.accountSid || !creds.authToken || !creds.fromPhoneNumber) {
     return { configured: false, error: "Twilio credentials incomplete" };
   }

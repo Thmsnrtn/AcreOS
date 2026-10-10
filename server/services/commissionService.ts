@@ -39,6 +39,7 @@ import { projectGci, type GciForecastResult, type PipelineDealInput } from "@sha
 
 import { ADMINISTRATIVE_DEAL_STATUSES } from "@shared/lifecycle/pipeline-status";
 import { clock } from "../utils/clock";
+import { readSealedStore, sealIntegrationCredentials } from "./integrationCredentials";
 export {
   type CommissionTier,
   type CommissionConfig,
@@ -127,16 +128,9 @@ export async function getCommissionConfig(
     .limit(1);
 
   if (!row?.credentials) return DEFAULT_CONFIG;
-  const creds = row.credentials as { encrypted?: string; config?: CommissionConfig };
-  // Stored as a JSON blob under `encrypted` (the credentials column is a typed
-  // secrets jsonb repurposed here); fall back to a legacy top-level `config`.
-  if (creds.encrypted) {
-    try {
-      const parsed = JSON.parse(creds.encrypted) as { config?: CommissionConfig };
-      if (parsed.config) return parsed.config;
-    } catch { /* fall through */ }
-  }
-  return creds.config ?? DEFAULT_CONFIG;
+  // Sealed at rest (readSealedStore also reads the pre-2026-10-10 plain shape).
+  const store = readSealedStore<{ config?: CommissionConfig }>(row, organizationId, "commission config");
+  return store?.config ?? DEFAULT_CONFIG;
 }
 
 /**
@@ -180,9 +174,8 @@ export async function saveCommissionConfig(
     )
     .limit(1);
 
-  // The credentials column is a typed secrets jsonb; store the commission
-  // config as a JSON blob under `encrypted`.
-  const credentials = { encrypted: JSON.stringify({ config }) };
+  // Sealed at rest like any credential in this column.
+  const credentials = sealIntegrationCredentials({ config }, organizationId);
 
   if (existing) {
     await db
@@ -230,14 +223,8 @@ export async function getSplitConfig(
     .limit(1);
 
   if (!row?.credentials) return null;
-  const creds = row.credentials as { encrypted?: string; config?: CommissionSplitConfig };
-  if (creds.encrypted) {
-    try {
-      const parsed = JSON.parse(creds.encrypted) as { config?: CommissionSplitConfig };
-      if (parsed.config) return parsed.config;
-    } catch { /* fall through */ }
-  }
-  return creds.config ?? null;
+  const store = readSealedStore<{ config?: CommissionSplitConfig }>(row, organizationId, "commission split config");
+  return store?.config ?? null;
 }
 
 /**
@@ -274,7 +261,7 @@ export async function saveSplitConfig(
     )
     .limit(1);
 
-  const credentials = { encrypted: JSON.stringify({ config }) };
+  const credentials = sealIntegrationCredentials({ config }, organizationId);
 
   if (existing) {
     await db
@@ -310,15 +297,8 @@ async function getCommissionRecordsStore(
     .limit(1);
 
   if (!row?.credentials) return [];
-  const creds = row.credentials as { encrypted?: string; records?: CommissionRecord[] };
-  let rawRecords: CommissionRecord[] = Array.isArray(creds.records) ? creds.records : [];
-  if (creds.encrypted) {
-    try {
-      const parsed = JSON.parse(creds.encrypted) as { records?: CommissionRecord[] };
-      if (Array.isArray(parsed.records)) rawRecords = parsed.records;
-    } catch { /* fall through to legacy */ }
-  }
-  const records: CommissionRecord[] = rawRecords;
+  const store = readSealedStore<{ records?: CommissionRecord[] }>(row, organizationId, "commission records");
+  const records: CommissionRecord[] = Array.isArray(store?.records) ? store.records : [];
   // Rehydrate dates
   return records.map((r) => ({
     ...r,
@@ -343,7 +323,7 @@ async function saveCommissionRecordsStore(
     )
     .limit(1);
 
-  const credentials = { encrypted: JSON.stringify({ records }) };
+  const credentials = sealIntegrationCredentials({ records }, organizationId);
 
   if (existing) {
     await db

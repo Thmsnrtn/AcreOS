@@ -15,6 +15,7 @@ import { organizationIntegrations, teamMembers, leads } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../utils/logger";
 import { clock } from "../utils/clock";
+import { readSealedStore, sealIntegrationCredentials } from "./integrationCredentials";
 
 export interface Territory {
   id: string;
@@ -42,14 +43,9 @@ async function getTerritoriesStore(organizationId: number): Promise<Territory[]>
     .limit(1);
 
   if (!integration?.credentials) return [];
-  const creds = integration.credentials as { encrypted?: string; territories?: Territory[] };
-  if (creds.encrypted) {
-    try {
-      const parsed = JSON.parse(creds.encrypted) as { territories?: Territory[] };
-      if (Array.isArray(parsed.territories)) return parsed.territories;
-    } catch { /* fall through to legacy */ }
-  }
-  return Array.isArray(creds.territories) ? creds.territories : [];
+  // Sealed at rest (readSealedStore also reads the pre-2026-10-10 plain shape).
+  const store = readSealedStore<{ territories?: Territory[] }>(integration, organizationId, "territories");
+  return Array.isArray(store?.territories) ? store.territories : [];
 }
 
 async function saveTerritoriesStore(
@@ -67,8 +63,8 @@ async function saveTerritoriesStore(
     )
     .limit(1);
 
-  // credentials is a typed secrets jsonb; store the territories as a JSON blob.
-  const credentials = { encrypted: JSON.stringify({ territories }) };
+  // Sealed at rest like any credential in this column.
+  const credentials = sealIntegrationCredentials({ territories }, organizationId);
 
   if (existing) {
     await db

@@ -222,3 +222,61 @@ the same way as the decisions above.
   repository private, or by rewriting public history, which is not
   recommended.
 - **Founder action:** create the private repository.
+
+## 2026-10-10 — support autonomy raised to execute_gated
+
+**Date:** 2026-10-10
+
+**Source:** the founder's picker answer in the coordinating session.
+
+- The support domain's autonomy level defaults to **execute_gated**
+  (`DEFAULT_DOMAIN_LEVEL` in `server/services/autopilot/domainAutonomy.ts`).
+  - This is the existing autonomy-level mechanism; no gate is bypassed.
+  - Before this, the support domain sat at DRAFT, so the founder had to
+    approve each triage pass before a single reply was drafted. In the
+    simulated year that cost 106 of 232 approval asks, and 71 of them timed
+    out while tickets aged.
+- Every drafted reply or refund still passes the 2026-10-09 routine-support
+  policy, one at a time:
+  - routine tickets only;
+  - refunds of $50 or less;
+  - legal, angry and unclear tickets held for the founder.
+- The earned-autonomy circuit breaker is unchanged:
+  - a failed action demotes the domain one level;
+  - the panic stop quarantines every domain to observe.
+- **Founder action:** confirm the level in production with Controls → Trust
+  levels → support → execute_gated. Seeding only applies to a domain with no
+  row yet.
+
+## 2026-10-10 — routine reversible autopilot moves run and are digested
+
+**Date:** 2026-10-10
+
+**Source:** the founder's picker answer in the coordinating session. This is
+plan item W1-4.4.
+
+- Ops and deploy default to **execute_gated** (`DEFAULT_DOMAIN_LEVEL`). A
+  routine, reversible move there that passes every gate runs without a
+  per-move ask.
+- The founder sees what ran in a weekly digest behind the **Decisions** door
+  (`/founder/decisions`, "Ran on its own this week"; no new route). The
+  weekly founder email summarises the same items.
+- Every item has an **undo**:
+  - if the work has not finished, undo cancels it;
+  - if it already ran, its effect is not reversed. The undo records a
+    declined verdict and drops the domain to DRAFT, so the next move asks
+    first. The page and the toast say which of the two happened.
+- Still asked first, even when every gate passes (`digestLaneRefusal` in
+  `act.ts`):
+  - a move that cannot be undone;
+  - a move that reaches a customer without a per-effect witness;
+  - a new kind of move;
+  - every hard stop: pricing, legal signing, spend over $500,
+    customer-data deletion.
+- Retention moves run through the support domain. Each send they draft is
+  still witnessed one at a time.
+- **Enforced by:**
+  - registry entry `ai.digest-lane-runs-only-reversible-work`;
+  - the ratchet `tests/unit/digestLaneRunsOnlyReversibleWork.test.ts`.
+- **Founder action:** confirm ops and deploy at execute_gated in production
+  (Controls).
