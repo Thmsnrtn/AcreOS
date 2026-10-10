@@ -155,6 +155,18 @@ export function digestLaneRefusal(move: RankedMove): string | null {
   return null;
 }
 
+/**
+ * A move IN the digest lane: bound to ops or deploy, and nothing in
+ * digestLaneRefusal applies (reversible, internal, not new, not a hard stop).
+ * Founder ruling 2026-10-10: such a move is exempt from the risk check's
+ * "unproven calibration escalates medium" rule (riskautonomy
+ * shouldEscalateForRisk opts.digestLane). Pure.
+ */
+export function isDigestLaneMove(move: RankedMove): boolean {
+  const b = bindingFor(move.kind);
+  return isKnownMoveKind(move.kind) && DIGEST_LANE_DOMAINS.has(b.domain) && move.domain === b.domain && digestLaneRefusal(move) === null;
+}
+
 export function bindingFor(moveKind: string): MoveBinding {
   const b = MOVE_BINDINGS[moveKind];
   if (!b) {
