@@ -231,6 +231,10 @@ async function main() {
       [receipt],
     );
     check(persisted.stored === 3 && persisted.receiptsRecorded === 1, `the loader keeps the county's parcels and records its receipt (${JSON.stringify(persisted)})`);
+    // Loading a county announces its new public guide to IndexNow (W3). That is
+    // the ONLY outbound call the loader may make: it never reaches a parcel source.
+    const loaderFetches = fetched.splice(0);
+    check(loaderFetches.every((u) => u.startsWith("https://api.indexnow.org/")), `the loader's only outbound call is the IndexNow announce (${loaderFetches.join(", ") || "none"})`);
     const loadedJob = await rowOf("comptroller fixture");
     check(loadedJob?.ownedStatus === "complete" && loadedJob.ownedParcelsStored === 3, "the county's coverage row says complete with 3 parcels");
     const hit = await lookupParcelByCoordinates(35.931, -85.396);
