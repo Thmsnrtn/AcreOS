@@ -10,10 +10,13 @@
  * with its reason; a new importer fails until it is listed — and a customer
  * route may only be listed if it consumes customerForecastGate.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOTS = ["server", "client/src", "shared"];
 const OWN = ["shared/forecasting/", "server/services/forecasting/"];

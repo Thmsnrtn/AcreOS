@@ -15,10 +15,13 @@
  *
  * Canaries below prove the check goes red on each shape it relies on.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 import { FORECAST_MODELS, OUTCOME_FIELDS, type OutcomeField } from "../../shared/forecasting/models";
 import { PUBLIC_SERIES, STATE_CODES } from "../../shared/forecasting/publicSeries";
 import { checkModels, words, type CheckableModel } from "../../shared/forecasting/fairHousing";
