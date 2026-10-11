@@ -36,7 +36,6 @@ const PROBE_POINTS: Record<string, { lat: number; lng: number }> = {
   WA: { lat: 47.0379, lng: -122.9007 }, // Olympia
   NJ: { lat: 40.2206, lng: -74.7699 }, // Trenton
   AR: { lat: 34.7465, lng: -92.2896 }, // Little Rock
-  TN: { lat: 35.9965, lng: -85.9032 }, // DeKalb County
   NY: { lat: 42.6529, lng: -73.7594 }, // Albany (NYS Capitol parcel)
   WI: { lat: 43.0747, lng: -89.3844 }, // Madison (WI Capitol parcel)
   MD: { lat: 38.9788, lng: -76.491 }, // Annapolis (MD State House parcel)
@@ -45,7 +44,8 @@ const PROBE_POINTS: Record<string, { lat: number; lng: number }> = {
 // The seeded set is pinned: a state may ONLY be added here after the
 // discovery pipeline's live verification + open-license review (see
 // discoveryPipeline.test.ts), and may only leave via a founder decision.
-const SEEDED_STATES = ["AR", "FL", "MD", "MT", "NC", "NJ", "NY", "TN", "WA", "WI"];
+// TN left by founder decision 2026-10-11 (its service is not for commercial use).
+const SEEDED_STATES = ["AR", "FL", "MD", "MT", "NC", "NJ", "NY", "WA", "WI"];
 
 describe("STATEWIDE_PARCEL_ENDPOINTS seed rows", () => {
   it("every row validates against the county_gis_endpoints insert schema", () => {

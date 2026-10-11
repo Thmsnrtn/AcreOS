@@ -4,6 +4,8 @@
   - Fetches key API endpoints from a local AcreOS dev server (DEV_MODE=true)
   - Saves results to logs/snapshots/<ISO_DATE>/ as JSON for reproducible audits
 */
+// Refuse blocked outbound sources (founder decision 2026-10-11): this script fetches URLs from data.
+import "../server/outboundGuard";
 import fs from 'node:fs/promises'
 import path from 'node:path'
 

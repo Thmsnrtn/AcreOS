@@ -79,7 +79,9 @@ export const COVERAGE_LABELS: Record<CountyCoverage, string> = {
 /** The coverage a row may honestly claim, derived from its sources. */
 export function deriveCoverage(sources: CensusSource[]): CountyCoverage {
   if (sources.some((s) => s.mayStore && s.verification !== "unverified")) return "storable_with_manual_download";
-  if (sources.some((s) => s.verification === "verified_live")) return "lookup_only";
+  // A service whose terms prohibit commercial use is not a lookup AcreOS makes
+  // (founder decision 2026-10-11), however live it is.
+  if (sources.some((s) => s.verification === "verified_live" && s.commercialUse !== "prohibited")) return "lookup_only";
   if (sources.length > 0) return "unverified_candidates";
   return "no_source_found";
 }

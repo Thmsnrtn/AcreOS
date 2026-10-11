@@ -8,8 +8,8 @@
  * the coverage map). Every field is read from a live source in this run:
  *
  *   - the county list and FIPS: Census TIGERweb State_County (STATE = 47);
- *   - per-county parcel counts in the state's public service: an ArcGIS
- *     group-by statistics query on COUNTY_NAME;
+ *   - (the state's non-commercial public service is NOT queried — founder
+ *     decision 2026-10-11; blockedOutboundSources.ts);
  *   - candidate county-run services for the nine counties the Comptroller
  *     does not maintain: ArcGIS Online search, recorded as UNVERIFIED unless
  *     listed in REVIEWED below with the evidence a human-readable check found.
@@ -19,11 +19,8 @@
 
 import { writeFileSync } from "node:fs";
 import { fetchGeo } from "../../server/services/providers/fetchGeo";
-import {
-  TN_COMPTROLLER_DOWNLOAD,
-  TN_PUBLIC_PARCEL_SERVICE,
-  TN_SELF_MAINTAINED_COUNTIES,
-} from "../../server/services/landData/tnParcelSources";
+import { blockedOutboundSource } from "../../server/services/providers/blockedOutboundSources";
+import { TN_COMPTROLLER_DOWNLOAD, TN_SELF_MAINTAINED_COUNTIES } from "../../server/services/landData/tnParcelSources";
 
 const today = new Date().toISOString().slice(0, 10);
 
@@ -67,24 +64,10 @@ async function main() {
   }));
   if (list.length !== 95) throw new Error(`expected 95 Tennessee counties, TIGERweb returned ${list.length}`);
 
-  // 2. Public-service parcel counts by county.
-  const stats = await getJson(
-    `${TN_PUBLIC_PARCEL_SERVICE.layerUrl}/query?` +
-      new URLSearchParams({
-        where: "1=1",
-        groupByFieldsForStatistics: "COUNTY_NAME",
-        outStatistics: JSON.stringify([{ statisticType: "count", onStatisticField: "OBJECTID", outStatisticFieldName: "n" }]),
-        f: "json",
-      }),
-  );
-  const counts = new Map<string, number>();
-  for (const f of stats.features ?? []) counts.set(String(f.attributes.COUNTY_NAME).toLowerCase(), Number(f.attributes.n));
-
   // 3. Rows.
   const rows: any[] = [];
   for (const c of list.sort((a, b) => a.name.localeCompare(b.name))) {
     const selfMaintained = (TN_SELF_MAINTAINED_COUNTIES as readonly string[]).includes(c.name);
-    const n = counts.get(c.name.toLowerCase()) ?? null;
     const sources: any[] = [];
     if (!selfMaintained) {
       sources.push({
@@ -97,21 +80,6 @@ async function main() {
         automatedDownload: false,
         terms: `"${TN_COMPTROLLER_DOWNLOAD.termsQuote}" Per-county shapefile via a request form; no automated or recurring extracts.`,
         verification: "terms_read",
-        checkedOn: today,
-      });
-    }
-    if (n !== null && n > 0) {
-      sources.push({
-        kind: "state_public_service",
-        publisher: "Tennessee Comptroller / TNMap",
-        url: TN_PUBLIC_PARCEL_SERVICE.layerUrl,
-        licenseSource: TN_PUBLIC_PARCEL_SERVICE.licenseSource,
-        commercialUse: "prohibited",
-        mayStore: false,
-        automatedDownload: true,
-        terms: `"${TN_PUBLIC_PARCEL_SERVICE.termsQuote}"`,
-        verification: "verified_live",
-        liveParcelCount: n,
         checkedOn: today,
       });
     }
@@ -135,7 +103,8 @@ async function main() {
         const q = `${c.name} County Tennessee parcels type:"Feature Service"`;
         const found = await getJson(`https://www.arcgis.com/sharing/rest/search?num=5&f=json&q=${encodeURIComponent(q)}`);
         for (const r of (found.results ?? []).slice(0, 5)) {
-          if (!r.url || String(r.url).includes("Tennessee_Property_Boundaries_Public_Use")) continue;
+          // A blocked source (founder decision 2026-10-11) is never a candidate.
+          if (!r.url || blockedOutboundSource(String(r.url))) continue;
           if (!/parcel/i.test(String(r.title))) continue;
           sources.push({
             kind: "county_service",

@@ -30,13 +30,8 @@ import { parcelTruths } from "@shared/landData/parcelTruths";
 import { taxSaleSourcesFor } from "@shared/landData/taxSaleSources";
 import type { ParcelFactSet } from "@shared/landData/parcelFacts";
 import { STATEWIDE_PARCEL_ENDPOINTS } from "./services/statewideParcelEndpoints";
-import {
-  enqueueCountyProcessing,
-  getCountyJob,
-  normalizeCountyName,
-  ownedApn,
-  OWNED_SNAPSHOT_SOURCE,
-} from "./services/landData/countyPipeline";
+import { enqueueCountyProcessing, getCountyJob } from "./services/landData/countyPipeline";
+import { normalizeCountyName, ownedApn, OWNED_SNAPSHOT_SOURCE } from "./services/landData/ownedParcelStore";
 import {
   NATIONAL_DATASET_CATEGORIES,
   nationalDatasetReadiness,

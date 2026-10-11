@@ -65,14 +65,6 @@ function hornSlopePct(g: ElevationGrid, col: number, row: number): number | null
   return 100 * Math.sqrt(dzdx * dzdx + dzdy * dzdy);
 }
 
-export function elevationAt(g: ElevationGrid, lng: number, lat: number): number | null {
-  const col = Math.floor((lng - g.west) / g.resLng);
-  const row = Math.floor((g.north - lat) / g.resLat);
-  if (col < 0 || row < 0 || col >= g.width || row >= g.height) return null;
-  const v = g.data[row * g.width + col];
-  if (!Number.isFinite(v) || (g.noData !== null && v === g.noData) || v < -1000) return null;
-  return v;
-}
 
 export function slopeSamplerFromGrids(grids: ElevationGrid[], source: FactSource): SlopeSampler {
   return {

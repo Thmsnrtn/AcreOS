@@ -149,9 +149,13 @@ export function LandCoveragePanel() {
       <div ref={mapRef} className="h-56 w-full rounded-md border" role="img" aria-label="Map of Tennessee counties colored by free parcel source coverage" />
       <ul className="space-y-1 text-xs" aria-label="Coverage legend">
         {(Object.keys(COVERAGE_LABELS) as CountyCoverage[]).map((c) => (
-          <li key={c} className="flex items-center justify-between gap-2">
-            <Badge variant={BADGE_VARIANT[c]}>{COVERAGE_LABELS[c]}</Badge>
-            <span className="tabular-nums text-muted-foreground">{tally[c] ?? 0} counties</span>
+          <li key={c} className="flex items-center justify-between gap-2" data-testid={`coverage-legend-${c}`}>
+            {/* The label wraps and the count never does: on a phone-width sheet
+                a one-line badge pushed "86 counties" past the edge. */}
+            <Badge variant={BADGE_VARIANT[c]} className="min-w-0 whitespace-normal text-left">{COVERAGE_LABELS[c]}</Badge>
+            <span className="shrink-0 whitespace-nowrap tabular-nums text-muted-foreground" data-testid={`coverage-count-${c}`}>
+              {tally[c] ?? 0} {(tally[c] ?? 0) === 1 ? "county" : "counties"}
+            </span>
           </li>
         ))}
       </ul>

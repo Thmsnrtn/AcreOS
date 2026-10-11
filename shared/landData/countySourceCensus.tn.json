@@ -20,19 +20,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 36465,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -53,19 +40,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 24062,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -88,19 +62,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 16495,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -121,19 +82,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 11373,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -156,19 +104,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 66575,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -189,19 +124,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 51023,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -224,19 +146,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 27573,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -257,19 +166,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 8508,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -292,19 +188,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 19949,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -326,19 +209,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 32005,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -359,19 +229,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 21804,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -425,19 +282,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 22522,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -458,19 +302,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 7135,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -493,19 +324,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 25266,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -526,19 +344,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 32710,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -561,19 +366,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 10163,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -595,19 +387,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 65771,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -625,7 +404,7 @@
      "commercialUse": "unstated",
      "mayStore": false,
      "automatedDownload": true,
-     "terms": "Item licence: \"Metro's Open Data Executive Order provides the policy and guidance governing the portal\" — the order itself was not read in this pass.",
+     "terms": "Item licence: \"Metro's Open Data Executive Order provides the policy and guidance governing the portal\" \u2014 the order itself was not read in this pass.",
      "verification": "verified_live",
      "liveParcelCount": 287316,
      "checkedOn": "2026-10-10"
@@ -650,19 +429,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 14112,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -683,19 +449,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 18325,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -718,19 +471,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 28412,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -751,19 +491,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 21595,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -786,19 +513,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 26371,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -819,19 +533,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 16408,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -854,19 +555,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 26824,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -887,19 +575,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 30831,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -922,19 +597,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 18826,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -955,19 +617,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 15587,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -990,19 +639,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 43074,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -1024,19 +660,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 11967,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -1057,19 +680,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 30904,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -1134,19 +744,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 6153,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -1167,19 +764,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 20295,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -1202,19 +786,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 28565,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -1235,19 +806,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 36562,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -1270,19 +828,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 11388,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -1304,19 +849,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 18063,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -1337,19 +869,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 25998,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -1403,19 +922,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 6634,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -1436,19 +942,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 13764,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -1471,19 +964,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 9020,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -1505,19 +985,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 34851,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -1538,19 +1005,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 14180,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -1593,19 +1047,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 3905,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -1626,19 +1067,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 13797,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -1661,19 +1089,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 25786,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -1694,19 +1109,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 8705,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -1729,19 +1131,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 19967,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -1762,19 +1151,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 36399,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -1797,19 +1173,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 14433,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -1830,19 +1193,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 49503,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -1865,19 +1215,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 22228,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -1898,19 +1235,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 19513,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -1933,19 +1257,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 52683,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -1966,19 +1277,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 31388,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -2001,19 +1299,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 19265,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -2035,19 +1320,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 9471,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -2068,19 +1340,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 30099,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -2111,19 +1370,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 4260,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -2144,19 +1390,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 14388,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -2179,19 +1412,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 20057,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -2212,19 +1432,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 15539,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -2247,19 +1454,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 9843,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -2280,19 +1474,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 5926,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -2315,19 +1496,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 13117,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -2348,19 +1516,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 38429,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -2383,19 +1538,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 21501,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -2417,19 +1559,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 35837,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -2450,19 +1579,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 37749,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -2516,19 +1632,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 15354,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -2550,19 +1653,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 12664,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -2583,19 +1673,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 70701,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -2638,19 +1715,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 12091,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -2671,19 +1735,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 12508,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -2706,19 +1757,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 78811,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -2739,19 +1777,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 86607,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -2774,19 +1799,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 30129,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -2807,19 +1819,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 5463,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -2842,19 +1841,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 10301,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -2875,19 +1861,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 14722,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -2910,19 +1883,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 7334,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -2943,19 +1903,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 23835,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -2978,19 +1925,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 60962,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -3011,19 +1945,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 13014,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -3046,19 +1967,6 @@
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
      "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 20191,
-     "checkedOn": "2026-10-10"
     }
    ]
   },
@@ -3079,19 +1987,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 17834,
      "checkedOn": "2026-10-10"
     }
    ]
@@ -3144,19 +2039,6 @@
      "automatedDownload": false,
      "terms": "\"The shapefile data can be used in a commercial application.\" Per-county shapefile via a request form; no automated or recurring extracts.",
      "verification": "terms_read",
-     "checkedOn": "2026-10-10"
-    },
-    {
-     "kind": "state_public_service",
-     "publisher": "Tennessee Comptroller / TNMap",
-     "url": "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer/0",
-     "licenseSource": "TN Property Boundaries Public Use service",
-     "commercialUse": "prohibited",
-     "mayStore": false,
-     "automatedDownload": true,
-     "terms": "\"This service is not intended for commercial use.\"",
-     "verification": "verified_live",
-     "liveParcelCount": 66872,
      "checkedOn": "2026-10-10"
     }
    ]

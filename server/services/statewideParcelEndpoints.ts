@@ -233,39 +233,16 @@ export const STATEWIDE_PARCEL_ENDPOINTS: StatewideParcelEndpointSeed[] = [
     notes:
       "Arkansas CAMP statewide parcel polygons (~74/75 counties), layer 6 of Planning_Cadastre. Statewide point-lookup row; verified live 2026-07-13.",
   },
-  {
-    // Tennessee Property Boundaries Public Use (TNMap / Comptroller) —
-    // ~86 counties; the 4 self-mapping counties (Davidson, Knox,
-    // Hamilton, Shelby) are NOT in this layer, so points there fall
-    // through to the next provider. Verified point query in DeKalb Co.
-    // returned PARCELID/OWNER/ADDRESS/DEEDAC.
-    state: "TN",
-    county: STATEWIDE_COUNTY,
-    endpointType: "arcgis_feature",
-    baseUrl:
-      "https://services1.arcgis.com/YuVBSS7Y1of2Qud1/arcgis/rest/services/Tennessee_Property_Boundaries_Public_Use/FeatureServer",
-    layerId: "0",
-    apnField: "PARCELID",
-    ownerField: "OWNER",
-    fieldMappings: {
-      apn: "PARCELID",
-      owner: "OWNER",
-      address: "ADDRESS",
-      acres: "DEEDAC",
-    },
-    sourceUrl:
-      "https://tn-tnmap.opendata.arcgis.com/maps/53ee269639334ad8b70bfea77bde7333",
-    termsUrl:
-      "https://comptroller.tn.gov/office-functions/pa/gisredistricting/redistricting-and-land-use-maps/parcel-data.html",
-    attribution: "Tennessee Comptroller of the Treasury / TNMap (OIR)",
-    notes:
-      "TN Property Boundaries Public Use (~86 counties; Davidson/Knox/Hamilton/Shelby self-mapping counties excluded). Statewide point-lookup row; verified live 2026-07-13.",
-  },
+  // Tennessee: REMOVED by founder decision 2026-10-11. The state's "Property
+  // Boundaries Public Use" service says it is not for commercial use, so it is
+  // never queried (blockedOutboundSources.ts refuses its URL on every fetch).
+  // TN points are answered from AcreOS's own loaded county parcels or the
+  // org's own Regrid key (parcel.ts, lookupParcelByCoordinates).
   {
     // NYS Tax Parcels Public (NYS ITS Geospatial Services + Tax & Finance
     // ORPTS) — ONLY counties that opted into public sharing (~38 of 62);
     // points in non-participating counties return zero features and fall
-    // through to the next provider (same partial-coverage model as TN).
+    // through to the next provider (partial coverage: a miss falls through).
     // Verified point query at the NYS Capitol (Albany) returned
     // PRINT_KEY/PRIMARY_OWNER/PARCEL_ADDR/TOTAL_AV/FULL_MARKET_VAL/ACRES.
     // Layer 1 = parcels (layer 0 is the county-footprint layer).

@@ -101,7 +101,7 @@ export interface DueDiligenceReport {
   marketAnalysis: MarketAnalysis;
   risks: RiskAssessment;
   aiSummary?: string;
-  dataSource: "cache" | "county_gis" | "regrid" | "rapidapi" | "property_record";
+  dataSource: "cache" | "county_gis" | "regrid" | "rapidapi" | "owned" | "property_record";
   errors?: string[];
 }
 

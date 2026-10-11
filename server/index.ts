@@ -1,4 +1,6 @@
 // Initialize OpenTelemetry BEFORE any other imports (T74)
+// FIRST: refuse blocked outbound sources on every fetch (founder decision 2026-10-11).
+import "./outboundGuard";
 import { appProcessRunsScheduledJobs } from "./jobs/jobPlacement";
 import { initTracing } from "./tracing";
 // initTracing() is called at startup below — see startupInit()

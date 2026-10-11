@@ -382,6 +382,11 @@
     },
     {
       "kind": "export",
+      "id": "server/services/providers/land-context-sources.ts::LAND_CONTEXT_SOURCES",
+      "reason": "TEST SEAM (founder decision 2026-10-11). Its one outside caller was scripts/land-data/extract-tn-accuracy-sample.ts, deleted because it fetched the TN non-commercial service; loadParcelContext (same module) is the production reader. Exported so landDataRegistries.test.ts pins the REAL wetlands layer's query (not a literal copy of it). REVOCATION: when a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
       "id": "server/services/providers/land-context-sources.ts::arcgisBboxQueryUrl",
       "reason": "TEST SEAM (W2 land data, 2026-10-10). Builds every context-layer query fetchArcgisBbox sends; exported so landDataRegistries.test.ts pins WGS84 GeoJSON output and the padded envelope. REVOCATION: when a production module imports it, remove this entry."
     },

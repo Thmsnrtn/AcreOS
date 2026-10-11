@@ -244,16 +244,19 @@ export const DATA_LICENSE_REGISTER: Record<string, DataLicenseEntry> = {
   },
   // The TNMap "Property Boundaries Public Use" feature service. Its item
   // description says "This service is not intended for commercial use" and
-  // points commercial users to the download above — so nothing from it may be
-  // stored or re-served. Used only for small, labelled verification samples.
+  // points commercial users to the download above.
+  // FOUNDER DECISION 2026-10-11 (founder's picker; docs/company/
+  // founder-decisions-2026-10-11.md): AcreOS stops using it entirely — no live
+  // lookup, no stored copy, no sample, no census count. Every outbound fetch
+  // refuses its URL (blockedOutboundSources.ts + server/outboundGuard.ts).
   "TN Property Boundaries Public Use service": {
     source: "TN Property Boundaries Public Use service",
     license: "county-tos",
     redistributable: "no",
     attributionText: "Parcels: Tennessee Comptroller of the Treasury / TNMap",
     termsUrl: "https://www.arcgis.com/home/item.html?id=e356f1a241844d6f9025f2fa4e977df3",
-    lastReviewed: "2026-10-10",
-    reviewedBy: "W2 build agent",
+    lastReviewed: "2026-10-11",
+    reviewedBy: "Founder decision 2026-10-11: not used on any path",
   },
   "TDOT Traffic Counts": {
     source: "TDOT Traffic Counts",

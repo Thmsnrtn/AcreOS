@@ -159,7 +159,7 @@ export function arcgisBboxQueryUrl(src: ArcgisLayerSource, bbox: Bbox, offset: n
 /** Hard ceiling on features per layer per neighbourhood read (memory bound). */
 const MAX_FEATURES_PER_LAYER = 20_000;
 
-export async function fetchArcgisBbox(
+async function fetchArcgisBbox(
   src: ArcgisLayerSource,
   bbox: Bbox,
   fetcher: (url: string) => Promise<Response> = (u) =>

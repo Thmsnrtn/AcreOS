@@ -8,7 +8,7 @@ below was measured in that session.
 
 | Source | Used for | Terms, as read | May AcreOS store it? |
 |---|---|---|---|
-| TNMap "Tennessee Property Boundaries Public Use" feature service (2,141,289 parcels, 86 counties) | the existing live point lookup; the 20-parcel accuracy sample | Item description: "This service is not intended for commercial use. For commercial purposes, we recommend that you download the data at the Tennessee Comptroller of the Treasury's webpage." | **No.** Registered as `redistributable: "no"`. |
+| TNMap "Tennessee Property Boundaries Public Use" feature service (2,141,289 parcels, 86 counties) | **nothing since 2026-10-11** (founder decision); before it, the live point lookup and the 20-parcel accuracy sample | Item description: "This service is not intended for commercial use. For commercial purposes, we recommend that you download the data at the Tennessee Comptroller of the Treasury's webpage." | **No.** Registered as `redistributable: "no"`. |
 | TN Comptroller per-county parcel download (shapefile + Assessment_Data dbf) | the production showcase input | "The shapefile data can be used in a commercial application." Form-gated; "we do not offer … any recurring extracts or other automated downloads". | **Yes, with attribution** — but a person downloads each county. |
 | Census TIGERweb (roads, places, counties) | frontage, access, distance to town, county list | Public domain | Yes |
 | USFWS NWI wetlands | buildable acres | Public domain | Yes |
@@ -116,7 +116,11 @@ inverted ring orientation (holes read as separate polygons).
    the out-of-state-owner sample, and (with the bucket set) the receipts.
 3. **Confirm the reading of the Comptroller terms** ("can be used in a
    commercial application") — registered as attribution-required.
-4. **Decide on the existing TN live point lookup**, which uses the service the
-   state marks not for commercial use (a pre-W2 seam).
+4. ~~Decide on the existing TN live point lookup~~ — **decided 2026-10-11:
+   the service is not used on any path**
+   ([founder-decisions-2026-10-11.md](founder-decisions-2026-10-11.md)). TN
+   points are answered from loaded county parcels, the org's own Regrid key,
+   or a plain refusal. The Comptroller loader now stores parcels in
+   `parcel_snapshots` and records its upload receipts.
 5. **Free keys:** `HUD_USER_API_TOKEN` and `CENSUS_API_KEY`.
 6. **Distance to power:** choose a source with open terms (none wired).

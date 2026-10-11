@@ -11297,6 +11297,11 @@ END $$`,
   `ALTER TABLE "parcel_snapshots" ADD COLUMN IF NOT EXISTS "parcel_key" text`,
   `ALTER TABLE "parcel_snapshots" ADD COLUMN IF NOT EXISTS "facts" jsonb`,
   `ALTER TABLE "parcel_snapshots" ADD COLUMN IF NOT EXISTS "facts_computed_at" timestamp`,
+
+  // 0271 — founder decision 2026-10-11: the TN statewide non-commercial parcel
+  // service is not used; deactivate any row pointing at it. Mirrors
+  // migrations/0271_tn_public_service_retired.sql.
+  `UPDATE "county_gis_endpoints" SET "is_active" = false, "redistributable" = 'no' WHERE "base_url" ILIKE '%tennessee_property_boundaries_public_use%'`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

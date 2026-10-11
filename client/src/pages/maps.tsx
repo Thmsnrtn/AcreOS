@@ -75,6 +75,7 @@ import { RequestCountyCTA } from "@/components/maps/RequestCountyCTA";
 import { MarketHeatPanel } from "@/components/maps/MarketHeatPanel";
 import { LandCoveragePanel } from "@/components/maps/LandCoveragePanel";
 import { ParcelFactsPanel } from "@/components/maps/ParcelFactsPanel";
+import { AreaDataPanel } from "@/components/maps/AreaDataPanel";
 import {
   RadarChart,
   Radar,
@@ -925,6 +926,14 @@ function PropertyIntelligencePanel({
           <div className="pt-2">
             <p className="text-micro font-medium uppercase tracking-wide text-muted-foreground mb-1">Land facts</p>
             <ParcelFactsPanel state={property.state} county={property.county} apn={property.apn} />
+          </div>
+        )}
+
+        {/* Area data — small public datasets around the property, on request. */}
+        {property.latitude && property.longitude && (
+          <div className="pt-2">
+            <p className="text-micro font-medium uppercase tracking-wide text-muted-foreground mb-1">Area data</p>
+            <AreaDataPanel lat={parseFloat(String(property.latitude))} lng={parseFloat(String(property.longitude))} state={property.state} />
           </div>
         )}
 

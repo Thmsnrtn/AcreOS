@@ -19,6 +19,8 @@
  * unless --update is passed (in which case the row is patched).
  */
 
+// Refuse blocked outbound sources (founder decision 2026-10-11): this script fetches URLs from data.
+import "../server/outboundGuard";
 import * as fs from "fs";
 import * as path from "path";
 import { db } from "../server/db";

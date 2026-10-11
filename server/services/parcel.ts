@@ -9,6 +9,10 @@ import { db } from "../db";
 import { countyGisEndpoints, type InsertParcelSnapshot } from "@shared/schema";
 import { eq, and, ilike, inArray } from "drizzle-orm";
 import { apnQueryVariants } from "@shared/parcel/parcelRef";
+import { plainRefusal } from "@shared/refusal/plainRefusal";
+import { tnCountyAt } from "@shared/landData/tnCounties";
+import { blockedOutboundSource } from "./providers/blockedOutboundSources";
+import { ownedParcelAtPoint } from "./landData/ownedParcelStore";
 import {
   STATEWIDE_COUNTY,
   STATEWIDE_PARCEL_ENDPOINTS,
@@ -142,7 +146,7 @@ interface RegridResponse {
 
 export interface ParcelLookupResult {
   found: boolean;
-  source?: "county_gis" | "regrid" | "rapidapi" | "cache";
+  source?: "county_gis" | "regrid" | "rapidapi" | "cache" | "owned";
   parcel?: {
     apn: string;
     boundary: {
@@ -609,6 +613,10 @@ export async function lookupFromCountyGISByPoint(
     if (endpoint.endpointType !== "arcgis_rest" && endpoint.endpointType !== "arcgis_feature") {
       continue;
     }
+    // A blocked source (founder decision 2026-10-11) is skipped before any
+    // request — whatever row carries it. fetchGeo and the process fetch guard
+    // refuse it too; this keeps the refusal out of the error counters.
+    if (blockedOutboundSource(endpoint.baseUrl)) continue;
     try {
       const baseUrl = endpoint.baseUrl.replace(/\/$/, "");
       const layerId = endpoint.layerId || "0";
@@ -1144,6 +1152,41 @@ async function lookupFromRegrid(
 }
 
 /**
+ * The plain refusal for a Tennessee point AcreOS cannot answer yet (founder
+ * decision 2026-10-11 — the state's non-commercial service is not used).
+ */
+export const TN_PARCELS_NOT_YET = plainRefusal({
+  what: "Tennessee parcel details aren't available yet",
+  why: "they arrive as county data loads, and we don't use the state's non-commercial parcel service",
+  unlock: "check back once this county is loaded, or connect your own Regrid key in Settings to look it up now",
+});
+
+/** A kept parcel at the point, in lookup-result shape; null if none. */
+export async function ownedParcelResultAt(lat: number, lng: number): Promise<ParcelLookupResult | null> {
+  const hit = await ownedParcelAtPoint(lat, lng);
+  if (!hit) return null;
+  return {
+    found: true,
+    source: "owned",
+    parcel: {
+      apn: hit.apn,
+      boundary: hit.boundary as NonNullable<ParcelLookupResult["parcel"]>["boundary"],
+      centroid: hit.centroid,
+      data: {
+        regridId: "",
+        owner: null,
+        ownerAddress: "",
+        taxAmount: "",
+        lastUpdated: hit.fetchedAt ? hit.fetchedAt.toISOString() : "",
+        acres: hit.acres,
+        county: hit.county,
+        state: hit.state,
+      },
+    },
+  };
+}
+
+/**
  * Lookup parcel by coordinates, in parcelLayerOrder (no APN, so no cache and
  * no RapidAPI layer).
  */
@@ -1154,6 +1197,18 @@ export async function lookupParcelByCoordinates(
 ): Promise<ParcelLookupResult> {
   let lastMiss: ParcelLookupResult | null = null;
   const regridKey = await resolveRegridKey(opts);
+
+  // Tennessee (founder decision 2026-10-11): never the state's non-commercial
+  // public service. AcreOS's own loaded county parcels first, then the org's
+  // OWN Regrid key, else an honest refusal. No platform key, no statewide row.
+  const tn = tnCountyAt(lat, lng);
+  if (tn) {
+    const owned = await ownedParcelResultAt(lat, lng);
+    if (owned) return owned;
+    if (regridKey?.source === "org") return lookupFromRegridByPoint(lat, lng, regridKey.key);
+    return { found: false, error: TN_PARCELS_NOT_YET };
+  }
+
   for (const layer of parcelLayerOrder(regridKey)) {
     if (layer === "regrid") {
       if (!regridKey) continue;

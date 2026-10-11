@@ -77,7 +77,27 @@ export const countyGisProvider: DataProvider = {
     // the county = "*" statewide rows (Open-Data Phase 3). A point sits in
     // exactly one parcel, so no state/county/apn is needed up front.
     if (input.type === "coordinates") {
-      const { lookupFromCountyGISByPoint } = await import("../parcel");
+      const { lookupFromCountyGISByPoint, ownedParcelResultAt, TN_PARCELS_NOT_YET } = await import("../parcel");
+      // Tennessee (founder decision 2026-10-11): only AcreOS's own loaded
+      // county parcels answer here — never the state's non-commercial service.
+      const { tnCountyAt } = await import("@shared/landData/tnCounties");
+      if (tnCountyAt(input.latitude, input.longitude)) {
+        const owned = await ownedParcelResultAt(input.latitude, input.longitude);
+        if (!owned?.parcel) throw new Error(TN_PARCELS_NOT_YET);
+        return {
+          provider: "county-gis",
+          category,
+          confidence: 80,
+          costCents: 0,
+          fetchedAt: clock.now(),
+          cached: false,
+          latencyMs: clock.nowMs() - start,
+          data: owned.parcel,
+          source: "County GIS",
+          sourceAsOf: null,
+          classification: "authoritative",
+        };
+      }
       const pointResult = await lookupFromCountyGISByPoint(input.latitude, input.longitude);
       if (!pointResult || !pointResult.found || !pointResult.parcel) {
         // No seeded statewide service covers this point. Throw so the

@@ -17,6 +17,7 @@
  * in the app (client/src/lib/map-engine.ts).
  */
 
+import { eddmDefaultCounty, type TargetCountyLite } from "./eddmDefaults";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as mapboxgl from "maplibre-gl";
 import { motion } from "framer-motion";
@@ -79,33 +80,24 @@ function resolveMapColors() {
   };
 }
 
-interface OrgWithSettings {
-  id: number;
-  settings?: { primaryCounty?: string; primaryState?: string } | null;
-}
-
 export default function EddmTab() {
   const { toast } = useToast();
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
 
-  // Pull the org's primary county from settings — defaults TX/Hidalgo, the
-  // common case for the dev seed. The user can override above the map.
-  const orgQuery = useQuery<OrgWithSettings>({
-    queryKey: ["/api/organizations/current"],
+  // Open on the org's own county: its first active target county (GET
+  // /api/target-counties). This used to ask /api/organizations/current, a
+  // route that does not exist, so it always fell back to TX/Hidalgo.
+  const targetsQuery = useQuery<TargetCountyLite[]>({
+    queryKey: ["/api/target-counties"],
     queryFn: async () => {
-      try {
-        const res = await apiRequest("GET", "/api/organizations/current");
-        return res.json();
-      } catch {
-        return { id: 0 } as OrgWithSettings;
-      }
+      const res = await apiRequest("GET", "/api/target-counties");
+      return res.json();
     },
     retry: false,
   });
 
-  const defaultState = orgQuery.data?.settings?.primaryState ?? "TX";
-  const defaultCounty = orgQuery.data?.settings?.primaryCounty ?? "Hidalgo";
+  const { state: defaultState, county: defaultCounty } = eddmDefaultCounty(targetsQuery.data);
 
   const [stateInput, setStateInput] = useState(defaultState);
   const [countyInput, setCountyInput] = useState(defaultCounty);

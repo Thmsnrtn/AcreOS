@@ -23,6 +23,7 @@
  */
 
 import { checkOperatorUrl } from "./ssrf-guard";
+import { assertOutboundAllowed } from "./blockedOutboundSources";
 import { logger } from "../../utils/logger";
 import { clock } from "../../utils/clock";
 
@@ -201,6 +202,10 @@ export async function fetchGeo(url: string, opts: FetchGeoOptions = {}): Promise
   } catch {
     throw new Error(`fetchGeo: invalid URL`);
   }
+
+  // Blocked sources (founder decision 2026-10-11): refused on the URL, before
+  // any limiter, retry or socket — whichever row or registry entry supplied it.
+  assertOutboundAllowed(url);
 
   // SSRF guard: refuse private/loopback/link-local/metadata + non-https.
   // checkOperatorUrl also enforces https — the right default for a re-served

@@ -1,3 +1,5 @@
+// Refuse blocked outbound sources (founder decision 2026-10-11): this script fetches URLs from data.
+import "../server/outboundGuard";
 /**
  * Data Source Verification Script
  * Probes all 18 open data sources and reports health status.

@@ -32,17 +32,8 @@ import { computeParcelFacts, gisAcres, type ParcelInput, type ParcelContext } fr
 import { areaBbox, areaCentroid, areaSqM, type AreaGeometry } from "./geometry";
 import { newParcelKey, reconcileCrosswalk, type KeyedRecord } from "@shared/landData/parcelCrosswalk";
 import type { ParcelFactSet } from "@shared/landData/parcelFacts";
-import { normalizeParcelRef } from "@shared/parcel/parcelRef";
-import { TN_PUBLIC_PARCEL_SERVICE } from "./tnParcelSources";
-
-/**
- * The stored id of an owned parcel: the canonical natural-key APN form
- * (shared/parcel/parcelRef.ts), so the lookup route finds what was stored.
- */
-export function ownedApn(state: string, county: string, sourceId: string): string | null {
-  const ref = normalizeParcelRef({ state, county, apn: sourceId });
-  return ref.ok ? ref.ref.apn : null;
-}
+import { normalizeCountyName, OWNED_SNAPSHOT_SOURCE, saveOwnedParcels } from "./ownedParcelStore";
+import { blockedOutboundSource } from "../providers/blockedOutboundSources";
 
 // ── Resource caps (1 GB worker) ────────────────────────────────────────────
 
@@ -55,8 +46,6 @@ const MAX_PAGES_PER_TICK = 8;
 /** Consecutive failed ticks before a county is marked failed. */
 const MAX_CONSECUTIVE_FAILURES = 5;
 
-/** parcel_snapshots.source of a KEPT parcel (never a cache row). */
-export const OWNED_SNAPSHOT_SOURCE = "owned_pipeline";
 
 /** The ownership lifecycle columns of one county's coverage row. */
 export interface CountyJob {
@@ -95,38 +84,6 @@ const STATEWIDE_COUNTY_FIELD: Record<string, string> = { TN: "COUNTY_NAME" };
 
 /** Register keys of the statewide parcel services (see data-licenses.ts). */
 const STATEWIDE_LICENSE_SOURCE: Record<string, string> = { TN: "TN Property Boundaries Public Use service" };
-
-/**
- * Licence-register keys of known parcel SERVICES, by URL. The refusal is about
- * the source, not the row that carries it: discovery-on-miss can insert a
- * statewide service as a county row, and a reviewer can mark that row
- * redistributable — the register still decides.
- */
-const LICENSED_SERVICES: Array<{ url: string; licenseSource: string }> = [
-  { url: TN_PUBLIC_PARCEL_SERVICE.layerUrl, licenseSource: TN_PUBLIC_PARCEL_SERVICE.licenseSource },
-];
-
-/** host + path up to the service type, lowercased: ".../FeatureServer/0/" → ".../featureserver". */
-function serviceIdentity(url: string): string {
-  let u: URL;
-  try {
-    u = new URL(url.trim());
-  } catch {
-    return url.trim().toLowerCase();
-  }
-  const path = u.pathname.toLowerCase().replace(/\/+$/, "");
-  const m = /^(.*\/(?:featureserver|mapserver|imageserver))(?:\/\d+)?(?:\/.*)?$/.exec(path);
-  return `${u.hostname.toLowerCase()}${m ? m[1] : path}`;
-}
-
-function licenseSourceForUrl(url: string): string | null {
-  const id = serviceIdentity(url);
-  return LICENSED_SERVICES.find((s) => serviceIdentity(s.url) === id)?.licenseSource ?? null;
-}
-
-export function normalizeCountyName(c: string): string {
-  return (c || "").toLowerCase().replace(/ county$/i, "").replace(/-/g, " ").trim();
-}
 
 // ── Decision (pure) ────────────────────────────────────────────────────────
 
@@ -177,8 +134,12 @@ export function decideCountyProcessing(
   // Storing a copy IS redistribution: the endpoint's own reviewed posture
   // must allow it, and so must the licence register entry it will cite.
   const rowAllows = ep.redistributable === "yes" || ep.redistributable === "attribution";
-  const licences = [ep.licenseSource, licenseSourceForUrl(ep.baseUrl)].filter((l): l is string => l !== null);
-  if (!rowAllows || licences.some((l) => !mayCacheAndRedistribute(l))) {
+  // The refusal is about the SOURCE, not the row that carries it: a blocked
+  // service (founder decision 2026-10-11) is refused by its URL whether it
+  // arrives as the statewide row or as a county row discovery inserted.
+  const blocked = blockedOutboundSource(ep.baseUrl);
+  const licences = [ep.licenseSource, blocked?.licenseSource ?? null].filter((l): l is string => l !== null);
+  if (blocked || !rowAllows || licences.some((l) => !mayCacheAndRedistribute(l))) {
     return {
       action: "refuse",
       code: "terms_forbid_storing",
@@ -460,54 +421,10 @@ async function liveDeps(job: CountyJob, ep: EndpointView, countyWhere: string | 
         }));
     },
     async save(parcels) {
-      const now = clock.now();
-      for (const p of parcels) {
-        const [existing] = await db
-          .select({ id: parcelSnapshots.id, rawData: parcelSnapshots.rawData })
-          .from(parcelSnapshots)
-          .where(and(isNull(parcelSnapshots.organizationId), eq(parcelSnapshots.source, OWNED_SNAPSHOT_SOURCE), eq(parcelSnapshots.parcelKey, p.parcelKey)))
-          .limit(1);
-        const prevHistory = Array.isArray(existing?.rawData?.sourceIdHistory) ? (existing!.rawData!.sourceIdHistory as string[]) : [];
-        const apn = ownedApn(job.state, job.county, p.sourceParcelId);
-        if (!apn) {
-          // An id the canonical natural key refuses cannot be found again —
-          // skipped (and logged), never stored under a guessed key.
-          logger.warn("[countyPipeline] parcel skipped — unusable parcel id", { metadata: { county: job.county, state: job.state } });
-          continue;
-        }
-        const history = Array.from(new Set([...prevHistory, apn]));
-        const values = {
-          organizationId: null,
-          apn,
-          state: job.state,
-          county: job.county,
-          source: OWNED_SNAPSHOT_SOURCE,
-          sourceId: p.sourceParcelId,
-          boundary: p.geometry,
-          centroid: { lng: p.centroid[0], lat: p.centroid[1] },
-          acres: String(p.gisAcres),
-          rawData: {
-            sourceName: ep.licenseSource ?? `County GIS endpoint #${ep.id}`,
-            sourceUrl: layerUrl,
-            deededAcres: p.deededAcres,
-            attributes: p.attributes,
-            sourceIdHistory: history,
-          },
-          parcelKey: p.parcelKey,
-          facts: p.facts as unknown as Record<string, unknown>,
-          factsComputedAt: now,
-          fetchedAt: now,
-          expiresAt: null,
-          updatedAt: now,
-        };
-        if (existing) {
-          await db
-            .update(parcelSnapshots)
-            .set(values)
-            .where(and(eq(parcelSnapshots.id, existing.id), isNull(parcelSnapshots.organizationId)));
-        }
-        else await db.insert(parcelSnapshots).values(values);
-      }
+      await saveOwnedParcels(
+        { state: job.state, county: job.county, sourceName: ep.licenseSource ?? `County GIS endpoint #${ep.id}`, sourceUrl: layerUrl },
+        parcels,
+      );
     },
   };
   return { deps, fields };

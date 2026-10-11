@@ -51,6 +51,14 @@ describe("county source census — Tennessee", () => {
     for (const r of tn.rows) expect(r.coverage, r.county).toBe(deriveCoverage(r.sources));
   });
 
+  it("a source whose terms prohibit commercial use never earns 'live lookups' coverage (founder decision 2026-10-11)", () => {
+    const base = { publisher: "p", url: "https://x.example/FeatureServer/0", mayStore: false, automatedDownload: true, terms: "t", checkedOn: "2026-10-11" };
+    expect(deriveCoverage([{ ...base, kind: "state_public_service", commercialUse: "prohibited", verification: "verified_live" }])).not.toBe("lookup_only");
+    expect(deriveCoverage([{ ...base, kind: "county_service", commercialUse: "unstated", verification: "verified_live" }])).toBe("lookup_only");
+    // And the TN census no longer cites the retired state service at all.
+    expect(tn.rows.flatMap((r) => r.sources).filter((s) => s.kind === "state_public_service")).toEqual([]);
+  });
+
   it("nothing claims storable unless the source's terms permit storing", () => {
     for (const r of tn.rows) {
       for (const s of r.sources) {

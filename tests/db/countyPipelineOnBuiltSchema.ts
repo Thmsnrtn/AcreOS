@@ -38,6 +38,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { countyDiscoveryQueue, countyGisEndpoints, parcelSnapshots } from "@shared/schema";
 import { PARCEL_FACT_KEYS } from "@shared/landData/parcelFacts";
+import type { AreaGeometry } from "../../server/services/landData/geometry";
 
 const failures: string[] = [];
 const check = (ok: boolean, what: string) => {
@@ -100,13 +101,15 @@ globalThis.fetch = (async (input: RequestInfo | URL) => {
 
 async function main() {
   const { db, pool } = await import("../../server/db");
-  const { enqueueCountyProcessing, runCountyPipelineTick, OWNED_SNAPSHOT_SOURCE } = await import(
-    "../../server/services/landData/countyPipeline"
-  );
+  const { enqueueCountyProcessing, runCountyPipelineTick } = await import("../../server/services/landData/countyPipeline");
+  const { OWNED_SNAPSHOT_SOURCE, persistLoadedCounty } = await import("../../server/services/landData/ownedParcelStore");
+  const { lookupParcelByCoordinates, TN_PARCELS_NOT_YET } = await import("../../server/services/parcel");
+  const { getCorporaStatus, bucketIdentity } = await import("../../server/services/openData/corporaStatus");
+  const { loadIngestReceipts } = await import("../../server/services/landData/openDataBucket");
   const { storage } = await import("../../server/storage");
 
   const STATE = "TN";
-  const COUNTIES = ["nowhere fixture", "pending fixture", "dekalb", "warren fixture", "owned fixture"];
+  const COUNTIES = ["nowhere fixture", "pending fixture", "dekalb", "warren fixture", "owned fixture", "comptroller fixture"];
   const cleanup = async () => {
     await db.delete(parcelSnapshots).where(and(eq(parcelSnapshots.state, STATE), inArray(parcelSnapshots.county, COUNTIES)));
     await db.delete(countyDiscoveryQueue).where(and(eq(countyDiscoveryQueue.state, STATE), inArray(countyDiscoveryQueue.county, COUNTIES)));
@@ -201,6 +204,42 @@ async function main() {
     await storage.upsertParcelSnapshot({ apn, state: STATE, county: "owned fixture", source: "county_gis", organizationId: null, acres: "99" } as never);
     const [keptAfter] = await db.select().from(parcelSnapshots).where(eq(parcelSnapshots.id, rows[0].id));
     check(keptAfter.source === OWNED_SNAPSHOT_SOURCE && keptAfter.acres !== "99", "a cache upsert for the same APN does not overwrite the kept parcel");
+
+    // 8. The Comptroller loader's path (founder decision 2026-10-11): kept
+    //    parcels answer a TN coordinate lookup; a TN point with none gets the
+    //    plain refusal; the loader's upload receipts make the corpus ingested.
+    const sq = (lng: number, lat: number): AreaGeometry => ({ type: "Polygon", coordinates: [[[lng, lat], [lng + 0.002, lat], [lng + 0.002, lat + 0.002], [lng, lat + 0.002], [lng, lat]]] }) as AreaGeometry;
+    const loadedParcels = [0, 1, 2].map((i) => ({
+      parcelKey: `TN-47185-CF-${i}`,
+      sourceParcelId: `CF-${i}`,
+      geometry: sq(-85.40 + i * 0.003, 35.93),
+      centroid: [-85.399 + i * 0.003, 35.931] as [number, number],
+      gisAcres: 9.8,
+      deededAcres: 10,
+      facts: rows[0].facts as never,
+      attributes: { SUBDIV: null, LOT: null },
+    }));
+    fetched.length = 0;
+    const bucketEnv = { OPEN_DATA_BUCKET_ENDPOINT: "https://acct.r2.example", OPEN_DATA_BUCKET_NAME: "acreos-open-data", OPEN_DATA_BUCKET_ACCESS_KEY_ID: "k", OPEN_DATA_BUCKET_SECRET: "s" };
+    const receipt = {
+      corpusKey: "statewide-parcels-bulk", objectKey: "tn/2026-10-11/tn-parcel-facts.parquet", bytes: 4096, sha256: "b".repeat(64),
+      bucket: bucketIdentity(bucketEnv.OPEN_DATA_BUCKET_ENDPOINT, bucketEnv.OPEN_DATA_BUCKET_NAME), etag: null, uploadedAt: new Date(),
+    };
+    const persisted = await persistLoadedCounty(
+      { state: "TN", county: "Comptroller Fixture", sourceName: "TN Comptroller parcel download", sourceUrl: "https://comptroller.tn.gov/" },
+      loadedParcels,
+      [receipt],
+    );
+    check(persisted.stored === 3 && persisted.receiptsRecorded === 1, `the loader keeps the county's parcels and records its receipt (${JSON.stringify(persisted)})`);
+    const loadedJob = await rowOf("comptroller fixture");
+    check(loadedJob?.ownedStatus === "complete" && loadedJob.ownedParcelsStored === 3, "the county's coverage row says complete with 3 parcels");
+    const hit = await lookupParcelByCoordinates(35.931, -85.396);
+    check(hit.found === true && hit.source === "owned" && hit.parcel?.apn === "CF-1", `a TN point inside a kept parcel is answered from it (${hit.source} ${hit.parcel?.apn})`);
+    const miss = await lookupParcelByCoordinates(36.2, -86.9);
+    check(!miss.found && miss.error === TN_PARCELS_NOT_YET, "a TN point with no kept parcel gets the plain refusal");
+    check(fetched.length === 0, `TN coordinate lookups fetched nothing (saw ${fetched.length})`);
+    const status = getCorporaStatus(bucketEnv, await loadIngestReceipts());
+    check(status.find((c) => c.key === "statewide-parcels-bulk")?.ingestStatus === "ingested", "the recorded receipt makes the corpus 'ingested' for the bucket that confirmed it");
   } finally {
     await cleanup();
     globalThis.fetch = realFetch;

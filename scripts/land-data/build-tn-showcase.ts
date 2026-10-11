@@ -37,7 +37,8 @@ import { areaBbox, areaCentroid, areaSqM, localProjection, pointInProjectedArea,
 import { writeGeoParquet, readGeoParquet, type OwnedParcelRow } from "../../server/services/landData/geoParquet";
 import { buildPmtiles } from "../../server/services/landData/pmtilesWriter";
 import { readDbf, readShpPolygons, unprojectFromPrj } from "../../server/services/landData/shapefile";
-import { bucketConfigFromEnv, s3ClientFor, uploadAndConfirm } from "../../server/services/landData/openDataBucket";
+import { bucketConfigFromEnv, s3ClientFor, uploadAndConfirm, type UploadReceipt } from "../../server/services/landData/openDataBucket";
+import type { OwnedParcelInput } from "../../server/services/landData/ownedParcelStore";
 import { TN_COMPTROLLER_DOWNLOAD, TN_PARCEL_FIELDS } from "../../server/services/landData/tnParcelSources";
 import { newParcelKey } from "../../shared/landData/parcelCrosswalk";
 import { parcelTruths } from "../../shared/landData/parcelTruths";
@@ -136,6 +137,10 @@ async function main() {
 
   const rows: OwnedParcelRow[] = [];
   const tileFeatures: any[] = [];
+  // EVERY parcel of a Comptroller county is kept in parcel_snapshots (so a
+  // customer's lookup anywhere in the county finds it); the artifacts below
+  // stay the rural/vacant showcase.
+  const owned: OwnedParcelInput[] = [];
   let rural = 0, urban = 0, vacant = 0, vacancyUnknown = 0;
   for (const [cell, parcels] of cells) {
     const bs = parcels.map((p) => areaBbox(p.geometry));
@@ -144,14 +149,19 @@ async function main() {
     for (const p of parcels) {
       const c = areaCentroid(p.geometry);
       const proj = localProjection(c[0], c[1]);
+      const facts: ParcelFactSet = computeParcelFacts(p, ctx, { assessmentRollSource: loaded.rollSource });
+      const acres = gisAcres(p.geometry);
+      owned.push({
+        parcelKey: p.parcelKey, sourceParcelId: p.sourceParcelId, geometry: p.geometry, centroid: c as [number, number],
+        gisAcres: acres, deededAcres: p.deededAcres ?? null, facts,
+        attributes: { SUBDIV: p.subdivision ?? null, LOT: p.lot ?? null },
+      });
       const inTown = (ctx.towns?.features ?? []).some((t) => pointInProjectedArea(0, 0, projectArea(t.geometry, proj)));
       if (inTown) { urban++; continue; }
       rural++;
       if (p.improvementValue === null) vacancyUnknown++;
       else if (p.improvementValue > 0) continue;
       else vacant++;
-      const facts: ParcelFactSet = computeParcelFacts(p, ctx, { assessmentRollSource: loaded.rollSource });
-      const acres = gisAcres(p.geometry);
       const truths = parcelTruths({
         state: p.state, county: p.county, gisAcres: acres, deededAcres: p.deededAcres, subdivision: p.subdivision, lot: p.lot,
         accessIndication: facts.legal_access_indication.status === "computed" ? facts.legal_access_indication.value : null,
@@ -228,25 +238,48 @@ async function main() {
     geoparquet: { path: pq, bytes: readFileSync(pq).length, rowsReadBack: back.rows.length },
     pmtiles: { path: pm, bytes: tiles.bytes.length, tiles: tiles.tileCount, minZoom: header.minZoom, maxZoom: header.maxZoom, sampleTile: `${z}/${tx}/${ty}`, featuresInSampleTile: layer.length },
     upload: "not attempted",
+    store: "not attempted",
   };
 
   const cfg = bucketConfigFromEnv();
+  let receipts: UploadReceipt[] = [];
   if (sample) summary.upload = "never — fixture artifacts are local proof only";
   else if (!cfg) summary.upload = "skipped — OPEN_DATA_BUCKET_* not set (founder action: create the bucket and keys)";
   else {
     const client = await s3ClientFor(cfg);
-    const receipts = [
+    receipts = [
       await uploadAndConfirm(client, "statewide-parcels-bulk", `tn/${today}/tn-parcel-facts.parquet`, readFileSync(pq), "application/vnd.apache.parquet"),
       await uploadAndConfirm(client, "statewide-parcels-bulk", `tn/${today}/tn-parcels.pmtiles`, tiles.bytes, "application/vnd.pmtiles"),
     ];
     writeFileSync(path.join(outDir, "receipts.json"), JSON.stringify(receipts, null, 2));
-    summary.upload = `uploaded ${receipts.length} objects; receipts in ${outDir}/receipts.json — record them with recordReceipt() on a host with DATABASE_URL`;
+    summary.upload = `uploaded ${receipts.length} objects (receipts.json)`;
+  }
+
+  // Keep the county's parcels and record the receipts — the Comptroller path
+  // only: the sample is fixture data and is never stored.
+  if (comptroller) {
+    if (!process.env.DATABASE_URL) {
+      summary.store = "skipped — set DATABASE_URL to keep this county's parcels (and record its upload receipts)";
+    } else {
+      const counties = Array.from(new Set(loaded.parcels.map((p) => p.county))).filter(Boolean);
+      if (counties.length !== 1) throw new Error(`a Comptroller download is one county; this one names ${counties.length}: ${counties.join(", ")}`);
+      const { persistLoadedCounty } = await import("../../server/services/landData/ownedParcelStore");
+      const r = await persistLoadedCounty(
+        { state: "TN", county: counties[0], sourceName: TN_COMPTROLLER_DOWNLOAD.licenseSource, sourceUrl: TN_COMPTROLLER_DOWNLOAD.pageUrl },
+        owned,
+        receipts,
+      );
+      summary.store = `kept ${r.stored} parcels in ${counties[0]} County; recorded ${r.receiptsRecorded} upload receipt(s)`;
+    }
   }
   writeFileSync(path.join(outDir, "summary.json"), JSON.stringify(summary, null, 2));
   console.log(JSON.stringify(summary, null, 2));
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main().then(
+  () => process.exit(0), // the DB pool, when used, would keep the process alive
+  (e) => {
+    console.error(e);
+    process.exit(1);
+  },
+);

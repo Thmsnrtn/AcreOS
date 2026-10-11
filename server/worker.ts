@@ -42,6 +42,8 @@
  * consumer — no Redis, no SQS, no extra failure mode.
  */
 
+// FIRST: refuse blocked outbound sources on every fetch (founder decision 2026-10-11).
+import "./outboundGuard";
 import { pool, db } from "./db";
 import { outbox, outboxDlq, workerHeartbeat } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
