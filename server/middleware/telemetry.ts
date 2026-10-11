@@ -39,8 +39,7 @@ function recordSpan(span: SpanRecord): void {
 }
 
 /** Return a snapshot of recent span records (for metrics / debugging). */
-export function getRecentSpans(limitMs = 60_000): SpanRecord[] {
-  const cutoff = clock.nowMs() - limitMs;
+export function getRecentSpans(_limitMs = 60_000): SpanRecord[] {
   return spanBuffer.filter(
     (s) => {
       // We don't store a timestamp on SpanRecord — use buffer position proxy.

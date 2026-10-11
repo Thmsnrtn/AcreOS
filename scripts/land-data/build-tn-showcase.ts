@@ -29,7 +29,8 @@
  * it vacancy is reported as unknown — never assumed.
  */
 
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { loadParcelContext, type Bbox } from "../../server/services/providers/land-context-sources";
 import { computeParcelFacts, gisAcres, type ParcelInput } from "../../server/services/landData/computeParcelFacts";
@@ -47,7 +48,10 @@ import type { FactSource, ParcelFactSet } from "../../shared/landData/parcelFact
 
 const argv = process.argv.slice(2);
 const arg = (k: string) => (argv.includes(k) ? argv[argv.indexOf(k) + 1] : undefined);
-const outDir = arg("--out") ?? "/tmp/w2-data/showcase";
+// Default: a fresh private directory (mkdtemp, mode 0700), not a fixed
+// /tmp path another local user could pre-create or symlink (CodeQL
+// js/insecure-temporary-file). Pass --out to choose the directory.
+const outDir = arg("--out") ?? mkdtempSync(path.join(os.tmpdir(), "acreos-tn-showcase-"));
 const today = new Date().toISOString().slice(0, 10);
 
 interface InputParcel extends ParcelInput {

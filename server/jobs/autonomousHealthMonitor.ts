@@ -454,8 +454,6 @@ async function checkRevenueHealth(): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = [];
 
   try {
-    const now = clock.now();
-
     // Orgs with failed payments that haven't been dunned yet
     const failedPayments = await db.select({ c: count() })
       .from(organizations)

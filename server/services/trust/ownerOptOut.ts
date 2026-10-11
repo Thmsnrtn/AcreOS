@@ -139,7 +139,7 @@ export async function submitOwnerOptOut(input: OwnerOptOutSubmission): Promise<S
   const secret =
     input.verification === "email"
       ? randomBytes(24).toString("base64url")
-      : String(randomInt(100000, 1000000)) // unbiased, CSPRNG;
+      : String(randomInt(100000, 1000000)); // unbiased CSPRNG (was randomBytes % 900000: biased)
   const matches = await findMatchingLeads(input);
   const orgMatches: OwnerOptOutOrgMatch[] = Array.from(matches.entries()).map(([organizationId, leadIds]) => ({
     organizationId,

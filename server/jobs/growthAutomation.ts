@@ -415,7 +415,6 @@ async function runReferralActivation(): Promise<{ sent: number }> {
 
 async function runEngagementReactivation(): Promise<{ sent: number }> {
   let sent = 0;
-  const inactiveSince = subDays(clock.now(), CONFIG.REENGAGEMENT_DAYS);
 
   // Find paying orgs with no recent activity
   const inactiveOrgs = await db.select({

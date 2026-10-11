@@ -15,7 +15,7 @@ import {
   deals, notes, tasks, campaigns, payments, teamMembers,
   activityLog, auditLog, apiUsageLogs, paxMemory, systemAlerts
 } from "@shared/schema";
-import { gte, lte, isNull } from "drizzle-orm";
+import { gte, isNull } from "drizzle-orm";
 import { logger } from "../utils/logger";
 // The ONE reader of the org's Pax controls (AUTONOMY_SPEC.md §4.2) — stance
 // and pause in one call, failing CLOSED. The pause primitive is read through it.
