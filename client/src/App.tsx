@@ -234,6 +234,12 @@ const ParcelCheckEmbedPage = React.lazy(() =>
 // with the partial Land Credit Score (Tier 3A). No auth; server injects
 // per-report head meta for crawlers.
 const PublicParcelReportPage = React.lazy(() => import("@/pages/public-parcel-report"));
+// W3 acquisition engine — public, no auth: the free landlocked checker and
+// the county guides (only where AcreOS keeps parcels; server-rendered too).
+const LandlockedCheckPage = React.lazy(() => import("@/pages/tools/landlocked"));
+const PublicCountyGuidePage = React.lazy(() => import("@/pages/public-county-guide"));
+// W3 — founding-member yearly offer (flag + founder-set price; refuses until both).
+const FoundingMemberPage = React.lazy(() => import("@/pages/founding-member"));
 const SkipTracingPage = React.lazy(() => import("@/pages/skip-tracing"));
 // TerritoryManagerPage archived 2026-06-01 — no nav entry, no callers.
 const ZoningLookupPage = React.lazy(() => import("@/pages/zoning-lookup"));
@@ -735,6 +741,7 @@ function Router() {
 
         {/* Competitor comparison pages (public, SEO-targeted) */}
 
+      <Route path="/pricing/founding-member" component={FoundingMemberPage} />
       <Route path="/pricing" component={PricingPage} />
       <Route path="/why" component={WhyPage} />
       {/* Public Land Credit Score explainer — ungated marketing surface.
@@ -773,6 +780,9 @@ function Router() {
       {/* Public parcel report permalinks — saved, shareable, free-data-only
           reports with the partial Land Credit Score (Tier 3A). */}
       <Route path="/p/:state/:county/:apn" component={PublicParcelReportPage} />
+      {/* W3 — free landlocked checker + county guides (public, no auth). */}
+      <Route path="/tools/landlocked" component={LandlockedCheckPage} />
+      <Route path="/land/:state/:county" component={PublicCountyGuidePage} />
       {/* Public Land Investor glossary — sitemap-promised + prerendered
           long-tail SEO surface (restored 2026-06-10, T0-8). */}
       <Route path="/glossary" component={GlossaryPage} />

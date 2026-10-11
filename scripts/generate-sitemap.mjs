@@ -76,6 +76,7 @@ const STATIC_ROUTES = [
   { path: "/why",                     lastmod: "2026-06-08", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/why" component={WhyPage} />' },
   { path: "/tools/parcel-check",      lastmod: "2026-06-08", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/tools/parcel-check" component={ParcelCheckPage} />' },
   { path: "/tools/calculator",        lastmod: "2026-06-08", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/tools/calculator" component={CalculatorPage} />' },
+  { path: "/tools/landlocked",        lastmod: "2026-10-11", changefreq: "monthly", priority: "0.8", appRoute: 'App.tsx: <Route path="/tools/landlocked" component={LandlockedCheckPage} />' },
   { path: "/security",                lastmod: "2026-06-08", changefreq: "monthly", priority: "0.7", appRoute: 'App.tsx: <Route path="/security" component={SecurityPage} />' },
   // Tier 2C (2026-06-10): the two /compare/* pages are intentionally
   // noindex'd (their positioning slots are data-todo until the founder

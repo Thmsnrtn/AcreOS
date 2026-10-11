@@ -63,6 +63,7 @@ export function Footer() {
             <div className="lp-footer-h">Free tools</div>
             <Link href="/tools/parcel-check">Parcel check</Link>
             <Link href="/tools/calculator">Land deal calculator</Link>
+            <Link href="/tools/landlocked">Landlocked check</Link>
             <Link href="/land-credit-score">Land Credit Score</Link>
           </div>
           <div className="lp-footer-col">

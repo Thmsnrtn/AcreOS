@@ -32,6 +32,8 @@ Allow: /terms
 Allow: /privacy
 Allow: /tools/parcel-check
 Allow: /tools/calculator
+Allow: /tools/landlocked
+Allow: /land/
 Allow: /learn/
 Allow: /p/
 Allow: /field-notes
@@ -40,4 +42,5 @@ Allow: /compare/
 # Sitemap
 Sitemap: https://acreos.io/sitemap.xml
 Sitemap: https://acreos.io/sitemap-reports.xml
+Sitemap: https://acreos.io/sitemap-land.xml
 Sitemap: https://acreos.io/sitemap-notes.xml

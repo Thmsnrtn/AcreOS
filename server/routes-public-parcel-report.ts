@@ -38,11 +38,14 @@ import {
   buildOgSvg,
   getExistingReport,
   getOrCreateReport,
+  getPublicLandFacts,
   listReportsForSitemap,
   normalizeReportKey,
   recordReportView,
   reportPath,
+  type PublicLandFacts,
 } from "./services/publicParcelReport";
+import { esc, landFactsJsonLd, renderLandFactsHtml } from "./services/publicLandPages";
 import { DISCLAIMER_INFORMATIONAL_SCORE } from "./services/legalDisclaimers";
 import type { PublicParcelReport } from "@shared/schema";
 
@@ -111,6 +114,9 @@ router.get(
 
     try {
       const result = await getOrCreateReport(key);
+      // AcreOS's own gated land facts, when it keeps this parcel. Read-only
+      // and independent of the generation ceiling: they need no upstream call.
+      const land = await getPublicLandFacts(key);
 
       if (!result.ok) {
         if (result.reason === "daily_capacity") {
@@ -118,6 +124,7 @@ router.get(
             reason: "daily_capacity",
             message:
               "New public reports are at today's capacity. Reports that already exist still load — try this parcel again tomorrow, or sign up to run lookups inside AcreOS.",
+            land,
           });
         }
         // no_free_source — honest 200: the county's free data doesn't cover
@@ -127,6 +134,7 @@ router.get(
           reason: "no_free_source",
           message:
             "No free government data source covers this parcel yet. County coverage grows as more county GIS endpoints come online. Inside AcreOS, paid data providers can usually fill the gap.",
+          land,
         });
       }
 
@@ -142,6 +150,7 @@ router.get(
           apn: result.report.apn,
         }),
         report: result.report,
+        land,
         // L1 liability shield — response-level legend covers reports
         // generated before the lcs payload started carrying its own.
         disclaimer: DISCLAIMER_INFORMATIONAL_SCORE,
@@ -172,27 +181,46 @@ function escapeXml(s: string): string {
     .replace(/'/g, "&apos;");
 }
 
+/** The canonical permalink: the kept parcel's stored id when AcreOS keeps it. */
+function canonicalPath(report: PublicParcelReport | null, land: PublicLandFacts | null): string {
+  if (land) return reportPath({ state: land.state, countySlug: land.countySlug, apn: land.apn });
+  return reportPath({ state: report!.state, countySlug: report!.countySlug, apn: report!.apn });
+}
+
 /** Build the per-report head block (mirrors script/prerender.ts renderHead). */
-function buildReportHead(report: PublicParcelReport): string {
-  const path = reportPath({
-    state: report.state,
-    countySlug: report.countySlug,
-    apn: report.apn,
-  });
+function buildReportHead(report: PublicParcelReport | null, land: PublicLandFacts | null = null): string {
+  const path = canonicalPath(report, land);
   const url = `${PUBLIC_BASE_URL}${path}`;
-  const lcs = report.lcs;
-  const title =
-    lcs.partialScore != null && lcs.partialGrade
-      ? `${report.countyLabel} County, ${report.state} — parcel ${report.apn} — partial Land Credit Score ${lcs.partialScore} (${lcs.partialGrade}) | AcreOS`
-      : `${report.countyLabel} County, ${report.state} — parcel ${report.apn} — public parcel report | AcreOS`;
-  const description = `Public parcel report for APN ${report.apn} in ${report.countyLabel} County, ${report.state}: county records, FEMA flood zone, USDA soil, and wetlands data. Partial Land Credit Score from government-data dimensions only — the full score runs inside AcreOS.`;
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "WebPage",
-    name: title,
-    description,
-    url,
-  };
+  let title: string;
+  let description: string;
+  let jsonLd: Record<string, unknown>;
+  if (land) {
+    const shown = land.rows.filter((r) => r.status === "shown");
+    title = `Parcel ${land.apn}, ${land.countyLabel} County, ${land.state} — road access, buildable acres, public land | AcreOS`;
+    description = shown.length
+      ? `Land report for parcel ${land.apn} in ${land.countyLabel} County, ${land.state}: ${shown
+          .slice(0, 3)
+          .map((r) => `${r.label.toLowerCase()}: ${r.text}`)
+          .join("; ")}. Verified facts only, each with its source and date.`
+      : `Land report for parcel ${land.apn} in ${land.countyLabel} County, ${land.state}. No verified facts are available yet.`;
+    jsonLd = landFactsJsonLd(land, url);
+  } else {
+    const lcs = report!.lcs;
+    title =
+      lcs.partialScore != null && lcs.partialGrade
+        ? `${report!.countyLabel} County, ${report!.state} — parcel ${report!.apn} — partial Land Credit Score ${lcs.partialScore} (${lcs.partialGrade}) | AcreOS`
+        : `${report!.countyLabel} County, ${report!.state} — parcel ${report!.apn} — public parcel report | AcreOS`;
+    description = `Public parcel report for APN ${report!.apn} in ${report!.countyLabel} County, ${report!.state}: county records, FEMA flood zone, USDA soil, and wetlands data. Partial Land Credit Score from government-data dimensions only — the full score runs inside AcreOS.`;
+    jsonLd = {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      name: title,
+      description,
+      url,
+    };
+  }
+  // The OG card renders from a saved report row; without one there is no image.
+  const ogImage = report ? `${PUBLIC_BASE_URL}${reportPath({ state: report.state, countySlug: report.countySlug, apn: report.apn })}/og.png` : null;
   const lines = [
     `<title>${escapeAttr(title)}</title>`,
     `<meta name="description" content="${escapeAttr(description)}" />`,
@@ -201,17 +229,41 @@ function buildReportHead(report: PublicParcelReport): string {
     `<meta property="og:title" content="${escapeAttr(title)}" />`,
     `<meta property="og:description" content="${escapeAttr(description)}" />`,
     `<meta property="og:url" content="${escapeAttr(url)}" />`,
-    `<meta property="og:image" content="${escapeAttr(`${url}/og.png`)}" />`,
-    `<meta property="og:image:width" content="1200" />`,
-    `<meta property="og:image:height" content="630" />`,
-    `<meta name="twitter:card" content="summary_large_image" />`,
+    ...(ogImage
+      ? [
+          `<meta property="og:image" content="${escapeAttr(ogImage)}" />`,
+          `<meta property="og:image:width" content="1200" />`,
+          `<meta property="og:image:height" content="630" />`,
+          `<meta name="twitter:card" content="summary_large_image" />`,
+        ]
+      : [`<meta name="twitter:card" content="summary" />`]),
     `<meta name="twitter:title" content="${escapeAttr(title)}" />`,
     `<meta name="twitter:description" content="${escapeAttr(description)}" />`,
-    `<meta name="twitter:image" content="${escapeAttr(`${url}/og.png`)}" />`,
+    ...(ogImage ? [`<meta name="twitter:image" content="${escapeAttr(ogImage)}" />`] : []),
+    // A kept parcel with no verified fact has nothing worth indexing.
+    ...(land && !land.indexable && !report ? [`<meta name="robots" content="noindex" />`] : []),
     // data-csp-nonce so finalizeShellHtml stamps the per-request nonce on it.
-    `<script type="application/ld+json" data-csp-nonce>${JSON.stringify(jsonLd)}</script>`,
+    // `<` is escaped so a value can never close the script element.
+    `<script type="application/ld+json" data-csp-nonce>${JSON.stringify(jsonLd).replace(/</g, "\\u003c")}</script>`,
   ];
   return lines.join("\n    ");
+}
+
+/**
+ * Put server-rendered HTML inside the shell's #root. createRoot() replaces it
+ * when the SPA mounts; a crawler that runs no script reads it as the page.
+ */
+export function injectRootHtml(html: string, body: string): string {
+  return html.replace(/<div id="root"><\/div>/, `<div id="root">${body}</div>`);
+}
+
+/** The body for a report page: the verified land facts, else a minimal summary. */
+function buildReportBody(report: PublicParcelReport | null, land: PublicLandFacts | null): string {
+  if (land) return renderLandFactsHtml(land);
+  const r = report!;
+  return `<article class="mx-auto max-w-4xl px-4 py-8" data-ssr="public-report"><h1 class="text-2xl font-bold">${esc(r.countyLabel)} County, ${esc(r.state)} — parcel ${esc(
+    r.apn,
+  )}</h1><p>Public parcel report built from government data: FEMA flood zone, USDA soil, USGS elevation and USFWS wetlands, with a partial Land Credit Score.</p></article>`;
 }
 
 /**
@@ -286,12 +338,15 @@ export function registerPublicParcelReportPages(app: Express): void {
         // READ-ONLY: never generates. The SPA's API call does the generating;
         // a crawler fuzzing /p/... URLs gets noindex shells and zero DB rows.
         const report = key ? await getExistingReport(key) : null;
+        // A parcel AcreOS keeps renders from its own row — read-only, one DB
+        // read, no upstream call and no row created.
+        const land = key ? await getPublicLandFacts(key) : null;
 
         const raw = fs.readFileSync(shellPath, "utf-8");
         const nonce: string = res.locals.cspNonce || "";
         let html: string;
-        if (report) {
-          html = rewriteHead(raw, buildReportHead(report));
+        if (report || land) {
+          html = injectRootHtml(rewriteHead(raw, buildReportHead(report, land)), buildReportBody(report, land));
           // Edge-cacheable: content changes only on refresh (30-day TTL).
           res.setHeader(
             "Cache-Control",

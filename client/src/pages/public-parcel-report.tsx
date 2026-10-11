@@ -29,6 +29,8 @@ import { emitMarketingTouch, getAnonymousId } from "@/lib/marketing-touch";
 import { capturePendingParcel } from "@/lib/acquisition-utm";
 import { trackEvent } from "@/lib/analytics";
 import type { PublicLcs, PublicReportFacts } from "@shared/schema";
+import type { PublicLandFacts } from "@shared/landData/publicFactText";
+import { LandFactsSection } from "@/components/public-land/LandFactsSection";
 import { formatDate } from "@/lib/format";
 
 // ─── API shapes (mirror server/routes-public-parcel-report.ts) ──────────────
@@ -46,9 +48,10 @@ interface ReportDto {
   refreshedAt: string | null;
 }
 
+// `land`: AcreOS's own accuracy-gated facts when it keeps this parcel (W3).
 type ReportResponse =
-  | { found: true; generated: boolean; path: string; report: ReportDto }
-  | { found: false; reason: "no_free_source" | "daily_capacity"; message: string };
+  | { found: true; generated: boolean; path: string; report: ReportDto; land?: PublicLandFacts | null }
+  | { found: false; reason: "no_free_source" | "daily_capacity"; message: string; land?: PublicLandFacts | null };
 
 async function fetchReport(
   state: string,
@@ -65,14 +68,16 @@ async function fetchReport(
     // Daily capacity / rate limit — render as an honest state, not a crash.
     let message =
       "Requests are coming in faster than this free surface allows. Wait a moment and reload.";
+    let land: PublicLandFacts | null = null;
     try {
       const body = await res.json();
       const detailMsg = body?.details?.message;
       if (typeof detailMsg === "string") message = detailMsg;
+      if (body?.details?.land) land = body.details.land as PublicLandFacts;
     } catch {
       /* keep default */
     }
-    return { found: false, reason: "daily_capacity", message };
+    return { found: false, reason: "daily_capacity", message, land };
   }
   if (!res.ok) {
     throw new Error(`Report request failed (${res.status})`);
@@ -305,6 +310,7 @@ export default function PublicParcelReportPage() {
 
   const data = query.data;
   const report = data?.found ? data.report : null;
+  const land = data?.land ?? null;
 
   const title = report
     ? `${report.countyLabel} County, ${report.state} parcel ${report.apn} — public report`
@@ -432,7 +438,24 @@ export default function PublicParcelReportPage() {
           />
         )}
 
-        {data && !data.found && (
+        {data && !data.found && land && (
+          <div className="space-y-8" data-testid="report-land-only">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground font-medium">Land report</p>
+              <h1 className="mt-1 text-2xl sm:text-3xl font-bold text-foreground">
+                Parcel {land.apn}, {land.countyLabel} County, {land.state}
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Mapped area {land.gisAcres.toFixed(2)} acres
+                {land.deededAcres !== null && <> · deed says {land.deededAcres} acres</>}
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">{data.message}</p>
+            </div>
+            <LandFactsSection land={land} />
+          </div>
+        )}
+
+        {data && !data.found && !land && (
           <EmptyState
             icon={MapPin}
             headline={
@@ -476,6 +499,8 @@ export default function PublicParcelReportPage() {
                 </p>
               )}
             </div>
+
+            {land && <LandFactsSection land={land} />}
 
             <ScoreHero report={report} onShare={handleShare} shared={shared} />
 

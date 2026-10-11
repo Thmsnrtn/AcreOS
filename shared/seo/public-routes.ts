@@ -67,6 +67,8 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
   // because they mount interactive widgets that need the client app to boot.
   { path: "/tools/parcel-check", changefreq: "monthly", priority: 0.8, label: "Free parcel check", prerender: false },
   { path: "/tools/calculator", changefreq: "monthly", priority: 0.8, label: "Free land deal calculator", prerender: false },
+  // W3 — the free landlocked checker. Pre-rendered head (script/prerender.ts).
+  { path: "/tools/landlocked", changefreq: "monthly", priority: 0.8, label: "Free landlocked check", prerender: true },
 ];
 
 export const SITE_BASE_URL = "https://acreos.io";

@@ -9,6 +9,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
+import { DdReportPurchase } from "./DdReportPurchase";
 import { AlertTriangle, Info, ShieldAlert } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorState } from "@/components/query-error-state";
@@ -146,6 +147,7 @@ export function ParcelFactsPanel({ state, county, apn }: { state: string; county
           );
         })}
       </ul>
+      <DdReportPurchase parcelKey={p.parcelKey} />
     </section>
   );
 }

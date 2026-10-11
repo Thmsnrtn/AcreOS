@@ -31,6 +31,18 @@
  *    at PUBLIC_REPORT_DAILY_ALERT and refuses NEW generations past
  *    PUBLIC_REPORT_DAILY_HARD_CAP (existing reports still serve — only fresh
  *    upstream work is capped).
+ *
+ * W3 — "Carfax for land". Where AcreOS KEEPS the parcel (owned_pipeline rows:
+ * Tennessee from the Comptroller download, and any county the on-demand
+ * pipeline has stored), the report also carries AcreOS's own land facts
+ * (access, frontage, buildable acres, public-land adjacency, distance to town)
+ * — ONLY the ones that passed W2's accuracy gate, each with its sources, dates
+ * and confidence, plus the data-truth warnings. They come from ONE projection,
+ * serializeOwnedParcelForCustomer (the Map door's), never re-derived here. A
+ * fact that did not pass, or could not be computed, is "Not available" with
+ * its reason — never estimated. Owned-parcel reports are generated through
+ * the same getOrCreateReport and count against the same daily ceiling; the
+ * owned row also supplies the centroid, so no county GIS call is made.
  */
 
 import { and, eq, gte, sql } from "drizzle-orm";
@@ -51,6 +63,10 @@ import {
   type ParcelRef,
 } from "@shared/parcel/parcelRef";
 import { resolveParcel } from "./parcel/resolveParcel";
+import { findOwnedParcelRow, ownedViewOf, serializeOwnedParcelForCustomer } from "./landData/ownedParcelView";
+import { publicFactRows, type PublicLandFacts } from "@shared/landData/publicFactText";
+import { COVERAGE_LABELS } from "@shared/landData/countySourceCensus";
+import type { ParcelSnapshot } from "@shared/schema";
 import {
   LCS_DIMENSION_WEIGHTS,
   LCS_METHODOLOGY_VERSION,
@@ -478,12 +494,66 @@ const GEO_SOURCE_NAMES: Record<string, string> = {
   wetlands: "USFWS NWI",
 };
 
+/** Federal geo facts at a point — free tier only (US-gov public domain). */
+async function freeGeoCategories(centroid: { lat: number; lng: number }): Promise<PublicReportFactCategory[]> {
+  const geoResolved = await resolveParcel(
+    { type: "coordinates", latitude: centroid.lat, longitude: centroid.lng },
+    {
+      categories: [...REPORT_GEO_CATEGORIES],
+      orgTier: "free",
+      maxTier: "free",
+    },
+  );
+  return REPORT_GEO_CATEGORIES.map((category) => {
+    const r = geoResolved.results[category];
+    const ok = !!r && r.available && r.data != null;
+    return {
+      category,
+      available: ok,
+      data: ok ? r.data : null,
+      // Provenance survives an empty result (honesty contract — same as
+      // routes-public-parcel-check): an absence stays attributable.
+      source: r?.source ?? GEO_SOURCE_NAMES[category] ?? null,
+      sourceAsOf: r?.sourceAsOf ?? null,
+      classification: ok ? r.classification : "unknown",
+      fromCache: ok ? r.fromCache : false,
+    };
+  });
+}
+
 /**
  * Build the free-data facts for a parcel. EVERY lookup is pinned to
  * orgTier:"free" + maxTier:"free" with no org/credit context — the registry's
  * tier filter makes paid providers structurally unreachable on this path.
  */
 async function buildFacts(key: ReportKey): Promise<PublicReportFacts | null> {
+  // 0) A parcel AcreOS keeps answers its own identity: centroid and acres come
+  //    from the owned row and the county GIS is not called at all.
+  const owned = await findOwnedParcelRow(key.state, key.countySlug, key.apn);
+  if (owned) {
+    const c = owned.centroid;
+    if (c && Number.isFinite(c.lat) && Number.isFinite(c.lng)) {
+      const categories = await freeGeoCategories({ lat: c.lat, lng: c.lng });
+      const gisAcres = Number(owned.acres);
+      return {
+        parcel: {
+          apn: key.apn,
+          state: key.state,
+          county: key.countyLabel,
+          acres: Number.isFinite(gisAcres) && gisAcres > 0 ? gisAcres : null,
+          centroid: { lat: c.lat, lng: c.lng },
+          // The owned row's non-personal attributes are not assessor data;
+          // owner, value and tax fields are never kept (ownedParcelStore).
+          countyAttributes: "not-redistributable",
+          attribution: null,
+          assessorData: null,
+          ownedParcelKey: owned.parcelKey ?? null,
+        },
+        categories,
+      };
+    }
+  }
+
   // 1) Parcel identity via the county GIS registry (free tier only).
   const parcelResolved = await resolveParcel(
     { type: "apn", apn: key.apn, state: key.state, county: key.countyLabel },
@@ -519,32 +589,7 @@ async function buildFacts(key: ReportKey): Promise<PublicReportFacts | null> {
         : null;
 
   // 2) Federal geo facts from the centroid (US-gov public domain sources).
-  const geoResolved = await resolveParcel(
-    { type: "coordinates", latitude: centroid.lat, longitude: centroid.lng },
-    {
-      categories: [...REPORT_GEO_CATEGORIES],
-      orgTier: "free",
-      maxTier: "free",
-    },
-  );
-
-  const categories: PublicReportFactCategory[] = REPORT_GEO_CATEGORIES.map(
-    (category) => {
-      const r = geoResolved.results[category];
-      const ok = !!r && r.available && r.data != null;
-      return {
-        category,
-        available: ok,
-        data: ok ? r.data : null,
-        // Provenance survives an empty result (honesty contract — same as
-        // routes-public-parcel-check): an absence stays attributable.
-        source: r?.source ?? GEO_SOURCE_NAMES[category] ?? null,
-        sourceAsOf: r?.sourceAsOf ?? null,
-        classification: ok ? r.classification : "unknown",
-        fromCache: ok ? r.fromCache : false,
-      };
-    },
-  );
+  const categories = await freeGeoCategories(centroid);
 
   // 3) County-assessor attributes — persisted only where the county's terms
   //    allow redistribution. acres rides along (it is the load-bearing parcel
@@ -697,6 +742,13 @@ export async function getOrCreateReport(key: ReportKey): Promise<ReportResult> {
     .returning();
 
   publicParcelReportEventsTotal.inc({ event: "generated" });
+  if (!existing) {
+    // A new permanent page exists: tell IndexNow (Bing, Yandex). Best-effort,
+    // dormant without a key; never blocks the response.
+    void import("./autopilot/searchEngineSubmit")
+      .then(({ submitToIndexNow }) => submitToIndexNow([reportPath({ state: key.state, countySlug: key.countySlug, apn: key.apn })]))
+      .catch(() => {});
+  }
   logger.info("[public-parcel-report] generated", {
     metadata: {
       state: key.state,
@@ -752,6 +804,73 @@ export async function listReportsForSitemap(
     .orderBy(sql`${publicParcelReports.refreshedAt} DESC`)
     .limit(limit);
   return rows;
+}
+
+// ── AcreOS land facts (W3 "Carfax for land") ────────────────────────────────
+
+export type { PublicLandFacts } from "@shared/landData/publicFactText";
+
+export function countySlugOf(county: string): string {
+  return county
+    .toLowerCase()
+    .replace(/\s+county$/i, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export function countyLabelOf(county: string): string {
+  return countySlugOf(county)
+    .split("-")
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(" ");
+}
+
+/**
+ * Project an owned parcel row for a public page. Pure: everything comes from
+ * serializeOwnedParcelForCustomer — the accuracy gate's only serializer.
+ */
+export function publicLandFactsOf(row: ParcelSnapshot): PublicLandFacts {
+  const served = serializeOwnedParcelForCustomer(ownedViewOf(row));
+  const rows = publicFactRows({
+    facts: served.facts as Parameters<typeof publicFactRows>[0]["facts"],
+    withheldFacts: served.withheldFacts,
+  });
+  const retrieved = served.source.retrievedAt ? new Date(served.source.retrievedAt).toISOString().slice(0, 10) : null;
+  const c = row.centroid;
+  return {
+    parcelKey: served.parcelKey,
+    state: served.state,
+    countySlug: countySlugOf(served.county),
+    countyLabel: countyLabelOf(served.county),
+    apn: served.sourceParcelId,
+    centroid: c && Number.isFinite(c.lat) && Number.isFinite(c.lng) ? { lat: c.lat, lng: c.lng } : null,
+    gisAcres: served.gisAcres,
+    deededAcres: served.deededAcres,
+    source: { name: served.source.name, retrievedOn: retrieved },
+    rows,
+    truths: served.truths,
+    taxSaleSources: served.taxSaleSources,
+    countyCoverage: served.countyCoverage,
+    countyCoverageLabel: served.countyCoverage ? COVERAGE_LABELS[served.countyCoverage] : null,
+    indexable: rows.some((r) => r.status === "shown"),
+  };
+}
+
+/**
+ * The land facts for a permalink, or null when AcreOS keeps no such parcel.
+ * READ-ONLY — one DB read, no upstream call, never creates a row — so the
+ * crawler-facing page route may call it.
+ */
+export async function getPublicLandFacts(key: ReportKey): Promise<PublicLandFacts | null> {
+  try {
+    const row = await findOwnedParcelRow(key.state, key.countySlug, key.apn);
+    return row ? publicLandFactsOf(row) : null;
+  } catch (err) {
+    logger.warn("[public-parcel-report] land facts lookup failed", {
+      metadata: { state: key.state, county: key.countySlug, error: err instanceof Error ? err.message : String(err) },
+    });
+    return null;
+  }
 }
 
 /** Canonical permalink path for a report key (used by routes + sitemap). */

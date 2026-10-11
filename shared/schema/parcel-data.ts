@@ -66,6 +66,13 @@ export interface PublicReportFacts {
     attribution: string | null;
     /** Present only when countyAttributes === "included". */
     assessorData?: Record<string, unknown> | null;
+    /**
+     * W3: the AcreOS parcel key when this report is for a parcel AcreOS KEEPS
+     * (owned_pipeline). Its gated facts are projected live at read time from
+     * that row (publicParcelReport.getPublicLandFacts) — never frozen here, so
+     * a fact whose accuracy gate changes is withheld everywhere at once.
+     */
+    ownedParcelKey?: string | null;
   };
   categories: PublicReportFactCategory[];
 }

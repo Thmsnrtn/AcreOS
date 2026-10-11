@@ -470,6 +470,8 @@ export async function runCountyPipelineTick(): Promise<{ county: string | null; 
         .where(eq(countyDiscoveryQueue.id, job.id));
       if (r.done) {
         await setJob({ ownedStatus: "complete", ownedCompletedAt: clock.now() });
+        // The county now has a public guide and parcel pages: tell IndexNow.
+        void import("../publicCountyGuide").then((m) => m.announceCountyLoaded(job.state, job.county)).catch(() => {});
         return { county: job.county, stored, outcome: "complete" };
       }
     }

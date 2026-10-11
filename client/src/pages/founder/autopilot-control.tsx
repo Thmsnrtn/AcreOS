@@ -29,6 +29,7 @@ import { FounderAuthError } from "@/components/founder/FounderAuthError";
 import { PrefetchLink as Link } from "@/components/prefetch-link";
 import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 import { ReadinessLadderSection, READINESS_LADDER_KEY } from "@/components/founder/ReadinessLadderSection";
+import { CreatorProgramSection } from "@/components/founder/CreatorProgramSection";
 import { useToast } from "@/hooks/use-toast";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { staggerContainer, staggerItem } from "@/lib/animations";
@@ -680,6 +681,11 @@ export default function FounderAutopilotControlPage() {
             {/* Connections — connect the accounts the platform runs on, in-app */}
             <motion.section variants={staggerItem}>
               <ConnectionsSection />
+            </motion.section>
+
+            {/* W3 — creator revenue share and the open acquisition pricing decisions */}
+            <motion.section variants={staggerItem}>
+              <CreatorProgramSection />
             </motion.section>
 
             {/* Quick links */}
