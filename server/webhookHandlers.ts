@@ -1395,6 +1395,28 @@ export class WebhookHandlers {
     }
   }
 
+  /**
+   * The invoice a charge paid. Payloads rendered at API version 2025-03-31
+   * (basil) or later — this codebase pins 2026-02-25.clover — no longer carry
+   * `charge.invoice`; the link lives on InvoicePayment, keyed by the payment
+   * intent. Reading only the legacy field made "a full refund voids the
+   * creator conversion" dead code on current payloads (W3 audit 2026-10-11).
+   */
+  static async invoiceIdOfCharge(
+    charge: Stripe.Charge,
+    legacy: string | { id: string } | null | undefined,
+  ): Promise<string | null> {
+    const direct = typeof legacy === 'string' ? legacy : legacy?.id;
+    if (direct) return direct;
+    const pi = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id;
+    if (!pi) return null;
+    const { getUncachableStripeClient } = await import('./stripeClient');
+    const stripe = await getUncachableStripeClient();
+    const page = await stripe.invoicePayments.list({ payment: { type: 'payment_intent', payment_intent: pi }, limit: 1 });
+    const inv = page.data[0]?.invoice;
+    return typeof inv === 'string' ? inv : inv?.id ?? null;
+  }
+
   /** W3 creator revenue share — see server/services/creatorProgram.ts. */
   static async recordCreatorConversionFor(orgId: number, invoice: Stripe.Invoice): Promise<void> {
     try {
@@ -1435,9 +1457,10 @@ export class WebhookHandlers {
 
       // W3 creator revenue share: a fully refunded invoice is no longer a
       // paid conversion (unless its commission was already paid out).
-      const refundedInvoiceId = typeof chargeInvoice === 'string' ? chargeInvoice : chargeInvoice?.id;
-      if (refundedInvoiceId && charge.refunded) {
+      if (charge.refunded) {
         try {
+          const refundedInvoiceId = await WebhookHandlers.invoiceIdOfCharge(charge, chargeInvoice);
+          if (!refundedInvoiceId) throw new Error(`no invoice resolvable for charge ${charge.id}`);
           const { voidCreatorConversionForInvoice } = await import('./services/creatorProgram');
           await voidCreatorConversionForInvoice(refundedInvoiceId, `refunded (charge ${charge.id})`);
         } catch (err) {

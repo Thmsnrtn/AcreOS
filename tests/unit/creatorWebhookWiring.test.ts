@@ -27,6 +27,12 @@ vi.mock("../../server/storage", () => ({
   db: new Proxy({}, { get: () => () => { throw new Error("db not available in this test"); } }),
 }));
 
+const invoicePaymentsList = vi.fn(async (_p: unknown) => ({ data: [{ invoice: "in_paid_1" }] }));
+vi.mock("../../server/stripeClient", async (importOriginal) => {
+  const real = await importOriginal<any>();
+  return { ...real, getUncachableStripeClient: async () => ({ invoicePayments: { list: invoicePaymentsList } }) };
+});
+
 import { WebhookHandlers } from "../../server/webhookHandlers";
 
 const invoice = {
@@ -61,6 +67,14 @@ describe("creator revenue share — webhook wiring", () => {
     await WebhookHandlers.processChargeRefunded(charge(false));
     expect(voidIt).not.toHaveBeenCalled();
     await WebhookHandlers.processChargeRefunded(charge(true));
+    expect(voidIt).toHaveBeenCalledWith("in_paid_1", expect.stringContaining("refunded"));
+  });
+
+  it("on a current-API charge (no `invoice` field) the refund still voids, via the payment intent's InvoicePayment", async () => {
+    // 2025-03-31.basil+ removed charge.invoice; the repo pins 2026-02-25.clover.
+    const charge = { id: "ch_2", customer: "cus_1", payment_intent: "pi_2", refunded: true, amount_refunded: 49_000, refunds: { data: [] } } as never;
+    await WebhookHandlers.processChargeRefunded(charge);
+    expect(invoicePaymentsList).toHaveBeenCalledWith(expect.objectContaining({ payment: { type: "payment_intent", payment_intent: "pi_2" } }));
     expect(voidIt).toHaveBeenCalledWith("in_paid_1", expect.stringContaining("refunded"));
   });
 });
