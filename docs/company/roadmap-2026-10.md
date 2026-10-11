@@ -369,3 +369,48 @@ when the plane runs net-negative:
 |---|---|---|---|---|---|
 | 2026-10-01 | W10.1a Deploy gate and CI truth — deploy needs `test` + CI (called workflow; Security deferred to W10.1b because it is red on main); bundle budget blocking in CI with down-only ceilings; `continue-on-error` register incl. composite actions; `empty-on-failure` 13→0 and `console-in-server` 6→0; LOC counting rule (`npm run measure:loc`, 855,971 at this commit); DEFECT-0278–0280 fixed, 0281 opened | the W10.1a commit (see `git log`) | `deployGateRequiresCiAndSecurity`, `bundleBudgetIsDownOnly`, `ciAdvisoryRegister` (each mutation-checked), `quietHoursNeverOverwritesUnread`, `paxRailWatermarkMovesOnRead`, `locCountingRule` | `npm run check`, full vitest and `npm run build` exit 0 before commit (verifier-run, outputs redirected to files) | independent audit found 1 P0 (Security red on main → split into W10.1b) and 4 P2, all addressed before commit; live dispatch of `deploy.yml` on a red ref is owed after the merge to main; CI/ESLint/truth-engine/coverage have never run on this branch's SHA — the PR's CI run is that proof |
 | 2026-10-01 | W10.1b part 1, Security made green — outside data no longer reaches the DOM as HTML (DEFECT-0282: the map's comp popup and Pax's print window build DOM text; a parsed gate over every sink shape); dependency CVEs fixed (DEFECT-0283): `npm audit fix` in range, sharp 0.35.5, and the MapLibre preview engine removed with maplibre-gl (it never fully rendered; Mapbox GL is the one renderer) — root `npm audit` 0 vulnerabilities; default map download 2598 → 1796 KB, total JS 10758 → 9958 KB, both ceilings lowered; LOC 855,971 → 855,869 | the W10.1b commit (see `git log`) | `noDataReachesTheDomAsHtml` (red at the parent; a canary per sink shape), `bundleBudgetIsDownOnly` | `npm run check`, full vitest and `npm run build` exit 0 before commit (outputs redirected to files) | Trivy fs/image cannot run in this container (GitHub release and ghcr downloads refused), so the first `Security Scanning` run on the PR's SHA is the proof owed; part 2 — `security` in `deploy`'s `needs` — lands only after that run is green; `tests/e2e-intelligent` keeps three moderate (the SDK and vitest, both needing majors) and one low (esbuild, held by tsx/vite) dev-only advisories |
+| 2026-10-11 | LP-W1a Protections — consent, AI origin, tier folding, checkout intent, routine-support autonomy, eval truth, outreach guards, CA auto-renewal, full export, security baseline; then the 2026-10-10 rulings (support/ops/deploy seeded at execute_gated, the digest lane with undo, the digest-lane calibration exemption) and three demotion defects found in the simulated year (retention briefed on already-emailed orgs; a requeued provider blip charged as failure; the stand-in brain had no Iris) | `e5e2779b` on `claude/w1a-protections` | per commit message; each guard mutation-checked (e.g. `digestLaneRunsOnlyReversibleWork`, `digestLaneRiskExemption`, `retentionBriefingSkipsEmailed`, `requeuedBlipCostsNoAutonomy`, `workerCoverageIsChecked`) | full `npm test` exit 0 at `e5e2779b` (1327 files / 16,802 tests); `npm run check` exit 0 (outputs redirected to files) | no independent audit yet — owed before merge |
+
+### LP-W1a: the simulated founder year (5 seeds × 365 days)
+
+Founder minutes per week, over every week of every seed (265 weeks per row):
+
+| Run | p10 | p50 | p90 | Mean | Dropped tickets |
+|---|---|---|---|---|---|
+| 2026-10-08 baseline | 11 | 38 | 58.6 | — | p50 7 |
+| After the 2026-10-10 decisions (`01820c37`, before the defect fixes) | 9 | 45 | 74 | 43.9 | p50 12 |
+| `e5e2779b` (fixes + Iris stand-in) | 0 | 9 | 39 | 15.6 | 0 in every seed |
+
+**End levels at `e5e2779b`.** Growth, support, deploy, ops and finance end
+at execute_gated in all 5 seeds. In the earlier runs, ops and deploy ended
+at observe and support and growth at draft. Those demotions came from three
+things:
+- the stand-in brain had no answer for Iris;
+- the retention worker was briefed on orgs it could not email;
+- a requeued provider blip was charged as a failure.
+
+**Asks by kind at `e5e2779b`.** No autopilot move asked the founder in any
+seed. Earlier, about 340 move-approval asks per seed: `clear_support_backlog`,
+`grow_owned_channels`, `retain_at_risk`, `optimize`, `resolve_incident`.
+Every remaining founder minute is a support ticket the policy holds by
+design. Per seed:
+- unclear: 33–49;
+- legal: 22–30;
+- refund over $50: 9–14;
+- bug: 6–9;
+- other: 0–3.
+
+Asks are now labelled by the reason each one states. Before, any ask that
+quoted "refunds up to $50" was counted as a refund.
+
+**Read this with care: the Iris outcome mix is an unsourced assumption.**
+The stand-in decides how Iris's ops and deploy tasks turn out:
+- 10 in 100 fail;
+- 20 in 100 find nothing to do;
+- 70 in 100 do the routine task.
+
+These rates are stated in `tests/simulation/standin/brains/capable.mjs` and
+have no source. A real model's rates are E3 evidence (LP-W6). The year run
+now fails when any worker's calls go unanswered by the brain
+(`workerCoverage.ts`), so an unmodelled worker cannot silently become a
+demotion again.
