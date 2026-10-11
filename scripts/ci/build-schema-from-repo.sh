@@ -60,6 +60,9 @@
 #      one-confirm panic-stop restore, the Support reply hand and the ops
 #      watch's one-incident-per-outage read and write real columns.
 #
+#  8b. `npx tsx tests/db/countyPipelineOnBuiltSchema.ts` — the W2 county
+#      pipeline's refusals, worker tick and kept parcels on real tables, with
+#      the network replaced by a fixture ArcGIS layer.
 #   9. `npx tsx scripts/check-constraint-names.ts` — every unique constraint
 #      shared/schema.ts declares exists under the name it declares (register:
 #      scripts/constraint-names.allowlist.json, shrink-only).
@@ -146,6 +149,12 @@ fi
 echo "[build-schema] 8/10 npx tsx tests/db/soleneStage2OnBuiltSchema.ts"
 if ! npx tsx tests/db/soleneStage2OnBuiltSchema.ts; then
   echo "[build-schema] FAIL — Stage 2's founder controls, ask fold, restore, reply hand or ops watch do not read/write the schema this repository builds." >&2
+  exit 1
+fi
+
+echo "[build-schema] 8b/10 npx tsx tests/db/countyPipelineOnBuiltSchema.ts"
+if ! npx tsx tests/db/countyPipelineOnBuiltSchema.ts; then
+  echo "[build-schema] FAIL — the W2 county pipeline (enqueue, refusals, worker tick, kept parcels) does not run on the schema this repository builds." >&2
   exit 1
 fi
 
