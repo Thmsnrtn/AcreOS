@@ -219,6 +219,53 @@ const OPEN_PAYLOAD_LEAD_WRITERS: Record<string, { count: number; why: string }> 
   "server/storage/auditRepo.ts": { count: 1, why: "consent fields built in updateLeadConsent" },
 };
 
+const unwrap = (e: ts.Expression): ts.Expression => {
+  let x = e;
+  while (ts.isAsExpression(x) || ts.isParenthesizedExpression(x) || ts.isAwaitExpression(x) || ts.isNonNullExpression(x)) x = x.expression;
+  return x;
+};
+
+function bindsName(name: ts.BindingName, id: string): boolean {
+  if (ts.isIdentifier(name)) return name.text === id;
+  return name.elements.some((el) => !ts.isOmittedExpression(el) && bindsName(el.name, id));
+}
+
+/**
+ * The expression a lead payload was built from: the argument itself, or — for
+ * a bare identifier — the initializer of the nearest declaration in an
+ * enclosing scope that binds it WHEN that initializer is a
+ * stampOwnerSuppression([...]) wrapper, opened to its single element.
+ */
+function payloadSource(arg: ts.Expression, from: ts.Node): ts.Expression | undefined {
+  const a = unwrap(arg);
+  if (!ts.isIdentifier(a)) return a;
+  let scope: ts.Node | undefined = from.parent;
+  let decl: ts.VariableDeclaration | undefined;
+  while (scope && !decl) {
+    const look = (n: ts.Node): void => {
+      if (decl) return;
+      if (ts.isVariableDeclaration(n) && n.initializer && n.getStart() < from.getStart() && bindsName(n.name, a.text)) decl = n;
+      else if (!ts.isFunctionLike(n)) ts.forEachChild(n, look);
+    };
+    ts.forEachChild(scope, look);
+    scope = scope.parent;
+  }
+  // ONLY the stamp wrapper is followed. Any other variable stays the open
+  // payload it is: `const updateData = {}` followed by conditional key
+  // assignments looks like a closed literal at its declaration and is not.
+  const init = decl?.initializer ? unwrap(decl.initializer) : undefined;
+  if (init && ts.isCallExpression(init) && ts.isIdentifier(init.expression) && init.expression.text === "stampOwnerSuppression" && init.arguments.length === 1) {
+    const list = unwrap(init.arguments[0]);
+    if (ts.isArrayLiteralExpression(list) && list.elements.length === 1) return unwrap(list.elements[0] as ts.Expression);
+    return list; // e.g. leadsData.map(...) — judged as an open payload and reported by its own text
+  }
+  return a;
+}
+
+function isClosedPayload(e: ts.Expression | undefined): boolean {
+  return !!e && ts.isObjectLiteralExpression(e) && !e.properties.some((q) => ts.isSpreadAssignment(q));
+}
+
 function openPayloadLeadWrites(file: string): Array<{ file: string; arg: string }> {
   const src = fs.readFileSync(file, "utf8");
   if (!/\.(update|insert)\(\s*leads\s*\)/.test(src)) return [];
@@ -243,10 +290,13 @@ function openPayloadLeadWrites(file: string): Array<{ file: string; arg: string 
       }
       // A write whose payload call can't be located is COUNTED, never skipped.
       const arg = target?.arguments[0];
-      let inner: ts.Expression | undefined = arg;
-      while (inner && (ts.isAsExpression(inner) || ts.isParenthesizedExpression(inner))) inner = inner.expression;
-      const closed = !!inner && ts.isObjectLiteralExpression(inner) && !inner.properties.some((q) => ts.isSpreadAssignment(q));
-      if (!closed) out.push({ file: path.relative(ROOT, file), arg: arg ? arg.getText(sf) : "<payload not located>" });
+      // A payload passed as a variable is followed to where it was made. The
+      // platform-wide owner opt-out (W5a) wraps every lead write as
+      // `const { rows: [row] } = await stampOwnerSuppression([payload])`, which
+      // adds only the do-not-contact fields; the PAYLOAD inside is what can
+      // or cannot carry a language, so that is what is judged and reported.
+      const source = arg ? payloadSource(arg, target!) : undefined;
+      if (!isClosedPayload(source)) out.push({ file: path.relative(ROOT, file), arg: source ? source.getText(sf) : "<payload not located>" });
     }
     ts.forEachChild(n, visit);
   };
