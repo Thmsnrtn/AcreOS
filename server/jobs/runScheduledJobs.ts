@@ -39,6 +39,7 @@ import { startAcquiredNoteAgingJob } from "./acquiredNoteAging"; // acquired-not
 import { startNotePaymentDueDetectorJob, startLeaseExpiryDetectorJob } from "./expiryDetectorJobs";
 import { startBorrowerServicingJobs } from "./servicingWindDownJob";
 import { startSubscriptionLifecycleJobs } from "./subscriptionLifecycleJobs";
+import { startForecastingMonthlyJob } from "./forecastingJobs";
 import { seedFounderDecisionCardsOnStartup } from "./seedFounderDecisionCards";
 import { runDecisionExecutorTickBounded, AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK, AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK } from "./decisionExecutorTick";
 import { clock } from "../utils/clock";
@@ -4321,10 +4322,9 @@ export async function runScheduledJobs(): Promise<void> {
   // revisions. Same founder-approval gate as the monthly meta-agent.
   startOutcomeDrivenEvolutionJob();
 
-  // Monthly founder letter — one-page narrative synthesizing the
-  // month's decisions, outcomes, and one thing the founder needs
-  // to weigh in on. Primary surface for the 1-hour/month goal.
+  // Monthly founder letter — the month's one-page narrative (primary 1-hour/month surface).
   startFounderLetterJob();
+  startForecastingMonthlyJob(); // W4 vintage recorder + scored forecast registry, 25th 06:00 UTC — see ./forecastingJobs
 
   // Strategic proposals — weekly per-agent proposal generation
   // (Sunday 00:00 UTC) + monthly synthesis pass (1st 10:00 UTC,

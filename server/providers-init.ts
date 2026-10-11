@@ -9,6 +9,7 @@ import { regridProvider } from "./services/providers/regrid-provider";
 import { attomProvider } from "./services/providers/attom-provider";
 import { batchdataProvider } from "./services/providers/batchdata-provider";
 import { nationalDatasetsProvider } from "./services/providers/national-datasets-provider";
+import { publicSeriesProvider } from "./services/forecasting/publicSeriesProvider";
 import { logger } from "./utils/logger";
 
 export function initializeProviders(): void {
@@ -55,6 +56,12 @@ export function initializeProviders(): void {
   // categories (HUD FMR, ACS, LEHD, TDOT traffic, FEMA MHP, PAD-US).
   for (const category of nationalDatasetsProvider.categories) {
     providerRegistry.register(category, nationalDatasetsProvider, 10);
+  }
+
+  // Public economic series (W4 forecasting) — free tier, the only provider for
+  // macro_series. Read monthly by the vintage recorder (forecasting_monthly).
+  for (const category of publicSeriesProvider.categories) {
+    providerRegistry.register(category, publicSeriesProvider, 10);
   }
 
   logger.info("Data providers initialized", { source: "providers-init" });

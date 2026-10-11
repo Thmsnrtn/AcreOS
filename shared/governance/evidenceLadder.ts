@@ -132,6 +132,24 @@ export const CAPABILITIES: readonly Capability[] = [
     proof: { unit: ["tests/unit/clockReadsRatchet.test.ts", "tests/unit/effectKeyFollowsTheClock.test.ts"] },
     caveat: "direct wall-clock reads in server/ are at 0 (lint:clock-reads), but Redis TTLs, in-process timers and SQL CURRENT_DATE / CURRENT_TIMESTAMP do not follow the clock",
   },
+  // W4 forecasting. A walk-forward backtest is the model graded on the past by
+  // its author: it earns E1 (the engine and the scorer are tested), never more.
+  // Customer surfaces additionally need a LIVE scored record
+  // (shared/forecasting/scoring.ts customerForecastGate), which no engine has.
+  {
+    id: "forecast.cycle-phase",
+    claim: "I can say which phase each state's job market is in, and where it is likely to be in six months, with probabilities",
+    level: "E1",
+    proof: { unit: ["tests/unit/forecastingEngines.test.ts", "tests/unit/forecastingBacktestRecord.test.ts"] },
+    caveat: "scored only in a walk-forward backtest on real-time payroll vintages; no live forecast has been scored yet, so customers never see it",
+  },
+  {
+    id: "forecast.land-value",
+    claim: "I can give a range for next year's farm real estate value growth in each state",
+    level: "E1",
+    proof: { unit: ["tests/unit/forecastingEngines.test.ts", "tests/unit/forecastingBacktestRecord.test.ts"] },
+    caveat: "backtested on the latest USDA release (USDA keeps no past releases, so revisions leak into the backtest); farmland is not the cheap rural land most customers buy; no live forecast scored yet",
+  },
   // Every vertical, listed by hand (never generated from the registry, which would make
   // E1 automatic): a vertical added later with no entry here is never `core` publicly.
   {

@@ -40,6 +40,7 @@ import { Rng } from "../twin/rng";
 import { buildWorld, type Owner, type Parcel } from "../twin/world";
 import { PARAMS } from "../twin/parameters";
 import { smsReply, smsDelivery } from "../twin/responses";
+import { seasonalDemand } from "../twin/macro";
 import { PERSONAS, drawPersona, targetCustomers, ticketFromFriction, churnsToday, type PersonaId, type FrictionClass } from "../twin/customers";
 import { providerRulesFor, writeProviderRules } from "../twin/providers";
 import { InvariantMonitor } from "../invariants/monitor";
@@ -255,7 +256,7 @@ async function customerWeek(c: Customer, day: number, rng: Rng) {
       c.milestones.firstSend ??= day;
       const lead = c.byPhone.get(String(m.to).replace(/\D/g, "").slice(-10));
       if (!lead || m.fail) continue;
-      const rep = smsReply(rng, lead.owner, lead.parcel.acres);
+      const rep = smsReply(rng, lead.owner, lead.parcel.acres, seasonalDemand(lead.parcel.county.state, vnow()));
       if (rep) replyQueue.push({ dueV: vnow() + rep.delayHours * 3600e3, c, lead, text: rep.text, revokes: rep.revokesConsent, kind: rep.kind });
     }
   }

@@ -35,6 +35,8 @@ export interface DataLicenseEntry {
   lastReviewed: string;
   /** Who performed the review. */
   reviewedBy?: string;
+  /** What the terms say that matters for how AcreOS may use the source. */
+  note?: string;
 }
 
 /**
@@ -87,6 +89,7 @@ export const DATA_LICENSE_REGISTER: Record<string, DataLicenseEntry> = {
     termsUrl: "https://quickstats.nass.usda.gov",
     lastReviewed: "2026-06-06",
     reviewedBy: "Beatrice",
+    note: "W4 (2026-10-11): the Quick Stats API needs a free key (NASS_API_KEY); without it the land-value recorder refuses. The bulk files at www.nass.usda.gov/datasets/ are an official download (the land-value backtest fixture came from qs.economics_20261010.txt.gz).",
   },
   "USGS 3DEP": {
     source: "USGS 3DEP",
@@ -331,6 +334,47 @@ export const DATA_LICENSE_REGISTER: Record<string, DataLicenseEntry> = {
     attributionText: "Public open-data sources (federal/open)",
     lastReviewed: "2026-06-07",
     reviewedBy: "Iris",
+  },
+  // ── W4 forecasting: public series (shared/forecasting/publicSeries.ts) ──
+  "FRED/ALFRED (BLS CES)": {
+    source: "FRED/ALFRED (BLS CES)",
+    license: "public-domain-usgov",
+    redistributable: "attribution",
+    attributionText: "Payroll employment: U.S. Bureau of Labor Statistics (CES), retrieved from FRED®/ALFRED®, Federal Reserve Bank of St. Louis",
+    termsUrl: "https://fred.stlouisfed.org/legal/",
+    lastReviewed: "2026-10-11",
+    reviewedBy: "W4",
+    note: "BLS series are public domain. FRED's terms ask that FRED be cited and forbid scraping or extraction of the website; automated retrieval uses the FRED API with a free key (FRED_API_KEY). Without the key the recorder refuses.",
+  },
+  "FRED/ALFRED (BLS LAUS)": {
+    source: "FRED/ALFRED (BLS LAUS)",
+    license: "public-domain-usgov",
+    redistributable: "attribution",
+    attributionText: "Unemployment rate: U.S. Bureau of Labor Statistics (LAUS), retrieved from FRED®/ALFRED®, Federal Reserve Bank of St. Louis",
+    termsUrl: "https://fred.stlouisfed.org/legal/",
+    lastReviewed: "2026-10-11",
+    reviewedBy: "W4",
+    note: "As FRED/ALFRED (BLS CES): public domain at origin, FRED API with a free key for automated retrieval.",
+  },
+  "US Census BPS": {
+    source: "US Census BPS",
+    license: "public-domain-usgov",
+    redistributable: "yes",
+    attributionText: "Building permits: U.S. Census Bureau, Building Permits Survey",
+    termsUrl: "https://www.census.gov/construction/bps/",
+    lastReviewed: "2026-10-11",
+    reviewedBy: "W4",
+    note: "Monthly state files are an official download directory (www2.census.gov/econ/bps/State/); no key.",
+  },
+  "FRED (Philadelphia Fed state coincident indexes)": {
+    source: "FRED (Philadelphia Fed state coincident indexes)",
+    license: "proprietary",
+    redistributable: "no",
+    attributionText: "Federal Reserve Bank of Philadelphia, State Coincident Indexes",
+    termsUrl: "https://fred.stlouisfed.org/legal/",
+    lastReviewed: "2026-10-11",
+    reviewedBy: "W4",
+    note: "NOT USED. Third-party copyrighted on FRED: \"may only be used for non-commercial educational or personal use\" without the owner's written permission. AcreOS is commercial, so the cycle model reads BLS payrolls instead.",
   },
   "OpenStreetMap": {
     source: "OpenStreetMap",

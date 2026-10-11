@@ -175,6 +175,7 @@ export const ROUTE_MANIFEST: RouteManifestEntry[] = [
   { file: "routes-founder-life-cockpit.ts", mountPath: null, kind: "register", export: "registerFounderLifeCockpitRoutes" },
   { file: "routes-founder-market-reports.ts", mountPath: null, kind: "register", export: "registerFounderMarketReportRoutes" },
   { file: "routes-founder-money.ts", mountPath: null, kind: "register", export: "registerFounderMoneyRoutes" },
+  { file: "routes-founder-forecasting.ts", mountPath: null, kind: "register", export: "registerFounderForecastingRoutes" },
   { file: "routes-founder-now.ts", mountPath: "/api/founder/now", kind: "router", export: "default" },
   { file: "routes-founder-paid-data-eval.ts", mountPath: null, kind: "register", export: "registerFounderPaidDataEvalRoutes" },
   { file: "routes-founder-pulse.ts", mountPath: null, kind: "register", export: "registerFounderPulseRoutes" },

@@ -61,6 +61,9 @@ function buildCacheKey(providerName: string, category: DataCategory, input: Look
       if (input.city) parts.push(input.city);
       if (input.zip) parts.push(input.zip);
       break;
+    case "series":
+      parts.push("series", input.family, input.seriesId);
+      break;
   }
 
   return parts.map((p) => p.toLowerCase().trim()).join("::");
@@ -80,6 +83,8 @@ function extractStateCounty(input: LookupInput): { state?: string; county?: stri
     case "apn":
       return { state: input.state, county: input.county };
     case "owner":
+      return { state: input.state };
+    case "series":
       return { state: input.state };
   }
 }

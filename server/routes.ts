@@ -253,6 +253,7 @@ import { registerMorningPulseRoutes } from "./routes-morning-pulse";
 import { registerAutopilotRoutes } from "./routes-autopilot";
 import { registerSoleneChatRoutes } from "./routes-solene-chat";
 import { registerFounderMoneyRoutes } from "./routes-founder-money";
+import { registerFounderForecastingRoutes } from "./routes-founder-forecasting";
 import { registerAgentClaimsRoutes } from "./routes-agent-claims";
 import { registerDispatchRoutes } from "./routes-dispatch";
 import { registerErrorBoundaryRoutes } from "./routes-error-boundary";
@@ -2590,6 +2591,7 @@ export async function registerRoutes(
   // Lena's Phase 1 capital surface lands. Without this, /founder/money
   // silently 404'd into Phase 0 placeholders.
   registerFounderMoneyRoutes(app);
+  registerFounderForecastingRoutes(app);
   // Solene (Layer 1 cap #2) — cross-agent claims founder read endpoint.
   registerAgentClaimsRoutes(app);
   // Solene (Layer 1 cap #1) — founder HTTP surface for the dispatch queue:

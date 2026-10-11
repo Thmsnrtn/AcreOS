@@ -108,3 +108,30 @@ describe("twin: customers", () => {
     expect(t === null || t.friction === "manual_request").toBe(true);
   });
 });
+
+describe("twin: macro inputs are calibrated on public priors (W4)", () => {
+  it("each macro parameter is public, read from the built priors file, not copied", async () => {
+    const { PUBLIC_PRIORS } = await import("../../../shared/forecasting/publicPriors");
+    for (const k of ["macroSeasonalFactors", "macroPhaseTransitions", "macroContractionMonths", "landValueAnnualGrowth"] as const) {
+      expect(PARAMS[k].source.kind, k).toBe("public");
+      expect(PARAMS[k].source.ref, k).toMatch(/shared\/forecasting\/data\/publicPriors\.json/);
+      expect(PARAMS[k].source.note, k).toMatch(/fetched, not recalled/);
+    }
+    expect(PARAMS.macroPhaseTransitions.value).toBe(PUBLIC_PRIORS.cycle.monthlyTransitions);
+    expect(PARAMS.macroContractionMonths.value).toBe(PUBLIC_PRIORS.cycle.contraction.medianMonths);
+    expect(PARAMS.sellerInterestFollowsPermits.source.kind).toBe("assumption");
+  });
+  it("seasonal demand comes from the state's permit factors; an average month leaves replies exactly as before", async () => {
+    const { seasonalDemand, macroPhasePath, phaseMixAfter } = await import("./macro");
+    const { seasonalFactor } = await import("../../../shared/forecasting/publicPriors");
+    expect(seasonalDemand("AZ", Date.UTC(2026, 4, 15))).toBe(seasonalFactor("AZ", 5));
+    const w = buildWorld(3, { parcels: 200 });
+    const run = (demand?: number) => { const r = new Rng(99); return w.owners.map((o) => smsReply(r, o, 5, demand)?.text ?? "-").join("|"); };
+    expect(run(1)).toBe(run());
+    const path = macroPhasePath(7, 24, "contraction");
+    expect(path).toHaveLength(24);
+    expect(macroPhasePath(7, 24, "contraction")).toEqual(path);
+    const mix = phaseMixAfter("contraction", 6);
+    expect(Object.values(mix).reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9);
+  });
+});

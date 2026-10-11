@@ -26,6 +26,7 @@ import { QueryErrorState } from "@/components/query-error-state";
 import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 import { LetterTrackRecord } from "@/components/founder/LetterTrackRecord";
 import { LetterConfession } from "@/components/founder/LetterConfession";
+import { LetterOutlook } from "@/components/founder/LetterOutlook";
 import { ReadinessLadderLetterLine } from "@/components/founder/ReadinessLadderSection";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd, formatRelative } from "@/lib/format";
@@ -408,6 +409,12 @@ export default function FounderHomePage() {
               calibrationLine={brief.calibrationLine ?? null}
               learningLines={brief.learningLines ?? []}
             />
+          </motion.div>
+
+          {/* Outlook (W4) — forecasts, each labelled with its kind and evidence
+              level, and the downturn runway. Collapsed; fetched when opened. */}
+          <motion.div variants={staggerItem}>
+            <LetterOutlook />
           </motion.div>
 
           {/* Talk to your company */}

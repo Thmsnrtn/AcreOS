@@ -31,6 +31,9 @@ export const CATEGORY_CACHE_TTL_MS: Partial<Record<DataCategory, number>> = {
   // both honest without re-hammering the upstreams.
   wildfire_hazard: 90 * DAY_MS,
   broadband: 90 * DAY_MS,
+  // W4: a public series is read once a month by the vintage recorder; a day
+  // keeps a re-run in the same day from re-fetching without hiding a release.
+  macro_series: DAY_MS,
 };
 
 /**

@@ -11302,6 +11302,51 @@ END $$`,
   // service is not used; deactivate any row pointing at it. Mirrors
   // migrations/0271_tn_public_service_retired.sql.
   `UPDATE "county_gis_endpoints" SET "is_active" = false, "redistributable" = 'no' WHERE "base_url" ILIKE '%tennessee_property_boundaries_public_use%'`,
+
+  // 0272 — W4 forecasting: three append-only stores of what was KNOWN when
+  // (public series vintages, the frozen-forecast ledger, customer outcomes as
+  // recorded). table-count 727 -> 730. Mirrors migrations/0272_forecasting.sql
+  // and shared/schema/forecasting.ts.
+  `CREATE TABLE IF NOT EXISTS "public_series_vintages" (
+    "id" serial PRIMARY KEY,
+    "series_id" text NOT NULL,
+    "family" text NOT NULL,
+    "observation_date" date NOT NULL,
+    "vintage_date" date NOT NULL,
+    "value" double precision NOT NULL,
+    "source" text NOT NULL,
+    "recorded_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "public_series_vintages_series_obs_vintage_uk" ON "public_series_vintages" ("series_id", "observation_date", "vintage_date")`,
+  `CREATE INDEX IF NOT EXISTS "public_series_vintages_family_vintage_idx" ON "public_series_vintages" ("family", "vintage_date")`,
+  `CREATE TABLE IF NOT EXISTS "forecast_ledger" (
+    "id" serial PRIMARY KEY,
+    "entry_kind" text NOT NULL,
+    "forecast_key" text NOT NULL,
+    "engine_id" text NOT NULL,
+    "engine_version" text NOT NULL,
+    "subject" text NOT NULL,
+    "target_date" date NOT NULL,
+    "issued_as_of" date NOT NULL,
+    "body" jsonb NOT NULL,
+    "recorded_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "forecast_ledger_kind_key_uk" ON "forecast_ledger" ("entry_kind", "forecast_key")`,
+  `CREATE INDEX IF NOT EXISTS "forecast_ledger_engine_kind_issued_idx" ON "forecast_ledger" ("engine_id", "entry_kind", "issued_as_of")`,
+  `CREATE TABLE IF NOT EXISTS "customer_outcome_observations" (
+    "id" serial PRIMARY KEY,
+    "organization_id" integer NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+    "kind" text NOT NULL,
+    "subject_table" text NOT NULL,
+    "subject_id" integer NOT NULL,
+    "state" text,
+    "county" text,
+    "observed_at" timestamp NOT NULL,
+    "values" jsonb NOT NULL DEFAULT '{}'::jsonb,
+    "recorded_at" timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "customer_outcome_obs_org_kind_subject_uk" ON "customer_outcome_observations" ("organization_id", "kind", "subject_table", "subject_id")`,
+  `CREATE INDEX IF NOT EXISTS "customer_outcome_obs_org_observed_idx" ON "customer_outcome_observations" ("organization_id", "observed_at")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

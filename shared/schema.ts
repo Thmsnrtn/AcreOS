@@ -14130,6 +14130,7 @@ export * from "./schema/subdivision";
 // FIX-AND-FLIP VERTICAL — extracted to ./schema/fix-and-flip.ts
 // ============================================================================
 export * from "./schema/fix-and-flip";
+export * from "./schema/forecasting";
 
 // ============================================================================
 // BUY-AND-HOLD / RENTAL VERTICAL — extracted to ./schema/rental.ts

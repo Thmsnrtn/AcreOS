@@ -12,7 +12,13 @@ export type LookupInput =
   | { type: "coordinates"; latitude: number; longitude: number; state?: string; county?: string }
   | { type: "address"; street: string; city: string; state: string; zip: string }
   | { type: "apn"; apn: string; state: string; county: string }
-  | { type: "owner"; firstName: string; lastName: string; state?: string; city?: string; zip?: string };
+  | { type: "owner"; firstName: string; lastName: string; state?: string; city?: string; zip?: string }
+  /**
+   * A public time series (W4 forecasting): one series id from
+   * shared/forecasting/publicSeries.ts, read as known today. Only the
+   * "public-series" provider accepts it.
+   */
+  | { type: "series"; seriesId: string; family: string; state: string };
 
 // ── Lookup Result ─────────────────────────────────────────────
 
@@ -111,7 +117,9 @@ export type DataCategory =
   | "jobs_lehd"
   | "traffic_counts"
   | "manufactured_home_parks"
-  | "protected_lands_padus";
+  | "protected_lands_padus"
+  // W4 forecasting — public macro / land series (server/services/forecasting/publicSeriesProvider.ts)
+  | "macro_series";
 
 // ── Subscription Tiers ────────────────────────────────────────
 

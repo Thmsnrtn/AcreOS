@@ -321,6 +321,11 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   // the founder everything is fine must be watched at least as strictly as
   // what it reports on (see founder_briefing_daily above).
   { name: "founder_letter_monthly", intervalMs: MONTH, critical: true, cron: "0 12 1 * *" },
+  // W4 forecasting (server/jobs/forecastingJobs.ts): records public series
+  // vintages + customer outcomes, issues and scores forecasts. Runs without
+  // keys (Census permits and outcomes need none); a missing FRED_API_KEY /
+  // NASS_API_KEY refuses only those families, reported in the run log.
+  { name: "forecasting_monthly", intervalMs: MONTH, critical: false, cron: "0 6 25 * *" },
   { name: "autonomy_outcome_grader", intervalMs: DAY, critical: false },
   // Horizon A1 — outcome-ledger 30/90-day check-in scorer, daily 12:00 UTC.
   // Non-critical: a dark pass delays scoring by a day; the unscored rows

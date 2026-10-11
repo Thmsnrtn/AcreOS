@@ -14,6 +14,7 @@
  * reasoning, or if a "market" parameter is not the value market/ exports.
  */
 import { REPLY_RATE, REPLY_MIX, MAIL_CALLBACK_RATE, ARRIVAL_3, ARRIVAL_10, ARRIVAL_25 } from "../campaign/market/parameters";
+import { PUBLIC_PRIORS } from "../../../shared/forecasting/publicPriors";
 
 export type SourceKind = "market" | "public" | "assumption";
 export interface Param<T = number> {
@@ -26,6 +27,10 @@ const market = <T,>(value: T, unit: string, ref: string): Param<T> => ({ value, 
 // during this run (no network calls to publishers); the scorecard says so.
 const pub = <T,>(value: T, unit: string, ref: string, note?: string): Param<T> => ({ value, unit, source: { kind: "public", ref, note: note ? `${note} (reference recalled, not re-fetched)` : "reference recalled, not re-fetched" } });
 const assume = <T,>(value: T, unit: string, note: string): Param<T> => ({ value, unit, source: { kind: "assumption", ref: "assumption", note } });
+// Public data FETCHED and built into a committed file (W4): the ref names the
+// file and the build date; the value is read from that file, never copied.
+const PRIORS_REF = `shared/forecasting/data/publicPriors.json (built ${PUBLIC_PRIORS.builtOn})`;
+const fetched = <T,>(value: T, unit: string, what: string, note?: string): Param<T> => ({ value, unit, source: { kind: "public", ref: `${what} — ${PRIORS_REF}`, note: note ? `${note} (fetched, not recalled)` : "fetched, not recalled" } });
 
 const replyShare = (k: string) => REPLY_MIX.find((r) => r[0] === k)![1];
 
@@ -50,6 +55,18 @@ export const PARAMS = {
   twilioErrorCodes: pub({ unsubscribed: 21610, filtered: 30007, unreachable: 30003, unknownDestination: 30005, landline: 30006, unregistered10dlc: 30034 }, "error code", "Twilio error and warning dictionary"),
   tcpaStatutoryDamagesUsd: pub(500, "USD per violation (1,500 if willful)", "47 U.S.C. § 227(b)(3)"),
   revocationAnyReasonableMeans: pub(true, "rule", "FCC 24-24 (Feb 2024) consent-revocation order: revocation by any reasonable means, effective 2025-04-11"),
+
+  // ── macro inputs, calibrated on public priors (W4; see ./macro.ts) ──────
+  macroSeasonalFactors: fetched(
+    Object.fromEntries(PUBLIC_PRIORS.seasonality.states.map((x) => [x.state, x.factors])) as Record<string, number[]>,
+    "multiplier per calendar month (Jan first), 1 = average",
+    "Census Building Permits Survey, monthly state files",
+    "measured on housing permits; applied to seller interest as the assumption sellerInterestFollowsPermits",
+  ),
+  macroPhaseTransitions: fetched(PUBLIC_PRIORS.cycle.monthlyTransitions, "monthly phase-to-phase probability", "BLS state payrolls via ALFRED, all states, 1990–latest"),
+  macroContractionMonths: fetched(PUBLIC_PRIORS.cycle.contraction.medianMonths, "months (median state payroll contraction)", "BLS state payrolls via ALFRED"),
+  landValueAnnualGrowth: fetched(PUBLIC_PRIORS.landValue.annualGrowthAllStates, "log-percent per year (p10/p50/p90)", "USDA NASS Land Values survey, state level"),
+  sellerInterestFollowsPermits: assume(true, "rule", "no free public series counts land-seller interest by month; permit seasonality is the nearest published shape"),
 
   // ── assumptions (labelled) ─────────────────────────────────────────────
   ownerHasPhone: assume(0.55, "share of owners with a skip-traced phone", "between the market cohort's per-list 0.5 and 0.7 phone fill"),

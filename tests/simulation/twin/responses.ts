@@ -49,7 +49,12 @@ function fill(t: string, o: Owner, acres = 5): string {
   return t.replace("{first}", o.first).replace("{acres}", String(acres));
 }
 
-export function smsReply(rng: Rng, o: Owner, acres = 5): Reply | null {
+/**
+ * `demand` scales the interested share (macro.ts seasonalDemand — public
+ * permit seasonality under the labelled assumption sellerInterestFollowsPermits).
+ * 1 = an average month and leaves every draw exactly as before.
+ */
+export function smsReply(rng: Rng, o: Owner, acres = 5, demand = 1): Reply | null {
   if (!rng.bernoulli(PARAMS.smsReplyRate.value)) return null;
   const delayHours = Math.max(0.05, rng.lognormal(PARAMS.smsReplyLatencyHoursMedian.value, 1));
   if (o.phoneWrongPerson) {
@@ -61,7 +66,7 @@ export function smsReply(rng: Rng, o: Owner, acres = 5): Reply | null {
     stop: PARAMS.smsReplyShareStop.value,
     "natural-optout": PARAMS.smsReplyShareNaturalOptOut.value * (0.5 + o.irritability),
     "wrong-number": PARAMS.smsReplyShareWrongNumber.value * 0.3,
-    interested: PARAMS.smsReplyShareInterested.value * (0.5 + o.motivation * 1.5),
+    interested: PARAMS.smsReplyShareInterested.value * (0.5 + o.motivation * 1.5) * demand,
     angry: PARAMS.smsReplyShareAngry.value,
   });
   switch (kind) {

@@ -147,5 +147,7 @@ function inputKey(input: LookupInput): string {
       return `apn:${input.state}/${input.county}`;
     case "owner":
       return `owner:${input.state ?? "?"}`;
+    case "series":
+      return `series:${input.seriesId}`;
   }
 }
