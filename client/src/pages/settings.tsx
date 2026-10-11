@@ -1,4 +1,5 @@
 import { PageShell } from "@/components/page-shell";
+import { A2pRegistrationGuide } from "@/components/growth/A2pRegistrationGuide";
 import { 
   useOrganization, 
   useStripeProducts, 
@@ -1545,6 +1546,12 @@ export default function Settings() {
                     <ExternalLink className="w-4 h-4 ml-2" aria-hidden="true" />
                   </Link>
                 </Button>
+              </div>
+
+              {/* W5b — the org's OWN A2P 10DLC registration; texts to owners
+                  are held until it is confirmed. */}
+              <div className="pt-4 border-t" data-testid="section-a2p-registration">
+                <A2pRegistrationGuide />
               </div>
 
               {/* Provider status — read-only, from /api/organization/providers */}

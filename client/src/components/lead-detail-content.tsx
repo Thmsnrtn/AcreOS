@@ -38,6 +38,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { ScoreBreakdownCard, TcpaConsentBadge, TcpaConsentToggle } from "@/pages/leads";
 import { StatusBadge, type StatusKind } from "@/components/StatusBadge";
+import { LeadOutreachLanguage } from "@/components/growth/LeadOutreachLanguage";
 import type { Lead } from "@shared/schema";
 
 const LEAD_STATUS_KIND: Record<string, StatusKind> = {
@@ -317,6 +318,9 @@ export function LeadDetailContent({
                 </dl>
                 <div className="pt-3 mt-3 border-t flex gap-2">
                   <TcpaConsentToggle lead={lead} />
+                </div>
+                <div className="pt-3 mt-3 border-t">
+                  <LeadOutreachLanguage lead={lead} />
                 </div>
               </CardContent>
             </Card>

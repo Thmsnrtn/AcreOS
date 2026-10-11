@@ -31,7 +31,7 @@ import {
   aiTelemetryEvents,
   subscriptionEvents,
 } from "@shared/schema";
-import type { InsertLead, InsertProperty, InsertDeal } from "@shared/schema";
+import { seedDemoDataForOrg } from "./services/onboarding/demoDataSeeder";
 import type { LookupCategory } from "./services/data-source-broker";
 import { benchmarkFor, BENCHMARK_KEYS } from "./services/benchmarks";
 import crypto from "crypto";
@@ -41,7 +41,6 @@ import { requirePermission } from "./utils/permissions";
 import { alertingService } from "./services/alerting";
 import { isFounderIdentity } from "./services/founder";
 import { logger } from "./utils/logger";
-import { addMonths } from "./utils/dateUtils";
 import { Errors, sendError } from "./utils/errors";
 import { omitProtectedFields } from "./utils/updatePayload";
 import { getUserId, getOrganization, getClerkAuth, type AuthenticatedRequest } from "./types/request";
@@ -554,125 +553,14 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/seed-demo-data", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = req.organization;
-      
-      // Sample leads
-      const demoLeads = [
-        { firstName: "John", lastName: "Martinez", type: "seller", email: "john.martinez@email.com", phone: "(602) 555-1234", address: "123 Desert Rose Lane", city: "Tucson", state: "AZ", zip: "85701", status: "responded", source: "tax_list", notes: "Inherited property, motivated to sell" },
-        { firstName: "Sarah", lastName: "Thompson", type: "seller", email: "sarah.t@email.com", phone: "(505) 555-2345", address: "456 Canyon View Dr", city: "Albuquerque", state: "NM", zip: "87101", status: "negotiating", source: "facebook", notes: "Moving out of state, needs quick close" },
-        { firstName: "Robert", lastName: "Chen", type: "buyer", email: "rchen@email.com", phone: "(512) 555-3456", address: "789 Oak Street", city: "Austin", state: "TX", zip: "78701", status: "qualified", source: "website", notes: "Looking for 5-10 acre recreational parcels" },
-        { firstName: "Maria", lastName: "Garcia", type: "seller", email: "mgarcia@email.com", phone: "(623) 555-4567", address: "321 Sunset Blvd", city: "Phoenix", state: "AZ", zip: "85001", status: "mailed", source: "tax_list", notes: "Initial mailer sent 2 weeks ago" },
-        { firstName: "David", lastName: "Wilson", type: "buyer", email: "dwilson@email.com", phone: "(702) 555-5678", address: "555 Palm Way", city: "Las Vegas", state: "NV", zip: "89101", status: "interested", source: "referral", notes: "Pre-approved for $50K, wants AZ or NM" },
-        { firstName: "Jennifer", lastName: "Brown", type: "seller", email: "jbrown@email.com", phone: "(480) 555-6789", address: "888 Cactus Court", city: "Scottsdale", state: "AZ", zip: "85251", status: "new", source: "craigslist", notes: "Responded to online ad" },
-      ];
-      
-      const createdLeads = [];
-      for (const lead of demoLeads) {
-        // storage.createLead's declared signature omits organizationId (set
-        // server-side); the repo impl requires it. Merge via a typed
-        // intermediate so the org id reaches the DB write.
-        // TODO(tsc): storage.ts IStorage decl for createLead should be
-        // `InsertLead & { organizationId: number }` to match leadRepo impl.
-        const leadInput: InsertLead & { organizationId: number } = { ...lead, organizationId: org.id };
-        const created = await storage.createLead(leadInput);
-        createdLeads.push(created);
-      }
-      
-      // Sample properties
-      const demoProperties = [
-        { apn: "123-45-678", county: "Cochise", state: "AZ", sizeAcres: "5.2", status: "owned", purchasePrice: "8500", marketValue: "15000", description: "Beautiful 5+ acre parcel with mountain views near Willcox" },
-        { apn: "234-56-789", county: "Mohave", state: "AZ", sizeAcres: "2.5", status: "listed", purchasePrice: "3200", listPrice: "7900", marketValue: "7500", description: "2.5 acre lot in Golden Valley with road access" },
-        { apn: "345-67-890", county: "Luna", state: "NM", sizeAcres: "10.0", status: "owned", purchasePrice: "5000", marketValue: "12000", description: "10 acres of open desert land near Deming" },
-        { apn: "456-78-901", county: "Navajo", state: "AZ", sizeAcres: "1.25", status: "prospect", assessedValue: "4500", marketValue: "6000", description: "1.25 acre residential lot in Show Low area" },
-        { apn: "567-89-012", county: "Pinal", state: "AZ", sizeAcres: "40.0", status: "under_contract", purchasePrice: "28000", marketValue: "55000", description: "40 acre ranch parcel with well and power nearby" },
-      ];
-      
-      const createdProperties = [];
-      for (const prop of demoProperties) {
-        const propInput: InsertProperty & { organizationId: number } = { ...prop, organizationId: org.id };
-        const created = await storage.createProperty(propInput);
-        createdProperties.push(created);
-      }
-      
-      // Sample deals
-      // TODO(tsc): the deals table has no name/stage/salePrice/purchasePrice/
-      // leadId columns — those keys in the original seed were silently dropped
-      // at insert. Mapped to the real columns: stage→status, purchase/sale
-      // price→offerAmount (the amount the deal was struck at).
-      const demoDeals = [
-        { type: "acquisition", status: "closed", propertyId: createdProperties[0]?.id, offerAmount: "8500", closingDate: new Date("2024-06-15") },
-        { type: "disposition", status: "in_escrow", propertyId: createdProperties[1]?.id, offerAmount: "7900", closingDate: new Date("2025-02-01") },
-        { type: "acquisition", status: "closed", propertyId: createdProperties[2]?.id, offerAmount: "5000", closingDate: new Date("2024-09-20") },
-        { type: "acquisition", status: "offer_sent", propertyId: createdProperties[4]?.id, offerAmount: "28000" },
-      ];
-
-      for (const deal of demoDeals) {
-        if (deal.propertyId == null) continue;
-        const dealInput: InsertDeal & { organizationId: number } = { ...deal, propertyId: deal.propertyId, organizationId: org.id };
-        await storage.createDeal(dealInput);
-      }
-      
-      // Sample notes (seller financing)
-      const startDate = addMonths(clock.now(), -3);
-      const firstPaymentDate = addMonths(new Date(startDate), 1);
-      
-      const demoNotes = [
-        { 
-          propertyId: createdProperties[0]?.id, 
-          borrowerName: "Michael Rodriguez", 
-          borrowerEmail: "mrodriguez@email.com", 
-          borrowerPhone: "(520) 555-7890",
-          originalPrincipal: "12000", 
-          currentBalance: "10800",
-          interestRate: "9.9", 
-          termMonths: 36, 
-          monthlyPayment: "387.50",
-          downPayment: "3000",
-          startDate,
-          firstPaymentDate,
-          status: "active",
-          gracePeriodDays: 10,
-          lateFee: "25",
-        },
-        { 
-          propertyId: createdProperties[2]?.id, 
-          borrowerName: "Amanda Foster", 
-          borrowerEmail: "afoster@email.com", 
-          borrowerPhone: "(575) 555-8901",
-          originalPrincipal: "8500", 
-          currentBalance: "7700",
-          interestRate: "10.5", 
-          termMonths: 24, 
-          monthlyPayment: "395.00",
-          downPayment: "2000",
-          startDate: new Date(clock.nowMs() - 60 * 24 * 60 * 60 * 1000),
-          firstPaymentDate: new Date(clock.nowMs() - 30 * 24 * 60 * 60 * 1000),
-          status: "active",
-          gracePeriodDays: 10,
-          lateFee: "25",
-        },
-      ];
-      
-      for (const note of demoNotes) {
-        // Reg-Z §1026.43 hard gate (Workstream A). Demo data is synthetic /
-        // non-consumer — flagged exempt so the gate constraint doesn't reject
-        // the seed insert. Real consumer originations must go through
-        // POST /api/notes/:id/originate with a full ATR determination.
-        await storage.createNote({
-          ...note,
-          organizationId: org.id,
-          atrExemptionCode: "business_purpose",
-        } as any);
-      }
-      
-      res.json({ 
-        success: true, 
+      // Every row is marked as sample data at creation (DEFECT: the demo
+      // seeder's closed deals were unmarked, so the customer outcome metric
+      // and the founder Letter aggregate counted them as real closings).
+      const counts = await seedDemoDataForOrg(org.id);
+      res.json({
+        success: true,
         message: "Demo data created successfully",
-        counts: {
-          leads: createdLeads.length,
-          properties: createdProperties.length,
-          deals: demoDeals.length,
-          notes: demoNotes.length,
-        }
+        counts,
       });
     } catch (err: any) {
       logger.error("Seed error", err);

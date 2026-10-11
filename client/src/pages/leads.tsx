@@ -718,7 +718,8 @@ function LeadsPageDesktop({ embedded = false }: { embedded?: boolean }) {
   const [isTaxDelinquentImportOpen, setIsTaxDelinquentImportOpen] = useState(false);
   // Hank fix — column auto-mapping + APN dedupe importer. Distinct from
   // the legacy `isImportOpen` dialog, which expects fixed AcreOS headers.
-  const [isSmartCsvOpen, setIsSmartCsvOpen] = useState(false);
+  // `?import=1` (Today's first-deal step "Import a list") opens the importer.
+  const [isSmartCsvOpen, setIsSmartCsvOpen] = useState(() => new URLSearchParams(searchString).get("import") === "1");
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importPreview, setImportPreview] = useState<{
     totalRows: number;

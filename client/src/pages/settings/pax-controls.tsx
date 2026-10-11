@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 
 import { PageShell } from "@/components/page-shell";
+import { PaxLanguageCard } from "@/components/growth/PaxLanguageCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -674,6 +675,9 @@ export function PaxControls() {
           <p className="text-sm font-medium mt-3">{PAX_LABELS.notEvenIfYouAsk}</p>
         </CardContent>
       </Card>
+
+      {/* ── 7. Language (W5b) ───────────────────────────────────────────── */}
+      <PaxLanguageCard />
     </PageShell>
   );
 }

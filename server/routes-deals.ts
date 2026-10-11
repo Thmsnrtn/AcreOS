@@ -2718,7 +2718,25 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         : null;
 
       const { generateOfferLetterPdf } = await import("./services/offerLetterPdf");
-      const { sendForEsign, sellerEmail, sellerName, ...offerData } = req.body;
+      const { sendForEsign, sellerEmail, sellerName, language: requestedLanguage, ...offerData } = req.body;
+
+      // W5b: the letter's language is the customer's choice in this request,
+      // else what the owner asked for / the customer set on the seller's lead
+      // (shared/outreach/outreachLanguage.ts) — never inferred from the name.
+      const { isOutreachLanguage, outreachLanguageForLead } = await import("@shared/outreach/outreachLanguage");
+      const sellerLead = property?.sellerId ? await storage.getLead(org.id, property.sellerId).catch(() => undefined) : undefined;
+      const letterLanguage = isOutreachLanguage(requestedLanguage)
+        ? requestedLanguage
+        : outreachLanguageForLead(sellerLead ?? null).language;
+      // The customer's own words in the letter get the same ethical-outreach
+      // check as any outreach copy, in either language.
+      if (typeof offerData.customMessage === "string" && offerData.customMessage.trim()) {
+        const { checkOutreachTemplate, refusesSend } = await import("@shared/regulatory/ethicalOutreach");
+        const findings = checkOutreachTemplate({ text: offerData.customMessage });
+        if (refusesSend(findings)) {
+          return Errors.badRequest(res, "The letter's message reads as deceptive to a landowner. Nothing was generated.", { outreachCheck: findings });
+        }
+      }
 
       const propertyAddress = property
         ? [property.address, property.city, property.state, property.zip]
@@ -2742,6 +2760,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         closingDays: offerData.closingDays ?? 30,
         offerExpirationDays: offerData.offerExpirationDays ?? 10,
         ...offerData,
+        language: letterLanguage,
       });
 
       if (sendForEsign && sellerEmail) {

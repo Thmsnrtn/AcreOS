@@ -261,6 +261,8 @@ import { registerPublicOwnerOptOutRoutes } from "./routes-owner-optout";
 import { registerFounderOwnerOptOutRoutes } from "./routes-founder-owner-optout";
 import { registerGivingRoutes } from "./routes-giving";
 import { registerTrustCheckRoutes } from "./routes-trust-checks";
+import { registerFounderCustomerOutcomeRoutes } from "./routes-founder-customer-outcomes";
+import { registerGrowthRoutes } from "./routes-growth";
 import { registerAgentClaimsRoutes } from "./routes-agent-claims";
 import { registerDispatchRoutes } from "./routes-dispatch";
 import { registerErrorBoundaryRoutes } from "./routes-error-boundary";
@@ -2615,6 +2617,7 @@ export async function registerRoutes(
   registerFounderOwnerOptOutRoutes(app); // W5a — Decisions door: owner requests
   registerGivingRoutes(app); // W5a — Decisions door: giving; Settings: membership panel
   registerTrustCheckRoutes(app); // W5a — Deals: fraud-check signals; Finance: collateral watch
+  registerFounderCustomerOutcomeRoutes(app);
   // W3 — creator revenue share, founder-only (Controls door section).
   registerFounderCreatorRoutes(app);
   // Solene (Layer 1 cap #2) — cross-agent claims founder read endpoint.
@@ -2713,6 +2716,9 @@ export async function registerRoutes(
   // plus the "Learn why" deep links from server/utils/errors.ts (docsSlug).
   registerKnowledgeBaseRoutes(app);
   registerMicroFeatureRoutes(app);
+  // W5b growth: outreach language, Pax language, A2P 10DLC, reversible
+  // imports, offline map packs, first-deal step, customer outcome.
+  registerGrowthRoutes(app);
   registerClosingRoutes(app);
   registerPlatformFeatureRoutes(app);
   // registerLeaseRoutes + registerMaintenanceRoutes removed — see import block.

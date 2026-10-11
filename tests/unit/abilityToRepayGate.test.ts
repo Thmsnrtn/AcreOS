@@ -589,8 +589,11 @@ describe("caller-path completeness — no ungated door into the notes table", ()
     expect(src.slice(at, at + 1500)).toContain('atrExemptionCode: "legacy"');
   });
 
-  it("demo seed (routes-admin) declares the business_purpose exemption on its synthetic active notes", () => {
-    const src = strippedSource("server/routes-admin.ts");
+  // The demo seeder moved out of routes-admin.ts into its own service (W5b
+  // audit, so its rows could carry the sample marker); the route delegates.
+  it("demo seed (Settings → Add Demo Data) declares the business_purpose exemption on its synthetic active notes", () => {
+    expect(strippedSource("server/routes-admin.ts")).toContain("seedDemoDataForOrg(org.id)");
+    const src = strippedSource("server/services/onboarding/demoDataSeeder.ts");
     const at = src.indexOf("storage.createNote(");
     expect(at).toBeGreaterThan(-1);
     expect(src.slice(at, at + 400)).toContain(

@@ -358,12 +358,35 @@ async function smsPurposeGate(input: SendOrgSmsInput): Promise<PurposeGateVerdic
 export async function sendOrgSMS(input: SendOrgSmsInput): Promise<SmsResult> {
   const { organizationId, to, message, mediaUrls, purpose } = input;
   const gate = await smsPurposeGate(input);
+  let refusal: string | null = null;
   if (!gate.allowed) {
     logger.warn(`[SMS] ${purpose} send blocked by TCPA gate: ${gate.reason}`, {
       metadata: { organizationId, purpose, leadId: gate.leadId, noteId: input.noteId },
     });
-    return { success: false, error: `TCPA gate: ${gate.reason}` };
+    refusal = `TCPA gate: ${gate.reason}`;
+  } else {
+    // A2P 10DLC (W5b): US carriers block business texts from an unregistered
+    // 10-digit long code, so a counterparty text is refused until the org's
+    // OWN brand + campaign registration is confirmed (read from its provider,
+    // or self-reported and labelled so). Every purpose: a payment notice from
+    // an unregistered number is blocked by the carrier just the same.
+    // Unverifiable → refuse (fail closed), like the purpose gate.
+    let a2p: { allowed: boolean; reason?: string };
+    try {
+      const { a2pGateForSms } = await import("./sms/a2pRegistration");
+      a2p = await a2pGateForSms(organizationId);
+    } catch (err) {
+      logger.error("[SMS] A2P registration could not be read — refusing (fail closed)", err instanceof Error ? err : undefined, {
+        metadata: { organizationId, purpose },
+      });
+      a2p = { allowed: false, reason: "your text-message registration could not be checked — refusing to send" };
+    }
+    if (!a2p.allowed) {
+      logger.warn(`[SMS] ${purpose} send blocked by A2P gate: ${a2p.reason}`, { metadata: { organizationId, purpose } });
+      refusal = `A2P gate: ${a2p.reason}`;
+    }
   }
+  if (refusal) return { success: false, error: refusal };
   let sid: string;
   try {
     const result = await commsRouter.route({
@@ -405,6 +428,16 @@ export async function sendOrgSMS(input: SendOrgSmsInput): Promise<SmsResult> {
     );
   }
   return { success: true, messageId: sid };
+}
+
+/**
+ * A refusal by one of sendOrgSMS's own gates (TCPA purpose gate or the A2P
+ * 10DLC registration gate) — a deferral for a sequence, a 403 for a person —
+ * as opposed to a carrier or network failure.
+ */
+export function isSmsGateRefusal(error: string | null | undefined): boolean {
+  const e = error ?? "";
+  return e.startsWith("TCPA gate:") || e.startsWith("A2P gate:");
 }
 
 /**

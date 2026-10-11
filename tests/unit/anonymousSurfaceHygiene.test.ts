@@ -20,9 +20,13 @@
  *    touches.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import fs from "fs";
 import path from "path";
+import { stripComments } from "../helpers/stripComments";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const ROOT = path.resolve(__dirname, "../..");
 const routesSrc = fs.readFileSync(path.join(ROOT, "server/routes.ts"), "utf-8");
@@ -72,6 +76,53 @@ describe("logout purges every tenant-bearing device store", () => {
 
   it("deletes the offline mutation queue database", () => {
     expect(authSrc).toMatch(/indexedDB\.deleteDatabase\("acreos-offline"\)/);
+  });
+
+  // POPULATION, not a name list (W5b audit): the offline field-map store
+  // (`acreos-offline-maps`, an org's parcel facts, readable by the sign-in-free
+  // /offline-map.html viewer) shipped without a logout purge while the test
+  // above, which names one database, stayed green. Every IndexedDB the client
+  // opens — app code and the public/ viewer and worker — must be deleted on
+  // logout, by name.
+  it("deletes EVERY IndexedDB database the client opens", () => {
+    const files: string[] = [];
+    const walk = (d: string) => {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        if (e.name === "node_modules" || e.name.startsWith(".")) continue;
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (/\.(ts|tsx|js)$/.test(e.name) && !/\.test\./.test(e.name)) files.push(p);
+      }
+    };
+    walk(path.join(ROOT, "client/src"));
+    walk(path.join(ROOT, "client/public"));
+    const strippedAuth = stripComments(authSrc);
+    const opened: Array<{ file: string; name: string | null }> = [];
+    for (const f of files) {
+      const src = stripComments(fs.readFileSync(f, "utf-8"));
+      for (const m of src.matchAll(/indexedDB\.open\(\s*([^,)]+)/g)) {
+        const arg = m[1].trim();
+        const lit = /^["'`]([^"'`]+)["'`]$/.exec(arg)?.[1];
+        const viaConst = /^[A-Za-z_$][\w$]*$/.test(arg)
+          ? new RegExp(`\\b${arg}\\s*=\\s*["'\`]([^"'\`]+)["'\`]`).exec(src)?.[1]
+          : undefined;
+        // An open whose name can't be resolved is COUNTED as unresolved, never skipped.
+        opened.push({ file: path.relative(ROOT, f), name: lit ?? viaConst ?? null });
+      }
+    }
+    expect(opened.length).toBeGreaterThanOrEqual(6);
+    expect(opened.filter((o) => o.name === null), "unresolved indexedDB.open name").toEqual([]);
+    expect(opened.map((o) => o.file)).toContain("client/public/offline-map.js");
+    for (const { file, name } of opened) {
+      expect(strippedAuth, `${file} opens "${name}" but logout never deletes it`).toContain(`indexedDB.deleteDatabase("${name}")`);
+    }
+  }, REPO_SWEEP_TIMEOUT_MS);
+
+  it("deletes the offline field-map tile cache", () => {
+    const store = fs.readFileSync(path.join(ROOT, "client/src/lib/offline-map-store.ts"), "utf-8");
+    const tileCache = /OFFLINE_TILE_CACHE\s*=\s*"([^"]+)"/.exec(store)?.[1];
+    expect(tileCache).toBeTruthy();
+    expect(stripComments(authSrc)).toContain(`caches.delete("${tileCache}")`);
   });
 
   it("the purge sits inside logout, after the server logout call", () => {

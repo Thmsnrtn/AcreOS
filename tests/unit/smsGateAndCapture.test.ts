@@ -35,7 +35,14 @@ vi.mock("../../server/services/comms/router", () => ({
     }),
   },
 }));
-vi.mock("../../server/services/comms/providers/twilio", () => ({ twilioProvider: {} }));
+// W5b: sendOrgSMS also refuses until the org's A2P 10DLC registration is
+// confirmed (tests/unit/a2pSmsGate.test.ts proves that refusal). These TCPA
+// tests are about consent, so the fixture org is REGISTERED: its own Twilio
+// number, and an approved registration row for it (served by the db double).
+vi.mock("../../server/services/comms/providers/twilio", () => ({
+  twilioProvider: {},
+  orgByoTwilioNumber: async () => "+15125550100",
+}));
 vi.mock("../../server/services/comms/providers/telnyx", () => ({}));
 
 // TCPA gate — scripted verdict (per lead when `gateByLead` names one).
@@ -128,6 +135,9 @@ vi.mock("../../server/db", () => ({
           // frequency-clean fixture. The gate then allows on the DEFAULT
           // caps, which is the state these consent tests are about.
           if (name === "lead_activities") return TOUCHES;
+          if (name === "sms_a2p_registrations") {
+            return [{ organizationId: 1, numberKind: "10dlc", phoneNumber: "+15125550100", brandStatus: "approved", campaignStatus: "approved", statusSource: "provider_api" }];
+          }
           return [];
         };
         // Every terminal in the builder must be thenable — the frequency gate

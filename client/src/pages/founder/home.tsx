@@ -27,6 +27,7 @@ import { FounderPulseStrip } from "@/components/founder/PulseStrip";
 import { LetterTrackRecord } from "@/components/founder/LetterTrackRecord";
 import { LetterConfession } from "@/components/founder/LetterConfession";
 import { LetterOutlook } from "@/components/founder/LetterOutlook";
+import { LetterCustomerOutcomes } from "@/components/founder/LetterCustomerOutcomes";
 import { ReadinessLadderLetterLine } from "@/components/founder/ReadinessLadderSection";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { usd, formatRelative } from "@/lib/format";
@@ -415,6 +416,12 @@ export default function FounderHomePage() {
               level, and the downturn runway. Collapsed; fetched when opened. */}
           <motion.div variants={staggerItem}>
             <LetterOutlook />
+          </motion.div>
+
+          {/* Customer outcomes (W5b) — closed deals and realised profit summed
+              across customers from real records, no organization named. */}
+          <motion.div variants={staggerItem}>
+            <LetterCustomerOutcomes />
           </motion.div>
 
           {/* Talk to your company */}

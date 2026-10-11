@@ -18,6 +18,7 @@
 
 import { assessHeirsProperty, HEIRS_PROPERTY_WARNING, type HeirsAssessment } from "@shared/regulatory/heirsProperty";
 import { checkOutreachTemplate, refusesSend, type OutreachFinding } from "@shared/regulatory/ethicalOutreach";
+import { OUTREACH_LANGUAGES, outreachLanguageForLead, type OutreachLanguage, type OutreachLanguageVerdict } from "@shared/outreach/outreachLanguage";
 import { limitsTierFor } from "@shared/billing/tier-limits";
 import type { Express, Response } from "express";
 import { createHash, randomUUID } from "node:crypto";
@@ -143,6 +144,9 @@ const quoteSchema = z.object({
   pieceType: z.enum(PIECE_TYPES),
   speed: z.enum(SPEEDS),
   copy: z.string().max(8000).optional(),
+  // W5b: the language the customer wrote this copy in (their choice). Used
+  // only to point out owners who asked for a different language.
+  language: z.enum(OUTREACH_LANGUAGES).optional(),
 });
 
 const previewSchema = quoteSchema.extend({
@@ -189,6 +193,8 @@ interface Recipient {
   lastContactedAt: Date | null;
   /** Heirs' property / partial-interest markers on the lead's record. */
   heirs: HeirsAssessment;
+  /** The owner's outreach language — only ever stated or customer-chosen (outreachLanguage.ts). */
+  language: OutreachLanguageVerdict;
 }
 
 /**
@@ -318,6 +324,8 @@ async function resolveAudience(
       zip: leads.zip,
       lastContactedAt: leads.lastContactedAt,
       notes: leads.notes,
+      outreachLanguage: leads.outreachLanguage,
+      outreachLanguageSource: leads.outreachLanguageSource,
     })
     .from(leads)
     .where(and(...conditions))
@@ -341,6 +349,7 @@ async function resolveAudience(
     zip: r.zip!,
     lastContactedAt: r.lastContactedAt,
     heirs: assessHeirsProperty({ names: [r.firstName, r.lastName, `${r.firstName ?? ""} ${r.lastName ?? ""}`], text: [r.notes] }),
+    language: outreachLanguageForLead(r),
   }));
 }
 
@@ -404,6 +413,11 @@ interface QuotePayload {
   heirsPropertyWarning: string | null;
   /** Findings of the ethical-outreach check (refuse findings block the queue). */
   outreachCheck: OutreachFinding[];
+  /**
+   * Recipients whose language was stated by the owner or chosen by the
+   * customer and differs from the language this copy is in. Never inferred.
+   */
+  languageMismatch: { copyLanguage: OutreachLanguage; count: number; leadIds: number[] } | null;
 }
 
 async function buildQuote(
@@ -412,6 +426,7 @@ async function buildQuote(
   pieceType: PieceType,
   speed: MailShipmentSpeed,
   copy: string | undefined,
+  copyLanguage: OutreachLanguage = "en",
 ): Promise<QuotePayload> {
   const pieces = recipientsToMailPieces(recipients, pieceType);
 
@@ -431,6 +446,7 @@ async function buildQuote(
     heirsPropertyCount: heirsFlagged.length,
     heirsPropertyLeadIds: heirsFlagged.slice(0, 50).map((r) => r.leadId),
     heirsPropertyWarning: heirsFlagged.length > 0 ? HEIRS_PROPERTY_WARNING : null,
+    languageMismatch: languageMismatchOf(recipients, copyLanguage),
   };
   if (pieces.length === 0) {
     return {
@@ -509,6 +525,12 @@ async function buildQuote(
   };
 }
 
+function languageMismatchOf(recipients: Recipient[], copyLanguage: OutreachLanguage): QuotePayload["languageMismatch"] {
+  const other = recipients.filter((r) => r.language.basis !== "default" && r.language.language !== copyLanguage);
+  if (other.length === 0) return null;
+  return { copyLanguage, count: other.length, leadIds: other.slice(0, 50).map((r) => r.leadId) };
+}
+
 // ── Route registration ──────────────────────────────────────────────────────
 
 export function registerOutreachMailRoutes(app: Express): void {
@@ -537,7 +559,7 @@ export function registerOutreachMailRoutes(app: Express): void {
       try {
         const orgId = getOrganizationId(req);
         const recipients = await resolveAudience(orgId, parsed.data.audienceFilter);
-        const quote = await buildQuote(orgId, recipients, parsed.data.pieceType, parsed.data.speed, parsed.data.copy);
+        const quote = await buildQuote(orgId, recipients, parsed.data.pieceType, parsed.data.speed, parsed.data.copy, parsed.data.language ?? "en");
         res.json(quote);
       } catch (err) {
         if (err instanceof AudienceRefusal) return sendAudienceRefusal(res, err);
@@ -576,6 +598,7 @@ export function registerOutreachMailRoutes(app: Express): void {
             city: r.city,
             state: r.state,
             zip: r.zip,
+            language: r.language,
           })),
           copy: parsed.data.copy ?? null,
         });

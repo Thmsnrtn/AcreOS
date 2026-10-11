@@ -28,6 +28,10 @@ import { Errors } from "../utils/errors";
 /** The body size limit for JSON and urlencoded bodies (Task #204). */
 const BODY_LIMIT = "1mb";
 
+/** POST /api/lead-imports/parse-spreadsheet (server/routes-growth.ts) and its limit. */
+const SPREADSHEET_IMPORT_PATH = "/api/lead-imports/parse-spreadsheet";
+const SPREADSHEET_IMPORT_BODY_LIMIT = "15mb";
+
 /** At most this many offending paths are reported; the walk stops there. */
 const MAX_REPORTED = 20;
 
@@ -125,6 +129,20 @@ function rejectNulInBody(req: Request, res: Response, next: NextFunction): void 
  * (inboundEmailSignature, csrf).
  */
 export function installBodyParsers(app: Express): void {
+  // The ONE route allowed a larger JSON body: the spreadsheet importer posts
+  // the .xlsx as base64 (W5b; route schema caps it at 14,000,000 chars ≈ a
+  // 10 MB workbook). Under the 1 MB app-wide limit every real export above
+  // ~750 KB was a 413 before the route ran. Path-scoped and registered first;
+  // the app-wide parser below sees the body already parsed and skips it.
+  app.use(
+    SPREADSHEET_IMPORT_PATH,
+    express.json({
+      limit: SPREADSHEET_IMPORT_BODY_LIMIT,
+      verify: (req, _res, buf) => {
+        (req as Request & { rawBody?: unknown }).rawBody = buf;
+      },
+    }),
+  );
   app.use(
     express.json({
       limit: BODY_LIMIT,

@@ -42,6 +42,7 @@ import { TodayActivityFeed } from "@/components/today/ActivityFeed";
 import { MorningBrief } from "@/components/today/MorningBrief";
 import { ParcelAlerts } from "@/components/today/ParcelAlerts";
 import { OutcomePrompt } from "@/components/today/OutcomePrompt";
+import { FirstDealCard } from "@/components/today/FirstDealCard";
 import { getTodayLayout } from "@/components/today/TodayLayout";
 import "./today.css";
 
@@ -614,6 +615,13 @@ export default function TodayPage() {
           )}
         </div>
       </div>
+
+      {/* ── First deal in 90 days (W5b) ─────────────────────────────────── */}
+      {/* The one next concrete step toward the org's first closed deal, from
+          its real records (shared/growth/firstDeal.ts). Shown in the empty
+          state too — "import a list" IS the step there. Renders nothing once
+          a deal has closed. An attention item, so a card on Today. */}
+      {!todayError && <FirstDealCard />}
 
       {/* ── Empty-state: single pathway, persona-branched (W2.3) ─────── */}
       {showEmptyState && (

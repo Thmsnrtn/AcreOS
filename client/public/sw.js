@@ -31,6 +31,15 @@ const OFFLINE_STORE = 'pending-requests';
 // wrong.
 const OFFLINE_DB_VERSION = 2;
 
+// Offline field maps (W5b). Saved by client/src/lib/offline-map-store.ts;
+// named WITHOUT the `acreos-` prefix so the activate step below (which clears
+// every `acreos-*` cache but the current two) never wipes a saved area on a
+// version bump. Hosts listed here are the sources whose terms allow offline
+// caching (shared/map/offlineSources.ts, policy "allowed") — pinned equal by
+// tests/unit/offlineMapSources.test.ts.
+const OFFLINE_TILE_CACHE = 'offline-map-tiles-v1';
+const OFFLINE_TILE_HOSTS = ['basemap.nationalmap.gov'];
+
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
@@ -301,6 +310,18 @@ self.addEventListener('fetch', (event) => {
 
   if (request.method !== 'GET') return;
 
+  // Saved offline tiles: answer from the offline cache first (a field visit
+  // in airplane mode), else the network — and never copy live tiles into the
+  // static cache, which is for the app shell.
+  if (OFFLINE_TILE_HOSTS.includes(url.host)) {
+    event.respondWith(
+      caches.open(OFFLINE_TILE_CACHE)
+        .then((cache) => cache.match(request.url, { ignoreVary: true }))
+        .then((hit) => hit || fetch(request))
+    );
+    return;
+  }
+
   if (url.pathname.startsWith('/api/')) {
     const shouldCache = CACHEABLE_API_ROUTES.some(route => url.pathname.startsWith(route));
 
@@ -323,8 +344,10 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (request.destination === 'document') {
+    // Offline, a page saved for offline use (the field map, /offline-map.html)
+    // is served as itself; anything else falls back to the app shell.
     event.respondWith(
-      fetch(request).catch(() => caches.match('/'))
+      fetch(request).catch(async () => (await caches.match(request, { ignoreSearch: true })) || caches.match('/'))
     );
     return;
   }
