@@ -20,9 +20,14 @@
  *      test needs (ids, geometry, the context layers it recomputes from, and
  *      the fact labels). An unknown field fails whatever it is called.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
+
+// Walks a fixture directory of ~750 KB of JSON; declare the sweep budget so a
+// slow coverage run cannot silently stop this gate reporting.
+vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 
 const root = path.resolve(__dirname, "../..");
 const FIXTURE_DIR = path.join(root, "tests/fixtures/land-data");
