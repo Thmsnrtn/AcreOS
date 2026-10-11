@@ -1524,18 +1524,25 @@ if (stale.length > 0 && !MEASURE_ONLY) {
   for (const s of stale) console.error(`  ✗ ${s}`);
 }
 
+// The verdict is the LAST thing printed, so these final exits set
+// process.exitCode and let Node end naturally instead of calling
+// process.exit(). process.exit() does not wait for stdout: when stdout is a
+// pipe whose reader is slow (a vitest worker under full-suite load in CI),
+// the tail of a ~50 KB report was still queued and was dropped -- exit 0, no
+// signal, and the output cut at a different line in each of four CI runs on
+// 2026-10-11, always before the PASS line reachabilityGate.test.ts looks for.
 if (MEASURE_ONLY) {
   console.log(`${TAG} measure-only — no gate applied`);
-  process.exit(0);
-}
-if (failed) {
+  process.exitCode = 0;
+} else if (failed) {
   console.error(
     `${TAG} FAIL — reachability ratchet violated. Remember: DELETION is the ` +
       `cheapest way to satisfy this gate.`,
   );
-  process.exit(1);
+  process.exitCode = 1;
+} else {
+  console.log(
+    `${TAG} PASS — all ${ROOTED_FAMILIES.length} reachability counts at baseline`,
+  );
+  process.exitCode = 0;
 }
-console.log(
-  `${TAG} PASS — all ${ROOTED_FAMILIES.length} reachability counts at baseline`,
-);
-process.exit(0);
