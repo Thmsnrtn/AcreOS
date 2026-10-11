@@ -77,14 +77,14 @@ const LINTER = join(REPO_ROOT, "scripts", "lint-reachability.mjs");
  * speaks up could not see the thing it was asserting on. Merging both streams on
  * both paths is what makes the negative assertions here mean anything.
  */
-function run(...args: string[]): { code: number; out: string } {
+function run(...args: string[]): { code: number; out: string; signal: NodeJS.Signals | null } {
   const r = spawnSync("node", [LINTER, ...args], {
     cwd: REPO_ROOT,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024, // --report over the real repo prints thousands of findings
   });
   if (r.error) throw r.error;
-  return { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+  return { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}`, signal: r.signal };
 }
 
 /**
@@ -1217,9 +1217,15 @@ describe("lint-reachability — the real repo", () => {
    * under load rather than left to chance. The scan itself is unchanged.
    */
   it("passes at its own committed baseline", () => {
-    const { code, out } = run();
-    expect(out).toContain("[lint-reachability] PASS");
-    expect(code).toBe(0);
+    const { code, out, signal } = run();
+    // On failure, say HOW the linter ended and show its LAST lines: the
+    // default diff prints the head of a 50 KB output, which is all allowlist
+    // reasons and never the verdict. (CI 2026-10-11 cut the output off at a
+    // different line in three runs while every local run passed.)
+    const verdict = `linter exit=${code} signal=${signal ?? "none"}; last lines:\n${out.trimEnd().split("\n").slice(-25).join("\n")}`;
+    expect(signal, verdict).toBeNull();
+    expect(out.includes("[lint-reachability] PASS"), verdict).toBe(true);
+    expect(code, verdict).toBe(0);
   }, 120_000);
 
   it("declares every family baseline in scripts/ratchets/reachability.json", async () => {
