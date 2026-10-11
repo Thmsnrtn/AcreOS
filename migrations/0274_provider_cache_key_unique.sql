@@ -1,4 +1,4 @@
--- 0273 — provider_cache.cache_key is UNIQUE, as shared/schema/platform-runtime.ts
+-- 0274 — provider_cache.cache_key is UNIQUE, as shared/schema/platform-runtime.ts
 -- has always declared (`cacheKey: text("cache_key").notNull().unique()`).
 --
 -- No DDL in this repository ever created that uniqueness: migrate.mjs made the

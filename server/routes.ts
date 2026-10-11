@@ -97,6 +97,9 @@ import { registerPublicHealthRoutes } from "./routes-health";
 import { registerMarketingTouchRoutes } from "./routes-marketing-touch";
 import publicParcelCheckRouter from "./routes-public-parcel-check";
 import publicParcelReportRouter, { registerPublicParcelReportPages } from "./routes-public-parcel-report";
+import { registerPublicLandRoutes } from "./routes-public-land";
+import { registerAcquisitionOfferRoutes, registerPublicOfferRoutes } from "./routes-acquisition-offers";
+import { registerFounderCreatorRoutes } from "./routes-founder-creators";
 import aiDisclosureRouter from "./routes-ai-disclosure";
 import paxDisclosureRouter from "./routes-pax-disclosure";
 import featureFlagsRouter from "./routes-feature-flags";
@@ -617,6 +620,13 @@ export async function registerRoutes(
   // registered here so they win over the SPA-shell catch-all.
   app.use("/api/public/parcel-report", publicParcelReportRouter);
   registerPublicParcelReportPages(app);
+
+  // W3 acquisition engine — the free landlocked checker, county guides (only
+  // where AcreOS keeps parcels), the land sitemaps and /llms.txt. Read-only,
+  // rate-limited, registered here so the page routes win over the SPA shell.
+  registerPublicLandRoutes(app);
+  // The founding-member offer's public availability (no price while unset).
+  registerPublicOfferRoutes(app);
 
   // /api/health/cached (Fly's health-check target) is registered by
   // registerPublicHealthRoutes above, with the same status-only body.
@@ -2547,6 +2557,10 @@ export async function registerRoutes(
   // this county" CTA (maps surface) that demand-drives discovery-on-miss.
   registerCountyCoverageRoutes(app);
   registerLandDataRoutes(app);
+  // W3 — the founding-member yearly offer and the per-parcel due-diligence
+  // report. Both ship with the price unset and refuse until the founder sets
+  // it. Mounted after csrfProtection: both carry signed-in POSTs.
+  registerAcquisitionOfferRoutes(app);
   // Cost summary — /api/founder/cost-summary. Consolidated cost view for
   // the /founder/cost screen (AI spend + infra + per-org breakdown).
   registerFounderCostRoutes(app);
@@ -2592,6 +2606,8 @@ export async function registerRoutes(
   // silently 404'd into Phase 0 placeholders.
   registerFounderMoneyRoutes(app);
   registerFounderForecastingRoutes(app);
+  // W3 — creator revenue share, founder-only (Controls door section).
+  registerFounderCreatorRoutes(app);
   // Solene (Layer 1 cap #2) — cross-agent claims founder read endpoint.
   registerAgentClaimsRoutes(app);
   // Solene (Layer 1 cap #1) — founder HTTP surface for the dispatch queue:

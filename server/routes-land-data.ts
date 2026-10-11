@@ -9,29 +9,24 @@
  *                                                (through the crosswalk, so a renumbered id still resolves)
  *   GET  /api/land-data/national/:category       one small national dataset at a point (provider registry)
  *
- * Facts reach the customer ONLY through projectFactsForCustomer() — the
+ * Facts reach the customer ONLY through projectFactsForCustomer() (via
+ * serializeOwnedParcelForCustomer in services/landData/ownedParcelView.ts) — the
  * accuracy gate. A fact whose sample has not passed is withheld with its
  * reason (tests/unit/landDataAccuracyGate.test.ts pins this route's use).
  */
 
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { and, eq, isNull, sql } from "drizzle-orm";
 import { isAuthenticated } from "./auth/clerkAuth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId } from "./types/request";
 import { Errors } from "./utils/errors";
-import { db } from "./db";
-import { parcelSnapshots, type ParcelSnapshot } from "@shared/schema";
-import { COUNTY_SOURCE_CENSUS, censusRowFor } from "@shared/landData/countySourceCensus";
-import { FACT_ACCURACY, projectFactsForCustomer } from "@shared/landData/factAccuracyGate";
-import { parcelTruths } from "@shared/landData/parcelTruths";
-import { taxSaleSourcesFor } from "@shared/landData/taxSaleSources";
-import type { ParcelFactSet } from "@shared/landData/parcelFacts";
+import { COUNTY_SOURCE_CENSUS } from "@shared/landData/countySourceCensus";
 import { STATEWIDE_PARCEL_ENDPOINTS } from "./services/statewideParcelEndpoints";
 import { enqueueCountyProcessing, getCountyJob } from "./services/landData/countyPipeline";
-import { normalizeCountyName, ownedApn, OWNED_SNAPSHOT_SOURCE } from "./services/landData/ownedParcelStore";
+import { normalizeCountyName, ownedApn } from "./services/landData/ownedParcelStore";
+import { findOwnedParcelByKey, findOwnedParcelRow, ownedViewOf, serializeOwnedParcelForCustomer } from "./services/landData/ownedParcelView";
 import {
   NATIONAL_DATASET_CATEGORIES,
   nationalDatasetReadiness,
@@ -50,69 +45,10 @@ const pointSchema = z.object({
   state: z.string().trim().length(2).optional(),
 });
 
-/** The owned-parcel fields a customer view needs, from a parcel_snapshots row. */
-export interface OwnedParcelView {
-  parcelKey: string;
-  state: string;
-  county: string;
-  sourceParcelId: string;
-  sourceName: string;
-  retrievedAt: Date | null;
-  gisAcres: number;
-  deededAcres: number | null;
-  facts: unknown;
-  attributes: unknown;
-}
-
-export function ownedViewOf(row: ParcelSnapshot): OwnedParcelView {
-  const raw = (row.rawData ?? {}) as Record<string, unknown>;
-  return {
-    parcelKey: row.parcelKey ?? "",
-    state: row.state,
-    county: row.county,
-    sourceParcelId: row.apn,
-    sourceName: typeof raw.sourceName === "string" ? raw.sourceName : "unknown",
-    retrievedAt: row.fetchedAt ?? null,
-    gisAcres: Number(row.acres ?? 0),
-    deededAcres: typeof raw.deededAcres === "number" ? raw.deededAcres : null,
-    facts: row.facts,
-    attributes: raw.attributes ?? {},
-  };
-}
-
-/** Serialize an owned parcel for a customer: gated facts + truths. Exported for the gate test. */
-export function serializeOwnedParcelForCustomer(row: OwnedParcelView) {
-  const facts = (row.facts ?? {}) as Partial<ParcelFactSet>;
-  const projection = projectFactsForCustomer(facts);
-  const attrs = (row.attributes ?? {}) as Record<string, unknown>;
-  const access = facts.legal_access_indication?.status === "computed" ? facts.legal_access_indication.value : null;
-  return {
-    parcelKey: row.parcelKey,
-    state: row.state,
-    county: row.county,
-    sourceParcelId: row.sourceParcelId,
-    source: { name: row.sourceName, retrievedAt: row.retrievedAt },
-    gisAcres: row.gisAcres,
-    deededAcres: row.deededAcres,
-    // Each shown fact carries the accuracy sample that let it through.
-    facts: projection.shown.map((f) => {
-      const a = FACT_ACCURACY[f.key];
-      return { ...f, accuracy: { check: a.check, sampleSize: a.sampleSize ?? 0, agreed: a.agreed ?? 0, verifiedOn: a.verifiedOn ?? null } };
-    }),
-    withheldFacts: projection.withheld,
-    countyCoverage: censusRowFor(row.state, row.county)?.coverage ?? null,
-    truths: parcelTruths({
-      state: row.state,
-      county: row.county,
-      gisAcres: row.gisAcres,
-      deededAcres: row.deededAcres,
-      subdivision: typeof attrs.SUBDIV === "string" ? attrs.SUBDIV : null,
-      lot: typeof attrs.LOT === "string" ? attrs.LOT : null,
-      accessIndication: access,
-    }),
-    taxSaleSources: taxSaleSourcesFor(row.state, row.county),
-  };
-}
+// The customer projection lives in the land-data service so the public report,
+// the landlocked checker and the county guides render exactly what this door
+// renders (one gate, one serializer). Re-exported for existing importers.
+export { ownedViewOf, serializeOwnedParcelForCustomer, type OwnedParcelView } from "./services/landData/ownedParcelView";
 
 export function registerLandDataRoutes(app: Express) {
   app.get("/api/land-data/coverage", isAuthenticated, getOrCreateOrg, async (_req: AuthenticatedRequest, res: Response) => {
@@ -166,13 +102,9 @@ export function registerLandDataRoutes(app: Express) {
     const key = String(req.params.parcelKey ?? "").slice(0, 200);
     if (!key) return Errors.badRequest(res, "A parcel key is required.");
     try {
-      const [row] = await db
-        .select()
-        .from(parcelSnapshots)
-        // Owned parcels are GLOBAL public-record rows (organization_id NULL):
-        // never another tenant's data.
-        .where(and(isNull(parcelSnapshots.organizationId), eq(parcelSnapshots.source, OWNED_SNAPSHOT_SOURCE), eq(parcelSnapshots.parcelKey, key)))
-        .limit(1);
+      // Owned parcels are GLOBAL public-record rows (organization_id NULL):
+      // never another tenant's data.
+      const row = await findOwnedParcelByKey(key);
       if (!row) return Errors.notFound(res, "Parcel");
       res.json(serializeOwnedParcelForCustomer(ownedViewOf(row)));
     } catch (err) {
@@ -186,23 +118,10 @@ export function registerLandDataRoutes(app: Express) {
     try {
       const county = normalizeCountyName(parsed.data.county);
       // The same canonical APN form the pipeline stored (parcelRef.ts).
-      const apn = ownedApn(parsed.data.state, county, parsed.data.apn);
-      if (!apn) return Errors.badRequest(res, "That parcel id is not usable.");
+      if (!ownedApn(parsed.data.state, county, parsed.data.apn)) return Errors.badRequest(res, "That parcel id is not usable.");
       // Current id OR any id this parcel carried before (the crosswalk), so a
       // renumbered parcel still resolves to the same land.
-      const [row] = await db
-        .select()
-        .from(parcelSnapshots)
-        .where(
-          and(
-            isNull(parcelSnapshots.organizationId),
-            eq(parcelSnapshots.source, OWNED_SNAPSHOT_SOURCE),
-            eq(parcelSnapshots.state, parsed.data.state.toUpperCase()),
-            eq(parcelSnapshots.county, county),
-            sql`(${parcelSnapshots.apn} = ${apn} OR jsonb_exists(${parcelSnapshots.rawData}->'sourceIdHistory', ${apn}))`,
-          ),
-        )
-        .limit(1);
+      const row = await findOwnedParcelRow(parsed.data.state, county, parsed.data.apn);
       if (!row) {
         const job = await getCountyJob(parsed.data.state, county);
         return res.json({

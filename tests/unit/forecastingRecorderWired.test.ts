@@ -25,11 +25,20 @@ describe("wiring", () => {
     const row = JOB_ROSTER.find((r) => r.name === "forecasting_monthly");
     expect(row?.cron).toBe("0 6 25 * *");
   });
-  it("does its work in one hour a month (the 25th, 06:00 UTC), by the one clock", () => {
+  it("runs once a month from the 25th, 06:00 UTC, catching up if that hour was missed, by the one clock", async () => {
     const src = stripComments(readFileSync("server/jobs/forecastingJobs.ts", "utf8"));
     expect(src).toMatch(/FORECASTING_MONTHLY_DAY = 25/);
     expect(src).toMatch(/FORECASTING_MONTHLY_HOUR_UTC = 6/);
-    expect(src).toMatch(/isForecastingHour\(clock\.now\(\)\)/);
+    expect(src).toMatch(/forecastingWindowStart\(clock\.now\(\)\)/);
+    // Once per window: a logged success inside the window stops a re-run.
+    expect(src).toMatch(/alreadyRanThisWindow\(start\)/);
+    const { forecastingWindowStart } = await import("../../server/jobs/forecastingJobs");
+    expect(forecastingWindowStart(new Date("2026-10-25T05:59:00Z"))).toBeNull();
+    expect(forecastingWindowStart(new Date("2026-10-24T23:00:00Z"))).toBeNull();
+    expect(forecastingWindowStart(new Date("2026-10-25T06:00:00Z"))?.toISOString()).toBe("2026-10-25T06:00:00.000Z");
+    // A restart across 06:00 on the 25th used to skip the month; a later hour now still runs it.
+    expect(forecastingWindowStart(new Date("2026-10-27T13:00:00Z"))?.toISOString()).toBe("2026-10-25T06:00:00.000Z");
+    expect(forecastingWindowStart(new Date("2026-11-03T13:00:00Z"))).toBeNull();
   });
   it("the provider is registered for macro_series in providers-init", () => {
     const src = stripComments(readFileSync("server/providers-init.ts", "utf8"));

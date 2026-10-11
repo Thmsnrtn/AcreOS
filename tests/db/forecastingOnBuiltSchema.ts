@@ -22,7 +22,7 @@
  *      target month is published they are scored, and the customer gate stays
  *      shut on a record this thin.
  *   5. The registry's provider_cache write actually lands (its ON CONFLICT
- *      (cache_key) needs the unique index 0273 adds; without it every write
+ *      (cache_key) needs the unique index 0274 adds; without it every write
  *      failed silently and nothing was ever cached), and a re-write upserts.
  *   6. A county slot counts DISTINCT organisations: one customer's thirty
  *      outcomes over a year is still "warming up", never a county forecast.
@@ -195,6 +195,13 @@ async function main() {
     await recordCustomerOutcomes();
     const again = await mine();
     check(again.length === 4 && again.find((x) => x.kind === "deal_closed")?.values.priceCents === 2_500_000, "editing the deal later does not change what was recorded");
+    // AcreOS's own (founder) org is not a customer: its outcomes must not be
+    // recorded, or it could supply one of a county slot's three organisations.
+    await db.update(organizations).set({ isFounder: true }).where(eq(organizations.id, orgId));
+    await db.insert(offers).values({ organizationId: orgId, propertyId: p.id, status: "rejected", cashOffer: "4000", respondedAt: new Date("2026-02-01") });
+    await recordCustomerOutcomes();
+    check((await mine()).length === 4, "a founder org's new outcome is not recorded");
+    await db.update(organizations).set({ isFounder: false }).where(eq(organizations.id, orgId));
 
     // ── 6. a county slot needs distinct customers, not just outcomes ─────
     const { countySlots } = await import("../../server/services/forecasting/saturation");

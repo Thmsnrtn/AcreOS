@@ -207,5 +207,9 @@ export async function persistLoadedCounty(
   const stored = await loadOwnedCounty(target, parcels);
   const { recordReceipt } = await import("./openDataBucket");
   for (const r of receipts) await recordReceipt(target.state, normalizeCountyName(target.county), r);
+  // The county now has a public guide and parcel pages: tell IndexNow
+  // (best-effort; dormant without a key).
+  const { announceCountyLoaded } = await import("../publicCountyGuide");
+  await announceCountyLoaded(target.state, target.county);
   return { stored, receiptsRecorded: receipts.length };
 }

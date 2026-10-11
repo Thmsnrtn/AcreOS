@@ -20,7 +20,7 @@
  * Tenancy: outcomes are read one organisation at a time, every query carrying
  * that organisation's id.
  */
-import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import { db } from "../../db";
 import {
   campaignResponses,
@@ -269,9 +269,18 @@ export interface OutcomeRecordingReport {
   appended: number;
 }
 
-/** Record every organisation's outcomes; an outcome already recorded is left exactly as it was. */
+/**
+ * Record every CUSTOMER organisation's outcomes; an outcome already recorded is
+ * left exactly as it was. Founder orgs (organizations.is_founder) are excluded:
+ * they are AcreOS's own, so counting them would let AcreOS supply one of the
+ * "at least 3 organisations" a county slot needs and present its own activity
+ * as the market's.
+ */
 export async function recordCustomerOutcomes(): Promise<OutcomeRecordingReport> {
-  const orgs = await db.select({ id: organizations.id }).from(organizations);
+  const orgs = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(or(eq(organizations.isFounder, false), isNull(organizations.isFounder)));
   const report: OutcomeRecordingReport = { organizations: orgs.length, seen: 0, appended: 0 };
   for (const { id: organizationId } of orgs) {
     try {

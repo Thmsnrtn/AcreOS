@@ -12,6 +12,7 @@
  */
 
 import { Router } from "express";
+import { Errors } from "./utils/errors";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { marketWatchlistService } from "./services/marketWatchlist";
@@ -46,8 +47,8 @@ router.post("/", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const entry = await marketWatchlistService.addToWatchlist(org.id, String(user.id), data);
     res.status(201).json(entry);
   } catch (err: any) {
-    if (err.issues) return res.status(400).json({ message: "Validation failed", errors: err.issues });
-    res.status(500).json({ message: err.message });
+    if (err.issues) return Errors.validationFailed(res, err.issues);
+    return Errors.internal(res, err);
   }
 });
 

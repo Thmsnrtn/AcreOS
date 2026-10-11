@@ -14371,3 +14371,6 @@ export * from "./schema/platform-runtime";
 export * from "./schema/billing-platform";
 export * from "./schema/crm-workspace";
 export * from "./schema/parcel-data";
+// W3 acquisition engine — creator revenue share (AcreOS's own money to
+// creators; rules in shared/billing/creatorProgram.ts).
+export * from "./schema/creators";

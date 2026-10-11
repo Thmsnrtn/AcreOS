@@ -140,6 +140,26 @@ const META_BY_PATH: Record<string, RouteMeta> = {
       "Plain-English definitions of the vocabulary every Land Investor needs — yellow letter, skip trace, AVM, BPO, executory contract, balloon, escrow shortfall, and more.",
     ogType: "website",
   },
+  "/tools/landlocked": {
+    title: "Is this parcel landlocked? Free road-access check · AcreOS",
+    description:
+      "Check whether a road touches a parcel's mapped boundary, answered from AcreOS's own verified road-access fact — with its source, its date, and what a map cannot tell you about easements and legal access.",
+    ogType: "website",
+    jsonLd: [
+      {
+        id: "landlocked-webapp",
+        data: {
+          "@context": "https://schema.org",
+          "@type": "WebApplication",
+          name: "Is this parcel landlocked? (AcreOS)",
+          applicationCategory: "UtilitiesApplication",
+          operatingSystem: "Any (web)",
+          url: `${SITE_BASE_URL}/tools/landlocked`,
+          isAccessibleForFree: true,
+        },
+      },
+    ],
+  },
   "/learn": {
     title: "Learn — land investing guides by state & county · AcreOS",
     description:

@@ -242,6 +242,11 @@
     },
     {
       "kind": "export",
+      "id": "server/jobs/forecastingJobs.ts::forecastingWindowStart",
+      "reason": "TEST SEAM (W3+W4 integration, 2026-10-11). The monthly forecasting run's catch-up window, pure. Production reaches it through startForecastingMonthlyJob's hourly tick (same module); exported so forecastingRecorderWired.test.ts proves a restart across 06:00 on the 25th no longer skips the month. REVOCATION: when a production module imports it, remove this entry."
+    },
+    {
+      "kind": "export",
       "id": "server/services/aiAllowance.ts::__resetAiAllowanceCacheForTests",
       "reason": "TEST SEAM (2026-10 cost efficiency). Clears the 30-second per-org allowance cache so aiAllowanceEnforcedEverywhere.test.ts can drive under/over-allowance states in one process. Production never needs to clear it: the TTL is the reset."
     },

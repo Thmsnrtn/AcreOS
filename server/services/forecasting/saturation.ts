@@ -6,8 +6,8 @@
  * organisations; nothing per-organisation leaves this module. The bypass is
  * the sanctioned, logged `unscopedForPlatformOps`.
  */
-import { and, count, countDistinct, eq, gte, isNotNull, max, min, sql } from "drizzle-orm";
-import { campaignDeliveryEvents, campaigns, customerOutcomeObservations, leads } from "@shared/schema";
+import { and, count, countDistinct, eq, gte, isNotNull, isNull, max, min, or, sql } from "drizzle-orm";
+import { campaignDeliveryEvents, campaigns, customerOutcomeObservations, leads, organizations } from "@shared/schema";
 import { unscopedForPlatformOps } from "../../utils/orgScopedDb";
 import { aggregateSaturation, countyForecastSlot, SATURATION_FLOORS, type CountySaturation, type CountySlot } from "@shared/forecasting/slots";
 import { clock } from "../../utils/clock";
@@ -23,6 +23,8 @@ export async function mailSaturation(): Promise<CountySaturation[]> {
     .from(campaignDeliveryEvents)
     .innerJoin(campaigns, eq(campaigns.id, campaignDeliveryEvents.campaignId))
     .innerJoin(leads, and(eq(leads.id, campaignDeliveryEvents.leadId), eq(leads.organizationId, campaigns.organizationId)))
+    // AcreOS's own (founder) orgs are not "customers": they may not supply one of the org floor's three.
+    .innerJoin(organizations, and(eq(organizations.id, campaigns.organizationId), or(eq(organizations.isFounder, false), isNull(organizations.isFounder))))
     .where(and(eq(campaignDeliveryEvents.channel, "direct_mail"), gte(campaignDeliveryEvents.sentAt, since), isNotNull(leads.state), isNotNull(leads.county)))
     .groupBy(campaigns.organizationId, leads.state, leads.county);
   return aggregateSaturation(rows.map((r) => ({ organizationId: r.organizationId, state: r.state ?? "", county: r.county ?? "", pieces: Number(r.pieces) })));

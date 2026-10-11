@@ -11348,12 +11348,50 @@ END $$`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "customer_outcome_obs_org_kind_subject_uk" ON "customer_outcome_observations" ("organization_id", "kind", "subject_table", "subject_id")`,
   `CREATE INDEX IF NOT EXISTS "customer_outcome_obs_org_observed_idx" ON "customer_outcome_observations" ("organization_id", "observed_at")`,
 
-  // 0273 — provider_cache.cache_key UNIQUE, as shared/schema declares. Every
+  // 0273 — W3 acquisition engine: creator revenue share tables and the
+  // founding-member offer flag (off). Mirrors migrations/0273_acquisition_engine.sql.
+  `CREATE TABLE IF NOT EXISTS "creators" (
+    "id"           serial PRIMARY KEY,
+    "code"         text NOT NULL,
+    "display_name" text NOT NULL,
+    "contact"      text,
+    "status"       text NOT NULL DEFAULT 'active',
+    "created_by"   text,
+    "created_at"   timestamp with time zone NOT NULL DEFAULT now()
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "creators_code_uq" ON "creators" ("code")`,
+  `CREATE TABLE IF NOT EXISTS "creator_conversions" (
+    "id"                serial PRIMARY KEY,
+    "creator_id"        integer NOT NULL REFERENCES "creators"("id"),
+    "stripe_invoice_id" text NOT NULL,
+    "amount_paid_cents" integer NOT NULL,
+    "currency"          text NOT NULL DEFAULT 'usd',
+    "paid_at"           timestamp with time zone NOT NULL,
+    "commission_bps"    integer,
+    "commission_cents"  integer,
+    "status"            text NOT NULL,
+    "payout_batch"      text,
+    "approved_by"       text,
+    "approved_at"       timestamp with time zone,
+    "paid_reference"    text,
+    "payout_paid_at"    timestamp with time zone,
+    "void_reason"       text,
+    "created_at"        timestamp with time zone NOT NULL DEFAULT now()
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "creator_conversions_invoice_uq" ON "creator_conversions" ("stripe_invoice_id")`,
+  `CREATE INDEX IF NOT EXISTS "creator_conversions_creator_status_idx" ON "creator_conversions" ("creator_id", "status")`,
+  `INSERT INTO "platform_feature_flags" ("key", "label", "description", "enabled", "state", "controlled_routes")
+    VALUES ('offer.founding_member_yearly', 'Founding-member yearly offer',
+            'Shows the founding-member yearly offer page. The page still refuses until the founder sets the plan and price.',
+            false, 'off', '[]'::jsonb)
+    ON CONFLICT ("key") DO NOTHING`,
+
+  // 0274 — provider_cache.cache_key UNIQUE, as shared/schema declares. Every
   // registry cache write is ON CONFLICT (cache_key), which fails without it;
   // the lookup swallowed the error, so nothing was ever cached on a database
   // built from this repo. Duplicates (cache, not records) keep the newest row.
   // A drizzle-push database already has this index name: no-op there.
-  // Mirrors migrations/0273_provider_cache_key_unique.sql.
+  // Mirrors migrations/0274_provider_cache_key_unique.sql.
   `DELETE FROM "provider_cache" a USING "provider_cache" b WHERE a."cache_key" = b."cache_key" AND a."id" < b."id"`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "provider_cache_cache_key_unique" ON "provider_cache" ("cache_key")`,
 ];

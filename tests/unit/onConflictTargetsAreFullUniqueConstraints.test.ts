@@ -88,7 +88,7 @@ const KNOWN_UNARBITRATED: Record<string, number> = {
 // index's own predicate (IDEMPOTENCY_KEY_INDEX_PREDICATE, imported from
 // shared/), and the gate learned to read an imported predicate constant — see
 // the "imported predicate constant" canaries below.
-// 14 → 12 on 2026-10-11: migration 0273 creates provider_cache_cache_key_unique,
+// 14 → 12 on 2026-10-11: migration 0274 creates provider_cache_cache_key_unique,
 // the arbiter both provider_cache(cache_key) writers (the registry's cache
 // upsert and attom-provider's raw SQL) had been missing.
 const KNOWN_UNARBITRATED_BASELINE = 12;

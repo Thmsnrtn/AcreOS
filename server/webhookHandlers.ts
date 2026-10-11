@@ -771,6 +771,11 @@ export class WebhookHandlers {
         });
       }
 
+      // W3 creator revenue share: a PAID invoice of a customer who signed up
+      // through a creator's code is one conversion (idempotent on the invoice
+      // id; $0 invoices are not conversions). Never fails the webhook.
+      await WebhookHandlers.recordCreatorConversionFor(org.id, invoice);
+
       // Only process if org was in dunning
       if (org.dunningStage && org.dunningStage !== 'none') {
         const { dunningService } = await import('./services/dunning');
@@ -1310,6 +1315,11 @@ export class WebhookHandlers {
         });
       }
 
+      // W3 creator revenue share: a PAID invoice of a customer who signed up
+      // through a creator's code is one conversion (idempotent on the invoice
+      // id; $0 invoices are not conversions). Never fails the webhook.
+      await WebhookHandlers.recordCreatorConversionFor(org.id, invoice);
+
       // Only process if org was in dunning
       if (org.dunningStage && org.dunningStage !== 'none') {
         const { dunningService } = await import('./services/dunning');
@@ -1386,6 +1396,47 @@ export class WebhookHandlers {
   }
 
   /**
+   * The invoice a charge paid. Payloads rendered at API version 2025-03-31
+   * (basil) or later — this codebase pins 2026-02-25.clover — no longer carry
+   * `charge.invoice`; the link lives on InvoicePayment, keyed by the payment
+   * intent. Reading only the legacy field made "a full refund voids the
+   * creator conversion" dead code on current payloads (W3 audit 2026-10-11).
+   */
+  static async invoiceIdOfCharge(
+    charge: Stripe.Charge,
+    legacy: string | { id: string } | null | undefined,
+  ): Promise<string | null> {
+    const direct = typeof legacy === 'string' ? legacy : legacy?.id;
+    if (direct) return direct;
+    const pi = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id;
+    if (!pi) return null;
+    const { getUncachableStripeClient } = await import('./stripeClient');
+    const stripe = await getUncachableStripeClient();
+    const page = await stripe.invoicePayments.list({ payment: { type: 'payment_intent', payment_intent: pi }, limit: 1 });
+    const inv = page.data[0]?.invoice;
+    return typeof inv === 'string' ? inv : inv?.id ?? null;
+  }
+
+  /** W3 creator revenue share — see server/services/creatorProgram.ts. */
+  static async recordCreatorConversionFor(orgId: number, invoice: Stripe.Invoice): Promise<void> {
+    try {
+      if (!invoice.id) return;
+      const paidAtSec = invoice.status_transitions?.paid_at ?? invoice.created;
+      const { recordCreatorConversion } = await import('./services/creatorProgram');
+      await recordCreatorConversion(orgId, {
+        id: invoice.id,
+        amountPaidCents: invoice.amount_paid ?? 0,
+        currency: invoice.currency,
+        paidAt: paidAtSec ? new Date(paidAtSec * 1000) : clock.now(),
+      });
+    } catch (err) {
+      logger.warn('[webhook] creator conversion skipped (non-fatal)', {
+        metadata: { orgId, error: err instanceof Error ? err.message : String(err) },
+      });
+    }
+  }
+
+  /**
    * Lavender Week 10 — Stripe `charge.refunded`. Posts the reverse
    * journal entry so the GL nets to zero on full refunds.
    */
@@ -1403,6 +1454,21 @@ export class WebhookHandlers {
       if (!customerId) return;
       const org = await storage.getOrganizationByStripeCustomerId(customerId);
       if (!org) return;
+
+      // W3 creator revenue share: a fully refunded invoice is no longer a
+      // paid conversion (unless its commission was already paid out).
+      if (charge.refunded) {
+        try {
+          const refundedInvoiceId = await WebhookHandlers.invoiceIdOfCharge(charge, chargeInvoice);
+          if (!refundedInvoiceId) throw new Error(`no invoice resolvable for charge ${charge.id}`);
+          const { voidCreatorConversionForInvoice } = await import('./services/creatorProgram');
+          await voidCreatorConversionForInvoice(refundedInvoiceId, `refunded (charge ${charge.id})`);
+        } catch (err) {
+          logger.warn('[webhook] creator conversion void skipped (non-fatal)', {
+            metadata: { error: err instanceof Error ? err.message : String(err) },
+          });
+        }
+      }
 
       const { recordStripeChargeRefunded } = await import('./services/recognitionWorker');
       await recordStripeChargeRefunded({
