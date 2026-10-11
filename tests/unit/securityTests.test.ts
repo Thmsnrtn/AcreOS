@@ -8,6 +8,15 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Request, Response, NextFunction } from "express";
 
+// Hermetic and quiet: the rate limiter uses its in-memory window, never a live
+// Redis, and the middleware chain's logger is silenced. Twice on 2026-10-11 the
+// full run failed with every test green on "Closing rpc while onUserConsoleLog
+// was pending" from this file — a log that landed after its environment closed.
+// The source was not isolated (the file passes alone); a silenced logger
+// removes the late console write the teardown tripped on.
+vi.mock("../../server/utils/redis", () => ({ getRedisClient: async () => null }));
+vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
+
 // Mock database dependencies so IDOR tests run without a real DB connection
 vi.mock("../../server/storage", () => ({
   storage: {
