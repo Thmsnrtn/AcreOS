@@ -78,6 +78,18 @@ describe("each signal fires on its pattern, with a source and a step", () => {
     }).find((x) => x.id === "mailing_address_changed")!;
     expect(old.status).toBe("clear");
   });
+  it("one address first seen within 90 days is NOT clear — a change just before it is invisible", () => {
+    const s = evaluateFraudSignals({
+      ...EMPTY,
+      ownerMailingHistory: [{ value: "PO Box 9, Miami, FL 33101", source: "x", observedAt: new Date(Date.parse(EMPTY.now) - 10 * 86_400_000).toISOString() }],
+    }).find((x) => x.id === "mailing_address_changed")!;
+    expect(s.status).toBe("not_checked");
+    const long = evaluateFraudSignals({
+      ...EMPTY,
+      ownerMailingHistory: [{ value: "PO Box 9, Miami, FL 33101", source: "x", observedAt: "2019-01-01T00:00:00Z" }],
+    }).find((x) => x.id === "mailing_address_changed")!;
+    expect(long.status).toBe("clear");
+  });
   it("an offer far below a gated value on a long-held parcel", () => {
     const s = evaluateFraudSignals({ ...EMPTY, offerAmount: 5000, gatedValue: d(50000, "gated fact"), ownerSince: d("2001-05-01") }).find((x) => x.id === "offer_far_below_value")!;
     expect(s.status).toBe("fired");

@@ -106,6 +106,17 @@ export function evaluateFraudSignals(input: FraudCheckInput): FraudSignal[] {
     const h = input.ownerMailingHistory;
     if (!h || h.length === 0) {
       out.push(notChecked("mailing_address_changed", title, "no mailing-address history is on record for this parcel.", CALL_OWNER));
+    } else if (h.length === 1 && !((now - Date.parse(h[0].observedAt)) / DAY_MS > RECENT_ADDRESS_CHANGE_DAYS)) {
+      // One address, first seen within the window: a change just before that
+      // first sighting is invisible to us. Too little history is not "clear".
+      out.push(
+        notChecked(
+          "mailing_address_changed",
+          title,
+          `the owner's mailing address has only been on record since ${h[0].observedAt.slice(0, 10)}, too recently to tell whether it changed in the last ${RECENT_ADDRESS_CHANGE_DAYS} days.`,
+          CALL_OWNER,
+        ),
+      );
     } else if (h.length === 1) {
       out.push({
         id: "mailing_address_changed",

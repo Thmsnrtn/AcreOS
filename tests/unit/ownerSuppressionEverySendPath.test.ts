@@ -39,7 +39,7 @@ const REGISTER: Record<string, Member[]> = {
   // ── Email: SES (every system and counterparty send), the org's own
   //    Gmail/Outlook mailbox, and the Gmail connector.
   "server/services/emailService.ts": [{ channel: "email", count: 1 }],
-  "server/services/mailbox/mailboxClient.ts": [{ channel: "email", count: 2 }],
+  "server/services/mailbox/mailboxClient.ts": [{ channel: "email", count: 3 }],
   "server/services/connectors/executor.ts": [{ channel: "email", count: 1 }],
   "server/routes-integrations.ts": [
     {
@@ -75,7 +75,7 @@ const REGISTER: Record<string, Member[]> = {
   ],
 };
 
-/** Vacuity floors, measured 2026-10-11: 1,492 files, 32 shapes. */
+/** Vacuity floors, measured 2026-10-11: 1,492 files, 33 shapes (Graph /reply added by the W5a audit). */
 const FILE_FLOOR = 1200;
 const SHAPE_FLOOR = 28;
 const CHANNELS: OwnerChannel[] = ["sms", "voice", "email", "mail", "skip_trace", "list_import"];
@@ -180,6 +180,15 @@ describe("owner opt-out scanner canaries — each unit-boundary rule goes red on
   it("an aliased leads table is still a lead write", () => {
     const hits = scanSourceForShapes("canary.ts", `${IMPORTS}async function f() { await db.insert(people).values({}); }`);
     expect(hits.map((h) => h.channel)).toEqual(["list_import"]);
+  });
+
+  it("a Graph reply (the whole template segment) is an email send; a route path ending /reply is not", () => {
+    const hits = scanSourceForShapes(
+      "canary.ts",
+      `export function reg(app: any) { app.post("/api/leads/:id/emails/reply", async () => {}); }
+       async function reply(t: string, id: string) { await fetch(\`https://graph.microsoft.com/v1.0/me/messages/\${id}/reply\`, {}); }`,
+    );
+    expect(hits.map((h) => [h.channel, h.unit, h.guarded])).toEqual([["email", "reply", false]]);
   });
 
   it("a cast Lob client (`(lob.letters as any).create`) is still mail", () => {

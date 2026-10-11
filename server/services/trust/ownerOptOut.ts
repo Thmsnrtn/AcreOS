@@ -24,7 +24,7 @@
  *      the deadman roster.
  */
 import { randomBytes, createHash, timingSafeEqual } from "node:crypto";
-import { and, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "../../db";
 import {
   leads,
@@ -53,6 +53,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const EMAIL_VERIFICATION_DAYS = 7;
 const MAIL_CODE_VERIFICATION_DAYS = 30;
 const MAX_VERIFICATION_ATTEMPTS = 5;
+const MATCH_PAGE_SIZE = 5000;
 
 export interface OwnerOptOutSubmission extends OwnerIdentifiers {
   city?: string | null;
@@ -87,22 +88,31 @@ async function findMatchingLeads(ids: OwnerIdentifiers): Promise<Map<number, num
   if (address) conds.push(sql`left(regexp_replace(coalesce(${leads.zip}, ''), '[^0-9]', '', 'g'), 5) = ${address.split("|")[1]}`);
   const byOrg = new Map<number, number[]>();
   if (conds.length === 0) return byOrg;
-  const rows = await unscopedForPlatformOps(
-    "owner opt-out: a data-broker request is platform-wide; matching leads are found in every org",
-  )
-    .select({ id: leads.id, organizationId: leads.organizationId, email: leads.email, phone: leads.phone, address: leads.address, zip: leads.zip })
-    .from(leads)
-    .where(and(isNull(leads.deletedAt), or(...conds)))
-    .limit(5000);
-  for (const r of rows) {
-    const hit =
-      (email && normalizeEmail(r.email) === email) ||
-      (phone && normalizePhone(r.phone) === phone) ||
-      (address && normalizeMailingAddress(r.address, r.zip) === address);
-    if (!hit) continue;
-    const list = byOrg.get(r.organizationId) ?? [];
-    list.push(r.id);
-    byOrg.set(r.organizationId, list);
+  // Paged by id, never truncated: the address predicate is a ZIP prefilter, so
+  // one ZIP can hold thousands of candidate rows across every org, and a
+  // silently capped read would leave the real owner's leads unmatched — never
+  // stamped, never offered for erasure.
+  for (let afterId = 0; ; ) {
+    const page = await unscopedForPlatformOps(
+      "owner opt-out: a data-broker request is platform-wide; matching leads are found in every org",
+    )
+      .select({ id: leads.id, organizationId: leads.organizationId, email: leads.email, phone: leads.phone, address: leads.address, zip: leads.zip })
+      .from(leads)
+      .where(and(isNull(leads.deletedAt), gt(leads.id, afterId), or(...conds)))
+      .orderBy(asc(leads.id))
+      .limit(MATCH_PAGE_SIZE);
+    for (const r of page) {
+      const hit =
+        (email && normalizeEmail(r.email) === email) ||
+        (phone && normalizePhone(r.phone) === phone) ||
+        (address && normalizeMailingAddress(r.address, r.zip) === address);
+      if (!hit) continue;
+      const list = byOrg.get(r.organizationId) ?? [];
+      list.push(r.id);
+      byOrg.set(r.organizationId, list);
+    }
+    if (page.length < MATCH_PAGE_SIZE) break;
+    afterId = page[page.length - 1].id;
   }
   return byOrg;
 }
@@ -401,14 +411,29 @@ export async function decideOwnerDeletion(
   return { ok: true, rowsErased };
 }
 
-/** What the requester may see by reference: no identifiers, no org names. */
-export async function publicStatusOf(ref: string): Promise<{ status: string; receivedAt: string; dueAt: string } | null> {
+/**
+ * The status a REQUESTER may see. Internally a confirmed request is
+ * "completed" at once when no org held a matching record and "verified" while
+ * an org's records await the founder — so exposing it would tell anyone who
+ * controls one email whether ANY AcreOS customer holds a lead with the phone
+ * or address they typed beside it (an enumeration oracle across every org).
+ * Both read "confirmed" publicly.
+ */
+type PublicOwnerOptOutStatus = "pending_verification" | "confirmed" | "expired";
+export function publicOwnerOptOutStatus(status: string): PublicOwnerOptOutStatus {
+  if (status === "pending_verification") return "pending_verification";
+  if (status === "expired") return "expired";
+  return "confirmed";
+}
+
+/** What the requester may see by reference: no identifiers, no org names, nothing that varies with matches. */
+export async function publicStatusOf(ref: string): Promise<{ status: PublicOwnerOptOutStatus; receivedAt: string; dueAt: string } | null> {
   const [row] = await db
     .select({ status: ownerOptOutRequests.status, receivedAt: ownerOptOutRequests.receivedAt, dueAt: ownerOptOutRequests.dueAt })
     .from(ownerOptOutRequests)
     .where(eq(ownerOptOutRequests.publicRef, ref))
     .limit(1);
-  return row ? { status: row.status, receivedAt: row.receivedAt.toISOString(), dueAt: row.dueAt.toISOString() } : null;
+  return row ? { status: publicOwnerOptOutStatus(row.status), receivedAt: row.receivedAt.toISOString(), dueAt: row.dueAt.toISOString() } : null;
 }
 
 // ── The statutory clock ─────────────────────────────────────────────────────

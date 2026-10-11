@@ -15,6 +15,7 @@ import { acquiredNotes, countyGisEndpoints, notes, parcelAlerts, parcelObservati
 import {
   classifyTaxStatus,
   collateralCoverage,
+  taxStatusOfCountyGisParcel,
   type CollateralWatchCoverage,
   type CountyTaxSource,
 } from "@shared/trust/collateralWatch";
@@ -148,8 +149,7 @@ export async function runCollateralWatch(): Promise<{ parcels: number; checked: 
           { allowProviders: ["county-gis"] },
         );
         checked += 1;
-        const data = (result?.data ?? null) as { taxStatus?: string } | null;
-        const value = data?.taxStatus ?? null;
+        const value = taxStatusOfCountyGisParcel(result?.data);
         if (classifyTaxStatus(value) !== "delinquent") continue;
         const inserted = await db
           .insert(parcelAlerts)

@@ -8,7 +8,8 @@
  *   sms         a Twilio Messages.json URL; a carrier `.sendSms(` dispatch
  *   voice       a Twilio Calls.json URL; a carrier `.initiateCall(` dispatch
  *   email       `new SendRawEmailCommand(` / `new SendEmailCommand(` (SES);
- *               `sgMail.send(`; Gmail `/messages/send`; Graph `/sendMail`
+ *               `sgMail.send(`; Gmail `/messages/send` and `/drafts/send`;
+ *               Graph `/sendMail` and `/reply` / `/replyAll` / `/forward`
  *   mail        Lob `.postcards.create(` / `.letters.create(`; the PostGrid
  *               "/letters" / "/postcards" request paths
  *   skip_trace  BatchSkipTracing / REISkip hosts; BatchData `/property/skip-trace`
@@ -43,8 +44,15 @@ const STRING_SHAPES: Array<[RegExp, OwnerChannel]> = [
   [/\/Calls\.json\b/, "voice"],
   [/\/messages\/send\b/, "email"],
   [/\/sendMail\b/, "email"],
+  // Graph's reply/forward endpoints send exactly like /sendMail (a template
+  // tail that is the whole segment, so a route path ending "/reply" is not
+  // one); Gmail's draft send.
+  [/^\/(reply|replyAll|forward)$/, "email"],
+  [/\/drafts\/send\b/, "email"],
   [/api\.sendgrid\.com\/v3\/mail\/send/, "email"],
   [/^\/(letters|postcards)$/, "mail"],
+  // Lob's REST API reached by fetch instead of the SDK.
+  [/api\.lob\.com\/v1\/(letters|postcards|self_mailers)\b/, "mail"],
   [/api\.batchskiptracing\.com/, "skip_trace"],
   [/api\.reiskip\.com/, "skip_trace"],
   [/\/property\/skip-trace\b/, "skip_trace"],
@@ -166,7 +174,7 @@ export function scanSourceForShapes(fileLabel: string, text: string): ShapeHit[]
     } else if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)) {
       const name = n.expression.name.text;
       const recv = n.expression.expression;
-      if (name === "create" && ts.isPropertyAccessExpression(recv) && /^(postcards|letters)$/.test(recv.name.text)) record(n, "mail");
+      if (name === "create" && ts.isPropertyAccessExpression(recv) && /^(postcards|letters|selfMailers)$/.test(recv.name.text)) record(n, "mail");
       else if (name === "create" && ts.isParenthesizedExpression(recv)) {
         const inner = recv.expression;
         const core = ts.isAsExpression(inner) ? inner.expression : inner;

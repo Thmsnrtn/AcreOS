@@ -152,10 +152,13 @@ export async function approveGivingMonth(input: {
     monthStatus: m.status,
   });
   if (!verdict.ok) return verdict;
-  await db
+  const updated = await db
     .update(givingMonths)
     .set({ status: "approved", approvedCents: input.amountCents, capCentsAtApproval: capCents, decidedAt: clock.now(), decidedBy: input.founderId })
-    .where(and(eq(givingMonths.id, m.id), eq(givingMonths.status, "awaiting_founder")));
+    .where(and(eq(givingMonths.id, m.id), eq(givingMonths.status, "awaiting_founder")))
+    .returning({ id: givingMonths.id });
+  // A concurrent decision got there first: report what happened, not success.
+  if (updated.length === 0) return { ok: false, reason: "This month has already been decided." };
   return { ok: true };
 }
 

@@ -29,6 +29,7 @@ import { and, inArray, eq, or } from "drizzle-orm";
 import { db } from "../../db";
 import { ownerSuppressions } from "@shared/schema";
 import {
+  normalizeEmail,
   normalizedOwnerIdentifiers,
   type OwnerIdentifierKind,
   type OwnerIdentifiers,
@@ -40,14 +41,24 @@ import { clock } from "../../utils/clock";
 export type OwnerContactChannel = "mail" | "email" | "sms" | "voice" | "skip_trace" | "list_import";
 
 /**
- * The hash key. A deployment should set OWNER_SUPPRESSION_HASH_KEY once and
- * never change it (a new key orphans every stored hash). Without it the hash
- * still never stores the identifier, but it is only as strong as an unkeyed
- * SHA-256 of a phone number — the boot log says so.
+ * The hash keys. A deployment should set OWNER_SUPPRESSION_HASH_KEY once.
+ *
+ * EVERY KEY EVER USED KEEPS MATCHING. A suppression is stored under the key in
+ * force when it was recorded, and an opted-out owner must stay opted out when
+ * the key changes — otherwise setting the real key (or rotating it) silently
+ * un-suppresses everyone recorded before, and they are contacted again. So:
+ *   - new hashes are written under the PRIMARY key (the configured one, else
+ *     the built-in one);
+ *   - lookups compare against hashes under EVERY key: the primary, any listed
+ *     in OWNER_SUPPRESSION_PREVIOUS_HASH_KEYS (comma-separated, for a
+ *     rotation), and always the built-in key — which every deployment used
+ *     until OWNER_SUPPRESSION_HASH_KEY was set.
+ * Without a configured key the hash still never stores the identifier, but it
+ * is only as strong as an unkeyed SHA-256 of a phone number — the log says so.
  */
-const FALLBACK_KEY = "acreos-owner-suppression-v1";
+const BUILT_IN_LEGACY_KEY = "acreos-owner-suppression-v1";
 let warnedFallback = false;
-function hashKey(): string {
+function primaryHashKey(): string {
   const k = process.env.OWNER_SUPPRESSION_HASH_KEY;
   if (k && k.length >= 16) return k;
   if (!warnedFallback) {
@@ -56,16 +67,49 @@ function hashKey(): string {
       metadata: { kind: "founder_config" },
     });
   }
-  return FALLBACK_KEY;
+  return BUILT_IN_LEGACY_KEY;
 }
 
-function hashOwnerIdentifier(kind: OwnerIdentifierKind, normalizedValue: string): string {
-  return createHmac("sha256", hashKey()).update(`${kind}:${normalizedValue}`).digest("hex");
+/** Primary first, then every earlier key (previous keys, then the built-in one). Deduplicated. */
+function ownerSuppressionMatchKeys(): string[] {
+  const previous = (process.env.OWNER_SUPPRESSION_PREVIOUS_HASH_KEYS ?? "")
+    .split(",")
+    .map((k) => k.trim())
+    .filter((k) => k.length > 0);
+  return Array.from(new Set([primaryHashKey(), ...previous, BUILT_IN_LEGACY_KEY]));
 }
 
-/** Keyed hashes for every identifier present in `ids`. */
+function hmac(key: string, kind: OwnerIdentifierKind, normalizedValue: string): string {
+  return createHmac("sha256", key).update(`${kind}:${normalizedValue}`).digest("hex");
+}
+
+/** Keyed hashes (PRIMARY key) for every identifier present in `ids` — what is STORED. */
 export function ownerIdentifierHashes(ids: OwnerIdentifiers): Array<{ kind: OwnerIdentifierKind; hash: string }> {
-  return normalizedOwnerIdentifiers(ids).map(({ kind, value }) => ({ kind, hash: hashOwnerIdentifier(kind, value) }));
+  const key = primaryHashKey();
+  return normalizedOwnerIdentifiers(ids).map(({ kind, value }) => ({ kind, hash: hmac(key, kind, value) }));
+}
+
+/** Anything shaped like an address inside a recipient string ("A <a@x>, b@y"). */
+const EMBEDDED_EMAIL = /[^\s<>,;:"'()[\]]+@[^\s<>,;:"'()[\]]+\.[^\s<>,;:"'()[\]]+/g;
+
+/**
+ * Every hash a stored suppression of `ids` could carry: each identifier under
+ * EVERY key ever used. An email field is read for every address inside it, so
+ * a display-name form ("Jane <jane@x.com>") or a list ("a@x.com, b@y.com")
+ * cannot slip a suppressed address past a guard that only understood one bare
+ * address.
+ */
+function ownerIdentifierMatchHashes(ids: OwnerIdentifiers): Array<{ kind: OwnerIdentifierKind; hash: string }> {
+  const values = normalizedOwnerIdentifiers(ids);
+  for (const token of (ids.email ?? "").match(EMBEDDED_EMAIL) ?? []) {
+    const email = normalizeEmail(token);
+    if (email && !values.some((v) => v.kind === "email" && v.value === email)) values.push({ kind: "email", value: email });
+  }
+  const out: Array<{ kind: OwnerIdentifierKind; hash: string }> = [];
+  for (const key of ownerSuppressionMatchKeys()) {
+    for (const { kind, value } of values) out.push({ kind, hash: hmac(key, kind, value) });
+  }
+  return out;
 }
 
 class OwnerSuppressedError extends ProviderNotContactedError {
@@ -101,7 +145,7 @@ async function matchedKindsFor(hashes: Array<{ kind: OwnerIdentifierKind; hash: 
  */
 export async function ownerContactRefusal(channel: OwnerContactChannel, ids: OwnerIdentifiers): Promise<string | null> {
   try {
-    const kinds = await matchedKindsFor(ownerIdentifierHashes(ids));
+    const kinds = await matchedKindsFor(ownerIdentifierMatchHashes(ids));
     if (kinds.length === 0) return null;
     logger.info("[ownerSuppression] contact refused — owner opt-out on file", { metadata: { channel, matchedKinds: kinds } });
     return new OwnerSuppressedError(channel, kinds).message;
@@ -117,7 +161,7 @@ export async function ownerContactRefusal(channel: OwnerContactChannel, ids: Own
 export async function assertOwnerContactAllowed(channel: OwnerContactChannel, ids: OwnerIdentifiers): Promise<void> {
   let kinds: OwnerIdentifierKind[];
   try {
-    kinds = await matchedKindsFor(ownerIdentifierHashes(ids));
+    kinds = await matchedKindsFor(ownerIdentifierMatchHashes(ids));
   } catch (err) {
     logger.error("[ownerSuppression] lookup failed — refusing (fail closed)", err instanceof Error ? err : undefined, {
       metadata: { channel },
@@ -151,7 +195,7 @@ interface StampableLead {
 export async function stampOwnerSuppression<T extends StampableLead>(
   rows: T[],
 ): Promise<{ rows: Array<T & Pick<StampableLead, "doNotContact" | "optOutDate" | "optOutReason">>; suppressedCount: number }> {
-  const perRow = rows.map((r) => ownerIdentifierHashes({ email: r.email, phone: r.phone, addressLine1: r.address, zip: r.zip }));
+  const perRow = rows.map((r) => ownerIdentifierMatchHashes({ email: r.email, phone: r.phone, addressLine1: r.address, zip: r.zip }));
   const all = perRow.flat();
   if (all.length === 0) return { rows, suppressedCount: 0 };
   const hashes = Array.from(new Set(all.map((h) => h.hash)));

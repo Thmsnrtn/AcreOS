@@ -126,3 +126,55 @@ describe("list import: rows are kept, stamped do-not-contact", () => {
     await expect(stampOwnerSuppression([{ email: "a@example.com" }])).rejects.toThrow(/db down/);
   });
 });
+
+describe("the hash key: an opt-out survives a key change", () => {
+  const KEY = "OWNER_SUPPRESSION_HASH_KEY";
+  const PREV = "OWNER_SUPPRESSION_PREVIOUS_HASH_KEYS";
+  const saved = { key: process.env[KEY], prev: process.env[PREV] };
+  const restore = () => {
+    if (saved.key === undefined) delete process.env[KEY];
+    else process.env[KEY] = saved.key;
+    if (saved.prev === undefined) delete process.env[PREV];
+    else process.env[PREV] = saved.prev;
+  };
+
+  it("a suppression recorded under the built-in key still refuses once the real key is set", async () => {
+    try {
+      delete process.env[KEY];
+      delete process.env[PREV];
+      suppress("phone", "4235550100");
+      suppress("email", "jane@example.com");
+      process.env[KEY] = "founder-set-real-key-0123456789";
+      // The new primary key really does hash differently — otherwise this proves nothing.
+      expect(ownerIdentifierHashes({ phone: "4235550100" })[0].hash).not.toBe(table[0].identifierHash);
+      await expect(assertOwnerContactAllowed("sms", { phone: "4235550100" })).rejects.toMatchObject({ name: "OwnerSuppressedError" });
+      expect(await ownerContactRefusal("email", { email: "jane@example.com" })).toMatch(/stop all contact/);
+      const { suppressedCount } = await stampOwnerSuppression([{ phone: "(423) 555-0100" }]);
+      expect(suppressedCount).toBe(1);
+    } finally {
+      restore();
+    }
+  });
+
+  it("a rotation keeps matching every key listed as previous", async () => {
+    try {
+      process.env[KEY] = "first-real-key-aaaaaaaaaaaaaaaa";
+      suppress("phone", "4235550100");
+      process.env[KEY] = "second-real-key-bbbbbbbbbbbbbbb";
+      process.env[PREV] = "first-real-key-aaaaaaaaaaaaaaaa";
+      await expect(assertOwnerContactAllowed("voice", { phone: "4235550100" })).rejects.toMatchObject({ name: "OwnerSuppressedError" });
+    } finally {
+      restore();
+    }
+  });
+});
+
+describe("a recipient string is read for every address in it", () => {
+  it("a display-name or list form cannot carry a suppressed address past the guard", async () => {
+    suppress("email", "jane@example.com");
+    for (const to of ["Jane Doe <Jane@Example.com>", "someone@example.com, jane@example.com", "a@example.com;jane@example.com"]) {
+      expect(await ownerContactRefusal("email", { email: to }), to).toMatch(/stop all contact/);
+    }
+    expect(await ownerContactRefusal("email", { email: "Someone <someone@example.com>" })).toBeNull();
+  });
+});

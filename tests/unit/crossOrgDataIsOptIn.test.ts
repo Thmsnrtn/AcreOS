@@ -274,6 +274,8 @@ const REGISTER: Record<string, Verdict> = {
   "server/services/dataCoop/quarterlyMarketReport.ts": "founder-only", // draft, founder-reviewed
   "server/services/parcel-biography.ts": "own-org", // the org's own + unattributed public facts
   "server/services/parcelDeltaDetector.ts": "own-org", // same
+  "server/services/trust/fraudCheck.ts": "own-org", // W5a: owner/address/deed facts, the org's own + unattributed public
+  "server/services/trust/collateralWatchService.ts": "own-org", // W5a: tax_status, the org's own + unattributed public
   "server/services/audit/detectors/observationRateDetector.ts": "platform-op", // insert-rate health signal
 };
 

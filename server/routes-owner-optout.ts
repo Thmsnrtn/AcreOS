@@ -15,7 +15,7 @@ import type { Express, Response, Request } from "express";
 import { z } from "zod";
 import { Errors } from "./utils/errors";
 import { createRateLimiter } from "./middleware/rateLimit";
-import { publicStatusOf, submitOwnerOptOut, verifyOwnerOptOut } from "./services/trust/ownerOptOut";
+import { publicOwnerOptOutStatus, publicStatusOf, submitOwnerOptOut, verifyOwnerOptOut } from "./services/trust/ownerOptOut";
 
 const submitLimiter = createRateLimiter({ maxRequests: 5, windowMs: 60 * 60 * 1000 });
 const verifyLimiter = createRateLimiter({ maxRequests: 20, windowMs: 60 * 60 * 1000 });
@@ -64,7 +64,8 @@ export function registerPublicOwnerOptOutRoutes(app: Express): void {
     try {
       const result = await verifyOwnerOptOut(parsed.data.ref, parsed.data.secret);
       if (!result.ok) return Errors.badRequest(res, result.reason);
-      return res.json({ status: result.status });
+      // Never the internal status: "completed" vs "verified" says whether any org held a match.
+      return res.json({ status: publicOwnerOptOutStatus(result.status) });
     } catch (err) {
       return Errors.internal(res, err);
     }

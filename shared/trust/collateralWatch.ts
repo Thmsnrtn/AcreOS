@@ -67,3 +67,17 @@ export function classifyTaxStatus(raw: string | null | undefined): "delinquent" 
   if (/^(paid|current|good\s*standing|paid\s*in\s*full)$/i.test(s)) return "current";
   return "unknown";
 }
+
+/**
+ * The county tax-status value from a county-gis registry result. The provider
+ * returns the PARCEL (server/services/parcel.ts `ParcelLookupResult["parcel"]`)
+ * as `result.data`, and the tax status lives on the parcel's OWN `data`.
+ * Reading `result.data.taxStatus` is always undefined — a watch that says
+ * "Watched daily" and can never alert. Pinned against the real provider's
+ * output in tests/unit/collateralWatchReadsRealParcelShape.test.ts.
+ */
+export function taxStatusOfCountyGisParcel(parcel: unknown): string | null {
+  const p = parcel as { data?: { taxStatus?: unknown } } | null | undefined;
+  const v = p?.data?.taxStatus;
+  return typeof v === "string" && v.trim() ? v : null;
+}
