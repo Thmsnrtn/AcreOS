@@ -8,7 +8,7 @@
  * data-truth warnings as the public page (publicLandFactsOf), never more.
  */
 import { and, eq, sql } from "drizzle-orm";
-import { db } from "../db";
+import { db, type PrimaryDb } from "../db";
 import { creditTransactions } from "@shared/schema";
 import { DD_REPORT_CREDIT_KIND, DD_REPORT_PRICE_UNSET, PARCEL_DD_REPORT } from "@shared/billing/parcelReportProduct";
 import type { PublicLandFacts } from "@shared/landData/publicFactText";
@@ -36,8 +36,8 @@ function buildReport(facts: PublicLandFacts): DdReport {
   };
 }
 
-async function alreadyPurchased(orgId: number, parcelKey: string): Promise<boolean> {
-  const rows = await db
+async function alreadyPurchased(orgId: number, parcelKey: string, q: PrimaryDb = db): Promise<boolean> {
+  const rows = await q
     .select({ id: creditTransactions.id })
     .from(creditTransactions)
     .where(
@@ -73,11 +73,26 @@ export async function purchaseDdReport(orgId: number, parcelKey: string): Promis
   const row = await findOwnedParcelByKey(parcelKey);
   if (!row) return { ok: false, reason: "not_kept", message: "AcreOS does not keep this parcel." };
   const facts = publicLandFactsOf(row);
-  if (await alreadyPurchased(orgId, parcelKey)) return { ok: true, charged: false, priceCents: price, report: buildReport(facts) };
-  const debit = await creditService.deductCredits(orgId, price, `Parcel due-diligence report — ${facts.apn}, ${facts.countyLabel} County, ${facts.state}`, {
-    kind: DD_REPORT_CREDIT_KIND,
-    parcelKey,
+  // Check-then-debit under one per-(org, parcel) transaction lock: two
+  // concurrent purchases (a double click, a retried request) must not both see
+  // "not yet bought" and both debit. The second waits, then sees the first's
+  // committed debit and re-delivers without a charge.
+  const outcome = await db.transaction(async (rawTx) => {
+    const tx = rawTx as unknown as PrimaryDb;
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`dd_report:${orgId}:${parcelKey}`}))`);
+    if (await alreadyPurchased(orgId, parcelKey, tx)) return "already" as const;
+    const d = await creditService.deductCredits(
+      orgId,
+      price,
+      `Parcel due-diligence report — ${facts.apn}, ${facts.countyLabel} County, ${facts.state}`,
+      { kind: DD_REPORT_CREDIT_KIND, parcelKey },
+      { tx },
+    );
+    return d ? ("charged" as const) : ("insufficient" as const);
   });
+  if (outcome === "already") return { ok: true, charged: false, priceCents: price, report: buildReport(facts) };
+  if (outcome === "charged") creditService.afterDebitCommitted(orgId);
+  const debit = outcome === "charged";
   if (!debit) return { ok: false, reason: "insufficient_credits", message: "Not enough credits for this report. Add credits in Settings → Billing." };
   return { ok: true, charged: true, priceCents: price, report: buildReport(facts) };
 }

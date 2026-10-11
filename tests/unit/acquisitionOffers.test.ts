@@ -34,6 +34,7 @@ const h = vi.hoisted(() => ({
   ownedRow: null as any,
   purchases: [] as any[],
   deduct: vi.fn(),
+  lockCalls: [] as any[],
 }));
 
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
@@ -66,9 +67,29 @@ vi.mock("../../server/db", () => {
     const c: any = { from: () => c, where: () => c, orderBy: () => c, limit: () => Promise.resolve(rows()), then: (r: any, j: any) => Promise.resolve(rows()).then(r, j) };
     return c;
   };
-  return { db: { select: () => chain(() => h.purchases) } };
+  // A transaction whose pg_advisory_xact_lock really serializes holders, so a
+  // purchase that skips the lock races exactly as it would in Postgres.
+  let lockTail: Promise<void> = Promise.resolve();
+  const transaction = async (fn: (tx: any) => Promise<any>) => {
+    let release: () => void = () => {};
+    const tx = {
+      select: () => chain(() => h.purchases),
+      execute: async (q: any) => {
+        h.lockCalls.push(q);
+        const prev = lockTail;
+        lockTail = new Promise<void>((r) => (release = r));
+        await prev;
+      },
+    };
+    try {
+      return await fn(tx);
+    } finally {
+      release();
+    }
+  };
+  return { db: { select: () => chain(() => h.purchases), transaction } };
 });
-vi.mock("../../server/services/credits", () => ({ creditService: { deductCredits: h.deduct } }));
+vi.mock("../../server/services/credits", () => ({ creditService: { deductCredits: h.deduct, afterDebitCommitted: vi.fn() } }));
 vi.mock("../../server/services/parcel/resolveParcel", () => ({ resolveParcel: vi.fn() }));
 vi.mock("../../server/services/alertSpine", () => ({ raiseAlert: vi.fn() }));
 vi.mock("../../server/services/landData/ownedParcelView", async (importOriginal) => {
@@ -102,6 +123,7 @@ beforeEach(async () => {
   h.flagOn = false;
   h.ownedRow = null;
   h.purchases = [];
+  h.lockCalls = [];
   h.getPrice.mockReset();
   h.createCheckoutSession.mockClear();
   h.deduct.mockReset();
@@ -236,6 +258,27 @@ describe("per-parcel due-diligence report", () => {
     expect(again.status).toBe(200);
     expect(again.body.charged).toBe(false);
     expect(h.deduct).toHaveBeenCalledTimes(1);
+  });
+
+  it("two concurrent purchases of the same parcel debit once (the check and the debit share one lock)", async () => {
+    Object.assign(PARCEL_DD_REPORT, { priceCents: 1_500 });
+    h.ownedRow = ownedRowFor(0);
+    h.purchases = [];
+    h.deduct.mockImplementation(async (_o: number, _c: number, _d: string, _m: unknown, opts: any) => {
+      expect(opts?.tx).toBeTruthy(); // the debit runs inside the locked transaction
+      await new Promise((r) => setTimeout(r, 20));
+      h.purchases = [{ id: 1 }];
+      return { id: 1 };
+    });
+    const key = encodeURIComponent(h.ownedRow.parcelKey);
+    const [a, b] = await Promise.all([
+      request(app()).post(`/api/land-data/parcels/${key}/dd-report`),
+      request(app()).post(`/api/land-data/parcels/${key}/dd-report`),
+    ]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+    expect([a.body.charged, b.body.charged].sort()).toEqual([false, true]);
+    expect(h.deduct).toHaveBeenCalledTimes(1);
+    expect(h.lockCalls.length).toBe(2);
   });
 
   it("without enough credits it is 402 and nothing is delivered", async () => {
