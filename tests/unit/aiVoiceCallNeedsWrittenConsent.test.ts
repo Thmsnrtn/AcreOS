@@ -13,6 +13,8 @@
  * call-creation endpoint — so no second path to a phone can skip the gate.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+// W5a: the owner opt-out list is empty for this test (the guard is proven elsewhere).
+vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
 import { REPO_SWEEP_TIMEOUT_MS } from "../helpers/sweepBudget";
 import fs from "node:fs";
 import path from "node:path";

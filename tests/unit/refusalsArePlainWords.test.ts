@@ -83,6 +83,10 @@ const COVERED: Record<string, { floor: number; passThrough: number }> = {
   "server/services/solene/roleWorkers/tools.ts": { floor: 25, passThrough: 3 },
   // The founder's chat with Solene.
   "server/services/solene/chat/businessTools.ts": { floor: 12, passThrough: 0 },
+  // Skip-trace results reach the person who asked for the lookup (W5a, 2026-10-11:
+  // the owner opt-out refusals made it a member; its older "not configured"
+  // refusals were rewritten in plain words rather than registered as debt).
+  "server/services/skipTracingService.ts": { floor: 4, passThrough: 0 },
 };
 
 /** Files whose refusals no person reads, and why. */

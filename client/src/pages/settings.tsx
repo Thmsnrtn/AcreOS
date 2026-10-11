@@ -53,6 +53,7 @@ import { AICostDashboard } from "@/components/ai-cost-dashboard";
 import { SettingsQuickFind } from "@/components/settings/SettingsQuickFind";
 import { TeamInviteCard } from "@/components/settings/TeamInviteCard";
 import { TeamActivityCard } from "@/components/settings/TeamActivityCard";
+import { MembershipGivingPanel } from "@/components/settings/MembershipGivingPanel";
 
 // Monolith split (T3 census W1-2) — per-tab sections live in their own
 // modules under pages/settings/, mirroring the existing 8 routed subpages.
@@ -1288,6 +1289,8 @@ export default function Settings() {
             </TabsContent>
 
             <TabsContent value="billing" className="space-y-8 mt-6" data-testid="tab-content-billing">
+              {/* W5a — what the membership has given, receipts only. */}
+              <MembershipGivingPanel />
               {/* Plans + upgrade grid — moved here from the Account tab (WS1,
                   2026-07-07): every server upgradeUrl deep-links to
                   /settings#billing, but the tab named Billing only held

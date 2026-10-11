@@ -1,0 +1,178 @@
+/**
+ * Owner suppression — the platform-wide "stop contacting me" list (W5a).
+ *
+ * A property owner who asks AcreOS to stop contacting them (the public opt-out
+ * form, server/routes-owner-optout.ts) becomes, once verified, a suppression
+ * that EVERY outreach path honours for EVERY org: mail, email, SMS, voice,
+ * skip-trace and list import. The population of those paths is enumerated in
+ * tests/unit/ownerSuppressionEverySendPath.test.ts — a new vendor call that does
+ * not reach a guard here fails that test.
+ *
+ * Three guards, one per shape of send path:
+ *   - `assertOwnerContactAllowed` THROWS `OwnerSuppressedError` (a
+ *     ProviderNotContactedError: nothing left the process) — for paths whose
+ *     failure contract is an exception (mail, skip-trace, voice, mailbox).
+ *   - `ownerContactRefusal` RETURNS the refusal text, or null — for paths that
+ *     report failure as a value (emailService, the SMS router).
+ *   - `stampOwnerSuppression` MARKS lead rows about to be inserted
+ *     (do_not_contact + opt-out date) — the list-import path, which must keep
+ *     the org's row but never let it be contacted.
+ *
+ * FAIL CLOSED: a suppression lookup that errors refuses the send. A request
+ * that could not be checked is not a request that passed.
+ *
+ * Only keyed hashes are stored (HMAC-SHA256 under OWNER_SUPPRESSION_HASH_KEY);
+ * this module never writes a plaintext identifier anywhere.
+ */
+import { createHmac } from "node:crypto";
+import { and, inArray, eq, or } from "drizzle-orm";
+import { db } from "../../db";
+import { ownerSuppressions } from "@shared/schema";
+import {
+  normalizedOwnerIdentifiers,
+  type OwnerIdentifierKind,
+  type OwnerIdentifiers,
+} from "@shared/trust/ownerIdentifiers";
+import { ProviderNotContactedError } from "../actions/outwardAction";
+import { logger } from "../../utils/logger";
+import { clock } from "../../utils/clock";
+
+export type OwnerContactChannel = "mail" | "email" | "sms" | "voice" | "skip_trace" | "list_import";
+
+/**
+ * The hash key. A deployment should set OWNER_SUPPRESSION_HASH_KEY once and
+ * never change it (a new key orphans every stored hash). Without it the hash
+ * still never stores the identifier, but it is only as strong as an unkeyed
+ * SHA-256 of a phone number — the boot log says so.
+ */
+const FALLBACK_KEY = "acreos-owner-suppression-v1";
+let warnedFallback = false;
+function hashKey(): string {
+  const k = process.env.OWNER_SUPPRESSION_HASH_KEY;
+  if (k && k.length >= 16) return k;
+  if (!warnedFallback) {
+    warnedFallback = true;
+    logger.warn("[ownerSuppression] OWNER_SUPPRESSION_HASH_KEY is unset; identifier hashes use the built-in key", {
+      metadata: { kind: "founder_config" },
+    });
+  }
+  return FALLBACK_KEY;
+}
+
+function hashOwnerIdentifier(kind: OwnerIdentifierKind, normalizedValue: string): string {
+  return createHmac("sha256", hashKey()).update(`${kind}:${normalizedValue}`).digest("hex");
+}
+
+/** Keyed hashes for every identifier present in `ids`. */
+export function ownerIdentifierHashes(ids: OwnerIdentifiers): Array<{ kind: OwnerIdentifierKind; hash: string }> {
+  return normalizedOwnerIdentifiers(ids).map(({ kind, value }) => ({ kind, hash: hashOwnerIdentifier(kind, value) }));
+}
+
+class OwnerSuppressedError extends ProviderNotContactedError {
+  constructor(readonly channel: OwnerContactChannel, readonly matchedKinds: OwnerIdentifierKind[]) {
+    super(
+      `Not sent: this owner asked AcreOS to stop all contact (platform-wide opt-out, matched on ${matchedKinds.join(", ")}). ` +
+        "Their request covers every org; there is nothing to override.",
+    );
+    this.name = "OwnerSuppressedError";
+  }
+}
+
+class OwnerSuppressionUnverifiableError extends ProviderNotContactedError {
+  constructor(readonly channel: OwnerContactChannel) {
+    super("Not sent: the owner opt-out list could not be checked, so the send was refused (fail closed). Try again shortly.");
+    this.name = "OwnerSuppressionUnverifiableError";
+  }
+}
+
+/** The kinds of `hashes` present on the suppression list. Throws on a DB error. */
+async function matchedKindsFor(hashes: Array<{ kind: OwnerIdentifierKind; hash: string }>): Promise<OwnerIdentifierKind[]> {
+  if (hashes.length === 0) return [];
+  const rows = await db
+    .select({ kind: ownerSuppressions.kind })
+    .from(ownerSuppressions)
+    .where(or(...hashes.map((h) => and(eq(ownerSuppressions.kind, h.kind), eq(ownerSuppressions.identifierHash, h.hash)))));
+  return Array.from(new Set(rows.map((r) => r.kind)));
+}
+
+/**
+ * Null when the contact may proceed; otherwise the refusal sentence. Never
+ * throws: a lookup error returns the fail-closed refusal.
+ */
+export async function ownerContactRefusal(channel: OwnerContactChannel, ids: OwnerIdentifiers): Promise<string | null> {
+  try {
+    const kinds = await matchedKindsFor(ownerIdentifierHashes(ids));
+    if (kinds.length === 0) return null;
+    logger.info("[ownerSuppression] contact refused — owner opt-out on file", { metadata: { channel, matchedKinds: kinds } });
+    return new OwnerSuppressedError(channel, kinds).message;
+  } catch (err) {
+    logger.error("[ownerSuppression] lookup failed — refusing (fail closed)", err instanceof Error ? err : undefined, {
+      metadata: { channel },
+    });
+    return new OwnerSuppressionUnverifiableError(channel).message;
+  }
+}
+
+/** Throws OwnerSuppressedError / OwnerSuppressionUnverifiableError; returns when contact may proceed. */
+export async function assertOwnerContactAllowed(channel: OwnerContactChannel, ids: OwnerIdentifiers): Promise<void> {
+  let kinds: OwnerIdentifierKind[];
+  try {
+    kinds = await matchedKindsFor(ownerIdentifierHashes(ids));
+  } catch (err) {
+    logger.error("[ownerSuppression] lookup failed — refusing (fail closed)", err instanceof Error ? err : undefined, {
+      metadata: { channel },
+    });
+    throw new OwnerSuppressionUnverifiableError(channel);
+  }
+  if (kinds.length > 0) {
+    logger.info("[ownerSuppression] contact refused — owner opt-out on file", { metadata: { channel, matchedKinds: kinds } });
+    throw new OwnerSuppressedError(channel, kinds);
+  }
+}
+
+export const OWNER_OPTOUT_REASON = "Owner opt-out request on file with AcreOS (platform-wide; do not contact)";
+
+interface StampableLead {
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  zip?: string | null;
+  doNotContact?: boolean | null;
+  optOutDate?: Date | null;
+  optOutReason?: string | null;
+}
+
+/**
+ * List import: rows matching the suppression list are kept (they are the
+ * org's own data) but stamped do-not-contact with the opt-out date, so no
+ * campaign, sequence or manual send selects them. One query for the batch.
+ * THROWS on a lookup error — an import that cannot be checked is refused.
+ */
+export async function stampOwnerSuppression<T extends StampableLead>(
+  rows: T[],
+): Promise<{ rows: Array<T & Pick<StampableLead, "doNotContact" | "optOutDate" | "optOutReason">>; suppressedCount: number }> {
+  const perRow = rows.map((r) => ownerIdentifierHashes({ email: r.email, phone: r.phone, addressLine1: r.address, zip: r.zip }));
+  const all = perRow.flat();
+  if (all.length === 0) return { rows, suppressedCount: 0 };
+  const hashes = Array.from(new Set(all.map((h) => h.hash)));
+  const found = new Set<string>();
+  for (let i = 0; i < hashes.length; i += 500) {
+    const chunk = hashes.slice(i, i + 500);
+    const hit = await db
+      .select({ kind: ownerSuppressions.kind, hash: ownerSuppressions.identifierHash })
+      .from(ownerSuppressions)
+      .where(inArray(ownerSuppressions.identifierHash, chunk));
+    for (const h of hit) found.add(`${h.kind}:${h.hash}`);
+  }
+  let suppressedCount = 0;
+  const now = clock.now();
+  const out = rows.map((r, i) => {
+    if (!perRow[i].some((h) => found.has(`${h.kind}:${h.hash}`))) return r;
+    suppressedCount += 1;
+    return { ...r, doNotContact: true, optOutDate: r.optOutDate ?? now, optOutReason: OWNER_OPTOUT_REASON };
+  });
+  if (suppressedCount > 0) {
+    logger.info("[ownerSuppression] import rows stamped do-not-contact", { metadata: { suppressedCount } });
+  }
+  return { rows: out, suppressedCount };
+}

@@ -26,6 +26,8 @@
  * or a mock that never records.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+// W5a: the owner opt-out list is empty for this test (the guard is proven elsewhere).
+vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
 
 const state = {
   /** Platform live-send interlock. Governs the PLATFORM key only. */

@@ -1,4 +1,5 @@
 import type { Express, Response } from "express";
+import { stampOwnerSuppression } from "./services/trust/ownerSuppression";
 import { readPropertiesBySellerIds } from "./storage/wholeBookReads";
 import { getOrganization, getUserId, type AuthenticatedRequest } from "./types/request";
 import { storage, db } from "./storage";
@@ -1625,7 +1626,9 @@ export function registerLeadRoutes(app: Express): void {
             // `.returning()` (added Wave B) — we need the persisted row to
             // emit lead.created with a real entity id. Without it the
             // workflow event would have nothing to point at.
-            const [insertedLead] = await db.insert(leads).values({
+            // Platform-wide owner opt-out (W5a): a matching row is imported
+            // (it is the org's list) but arrives do-not-contact.
+            const { rows: [csvRow] } = await stampOwnerSuppression([{
               organizationId: org.id,
               type: "seller",
               firstName,
@@ -1645,7 +1648,8 @@ export function registerLeadRoutes(app: Express): void {
               status: "new",
               // Only ever true from a list flag; never consent.
               ...(parseDncFlag(row.doNotContact) ? { doNotContact: true, optOutDate: clock.now(), optOutReason: "import_dnc_flag" } : {}),
-            }).returning();
+            }] as Array<typeof leads.$inferInsert>);
+            const [insertedLead] = await db.insert(leads).values(csvRow).returning();
             imported++;
             // One event per imported lead. See the volume note on
             // importLeads() in services/importExport.ts — the engine queues

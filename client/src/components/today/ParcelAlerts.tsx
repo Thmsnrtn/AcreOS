@@ -81,6 +81,10 @@ function alertHeadline(a: ParcelAlert): string {
   if (a.alertType === "tax_status_changed") {
     return "Tax status changed on a parcel in your pipeline";
   }
+  if (a.alertType === "collateral_tax_delinquent") {
+    // W5a collateral watch: the county reports the land behind a note delinquent.
+    return "The county shows taxes delinquent on a note's collateral";
+  }
   return "A tracked parcel fact changed in your pipeline";
 }
 
@@ -97,11 +101,12 @@ function valueText(v: unknown): string {
 }
 
 function alertIcon(a: ParcelAlert) {
-  return a.alertType === "tax_status_changed" ? Landmark : UserRoundCheck;
+  return a.alertType === "tax_status_changed" || a.alertType === "collateral_tax_delinquent" ? Landmark : UserRoundCheck;
 }
 
 /** Link target back to the pipeline entity that put this parcel on the radar. */
 function alertHref(a: ParcelAlert): string | undefined {
+  if (a.alertType === "collateral_tax_delinquent") return "/finance";
   if (a.propertyId) return "/pipeline#properties";
   if (a.leadId) return "/pipeline#leads";
   return undefined;

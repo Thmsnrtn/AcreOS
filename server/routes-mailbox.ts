@@ -10,6 +10,7 @@
  * Mounted at /api/mailbox behind isAuthenticated + getOrCreateOrg.
  */
 
+import { ProviderNotContactedError } from "./services/actions/outwardAction";
 import { Router, type Response } from "express";
 import { z } from "zod";
 import { and, desc, eq, isNull } from "drizzle-orm";
@@ -97,6 +98,12 @@ function escapeHtml(t: string): string {
 
 /** Map a mailboxClient throw onto the right Errors.* response. Returns true if handled. */
 function handleMailboxError(res: Response, err: unknown): boolean {
+  if (err instanceof ProviderNotContactedError) {
+    // Refused before the provider was contacted — e.g. the platform-wide
+    // owner opt-out (W5a). Nothing was sent; the message says why.
+    Errors.forbidden(res, err.message);
+    return true;
+  }
   if (err instanceof MailboxNotConnectedError) {
     Errors.badRequest(res, err.message);
     return true;

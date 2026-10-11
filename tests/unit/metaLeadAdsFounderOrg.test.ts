@@ -29,6 +29,8 @@
  * and turns this red, not merely "writes somewhere".
  */
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
+// W5a: the owner opt-out list is empty for this test (the guard is proven elsewhere).
+vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
 import express, { type Express } from "express";
 import request from "supertest";
 import crypto from "node:crypto";

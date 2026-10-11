@@ -66,6 +66,10 @@
 #  8c. `npx tsx tests/db/forecastingOnBuiltSchema.ts` — W4's vintage recorder,
 #      forecast issue and scoring on real tables: append-only vintages, key
 #      refusals, frozen customer outcomes, issued-then-scored ledger entries.
+#  8d. `npx tsx tests/db/trustOnBuiltSchema.ts` — W5a's owner opt-out
+#      (cross-org match, confirm, suppression, later import, founder erasure,
+#      statutory clock) and giving (pledge by county, cap, receipts-only panel)
+#      on real tables.
 #   9. `npx tsx scripts/check-constraint-names.ts` — every unique constraint
 #      shared/schema.ts declares exists under the name it declares (register:
 #      scripts/constraint-names.allowlist.json, shrink-only).
@@ -164,6 +168,12 @@ fi
 echo "[build-schema] 8c/10 npx tsx tests/db/forecastingOnBuiltSchema.ts"
 if ! npx tsx tests/db/forecastingOnBuiltSchema.ts; then
   echo "[build-schema] FAIL — the W4 vintage recorder / forecast ledger does not run on the schema this repository builds." >&2
+  exit 1
+fi
+
+echo "[build-schema] 8d/10 npx tsx tests/db/trustOnBuiltSchema.ts"
+if ! npx tsx tests/db/trustOnBuiltSchema.ts; then
+  echo "[build-schema] FAIL — the W5a owner opt-out / giving ledger does not run on the schema this repository builds." >&2
   exit 1
 fi
 

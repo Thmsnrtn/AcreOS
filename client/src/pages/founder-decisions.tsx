@@ -49,6 +49,8 @@ import { PrefetchLink } from "@/components/prefetch-link";
 import { HelpCircle } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { FounderPulseStrip } from "@/components/founder/PulseStrip";
+import { OwnerRequestsSection } from "@/components/founder/trust/OwnerRequestsSection";
+import { GivingSection } from "@/components/founder/trust/GivingSection";
 // The "If you do nothing" contract — one verified-true sentence per decision
 // class (shared/decisions/doNothing.ts, same module the server exports via
 // decisionsInbox.ts, so the rendered sentence can never drift from the code's
@@ -1297,7 +1299,11 @@ export default function FounderDecisionsPage() {
 
       {/* Open agent questions — same renders-only-when-waiting contract. */}
       <UncertainRefundsSection />
+      {/* W5a — owner opt-out / deletion requests (the deletion is a hard stop). */}
+      <OwnerRequestsSection />
       <OpenAsksSection />
+      {/* W5a — giving: cap, county → food bank, monthly approval, receipts. */}
+      <GivingSection />
       <WeeklyDigestSection />
 
       {/* A failed read is not an empty queue (DEFECT-0167): the list below

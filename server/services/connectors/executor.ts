@@ -75,6 +75,17 @@ export async function searchGmail(org: Organization, args: { query: string; maxR
 }
 
 export async function sendGmail(org: Organization, args: { to: string; subject: string; body: string }) {
+  // Platform-wide owner opt-out (W5a) — refused as a value, nothing sent.
+  const { ownerContactRefusal } = await import("../trust/ownerSuppression");
+  const ownerRefusal = await ownerContactRefusal("email", { email: args.to });
+  if (ownerRefusal) {
+    const { toolRefusal } = await import("@shared/refusal/plainRefusal");
+    return toolRefusal({
+      what: "The email was not sent",
+      why: "This owner asked AcreOS to stop all contact, and that request covers every account",
+      unlock: "Leave this owner out of your outreach; there is nothing to override",
+    });
+  }
   const creds = await getCredentials(org.id, "gmail");
   if (!creds?.accessToken) return { success: false, error: "Gmail is not connected." };
 

@@ -4,6 +4,8 @@ import { readIntegrationCredentials } from './integrationCredentials';
 import { emailCircuitBreaker } from '../utils/circuitBreaker';
 import { logger } from "../utils/logger";
 import { filterSuppressed } from "./emailSuppressions";
+import { ownerContactRefusal } from "./trust/ownerSuppression";
+import { plainRefusal } from "@shared/refusal/plainRefusal";
 import { issueToken, buildUnsubscribeUrl } from "./unsubscribeTokens";
 import { reserveSend } from "./emailWarmup";
 
@@ -777,6 +779,37 @@ export class EmailService {
     // Replace toAddresses with the allowed subset for the rest of the send.
     toAddresses.length = 0;
     toAddresses.push(...suppressionCheck.allowed);
+
+    // Platform-wide owner opt-out (W5a). Counterparty mail is outreach to a
+    // customer's sellers/buyers/owners; an owner who asked AcreOS to stop all
+    // contact is dropped here for every org, FAIL CLOSED. A transactional
+    // counterparty notice (a §1026.41 periodic statement to a borrower on an
+    // existing loan) is servicing of a contract, not outreach, and is not
+    // stopped by an outreach opt-out. System mail goes to AcreOS's own users.
+    if (lane === 'counterparty' && options.transactional !== true && toAddresses.length > 0) {
+      const ownerRefusals: string[] = [];
+      const ownerAllowed: string[] = [];
+      for (const addr of toAddresses) {
+        const refusal = await ownerContactRefusal('email', { email: addr });
+        if (refusal) ownerRefusals.push(refusal);
+        else ownerAllowed.push(addr);
+      }
+      if (ownerAllowed.length === 0) {
+        return {
+          success: false,
+          error: plainRefusal({
+            what: 'The email was not sent',
+            why: `${ownerRefusals.length === 1 ? 'The recipient' : 'Every recipient'} asked AcreOS to stop all contact, and that request covers every account`,
+            unlock: 'Leave this owner out of your outreach; there is nothing to override',
+          }),
+          errorType: 'recipient_rejected',
+          attempts: 0,
+          retryable: false,
+        };
+      }
+      toAddresses.length = 0;
+      toAddresses.push(...ownerAllowed);
+    }
 
     // Eleonora §10: enforce per-org IP-warmup ramp before SES is touched.
     // Brand-new orgs are capped at 50/day on day 1, scaling up to 10k/day

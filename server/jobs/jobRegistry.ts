@@ -326,6 +326,13 @@ export const JOB_ROSTER: JobRosterEntry[] = [
   // keys (Census permits and outcomes need none); a missing FRED_API_KEY /
   // NASS_API_KEY refuses only those families, reported in the run log.
   { name: "forecasting_monthly", intervalMs: MONTH, critical: false, cron: "0 6 25 * *" },
+  // W5a (server/jobs/trustJobs.ts). owner_optout_deadlines is CRITICAL: it is
+  // the statutory clock on owner deletion requests (45 days), and its silence
+  // is exactly how a legal deadline is missed. giving_monthly moves no money
+  // (it proposes a pledge to the founder); collateral_watch alerts Today.
+  { name: "owner_optout_deadlines", intervalMs: DAY, critical: true, cron: "0 8 * * *" },
+  { name: "giving_monthly", intervalMs: MONTH, critical: false, cron: "0 7 2 * *" },
+  { name: "collateral_watch", intervalMs: DAY, critical: false, cron: "0 9 * * *" },
   { name: "autonomy_outcome_grader", intervalMs: DAY, critical: false },
   // Horizon A1 — outcome-ledger 30/90-day check-in scorer, daily 12:00 UTC.
   // Non-critical: a dark pass delays scoring by a day; the unscored rows

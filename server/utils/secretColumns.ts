@@ -66,6 +66,7 @@ import {
   organizationInvitations,
   unsubscribeTokens,
   reactivationTokens,
+  ownerOptOutRequests,
   dsarRequests,
 } from "@shared/schema";
 import { isEncrypted } from "../services/fieldEncryption";
@@ -144,6 +145,8 @@ const ENTRIES: readonly Entry[] = Object.freeze([
   // until their next save).
   secret(founderAdAccounts, "accessToken", "ciphertext", "row"),
   secret(founderAdAccounts, "appSecret", "ciphertext", "anywhere"),
+  // W5a: a mail-code owner request's address + code, held only until mailed.
+  secret(ownerOptOutRequests, "pendingMailAddressEnc", "ciphertext", "row"),
 
   // ── Credential material stored as-is ──────────────────────────────────────
   // The v1 API reveals a new subscription's secret once, under its own
@@ -164,6 +167,8 @@ const ENTRIES: readonly Entry[] = Object.freeze([
   secret(titlePartners, "apiKeyHash", "verifier", "anywhere"),
   secret(organizationInvitations, "inviteTokenHash", "verifier", "anywhere"),
   secret(reactivationTokens, "tokenHash", "verifier", "anywhere"),
+  // W5a: sha256 of the token emailed / code mailed to a property owner.
+  secret(ownerOptOutRequests, "verificationSecretHash", "verifier", "anywhere"),
   secret(titleOrders, "wireInstructionsPasswordHint", "verifier", "anywhere"),
 ]);
 

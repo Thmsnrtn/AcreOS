@@ -18,6 +18,7 @@
  * exercised once Clerk mail scopes are configured (key-ready, not key-live).
  */
 
+import { assertOwnerContactAllowed } from "../trust/ownerSuppression";
 import { getMailboxAccessToken } from "./clerkMailbox";
 import type { MailboxOAuthProvider } from "@shared/schema";
 
@@ -397,6 +398,9 @@ async function gmailSend(
   token: string,
   input: SendMessageInput,
 ): Promise<{ id: string }> {
+  // Platform-wide owner opt-out (W5a), at the transport too (sendMessage
+  // checks first; this keeps any future caller of the transport honest).
+  await assertOwnerContactAllowed("email", { email: input.to });
   const mime = buildMimeMessage({
     to: input.to,
     subject: input.subject,
@@ -477,6 +481,7 @@ async function graphSend(
   token: string,
   input: SendMessageInput,
 ): Promise<{ id: string }> {
+  await assertOwnerContactAllowed("email", { email: input.to });
   const message: Record<string, unknown> = {
     subject: input.subject,
     body: { contentType: "HTML", content: input.body },
@@ -524,6 +529,9 @@ export async function getMessage(account: MailboxAccount, messageId: string): Pr
 }
 
 export async function sendMessage(account: MailboxAccount, input: SendMessageInput): Promise<SendOutcome> {
+  // Platform-wide owner opt-out (W5a): the org's own mailbox is still an
+  // AcreOS send path. Throws before any token is fetched (nothing sent).
+  await assertOwnerContactAllowed("email", { email: input.to });
   const token = await tokenOrThrow(account);
   const sent = account.provider === "gmail" ? await gmailSend(token, input) : await graphSend(token, input);
   return { id: sent.id, outcome: "accepted_by_provider" };

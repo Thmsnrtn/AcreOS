@@ -27,6 +27,7 @@
 
 import type { Express, Response } from "express";
 import { db } from "./db";
+import { stampOwnerSuppression } from "./services/trust/ownerSuppression";
 import { leads } from "@shared/schema";
 import type { AuthenticatedRequest } from "./types/request";
 import { getOrganizationId, getUserId } from "./types/request";
@@ -118,7 +119,9 @@ export function registerDriveModeRoutes(app: Express): void {
           noteParts.push(notes.trim());
         }
 
-        const [row] = await db.insert(leads).values({
+        // Platform-wide owner opt-out (W5a): stamped like every lead writer
+        // (a curb capture carries no ZIP, so today it rarely can match).
+        const { rows: [curbRow] } = await stampOwnerSuppression([{
           organizationId: orgId,
           type: "seller",
           firstName: geo?.address ?? fallbackLabel,
@@ -129,7 +132,8 @@ export function registerDriveModeRoutes(app: Express): void {
           status: "new",
           source: "driving_for_dollars",
           notes: noteParts.join(" — "),
-        }).returning();
+        }]);
+        const [row] = await db.insert(leads).values(curbRow).returning();
 
         logger.info("[drive-mode] quick-add lead created", {
           orgId,

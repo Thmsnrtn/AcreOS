@@ -32,6 +32,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+// W5a: the owner opt-out list is empty for this test (the guard is proven elsewhere).
+vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
 import fs from "node:fs";
 import path from "node:path";
 

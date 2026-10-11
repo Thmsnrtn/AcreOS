@@ -2,6 +2,7 @@ import Lob from 'lob';
 import { logger } from "../utils/logger";
 import { isLiveSendArmed } from "./mail/liveSendInterlock";
 import { getLobClient } from "./directMailService";
+import { assertOwnerContactAllowed } from "./trust/ownerSuppression";
 
 /**
  * BYO send rails for PHYSICAL mail (founder decision 2026-07-17, extended to
@@ -315,6 +316,9 @@ export class LobService {
       isTestMode = resolved.isTestMode;
 
       logger.info(`[LobService] Sending letter (${isTestMode ? 'test' : 'live'} env) to ${options.to.name}`);
+      // Platform-wide owner opt-out (W5a): refused inside the try, so the
+      // caller gets this lane's {success:false} result. Nothing reaches Lob.
+      await assertOwnerContactAllowed('mail', { addressLine1: options.to.addressLine1, zip: options.to.zip });
       
       const result = await client.letters.create({
         to: {
@@ -378,6 +382,7 @@ export class LobService {
       isTestMode = resolved.isTestMode;
 
       logger.info(`[LobService] Sending postcard (${isTestMode ? 'test' : 'live'} env) to ${options.to.name}`);
+      await assertOwnerContactAllowed('mail', { addressLine1: options.to.addressLine1, zip: options.to.zip });
       
       const result = await client.postcards.create({
         to: {

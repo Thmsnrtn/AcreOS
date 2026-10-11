@@ -237,6 +237,7 @@ const PublicParcelReportPage = React.lazy(() => import("@/pages/public-parcel-re
 // W3 acquisition engine — public, no auth: the free landlocked checker and
 // the county guides (only where AcreOS keeps parcels; server-rendered too).
 const LandlockedCheckPage = React.lazy(() => import("@/pages/tools/landlocked"));
+const OwnerRequestPage = React.lazy(() => import("@/pages/owner-request"));
 const PublicCountyGuidePage = React.lazy(() => import("@/pages/public-county-guide"));
 // W3 — founding-member yearly offer (flag + founder-set price; refuses until both).
 const FoundingMemberPage = React.lazy(() => import("@/pages/founding-member"));
@@ -717,6 +718,8 @@ function Router() {
       {/* /terms/history BEFORE /terms — ToS §16 promises this page exists. */}
       <Route path="/terms/history" component={TermsHistory} />
       <Route path="/terms" component={TermsOfService} />
+      {/* W5a — a property owner's opt-out / deletion request (public, no auth); before /privacy for first-match. */}
+      <Route path="/privacy/owner-request" component={OwnerRequestPage} />
       <Route path="/privacy" component={PrivacyPolicy} />
       <Route path="/legal/privacy" component={PrivacyPolicy} />
       <Route path="/legal/sub-processors" component={PublicSubProcessorsPage} />

@@ -21,6 +21,7 @@ import type {
 import { averageCostCentsPerPiece, PartialMailSendError } from "../router";
 import { logger } from "../../../utils/logger";
 import { clock } from "../../../utils/clock";
+import { assertOwnerContactAllowed } from "../../trust/ownerSuppression";
 
 const POSTGRID_BASE_URL = "https://api.postgrid.com/print-mail/v1";
 
@@ -124,6 +125,12 @@ export const postgridAdapter: MailProvider = {
   async send(shipment: MailShipment): Promise<ProviderSendResult> {
     if (!this.isConfigured()) {
       throw new Error("PostGrid not configured (POSTGRID_API_KEY unset).");
+    }
+    // Platform-wide owner opt-out (W5a): every recipient is checked BEFORE
+    // the first piece is sent, so a suppressed owner refuses the shipment
+    // with nothing printed (ProviderNotContactedError) rather than half-sent.
+    for (const piece of shipment.pieces) {
+      await assertOwnerContactAllowed("mail", { addressLine1: piece.recipient.address1, zip: piece.recipient.zip });
     }
 
     const { storage } = await import("../../../storage");

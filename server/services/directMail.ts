@@ -6,6 +6,7 @@ import { isLiveSendArmed } from './mail/liveSendInterlock';
 import { getLobClient } from './directMailService';
 import { DIRECT_MAIL_COSTS, type MailPieceType } from "./sendPricing";
 import { clock } from "../utils/clock";
+import { assertOwnerContactAllowed } from "./trust/ownerSuppression";
 
 async function logLobApiUsage(
   orgId: number | undefined,
@@ -252,6 +253,8 @@ export class DirectMailService {
   }
 
   private async performSendPostcard(options: PostcardOptions, mode: MailMode = 'live', orgId?: number): Promise<SendResult> {
+    // Platform-wide owner opt-out (W5a) — before simulation and Lob.
+    await assertOwnerContactAllowed("mail", { addressLine1: options.to.addressLine1, zip: options.to.zip });
     // Honor SIMULATION_MODE / SIMULATION_MODE_LOB / org.settings.simulationMode.
     // Previously this service relied only on Lob's own `test_*` key for safety,
     // which made the global kill-switch a lie for direct-mail. Caught 2026-05-10.
@@ -375,6 +378,7 @@ export class DirectMailService {
   }
 
   private async performSendLetter(options: LetterOptions, mode: MailMode = 'live', orgId?: number): Promise<SendResult> {
+    await assertOwnerContactAllowed("mail", { addressLine1: options.to.addressLine1, zip: options.to.zip });
     const org = orgId ? await storage.getOrganization(orgId).catch(() => null) : null;
     if (shouldSimulate("lob", org)) {
       const sim = await recordSimulatedAction(

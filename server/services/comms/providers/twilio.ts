@@ -16,6 +16,7 @@ import { db } from "../../../db";
 import { organizationIntegrations } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
 import { logger } from "../../../utils/logger";
+import { assertOwnerContactAllowed } from "../../trust/ownerSuppression";
 import {
   registerProvider,
   type CommsProvider,
@@ -112,6 +113,9 @@ class TwilioProvider implements CommsProvider {
   }
 
   async sendSms(opts: SendSmsOpts): Promise<SendSmsResult> {
+    // Platform-wide owner opt-out (W5a): checked at the carrier adapter too,
+    // so a caller that reaches the provider without the router still stops.
+    await assertOwnerContactAllowed("sms", { phone: opts.to });
     // Preserve the original simulation-mode short-circuit: a fake SID
     // gets returned, no Twilio API call happens.
     const { shouldSimulate, recordSimulatedAction } = await import(
@@ -195,6 +199,7 @@ class TwilioProvider implements CommsProvider {
   }
 
   async initiateCall(opts: InitiateCallOpts): Promise<InitiateCallResult> {
+    await assertOwnerContactAllowed("voice", { phone: opts.to });
     const creds = await resolveCredentials(opts.organizationId);
     if (!creds) throw new Error("twilio.initiateCall: credentials unavailable");
     const url = `https://api.twilio.com/2010-04-01/Accounts/${creds.accountSid}/Calls.json`;

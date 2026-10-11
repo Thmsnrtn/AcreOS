@@ -134,6 +134,10 @@ export const organizations = pgTable("organizations", {
     // orgs with this true contribute to any figure shown to another org.
     // Read and written ONLY through server/services/sophiePrivacyGuard.ts.
     crossOrgLearningConsent?: boolean;
+    // W5a giving: the county the member says they are in. The founder's
+    // $1/paying member/month goes to the food bank mapped to it. Absent =
+    // counted as "no county on file", never guessed.
+    givingArea?: { state: string; county: string };
     timezone?: string;
     currency?: string;
     defaultInterestRate?: number;
@@ -14131,6 +14135,7 @@ export * from "./schema/subdivision";
 // ============================================================================
 export * from "./schema/fix-and-flip";
 export * from "./schema/forecasting";
+export * from "./schema/trust";
 
 // ============================================================================
 // BUY-AND-HOLD / RENTAL VERTICAL — extracted to ./schema/rental.ts

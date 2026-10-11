@@ -7,6 +7,8 @@
  * mailbox — is in mailboxActsAsItsOwner.test.ts.)
  */
 import { describe, it, expect, vi } from "vitest";
+// W5a: the owner opt-out list is empty for this test (the guard is proven elsewhere).
+vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
 
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock("@clerk/express", () => ({

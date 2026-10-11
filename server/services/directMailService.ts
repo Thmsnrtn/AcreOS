@@ -6,6 +6,7 @@ import { readIntegrationCredentials } from './integrationCredentials';
 import { logger } from "../utils/logger";
 import { resolvePlatformLobKey } from './mail/liveSendInterlock';
 import { clock } from "../utils/clock";
+import { assertOwnerContactAllowed } from "./trust/ownerSuppression";
 
 interface RecipientAddress {
   line1: string;
@@ -273,6 +274,8 @@ async function postLobCostToLedger(
 
 export async function sendPostcard(options: SendPostcardOptions): Promise<SendResult> {
   const { organizationId, senderIdentity, recipientName, recipientAddress, frontHtml, backHtml, size = '4x6', useType = 'marketing' } = options;
+  // Platform-wide owner opt-out (W5a) — before simulation, credits and Lob.
+  await assertOwnerContactAllowed('mail', { addressLine1: recipientAddress.line1, zip: recipientAddress.zip });
 
   logger.info(`[DirectMailService] Sending postcard for org ${organizationId} to ${recipientName}`);
 
@@ -432,6 +435,8 @@ export class LetterAlreadySentError extends Error {
 
 async function performLetterSend(options: SendLetterOptions): Promise<SendResult> {
   const { organizationId, senderIdentity, recipientName, recipientAddress, htmlContent, color = false, doubleSided = false, useType = 'marketing' } = options;
+  // Platform-wide owner opt-out (W5a) — before simulation, credits and Lob.
+  await assertOwnerContactAllowed('mail', { addressLine1: recipientAddress.line1, zip: recipientAddress.zip });
 
   logger.info(`[DirectMailService] Sending letter for org ${organizationId} to ${recipientName}`);
 

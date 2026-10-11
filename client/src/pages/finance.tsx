@@ -1,5 +1,6 @@
 import { PageShell } from "@/components/page-shell";
 import { useNotes, useCreateNote, useDeleteNote } from "@/hooks/use-notes";
+import { CollateralWatchPanel } from "@/components/finance/CollateralWatchPanel";
 import { usePayments, useRecordPayment } from "@/hooks/use-payments";
 import { useLeads } from "@/hooks/use-leads";
 import { useUserPermissions } from "@/hooks/use-organization";
@@ -740,6 +741,8 @@ export default function FinancePage({ embedded = false }: { embedded?: boolean }
               )}
             </CardContent>
           </Card>
+          {/* W5a — what is (and is not) watched on each note's collateral. */}
+          <CollateralWatchPanel />
             </TabsContent>
 
             <TabsContent value="book" className="mt-4">

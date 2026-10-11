@@ -4,6 +4,7 @@
  * Supports batch optimization (queue up to 25, flush on full or 2-second timeout).
  * Tier: starter/pro. Cost: 3–15 cents.
  */
+import { assertOwnerContactAllowed } from "../trust/ownerSuppression";
 import { logger } from "../../utils/logger";
 import type {
   DataCategory,
@@ -108,6 +109,12 @@ export const batchdataProvider: DataProvider = {
       }
 
       case "skip_trace": {
+        // Platform-wide owner opt-out (W5a): no lookup about a suppressed owner
+        // (an address input is the only identifier this lane carries).
+        await assertOwnerContactAllowed(
+          "skip_trace",
+          input.type === "address" ? { addressLine1: input.street, zip: input.zip } : {},
+        );
         const requestBody = buildSkipTraceBody(input);
         data = await batchdataFetch("/property/skip-trace", apiKey, "POST", requestBody);
         confidence = 75;

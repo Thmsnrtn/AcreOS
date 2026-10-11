@@ -281,7 +281,9 @@ async function scoreNewDealsForOrg(
           // a real name; an entity keeps its whole name.
           const owner = deal.ownerName?.trim() ? splitOwnerName(deal.ownerName) : null;
           if (existingLead.length === 0 && deal.apn && owner?.lastName) {
-            await db.insert(leads).values({
+            // Platform-wide owner opt-out (W5a): stamped like every lead writer.
+            const { stampOwnerSuppression } = await import("../services/trust/ownerSuppression");
+            const { rows: [huntedRow] } = await stampOwnerSuppression([{
               organizationId,
               firstName: owner.firstName,
               lastName: owner.lastName,
@@ -299,7 +301,8 @@ async function scoreNewDealsForOrg(
               source: "deal_hunter_auto",
               // leads has no county/apn column; preserved in notes for traceability.
               notes: `Auto-created from Deal Hunter. County: ${deal.county || "N/A"}, APN: ${deal.apn}. Motivation: ${motivationResult.grade} (${motivationResult.score}). Top signal: ${motivationResult.topSignals[0] || "N/A"}`,
-            });
+            }] as Array<typeof leads.$inferInsert>);
+            await db.insert(leads).values(huntedRow);
             autoEnrolled++;
           }
         } catch (err: any) {

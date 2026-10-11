@@ -13,6 +13,7 @@ import { assertNotUnderLegalHold, filterOutHeldIds } from "../services/legalHold
 import type { DatabaseStorage, PaginationOptions, PaginatedResult } from "../storage";
 import { LIST_READ_CAP, capListRead } from "./listCap";
 import { clock } from "../utils/clock";
+import { stampOwnerSuppression } from "../services/trust/ownerSuppression";
 import { DEFAULT_GRANT_SOURCE, stampConsentForInsert, stampConsentForUpdate, stripConsentForImport } from "../services/consentStamp";
 import { leadHasOptedOut } from "../services/leadContactability";
 
@@ -301,7 +302,10 @@ export const leadRepo = {
   // column is NOT NULL — callers supply it, so it is required here.
   async createLead(this: DatabaseStorage, lead: InsertLead & { organizationId: number }): Promise<Lead> {
     // consentDate is the server's clock, never the caller's (consentStamp.ts).
-    const [newLead] = await db.insert(leads).values(stampConsentForInsert(leadInsertRow(lead), DEFAULT_GRANT_SOURCE, clock.now())).returning();
+    // Platform-wide owner opt-out (W5a): a matching row is kept but stamped
+    // do-not-contact. Every storage.createLead caller passes through here.
+    const { rows: [row] } = await stampOwnerSuppression([stampConsentForInsert(leadInsertRow(lead), DEFAULT_GRANT_SOURCE, clock.now())]);
+    const [newLead] = await db.insert(leads).values(row).returning();
     await this.logActivity({
       organizationId: lead.organizationId,
       action: "created",
@@ -315,10 +319,12 @@ export const leadRepo = {
   async createLeadsBatch(this: DatabaseStorage, leadsData: (InsertLead & { organizationId: number })[]): Promise<Lead[]> {
     if (leadsData.length === 0) return [];
     // Batch insert all leads in a single query instead of N individual inserts
+    // The batch path is the import path: rows never carry consent, and rows
+    // matching a platform-wide owner opt-out (W5a) arrive do-not-contact.
+    const { rows: importRows } = await stampOwnerSuppression(leadsData.map((l) => stripConsentForImport(leadInsertRow(l))));
     const newLeads = await db
       .insert(leads)
-      // The batch path is the import path: rows never carry consent.
-      .values(leadsData.map((l) => stripConsentForImport(leadInsertRow(l))))
+      .values(importRows)
       .returning();
     // Batch-log activity for all created leads
     if (newLeads.length > 0) {

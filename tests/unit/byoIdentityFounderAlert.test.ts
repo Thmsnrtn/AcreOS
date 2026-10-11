@@ -19,6 +19,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
+// W5a: the owner opt-out list is empty for this test (the guard is proven elsewhere).
+vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
 
 const raiseAlert = vi.fn().mockResolvedValue({
   paged: false,

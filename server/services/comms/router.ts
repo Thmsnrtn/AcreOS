@@ -16,6 +16,7 @@
  * we're at scale, and the router is where that math gets applied.
  */
 import { assertCallVoiceAllowed, type CallVoice } from "./aiVoiceConsent";
+import { assertOwnerContactAllowed } from "../trust/ownerSuppression";
 import type { Request } from "express";
 import { logger } from "../../utils/logger";
 import { getSetting } from "../founderSettings";
@@ -198,6 +199,9 @@ export class CommsRouter {
    * failure if every provider fails.
    */
   async route(opts: RouteOpts): Promise<RouteResult> {
+    // Platform-wide owner opt-out (W5a): no carrier is reached for a number
+    // whose owner asked AcreOS to stop all contact. Throws (nothing sent).
+    await assertOwnerContactAllowed("sms", { phone: opts.to });
     let candidates: CommsProviderName[];
     if (opts.preferredProvider) {
       candidates = [opts.preferredProvider];
@@ -235,6 +239,8 @@ export class CommsRouter {
     // THE call-placing chokepoint: no provider is reached until the declared
     // voice is allowed (an AI voice needs prior express written consent).
     await assertCallVoiceAllowed({ voice: opts.voice, to: opts.to, organizationId: opts.organizationId });
+    // …and no call is placed to an owner who opted out platform-wide (W5a).
+    await assertOwnerContactAllowed("voice", { phone: opts.to });
     const enabled = opts.preferredProvider
       ? [opts.preferredProvider]
       : await getEnabledProviders();

@@ -18,6 +18,7 @@ import { logger } from "../utils/logger";
 import { emitLeadCreated } from "./leadEvents";
 import { secretEquals } from "../utils/secretEquals";
 import { clock } from "../utils/clock";
+import { stampOwnerSuppression } from "./trust/ownerSuppression";
 
 const META_API_BASE = "https://graph.facebook.com/v21.0";
 
@@ -132,9 +133,15 @@ export async function processLeadAdSubmission(
   const message = fields.message || fields.notes || fields.comments || "";
 
   // Create lead in AcreOS
+  // Platform-wide owner opt-out (W5a): a matching inquiry is recorded but
+  // stamped do-not-contact, like every other lead writer.
+  const { rows: [suppression] } = await stampOwnerSuppression([{ email: email || null, phone: phone || null }]);
   const [newLead] = await db
     .insert(leads)
     .values({
+      doNotContact: suppression.doNotContact ?? undefined,
+      optOutDate: suppression.optOutDate ?? undefined,
+      optOutReason: suppression.optOutReason ?? undefined,
       organizationId: orgId,
       firstName: firstName || "Facebook",
       lastName: lastName || "Lead",

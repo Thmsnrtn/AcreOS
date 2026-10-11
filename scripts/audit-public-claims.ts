@@ -91,10 +91,21 @@ const PUBLIC_LAND_FILES = [
   "shared/billing/foundingMemberOffer.ts",
 ];
 
+/**
+ * W5a trust and giving (2026-10-11): the public owner opt-out page and the
+ * member-facing giving panel. Both carry wording a reader relies on — what
+ * AcreOS stops, what it keeps, what it gives — so both are read here, with a
+ * per-member vacuity floor below.
+ */
+const W5A_TRUST_FILES = [
+  "client/src/pages/owner-request.tsx",
+  "client/src/components/settings/MembershipGivingPanel.tsx",
+];
+
 /** Strip comments so truth-notes and design notes don't read as claims. */
 
 function landingSurface(): { file: string; text: string }[] {
-  return [...LANDING_FILES, ...PUBLIC_LAND_FILES].map((f) => {
+  return [...LANDING_FILES, ...PUBLIC_LAND_FILES, ...W5A_TRUST_FILES].map((f) => {
     let raw = "";
     try {
       raw = readFileSync(join(ROOT, f), "utf8");
@@ -112,6 +123,12 @@ function landingSurface(): { file: string; text: string }[] {
  * for the completeness scan.
  */
 const CLAIMS: { claim: string; anchor: string }[] = [
+  {
+    // W5a giving panel (Settings → Billing). Founder decision 2026-10-09; the
+    // panel itself shows only receipted amounts (shared/trust/giving.ts).
+    claim: "For every paying member, AcreOS commits $1 a month of its own money to a food bank serving that member's area.",
+    anchor: "AcreOS commits $1 a month of its own money",
+  },
   {
     // hero wedge — pinned verbatim by landingReposition.test.ts.
     claim:
@@ -279,6 +296,19 @@ const NUMBER_CLAIM = /\b\d+(?:\.\d+)?\s?(?:seconds?|minutes?|hours?|days?|federa
 
 function buildSources(): Source[] {
   return [
+    {
+      name: "Giving commitment (founder decision 2026-10-09) and its pledge computation",
+      ref: "shared/trust/giving.ts (CENTS_PER_MEMBER_PER_MONTH = 100, computeGivingPledge) + server/services/trust/givingService.ts",
+      content: `
+        Founder decision 2026-10-09: for every paying member, AcreOS commits
+        $1 a month of its own money, from its own revenue, to a food bank
+        serving that member's area. The monthly job counts paying members by
+        the county each member gave and pledges 100 cents per member per
+        month to the food bank the founder mapped to that county; the founder
+        approves each month within a cap and pays outside AcreOS, and only
+        receipted payments are shown to members as given.
+      `,
+    },
     {
       name: "Data retention on cancellation (binding privacy policy + the deletion routine)",
       ref: "client/src/pages/privacy.tsx retention table + server/services/orgDeletion.ts + server/routes-admin.ts (POST /api/admin/organizations/:id/delete)",
@@ -489,6 +519,13 @@ async function main() {
     if (!member || member.text.length <= 200) {
       failures += 1;
       console.error(`[VACUOUS] public land surface ${f} was not read — it left the scan's population.`);
+    }
+  }
+  for (const f of W5A_TRUST_FILES) {
+    const member = surface.find((s) => s.file === f);
+    if (!member || member.text.length <= 200) {
+      failures += 1;
+      console.error(`[VACUOUS] W5a trust surface ${f} was not read — it left the scan's population.`);
     }
   }
 

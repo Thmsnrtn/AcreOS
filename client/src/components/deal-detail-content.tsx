@@ -37,6 +37,7 @@ import { AssignmentPanel } from "@/components/deals/AssignmentPanel";
 import { CmaPanel } from "@/components/deals/CmaPanel";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { DealJourney } from "@/components/ui/deal-journey";
+import { FraudCheckPanel } from "@/components/deals/FraudCheckPanel";
 import { DealCalculator, type AnalysisResults } from "@/components/deal-calculator";
 import { useUpdateDeal, useSaveDealAnalysis } from "@/hooks/use-deals";
 import { useDealChecklist, useChecklistTemplates, useApplyChecklistTemplate, useUpdateChecklistItem, useStageGate } from "@/hooks/use-checklists";
@@ -826,6 +827,8 @@ export function DealDetailContent({ deal, onDelete, headerActions }: { deal: Dea
             </TabsContent>
 
             <TabsContent value="checklist" className="space-y-6">
+              {/* W5a — fraud-check signals before an offer or closing. */}
+              <FraudCheckPanel dealId={deal.id} />
               {stageGate && !stageGate.canAdvance && (
                 <Card role="status" className="border-acr-warn/50 bg-acr-warn/10">
                   <CardContent className="p-4 flex items-center gap-3">

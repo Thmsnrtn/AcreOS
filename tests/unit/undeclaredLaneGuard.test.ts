@@ -20,6 +20,8 @@
  *     guard on the same resolver, and only a POSITIVE MATCH fails closed.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+// W5a: the owner opt-out list is empty for this test (the guard is proven elsewhere).
+vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
 
 // ── The resolver under control ──────────────────────────────────────────────
 // The guard must reuse the ONE counterparty resolver (shared with the autopilot

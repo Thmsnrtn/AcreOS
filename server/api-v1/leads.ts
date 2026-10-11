@@ -31,6 +31,7 @@ import {
 import { serializeLead } from "./serializers";
 import { dispatchWebhookEvent } from "../services/publicWebhookDispatcher";
 import { clock } from "../utils/clock";
+import { stampOwnerSuppression } from "../services/trust/ownerSuppression";
 import { DEFAULT_GRANT_SOURCE, stampConsentForInsert, stampConsentForUpdate } from "../services/consentStamp";
 
 export const leadsV1Router = Router();
@@ -150,11 +151,15 @@ leadsV1Router.post(
     }
 
     try {
+      // Same consent stamp as every other lead writer (consentStamp.ts):
+      // a grant gets the server's clock and the default source. A row that
+      // matches a platform-wide owner opt-out (W5a) arrives do-not-contact.
+      const { rows: [row] } = await stampOwnerSuppression([
+        stampConsentForInsert({ organizationId: orgId, ...mapCreateInput(parsed.data) }, DEFAULT_GRANT_SOURCE),
+      ]);
       const [created] = await db
         .insert(leads)
-        // Same consent stamp as every other lead writer (consentStamp.ts):
-        // a grant gets the server's clock and the default source.
-        .values(stampConsentForInsert({ organizationId: orgId, ...mapCreateInput(parsed.data) }, DEFAULT_GRANT_SOURCE))
+        .values(row)
         .returning();
 
       // Outbound webhook — best-effort, never blocks the API response.

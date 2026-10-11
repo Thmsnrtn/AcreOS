@@ -1,4 +1,6 @@
 import { logger } from "../utils/logger";
+import { plainRefusal } from "@shared/refusal/plainRefusal";
+import { assertOwnerContactAllowed, ownerContactRefusal, stampOwnerSuppression } from "./trust/ownerSuppression";
 import {
   getCachedOrFetch,
   normalizeQuery,
@@ -62,7 +64,35 @@ export interface SkipTraceResult {
   creditsUsed?: number;
 }
 
+/**
+ * Platform-wide owner opt-out (W5a), AFTER a vendor answered: a returned
+ * phone or email that belongs to an owner who asked AcreOS to stop all
+ * contact is dropped before the result is cached, stored or shown. A lookup
+ * error drops every contact (fail closed).
+ */
+async function withoutSuppressedContacts(result: SkipTraceResult): Promise<SkipTraceResult> {
+  if (result.contacts.length === 0) return result;
+  try {
+    const rows = result.contacts.map((c) => (c.type === "phone" ? { phone: c.value } : c.type === "email" ? { email: c.value } : {}));
+    const { rows: stamped } = await stampOwnerSuppression(rows);
+    return { ...result, contacts: result.contacts.filter((_c, i) => !(stamped[i] as { doNotContact?: boolean }).doNotContact) };
+  } catch {
+    return {
+      ...result,
+      success: false,
+      contacts: [],
+      error: plainRefusal({
+        what: "No contact details were returned",
+        why: "The list of owners who asked AcreOS to stop all contact could not be checked",
+        unlock: "Try the lookup again in a minute",
+      }),
+    };
+  }
+}
+
 async function traceViaBatchSkipTracing(input: SkipTraceInput, organizationId?: number): Promise<SkipTraceResult> {
+  // Platform-wide owner opt-out (W5a): no lookup about a suppressed owner.
+  await assertOwnerContactAllowed("skip_trace", { addressLine1: input.address, zip: input.zip });
   // Universal BYOK (2026-05-22): prefer customer-supplied key. Falls
   // back to platform env. Customer keys are billed directly by
   // BatchSkipTracing so postSkipTraceCostToLedger short-circuits when
@@ -132,7 +162,7 @@ async function traceViaBatchSkipTracing(input: SkipTraceInput, organizationId?: 
     });
   }
 
-  return {
+  return withoutSuppressedContacts({
     success: true,
     source: "batch_skip_tracing",
     contacts,
@@ -145,10 +175,11 @@ async function traceViaBatchSkipTracing(input: SkipTraceInput, organizationId?: 
         }
       : undefined,
     creditsUsed: data.credits_used || 1,
-  };
+  });
 }
 
 async function traceViaREISkip(input: SkipTraceInput): Promise<SkipTraceResult> {
+  await assertOwnerContactAllowed("skip_trace", { addressLine1: input.address, zip: input.zip });
   const apiKey = process.env.REISKIP_API_KEY;
   if (!apiKey) throw new Error("REISKIP_API_KEY not configured");
 
@@ -188,7 +219,7 @@ async function traceViaREISkip(input: SkipTraceInput): Promise<SkipTraceResult> 
     });
   }
 
-  return { success: true, source: "reiskip", contacts };
+  return withoutSuppressedContacts({ success: true, source: "reiskip", contacts });
 }
 
 // Pillar 1.6 — per-credit skip-trace cost in cents. BatchSkipTracing bills
@@ -254,6 +285,21 @@ export const skipTracingService = {
    * is written.
    */
   async trace(input: SkipTraceInput, organizationId?: number): Promise<SkipTraceResult> {
+    // Platform-wide owner opt-out (W5a) — said plainly here, before the
+    // provider fallbacks below could turn the refusal into "not configured".
+    const ownerRefusal = await ownerContactRefusal("skip_trace", { addressLine1: input.address, zip: input.zip });
+    if (ownerRefusal) {
+      return {
+        success: false,
+        source: "none",
+        contacts: [],
+        error: plainRefusal({
+          what: "No contact details were looked up for this owner",
+          why: "The owner asked AcreOS to stop all contact, and that request covers every account",
+          unlock: "Leave this owner out of your outreach; there is nothing to override",
+        }),
+      };
+    }
     // Pillar 6 — cross-customer cache. Normalize the query so the same
     // (name, address) typed two different ways collapses to one row.
     // We only consult the cache when we have an orgId (the analytics +
@@ -303,7 +349,11 @@ export const skipTracingService = {
           success: false,
           source: "none",
           contacts: [],
-          error: "No skip tracing provider configured. Set BATCH_SKIP_TRACING_API_KEY or REISKIP_API_KEY.",
+          error: plainRefusal({
+            what: "No contact details were looked up",
+            why: "No skip-trace provider is connected to this account",
+            unlock: "Connect BatchSkipTracing or REISkip under Settings → Integrations, then try again",
+          }),
         };
       }
       return result;
@@ -340,7 +390,11 @@ export const skipTracingService = {
         success: false,
         source: "none",
         contacts: [],
-        error: "No skip tracing provider configured. Set BATCH_SKIP_TRACING_API_KEY or REISKIP_API_KEY.",
+        error: plainRefusal({
+            what: "No contact details were looked up",
+            why: "No skip-trace provider is connected to this account",
+            unlock: "Connect BatchSkipTracing or REISkip under Settings → Integrations, then try again",
+          }),
       };
     }
   },

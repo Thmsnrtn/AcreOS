@@ -7,6 +7,8 @@
  * preferredProvider override.
  */
 import { describe, it, expect, vi } from "vitest";
+// W5a: the owner opt-out list is empty for this test (the guard is proven elsewhere).
+vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
 import {
   CommsRouter,
   type CommsProvider,

@@ -13,6 +13,8 @@
  * for a send carried on the customer's own AWS account.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+// W5a: the owner opt-out list is empty for this test (the guard is proven elsewhere).
+vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
 
 const sentRaw: string[] = [];
 vi.mock("@aws-sdk/client-ses", () => ({

@@ -24,6 +24,7 @@ import { eq, and, inArray, sql } from "drizzle-orm";
 import { normalizeParcelRef, parcelKey } from "@shared/parcel/parcelRef";
 import { splitOwnerName } from "@shared/parcel/ownerName";
 import { clock } from "../utils/clock";
+import { stampOwnerSuppression } from "./trust/ownerSuppression";
 
 // ─── Tax-delinquent payload convention ──────────────────────────────────────
 // The leads table has no apn/county/taxDelinquent/delinquentAmount/metadata/
@@ -391,7 +392,9 @@ export async function processTaxDelinquentImport(
   for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
     const chunk = toInsert.slice(i, i + CHUNK_SIZE);
     try {
-      const inserted = await db.insert(leads).values(chunk).returning({ id: leads.id });
+      // Platform-wide owner opt-out (W5a): matching rows arrive do-not-contact.
+      const { rows: stamped } = await stampOwnerSuppression(chunk);
+      const inserted = await db.insert(leads).values(stamped).returning({ id: leads.id });
       result.importedLeadIds.push(...inserted.map(r => r.id));
       result.imported += inserted.length;
     } catch (err: any) {

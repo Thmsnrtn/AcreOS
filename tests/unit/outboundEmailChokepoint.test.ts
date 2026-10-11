@@ -114,6 +114,11 @@ const REGISTER: Record<string, [number, SendClass]> = {
   "server/webhookHandlers.ts": [4, "system-mail"],
   // 2026-10-09: the yearly pre-renewal notice (§ 17602(a)(8), (b)(2)), system lane.
   "server/services/annualRenewalNotice.ts": [1, "system-mail"],
+  // W5a 2026-10-11: the confirmation link for an owner's opt-out request —
+  // AcreOS answering a request made to AcreOS itself (it is the data holder
+  // being asked), system lane, transactional. Not counterparty mail: no org
+  // is sending it, and no customer's identity belongs on it.
+  "server/services/trust/ownerOptOut.ts": [1, "system-mail"],
   "server/worker.ts": [1, "system-mail"],
 };
 

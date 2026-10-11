@@ -257,6 +257,10 @@ import { registerAutopilotRoutes } from "./routes-autopilot";
 import { registerSoleneChatRoutes } from "./routes-solene-chat";
 import { registerFounderMoneyRoutes } from "./routes-founder-money";
 import { registerFounderForecastingRoutes } from "./routes-founder-forecasting";
+import { registerPublicOwnerOptOutRoutes } from "./routes-owner-optout";
+import { registerFounderOwnerOptOutRoutes } from "./routes-founder-owner-optout";
+import { registerGivingRoutes } from "./routes-giving";
+import { registerTrustCheckRoutes } from "./routes-trust-checks";
 import { registerAgentClaimsRoutes } from "./routes-agent-claims";
 import { registerDispatchRoutes } from "./routes-dispatch";
 import { registerErrorBoundaryRoutes } from "./routes-error-boundary";
@@ -627,6 +631,8 @@ export async function registerRoutes(
   registerPublicLandRoutes(app);
   // The founding-member offer's public availability (no price while unset).
   registerPublicOfferRoutes(app);
+  // W5a — a property owner's opt-out / deletion request (no sign-in).
+  registerPublicOwnerOptOutRoutes(app);
 
   // /api/health/cached (Fly's health-check target) is registered by
   // registerPublicHealthRoutes above, with the same status-only body.
@@ -2606,6 +2612,9 @@ export async function registerRoutes(
   // silently 404'd into Phase 0 placeholders.
   registerFounderMoneyRoutes(app);
   registerFounderForecastingRoutes(app);
+  registerFounderOwnerOptOutRoutes(app); // W5a — Decisions door: owner requests
+  registerGivingRoutes(app); // W5a — Decisions door: giving; Settings: membership panel
+  registerTrustCheckRoutes(app); // W5a — Deals: fraud-check signals; Finance: collateral watch
   // W3 — creator revenue share, founder-only (Controls door section).
   registerFounderCreatorRoutes(app);
   // Solene (Layer 1 cap #2) — cross-agent claims founder read endpoint.

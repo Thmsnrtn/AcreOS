@@ -3,6 +3,7 @@ import { logger } from "../utils/logger";
 import { resolvePlatformLobKey, isLiveSendArmed } from './mail/liveSendInterlock';
 import { getLobClient } from './directMailService';
 import { clock } from "../utils/clock";
+import { assertOwnerContactAllowed } from "./trust/ownerSuppression";
 
 export enum MailProvider {
   LOB = "lob",
@@ -169,6 +170,8 @@ async function sendLetterViaLob(
 ): Promise<MailResult> {
   try {
     const lob = resolved.client;
+    // Platform-wide owner opt-out (W5a) — inside the try: {success:false}.
+    await assertOwnerContactAllowed('mail', { addressLine1: options.to.addressLine1, zip: options.to.zip });
 
     const letter = await withLobTimeout<any>((lob.letters as any).create({
       to: formatAddressForLob(options.to),
@@ -205,6 +208,8 @@ async function sendPostcardViaLob(
 ): Promise<MailResult> {
   try {
     const lob = resolved.client;
+    // Platform-wide owner opt-out (W5a) — inside the try: {success:false}.
+    await assertOwnerContactAllowed('mail', { addressLine1: options.to.addressLine1, zip: options.to.zip });
 
     const postcard = await withLobTimeout<any>((lob.postcards as any).create({
       to: formatAddressForLob(options.to),

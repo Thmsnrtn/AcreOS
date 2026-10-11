@@ -375,6 +375,14 @@ export default function PrivacyPolicy() {
             {/* ── 7. Your Rights ── */}
             <section className="space-y-4" data-testid="section-user-rights">
               <h2 className="text-xl font-semibold">7. Your rights</h2>
+              {/* W5a — the public request form for property owners (not customers). */}
+              <p className="text-muted-foreground leading-relaxed">
+                Own property and want no contact through AcreOS?{" "}
+                <Link href="/privacy/owner-request" className="underline underline-offset-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
+                  Ask us to stop contact and delete your information
+                </Link>
+                . No account needed.
+              </p>
               <p className="text-muted-foreground leading-relaxed">
                 Depending on your jurisdiction, you have the following rights regarding your personal data:
               </p>

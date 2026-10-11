@@ -9,6 +9,8 @@
  *   - default/system sends keep the existing platform-fallback behavior.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+// W5a: the owner opt-out list is empty for this test (the guard is proven elsewhere).
+vi.mock("../../server/services/trust/ownerSuppression", async () => (await import("../helpers/ownerSuppressionAllowAll")).ownerSuppressionAllowAll);
 
 const sesSend = vi.fn();
 vi.mock("@aws-sdk/client-ses", () => ({

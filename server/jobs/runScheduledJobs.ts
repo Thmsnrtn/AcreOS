@@ -40,6 +40,7 @@ import { startNotePaymentDueDetectorJob, startLeaseExpiryDetectorJob } from "./e
 import { startBorrowerServicingJobs } from "./servicingWindDownJob";
 import { startSubscriptionLifecycleJobs } from "./subscriptionLifecycleJobs";
 import { startForecastingMonthlyJob } from "./forecastingJobs";
+import { startTrustJobs } from "./trustJobs";
 import { seedFounderDecisionCardsOnStartup } from "./seedFounderDecisionCards";
 import { runDecisionExecutorTickBounded, AUTONOMOUS_DECISION_EXECUTOR_MAX_USD_PER_TICK, AUTONOMOUS_DECISION_EXECUTOR_MAX_DECISIONS_PER_TICK } from "./decisionExecutorTick";
 import { clock } from "../utils/clock";
@@ -4317,14 +4318,13 @@ export async function runScheduledJobs(): Promise<void> {
   // founder approval.
   startPromptEvolutionJob();
 
-  // Phase B-2 — outcome-driven evolution. Nightly sweep that turns
-  // founder rejections + verified failures into proposed prompt
-  // revisions. Same founder-approval gate as the monthly meta-agent.
+  // Phase B-2 — outcome-driven evolution: nightly founder rejections + verified failures → proposed prompt revisions (founder-approved).
   startOutcomeDrivenEvolutionJob();
 
   // Monthly founder letter — the month's one-page narrative (primary 1-hour/month surface).
   startFounderLetterJob();
   startForecastingMonthlyJob(); // W4 vintage recorder + scored forecast registry, 25th 06:00 UTC — see ./forecastingJobs
+  startTrustJobs(); // W5a owner opt-out deadlines (daily), giving pledge (monthly), collateral watch (daily) — see ./trustJobs
 
   // Strategic proposals — weekly per-agent proposal generation
   // (Sunday 00:00 UTC) + monthly synthesis pass (1st 10:00 UTC,
