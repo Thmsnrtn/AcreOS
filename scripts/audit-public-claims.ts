@@ -66,10 +66,35 @@ const LANDING_FILES = [
   "client/src/pages/landing/ProductShots.tsx",
 ];
 
+/**
+ * The W3 public land surfaces (2026-10-11 independent audit). The parcel
+ * report, the landlocked checker, the county guides and the founding-member
+ * page are public and crawlable — the report and guides are server-rendered
+ * from the server-side files below, so the HTML a crawler indexes is written
+ * there, not in the .tsx. The wave shipped them outside this population; a
+ * number added to any of them was free to go unsourced (third law). Each
+ * member is asserted read and non-trivial below (per-member vacuity), so a
+ * renamed file fails here instead of silently leaving the scan.
+ */
+const PUBLIC_LAND_FILES = [
+  "client/src/pages/public-parcel-report.tsx",
+  "client/src/components/public-land/LandFactsSection.tsx",
+  "client/src/pages/tools/landlocked.tsx",
+  "client/src/pages/public-county-guide.tsx",
+  "client/src/pages/founding-member.tsx",
+  "server/services/publicLandPages.ts",
+  "server/services/publicCountyGuide.ts",
+  "server/services/landlockedCheck.ts",
+  "server/routes-public-land.ts",
+  "server/routes-public-parcel-report.ts",
+  "shared/landData/publicFactText.ts",
+  "shared/billing/foundingMemberOffer.ts",
+];
+
 /** Strip comments so truth-notes and design notes don't read as claims. */
 
 function landingSurface(): { file: string; text: string }[] {
-  return LANDING_FILES.map((f) => {
+  return [...LANDING_FILES, ...PUBLIC_LAND_FILES].map((f) => {
     let raw = "";
     try {
       raw = readFileSync(join(ROOT, f), "utf8");
@@ -243,6 +268,10 @@ const EXEMPT: Record<string, string> = {
   // minutes."): a description of the pain, not a claim about the product.
   // (verified 2026-09-02)
   "90 minutes": "DayInLife BEFORE-column pain narrative, not a product capability claim (2026-09-02)",
+  // shared/landData/publicFactText.ts buildable-acres wording: "the 1% flood
+  // zone" is FEMA's name for the 1%-annual-chance Special Flood Hazard Area,
+  // a defined term, not a performance claim (verified 2026-10-11).
+  "1%": "FEMA's 1%-annual-chance flood zone, a defined term in the public fact text (2026-10-11)",
 };
 
 /** Number-bearing marketing-claim shapes. */
@@ -451,9 +480,16 @@ async function main() {
       console.error(`        (claim: ${claim.slice(0, 80)}…) — update or retire the entry.`);
     }
   }
-  if (surface.filter((s) => s.text.length > 200).length < 9) {
+  if (surface.filter((s) => LANDING_FILES.includes(s.file) && s.text.length > 200).length < 9) {
     failures += 1;
     console.error("[VACUOUS] fewer than 9 landing files read — the scan went blind.");
+  }
+  for (const f of PUBLIC_LAND_FILES) {
+    const member = surface.find((s) => s.file === f);
+    if (!member || member.text.length <= 200) {
+      failures += 1;
+      console.error(`[VACUOUS] public land surface ${f} was not read — it left the scan's population.`);
+    }
   }
 
   // ── Pass 2: completeness ──────────────────────────────────────────────
