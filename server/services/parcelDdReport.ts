@@ -36,8 +36,8 @@ function buildReport(facts: PublicLandFacts): DdReport {
   };
 }
 
-async function alreadyPurchased(orgId: number, parcelKey: string, q: PrimaryDb = db): Promise<boolean> {
-  const rows = await q
+async function alreadyPurchased(orgId: number, parcelKey: string, tx: PrimaryDb = db): Promise<boolean> {
+  const rows = await tx
     .select({ id: creditTransactions.id })
     .from(creditTransactions)
     .where(
