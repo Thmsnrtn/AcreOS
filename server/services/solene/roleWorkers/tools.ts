@@ -344,8 +344,17 @@ export async function buildBriefing(role: RoleWorker): Promise<Briefing> {
     return { text, items: 1, scope: { ticketId: t.id, organizationId: t.organizationId } };
   }
   if (role === "retention") {
-    const list = await listAtRiskCustomers();
-    if (list.length === 0) return { text: "No customers are at risk today.", items: 0 };
+    // Only customers the worker may still act on. An org that already got this
+    // kind of email in the last 7 days is refused by email_customer, so
+    // briefing it handed the worker an item it could not touch: the run ended
+    // "empty_result", counted as the support domain's FAILURE and demoted it
+    // to DRAFT, after which every support move asked the founder again
+    // (measured in the simulated year, 2026-10-10). With nothing actionable
+    // the run is "no_work", which is nobody's failure.
+    const atRisk = await listAtRiskCustomers();
+    const list: AtRiskCustomer[] = [];
+    for (const c of atRisk) if (!(await recentlyEmailed(c.organizationId, c.kind))) list.push(c);
+    if (list.length === 0) return { text: "No customers are at risk today who have not already been emailed this week.", items: 0 };
     return {
       text: [`## Eligible customers today (${list.length})`, ...list.map((c) => `- Org #${c.organizationId} "${c.name}" — ${c.kind}: ${c.detail}`)].join("\n"),
       items: list.length,

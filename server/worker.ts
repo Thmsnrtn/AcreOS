@@ -704,7 +704,12 @@ async function runSoleneDispatchLoop(): Promise<void> {
             // real consequence already on the row), not the raw dispatch boolean.
             // A stale role-worker dispatch (nothing was waiting when it ran) is
             // neither a clean cycle nor an anomaly — it earns and costs nothing.
-            if (result.terminationReason !== "no_work") {
+            // A transient failure that was requeued runs again; only its final
+            // attempt earns or costs autonomy (act.ts autonomyFeedbackApplies).
+            const { getDispatchById } = await import("./services/solene/dispatchQueue");
+            const { autonomyFeedbackApplies } = await import("./services/autopilot/act");
+            const statusAfterRun = (await getDispatchById(row.id))?.queue.status ?? null;
+            if (autonomyFeedbackApplies({ terminationReason: result.terminationReason, statusAfterRun })) {
               const { recordDispatchSignal, getVoteForDispatch } = await import("./services/autopilot/experienceLog");
               await recordDispatchSignal(row.id, {
                 dispatchSuccess: result.success,

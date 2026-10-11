@@ -155,6 +155,18 @@ export function digestLaneRefusal(move: RankedMove): string | null {
   return null;
 }
 
+/**
+ * A move IN the digest lane: bound to ops or deploy, and nothing in
+ * digestLaneRefusal applies (reversible, internal, not new, not a hard stop).
+ * Founder ruling 2026-10-10: such a move is exempt from the risk check's
+ * "unproven calibration escalates medium" rule (riskautonomy
+ * shouldEscalateForRisk opts.digestLane). Pure.
+ */
+export function isDigestLaneMove(move: RankedMove): boolean {
+  const b = bindingFor(move.kind);
+  return isKnownMoveKind(move.kind) && DIGEST_LANE_DOMAINS.has(b.domain) && move.domain === b.domain && digestLaneRefusal(move) === null;
+}
+
 export function bindingFor(moveKind: string): MoveBinding {
   const b = MOVE_BINDINGS[moveKind];
   if (!b) {
@@ -633,6 +645,22 @@ export interface AutonomyFeedbackDeps {
 }
 
 const defaultFeedbackDeps: AutonomyFeedbackDeps = { recordCleanCycle, recordAnomaly };
+
+/**
+ * Whether a finished run should earn or cost its domain autonomy. Pure.
+ *   - "no_work": a stale role-worker dispatch (nothing was waiting) — neither.
+ *   - requeued: a provider blip before any tool ran is requeued with backoff
+ *     (dispatchRunner's transient classification); the SAME dispatch runs
+ *     again and its final attempt is what counts. Charging the blip as well
+ *     demoted support and growth to DRAFT on one simulated provider outage
+ *     (2026-10-10), though every one of those dispatches then completed.
+ * A terminal failure still costs autonomy exactly as before.
+ */
+export function autonomyFeedbackApplies(run: { terminationReason?: string; statusAfterRun?: string | null }): boolean {
+  if (run.terminationReason === "no_work") return false;
+  if (run.statusAfterRun === "queued") return false;
+  return true;
+}
 
 /** True when a dispatch was initiated by the autopilot (vs. founder/manual/etc). */
 export function isAutopilotDispatch(d: { sourceType: string; sourceId: string }): boolean {
