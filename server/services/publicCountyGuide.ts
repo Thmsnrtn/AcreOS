@@ -51,13 +51,10 @@ export function countyGuidePath(state: string, countySlug: string): string {
   return `/land/${state.toLowerCase()}/${countySlug}`;
 }
 
+// Kept parcels are GLOBAL public-record rows (organization_id IS NULL), never
+// a tenant's data. Every query below states that predicate itself.
 const ownedIn = (state: string, county: string) =>
-  and(
-    isNull(parcelSnapshots.organizationId),
-    eq(parcelSnapshots.source, OWNED_SNAPSHOT_SOURCE),
-    eq(parcelSnapshots.state, state),
-    eq(parcelSnapshots.county, county),
-  );
+  and(eq(parcelSnapshots.source, OWNED_SNAPSHOT_SOURCE), eq(parcelSnapshots.state, state), eq(parcelSnapshots.county, county));
 
 /** The guide for a county, or null when AcreOS keeps no parcel there. */
 export async function getCountyGuide(stateRaw: string, countyRaw: string): Promise<CountyGuide | null> {
@@ -69,26 +66,26 @@ export async function getCountyGuide(stateRaw: string, countyRaw: string): Promi
   const [agg] = await db
     .select({ n: count(), first: min(parcelSnapshots.fetchedAt), last: max(parcelSnapshots.fetchedAt) })
     .from(parcelSnapshots)
-    .where(ownedIn(state, county));
+    .where(and(isNull(parcelSnapshots.organizationId), ownedIn(state, county)));
   const parcelCount = Number(agg?.n ?? 0);
   if (parcelCount === 0) return null;
 
   const sources = await db
     .selectDistinct({ name: sql<string>`${parcelSnapshots.rawData}->>'sourceName'` })
     .from(parcelSnapshots)
-    .where(ownedIn(state, county))
+    .where(and(isNull(parcelSnapshots.organizationId), ownedIn(state, county)))
     .limit(5);
 
   const access = await db
     .select({ f: sql<ParcelFactSet["legal_access_indication"] | null>`${parcelSnapshots.facts}->'legal_access_indication'` })
     .from(parcelSnapshots)
-    .where(ownedIn(state, county));
+    .where(and(isNull(parcelSnapshots.organizationId), ownedIn(state, county)));
   const { share, refusal } = roadAccessShare(access.map((r) => r.f), parcelCount);
 
   const links = await db
     .select({ apn: parcelSnapshots.apn })
     .from(parcelSnapshots)
-    .where(and(ownedIn(state, county), indexableFactsSql()))
+    .where(and(isNull(parcelSnapshots.organizationId), ownedIn(state, county), indexableFactsSql()))
     .orderBy(asc(parcelSnapshots.apn))
     .limit(GUIDE_PARCEL_LINKS);
 

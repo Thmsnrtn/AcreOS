@@ -165,3 +165,13 @@ export interface PublicLandFacts {
   indexable: boolean;
 }
 
+
+/**
+ * The provenance-chip class of a shown fact, from the confidence rubric: a
+ * "high" fact reads from an authoritative layer finer than its tolerance;
+ * medium and low are derived estimates (parcelFacts.ts). The Map door's
+ * facts panel applies the same mapping; public surfaces take it from here.
+ */
+export function provenanceClassOf(row: Pick<PublicFactRow, "confidence">): "authoritative" | "estimate" {
+  return row.confidence === "high" ? "authoritative" : "estimate";
+}

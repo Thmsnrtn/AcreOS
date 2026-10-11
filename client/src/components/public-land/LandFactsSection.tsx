@@ -8,7 +8,8 @@
  * data-truth warnings. It computes nothing itself.
  */
 import { AlertTriangle, CheckCircle2, Info, MinusCircle } from "lucide-react";
-import { NOT_AVAILABLE, type PublicLandFacts } from "@shared/landData/publicFactText";
+import { NOT_AVAILABLE, provenanceClassOf, type PublicLandFacts } from "@shared/landData/publicFactText";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 
 function TruthIcon({ severity }: { severity: "info" | "caution" | "warning" }) {
   if (severity === "warning") return <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />;
@@ -25,7 +26,7 @@ export function LandFactsSection({ land }: { land: PublicLandFacts }) {
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Only facts that passed AcreOS's accuracy check on hand-checked parcels are shown, each with
-          its source, date and confidence. Anything else says "{NOT_AVAILABLE}" — it is never estimated.
+          its source, date and rating. Anything else says "{NOT_AVAILABLE}" — it is never estimated.
           Parcel record: {land.source.name}
           {land.source.retrievedOn ? `, retrieved ${land.source.retrievedOn}` : ""}.
         </p>
@@ -38,8 +39,17 @@ export function LandFactsSection({ land }: { land: PublicLandFacts }) {
                   {r.label}
                 </h3>
                 <p className="mt-2 text-base font-medium leading-snug text-foreground">{r.text}</p>
+                {r.sources[0] && (
+                  <div className="mt-2">
+                    <DataProvenanceChip
+                      source={r.sources.map((s) => s.name).join(" + ")}
+                      sourceAsOf={r.sources[0].retrievedOn}
+                      classification={provenanceClassOf(r)}
+                    />
+                  </div>
+                )}
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Confidence: {r.confidence}. Source:{" "}
+                  Source:{" "}
                   {r.sources.map((s, i) => (
                     <span key={`${s.name}-${i}`}>
                       {i > 0 ? "; " : ""}

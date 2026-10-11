@@ -15,7 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { emitMarketingTouch, getAnonymousId } from "@/lib/marketing-touch";
-import type { PublicFactRow } from "@shared/landData/publicFactText";
+import { provenanceClassOf, type PublicFactRow } from "@shared/landData/publicFactText";
+import { DataProvenanceChip } from "@/components/data-provenance-chip";
 
 // Mirrors server/services/landlockedCheck.ts LandlockedAnswer.
 type Answer =
@@ -152,12 +153,18 @@ export default function LandlockedCheckPage() {
             </h2>
             <p className="text-sm text-foreground">{answer.explanation}</p>
             <p className="text-xs text-muted-foreground">
-              Parcel {answer.parcel.apn}, {answer.parcel.countyLabel} County, {answer.parcel.state}. Confidence:{" "}
-              {answer.fact.confidence}. Source:{" "}
+              Parcel {answer.parcel.apn}, {answer.parcel.countyLabel} County, {answer.parcel.state}. Source:{" "}
               {answer.fact.sources.map((s) => `${s.name} (retrieved ${s.retrievedOn})`).join("; ")}.
               {answer.fact.accuracy &&
                 ` Accuracy check: ${answer.fact.accuracy.agreed} of ${answer.fact.accuracy.sampleSize} hand-checked parcels agreed.`}
             </p>
+            {answer.fact.sources[0] && (
+              <DataProvenanceChip
+                source={answer.fact.sources.map((s) => s.name).join(" + ")}
+                sourceAsOf={answer.fact.sources[0].retrievedOn}
+                classification={provenanceClassOf(answer.fact)}
+              />
+            )}
             <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
               {answer.caveats.map((c) => (
                 <li key={c}>{c}</li>
