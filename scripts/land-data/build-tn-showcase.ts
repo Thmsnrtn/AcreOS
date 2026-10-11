@@ -68,8 +68,9 @@ function loadSample(file: string): { parcels: InputParcel[]; label: string } {
       sourceParcelId: p.gisLink,
       geometry: p.geometry,
       deededAcres: p.deededAcres,
-      subdivision: p.subdivision,
-      lot: p.lot,
+      // The fixture no longer carries subdivision/lot (W3 privacy trim).
+      subdivision: null,
+      lot: null,
       ownerMailingState: null,
       sourceName: fx.meta.parcelSource.name,
       improvementValue: null,
