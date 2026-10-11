@@ -29,7 +29,7 @@ export interface Point {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-export function assertIsoDate(d: string, what: string): void {
+function assertIsoDate(d: string, what: string): void {
   if (!ISO_DATE.test(d)) throw new Error(`${what} must be YYYY-MM-DD, got ${d}`);
 }
 

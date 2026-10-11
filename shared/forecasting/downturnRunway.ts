@@ -18,8 +18,8 @@ import type { ScenarioAssumption } from "../economics/scenario";
 import { round } from "./stats";
 
 export const DOWNTURN_RUNWAY_ENGINE_ID = "acreos_downturn_runway";
-export const DOWNTURN_RUNWAY_ENGINE_VERSION = "1.0.0";
-export const RUNWAY_HORIZON_MONTHS = 60;
+const DOWNTURN_RUNWAY_ENGINE_VERSION = "1.0.0";
+const RUNWAY_HORIZON_MONTHS = 60;
 
 export interface RunwayInputs {
   /** Planning cash basis (USD) — the runway model's label travels with it. */
@@ -45,7 +45,7 @@ export interface RunwayAssumptions {
   fallbackStressMonths: number;
 }
 
-export const DEFAULT_RUNWAY_ASSUMPTIONS: RunwayAssumptions = {
+const DEFAULT_RUNWAY_ASSUMPTIONS: RunwayAssumptions = {
   stressMrrDeclinePerMonth: 0.05,
   stressCostChange: 0,
   fallbackStressMonths: 12,

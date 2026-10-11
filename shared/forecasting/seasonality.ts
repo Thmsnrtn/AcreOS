@@ -28,12 +28,12 @@ import { TAX_SALE_SOURCES } from "../landData/taxSaleSources";
 
 export const SEASONALITY_ENGINE_ID = "seasonal_prior_permits";
 export const SEASONALITY_ENGINE_VERSION = "1.0.0";
-export const SEASONALITY_POOL_K = 5; // years
+const SEASONALITY_POOL_K = 5; // years
 export const SEASONALITY_BASIS =
   "Measured: seasonality of new housing units authorised by building permits (U.S. Census Bureau, BPS). Assumed: land demand follows the same seasonal shape.";
 
 /** Ratio of each month to the centred 2×12 moving average around it. */
-export function seasonalRatios(points: readonly Point[]): Array<{ month: number; ratio: number }> {
+function seasonalRatios(points: readonly Point[]): Array<{ month: number; ratio: number }> {
   const byDate = new Map(points.map((p) => [p.date, p.value]));
   const out: Array<{ month: number; ratio: number }> = [];
   for (const p of points) {

@@ -105,7 +105,8 @@ async function main() {
   const { initializeProviders } = await import("../../server/providers-init");
   const { recordPublicVintages, recordCustomerOutcomes } = await import("../../server/services/forecasting/vintageRecorder");
   const { issueForecasts, scoreDueForecasts, liveTrackRecord } = await import("../../server/services/forecasting/forecastLedger");
-  const { OUTCOME_FIELD_KEYS } = await import("../../shared/forecasting/models");
+  const { OUTCOME_FIELDS } = await import("../../shared/forecasting/models");
+  const OUTCOME_FIELD_KEYS = Object.keys(OUTCOME_FIELDS);
   const { customerForecastGate } = await import("../../shared/forecasting/scoring");
   const { CYCLE_PHASE_ENGINE_ID } = await import("../../shared/forecasting/cyclePhase");
   initializeProviders();
@@ -166,7 +167,7 @@ async function main() {
     check(obs.length === 4 && rec1.appended >= 4, `four outcomes recorded for the org (${obs.length})`);
     const closed = obs.find((x) => x.kind === "deal_closed");
     check(closed?.values.priceCents === 2_500_000 && closed?.values.daysHeld === 516 && closed?.values.acres === 5.5, "the closed deal carries price, days held and acres");
-    check(obs.every((x) => Object.keys(x.values).every((k) => (OUTCOME_FIELD_KEYS as string[]).includes(k))), "no outcome carries a field outside OUTCOME_FIELDS");
+    check(obs.every((x) => Object.keys(x.values).every((k) => OUTCOME_FIELD_KEYS.includes(k))), "no outcome carries a field outside OUTCOME_FIELDS");
     check(!JSON.stringify(obs).includes("Pat") && !JSON.stringify(obs).includes("call me"), "no name or message text is recorded");
     await db.update(deals).set({ acceptedAmount: "99999" }).where(eq(deals.id, d.id));
     await db.update(properties).set({ soldPrice: "99999" }).where(eq(properties.id, p.id));
@@ -194,7 +195,16 @@ async function main() {
   } finally {
     setSimulatedClockOffset(0);
     globalThis.fetch = realFetch;
-    if (orgId) await db.delete(organizations).where(eq(organizations.id, orgId));
+    if (orgId) {
+      // Several of these FKs do not cascade; delete children first.
+      await db.delete(campaignResponses).where(eq(campaignResponses.organizationId, orgId));
+      await db.delete(offers).where(eq(offers.organizationId, orgId));
+      await db.delete(deals).where(eq(deals.organizationId, orgId));
+      await db.delete(leads).where(eq(leads.organizationId, orgId));
+      await db.delete(properties).where(eq(properties.organizationId, orgId));
+      await db.delete(customerOutcomeObservations).where(eq(customerOutcomeObservations.organizationId, orgId));
+      await db.delete(organizations).where(eq(organizations.id, orgId));
+    }
     await db.delete(publicSeriesVintages).where(gte(publicSeriesVintages.recordedAt, startedAt));
     await db.delete(forecastLedger).where(gte(forecastLedger.recordedAt, startedAt));
     await db.delete(providerCache).where(eq(providerCache.category, "macro_series"));

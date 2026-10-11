@@ -22,6 +22,7 @@ import { stateOfSeriesId, type SeriesFamilyId } from "@shared/forecasting/public
 import { CYCLE_PHASE_ENGINE_ID, forecastCyclePhases, realisedAt } from "@shared/forecasting/cyclePhase";
 import { LAND_VALUE_ENGINE_ID, LAND_VALUE_ENGINE_VERSION, forecastLandValues, realisedLandGrowth, type AnnualPoint } from "@shared/forecasting/landValue";
 import {
+  FORECAST_ENGINES,
   freezeForecast,
   forecastKey,
   type CyclePhasePrediction,
@@ -30,6 +31,8 @@ import {
   type LandValuePrediction,
 } from "@shared/forecasting/frozenForecast";
 import { brierMulti, logScore, summariseIntervals, summarisePhaseScores, type LiveTrackRecord, type PhaseScoreRecord } from "@shared/forecasting/scoring";
+import { FORECAST_MODELS } from "@shared/forecasting/models";
+import { checkModels } from "@shared/forecasting/fairHousing";
 import { clock } from "../../utils/clock";
 
 async function vintagesOf(family: SeriesFamilyId): Promise<VintageRow[]> {
@@ -85,6 +88,14 @@ async function insertIssued(f: FrozenForecast): Promise<number> {
 export async function issueForecasts(): Promise<IssueReport> {
   const asOf = clock.now().toISOString().slice(0, 10);
   const report: IssueReport = { asOf, engines: [] };
+  // Fail closed: no forecast is issued while any registered model reads a
+  // protected characteristic or a proxy (shared/forecasting/fairHousing.ts).
+  const violations = checkModels(FORECAST_MODELS);
+  if (violations.length > 0) {
+    const reason = `fair-housing guard: ${violations.map((v) => `${v.where} uses "${v.term}"`).join("; ")}`;
+    for (const e of FORECAST_ENGINES) report.engines.push({ engineId: e.id, issued: 0, refused: reason, stateRefusals: 0 });
+    return report;
+  }
 
   // Cycle phase — one forecast per state per issue date.
   const payrolls = byState(asKnownOn(await vintagesOf("state_payrolls"), asOf));

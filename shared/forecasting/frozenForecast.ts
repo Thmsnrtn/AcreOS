@@ -21,7 +21,7 @@ import type { ScenarioAssumption } from "../economics/scenario";
 import { CYCLE_PHASE_ENGINE_ID, CYCLE_PHASE_ENGINE_VERSION, CYCLE_PARAMS, type PhaseProbs, type Phase } from "./cyclePhase";
 import { LAND_VALUE_ENGINE_ID, LAND_VALUE_ENGINE_VERSION, LAND_VALUE_PARAMS } from "./landValue";
 
-export const FROZEN_FORECAST_SHAPE_VERSION = 1 as const;
+const FROZEN_FORECAST_SHAPE_VERSION = 1 as const;
 
 export interface ForecastEngineSpec {
   id: string;
@@ -37,7 +37,7 @@ export const FORECAST_ENGINES: readonly ForecastEngineSpec[] = [
   { id: LAND_VALUE_ENGINE_ID, version: LAND_VALUE_ENGINE_VERSION, label: "State farm real estate value growth, next year", capability: "forecast.land-value", target: "growth_next_year" },
 ];
 
-export function forecastEngine(id: string): ForecastEngineSpec {
+function forecastEngine(id: string): ForecastEngineSpec {
   const e = FORECAST_ENGINES.find((x) => x.id === id);
   if (!e) throw new Error(`Unknown forecast engine "${id}" — forecasts come from the registered engines only`);
   return e;

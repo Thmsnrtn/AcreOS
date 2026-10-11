@@ -16,21 +16,23 @@ import { desc } from "drizzle-orm";
 import { db } from "../../db";
 import { mrrSnapshots } from "@shared/schema";
 import { CAPABILITIES, evidenceLevelOf } from "@shared/governance/evidenceLadder";
-import { CYCLE_PHASE_ENGINE_ID, PHASE_WORDS } from "@shared/forecasting/cyclePhase";
-import { LAND_VALUE_ENGINE_ID } from "@shared/forecasting/landValue";
-import { customerForecastGate, type LiveTrackRecord } from "@shared/forecasting/scoring";
-import { BACKTEST_RECORD, PUBLIC_PRIORS, publicStressLength } from "@shared/forecasting/publicPriors";
+import { PHASE_WORDS } from "@shared/forecasting/cyclePhase";
+import { CUSTOMER_GATE, customerForecastGate, type LiveTrackRecord } from "@shared/forecasting/scoring";
+import { BACKTEST_RECORD, PUBLIC_PRIORS, publicStressLength, seasonalFactor } from "@shared/forecasting/publicPriors";
+import { COUNTY_SLOT_THRESHOLD } from "@shared/forecasting/slots";
 import { computeDownturnRunway, mrrMonthlyChangeFrom, type DownturnRunway } from "@shared/forecasting/downturnRunway";
 import { taxSaleSeasonality } from "@shared/forecasting/seasonality";
 import { PUBLIC_SERIES } from "@shared/forecasting/publicSeries";
-import type { FrozenForecast } from "@shared/forecasting/frozenForecast";
+import { FORECAST_ENGINES, type FrozenForecast } from "@shared/forecasting/frozenForecast";
 import { publicSeriesReadiness } from "./publicSeriesProvider";
 import { latestIssued, liveTrackRecord } from "./forecastLedger";
 import { countySlots, mailSaturation } from "./saturation";
 import { computeRunway } from "../finance/runwayModel";
 
 /** The showcase state (founder decision 2026-10-09). */
-export const SHOWCASE_STATE = "TN";
+const SHOWCASE_STATE = "TN";
+
+const monthsOfYear = Array.from({ length: 12 }, (_, i) => i + 1);
 
 type Readout<T> = { ok: true; value: T } | { ok: false; reason: string };
 
@@ -58,6 +60,8 @@ export interface ForecastOutlook {
   showcaseState: string;
   recorder: Array<{ family: string; label: string; refused: string | null }>;
   engines: EngineOutlook[];
+  /** The bars a live record must clear before customers see a forecast. */
+  customerGateBars: typeof CUSTOMER_GATE;
   backtest: typeof BACKTEST_RECORD;
   research: {
     builtOn: string;
@@ -66,6 +70,7 @@ export interface ForecastOutlook {
   };
   seasonality: { state: string; factors: number[] | null; basis: string; taxSale: ReturnType<typeof taxSaleSeasonality> };
   slots: Readout<{ warmingUp: number; ready: number; counties: number; saturatedCounties: number }>;
+  countySlotThreshold: typeof COUNTY_SLOT_THRESHOLD;
   downturnRunway: Readout<DownturnRunway>;
 }
 
@@ -75,10 +80,7 @@ async function engineOutlook(engineId: string, capabilityId: string): Promise<En
 }
 
 export async function composeForecastOutlook(): Promise<ForecastOutlook> {
-  const [cycle, land] = await Promise.all([
-    engineOutlook(CYCLE_PHASE_ENGINE_ID, "forecast.cycle-phase"),
-    engineOutlook(LAND_VALUE_ENGINE_ID, "forecast.land-value"),
-  ]);
+  const engines = await Promise.all(FORECAST_ENGINES.map((e) => engineOutlook(e.id, e.capability)));
   const phaseCounts: Record<string, number> = {};
   for (const f of PUBLIC_PRIORS.cycle.nowcast.forecasts) phaseCounts[f.mostLikelyNow] = (phaseCounts[f.mostLikelyNow] ?? 0) + 1;
 
@@ -107,7 +109,8 @@ export async function composeForecastOutlook(): Promise<ForecastOutlook> {
   return {
     showcaseState: SHOWCASE_STATE,
     recorder: PUBLIC_SERIES.map((f) => ({ family: f.id, label: f.label, refused: publicSeriesReadiness(f.id) })),
-    engines: [cycle, land],
+    engines,
+    customerGateBars: CUSTOMER_GATE,
     backtest: BACKTEST_RECORD,
     research: {
       builtOn: PUBLIC_PRIORS.builtOn,
@@ -116,11 +119,12 @@ export async function composeForecastOutlook(): Promise<ForecastOutlook> {
     },
     seasonality: {
       state: SHOWCASE_STATE,
-      factors: PUBLIC_PRIORS.seasonality.states.find((s) => s.state === SHOWCASE_STATE)?.factors ?? null,
+      factors: monthsOfYear.every((m) => seasonalFactor(SHOWCASE_STATE, m) != null) ? monthsOfYear.map((m) => seasonalFactor(SHOWCASE_STATE, m) as number) : null,
       basis: PUBLIC_PRIORS.seasonality.basis,
       taxSale: taxSaleSeasonality(SHOWCASE_STATE),
     },
     slots,
+    countySlotThreshold: COUNTY_SLOT_THRESHOLD,
     downturnRunway,
   };
 }

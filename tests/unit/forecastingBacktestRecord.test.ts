@@ -20,7 +20,7 @@ import { LAND_VALUE_ENGINE_VERSION } from "../../shared/forecasting/landValue";
 import { STATE_CODES } from "../../shared/forecasting/publicSeries";
 import { CAPABILITIES } from "../../shared/governance/evidenceLadder";
 
-const land = new Map<string, AnnualPoint[]>(Object.entries((usda as { values: Record<string, Array<[number, number]>> }).values).map(([st, a]) => [st, a.map(([year, value]) => ({ year, value }))]));
+const land = new Map<string, AnnualPoint[]>(Object.entries((usda as unknown as { values: Record<string, Array<[number, number]>> }).values).map(([st, a]) => [st, a.map(([year, value]) => ({ year, value }))]));
 
 describe("land backtest — recomputed from committed data", () => {
   it("equals the committed record exactly", () => {

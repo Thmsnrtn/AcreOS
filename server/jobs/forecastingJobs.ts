@@ -11,11 +11,11 @@ import { clock } from "../utils/clock";
 import { trackInterval, withJobLock, jobLog as log } from "../utils/jobRuntime";
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
-export const FORECASTING_MONTHLY_DAY = 25;
-export const FORECASTING_MONTHLY_HOUR_UTC = 6;
+const FORECASTING_MONTHLY_DAY = 25;
+const FORECASTING_MONTHLY_HOUR_UTC = 6;
 
 /** True in the one hour a month the job does its work. */
-export function isForecastingHour(now: Date): boolean {
+function isForecastingHour(now: Date): boolean {
   return now.getUTCDate() === FORECASTING_MONTHLY_DAY && now.getUTCHours() === FORECASTING_MONTHLY_HOUR_UTC;
 }
 

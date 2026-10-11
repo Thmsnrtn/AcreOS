@@ -18,8 +18,7 @@ const REASON_COUNTY_SLOT = "W4 county forecast slot: per-county outcome counts a
 /** Counties with enough mail from enough customers to call "crowded"; the rest are absent. */
 export async function mailSaturation(): Promise<CountySaturation[]> {
   const since = new Date(clock.nowMs() - SATURATION_FLOORS.windowDays * 86_400_000);
-  const pdb = unscopedForPlatformOps(REASON_SATURATION);
-  const rows = await pdb
+  const rows = await unscopedForPlatformOps(REASON_SATURATION)
     .select({ organizationId: campaigns.organizationId, state: leads.state, county: leads.county, pieces: count() })
     .from(campaignDeliveryEvents)
     .innerJoin(campaigns, eq(campaigns.id, campaignDeliveryEvents.campaignId))
@@ -31,8 +30,7 @@ export async function mailSaturation(): Promise<CountySaturation[]> {
 
 /** Every county's forecast slot — "warming up" with what it has and needs, until the threshold is met. */
 export async function countySlots(state?: string): Promise<CountySlot[]> {
-  const pdb = unscopedForPlatformOps(REASON_COUNTY_SLOT);
-  const rows = await pdb
+  const rows = await unscopedForPlatformOps(REASON_COUNTY_SLOT)
     .select({
       state: customerOutcomeObservations.state,
       county: customerOutcomeObservations.county,

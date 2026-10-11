@@ -43,7 +43,7 @@ export const OUTCOME_FIELDS = {
   channel: "the outreach channel a response came back on (sms, mail, email, call, web)",
 } as const;
 export type OutcomeField = keyof typeof OUTCOME_FIELDS;
-export const OUTCOME_FIELD_KEYS = Object.keys(OUTCOME_FIELDS) as OutcomeField[];
+const OUTCOME_FIELD_KEYS = Object.keys(OUTCOME_FIELDS) as OutcomeField[];
 
 export const OUTCOME_KINDS = ["deal_closed", "offer_accepted", "offer_declined", "outreach_response"] as const;
 export type OutcomeKind = (typeof OUTCOME_KINDS)[number];
@@ -99,29 +99,3 @@ export const FORECAST_MODELS: readonly ForecastModelSpec[] = [
     features: [{ id: "mailPieces90d", description: "mail pieces sent to the county in 90 days, all customers, floored", from: "campaign delivery events" }],
   },
 ];
-
-/**
- * Every source file under the forecasting directories, and the model(s) it
- * implements (or "infrastructure"). The gate fails on an unlisted file.
- */
-export const FORECASTING_MODULES: Readonly<Record<string, readonly string[]>> = {
-  "shared/forecasting/publicSeries.ts": ["infrastructure"],
-  "shared/forecasting/vintage.ts": ["infrastructure"],
-  "shared/forecasting/stats.ts": ["infrastructure"],
-  "shared/forecasting/cyclePhase.ts": [CYCLE_PHASE_ENGINE_ID],
-  "shared/forecasting/landValue.ts": [LAND_VALUE_ENGINE_ID],
-  "shared/forecasting/seasonality.ts": [SEASONALITY_ENGINE_ID],
-  "shared/forecasting/downturnRunway.ts": [DOWNTURN_RUNWAY_ENGINE_ID],
-  "shared/forecasting/slots.ts": ["county_outcome_slot", "mail_saturation_slot"],
-  "shared/forecasting/scoring.ts": ["infrastructure"],
-  "shared/forecasting/frozenForecast.ts": ["infrastructure"],
-  "shared/forecasting/models.ts": ["infrastructure"],
-  "shared/forecasting/fairHousing.ts": ["infrastructure"],
-  "shared/forecasting/publicPriors.ts": [CYCLE_PHASE_ENGINE_ID, SEASONALITY_ENGINE_ID, LAND_VALUE_ENGINE_ID],
-  "server/services/forecasting/publicSeriesProvider.ts": ["infrastructure"],
-  "server/services/forecasting/vintageRecorder.ts": ["infrastructure", "county_outcome_slot"],
-  "server/services/forecasting/forecastLedger.ts": [CYCLE_PHASE_ENGINE_ID, LAND_VALUE_ENGINE_ID],
-  "server/services/forecasting/saturation.ts": ["mail_saturation_slot", "county_outcome_slot"],
-  "server/services/forecasting/outlook.ts": [CYCLE_PHASE_ENGINE_ID, LAND_VALUE_ENGINE_ID, DOWNTURN_RUNWAY_ENGINE_ID],
-  "server/services/forecasting/monthlyJob.ts": ["infrastructure"],
-};

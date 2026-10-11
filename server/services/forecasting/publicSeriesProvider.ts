@@ -59,7 +59,7 @@ async function getText(url: string): Promise<string> {
 // ── FRED API ──────────────────────────────────────────────────────────────
 
 /** Parse a FRED API observations reply. "." means missing and is skipped, never zero. */
-export function parseFredObservations(body: unknown): SeriesObservation[] {
+function parseFredObservations(body: unknown): SeriesObservation[] {
   const obs = (body as { observations?: Array<{ date?: string; value?: string }> } | null)?.observations;
   if (!Array.isArray(obs)) {
     const msg = (body as { error_message?: string } | null)?.error_message;
@@ -145,7 +145,7 @@ async function bpsSeries(state: string, today: string): Promise<SeriesObservatio
 
 // ── NASS Quick Stats ──────────────────────────────────────────────────────
 
-export function parseNassLandValues(body: unknown): SeriesObservation[] {
+function parseNassLandValues(body: unknown): SeriesObservation[] {
   const data = (body as { data?: Array<{ year?: number | string; Value?: string; reference_period_desc?: string }> } | null)?.data;
   if (!Array.isArray(data)) throw new Error(`NASS Quick Stats: ${(body as { error?: string[] } | null)?.error?.join("; ") ?? "no data in reply"}`);
   const out: SeriesObservation[] = [];

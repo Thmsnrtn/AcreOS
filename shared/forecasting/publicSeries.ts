@@ -150,14 +150,6 @@ export function seriesFamily(id: SeriesFamilyId): PublicSeriesFamily {
   return f;
 }
 
-/** Which family a stored series id belongs to, or null. */
-export function familyOfSeriesId(seriesId: string): PublicSeriesFamily | null {
-  for (const f of PUBLIC_SERIES) {
-    for (const st of STATE_CODES) if (f.seriesIdFor(st) === seriesId) return f;
-  }
-  return null;
-}
-
 /** The state a stored series id is for, or null. */
 export function stateOfSeriesId(seriesId: string): string | null {
   for (const f of PUBLIC_SERIES) {

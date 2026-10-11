@@ -35,7 +35,7 @@ import {
 } from "@shared/schema";
 import { PUBLIC_SERIES, STATE_CODES, type SeriesFamilyId } from "@shared/forecasting/publicSeries";
 import { revisionsToRecord, type VintageRow } from "@shared/forecasting/vintage";
-import { OUTCOME_FIELD_KEYS, type OutcomeField, type OutcomeKind } from "@shared/forecasting/models";
+import { OUTCOME_FIELDS, type OutcomeField, type OutcomeKind } from "@shared/forecasting/models";
 import { providerRegistry } from "../providers/provider-registry";
 import { publicSeriesReadiness, type SeriesLookupData } from "./publicSeriesProvider";
 import { logger } from "../../utils/logger";
@@ -118,9 +118,9 @@ const days = (a: Date | null | undefined, b: Date | null | undefined): number | 
   a && b && b.getTime() >= a.getTime() ? Math.round((b.getTime() - a.getTime()) / 86_400_000) : null;
 
 /** Keep only OUTCOME_FIELDS with real values — absence stays absence, never zero. */
-export function outcomeValues(v: Partial<Record<OutcomeField, number | string | null>>): Partial<Record<OutcomeField, number | string>> {
+function outcomeValues(v: Partial<Record<OutcomeField, number | string | null>>): Partial<Record<OutcomeField, number | string>> {
   const out: Partial<Record<OutcomeField, number | string>> = {};
-  for (const k of OUTCOME_FIELD_KEYS) {
+  for (const k of Object.keys(OUTCOME_FIELDS) as OutcomeField[]) {
     const x = v[k];
     if (x != null && x !== "") out[k] = x;
   }
@@ -141,7 +141,7 @@ export interface OutcomeObservation {
 const PER_KIND_LIMIT = 5000;
 
 /** One organisation's outcomes, every query scoped to it. */
-export async function readOrgOutcomes(organizationId: number): Promise<OutcomeObservation[]> {
+async function readOrgOutcomes(organizationId: number): Promise<OutcomeObservation[]> {
   const out: OutcomeObservation[] = [];
 
   const closed = await db

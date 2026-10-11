@@ -11,10 +11,8 @@ import { addMonths, type Point } from "../../shared/forecasting/vintage";
 import {
   CYCLE_PARAMS,
   PHASES,
-  classifyPhase,
   forecastCyclePhases,
   growthPath,
-  phaseProbabilities,
   propagate,
   realisedAt,
   pooledMatrix,
@@ -22,7 +20,7 @@ import {
 } from "../../shared/forecasting/cyclePhase";
 import { forecastLandValues, realisedLandGrowth, type AnnualPoint } from "../../shared/forecasting/landValue";
 import { brierMulti, customerForecastGate, reliability, summariseIntervals, summarisePhaseScores, CUSTOMER_GATE } from "../../shared/forecasting/scoring";
-import { seasonalPriors, seasonalRatios, taxSaleSeasonality } from "../../shared/forecasting/seasonality";
+import { seasonalPriors, taxSaleSeasonality } from "../../shared/forecasting/seasonality";
 import { computeDownturnRunway, mrrMonthlyChangeFrom } from "../../shared/forecasting/downturnRunway";
 import { aggregateSaturation, countyForecastSlot, COUNTY_SLOT_THRESHOLD } from "../../shared/forecasting/slots";
 import { freezeForecast, forecastKey, FORECAST_ENGINES } from "../../shared/forecasting/frozenForecast";
@@ -42,10 +40,11 @@ const cyclic = (phase: number) => (i: number) => 2 + 3 * Math.sin((i + phase) / 
 
 describe("cycle phase — definitions", () => {
   it("four phases from the sign of growth and of its change", () => {
-    expect(classifyPhase(1, 0.5)).toBe("expansion");
-    expect(classifyPhase(1, -0.5)).toBe("peak");
-    expect(classifyPhase(-1, -0.5)).toBe("contraction");
-    expect(classifyPhase(-1, 0.5)).toBe("trough");
+    const end = (rate: (i: number) => number) => { const s = series(60, rate); return realisedAt(s, s[s.length - 1].date)?.phase; };
+    expect(end((i) => 2 + i * 0.1)).toBe("expansion"); // growing, faster
+    expect(end((i) => 12 - i * 0.1)).toBe("peak"); // growing, slower
+    expect(end((i) => -2 - i * 0.1)).toBe("contraction"); // shrinking, faster
+    expect(end((i) => -12 + i * 0.1)).toBe("trough"); // shrinking, less steeply
   });
   it("growth is the annualised six-month change, with no value interpolated across a gap", () => {
     const pts = series(30, () => 12);
@@ -55,11 +54,13 @@ describe("cycle phase — definitions", () => {
     const gap = pts.filter((_, i) => i !== 20);
     expect(growthPath(gap).some((p) => p.date === addMonths("1995-01-01", 26))).toBe(false);
   });
-  it("phase probabilities are a distribution and lean the way the numbers point", () => {
-    const p = phaseProbabilities(2, 0.5, 1, 1);
-    expect(PHASES.reduce((s, k) => s + p[k], 0)).toBeCloseTo(1, 9);
-    expect(p.expansion).toBeGreaterThan(p.peak);
-    expect(p.expansion).toBeGreaterThan(p.contraction);
+  it("phase probabilities lean the way the numbers point", () => {
+    const byState = new Map<string, Point[]>();
+    for (let s = 0; s < 4; s++) byState.set(`S${s}`, series(120, cyclic(s * 5)));
+    byState.set("UP", series(120, (i) => 1 + i * 0.05));
+    const up = forecastCyclePhases(byState).forecasts.find((f) => f.state === "UP")!;
+    expect(up.mostLikelyNow).toBe("expansion");
+    expect(up.nowProbs.expansion).toBeGreaterThan(up.nowProbs.contraction);
   });
   it("propagating keeps a distribution", () => {
     const m = pooledMatrix(emptyCounts());
@@ -226,7 +227,6 @@ describe("seasonality", () => {
     const out = seasonalPriors(new Map([["XX", pts], ["YY", pts]]));
     const xx = out.states.find((s) => s.state === "XX")!;
     shape.forEach((v, i) => expect(xx.factors[i]).toBeCloseTo(v / avg, 2));
-    expect(seasonalRatios(pts.slice(0, 12))).toEqual([]);
   });
   it("tax-sale seasonality refuses: the registry has sources, not dates", () => {
     const r = taxSaleSeasonality("TN");

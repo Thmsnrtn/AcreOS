@@ -19,7 +19,7 @@
  * Pure; browser-safe.
  */
 
-export const PROTECTED_TERMS: readonly string[] = [
+const PROTECTED_TERMS: readonly string[] = [
   "race", "racial", "color", "colour", "religion", "religious", "sex", "gender", "familial",
   "national origin", "nationality", "ethnicity", "ethnic", "disability", "disabled", "handicap",
   "age", "marital", "married", "sexual orientation", "gender identity", "source of income",
@@ -27,7 +27,7 @@ export const PROTECTED_TERMS: readonly string[] = [
   "pregnancy", "pregnant",
 ];
 
-export const PROXY_TERMS: readonly string[] = [
+const PROXY_TERMS: readonly string[] = [
   // people
   "surname", "first name", "last name", "given name", "owner name", "full name", "language",
   "accent", "birthplace", "foreign born",
@@ -69,7 +69,7 @@ export interface FairHousingViolation {
 }
 
 /** Every protected or proxy term found in one piece of text. */
-export function findTerms(text: string, where: string): FairHousingViolation[] {
+function findTerms(text: string, where: string): FairHousingViolation[] {
   const ws = words(text);
   const out: FairHousingViolation[] = [];
   for (const t of PROTECTED_TERMS) if (containsPhrase(ws, t)) out.push({ where, text, term: t, kind: "protected" });

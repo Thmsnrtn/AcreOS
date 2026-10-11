@@ -67,7 +67,7 @@ export const CYCLE_PARAMS = {
   minHistoryMonths: 36,
 } as const;
 
-export function classifyPhase(g: number, d: number): Phase {
+function classifyPhase(g: number, d: number): Phase {
   if (g > 0) return d >= 0 ? "expansion" : "peak";
   return d < 0 ? "contraction" : "trough";
 }
@@ -107,7 +107,7 @@ function zeroProbs(): PhaseProbs {
   return { expansion: 0, peak: 0, contraction: 0, trough: 0 };
 }
 
-export function phaseProbabilities(g: number, d: number, spreadG: number, spreadD: number): PhaseProbs {
+function phaseProbabilities(g: number, d: number, spreadG: number, spreadD: number): PhaseProbs {
   const pg = normalCdf(g / Math.max(spreadG, 1e-6));
   const pd = normalCdf(d / Math.max(spreadD, 1e-6));
   return {
@@ -156,7 +156,7 @@ export function pooledMatrix(total: TransitionCounts): TransitionMatrix {
 }
 
 /** A state's pattern, pulled toward the pooled one: (counts + k·pooled) / (n + k), per row. */
-export function stateMatrix(counts: TransitionCounts, pooled: TransitionMatrix, k: number): TransitionMatrix {
+function stateMatrix(counts: TransitionCounts, pooled: TransitionMatrix, k: number): TransitionMatrix {
   const m = emptyCounts();
   for (const i of PHASES) {
     const n = PHASES.reduce((s, j) => s + counts[i][j], 0);
@@ -314,7 +314,7 @@ export function realisedAt(points: readonly Point[], date: string): { phase: Pha
   return { phase: classifyPhase(p.g, p.d), g: p.g };
 }
 
-export function argmax(p: PhaseProbs): Phase {
+function argmax(p: PhaseProbs): Phase {
   let best: Phase = PHASES[0];
   for (const k of PHASES) if (p[k] > p[best]) best = k;
   return best;

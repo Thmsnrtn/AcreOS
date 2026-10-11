@@ -4,12 +4,11 @@
  * row, the route is mounted, and each source parser reads the real shape —
  * refusing, never defaulting, on a missing key or a suppressed value.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { stripComments } from "../helpers/stripComments";
-import { parseBpsStateFile, parseFredObservations, parseNassLandValues, publicSeriesReadiness, publicSeriesProvider } from "../../server/services/forecasting/publicSeriesProvider";
+import { parseBpsStateFile, publicSeriesReadiness, publicSeriesProvider } from "../../server/services/forecasting/publicSeriesProvider";
 import { JOB_ROSTER } from "../../server/jobs/jobRegistry";
-import { isForecastingHour } from "../../server/jobs/forecastingJobs";
 import { PUBLIC_SERIES } from "../../shared/forecasting/publicSeries";
 import { licenseFor, mayCacheAndRedistribute } from "../../server/services/providers/data-licenses";
 import { CATEGORY_CACHE_TTL_MS } from "../../server/services/providers/cache-ttl";
@@ -26,10 +25,11 @@ describe("wiring", () => {
     const row = JOB_ROSTER.find((r) => r.name === "forecasting_monthly");
     expect(row?.cron).toBe("0 6 25 * *");
   });
-  it("fires in exactly one hour a month", () => {
-    expect(isForecastingHour(new Date("2026-10-25T06:30:00Z"))).toBe(true);
-    expect(isForecastingHour(new Date("2026-10-25T07:00:00Z"))).toBe(false);
-    expect(isForecastingHour(new Date("2026-10-24T06:00:00Z"))).toBe(false);
+  it("does its work in one hour a month (the 25th, 06:00 UTC), by the one clock", () => {
+    const src = stripComments(readFileSync("server/jobs/forecastingJobs.ts", "utf8"));
+    expect(src).toMatch(/FORECASTING_MONTHLY_DAY = 25/);
+    expect(src).toMatch(/FORECASTING_MONTHLY_HOUR_UTC = 6/);
+    expect(src).toMatch(/isForecastingHour\(clock\.now\(\)\)/);
   });
   it("the provider is registered for macro_series in providers-init", () => {
     const src = stripComments(readFileSync("server/providers-init.ts", "utf8"));
@@ -92,12 +92,33 @@ describe("source parsers read the real shapes", () => {
     expect(p.byFips.get("47")).toBe(3217);
     expect(parseBpsStateFile("not a bps file")).toBeNull();
   });
-  it("FRED: '.' is missing and skipped, never zero; an error reply throws", () => {
-    expect(parseFredObservations({ observations: [{ date: "2026-07-01", value: "3250.1" }, { date: "2026-08-01", value: "." }] })).toEqual([{ observationDate: "2026-07-01", value: 3250.1 }]);
-    expect(() => parseFredObservations({ error_code: 400, error_message: "Bad Request. api_key is not registered" })).toThrow(/api_key/);
+  // The FRED and NASS readers are driven through the provider itself, with the
+  // network replaced, so the test reads exactly what the recorder would.
+  const reply = (body: unknown) => vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
+  const env = { FRED_API_KEY: process.env.FRED_API_KEY, NASS_API_KEY: process.env.NASS_API_KEY };
+  afterEach(() => {
+    vi.restoreAllMocks();
+    for (const [k, v] of Object.entries(env)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
   });
-  it("NASS: thousands separators are read, suppressed (D) values skipped", () => {
-    expect(parseNassLandValues({ data: [{ year: 2026, Value: "6,500", reference_period_desc: "YEAR" }, { year: 2025, Value: " (D)", reference_period_desc: "YEAR" }] })).toEqual([{ observationDate: "2026-01-01", value: 6500 }]);
-    expect(() => parseNassLandValues({ error: ["unauthorized"] })).toThrow(/unauthorized/);
+  const look = (seriesId: string, family: string, state: string) => publicSeriesProvider.lookup("macro_series", { type: "series", seriesId, family, state });
+
+  it("FRED: '.' is missing and skipped, never zero; an error reply throws", async () => {
+    process.env.FRED_API_KEY = "k";
+    reply({ observations: [{ date: "2026-07-01", value: "3250.1" }, { date: "2026-08-01", value: "." }] });
+    const r = await look("TNNA", "state_payrolls", "TN");
+    expect((r.data as { observations: unknown[] }).observations).toEqual([{ observationDate: "2026-07-01", value: 3250.1 }]);
+    expect(r.source).toBe("FRED/ALFRED (BLS CES)");
+    vi.restoreAllMocks();
+    reply({ error_code: 400, error_message: "Bad Request. api_key is not registered" });
+    await expect(look("TNNA", "state_payrolls", "TN")).rejects.toThrow(/api_key/);
+  });
+  it("NASS: thousands separators are read, suppressed (D) values skipped", async () => {
+    process.env.NASS_API_KEY = "k";
+    reply({ data: [{ year: 2026, Value: "6,500", reference_period_desc: "YEAR" }, { year: 2025, Value: " (D)", reference_period_desc: "YEAR" }] });
+    const r = await look("NASS:TN:AG_LAND_VALUE", "state_ag_land_value", "TN");
+    expect((r.data as { observations: unknown[] }).observations).toEqual([{ observationDate: "2026-01-01", value: 6500 }]);
+    vi.restoreAllMocks();
+    reply({ error: ["unauthorized"] });
+    await expect(look("NASS:TN:AG_LAND_VALUE", "state_ag_land_value", "TN")).rejects.toThrow(/unauthorized/);
   });
 });

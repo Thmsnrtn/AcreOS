@@ -19,11 +19,44 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
-import { FORECAST_MODELS, FORECASTING_MODULES, OUTCOME_FIELDS, OUTCOME_FIELD_KEYS } from "../../shared/forecasting/models";
+import { FORECAST_MODELS, OUTCOME_FIELDS, type OutcomeField } from "../../shared/forecasting/models";
 import { PUBLIC_SERIES, STATE_CODES } from "../../shared/forecasting/publicSeries";
-import { checkModels, findTerms, words, type CheckableModel } from "../../shared/forecasting/fairHousing";
+import { checkModels, words, type CheckableModel } from "../../shared/forecasting/fairHousing";
 
 const DIRS = ["shared/forecasting", "server/services/forecasting"];
+const OUTCOME_FIELD_KEYS = Object.keys(OUTCOME_FIELDS) as OutcomeField[];
+
+/** Protected or proxy terms in one piece of text — checked through the guard's own entry point. */
+function findTerms(text: string, where: string) {
+  return checkModels([{ id: where, geography: "county", features: [{ id: "x", description: text, from: "y" }] }]);
+}
+
+/**
+ * Every source file under the forecasting directories, and the model(s) it
+ * implements (or "infrastructure"). The gate fails on an unlisted file.
+ */
+const FORECASTING_MODULES: Readonly<Record<string, readonly string[]>> = {
+  "shared/forecasting/publicSeries.ts": ["infrastructure"],
+  "shared/forecasting/vintage.ts": ["infrastructure"],
+  "shared/forecasting/stats.ts": ["infrastructure"],
+  "shared/forecasting/cyclePhase.ts": ["cycle_phase_payrolls"],
+  "shared/forecasting/landValue.ts": ["ag_land_value_growth"],
+  "shared/forecasting/seasonality.ts": ["seasonal_prior_permits"],
+  "shared/forecasting/downturnRunway.ts": ["acreos_downturn_runway"],
+  "shared/forecasting/slots.ts": ["county_outcome_slot", "mail_saturation_slot"],
+  "shared/forecasting/scoring.ts": ["infrastructure"],
+  "shared/forecasting/frozenForecast.ts": ["infrastructure"],
+  "shared/forecasting/models.ts": ["infrastructure"],
+  "shared/forecasting/fairHousing.ts": ["infrastructure"],
+  "shared/forecasting/publicPriors.ts": ["cycle_phase_payrolls", "seasonal_prior_permits", "ag_land_value_growth"],
+  "server/services/forecasting/publicSeriesProvider.ts": ["infrastructure"],
+  "server/services/forecasting/vintageRecorder.ts": ["infrastructure", "county_outcome_slot"],
+  "server/services/forecasting/forecastLedger.ts": ["cycle_phase_payrolls", "ag_land_value_growth"],
+  "server/services/forecasting/saturation.ts": ["mail_saturation_slot", "county_outcome_slot"],
+  "server/services/forecasting/outlook.ts": ["cycle_phase_payrolls", "ag_land_value_growth", "acreos_downturn_runway"],
+  "server/services/forecasting/monthlyJob.ts": ["infrastructure"],
+};
+
 /** The guard's own term list is the one file allowed to name the terms. */
 const TERM_LIST_FILE = "shared/forecasting/fairHousing.ts";
 
