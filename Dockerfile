@@ -44,12 +44,37 @@ ENV NODE_ENV="production"
 #      non-gating "Print Trivy findings table" step in security.yml, then
 #      `curl proxy.golang.org/github.com/cli/cli/v2/@v/<ver>.mod` to find
 #      the first release pinning the fixed version.
+#   3. A dep fix NO gh release pins yet → raise that one module here
+#      (GH_DEP_OVERRIDES) and build gh from its published module source.
+#      `go install pkg@version` cannot take an override, so the stage
+#      downloads the release's module, `go get`s the fixed version, and
+#      builds. History: 2026-10-11 Trivy went red with no commit on
+#      CVE-2026-78667 / CVE-2026-97031 (stdlib net/http, crypto/tls) and
+#      CVE-2026-78669 (stdlib AND golang.org/x/net http2). Go 1.26.9 fixes
+#      the stdlib half; x/net is fixed in v0.60.0, but every gh release up
+#      to v2.102.0 still pins v0.58.0 — so 1.26.6 → 1.26.9 plus the
+#      x/net override. Drop an override once GH_VERSION's go.mod pins it.
+#      GOTOOLCHAIN=local: gh's go.mod carries `toolchain go1.26.7`, and the
+#      default auto mode can build with THAT instead of this image's Go,
+#      silently undoing step 1 (seen locally: binary reported go1.26.7).
 # (Known residual: in-toto-golang v0.9.0 is vendored by gh upstream —
 # GHSA-pmwq-pjrm-6p5r, MEDIUM, below the image scan's CRITICAL/HIGH gate;
 # clears when gh bumps the dep.)
-FROM golang:1.26.6-bookworm AS gh-build
+FROM golang:1.26.9-bookworm AS gh-build
 ARG GH_VERSION=v2.99.0
-RUN CGO_ENABLED=0 go install github.com/cli/cli/v2/cmd/gh@${GH_VERSION}
+ARG GH_DEP_OVERRIDES="golang.org/x/net@v0.60.0"
+ENV GOTOOLCHAIN=local CGO_ENABLED=0
+WORKDIR /src
+RUN set -eux; \
+    dir="$(go mod download -json "github.com/cli/cli/v2@${GH_VERSION}" | sed -n 's/^[[:space:]]*"Dir": "\(.*\)",$/\1/p')"; \
+    test -n "$dir"; \
+    cp -r "$dir" gh; chmod -R u+w gh; cd gh; \
+    for dep in ${GH_DEP_OVERRIDES}; do go get "$dep"; done; \
+    go mod tidy; \
+    go build -trimpath -ldflags "-X github.com/cli/cli/v2/internal/build.Version=${GH_VERSION#v}" -o /go/bin/gh ./cmd/gh; \
+    /go/bin/gh --version; \
+    go version -m /go/bin/gh | grep -E 'golang.org/x/net[[:space:]]'; \
+    test "$(go version /go/bin/gh | awk '{print $2}')" = "$(go env GOVERSION)"
 
 # --- Build stage ---
 FROM base AS build
