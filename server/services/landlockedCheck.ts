@@ -66,7 +66,7 @@ const EXPLANATION: Record<LandlockedVerdict, string> = {
     "No road centerline is within the tolerance of the mapped parcel line. Access may still exist through a recorded easement — or may not. Only the deed, the plat and a title search can tell.",
 };
 
-export const LANDLOCKED_CAVEATS: readonly string[] = [
+const LANDLOCKED_CAVEATS: readonly string[] = [
   "This is a map check, not a legal opinion. A road touching the map line is not proof of a legal right of way.",
   "Easements are unknown until the deed and plat are read; no free map layer records them.",
   "GIS parcel lines are drawn for tax maps, not surveyed. Only a survey settles the boundary.",

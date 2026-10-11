@@ -33,7 +33,7 @@ export const CREATOR_PROGRAM: {
 export const CREATOR_RATE_UNSET_REFUSAL =
   "The creator commission rate is not set — a founder decision. Paid conversions are recorded, but no amount is owed or computed until the rate is set.";
 
-export const CREATOR_CODE_RE = /^[A-Z0-9_-]{4,16}$/;
+const CREATOR_CODE_RE = /^[A-Z0-9_-]{4,16}$/;
 
 export function normalizeCreatorCode(raw: string): string | null {
   const c = String(raw ?? "").trim().toUpperCase();
@@ -41,7 +41,7 @@ export function normalizeCreatorCode(raw: string): string | null {
 }
 
 /** floor(amount × bps / 10,000); null when no rate is set. */
-export function commissionFor(amountPaidCents: number, bps: number | null): number | null {
+function commissionFor(amountPaidCents: number, bps: number | null): number | null {
   if (bps === null) return null;
   if (!Number.isInteger(bps) || bps < 0 || bps > 10_000) throw new Error(`creator commission rate out of range: ${bps}`);
   return Math.floor((Math.max(0, amountPaidCents) * bps) / 10_000);
@@ -88,4 +88,24 @@ export function creatorLedgerRow(
     awaitingRate: live.filter((r) => r.status === "rate_unset").length,
     refusal: bps === null ? CREATOR_RATE_UNSET_REFUSAL : null,
   };
+}
+
+/**
+ * The attribution rule, pure: a signup belongs to a creator when its
+ * first-touch ref code (users.acquisition_utm.ref, written once at signup) is
+ * that creator's code, the creator is active, and the creator existed when the
+ * person signed up (a code invented later cannot claim an earlier signup).
+ */
+export function creatorForSignupCode<C extends { id: number; code: string; status: string; createdAt: Date | string | null }>(
+  acquisitionRef: unknown,
+  signedUpAt: Date | null,
+  all: ReadonlyArray<C>,
+): { id: number; code: string } | null {
+  if (typeof acquisitionRef !== "string") return null;
+  const code = normalizeCreatorCode(acquisitionRef);
+  if (!code) return null;
+  const c = all.find((x) => x.code === code);
+  if (!c || c.status !== "active") return null;
+  if (signedUpAt && c.createdAt && new Date(c.createdAt).getTime() > new Date(signedUpAt).getTime()) return null;
+  return { id: c.id, code: c.code };
 }

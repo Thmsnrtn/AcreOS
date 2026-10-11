@@ -15,7 +15,7 @@ import type { CountyCoverage } from "./countySourceCensus";
 
 export const NOT_AVAILABLE = "Not available";
 
-export const ACCESS_TEXT: Record<AccessIndication, string> = {
+const ACCESS_TEXT: Record<AccessIndication, string> = {
   public_road_contact: "A public road touches the mapped parcel",
   non_access_road_contact_only: "Only a private drive, trail or limited-access highway touches it",
   no_road_contact: "No road touches the mapped parcel",
@@ -60,7 +60,7 @@ function round(n: number, dp: number): string {
 }
 
 /** The value of a computed fact, in words. */
-export function factValueText<K extends ParcelFactKey>(key: K, value: ParcelFactValueMap[K]): string {
+function factValueText<K extends ParcelFactKey>(key: K, value: ParcelFactValueMap[K]): string {
   switch (key) {
     case "road_frontage_m": {
       const m = value as number;

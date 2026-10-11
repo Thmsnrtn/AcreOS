@@ -8,7 +8,7 @@
  * data-truth warnings. It computes nothing itself.
  */
 import { AlertTriangle, CheckCircle2, Info, MinusCircle } from "lucide-react";
-import type { PublicLandFacts } from "@shared/landData/publicFactText";
+import { NOT_AVAILABLE, type PublicLandFacts } from "@shared/landData/publicFactText";
 
 function TruthIcon({ severity }: { severity: "info" | "caution" | "warning" }) {
   if (severity === "warning") return <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />;
@@ -25,7 +25,7 @@ export function LandFactsSection({ land }: { land: PublicLandFacts }) {
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Only facts that passed AcreOS's accuracy check on hand-checked parcels are shown, each with
-          its source, date and confidence. Anything else says "Not available" — it is never estimated.
+          its source, date and confidence. Anything else says "{NOT_AVAILABLE}" — it is never estimated.
           Parcel record: {land.source.name}
           {land.source.retrievedOn ? `, retrieved ${land.source.retrievedOn}` : ""}.
         </p>
@@ -69,7 +69,7 @@ export function LandFactsSection({ land }: { land: PublicLandFacts }) {
                   <MinusCircle className="h-4 w-4" aria-hidden="true" />
                   {r.label}
                 </h3>
-                <p className="mt-2 text-base font-medium text-muted-foreground">Not available</p>
+                <p className="mt-2 text-base font-medium text-muted-foreground">{NOT_AVAILABLE}</p>
                 {r.reason && <p className="mt-1 text-xs text-muted-foreground">{r.reason}</p>}
               </li>
             ),

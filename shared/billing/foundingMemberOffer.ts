@@ -45,7 +45,7 @@ export type FoundingOfferAvailability =
   | { available: true; offer: { tier: Tier; planName: string; priceYearlyCents: number; currency: "usd"; interval: "year"; termsText: string } }
   | { available: false; reason: "flag_off" | "price_unset" | "plan_unset" | "stripe_price_missing"; message: string };
 
-export const FOUNDING_OFFER_MESSAGES = {
+const FOUNDING_OFFER_MESSAGES = {
   flag_off: "The founding-member offer is not open.",
   price_unset: "The founding-member offer is not open yet: its price has not been set.",
   plan_unset: "The founding-member offer is not open yet: its plan has not been chosen.",

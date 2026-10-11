@@ -37,8 +37,11 @@ vi.mock("../../server/services/publicCountyGuide", async (importOriginal) => {
   return { ...real, getCountyGuide: vi.fn(async () => h.guide) };
 });
 
-import { checkLandlocked, LANDLOCKED_CAVEATS } from "../../server/services/landlockedCheck";
-import { MIN_PARCELS_FOR_SHARE, roadAccessShare } from "../../server/services/publicCountyGuide";
+import { checkLandlocked } from "../../server/services/landlockedCheck";
+import { roadAccessShare } from "@shared/landData/countyRoadAccessShare";
+
+/** The share's minimum, restated as the oracle (shared/landData/countyRoadAccessShare.ts). */
+const MIN_PARCELS_FOR_SHARE = 10;
 import { FACT_ACCURACY } from "@shared/landData/factAccuracyGate";
 import { fx, factsFor, noRoadParcelIndex, ownedRowFor, roadParcelIndex } from "../helpers/landFixtureFacts";
 
@@ -63,7 +66,9 @@ describe("checkLandlocked", () => {
     expect(a.verdict).toBe("public_road");
     expect(a.fact.status).toBe("shown");
     expect(a.fact.sources[0].retrievedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(a.caveats).toEqual([...LANDLOCKED_CAVEATS]);
+    expect(a.caveats.join(" ")).toMatch(/not a legal opinion/);
+    expect(a.caveats.join(" ")).toMatch(/Easements are unknown/);
+    expect(a.caveats.join(" ")).toMatch(/not surveyed/);
     expect(a.parcel.reportPath).toBe(`/p/tn/dekalb/${encodeURIComponent(h.ownedRow.apn)}`);
   });
 

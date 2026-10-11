@@ -24,7 +24,7 @@ export interface DdReport {
   disclaimer: string;
 }
 
-export const DD_REPORT_DISCLAIMER =
+const DD_REPORT_DISCLAIMER =
   "Informational only — not a survey, title search, appraisal or legal opinion. Facts are shown only where AcreOS's accuracy check passed; anything else is marked Not available.";
 
 function buildReport(facts: PublicLandFacts): DdReport {

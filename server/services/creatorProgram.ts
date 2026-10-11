@@ -23,6 +23,7 @@ import {
   CREATOR_PROGRAM,
   CREATOR_RATE_UNSET_REFUSAL,
   conversionDecision,
+  creatorForSignupCode,
   creatorLedgerRow,
   normalizeCreatorCode,
   type CreatorLedgerRow,
@@ -52,28 +53,8 @@ export async function createCreator(input: { code: string; displayName: string; 
   return { ok: true, creator };
 }
 
-/**
- * The attribution rule, pure: a signup belongs to a creator when its
- * first-touch ref code is that creator's code, the creator is active, and the
- * creator existed when the person signed up (a code invented later cannot
- * claim an earlier signup).
- */
-export function creatorForSignupCode(
-  acquisitionRef: unknown,
-  signedUpAt: Date | null,
-  all: ReadonlyArray<Pick<Creator, "id" | "code" | "status" | "createdAt">>,
-): Pick<Creator, "id" | "code"> | null {
-  if (typeof acquisitionRef !== "string") return null;
-  const code = normalizeCreatorCode(acquisitionRef);
-  if (!code) return null;
-  const c = all.find((x) => x.code === code);
-  if (!c || c.status !== "active") return null;
-  if (signedUpAt && c.createdAt && new Date(c.createdAt).getTime() > new Date(signedUpAt).getTime()) return null;
-  return { id: c.id, code: c.code };
-}
-
 /** The creator a paying organization is attributed to, if any. */
-export async function creatorForOrganization(orgId: number): Promise<Pick<Creator, "id" | "code"> | null> {
+async function creatorForOrganization(orgId: number): Promise<Pick<Creator, "id" | "code"> | null> {
   const members = await db
     .select({ ref: sql<string | null>`${users.acquisitionUtm}->>'ref'`, createdAt: users.createdAt })
     .from(teamMembers)

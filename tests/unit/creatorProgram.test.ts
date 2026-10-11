@@ -21,8 +21,8 @@ vi.mock("../../server/db", () => ({
 vi.mock("../../server/utils/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 import {
   CREATOR_PROGRAM,
-  commissionFor,
   conversionDecision,
+  creatorForSignupCode,
   creatorLedgerRow,
   normalizeCreatorCode,
 } from "@shared/billing/creatorProgram";
@@ -38,19 +38,17 @@ describe("the commission rate ships unset", () => {
   });
 
   it("with no rate, no commission is computed for any amount", () => {
-    expect(commissionFor(49_00, null)).toBeNull();
     expect(conversionDecision({ amountPaidCents: 49_00 }, null)).toEqual({ record: true, status: "rate_unset", commissionBps: null, commissionCents: null });
   });
 
   it("with a rate, the commission is floor(amount × bps / 10,000) — no rounding up of AcreOS's money", () => {
-    expect(commissionFor(4_900, 2_000)).toBe(980);
-    expect(commissionFor(4_999, 3_333)).toBe(1_666);
+    expect(conversionDecision({ amountPaidCents: 4_999 }, 3_333)).toMatchObject({ commissionCents: 1_666 });
     expect(conversionDecision({ amountPaidCents: 4_900 }, 2_000)).toEqual({ record: true, status: "owed", commissionBps: 2_000, commissionCents: 980 });
   });
 
   it("refuses a rate outside 0–100%", () => {
-    expect(() => commissionFor(100, -1)).toThrow();
-    expect(() => commissionFor(100, 10_001)).toThrow();
+    expect(() => conversionDecision({ amountPaidCents: 100 }, -1)).toThrow();
+    expect(() => conversionDecision({ amountPaidCents: 100 }, 10_001)).toThrow();
   });
 });
 
@@ -97,20 +95,16 @@ describe("codes", () => {
 });
 
 describe("attribution rule (users.acquisition_utm.ref captured at signup)", () => {
-  // Imported lazily so the pure suite above needs no server modules.
-  const load = () => import("../../server/services/creatorProgram");
   const creatorsList = [
     { id: 1, code: "LANDTUBE", status: "active", createdAt: new Date("2026-10-01T00:00:00Z") },
     { id: 2, code: "PAUSEDGUY", status: "paused", createdAt: new Date("2026-10-01T00:00:00Z") },
   ];
 
   it("a signup whose first-touch code is an active creator's belongs to that creator", async () => {
-    const { creatorForSignupCode } = await load();
     expect(creatorForSignupCode("landtube", new Date("2026-10-05T00:00:00Z"), creatorsList)).toEqual({ id: 1, code: "LANDTUBE" });
   });
 
   it("a paused creator, an unknown code, or a code created after the signup attributes nothing", async () => {
-    const { creatorForSignupCode } = await load();
     expect(creatorForSignupCode("PAUSEDGUY", new Date("2026-10-05T00:00:00Z"), creatorsList)).toBeNull();
     expect(creatorForSignupCode("NOBODY12", new Date("2026-10-05T00:00:00Z"), creatorsList)).toBeNull();
     expect(creatorForSignupCode("LANDTUBE", new Date("2026-09-01T00:00:00Z"), creatorsList)).toBeNull();
