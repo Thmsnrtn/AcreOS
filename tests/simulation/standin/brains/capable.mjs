@@ -36,6 +36,9 @@ function marker(n) {
   const s = (n.system || n.messages[0]?.content || "").trim();
   const m = /AcreOS role worker — (\w+)/.exec(s);
   if (m) return m[1].toLowerCase();
+  // A generic autopilot dispatch (Iris and the other non-role-worker agents):
+  // the task line act.ts dispatchPromptFor writes first.
+  if (IRIS_TASK.test(firstUser(n))) return "iris";
   if (/^You are Pax/m.test(s)) return "pax";
   if (/^You are Solene/m.test(s)) return "solene";
   return null;
@@ -109,6 +112,41 @@ function howTo(text) {
   return "Most of what you need is behind the five doors on the left: Today, Map, Deals, Finance and Pax.";
 }
 
+// ── Iris: the generic autopilot dispatch (ops / deploy, and the other
+// non-role-worker moves). Added 2026-10-10: until then every such dispatch got
+// the stand-in's empty script answer, ended "empty_result" and demoted its
+// domain, so the simulated year measured the stand-in's gap, not the business.
+//
+// Outcome mix — ASSUMPTIONS, no source: a real model's rate on these tasks is
+// E3 evidence (wave W6). Stated so the numbers can be varied, and never zero:
+//   IRIS_FAILURE_PER_100 = 10  the run ends with nothing done (an empty answer,
+//                              which the trust ledger counts as a failure);
+//   IRIS_NO_WORK_PER_100 = 20  it looked and nothing needed changing (a real
+//                              answer saying so — a success in the product);
+//   the rest                   it did the routine task the brief names.
+// Deterministic: a per-process counter, not a random draw.
+const IRIS_TASK = /^Autopilot task — (\w+) \((\w+)\)\./m;
+export const IRIS_FAILURE_PER_100 = 10;
+export const IRIS_NO_WORK_PER_100 = 20;
+let irisCalls = 0;
+const IRIS_WORK = {
+  resolve_incident: "Reviewed the open incident the brief names, checked the affected path against its runbook, and applied the documented, reversible remediation. I will re-check it on the next pass.",
+  stabilize_reflexes: "Checked the automatic recovery steps the brief names and restarted the stalled one. The change is reversible.",
+  unblock_activation: "Traced the step new accounts are stuck on and cleared the blocked job. Nothing customer-facing was sent.",
+  optimize: "Reviewed the slowest scheduled jobs and tidied the one the brief points at. The change is reversible.",
+  protect_deliverability: "Checked bounce and complaint handling on the system mail lane and paused the one noisy sender. The change is reversible.",
+  clear_compliance: "Worked through the open compliance items the brief lists and recorded each one's status.",
+};
+function iris(n) {
+  const m = IRIS_TASK.exec(firstUser(n));
+  if (!m) return null;
+  if (assistantTurns(n) >= 1) return { role: "iris", content: `Done with the ${m[1]} task.` };
+  const slot = (irisCalls++ * 37) % 100; // spreads the outcomes evenly across calls
+  if (slot < IRIS_FAILURE_PER_100) return { role: "iris", content: "Nothing further to add." };
+  if (slot < IRIS_FAILURE_PER_100 + IRIS_NO_WORK_PER_100) return { role: "iris", content: `Looked into the ${m[1]} task; nothing needs changing right now, so I changed nothing.` };
+  return { role: "iris", content: IRIS_WORK[m[1]] ?? `Worked the ${m[1]} task the brief describes; nothing customer-facing was sent.` };
+}
+
 function retention(n) {
   const turns = assistantTurns(n);
   const rows = [...firstUser(n).matchAll(/- Org #(\d+) "([^"]*)" — (\w+):/g)].map((m) => ({ id: Number(m[1]), name: m[2], kind: m[3] }));
@@ -140,6 +178,7 @@ export function answer(n) {
     case "support": return support(n);
     case "retention": return retention(n);
     case "pax": return pax(n);
+    case "iris": return iris(n);
     default: return null;
   }
 }

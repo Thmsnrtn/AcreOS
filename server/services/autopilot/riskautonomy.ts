@@ -97,12 +97,17 @@ export function shouldEscalateForRisk(
   domainPassed: boolean,
   assessment: RiskAssessment,
   loopConfidence = 1,
+  opts: { digestLane?: boolean } = {},
 ): boolean {
   if (!domainPassed) return false;
   // HARD gate (frontier #3): an OVER-CONFIDENT brain auto-runs NOTHING.
   if (loopConfidence <= 0.2) return true;
   if (assessment.tier === "high") return true;
-  // Poorly-calibrated ⇒ escalate medium-tier too (reflexes still run).
-  if (loopConfidence < 0.5 && assessment.tier === "medium") return true;
+  // Poorly-calibrated ⇒ escalate medium-tier too (reflexes still run) —
+  // EXCEPT a digest-lane move (founder ruling 2026-10-10): a reversible,
+  // internal ops/deploy move that runs, is listed in the weekly digest and
+  // carries an undo. The caller decides digestLane from act.ts
+  // isDigestLaneMove; every other move is unchanged.
+  if (loopConfidence < 0.5 && assessment.tier === "medium" && opts.digestLane !== true) return true;
   return false;
 }
