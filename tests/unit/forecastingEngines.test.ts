@@ -22,7 +22,7 @@ import { forecastLandValues, realisedLandGrowth, type AnnualPoint } from "../../
 import { brierMulti, customerForecastGate, reliability, summariseIntervals, summarisePhaseScores, CUSTOMER_GATE } from "../../shared/forecasting/scoring";
 import { seasonalPriors, taxSaleSeasonality } from "../../shared/forecasting/seasonality";
 import { computeDownturnRunway, mrrMonthlyChangeFrom } from "../../shared/forecasting/downturnRunway";
-import { aggregateSaturation, countyForecastSlot, COUNTY_SLOT_THRESHOLD } from "../../shared/forecasting/slots";
+import { aggregateSaturation, countyForecastSlot, COUNTY_SLOT_THRESHOLD, SATURATION_FLOORS } from "../../shared/forecasting/slots";
 import { freezeForecast, forecastKey, FORECAST_ENGINES } from "../../shared/forecasting/frozenForecast";
 import { BACKTEST_RECORD } from "../../shared/forecasting/publicPriors";
 
@@ -197,6 +197,27 @@ describe("the customer gate — a live scored record, never a backtest", () => {
     expect(g.allowed).toBe(true);
     expect(customerForecastGate({ ...live, distinctIssueMonths: 5 }).allowed).toBe(false);
   });
+  it("each bar refuses on its own, just past its threshold (thresholds are falsified, not only the count)", () => {
+    const flat = { expansion: 0.25, peak: 0.25, contraction: 0.25, trough: 0.25 };
+    const probs = { expansion: 0.6, peak: 0.4, contraction: 0, trough: 0 };
+    const rec = (n: number) => Array.from({ length: n }, (_, i) => ({ probs, outcome: (i < n * 0.6 ? "expansion" : "peak") as "expansion" | "peak", climatology: flat, persistence: flat }));
+    const ranges = summariseIntervals(Array.from({ length: 60 }, (_, i) => ({ lo: 0, hi: 1, point: 0.5, actual: i % 5 === 0 ? 2 : 0.5 })), 0.8);
+    const live = { phase: summarisePhaseScores(rec(CUSTOMER_GATE.minLiveScored)), ranges, distinctIssueMonths: CUSTOMER_GATE.minDistinctMonths };
+    expect(customerForecastGate(live).allowed).toBe(true);
+    const only = (l: typeof live) => customerForecastGate(l).unmet;
+    // one scored forecast short
+    expect(only({ ...live, phase: summarisePhaseScores(rec(CUSTOMER_GATE.minLiveScored - 1)) })).toHaveLength(1);
+    // no better than the base rates (skill exactly 0)
+    expect(only({ ...live, phase: { ...live.phase, skillVsClimatology: 0 } })).toEqual(["not yet shown to beat the base rates live"]);
+    // coverage just outside tolerance, either side
+    for (const c of [0.8 - CUSTOMER_GATE.coverageTolerance - 0.01, 0.8 + CUSTOMER_GATE.coverageTolerance + 0.01]) {
+      expect(only({ ...live, ranges: { ...live.ranges, coverage: c } })).toEqual(["range coverage not yet within 10 points of nominal live"]);
+    }
+    // calibration error just over the ceiling
+    expect(only({ ...live, phase: { ...live.phase, calibration: { ...live.phase.calibration, ece: CUSTOMER_GATE.maxEce + 0.01 } } })).toEqual(["calibration error not yet under 0.10 live"]);
+    // the bars themselves are the stated ones
+    expect(CUSTOMER_GATE).toMatchObject({ minLiveScored: 60, minDistinctMonths: 6, minSkillVsClimatology: 0, coverageTolerance: 0.1, maxEce: 0.1 });
+  });
 });
 
 describe("frozen forecasts", () => {
@@ -285,5 +306,13 @@ describe("design slots", () => {
     const out = aggregateSaturation(rows);
     expect(out).toEqual([{ state: "TN", county: "Knox", pieces: 450, orgsAtLeast: 3 }]);
     expect(JSON.stringify(out)).not.toMatch(/organizationId/);
+  });
+  it("each saturation floor holds on its own, and volume is rounded down to 50", () => {
+    const three = (county: string, pieces: [number, number, number]) => pieces.map((p, i) => ({ organizationId: i + 1, state: "TN", county, pieces: p }));
+    // enough customers, one piece short of the volume floor → absent
+    expect(aggregateSaturation(three("Anderson", [33, 33, 33]))).toEqual([]);
+    // exactly the floors → present; 149 reads as 100, never the exact count
+    expect(aggregateSaturation(three("Bedford", [50, 50, 49]))).toEqual([{ state: "TN", county: "Bedford", pieces: 100, orgsAtLeast: 3 }]);
+    expect(SATURATION_FLOORS).toMatchObject({ minOrgs: 3, minPieces: 100 });
   });
 });

@@ -21,10 +21,15 @@
  *   4. Forecasts are issued from recorded data only, once per key; when the
  *      target month is published they are scored, and the customer gate stays
  *      shut on a record this thin.
+ *   5. The registry's provider_cache write actually lands (its ON CONFLICT
+ *      (cache_key) needs the unique index 0273 adds; without it every write
+ *      failed silently and nothing was ever cached), and a re-write upserts.
+ *   6. A county slot counts DISTINCT organisations: one customer's thirty
+ *      outcomes over a year is still "warming up", never a county forecast.
  *
  * Seeds its own rows and deletes them afterwards. Exits non-zero on failure.
  */
-import { and, eq, gte, inArray } from "drizzle-orm";
+import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import {
   campaignResponses,
   customerOutcomeObservations,
@@ -135,6 +140,14 @@ async function main() {
     const pay1 = run1.families.find((f) => f.family === "state_payrolls")!;
     check(pay1.seriesRead === 51 && pay1.rowsAppended > 51 * 400, `payrolls recorded for 51 series (${pay1.seriesRead}, ${pay1.rowsAppended} rows)`);
     check((run1.families.find((f) => f.family === "state_ag_land_value")?.rowsAppended ?? 0) === 51 * 30, "land values recorded");
+    // ── 5. the cache write lands (fire-and-forget in the registry: poll) ──
+    const cacheRows = async () => db.select({ key: providerCache.cacheKey, expiresAt: providerCache.expiresAt }).from(providerCache).where(eq(providerCache.category, "macro_series"));
+    let cached = await cacheRows();
+    for (let i = 0; i < 50 && cached.length < 51 * 3; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      cached = await cacheRows();
+    }
+    check(cached.length >= 51 * 3, `provider_cache holds the macro_series lookups (${cached.length}) — the ON CONFLICT (cache_key) write lands`);
     const tnJan = async () => db.select().from(publicSeriesVintages).where(and(eq(publicSeriesVintages.seriesId, "TNNA"), eq(publicSeriesVintages.observationDate, "2020-01-01")));
     const before = await tnJan();
     check(before.length === 1 && before[0].vintageDate === "2026-10-25", "TN Jan-2020 recorded once, as known 2026-10-25");
@@ -149,6 +162,14 @@ async function main() {
     check(pay2.rowsAppended === 51 + 1, `month two appends one new month per state plus TN's one revision (${pay2.rowsAppended})`);
     const after = await tnJan();
     check(after.length === 2 && after.some((r) => r.vintageDate === "2026-10-25" && r.value === before[0].value) && after.some((r) => r.vintageDate === "2026-11-25" && r.value === before[0].value + 7), "the revision is a new row; the earlier vintage is unchanged");
+
+    let cached2 = await cacheRows();
+    const tnKeyFresh = (rows: typeof cached2) => rows.some((r) => r.key.endsWith("::tnna") && r.expiresAt.getTime() > Date.parse("2026-11-25T06:10:00Z"));
+    for (let i = 0; i < 50 && !tnKeyFresh(cached2); i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      cached2 = await cacheRows();
+    }
+    check(tnKeyFresh(cached2) && new Set(cached2.map((r) => r.key)).size === cached2.length, "a month later the cache row is upserted in place (one row per key, new expiry)");
 
     // ── 3. customer outcomes, frozen as known ────────────────────────────
     const [o] = await db.insert(organizations).values({ name: tag, slug: tag, ownerId: tag }).returning({ id: organizations.id });
@@ -174,6 +195,17 @@ async function main() {
     await recordCustomerOutcomes();
     const again = await mine();
     check(again.length === 4 && again.find((x) => x.kind === "deal_closed")?.values.priceCents === 2_500_000, "editing the deal later does not change what was recorded");
+
+    // ── 6. a county slot needs distinct customers, not just outcomes ─────
+    const { countySlots } = await import("../../server/services/forecasting/saturation");
+    const slotCounty = `${tag}-cty`;
+    await db.insert(customerOutcomeObservations).values(
+      Array.from({ length: 30 }, (_, i) => ({ organizationId: orgId!, kind: "offer_declined", subjectTable: "offers", subjectId: 1_000_000 + i, state: "TN", county: slotCounty, observedAt: new Date(Date.UTC(2025, i % 14, 3)), values: { result: "declined" } })),
+    );
+    const slot = (await countySlots("TN")).find((x) => x.county === slotCounty);
+    check(slot?.status === "warming_up" && slot.have.outcomes === 30 && slot.have.orgs === 1 && slot.have.spanMonths >= 12, `one customer's 30 outcomes over a year stay "warming up" (${JSON.stringify(slot?.have)})`);
+    await db.delete(customerOutcomeObservations).where(and(eq(customerOutcomeObservations.organizationId, orgId!), eq(customerOutcomeObservations.county, slotCounty)));
+    check((await db.select({ n: sql<number>`count(*)::int` }).from(customerOutcomeObservations).where(eq(customerOutcomeObservations.county, slotCounty)))[0].n === 0, "slot fixture rows removed");
 
     // ── 4. issue, re-issue (no duplicates), publish, score ───────────────
     const iss = await issueForecasts();

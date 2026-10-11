@@ -91,8 +91,19 @@ interface PortfolioCashFlowSummary {
     net: number;
   }>;
   highRiskNoteCount: number;
-  averagePaymentRiskScore: number;
+  /** Mean note risk score (0-100), or null when there are no active notes to score. */
+  averagePaymentRiskScore: number | null;
+  /** What in these totals is ASSUMED rather than measured, in words, for the page to show. */
+  assumptions: string[];
 }
+
+// Carrying-cost rates are platform ASSUMPTIONS, not measurements; they are
+// returned in `assumptions` so the page that shows the totals labels them.
+const ASSUMED_ANNUAL_TAX_RATE = 0.015;
+const ASSUMED_ANNUAL_INSURANCE_RATE = 0.005;
+const ASSUMED_ANNUAL_MAINTENANCE_RATE = 0.01;
+const ASSUMED_LISTING_MARKETING_RATE = 0.02;
+const pctOf = (r: number) => `${+(r * 100).toFixed(2)}%`;
 
 interface ActualVsProjectedComparison {
   periodMonths: number;
@@ -413,12 +424,9 @@ class CashFlowForecasterService {
         // The three rates below are platform assumptions, not measurements, and
         // are named as such in every row's `notes` for the same reason the land
         // exit model badges its defaults.
-        const annualTaxRate = 0.015;
-        const monthlyTax = (assessedValue * annualTaxRate) / 12;
-        
-        const monthlyInsurance = (assessedValue * 0.005) / 12;
-        
-        const monthlyMaintenance = (assessedValue * 0.01) / 12;
+        const monthlyTax = (assessedValue * ASSUMED_ANNUAL_TAX_RATE) / 12;
+        const monthlyInsurance = (assessedValue * ASSUMED_ANNUAL_INSURANCE_RATE) / 12;
+        const monthlyMaintenance = (assessedValue * ASSUMED_ANNUAL_MAINTENANCE_RATE) / 12;
 
         for (let i = 0; i < months; i++) {
           const expenseDate = addMonths(new Date(today), i);
@@ -451,7 +459,7 @@ class CashFlowForecasterService {
         }
 
         if (property.status === "listed") {
-          const marketingBudget = (property.listPrice ? parseFloat(property.listPrice) : 0) * 0.02;
+          const marketingBudget = (property.listPrice ? parseFloat(property.listPrice) : 0) * ASSUMED_LISTING_MARKETING_RATE;
           projections.push({
             month: today.toISOString().slice(0, 7),
             amount: marketingBudget,
@@ -1012,7 +1020,18 @@ Return valid JSON array with objects containing: type (string), message (string)
       expensesByCategory,
       monthlyBreakdown,
       highRiskNoteCount: highRiskCount,
-      averagePaymentRiskScore: riskScoreCount > 0 ? totalRiskScore / riskScoreCount : 0,
+      averagePaymentRiskScore: riskScoreCount > 0 ? totalRiskScore / riskScoreCount : null,
+      assumptions: [
+        ...(activeNotes.length > 0
+          ? ["Note income is weighted by a rule-based likelihood of collection derived from each note's payment history and delinquency status; it is not a calibrated default model."]
+          : []),
+        ...(ownedProperties.length > 0
+          ? [
+              `Property carrying costs assume ${pctOf(ASSUMED_ANNUAL_TAX_RATE)} tax, ${pctOf(ASSUMED_ANNUAL_INSURANCE_RATE)} insurance and ${pctOf(ASSUMED_ANNUAL_MAINTENANCE_RATE)} maintenance of assessed value a year; a property with no assessed value has its carrying cost left out, not set to zero.`,
+              "Property income is scheduled rent from active leases only.",
+            ]
+          : []),
+      ],
     };
   }
 

@@ -26,7 +26,9 @@ import { FORECAST_MODELS, OUTCOME_FIELDS, type OutcomeField } from "../../shared
 import { PUBLIC_SERIES, STATE_CODES } from "../../shared/forecasting/publicSeries";
 import { checkModels, words, type CheckableModel } from "../../shared/forecasting/fairHousing";
 
-const DIRS = ["shared/forecasting", "server/services/forecasting"];
+// scripts/forecasting builds the committed priors every engine and the twin
+// read, so its features are model features too.
+const DIRS = ["shared/forecasting", "server/services/forecasting", "scripts/forecasting"];
 const OUTCOME_FIELD_KEYS = Object.keys(OUTCOME_FIELDS) as OutcomeField[];
 
 /** Protected or proxy terms in one piece of text — checked through the guard's own entry point. */
@@ -58,6 +60,7 @@ const FORECASTING_MODULES: Readonly<Record<string, readonly string[]>> = {
   "server/services/forecasting/saturation.ts": ["mail_saturation_slot", "county_outcome_slot"],
   "server/services/forecasting/outlook.ts": ["cycle_phase_payrolls", "ag_land_value_growth", "acreos_downturn_runway"],
   "server/services/forecasting/monthlyJob.ts": ["infrastructure"],
+  "scripts/forecasting/build-public-priors.ts": ["cycle_phase_payrolls", "seasonal_prior_permits", "ag_land_value_growth"],
 };
 
 /** The guard's own term list is the one file allowed to name the terms. */

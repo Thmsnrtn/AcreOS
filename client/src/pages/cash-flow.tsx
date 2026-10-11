@@ -312,7 +312,7 @@ export default function CashFlowPage() {
               </div>
               <dd className="text-2xl font-bold text-acr-warn tabular-nums">{summary.highRiskNoteCount}</dd>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Avg risk score: <span className="tabular-nums">{Math.round(summary.averagePaymentRiskScore)}%</span>
+                Avg risk score: <span className="tabular-nums">{summary.averagePaymentRiskScore == null ? "—" : `${Math.round(summary.averagePaymentRiskScore)}%`}</span>
               </p>
             </CardContent>
           </Card>

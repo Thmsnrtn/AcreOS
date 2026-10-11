@@ -40,8 +40,11 @@ interface PortfolioSummary {
   totalProjectedIncome: number;
   totalProjectedExpenses: number;
   netCashFlow: number;
-  averagePaymentRiskScore: number;
+  /** null when there are no active notes to score. */
+  averagePaymentRiskScore: number | null;
   highRiskNoteCount: number;
+  /** What in these totals is assumed rather than measured (server-stated). */
+  assumptions?: string[];
   incomeBySource: Record<string, number>;
   expensesByCategory: Record<string, number>;
   monthlyBreakdown: MonthlyBreakdownEntry[];
@@ -67,7 +70,12 @@ export default function ForecastingPage() {
   useDocumentTitle("Cash flow forecasting");
   const { data: resp, isLoading, isError, error, refetch, isRefetching } = useQuery<{ summary: PortfolioSummary }>({
     queryKey: ["/api/cash-flow/portfolio/summary"],
-    queryFn: () => fetch("/api/cash-flow/portfolio/summary").then((r) => r.json()),
+    // A failed request is an error state, never an empty or zero portfolio.
+    queryFn: async () => {
+      const r = await fetch("/api/cash-flow/portfolio/summary", { credentials: "include" });
+      if (!r.ok) throw new Error(`${r.status}: ${r.statusText}`);
+      return r.json();
+    },
   });
 
   const summary = resp?.summary;
@@ -99,8 +107,9 @@ export default function ForecastingPage() {
       }))
     : [];
 
-  const riskScore = summary?.averagePaymentRiskScore ?? 0;
-  const riskColor = riskScore > 60 ? "text-acr-neg" : riskScore > 30 ? "text-acr-warn" : "text-acr-pos";
+  // No active notes means no score — not a score of 0 ("low risk").
+  const riskScore = summary?.averagePaymentRiskScore ?? null;
+  const riskColor = riskScore == null ? "text-muted-foreground" : riskScore > 60 ? "text-acr-neg" : riskScore > 30 ? "text-acr-warn" : "text-acr-pos";
 
   return (
     <PageShell label="Forecasting">
@@ -186,6 +195,17 @@ export default function ForecastingPage() {
               </CardContent>
             </Card>
           </dl>
+
+          {(summary.assumptions?.length ?? 0) > 0 && (
+            <div className="text-xs text-muted-foreground space-y-1" data-testid="forecasting-assumptions">
+              <p className="font-medium">Assumed, not measured:</p>
+              <ul className="list-disc pl-5 space-y-0.5">
+                {summary.assumptions!.map((a) => (
+                  <li key={a}>{a}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <Card>
             <CardHeader>
@@ -273,9 +293,9 @@ export default function ForecastingPage() {
                 <div className="text-center">
                   <p
                     className={`text-4xl font-bold tabular-nums ${riskColor}`}
-                    aria-label={`Average risk score ${Math.round(riskScore)} of 100, ${riskScore > 60 ? "high" : riskScore > 30 ? "moderate" : "low"} risk`}
+                    aria-label={riskScore == null ? "No active notes to score" : `Average risk score ${Math.round(riskScore)} of 100, ${riskScore > 60 ? "high" : riskScore > 30 ? "moderate" : "low"} risk`}
                   >
-                    {Math.round(riskScore)}
+                    {riskScore == null ? "—" : Math.round(riskScore)}
                   </p>
                   <p className="text-sm text-muted-foreground">Avg risk score</p>
                   <p className="text-xs text-muted-foreground">(0 = low, 100 = high)</p>

@@ -11347,6 +11347,15 @@ END $$`,
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "customer_outcome_obs_org_kind_subject_uk" ON "customer_outcome_observations" ("organization_id", "kind", "subject_table", "subject_id")`,
   `CREATE INDEX IF NOT EXISTS "customer_outcome_obs_org_observed_idx" ON "customer_outcome_observations" ("organization_id", "observed_at")`,
+
+  // 0273 — provider_cache.cache_key UNIQUE, as shared/schema declares. Every
+  // registry cache write is ON CONFLICT (cache_key), which fails without it;
+  // the lookup swallowed the error, so nothing was ever cached on a database
+  // built from this repo. Duplicates (cache, not records) keep the newest row.
+  // A drizzle-push database already has this index name: no-op there.
+  // Mirrors migrations/0273_provider_cache_key_unique.sql.
+  `DELETE FROM "provider_cache" a USING "provider_cache" b WHERE a."cache_key" = b."cache_key" AND a."id" < b."id"`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "provider_cache_cache_key_unique" ON "provider_cache" ("cache_key")`,
 ];
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });

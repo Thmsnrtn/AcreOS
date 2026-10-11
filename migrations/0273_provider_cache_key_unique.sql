@@ -1,0 +1,21 @@
+-- 0273 — provider_cache.cache_key is UNIQUE, as shared/schema/platform-runtime.ts
+-- has always declared (`cacheKey: text("cache_key").notNull().unique()`).
+--
+-- No DDL in this repository ever created that uniqueness: migrate.mjs made the
+-- table with a plain btree index on cache_key. Every cache write in the
+-- provider registry (provider-registry.ts writeCache) is
+-- `INSERT ... ON CONFLICT (cache_key) DO UPDATE`, which Postgres refuses
+-- outright when no unique index matches the conflict target ("there is no
+-- unique or exclusion constraint matching the ON CONFLICT specification").
+-- The lookup path swallows that error, so on a database built from this repo
+-- NO provider response was ever cached: every repeat lookup re-fetched, and a
+-- paid provider re-billed. Found by the W4 build; recorded as MISSING in
+-- scripts/constraint-names.allowlist.json.
+--
+-- A database built by drizzle push already has provider_cache_cache_key_unique,
+-- so the index below is a no-op there (IF NOT EXISTS on the same name). Rows
+-- duplicated on cache_key (possible only where the uniqueness was absent) are
+-- cache, not records: the newest row per key is kept. Mirrors the matching
+-- block in scripts/migrate.mjs. Idempotent.
+DELETE FROM "provider_cache" a USING "provider_cache" b WHERE a."cache_key" = b."cache_key" AND a."id" < b."id";
+CREATE UNIQUE INDEX IF NOT EXISTS "provider_cache_cache_key_unique" ON "provider_cache" ("cache_key");
