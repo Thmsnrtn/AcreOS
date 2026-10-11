@@ -61,8 +61,10 @@ describe("the cash-flow forecast says when it could not price the carry", () => 
     // The other direction: a guard that suppressed everything would satisfy
     // both cases above and silently empty every forecast.
     const code = stripped("server/services/cashFlowForecaster.ts");
-    expect(code).toContain("const annualTaxRate = 0.015");
-    expect(code).toMatch(/monthlyTax\s*=\s*\(assessedValue \* annualTaxRate\)/);
+    // The rate is a named ASSUMPTION (returned to the page in `assumptions`).
+    expect(code).toContain("const ASSUMED_ANNUAL_TAX_RATE = 0.015");
+    expect(code).toMatch(/monthlyTax\s*=\s*\(assessedValue \* ASSUMED_ANNUAL_TAX_RATE\)/);
+    expect(code, "the assumed rates are stated to the page that shows the totals").toMatch(/assumptions:\s*\[/);
   });
 });
 

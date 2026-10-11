@@ -73,8 +73,6 @@ vi.setConfig({ testTimeout: REPO_SWEEP_TIMEOUT_MS });
 const KNOWN_UNARBITRATED: Record<string, number> = {
   // Schema declares `.unique()`; no migration creates it.
   "server/services/modelIntelligence.ts onConflictDoUpdate openrouter_model_catalog(model_id)": 1,
-  "server/services/providers/provider-registry.ts onConflictDoUpdate provider_cache(cache_key)": 1,
-  "server/services/providers/attom-provider.ts raw-sql provider_cache(cache_key)": 1,
   // No unique declared anywhere for the target columns.
   "server/jobs/countyAssessorIngest.ts onConflictDoUpdate county_markets(state,county)": 1,
   "server/routes-platform-features.ts raw-sql organization_integrations(organization_id,provider)": 2,
@@ -90,7 +88,10 @@ const KNOWN_UNARBITRATED: Record<string, number> = {
 // index's own predicate (IDEMPOTENCY_KEY_INDEX_PREDICATE, imported from
 // shared/), and the gate learned to read an imported predicate constant — see
 // the "imported predicate constant" canaries below.
-const KNOWN_UNARBITRATED_BASELINE = 14;
+// 14 → 12 on 2026-10-11: migration 0273 creates provider_cache_cache_key_unique,
+// the arbiter both provider_cache(cache_key) writers (the registry's cache
+// upsert and attom-provider's raw SQL) had been missing.
+const KNOWN_UNARBITRATED_BASELINE = 12;
 
 /**
  * Population floors (measured 2026-10-06). A parser that stops matching a shape
