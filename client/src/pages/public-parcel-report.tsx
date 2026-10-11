@@ -502,6 +502,29 @@ export default function PublicParcelReportPage() {
 
             {land && <LandFactsSection land={land} />}
 
+            {/* Public truth (W3 audit 2026-10-11): everything below is the
+                free federal-data report — real, sourced, but never run through
+                the accuracy check the facts above passed. On a page headed
+                "Verified land facts" it must say so, or the verified framing
+                reads as covering the partial score too. */}
+            {land && (
+              <section
+                aria-labelledby="report-unverified-heading"
+                className="rounded-lg border border-border bg-muted/30 p-4"
+                data-testid="report-outside-accuracy-check"
+              >
+                <h2 id="report-unverified-heading" className="text-base font-semibold text-foreground">
+                  Federal data snapshot — not covered by AcreOS's accuracy check
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  The score and government data below come straight from free federal sources
+                  {report.refreshedAt ? `, retrieved ${formatDate(report.refreshedAt)}` : ""}. Each item names its
+                  source, but none of it was checked against hand-verified parcels the way the facts
+                  above were. Where the two disagree, trust the verified facts.
+                </p>
+              </section>
+            )}
+
             <ScoreHero report={report} onShare={handleShare} shared={shared} />
 
             {/* Standing disclaimer — the partial score is parcel analysis,
